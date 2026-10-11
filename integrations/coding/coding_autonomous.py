@@ -17,6 +17,14 @@ def load(name):
 coding_git = load('coding_git')
 coding_publication = load('coding_publication')
 
+def preflight_refusal(progress, error):
+    reasons = {'CODING_AUTONOMY_CONFLICT': 'authorization_removed',
+               'CODING_AUTONOMY_QUEUE_WAIT': 'queue_window_closed'}
+    reason = reasons.get(getattr(error, 'code', None))
+    if reason:
+        progress.stop_reason = reason
+    return bool(reason)
+
 def execute(r, args, progress):
     task_id, key = args.task_id, args.request_id
     if task_id == '0909' or not key:
@@ -27,9 +35,8 @@ def execute(r, args, progress):
     try:
         manifest = r.request(endpoint)['data']
     except Exception as error:
-        if getattr(error, 'code', None) != 'CODING_AUTONOMY_CONFLICT':
+        if not preflight_refusal(progress, error):
             raise
-        progress.stop_reason = 'authorization_removed'
         return finish_preflight(r, progress, task_id, key)
     progress.carry(manifest)
     task = r.request(f'{r.CORE}/api/pipeline/tasks/{task_id}')['data']['task']
@@ -44,9 +51,8 @@ def execute(r, args, progress):
             try:
                 r.request(endpoint)
             except Exception as error:
-                if getattr(error, 'code', None) != 'CODING_AUTONOMY_CONFLICT':
+                if not preflight_refusal(progress, error):
                     raise
-                progress.stop_reason = 'authorization_removed'
                 stopped = True
         if stopped:
             return finish_preflight(r, progress, task_id, key)
@@ -56,6 +62,8 @@ def execute(r, args, progress):
                       'leaseDurationMs': min(900000, task['automation']['budgets']['maxDurationMs'])})
         except Exception as error:
             task = r.request(f'{r.CORE}/api/pipeline/tasks/{task_id}')['data']['task']
+            if task.get('status') != 'in_progress' and preflight_refusal(progress, error):
+                return finish_preflight(r, progress, task_id, key)
             if task.get('status') != 'in_progress' and getattr(error, 'code', None) != 'CODING_CAPACITY_WAITING':
                 raise  # Lost reply stays unknown unless the original lease proves acceptance.
             if task.get('status') != 'in_progress':

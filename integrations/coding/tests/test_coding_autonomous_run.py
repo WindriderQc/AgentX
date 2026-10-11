@@ -1,5 +1,6 @@
 """Synthetic executor fixtures exercise the native gates before external effects."""
 import importlib.util
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import tempfile
@@ -80,5 +81,47 @@ class AutonomousBoundaryTest(unittest.TestCase):
                 patch.object(runner, 'feedback') as legacy:
             self.assertEqual(runner.main(), 2)
         legacy.assert_not_called(); progress.finish.assert_not_called(); progress.write.assert_called_once()
+
+    def test_expired_campaign_before_first_manifest_or_during_capacity_wait_releases_exact_wait(self):
+        for refuse_at in (1, 3, 'claim'):
+            with self.subTest(refuse_at=refuse_at), tempfile.TemporaryDirectory() as directory:
+                progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+                task = {'status': 'queued', 'automationAttemptCount': 0, 'automation': {'budgets': {'maxDurationMs': 100000}},
+                        'codingCapacity': {'requestId': KEY}}
+                manifests = 0
+                claims = 0
+                def request(url, body=None):
+                    nonlocal manifests, claims
+                    if '/manifest' in url:
+                        manifests += 1
+                        if manifests == refuse_at:
+                            error = RuntimeError('Campaign window ended'); error.code = 'CODING_AUTONOMY_QUEUE_WAIT'
+                            raise error
+                        return {'data': {'scope': ['source.py'], 'remaining': {'workSeconds': 100, 'testSeconds': 50,
+                            'modelSeconds': 50, 'modelCalls': 8}, 'limits': {'noProgressSeconds': 100}, 'spent': {}}}
+                    if '/claim' in url:
+                        claims += 1
+                        error = RuntimeError('Host or campaign refused')
+                        error.code = 'CODING_AUTONOMY_QUEUE_WAIT' if refuse_at == 'claim' else 'CODING_CAPACITY_WAITING'
+                        raise error
+                    if '/capacity/cancel' in url:
+                        self.assertEqual(body, {'requestId': KEY}); task.pop('codingCapacity'); return {}
+                    return {'data': {'task': dict(task)}}
+                r = SimpleNamespace(**vars(runner)); r.request = request; r.run_worker = Mock()
+                with patch.object(autonomous.time, 'sleep'):
+                    self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 1)
+                self.assertEqual(claims, 0 if refuse_at == 1 else 1)
+                self.assertTrue(progress.core_recorded); self.assertTrue(progress.preflight)
+                self.assertEqual(progress.stop_reason, 'queue_window_closed')
+                self.assertEqual(runner.coding_progress.safe_progress(json.loads(progress.path.read_text()), KEY, '0001')['stopReason'], 'queue_window_closed')
+                self.assertNotIn('codingCapacity', task); r.run_worker.assert_not_called()
+
+    def test_lost_manifest_transport_remains_unknown_without_cancel_or_model(self):
+        with tempfile.TemporaryDirectory() as directory:
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+            r = SimpleNamespace(**vars(runner)); r.request = Mock(side_effect=OSError('Lost manifest response')); r.run_worker = Mock()
+            with self.assertRaises(OSError):
+                autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress)
+            self.assertFalse(progress.core_recorded); self.assertEqual(r.request.call_count, 1); r.run_worker.assert_not_called()
 
 if __name__ == '__main__': unittest.main()

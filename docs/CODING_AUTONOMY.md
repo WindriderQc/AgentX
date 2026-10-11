@@ -142,7 +142,9 @@ Default cumulative per-task limits:
 | No useful source/test progress | 45 minutes |
 
 These limits can be reduced on authorization, never reset by a correction or
-reauthorization of a started campaign. Repeated source/test fingerprints survive
+reauthorization of a started campaign. Work and the reviewed native attempt
+duration must allow at least the native lease minimum of ten seconds.
+Repeated source/test fingerprints survive
 restarts and resumes; a full progress history blocks instead of forgetting old
 states. Heartbeats, reads, cache churn and identical test repetitions are not
 useful progress. Existing per-stage and soft/hard worker guards also apply.
@@ -154,6 +156,11 @@ and future corrections** ends CI waiting without signalling another job.
 cleanup for its task/requestId. A stop before receipt closes that identity under
 the launch lock; a delayed launch cannot resurrect it. Waiting capacity is
 cancelled through its native owner without consuming a model attempt.
+A closed campaign window before claim ends with `queue_window_closed` after
+that exact waiting capacity is released. Native acquisition is journaled before
+admission; a lost accepted reply is reconciled by its original request and
+release receipt. If no authoritative receipt exists, or the native owner is
+quarantined, cancellation retains the request and requires native recovery.
 
 Stop acceptance and entry into publication share the host lock. Publication may
 already have begun: that stop is explicitly refused and its actual PR receipt

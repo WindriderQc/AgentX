@@ -14,7 +14,8 @@ function limits(raw = {}) {
     throw fail('Unsupported coding budget', 'CODING_AUTONOMY_INVALID', 400);
   const value = { ...DEFAULT_LIMITS, ...raw };
   for (const [key, item] of Object.entries(value)) {
-    if (!Number.isSafeInteger(item) || item < (key === 'maxResumes' ? 0 : 1) || item > DEFAULT_LIMITS[key])
+    const minimum = key === 'maxResumes' ? 0 : key === 'workSeconds' ? 10 : 1;
+    if (!Number.isSafeInteger(item) || item < minimum || item > DEFAULT_LIMITS[key])
       throw fail(`Invalid ${key}`, 'CODING_AUTONOMY_INVALID', 400);
   }
   return value;
@@ -25,6 +26,8 @@ function assertTask(task) {
   const automation = normalizePipelineAutomationIntent(task.automation);
   if (automation.mode !== 'review_only' || task.risk !== 'low' || !['public', 'internal'].includes(automation.dataClassification))
     throw fail('A reviewed low-risk public/internal automation scope is required', 'CODING_AUTONOMY_SCOPE');
+  if (automation.budgets.maxDurationMs < 10000)
+    throw fail('The reviewed duration must support a native lease of at least 10000 ms', 'CODING_AUTONOMY_SCOPE');
   return automation;
 }
 function remaining(task) {

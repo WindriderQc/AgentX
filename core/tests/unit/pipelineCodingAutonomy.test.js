@@ -68,6 +68,15 @@ test('routing and idea intake grant no autonomous execution; switch defaults off
   await task(); await enable(); await service.tick(); expect(control.launch).not.toHaveBeenCalled(); expect(await selected()).toBeNull();
   await Settings.deleteMany({}); expect((await service.status()).enabled).toBe(false);
 });
+test('budgets below the native minimum lease refuse authorization before dispatch', async () => {
+  await task();
+  await expect(authorize('0001', { workSeconds: 9 })).rejects.toMatchObject({ code: 'CODING_AUTONOMY_INVALID' });
+  const tiny = intent(); tiny.budgets.maxDurationMs = 9999; delete tiny.fingerprint;
+  await task('0002', { automation: normalizePipelineAutomationIntent(tiny) });
+  await expect(authorize('0002')).rejects.toMatchObject({ code: 'CODING_AUTONOMY_SCOPE' });
+  expect(policy.limits({ workSeconds: 10 }).workSeconds).toBe(10);
+  expect(await selected()).toBeNull(); expect(control.launch).not.toHaveBeenCalled();
+});
 test.each([{ service: 'personal' }, { service: 'Family' }, { service: 'Household' }, { source: 'idea-drop' }, { source: 'household-tasks' }, { profileId: 'child' }])('private workflows refuse authorization: %j', async extra => {
   await task('0001', extra); await expect(authorize()).rejects.toThrow(); expect(await selected()).toBeNull();
 });
@@ -106,6 +115,16 @@ test('dependencies, availability and ownership are retained', async () => {
 test('expired or unstarted heavy-work campaign prevents launch', async () => {
   await task(); await authorize(); await enable(); queue.get.mockResolvedValue({ state: 'reserved' });
   await service.tick(); expect(await selected()).toBeNull();
+});
+test('runner preflight completion after window closes clears only the autonomous slot without a native attempt', async () => {
+  await task(); await task('0002'); await authorize(); await authorize('0002'); await enable(); const active = await launch();
+  receipts.set(active.requestId, { ...active, phase: 'finished', progress: { phase: 'finished', coreRecorded: true,
+    preflight: true, result: 'blocked', stopReason: 'queue_window_closed', usage: { workSeconds: 2 } } });
+  queue.get.mockResolvedValue({ state: 'completed' }); await service.tick();
+  expect(await selected()).toBeNull(); const closed = await Task.findOne({ pipelineId: active.pipelineId }).lean();
+  expect(closed.codingAutonomy.state).toBe('blocked'); expect(closed.codingAutonomy.reason).toBe('queue_window_closed');
+  expect(closed.automationAttemptCount).toBe(0); expect(closed.codingAutonomy.runs[0].finishedAt).toBeTruthy();
+  expect((await Task.findOne({ pipelineId: '0002' }).lean()).codingAutonomy.runs).toHaveLength(0);
 });
 test('aging prevents starvation and selection uses a stable tie break', () => {
   const old = { priority: 5, pipelineId: '0001', codingAutonomy: { authorizedAt: '2026-01-01T00:00:00Z' } };

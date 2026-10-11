@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const PipelineTask = require('../../models/PipelineTask');
 const coordination = require('./runtimeCoordinationService');
 const PRINCIPAL = 'core-trusted-runtime';
+const WC = { w: 1, j: true };
 let routing;
 
 function conflict(message, code = 'CODING_CAPACITY_CHANGED') {
@@ -53,9 +54,9 @@ async function reserve(task, { taskType, assignee, requestId, ttl, target } = {}
     assertIdentity(capacity, target);
   } else {
     capacity = { ...selectedIdentity(target), taskType, assignee, requestId: requestId || crypto.randomUUID(),
-      basis: taskBasis(task), waitingSince: new Date(), reason: 'Waiting for the selected model host.' };
+      basis: taskBasis(task), waitingSince: new Date(), admissionState: 'not_requested', reason: 'Waiting for the selected model host.' };
     const saved = await PipelineTask.findOneAndUpdate({ pipelineId: task.pipelineId, status: 'queued', assignee: null,
-      updatedAt: task.updatedAt, codingCapacity: { $exists: false } }, { $set: { codingCapacity: capacity } }, { new: true }).lean();
+      updatedAt: task.updatedAt, codingCapacity: { $exists: false } }, { $set: { codingCapacity: capacity } }, { new: true, writeConcern: WC }).lean();
     if (!saved) throw conflict('The task changed before its capacity request was saved.');
     observedUpdatedAt = saved.updatedAt;
   }
@@ -66,17 +67,27 @@ async function reserve(task, { taskType, assignee, requestId, ttl, target } = {}
     await autonomy.campaign(task, capacity.host);
   }
   const workloadId = `coding:${task.pipelineId}:${capacity.requestId}`;
+  const acquiring = await PipelineTask.findOneAndUpdate({ pipelineId: task.pipelineId, status: 'queued', assignee: null,
+    updatedAt: observedUpdatedAt, 'codingCapacity.requestId': capacity.requestId, 'codingCapacity.cancelled': { $ne: true } },
+  { $set: { 'codingCapacity.admissionState': 'acquiring', 'codingCapacity.workloadId': workloadId } }, { new: true, writeConcern: WC }).lean();
+  if (!acquiring) throw conflict('The capacity request changed before native admission.');
   const admitted = await coordination.acquireWorkload({ principal: PRINCIPAL, requestId: capacity.requestId,
     workloadId, kind: 'coding', hosts: [capacity.host], ttl });
   if (!admitted.acquired) {
     const reason = admitted.recoveryRequired ? 'The selected host requires recovery; no new execution is allowed.'
       : admitted.reason || 'The selected model host is occupied.';
     await PipelineTask.updateOne({ pipelineId: task.pipelineId, status: 'queued', assignee: null,
-      'codingCapacity.requestId': capacity.requestId }, { $set: { 'codingCapacity.reason': reason } });
+      'codingCapacity.requestId': capacity.requestId, 'codingCapacity.cancelled': { $ne: true } },
+    { $set: { 'codingCapacity.reason': reason, 'codingCapacity.admissionState': admitted.recoveryRequired ? 'acquiring' : 'waiting' } }, { writeConcern: WC });
     throw conflict(reason, 'CODING_CAPACITY_WAITING');
   }
-  return { ...capacity, workloadId, admissionId: admitted.admissionId, generation: admitted.generation,
-    reason: null, observedUpdatedAt };
+  const owned = { ...capacity, workloadId, admissionId: admitted.admissionId, generation: admitted.generation,
+    admissionState: 'admitted', reason: null };
+  const saved = await PipelineTask.findOneAndUpdate({ pipelineId: task.pipelineId, status: 'queued', assignee: null,
+    'codingCapacity.requestId': capacity.requestId, 'codingCapacity.cancelled': { $ne: true } },
+  { $set: { codingCapacity: owned } }, { new: true, writeConcern: WC }).lean();
+  if (!saved) { await release(owned); throw conflict('The task changed after native admission.', 'TASK_UNAVAILABLE'); }
+  return { ...owned, observedUpdatedAt: saved.updatedAt };
 }
 
 function proof(capacity) {
@@ -84,6 +95,7 @@ function proof(capacity) {
 }
 
 async function release(capacity) {
+  capacity = await recoverCapacity(capacity);
   if (!capacity?.admissionId) return;
   // The atomic release also refuses active/unknown children. A task verdict
   // alone never establishes that an inference stopped.
@@ -92,6 +104,14 @@ async function release(capacity) {
     const prior = await coordination.recoverRelease('workload', proof(capacity));
     if (!prior.released) throw conflict('Coding capacity remains held pending completion or recovery.', 'CODING_CAPACITY_RECOVERY_REQUIRED');
   }
+}
+
+async function recoverCapacity(capacity) {
+  if (!capacity || capacity.admissionId || ['not_requested', 'waiting'].includes(capacity.admissionState)) return capacity;
+  const original = await coordination.recoverWorkloadAcquisition({ principal: PRINCIPAL, requestId: capacity.requestId,
+    workloadId: capacity.workloadId, kind: 'coding', hosts: [capacity.host] });
+  if (!original.recovered) throw conflict('Original native admission is uncertain; retain this capacity request.', 'CODING_CAPACITY_RECOVERY_REQUIRED');
+  return { ...capacity, admissionId: original.admissionId, generation: original.generation, admissionState: 'admitted' };
 }
 
 async function heartbeat(capacity, ttl) {
@@ -106,11 +126,14 @@ async function cancel(pipelineId, requestId) {
   }
   const task = await PipelineTask.findOneAndUpdate({ pipelineId, status: { $in: ['queued', 'blocked'] }, assignee: null,
     'codingCapacity.requestId': requestId }, { $set: { 'codingCapacity.cancelled': true,
-      'codingCapacity.reason': 'Capacity waiting was cancelled.' } }, { new: false }).lean();
+      'codingCapacity.reason': 'Capacity waiting was cancelled.' } }, { new: false, writeConcern: WC }).lean();
   if (!task) throw conflict('Only this queued capacity request can be cancelled.');
-  await release(task.codingCapacity);
+  const original = await recoverCapacity({ ...task.codingCapacity, workloadId: `coding:${pipelineId}:${requestId}` });
+  if (original.admissionId) await PipelineTask.updateOne({ pipelineId, 'codingCapacity.requestId': requestId,
+    'codingCapacity.cancelled': true }, { $set: { codingCapacity: { ...original, cancelled: true } } }, { writeConcern: WC });
+  await release(original);
   await PipelineTask.updateOne({ pipelineId, status: { $in: ['queued', 'blocked'] }, assignee: null,
-    'codingCapacity.requestId': requestId, 'codingCapacity.cancelled': true }, { $unset: { codingCapacity: 1 } });
+    'codingCapacity.requestId': requestId, 'codingCapacity.cancelled': true }, { $unset: { codingCapacity: 1 } }, { writeConcern: WC });
   return { cancelled: true, pipelineId, requestId };
 }
 

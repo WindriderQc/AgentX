@@ -24,7 +24,7 @@ REASONS = {"hard_budget", "soft_budget_no_progress", "no_useful_progress", "mode
            "worker_exit", "no_changes", "dependencies_failed", "dependencies_changed", "runner_error",
            "tests_failed", "generated_artifacts", "ineligible_task", "runtime_unavailable", "runtime_changed",
            "model_wait_inactive", "model_generation_inactive", "tool_inactive", "test_inactive"}
-REASONS.update({"github_token_missing", "git_reconciliation", "git_conflict_remaining", "verification_profile_unknown", "progress_history_limit", "model_termination_unverified", "authorization_removed"})
+REASONS.update({"github_token_missing", "git_reconciliation", "git_conflict_remaining", "verification_profile_unknown", "progress_history_limit", "model_termination_unverified", "authorization_removed", "queue_window_closed"})
 RESULTS = {"blocked", "review", "local_only"}
 TEST_NAMES = {"pytest", "unittest", "jest", "npm_test", "node_test"}
 TEST_OUTCOMES = {"passed", "failed", "unknown"}
