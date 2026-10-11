@@ -635,9 +635,11 @@
     $('mrNoteField').hidden = !['approve', 'reject', 'defer', 'edit_approve'].includes(action);
     $('mrActionStatement').value = action === 'edit_approve' ? candidate?.statement || '' : '';
     $('mrActionNote').value = '';
-    if (candidate && ['approve', 'edit_approve', 'apply'].includes(action)) {
+    if (candidate) {
+      const number = state.run.candidates.indexOf(candidate) + 1;
       $('mrActionPreview').hidden = false;
-      $('mrActionPreview').innerHTML = targetPreview(candidate);
+      $('mrActionPreview').innerHTML = `<p class="mr-action-candidate"><b>#${number}</b> ${esc(candidate.statement)}</p>`
+        + (['approve', 'edit_approve', 'apply'].includes(action) ? targetPreview(candidate) : '');
     } else {
       $('mrActionPreview').hidden = true;
       $('mrActionPreview').innerHTML = '';

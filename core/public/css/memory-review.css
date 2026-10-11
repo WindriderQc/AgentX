@@ -225,6 +225,8 @@ kbd { display: inline-grid; min-width: 20px; height: 20px; place-items: center; 
 .mr-modal h2 { margin: 13px 0 5px; font-size: 1.15rem; }
 .mr-modal > p { margin: 0 0 17px; color: rgba(225,231,245,.62); font-size: .8rem; line-height: 1.5; }
 .mr-action-preview { margin: -5px 0 14px; }
+.mr-action-candidate { margin: 0 0 10px; padding: 10px 12px; border-left: 3px solid #a99cff; border-radius: 8px; background: rgba(8,13,23,.58); font-size: .82rem; line-height: 1.5; overflow-wrap: anywhere; }
+.mr-action-candidate b { margin-right: 4px; color: #a99cff; }
 .mr-modal label { display: block; margin: 11px 0; color: rgba(245,247,253,.84); font-size: .76rem; font-weight: 600; }
 .mr-modal label[hidden] { display: none; }
 .mr-modal textarea { width: 100%; margin-top: 6px; padding: 10px; border: 1px solid rgba(128,148,190,.36); border-radius: 9px; color: inherit; background: rgba(8,13,23,.58); resize: vertical; font: inherit; }
