@@ -13,7 +13,7 @@
     failed: 'Needs attention', collecting: 'Collecting', synthesizing: 'Reflecting',
     proposed: 'Pending', approved: 'Approved', auto_approved: 'Policy approved', rejected: 'Rejected', deferred: 'Deferred',
     parked: 'Parked', shadowed: 'Shadowed', applied: 'Applied', apply_failed: 'Apply failed', applying: 'Applying',
-    shared_fact: 'Shared memory', soft_memory: 'Working memory', artifact: 'Knowledge artifact', runtime_local: 'Runtime-local proposal',
+    shared_fact: 'Memory note', soft_memory: 'Working memory', artifact: 'Knowledge artifact', runtime_local: 'Runtime-local proposal',
     skill_draft: 'Skill draft', pipeline_task: 'Follow-up task', git_change: 'Source change', ignore: 'No action',
     agentx: 'AgentX', 'claude-code': 'Claude Code', codex: 'Codex', external: 'External',
   };
@@ -257,7 +257,7 @@
     $('mrRuntimeGrid').innerHTML = insight.runtimes.map((runtime) => `<div class="mr-runtime-tile mr-runtime-${esc(runtime.health)}">
       <div><i class="fas ${runtime.health === 'attention' ? 'fa-triangle-exclamation' : runtime.health === 'stale' ? 'fa-clock' : runtime.health === 'not_seen' ? 'fa-circle-minus' : 'fa-circle-check'}"></i><strong>${esc(label(runtime.runtime))}</strong></div>
       <span>${runtime.eligible} ${runtime.eligible === 1 ? 'signal' : 'signals'} · ${runtime.filtered} filtered</span>
-      <small>${runtime.lastSeen ? `Seen ${esc(relativeDate(runtime.lastSeen))}` : 'No recent contribution'}${runtime.currentAdvisories ? ` · ${runtime.currentAdvisories} ${runtime.currentAdvisories === 1 ? 'advisory' : 'advisories'}` : ''}</small>
+      <small>${runtime.lastSeen ? `Seen ${esc(relativeDate(runtime.lastSeen))}` : runtime.expected === false ? 'Not collected on this instance' : 'No recent contribution'}${runtime.currentAdvisories ? ` · ${runtime.currentAdvisories} ${runtime.currentAdvisories === 1 ? 'advisory' : 'advisories'}` : ''}</small>
     </div>`).join('');
     const metrics = insight.quality.metrics || {};
     $('mrQualityGrid').innerHTML = [
@@ -472,7 +472,82 @@
     ].filter(Boolean).join(' ');
     $('mrAuthorizeApply')?.addEventListener('click', (event) => openAction('authorize', null, event.currentTarget));
     $('mrCollectors').innerHTML = (run.collectors || []).map(renderCollector).join('') || '<div class="mr-collector">No collector reports.</div>';
+    renderProgress(); renderNext();
     updateFilterCounts(); renderCandidates(); renderAudit();
+  }
+
+  // What the owner still has to do in this run, counted once for the progress
+  // bar, the next-step bar and the candidate order.
+  function reviewWork(run = state.run) {
+    const candidates = run?.candidates || [];
+    const count = (...statuses) => candidates.filter((candidate) => statuses.includes(candidate.status)).length;
+    const pending = count('proposed', 'deferred');
+    const toApply = count('approved', 'apply_failed');
+    const written = count('applied');
+    return { total: candidates.length, pending, toApply, written,
+      settled: candidates.length - pending - toApply - written, authorized: run?.mode === 'apply' };
+  }
+
+  function renderProgress() {
+    const work = reviewWork();
+    const bar = $('mrRunProgress');
+    bar.hidden = !work.total;
+    if (!work.total) return;
+    const part = (value, tone, text) => (value
+      ? `<i class="mr-progress-${tone}" style="flex:${value}" title="${value} ${text}"></i>` : '');
+    const decided = work.total - work.pending;
+    bar.innerHTML = `<div class="mr-progress-track" role="img" aria-label="${decided} of ${work.total} candidates decided">
+        ${part(work.written, 'written', 'written')}${part(work.toApply, 'apply', 'accepted, not written yet')}${part(work.settled, 'settled', 'rejected or needing no action')}${part(work.pending, 'pending', 'awaiting your decision')}</div>
+      <span><b>${decided}</b> of ${work.total} decided${work.toApply ? ` · <b>${work.toApply}</b> accepted, not written yet` : ''}${work.written ? ` · <b>${work.written}</b> written` : ''}</span>`;
+  }
+
+  function showCandidates(filter) {
+    state.filter = filter;
+    document.querySelectorAll('[data-status-filter]').forEach((item) => item.classList.toggle('active', item.dataset.statusFilter === filter));
+    renderCandidates();
+    const first = document.querySelector('.mr-candidate');
+    (first || $('mrCandidateFilters')).scrollIntoView({ behavior: 'smooth', block: 'start' });
+    first?.focus({ preventScroll: true });
+  }
+
+  // One sentence and one button for whatever is blocking this run. It stays in
+  // view while the list scrolls, so the step that unlocks writing is never a
+  // screen away from the candidate it concerns.
+  function renderNext() {
+    const work = reviewWork();
+    const bar = $('mrNext');
+    const set = (icon, title, text, primary, secondary) => {
+      $('mrNextIcon').className = `fas ${icon}`;
+      $('mrNextTitle').textContent = title;
+      $('mrNextText').textContent = text;
+      for (const [id, action] of [['mrNextPrimary', primary], ['mrNextSecondary', secondary]]) {
+        const button = $(id);
+        button.hidden = !action;
+        if (!action) continue;
+        button.textContent = action[0];
+        button.onclick = action[1];
+      }
+      bar.hidden = false;
+    };
+    const plural = (value, one, many) => `${value} ${value === 1 ? one : many}`;
+    const reviewNext = work.pending ? [`Review ${plural(work.pending, 'pending candidate', 'pending candidates')}`, () => showCandidates('proposed')] : null;
+    if (!work.total || (!work.pending && !work.toApply)) { bar.hidden = true; return; }
+    bar.dataset.tone = work.toApply ? 'apply' : 'review';
+    if (work.toApply && !state.applyEnabled) {
+      set('fa-lock', `${plural(work.toApply, 'accepted candidate', 'accepted candidates')} · this server only proposes`,
+        'Writing is switched off on this instance, so accepted candidates stay as decisions.', reviewNext || ['Show them', () => showCandidates('approved')]);
+    } else if (work.toApply && !work.authorized) {
+      set('fa-key', `${plural(work.toApply, 'accepted candidate is', 'accepted candidates are')} not written yet`,
+        'Accepting records your decision. Authorize this run once, then apply each accepted candidate.',
+        ['Authorize reviewed writes', (event) => openAction('authorize', null, event.currentTarget)], ['Show them', () => showCandidates('approved')]);
+    } else if (work.toApply) {
+      set('fa-route', `${plural(work.toApply, 'accepted candidate is', 'accepted candidates are')} ready to write`,
+        'This run is authorized. Each candidate is written by its own Apply to owner button.',
+        [`Show the ${work.toApply} to apply`, () => showCandidates('approved')], reviewNext);
+    } else {
+      set('fa-inbox', `${plural(work.pending, 'candidate awaits', 'candidates await')} your decision`,
+        'Approve, reject, defer or reword each one. Nothing is written by a decision alone.', reviewNext);
+    }
   }
 
   function renderCollector(collector) {
@@ -508,7 +583,11 @@
     if (['approved', 'apply_failed'].includes(candidate.status)) {
       const allowed = state.applyEnabled && state.run?.mode === 'apply';
       const title = state.applyEnabled ? 'Authorize this reviewed run before applying' : 'Server is in proposal-only protection';
-      return `<div class="mr-candidate-actions"><button type="button" class="mr-btn mr-btn-apply" data-action="apply" ${allowed ? '' : `disabled title="${title}"`}>
+      // The step that unlocks writing sits on the candidate that waits for it.
+      const unlock = state.applyEnabled && !allowed
+        ? `<button type="button" class="mr-btn mr-btn-apply" data-action="authorize"><i class="fas fa-key"></i> Authorize reviewed writes</button>
+           <span class="mr-action-hint">Accepted, not written yet. Authorize this run once, then apply.</span>` : '';
+      return `<div class="mr-candidate-actions">${unlock}<button type="button" class="mr-btn ${allowed ? 'mr-btn-apply' : 'mr-btn-secondary'}" data-action="apply" ${allowed ? '' : `disabled title="${title}"`}>
         <i class="fas fa-route"></i> ${candidate.status === 'apply_failed' ? 'Retry apply' : 'Apply to owner'}</button></div>`;
     }
     return '';
@@ -516,8 +595,14 @@
 
   function renderCandidates() {
     const all = state.run?.candidates || [];
+    // In the full list, what waits for the owner comes first: accepted and not
+    // written, then undecided. Numbers stay those of the run.
+    const rank = (status) => (['approved', 'apply_failed'].includes(status) ? 0 : ['proposed', 'deferred'].includes(status) ? 1 : 2);
     const visible = all.map((candidate, index) => ({ candidate, number: index + 1 }))
-      .filter(({ candidate }) => state.filter === 'all' || candidate.status === state.filter);
+      .filter(({ candidate }) => state.filter === 'all' || candidate.status === state.filter
+        || (state.filter === 'approved' && candidate.status === 'apply_failed')
+        || (state.filter === 'proposed' && candidate.status === 'deferred'))
+      .sort((a, b) => rank(a.candidate.status) - rank(b.candidate.status) || a.number - b.number);
     const message = $('mrCandidatesState');
     if (!all.length) {
       const currentCoverageNeedsAttention = Boolean(
@@ -547,7 +632,8 @@
     message.hidden = true;
     $('mrCandidateList').innerHTML = visible.map(({ candidate, number }) => renderCandidate(candidate, number)).join('');
     $('mrCandidateList').querySelectorAll('.mr-candidate').forEach((item) => {
-      item.querySelectorAll('[data-action]').forEach((button) => button.addEventListener('click', () => openAction(button.dataset.action, item.dataset.candidateId, button)));
+      item.querySelectorAll('[data-action]').forEach((button) => button.addEventListener('click', () => openAction(
+        button.dataset.action, button.dataset.action === 'authorize' ? null : item.dataset.candidateId, button)));
       item.querySelector('[data-clarify]')?.addEventListener('click', () => copyClarification(item.dataset.candidateId));
     });
   }
@@ -668,6 +754,7 @@
       closeAction(); toast(actionLabel, 'success');
       await Promise.all([loadInsights(), loadRuns({ select: false })]);
       await selectRun(state.selectedRunId);
+      if (pending.action === 'authorize') showCandidates('approved');
     } catch (error) {
       state.focusAfter = null;
       toast(`Action failed: ${error.message}`, 'error');
@@ -703,6 +790,24 @@
     if (shortcut?.action) items[index].querySelector(`[data-action="${shortcut.action}"]`)?.click();
   });
 
+  // The statistics panel stays out of the way while a run waits for the
+  // owner, and opens by itself when there is nothing to decide. A choice made
+  // by hand is kept.
+  const INTELLIGENCE_KEY = 'agentx.memoryReview.intelligenceOpen';
+  function placeIntelligence() {
+    const panel = $('mrIntelligence');
+    let stored = null;
+    try { stored = window.localStorage.getItem(INTELLIGENCE_KEY); } catch { stored = null; }
+    const work = reviewWork();
+    panel.dataset.auto = '1';
+    panel.open = stored === null ? !(work.pending || work.toApply) : stored === '1';
+    delete panel.dataset.auto;
+  }
+  $('mrIntelligence').addEventListener('toggle', (event) => {
+    if (event.target.dataset.auto) return;
+    try { window.localStorage.setItem(INTELLIGENCE_KEY, event.target.open ? '1' : '0'); } catch { /* private mode */ }
+  });
+
   // Config decides whether Authorize and Apply are offered, so it loads first.
-  (async () => { await loadConfig(); await Promise.all([loadInsights(), loadRuns()]); })();
+  (async () => { await loadConfig(); await Promise.all([loadInsights(), loadRuns()]); placeIntelligence(); })();
 })();

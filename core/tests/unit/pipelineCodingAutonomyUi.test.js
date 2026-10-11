@@ -11,7 +11,7 @@ class Element {
   addEventListener(name, fn) { this.events[name] = fn; }
 }
 const flush = async () => { await new Promise(resolve => setImmediate(resolve)); };
-function setup(state) {
+function setup(state, options = {}) {
   const nodes = { codingAutonomyConfirm: new Element() };
   const document = { getElementById: id => nodes[id] ||= new Element(),
     createElement: () => new Element(), addEventListener: (_name, fn) => { document.start = fn; },
@@ -20,7 +20,14 @@ function setup(state) {
   const calls = [];
   vm.runInNewContext(source, { document, window: { addEventListener() {} }, AbortController,
     setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
-    fetch: async (url, options) => { calls.push({ url, options }); return { ok: true, json: async () => ({ data: state }) }; } });
+    fetch: async (url, requestOptions) => {
+      calls.push({ url, options: requestOptions });
+      if (url.startsWith('/api/cluster/schedule/work-queue/')) return { ok: true, json: async () => ({ data: options.job }) };
+      if (url.endsWith('/recover') && options.failRecoveryOnce) {
+        options.failRecoveryOnce = false; return { ok: false, json: async () => ({ message: 'Reply lost; reconcile the same identity' }) };
+      }
+      return { ok: true, json: async () => ({ data: state }) };
+    } });
   document.start();
   return { nodes, switches, calls };
 }
@@ -53,4 +60,48 @@ test('cancel waiting targets only the current task/request and explains that fut
   const button = descendants(nodes.codingAutonomyTasks).find(n => n.textContent === 'Cancel waiting and future corrections');
   expect(button).toBeDefined(); button.events.click(); await flush();
   expect(calls.find(call => call.options.method === 'POST').url).toBe(`/api/pipeline/coding-autonomy/tasks/0001/runs/${KEY}/stop`);
+});
+test('recovery requires termination confirmation and reuses the exact received campaign proof after a lost response', async () => {
+  const snapshot = state('blocked'); const task = snapshot.tasks[0]; task.authorized = false; task.authorizationRevision = 10;
+  task.pr = null; task.runs[0] = { requestId: KEY, pendingInferenceCount: 1, unresolvedCallIds: [KEY] };
+  const { nodes, calls } = setup(snapshot, { failRecoveryOnce: true,
+    job: { releaseReceipt: { receiptRef: '/private/received.json', receiptSha256: 'b'.repeat(64) } } });
+  await flush(); nodes.codingAutonomyConfirm.checked = true;
+  const form = descendants(nodes.codingAutonomyTasks).find(n => n.events.submit && descendants(n).some(child => child.textContent === 'Reconcile this original execution'));
+  expect(form).toBeDefined(); await form.events.submit({ preventDefault() {} }); await flush();
+  expect(calls.some(call => call.options.method === 'POST')).toBe(false);
+  const label = descendants(form).find(n => n.textContent.startsWith('I verified termination'));
+  label.children[0].checked = true; await form.events.submit({ preventDefault() {} }); await flush();
+  await form.events.submit({ preventDefault() {} }); await flush();
+  const mutations = calls.filter(call => call.options.method === 'POST'); expect(mutations).toHaveLength(2);
+  expect(mutations[0].options.body).toBe(mutations[1].options.body);
+  expect(JSON.parse(mutations[0].options.body)).toEqual({ confirm: true,
+    confirmation: 'ORIGINAL_WORKER_TERMINATED_AND_NATIVE_AUTHORITY_RELEASED', key: `coding-recovery:${KEY}`,
+    expectedRevision: 10, callIds: [KEY], receiptRef: '/private/received.json', receiptSha256: 'b'.repeat(64) });
+});
+test('confirmed recovery keeps a finalization form while the original selection slot remains held', async () => {
+  const snapshot = state('stopped'); const task = snapshot.tasks[0]; task.authorized = false; task.authorizationRevision = 14;
+  task.pr = null; snapshot.active = { pipelineId: '0001', requestId: KEY };
+  task.runs[0] = { requestId: KEY, finishedAt: 'synthetic-time', pendingInferenceCount: 0,
+    historicalPendingInferenceCount: 1, unresolvedCallIds: [], recovery: { state: 'confirmed', authority: 'operator-reconciliation',
+      key: `coding-recovery:${KEY}`, callIds: [KEY], receiptRef: '/private/received.json', receiptSha256: 'b'.repeat(64) } };
+  const { nodes, calls } = setup(snapshot); await flush(); nodes.codingAutonomyConfirm.checked = true;
+  expect(descendants(nodes.codingAutonomyTasks).some(n => n.textContent.includes('selection slot still held'))).toBe(true);
+  const form = descendants(nodes.codingAutonomyTasks).find(n => n.events.submit && descendants(n).some(child => child.textContent === 'Finish this original recovery'));
+  const label = descendants(form).find(n => n.textContent.startsWith('I verified termination')); label.children[0].checked = true;
+  await form.events.submit({ preventDefault() {} }); await flush();
+  const mutation = calls.find(call => call.options.method === 'POST');
+  expect(JSON.parse(mutation.options.body)).toMatchObject({ callIds: [KEY], receiptRef: '/private/received.json',
+    receiptSha256: 'b'.repeat(64), key: `coding-recovery:${KEY}` });
+});
+test('an API-created recovery key survives a lost fence acknowledgement in the operator form', async () => {
+  const snapshot = state('blocked'); const task = snapshot.tasks[0]; task.authorized = false; task.pr = null;
+  task.authorizationRevision = 10; task.runs[0] = { requestId: KEY, pendingInferenceCount: 1, unresolvedCallIds: [KEY] };
+  snapshot.active = { pipelineId: '0001', requestId: KEY, recovery: { key: 'custom-api-recovery' } };
+  const { nodes, calls } = setup(snapshot, { job: { releaseReceipt: { receiptRef: '/private/received.json', receiptSha256: 'b'.repeat(64) } } });
+  await flush(); nodes.codingAutonomyConfirm.checked = true;
+  const form = descendants(nodes.codingAutonomyTasks).find(n => n.events.submit && descendants(n).some(child => child.textContent === 'Reconcile this original execution'));
+  const label = descendants(form).find(n => n.textContent.startsWith('I verified termination')); label.children[0].checked = true;
+  await form.events.submit({ preventDefault() {} }); await flush();
+  expect(JSON.parse(calls.find(call => call.options.method === 'POST').options.body).key).toBe('custom-api-recovery');
 });

@@ -9,6 +9,17 @@ import { registerLocalImages } from '../../super-dad-memory/local-images.js';
 const status = { ok: true, configured: true, profiles: [{ id: 'quick', maxPixels: 1048576 }] };
 const plan = { prompt: 'A lake at dawn', profile: 'quick', width: 1024, height: 1024, reason: 'Requested format' };
 const expert = { ok: true, expert: 'hermes', text: JSON.stringify(plan) };
+
+test('the specialist validates reviewed text plans and preserves supplied exact spelling', () => {
+  const label = { id: 'title', text: 'École 💡', placement: 'central plaque' };
+  const textPolicy = { version: 1, enabled: true, strategy: 'auto', labels: [label] };
+  const textPlan = { version: 1, strategy: 'two-pass', reason: 'Exact editable lettering.', labels: [label] };
+  const result = value => ({ ...expert, text: JSON.stringify({ ...plan, textPlan: value }) });
+  assert.deepEqual(prepareImage({ textPolicy }, status, result(textPlan)).expert.plan.textPlan, textPlan);
+  assert.throws(() => prepareImage({ textPolicy }, status, expert), /Préparation/);
+  assert.throws(() => prepareImage({ textPolicy }, status, result({ ...textPlan, labels: [{ ...label, text: 'Ecole' }] })), /modifié ou omis/);
+  assert.throws(() => prepareImage({}, status, result(textPlan)), /désactivée/);
+});
 const context = { agentId: 'main', runId: 'run', sessionKey: 'agent:main:household:direct:11111111-1111-1111-1111-111111111111' };
 
 test('expert plans cannot inject workflows or change explicit requests', () => {

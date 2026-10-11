@@ -29,6 +29,18 @@ def write_jsonl(path: Path, events):
             handle.write(json.dumps(event) + "\n")
 
 
+
+class HostNameTests(unittest.TestCase):
+    def test_a_unit_without_host_variables_still_names_its_machine(self):
+        import os, socket
+        from unittest.mock import patch
+        from memory_review import collectors
+        with patch.dict(os.environ, {}, clear=True), patch.object(socket, "gethostname", return_value="DevBox"):
+            self.assertEqual(collectors.host_name(), "devbox")
+        with patch.dict(os.environ, {"AGENTX_MEMORY_REVIEW_HOST": "Chosen"}, clear=True):
+            self.assertEqual(collectors.host_name(), "chosen")
+
+
 class RuntimeBoundaryTests(unittest.TestCase):
     def test_private_collectors_map_to_agentx_external_without_losing_local_identity(self):
         for runtime in ("openclaw", "hermes"):

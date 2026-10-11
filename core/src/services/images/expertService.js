@@ -5,6 +5,7 @@ const gateway = require('./expertGateway');
 const presentation = require('./workshopPresentation');
 const images = require('./imageService');
 const constraints = require('../../../public/js/image-brief-constraints');
+const textPolicy = require('../../../public/js/image-text-policy');
 const { officialDashboardUrl } = require('./expertDashboard');
 const ID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const MAX_ENVELOPE_UNITS = 60000, MAX_ENVELOPE_BYTES = 65536;
@@ -79,9 +80,11 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
     if (!recipe || ![context.width, context.height].every(n => Number.isInteger(n) && n >= 256 && n <= 2752 && n % 32 === 0)
       || context.width * context.height > recipe.maxPixels) throw failure('Choisis une recette et un format disponibles.');
     const protectedItems = constraints.validate(context.constraints);
+    const policy = textPolicy.validate(context.textPolicy);
+    textPolicy.known(policy, protectedItems);
     constraints.composeBrief(context.prompt, protectedItems);
     const clean = { prompt: context.prompt, profile: context.profile, width: context.width, height: context.height, referenceCount: context.referenceCount,
-      ...(protectedItems && { constraints: protectedItems }) };
+      ...(protectedItems && { constraints: protectedItems }), ...(policy && { textPolicy: policy }) };
     if (input.mode === 'plan' && !clean.prompt.trim()) throw failure('Écris ton brief avant de demander une proposition.');
     return { clientTurnId: input.clientTurnId, mode: input.mode, message: input.message, context: clean };
   }
@@ -109,12 +112,15 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
       if (proposal && (typeof proposal.prompt !== 'string' || !proposal.prompt.trim()
         || proposal.prompt.length > 8000 || typeof proposal.reason !== 'string' || proposal.reason.length > 2000)) throw new Error('Proposition Hermes invalide.');
       if (envelope.action === 'plan' && !proposal) throw new Error('Hermes n’a pas fourni de proposition applicable.');
-      if (proposal && details.context.constraints) {
+      if (proposal && (details.context.constraints || details.context.textPolicy || proposal.textPlan)) {
         const protectedItems = constraints.validate(details.context.constraints);
-        const visualPrompt = constraints.visual(proposal.prompt, protectedItems);
+        const plan = textPolicy.validatePlan(proposal.textPlan, details.context.textPolicy, protectedItems);
+        const policy = textPolicy.applyPlan(plan, details.context.textPolicy, protectedItems);
+        const visualPrompt = textPolicy.visual(proposal.prompt, protectedItems, policy);
         if (!visualPrompt.trim()) throw new Error('Hermes n’a pas fourni de description visuelle.');
         proposal = { profile: proposal.profile, width: proposal.width, height: proposal.height, reason: proposal.reason,
-          visualPrompt, prompt: constraints.compose(visualPrompt, protectedItems), constraints: protectedItems };
+          visualPrompt, prompt: textPolicy.compose(visualPrompt, protectedItems, policy),
+          ...(protectedItems && { constraints: protectedItems }), ...(policy && { textPolicy: policy }), ...(plan && { textPlan: plan }) };
       }
       await save({ proposal, reportedModel: result.model || null, nativeSessionId: result.sessionId || null,
         tokens: result.tokens || null, durationMs: result.durationMs || null });
@@ -147,10 +153,11 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
         .flatMap(row => {
           const previous = evidence(row), plan = previous.proposal;
           return [{ role: 'user', content: plan ? `Brief à affiner : ${previous.context.prompt}\nDemande : ${row.inputText}` : row.inputText },
-            { role: 'assistant', content: plan ? `Prompt proposé : ${plan.prompt}\nExplication : ${row.replyText}` : row.replyText }];
+            { role: 'assistant', content: plan ? `Prompt proposé : ${plan.prompt}\nExplication : ${row.replyText}${plan.textPlan ? '\nTextes proposés : ' + JSON.stringify(plan.textPlan) : ''}` : row.replyText }];
         });
       const envelope = boundEnvelope({ action: input.mode, history, status,
-        ...(input.mode === 'plan' ? { request: { ...input.context, prompt: constraints.composeBrief(input.context.prompt, input.context.constraints), instruction: input.message } }
+        ...(input.mode === 'plan' ? { request: { ...input.context, prompt: constraints.composeBrief(input.context.prompt, input.context.constraints), instruction: input.message,
+          ...(input.context.textPolicy && { renderBudget: textPolicy.planningBudget(input.context.constraints, input.context.textPolicy) }) } }
           : { prompt: input.message, context: input.context }) });
       const turn = await conversations.recordTurn({ ...scope, traceId: input.clientTurnId, clientTurnId: input.clientTurnId,
         modeId: input.mode, source: 'imagex-hermes', speakerAgentId: 'imagex', routeTier: 'agent', outcome: 'accepted',

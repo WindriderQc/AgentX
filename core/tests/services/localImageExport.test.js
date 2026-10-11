@@ -367,3 +367,17 @@ test('a changed protected snapshot refuses export even when the stored graph rem
   await alter(f.id, { 'request.constraints.items.0.text': 'Modified snapshot' });
   forbidWrites(); await expect(manifest(f.id)).rejects.toMatchObject({ statusCode: 503 });
 });
+
+test('two-pass exports retain exact text metadata and validate their actual text-free renderer prompt', async () => {
+  const policy = require('../../public/js/image-text-policy');
+  const textPolicy = { version: 1, enabled: true, strategy: 'two-pass', labels: [{ id: 'title', text: 'École 💡', placement: 'central plaque' }] };
+  const constraints = { version: 1, items: [{ id: 'title-constraint', kind: 'exact-text', text: 'École 💡' }] };
+  const visualPrompt = 'SYNTHETIC_EXPORT_BRIEF_MARKER';
+  const f = await fixture({ request: { visualPrompt, constraints, textPolicy, prompt: policy.compose(visualPrompt, constraints, textPolicy) } });
+  const before = await fingerprint(); forbidWrites();
+  const exported = await manifest(f.id);
+  expect(exported.request.textPolicy).toEqual(textPolicy);
+  expect(exported.request.constraints).toEqual(constraints);
+  expect(exported.request.prompt).not.toContain('École 💡');
+  await exactParts(f, exported); expect(await fingerprint()).toEqual(before);
+});

@@ -16,7 +16,7 @@
     household_member_statement: 'Someone of the household said this on a family page. It is not the owner speaking and is never applied without review.',
   };
   const targetHelp = {
-    shared_fact: ['AgentX shared memory', 'Becomes searchable shared knowledge after this one approved write.', 'Rollback removes the created memory document.'],
+    shared_fact: ['Your memory notes', 'Becomes one of the notes your agents read, after this one approved write.', 'You can correct or forget it in the memory editor.'],
     soft_memory: ['AgentX working memory', 'Stores a provisional, confidence-tagged inference with expiry.', 'Rollback removes the working-memory document; recall never confirms it.'],
     artifact: ['AgentX knowledge artifact', 'Creates a concise durable artifact—never a transcript archive.', 'Rollback removes the created artifact document.'],
     pipeline_task: ['AgentX delivery pipeline', 'Creates one reviewable, unassigned follow-up task.', 'Rollback closes the task as cancelled.'],

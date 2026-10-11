@@ -36,7 +36,9 @@ async function configure(input) {
     throw policy.fail('Confirm the switch and current revision', 'CODING_AUTONOMY_INVALID', 400);
   const current = await settings();
   if (input.enabled && (!control || control.target === '')) throw policy.fail('Coding runner is unavailable');
-  const saved = await Settings.findOneAndUpdate({ _id: ID, revision: input.expectedRevision },
+  if (input.enabled && current.active?.recovery) throw policy.fail('Reconcile the original recovery identity before enabling autonomy');
+  const saved = await Settings.findOneAndUpdate({ _id: ID, revision: input.expectedRevision,
+    ...(input.enabled && { 'active.recovery': { $exists: false } }) },
     { $set: { enabled: input.enabled, actor: 'operator' }, $inc: { revision: 1 } }, { new: true, writeConcern: WC }).lean();
   if (!saved) throw policy.fail('The autonomy switch changed');
   return { ...saved, previousEnabled: current.enabled };
@@ -103,7 +105,9 @@ function projection(task) {
     resumes: Math.max(0, state.runs.length - 1), remaining, pr: state.pr || null,
     lastUsefulProgressAt: state.lastUsefulProgressAt || null, manualInterventions: state.manualInterventions,
     runs: state.runs.map(({ leaseId, pendingInferences, ...run }) => ({ ...run,
-      pendingInferenceCount: (pendingInferences || []).length })),
+      pendingInferenceCount: run.recovery?.state === 'confirmed' ? 0 : (pendingInferences || []).length,
+      historicalPendingInferenceCount: (pendingInferences || []).length,
+      unresolvedCallIds: run.recovery?.state === 'confirmed' ? [] : [...(pendingInferences || [])] })),
     observations: state.observations.slice(-8),
     nextAction: state.state === 'ready_for_review' ? 'Human review; merge, installation and product acceptance remain separate'
       : state.reason || (state.state === 'waiting_ci' ? 'Observe the exact published commit without calling a model' : state.state) };
@@ -113,6 +117,10 @@ async function status() {
   const tasks = await Task.find({ codingAutonomy: { $exists: true } }).sort({ pipelineId: 1 }).limit(100).lean();
   return { schema: 'agentx.pipeline-coding-autonomy-status/v1', enabled: config.enabled,
     revision: config.revision, active: config.active, tasks: tasks.map(projection) };
+}
+async function recover(id, requestId, input) {
+  const result = await require('./pipelineCodingAutonomyRecovery').recover(id, requestId, input, control);
+  return { ...projection(result.task), alreadyRecovered: result.alreadyRecovered };
 }
 async function campaign(task, host) {
   const job = await require('./heavyWorkQueueService').get(task.codingAutonomy.queueRequestId);
@@ -138,7 +146,8 @@ async function workerManifest(id, requestId) {
     scope: task.automation.scope, correction: state.correction || null, queueRequestId: state.queueRequestId };
 }
 async function clearActive(requestId) {
-  await Settings.updateOne({ _id: ID, 'active.requestId': requestId }, { $set: { active: null } }, { writeConcern: WC });
+  await Settings.updateOne({ _id: ID, 'active.requestId': requestId, 'active.recovery': { $exists: false } },
+    { $set: { active: null } }, { writeConcern: WC });
 }
 async function block(task, reason) {
   const state = { ...task.codingAutonomy, state: 'blocked', reason };
@@ -347,6 +356,10 @@ async function tick() {
     let config = await settings();
     if (config.active) {
       const task = await readTask(config.active.pipelineId);
+      if (config.active.recovery) {
+        await require('./pipelineCodingAutonomyRecovery').releaseConfirmed(task, config, control);
+        return;
+      }
       if (task.codingAutonomy?.runs.at(-1)?.requestId !== config.active.requestId) {
         // A crash after selection but before the task journal made no host
         // effect. Resolve only a definitively absent exact host request.
@@ -366,4 +379,4 @@ async function tick() {
   } finally { ticking = false; }
 }
 module.exports = { configureControl, settings, configure, authorize, status, projection, workerManifest,
-  stop, recordReview, tick, campaign, save, readTask, UUID };
+  stop, recordReview, recover, tick, campaign, save, readTask, UUID };

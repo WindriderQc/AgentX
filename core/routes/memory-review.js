@@ -41,6 +41,7 @@ router.get('/config', (req, res) => {
       coreVersion,
       limits: policy.LIMITS,
       runtimes: policy.RUNTIMES,
+      expectedRuntimes: policy.expectedRuntimes(),
       candidateTypes: policy.CANDIDATE_TYPES,
       targetKinds: policy.TARGET_KINDS,
       targetsByType: policy.TARGETS_BY_TYPE,

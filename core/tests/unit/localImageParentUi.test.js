@@ -70,7 +70,9 @@ async function studio({ failFirst = false, lineage, requested = parentId, availa
   Event: class { constructor(type) { this.type = type; } }, queueMicrotask, setTimeout: jest.fn(), clearTimeout: jest.fn() });
   let expertController;
   if (expertEnabled) context.AgentXImageExpert = { mount: options => { expertController = options; return { refresh() {} }; } };
-  if (constraintsEnabled) { vm.runInContext(constraintsSource, context); vm.runInContext(constraintsUiSource, context); }
+  vm.runInContext(constraintsSource, context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../public/js/image-text-policy.js'), 'utf8'), context);
+  if (constraintsEnabled) vm.runInContext(constraintsUiSource, context);
   vm.runInContext(starterSource, context); vm.runInContext(source, context);
   await settle();
   const fire = async (id, type = 'click') => { await get(id).dispatchEvent({ type, preventDefault() {} }); await settle(); };

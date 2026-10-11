@@ -100,7 +100,7 @@ kbd { display: inline-grid; min-width: 20px; height: 20px; place-items: center; 
 
 .mr-main-grid { display: grid; grid-template-columns: minmax(280px,330px) minmax(0,1fr); gap: 18px; align-items: start; }
 .mr-runs-panel, .mr-detail-panel { border: 1px solid rgba(94,114,158,.28); border-radius: 14px; background: rgba(17,23,37,.76); box-shadow: 0 18px 48px rgba(0,0,0,.13); }
-.mr-runs-panel { position: sticky; top: 18px; padding: 15px; }
+.mr-runs-panel { position: sticky; top: 96px; padding: 15px; }
 .mr-detail-panel { min-height: 370px; padding: 17px 18px; }
 .mr-panel-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 11px; }
 .mr-panel-header h2, .mr-panel-header h3 { margin: 0; font-size: 1rem; }
@@ -269,4 +269,53 @@ body.mr-modal-open { overflow: hidden; }
   .mr-candidate-actions .mr-btn { flex: 1 1 calc(50% - 5px); }
   .mr-conflict { align-items: stretch; flex-direction: column; }
   .mr-conflict .mr-btn { width: 100%; }
+}
+
+/* Next step: one sentence and one button for what blocks the selected run. */
+.mr-next { position: sticky; top: 10px; z-index: 30; display: flex; align-items: center; gap: 14px; margin: 0 0 18px; padding: 13px 16px; border: 1px solid rgba(255,189,102,.55); border-radius: 14px; background: linear-gradient(100deg, rgba(74,50,24,.94), rgba(22,28,44,.96) 62%); box-shadow: 0 14px 40px rgba(0,0,0,.34); backdrop-filter: blur(8px); }
+.mr-next[hidden] { display: none; }
+.mr-next[data-tone="review"] { border-color: rgba(127,154,255,.5); background: linear-gradient(100deg, rgba(37,46,92,.94), rgba(22,28,44,.96) 62%); }
+.mr-next-icon { display: grid; flex: 0 0 auto; width: 40px; height: 40px; place-items: center; border-radius: 12px; background: rgba(255,189,102,.16); color: #ffcf8a; font-size: 1.05rem; }
+.mr-next[data-tone="review"] .mr-next-icon { background: rgba(127,154,255,.18); color: #b9c8ff; }
+.mr-next-copy { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; gap: 2px; }
+.mr-next-copy strong { color: #fff; font-size: 1rem; line-height: 1.25; }
+.mr-next-copy > span:last-child { color: rgba(225,231,245,.74); font-size: .8rem; }
+.mr-next-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.mr-next .mr-btn-apply { background: #ffb85c; border-color: #ffb85c; color: #1c1408; font-weight: 700; }
+.mr-next .mr-btn-apply:hover { background: #ffc97f; }
+.mr-next[data-tone="review"] .mr-btn-apply { background: #8ea4ff; border-color: #8ea4ff; color: #0e1430; }
+
+/* Progress of the selected run. */
+.mr-progress { display: flex; align-items: center; gap: 12px; margin: 0 0 11px; color: rgba(225,231,245,.76); font-size: .76rem; }
+.mr-progress[hidden] { display: none; }
+.mr-progress-track { display: flex; flex: 0 1 260px; height: 8px; min-width: 120px; overflow: hidden; border-radius: 99px; background: rgba(94,114,158,.2); }
+.mr-progress-track i { display: block; min-width: 3px; }
+.mr-progress-written { background: #4ade80; }
+.mr-progress-apply { background: #ffb85c; }
+.mr-progress-settled { background: rgba(160,174,205,.55); }
+.mr-progress-pending { background: transparent; }
+.mr-progress b { color: #fff; }
+
+.mr-candidate-approved, .mr-candidate-apply_failed { border-color: rgba(255,189,102,.5); box-shadow: inset 3px 0 0 #ffb85c; }
+.mr-candidate-actions .mr-btn-apply[data-action="authorize"] { background: #ffb85c; border-color: #ffb85c; color: #1c1408; font-weight: 700; }
+.mr-action-hint { align-self: center; color: rgba(255,214,160,.9); font-size: .76rem; }
+.mr-candidate-actions { align-items: center; }
+
+@media (max-width: 920px) {
+  .mr-next { top: 6px; flex-wrap: wrap; }
+  .mr-next-actions { flex: 1 1 100%; justify-content: stretch; }
+  .mr-next-actions .mr-btn { flex: 1 1 auto; justify-content: center; }
+  .mr-run-list { max-height: 210px; }
+  .mr-action-hint { flex: 1 1 100%; }
+}
+
+.mr-candidate, #mrCandidateFilters { scroll-margin-top: 112px; }
+
+@media (max-width: 560px) {
+  .mr-next { gap: 8px; padding: 9px 11px; }
+  .mr-next-icon, .mr-next-copy .mr-eyebrow, .mr-next-copy > span:last-child { display: none; }
+  .mr-next-copy strong { font-size: .9rem; }
+  .mr-next-actions { gap: 6px; }
+  .mr-next-actions .mr-btn { padding: 7px 9px; font-size: .78rem; }
+  .mr-candidate, #mrCandidateFilters { scroll-margin-top: 128px; }
 }

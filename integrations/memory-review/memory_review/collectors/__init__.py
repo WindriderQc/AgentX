@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import re
 from collections import Counter
 from dataclasses import dataclass, field
@@ -369,6 +370,12 @@ def read_new_jsonl(
 
 
 def host_name() -> str:
-    return os.environ.get("AGENTX_MEMORY_REVIEW_HOST") or os.environ.get(
-        "COMPUTERNAME", os.environ.get("HOSTNAME", "unknown-host")
+    # A timer or service unit exports neither COMPUTERNAME nor HOSTNAME, so the
+    # system is asked before giving up on a name.
+    return (
+        os.environ.get("AGENTX_MEMORY_REVIEW_HOST")
+        or os.environ.get("COMPUTERNAME")
+        or os.environ.get("HOSTNAME")
+        or socket.gethostname()
+        or "unknown-host"
     ).lower()

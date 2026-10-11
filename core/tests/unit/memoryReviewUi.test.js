@@ -41,6 +41,20 @@ describe('Dreaming Review UI contract', () => {
     expect(styles).toContain('@media (max-width: 560px)');
   });
 
+  test('keeps the step that unlocks writing beside the candidates that wait for it', () => {
+    expect(view).toContain('id="mrNext"');
+    expect(view.indexOf('id="mrNext"')).toBeLessThan(view.indexOf('id="mrPulse"'));
+    expect(view).toContain('id="mrRunProgress"');
+    expect(view).not.toContain('class="mr-intelligence" open');
+    expect(controller).toContain('data-action="authorize"');
+    expect(controller).toContain("button.dataset.action === 'authorize' ? null : item.dataset.candidateId");
+    expect(controller).toContain("if (pending.action === 'authorize') showCandidates('approved')");
+    expect(controller).toContain('accepted, not written yet');
+    expect(controller).toContain('Not collected on this instance');
+    expect(copy).toContain('Becomes one of the notes your agents read');
+    expect(styles).toContain('.mr-next { position: sticky;');
+  });
+
   test('adds statement-free insight, navigation, and review accelerators', () => {
     expect(controller).toContain('/api/memory-review/insights?limit=30');
     expect(controller).toContain('safeDigest');

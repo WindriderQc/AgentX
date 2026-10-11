@@ -126,6 +126,16 @@ const LIMITS = Object.freeze({
   MAX_REVIEW_EXCEPTIONS: 5,
 });
 
+// The collectors this instance runs. A runtime nobody collects here is not a
+// missing collector: counting it as one keeps health and quality metrics in
+// "attention" forever. Unknown names are ignored; an empty or invalid value
+// means every runtime is expected.
+function expectedRuntimes() {
+  const named = String(process.env.MEMORY_REVIEW_EXPECTED_RUNTIMES || '').split(',')
+    .map((value) => value.trim().toLowerCase()).filter((value) => RUNTIMES.includes(value));
+  return named.length ? RUNTIMES.filter((runtime) => named.includes(runtime)) : RUNTIMES;
+}
+
 // Server mode gate. Missing/invalid env NEVER implies apply.
 function serverMode() {
   const raw = String(process.env.MEMORY_REVIEW_MODE || '').trim().toLowerCase();
@@ -176,7 +186,7 @@ function reconciliationStatus(run, now = new Date()) {
   const contributedRuntimes = [...new Set((run?.collectors || [])
     .map((collector) => publicRuntime(collector.runtime))
     .filter(Boolean))];
-  const missingRuntimes = RUNTIMES.filter((runtime) => !contributedRuntimes.includes(runtime));
+  const missingRuntimes = expectedRuntimes().filter((runtime) => !contributedRuntimes.includes(runtime));
   const createdAt = run?.createdAt ? new Date(run.createdAt) : null;
   const nowAt = new Date(now);
   const ageMinutes = createdAt && Number.isFinite(createdAt.getTime()) && Number.isFinite(nowAt.getTime())
@@ -483,6 +493,7 @@ module.exports = {
   SCHEMA_VERSION,
   POLICY_VERSION,
   RUNTIMES,
+  expectedRuntimes,
   publicRuntime,
   RECONCILIATION_GRACE_MINUTES,
   TRUST_ELIGIBLE,
