@@ -106,7 +106,7 @@ describe('simple-to-expert UX contract', () => {
     const html = await renderChat();
     const source = fs.readFileSync(chatMainPath, 'utf8');
 
-    expect(html).toContain('id="configDrawer" role="dialog" aria-hidden="true"');
+    expect(html).toContain('id="configDrawer" role="dialog" aria-modal="true" aria-hidden="true"');
     expect(html).toContain('tabindex="-1" inert');
     expect(source).toContain("elements.configDrawer.inert = !isOpen");
     expect(source).toContain("document.body.classList.toggle('chat-controls-open', isOpen)");
