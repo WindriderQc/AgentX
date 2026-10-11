@@ -31,6 +31,8 @@ function assertTask(task) {
   return automation;
 }
 function nativeModelMs(run, now = Date.now()) {
+  if (run.recovery?.authority === 'operator-reconciliation' && Number.isFinite(Date.parse(run.recovery.resolvedAt)))
+    now = Math.min(now, Date.parse(run.recovery.resolvedAt));
   const intervals = (run.modelReceipts || []).map(item => [Date.parse(item.startedAt),
     item.finishedAt ? Date.parse(item.finishedAt) : now]).filter(([start, end]) =>
     Number.isFinite(start) && Number.isFinite(end) && end >= start).sort((a, b) => a[0] - b[0]);
