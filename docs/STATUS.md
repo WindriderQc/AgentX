@@ -70,8 +70,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   controls live in the parental space.
 - **Nestor guardian and worker.** Optional personal voice work commits the human
   request before guardian inference and uses an isolated native worker for
-  bounded task reads and review. Conservative mailbox reads receive an immediate
-  saved-request acknowledgment and use isolated native Main/Secretary consultation
+  bounded task reads and review. Conservative mailbox and current public-information
+  reads receive an immediate saved-request acknowledgment and use isolated native
+  Main web research or Main/Secretary consultation
   while the guardian remains available. Core retains results through reconnect, fences
   uncertain dispatches and separates display, playback start and completion.
   The feature defaults off; text, Open, specialists and Famille keep their

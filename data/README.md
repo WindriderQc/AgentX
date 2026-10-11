@@ -113,7 +113,11 @@ cut at 4 KiB, or a hex preview of the first 64 bytes when the bytes are not
 UTF-8, and `bytes` is the real size. `since=<seq>` returns what came after that
 sequence number, and without it the newest `limit` messages (default 100, at
 most 500); `topic` is an MQTT filter with `+` and `#`, refused with 400 when a
-wildcard is misplaced. The answer carries `latestSeq`, `nextSince` (what to ask
+wildcard is misplaced. `exclude` is an optional second filter with the same
+rules: a message it matches is left out (the Toolbox passes `esp32/alive/#` to
+hide the device heartbeats), and the answer's `excludedCount` says how many of
+the messages read for it were left out, each counted once across successive
+`since` reads; `exclude` echoes the filter, or `null`. The answer carries `latestSeq`, `nextSince` (what to ask
 next), `more`, `dropped` with `droppedCount` when the buffer no longer holds
 everything after `since`, and `epoch`, which changes when the monitor restarts
 and its sequence numbers start again. `POST /publish` takes `{ topic, payload,

@@ -207,15 +207,22 @@ function createMqttMonitor({ bufferSize = BUFFER_SIZE, now = () => new Date(), c
   /**
    * Messages after `since`, oldest first. Without `since`, the newest `limit`
    * messages. `nextSince` is what to ask next; `dropped` says the buffer no
-   * longer holds everything after `since`.
+   * longer holds everything after `since`. `exclude` is a second topic filter:
+   * a message it matches is left out, and `excludedCount` says how many of the
+   * messages read for this answer it removed.
    */
-  function messages({ since, limit, topic } = {}) {
+  function messages({ since, limit, topic, exclude } = {}) {
     const hasSince = since !== undefined && since !== null && since !== '';
     if (hasSince && !/^\d{1,15}$/.test(String(since))) throw httpError(400, 'since must be a non-negative integer');
     const hasFilter = topic !== undefined && topic !== null && topic !== '';
     if (hasFilter) {
       const problem = topicFilterProblem(typeof topic === 'string' ? topic : null);
       if (problem) throw httpError(400, problem);
+    }
+    const hasExclude = exclude !== undefined && exclude !== null && exclude !== '';
+    if (hasExclude) {
+      const problem = topicFilterProblem(typeof exclude === 'string' ? exclude : null);
+      if (problem) throw httpError(400, `exclude: ${problem}`);
     }
     const parsedLimit = Number.parseInt(limit, 10);
     const max = Number.isFinite(parsedLimit) ? Math.min(MAX_LIMIT, Math.max(1, parsedLimit)) : DEFAULT_LIMIT;
@@ -227,18 +234,33 @@ function createMqttMonitor({ bufferSize = BUFFER_SIZE, now = () => new Date(), c
     const droppedCount = hasSince ? Math.max(0, oldestSeq - 1 - from) : 0;
     const matching = (message) => !hasFilter || topicMatches(topic, message.topic);
 
+    const excluded = (message) => hasExclude && topicMatches(exclude, message.topic);
+
     let selected = [];
     let nextSince = seq;
     let more = false;
+    let excludedCount = 0;
     if (hasSince) {
+      // Excluded messages are counted up to `nextSince` only, so that a caller
+      // adding the counts of successive reads counts each message once.
+      let pending = 0;
       for (const message of buffer) {
         if (message.seq <= from || !matching(message)) continue;
+        if (excluded(message)) { pending += 1; continue; }
         if (selected.length === max) { more = true; break; }
         selected.push(message);
+        excludedCount += pending;
+        pending = 0;
       }
       if (more) nextSince = selected[selected.length - 1].seq;
+      else excludedCount += pending;
     } else {
-      selected = buffer.filter(matching).slice(-max);
+      const kept = [];
+      for (const message of buffer) {
+        if (!matching(message)) continue;
+        if (excluded(message)) excludedCount += 1; else kept.push(message);
+      }
+      selected = kept.slice(-max);
     }
     return {
       messages: selected,
@@ -251,7 +273,9 @@ function createMqttMonitor({ bufferSize = BUFFER_SIZE, now = () => new Date(), c
       reset,
       epoch: startedAt.toISOString(),
       bufferSize,
-      topic: hasFilter ? topic : '#'
+      topic: hasFilter ? topic : '#',
+      exclude: hasExclude ? exclude : null,
+      excludedCount
     };
   }
 

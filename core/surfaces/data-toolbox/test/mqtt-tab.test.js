@@ -71,8 +71,10 @@ function broker(store = {}) {
     if (request.path === '/mqtt/messages') {
       if (store.messagesError) return store.messagesError;
       const since = request.query.has('since') ? Number(request.query.get('since')) : null;
-      const selected = store.messages.filter((item) => since === null || item.seq > since);
-      return messagesBody(selected, { latestSeq: store.messages.at(-1)?.seq ?? 0, nextSince: store.messages.at(-1)?.seq ?? 0, topic: request.query.get('topic'), ...store.answer });
+      const after = store.messages.filter((item) => since === null || item.seq > since);
+      const exclude = request.query.get('exclude');
+      const selected = after.filter((item) => !exclude || !rules.topicMatches(exclude, item.topic));
+      return messagesBody(selected, { exclude, excludedCount: after.length - selected.length, latestSeq: store.messages.at(-1)?.seq ?? 0, nextSince: store.messages.at(-1)?.seq ?? 0, topic: request.query.get('topic'), ...store.answer });
     }
     if (request.path === '/mqtt/publish') return store.publish ? store.publish(request) : new Error('unexpected publish');
     return new Error(`unexpected ${request.path}`);
@@ -126,7 +128,7 @@ async function relayApp(t, respond) {
   return { app, calls, request: require('supertest') };
 }
 
-test('the MQTT read relays keep bounded since, limit and topic, and nothing else', async (t) => {
+test('the MQTT read relays keep bounded since, limit, topic and exclude, and nothing else', async (t) => {
   const { app, calls, request } = await relayApp(t);
   await request(app).get('/api/data-toolbox/mqtt/status?verbose=1&password=x').expect(200);
   assert.equal(calls[0].url.pathname, '/api/v1/mqtt/status');
@@ -146,6 +148,10 @@ test('the MQTT read relays keep bounded since, limit and topic, and nothing else
   assert.deepEqual(Object.fromEntries(calls[3].url.searchParams), { since: '0', limit: '1' });
   await request(app).get('/api/data-toolbox/mqtt/messages').expect(200);
   assert.equal(calls[4].url.search, '');
+  await request(app).get(`/api/data-toolbox/mqtt/messages?exclude=esp32%2Falive%2F%23&exclude=other&hide=1`).expect(200);
+  assert.deepEqual(Object.fromEntries(calls[5].url.searchParams), { exclude: 'esp32/alive/#' });
+  await request(app).get(`/api/data-toolbox/mqtt/messages?exclude=${'x'.repeat(400)}`).expect(200);
+  assert.equal(calls[6].url.searchParams.get('exclude').length, 256);
   assert.ok(calls.every((call) => (call.options.method || 'GET') === 'GET'));
 });
 
@@ -240,7 +246,7 @@ test('a connected broker shows its state, the stream newest first and the send f
   assert.match(rows[2], /liveData\/pressure\/46\.81,-71\.21/);
 
   // First read: the newest messages Data holds, no `since`.
-  assert.deepEqual(Object.fromEntries(messageReads(browser)[0].query), { limit: '300', topic: '#' });
+  assert.deepEqual(Object.fromEntries(messageReads(browser)[0].query), { limit: '300', topic: '#', exclude: 'esp32/alive/#' });
   for (const filter of ['#', 'esp32/#', 'liveData/#', 'sensors/#']) assert.ok(html.includes(`data-mqtt-filter="${filter}"`), filter);
   assert.match(html, /<strong>These messages reach real devices\.<\/strong> A message can switch an output or reboot a device/);
   assert.ok(html.indexOf('These messages reach real devices') < html.indexOf('<form id="mqttSend"'));
@@ -350,7 +356,7 @@ test('the 2 s poll asks only for what is new, on a visible MQTT tab, and never r
   let before = count();
   await browser.timers[0].callback();
   assert.equal(count(), before + 2, 'one status read and one message read');
-  assert.deepEqual(Object.fromEntries(messageReads(browser).at(-1).query), { limit: '300', topic: '#', since: '2' });
+  assert.deepEqual(Object.fromEntries(messageReads(browser).at(-1).query), { limit: '300', topic: '#', exclude: 'esp32/alive/#', since: '2' });
   const rows = browser.elements['#mqttStream'].innerHTML.split('<tr><td').slice(1);
   assert.equal(rows.length, 3);
   assert.match(rows[0], /esp32\/kitchen\/state/);
@@ -506,7 +512,7 @@ test('a topic filter is sent to Data and restarts the list; an invalid one is re
   browser.listeners.click[0]({ target: { closest: (selector) => selector === '[data-mqtt-filter]' ? { dataset: { mqttFilter: 'esp32/#' } } : null } });
   await new Promise((resolve) => setImmediate(resolve));
   const read = messageReads(browser).at(-1);
-  assert.deepEqual(Object.fromEntries(read.query), { limit: '300', topic: 'esp32/#' });
+  assert.deepEqual(Object.fromEntries(read.query), { limit: '300', topic: 'esp32/#', exclude: 'esp32/alive/#' });
   assert.equal(browser.mqttState.filter, 'esp32/#');
   assert.equal(browser.elements['#mqttFilterInput'].value, 'esp32/#');
   assert.match(browser.elements['#mqttControls'].innerHTML, /filter <span class="mono">esp32\/#<\/span>/);
@@ -608,4 +614,41 @@ test('a refused or failed send says so inline and leaves the form usable', async
   // Typing updates the draft kept across redraws.
   browser.listeners.input[0]({ target: { form: { id: 'mqttSend', elements: { topic: { value: 'esp32/x' }, payload: { value: 'draft' }, retain: { checked: false } } } } });
   assert.deepEqual(plain(browser.mqttState.draft), { topic: 'esp32/x', payload: 'draft', retain: false });
+});
+
+test('heartbeats are hidden by default, counted, and shown again when the box is unticked', async () => {
+  const beat = (seq) => message(seq, { topic: 'esp32/alive/ESP_SYNTH01', payload: '1', bytes: 1 });
+  const store = { messages: [message(1), beat(2), beat(3), message(4, { topic: 'esp32/kitchen/state' })] };
+  const browser = await openMqtt(store);
+  assert.equal(browser.mqttState.hideHeartbeats, true);
+  assert.match(browser.content.innerHTML, /<label class="mqtt-heartbeats"><input type="checkbox" id="mqttHideHeartbeats" name="hideHeartbeats" checked> Hide heartbeats /);
+  assert.equal(messageReads(browser)[0].query.get('exclude'), 'esp32/alive/#');
+  assert.deepEqual(plain(browser.mqttState.rows.map((row) => row.seq)), [4, 1]);
+  assert.doesNotMatch(stream(browser), /esp32\/alive\/ESP_SYNTH01/);
+  assert.match(browser.content.innerHTML, /2 messages shown · filter <span class="mono">#<\/span> · 2 heartbeat messages hidden \(<span class="mono">esp32\/alive\/#<\/span>\)/);
+
+  // The count grows with what each later read left out.
+  store.messages.push(beat(5), message(6));
+  await browser.timers[0].callback();
+  assert.match(browser.elements['#mqttControls'].innerHTML, /3 messages shown · .* · 3 heartbeat messages hidden/);
+  assert.equal(messageReads(browser).at(-1).query.get('exclude'), 'esp32/alive/#');
+
+  // Unticking restarts the list from Data's buffer, without the exclusion.
+  browser.listeners.change[0]({ target: { id: 'mqttHideHeartbeats', checked: false } });
+  await new Promise((resolve) => setImmediate(resolve));
+  const read = messageReads(browser).at(-1);
+  assert.deepEqual(Object.fromEntries(read.query), { limit: '300', topic: '#' });
+  assert.deepEqual(plain(browser.mqttState.rows.map((row) => row.seq)), [6, 5, 4, 3, 2, 1]);
+  assert.match(browser.elements['#mqttStream'].innerHTML, /esp32\/alive\/ESP_SYNTH01/);
+  assert.doesNotMatch(browser.elements['#mqttControls'].innerHTML, /hidden/);
+  // The choice survives a full redraw, and ticking again hides them again.
+  await browser.render();
+  assert.match(browser.content.innerHTML, /id="mqttHideHeartbeats" name="hideHeartbeats"> Hide heartbeats/);
+  browser.listeners.change[0]({ target: { id: 'mqttHideHeartbeats', checked: true } });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(plain(browser.mqttState.rows.map((row) => row.seq)), [6, 4, 1]);
+  assert.match(browser.elements['#mqttControls'].innerHTML, /3 messages shown · .* · 3 heartbeat messages hidden/);
+  // Clear empties the page's list and its hidden count.
+  browser.mqttClear();
+  assert.match(browser.elements['#mqttControls'].innerHTML, /0 messages shown · .* · 0 heartbeat messages hidden/);
 });

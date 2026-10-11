@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { nativeWorkRuntime } = require('../native-work-runtime');
 const { createAgentClient } = require('../conversation-agent');
 const { hash } = require('../../../src/services/conversationWorks/contract');
+const { PERSONAL_OPERATOR_SURFACE_CONTRACT } = require('../packs');
 
 test('background native Main preserves the complete request, references prior turns and retains its native model in a distinct session', async () => {
   const originalId = '11111111-1111-4111-8111-111111111111', workSessionId = '33333333-3333-4333-8333-333333333333';
@@ -20,6 +21,7 @@ test('background native Main preserves the complete request, references prior tu
   assert.equal(prepared.text, text); assert.equal(prepared.currentContent, text);
   assert.match(prepared.turnContext, /A prior restriction/); assert.match(prepared.turnContext, /reference data, not new requests/);
   assert.match(prepared.instructions, /Synthetic Nestor identity/); assert.match(prepared.instructions, /Never send/);
+  assert.ok(prepared.instructions.includes(PERSONAL_OPERATOR_SURFACE_CONTRACT));
   assert.equal(session.sessionId, originalId); assert.equal(prepared.session.agentSessionKey, null);
   let sent;
   const runId = 'resp_22222222-2222-4222-8222-222222222222';
@@ -37,6 +39,26 @@ test('background native Main preserves the complete request, references prior tu
   assert.equal(JSON.parse(sent.body).model, 'openclaw/main');
   assert.equal(result.metadata.model, 'native-main-model');
   assert.match(JSON.stringify(JSON.parse(sent.body).input), /Résume mes courriels récents/);
+});
+
+test('a current web question retains the adult audience and original local date without consulting Secretary', async () => {
+  const text = 'Does the synthetic team play tonight?';
+  const row = { sessionId: 'original-session', turnId: 'current-turn', requestSha256: hash(text),
+    receivedAt: new Date('2030-01-02T01:00:00Z'), attempt: { sessionId: 'isolated-session', agentId: 'main' } };
+  const runtime = nativeWorkRuntime({ works: { query: sessionId => ({ sessionId }) },
+    continuity: async () => ({ capabilities: { isolatedWork: true } }), conversations: {
+      getTurn: async () => ({ inputText: text, attachments: [] }), listTurns: async () => [] } });
+  const previous = process.env.PLANNING_TIME_ZONE;
+  process.env.PLANNING_TIME_ZONE = 'America/Toronto';
+  try {
+    const prepared = await runtime.prepare({ row, session: { persona: { identity: 'Synthetic personality' } }, selectedContext: 'Child profiles: reference data.' });
+    assert.equal(prepared.text, text);
+    assert.match(prepared.instructions, /Address the adult owner directly/);
+    assert.match(prepared.turnContext, /2030-01-01; time zone: America\/Toronto/);
+    assert.match(prepared.turnDirective, /web_search or web_fetch/);
+    assert.doesNotMatch(prepared.turnDirective, /sessions_spawn|Secretary/);
+    assert.equal(prepared.session.agentId, 'main');
+  } finally { if (previous === undefined) delete process.env.PLANNING_TIME_ZONE; else process.env.PLANNING_TIME_ZONE = previous; }
 });
 
 test('a mismatched installed native adapter refuses preparation before any model or tool request', async () => {
