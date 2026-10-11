@@ -658,7 +658,7 @@ class UnifiedModels {
             : '<button role="menuitem" class="menu-item action-config"><i class="fas fa-sliders-h"></i> Config</button>';
 
         return `
-            <td>
+            <td class="model-name-cell">
                 <div class="model-name">
                     <div class="model-icon ${source}">${this.getIconForSource(source)}</div>
                     <div>
@@ -667,17 +667,17 @@ class UnifiedModels {
                     </div>
                 </div>
             </td>
-            <td>
+            <td data-label="Host">
                 ${isGone
                     ? `<span class="host-badge gone" title="Model removed from host">${hostName ? escapeHtml(hostName) : 'Gone'} <i class="fas fa-ghost" style="margin-left:4px; font-size:10px;"></i></span>`
                     : hostName ? `<span class="host-badge" title="${escapeHtml(hostUrl)}">${escapeHtml(hostName)}</span>` : `<span class="tag uppercase">${escapeHtml(source)}</span>`}
             </td>
-            <td>${escapeHtml(params)}</td>
-            <td class="context-cell" data-model="${escapeHtml(model.name)}" title="${model.executionOverrides?.num_ctx ? 'Override' : 'Declared capability'} · Click to configure">${context}</td>
-            <td>${catBadges}</td>
-            <td>${scoreCell}</td>
-            <td>${speedCell}</td>
-            <td class="cap-cell">${capCell}</td>
+            <td data-label="Params">${escapeHtml(params)}</td>
+            <td class="context-cell" data-label="Context" data-model="${escapeHtml(model.name)}" title="${model.executionOverrides?.num_ctx ? 'Override' : 'Declared capability'} · Click to configure">${context}</td>
+            <td data-label="Categories">${catBadges}</td>
+            <td data-label="Score">${scoreCell}</td>
+            <td data-label="Speed">${speedCell}</td>
+            <td class="cap-cell" data-label="Capabilities">${capCell}</td>
             <td class="text-right table-action-cell">
                 <div class="actions">
                     <button class="btn-icon action-compare ${isSelected ? 'active text-accent' : ''}" title="Compare">

@@ -193,6 +193,20 @@ describe('simple-to-expert UX contract', () => {
     expect(html).toContain('id="execConfigModal"');
   });
 
+  test('models table turns into labelled cards on narrow screens', () => {
+    const catalog = fs.readFileSync(modelsUnifiedPath, 'utf8');
+    const entry = fs.readFileSync(path.join(root, 'public/css/models.css'), 'utf8');
+    const cards = fs.readFileSync(path.join(root, 'public/css/models/4-mobile-cards.css'), 'utf8');
+
+    for (const label of ['Host', 'Params', 'Context', 'Categories', 'Score', 'Speed', 'Capabilities']) {
+      expect(catalog).toContain(`data-label="${label}"`);
+    }
+    expect(entry).toContain('@import url("models/4-mobile-cards.css");');
+    expect(cards).toMatch(/@media \(max-width: 720px\)/);
+    expect(cards).toContain('content: attr(data-label)');
+    expect(cards).toContain('.models-table thead { display: none; }');
+  });
+
   test('models synchronizes disclosure, overlays and human readiness accessibly', () => {
     const source = fs.readFileSync(modelsExperiencePath, 'utf8');
     const catalog = fs.readFileSync(modelsUnifiedPath, 'utf8');
