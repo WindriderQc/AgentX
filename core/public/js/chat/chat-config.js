@@ -804,12 +804,12 @@ export function initDevModeToggle() {
   if (!devToggleBtn) return;
 
   const isDevMode = localStorage.getItem('agentx_dev_mode') === 'true';
-  if (isDevMode) devToggleBtn.classList.add('active');
+  devToggleBtn.classList.toggle('active', isDevMode); devToggleBtn.setAttribute('aria-pressed', String(isDevMode));
   applyDevMode(isDevMode);
 
   devToggleBtn.addEventListener('click', () => {
     const active = devToggleBtn.classList.toggle('active');
-    localStorage.setItem('agentx_dev_mode', String(active));
+    devToggleBtn.setAttribute('aria-pressed', String(active)); localStorage.setItem('agentx_dev_mode', String(active));
     applyDevMode(active);
   });
 }

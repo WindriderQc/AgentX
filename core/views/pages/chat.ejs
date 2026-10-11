@@ -127,7 +127,6 @@
           <select id="headerPersonaSelect" class="header-persona-dropdown" aria-label="Persona" style="display: none;">
             <option value="default_chat">Default</option>
           </select>
-          <button class="icon-btn" id="headerDevToggle" title="Show precision controls" aria-label="Show precision controls"><i class="fas fa-flask" aria-hidden="true"></i></button>
           <button class="ghost small" id="headerChangeBtn" title="Change agent" style="display:none;">Change</button>
           <span class="chat-expert-strip__spacer"></span>
           <div class="header-pill" id="conversationTokens" style="display: none;">
@@ -400,6 +399,9 @@
         </button>
         <button class="ghost small" id="showShortcutsBtn" type="button" aria-haspopup="dialog" aria-controls="keyboardShortcutsDialog" aria-expanded="false" style="flex:1;" title="Keyboard Shortcuts (Ctrl+/)">
           <i class="fas fa-keyboard" aria-hidden="true" style="margin-right:5px;"></i>Shortcuts
+        </button>
+        <button class="ghost small" id="headerDevToggle" type="button" aria-pressed="false" style="flex:1;" title="Show host, model, system prompt and tuning controls">
+          <i class="fas fa-flask" aria-hidden="true" style="margin-right:5px;"></i>Precision
         </button>
       </div>
 
