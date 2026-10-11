@@ -43,6 +43,8 @@ window.AgentXModalAccessibility = window.AgentXModalAccessibility || (() => {
       if (!control || control.hidden || control.disabled) return false;
       if (typeof control.getAttribute === 'function' && control.getAttribute('aria-hidden') === 'true') return false;
       if (typeof control.closest === 'function' && control.closest('[hidden], [aria-hidden="true"], [inert]')) return false;
+      // Not rendered (display: none ancestor, closed <details>): Tab skips it too.
+      if (typeof control.getClientRects === 'function' && control.getClientRects().length === 0) return false;
       return true;
     });
   }
