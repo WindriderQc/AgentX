@@ -173,6 +173,32 @@ termination and workload release are separate facts. An absent process, expired
 lease or lost receipt proves none of them. Preserve checkpoints and reconcile
 through the native owner; do not delete admissions or quarantine.
 
+## Reconcile a stopped execution
+
+Pause autonomy and withdraw the original task authorization. After independently
+verifying the original worker termination and native resource release, close its
+original operator campaign through the heavy-work queue. In Pipeline, confirm
+that verification and use **Reconcile this original execution**. Core reads the
+exact host receipt, completed native attempt, received campaign receipt and raw
+runtime authority. Maintenance or overlapping active/unknown admissions refuse.
+
+`POST /tasks/:id/runs/:requestId/recover` requires `confirm: true`, confirmation
+`ORIGINAL_WORKER_TERMINATED_AND_NATIVE_AUTHORITY_RELEASED`, a stable `key`,
+`expectedRevision`, every unresolved `callIds`, and the original campaign's
+received `receiptRef` and `receiptSha256`. The reference is evidence metadata;
+Core does not open a caller-supplied file. Archived campaigns remain readable.
+Changed evidence under the same execution refuses. A lost response is reconciled
+with this same identity, never with a new worker or model invocation.
+
+Core fences activation, durably prepares and confirms the recovery, then releases
+only the original selection slot. A lost first acknowledgement retains the fence
+until the same recovery is re-acknowledged. A confirmed recovery survives restart.
+The run closes administratively as `stopped`, with conservative cumulative usage
+and an explicit `operator-reconciliation` intervention. Original model receipts,
+pending-call history, native attempt evidence and PR remain intact. Recovery is
+not native model success and does not qualify autonomous coding or authorize a
+stopped task to resume. New work requires its own task authorization and campaign.
+
 ## Installation, activation and rollback
 
 Review the PR and complete CI first. Merge, normal installation and persistent

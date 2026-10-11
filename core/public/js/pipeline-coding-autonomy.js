@@ -30,7 +30,33 @@
         element('p', `Last useful progress: ${task.lastUsefulProgressAt || 'none recorded'} · manual interventions: ${task.manualInterventions.length}`));
       article.append(element('p', `Authorized files: ${task.scope.join(', ')} · campaign ${task.queueRequestId}`));
       const run = task.runs.at(-1);
+      const activeRecovery = snapshot.active?.pipelineId === task.pipelineId && snapshot.active.requestId === run?.requestId
+        ? snapshot.active.recovery : null;
       if (run) article.append(element('p', `Execution ${run.requestId} · worker ${run.finishedAt ? 'finished' : 'termination not yet confirmed'} · unresolved model requests ${run.pendingInferenceCount}`));
+      const recoveryHeld = run?.recovery && snapshot.active?.pipelineId === task.pipelineId && snapshot.active.requestId === run.requestId;
+      if (run?.recovery) article.append(element('p', `Recovery ${run.recovery.state} · ${run.recovery.authority}${recoveryHeld ? ' · selection slot still held' : ''} · historical unresolved receipts retained: ${run.historicalPendingInferenceCount}. Original model outcomes are unchanged.`));
+      if ((run?.pendingInferenceCount || recoveryHeld) && !snapshot.enabled && !task.authorized
+        && ['blocked', 'stopping', 'stop_requested', 'stopped'].includes(task.state)) {
+        const form = element('form', '');
+        form.append(element('p', 'Reconcile the original execution after verifying worker termination and native resource release. Core checks the received campaign receipt and keeps the original model outcomes.'));
+        const label = element('label', 'I verified termination of the original worker and release through the native resource owner.');
+        const verified = document.createElement('input'); verified.type = 'checkbox'; verified.required = true; label.append(verified);
+        const send = element('button', recoveryHeld ? 'Finish this original recovery' : 'Reconcile this original execution'); send.type = 'submit'; send.className = 'pipeline-btn';
+        form.append(label, send);
+        form.addEventListener('submit', event => {
+          event.preventDefault();
+          act(async () => {
+            if (!verified.checked) throw new Error('Verify original worker termination and native release before reconciliation.');
+            const received = run.recovery || (await request(`/api/cluster/schedule/work-queue/${task.queueRequestId}`)).releaseReceipt;
+            await request(`${base}/tasks/${task.pipelineId}/runs/${run.requestId}/recover`, {
+              confirm: true, confirmation: 'ORIGINAL_WORKER_TERMINATED_AND_NATIVE_AUTHORITY_RELEASED',
+              key: run.recovery?.key || activeRecovery?.key || `coding-recovery:${run.requestId}`, expectedRevision: task.authorizationRevision,
+              callIds: run.recovery?.callIds || run.unresolvedCallIds, receiptRef: received?.receiptRef,
+              receiptSha256: received?.receiptSha256 });
+          });
+        });
+        article.append(form);
+      }
       if (task.pr) {
         const link = element('a', `Draft PR #${task.pr.number} · ${task.pr.head.slice(0, 12)}`);
         link.href = task.pr.url; link.rel = 'noopener'; article.append(link);
@@ -58,7 +84,7 @@
       }
       const history = element('details', ''); history.append(element('summary', 'Execution history and intervention evidence'));
       for (const item of task.runs) history.append(element('p', `${item.requestId} · previous ${item.parentRequestId || 'none'} · ${item.result || 'pending'} · ${item.head || 'no checkpoint'} · ${item.usage ? JSON.stringify(item.usage) : 'usage unconfirmed'}`));
-      for (const item of task.manualInterventions) history.append(element('p', `${item.kind} · ${item.head} · ${item.at}`));
+      for (const item of task.manualInterventions) history.append(element('p', `${item.kind} · ${item.head || item.requestId || ''} · ${item.at}`));
       article.append(history); list.append(article);
     }
   }
