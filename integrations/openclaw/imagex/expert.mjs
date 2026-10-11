@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+import textPolicy from '../../../core/public/js/image-text-policy.js';
 
 export function runExpert(command, input, { spawnImpl = spawn, timeoutMs = 180000 } = {}) {
   if (!path.isAbsolute(command || '')) throw new Error('Configure an absolute image expert executable');
@@ -45,7 +46,7 @@ export function prepareImage(original, status, expert) {
   const text = expert.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   let plan;
   try { plan = JSON.parse(text); } catch { throw new Error('Image expert returned an invalid plan'); }
-  if (!plan || Array.isArray(plan) || Object.keys(plan).some(key => !['prompt', 'profile', 'width', 'height', 'reason'].includes(key))) {
+  if (!plan || Array.isArray(plan) || Object.keys(plan).some(key => !['prompt', 'profile', 'width', 'height', 'reason', 'textPlan'].includes(key))) {
     throw new Error('Image expert returned unsupported parameters');
   }
   const profile = status.profiles?.find(item => item.id === plan.profile);
@@ -57,6 +58,12 @@ export function prepareImage(original, status, expert) {
     if (original[key] !== undefined && original[key] !== plan[key]) throw new Error(`Image expert changed the requested ${key}`);
   }
   if (plan.reason !== undefined && (typeof plan.reason !== 'string' || plan.reason.length > 2000)) throw new Error('Invalid image expert explanation');
-  return { request: { prompt: plan.prompt.trim(), profile: plan.profile, width: plan.width, height: plan.height },
+  const policy = textPolicy.validate(original.textPolicy);
+  const labelPlan = textPolicy.validatePlan(plan.textPlan, policy, original.constraints);
+  const resolvedPolicy = textPolicy.applyPlan(labelPlan, policy, original.constraints);
+  if (policy || original.constraints) textPolicy.compose(plan.prompt, original.constraints, resolvedPolicy);
+  if (labelPlan) plan.textPlan = labelPlan;
+  return { request: { prompt: plan.prompt.trim(), profile: plan.profile, width: plan.width, height: plan.height,
+    ...(resolvedPolicy && { textPolicy: resolvedPolicy }), ...(original.constraints && { constraints: original.constraints }) },
     expert: { ...expert, plan } };
 }

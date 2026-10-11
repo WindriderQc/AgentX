@@ -501,6 +501,13 @@ applies a validated proposal explicitly before normal image creation. Core
 resolves proposal provenance from the completed canonical turn. Read-only
 profile documents and configured routing are disclosed without credentials or
 arbitrary filesystem access. No unfinished consultation is replayed at restart.
+Core validates an optional versioned lettering policy and Hermes text plan,
+preserving user-supplied exact labels. One-pass rendering includes those words;
+two-pass rendering requests blank areas and retains exact-text constraints in
+canonical metadata rather than renderer instructions. The browser preloads
+editable labels onto a verified original, with provisional placement requiring
+human review. This typography pass uses Canvas/SVG and no model. The policy is
+part of request identity, drafts, details and verified recipe exports.
 
 Browser cards read progress and verified completion without re-submitting a
 creation. Resume also reads scoped operations independently of the turn audit,

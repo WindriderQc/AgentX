@@ -6,6 +6,7 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
   let metadata, sessionId = '', turns = [], selectedTurn = '', proposalTurn = null, timer, pending = false, retry = null, fileEpoch = 0, fileUrl;
   const baselines = new Map();
   const constraints = globalThis.ImageBriefConstraints;
+  const textPolicy = globalThis.ImageTextPolicy;
   let applied = null;
   const node = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
   const active = () => turns.find(turn => ['accepted', 'running'].includes(turn.state));
@@ -35,6 +36,7 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
     try { constraints?.composeBrief(context.prompt, context.constraints); }
     catch (error) { return error.message; }
     if (context.constraintsInvalid) return 'Corrige les contraintes du brief avant de consulter Hermes.';
+    if (context.textPolicyError) return context.textPolicyError;
     return '';
   }
   async function api(route, body) {
@@ -85,6 +87,14 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
       $('imagex-proposal-constraints').hidden = !turn.proposal.constraints;
       $('imagex-proposal-reason').textContent = turn.proposal.reason || '';
       $('imagex-proposal-settings').textContent = `${turn.proposal.profile} · ${turn.proposal.width} × ${turn.proposal.height} · ${turn.context.referenceCount} référence(s)`;
+      const target = $('imagex-proposal-text-plan'), plan = turn.proposal.textPlan;
+      target.hidden = !plan; target.replaceChildren();
+      if (plan) {
+        target.append(node('strong', plan.strategy === 'two-pass' ? 'Deux passes : image puis calques de texte' : 'Une passe : textes dessinés par le modèle'), node('p', plan.reason));
+        const list = node('ul');
+        for (const label of plan.labels) list.append(node('li', `${label.text}${label.placement ? ' · ' + label.placement : ''}`));
+        target.append(list, node('p', 'Appliquer reprend ces libellés dans « Textes dans l’image ». Vérifie et ajuste les placements sur le résultat.', 'image-help'));
+      }
     }
     refresh();
   }
@@ -159,7 +169,7 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
       if (!sessionId) { sessionId = (await api('/sessions', {})).session.sessionId;
         try { localStorage.setItem('agentx-imagex-session', sessionId); } catch {} }
       const context = { prompt: current.prompt, profile: current.profile, width: current.width, height: current.height, referenceCount: current.referenceCount,
-        ...(current.constraints && { constraints: current.constraints }) };
+        ...(current.constraints && { constraints: current.constraints }), ...(current.textPolicy && { textPolicy: current.textPolicy }) };
       const payload = { mode, message, context }, key = JSON.stringify({ sessionId, ...payload });
       if (!retry || retry.key !== key) retry = { key, body: { ...payload, clientTurnId: crypto.randomUUID() } };
       baselines.set(retry.body.clientTurnId, baseline);
@@ -181,7 +191,7 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
     if (counter) { counter.textContent = `Message : ${new Intl.NumberFormat('fr-CA').format(message.length)} / 32 000 caractères.${message.length > 32000 ? ' Réduis-le avant l’envoi ; tout le texte collé reste conservé.' : ''}`; counter.dataset.invalid = String(message.length > 32000); }
     $('imagex-instruction-counter').textContent = `Consigne : ${new Intl.NumberFormat('fr-CA').format(instruction.length)} / 32 000 caractères.${instruction.length > 32000 ? ' Réduis-la avant l’affinage ; tout le texte reste conservé.' : ''}`;
     let needsCondensing = false;
-    try { constraints?.compose(context.prompt, context.constraints); needsCondensing = context.prompt.length > (constraints?.MAX_PROMPT || 8000) && !error; } catch { needsCondensing = !error; }
+    try { textPolicy.compose(context.prompt, context.constraints, context.textPolicy); needsCondensing = context.prompt.length > (constraints?.MAX_PROMPT || 8000) && !error; } catch { needsCondensing = !error; }
     if ($('imagex-planning-help')) $('imagex-planning-help').textContent = error || (!metadata?.available
       ? metadata ? 'Hermes est indisponible. Ton brief reste conservé ; réduis-le manuellement à 8 000 caractères, contraintes comprises, pour créer.' : 'Connexion à Hermes…'
       : needsCondensing ? 'Ton brief long reste conservé. « Affiner mon brief » peut préparer une version de 8 000 caractères maximum, contraintes comprises.'
@@ -198,7 +208,7 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
     $('imagex-restore-brief').disabled = working || context.locked;
     // Rendering has its own validation and admission; this link only opens its review.
     let canCreate = !!context.prompt.trim() && context.prompt.length <= 8000 && !context.constraintsInvalid;
-    try { canCreate = canCreate && (constraints?.compose(context.prompt, context.constraints) || context.prompt).length <= 8000; } catch { canCreate = false; }
+    try { canCreate = canCreate && textPolicy.compose(context.prompt, context.constraints, context.textPolicy).length <= 8000; } catch { canCreate = false; }
     $('imagex-use-brief').hidden = !canCreate;
     $('imagex-recovery-help').textContent = canRestore
       ? 'Récupère le brief et ses contraintes enregistrés, puis vérifie la recette, le format et les références avant de réessayer.'
@@ -215,10 +225,11 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
     const changed = original && (context.prompt !== original.prompt || context.profile !== original.profile
       || context.width !== original.width || context.height !== original.height || context.referenceCount !== original.referenceCount
       || JSON.stringify(context.constraints) !== JSON.stringify(original.constraints)
+      || JSON.stringify(context.textPolicy) !== JSON.stringify(original.textPolicy)
       || baselines.has(proposalTurn.id) && baselines.get(proposalTurn.id) !== signature());
     let invalidProposal = context.constraintsInvalid || $('imagex-proposal-prompt').value.length > (constraints?.MAX_PROMPT || 8000);
     try {
-      const proposed = $('imagex-proposal-prompt').value, composed = constraints?.compose(proposed, proposalTurn?.proposal.constraints) || proposed;
+      const proposed = $('imagex-proposal-prompt').value, composed = textPolicy.compose(proposed, proposalTurn?.proposal.constraints, proposalTurn?.proposal.textPolicy);
       $('imagex-proposal-counter').textContent = `Proposition avec contraintes : ${new Intl.NumberFormat('fr-CA').format(composed.length)} / 8 000 caractères.`;
     } catch (error) { invalidProposal = true; $('imagex-proposal-counter').textContent = error.message; }
     $('imagex-apply').disabled = !proposalTurn || working || context.locked || changed || invalidProposal || !$('imagex-proposal-prompt').value.trim();
@@ -227,7 +238,8 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
       : context.locked ? 'Attends la fin de la génération pour modifier le brief.'
       : invalidProposal ? 'Corrige les contraintes ou réduis le brief : le texte transmis est limité à 8 000 caractères.'
       : changed ? 'Le brief, les contraintes, les réglages ou les références ont changé. Demande une nouvelle proposition pour ce contexte.'
-        : proposalTurn?.proposal.constraints ? 'Appliquer remplace la description visuelle. Tes contraintes sont reprises mot pour mot dans le brief transmis ; leur respect dans l’image reste à vérifier.'
+        : proposalTurn?.proposal.textPlan ? 'Appliquer reprend la description, les textes exacts et la méthode proposée. Vérifie les libellés et leurs placements avant de créer.'
+        : proposalTurn?.proposal.constraints ? 'Appliquer remplace la description visuelle. Tes contraintes sont conservées ; leur respect dans l’image reste à vérifier.'
         : 'Appliquer remplace le texte du brief. La graine, la recette et les références restent celles du formulaire.';
   }
   $('imagex-tab-proposal').addEventListener('click', () => { tab('proposal'); if (proposalTurn) $('imagex-proposal-prompt').focus(); });
@@ -257,7 +269,9 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
   $('imagex-explore').addEventListener('click', () => { void send('consult', 'Quelles possibilités concrètes avons-nous dans cet Atelier ? Propose trois expériences adaptées aux recettes disponibles et explique le rôle de Hermes, AgentX et ComfyUI.'); });
   $('imagex-apply').addEventListener('click', () => {
     refresh(); if ($('imagex-apply').disabled) return;
-    apply($('imagex-proposal-prompt').value.trim(), { sessionId, turnId: proposalTurn.id }); applied = { id: proposalTurn.id, signature: signature() };
+    const args = [$('imagex-proposal-prompt').value.trim(), { sessionId, turnId: proposalTurn.id }];
+    if (proposalTurn.proposal.textPolicy) args.push(proposalTurn.proposal.textPolicy);
+    apply(...args); applied = { id: proposalTurn.id, signature: signature() };
     $('imagex-notice').textContent = 'Proposition appliquée au brief. Vérifie les références puis lance la création.'; refresh();
     $('imagex-proposal-panel').open = false;
   });
@@ -313,5 +327,9 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
     } catch (error) { metadata = { ...metadata, available: false }; $('imagex-connection').textContent = 'Hermes indisponible'; $('imagex-notice').textContent = error.message; }
     finally { refresh(); }
   })();
-  return { refresh };
+  return { refresh, planTexts() {
+    $('imagex').open = true;
+    if (!metadata?.available) { $('imagex-notice').textContent = 'Hermes est indisponible. Tu peux choisir une ou deux passes et saisir les libellés dans l’Atelier.'; refresh(); return; }
+    void send('plan', 'Prépare les textes de cette image avec moi. Identifie les libellés principaux dans mon brief, conserve mes textes exacts et le mode choisi. Si le mode est automatique, recommande une ou deux passes selon la longueur, la densité et les placements ; explique les compromis. Prépare un textPlan et un brief de rendu de 8 000 caractères maximum.');
+  } };
 } };

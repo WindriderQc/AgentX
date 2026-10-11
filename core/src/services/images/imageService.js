@@ -14,6 +14,7 @@ const { qualified, MAX_OUTPUT_PIXELS } = require('./sizes');
 const logger = require('../../../config/logger');
 const expertProvenance = require('./expertProvenance');
 const constraints = require('../../../public/js/image-brief-constraints');
+const textPolicy = require('../../../public/js/image-text-policy');
 const { assertSupportedRequest } = require('./labIntent');
 const workQueue = require('./workQueue');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
@@ -87,9 +88,11 @@ function validate(body, config) {
     return bytes;
   });
   const protectedItems = constraints.validate(body.constraints);
+  const policy = textPolicy.validate(body.textPolicy);
   const visualPrompt = constraints.visual(body.prompt, protectedItems);
-  const request = { prompt: constraints.compose(visualPrompt, protectedItems), width, height, seed,
-    ...(protectedItems && { visualPrompt, constraints: protectedItems }) };
+  const request = { prompt: textPolicy.compose(visualPrompt, protectedItems, policy), width, height, seed,
+    ...((protectedItems || policy) && { visualPrompt }),
+    ...(protectedItems && { constraints: protectedItems }), ...(policy && { textPolicy: policy }) };
   // Omitted seed remains omitted in the identity: a replay returns the original random seed.
   const requestHash = hash(JSON.stringify({ ...request, seed: body.seed ?? null, profile: id, references: originals.map(hash),
     ...(parent && { parent: { ...parent, transform: TRANSFORM } }), ...(recipe && { recipe }), ...(expert && { expert }) }));

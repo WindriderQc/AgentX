@@ -21,6 +21,33 @@ appears beside the brief; applying it changes the text without starting a render
 The final composed prompt can be read before creation. A ready brief can create
 directly without consulting Hermes.
 
+**Textes dans l’image** is unchecked for a new brief. Core appends a no-text
+instruction to the renderer prompt while retaining the visual brief. Enabling it
+offers **Hermes conseille**, **Une passe** and **Deux passes**, plus exact labels
+and optional placement descriptions. Automatic mode requires a reviewed Hermes
+proposal before rendering. The adjacent advice button submits the current brief,
+recipe, format, constraints and lettering choices; it starts no image. Hermes
+proposes essential labels and a method with reasons, preserving supplied label
+identities, spelling and nonempty placements. Applying the proposal fills these
+controls. Changes to lettering choices invalidate a stale proposal.
+
+One pass asks the image model to draw the exact words; spelling still needs
+review. Two passes render blank label areas, then offer **Deuxième passe :
+préparer les textes prévus** on the archived result. This opens verified Canvas
+layers with exact labels prefilled at provisional positions. Placement hints
+remain visible while the user clicks to position each label before PNG, SVG or
+JSON export. The second pass is browser typography and invokes no image model.
+Hermes receives no rendered image and cannot verify these placements. Manual
+one- or two-pass preparation remains available when Hermes is unavailable.
+
+The closed `textPolicy` snapshot contains version 1, enabled, strategy and labels
+with id, text and placement. It allows 20 labels, 300 Unicode characters per
+text, 240 per placement and 4,000 overall. `textPlan` adds the resolved strategy
+and a bounded explanation. Core validates both; choices, exact labels and the
+visual brief survive request identity, draft restoration, details and recipe
+export. Disabled text conflicts with explicit exact-text constraints and asks
+the user to enable text or remove those constraints.
+
 Refinement preserves the explicitly selected recipe and dimensions. A proposal
 that changes them is refused with a French explanation beside the brief; the
 terminal state replaces the working message. **Réessayer l’affinage** starts a new
@@ -54,8 +81,11 @@ protocol details are in [the Hermes adapter](../integrations/hermes/README.md).
 elements and composition/relationship instructions. Core validates a closed
 `constraints: {version: 1, items: [{id, kind, text}]}` snapshot, with at most 20
 items, 300 Unicode characters per item and 4,000 characters overall. Hermes can
-rewrite the visual description; Core appends the original constraints verbatim
-to its proposal and the generation prompt. The UI shows the initial brief and
+rewrite the visual description; Core preserves the original constraints verbatim.
+For two-pass lettering, exact-text entries stay in saved metadata and layers;
+the renderer receives the other constraints and blank-area instructions. In
+other modes Core appends the original constraints to the generation prompt.
+The UI shows the initial brief and
 the preserved block separately. Changed constraints invalidate stale proposals.
 The brief and Hermes message fields retain pasted text in full, without an HTML
 `maxlength` that silently truncates it. A counter remains visible above the
@@ -64,7 +94,7 @@ for the message and for the composed brief including constraints; longer text
 is kept in the field and refused before creating a consultation. A brief above
 the final 8,000-unit render budget disables creation while **Affiner mon brief**
 remains available within the consultation budget. Hermes proposes a shorter
-visual description with the original constraints appended verbatim; applying
+visual description with the constraints and lettering instructions included; applying
 a valid proposal updates the counter and enables creation. When Hermes is
 unavailable, the complete draft remains available for manual reduction.
 The optional refinement instruction has the same 32,000-unit limit and retains

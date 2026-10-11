@@ -46,7 +46,7 @@ async function expert({ prompt = 'x'.repeat(9958), constraints = manifest, avail
     return { ok: true, json: async () => ({ ok: true, ...data }) };
   });
   const context = vm.createContext({ document: { getElementById: get, createElement: tag => new Element(tag) }, fetch,
-    ImageBriefConstraints: contract, Intl, Date, URLSearchParams, location: { search: '' },
+    ImageBriefConstraints: contract, ImageTextPolicy: require('../../public/js/image-text-policy'), Intl, Date, URLSearchParams, location: { search: '' },
     localStorage: { getItem() {}, setItem() {}, removeItem() {} }, crypto: { randomUUID: () => `turn-${++next}` },
     setTimeout: jest.fn(), clearTimeout() {} });
   vm.runInContext(source, context);

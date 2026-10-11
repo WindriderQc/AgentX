@@ -8,6 +8,8 @@ Install Hermes using its official installer, create a dedicated profile, configu
 the reasoning provider on the host, and install the official optional `comfyui`
 skill. Copy `skills/agentx-images` into that profile's skill directory. Keep its
 credentials and runtime state outside this repository.
+Deploy `worker.py` together with its sibling `text_policy.py`; the latter validates
+Atelier lettering choices and supplies the bounded text-plan instructions.
 
 `worker.py` accepts `{action: "consult", prompt, status}` or
 `{action: "plan", request, status, actionKey}` on stdin. It serializes consultations
@@ -16,6 +18,14 @@ stream-JSON protocol. Planning returns text containing a JSON plan; the caller
 validates the plan before submitting anything. A supplied native action key
 retains the exact plan across retries and refuses a changed brief. Planning and
 consultation expose skill tools, with no terminal or generation tool.
+An optional `request.textPolicy` carries Atelier's checkbox, strategy and exact
+labels. Enabled planning returns a `textPlan` alongside the visual prompt;
+Core and the gateway validate it before application. Hermes preserves supplied
+spelling and placements, recommends one or two passes for automatic mode and
+never runs the second pass. Atelier adds those labels as editable browser layers
+after a verified text-free image. Disabled text omits `textPlan`; exact-text
+constraints conflict with this choice. Draft context carries the same policy
+through consultations. See [the Atelier contract](../../docs/LOCAL_IMAGES.md).
 
 Configure `HERMES_BIN`, `IMAGEX_PROFILE` and `IMAGEX_HOME` in the host wrapper.
 The profile needs `config.yaml` and a `workspace/` directory. Configure `AGENTX_URL`
