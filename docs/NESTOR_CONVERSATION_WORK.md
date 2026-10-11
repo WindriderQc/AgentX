@@ -2,8 +2,9 @@
 
 Core's optional `conversationWorks` capability lets personal voice dialogue
 continue while a separate native Nestor worker checks personal tasks or reviews
-a completed conversational turn. Explicit personal mailbox reads also run in
-an isolated background Main session, retaining native Secretary delegation.
+a completed conversational turn. Conservative current public-information reads
+and explicit personal mailbox reads run in isolated background Main sessions,
+retaining Main's web tools and native Secretary delegation.
 Nestor remains the single visible identity.
 Core owns acceptance, complete requests, execution metadata, verified task reads,
 structured results and presentation receipts. OpenClaw owns the native agent/tool
@@ -50,7 +51,17 @@ consults the Secretary through `sessions_spawn` and `sessions_yield`. The live
 guardian keeps its own session and voice model. Its pending-work context prevents
 redispatch. Mixed or ambiguous effects, message drafts, sends, modifications and
 deletions retain their existing synchronous native path and approval contracts.
-The bounded task-read worker receives no mailbox tools or specialist grants.
+Current public-information questions and explicit web reads use the same
+acknowledgment and isolated native Main path. Tool discovery is separate from
+web research: publication requires a successful same-run `web_search` or
+`web_fetch`, not merely `tool_search`. Relative dates use the request's original
+local calendar day and configured planning time zone. Effects, declined searches,
+personal records and local service checks retain their existing paths.
+
+Every private worker receives the same adult-owner presentation contract as
+the guardian. Child profiles remain reference data; they do not select the
+audience. A bounded reviewer's missing tool is not proof that Main lacks it.
+The bounded task-read worker receives no web/mailbox tools or specialist grants.
 The native Main namespace is preserved so its existing personal tool scope remains
 available; the fresh session identity separates the boss from the live guardian.
 Preparation checks the installed native adapter's isolated-work capability before
