@@ -178,7 +178,7 @@ describe('simple-to-expert UX contract', () => {
     expect(html).not.toMatch(/>\s*Playground\s*</);
   });
 
-  test('models leads with automatic chat and keeps the full registry behind one expert door', async () => {
+  test('models leads with automatic chat and opens the full registry by default', async () => {
     const html = await renderModels();
     const simpleDepth = html.slice(0, html.indexOf('<details id="models-cockpit"'));
 
@@ -188,6 +188,7 @@ describe('simple-to-expert UX contract', () => {
     expect(simpleDepth).toContain('Compare with evidence');
     expect(simpleDepth).not.toMatch(/All Providers|Benchmark Score|Context Window|Temperature/);
     expect(html).toContain('<strong>Take the controls</strong>');
+    expect(html).toContain('<details id="models-cockpit" class="models-cockpit" open>');
     expect(html).toContain('id="modelsTable"');
     expect(html).toContain('id="execConfigModal"');
   });
