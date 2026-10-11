@@ -131,6 +131,14 @@ can still be written manually with its model-generated proposal disabled.
 Native OpenClaw history, memory and tools are configured in OpenClaw; the panel
 links to that interface and the Nerve Center's model/routing settings.
 
+### Coding Team autonomous corrections
+
+Pipeline's disabled-by-default correction loop uses explicitly reviewed tasks,
+exact file scopes and an approved operator heavy-work campaign. See the
+[authorization, budgets, pause/stop, qualification and rollback procedure](CODING_AUTONOMY.md).
+Manual one-task launch remains available. Merge, installation and persistent
+activation remain separate operator decisions.
+
 ### Bounded maintenance actions
 
 `./agentx action <name>` runs one action from a closed list on a running

@@ -164,7 +164,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   an inactive host without a terminal receipt stays unknown and blocks new work.
   Review of that pull request and its CI is
   the gate; nothing merges or deploys by itself. See
-  [the coding worker](../integrations/coding/README.md).
+  [the coding worker](../integrations/coding/README.md). The disabled-by-default
+  [correction loop](CODING_AUTONOMY.md) records explicit engineering scope,
+  linked executions, cumulative budgets and manual interventions. Core observes
+  exact-head CI and resumes the same task/PR through native claims; uncertain
+  publication/model outcomes remain fenced. Green CI ends at human review.
 - **Planning.** The page is a frozen historical reference. Its idea inbox is
   live: Nestor and family captures wait there until the parent reviews them.
   Coding workers receive bounded context from linked Planning objectives;

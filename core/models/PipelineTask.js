@@ -221,6 +221,7 @@ const PipelineTaskSchema = new mongoose.Schema({
   automationAttemptCount: { type: Number, min: 0, default: 0 },
   automationLease: { type: AutomationLeaseSchema, default: undefined },
   codingCapacity: { type: mongoose.Schema.Types.Mixed, default: undefined },
+  codingAutonomy: { type: mongoose.Schema.Types.Mixed, default: undefined },
   automationAttempts: { type: [AutomationAttemptSchema], default: [] },
   deliverablePermitSeq: { type: Number, min: 0, default: 0 },
   planningItemIds: [{

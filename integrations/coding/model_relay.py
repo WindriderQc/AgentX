@@ -17,6 +17,7 @@ import socketserver
 import subprocess
 import sys
 import threading
+import uuid
 from urllib.parse import urlsplit
 
 
@@ -29,6 +30,7 @@ class ModelOnly(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"  # The reply ends when the connection closes, which also carries a stream.
     model_url = ""
     observer = staticmethod(lambda _event: None)
+    runner_headers = {}
 
     def refuse(self) -> None:
         body = b'{"error":{"message":"The coding worker can reach the model route only.","type":"invalid_request_error"}}'
@@ -54,7 +56,8 @@ class ModelOnly(BaseHTTPRequestHandler):
                 return
             upstream_socket = connection.sock
             connection.request("POST", target.path + (f"?{target.query}" if target.query else ""), body=body,
-                               headers={"Content-Type": "application/json", "x-service-caller": "coding-run"})
+                               headers={"Content-Type": "application/json", "x-service-caller": "coding-run",
+                                        **self.runner_headers, "x-agentx-coding-call": str(uuid.uuid4())})
             with connection.getresponse() as upstream:
                 self.send_response(upstream.status)
                 self.send_header("Content-Type", upstream.headers.get("Content-Type", "application/json"))
@@ -109,12 +112,12 @@ class UnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
         super().shutdown()
 
 
-def serve(socket_path: str, model_url: str, observer=None) -> UnixServer:
+def serve(socket_path: str, model_url: str, observer=None, runner_headers=None) -> UnixServer:
     """Start the runner-side relay; the caller shuts it down."""
     if os.path.exists(socket_path):
         os.unlink(socket_path)
     handler = type("Handler", (ModelOnly,), {"model_url": model_url.rstrip("/"),
-                    "observer": staticmethod(observer or (lambda _event: None))})
+                    "observer": staticmethod(observer or (lambda _event: None)), "runner_headers": runner_headers or {}})
     server = UnixServer(socket_path, handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server

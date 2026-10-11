@@ -373,7 +373,10 @@ async function executeRoutedInference(deps, request, options = {}) {
     && (deps.observePromptPrefix || observePromptPrefix);
   let promptPrefix = null;
   const record = entry => deps.recordInference(promptPrefix ? { ...entry, promptPrefix } : entry);
-  const timeoutMs = boundedTimeout(request.timeoutMs);
+  // Core's coding budget must survive caller detachment while a stream drains.
+  const codingTimeout = options.codingCapacity && Number.isFinite(options.codingDeadlineAt)
+    ? Math.max(1, options.codingDeadlineAt - Date.now()) : Infinity;
+  const timeoutMs = Math.min(boundedTimeout(request.timeoutMs), codingTimeout);
   const abortBridge = createAbortBridge(options.signal, timeoutMs);
 
   try {

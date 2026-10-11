@@ -36,8 +36,8 @@ function observedAttemptCount(value) {
   if (!Number.isSafeInteger(value) || value < 0 || value > 10000) throw new CodingDispatchControlError('The observed attempt count is required.', { code: 'CODING_DISPATCH_INVALID_TASK', statusCode: 400 });
   return value;
 }
-function launchCommand({ pipelineId, requestId, expectedAttemptCount, root }) {
-  return `/usr/bin/python3 ${remoteRoot(root)}/integrations/coding/coding_dispatch_control.py launch ${exactPipelineId(pipelineId)} ${exactRequestId(requestId)} ${observedAttemptCount(expectedAttemptCount)}`;
+function launchCommand({ pipelineId, requestId, expectedAttemptCount, root, autonomous }) {
+  return `/usr/bin/python3 ${remoteRoot(root)}/integrations/coding/coding_dispatch_control.py ${autonomous === true ? 'launch-autonomous' : 'launch'} ${exactPipelineId(pipelineId)} ${exactRequestId(requestId)} ${observedAttemptCount(expectedAttemptCount)}`;
 }
 async function defaultSshRunner(target, command, options = {}) {
   return execFileAsync(options.sshBin || process.env.OPENCLAW_INVENTORY_SSH_BIN || 'ssh', buildSshArgs(target, command, options), {
@@ -82,15 +82,21 @@ class CodingDispatchControl {
     if (!this.target) throw new CodingDispatchControlError('The coding dispatcher launch target is not configured.', { code: 'CODING_DISPATCH_UNAVAILABLE', statusCode: 503 });
     const pending = this.launching.get(requestId);
     if (pending) {
-      if (pending.pipelineId !== pipelineId || pending.expectedAttemptCount !== expectedAttemptCount) throw new CodingDispatchControlError('This request id belongs to a different selection.', { code: 'CODING_DISPATCH_REQUEST_CONFLICT' });
+      if (pending.pipelineId !== pipelineId || pending.expectedAttemptCount !== expectedAttemptCount || pending.autonomous !== (input.autonomous === true)) throw new CodingDispatchControlError('This request id belongs to a different selection.', { code: 'CODING_DISPATCH_REQUEST_CONFLICT' });
       return pending.promise;
     }
-    const promise = this.call(launchCommand({ pipelineId, requestId, expectedAttemptCount, root: this.root }));
-    this.launching.set(requestId, { pipelineId, expectedAttemptCount, promise });
+    const promise = this.call(launchCommand({ pipelineId, requestId, expectedAttemptCount, root: this.root, autonomous: input.autonomous }));
+    this.launching.set(requestId, { pipelineId, expectedAttemptCount, autonomous: input.autonomous === true, promise });
     try { return await promise; } finally { this.launching.delete(requestId); }
   }
   async cancel(input = {}) {
     return this.call(`/usr/bin/python3 ${this.root}/integrations/coding/coding_dispatch_control.py cancel-waiting ${exactRequestId(input.requestId)}`);
+  }
+  async observe(input = {}) {
+    return this.call(`/usr/bin/python3 ${this.root}/integrations/coding/coding_dispatch_control.py observe ${exactPipelineId(input.pipelineId)} ${exactRequestId(input.requestId)}`);
+  }
+  async reconcile(input = {}) {
+    return this.call(`/usr/bin/python3 ${this.root}/integrations/coding/coding_dispatch_control.py reconcile ${exactPipelineId(input.pipelineId)} ${exactRequestId(input.requestId)}`);
   }
   async stop(input = {}) {
     const pipelineId = exactPipelineId(input.pipelineId);
