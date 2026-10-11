@@ -14,7 +14,9 @@ function registerWorkRuntime({ router, conversations, tasks, agentClient, contin
     return null;
   }
   const works = capability.create({ conversations, tasks, env, classify: requestsTaskCheck,
-    nativeOnly: requestsSecretary, nativeRead: text => requestsSecretaryRead(text) || requestsWebRead(text) });
+    nativeOnly: requestsSecretary, nativeRead: text => requestsSecretaryRead(text) || requestsWebRead(text),
+    nativeBudget: text => requestsWebRead(text) && !requestsSecretaryRead(text) && !requestsTaskCheck(text)
+      ? { tools: 8, web: 4 } : null });
   const native = require('./native-work-runtime').nativeWorkRuntime({ works, conversations, agentClient, continuity, attachmentStore });
   capability.registerRoutes(router, { works, env });
   const observer = capability.observe({ works, env, logger,

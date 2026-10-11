@@ -94,7 +94,7 @@ export function continuityOperations({ workspace, config, resolveWorkspace, mode
     if (operation === 'agents') {
       if (!config) throw new Error('Native agent configuration unavailable');
       result = { agents: agentCatalog(config, modelFor).filter(agent => agent.id !== workAgentId),
-        capabilities: { isolatedWork: true } };
+        capabilities: { isolatedWork: true, nativeReadBudget: true } };
     } else if (operation === 'work_attempt') {
       const match = householdKey.exec(request.sessionKey || '');
       const isolatedMain = match?.[1] === 'main';

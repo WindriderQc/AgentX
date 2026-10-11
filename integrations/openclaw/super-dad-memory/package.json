@@ -1,6 +1,6 @@
 {
   "name": "@agentx/openclaw-super-dad-memory",
-  "version": "2.3.2",
+  "version": "2.3.3",
   "type": "module",
   "description": "Nestor private context, memory and verified personal workflows.",
   "files": [
@@ -20,7 +20,8 @@
     "core-identifiers.js",
     "work-queue.js",
     "core-brief.js",
-    "conversation-work.js"
+    "conversation-work.js",
+    "native-read-budget.js"
   ],
   "scripts": {
     "test": "node --test test/*.test.js"

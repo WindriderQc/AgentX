@@ -17,6 +17,8 @@ function nativeWorkRuntime({ works, conversations, agentClient, continuity, atta
       if (catalog?.capabilities?.isolatedWork !== true) throw new Error('The installed native adapter does not support isolated consultations yet');
       const turn = await conversations.getTurn({ ...works.query(row.sessionId), traceId: row.turnId });
       if (!turn || hash(turn.inputText) !== row.requestSha256) throw new Error('Canonical native consultation request unavailable');
+      if (requestsWebRead(turn.inputText) && !requestsSecretaryRead(turn.inputText) && !requestsTaskCheck(turn.inputText)
+          && catalog?.capabilities?.nativeReadBudget !== true) throw new Error('The installed native adapter does not support bounded web consultations yet');
       const messages = [{ role: 'user', content: turn.inputText, attachments: turn.attachments || [] }];
       const prepared = turn.attachments?.length ? await attachmentStore(row.sessionId).prepare(messages, 'openclaw') : messages;
       const recent = await conversations.listTurns(works.query(row.sessionId), { limit: 12, sort: { createdAt: -1 } });

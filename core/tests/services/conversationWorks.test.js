@@ -600,3 +600,58 @@ test('flag off recovers an accepted exchange interrupted before work insertion w
   expect(await conversations.countTurns({ sessionId: current.sessionId })).toBe(1);
   expect(tasks.list).not.toHaveBeenCalled();
 });
+
+async function budgetWork() {
+  const { requestsWebRead } = require('../../surfaces/household/native-web-policy');
+  const options = { conversations, tasks, env, nativeRead: requestsWebRead,
+    nativeBudget: text => requestsWebRead(text) ? { tools: 8, web: 4 } : null };
+  works = createConversationWorks(options);
+  const accepted = await works.intake(input('Est-ce que l’équipe joue ce soir?'));
+  await works.prepare(accepted.row._id, 'Selected personal context');
+  const attempt = { id: randomUUID(), sessionId: randomUUID(), agentId: 'main', runId: native() };
+  attempt.sessionKey = `agent:main:household:direct:${attempt.sessionId}`;
+  const row = await works.repo.mutate(accepted.row._id, () => ({ fields: { state: 'running', attempt }, event: 'fixture_native_started' }));
+  return { row, options, context: { agentId: 'main', sessionKey: attempt.sessionKey, runId: attempt.runId } };
+}
+
+test('native web admissions survive restart, count failed reads and retain the same-call receipt', async () => {
+  const job = await budgetWork();
+  const first = await works.admitNativeTool(job.context, { tool: 'web_search' }, 'first');
+  expect(first.admitted).toBe(true);
+  const restarted = createConversationWorks(job.options);
+  expect(await restarted.admitNativeTool(job.context, { tool: 'web_search' }, 'first')).toEqual(first);
+  await expect(restarted.admitNativeTool(job.context, { tool: 'web_fetch' }, 'first')).rejects.toMatchObject({ statusCode: 409 });
+  for (let i = 0; i < 3; i++) expect((await restarted.admitNativeTool(job.context, { tool: 'web_fetch' }, `different-url-${i}`)).admitted).toBe(true);
+  expect((await restarted.admitNativeTool(job.context, { tool: 'web_search' }, 'another-query')).admitted).toBe(false);
+  expect((await restarted.admitNativeTool(job.context, { tool: 'tool_search' }, 'another-capability')).admitted).toBe(false);
+  expect((await works.repo.get(job.row._id)).nativeAdmissions).toHaveLength(4);
+  expect(tasks.list).not.toHaveBeenCalled();
+});
+
+test('native budget fences concurrent calls and the complete discovery budget', async () => {
+  const job = await budgetWork();
+  const admissions = await Promise.all(Array.from({ length: 6 }, (_, i) => works.admitNativeTool(job.context, { tool: 'web_fetch' }, `parallel-${i}`)));
+  expect(admissions.filter(a => a.admitted)).toHaveLength(4);
+  const second = await budgetWork();
+  for (let i = 0; i < 8; i++) expect((await works.admitNativeTool(second.context, { tool: 'tool_search' }, `discovery-${i}`)).admitted).toBe(true);
+  expect((await works.admitNativeTool(second.context, { tool: 'read' }, 'spill-file')).admitted).toBe(false);
+});
+
+test('native budget requires the canonical request and the exact native Main identity', async () => {
+  const job = await budgetWork();
+  for (const patch of [{ agentId: 'family' }, { runId: native() }, { sessionKey: 'foreign' }, { workId: job.row._id }]) {
+    await expect(works.admitNativeTool({ ...job.context, ...patch }, { tool: 'web_fetch' }, 'forged')).rejects.toMatchObject({ statusCode: 404 });
+  }
+  await works.repo.mutate(job.row._id, row => ({ fields: { requestSha256: hash('changed') }, event: 'fixture_corrupt_request' }));
+  await expect(works.admitNativeTool(job.context, { tool: 'web_fetch' }, 'changed')).rejects.toMatchObject({ statusCode: 404 });
+});
+
+test('native budget never grants worker task access, blocks settled work and erases its metadata', async () => {
+  const job = await budgetWork();
+  await works.admitNativeTool(job.context, { tool: 'web_fetch' }, 'actual');
+  await expect(works.readTasks(job.context, {}, 'foreign-role')).rejects.toMatchObject({ statusCode: 404 });
+  await works.repo.mutate(job.row._id, () => ({ fields: { state: 'failed' }, event: 'fixture_settled' }));
+  expect((await works.admitNativeTool(job.context, { tool: 'web_fetch' }, 'actual')).admitted).toBe(false);
+  await conversations.deleteSession({ sessionId: current.sessionId, packId: 'personal_operator', scopeId: 'personal' });
+  expect((await works.repo.getIncludingErased(job.row._id)).nativeAdmissions).toBeUndefined();
+});

@@ -72,7 +72,7 @@ Instance configuration, data and deployment receipts remain outside Git.
   request before guardian inference and uses an isolated native worker for
   bounded task reads and review. Conservative mailbox and current public-information
   reads receive an immediate saved-request acknowledgment and use isolated native
-  Main web research or Main/Secretary consultation
+  Main web research with durable tool admission limits or Main/Secretary consultation
   while the guardian remains available. Core retains results through reconnect, fences
   uncertain dispatches and separates display, playback start and completion.
   The feature defaults off; text, Open, specialists and Famille keep their
