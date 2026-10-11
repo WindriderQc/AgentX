@@ -98,8 +98,9 @@ def read_progress(run: dict) -> dict | None:
         path = RECEIPTS / f"{key}.progress.json"
         if path.stat().st_size > 65536:
             return None
-        return progress_module.safe_progress(json.loads(path.read_text()), key, run["pipelineId"])
-    except (OSError, ValueError, TypeError):
+        progress = progress_module.safe_progress(json.loads(path.read_text()), key, run["pipelineId"])
+        return progress if progress and (progress["phase"] != "finished" or progress["result"]) else None
+    except (OSError, ValueError, TypeError, AttributeError):
         return None
 
 
@@ -110,14 +111,11 @@ def status(key: str | None = None) -> dict:
     run = read_receipt(key or (latest.read_text().strip() if latest.exists() else ""))
     progress = read_progress(run) if run else None
     current = bool(run and latest.exists() and latest.read_text().strip() == run["requestId"])
-    if run and run["phase"] == "accepted":
+    if run and run["phase"] in {"accepted", "uncertain"}:
         run["phase"] = "running" if busy and current else "finished" if progress and progress["phase"] == "finished" else "unknown"
         run["message"] = ("The coding worker is running." if run["phase"] == "running"
                           else "The coding worker stopped. Read its recorded result." if run["phase"] == "finished"
                           else "The host unit stopped without a terminal receipt. Inspect the task and checkpoint.")
-    elif run and run["phase"] == "uncertain":
-        run["phase"] = "running" if busy and current else "unknown"
-        run["message"] = "Read the task and host unit to reconcile this launch; it will not be started again."
     if key and not run:
         legacy = LEGACY_RECEIPTS / f"{key}.json"
         run = ({**json.loads(legacy.read_text()), "retired": True, "canRetry": False, "canCancel": False,
@@ -163,8 +161,9 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
         latest = RECEIPTS / "latest"
         pending = read_receipt(latest.read_text().strip()) if latest.exists() else None
         terminal = read_progress(pending) if pending else None
-        if pending and (pending["phase"] == "uncertain" or
-                        pending["phase"] == "accepted" and not (terminal and terminal["phase"] == "finished")):
+        if pending and pending["phase"] in {"accepted", "uncertain"} and not (
+                terminal and terminal["phase"] == "finished" and
+                (not pending.get("autonomous") or terminal["coreRecorded"])):
             raise ControlError("CODING_DISPATCH_OUTCOME_UNKNOWN", "Reconcile the previous launch before starting another task.")
         selected = next((task for task in queued_tasks() if task["pipelineId"] == pipeline_id and can_start(task)), None)
         if not selected:

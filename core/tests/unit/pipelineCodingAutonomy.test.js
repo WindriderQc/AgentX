@@ -34,8 +34,8 @@ async function authorize(id = '0001', limits) {
 async function enable() { const state = await service.settings(); return service.configure({ enabled: true, confirm: true, expectedRevision: state.revision }); }
 async function selected() { return (await service.status()).active; }
 async function launch() { await service.tick(); const active = await selected(); await service.tick(); return active; }
-async function complete(active, head = HEAD, usage = { workSeconds: 10, testSeconds: 3, modelSeconds: 4, modelCalls: 1 }) {
-  const claimed = await claimEligibleTask(active.pipelineId, 'coding-team', new Date(), { automated: true, dispatchRequestId: active.requestId });
+async function recordNativeVerdict(active, claimed) {
+  claimed ||= await claimEligibleTask(active.pipelineId, 'coding-team', new Date(), { automated: true, dispatchRequestId: active.requestId });
   const leaseId = claimed.automationLease.leaseId;
   const response = await request(app).post(`/api/pipeline/tasks/${active.pipelineId}/feedback`).send({
     by: 'coding-team', assignee: 'coding-team', leaseId, text: 'Synthetic native verdict', status: 'done',
@@ -43,9 +43,17 @@ async function complete(active, head = HEAD, usage = { workSeconds: 10, testSeco
       workerReceiptFingerprint: 'b'.repeat(64), routing: { status: 'verified', provider: 'ollama', effectiveModel: 'synthetic-model',
         requestCount: 1, sessionCallCount: 1, evidenceFingerprint: 'c'.repeat(64) } } });
   expect(response.status).toBe(200);
-  receipts.set(active.requestId, { pipelineId: active.pipelineId, requestId: active.requestId, phase: 'finished', progress: {
-    phase: 'finished', stage: 'publishing', coreRecorded: true, result: 'review', checkpoint: head,
-    pr: { ...PR, head }, usage, seenStates: ['d'.repeat(64)], seenTests: ['e'.repeat(64)] } });
+}
+function terminalProgress(active, extra = {}) {
+  return { pipelineId: active.pipelineId, requestId: active.requestId, phase: 'finished', stage: 'publishing',
+    coreRecorded: true, result: 'review', checkpoint: HEAD, pr: { ...PR },
+    usage: { workSeconds: 10, testSeconds: 3, modelSeconds: 4, modelCalls: 1 },
+    seenStates: ['d'.repeat(64)], seenTests: ['e'.repeat(64)], ...extra };
+}
+async function complete(active, head = HEAD, usage = { workSeconds: 10, testSeconds: 3, modelSeconds: 4, modelCalls: 1 }, phase = 'finished') {
+  await recordNativeVerdict(active);
+  receipts.set(active.requestId, { pipelineId: active.pipelineId, requestId: active.requestId, phase,
+    progress: terminalProgress(active, { checkpoint: head, pr: { ...PR, head }, usage }) });
   await service.tick();
   await Task.updateOne({ pipelineId: active.pipelineId }, { $set: { 'codingAutonomy.nextObservationAt': new Date(0).toISOString() } });
 }
@@ -95,6 +103,97 @@ test('lost launch response reconciles the original identity without another laun
   await expect(service.tick()).rejects.toThrow('lost'); await service.tick();
   expect(control.launch).toHaveBeenCalledTimes(1); expect((await selected()).requestId).toBe(first.requestId);
 });
+test.each(['uncertain', 'unknown'])('lost accepted launch with recorded native feedback resolves %s terminal proof', async phase => {
+  await task(); await authorize(); await enable(); await service.tick(); const first = await selected();
+  control.launch.mockImplementationOnce(async input => {
+    receipts.set(input.requestId, { pipelineId: input.pipelineId, requestId: input.requestId, phase });
+    throw new Error('Synthetic systemd acceptance with lost reply');
+  });
+  await expect(service.tick()).rejects.toThrow('lost reply');
+  await recordNativeVerdict(first);
+  await service.tick(); expect((await service.status()).tasks[0].reason).toBe('runner_outcome_unknown');
+  receipts.get(first.requestId).progress = terminalProgress(first);
+  service.configureControl(null); service.configureControl(control); await service.tick(); await service.tick();
+  const durable = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(durable.codingAutonomy).toMatchObject({ state: 'waiting_ci', reason: null, spent: { workSeconds: 10, modelCalls: 1 } });
+  expect(durable.codingAutonomy.runs).toHaveLength(1); expect(durable.codingAutonomy.runs[0].finishedAt).toBeTruthy();
+  expect(durable.automationAttempts).toHaveLength(1); expect(durable.automationAttempts[0].dispatchRequestId).toBe(first.requestId);
+  expect(durable.automationLease).toBeFalsy(); expect(durable.codingCapacity).toBeFalsy(); expect(await selected()).toBeNull();
+  expect(control.launch).toHaveBeenCalledTimes(1); expect(control.reconcile).not.toHaveBeenCalled();
+});
+test('uncertain terminal worker replays exact native feedback before releasing the original slot', async () => {
+  await task(); await authorize(); await enable(); const first = await launch();
+  const claimed = await claimEligibleTask('0001', 'coding-team', new Date(), { automated: true, dispatchRequestId: first.requestId });
+  receipts.set(first.requestId, { ...first, phase: 'uncertain', progress: terminalProgress(first, { coreRecorded: false }) });
+  control.reconcile.mockImplementationOnce(async input => {
+    expect(input).toEqual({ pipelineId: '0001', requestId: first.requestId });
+    await recordNativeVerdict(first, claimed);
+    receipts.get(first.requestId).progress.coreRecorded = true;
+  });
+  await service.tick();
+  expect((await selected()).requestId).toBe(first.requestId);
+  expect((await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy.runs[0].finishedAt).toBeFalsy();
+  await service.tick(); await service.tick();
+  const durable = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(durable.codingAutonomy.state).toBe('waiting_ci'); expect(durable.automationAttempts).toHaveLength(1);
+  expect(durable.automationAttempts[0].dispatchRequestId).toBe(first.requestId);
+  expect(await selected()).toBeNull(); expect(control.reconcile).toHaveBeenCalledTimes(1); expect(control.launch).toHaveBeenCalledTimes(1);
+});
+test.each(['running', 'uncertain'])('an active host unit with %s phase cannot complete from terminal progress', async phase => {
+  await task(); await task('0002'); await authorize(); await authorize('0002'); await enable(); const first = await launch();
+  await recordNativeVerdict(first);
+  receipts.set(first.requestId, { ...first, phase, progress: terminalProgress(first) });
+  control.status.mockImplementation(async ({ requestId }) => ({ busy: true, run: receipts.get(requestId) }));
+  await service.tick(); await service.tick();
+  const durable = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(durable.codingAutonomy.runs[0].finishedAt).toBeFalsy(); expect((await selected()).requestId).toBe(first.requestId);
+  expect(control.launch).toHaveBeenCalledTimes(1); expect(control.reconcile).not.toHaveBeenCalled();
+  expect((await Task.findOne({ pipelineId: '0002' }).lean()).codingAutonomy.runs).toHaveLength(0);
+});
+test.each(['automationLease', 'codingCapacity', 'pendingInferences'])('uncertain terminal progress preserves native %s until verified release', async held => {
+  await task(); await task('0002'); await authorize(); await authorize('0002'); await enable(); const first = await launch();
+  if (held === 'automationLease') await claimEligibleTask('0001', 'coding-team', new Date(), { automated: true, dispatchRequestId: first.requestId });
+  else await Task.updateOne({ pipelineId: '0001' }, { $set: { status: 'review', [held === 'pendingInferences'
+    ? 'codingAutonomy.runs.0.pendingInferences' : held]: held === 'pendingInferences'
+    ? ['10000000-0000-4000-8000-000000000001'] : { requestId: first.requestId, admissionId: 'synthetic-held', host: 'http://127.0.0.1:9' } } });
+  const before = await Task.findOne({ pipelineId: '0001' }).lean();
+  receipts.set(first.requestId, { ...first, phase: 'uncertain', progress: terminalProgress(first) });
+  await service.tick(); await service.tick();
+  const after = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(after.codingAutonomy.reason).toBe('native_completion_unverified'); expect(after.codingAutonomy.runs[0].finishedAt).toBeFalsy();
+  expect(after.automationLease).toEqual(before.automationLease); expect(after.codingCapacity).toEqual(before.codingCapacity);
+  expect(after.codingAutonomy.runs[0].pendingInferences).toEqual(before.codingAutonomy.runs[0].pendingInferences);
+  expect((await selected()).requestId).toBe(first.requestId); expect(control.launch).toHaveBeenCalledTimes(1);
+  expect(control.reconcile).not.toHaveBeenCalled(); expect((await Task.findOne({ pipelineId: '0002' }).lean()).codingAutonomy.runs).toHaveLength(0);
+});
+test.each([
+  ['absent', null], ['malformed', { result: 'invalid' }], ['nonterminal', { phase: 'invalid' }],
+  ['another task', { pipelineId: '0002' }], ['another request', { requestId: QUEUE }], ['missing identity', { requestId: undefined }],
+])('%s terminal proof leaves the original selection unknown without another job', async (name, extra) => {
+  await task(); await task('0002'); await authorize(); await authorize('0002'); await enable(); const first = await launch();
+  for (const phase of ['uncertain', 'finished']) {
+    receipts.set(first.requestId, { ...first, phase, progress: extra === null ? null : terminalProgress(first, extra) });
+    await service.tick();
+    const durable = await Task.findOne({ pipelineId: '0001' }).lean();
+    expect(durable.codingAutonomy.reason).toBe('runner_outcome_unknown'); expect(durable.codingAutonomy.runs[0].finishedAt).toBeFalsy();
+    expect((await selected()).requestId).toBe(first.requestId);
+  }
+  expect(control.launch).toHaveBeenCalledTimes(1); expect(control.reconcile).not.toHaveBeenCalled();
+  expect((await Task.findOne({ pipelineId: '0002' }).lean()).codingAutonomy.runs).toHaveLength(0);
+});
+test('a stale terminal receipt cannot release another task selected after reconciliation', async () => {
+  await task(); await task('0002'); await authorize(); await authorize('0002'); await enable(); const first = await launch();
+  await complete(first, HEAD, undefined, 'uncertain'); const second = await selected();
+  expect(second.pipelineId).toBe('0002'); await service.tick();
+  const claimed = await claimEligibleTask('0002', 'coding-team', new Date(), { automated: true, dispatchRequestId: second.requestId });
+  const before = await Task.findOne({ pipelineId: '0002' }).lean();
+  control.status.mockResolvedValueOnce({ busy: true, run: receipts.get(first.requestId) });
+  await expect(service.tick()).rejects.toThrow('identity mismatch');
+  expect(await Task.findOne({ pipelineId: '0002' }).lean()).toEqual(before);
+  expect((await selected()).requestId).toBe(second.requestId);
+  expect(before.automationLease.leaseId).toBe(claimed.automationLease.leaseId);
+  expect(control.launch).toHaveBeenCalledTimes(2); expect(control.reconcile).not.toHaveBeenCalled(); expect(control.stop).not.toHaveBeenCalled();
+});
 test('Core restart after selection resumes only durable dispatch identity', async () => {
   await task(); await authorize(); await enable(); await service.tick(); const first = await selected();
   service.configureControl(null); await service.tick(); service.configureControl(control); await service.tick();
@@ -118,7 +217,7 @@ test('expired or unstarted heavy-work campaign prevents launch', async () => {
 });
 test('runner preflight completion after window closes clears only the autonomous slot without a native attempt', async () => {
   await task(); await task('0002'); await authorize(); await authorize('0002'); await enable(); const active = await launch();
-  receipts.set(active.requestId, { ...active, phase: 'finished', progress: { phase: 'finished', coreRecorded: true,
+  receipts.set(active.requestId, { ...active, phase: 'finished', progress: { pipelineId: active.pipelineId, requestId: active.requestId, phase: 'finished', coreRecorded: true,
     preflight: true, result: 'blocked', stopReason: 'queue_window_closed', usage: { workSeconds: 2 } } });
   queue.get.mockResolvedValue({ state: 'completed' }); await service.tick();
   expect(await selected()).toBeNull(); const closed = await Task.findOne({ pipelineId: active.pipelineId }).lean();
@@ -143,7 +242,7 @@ test('green exact-head CI ends at human review without merge, deploy or task com
   expect(state.state).toBe('ready_for_review'); expect(state.taskStatus).toBe('review'); expect(await selected()).toBeNull();
 });
 test('review correction keeps the same card and PR with a new linked request and cumulative budgets', async () => {
-  await task(); await authorize(); await enable(); const first = await launch(); await complete(first);
+  await task(); await authorize(); await enable(); const first = await launch(); await complete(first, HEAD, undefined, 'uncertain');
   await service.recordReview('0001', { confirm: true, head: HEAD, text: 'Synthetic correction request' });
   await service.tick(); const next = await selected(); expect(next.requestId).not.toBe(first.requestId);
   const manifest = await service.workerManifest('0001', next.requestId);
@@ -162,7 +261,7 @@ test('native model receipts charge cumulative budgets even when runner usage und
   ];
   await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.runs.0.modelReceipts': native } });
   expect((await service.status()).tasks[0].remaining).toMatchObject({ modelCalls: 1, modelSeconds: 57 });
-  await complete(first, HEAD, { workSeconds: 10, testSeconds: 3, modelCalls: 0, modelSeconds: 0 });
+  await complete(first, HEAD, { workSeconds: 10, testSeconds: 3, modelCalls: 0, modelSeconds: 0 }, 'uncertain');
   let durable = await Task.findOne({ pipelineId: '0001' }).lean();
   expect(durable.codingAutonomy.runs[0].usage).toMatchObject({ modelCalls: 2, modelSeconds: 3 });
   expect(durable.codingAutonomy.spent).toMatchObject({ modelCalls: 2, modelSeconds: 3 });
@@ -232,14 +331,14 @@ test('pause allows observation but prevents a new worker or correction', async (
 });
 test('lost native feedback response replays only saved verdict; no new worker', async () => {
   await task(); await authorize(); await enable(); const first = await launch();
-  receipts.set(first.requestId, { ...first, phase: 'finished', progress: { phase: 'finished', result: 'review', coreRecorded: false } });
+  receipts.set(first.requestId, { ...first, phase: 'finished', progress: { pipelineId: first.pipelineId, requestId: first.requestId, phase: 'finished', result: 'review', coreRecorded: false } });
   await service.tick(); expect(control.reconcile).toHaveBeenCalledWith({ pipelineId: '0001', requestId: first.requestId });
   expect(control.launch).toHaveBeenCalledTimes(1); expect((await selected()).requestId).toBe(first.requestId);
 });
 
 test('lost publication outcome is reconciled without a replacement worker', async () => {
   await task(); await authorize(); await enable(); const first = await launch();
-  receipts.set(first.requestId, { ...first, phase: 'unknown', progress: { phase: 'delivering', stage: 'publishing', coreRecorded: false } });
+  receipts.set(first.requestId, { ...first, phase: 'unknown', progress: { pipelineId: first.pipelineId, requestId: first.requestId, phase: 'delivering', stage: 'publishing', coreRecorded: false } });
   await service.tick(); expect(control.reconcile).toHaveBeenCalledWith({ pipelineId: '0001', requestId: first.requestId });
   expect(control.launch).toHaveBeenCalledTimes(1); expect((await selected()).requestId).toBe(first.requestId);
 });
@@ -255,7 +354,7 @@ test('late stop preserves actual published PR and records its refusal; no correc
 test('a second upstream conflict resumes only after the native lease is conclusively released', async () => {
   await task(); await authorize(); await enable(); const first = await launch();
   await Task.updateOne({ pipelineId: '0001' }, { $set: { status: 'blocked', automationAttemptCount: 1 } });
-  receipts.set(first.requestId, { ...first, phase: 'finished', progress: { phase: 'finished', coreRecorded: true,
+  receipts.set(first.requestId, { ...first, phase: 'finished', progress: { pipelineId: first.pipelineId, requestId: first.requestId, phase: 'finished', coreRecorded: true,
     result: 'blocked', stopReason: 'git_conflict_remaining', checkpoint: HEAD, usage: { workSeconds: 7 } } });
   await service.tick(); const second = await selected();
   expect(second.requestId).not.toBe(first.requestId);
@@ -276,7 +375,7 @@ test('stop of an unreceived selection retains its identity and releases the slot
   await task(); await task('0002'); await authorize(); await authorize('0002'); await enable(); await service.tick();
   const first = await selected();
   control.stop.mockImplementationOnce(async input => receipts.set(input.requestId, { ...first, phase: 'finished', progress: {
-    phase: 'finished', coreRecorded: true, preflight: true, result: 'blocked', stopReason: 'operator_stop', usage: {} } }));
+    pipelineId: first.pipelineId, requestId: first.requestId, phase: 'finished', coreRecorded: true, preflight: true, result: 'blocked', stopReason: 'operator_stop', usage: {} } }));
   await service.stop('0001', first.requestId, { confirm: true }); await service.tick();
   expect(control.launch).not.toHaveBeenCalled(); expect((await selected()).pipelineId).toBe('0002');
   expect((await service.status()).tasks[0].state).toBe('stopped');
@@ -286,7 +385,7 @@ test('a task taken by another worker after selection cancels only the unreceived
   await task(); await task('0002'); await authorize(); await authorize('0002'); await enable(); await service.tick();
   const first = await selected(); await Task.updateOne({ pipelineId: '0001' }, { $set: { status: 'in_progress', assignee: 'other-worker' } });
   control.stop.mockImplementationOnce(async () => receipts.set(first.requestId, { ...first, phase: 'finished', cancelledBeforeLaunch: true,
-    progress: { phase: 'finished', coreRecorded: true, preflight: true, result: 'blocked', usage: {} } }));
+    progress: { pipelineId: first.pipelineId, requestId: first.requestId, phase: 'finished', coreRecorded: true, preflight: true, result: 'blocked', usage: {} } }));
   await service.tick(); await service.tick();
   expect(control.launch).not.toHaveBeenCalled(); expect((await selected()).pipelineId).toBe('0002');
   const original = await Task.findOne({ pipelineId: '0001' }).lean();

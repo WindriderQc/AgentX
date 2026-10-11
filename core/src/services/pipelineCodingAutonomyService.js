@@ -244,10 +244,14 @@ async function dispatch(task, config) {
   }
   if (host.run?.pipelineId !== task.pipelineId || host.run?.requestId !== run.requestId) throw policy.fail('Runner receipt identity mismatch');
   const receipt = host.run.progress;
-  if (host.run.phase === 'finished' && receipt?.phase === 'finished') {
+  if (receipt && (receipt.pipelineId !== task.pipelineId || receipt.requestId !== run.requestId))
+    return block(task, 'runner_outcome_unknown');
+  const finished = receipt?.phase === 'finished' && ['review', 'blocked', 'local_only'].includes(receipt.result);
+  if (finished && (host.run.phase === 'finished'
+    || (['unknown', 'uncertain'].includes(host.run.phase) && host.busy === false))) {
     // The native feedback replay must have released this exact claim. A local
     // terminal file, absent process or expired lease never substitutes for it.
-    if (!receipt.coreRecorded) {
+    if (receipt.coreRecorded !== true) {
       await control.reconcile({ pipelineId: task.pipelineId, requestId: run.requestId });
       return;
     }
@@ -267,7 +271,9 @@ async function dispatch(task, config) {
       head: receipt.checkpoint, usage, progressAt: receipt.progressAt };
     const spent = policy.spent(state);
     for (const key of ['workSeconds', 'testSeconds', 'modelSeconds', 'modelCalls']) spent[key] = (spent[key] || 0) + (usage[key] || 0);
-    const next = { ...state, runs, spent, seenStates: receipt.seenStates || state.seenStates,
+    const next = { ...state, runs, spent,
+      reason: ['runner_outcome_unknown', 'native_completion_unverified', 'preflight_completion_unverified'].includes(state.reason) ? null : state.reason,
+      seenStates: receipt.seenStates || state.seenStates,
       seenTests: receipt.seenTests || state.seenTests, lastUsefulProgressAt: receipt.progressAt || state.lastUsefulProgressAt,
       lastUsefulWorkSeconds: receipt.lastUsefulWorkSeconds || state.lastUsefulWorkSeconds || 0 };
     if (receipt.manualHead) next.manualInterventions = [...state.manualInterventions,
@@ -276,7 +282,7 @@ async function dispatch(task, config) {
     if (state.reason === 'operator_stop' || !state.authorized) Object.assign(next, { state: 'stopped', reason: state.reason || 'authorization_removed' });
     else if (receipt.stopReason === 'git_conflict_remaining' && task.status === 'blocked')
       Object.assign(next, { state: 'correction', reason: null, correction: { kind: 'git_conflict_remaining', head: receipt.checkpoint } });
-    else if (receipt.result !== 'review' || task.status !== 'review' || !receipt.pr) Object.assign(next, { state: 'blocked', reason: state.reason || receipt.stopReason || 'publication_unverified' });
+    else if (receipt.result !== 'review' || task.status !== 'review' || !receipt.pr) Object.assign(next, { state: 'blocked', reason: next.reason || receipt.stopReason || 'publication_unverified' });
     else {
       if (state.pr && (state.pr.number !== receipt.pr.number || state.pr.branch !== receipt.pr.branch)) return block(task, 'pr_identity_changed');
       Object.assign(next, { state: 'waiting_ci', pr: receipt.pr, ciStartedAt: new Date().toISOString(),
@@ -286,11 +292,11 @@ async function dispatch(task, config) {
     await clearActive(run.requestId);
     return task;
   }
-  if (['unknown', 'uncertain'].includes(host.run.phase) && receipt && !receipt.coreRecorded) {
+  if (['unknown', 'uncertain'].includes(host.run.phase) && receipt && receipt.phase !== 'finished' && !receipt.coreRecorded) {
     try { await control.reconcile({ pipelineId: task.pipelineId, requestId: run.requestId }); return; }
     catch { /* An absent native verdict remains fenced; never relaunch. */ }
   }
-  if (['unknown', 'uncertain', 'not_received'].includes(host.run.phase)) return block(task, 'runner_outcome_unknown');
+  if (['unknown', 'uncertain', 'not_received', 'finished'].includes(host.run.phase)) return block(task, 'runner_outcome_unknown');
   if (['stopping', 'stop_requested'].includes(state.state)) return;
   return save(task, { ...state, runs: state.runs.map(item => item.requestId === run.requestId
     ? { ...item, currentUsage: receipt?.usage || item.currentUsage } : item),
