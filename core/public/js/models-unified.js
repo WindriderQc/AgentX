@@ -587,6 +587,7 @@ class UnifiedModels {
         const isOllama = source === 'ollama';
         const isGone = model.deployment?.status === 'gone';
         const isSelected = this.comparisonList.has(model.id || model.name);
+        const chat = this.chatAvailability(model);
 
         const params = model.details?.parameter_size || model.parameterSize || model.parameters || '-';
         // Effective context: override > auto-detected default > theoretical max
@@ -677,10 +678,15 @@ class UnifiedModels {
                     <button class="btn-icon action-compare ${isSelected ? 'active text-accent' : ''}" title="Compare">
                         <i class="fas ${isSelected ? 'fa-check' : 'fa-plus'}"></i>
                     </button>
-                    <button class="btn-primary-sm action-chat" title="Chat with ${escapeHtml(model.name)}">
-                        <i class="fas fa-comment-alt"></i>
+                    ${chat.available
+                        ? `<button class="btn-primary-sm action-chat" title="Chat with ${escapeHtml(model.name)}">
+                        <i class="fas fa-comment-alt" aria-hidden="true"></i>
                         <span>Chat</span>
-                    </button>
+                    </button>`
+                        : `<button class="btn-primary-sm action-chat" disabled title="${escapeHtml(chat.reason)}" aria-label="Chat unavailable: ${escapeHtml(chat.reason)}">
+                        <i class="fas fa-comment-slash" aria-hidden="true"></i>
+                        <span>Chat</span>
+                    </button>`}
                     <button class="btn-icon btn-actions" title="More actions for ${escapeHtml(model.name)}" aria-label="More actions for ${escapeHtml(model.name)}" aria-haspopup="menu" aria-expanded="false">
                         <i class="fas fa-ellipsis-v"></i>
                     </button>
@@ -690,6 +696,14 @@ class UnifiedModels {
                 </div>
             </td>
         `;
+    }
+
+    // Chat is offered only where the playground can actually use the model.
+    chatAvailability(model) {
+        if (model.deployment?.status === 'gone') return { available: false, reason: 'Removed from its host' };
+        if ((model.categories || []).includes('embedding')) return { available: false, reason: 'Embedding model: it cannot hold a conversation' };
+        if (model.chatAllowed === false) return { available: false, reason: 'Blocked until a current profile clears it' };
+        return { available: true, reason: '' };
     }
 
     getIconForSource(source) {
@@ -733,6 +747,7 @@ class UnifiedModels {
 
     buildDetailContent(m) {
         const sections = [];
+        const chat = this.chatAvailability(m);
 
         // Identity
         const isGone = m.deployment?.status === 'gone';
@@ -856,7 +871,9 @@ class UnifiedModels {
         // Quick actions
         sections.push(`
             <div class="detail-section detail-actions">
-                <button type="button" class="btn-primary detail-action-chat"><i class="fas fa-comment-alt" aria-hidden="true"></i> Chat</button>
+                ${chat.available
+                    ? '<button type="button" class="btn-primary detail-action-chat"><i class="fas fa-comment-alt" aria-hidden="true"></i> Chat</button>'
+                    : `<button type="button" class="btn-primary" disabled title="${escapeHtml(chat.reason)}"><i class="fas fa-comment-slash" aria-hidden="true"></i> Chat unavailable: ${escapeHtml(chat.reason)}</button>`}
                 <button type="button" class="btn-secondary detail-action-config"><i class="fas fa-sliders-h" aria-hidden="true"></i> Config</button>
             </div>
         `);
