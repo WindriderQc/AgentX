@@ -99,9 +99,11 @@
         ? `Safe automation · ${config.reviewExceptionBudget} exceptions max`
         : config.automationMode === 'shadow' ? 'Standing policy · shadow evaluation' : 'Manual compatibility mode';
       badge.classList.toggle('mr-mode-apply', config.mode === 'apply');
+      return true;
     } catch (error) {
       $('mrModeBadge').textContent = 'Configuration unavailable';
       toast(`Dreaming configuration unavailable: ${error.message}`, 'error');
+      return false;
     }
   }
 
@@ -301,13 +303,16 @@
         loadCollectingAlert(),
       ]);
       renderOverview(); renderPulse(); renderInsights();
+      return true;
     } catch (error) {
+      $('mrInsightsState').hidden = false;
       $('mrInsightsState').textContent = `Insight summary unavailable: ${error.message}`;
       $('mrPulse').className = 'mr-pulse mr-pulse-attention';
       $('mrPulseIcon').className = 'fas fa-triangle-exclamation';
       $('mrPulseTitle').textContent = 'Run history is still available';
       $('mrPulseText').textContent = 'The optional aggregate summary could not load. Candidate review remains unaffected.';
       renderOverview();
+      return false;
     }
   }
 
@@ -365,7 +370,7 @@
       renderOverview();
       if (!state.runs.length) {
         message.innerHTML = '<strong>No dreams yet.</strong><br>The first scheduled reconciliation will appear here.';
-        return;
+        return true;
       }
       renderRuns();
       $('mrRunList').hidden = false;
@@ -379,9 +384,11 @@
           || state.runs[0].runId;
         await selectRun(target);
       }
+      return true;
     } catch (error) {
       message.textContent = `Could not load Dreaming runs: ${error.message}`;
       toast(message.textContent, 'error');
+      return false;
     }
   }
 
@@ -672,7 +679,10 @@
   }));
   $('mrRunSearch').addEventListener('input', (event) => { state.runSearch = event.target.value.trim(); renderRuns(); });
   $('mrRunStatus').addEventListener('change', (event) => { state.runFilter = event.target.value; renderRuns(); });
-  $('mrRefreshBtn').addEventListener('click', async () => { await Promise.all([loadConfig(), loadInsights(), loadRuns()]); toast('Dreaming Review refreshed.', 'success'); });
+  $('mrRefreshBtn').addEventListener('click', async () => {
+    const loaded = await Promise.all([loadConfig(), loadInsights(), loadRuns()]);
+    if (loaded.every(Boolean)) toast('Dreaming Review refreshed.', 'success');
+  });
   $('mrShareBtn').addEventListener('click', () => copyText(state.insights?.safeDigest || 'Dreaming Review status is unavailable.', 'Statement-free digest copied.'));
   $('mrCopyLink').addEventListener('click', () => (state.run ? copyText(window.location.href, 'Link to this run copied.') : toast('This run has not loaded.', 'error')));
   $('mrActionForm').addEventListener('submit', submitAction);
@@ -692,5 +702,6 @@
     if (shortcut?.action) items[index].querySelector(`[data-action="${shortcut.action}"]`)?.click();
   });
 
-  (async () => { await Promise.all([loadConfig(), loadInsights(), loadRuns()]); })();
+  // Config decides whether Authorize and Apply are offered, so it loads first.
+  (async () => { await loadConfig(); await Promise.all([loadInsights(), loadRuns()]); })();
 })();
