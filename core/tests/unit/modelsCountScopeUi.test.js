@@ -9,7 +9,7 @@ describe('Models count scope', () => {
 
   test('labels unique tags, host installs, provider scope, and benchmark evidence separately', () => {
     expect(view).toMatch(/Unique model tags/);
-    expect(view).toMatch(/unique active model tags across configured Ollama hosts and custom providers/i);
+    expect(view).toMatch(/<strong>Unique model tags<\/strong>: active tags across configured Ollama hosts and custom providers/);
     expect(view).toMatch(/Host installs are counted separately/);
     expect(view).toMatch(/positive-score evidence/);
     expect(experience).toMatch(/unique model tag/);

@@ -68,9 +68,11 @@
                 <span class="strip-best" id="statBenchmarkBest"></span>
             </button>
         </div>
-        <p class="models-count-scope" id="modelsCountScope">
-            Inventory scope: unique active model tags across configured Ollama hosts and custom providers. Host installs are counted separately; storage counts a file shared by two endpoints of one machine once; “Benchmark coverage” means active unique tags with recorded positive-score evidence.
-        </p>
+        <ul class="models-count-scope" id="modelsCountScope" aria-label="How these counts are made">
+            <li><strong>Unique model tags</strong>: active tags across configured Ollama hosts and custom providers. Host installs are counted separately.</li>
+            <li><strong>Storage</strong>: a file shared by two endpoints of one machine counts once.</li>
+            <li><strong>Benchmark coverage</strong>: active tags with recorded positive-score evidence.</li>
+        </ul>
 
         <!-- Category Pill Strip -->
         <div class="category-strip" id="categoryStrip">

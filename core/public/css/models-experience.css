@@ -179,10 +179,13 @@
 
 .models-count-scope {
   margin: 10px 2px 18px;
+  padding-left: 18px;
   color: #94a3b8;
   font-size: 0.76rem;
   line-height: 1.5;
 }
+
+.models-count-scope strong { color: var(--text, #e2e8f0); font-weight: 600; }
 
 .models-cockpit:not([open]) .models-cockpit-surface { display: none; }
 
