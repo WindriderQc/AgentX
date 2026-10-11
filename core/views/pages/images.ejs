@@ -15,8 +15,8 @@
       <form id="image-form">
         <label for="image-prompt">Décris l’image à créer <span>· ton brief</span></label>
         <textarea id="image-prompt" required rows="7" aria-describedby="image-brief-counter image-brief-help" placeholder="Décris le sujet, l’ambiance et les détails qui comptent. Pour une retouche, précise ce qui change et ce qui doit rester."></textarea>
-        <p id="image-brief-counter" class="image-help" role="status" aria-live="polite">Brief conservé : 0 / 32 000 caractères · rendu avec contraintes : 0 / 8 000.</p>
-        <p id="image-brief-help" class="image-help">Colle ton prompt en entier ou décris ton idée ici. Le brief de travail accepte 32 000 caractères ; le rendu final accepte 8 000 caractères, contraintes comprises.</p>
+        <p id="image-brief-counter" class="image-help" role="status" aria-live="polite">Brief conservé : 0 / 32 000 caractères · rendu final : 0 / 8 000.</p>
+        <p id="image-brief-help" class="image-help">Colle ton prompt en entier ou décris ton idée ici. Le brief de travail accepte 32 000 caractères. Les 8 000 caractères du rendu final incluent les contraintes et les consignes de texte ajoutées par l’Atelier ; le compteur indique la place disponible pour ta description.</p>
         <div class="brief-assistance">
           <button id="imagex-plan" type="button" class="quiet-button" aria-describedby="imagex-planning-help">Affiner mon brief</button>
           <a href="#imagex" class="studio-guide-link" data-imagex-open>Conseils et questions avec imageX</a>
@@ -53,6 +53,7 @@
           </div>
         </details>
         <%- include('image-brief-constraints') %>
+        <%- include('image-text-policy') %>
         <section id="image-review" class="image-review" aria-labelledby="image-review-title">
           <p class="panel-step">02 · VÉRIFIER ET CRÉER</p><h3 id="image-review-title">Vérifie ce qui sera envoyé</h3>
           <p class="image-help">Le brief ci-dessus, ses contraintes et les références ci-dessous seront utilisés pour le rendu. Si tout est prêt, crée directement.</p>

@@ -25,15 +25,17 @@ globalThis.AgentXImageConstraints = { mount({ getContext, onChange = () => {} })
     const briefCounter = $('image-brief-counter'), format = value => new Intl.NumberFormat('fr-CA').format(value);
     try {
       const prompt = context.prompt || '', value = getValue(), suffix = contract.block(value);
-      const length = contract.visual(prompt, value).length + (suffix ? suffix.length + 2 : 0);
+      const render = context.textPolicy ? globalThis.ImageTextPolicy.inspect(prompt, value, context.textPolicy) : null;
+      const length = render ? render.renderUnits : contract.visual(prompt, value).length + (suffix ? suffix.length + 2 : 0);
       if (briefCounter) {
-        briefCounter.textContent = `Brief conservé : ${format(prompt.length)} / ${format(contract.MAX_BRIEF)} caractères · rendu avec contraintes : ${format(length)} / ${format(contract.MAX_PROMPT)}.`;
-        briefCounter.dataset.invalid = String(prompt.length > contract.MAX_PROMPT || length > contract.MAX_PROMPT);
-        if (prompt.length > contract.MAX_BRIEF || length > contract.MAX_BRIEF) briefCounter.textContent += ' Réduis le brief avant de consulter Hermes ; tout le texte collé reste conservé.';
+        briefCounter.textContent = `Brief conservé : ${format(prompt.length)} / ${format(contract.MAX_BRIEF)} caractères · ${render?.needsPlan ? 'rendu final : méthode et textes à préparer.' : `rendu final : ${format(length)} / ${format(contract.MAX_PROMPT)}.`}`;
+        if (render && !render.needsPlan) briefCounter.textContent += ` Consignes ajoutées : ${format(render.overheadUnits)} ; description disponible : ${format(render.maxVisualUnits)} caractères.`;
+        briefCounter.dataset.invalid = String(render?.needsPlan || prompt.length > contract.MAX_PROMPT || length > contract.MAX_PROMPT);
+        if (prompt.length > contract.MAX_BRIEF || (!context.textPolicy && length > contract.MAX_BRIEF)) briefCounter.textContent += ' Réduis le brief avant de consulter Hermes ; tout le texte collé reste conservé.';
         else if (prompt.length > contract.MAX_PROMPT || length > contract.MAX_PROMPT) briefCounter.textContent += ' Création indisponible : le texte saisi ou le brief avec contraintes dépasse 8 000 caractères. Utilise « Affiner mon brief » avec Hermes, ou réduis le texte.';
       }
       if (prompt.length > contract.MAX_PROMPT) throw new Error('Le brief saisi dépasse 8 000 caractères. Utilise « Affiner mon brief » avec Hermes, ou réduis le texte.');
-      const composed = contract.compose(prompt, value);
+      const composed = context.textPolicy ? globalThis.ImageTextPolicy.compose(prompt, value, context.textPolicy) : contract.compose(prompt, value);
       $('image-constraints-counter').textContent = `${items.length} contrainte(s) · brief transmis : ${composed.length} / ${contract.MAX_PROMPT} caractères`;
       $('image-constraints-counter').dataset.invalid = 'false';
     } catch (error) {

@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 from studio import describe, resource, communicate_events
+from text_policy import planning_instruction, budget_instruction
 
 MAX_BRIEF = 32000
 MAX_PROMPT = 8000
@@ -75,9 +76,17 @@ def query(payload, serialized=None):
     if utf16_length(visual + ('\n\n' + suffix if suffix else '')) > MAX_BRIEF:
         raise ValueError('Brief and explicit constraints exceed 32000 UTF-16 units')
     visual_budget = MAX_PROMPT - (utf16_length(suffix) + 2 if suffix else 0)
+    text_instruction = planning_instruction(request['textPolicy'], request.get('constraints')) if 'textPolicy' in request else ''
+    if text_instruction:
+        label_units = sum(utf16_length(item['text']) + utf16_length(item['placement']) + 40
+                          for item in request['textPolicy']['labels'])
+        visual_budget = max(128, visual_budget - max(1800, label_units + 600))
+    budget_text = ''
+    if action == 'plan' and 'renderBudget' in request:
+        budget_text, visual_budget = budget_instruction(request['renderBudget'])
     instruction = (
         'Prepare an image-generation plan. Return ONLY a JSON object with prompt, profile, width, height, '
-        'and reason. Choose a profile from the supplied current status ONLY when the request has no profile. Respect every explicit profile '
+        'and reason, plus textPlan only when the text preparation instructions below require it. Choose a profile from the supplied current status ONLY when the request has no profile. Respect every explicit profile '
         'and dimension in the request, multiples of 32 and the profile pixel budget. Use 1024x1024 '
         'when no format is specified and it fits. Improve the brief without changing its subject or intent. '
         'For editing, retain the order of image 1 and image 2. Do not execute generation: the caller '
@@ -91,6 +100,12 @@ def query(payload, serialized=None):
         'to distinguish installed capabilities from suggestions. Do not create images, change the '
         'host, install dependencies, or claim to have inspected anything absent from the supplied evidence.'
     )
+    instruction += text_instruction
+    instruction += budget_text
+    if text_instruction:
+        instruction += (' The budget also includes Core text instructions. For two-pass, Core retains exact '
+                        'texts as saved metadata and editable layers, and removes exact-text entries from the '
+                        'rendering suffix. Do not include lettering instructions or a Core suffix in prompt.')
     if action == 'plan':
         fixed = {key: request[key] for key in ('profile', 'width', 'height') if key in request}
         if fixed:

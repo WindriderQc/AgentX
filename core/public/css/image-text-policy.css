@@ -1,0 +1,11 @@
+.image-text-policy { margin: 1rem 0; padding: 1rem 0; border-block: 1px solid var(--border-color, #334155); }
+.image-text-policy .image-text-toggle { display: flex; align-items: center; gap: .7rem; font-weight: 600; }
+.image-text-policy .image-text-toggle input { width: auto; margin: 0; }
+.image-text-policy-labels { list-style: none; padding: 0; display: grid; gap: .8rem; }
+.image-text-policy-labels li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: .7rem; }
+.image-text-policy-labels label { display: grid; gap: .3rem; min-width: 0; }
+.image-text-policy-labels textarea { width: 100%; min-height: 4rem; resize: vertical; }
+.image-text-policy-actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+.image-text-plan { margin: .8rem 0; }
+.image-text-plan li { overflow-wrap: anywhere; white-space: pre-wrap; }
+@media (max-width: 600px) { .image-text-policy-labels li { grid-template-columns: 1fr; } .image-text-policy .image-text-toggle { min-height: 44px; } }

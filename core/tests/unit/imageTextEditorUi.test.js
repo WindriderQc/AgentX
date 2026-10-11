@@ -70,6 +70,22 @@ test('prepare loads only the canonical archived operation path and verifies befo
   expect(b.field('canvas').width).toBe(400); expect(b.field('canvas').height).toBe(200);
 });
 
+test('two-pass labels preload exact spelling and expose provisional placement without an API write', async () => {
+  const b = browser();
+  const labels = [{ id: 't'.repeat(160), text: 'École & façade 💡', placement: 'cartouche central' }];
+  b.setContext({ operation: operation(), locked: false, details: { request: { textPolicy: { version: 1, enabled: true, strategy: 'two-pass', labels } } } });
+  expect(b.field('planned').hidden).toBe(false);
+  await b.field('planned').trigger('click');
+  expect(b.field('content').value).toBe(labels[0].text);
+  expect(b.field('placement-hint').textContent).toContain('provisoire');
+  expect(b.field('status').textContent).toContain('Modifications');
+  await b.field('json').trigger('click');
+  const exported = b.engine.stringify.mock.calls[0][0];
+  expect(exported.labels[0]).toMatchObject({ id: 'planned-0', text: labels[0].text });
+  expect(b.fetch).toHaveBeenCalledTimes(1);
+  expect(b.fetch.mock.calls[0][1].method).toBeUndefined();
+});
+
 test('incomplete, locked and malformed operation identities never fetch an original', async () => {
   const b = browser({ ...operation(), runtimeRestored: false });
   await b.prepare(); expect(b.fetch).not.toHaveBeenCalled(); expect(b.field('prepare').disabled).toBe(true);

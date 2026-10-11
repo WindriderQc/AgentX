@@ -7,6 +7,7 @@ fs.mkdirSync(reportDir, { recursive: true });
 const req = createRequire(core + '/package.json'), express = req('express'), helmet = req('helmet'), { PNG } = req('pngjs');
 const { chromium } = require('playwright');
 const contract = req('./public/js/image-brief-constraints');
+const textContract = req('./public/js/image-text-policy');
 const parentId = '11111111-1111-4111-8111-111111111111', createdId = '22222222-2222-4222-8222-222222222222';
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const longText = length => { const tail = '\nFIN DU BRIEF COMPLET — SENTINELLE'; return 'Une maison lumineuse, un hibou au centre, trois ateliers distincts.\n'.repeat(Math.ceil(length / 60)).slice(0, length - tail.length) + tail; };
@@ -17,6 +18,8 @@ const sourcePaths = ['core/src/app.js', 'core/routes/local-images.js', 'core/rou
   'core/src/services/images/expertService.js', 'core/views/pages/images.ejs', 'core/views/pages/image-expert.ejs',
   'core/views/pages/image-brief-proposal.ejs', 'core/views/pages/image-text-editor.ejs', 'core/views/pages/image-compare.ejs',
   'core/public/js/image-text-editor.js', 'core/public/js/image-compare.js',
+  'core/public/js/image-text-policy.js', 'core/public/js/image-text-policy-ui.js',
+  'core/public/css/image-text-policy.css', 'core/views/pages/image-text-policy.ejs',
   'core/public/css/local-images.css', 'core/public/css/image-expert.css'];
 const before = sourcePaths.map(file => ({ file, sha256: hash(fs.readFileSync(path.join(tree, file))) }));
 const productionImgSrc = vm.runInNewContext('[' + /imgSrc:\s*\[([\s\S]*?)\]/.exec(fs.readFileSync(core + '/src/app.js', 'utf8'))[1] + ']');
@@ -40,17 +43,22 @@ const bridge = { configured: () => available, async invoke(envelope) {
   if (envelope.action === 'consult') return { ok: true, expert: 'hermes', text: 'Conseil synthétique, sans modèle.', model: 'fixture-hermes' };
   assert.equal(envelope.action, 'plan');
   if (failNextPlan) { failNextPlan = false; throw new Error('Image expert changed the requested width'); }
+  const policy = envelope.request.textPolicy;
+  const textPlan = policy?.enabled ? { version: 1, strategy: policy.strategy === 'auto' ? 'two-pass' : policy.strategy,
+    reason: 'Synthetic recommendation: preserve exact lettering in reviewed layers.', labels: textContract.known(policy, envelope.request.constraints) } : undefined;
   return { ok: true, expert: 'hermes', text: 'Proposition synthétique.', model: 'fixture-hermes', proposal: {
-    prompt: condensed, profile: envelope.request.profile, width: envelope.request.width, height: envelope.request.height, reason: 'Description condensée ; les contraintes sont conservées.' } };
+    prompt: condensed, profile: envelope.request.profile, width: envelope.request.width, height: envelope.request.height, reason: 'Description condensée ; les contraintes sont conservées.', ...(textPlan && { textPlan }) } };
 } };
 const fixturePng = new PNG({ width: 1024, height: 1024 }); fixturePng.data.fill(180); const imageBytes = PNG.sync.write(fixturePng), imageSha = hash(imageBytes);
 const operation = id => ({ id, state: 'completed', runtimeRestored: true, profile: 'quality', label: 'Synthetic recipe',
-  createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', artifact: { width: 1024, height: 1024, sha256: imageSha, url: `/api/images/operations/${id}/image` } });
+  createdAt: '2026-01-01T00:00:00Z', updatedAt: id === createdId ? new Date(Date.UTC(2026, 0, 1) + generation.length).toISOString() : '2026-01-01T00:00:00Z', artifact: { width: 1024, height: 1024, sha256: imageSha, url: `/api/images/operations/${id}/image` } });
 const imageService = { status: () => ({ configured: true, defaultProfile: 'quality', profiles: [{ id: 'quality', label: 'Synthetic recipe', maxPixels: 4194304 }] }),
   list: async () => [operation(parentId)], get: async id => operation(id), image: async () => ({ bytes: imageBytes, mimeType: 'image/png' }),
-  async accept(body) { contract.compose(body.prompt, body.constraints); generation.push(copy(body)); return operation(createdId); } };
+  draft: async () => ({ ...copy(generation.at(-1)), visualPrompt: generation.at(-1)?.prompt }),
+  async accept(body) { textContract.compose(body.prompt, body.constraints, body.textPolicy); generation.push(copy(body)); return operation(createdId); } };
 const workshop = { overview: async () => ({ worker: null, profiles: [{ id: 'quality', family: 'qwen21', label: 'Synthetic recipe', steps: 25, maxPixels: 4194304 }] }),
   details: async id => ({ id, recipe: { id: 'quality', label: 'Synthetic recipe', family: 'qwen21', steps: 25 }, request: { prompt: 'Synthetic archived image', seed: 42, width: 1024, height: 1024 },
+    ...(id === createdId && { request: { ...copy(generation.at(-1)), prompt: textContract.compose(generation.at(-1).prompt, generation.at(-1).constraints, generation.at(-1).textPolicy) } }),
     ...(id === createdId && generation.at(-1)?.parent && { lineage: { version: 1, parent: { ...generation.at(-1).parent, width: 1024, height: 1024 } } }), actualDimensions: { width: 1024, height: 1024 }, runtimeRestored: true }) };
 const expertService = req('./src/services/images/expertService').createService({ conversations, bridge, workshop, imageService });
 async function paste(page, id, text) {
@@ -112,6 +120,7 @@ async function open(page, id) { const selector = ['seed-settings', 'brief-plan-i
     assert.equal(await page.locator('#image-create').isDisabled(), true); await enabled(page, 'imagex-plan');
     await page.locator('#image-form').evaluate(form => form.requestSubmit()); assert.equal(generation.length, renderBefore);
     await paste(page, 'image-prompt', original);
+    await page.locator('#image-text-enabled').check(); await page.locator('#image-text-strategy').selectOption('single-pass');
     await open(page, 'image-constraints'); await page.locator('#image-constraint-text').fill('ÉCOSYSTÈME AGENTX'); await page.locator('#image-constraint-add').click();
     await page.locator('#image-constraints > summary').click();
     assert.equal(await page.locator('#image-brief-counter').isVisible(), true);
@@ -202,7 +211,8 @@ async function open(page, id) { const selector = ['seed-settings', 'brief-plan-i
     assert.equal(await page.locator('#imagex-proposal-panel').evaluate(el => el.open), false);
     assert.equal(await page.locator('#image-prompt').inputValue(), condensed);
     await open(page, 'image-render-preview');
-    assert.equal(await page.locator('#image-render-prompt').textContent(), contract.compose(condensed, planPost.body.context.constraints));
+    const approvedPolicy = { ...planPost.body.context.textPolicy, labels: textContract.known(planPost.body.context.textPolicy, planPost.body.context.constraints) };
+    assert.equal(await page.locator('#image-render-prompt').textContent(), textContract.compose(condensed, planPost.body.context.constraints, approvedPolicy));
     assert.equal(await page.locator('#image-seed').inputValue(), '73');
     assert.equal(generation.length, renderBefore);
     await page.locator('#image-create').click();
@@ -226,6 +236,53 @@ async function open(page, id) { const selector = ['seed-settings', 'brief-plan-i
     await page.screenshot({ path: path.join(reportDir, `result-${device}.png`), fullPage: true });
     checks.push(`${device}: apply and create are distinct; stale contexts and oversized proposals refuse; parent, seed and constraints survive; result tools load verified archives without another render.`);
 
+    await page.locator('#image-new').click(); await page.locator('#image-prompt').fill('A mechanical infrastructure diagram with blank plaques.');
+    assert.equal(await page.locator('#image-text-enabled').isChecked(), false);
+    assert.match(await page.locator('#image-render-prompt').textContent(), /Aucun texte/);
+    await page.locator('#image-prompt').fill('v'.repeat(7987));
+    assert.equal(await page.locator('#image-create').isDisabled(), true);
+    const completePrompt = await page.locator('#image-render-prompt').textContent();
+    assert.equal(completePrompt.startsWith('v'.repeat(7987)), true);
+    assert.equal(completePrompt.length > 8000, true);
+    assert.match(await page.locator('#image-brief-counter').textContent(), /rendu final : 8\s?\d{3}/);
+    assert.match(await page.locator('#image-brief-counter').textContent(), /Consignes ajoutées.*description disponible/);
+    assert.match(await page.locator('#image-create-help').textContent(), /dont.*consignes/);
+    const beforeOverflow = generation.length;
+    await page.locator('#image-form').evaluate(form => form.requestSubmit());
+    assert.equal(generation.length, beforeOverflow);
+    await page.locator('#image-prompt').fill('A mechanical infrastructure diagram with blank plaques.');
+    await page.locator('#image-text-enabled').check();
+    assert.equal(await page.locator('#image-create').isDisabled(), true);
+    await page.locator('#image-text-policy-add').click();
+    await page.locator('#image-text-policy-labels textarea').nth(0).fill('École & façade 💡');
+    await page.locator('#image-text-policy-labels textarea').nth(1).fill('cartouche central');
+    await page.locator('#image-text-policy-advice').click(); await enabled(page, 'imagex-apply');
+    assert.match(await page.locator('#imagex-proposal-text-plan').textContent(), /Deux passes/);
+    await page.locator('#image-text-strategy').selectOption('single-pass'); assert.equal(await page.locator('#imagex-apply').isDisabled(), true);
+    await page.locator('#image-text-strategy').selectOption('auto'); await enabled(page, 'imagex-apply');
+    await page.locator('#imagex-apply').click(); await enabled(page, 'image-create');
+    assert.equal(await page.locator('#image-text-strategy').inputValue(), 'two-pass');
+    assert.equal((await page.locator('#image-render-prompt').textContent()).includes('École & façade 💡'), false);
+    await page.locator('#image-create').click(); await page.locator('#image-text-planned').waitFor({ state: 'visible' });
+    const twoPassCount = generation.length;
+    await open(page, 'image-text-editor');
+    page.once('dialog', dialog => dialog.accept()); await page.locator('#image-text-planned').click();
+    await page.waitForFunction(() => document.getElementById('image-text-content').value === 'École & façade 💡');
+    assert.match(await page.locator('#image-text-placement-hint').textContent(), /provisoire/);
+    const plannedDownload = page.waitForEvent('download'); await page.locator('#image-text-json').click();
+    const plannedFile = await plannedDownload;
+    const project = JSON.parse(fs.readFileSync(await plannedFile.path(), 'utf8'));
+    assert.equal(project.labels[0].text, 'École & façade 💡');
+    assert.equal(generation.length, twoPassCount);
+    await page.locator('#image-reuse-brief').click();
+    await page.waitForFunction(() => document.getElementById('image-draft-source').hidden === false);
+    assert.equal(await page.locator('#image-text-strategy').inputValue(), 'two-pass');
+    assert.equal(await page.locator('#image-text-policy-labels textarea').first().inputValue(), 'École & façade 💡');
+    await page.locator('#image-text-policy').screenshot({ path: path.join(reportDir, `lettering-controls-${device}.png`) });
+    await page.locator('#image-text-editor').screenshot({ path: path.join(reportDir, `lettering-layers-${device}.png`) });
+    await page.screenshot({ path: path.join(reportDir, `two-pass-${device}.png`), fullPage: true });
+    checks.push(`${device}: unchecked is text-free, automatic requires a proposal, changed strategy invalidates it, two-pass saves exact spelling, prefills verified layers, exports JSON and restores its draft without a second generation.`);
+
     await page.locator('[data-imagex-open]').click();
     await paste(page, 'imagex-message', bigMessage); await enabled(page, 'imagex-send'); await page.locator('#imagex-send').click();
     await page.waitForFunction(() => document.getElementById('imagex-message').value === '');
@@ -237,7 +294,7 @@ async function open(page, id) { const selector = ['seed-settings', 'brief-plan-i
     await page.locator('#imagex-tab-files').press('ArrowLeft');
     assert.equal(await page.locator('#imagex-tab-activity').getAttribute('aria-selected'), 'true');
     assert.equal(await page.locator('#imagex-events li').count() > 0, true);
-    assert.equal(generation.length, renderBefore + 1);
+    assert.equal(generation.length, twoPassCount);
     checks.push(`${device}: secondary advice, full 32000-character messages, console, keyboard tabs and profile files remain accessible.`);
     await page.locator('#image-new').click();
     assert.equal(await page.locator('#image-prompt').inputValue(), '');
@@ -245,7 +302,7 @@ async function open(page, id) { const selector = ['seed-settings', 'brief-plan-i
     await page.locator('#imagex-tab-proposal').click();
     assert.equal(await page.locator('#imagex-proposal-prompt').inputValue(), condensed);
     assert.equal(await page.locator('#imagex-apply').isDisabled(), true, 'A new brief cannot apply the previous proposal');
-    assert.equal(generation.length, renderBefore + 1);
+    assert.equal(generation.length, twoPassCount);
 
     // Use a fresh browser storage scope for unavailable Hermes and manual creation.
     available = false;

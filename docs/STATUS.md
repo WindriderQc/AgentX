@@ -139,6 +139,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   A browser editor adds exact, editable text over verified originals, with PNG,
   standalone SVG and portable JSON exports. Reopening a project checks its
   embedded image and preserves the archived source; editing starts no GPU work.
+  A **Textes dans l’image** checkbox controls no-text instructions, single-pass
+  lettering or a text-free render followed by prefilled editable layers. Hermes
+  recommends a method and placements in a reviewed proposal; Core preserves
+  supplied exact labels. Placement is checked manually on the rendered image.
   Explicit brief constraints survive Hermes rewriting and remain in accepted
   requests, drafts and recipe exports. A browser composition sketch joins as an
   ordinary reference. Verified parent/result comparison includes a manual,

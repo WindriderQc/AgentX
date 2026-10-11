@@ -17,6 +17,28 @@ const wait = async (service, sessionId) => {
 };
 beforeEach(async () => { await Conversation.deleteMany({}); imageService.accept.mockClear(); });
 
+test('lettering plans persist, preserve exact labels, restore and reject conflicting retries', async () => {
+  const label = { id: 'title', text: 'École & façade 💡', placement: 'cartouche central' };
+  const textPolicy = { version: 1, enabled: true, strategy: 'auto', labels: [label] };
+  const textPlan = { version: 1, strategy: 'two-pass', reason: 'Orthographe précise avec des calques.', labels: [label] };
+  const bridge = { configured: () => true, invoke: jest.fn(async () => ({ proposal: { ...proposal, textPlan }, text: textPlan.reason })) };
+  const service = createService({ bridge, workshop, imageService }), session = await service.createSession();
+  const input = { clientTurnId: randomUUID(), mode: 'plan', message: 'Prépare les textes', context: { ...context, textPolicy } };
+  await service.accept(session.sessionId, input);
+  const [turn] = await wait(service, session.sessionId);
+  expect(turn).toMatchObject({ state: 'completed', context: { textPolicy }, proposal: { textPlan, textPolicy: { strategy: 'two-pass', labels: [label] } } });
+  expect(turn.proposal.prompt).not.toContain(label.text);
+  expect(bridge.invoke.mock.calls[0][0].request.textPolicy).toEqual(textPolicy);
+  expect(bridge.invoke.mock.calls[0][0].request.renderBudget).toEqual(require('../../public/js/image-text-policy').planningBudget(undefined, textPolicy));
+  expect((await createService({ bridge, workshop, imageService }).turns(session.sessionId))[0].proposal).toEqual(turn.proposal);
+  await service.accept(session.sessionId, input); expect(bridge.invoke).toHaveBeenCalledTimes(1);
+  await expect(service.accept(session.sessionId, { ...input, context: { ...input.context, textPolicy: { ...textPolicy, strategy: 'single-pass' } } })).rejects.toMatchObject({ statusCode: 409 });
+  bridge.invoke.mockImplementationOnce(async () => ({ proposal: { ...proposal, textPlan: { ...textPlan, labels: [{ ...label, text: 'Misspelled' }] } }, text: 'Changed' }));
+  await service.accept(session.sessionId, { ...input, clientTurnId: randomUUID() });
+  expect((await wait(service, session.sessionId))[1]).toMatchObject({ state: 'failed', error: expect.stringContaining('modifié ou omis') });
+  expect(imageService.accept).not.toHaveBeenCalled();
+});
+
 test('Hermes proposal and events are canonical, replayable, scoped and advisory', async () => {
   const bridge = { configured: () => true, invoke: jest.fn(async (input, options) => {
     expect(JSON.stringify(input)).not.toContain('private-host');
