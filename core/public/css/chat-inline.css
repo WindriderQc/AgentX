@@ -404,9 +404,18 @@
   pointer-events: none;
 }
 
-.bubble:hover .message-actions {
+.bubble:hover .message-actions,
+.bubble:focus-within .message-actions {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* Touch screens have no hover: keep Copy, Edit and Retry reachable. */
+@media (hover: none) {
+  .message-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .msg-action-btn {
