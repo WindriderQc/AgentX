@@ -164,6 +164,9 @@
 .models-table .model-icon.custom { color: #fb923c; }
 
 .model-primary-name { font-weight: 600; color: #fff; font-size: 13px; line-height: 1.3; display: flex; align-items: center; gap: 6px; }
+.model-open-detail { all: unset; cursor: pointer; border-radius: 4px; }
+.model-open-detail:hover { text-decoration: underline; }
+.model-open-detail:focus-visible { outline: 2px solid var(--accent, #7cf0ff); outline-offset: 2px; }
 .model-vendor { font-size: 11px; color: var(--muted); margin-top: 1px; }
 
 /* Live status dot */
@@ -954,7 +957,9 @@
 .close-modal {
     width: 30px; height: 30px; border-radius: 8px;
     background: rgba(255,255,255,0.05); border: none;
-    color: var(--muted); font-size: 16px; cursor: pointer; transition: all 0.2s;
+    color: var(--muted); font-size: 16px; cursor: pointer;
+    /* Not "all": animating visibility kept the button unfocusable as its dialog opened. */
+    transition: background 0.2s, color 0.2s;
 }
 .close-modal:hover { background: rgba(255,255,255,0.1); color: var(--text); }
 

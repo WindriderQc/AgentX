@@ -541,6 +541,11 @@ class UnifiedModels {
                 this.openDetailDrawer(model);
             });
 
+            tr.querySelector('.model-open-detail')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.openDetailDrawer(model);
+            });
+
             // Compare
             tr.querySelector('.action-compare')?.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -657,7 +662,7 @@ class UnifiedModels {
                 <div class="model-name">
                     <div class="model-icon ${source}">${this.getIconForSource(source)}</div>
                     <div>
-                        <div class="model-primary-name">${statusDot}${escapeHtml(model.name)}</div>
+                        <div class="model-primary-name">${statusDot}<button type="button" class="model-open-detail" title="Show details for ${escapeHtml(model.name)}">${escapeHtml(model.name)}</button></div>
                         ${model.vendor ? `<div class="model-vendor">${escapeHtml(model.vendor)}</div>` : ''}
                     </div>
                 </div>
@@ -734,15 +739,22 @@ class UnifiedModels {
         body.querySelectorAll('.detail-action-config').forEach(button => button.addEventListener('click', () => {
             if (window.modelExecutionConfig) window.modelExecutionConfig.open(model.name);
         }));
+        this.detailReturnFocus = document.activeElement;
         drawer.classList.add('open');
         backdrop?.classList.add('open');
         document.body.style.overflow = 'hidden';
+        requestAnimationFrame(() => document.getElementById('closeDetailDrawer')?.focus());
     }
 
     closeDetailDrawer() {
-        document.getElementById('modelDetailDrawer')?.classList.remove('open');
+        const drawer = document.getElementById('modelDetailDrawer');
+        if (!drawer?.classList.contains('open')) return;
+        drawer.classList.remove('open');
         document.getElementById('detailDrawerBackdrop')?.classList.remove('open');
         document.body.style.overflow = '';
+        // Return focus to the control that opened the drawer.
+        if (this.detailReturnFocus?.isConnected) this.detailReturnFocus.focus();
+        this.detailReturnFocus = null;
     }
 
     buildDetailContent(m) {
