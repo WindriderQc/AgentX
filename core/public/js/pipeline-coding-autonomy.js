@@ -16,7 +16,11 @@
       return payload.data;
     } finally { clearTimeout(timeout); }
   }
-  function remaining(seconds) { return seconds > 0 && seconds < 60 ? `${seconds} sec` : `${Math.floor(seconds / 60)} min`; }
+  function remaining(seconds) {
+    if (seconds < 60) return seconds > 0 ? `${seconds} sec` : '0 min';
+    const minutes = Math.floor(seconds / 60); const extra = seconds - minutes * 60;
+    return extra ? `${minutes} min ${extra} sec` : `${minutes} min`;
+  }
   function confirmed() {
     if (!$('codingAutonomyConfirm').checked) throw new Error('Confirm the reviewed task scope and campaign first.');
   }
