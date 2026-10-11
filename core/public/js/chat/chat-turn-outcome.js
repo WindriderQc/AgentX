@@ -84,7 +84,8 @@ function offerNewChat(ctx) {
     helpers.clearChat();
     helpers.setFeedback('', 'muted');
   });
-  elements.feedback.appendChild(button);
+  // The notice beside the composer is visible; the drawer's line is not.
+  (globalThis.document?.getElementById?.('chatNotice') || elements.feedback).appendChild(button);
 }
 
 // Records a failed turn in history and reports the result in one message.

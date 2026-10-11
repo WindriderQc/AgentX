@@ -76,11 +76,11 @@ describe('Playground failure recovery', () => {
   });
 
   describe('failed turn for a conversation that no longer exists', () => {
-    function loadOutcomeHelpers(fetchImpl) {
+    function loadOutcomeHelpers(fetchImpl, notice = null) {
       const context = {
         fetch: jest.fn(fetchImpl),
         console: { error: jest.fn() },
-        globalThis: {},
+        globalThis: notice ? { document: { getElementById: (id) => (id === 'chatNotice' ? notice : null) } } : {},
         document: {
           createElement: () => {
             const listeners = {};
@@ -136,6 +136,17 @@ describe('Playground failure recovery', () => {
       expect(button.textContent).toBe('Start a new chat');
       button.click();
       expect(ctx.helpers.clearChat).toHaveBeenCalledTimes(1);
+    });
+
+    test('puts the new-chat action in the visible notice when the page has one', async () => {
+      const notice = { children: [], appendChild(child) { this.children.push(child); } };
+      const outcome = loadOutcomeHelpers(async () => { throw new Error('must not be called'); }, notice);
+      const ctx = makeCtx();
+
+      await outcome.recordFailedTurn(ctx, gone, { clientTurnId: 't-1', userMessage: 'Hi' });
+
+      expect(notice.children.map((child) => child.textContent)).toEqual(['Start a new chat']);
+      expect(ctx.elements.feedback.children).toHaveLength(0);
     });
 
     test('does not offer a retry that the server would refuse again', () => {

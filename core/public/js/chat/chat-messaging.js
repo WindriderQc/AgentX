@@ -461,7 +461,7 @@ export async function sendMessage(ctx, turnAction = null) {
   const { elements, state, defaults, helpers } = ctx;
   if (state.sending) return;
   if (state.warming) {
-    helpers.setFeedback('Model is still loading, please wait…', 'muted');
+    helpers.setFeedback('Model is still loading, please wait…', 'warning');
     return;
   }
 

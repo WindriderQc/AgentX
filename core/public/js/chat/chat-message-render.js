@@ -167,6 +167,14 @@ export function setStatus(elements, text, tone = 'muted') {
 export function setFeedback(elements, text, tone = 'muted') {
   elements.feedback.textContent = text;
   elements.feedback.style.color = tone === 'success' ? '#9ff6ff' : tone === 'error' ? '#ffb3b8' : tone === 'warning' ? '#ffd166' : 'var(--muted)';
+  // #feedback sits in the controls drawer, which is closed by default.
+  // Anything the user must act on also shows beside the composer.
+  const notice = document.getElementById('chatNotice');
+  if (!notice) return;
+  const show = Boolean(text) && ['error', 'warning', 'info'].includes(tone);
+  notice.textContent = show ? text : '';
+  notice.dataset.tone = tone;
+  notice.hidden = !show;
 }
 
 export function handleSendButtonAction({ elements, state, helpers }) {
