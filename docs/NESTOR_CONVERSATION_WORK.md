@@ -39,7 +39,8 @@ Before guardian inference, Core commits an immutable accepted request and a
 canonical human turn with one pending assistant slot. Completion replaces that
 slot once. A stable browser turn ID deduplicates requests; changed content under
 the same ID conflicts. Selected context is committed separately before work can
-be queued. Simple greetings need no worker. Unclassified conversational turns
+be queued. Eligible greetings can also be reviewed; a worker can conclude that no
+additional work is useful. Unclassified conversational turns
 are reviewed after the guardian settles; explicit task reads can run concurrently.
 Stale intake can recover after restart without replaying an uncertain guardian.
 Recovered work explicitly identifies missing selected context.
@@ -121,6 +122,26 @@ Private routes under `/api/voice-personas/private/sessions/:sessionId` provide:
   its exact revision. An admitted native run needs reconciliation by its owner.
 - `POST /work-deliveries/:deliveryId/receipt`: versioned display, claim, scheduled
   playback, completion, interruption and deferral receipts.
+
+The personal conversation shows a permanent six-component flow graph with direct
+conversation and background-review branches, a timer strip, and a collapsible
+cross-turn event chronology. Connectors appear only for exact turn/work receipts.
+Active nodes use labelled indicators and indeterminate motion, never a guessed
+percentage or ETA; reduced-motion settings remove the motion. Failed polling
+marks active Core states stale until a successful snapshot. It reuses ordered work events, the saved turn's
+server phases and the browser's voice offsets. Browser and Core clocks are labelled
+separately; missing events stay unknown. The browser projection includes bounded
+agent/run identities and tool receipt metadata, never selected context or payloads.
+The conversation map lights the review only after an observed dispatch; a received
+request alone remains pending. Its browser `firstAudio` offset marks a playback
+attempt before the player call, so the map labels it as a request to play, not
+proof of sound. The mobile branches and keyboard focus remain connected through
+work revisions. A compact active-stage summary stays beside Pause while the
+person scrolls the conversation; the avatar's show view still presents its board.
+Advice has an ID and version. A later turn records exact advice references and
+which parts of an older review entered its selected context. Inclusion attests
+supplied context, not influence on the answer; application requires its own action
+receipt and is never inferred from timing or a reply.
 
 The guardian’s next selected context includes canonical statuses and received
 results from the same conversation, so it can follow up on the worker’s work.

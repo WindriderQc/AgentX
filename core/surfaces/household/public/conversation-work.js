@@ -4,7 +4,7 @@
   const labels = { received: 'Demande enregistrée', queued: 'Je m’en occupe en arrière-plan', dispatching: 'Prise en charge en cours',
     paused: 'Demande en pause', running: 'Je travaille sur ta demande', uncertain: 'Le reçu est en attente de vérification', failed: 'Le travail n’a pas abouti',
     cancelled: 'Travail arrêté', result_ready: 'Résultat disponible', completed: 'Résultat disponible' };
-  function create({ host, base, api, getConversation, maySpeak = () => true, pollMs = 2000 }) {
+  function create({ host, base, api, getConversation, maySpeak = () => true, onSnapshot = () => {}, onPollError = () => {}, pollMs = 2000 }) {
     const deviceSession = root.crypto.randomUUID(), items = new Map(), cards = new Map(), attempted = new Set(), requested = new Set();
     let sessionId, cursor = 0, sequence = 0, timer, polling = false, presenting = false, disposed = false, generation = 0;
     const url = () => `${base}/${encodeURIComponent(sessionId)}`;
@@ -94,10 +94,11 @@
               void receipt(item, 'displayed').catch(() => {});
             }
           }
+          onSnapshot(sessionId, data);
           cursor = data.cursor; more = data.hasMore;
         } while (more && !disposed);
         await naturalPause();
-      } catch { /* Last canonical projection stays visible during a network outage. */ }
+      } catch { if (currentGeneration === generation) onPollError(sessionId); }
       finally { polling = false; }
     }
     function follow(id) {

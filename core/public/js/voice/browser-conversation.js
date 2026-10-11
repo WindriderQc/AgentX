@@ -570,6 +570,7 @@
       // voice timings gets this turn's timeline from that moment.
       if (this.io.timings && VoiceTimeline) turn.timeline = new VoiceTimeline(this.io.now);
       turn.timeline?.measure('silenceMs', capture.silenceMs); turn.timeline?.measure('audioMs', capture.audioMs);
+      if (!overReply) this.io.transcriptionStarted?.(turn.id);
       const lifetimeSignal = this.abort.signal;
       const excerptId = this.audio.reviewStatus?.().id;
       this.audio.recordTranscription?.(excerptId, 'pending', '', { turnId: turn.id, bytes: blob.size });
@@ -588,6 +589,7 @@
         const stopControl = result?.control === 'stop' || isStopControl(text);
         if (!this.current(epoch)) return;
         transcribed = true; turn.timeline?.mark('sttDone'); turn.timeline?.measure('sttServer', result?.sttMs);
+        if (!overReply) this.io.transcriptionDone?.(turn.id, turn.timeline?.values());
         this.recognitionWarmAt = this.io.now ? this.io.now() : Date.now(); // it just ran
         this.audio.recordTranscription?.(excerptId, stopControl ? 'control' : text.trim() ? 'transcribed' : 'empty', text, typeof result === 'object' && result ? result : {});
         if (isTranscriptHallucination(text)) text = '';
@@ -638,6 +640,7 @@
         // Playback can already be queued while a stream is being cancelled.
         if (turn.interrupted) { turn.speech.abort(); await turn.interruption?.catch(() => {}); }
         lifetimeSignal.removeEventListener('abort', cancel);
+        if (!overReply) this.io.transcriptionEnded?.(turn.id);
         this.reportTimeline(turn); // a turn that ended before any reply audio
       }
     }

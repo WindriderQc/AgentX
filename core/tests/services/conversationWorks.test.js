@@ -60,6 +60,14 @@ test('accepts complete human input before any model and settles the same slot ex
   expect((await conversations.getSession({ sessionId: current.sessionId })).turnCount).toBe(1);
 });
 
+test('a greeting remains eligible for background review after the Gardien settles', async () => {
+  const accepted = await works.intake(input('Bonjour.'));
+  expect(accepted.row).toMatchObject({ classification: 'unclassified', state: 'received' });
+  await works.prepare(accepted.row._id, 'Selected personal context');
+  await works.guardianSettled(accepted.row._id, 'completed');
+  expect(await works.repo.get(accepted.row._id)).toMatchObject({ state: 'queued', guardian: { state: 'completed' } });
+});
+
 test.each([
   ['flag off', { ...env, PERSONAL_CONVERSATION_WORK_MODE: 'off' }, {}, 'voice'],
   ['family', env, { packId: 'kidx_nestor', scopeId: 'family' }, 'voice'],
@@ -281,7 +289,10 @@ test('queued work can be paused/resumed/cancelled by its exact owner revision, w
 });
 
 test('cursor pages cover more than 64 old results without advancing past an omitted work', async () => {
-  for (let i = 0; i < 67; i++) await works.intake(input('Bonjour'));
+  for (let i = 0; i < 67; i++) {
+    const accepted = await works.intake(input('Bonjour'));
+    await works.repo.mutate(accepted.row._id, () => ({ fields: { state: 'completed', guardian: { state: 'completed' } }, event: 'fixture_review_settled' }));
+  }
   const delivery = createWorkDelivery(works), first = await delivery.snapshot(current.sessionId);
   expect(first.items).toHaveLength(64); expect(first.hasMore).toBe(true);
   const second = await delivery.snapshot(current.sessionId, first.cursor);
@@ -575,11 +586,35 @@ test('worker results and pending states feed the guardian’s next selected cont
   for (let i = 0; i < 5; i++) await works.intake(input('Bonjour'));
   const context = await works.guardianContext(current.sessionId);
   expect(context).toContain('Deux tâches sont enregistrées.'); expect(context).toContain(job.row._id);
+  expect(await works.guardianContextWithRefs(current.sessionId)).toMatchObject({ text: context,
+    refs: [{ source: 'work', workId: job.row._id, version: 1, sourceTurnId: job.row.turnId, coverage: ['result'] }] });
   expect(await works.guardianContext(current.sessionId, job.row._id)).toBe('');
   const foreign = await conversations.createSession({ sessionId: randomUUID(), packId: 'personal_operator', scopeId: 'personal', modeId: 'standard', status: 'active' });
   expect(await works.guardianContext(foreign.sessionId)).toBe('');
   const family = await conversations.createSession({ sessionId: randomUUID(), packId: 'kidx_nestor', scopeId: 'family', modeId: 'family', status: 'active' });
   await expect(works.guardianContext(family.sessionId)).rejects.toMatchObject({ statusCode: 404 });
+});
+
+test('the next real voice request records exact included work advice without claiming influence', async () => {
+  const job = await result(), turnId = randomUUID();
+  let submittedContext = '';
+  const executor = require('../../surfaces/household/conversation-executor').createConversationExecutor({
+    env, inference: {}, agentClient: async body => {
+      submittedContext = body.turnContext;
+      return { text: 'Je reste disponible.', sessionKey: `agent:main:household:direct:${current.sessionId}`,
+        metadata: { model: 'synthetic-native' }, tools: { status: 'observed', receipts: [] } };
+    }
+  });
+  const app = await personalHttp(executor);
+  const response = await request(app).post(`/sessions/${current.sessionId}/turns/text`)
+    .send({ text: 'Et ensuite ?', turnId, stream: true, channel: 'voice' });
+  expect(response.status).toBe(200);
+  expect(submittedContext).toContain('Deux tâches sont enregistrées.');
+  const done = response.text.trim().split('\n').map(line => JSON.parse(line)).find(item => item.type === 'done');
+  const expected = { source: 'work', workId: job.row._id, version: 1, sourceTurnId: job.row.turnId, coverage: ['result'] };
+  expect(done.data.adviceRefs).toContainEqual(expected);
+  expect((await conversations.getTurn({ sessionId: current.sessionId, traceId: turnId })).adviceRefs).toContainEqual(expected);
+  expect(done.data).not.toHaveProperty('adviceApplied');
 });
 
 test('flag off preserves immutable accepted mode and deduplication for retained turns', async () => {
