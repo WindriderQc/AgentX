@@ -1,10 +1,11 @@
 'use strict';
+const { requestsReadEffects } = require('./native-specialist-policy');
 
 // Migration selection only. Native permissions still authorize every tool.
 // Effects, personal records and local service checks keep their existing owner.
 function requestsWebRead(text) {
   const input = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  if (/\b(?:envoi\w*|send\w*|draft\w*|redig\w*|modifi\w*|modify|supprim\w*|delet\w*|effac\w*|archiv\w*|creer|create|achete\w*|buy|reserve\w*|book|publie\w*|publish)\b/.test(input)) return false;
+  if (requestsReadEffects(input)) return false;
   if (/\bne\b[^.!?]{0,16}\b(?:cherch\w*|recherch\w*|verifi\w*|consult\w*|lis|lire|ouvre|regarde)\b[^.!?]{0,16}\bpas\b/.test(input)
       || /\b(?:do not|don't)\s+(?:search|look|read|check|fetch)\b/.test(input)) return false;
   const explicit = /\b(?:cherch\w*|recherch\w*|search|verifi\w*|check|consult\w*|lis|lire|read|ouvre|open|regarde|look|fetch)\b/.test(input)

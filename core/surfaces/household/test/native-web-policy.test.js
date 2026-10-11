@@ -11,7 +11,8 @@ test('current public questions and explicitly requested web reads use the native
 
 test('personal records, system checks, effects, declined searches and ordinary conversation retain their own paths', () => {
   for (const text of ['Regarde mes tâches pour aujourd’hui.', 'Est-ce que mon serveur fonctionne aujourd’hui?',
-    'Lis mes courriels récents.', 'Achète ce produit au prix actuel.', 'Ne cherche pas sur le web.',
+    'Lis mes courriels récents.', 'Achète ce produit au prix actuel.', 'Cherche sur le web les horaires et crée une tâche pour demain.',
+    'Search the web then reply to my email.', 'Ne cherche pas sur le web.',
     'Bonjour.', 'Comment jouer au hockey?', 'Raconte une histoire de météo.']) assert.equal(requestsWebRead(text), false, text);
 });
 
