@@ -106,6 +106,16 @@ refused without truncation. Request identity, draft restoration, details and rec
 exports retain the snapshot and visual prompt. This preserves the submitted
 intent; visual compliance still requires examination.
 
+The visible render counter includes both protected constraints and lettering
+instructions, and reports their overhead plus the available description budget.
+The complete rendering preview remains readable when over budget. Core supplies
+Hermes with canonical per-strategy description limits for the current labels;
+new labels or longer placements consume additional space. Gateway and Core
+check the actual returned composition before application, without truncation.
+Re-pasting the exact canonical preview does not duplicate its suffix. No-text
+instructions also discourage captions in margins and writing on papers or
+screens; they do not prove that a model will obey them.
+
 The simulated browser journey uses the production EJS page, browser scripts,
 image/expert HTTP routes and expert service with an in-memory conversation store,
 a synthetic Hermes bridge and synthetic render responses. It exercises clipboard

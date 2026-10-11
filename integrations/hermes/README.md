@@ -26,6 +26,10 @@ never runs the second pass. Atelier adds those labels as editable browser layers
 after a verified text-free image. Disabled text omits `textPlan`; exact-text
 constraints conflict with this choice. Draft context carries the same policy
 through consultations. See [the Atelier contract](../../docs/LOCAL_IMAGES.md).
+Core planning requests include `renderBudget` with the canonical visual-description
+limits for each available lettering strategy. The worker uses these limits instead
+of its fallback reserve. The limits cover the current labels; additions or longer
+placements consume extra space, and the actual returned plan is validated again.
 
 Configure `HERMES_BIN`, `IMAGEX_PROFILE` and `IMAGEX_HOME` in the host wrapper.
 The profile needs `config.yaml` and a `workspace/` directory. Configure `AGENTX_URL`

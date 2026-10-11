@@ -16,7 +16,7 @@
   const duration = ms => { const seconds = Math.round(ms / 1000); return seconds >= 60 ? `${Math.floor(seconds / 60)} min ${seconds % 60} s` : `${seconds} s`; };
   const locked = () => pendingSubmit || ACTIVE.includes(operation?.state) || operation?.state === 'unknown';
   const constraints = globalThis.AgentXImageConstraints?.mount({
-    getContext: () => ({ locked: locked(), prompt: $('image-prompt').value }),
+    getContext: () => ({ locked: locked(), prompt: $('image-prompt').value, textPolicy: textPolicy?.getValue({ draft: true }) }),
     onChange: () => { ++draftEpoch; draftExpert = null; queueMicrotask(controls); }
   });
   const textPolicy = globalThis.AgentXImageTextPolicy?.mount({
@@ -94,9 +94,15 @@
     const block = locked();
     const prompt = $('image-prompt').value, hasBrief = !!prompt.trim();
     let valid = prompt.length <= (globalThis.ImageBriefConstraints?.MAX_PROMPT || 8000) && (!constraints || constraints.isValid({ forPlanning: true })), finalPrompt = '', renderError = '';
-    try { if (hasBrief && valid) finalPrompt = globalThis.ImageTextPolicy.compose(prompt, constraints?.getValue(), textPolicy?.getValue()); }
+    try {
+      if (hasBrief && (!constraints || constraints.isValid({ forPlanning: true }))) {
+        const items = constraints?.getValue(), policy = textPolicy?.getValue();
+        finalPrompt = globalThis.ImageTextPolicy.inspect(prompt, items, policy).prompt || '';
+        globalThis.ImageTextPolicy.compose(prompt, items, policy);
+      }
+    }
     catch (error) { valid = false; renderError = error.message; }
-    $('image-render-preview').hidden = !hasBrief || !valid;
+    $('image-render-preview').hidden = !finalPrompt;
     $('image-render-prompt').textContent = finalPrompt;
     $('image-create').disabled = block || !config?.configured || !hasBrief || referenceCount() > 2 || !valid;
     $('image-create-help').textContent = block ? 'Attends la fin de la demande en cours avant de lancer une autre image.'

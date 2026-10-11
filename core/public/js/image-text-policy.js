@@ -70,27 +70,59 @@
     var policy = validate(requested), plan = validatePlan(value, policy, protectedItems);
     return plan ? { version: 1, enabled: true, strategy: plan.strategy, labels: plan.labels } : policy;
   }
-  function block(value, protectedItems) {
-    var policy = validate(value);
-    if (!policy) return '';
-    var items = known(policy, protectedItems), lines;
-    if (!policy.enabled) lines = ['Aucun texte dans l’image : aucune lettre, aucun chiffre, aucune étiquette, aucun logo contenant du texte. Utiliser des objets et pictogrammes pour expliquer la scène.'];
+  function letteringBlock(policy, items) {
+    var lines;
+    if (!policy.enabled) lines = ['Aucun texte dans l’image : aucune lettre, aucun chiffre, aucune étiquette, aucun logo contenant du texte. Utiliser des objets et pictogrammes pour expliquer la scène.', 'Les marges restent sans légendes ni traits d’annotation. Les papiers, panneaux et écrans sont unis ou portent des pictogrammes sans écriture.'];
     else {
-      if (policy.strategy === 'auto') fail('Demande conseil à Hermes ou choisis une ou deux passes avant de créer.');
-      if (!items.length) fail('Indique les textes exacts, ou demande à Hermes de les proposer.');
       if (policy.strategy === 'single-pass') lines = ['Écrire uniquement les textes exacts suivants, sans les reformuler. Leur orthographe et leur placement devront être vérifiés après génération.'].concat(items.map(function (item) { return '- ' + JSON.stringify(item.text) + (item.placement ? ' · ' + item.placement : ''); }));
-      else lines = ['Première passe : illustration sans aucun texte, lettre ou chiffre. Les libellés seront ajoutés ensuite en calques typographiques.', 'Réserver des surfaces vides, sobres, contrastées et assez larges pour les libellés. Préférer des cartouches horizontaux vus de face, près des zones concernées, sans masquer les objets.'].concat(items.map(function (item, index) { return '- Surface vierge ' + (index + 1) + ' : ' + (item.placement || 'près de la zone correspondante décrite dans le brief') + '.'; }));
+      else lines = ['Première passe : illustration sans aucun texte, lettre ou chiffre. Les libellés seront ajoutés ensuite en calques typographiques.', 'Réserver des surfaces vides, sobres, contrastées et assez larges pour les libellés. Préférer des cartouches horizontaux vus de face, près des zones concernées, sans masquer les objets.', 'Les marges restent sans légendes ni traits d’annotation. Les panneaux, papiers et écrans restent vierges ou pictographiques.'].concat(items.map(function (item, index) { return '- Surface vierge ' + (index + 1) + ' : ' + (item.placement || 'près de la zone correspondante décrite dans le brief') + '.'; }));
     }
     return 'GESTION DES TEXTES DANS L’IMAGE\n' + lines.join('\n') + '\nFIN DE LA GESTION DES TEXTES';
   }
-  function compose(prompt, protectedItems, value) {
+  function block(value, protectedItems) {
     var policy = validate(value);
-    if (!policy) return constraints.compose(prompt, protectedItems);
-    var items = constraints.validate(protectedItems), visual = constraints.visual(prompt, items);
-    var active = policy.enabled && policy.strategy === 'two-pass' && items ? { version: 1, items: items.items.filter(function (item) { return item.kind !== 'exact-text'; }) } : items;
-    var suffix = block(policy, items), composed = constraints.compose(visual, active) + '\n\n' + suffix;
-    if (composed.length > constraints.MAX_PROMPT) fail('Brief, contraintes et préparation des textes dépassent 8 000 caractères. Affine le brief avec Hermes ou réduis-le.');
-    return composed;
+    if (!policy) return '';
+    var items = known(policy, protectedItems);
+    if (policy.enabled && policy.strategy === 'auto') fail('Demande conseil à Hermes ou choisis une ou deux passes avant de créer.');
+    if (policy.enabled && !items.length) fail('Indique les textes exacts, ou demande à Hermes de les proposer.');
+    return letteringBlock(policy, items);
   }
-  return { MAX_LABELS: MAX_LABELS, STRATEGIES: Object.freeze(STRATEGIES), validate: validate, known: known, validatePlan: validatePlan, applyPlan: applyPlan, block: block, compose: compose };
+  function suffix(protectedItems, policy, labels) {
+    var active = policy?.enabled && policy.strategy === 'two-pass' && protectedItems ? { version: 1, items: protectedItems.items.filter(function (item) { return item.kind !== 'exact-text'; }) } : protectedItems;
+    return [constraints.block(active), policy ? letteringBlock(policy, labels) : ''].filter(Boolean).join('\n\n');
+  }
+  function planningBudget(protectedItems, value) {
+    var policy = validate(value), items = constraints.validate(protectedItems), labels = known(policy, items);
+    var modes = !policy || !policy.enabled ? ['no-text'] : policy.strategy === 'auto' ? ['single-pass', 'two-pass'] : [policy.strategy];
+    var limits = {};
+    modes.forEach(function (mode) {
+      var tail = suffix(items, policy ? { ...policy, strategy: mode } : undefined, labels);
+      limits[mode] = Math.max(0, constraints.MAX_PROMPT - (tail ? tail.length + 2 : 0));
+    });
+    return { version: 1, limit: constraints.MAX_PROMPT, descriptionLimits: limits, labelsMayChange: !!policy?.enabled };
+  }
+  function visual(prompt, protectedItems, value) {
+    var policy = validate(value), items = constraints.validate(protectedItems), labels = known(policy, items);
+    var text = constraints.visual(prompt, items);
+    if (!policy || (policy.enabled && (policy.strategy === 'auto' || !labels.length))) return text;
+    var tail = suffix(items, policy, labels), original = prompt.trim();
+    return tail && original.endsWith('\n\n' + tail) ? original.slice(0, -tail.length - 2).trim() : text;
+  }
+  function inspect(prompt, protectedItems, value) {
+    var policy = validate(value), items = constraints.validate(protectedItems), description = visual(prompt, items, policy), labels = known(policy, items);
+    var needsPlan = !!policy?.enabled && (policy.strategy === 'auto' || !labels.length);
+    if (needsPlan) return { needsPlan: true, prompt: null, renderUnits: null, visualUnits: description.length, overheadUnits: null, maxVisualUnits: null, remainingUnits: null };
+    var tail = suffix(items, policy, labels), overhead = tail ? tail.length + 2 : 0;
+    var composed = description + (tail ? '\n\n' + tail : '');
+    return { needsPlan: false, prompt: composed, renderUnits: composed.length, visualUnits: description.length, overheadUnits: overhead,
+      maxVisualUnits: Math.max(0, constraints.MAX_PROMPT - overhead), remainingUnits: constraints.MAX_PROMPT - composed.length };
+  }
+  function compose(prompt, protectedItems, value) {
+    if (value === undefined) return constraints.compose(prompt, protectedItems);
+    var result = inspect(prompt, protectedItems, value);
+    if (result.needsPlan) block(value, protectedItems);
+    if (result.renderUnits > constraints.MAX_PROMPT) fail('Rendu final : ' + result.renderUnits + ' / 8 000 caractères, dont ' + result.overheadUnits + ' de consignes. Réduis la description à ' + result.maxVisualUnits + ' caractères maximum ou affine le brief avec Hermes.');
+    return result.prompt;
+  }
+  return { MAX_LABELS: MAX_LABELS, STRATEGIES: Object.freeze(STRATEGIES), validate: validate, known: known, validatePlan: validatePlan, applyPlan: applyPlan, block: block, visual: visual, inspect: inspect, planningBudget: planningBudget, compose: compose };
 });

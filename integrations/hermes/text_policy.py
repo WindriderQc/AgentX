@@ -32,6 +32,21 @@ def validate(value):
     return value
 
 
+def budget_instruction(value):
+    if not isinstance(value, dict) or set(value) != {'version', 'limit', 'descriptionLimits', 'labelsMayChange'}:
+        raise ValueError('Invalid Core renderer budget')
+    limits = value['descriptionLimits']
+    if type(value['version']) is not int or value['version'] != 1 or type(value['limit']) is not int or value['limit'] != 8000 or type(value['labelsMayChange']) is not bool:
+        raise ValueError('Invalid Core renderer budget')
+    if not isinstance(limits, dict) or not limits or any(key not in ('no-text', 'single-pass', 'two-pass') or type(units) is not int or not 0 <= units <= 8000 for key, units in limits.items()):
+        raise ValueError('Invalid Core description budget')
+    return (' Core calculated these visual-description limits in UTF-16 units after its exact current '
+            'constraint and lettering instructions: ' + str(limits) + '. Use the limit for your selected '
+            'strategy, not 8000 for the visual description alone. Added labels or longer placements consume '
+            'additional units and must reduce that limit. Keep the visual description concise; Core checks '
+            'the actual final composition and refuses overflow without truncation.'), max(limits.values())
+
+
 def planning_instruction(value, constraints=None):
     policy = validate(value)
     exact = [item for item in (constraints or {}).get('items', []) if item['kind'] == 'exact-text']
@@ -39,6 +54,8 @@ def planning_instruction(value, constraints=None):
         if exact:
             raise ValueError('Exact text constraints conflict with disabled image text')
         return (' Text in the image is disabled. Refine the visual scene without visible letters, numbers, labels or textual logos. '
+                'Remove requests for visible captions, callout leader lines or annotated margins from the visual description; '
+                'retain their intended objects and relationships. Use blank papers and pictographic screens instead of writing. '
                 'Do not return textPlan. Core appends the no-text rendering instruction without changing the saved original brief.')
     known = list(policy['labels'])
     for item in exact:
@@ -60,5 +77,7 @@ def planning_instruction(value, constraints=None):
             'human spelling review. Two-pass means one text-free image render with calm, blank, front-facing '
             'label areas, followed by editable Canvas/SVG text layers in Atelier; it is not a second model render. '
             'In two-pass prompt, describe the visual scene and blank areas, not instructions to draw the words. '
+            'Replace annotated-infographic cues with the same objects and relationships. Keep margins free of captions '
+            'and callout leader lines; use blank papers and pictographic screens. '
             'Placement descriptions are proposals, not coordinates verified against a rendered image. The user '
             'applies your proposal and reviews placement before export. Do not create images or text exports yourself.')

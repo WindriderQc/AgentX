@@ -229,8 +229,10 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
       || baselines.has(proposalTurn.id) && baselines.get(proposalTurn.id) !== signature());
     let invalidProposal = context.constraintsInvalid || $('imagex-proposal-prompt').value.length > (constraints?.MAX_PROMPT || 8000);
     try {
-      const proposed = $('imagex-proposal-prompt').value, composed = textPolicy.compose(proposed, proposalTurn?.proposal.constraints, proposalTurn?.proposal.textPolicy);
-      $('imagex-proposal-counter').textContent = `Proposition avec contraintes : ${new Intl.NumberFormat('fr-CA').format(composed.length)} / 8 000 caractères.`;
+      const proposed = $('imagex-proposal-prompt').value, measurement = textPolicy.inspect(proposed, proposalTurn?.proposal.constraints, proposalTurn?.proposal.textPolicy);
+      const format = value => new Intl.NumberFormat('fr-CA').format(value);
+      $('imagex-proposal-counter').textContent = `Rendu final proposé : ${format(measurement.renderUnits)} / 8 000 caractères, dont ${format(measurement.overheadUnits)} de consignes. Description disponible : ${format(measurement.maxVisualUnits)} caractères.`;
+      textPolicy.compose(proposed, proposalTurn?.proposal.constraints, proposalTurn?.proposal.textPolicy);
     } catch (error) { invalidProposal = true; $('imagex-proposal-counter').textContent = error.message; }
     $('imagex-apply').disabled = !proposalTurn || working || context.locked || changed || invalidProposal || !$('imagex-proposal-prompt').value.trim();
     $('imagex-apply-note').textContent = applied && applied.id === proposalTurn?.id && applied.signature === signature() ? 'Proposition appliquée. Le brief est prêt à être vérifié dans le formulaire de création.'

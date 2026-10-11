@@ -239,6 +239,18 @@ async function open(page, id) { const selector = ['seed-settings', 'brief-plan-i
     await page.locator('#image-new').click(); await page.locator('#image-prompt').fill('A mechanical infrastructure diagram with blank plaques.');
     assert.equal(await page.locator('#image-text-enabled').isChecked(), false);
     assert.match(await page.locator('#image-render-prompt').textContent(), /Aucun texte/);
+    await page.locator('#image-prompt').fill('v'.repeat(7987));
+    assert.equal(await page.locator('#image-create').isDisabled(), true);
+    const completePrompt = await page.locator('#image-render-prompt').textContent();
+    assert.equal(completePrompt.startsWith('v'.repeat(7987)), true);
+    assert.equal(completePrompt.length > 8000, true);
+    assert.match(await page.locator('#image-brief-counter').textContent(), /rendu final : 8\s?\d{3}/);
+    assert.match(await page.locator('#image-brief-counter').textContent(), /Consignes ajoutées.*description disponible/);
+    assert.match(await page.locator('#image-create-help').textContent(), /dont.*consignes/);
+    const beforeOverflow = generation.length;
+    await page.locator('#image-form').evaluate(form => form.requestSubmit());
+    assert.equal(generation.length, beforeOverflow);
+    await page.locator('#image-prompt').fill('A mechanical infrastructure diagram with blank plaques.');
     await page.locator('#image-text-enabled').check();
     assert.equal(await page.locator('#image-create').isDisabled(), true);
     await page.locator('#image-text-policy-add').click();

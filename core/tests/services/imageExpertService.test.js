@@ -29,6 +29,7 @@ test('lettering plans persist, preserve exact labels, restore and reject conflic
   expect(turn).toMatchObject({ state: 'completed', context: { textPolicy }, proposal: { textPlan, textPolicy: { strategy: 'two-pass', labels: [label] } } });
   expect(turn.proposal.prompt).not.toContain(label.text);
   expect(bridge.invoke.mock.calls[0][0].request.textPolicy).toEqual(textPolicy);
+  expect(bridge.invoke.mock.calls[0][0].request.renderBudget).toEqual(require('../../public/js/image-text-policy').planningBudget(undefined, textPolicy));
   expect((await createService({ bridge, workshop, imageService }).turns(session.sessionId))[0].proposal).toEqual(turn.proposal);
   await service.accept(session.sessionId, input); expect(bridge.invoke).toHaveBeenCalledTimes(1);
   await expect(service.accept(session.sessionId, { ...input, context: { ...input.context, textPolicy: { ...textPolicy, strategy: 'single-pass' } } })).rejects.toMatchObject({ statusCode: 409 });

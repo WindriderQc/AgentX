@@ -7,6 +7,8 @@ export function runExpert(command, input, { spawnImpl = spawn, timeoutMs = 18000
   const prompt = input.action === 'plan' ? input.request?.prompt : input.prompt;
   if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 8000) throw new Error('Image brief must contain 1–8000 characters');
   if (!['plan', 'consult'].includes(input.action)) throw new Error('Unknown image expert action');
+  if (input.action === 'plan' && input.request?.textPolicy) input = { ...input, request: { ...input.request,
+    renderBudget: textPolicy.planningBudget(input.request.constraints, input.request.textPolicy) } };
   return new Promise((resolve, reject) => {
     const chunks = [];
     let bytes = 0, settled = false;

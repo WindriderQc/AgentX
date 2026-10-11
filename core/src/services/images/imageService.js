@@ -89,7 +89,7 @@ function validate(body, config) {
   });
   const protectedItems = constraints.validate(body.constraints);
   const policy = textPolicy.validate(body.textPolicy);
-  const visualPrompt = constraints.visual(body.prompt, protectedItems);
+  const visualPrompt = textPolicy.visual(body.prompt, protectedItems, policy);
   const request = { prompt: textPolicy.compose(visualPrompt, protectedItems, policy), width, height, seed,
     ...((protectedItems || policy) && { visualPrompt }),
     ...(protectedItems && { constraints: protectedItems }), ...(policy && { textPolicy: policy }) };

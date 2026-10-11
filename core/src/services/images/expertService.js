@@ -116,7 +116,7 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
         const protectedItems = constraints.validate(details.context.constraints);
         const plan = textPolicy.validatePlan(proposal.textPlan, details.context.textPolicy, protectedItems);
         const policy = textPolicy.applyPlan(plan, details.context.textPolicy, protectedItems);
-        const visualPrompt = constraints.visual(proposal.prompt, protectedItems);
+        const visualPrompt = textPolicy.visual(proposal.prompt, protectedItems, policy);
         if (!visualPrompt.trim()) throw new Error('Hermes n’a pas fourni de description visuelle.');
         proposal = { profile: proposal.profile, width: proposal.width, height: proposal.height, reason: proposal.reason,
           visualPrompt, prompt: textPolicy.compose(visualPrompt, protectedItems, policy),
@@ -156,7 +156,8 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
             { role: 'assistant', content: plan ? `Prompt proposé : ${plan.prompt}\nExplication : ${row.replyText}${plan.textPlan ? '\nTextes proposés : ' + JSON.stringify(plan.textPlan) : ''}` : row.replyText }];
         });
       const envelope = boundEnvelope({ action: input.mode, history, status,
-        ...(input.mode === 'plan' ? { request: { ...input.context, prompt: constraints.composeBrief(input.context.prompt, input.context.constraints), instruction: input.message } }
+        ...(input.mode === 'plan' ? { request: { ...input.context, prompt: constraints.composeBrief(input.context.prompt, input.context.constraints), instruction: input.message,
+          ...(input.context.textPolicy && { renderBudget: textPolicy.planningBudget(input.context.constraints, input.context.textPolicy) }) } }
           : { prompt: input.message, context: input.context }) });
       const turn = await conversations.recordTurn({ ...scope, traceId: input.clientTurnId, clientTurnId: input.clientTurnId,
         modeId: input.mode, source: 'imagex-hermes', speakerAgentId: 'imagex', routeTier: 'agent', outcome: 'accepted',

@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 from studio import describe, resource, communicate_events
-from text_policy import planning_instruction
+from text_policy import planning_instruction, budget_instruction
 
 MAX_BRIEF = 32000
 MAX_PROMPT = 8000
@@ -81,6 +81,9 @@ def query(payload, serialized=None):
         label_units = sum(utf16_length(item['text']) + utf16_length(item['placement']) + 40
                           for item in request['textPolicy']['labels'])
         visual_budget = max(128, visual_budget - max(1800, label_units + 600))
+    budget_text = ''
+    if action == 'plan' and 'renderBudget' in request:
+        budget_text, visual_budget = budget_instruction(request['renderBudget'])
     instruction = (
         'Prepare an image-generation plan. Return ONLY a JSON object with prompt, profile, width, height, '
         'and reason, plus textPlan only when the text preparation instructions below require it. Choose a profile from the supplied current status ONLY when the request has no profile. Respect every explicit profile '
@@ -98,6 +101,7 @@ def query(payload, serialized=None):
         'host, install dependencies, or claim to have inspected anything absent from the supplied evidence.'
     )
     instruction += text_instruction
+    instruction += budget_text
     if text_instruction:
         instruction += (' The budget also includes Core text instructions. For two-pass, Core retains exact '
                         'texts as saved metadata and editable layers, and removes exact-text entries from the '
