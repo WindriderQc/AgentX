@@ -735,6 +735,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const isVisible = ragHelpPanel.style.display !== 'none';
       ragHelpPanel.style.display = isVisible ? 'none' : 'block';
     });
+    document.getElementById('closeRagHelp')?.addEventListener('click', () => { ragHelpPanel.style.display = 'none'; });
   }
   if (elements.periodSelect) {
     elements.periodSelect.addEventListener('change', () => {
