@@ -80,8 +80,9 @@
     return `<span class="eyebrow">LES MONTAGES MESURÉS · PAS UN ROUTAGE DE PRODUCTION</span><h2>${a.title}</h2><p>${a.desc}</p><div class="regime-tabs">${[['A','A · une carte'],['B','B · composants répartis'],['C','C · calcul partagé'],['parallel','Deux workers']].map(([key,label]) => `<button data-regime="${key}" aria-pressed="${key === regime}">${label}</button>`).join('')}</div><div class="architecture-flow">${a.nodes.map(([label,title,desc],i) => `${i ? '<span class="flow-arrow">→</span>' : ''}<div class="flow-node"><label>${label}</label><strong>${title}</strong><p>${desc}</p></div>`).join('')}</div><div class="architecture-note">${a.note}</div>`;
   }
   function productionPath() {
-    return `<div class="section-title"><div><h2>En production, une demande suit ce chemin.</h2><p>Tout se passe sur UGFrank. Alien et Brutal ne répondent à aucune demande : ils servent aux essais de cet atelier.</p></div>${link('/images','Créer une image dans le produit')}</div>
-      <figure class="surface production-path"><div class="pp-scroll"><svg viewBox="0 0 1000 440" role="img" aria-label="En production, trois façons de demander une image mènent à Core sur UGFrank. Core emprunte la carte graphique aux modèles de langage, envoie la recette au gardien qui lance ComfyUI le temps d’une image, conserve l’original dans l’archive, puis sert l’image à celui qui l’a demandée.">
+    const w = data.imageWorker || {}, recipes = (data.imageRecipes || []).map(r => `${r.id} ${r.steps} étapes`).join(' · ');
+    return `<div class="section-title"><div><h2>En production, une demande suit ce chemin.</h2><p>Les images se calculent sur ${esc(w.label || 'le PC image configuré')}. Core reçoit les demandes, emprunte la carte et conserve les originaux.</p></div>${link('/images','Créer une image dans le produit')}</div>
+      <figure class="surface production-path"><div class="pp-scroll"><svg viewBox="0 0 1000 440" role="img" aria-label="En production, trois façons de demander une image mènent à Core. Core emprunte la carte graphique aux modèles de langage, envoie la recette au gardien qui lance ComfyUI le temps d’une image, conserve l’original dans l’archive, puis sert l’image à celui qui l’a demandée.">
 <defs><marker id="pp-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="pp-head" d="M0 0L10 5L0 10z"/></marker><marker id="pp-b" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="pp-head" d="M10 0L0 5L10 10z"/></marker></defs>
 <text class="pp-label" x="12" y="24">QUI DEMANDE</text>
 <rect class="pp-box" x="12" y="38" width="190" height="64" rx="10"/><text x="26" y="64">Page Atelier du produit</text><text class="pp-sub" x="26" y="84">/images</text>
@@ -94,21 +95,21 @@
 <rect class="pp-step" x="280" y="136" width="268" height="30" rx="6"/><text x="292" y="156">2 · Calcul</text><text class="pp-sub" x="412" y="156">envoie la recette</text>
 <rect class="pp-step" x="280" y="172" width="268" height="30" rx="6"/><text x="292" y="192">3 · Archivage</text><text class="pp-sub" x="412" y="192">conserve l’original</text>
 <rect class="pp-step" x="280" y="208" width="268" height="30" rx="6"/><text x="292" y="228">4 · Restitution</text><text class="pp-sub" x="412" y="228">rend la carte</text>
-<rect class="pp-zone" x="606" y="14" width="382" height="252" rx="12"/><text class="pp-label" x="620" y="36">UGFRANK · PC IMAGE DE PRODUCTION</text>
+<rect class="pp-zone" x="606" y="14" width="382" height="252" rx="12"/><text class="pp-label" x="620" y="36">${esc((w.label || 'PC image').toUpperCase())} · PRODUCTION</text>
 <rect class="pp-box" x="620" y="50" width="168" height="64" rx="10"/><text x="634" y="76">Gardien worker.py</text><text class="pp-sub" x="634" y="96">toujours à l’écoute</text>
 <rect class="pp-box" x="806" y="50" width="168" height="64" rx="10"/><text x="820" y="76">ComfyUI 0.38.0</text><text class="pp-sub" x="820" y="96">le temps d’une image</text>
 <path class="pp-wire" d="M564 70H618" marker-end="url(#pp-a)"/><text class="pp-label" x="570" y="62">recette</text>
 <path class="pp-wire" d="M618 96H566" marker-end="url(#pp-a)"/><text class="pp-label" x="570" y="116">image</text>
 <path class="pp-wire" d="M788 82H804" marker-end="url(#pp-a)"/><path class="pp-wire" d="M890 114V142" marker-end="url(#pp-a)"/>
 <rect class="pp-gpu" x="620" y="144" width="354" height="74" rx="10"/><circle class="pp-ink" cx="662" cy="181" r="24"/><circle class="pp-ink" cx="662" cy="181" r="6"/><path class="pp-ink" d="M662 157v18M662 187v18M638 181h18M668 181h18"/>
-<text class="pp-title" x="702" y="178">RTX 3080 Ti</text><text class="pp-sub" x="702" y="198">12 Go, une seule carte, partagée</text>
-<text class="pp-sub" x="620" y="246">qwen-quality 25 étapes · klein-fast 4 étapes</text>
-<rect class="pp-box" x="264" y="318" width="300" height="64" rx="10"/><text x="280" y="344">Modèles de langage de UGFrank</text><text class="pp-sub" x="280" y="364">déchargés, puis rechargés à l’identique</text>
+<text class="pp-title" x="702" y="178">${esc(w.gpu ? w.gpu.replace(/^NVIDIA GeForce /, '') : 'Carte graphique')}</text><text class="pp-sub" x="702" y="198">${w.vramGiB ? `${esc(w.vramGiB)} Go, ` : ''}partagée avec les modèles de langage</text>
+<text class="pp-sub" x="620" y="246">${esc(recipes)}</text>
+<rect class="pp-box" x="264" y="318" width="300" height="64" rx="10"/><text x="280" y="344">Modèles de langage du PC image</text><text class="pp-sub" x="280" y="364">déchargés, puis rechargés à l’identique</text>
 <path class="pp-wire" d="M414 258V316" marker-end="url(#pp-a)" marker-start="url(#pp-b)"/>
 <rect class="pp-box" x="700" y="318" width="274" height="64" rx="10"/><text x="716" y="344">Archive, photothèque du NAS</text><text class="pp-sub" x="716" y="364">l’original, sous son empreinte</text>
 <path class="pp-wire" d="M564 190H586V292H836V316" marker-end="url(#pp-a)"/>
 <path class="pp-wire" d="M836 382V416H106V260" marker-end="url(#pp-a)"/><text class="pp-label" x="330" y="408">l’image revient à celui qui l’a demandée, empreinte revérifiée</text>
-</svg></div><figcaption>Une image à la fois, sans file d’attente ni second PC de secours. Relevé du 8 octobre sur le code et la configuration en service ; les montages mesurés plus haut ne sont pas branchés sur ce chemin.</figcaption></figure>`;
+</svg></div><figcaption>Une image à la fois, sans file d’attente ni second PC de secours. Machine, carte et recettes sont lues dans la configuration en service ; les montages mesurés plus haut restent des essais.</figcaption></figure>`;
   }
   function machines() {
     const p = data.performance, t = p.throughput;
