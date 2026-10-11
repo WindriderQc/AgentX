@@ -162,7 +162,7 @@
     }
     const { latest, totals, health } = insight;
     let tone = 'healthy';
-    let icon = 'fa-sparkles';
+    let icon = 'fa-wand-magic-sparkles';
     let title = 'The ecosystem is calm';
     let text = 'Recent evidence was reviewed safely and there is nothing requiring your attention.';
     if (health.errors) {
@@ -449,7 +449,7 @@
     if (!(run.candidates || []).length) return `<i class="fas ${currentCoverageNeedsAttention ? 'fa-triangle-exclamation' : 'fa-moon'}"></i><div><strong>${currentCoverageNeedsAttention ? 'Quiet run; current collector coverage needs attention' : 'Quiet, healthy reconciliation'}</strong><span>${filtered} noisy or ineligible item${filtered === 1 ? '' : 's'} filtered; ${eligible ? `${eligible} eligible observation${eligible === 1 ? '' : 's'} produced no durable proposal.` : 'the review model was not needed.'}${currentCoverageNeedsAttention ? ' This historical run does not override the current coverage warning above.' : ''}</span></div>`;
     const auto = (run.candidates || []).filter((item) => item.apply?.automated && item.status === 'applied').length;
     const exceptions = (run.candidates || []).filter((item) => ['proposed', 'deferred', 'apply_failed'].includes(item.status)).length;
-    return `<i class="fas fa-sparkles"></i><div><strong>${auto} automatic update${auto === 1 ? '' : 's'} · ${exceptions} exception${exceptions === 1 ? '' : 's'}</strong><span>Safe reversible context flows automatically; only exceptions ask for judgment.</span></div>`;
+    return `<i class="fas fa-wand-magic-sparkles"></i><div><strong>${auto} automatic update${auto === 1 ? '' : 's'} · ${exceptions} exception${exceptions === 1 ? '' : 's'}</strong><span>Safe reversible context flows automatically; only exceptions ask for judgment.</span></div>`;
   }
 
   function renderRun() {
