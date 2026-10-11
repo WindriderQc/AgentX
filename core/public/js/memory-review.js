@@ -404,7 +404,13 @@
   }
 
   async function selectRun(runId) {
+    // Drop the previous run first: its Authorize button and link must not
+    // stay usable while another run is selected.
     state.selectedRunId = runId;
+    state.run = null;
+    ['mrRunNarrative', 'mrRunFacts', 'mrCollectors', 'mrAuditList'].forEach((id) => { $(id).innerHTML = ''; });
+    $('mrRunTitle').textContent = 'Loading…';
+    $('mrCandidateFilters').hidden = true;
     $('mrDetailEmpty').hidden = true;
     $('mrDetail').hidden = false;
     $('mrCandidatesState').hidden = false;
@@ -412,7 +418,9 @@
     $('mrCandidateList').innerHTML = '';
     renderRuns();
     try {
-      state.run = await apiJson(`/api/memory-review/runs/${encodeURIComponent(runId)}`);
+      const run = await apiJson(`/api/memory-review/runs/${encodeURIComponent(runId)}`);
+      if (state.selectedRunId !== runId) return; // a later click won
+      state.run = run;
       const url = new URL(window.location.href);
       url.searchParams.set('run', runId);
       window.history.replaceState({}, '', url);
@@ -422,6 +430,8 @@
         state.focusAfter = null;
       }
     } catch (error) {
+      if (state.selectedRunId !== runId) return;
+      $('mrRunTitle').textContent = 'Run unavailable';
       $('mrCandidatesState').textContent = `Could not load this run: ${error.message}`;
       toast($('mrCandidatesState').textContent, 'error');
     }
@@ -647,7 +657,7 @@
   async function submitAction(event) {
     event.preventDefault();
     const pending = state.pendingAction;
-    if (!pending) return;
+    if (!pending || !state.run) return;
     const body = {};
     let url;
     if (pending.action === 'authorize') {
@@ -689,7 +699,7 @@
   $('mrRunStatus').addEventListener('change', (event) => { state.runFilter = event.target.value; renderRuns(); });
   $('mrRefreshBtn').addEventListener('click', async () => { await Promise.all([loadConfig(), loadInsights(), loadRuns()]); toast('Dreaming Review refreshed.', 'success'); });
   $('mrShareBtn').addEventListener('click', () => copyText(state.insights?.safeDigest || 'Dreaming Review status is unavailable.', 'Statement-free digest copied.'));
-  $('mrCopyLink').addEventListener('click', () => copyText(window.location.href, 'Link to this run copied.'));
+  $('mrCopyLink').addEventListener('click', () => (state.run ? copyText(window.location.href, 'Link to this run copied.') : toast('This run has not loaded.', 'error')));
   $('mrActionForm').addEventListener('submit', submitAction);
   $('mrActionClose').addEventListener('click', closeAction);
   $('mrActionCancel').addEventListener('click', closeAction);
