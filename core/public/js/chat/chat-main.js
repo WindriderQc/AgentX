@@ -104,7 +104,6 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleConfigBtn: document.getElementById('toggleConfigBtn'),
   };
   const welcomeMarkup = elements.chatWindow?.innerHTML || '';
-  let configDrawerOpener = null;
 
   // Copy defaults so server config can mutate them
   const defaults = { ...DEFAULTS, options: { ...DEFAULTS.options } };
@@ -271,12 +270,10 @@ document.addEventListener('DOMContentLoaded', () => {
     expertStrip?.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
     if (expertStrip) expertStrip.inert = !isOpen;
 
-    if (isOpen) {
-      configDrawerOpener = document.activeElement;
-      elements.configDrawer.focus({ preventScroll: true });
-    } else if (restoreFocus && configDrawerOpener instanceof HTMLElement) {
-      configDrawerOpener.focus({ preventScroll: true });
-    }
+    // A modal dialog: Tab stays inside, Escape closes, focus returns to the opener.
+    const modal = window.AgentXModalAccessibility;
+    if (isOpen) modal?.activate(elements.configDrawer, { initialFocus: elements.configDrawer, onRequestClose: closeConfigDrawer });
+    else modal?.deactivate(elements.configDrawer, { restoreFocus });
   }
 
   // Context-preserving expert controls
