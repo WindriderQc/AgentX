@@ -26,6 +26,8 @@
 .workflow-turns { display: flex; flex-wrap: wrap; gap: .4rem; margin: .85rem 0; }
 .workflow-turn { border: 1px solid #34525d; border-radius: 1rem; background: #102936; color: #ccedf1; font: inherit; font-size: .74rem; padding: .5rem .8rem; min-height: 2.4rem; cursor: pointer; }
 .workflow-turn[aria-pressed="true"] { border-color: #69d6df; background: #17404b; color: #fff; }
+.workflow-more { min-height: 44px; border: 1px solid #477785; border-radius: .6rem; background: #102936; color: #bceef1; padding: .55rem .8rem; font: inherit; font-size: .78rem; cursor: pointer; }
+.workflow-more:focus-visible { outline: 2px solid #83e7eb; outline-offset: 2px; }
 .workflow-timing { border-radius: .7rem; background: #0e2833; padding: .15rem .8rem .7rem; }
 .workflow-timing p, .workflow-timing small { display: block; font-size: .75rem; line-height: 1.5; color: #c2d5db; overflow-wrap: anywhere; }
 .workflow-timing p { margin: .3rem 0; }

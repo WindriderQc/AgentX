@@ -54,6 +54,45 @@ test('live transcription is visible before a model request without claiming Gard
   assert.equal(stageState('guardian', model.snapshot().turns[1])[0], 'En attente');
 });
 
+test('a waiting-host signal never masks terminal or stale Gardien evidence', () => {
+  const model = createModel(); model.begin('session-1', 'turn-a', 'voice');
+  model.stream('turn-a', { type: 'status', phase: 'waiting_host' });
+  assert.equal(stageState('guardian', model.snapshot().turns[0])[0], 'En attente');
+  model.stream('turn-a', { type: 'done', data: {} });
+  assert.equal(stageState('guardian', model.snapshot().turns[0])[0], 'Inconnu');
+  model.ingest('session-1', { items: [work('work-a', 'turn-a', 1,
+    { guardianStatus: 'completed' })], events: [] });
+  assert.equal(stageState('guardian', model.snapshot().turns[0])[0], 'Terminé');
+  model.ingest('session-1', { items: [work('work-a', 'turn-a', 2,
+    { guardianStatus: 'failed' })], events: [] });
+  assert.equal(stageState('guardian', model.snapshot().turns[0])[0], 'Échec');
+  model.ingest('session-1', { items: [work('work-a', 'turn-a', 3,
+    { guardianStatus: 'running' })], events: [] });
+  model.pollFailure('session-1');
+  assert.equal(stageState('guardian', { ...model.snapshot().turns[0], telemetryStale: true })[0], 'Incertain');
+});
+
+test('failed, cancelled and paused review work reports its canonical state and safe reason', () => {
+  const model = createModel(); model.begin('session-1', 'turn-a', 'voice');
+  model.review('turn-a', { adviceId: 'older-advice', version: 1 });
+  model.ingest('session-1', { items: [work('work-a', 'turn-a', 3,
+    { state: 'failed', reason: 'native_preparation_refused' })], events: [] });
+  assert.deepEqual(stageState('review', model.snapshot().turns[0]),
+    ['Échec', 'Travail work-a · préparation de l’agent refusée']);
+  model.ingest('session-1', { items: [work('work-a', 'turn-a', 2,
+    { state: 'result_ready', result: { version: 1 } })], events: [] });
+  assert.equal(stageState('review', model.snapshot().turns[0])[0], 'Échec', 'an older result cannot erase the failure');
+  model.ingest('session-1', { items: [work('work-a', 'turn-a', 4,
+    { state: 'cancelled', reason: 'owner_cancelled_before_dispatch' })], events: [] });
+  assert.equal(stageState('review', model.snapshot().turns[0])[0], 'Annulé');
+  model.ingest('session-1', { items: [work('work-a', 'turn-a', 5,
+    { state: 'paused', reason: '' })], events: [] });
+  assert.deepEqual(stageState('review', model.snapshot().turns[0]), ['En pause', 'Travail work-a · motif non détaillé']);
+  model.ingest('session-1', { items: [work('work-a', 'turn-a', 6,
+    { state: 'result_ready', reason: '', result: { version: 2 } })], events: [] });
+  assert.equal(stageState('review', model.snapshot().turns[0])[0], 'Disponible');
+});
+
 test('a received or queued work does not claim review activity before a dispatch receipt', () => {
   const model = createModel(); model.begin('session-1', 'turn-a', 'voice');
   for (const [revision, state] of [[1, 'received'], [2, 'queued'], [3, 'running']]) {
@@ -322,6 +361,8 @@ test('a work revision retains keyboard focus on the selected stage or turn', () 
   global.document = { createElement: tag => new Element(tag), activeElement: null };
   try {
     const host = new Element('section'), signal = new Element('p'), panel = create({ host, signal });
+    panel.panel.open = true;
+    panel.render();
     panel.begin('session-1', 'turn-a', 'voice');
     assert.match(signal.textContent, /Tour 1 · activité non attestée/);
     const stage = host.querySelectorAll('[data-key]').find(item => item.dataset.key === 'stage:guardian');
@@ -340,6 +381,50 @@ test('a work revision retains keyboard focus on the selected stage or turn', () 
     const findTitle = root => root.className === 'workflow-map-title' ? root
       : root.children.map(findTitle).find(Boolean);
     assert.match(findTitle(host).textContent, /Tour 2/, 'a new spoken turn becomes the monitored turn');
+  } finally { global.document = previousDocument; }
+});
+
+test('long conversations keep a bounded journal and retain all earlier turns and events on demand', () => {
+  const previousDocument = global.document;
+  class Element {
+    constructor() { this.children = []; this.dataset = {}; this.attributes = {}; }
+    append(...children) { this.children.push(...children); }
+    replaceChildren(...children) { this.children = children; }
+    setAttribute(key, value) { this.attributes[key] = value; }
+    querySelectorAll() { return []; }
+  }
+  global.document = { createElement: () => new Element(), activeElement: null };
+  const all = (element, className) => [
+    ...(element.className === className ? [element] : []),
+    ...element.children.flatMap(child => all(child, className))
+  ];
+  try {
+    const host = new Element(), panel = create({ host });
+    for (let number = 1; number <= 300; number++) panel.model.begin('session-1', `turn-${number}`, 'text');
+    panel.model.ingest('session-1', {
+      items: Array.from({ length: 300 }, (_, index) => work(`work-${index + 1}`, `turn-${index + 1}`)),
+      events: Array.from({ length: 300 }, (_, index) => event(index + 1, `work-${index + 1}`,
+        'request_received', `2026-10-11T12:00:00.${String(index).padStart(3, '0')}Z`))
+    });
+    panel.render();
+    assert.equal(panel.model.snapshot().turns.length, 300);
+    assert.equal(panel.model.snapshot().events.length, 300);
+    assert.equal(all(host, 'workflow-body')[0].children.length, 0, 'closed journal does not build hidden history');
+    const head = all(host, 'workflow-map-head')[0];
+    panel.follow('session-1');
+    assert.equal(all(host, 'workflow-map-head')[0], head, 'same-session follow does not redraw');
+    panel.panel.open = true;
+    panel.render();
+    assert.equal(all(host, 'workflow-turn').length, 24);
+    assert.equal(all(host, 'workflow-event').length, 80);
+    all(host, 'workflow-more')[0].onclick();
+    assert.equal(all(host, 'workflow-turn').length, 48);
+    all(host, 'workflow-more')[1].onclick();
+    assert.equal(all(host, 'workflow-event').length, 160);
+    for (let count = 0; count < 11; count++) all(host, 'workflow-more')[0].onclick();
+    assert.equal(all(host, 'workflow-turn').length, 300, 'the first turn remains available');
+    for (let count = 0; count < 2; count++) all(host, 'workflow-more')[0].onclick();
+    assert.equal(all(host, 'workflow-event').length, 300, 'the first event remains available');
   } finally { global.document = previousDocument; }
 });
 

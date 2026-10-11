@@ -32,8 +32,9 @@
     let sessionId = null, gap = false, stale = false, order = 0;
     const turns = new Map(), works = new Map(), events = new Map();
     function follow(id) {
-      if (!id || id === sessionId) return;
+      if (!id || id === sessionId) return false;
       sessionId = id; gap = false; stale = false; order = 0; turns.clear(); works.clear(); events.clear();
+      return true;
     }
     function reset() { sessionId = null; gap = false; stale = false; order = 0; turns.clear(); works.clear(); events.clear(); }
     function turn(id, fields = {}) {
@@ -152,15 +153,25 @@
         const first = Date.parse(a.startedAt), second = Date.parse(b.startedAt);
         return Number.isFinite(first) && Number.isFinite(second) && first !== second ? first - second : a.order - b.order;
       });
-      const inclusions = rows.flatMap(row => (row.adviceRefs || []).map(ref => ({ ...ref, targetTurnId: row.id })));
-      return { sessionId, gap, stale, events: [...events.values()].sort((a, b) => a.sequence - b.sequence)
-        .map(event => ({ ...event, turnId: works.get(event.workId)?.turnId || null })),
+      const brainRefs = new Map(), workRefs = new Map(), worksByTurn = new Map(), eventsByTurn = new Map();
+      const append = (map, key, value) => { if (!map.has(key)) map.set(key, []); map.get(key).push(value); };
+      for (const row of rows) for (const ref of row.adviceRefs || []) {
+        const key = ref.source === 'brain' ? `${ref.adviceId}:${ref.version}` : ref.source === 'work' ? `${ref.workId}:${ref.version}` : null;
+        const map = ref.source === 'brain' ? brainRefs : workRefs;
+        if (key) append(map, key, { ...ref, targetTurnId: row.id });
+      }
+      for (const item of works.values()) append(worksByTurn, item.turnId, item);
+      const chronology = [...events.values()].sort((a, b) => a.sequence - b.sequence).map(event => {
+        const turnId = works.get(event.workId)?.turnId || null;
+        if (turnId) append(eventsByTurn, turnId, event);
+        return { ...event, turnId };
+      });
+      return { sessionId, gap, stale, events: chronology,
         turns: rows.map(row => ({ ...row, reviews: row.reviews.map(advice => ({ ...advice,
-          includedIn: inclusions.filter(ref => ref.source === 'brain' && `${ref.adviceId}:${ref.version}` === advice.key) })),
-        works: [...works.values()].filter(item => item.turnId === row.id).map(item => ({ ...item,
-          includedIn: inclusions.filter(ref => ref.source === 'work' && ref.workId === item.id && ref.version === item.result?.version) })),
-        events: [...events.values()].filter(event => works.get(event.workId)?.turnId === row.id)
-          .sort((a, b) => a.sequence - b.sequence) })) };
+          includedIn: brainRefs.get(advice.key) || [] })),
+        works: (worksByTurn.get(row.id) || []).map(item => ({ ...item,
+          includedIn: workRefs.get(`${item.id}:${item.result?.version}`) || [] })),
+        events: eventsByTurn.get(row.id) || [] })) };
     }
     return { follow, reset, begin, capture, captureEnd, stream, timings, restore, review, ingest, pollFailure, snapshot };
   }
@@ -172,14 +183,25 @@
         : row.phase === 'transcribing' && row.live ? ['En cours', 'Transcription démarrée dans le navigateur']
           : ['Inconnu', 'Aucune mesure STT conservée'];
     if (stage === 'guardian') {
-      if (row.phase === 'waiting_host') return ['En attente', 'Hôte occupé, cause signalée par Core · durée inconnue'];
       const status = work?.guardianStatus;
       if (row.telemetryStale && ['pending', 'running', 'uncertain'].includes(status)) return ['Incertain', 'Dernier état Core non actualisé'];
       if (status && status !== 'unknown') return [{ pending: 'En attente', running: 'Actif', completed: 'Terminé', cancelled: 'Interrompu', failed: 'Échec', uncertain: 'Incertain' }[status] || 'Inconnu', work.guardianRunId ? `Run ${work.guardianRunId}` : 'Run non observé'];
-      return row.done ? ['Inconnu', 'Réponse reçue, exécution du Gardien non attestée'] : row.error ? ['Incertain', 'Flux terminé en erreur, état du Gardien non attesté'] : row.deferred ? ['Inconnu', 'Demande conservée, exécution du Gardien non attestée'] : row.live && row.stream?.includes('accepted') ? ['En attente', 'Requête acceptée, démarrage du Gardien non attesté'] : ['Inconnu', 'Aucun reçu du Gardien'];
+      if (row.done) return ['Inconnu', 'Réponse reçue, exécution du Gardien non attestée'];
+      if (row.error || row.interrupted) return ['Incertain', 'Flux terminé, état du Gardien non attesté'];
+      if (row.deferred) return ['Inconnu', 'Demande conservée, exécution du Gardien non attestée'];
+      if (row.phase === 'waiting_host') return row.telemetryStale ? ['Incertain', 'Dernier état Core non actualisé']
+        : ['En attente', 'Hôte occupé, cause signalée par Core · durée inconnue'];
+      return row.live && row.stream?.includes('accepted') ? ['En attente', 'Requête acceptée, démarrage du Gardien non attesté'] : ['Inconnu', 'Aucun reçu du Gardien'];
     }
     if (stage === 'review') {
       const advice = row.reviews.at(-1);
+      if (work && ['failed', 'cancelled', 'paused'].includes(work.state)) {
+        const labels = { failed: 'Échec', cancelled: 'Annulé', paused: 'En pause' };
+        const reasons = { native_preparation_refused: 'préparation de l’agent refusée',
+          native_result_not_published: 'résultat non publié', owner_cancelled_before_dispatch: 'annulé avant relais' };
+        const code = typeof work.reason === 'string' && /^[a-z][a-z0-9_]{0,79}$/.test(work.reason) ? work.reason : '';
+        return [labels[work.state], `Travail ${work.id} · ${reasons[code] || (code ? `motif Core : ${code}` : 'motif non détaillé')}`];
+      }
       if (work?.result) return work.includedIn?.length ? ['Inclus', `Travail ${work.id} · contexte du tour ${work.includedIn[0].targetTurnId}`]
         : ['Disponible', `Travail ${work.id} · version ${work.result.version}`];
       if (work?.resultDisposition === 'no_work') return ['Terminé', `Travail ${work.id} · aucun complément utile`];
@@ -247,7 +269,7 @@
   }
   function create({ host, signal = null }) {
     const model = createModel();
-    let selected = null;
+    let selected = null, turnLimit = 24, eventLimit = 80;
     const overview = node('div', 'workflow-map'); overview.setAttribute('aria-label', 'Composants du parcours');
     const panel = node('details', 'workflow-panel');
     const summary = node('summary', 'workflow-toggle', 'Journal et reçus');
@@ -255,6 +277,11 @@
     function render() {
       const focused = document.activeElement?.closest?.('[data-key]');
       const focusKey = focused && host.contains?.(focused) ? focused.dataset.key : null;
+      const restoreFocus = () => {
+        if (!focusKey) return;
+        const target = [...host.querySelectorAll('[data-key]')].find(item => item.dataset.key === focusKey);
+        (target?.matches('button') ? target : target?.querySelector('summary'))?.focus();
+      };
       const view = model.snapshot();
       const rows = view.turns, current = rows.find(row => row.id === selected) || rows.at(-1);
       if (current) selected = current.id;
@@ -270,7 +297,7 @@
         const element = node('details', 'workflow-component'); element.dataset.key = `stage:${key}`;
         element.dataset.stage = key;
         element.dataset.tone = isActive(state) ? 'active'
-          : ['Échec', 'Incertain', 'Interrompu', 'En attente'].includes(state) ? 'caution'
+          : ['Échec', 'Incertain', 'Interrompu', 'Annulé', 'En pause', 'En attente'].includes(state) ? 'caution'
             : ['Terminé', 'Disponible', 'Inclus'].includes(state) ? 'complete'
               : ['Inconnu', 'Sans voix'].includes(state) ? 'unknown' : 'observed';
         element.open = expanded.has(element.dataset.key);
@@ -372,13 +399,18 @@
       overview.append(flow, ...(compact ? [] : [resources, passages]),
         node('p', 'workflow-map-note', 'Liaisons et passages fondés sur les reçus du tour. Un avis inclus ne prouve pas son influence.'));
       body.replaceChildren();
+      if (!panel.open) { restoreFocus(); return; }
       const intro = node('p', 'workflow-intro', 'Étapes observées dans cette conversation. Plusieurs composants peuvent travailler en même temps.');
       body.append(intro);
       if (compact) body.append(resources, passages);
       if (!current) { body.append(node('p', 'workflow-empty', 'Aucun tour enregistré. Les composants apparaîtront ici.')); return; }
       const picker = node('div', 'workflow-turns'); picker.setAttribute('role', 'group'); picker.setAttribute('aria-label', 'Choisir un tour');
-      rows.forEach((row, index) => {
-        const button = node('button', 'workflow-turn', `Tour ${index + 1}${row.interrupted ? ' · interrompu' : ''}`);
+      if (rows.length > turnLimit) {
+        const more = node('button', 'workflow-more', `Afficher ${Math.min(24, rows.length - turnLimit)} tours précédents`);
+        more.type = 'button'; more.dataset.key = 'turns-more'; more.onclick = () => { turnLimit += 24; render(); }; picker.append(more);
+      }
+      rows.slice(-turnLimit).forEach((row, index) => {
+        const button = node('button', 'workflow-turn', `Tour ${rows.length - Math.min(rows.length, turnLimit) + index + 1}${row.interrupted ? ' · interrompu' : ''}`);
         button.dataset.key = `turn:${row.id}`;
         button.type = 'button'; button.setAttribute('aria-pressed', String(row.id === selected));
         button.onclick = () => { selected = row.id; render(); body.querySelector?.('button[aria-pressed="true"]')?.focus(); }; picker.append(button);
@@ -394,8 +426,12 @@
       for (const value of intervals(current.events)) timing.append(node('p', '', value));
       body.append(timing);
       const heading = node('h3', '', 'Chronologie commune du travail'); body.append(heading);
+      if (view.events.length > eventLimit) {
+        const more = node('button', 'workflow-more', `Afficher ${Math.min(80, view.events.length - eventLimit)} événements précédents`);
+        more.type = 'button'; more.dataset.key = 'events-more'; more.onclick = () => { eventLimit += 80; render(); }; body.append(more);
+      }
       const list = node('ol', 'workflow-events');
-      for (const event of view.events) {
+      for (const event of view.events.slice(-eventLimit)) {
         const owner = rows.find(row => row.id === event.turnId);
         const work = owner?.works.find(item => item.id === event.workId);
         const entry = node('li', 'workflow-event');
@@ -432,17 +468,15 @@
         `Avis ${advice.key} · ${advice.replaced === true ? 'remplacé' : advice.reconstructed ? 'statut actuel inconnu' : 'disponible'} · ${advice.includedIn?.length ? `inclus dans le contexte du tour ${advice.includedIn.map(ref => ref.targetTurnId).join(', ')}` : 'inclusion non attestée'} · influence non prouvée`));
       for (const ref of current.adviceRefs || []) body.append(node('p', 'workflow-advice',
         `Contexte de ce tour : ${ref.source === 'work' ? `travail ${ref.workId}` : `avis ${ref.adviceId}`} · version ${ref.version} · couverture ${(ref.coverage || []).join(', ') || 'inconnue'} · influence non prouvée`));
-      if (focusKey) {
-        const target = [...host.querySelectorAll('[data-key]')].find(item => item.dataset.key === focusKey);
-        (target?.matches('button') ? target : target?.querySelector('summary'))?.focus();
-      }
+      restoreFocus();
     }
     function update(action) { if (action() !== false) render(); }
     render();
+    panel.addEventListener?.('toggle', render);
     return {
       model, panel, render,
-      reset: () => update(() => { model.reset(); selected = null; }),
-      follow: id => update(() => { model.follow(id); selected = null; }),
+      reset: () => update(() => { model.reset(); selected = null; turnLimit = 24; eventLimit = 80; }),
+      follow: id => update(() => { if (!model.follow(id)) return false; selected = null; turnLimit = 24; eventLimit = 80; }),
       begin: (session, id, channel) => update(() => { model.begin(session, id, channel); selected = id; }),
       capture: (session, id) => update(() => { model.capture(session, id); selected = id; }),
       captureEnd: id => update(() => model.captureEnd(id)),
