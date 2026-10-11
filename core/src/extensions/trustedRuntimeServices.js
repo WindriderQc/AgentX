@@ -30,6 +30,9 @@ const CONSUMER_CONTRACT_PATTERN = /^[a-z][a-z0-9-]{0,63}$/;
 const ATTRIBUTION_IDENTIFIER_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,159}$/;
 const ATTRIBUTION_RUNTIME_VALUES = new Set(['agentx', 'codex', 'claude-code', 'external', 'other']);
 const ATTRIBUTION_KEYS = new Set(['workItemId', 'correlationId', 'runtime', 'attempt']);
+// Only errors raised by the initial local validators carry this proof. An
+// identical code/status from routing or a provider does not attest no dispatch.
+const preRoutingValidationRefusals = new WeakMap();
 const LOCAL_OPTION_KEYS = new Set([
   'num_ctx', 'num_predict', 'temperature', 'top_p', 'top_k', 'min_p', 'typical_p',
   'seed', 'stop', 'repeat_last_n', 'repeat_penalty', 'presence_penalty',
@@ -245,8 +248,14 @@ function validateRequest(request) {
 }
 
 async function executeRoutedInference(deps, request, options = {}) {
-  validateRequest(request);
-  const attribution = normalizeServerAttribution(options.attribution);
+  let attribution;
+  try {
+    validateRequest(request);
+    attribution = normalizeServerAttribution(options.attribution);
+  } catch (error) {
+    if (error instanceof TrustedRuntimeServiceError && error.statusCode === 400) preRoutingValidationRefusals.set(error, options);
+    throw error;
+  }
   const startedAt = Date.now();
   const requestedModel = String(request.model || '').trim();
   const taskType = String(request.taskType || '').trim();
@@ -669,6 +678,8 @@ module.exports = {
   executeRoutedInference,
   frozenCopy,
   getHostHoldStatus,
+  isPreRoutingValidationRefusal: (error, options) => preRoutingValidationRefusals.has(error)
+    && preRoutingValidationRefusals.get(error) === options,
   normalizeServerAttribution,
   releaseHostHold,
   touchHostHold,

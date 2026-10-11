@@ -27,6 +27,8 @@ async function prepare(headers, model, signal) {
   const startedAt = new Date();
   const modelMs = remaining(task).modelSeconds * 1000 - Math.max(nativeModelMs(run, startedAt.getTime()), (run.currentUsage?.modelSeconds || 0) * 1000);
   if (modelMs <= 0) throw fail('Cumulative model duration exhausted', 'CODING_MODEL_BUDGET');
+  if (run.pendingInferences?.length)
+    throw fail('A prior coding inference has not settled; reconcile it before another call', 'CODING_INFERENCE_COMPLETION_PENDING');
   const deadlineAt = startedAt.getTime() + modelMs;
   const saved = await Task.updateOne({ pipelineId, 'automationLease.leaseId': leaseId,
     'codingAutonomy.revision': task.codingAutonomy.revision }, {
@@ -41,15 +43,36 @@ async function prepare(headers, model, signal) {
   if (timer) timer.unref?.(); else expire();
   async function finish(state) {
     clearTimeout(timer);
-    const update = { $set: { 'codingAutonomy.runs.$[run].modelReceipts.$[call].state': state,
-      'codingAutonomy.runs.$[run].modelReceipts.$[call].finishedAt': new Date().toISOString() },
+    const finishedAt = new Date().toISOString();
+    const prefix = 'codingAutonomy.runs.$[run].modelReceipts.$[call]';
+    // A lost first acknowledgement must leave unknown + pending, even when
+    // Mongo applied the native outcome. Never clear the fence in this write.
+    const update = { $set: { [`${prefix}.state`]: 'unknown', [`${prefix}.finishedAt`]: finishedAt },
       $inc: { 'codingAutonomy.revision': 1 } };
-    if (state !== 'unknown') update.$pull = { 'codingAutonomy.runs.$[run].pendingInferences': callId };
-    await Task.updateOne({ pipelineId }, update, { arrayFilters: [{ 'run.requestId': requestId }, { 'call.callId': callId }], writeConcern: { w: 1, j: true } });
+    if (state !== 'unknown') update.$set[`${prefix}.settlement`] = { state, finishedAt };
+    const settled = await Task.updateOne({ pipelineId, 'codingAutonomy.runs': { $elemMatch: {
+      requestId, modelReceipts: { $elemMatch: { callId, state: 'pending' } },
+    } } }, update, { arrayFilters: [{ 'run.requestId': requestId }, { 'call.callId': callId, 'call.state': 'pending' }], writeConcern: { w: 1, j: true } });
+    if (!settled.acknowledged || settled.modifiedCount !== 1)
+      throw fail('The exact coding inference receipt was not durably settled', 'CODING_INFERENCE_SETTLEMENT_UNVERIFIED', 503);
+    if (state === 'unknown') return;
+    // The native outcome now has a durable acknowledged proof. Cleanup cannot
+    // invalidate it: if cleanup fails, the retained fence still blocks calls.
+    try {
+      await Task.updateOne({ pipelineId, 'codingAutonomy.runs': { $elemMatch: {
+        requestId, modelReceipts: { $elemMatch: { callId, state: 'unknown',
+          'settlement.state': state, 'settlement.finishedAt': finishedAt } },
+      } } }, { $set: { [`${prefix}.state`]: state },
+        $pull: { 'codingAutonomy.runs.$[run].pendingInferences': callId },
+        $inc: { 'codingAutonomy.revision': 1 } }, {
+        arrayFilters: [{ 'run.requestId': requestId }, { 'call.callId': callId, 'call.state': 'unknown',
+          'call.settlement.state': state, 'call.settlement.finishedAt': finishedAt }], writeConcern: { w: 1, j: true },
+      });
+    } catch (_) { /* Native completion is proven; unresolved cleanup stays fenced. */ }
   }
   return { options: { signal: signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal,
     codingDeadlineAt: deadlineAt, codingCapacity: { pipelineId, leaseId }, hostUrl: task.codingCapacity.host,
     attribution: { workItemId: pipelineId, attempt: task.automationLease.attempt, correlationId: requestId,
-      source: 'pipeline-coding-autonomy', assignee: 'coding-team' } }, finish };
+      runtime: 'agentx' } }, finish };
 }
 module.exports = { prepare };
