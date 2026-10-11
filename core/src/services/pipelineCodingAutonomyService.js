@@ -87,9 +87,14 @@ async function authorize(id, input) {
   // Removing authorization fences future resumes. An active worker is separately stopped.
   return projection(await save(task, state, extra));
 }
+function failedCIWatch(state) {
+  return state.authorized && state.correction?.kind === 'failure'
+    && (state.state === 'correction' || (state.state === 'blocked' && state.reason === 'resume_limit'));
+}
 function ciSpent(state) {
   return { ...policy.spent(state), ciSeconds: (state.spent.ciSeconds || 0) +
-    (state.state === 'waiting_ci' ? Math.max(0, Math.floor((Date.now() - Date.parse(state.ciStartedAt)) / 1000)) : 0) };
+    (state.state === 'waiting_ci' || failedCIWatch(state)
+      ? Math.max(0, Math.floor((Date.now() - Date.parse(state.ciStartedAt)) / 1000)) : 0) };
 }
 function projection(task) {
   const state = task.codingAutonomy;
@@ -98,7 +103,7 @@ function projection(task) {
   const currentUsage = last && policy.usage(last, last.currentUsage);
   if (last && !last.finishedAt) for (const key of ['workSeconds', 'testSeconds', 'modelSeconds', 'modelCalls'])
     remaining[key] = Math.max(0, remaining[key] - (currentUsage[key] || 0));
-  if (state.state === 'waiting_ci') remaining.ciSeconds = Math.max(0, state.limits.ciSeconds - ciSpent(state).ciSeconds);
+  if (state.state === 'waiting_ci' || failedCIWatch(state)) remaining.ciSeconds = Math.max(0, state.limits.ciSeconds - ciSpent(state).ciSeconds);
   return { pipelineId: task.pipelineId, title: task.title, taskStatus: task.status,
     scope: task.automation.scope, queueRequestId: state.queueRequestId, limits: state.limits,
     authorizationRevision: state.revision, authorized: state.authorized, state: state.state, reason: state.reason,
@@ -313,10 +318,13 @@ async function dispatch(task, config) {
 }
 async function observe(task) {
   const state = task.codingAutonomy;
+  const watchingFailure = failedCIWatch(state);
+  if (watchingFailure && (!state.runs.at(-1)?.finishedAt || task.automationLease || task.codingCapacity)) return;
   const now = Date.now();
   if (Date.parse(state.nextObservationAt) > now) return;
   const elapsed = Math.floor((now - Date.parse(state.ciStartedAt)) / 1000);
-  if (elapsed + (state.spent.ciSeconds || 0) >= state.limits.ciSeconds) return block(task, 'ci_timeout');
+  if (elapsed + (state.spent.ciSeconds || 0) >= state.limits.ciSeconds)
+    return block({ ...task, codingAutonomy: { ...state, spent: ciSpent(state) } }, 'ci_timeout');
   let observation;
   try { observation = await control.observe({ pipelineId: task.pipelineId, requestId: state.runs.at(-1).requestId, pr: state.pr }); }
   catch {
@@ -333,9 +341,12 @@ async function observe(task) {
     next.manualInterventions = [...state.manualInterventions, { kind: 'remote_branch_update', head: observation.head, at: new Date(now).toISOString() }];
     next.correction = { kind: 'remote_head_changed', head: observation.head };
     next.state = 'correction';
-  } else if (verdict === 'success') next.state = 'ready_for_review';
+  } else if (verdict === 'success') {
+    next.state = 'ready_for_review'; next.reason = null;
+    if (watchingFailure) delete next.correction;
+  }
   else if (verdict === 'closed') { next.state = 'closed'; next.reason = observation.merged ? 'pr_merged_externally' : 'pr_closed_externally'; }
-  else if (['conflict', 'failure'].includes(verdict)) {
+  else if (['conflict', 'failure'].includes(verdict) && !(watchingFailure && verdict === 'failure')) {
     const diagnostic = policy.digest([verdict, observation.baseHead, state.pr.diffFingerprint || state.pr.head,
       observation.checks.map(c => [c.name, c.state, c.diagnostics])]);
     if (state.seenDiagnostics.includes(diagnostic)) { next.state = 'blocked'; next.reason = 'repeated_diagnostic'; }
@@ -346,7 +357,13 @@ async function observe(task) {
         checks: observation.checks.filter(c => c.state !== 'success').slice(0, 10) };
     }
   }
-  if (next.state !== 'waiting_ci') next.spent = { ...state.spent, ciSeconds: (state.spent.ciSeconds || 0) + elapsed };
+  // A rerun can settle the same published commit without another coding turn.
+  // Keep observing a queued CI failure while work is paused or resume-limited;
+  // repeated reads are not a repeated diagnostic from a new worker attempt.
+  if (state.state === 'waiting_ci' && next.state !== 'waiting_ci') {
+    next.spent = { ...state.spent, ciSeconds: (state.spent.ciSeconds || 0) + elapsed };
+    if (failedCIWatch(next)) next.ciStartedAt = new Date(now).toISOString();
+  } else if (watchingFailure && !failedCIWatch(next)) next.spent = ciSpent(state);
   return save(task, next);
 }
 async function tick() {
@@ -371,7 +388,13 @@ async function tick() {
     }
     // Bound one sweep and choose the least recently due PR first. No task can
     // monopolize observations; this cadence is independent of shared queue jobs.
-    const waiting = await Task.find({ 'codingAutonomy.state': 'waiting_ci' })
+    const waiting = await Task.find({ $or: [
+      { 'codingAutonomy.state': 'waiting_ci' },
+      { 'codingAutonomy.authorized': true, 'codingAutonomy.correction.kind': 'failure',
+        status: { $in: ['review', 'blocked'] }, automationLease: null, codingCapacity: null,
+        $or: [{ 'codingAutonomy.state': 'correction' },
+          { 'codingAutonomy.state': 'blocked', 'codingAutonomy.reason': 'resume_limit' }] }
+    ] })
       .sort({ 'codingAutonomy.nextObservationAt': 1, pipelineId: 1 }).limit(2).lean();
     for (const task of waiting) await observe(task);
     config = await settings();

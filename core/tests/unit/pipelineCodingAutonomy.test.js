@@ -241,6 +241,108 @@ test('green exact-head CI ends at human review without merge, deploy or task com
   await service.tick(); const state = (await service.status()).tasks[0];
   expect(state.state).toBe('ready_for_review'); expect(state.taskStatus).toBe('review'); expect(await selected()).toBeNull();
 });
+async function pausedFailedCI(limits) {
+  await task(); await authorize('0001', limits); await enable();
+  const active = await launch(); await complete(active);
+  const config = await service.settings();
+  await service.configure({ enabled: false, confirm: true, expectedRevision: config.revision });
+  observations.set(active.requestId, { ...PR, state: 'open', mergeable: 'clean',
+    checks: policy.CHECKS.map(name => ({ name, head: HEAD, state: name === 'tests (core)' ? 'failure' : 'success',
+      diagnostics: name === 'tests (core)' ? ['Synthetic check failure'] : [] })) });
+  await service.tick();
+  expect((await service.status()).tasks[0].state).toBe('correction');
+  return active;
+}
+async function observeNow() {
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.nextObservationAt': new Date(0).toISOString() } });
+  await service.tick();
+}
+test('paused CI failure observes a successful rerun on the same commit without another worker', async () => {
+  const active = await pausedFailedCI();
+  const before = (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy;
+  observations.set(active.requestId, { ...PR, state: 'open', mergeable: 'clean',
+    checks: policy.CHECKS.map(name => ({ name, head: HEAD, state: 'success' })) });
+  await observeNow();
+  const after = (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy;
+  expect(after.state).toBe('ready_for_review'); expect(after.correction).toBeUndefined();
+  expect(after.runs).toEqual(before.runs); expect(after.seenDiagnostics).toEqual(before.seenDiagnostics);
+  expect(after.spent.modelCalls).toBe(before.spent.modelCalls);
+  expect(control.launch).toHaveBeenCalledTimes(1); expect(await selected()).toBeNull();
+});
+test('repeated CI failure reads and pending reruns retain correction without inventing a repeated worker diagnostic', async () => {
+  const active = await pausedFailedCI();
+  const before = (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy;
+  await observeNow(); await observeNow();
+  observations.set(active.requestId, { ...PR, state: 'open', mergeable: 'clean',
+    checks: policy.CHECKS.map(name => ({ name, head: HEAD, state: 'pending' })) });
+  await observeNow();
+  const after = (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy;
+  expect(after.state).toBe('correction'); expect(after.correction).toEqual(before.correction);
+  expect(after.seenDiagnostics).toEqual(before.seenDiagnostics); expect(after.runs).toEqual(before.runs);
+  expect(control.launch).toHaveBeenCalledTimes(1);
+});
+test('resume-limited failure can reach review from green exact-head CI without extending execution authority', async () => {
+  const active = await pausedFailedCI({ maxResumes: 0 });
+  await enable(); await service.tick();
+  expect((await service.status()).tasks[0].reason).toBe('resume_limit');
+  observations.set(active.requestId, { ...PR, state: 'open', mergeable: 'clean',
+    checks: policy.CHECKS.map(name => ({ name, head: HEAD, state: 'success' })) });
+  await observeNow();
+  const after = (await service.status()).tasks[0];
+  expect(after.state).toBe('ready_for_review'); expect(after.reason).toBeNull();
+  expect(after.limits.maxResumes).toBe(0); expect(control.launch).toHaveBeenCalledTimes(1);
+});
+test('failed CI watch charges elapsed wait once and closes at its cumulative CI budget', async () => {
+  await pausedFailedCI({ ciSeconds: 10 });
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.spent.ciSeconds': 3,
+    'codingAutonomy.ciStartedAt': new Date(Date.now() - 4000).toISOString() } });
+  await observeNow(); await observeNow();
+  let after = (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy;
+  expect(after.spent.ciSeconds).toBe(3);
+  expect((await service.status()).tasks[0].remaining.ciSeconds).toBeLessThanOrEqual(3);
+  await Task.updateOne({ pipelineId: '0001' }, { $set: {
+    'codingAutonomy.ciStartedAt': new Date(Date.now() - 8000).toISOString() } });
+  await observeNow();
+  after = (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy;
+  expect(after.reason).toBe('ci_timeout'); expect(after.spent.ciSeconds).toBeGreaterThanOrEqual(11);
+  expect(control.launch).toHaveBeenCalledTimes(1);
+});
+test('failure watch rejects old-head green checks and preserves external-head reconciliation', async () => {
+  const active = await pausedFailedCI();
+  observations.set(active.requestId, { ...PR, state: 'open', mergeable: 'clean',
+    checks: policy.CHECKS.map(name => ({ name, head: 'f'.repeat(40), state: 'success' })) });
+  await observeNow(); expect((await service.status()).tasks[0].state).toBe('correction');
+  observations.set(active.requestId, { ...PR, head: 'f'.repeat(40), state: 'open', mergeable: 'clean',
+    checks: policy.CHECKS.map(name => ({ name, head: 'f'.repeat(40), state: 'success' })) });
+  await observeNow();
+  const after = (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy;
+  expect(after.state).toBe('correction'); expect(after.correction.kind).toBe('remote_head_changed');
+  expect(after.manualInterventions.at(-1).kind).toBe('remote_branch_update');
+  expect(control.launch).toHaveBeenCalledTimes(1);
+});
+test.each(['human_review', 'git_conflict_remaining'])('green CI cannot erase a queued %s correction', async kind => {
+  const active = await pausedFailedCI();
+  await Task.updateOne({ pipelineId: '0001' }, { $set: {
+    'codingAutonomy.correction': { kind, head: HEAD, text: 'Synthetic requirement to preserve' } } });
+  const count = control.observe.mock.calls.length;
+  observations.set(active.requestId, { ...PR, state: 'open', mergeable: 'clean',
+    checks: policy.CHECKS.map(name => ({ name, head: HEAD, state: 'success' })) });
+  await observeNow();
+  expect(control.observe).toHaveBeenCalledTimes(count);
+  const after = (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy;
+  expect(after.state).toBe('correction'); expect(after.correction.kind).toBe(kind);
+});
+test.each(['stopped', 'closed', 'dispatching'])('CI rerun does not revive or rewrite a %s execution', async state => {
+  const active = await pausedFailedCI();
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.state': state } });
+  const count = control.observe.mock.calls.length;
+  observations.set(active.requestId, { ...PR, state: 'open', mergeable: 'clean',
+    checks: policy.CHECKS.map(name => ({ name, head: HEAD, state: 'success' })) });
+  await observeNow();
+  expect(control.observe).toHaveBeenCalledTimes(count);
+  expect((await service.status()).tasks[0].state).toBe(state);
+  expect(control.launch).toHaveBeenCalledTimes(1);
+});
 test('review correction keeps the same card and PR with a new linked request and cumulative budgets', async () => {
   await task(); await authorize(); await enable(); const first = await launch(); await complete(first, HEAD, undefined, 'uncertain');
   await service.recordReview('0001', { confirm: true, head: HEAD, text: 'Synthetic correction request' });
