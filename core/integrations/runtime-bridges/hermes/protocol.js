@@ -13,6 +13,7 @@ const {
 const { setTimeout: delay } = require('node:timers/promises');
 const { ollamaMessages } = require('./messages');
 const { registerHermesVision } = require('./vision');
+const { settledStream } = require('../openclaw/settled-stream');
 
 const HERMES_HARNESS_VERSION = '1.2.0';
 const HERMES_CONSUMER_CONTRACT = 'hermes-runtime-v1';
@@ -200,6 +201,7 @@ function registerHermesProtocol({ express, runtimeServices, logger }) {
   router.post('/v1/chat/completions', async (req, res) => {
     const abort = requestAbort(req, res);
     let streaming = false;
+    let coding;
     try {
       const body = req.body || {};
       if (!Array.isArray(body.messages) || body.messages.length === 0) {
@@ -209,6 +211,7 @@ function registerHermesProtocol({ express, runtimeServices, logger }) {
       }
       const snapshot = await runtimeServices.routing.getEffectiveSnapshot({ includeCatalog: false });
       const model = requireApprovedModel(snapshot, body.model);
+      coding = await require('../../../src/services/pipelineCodingInferenceService').prepare(req.headers, model);
       const result = await whenAdmitted(() => runtimeServices.inference.execute({
         mode: 'chat',
         model,
@@ -233,8 +236,17 @@ function registerHermesProtocol({ express, runtimeServices, logger }) {
       }, {
         signal: abort.signal,
         consumerContract: HERMES_CONSUMER_CONTRACT,
-        observePromptPrefix: true
+        observePromptPrefix: true,
+        ...(coding?.options || {})
       }), { waitMs: req.admissionWaitMs, signal: abort.signal });
+      let codingCompletion;
+      if (coding) {
+        if (result.completion) {
+          codingCompletion = result.completion.then(async value => { await coding.finish('completed'); return value; },
+            async error => { await coding.finish('unknown'); throw error; });
+          if (!result.stream) await codingCompletion;
+        } else await coding.finish(result.ok ? 'completed' : 'refused');
+      }
       applyRoutingHeaders(res, result.metadata);
       const resolvedModel = String(result.metadata?.model || '').trim();
       res.set('X-AgentX-Fallback-Used', resolvedModel ? String(resolvedModel !== model) : 'unknown');
@@ -256,9 +268,10 @@ function registerHermesProtocol({ express, runtimeServices, logger }) {
           'Cache-Control': 'no-cache, no-transform',
           Connection: 'keep-alive'
         });
+        const admitted = coding ? settledStream(result.stream, codingCompletion) : result.stream;
         const stream = result.metadata.upstreamProtocol === 'openai'
-          ? result.stream
-          : result.stream.pipe(new OllamaToOpenAiSse(model));
+          ? admitted
+          : admitted.pipe(new OllamaToOpenAiSse(model));
         stream.once('error', (error) => {
           if (!abort.signal.aborted) logger?.warn?.('Hermes inference stream failed', { code: error.code || 'STREAM_ERROR' });
           if (!res.destroyed) res.destroy(error);
@@ -272,6 +285,7 @@ function registerHermesProtocol({ express, runtimeServices, logger }) {
           : openAiCompletion(result.body, model)
       );
     } catch (error) {
+      if (coding) await coding.finish(error.failure?.safeToRetry === true ? 'refused' : 'unknown');
       const safeStatus = Number(error?.statusCode || 500);
       if (!res.headersSent && safeStatus < 500) {
         return res.status(safeStatus).json({

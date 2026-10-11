@@ -27,7 +27,7 @@ const { expectedStatusGuard } = require('../src/services/pipelineExpectedStatus'
 const STATUSES = ['queued', 'in_progress', 'review', 'blocked', 'done'];
 
 const ACTIVE_STATUSES = ['queued', 'in_progress', 'review', 'blocked'];
-router.use(require('./pipeline-diagnostics'), require('./pipeline-deliverables'), require('./pipeline-plans'));
+router.use(require('./pipeline-diagnostics'), require('./pipeline-deliverables'), require('./pipeline-plans'), require('./pipeline-coding-autonomy'));
 
 // One-release compatibility shim. Board integrations are separately deployed
 // adapters and consume the product-owned task API instead of running in Core.

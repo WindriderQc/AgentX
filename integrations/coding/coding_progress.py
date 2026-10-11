@@ -24,6 +24,7 @@ REASONS = {"hard_budget", "soft_budget_no_progress", "no_useful_progress", "mode
            "worker_exit", "no_changes", "dependencies_failed", "dependencies_changed", "runner_error",
            "tests_failed", "generated_artifacts", "ineligible_task", "runtime_unavailable", "runtime_changed",
            "model_wait_inactive", "model_generation_inactive", "tool_inactive", "test_inactive"}
+REASONS.update({"github_token_missing", "git_reconciliation", "git_conflict_remaining", "verification_profile_unknown", "progress_history_limit", "model_termination_unverified", "authorization_removed"})
 RESULTS = {"blocked", "review", "local_only"}
 TEST_NAMES = {"pytest", "unittest", "jest", "npm_test", "node_test"}
 TEST_OUTCOMES = {"passed", "failed", "unknown"}
@@ -154,6 +155,27 @@ def safe_progress(value: object, request_id: str, task_id: str) -> dict | None:
                           if isinstance(last, dict) and allowed(last.get("name"), TEST_NAMES) and allowed(last.get("outcome"), TEST_OUTCOMES) else None)
     checkpoint = value.get("checkpoint")
     result["checkpoint"] = checkpoint if isinstance(checkpoint, str) and re.fullmatch(r"[a-f0-9]{40}", checkpoint) else None
+    result["coreRecorded"] = value.get("coreRecorded") is True
+    result["preflight"] = value.get("preflight") is True
+    useful_work = value.get("lastUsefulWorkSeconds")
+    result["lastUsefulWorkSeconds"] = useful_work if type(useful_work) is int and 0 <= useful_work <= 86400 else None
+    usage = value.get("usage") or {}
+    result["usage"] = {k: v for k, v in usage.items() if k in {"workSeconds", "testSeconds", "modelSeconds", "modelCalls"}
+                       and type(v) is int and 0 <= v <= 86400}
+    for field in ["seenStates", "seenTests"]:
+        items = value.get(field, [])
+        result[field] = [v for v in items[:256] if isinstance(v, str) and re.fullmatch(r"[a-f0-9]{64}", v)] if isinstance(items, list) else []
+    manual = value.get("manualHead")
+    result["manualHead"] = manual if isinstance(manual, str) and re.fullmatch(r"[a-f0-9]{40}", manual) else None
+    pr = value.get("pr")
+    if isinstance(pr, dict) and type(pr.get("number")) is int and 1 <= pr["number"] <= 1000000:
+        expected = f"agentx/coding-task-{task_id}"
+        repo = pr.get("repository", "")
+        if (re.fullmatch(r"[\w.-]+/[\w.-]+", repo) and pr.get("branch") == expected and pr.get("base") == "main"
+                and pr.get("head") == result["checkpoint"] and pr.get("url") == f"https://github.com/{repo}/pull/{pr['number']}"):
+            result["pr"] = {k: pr[k] for k in ["repository", "number", "branch", "base", "head", "url"]}
+            if re.fullmatch(r'[a-f0-9]{64}', str(pr.get('diffFingerprint', ''))):
+                result['pr']['diffFingerprint'] = pr['diffFingerprint']
     return result
 
 
@@ -178,7 +200,42 @@ class Progress:
         self.model_events = queue.SimpleQueue()
         self.seen_states, self.seen_tests = set(), set()
         self.source_signature = None
+        self.accounted_at = self.started
+        self.stage_spent = {"testSeconds": 0.0, "modelSeconds": 0.0}
+        self.cumulative_limits = None
+        self.core_recorded = False
+        self.pr = self.manual_head = None
+        self.prior_work = self.useful_work = 0
         self.write()
+
+    def carry(self, manifest):
+        self.cumulative_limits = manifest["remaining"]
+        self.hard_deadline = self.started + self.cumulative_limits["workSeconds"]
+        self.soft_deadline = min(self.soft_deadline, self.hard_deadline)
+        self.seen_states.update(manifest.get("seenStates", []))
+        self.seen_tests.update(manifest.get("seenTests", []))
+        self.no_progress_limit = manifest["limits"]["noProgressSeconds"]
+        self.prior_work = manifest.get("spent", {}).get("workSeconds", 0)
+        self.useful_work = manifest.get("lastUsefulWorkSeconds", 0)
+        self.last_useful = self.started - max(0, self.prior_work - self.useful_work)
+        self.write()
+
+    def account(self):
+        current = self.now()
+        elapsed = max(0, current - self.accounted_at)
+        if self.stage == "test":
+            self.stage_spent["testSeconds"] += elapsed
+        elif self.stage in {"model_wait", "model_generation"}:
+            self.stage_spent["modelSeconds"] += elapsed
+        self.accounted_at = current
+
+    def usage(self):
+        self.account()
+        return {"workSeconds": max(0, int(self.now() - self.started)), "modelCalls": self.model_calls,
+                **{k: int(v) for k, v in self.stage_spent.items()}}
+
+    def test_remaining(self):
+        return max(0, (self.cumulative_limits or {"testSeconds": STAGE_LIMITS["test"]})["testSeconds"] - self.stage_spent["testSeconds"])
 
     def write(self):
         if not self.path:
@@ -191,6 +248,9 @@ class Progress:
                  "stopReason": self.stop_reason, "checkpoint": self.checkpoint, "result": self.result,
                  "softRemainingSeconds": max(0, int(self.soft_deadline - current)),
                  "hardRemainingSeconds": max(0, int(self.hard_deadline - current))}
+        value.update(preflight=getattr(self, "preflight", False), coreRecorded=self.core_recorded, usage=self.usage(), pr=self.pr, manualHead=self.manual_head,
+                     seenStates=sorted(self.seen_states), seenTests=sorted(self.seen_tests),
+                     lastUsefulWorkSeconds=int(self.useful_work))
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(mode="w", dir=self.path.parent, prefix=".progress-", delete=False) as output:
             json.dump(value, output)
@@ -200,12 +260,17 @@ class Progress:
         os.replace(temporary, self.path)
 
     def set_stage(self, stage: str):
+        self.account()
         if self.stage != stage:
             self.stage, self.stage_since = stage, self.now()
         self.last_activity, self.activity_at = self.now(), utc_now()
 
     def useful(self):
+        if len(self.seen_states) > 256 or len(self.seen_tests) > 256:
+            self.stop_reason = "progress_history_limit"
+            return
         self.last_useful, self.progress_at = self.now(), utc_now()
+        self.useful_work = self.prior_work + max(0, self.now() - self.started)
 
     def event(self, entry: object, session: str = ""):
         if not isinstance(entry, dict) or not isinstance(entry.get("data"), dict):
@@ -244,7 +309,7 @@ class Progress:
                 errored = message.get("isError") or (isinstance(blocks, list) and any(
                     isinstance(block, dict) and block.get("isError") for block in blocks))
                 outcome = test_outcome(content, bool(errored), pending[2])
-                signature = (pending[1], outcome, self.source_signature)
+                signature = hashlib.sha256(json.dumps([pending[1], outcome, self.source_signature]).encode()).hexdigest()
                 if outcome != "unknown" and signature not in self.seen_tests:
                     self.seen_tests.add(signature)
                     self.useful()
@@ -300,6 +365,7 @@ class Progress:
         self.check_stop()
         self.observe(home, workspace)
         current = self.now()
+        self.account()
         if self.last_heartbeat is None or current - self.last_heartbeat >= 20:
             if self.heartbeat:
                 try:
@@ -307,7 +373,7 @@ class Progress:
                 except (OSError, RuntimeError):
                     pass
             self.last_heartbeat, self.heartbeat_at = current, utc_now()
-        if self.phase == "running" and not self.stop_reason:
+        if (self.phase == "running" or self.cumulative_limits and self.phase != "finished") and not self.stop_reason:
             if current >= self.soft_deadline and current < self.hard_deadline:
                 if self.last_useful > self.last_extension and current - self.last_useful < min(1800, self.extension_seconds):
                     self.soft_deadline = min(self.hard_deadline, current + self.extension_seconds)
@@ -317,11 +383,14 @@ class Progress:
                 self.stop_reason = "hard_budget"
             elif current >= self.soft_deadline:
                 self.stop_reason = "soft_budget_no_progress"
-            elif self.model_calls >= 128:
+            elif self.model_calls >= (self.cumulative_limits or {"modelCalls": 128})["modelCalls"]:
                 self.stop_reason = "model_call_limit"
+            elif self.cumulative_limits and (self.stage_spent["modelSeconds"] >= self.cumulative_limits["modelSeconds"]
+                                             or self.stage_spent["testSeconds"] >= self.cumulative_limits["testSeconds"]):
+                self.stop_reason = "hard_budget"
             elif self.stage in STAGE_LIMITS and current - self.stage_since >= STAGE_LIMITS[self.stage]:
                 self.stop_reason = f"{self.stage}_inactive"
-            elif self.stage != "test" and current - self.last_useful >= 45 * 60:
+            elif self.stage != "test" and current - self.last_useful >= getattr(self, "no_progress_limit", 45 * 60):
                 self.stop_reason = "no_useful_progress"
         self.write()
         return self.stop_reason

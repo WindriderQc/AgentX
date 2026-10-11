@@ -148,3 +148,15 @@ test('unknown inference retains capacity and prevents another dispatch even afte
   expect((await coordination.listActive()).workloads).toHaveLength(1);
   await expect(claimEligibleTask('0800', 'worker', new Date(), options)).rejects.toMatchObject({ code: 'TASK_UNAVAILABLE' });
 });
+
+
+test('autonomous capacity outside the approved campaign refuses before acquiring any workload', async () => {
+  await newTask(); await PipelineTask.updateOne({ pipelineId: '0800' }, { $set: { codingAutonomy: { authorized: true } } });
+  const autonomy = require('../../src/services/pipelineCodingAutonomyService');
+  jest.spyOn(autonomy, 'workerManifest').mockResolvedValue({});
+  jest.spyOn(autonomy, 'campaign').mockRejectedValue(Object.assign(new Error('Host outside campaign'), { code: 'CODING_AUTONOMY_QUEUE_WAIT' }));
+  const acquire = jest.spyOn(coordination, 'acquireWorkload');
+  await expect(claimEligibleTask('0800', 'worker', new Date(), options)).rejects.toMatchObject({ code: 'CODING_AUTONOMY_QUEUE_WAIT' });
+  expect(acquire).not.toHaveBeenCalled();
+  expect((await PipelineTask.findOne({ pipelineId: '0800' }).lean()).automationAttemptCount).toBe(0);
+});

@@ -9,6 +9,16 @@ Core Pipeline is the task queue. One local worker takes one task, writes the
 change and opens a draft pull request. Reviewing that pull request, with its
 normal CI, is the gate. Nothing here merges or deploys.
 
+## Autonomous corrections
+
+Pipeline also provides the explicitly authorized, disabled-by-default
+[Core-owned correction loop](../../docs/CODING_AUTONOMY.md). It reuses native
+claims/capacity, prepares current Git versions, verifies and updates the same
+PR, observes exact-commit CI and gives the Coding Team bounded correction turns.
+Its cumulative budgets and durable publication/native receipts survive resumes.
+The manual path below stays available; it does not turn routing or idea intake
+into autonomous authorization.
+
 ## One run
 
 ```bash

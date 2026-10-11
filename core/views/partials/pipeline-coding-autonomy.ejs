@@ -1,0 +1,34 @@
+<section class="pipeline-panel" id="pipelineCodingAutonomy" aria-labelledby="codingAutonomyTitle">
+  <h2 id="codingAutonomyTitle">Coding Team autonomy</h2>
+  <p>Authorize exact engineering tasks through human review. The loop updates each task's draft PR, observes CI and asks the Coding Team to correct it. Human review, merge, installation and real product acceptance are separate decisions.</p>
+  <p id="codingAutonomyStatus" role="status" aria-live="polite">Reading Core's autonomy state…</p>
+  <label><input type="checkbox" id="codingAutonomyConfirm"> I approve this bounded task scope and the selected campaign</label>
+  <p>
+    <button type="button" class="pipeline-btn" data-autonomy-switch="true">Enable authorized scope</button>
+    <button type="button" class="pipeline-btn" data-autonomy-switch="false">Pause new work and corrections</button>
+    <button type="button" class="pipeline-btn" id="codingAutonomyRefresh">Refresh</button>
+  </p>
+  <details>
+    <summary>Authorize an engineering task</summary>
+    <form id="codingAutonomyCampaign">
+      <p><label>Reserved coding campaign ID <input name="queueRequestId" required></label>
+        <button type="submit" class="pipeline-btn">Begin the approved campaign window</button></p>
+    </form>
+    <form id="codingAutonomyAuthorize">
+      <p><label>Task ID <input name="pipelineId" pattern="[0-9]{4}" maxlength="4" required></label></p>
+      <p><label>Approved heavy-work campaign ID <input name="queueRequestId" required></label></p>
+      <p><label>Exact permitted files, one per line <textarea name="scope" rows="4" required></textarea></label></p>
+      <p><label>Independent verification <select name="verificationProfile">
+        <option value="agentx-dispatcher-tests/v1">Coding integration tests</option>
+        <option value="agentx-core-runner-tests/v1">Bounded Core coding tests</option>
+      </select></label></p>
+      <p><label>Maximum corrections <input name="maxResumes" type="number" min="0" max="2" value="2" required></label>
+        <label>Total work minutes <input name="workMinutes" type="number" min="1" max="240" value="240" required></label>
+        <label>Total CI waiting minutes <input name="ciMinutes" type="number" min="1" max="60" value="60" required></label></p>
+      <p>Only low-risk public engineering work routed to agentx-coding is eligible. This authorization does not start an idea or a private/family task. The reserved queue campaign needs an explicit operator start above and an active permitted window; <a href="/cluster-schedule">Cluster Schedule</a> shows it.</p>
+      <button type="submit" class="pipeline-btn">Authorize this task and file scope</button>
+    </form>
+  </details>
+  <div id="codingAutonomyTasks" aria-live="polite"></div>
+</section>
+<script src="/js/pipeline-coding-autonomy.js" defer></script>

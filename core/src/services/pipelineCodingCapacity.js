@@ -59,6 +59,12 @@ async function reserve(task, { taskType, assignee, requestId, ttl, target } = {}
     if (!saved) throw conflict('The task changed before its capacity request was saved.');
     observedUpdatedAt = saved.updatedAt;
   }
+  if (task.codingAutonomy) {
+    // Check the frozen target before touching native admission on that host.
+    const autonomy = require('./pipelineCodingAutonomyService');
+    await autonomy.workerManifest(task.pipelineId, requestId);
+    await autonomy.campaign(task, capacity.host);
+  }
   const workloadId = `coding:${task.pipelineId}:${capacity.requestId}`;
   const admitted = await coordination.acquireWorkload({ principal: PRINCIPAL, requestId: capacity.requestId,
     workloadId, kind: 'coding', hosts: [capacity.host], ttl });

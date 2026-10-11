@@ -816,7 +816,13 @@ with a shell and test tools inside Bubblewrap. The runner keeps credentials
 outside that sandbox, commits completed work and opens a draft pull request.
 Interrupted work stays committed locally for continuation. Core admits model
 calls; only proven admission refusals wait and retry. Review and normal PR CI
-are the acceptance gate. See [the coding worker](../integrations/coding/README.md).
+are the acceptance gate. The disabled-by-default
+[autonomous correction loop](CODING_AUTONOMY.md) keeps selection, explicit task
+scope, cumulative budgets and linked executions in Core. Its runner handles one
+leased turn, journals publication before effects and reconciles lost responses
+without relaunch. Exact-commit GitHub observations produce bounded corrections
+or ready-for-human-review; native model completion and capacity release remain
+separate gates. See [the coding worker](../integrations/coding/README.md).
 
 Nerve Center reads `live.gpuHealth` from the existing host-preference endpoint;
 HTTP reachability stays separate from pin GPU residency. Benchmark's bounded
