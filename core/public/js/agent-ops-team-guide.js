@@ -41,6 +41,8 @@
         dialog.className = 'agent-ops-editor';
         document.body.appendChild(dialog);
         dialog.addEventListener('input', snippet);
+        // The guide writes nothing: Enter in a field must not close it.
+        dialog.addEventListener('submit', (event) => event.preventDefault());
         dialog.addEventListener('click', async (event) => {
           if (event.target.closest('[data-editor-close]')) return dialog.close();
           const copy = event.target.closest('[data-guide-copy]');
@@ -54,7 +56,7 @@
       }
       const known = [...new Set(models.filter(Boolean))];
       dialog.innerHTML = `
-        <form method="dialog" class="agent-ops-editor-form" onsubmit="return false">
+        <form method="dialog" class="agent-ops-editor-form">
           <header><div><span class="agent-ops-kicker">New member</span><h2>Add an agent to the team</h2></div>
             <button type="button" class="agent-ops-drawer-close" data-editor-close aria-label="Close"><i class="fas fa-xmark"></i></button></header>
           <p class="agent-ops-editor-note">An agent is created in the agent runtime, which owns its tools, memory and permissions. AgentX prepares the entry; nothing is written from this page.</p>
