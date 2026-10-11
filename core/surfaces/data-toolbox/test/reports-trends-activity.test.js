@@ -842,7 +842,7 @@ test('family, severity and period filters are sent to Data, and paging walks the
   const store = { events: fx.eventLog(160, Date.now() - 60000) };
   const browser = await openActivity(store);
   assert.match(html(browser), /<option value="storage">Storage<\/option>.*<option value="external">External \(recorded by another service\)<\/option>/s);
-  for (const family of ['storage', 'collector', 'gpu', 'network', 'janitor', 'livedata', 'mqtt', 'external']) assert.match(html(browser), new RegExp(`<option value="${family}"`));
+  for (const family of ['storage', 'collector', 'gpu', 'network', 'janitor', 'livedata', 'mqtt', 'iot', 'external']) assert.match(html(browser), new RegExp(`<option value="${family}"`));
   assert.match(html(browser), /data-activity-page="0" disabled>Newer<\/button>\s*<span class="muted">Page 1 of 4<\/span>\s*<button type="button" class="button" data-activity-page="2">Older/);
   await browser.click({ activityPage: '2' });
   assert.deepEqual(Object.fromEntries(listRead(browser).query), { page: '2', limit: '50' });

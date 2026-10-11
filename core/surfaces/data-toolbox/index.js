@@ -586,13 +586,14 @@ function register(api) {
     from: { maxLength: 80 }, to: { maxLength: 80 }, order: { values: ['asc', 'desc'] }, limit: { type: 'int', fallback: 100, min: 1, max: 500 }
   }));
 
-  // The broker monitor Data keeps in memory. `topic` is an MQTT filter that
-  // Data validates and applies; a publish topic is at most 256 bytes.
+  // The broker monitor Data keeps in memory. `topic` and `exclude` are MQTT
+  // filters Data validates and applies; a publish topic is at most 256 bytes.
   router.get('/mqtt/status', relay(() => '/api/v1/mqtt/status'));
   router.get('/mqtt/messages', relay(() => '/api/v1/mqtt/messages', {
     since: { type: 'int', fallback: 0, min: 0, max: Number.MAX_SAFE_INTEGER },
     limit: { type: 'int', fallback: 100, min: 1, max: 500 },
-    topic: { maxLength: 256 }
+    topic: { maxLength: 256 },
+    exclude: { maxLength: 256 }
   }));
   // The MQTT write: one MQTT message published by hand, on any topic
   // (the owner's choice). The body is checked here with Data's own rules, and
