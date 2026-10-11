@@ -142,6 +142,25 @@ describe('Dreaming Review insights read model', () => {
     expect(result.quality.metrics.approvalPrecision).toEqual(expect.objectContaining({ value: 50, denominator: 2, state: 'current' }));
   });
 
+  test('a runtime this instance does not collect is not a missing collector', () => {
+    const runs = [{
+      runId: 'night', status: 'completed', createdAt: new Date('2026-10-11T07:15:00Z'), completedAt: new Date('2026-10-11T07:35:00Z'),
+      collectors: ['claude-code', 'codex', 'external'].map((runtime) => ({ runtime, submittedAt: new Date('2026-10-11T07:15:00Z'), errors: [], drift: [] })),
+      candidates: [], summary: {},
+    }];
+    const now = new Date('2026-10-11T12:00:00Z');
+    expect(summarizeRuns(runs, 30, now).health).toEqual(expect.objectContaining({ state: 'attention', missingRuntimes: ['agentx'] }));
+    process.env.MEMORY_REVIEW_EXPECTED_RUNTIMES = 'claude-code, codex, external, not-a-runtime';
+    try {
+      const result = summarizeRuns(runs, 30, now);
+      expect(result.health).toEqual(expect.objectContaining({ state: 'healthy', missing: 0, missingRuntimes: [] }));
+      expect(result.runtimes.find((runtime) => runtime.runtime === 'agentx')).toEqual(expect.objectContaining({ expected: false, health: 'not_seen' }));
+      expect(result.runtimes.find((runtime) => runtime.runtime === 'codex').expected).toBe(true);
+      process.env.MEMORY_REVIEW_EXPECTED_RUNTIMES = 'nothing-valid';
+      expect(summarizeRuns(runs, 30, now).health.missingRuntimes).toEqual(['agentx']);
+    } finally { delete process.env.MEMORY_REVIEW_EXPECTED_RUNTIMES; }
+  });
+
   test('safe digest and distributions never include candidate statements', () => {
     const result = summarizeRuns([{
       runId: 'one', status: 'ready_for_review', createdAt: new Date(), collectors: [], summary: { modelCalled: true },
