@@ -16,6 +16,7 @@
       return payload.data;
     } finally { clearTimeout(timeout); }
   }
+  function remaining(seconds) { return seconds > 0 && seconds < 60 ? `${seconds} sec` : `${Math.floor(seconds / 60)} min`; }
   function confirmed() {
     if (!$('codingAutonomyConfirm').checked) throw new Error('Confirm the reviewed task scope and campaign first.');
   }
@@ -26,7 +27,7 @@
     for (const task of snapshot.tasks) {
       const article = element('article', '');
       article.append(element('h3', `${task.pipelineId} · ${task.title}`), element('p', `${task.state} · task ${task.taskStatus} · ${task.resumes} corrections · ${task.nextAction}`),
-        element('p', `Remaining: ${Math.floor(task.remaining.workSeconds / 60)} min work, ${Math.floor(task.remaining.testSeconds / 60)} min tests, ${Math.floor(task.remaining.modelSeconds / 60)} min model, ${task.remaining.modelCalls} calls, ${Math.floor(task.remaining.ciSeconds / 60)} min CI`),
+        element('p', `Remaining: ${remaining(task.remaining.workSeconds)} work, ${remaining(task.remaining.testSeconds)} tests, ${remaining(task.remaining.modelSeconds)} model, ${task.remaining.modelCalls} calls, ${remaining(task.remaining.ciSeconds)} CI`),
         element('p', `Last useful progress: ${task.lastUsefulProgressAt || 'none recorded'} · manual interventions: ${task.manualInterventions.length}`));
       article.append(element('p', `Authorized files: ${task.scope.join(', ')} · campaign ${task.queueRequestId}`));
       const run = task.runs.at(-1);
