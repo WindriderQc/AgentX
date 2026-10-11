@@ -52,7 +52,7 @@ function iotCombinedModel() {
     const known = array(iotDevice()?.measures).find(item => item.key === key);
     const visual = iotMetric(key, known?.name || measure?.name);
     const raw = array(measure?.points).map(point => ({
-      ts: new Date(point.ts).getTime(), value: live ? point.value : point.mean,
+      ts: new Date(point.ts).getTime(), value: live ? point.value : iotCentral(point), mean: point.mean, median: point.median,
       min: live ? point.value : point.min, max: live ? point.value : point.max,
       count: live ? 1 : point.count, partial: point.partial === true
     })).filter(point => Number.isFinite(point.ts)).sort((a, b) => a.ts - b.ts);
@@ -60,11 +60,13 @@ function iotCombinedModel() {
     const gaps = points.slice(1).map((point, i) => point.ts - points[i].ts).filter(gap => gap > 0);
     const cadence = live ? gaps.reduce((min, gap) => Math.min(min, gap), 5000) : bucket;
     const gapLimit = live ? Math.max(15000, cadence * 3) : bucket * 1.5;
+    // The band belongs to history: it widens the scale to the real extremes so it is never clipped.
+    const banded = iotState.ranges && !live;
     let min = Infinity; let max = -Infinity;
     for (const point of points) {
       start = Math.min(start, point.ts); end = Math.max(end, point.ts);
-      min = Math.min(min, iotState.ranges && Number.isFinite(point.min) ? point.min : point.value);
-      max = Math.max(max, iotState.ranges && Number.isFinite(point.max) ? point.max : point.value);
+      min = Math.min(min, banded && Number.isFinite(point.min) ? point.min : point.value);
+      max = Math.max(max, banded && Number.isFinite(point.max) ? point.max : point.value);
     }
     const style = iotCurveStyle(key); const unit = measure?.unit || known?.unit || '';
     const bounds = points.length ? iotCombinedBounds(min, max, key, unit, style.scale) : { divisor: 1, low: 0, high: 1 };
@@ -75,7 +77,7 @@ function iotCombinedModel() {
       data.push({ x: point.ts, y: Number.isFinite(point.value) ? point.value / divisor : null });
       previous = point;
     }
-    return { key, ...visual, style, unit, points, data, ...bounds,
+    return { key, ...visual, style, unit, points, data, gapLimit, banded, ...bounds,
       axis: `iotY${index}`, min, max,
       tolerance: live ? Math.max(7500, cadence * 1.5) : bucket * .51 };
   });
@@ -84,6 +86,18 @@ function iotCombinedModel() {
   const populated = metrics.filter(metric => metric.points.length);
   const axis = populated.find(metric => metric.key === iotState.axis) || populated[0];
   return { metrics, populated, live, axis, start, end: Math.max(end, start + 1000) };
+}
+
+/** Unbroken stretches of buckets that carry a min and a max: one band shape each, never across a gap. */
+function iotBandRuns(metric) {
+  const runs = []; let run = [];
+  for (const point of metric.points) {
+    if (!Number.isFinite(point.min) || !Number.isFinite(point.max)) continue;
+    if (run.length && point.ts - run.at(-1).ts > metric.gapLimit) { runs.push(run); run = []; }
+    run.push(point);
+  }
+  if (run.length) runs.push(run);
+  return runs;
 }
 
 function iotNearestValue(metric, time) {
@@ -104,8 +118,8 @@ function iotCombinedReadings(model) {
 }
 
 function iotCombinedTables(model) {
-  return model.metrics.map(metric => `<details class="iot-data"><summary>${e(metric.label)} · ${number(metric.points.length)} points${model.live ? '' : ' · moyenne et min–max'}</summary>
-    <div class="table-wrap" tabindex="0" role="region" aria-label="Valeurs de ${e(metric.label)}"><table><thead><tr><th scope="col">Heure</th><th scope="col">${model.live ? 'Valeur' : 'Moyenne'}</th>${model.live ? '' : '<th scope="col">Min</th><th scope="col">Max</th><th scope="col">Mesures</th>'}</tr></thead><tbody>${metric.points.map(point => `<tr><th scope="row">${e(date(point.ts))}${point.partial ? ' (en cours)' : ''}</th><td>${e(String(point.value))} ${e(metric.unit)}</td>${model.live ? '' : `<td>${Number.isFinite(point.min) ? e(String(point.min)) : '—'}</td><td>${Number.isFinite(point.max) ? e(String(point.max)) : '—'}</td><td>${number(point.count)}</td>`}</tr>`).join('')}</tbody></table></div></details>`).join('');
+  return model.metrics.map(metric => `<details class="iot-data"><summary>${e(metric.label)} · ${number(metric.points.length)} points${model.live ? '' : ' · médiane, moyenne et min–max'}</summary>
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Valeurs de ${e(metric.label)}"><table><thead><tr><th scope="col">Heure</th><th scope="col">${model.live ? 'Valeur' : 'Médiane'}</th>${model.live ? '' : '<th scope="col">Moyenne</th><th scope="col">Min</th><th scope="col">Max</th><th scope="col">Mesures</th>'}</tr></thead><tbody>${metric.points.map(point => `<tr><th scope="row">${e(date(point.ts))}${point.partial ? ' (en cours)' : ''}</th><td>${model.live ? e(String(point.value)) : Number.isFinite(point.median) ? e(String(point.median)) : '—'} ${e(metric.unit)}</td>${model.live ? '' : `<td>${Number.isFinite(point.mean) ? e(String(point.mean)) : '—'}</td><td>${Number.isFinite(point.min) ? e(String(point.min)) : '—'}</td><td>${Number.isFinite(point.max) ? e(String(point.max)) : '—'}</td><td>${number(point.count)}</td>`}</tr>`).join('')}</tbody></table></div></details>`).join('');
 }
 
 function iotCombinedHtml() {
@@ -113,7 +127,8 @@ function iotCombinedHtml() {
   if (!model.populated.length) return '<p class="iot-empty">Aucune mesure reçue sur cette période.</p>';
   return `<article class="card iot-overlay-card"><header class="iot-overlay-head"><div><p class="iot-eyebrow">${number(model.metrics.length)} MESURES · UN AXE DE TEMPS</p><h3>Courbes superposées</h3></div><span class="iot-live-pill${model.live ? ' live' : ''}"><i aria-hidden="true"></i>${model.live ? 'En direct' : 'Historique'}</span></header>
     <div id="iotCombinedReadings" class="iot-overlay-readings">${iotCombinedReadings(model)}</div>
-    <div class="iot-overlay-tools"><p>Chaque courbe a son échelle. Le survol affiche les valeurs dans leur unité.</p><label>Axe affiché<select id="iotCombinedAxis">${model.populated.map(metric => `<option value="${e(metric.key)}"${metric.key === model.axis.key ? ' selected' : ''}>${e(metric.label)}${metric.unit ? ` (${e(metric.unit)})` : ''}</option>`).join('')}</select></label>${model.live ? '' : `<label class="iot-range-toggle"><input type="checkbox" id="iotCombinedRanges"${iotState.ranges ? ' checked' : ''}>Min–max</label>`}</div>
+    <div class="iot-overlay-tools"><p>Chaque courbe a son échelle. Le survol affiche les valeurs dans leur unité.</p><label>Axe affiché<select id="iotCombinedAxis">${model.populated.map(metric => `<option value="${e(metric.key)}"${metric.key === model.axis.key ? ' selected' : ''}>${e(metric.label)}${metric.unit ? ` (${e(metric.unit)})` : ''}</option>`).join('')}</select></label>${model.live ? '' : iotReadingControls()}</div>
+    ${model.live ? '' : `<p class="iot-reading-hint"><span id="iotReadingHint">${e(iotReadingHint())}</span> <span id="iotResolutionUsed">${e(iotResolutionUsed())}</span></p>`}
     ${iotAppearanceHtml(model.metrics)}
     <div class="iot-overlay-plot"><canvas id="iotCombinedChart" tabindex="0" role="img" aria-label="Courbes superposées de ${e(model.metrics.map(metric => metric.label).join(', '))}. Flèches gauche et droite pour consulter les mesures, Échap pour fermer le survol."></canvas><div id="iotCombinedTooltip" class="iot-shared-tooltip" hidden role="status"></div></div>
     <div class="iot-overlay-foot"><span>Survole ou touche le graphique pour comparer les mesures.</span><span id="iotCombinedWindow">${e(iotCombinedDate(model.start))} → ${e(iotCombinedDate(model.end))}</span></div>
@@ -189,7 +204,7 @@ function iotPaintCombinedHover() {
   if (hoverTime === null) { tooltip.hidden = true; return; }
   tooltip.innerHTML = `<strong>${e(iotCombinedDate(hoverTime))}</strong>${model.metrics.map(metric => {
     const point = iotNearestValue(metric, hoverTime);
-    return `<div style="--series:${metric.color}"><i aria-hidden="true"></i><span>${e(metric.label)}${point ? `<small>${e(iotCombinedTime(point.ts))}</small>` : ''}</span><b>${point ? `${e(String(point.value))}<small> ${e(metric.unit)}</small>` : '—'}</b></div>`;
+    return `<div style="--series:${metric.color}"><i aria-hidden="true"></i><span>${e(metric.label)}${point ? `<small>${e(iotCombinedTime(point.ts))}</small>` : ''}</span><b>${point ? `${e(String(point.value))}<small> ${e(metric.unit)}</small>${metric.banded && Number.isFinite(point.min) && Number.isFinite(point.max) && point.max > point.min ? `<small class="iot-tip-range">${e(String(point.min))} – ${e(String(point.max))}</small>` : ''}` : '—'}</b></div>`;
   }).join('')}`;
   tooltip.hidden = false;
   const x = chart.scales.x.getPixelForValue(hoverTime);
@@ -205,17 +220,23 @@ const iotCombinedPlugin = {
   },
   afterDatasetDraw(chart) { chart.ctx.restore(); },
   beforeDatasetsDraw(chart) {
-    if (!iotState.ranges) return;
-    const { model } = iotCombined; const ctx = chart.ctx;
-    ctx.save(); ctx.globalAlpha = .14; ctx.lineWidth = 1;
+    const { model } = iotCombined; const ctx = chart.ctx; const area = chart.chartArea;
+    if (!model || !area) return;
+    ctx.save(); ctx.beginPath(); ctx.rect(area.left, area.top, area.right - area.left, area.bottom - area.top); ctx.clip();
     for (const metric of model.metrics) {
-      ctx.strokeStyle = metric.color; ctx.beginPath();
-      for (const point of metric.points) if (Number.isFinite(point.min) && Number.isFinite(point.max)) {
-        const x = chart.scales.x.getPixelForValue(point.ts);
-        ctx.moveTo(x, chart.scales[metric.axis].getPixelForValue(point.min / metric.divisor));
-        ctx.lineTo(x, chart.scales[metric.axis].getPixelForValue(point.max / metric.divisor));
+      if (!metric.banded) continue;
+      // The displayed axis' band reads first; the others stay a faint envelope.
+      ctx.fillStyle = metric.color; ctx.strokeStyle = metric.color; ctx.lineWidth = 1;
+      ctx.globalAlpha = metric.key === model.axis.key ? .24 : .05;
+      const scale = chart.scales[metric.axis];
+      for (const run of iotBandRuns(metric)) {
+        const px = point => chart.scales.x.getPixelForValue(point.ts);
+        ctx.beginPath();
+        if (run.length === 1) { ctx.moveTo(px(run[0]), scale.getPixelForValue(run[0].min / metric.divisor)); ctx.lineTo(px(run[0]), scale.getPixelForValue(run[0].max / metric.divisor)); ctx.stroke(); continue; }
+        run.forEach((point, index) => ctx[index ? 'lineTo' : 'moveTo'](px(point), scale.getPixelForValue(point.max / metric.divisor)));
+        for (let index = run.length - 1; index >= 0; index--) ctx.lineTo(px(run[index]), scale.getPixelForValue(run[index].min / metric.divisor));
+        ctx.closePath(); ctx.fill();
       }
-      ctx.stroke();
     }
     ctx.restore();
   },
@@ -258,6 +279,7 @@ function iotDrawCombined() {
     document.querySelector('#iotCombinedReadings').innerHTML = iotCombinedReadings(model);
     document.querySelector('#iotCombinedTables').innerHTML = iotCombinedTables(model);
     document.querySelector('#iotCombinedWindow').textContent = `${iotCombinedDate(model.start)} → ${iotCombinedDate(model.end)}`;
+    const used = document.querySelector('#iotResolutionUsed'); if (used) used.textContent = iotResolutionUsed();
     iotPaintCombinedHover();
   } else iotCombined.chart = new Chart(canvas, {
     type: 'line', data: { datasets: iotCombinedDatasets(model) }, plugins: [iotCombinedPlugin],

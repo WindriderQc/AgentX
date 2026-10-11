@@ -1,0 +1,76 @@
+/* Additions to the IoT tab: signal gauge, registry table, consumer status,
+   reading controls, two-step commands, device events, "not back yet" note. */
+.iot-model { display: block; margin: 4px 0 0; color: #8fa4b7; font-size: 11px; overflow-wrap: anywhere; }
+.iot-signal-body { display: flex; align-items: center; gap: 10px; margin: 3px 0 1px; }
+.iot-gauge { width: 64px; height: 38px; flex: none; }
+.iot-signal-body strong { display: block; color: #edf3fb; font-size: 22px; font-weight: 600; line-height: 1.1; letter-spacing: -.045em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.iot-signal-body em { display: block; margin-top: 3px; font-size: 12px; font-style: normal; font-weight: 650; }
+.iot-legend { margin: 10px 0 0; color: #8198ab; font-size: 11px; line-height: 1.6; }
+#iotRegistry .iot-section-title, #iotEvents .iot-section-title { margin: 34px 0 16px; }
+#iotRegistry .iot-section-title h3, #iotEvents .iot-section-title h3 { font-size: 18px; }
+.iot-registry { border: 1px solid #1f3140; border-radius: 12px; background: #0f1a24; }
+.iot-registry table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 12px; }
+.iot-registry th, .iot-registry td { padding: 11px 14px; text-align: left; white-space: nowrap; border-bottom: 1px solid #1a2a37; color: #bdcedc; font-weight: 400; }
+.iot-registry thead th { color: #8198ab; font-size: 11px; font-weight: 600; }
+.iot-registry tbody tr:last-child > * { border-bottom: 0; }
+.iot-registry tbody th { color: #edf3fb; font-weight: 600; white-space: normal; overflow-wrap: anywhere; max-width: 240px; }
+.iot-registry tr.selected > * { background: #13262f; }
+.iot-registry .iot-status { margin-left: 0; display: inline-flex; }
+.iot-reading-hint { margin: 0 0 10px; color: #8198ab; font-size: 11px; line-height: 1.5; }
+#iotResolutionUsed { color: #a4b5c0; white-space: nowrap; }
+.iot-reading-tools { margin: 0 0 16px; }
+.iot-reading-tools p { max-width: none; }
+.iot-overlay-tools label:has(#iotCentral) { white-space: nowrap; }
+.iot-band { fill: currentColor; opacity: .16; stroke: none; }
+.iot-tip-range { display: block; color: #8198ab; font-size: 10px; font-weight: 400; }
+.iot-caution { margin: 16px 0 0; padding: 10px 12px; border-left: 3px solid #f4cf75; background: #f4cf750d; color: #d9c58f; font-size: 12px; line-height: 1.5; border-radius: 0 8px 8px 0; }
+.iot-actions-grid .notice { margin: 12px 0 0; font-size: 12px; }
+.iot-confirm { margin-top: 16px; padding: 14px 16px; border: 1px solid #f4cf7566; border-radius: 10px; background: #f4cf750a; font-size: 12px; color: #d6e3ee; }
+.iot-confirm dl, .iot-consumer dl { margin: 12px 0; display: grid; gap: 8px; }
+.iot-confirm dl > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; }
+.iot-confirm dt, .iot-consumer dt { color: #8fa4b7; }
+.iot-confirm dd { margin: 0; color: #edf3fb; overflow-wrap: anywhere; }
+.iot-confirm p { margin: 0 0 12px; font-size: 11px; }
+.iot-confirm-buttons { display: flex; flex-wrap: wrap; gap: 10px; }
+#iotDashboard .iot-danger { color: #10202a; background: #f4cf75; border-color: #f4cf75; font-weight: 650; }
+#iotCommandConfirm > p { margin: 12px 0 0; font-size: 12px; }
+.iot-outcome { margin: 14px 0 0; padding: 10px 12px; border-radius: 8px; border: 1px solid #2a3b46; font-size: 12px; line-height: 1.5; color: #d6e3ee; overflow-wrap: anywhere; }
+.iot-outcome[data-outcome="sent"] { border-color: #62dbac66; }
+.iot-outcome[data-outcome="sent"] strong { color: #62dbac; }
+.iot-outcome[data-outcome="not-sent"] { border-color: #ff9b7366; }
+.iot-outcome[data-outcome="not-sent"] strong { color: #ff9b73; }
+.iot-outcome[data-outcome="unknown"] { border-color: #f4cf7566; }
+.iot-outcome[data-outcome="unknown"] strong { color: #f4cf75; }
+#iotDashboard .iot-events { list-style: none; margin: 0; padding: 4px 18px; }
+.iot-events li { display: grid; grid-template-columns: 8px 170px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid #1a2a37; font-size: 12px; color: #bdcedc; }
+.iot-events li:last-child { border-bottom: 0; }
+.iot-events i { width: 6px; height: 6px; border-radius: 50%; background: #62dbac; }
+.iot-events li[data-severity="warning"] i { background: #f4cf75; }
+.iot-events li[data-severity="error"] i { background: #ff8f8f; }
+.iot-events strong { color: #edf3fb; font-weight: 600; }
+.iot-event-detail { color: #8fa4b7; overflow-wrap: anywhere; }
+.iot-events time { color: #a4b5c0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#iotEvents .iot-section-hint a { color: #63e1e6; }
+#iotDashboard .iot-consumer { margin-top: 34px; padding: 18px 22px; }
+.iot-consumer h3 { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: #bdcedc; }
+.iot-consumer dl { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 18px 24px; margin: 14px 0 0; }
+.iot-consumer dt { font-size: 11px; }
+.iot-consumer dd { margin: 5px 0 3px; color: #edf3fb; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.iot-consumer small { display: block; color: #8198ab; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+#iotDashboard .iot-missing { margin-top: 18px; padding: 14px 20px; }
+.iot-missing summary { color: #bdcedc; font-size: 12px; cursor: pointer; }
+.iot-missing ul { margin: 14px 0 4px; padding-left: 18px; display: grid; gap: 10px; color: #a4b5c0; font-size: 12px; line-height: 1.6; }
+.iot-missing strong { color: #d6e3ee; }
+@media (max-width: 760px) {
+  .iot-section-hint:has(a) { display: block; }
+  .iot-events li { grid-template-columns: 8px minmax(0, 1fr); gap: 4px 10px; }
+  .iot-events li > :nth-child(n+3) { grid-column: 2; }
+  .iot-events time { white-space: normal; }
+  #iotResolutionUsed { white-space: normal; }
+  #iotEvents .iot-section-title { align-items: start; flex-direction: column; gap: 6px; }
+  #iotEvents .iot-section-hint a { display: inline-flex; align-items: center; min-height: 40px; }
+}
+@media (max-width: 620px) {
+  #iotDashboard .button, .iot-view-modes button, .iot-style-copy, .iot-style-presets button { min-height: 40px; }
+  .iot-confirm-buttons .button { flex: 1 1 140px; }
+}
