@@ -295,13 +295,15 @@ test('resume-limited failure can reach review from green exact-head CI without e
 test('failed CI watch charges elapsed wait once and closes at its cumulative CI budget', async () => {
   await pausedFailedCI({ ciSeconds: 10 });
   await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.spent.ciSeconds': 3,
-    'codingAutonomy.ciStartedAt': new Date(Date.now() - 4000).toISOString() } });
+    'codingAutonomy.ciStartedAt': new Date(Date.now() - 10000).toISOString(),
+    'codingAutonomy.ciWatchStartedAt': new Date(Date.now() - 4000).toISOString() } });
   await observeNow(); await observeNow();
   let after = (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy;
   expect(after.spent.ciSeconds).toBe(3);
   expect((await service.status()).tasks[0].remaining.ciSeconds).toBeLessThanOrEqual(3);
   await Task.updateOne({ pipelineId: '0001' }, { $set: {
-    'codingAutonomy.ciStartedAt': new Date(Date.now() - 8000).toISOString() } });
+    'codingAutonomy.ciStartedAt': new Date(Date.now() - 10000).toISOString(),
+    'codingAutonomy.ciWatchStartedAt': new Date(Date.now() - 8000).toISOString() } });
   await observeNow();
   after = (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy;
   expect(after.reason).toBe('ci_timeout'); expect(after.spent.ciSeconds).toBeGreaterThanOrEqual(11);
@@ -319,6 +321,105 @@ test('failure watch rejects old-head green checks and preserves external-head re
   expect(after.state).toBe('correction'); expect(after.correction.kind).toBe('remote_head_changed');
   expect(after.manualInterventions.at(-1).kind).toBe('remote_branch_update');
   expect(control.launch).toHaveBeenCalledTimes(1);
+});
+test('resuming correction freezes the paused CI wait once before the next worker resets its clock', async () => {
+  await pausedFailedCI();
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.spent.ciSeconds': 3,
+    'codingAutonomy.ciStartedAt': new Date(Date.now() - 10000).toISOString(),
+    'codingAutonomy.ciWatchStartedAt': new Date(Date.now() - 4000).toISOString(),
+    'codingAutonomy.nextObservationAt': new Date(Date.now() + 300000).toISOString() } });
+  await enable(); await service.tick();
+  const next = await selected(); expect(next).not.toBeNull();
+  let state = (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy;
+  expect(state.spent.ciSeconds).toBeGreaterThanOrEqual(7);
+  const charged = state.spent.ciSeconds;
+  await service.tick(); await complete(next);
+  state = (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy;
+  expect(state.spent.ciSeconds).toBe(charged); expect(state.runs).toHaveLength(2);
+});
+test('a deferred CI observation cannot launch a correction past its cumulative waiting budget', async () => {
+  await pausedFailedCI({ ciSeconds: 10 });
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.spent.ciSeconds': 3,
+    'codingAutonomy.ciStartedAt': new Date(Date.now() - 10000).toISOString(),
+    'codingAutonomy.ciWatchStartedAt': new Date(Date.now() - 8000).toISOString(),
+    'codingAutonomy.nextObservationAt': new Date(Date.now() + 300000).toISOString() } });
+  await enable(); await service.tick();
+  const state = (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy;
+  expect(state.reason).toBe('cumulative_ciSeconds'); expect(state.spent.ciSeconds).toBeGreaterThanOrEqual(11);
+  expect(await selected()).toBeNull(); expect(control.launch).toHaveBeenCalledTimes(1);
+});
+test('withdrawing authorization preserves charged CI wait and fences later green checks', async () => {
+  const active = await pausedFailedCI();
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.spent.ciSeconds': 3,
+    'codingAutonomy.ciStartedAt': new Date(Date.now() - 10000).toISOString(),
+    'codingAutonomy.ciWatchStartedAt': new Date(Date.now() - 4000).toISOString() } });
+  const before = (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy;
+  await service.authorize('0001', { authorized: false, confirm: true, expectedRevision: before.revision });
+  observations.set(active.requestId, { ...PR, state: 'open', mergeable: 'clean',
+    checks: policy.CHECKS.map(name => ({ name, head: HEAD, state: 'success' })) });
+  await observeNow();
+  const after = (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy;
+  expect(after.state).toBe('stopped'); expect(after.authorized).toBe(false);
+  expect(after.spent.ciSeconds).toBeGreaterThanOrEqual(7); expect(after.runs).toEqual(before.runs);
+});
+test('failure observation cannot overwrite a task with another native owner', async () => {
+  const active = await pausedFailedCI();
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { codingCapacity: { requestId: 'foreign-request' } } });
+  const count = control.observe.mock.calls.length;
+  observations.set(active.requestId, { ...PR, state: 'open', mergeable: 'clean',
+    checks: policy.CHECKS.map(name => ({ name, head: HEAD, state: 'success' })) });
+  await observeNow();
+  expect(control.observe).toHaveBeenCalledTimes(count);
+  expect((await service.status()).tasks[0].state).toBe('correction');
+});
+test('an owner acquired during the CI read vetoes the final observation write atomically', async () => {
+  const active = await pausedFailedCI();
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.nextObservationAt': new Date(0).toISOString() } });
+  const before = (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy;
+  control.observe.mockImplementationOnce(async () => {
+    await Task.updateOne({ pipelineId: '0001' }, { $set: { status: 'in_progress', assignee: 'foreign-owner',
+      'automationLease.leaseId': 'foreign-lease', 'codingCapacity.requestId': 'foreign-request' } });
+    return { ...PR, state: 'open', mergeable: 'clean',
+      checks: policy.CHECKS.map(name => ({ name, head: HEAD, state: 'success' })) };
+  });
+  await expect(service.tick()).rejects.toThrow('Autonomy state changed');
+  const after = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(after.status).toBe('in_progress'); expect(after.assignee).toBe('foreign-owner');
+  expect(after.automationLease.leaseId).toBe('foreign-lease');
+  expect(after.codingCapacity.requestId).toBe('foreign-request'); expect(after.codingAutonomy).toEqual(before);
+  expect(receipts.get(active.requestId).phase).toBe('finished');
+});
+test('legacy failed CI resumes from the already charged boundary and persists its cursor through backoff', async () => {
+  const active = await pausedFailedCI();
+  const original = '2026-01-01T19:19:00.763Z';
+  const boundary = '2026-01-01T19:28:30.371Z';
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.spent.ciSeconds': 639,
+    'codingAutonomy.ciStartedAt': original, 'codingAutonomy.nextObservationAt': '2026-01-01T19:29:00.371Z' },
+    $unset: { 'codingAutonomy.ciWatchStartedAt': 1 } });
+  const clock = jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-01-01T19:31:42.553Z'));
+  try {
+    expect((await service.status()).tasks[0].remaining.ciSeconds).toBe(3600 - 831);
+    control.observe.mockRejectedValueOnce(new Error('Synthetic read unavailable'));
+    await service.tick();
+    let after = (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy;
+    expect(after.ciWatchStartedAt).toBe(boundary); expect(after.spent.ciSeconds).toBe(639);
+    clock.mockReturnValue(Date.parse('2026-01-01T19:32:42.553Z'));
+    observations.set(active.requestId, { ...PR, state: 'open', mergeable: 'clean',
+      checks: policy.CHECKS.map(name => ({ name, head: HEAD, state: 'success' })) });
+    await service.tick();
+    after = (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy;
+    expect(after.state).toBe('ready_for_review'); expect(after.spent.ciSeconds).toBe(891);
+    expect(after.ciStartedAt).toBe(original); expect(control.launch).toHaveBeenCalledTimes(1);
+  } finally { clock.mockRestore(); }
+});
+test('an incoherent legacy CI accounting cursor refuses without resetting the journal', async () => {
+  await pausedFailedCI();
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.nextObservationAt': 'invalid-date' },
+    $unset: { 'codingAutonomy.ciWatchStartedAt': 1 } });
+  const before = await Task.findOne({ pipelineId: '0001' }).lean();
+  await expect(service.tick()).rejects.toMatchObject({ code: 'CODING_AUTONOMY_CI_CURSOR' });
+  const after = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(after.codingAutonomy).toEqual(before.codingAutonomy); expect(control.launch).toHaveBeenCalledTimes(1);
 });
 test.each(['human_review', 'git_conflict_remaining'])('green CI cannot erase a queued %s correction', async kind => {
   const active = await pausedFailedCI();
