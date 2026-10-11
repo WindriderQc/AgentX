@@ -117,15 +117,17 @@
         });
       }
     }
-    function review(id, value) {
+    function review(id, value, sourceSession = sessionId) {
+      if (sourceSession !== sessionId || !value) return false;
       const row = turn(id);
-      if (!row || !value) return;
+      if (!row) return false;
       const key = safe(value.adviceId || value.id || value.traceId || id) + ':' + String(value.version || 1);
-      if (row.reviews.some(item => item.key === key)) return;
+      if (row.reviews.some(item => item.key === key)) return false;
       const chronology = snapshot().turns.map(item => item.id);
       const replaced = chronology.indexOf(id) < chronology.length - 1;
       if (!replaced) for (const previous of turns.values()) previous.reviews.forEach(item => { item.replaced = true; });
       row.reviews.push({ key, turnId: id, available: true, replaced, included: false });
+      return true;
     }
     function ingest(session, data) {
       follow(session);
@@ -497,7 +499,7 @@
       stream: (id, event) => update(() => model.stream(id, event)),
       timings: (id, value) => update(() => model.timings(id, value)),
       restore: (session, turns) => update(() => model.restore(session, turns)),
-      review: (id, value) => update(() => model.review(id, value)),
+      review: (id, value, session) => update(() => model.review(id, value, session)),
       ingest: (session, data) => update(() => model.ingest(session, data)),
       pollFailure: id => update(() => model.pollFailure(id))
     };

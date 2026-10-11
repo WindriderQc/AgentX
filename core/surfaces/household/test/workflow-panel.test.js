@@ -127,6 +127,14 @@ test('late advice from a superseded turn stays marked replaced and inclusion is 
   assert.equal(model.snapshot().turns[1].reviews[0].replaced, true);
 });
 
+test('a delayed advice response from a previous session cannot enter the current map', () => {
+  const model = createModel();
+  model.begin('session-1', 'turn-old', 'text');
+  model.begin('session-2', 'turn-new', 'text');
+  assert.equal(model.review('turn-old', { adviceId: 'late', version: 1 }, 'session-1'), false);
+  assert.deepEqual(model.snapshot().turns.map(row => row.id), ['turn-new']);
+});
+
 test('a late older review cannot replace a newer review after history reorders the turns', () => {
   const model = createModel();
   model.ingest('session-1', { items: [

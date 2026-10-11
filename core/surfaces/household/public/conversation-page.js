@@ -322,7 +322,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       }
       // Core has sent every spoken word; pictures, tools and the record follow before `done`.
       if (event.type === 'say_end' && !interruptedTurns.has(turnId)) onSayEnd?.();
-      if (event.type === 'done') { result = event.data; activity('done', { sessionId: session.sessionId, traceId: event.data?.traceId }); if (!workAccepted) void brain.follow(session.sessionId, event.data?.traceId).then(review => workflow?.review(turnId, review)); void work?.poll(); }
+      if (event.type === 'done') { result = event.data; activity('done', { sessionId: session.sessionId, traceId: event.data?.traceId }); if (!workAccepted) void brain.follow(session.sessionId, event.data?.traceId).then(review => workflow?.review(turnId, review, session.sessionId)); void work?.poll(); }
     };
     try {
       while (true) {
