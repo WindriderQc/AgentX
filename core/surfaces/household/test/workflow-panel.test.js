@@ -417,14 +417,28 @@ test('long conversations keep a bounded journal and retain all earlier turns and
     panel.render();
     assert.equal(all(host, 'workflow-turn').length, 24);
     assert.equal(all(host, 'workflow-event').length, 80);
-    all(host, 'workflow-more')[0].onclick();
-    assert.equal(all(host, 'workflow-turn').length, 48);
-    all(host, 'workflow-more')[1].onclick();
-    assert.equal(all(host, 'workflow-event').length, 160);
-    for (let count = 0; count < 11; count++) all(host, 'workflow-more')[0].onclick();
-    assert.equal(all(host, 'workflow-turn').length, 300, 'the first turn remains available');
-    for (let count = 0; count < 2; count++) all(host, 'workflow-more')[0].onclick();
-    assert.equal(all(host, 'workflow-event').length, 300, 'the first event remains available');
+    const control = key => all(host, 'workflow-more').find(button => button.dataset.key === key);
+    for (let count = 0; count < 12; count++) {
+      control('turns-older').onclick();
+      assert.ok(all(host, 'workflow-turn').length <= 24);
+      assert.equal(all(host, 'workflow-event').length, 80);
+    }
+    assert.equal(all(host, 'workflow-turn')[0].textContent, 'Tour 1', 'the first turn remains available');
+    assert.equal(control('turns-older'), undefined);
+    for (let count = 0; count < 3; count++) {
+      control('events-older').onclick();
+      assert.ok(all(host, 'workflow-event').length <= 80);
+    }
+    assert.equal(all(host, 'workflow-event')[0].children[2].textContent, 'Tour 1 · Travail work-1',
+      'the first event remains available');
+    control('turns-newer').onclick();
+    control('events-newer').onclick();
+    assert.equal(all(host, 'workflow-turn').length, 24);
+    assert.equal(all(host, 'workflow-event').length, 80);
+    panel.begin('session-1', 'turn-301', 'text');
+    assert.equal(all(host, 'workflow-turn').at(-1).textContent, 'Tour 301',
+      'a new turn returns the journal to the live page');
+    assert.equal(all(host, 'workflow-event').length, 80);
   } finally { global.document = previousDocument; }
 });
 

@@ -269,7 +269,7 @@
   }
   function create({ host, signal = null }) {
     const model = createModel();
-    let selected = null, turnLimit = 24, eventLimit = 80;
+    let selected = null, turnOffset = 0, eventOffset = 0;
     const overview = node('div', 'workflow-map'); overview.setAttribute('aria-label', 'Composants du parcours');
     const panel = node('details', 'workflow-panel');
     const summary = node('summary', 'workflow-toggle', 'Journal et reçus');
@@ -279,7 +279,11 @@
       const focusKey = focused && host.contains?.(focused) ? focused.dataset.key : null;
       const restoreFocus = () => {
         if (!focusKey) return;
-        const target = [...host.querySelectorAll('[data-key]')].find(item => item.dataset.key === focusKey);
+        const controls = [...host.querySelectorAll('[data-key]')];
+        const target = controls.find(item => item.dataset.key === focusKey)
+          || (/(turns|events)-(older|newer)/.test(focusKey)
+            ? controls.find(item => item.dataset.key === focusKey.replace(/(older|newer)$/, (_, direction) => direction === 'older' ? 'newer' : 'older'))
+            : null);
         (target?.matches('button') ? target : target?.querySelector('summary'))?.focus();
       };
       const view = model.snapshot();
@@ -405,16 +409,21 @@
       if (compact) body.append(resources, passages);
       if (!current) { body.append(node('p', 'workflow-empty', 'Aucun tour enregistré. Les composants apparaîtront ici.')); return; }
       const picker = node('div', 'workflow-turns'); picker.setAttribute('role', 'group'); picker.setAttribute('aria-label', 'Choisir un tour');
-      if (rows.length > turnLimit) {
-        const more = node('button', 'workflow-more', `Afficher ${Math.min(24, rows.length - turnLimit)} tours précédents`);
-        more.type = 'button'; more.dataset.key = 'turns-more'; more.onclick = () => { turnLimit += 24; render(); }; picker.append(more);
+      const turnEnd = rows.length - turnOffset, turnStart = Math.max(0, turnEnd - 24);
+      if (turnStart > 0) {
+        const older = node('button', 'workflow-more', '24 tours précédents');
+        older.type = 'button'; older.dataset.key = 'turns-older'; older.onclick = () => { turnOffset += 24; render(); }; picker.append(older);
       }
-      rows.slice(-turnLimit).forEach((row, index) => {
-        const button = node('button', 'workflow-turn', `Tour ${rows.length - Math.min(rows.length, turnLimit) + index + 1}${row.interrupted ? ' · interrompu' : ''}`);
+      rows.slice(turnStart, turnEnd).forEach((row, index) => {
+        const button = node('button', 'workflow-turn', `Tour ${turnStart + index + 1}${row.interrupted ? ' · interrompu' : ''}`);
         button.dataset.key = `turn:${row.id}`;
         button.type = 'button'; button.setAttribute('aria-pressed', String(row.id === selected));
         button.onclick = () => { selected = row.id; render(); body.querySelector?.('button[aria-pressed="true"]')?.focus(); }; picker.append(button);
       });
+      if (turnOffset > 0) {
+        const newer = node('button', 'workflow-more', '24 tours suivants');
+        newer.type = 'button'; newer.dataset.key = 'turns-newer'; newer.onclick = () => { turnOffset = Math.max(0, turnOffset - 24); render(); }; picker.append(newer);
+      }
       body.append(picker);
       const identity = node('p', 'workflow-identity', `Tour ${rows.indexOf(current) + 1} · ID ${current.id}`); body.append(identity);
       const timing = node('div', 'workflow-timing');
@@ -426,12 +435,13 @@
       for (const value of intervals(current.events)) timing.append(node('p', '', value));
       body.append(timing);
       const heading = node('h3', '', 'Chronologie commune du travail'); body.append(heading);
-      if (view.events.length > eventLimit) {
-        const more = node('button', 'workflow-more', `Afficher ${Math.min(80, view.events.length - eventLimit)} événements précédents`);
-        more.type = 'button'; more.dataset.key = 'events-more'; more.onclick = () => { eventLimit += 80; render(); }; body.append(more);
+      const eventEnd = view.events.length - eventOffset, eventStart = Math.max(0, eventEnd - 80);
+      if (eventStart > 0) {
+        const older = node('button', 'workflow-more', '80 événements précédents');
+        older.type = 'button'; older.dataset.key = 'events-older'; older.onclick = () => { eventOffset += 80; render(); }; body.append(older);
       }
       const list = node('ol', 'workflow-events');
-      for (const event of view.events.slice(-eventLimit)) {
+      for (const event of view.events.slice(eventStart, eventEnd)) {
         const owner = rows.find(row => row.id === event.turnId);
         const work = owner?.works.find(item => item.id === event.workId);
         const entry = node('li', 'workflow-event');
@@ -442,6 +452,10 @@
         list.append(entry);
       }
       body.append(list);
+      if (eventOffset > 0) {
+        const newer = node('button', 'workflow-more', '80 événements suivants');
+        newer.type = 'button'; newer.dataset.key = 'events-newer'; newer.onclick = () => { eventOffset = Math.max(0, eventOffset - 80); render(); }; body.append(newer);
+      }
       if (!view.events.length) body.append(node('p', 'workflow-empty', 'Aucun événement de travail conservé pour cette conversation.'));
       if (view.gap) body.append(node('p', 'workflow-gap', 'Une partie de l’historique des événements n’est plus disponible. Les étapes manquantes restent inconnues.'));
       if (view.stale) body.append(node('p', 'workflow-gap', 'Les données Core ne sont plus actualisées. Les étapes encore actives restent incertaines.'));
@@ -475,10 +489,10 @@
     panel.addEventListener?.('toggle', render);
     return {
       model, panel, render,
-      reset: () => update(() => { model.reset(); selected = null; turnLimit = 24; eventLimit = 80; }),
-      follow: id => update(() => { if (!model.follow(id)) return false; selected = null; turnLimit = 24; eventLimit = 80; }),
-      begin: (session, id, channel) => update(() => { model.begin(session, id, channel); selected = id; }),
-      capture: (session, id) => update(() => { model.capture(session, id); selected = id; }),
+      reset: () => update(() => { model.reset(); selected = null; turnOffset = 0; eventOffset = 0; }),
+      follow: id => update(() => { if (!model.follow(id)) return false; selected = null; turnOffset = 0; eventOffset = 0; }),
+      begin: (session, id, channel) => update(() => { model.begin(session, id, channel); selected = id; turnOffset = 0; eventOffset = 0; }),
+      capture: (session, id) => update(() => { model.capture(session, id); selected = id; turnOffset = 0; eventOffset = 0; }),
       captureEnd: id => update(() => model.captureEnd(id)),
       stream: (id, event) => update(() => model.stream(id, event)),
       timings: (id, value) => update(() => model.timings(id, value)),
