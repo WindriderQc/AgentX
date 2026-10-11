@@ -376,8 +376,14 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 380px;
 }
 
+.detail-drawer-content {
+    /* Let the body take the remaining height and scroll, so the bottom
+       actions (Chat, Config) stay reachable on long content. */
+    display: flex; flex-direction: column; flex: 1; min-height: 0;
+}
+
 .detail-drawer-body {
-    flex: 1; overflow-y: auto; padding: 20px 24px;
+    flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px;
 }
 
 .detail-section {

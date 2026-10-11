@@ -715,6 +715,11 @@ class UnifiedModels {
 
         title.textContent = model.displayName || model.name;
         body.innerHTML = this.buildDetailContent(model);
+        // Inline handlers are blocked by the CSP (script-src-attr 'none').
+        body.querySelector('.detail-action-chat')?.addEventListener('click', () => startChat(model));
+        body.querySelectorAll('.detail-action-config').forEach(button => button.addEventListener('click', () => {
+            if (window.modelExecutionConfig) window.modelExecutionConfig.open(model.name);
+        }));
         drawer.classList.add('open');
         backdrop?.classList.add('open');
         document.body.style.overflow = 'hidden';
@@ -841,7 +846,7 @@ class UnifiedModels {
                         ${eo?.num_ctx ? `<div class="detail-kv"><span class="dk">num_ctx (override)</span><span class="dv" style="color:#fbbf24;">${eo.num_ctx}</span></div>` : ''}
                         ${eo?.temperature != null ? `<div class="detail-kv"><span class="dk">temperature (override)</span><span class="dv" style="color:#fbbf24;">${eo.temperature}</span></div>` : ''}
                     </div>
-                    <button class="btn-secondary-sm" style="margin-top:8px;" onclick="if(window.modelExecutionConfig) window.modelExecutionConfig.open('${escapeHtml(m.name)}');">
+                    <button type="button" class="btn-secondary-sm detail-action-config" style="margin-top:8px;">
                         <i class="fas fa-cog"></i> Edit Config
                     </button>
                 </div>
@@ -851,8 +856,8 @@ class UnifiedModels {
         // Quick actions
         sections.push(`
             <div class="detail-section detail-actions">
-                <button class="btn-primary" onclick="startChat('${escapeHtml(m.name)}')"><i class="fas fa-comment-alt"></i> Chat</button>
-                <button class="btn-secondary" onclick="if(window.modelExecutionConfig) window.modelExecutionConfig.open('${escapeHtml(m.name)}')"><i class="fas fa-sliders-h"></i> Config</button>
+                <button type="button" class="btn-primary detail-action-chat"><i class="fas fa-comment-alt" aria-hidden="true"></i> Chat</button>
+                <button type="button" class="btn-secondary detail-action-config"><i class="fas fa-sliders-h" aria-hidden="true"></i> Config</button>
             </div>
         `);
 
