@@ -530,7 +530,10 @@ hand. It needs `MQTT_BROKER_URL` on Data; without it the tab says so.
   broker is not connected nothing is received and Send is disabled.
 - **Stream**: the messages, newest first, read every 2 seconds while the tab is
   open and the page visible. The topic filter takes MQTT wildcards (`+` one
-  level, `#` everything below) and is applied by Data. **Pause** stops the
+  level, `#` everything below) and is applied by Data. **Hide heartbeats**,
+  ticked by default, leaves out the once-a-second `esp32/alive/#` messages of
+  the ESP32 devices and shows how many were hidden; untick it to see them.
+  **Pause** stops the
   reads, **Clear** empties the list on the page only. The page keeps 300
   messages and Data 500, in memory: a notice says when messages passed between
   two reads and are no longer available. A long payload opens on click; a

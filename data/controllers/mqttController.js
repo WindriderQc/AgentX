@@ -22,7 +22,8 @@ const status = handle(() => mqttMonitor.status());
 const messages = handle((req) => mqttMonitor.messages({
   since: req.query.since,
   limit: req.query.limit,
-  topic: req.query.topic
+  topic: req.query.topic,
+  exclude: req.query.exclude
 }));
 
 const publish = handle((req) => mqttMonitor.publish(req.body));
