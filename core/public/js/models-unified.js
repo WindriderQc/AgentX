@@ -44,7 +44,8 @@ class UnifiedModels {
         // default, but always disclose how many were hidden and can show them.
         this.includeUnknownCapability = false;
         this.activeTags = new Set();
-        this.currentSort = { column: null, direction: null };
+        // One sort for the menu and the column headers (models-sorting.js).
+        this.sort = { key: 'name', direction: 'asc' };
         this.uiReady = false;
 
         this.manager = null;
@@ -113,9 +114,12 @@ class UnifiedModels {
     /* ── Category pill strip ────────────────────────────── */
     setupCategoryStrip() {
         document.querySelectorAll('.cat-pill').forEach(pill => {
+            pill.setAttribute('aria-pressed', String(pill.classList.contains('active')));
             pill.addEventListener('click', () => {
-                document.querySelector('.cat-pill.active')?.classList.remove('active');
-                pill.classList.add('active');
+                document.querySelectorAll('.cat-pill').forEach(other => {
+                    other.classList.toggle('active', other === pill);
+                    other.setAttribute('aria-pressed', String(other === pill));
+                });
                 this.activeCategory = pill.dataset.cat;
                 this.filterModels();
             });
@@ -157,6 +161,11 @@ class UnifiedModels {
         }
         const container = document.getElementById('tagCloud');
         if (!container) return;
+        // A refresh rebuilds the pills: keep active tags that still exist and
+        // drop the others, so no invisible tag keeps filtering the table.
+        for (const tag of [...this.activeTags]) {
+            if (!tagCounts.has(tag)) this.activeTags.delete(tag);
+        }
 
         if (tagCounts.size === 0) {
             container.style.display = 'none';
@@ -165,20 +174,22 @@ class UnifiedModels {
         container.style.display = 'flex';
         container.innerHTML = '<span class="tag-cloud-label"><i class="fas fa-tags"></i> Tags:</span>';
 
+        // Active tags stay visible even when they fall outside the top 20.
         const sorted = [...tagCounts.entries()].sort((a, b) => b[1] - a[1]);
-        for (const [tag, count] of sorted.slice(0, 20)) {
+        const shown = sorted.slice(0, 20);
+        for (const entry of sorted.slice(20)) if (this.activeTags.has(entry[0])) shown.push(entry);
+        for (const [tag, count] of shown) {
             const btn = document.createElement('button');
-            btn.className = 'tag-pill';
+            btn.type = 'button';
+            btn.className = this.activeTags.has(tag) ? 'tag-pill active' : 'tag-pill';
             btn.dataset.tag = tag;
+            btn.setAttribute('aria-pressed', String(this.activeTags.has(tag)));
             btn.innerHTML = `${escapeHtml(tag)} <span class="tag-count">${count}</span>`;
             btn.addEventListener('click', () => {
-                if (this.activeTags.has(tag)) {
-                    this.activeTags.delete(tag);
-                    btn.classList.remove('active');
-                } else {
-                    this.activeTags.add(tag);
-                    btn.classList.add('active');
-                }
+                if (this.activeTags.has(tag)) this.activeTags.delete(tag);
+                else this.activeTags.add(tag);
+                btn.classList.toggle('active', this.activeTags.has(tag));
+                btn.setAttribute('aria-pressed', String(this.activeTags.has(tag)));
                 this.filterModels();
             });
             container.appendChild(btn);
@@ -193,8 +204,12 @@ class UnifiedModels {
             timeout = setTimeout(() => this.filterModels(), 250);
         });
 
-        ['providerSelect', 'sortSelect', 'statusSelect'].forEach(id => {
+        ['providerSelect', 'statusSelect'].forEach(id => {
             document.getElementById(id)?.addEventListener('change', () => this.filterModels());
+        });
+        document.getElementById('sortSelect')?.addEventListener('change', (e) => {
+            this.sort = { key: e.target.value, direction: window.ModelsSorting.defaultDirection(e.target.value) };
+            this.filterModels();
         });
 
         document.getElementById('clearCompare')?.addEventListener('click', () => {
@@ -204,7 +219,13 @@ class UnifiedModels {
         });
 
         document.querySelectorAll('.models-table th.sortable').forEach(th => {
+            th.tabIndex = 0;
             th.addEventListener('click', () => this.sortByColumn(th.dataset.sort));
+            th.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                this.sortByColumn(th.dataset.sort);
+            });
         });
     }
 
@@ -224,7 +245,6 @@ class UnifiedModels {
         const provider = document.getElementById('providerSelect')?.value || 'all';
         const hostFilter = document.getElementById('hostSelect')?.value || 'all';
         const statusFilter = document.getElementById('statusSelect')?.value || 'available';
-        const sort = document.getElementById('sortSelect')?.value || 'name';
         const cat = this.activeCategory;
 
         this.filteredModels = this.allModels.filter(m => {
@@ -268,58 +288,29 @@ class UnifiedModels {
             return true;
         });
 
-        // Sort
-        if (!this.currentSort.column) {
-            this.filteredModels.sort((a, b) => {
-                if (sort === 'score') return (b.benchmarkStats?.avgCompositeScore || 0) - (a.benchmarkStats?.avgCompositeScore || 0);
-                if (sort === 'size') return (b.size || 0) - (a.size || 0);
-                if (sort === 'speed') return (b.capabilities?.avgTokensPerSec || 0) - (a.capabilities?.avgTokensPerSec || 0);
-                if (sort === 'newest') return new Date(b.modified_at || 0) - new Date(a.modified_at || 0);
-                return a.name.localeCompare(b.name);
-            });
-        }
-
+        this.filteredModels = window.ModelsSorting.sortModels(this.filteredModels, this.sort);
+        this.updateSortIndicators();
         this.renderTable();
     }
 
     /* ── Column sorting ─────────────────────────────────── */
     sortByColumn(column) {
-        if (this.currentSort.column === column) {
-            this.currentSort.direction = this.currentSort.direction === 'asc' ? 'desc' :
-                this.currentSort.direction === 'desc' ? null : 'asc';
-            if (!this.currentSort.direction) this.currentSort.column = null;
-        } else {
-            this.currentSort = { column, direction: 'asc' };
-        }
-
-        if (this.currentSort.column) {
-            const dir = this.currentSort.direction === 'asc' ? 1 : -1;
-            this.filteredModels.sort((a, b) => {
-                let av, bv;
-                switch (column) {
-                    case 'name':    av = a.name?.toLowerCase() || ''; bv = b.name?.toLowerCase() || ''; return dir * av.localeCompare(bv);
-                    case 'host':    av = a.source?.hostName || a.source?.url || ''; bv = b.source?.hostName || b.source?.url || ''; return dir * av.localeCompare(bv);
-                    case 'params':  av = parseFloat(a.details?.parameter_size || a.parameterSize || '0'); bv = parseFloat(b.details?.parameter_size || b.parameterSize || '0'); return dir * (av - bv);
-                    case 'context': av = a.executionOverrides?.num_ctx || a.capabilities?.maxContext || 0; bv = b.executionOverrides?.num_ctx || b.capabilities?.maxContext || 0; return dir * (av - bv);
-                    case 'score':   av = a.benchmarkStats?.avgCompositeScore || 0; bv = b.benchmarkStats?.avgCompositeScore || 0; return dir * (av - bv);
-                    case 'speed':   av = a.capabilities?.avgTokensPerSec || 0; bv = b.capabilities?.avgTokensPerSec || 0; return dir * (av - bv);
-                    default: return 0;
-                }
-            });
-        }
-
-        this.updateSortIndicators();
-        this.renderTable();
+        const direction = this.sort.key === column
+            ? (this.sort.direction === 'asc' ? 'desc' : 'asc')
+            : window.ModelsSorting.defaultDirection(column);
+        this.sort = { key: column, direction };
+        this.filterModels();
     }
 
     updateSortIndicators() {
         document.querySelectorAll('.models-table th.sortable').forEach(th => {
-            th.classList.remove('sort-asc', 'sort-desc');
+            const active = th.dataset.sort === this.sort.key;
+            th.classList.toggle('sort-asc', active && this.sort.direction === 'asc');
+            th.classList.toggle('sort-desc', active && this.sort.direction === 'desc');
+            th.setAttribute('aria-sort', active ? (this.sort.direction === 'asc' ? 'ascending' : 'descending') : 'none');
         });
-        if (this.currentSort.column) {
-            const th = document.querySelector(`.models-table th[data-sort="${this.currentSort.column}"]`);
-            if (th) th.classList.add(`sort-${this.currentSort.direction}`);
-        }
+        const select = document.getElementById('sortSelect');
+        if (select && [...select.options].some(option => option.value === this.sort.key)) select.value = this.sort.key;
     }
 
     getActiveModels() {
@@ -531,7 +522,7 @@ class UnifiedModels {
             this.tableBodyEl.insertAdjacentHTML('beforeend', disclosure);
             this.tableBodyEl.querySelector('#capabilityUnknownToggle')?.addEventListener('click', () => {
                 this.includeUnknownCapability = !this.includeUnknownCapability;
-                this.applyFilters();
+                this.filterModels();
             });
         }
         if (this.filteredModels.length === 0) {
@@ -547,6 +538,11 @@ class UnifiedModels {
             // Row click → detail drawer
             tr.addEventListener('click', (e) => {
                 if (e.target.closest('.actions, button, a, .action-menu')) return;
+                this.openDetailDrawer(model);
+            });
+
+            tr.querySelector('.model-open-detail')?.addEventListener('click', (e) => {
+                e.stopPropagation();
                 this.openDetailDrawer(model);
             });
 
@@ -596,6 +592,7 @@ class UnifiedModels {
         const isOllama = source === 'ollama';
         const isGone = model.deployment?.status === 'gone';
         const isSelected = this.comparisonList.has(model.id || model.name);
+        const chat = this.chatAvailability(model);
 
         const params = model.details?.parameter_size || model.parameterSize || model.parameters || '-';
         // Effective context: override > auto-detected default > theoretical max
@@ -665,7 +662,7 @@ class UnifiedModels {
                 <div class="model-name">
                     <div class="model-icon ${source}">${this.getIconForSource(source)}</div>
                     <div>
-                        <div class="model-primary-name">${statusDot}${escapeHtml(model.name)}</div>
+                        <div class="model-primary-name">${statusDot}<button type="button" class="model-open-detail" title="Show details for ${escapeHtml(model.name)}">${escapeHtml(model.name)}</button></div>
                         ${model.vendor ? `<div class="model-vendor">${escapeHtml(model.vendor)}</div>` : ''}
                     </div>
                 </div>
@@ -686,10 +683,15 @@ class UnifiedModels {
                     <button class="btn-icon action-compare ${isSelected ? 'active text-accent' : ''}" title="Compare">
                         <i class="fas ${isSelected ? 'fa-check' : 'fa-plus'}"></i>
                     </button>
-                    <button class="btn-primary-sm action-chat" title="Chat with ${escapeHtml(model.name)}">
-                        <i class="fas fa-comment-alt"></i>
+                    ${chat.available
+                        ? `<button class="btn-primary-sm action-chat" title="Chat with ${escapeHtml(model.name)}">
+                        <i class="fas fa-comment-alt" aria-hidden="true"></i>
                         <span>Chat</span>
-                    </button>
+                    </button>`
+                        : `<button class="btn-primary-sm action-chat" disabled title="${escapeHtml(chat.reason)}" aria-label="Chat unavailable: ${escapeHtml(chat.reason)}">
+                        <i class="fas fa-comment-slash" aria-hidden="true"></i>
+                        <span>Chat</span>
+                    </button>`}
                     <button class="btn-icon btn-actions" title="More actions for ${escapeHtml(model.name)}" aria-label="More actions for ${escapeHtml(model.name)}" aria-haspopup="menu" aria-expanded="false">
                         <i class="fas fa-ellipsis-v"></i>
                     </button>
@@ -699,6 +701,14 @@ class UnifiedModels {
                 </div>
             </td>
         `;
+    }
+
+    // Chat is offered only where the playground can actually use the model.
+    chatAvailability(model) {
+        if (model.deployment?.status === 'gone') return { available: false, reason: 'Removed from its host' };
+        if ((model.categories || []).includes('embedding')) return { available: false, reason: 'Embedding model: it cannot hold a conversation' };
+        if (model.chatAllowed === false) return { available: false, reason: 'Blocked until a current profile clears it' };
+        return { available: true, reason: '' };
     }
 
     getIconForSource(source) {
@@ -724,19 +734,32 @@ class UnifiedModels {
 
         title.textContent = model.displayName || model.name;
         body.innerHTML = this.buildDetailContent(model);
+        // Inline handlers are blocked by the CSP (script-src-attr 'none').
+        body.querySelector('.detail-action-chat')?.addEventListener('click', () => startChat(model));
+        body.querySelectorAll('.detail-action-config').forEach(button => button.addEventListener('click', () => {
+            if (window.modelExecutionConfig) window.modelExecutionConfig.open(model.name);
+        }));
+        this.detailReturnFocus = document.activeElement;
         drawer.classList.add('open');
         backdrop?.classList.add('open');
         document.body.style.overflow = 'hidden';
+        requestAnimationFrame(() => document.getElementById('closeDetailDrawer')?.focus());
     }
 
     closeDetailDrawer() {
-        document.getElementById('modelDetailDrawer')?.classList.remove('open');
+        const drawer = document.getElementById('modelDetailDrawer');
+        if (!drawer?.classList.contains('open')) return;
+        drawer.classList.remove('open');
         document.getElementById('detailDrawerBackdrop')?.classList.remove('open');
         document.body.style.overflow = '';
+        // Return focus to the control that opened the drawer.
+        if (this.detailReturnFocus?.isConnected) this.detailReturnFocus.focus();
+        this.detailReturnFocus = null;
     }
 
     buildDetailContent(m) {
         const sections = [];
+        const chat = this.chatAvailability(m);
 
         // Identity
         const isGone = m.deployment?.status === 'gone';
@@ -850,7 +873,7 @@ class UnifiedModels {
                         ${eo?.num_ctx ? `<div class="detail-kv"><span class="dk">num_ctx (override)</span><span class="dv" style="color:#fbbf24;">${eo.num_ctx}</span></div>` : ''}
                         ${eo?.temperature != null ? `<div class="detail-kv"><span class="dk">temperature (override)</span><span class="dv" style="color:#fbbf24;">${eo.temperature}</span></div>` : ''}
                     </div>
-                    <button class="btn-secondary-sm" style="margin-top:8px;" onclick="if(window.modelExecutionConfig) window.modelExecutionConfig.open('${escapeHtml(m.name)}');">
+                    <button type="button" class="btn-secondary-sm detail-action-config" style="margin-top:8px;">
                         <i class="fas fa-cog"></i> Edit Config
                     </button>
                 </div>
@@ -860,8 +883,10 @@ class UnifiedModels {
         // Quick actions
         sections.push(`
             <div class="detail-section detail-actions">
-                <button class="btn-primary" onclick="startChat('${escapeHtml(m.name)}')"><i class="fas fa-comment-alt"></i> Chat</button>
-                <button class="btn-secondary" onclick="if(window.modelExecutionConfig) window.modelExecutionConfig.open('${escapeHtml(m.name)}')"><i class="fas fa-sliders-h"></i> Config</button>
+                ${chat.available
+                    ? '<button type="button" class="btn-primary detail-action-chat"><i class="fas fa-comment-alt" aria-hidden="true"></i> Chat</button>'
+                    : `<button type="button" class="btn-primary" disabled title="${escapeHtml(chat.reason)}"><i class="fas fa-comment-slash" aria-hidden="true"></i> Chat unavailable: ${escapeHtml(chat.reason)}</button>`}
+                <button type="button" class="btn-secondary detail-action-config"><i class="fas fa-sliders-h" aria-hidden="true"></i> Config</button>
             </div>
         `);
 

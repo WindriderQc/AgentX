@@ -115,10 +115,13 @@
                     <option value="gone">Gone only</option>
                 </select>
                 <select id="sortSelect" class="select-input" aria-label="Sort by">
-                    <option value="name">Name (A-Z)</option>
-                    <option value="score">Benchmark Score</option>
-                    <option value="size">Size (Largest)</option>
+                    <option value="name">Name</option>
+                    <option value="host">Host</option>
+                    <option value="score">Benchmark score</option>
                     <option value="speed">Speed (tok/s)</option>
+                    <option value="size">Size on disk</option>
+                    <option value="params">Parameters</option>
+                    <option value="context">Context window</option>
                     <option value="newest">Newest</option>
                 </select>
             </div>
@@ -170,7 +173,7 @@
     <div id="detailDrawerBackdrop" class="detail-drawer-backdrop"></div>
 
     <!-- Model Detail Drawer -->
-    <div id="modelDetailDrawer" class="detail-drawer">
+    <div id="modelDetailDrawer" class="detail-drawer" role="dialog" aria-modal="true" aria-labelledby="detailModelName">
         <div class="detail-drawer-content">
             <div class="detail-drawer-header">
                 <h2 id="detailModelName">Model</h2>
