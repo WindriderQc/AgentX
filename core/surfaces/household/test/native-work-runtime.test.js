@@ -12,7 +12,7 @@ test('background native Main preserves the complete request, references prior tu
   const row = { sessionId: originalId, turnId: 'canonical-turn', requestSha256: hash(text), attempt: { sessionId: workSessionId, agentId: 'main' } };
   const session = { sessionId: originalId, packId: 'personal_operator', scopeId: 'personal', modeId: 'personal',
     agentSessionKey: `agent:main:household:direct:${originalId}`, persona: { identity: 'Synthetic Nestor identity.' } };
-  const runtime = nativeWorkRuntime({ works: { query: sessionId => ({ sessionId }) }, continuity: async () => ({ capabilities: { isolatedWork: true } }), conversations: {
+  const runtime = nativeWorkRuntime({ works: { query: sessionId => ({ sessionId }) }, continuity: async () => ({ capabilities: { isolatedWork: true, nativeReadBudget: true } }), conversations: {
     getTurn: async () => ({ inputText: text, attachments: [] }),
     listTurns: async () => [{ traceId: row.turnId, inputText: text },
       { traceId: 'prior-turn', inputText: 'A prior restriction.', replyText: 'Preserved.', outcome: 'completed' }]
@@ -46,7 +46,7 @@ test('a current web question retains the adult audience and original local date 
   const row = { sessionId: 'original-session', turnId: 'current-turn', requestSha256: hash(text),
     receivedAt: new Date('2030-01-02T01:00:00Z'), attempt: { sessionId: 'isolated-session', agentId: 'main' } };
   const runtime = nativeWorkRuntime({ works: { query: sessionId => ({ sessionId }) },
-    continuity: async () => ({ capabilities: { isolatedWork: true } }), conversations: {
+    continuity: async () => ({ capabilities: { isolatedWork: true, nativeReadBudget: true } }), conversations: {
       getTurn: async () => ({ inputText: text, attachments: [] }), listTurns: async () => [] } });
   const previous = process.env.PLANNING_TIME_ZONE;
   process.env.PLANNING_TIME_ZONE = 'America/Toronto';
@@ -66,4 +66,12 @@ test('a mismatched installed native adapter refuses preparation before any model
     conversations: { getTurn: () => assert.fail('Unsupported adapter must refuse before preparing dispatch') },
     agentClient: () => assert.fail('Unsupported adapter must not invoke a model') });
   await assert.rejects(runtime.prepare({ row: {}, session: {} }), /does not support isolated consultations yet/);
+});
+
+test('web dispatch requires the native budget hook before inference', async () => {
+  const text = 'Does the team play tonight?';
+  const runtime = nativeWorkRuntime({ continuity: async () => ({ capabilities: { isolatedWork: true } }),
+    works: { query: sessionId => ({ sessionId }) }, conversations: {
+      getTurn: async () => ({ inputText: text }), listTurns: () => assert.fail('Unbounded dispatch') } });
+  await assert.rejects(runtime.prepare({ row: { sessionId: 'session', turnId: 'turn', requestSha256: hash(text) } }), /bounded web consultations/);
 });

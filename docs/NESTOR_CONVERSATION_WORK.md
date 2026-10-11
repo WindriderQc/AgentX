@@ -57,6 +57,14 @@ web research: publication requires a successful same-run `web_search` or
 `web_fetch`, not merely `tool_search`. Relative dates use the request's original
 local calendar day and configured planning time zone. Effects, declined searches,
 personal records and local service checks retain their existing paths.
+Pure web consultations admit at most four web reads and eight total tool calls,
+including discovery, through Core and the native adapter's pre-tool hook. Core
+retains each admission in the existing work, even when the page fails to load;
+changing URLs or restarting the adapter does not reset it. After exhaustion the
+adapter blocks further tools and directs Main to conclude from its verified
+sources or explain the actual lookup limitation. Mixed task/mail reads keep
+their existing native contracts. An older adapter without this capability
+refuses pure web dispatch before inference.
 
 Every private worker receives the same adult-owner presentation contract as
 the guardian. Child profiles remain reference data; they do not select the

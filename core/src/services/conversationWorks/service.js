@@ -7,7 +7,7 @@ const { OWNER, SCOPED, EXCHANGE_SCOPE, ACTIVE, LIMITS, hash, fail, notFound,
 const { createRepository } = require('./repository');
 
 function createConversationWorks({ conversations, tasks, env = process.env, repository = createRepository(), classify = () => false, nativeOnly = () => false, nativeRead = () => false,
-  exchangeStore = exchanges, now = () => new Date() } = {}) {
+  nativeBudget = () => null, exchangeStore = exchanges, now = () => new Date() } = {}) {
   const repo = repository;
   let wake = () => {};
   const classification = (text, mode) => simple(text) ? 'simple' : mode === 'read' && nativeRead(text) ? 'native_read'
@@ -259,6 +259,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       conversationId: row.conversationId, workId: row._id });
   }
   return { repo, intake, retained, prepare, guardianStarted, guardianSettled, binding, request, contextForWorker, readTasks,
+    admitNativeTool: require('./native-budget').createNativeBudget({ repo, conversations, session, query, policy: nativeBudget, now }),
     publish, publishNative: require('./native-results').createNativeResultReceiver({ repo, session, now }),
     recover, finalize, handled, guardianContext, taskAcceptance, nativeAcceptance, wake: () => wake(), session, query, eligible: (current, channel) => eligible(current, channel, env), wakeWith: fn => { wake = fn; } };
 }
