@@ -11,7 +11,7 @@
   const labels = {
     ready_for_review: 'Ready for review', partially_reviewed: 'Partially reviewed', completed: 'Complete',
     failed: 'Needs attention', collecting: 'Collecting', synthesizing: 'Reflecting',
-    proposed: 'Exception', approved: 'Approved', auto_approved: 'Policy approved', rejected: 'Ignored', deferred: 'Deferred',
+    proposed: 'Pending', approved: 'Approved', auto_approved: 'Policy approved', rejected: 'Rejected', deferred: 'Deferred',
     parked: 'Parked', shadowed: 'Shadowed', applied: 'Applied', apply_failed: 'Apply failed', applying: 'Applying',
     shared_fact: 'Shared memory', soft_memory: 'Working memory', artifact: 'Knowledge artifact', runtime_local: 'Runtime-local proposal',
     skill_draft: 'Skill draft', pipeline_task: 'Follow-up task', git_change: 'Source change', ignore: 'No action',
@@ -363,7 +363,8 @@
           : active ? 'Collection in progress'
           : quiet ? 'Quiet · no reviewer call'
             : total ? 'Review complete' : 'No review candidates';
-      return `<li><button type="button" class="mr-run-item ${run.runId === state.selectedRunId ? 'active' : ''}" data-run-id="${esc(run.runId)}">
+      const selected = run.runId === state.selectedRunId;
+      return `<li><button type="button" class="mr-run-item ${selected ? 'active' : ''}" ${selected ? 'aria-current="true"' : ''} data-run-id="${esc(run.runId)}">
         <span class="mr-run-title">${esc(friendlyRunTitle(run))}</span><span class="mr-chip mr-status-${esc(hasError || overdue ? 'failed' : run.status)}">${esc(label(hasError || overdue ? 'failed' : run.status))}</span>
         <small class="mr-run-id" title="${esc(run.runId)}">${esc(run.runId)}</small>
         <span class="mr-run-foot"><span>${outcome}</span><span>${esc(runtimes.map(label).join(' · ') || 'No collectors')}</span></span>
@@ -694,8 +695,8 @@
   }
 
   document.querySelectorAll('[data-status-filter]').forEach((button) => button.addEventListener('click', () => {
-    document.querySelectorAll('[data-status-filter]').forEach((item) => item.classList.remove('active'));
-    button.classList.add('active'); state.filter = button.dataset.statusFilter; renderCandidates();
+    document.querySelectorAll('[data-status-filter]').forEach((item) => { item.classList.toggle('active', item === button); item.setAttribute('aria-pressed', String(item === button)); });
+    state.filter = button.dataset.statusFilter; renderCandidates();
   }));
   $('mrRunSearch').addEventListener('input', (event) => { state.runSearch = event.target.value.trim(); renderRuns(); });
   $('mrRunStatus').addEventListener('change', (event) => { state.runFilter = event.target.value; renderRuns(); });
