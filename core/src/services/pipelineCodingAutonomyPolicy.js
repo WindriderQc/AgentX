@@ -30,11 +30,31 @@ function assertTask(task) {
     throw fail('The reviewed duration must support a native lease of at least 10000 ms', 'CODING_AUTONOMY_SCOPE');
   return automation;
 }
+function nativeModelMs(run, now = Date.now()) {
+  const intervals = (run.modelReceipts || []).map(item => [Date.parse(item.startedAt),
+    item.finishedAt ? Date.parse(item.finishedAt) : now]).filter(([start, end]) =>
+    Number.isFinite(start) && Number.isFinite(end) && end >= start).sort((a, b) => a[0] - b[0]);
+  let duration = 0, lastEnd = 0;
+  for (const [start, end] of intervals) {
+    duration += Math.max(0, end - Math.max(start, lastEnd)); lastEnd = Math.max(lastEnd, end);
+  }
+  return duration;
+}
+function usage(run, reported = {}) {
+  reported ||= {};
+  return { ...reported, modelCalls: Math.max(reported.modelCalls || 0, (run.modelReceipts || []).length),
+    modelSeconds: Math.max(reported.modelSeconds || 0, Math.ceil(nativeModelMs(run) / 1000)) };
+}
+function spent(state) {
+  const closed = (state.runs || []).filter(run => run.finishedAt).map(run => usage(run, run.usage));
+  return { ...state.spent, ...Object.fromEntries(['modelCalls', 'modelSeconds'].map(key => [key,
+    Math.max(state.spent?.[key] || 0, closed.reduce((total, item) => total + item[key], 0))])) };
+}
 function remaining(task) {
   const state = task.codingAutonomy;
-  const spent = state.spent || {};
+  const consumed = spent(state);
   return Object.fromEntries(Object.entries(state.limits).map(([key, value]) => [key,
-    key === 'maxResumes' ? Math.max(0, value - Math.max(0, state.runs.length - 1)) : Math.max(0, value - (spent[key] || 0))]));
+    key === 'maxResumes' ? Math.max(0, value - Math.max(0, state.runs.length - 1)) : Math.max(0, value - (consumed[key] || 0))]));
 }
 function exhausted(task) {
   const rem = remaining(task);
@@ -57,4 +77,4 @@ function verdict(observation, expected) {
   if (current.some(c => ['failure', 'cancelled', 'timeout'].includes(c.state))) return 'failure';
   return current.every(c => c.state === 'success') ? 'success' : 'pending';
 }
-module.exports = { DEFAULT_LIMITS, CHECKS, fail, digest, basis, limits, assertTask, remaining, exhausted, compare, verdict };
+module.exports = { DEFAULT_LIMITS, CHECKS, fail, digest, basis, limits, assertTask, nativeModelMs, usage, spent, remaining, exhausted, compare, verdict };

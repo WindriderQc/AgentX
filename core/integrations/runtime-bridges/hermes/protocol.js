@@ -211,7 +211,7 @@ function registerHermesProtocol({ express, runtimeServices, logger }) {
       }
       const snapshot = await runtimeServices.routing.getEffectiveSnapshot({ includeCatalog: false });
       const model = requireApprovedModel(snapshot, body.model);
-      coding = await require('../../../src/services/pipelineCodingInferenceService').prepare(req.headers, model);
+      coding = await require('../../../src/services/pipelineCodingInferenceService').prepare(req.headers, model, abort.signal);
       const result = await whenAdmitted(() => runtimeServices.inference.execute({
         mode: 'chat',
         model,
@@ -238,7 +238,7 @@ function registerHermesProtocol({ express, runtimeServices, logger }) {
         consumerContract: HERMES_CONSUMER_CONTRACT,
         observePromptPrefix: true,
         ...(coding?.options || {})
-      }), { waitMs: req.admissionWaitMs, signal: abort.signal });
+      }), { waitMs: req.admissionWaitMs, signal: coding?.options.signal || abort.signal });
       let codingCompletion;
       if (coding) {
         if (result.completion) {

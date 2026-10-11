@@ -154,6 +154,51 @@ test('review correction keeps the same card and PR with a new linked request and
   expect(durable.automationAttempts).toHaveLength(1); expect(durable.automationAttempts[0].finalState).toBe('review');
   expect(durable.codingAutonomy.manualInterventions[0].kind).toBe('review_feedback');
 });
+test('native model receipts charge cumulative budgets even when runner usage undercounts and stored totals are stale', async () => {
+  await task(); await authorize('0001', { modelCalls: 3, modelSeconds: 60 }); await enable(); const first = await launch();
+  const native = [
+    { callId: '10000000-0000-4000-8000-000000000001', state: 'completed', startedAt: '2026-01-01T00:00:00Z', finishedAt: '2026-01-01T00:00:02Z' },
+    { callId: '10000000-0000-4000-8000-000000000002', state: 'completed', startedAt: '2026-01-01T00:00:01Z', finishedAt: '2026-01-01T00:00:03Z' },
+  ];
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.runs.0.modelReceipts': native } });
+  expect((await service.status()).tasks[0].remaining).toMatchObject({ modelCalls: 1, modelSeconds: 57 });
+  await complete(first, HEAD, { workSeconds: 10, testSeconds: 3, modelCalls: 0, modelSeconds: 0 });
+  let durable = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(durable.codingAutonomy.runs[0].usage).toMatchObject({ modelCalls: 2, modelSeconds: 3 });
+  expect(durable.codingAutonomy.spent).toMatchObject({ modelCalls: 2, modelSeconds: 3 });
+  // Simulate durable state written before native usage was enforced, then restart/resume.
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.spent.modelCalls': 0,
+    'codingAutonomy.spent.modelSeconds': 0, 'codingAutonomy.runs.0.usage.modelCalls': 0, 'codingAutonomy.runs.0.usage.modelSeconds': 0 } });
+  await service.recordReview('0001', { confirm: true, head: HEAD, text: 'Synthetic correction after stale counters' });
+  await service.tick(); const next = await selected(); const manifest = await service.workerManifest('0001', next.requestId);
+  expect(manifest.remaining).toMatchObject({ modelCalls: 1, modelSeconds: 57 });
+  const claimed = await claimEligibleTask('0001', 'coding-team', new Date(), { automated: true, dispatchRequestId: next.requestId });
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { codingCapacity: { model: 'synthetic-model', admissionId: 'fixture', host: 'http://127.0.0.1:9' } } });
+  const inference = require('../../src/services/pipelineCodingInferenceService');
+  const headers = { 'x-agentx-coding-task': '0001', 'x-agentx-coding-request': next.requestId,
+    'x-agentx-coding-lease': claimed.automationLease.leaseId, 'x-agentx-coding-call': '10000000-0000-4000-8000-000000000003' };
+  const last = await inference.prepare(headers, 'synthetic-model'); await last.finish('completed');
+  await expect(inference.prepare({ ...headers, 'x-agentx-coding-call': '10000000-0000-4000-8000-000000000004' }, 'synthetic-model'))
+    .rejects.toMatchObject({ code: 'CODING_MODEL_BUDGET' });
+});
+
+test('Core model deadline aborts an uncompleted call without claiming termination or releasing another owner', async () => {
+  await task(); await authorize('0001', { modelSeconds: 1 }); await enable(); const active = await launch();
+  const claimed = await claimEligibleTask('0001', 'coding-team', new Date(), { automated: true, dispatchRequestId: active.requestId });
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { codingCapacity: { model: 'synthetic-model', admissionId: 'fixture', host: 'http://127.0.0.1:9' } } });
+  const headers = { 'x-agentx-coding-task': '0001', 'x-agentx-coding-request': active.requestId,
+    'x-agentx-coding-lease': claimed.automationLease.leaseId, 'x-agentx-coding-call': '10000000-0000-4000-8000-000000000001' };
+  const inference = require('../../src/services/pipelineCodingInferenceService');
+  const call = await inference.prepare(headers, 'synthetic-model', new AbortController().signal);
+  await new Promise(resolve => call.options.signal.addEventListener('abort', resolve, { once: true }));
+  expect(call.options.signal.reason.code).toBe('CODING_MODEL_BUDGET');
+  await call.finish('unknown'); const durable = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(durable.codingAutonomy.runs[0].pendingInferences).toHaveLength(1);
+  expect(durable.codingAutonomy.runs[0].modelReceipts[0].state).toBe('unknown');
+  expect(durable.automationLease.leaseId).toBe(claimed.automationLease.leaseId); expect(durable.codingCapacity.admissionId).toBe('fixture');
+  await expect(inference.prepare({ ...headers, 'x-agentx-coding-call': '10000000-0000-4000-8000-000000000002' }, 'synthetic-model'))
+    .rejects.toMatchObject({ code: 'CODING_MODEL_BUDGET' });
+});
 test('changed remote head becomes an explicit manual intervention and worker correction', async () => {
   await task(); await authorize(); await enable(); const first = await launch(); await complete(first);
   observations.set(first.requestId, { ...PR, head: 'f'.repeat(40), state: 'open', mergeable: 'clean', checks: [] });

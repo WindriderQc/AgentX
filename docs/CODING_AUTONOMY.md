@@ -46,7 +46,11 @@ checkout. Runner-only relay headers bind every inference to its existing task,
 request and lease. Core records the call before native dispatch, checks the
 frozen model/host/context/artifact capacity, and persists terminal evidence
 before returning the stream's terminal frame. Unknown model outcomes retain
-the fence. The approved campaign must cover the frozen host before admission.
+the fence. Core charges at least the native call count and union of native
+request intervals, including after a stale runner counter or restart. Each
+inference receives a Core deadline from the remaining cumulative model budget;
+deadline cancellation does not prove native model termination. The approved
+campaign must cover the frozen host before admission.
 
 ## Publication and observations
 

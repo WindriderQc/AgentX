@@ -86,15 +86,16 @@ async function authorize(id, input) {
   return projection(await save(task, state, extra));
 }
 function ciSpent(state) {
-  return { ...state.spent, ciSeconds: (state.spent.ciSeconds || 0) +
+  return { ...policy.spent(state), ciSeconds: (state.spent.ciSeconds || 0) +
     (state.state === 'waiting_ci' ? Math.max(0, Math.floor((Date.now() - Date.parse(state.ciStartedAt)) / 1000)) : 0) };
 }
 function projection(task) {
   const state = task.codingAutonomy;
   const remaining = policy.remaining(task);
   const last = state.runs.at(-1);
+  const currentUsage = last && policy.usage(last, last.currentUsage);
   if (last && !last.finishedAt) for (const key of ['workSeconds', 'testSeconds', 'modelSeconds', 'modelCalls'])
-    remaining[key] = Math.max(0, remaining[key] - (last.currentUsage?.[key] || 0));
+    remaining[key] = Math.max(0, remaining[key] - (currentUsage[key] || 0));
   if (state.state === 'waiting_ci') remaining.ciSeconds = Math.max(0, state.limits.ciSeconds - ciSpent(state).ciSeconds);
   return { pipelineId: task.pipelineId, title: task.title, taskStatus: task.status,
     scope: task.automation.scope, queueRequestId: state.queueRequestId, limits: state.limits,
@@ -132,7 +133,7 @@ async function workerManifest(id, requestId) {
     || config.active.requestId !== requestId || state.basis !== policy.basis(task)) throw policy.fail('This execution no longer has task authority');
   await campaign(task, task.codingCapacity?.host);
   return { pipelineId: id, requestId, parentRequestId: run.parentRequestId, remaining: policy.remaining(task),
-    limits: state.limits, spent: state.spent, lastUsefulWorkSeconds: state.lastUsefulWorkSeconds || 0,
+    limits: state.limits, spent: policy.spent(state), lastUsefulWorkSeconds: state.lastUsefulWorkSeconds || 0,
     seenStates: state.seenStates, seenTests: state.seenTests, pr: state.pr || null,
     scope: task.automation.scope, correction: state.correction || null, queueRequestId: state.queueRequestId };
 }
@@ -261,10 +262,11 @@ async function dispatch(task, config) {
     if (task.automationLease || task.codingCapacity || run.pendingInferences?.length)
       return block(task, 'native_completion_unverified');
     const runs = state.runs.slice();
+    const usage = policy.usage(run, receipt.usage);
     runs[runs.length - 1] = { ...run, finishedAt: new Date().toISOString(), result: receipt.result,
-      head: receipt.checkpoint, usage: receipt.usage, progressAt: receipt.progressAt };
-    const spent = { ...state.spent };
-    for (const key of ['workSeconds', 'testSeconds', 'modelSeconds', 'modelCalls']) spent[key] = (spent[key] || 0) + (receipt.usage?.[key] || 0);
+      head: receipt.checkpoint, usage, progressAt: receipt.progressAt };
+    const spent = policy.spent(state);
+    for (const key of ['workSeconds', 'testSeconds', 'modelSeconds', 'modelCalls']) spent[key] = (spent[key] || 0) + (usage[key] || 0);
     const next = { ...state, runs, spent, seenStates: receipt.seenStates || state.seenStates,
       seenTests: receipt.seenTests || state.seenTests, lastUsefulProgressAt: receipt.progressAt || state.lastUsefulProgressAt,
       lastUsefulWorkSeconds: receipt.lastUsefulWorkSeconds || state.lastUsefulWorkSeconds || 0 };
