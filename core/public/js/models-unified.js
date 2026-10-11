@@ -512,7 +512,7 @@ class UnifiedModels {
             this.tableBodyEl.insertAdjacentHTML('beforeend', disclosure);
             this.tableBodyEl.querySelector('#capabilityUnknownToggle')?.addEventListener('click', () => {
                 this.includeUnknownCapability = !this.includeUnknownCapability;
-                this.applyFilters();
+                this.filterModels();
             });
         }
         if (this.filteredModels.length === 0) {

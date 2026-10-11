@@ -42,6 +42,12 @@ describe('Models capability taxonomy', () => {
     expect(source).toContain('this.capabilityTierBadge(model, this.activeCategory)');
   });
 
+  test('every method the catalog calls on itself is defined', () => {
+    const defined = new Set([...source.matchAll(/^    (?:async )?([A-Za-z]\w*)\([^)]*\) \{/gm)].map(match => match[1]));
+    const called = [...new Set([...source.matchAll(/this\.([A-Za-z]\w*)\(/g)].map(match => match[1]))];
+    expect(called.filter(name => !defined.has(name))).toEqual([]);
+  });
+
   test('Trusted qualification is explicitly out of this catalog projection', () => {
     expect(source).toContain('Trusted per-category qualification belongs to');
     expect(source).not.toMatch(/tier = ['"]qualified['"]/);
