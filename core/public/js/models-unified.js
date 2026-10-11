@@ -44,7 +44,8 @@ class UnifiedModels {
         // default, but always disclose how many were hidden and can show them.
         this.includeUnknownCapability = false;
         this.activeTags = new Set();
-        this.currentSort = { column: null, direction: null };
+        // One sort for the menu and the column headers (models-sorting.js).
+        this.sort = { key: 'name', direction: 'asc' };
         this.uiReady = false;
 
         this.manager = null;
@@ -193,8 +194,12 @@ class UnifiedModels {
             timeout = setTimeout(() => this.filterModels(), 250);
         });
 
-        ['providerSelect', 'sortSelect', 'statusSelect'].forEach(id => {
+        ['providerSelect', 'statusSelect'].forEach(id => {
             document.getElementById(id)?.addEventListener('change', () => this.filterModels());
+        });
+        document.getElementById('sortSelect')?.addEventListener('change', (e) => {
+            this.sort = { key: e.target.value, direction: window.ModelsSorting.defaultDirection(e.target.value) };
+            this.filterModels();
         });
 
         document.getElementById('clearCompare')?.addEventListener('click', () => {
@@ -204,7 +209,13 @@ class UnifiedModels {
         });
 
         document.querySelectorAll('.models-table th.sortable').forEach(th => {
+            th.tabIndex = 0;
             th.addEventListener('click', () => this.sortByColumn(th.dataset.sort));
+            th.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                this.sortByColumn(th.dataset.sort);
+            });
         });
     }
 
@@ -224,7 +235,6 @@ class UnifiedModels {
         const provider = document.getElementById('providerSelect')?.value || 'all';
         const hostFilter = document.getElementById('hostSelect')?.value || 'all';
         const statusFilter = document.getElementById('statusSelect')?.value || 'available';
-        const sort = document.getElementById('sortSelect')?.value || 'name';
         const cat = this.activeCategory;
 
         this.filteredModels = this.allModels.filter(m => {
@@ -268,58 +278,29 @@ class UnifiedModels {
             return true;
         });
 
-        // Sort
-        if (!this.currentSort.column) {
-            this.filteredModels.sort((a, b) => {
-                if (sort === 'score') return (b.benchmarkStats?.avgCompositeScore || 0) - (a.benchmarkStats?.avgCompositeScore || 0);
-                if (sort === 'size') return (b.size || 0) - (a.size || 0);
-                if (sort === 'speed') return (b.capabilities?.avgTokensPerSec || 0) - (a.capabilities?.avgTokensPerSec || 0);
-                if (sort === 'newest') return new Date(b.modified_at || 0) - new Date(a.modified_at || 0);
-                return a.name.localeCompare(b.name);
-            });
-        }
-
+        this.filteredModels = window.ModelsSorting.sortModels(this.filteredModels, this.sort);
+        this.updateSortIndicators();
         this.renderTable();
     }
 
     /* ── Column sorting ─────────────────────────────────── */
     sortByColumn(column) {
-        if (this.currentSort.column === column) {
-            this.currentSort.direction = this.currentSort.direction === 'asc' ? 'desc' :
-                this.currentSort.direction === 'desc' ? null : 'asc';
-            if (!this.currentSort.direction) this.currentSort.column = null;
-        } else {
-            this.currentSort = { column, direction: 'asc' };
-        }
-
-        if (this.currentSort.column) {
-            const dir = this.currentSort.direction === 'asc' ? 1 : -1;
-            this.filteredModels.sort((a, b) => {
-                let av, bv;
-                switch (column) {
-                    case 'name':    av = a.name?.toLowerCase() || ''; bv = b.name?.toLowerCase() || ''; return dir * av.localeCompare(bv);
-                    case 'host':    av = a.source?.hostName || a.source?.url || ''; bv = b.source?.hostName || b.source?.url || ''; return dir * av.localeCompare(bv);
-                    case 'params':  av = parseFloat(a.details?.parameter_size || a.parameterSize || '0'); bv = parseFloat(b.details?.parameter_size || b.parameterSize || '0'); return dir * (av - bv);
-                    case 'context': av = a.executionOverrides?.num_ctx || a.capabilities?.maxContext || 0; bv = b.executionOverrides?.num_ctx || b.capabilities?.maxContext || 0; return dir * (av - bv);
-                    case 'score':   av = a.benchmarkStats?.avgCompositeScore || 0; bv = b.benchmarkStats?.avgCompositeScore || 0; return dir * (av - bv);
-                    case 'speed':   av = a.capabilities?.avgTokensPerSec || 0; bv = b.capabilities?.avgTokensPerSec || 0; return dir * (av - bv);
-                    default: return 0;
-                }
-            });
-        }
-
-        this.updateSortIndicators();
-        this.renderTable();
+        const direction = this.sort.key === column
+            ? (this.sort.direction === 'asc' ? 'desc' : 'asc')
+            : window.ModelsSorting.defaultDirection(column);
+        this.sort = { key: column, direction };
+        this.filterModels();
     }
 
     updateSortIndicators() {
         document.querySelectorAll('.models-table th.sortable').forEach(th => {
-            th.classList.remove('sort-asc', 'sort-desc');
+            const active = th.dataset.sort === this.sort.key;
+            th.classList.toggle('sort-asc', active && this.sort.direction === 'asc');
+            th.classList.toggle('sort-desc', active && this.sort.direction === 'desc');
+            th.setAttribute('aria-sort', active ? (this.sort.direction === 'asc' ? 'ascending' : 'descending') : 'none');
         });
-        if (this.currentSort.column) {
-            const th = document.querySelector(`.models-table th[data-sort="${this.currentSort.column}"]`);
-            if (th) th.classList.add(`sort-${this.currentSort.direction}`);
-        }
+        const select = document.getElementById('sortSelect');
+        if (select && [...select.options].some(option => option.value === this.sort.key)) select.value = this.sort.key;
     }
 
     getActiveModels() {
