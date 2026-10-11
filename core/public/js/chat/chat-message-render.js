@@ -15,6 +15,7 @@ function sanitizeHTML(dirty) {
       "'": '&#39;'
     })[character]);
   }
+  guardImageSources();
   return DOMPurify.sanitize(dirty, {
     ALLOWED_TAGS: [
       'p', 'br', 'strong', 'em', 'u', 'code', 'pre',
@@ -22,8 +23,24 @@ function sanitizeHTML(dirty) {
       'h3', 'h4', 'h5', 'h6', 'span', 'div', 'table',
       'thead', 'tbody', 'tr', 'th', 'td', 'img'
     ],
-    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'id'],
+    // No id: model HTML must not shadow the page's own element ids.
+    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class'],
     ALLOW_DATA_ATTR: false
+  });
+}
+
+let imageSourcesGuarded = false;
+
+// Model output can be steered by retrieved or web content. An image from
+// another host would be fetched automatically and could carry conversation
+// text in its URL, so only same-origin paths and inline data images load.
+function guardImageSources() {
+  if (imageSourcesGuarded) return;
+  imageSourcesGuarded = true;
+  DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+    if (node.tagName === 'IMG' && !/^(\/(?!\/)|data:image\/)/i.test(node.getAttribute('src') || '')) {
+      node.removeAttribute('src');
+    }
   });
 }
 
