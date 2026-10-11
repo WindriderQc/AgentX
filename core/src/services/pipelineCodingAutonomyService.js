@@ -7,6 +7,7 @@ const { taskEligibilityReasons } = require('./pipelineTaskEligibility');
 const { loadDependencyStatuses } = require('./pipelineTaskService');
 const { recordTransition, buildTransition } = require('./pipelineTaskTransitions');
 const WC = { w: 1, j: true };
+const OBSERVATION_MS = 30000;
 const ID = 'coding-autonomy';
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 let control;
@@ -23,8 +24,8 @@ async function readTask(id) {
   if (!task) throw policy.fail('Task not found', 'NOT_FOUND', 404);
   return task;
 }
-async function save(task, state, extra = {}, transition) {
-  const query = { pipelineId: task.pipelineId, 'codingAutonomy.revision': task.codingAutonomy?.revision ?? null };
+async function save(task, state, extra = {}, transition, guard = {}) {
+  const query = { ...guard, pipelineId: task.pipelineId, 'codingAutonomy.revision': task.codingAutonomy?.revision ?? null };
   const update = { $set: { codingAutonomy: { ...state, revision: (task.codingAutonomy?.revision || 0) + 1 }, ...extra } };
   if (transition) recordTransition(query, update, task, buildTransition(task, transition));
   const saved = await Task.findOneAndUpdate(query, update, { new: true, writeConcern: WC }).lean();
@@ -81,15 +82,35 @@ async function authorize(id, input) {
   if (input.authorized && !UUID.test(input.queueRequestId || '')) throw policy.fail('Name the approved heavy-work campaign', 'CODING_AUTONOMY_INVALID', 400);
   const state = existing || { schema: 'agentx.pipeline-coding-autonomy/v1', revision: 0, runs: [], spent: {},
     observations: [], seenDiagnostics: [], seenStates: [], seenTests: [], manualInterventions: [] };
+  if (!input.authorized) state.spent = ciSpent(state);
   Object.assign(state, { authorized: input.authorized, authorizedAt: state.authorizedAt || new Date().toISOString(),
     state: input.authorized ? 'queued' : 'stopped', reason: input.authorized ? null : 'authorization_removed' });
   if (input.authorized) Object.assign(state, { basis: policy.basis(task), limits: policy.limits(input.limits), queueRequestId: input.queueRequestId });
   // Removing authorization fences future resumes. An active worker is separately stopped.
   return projection(await save(task, state, extra));
 }
+function failedCIWatch(state) {
+  return state.authorized && state.correction?.kind === 'failure'
+    && (state.state === 'correction' || (state.state === 'blocked' && state.reason === 'resume_limit'));
+}
+function ciWatchStart(state, now = Date.now()) {
+  // Legacy failure transitions charged the original wait and saved now+30s,
+  // but retained ciStartedAt. Recover that accounting cursor once; never reset
+  // the already charged seconds or infer model completion from this timestamp.
+  const start = state.ciWatchStartedAt ? Date.parse(state.ciWatchStartedAt)
+    : Date.parse(state.nextObservationAt) - OBSERVATION_MS;
+  const original = Date.parse(state.ciStartedAt);
+  if (!Number.isFinite(start) || !Number.isFinite(original) || start < original || start > now)
+    throw policy.fail('CI accounting cursor requires reconciliation', 'CODING_AUTONOMY_CI_CURSOR');
+  return new Date(start).toISOString();
+}
+function ciElapsed(state, now = Date.now()) {
+  return Math.max(0, Math.floor((now - Date.parse(failedCIWatch(state)
+    ? ciWatchStart(state, now) : state.ciStartedAt)) / 1000));
+}
 function ciSpent(state) {
   return { ...policy.spent(state), ciSeconds: (state.spent.ciSeconds || 0) +
-    (state.state === 'waiting_ci' ? Math.max(0, Math.floor((Date.now() - Date.parse(state.ciStartedAt)) / 1000)) : 0) };
+    (state.state === 'waiting_ci' || failedCIWatch(state) ? ciElapsed(state) : 0) };
 }
 function projection(task) {
   const state = task.codingAutonomy;
@@ -98,7 +119,7 @@ function projection(task) {
   const currentUsage = last && policy.usage(last, last.currentUsage);
   if (last && !last.finishedAt) for (const key of ['workSeconds', 'testSeconds', 'modelSeconds', 'modelCalls'])
     remaining[key] = Math.max(0, remaining[key] - (currentUsage[key] || 0));
-  if (state.state === 'waiting_ci') remaining.ciSeconds = Math.max(0, state.limits.ciSeconds - ciSpent(state).ciSeconds);
+  if (state.state === 'waiting_ci' || failedCIWatch(state)) remaining.ciSeconds = Math.max(0, state.limits.ciSeconds - ciSpent(state).ciSeconds);
   return { pipelineId: task.pipelineId, title: task.title, taskStatus: task.status,
     scope: task.automation.scope, queueRequestId: state.queueRequestId, limits: state.limits,
     authorizationRevision: state.revision, authorized: state.authorized, state: state.state, reason: state.reason,
@@ -149,9 +170,10 @@ async function clearActive(requestId) {
   await Settings.updateOne({ _id: ID, 'active.requestId': requestId, 'active.recovery': { $exists: false } },
     { $set: { active: null } }, { writeConcern: WC });
 }
-async function block(task, reason) {
-  const state = { ...task.codingAutonomy, state: 'blocked', reason };
-  const saved = await save(task, state);
+async function block(task, reason, guard = {}) {
+  const state = { ...task.codingAutonomy, spent: ciSpent(task.codingAutonomy), state: 'blocked', reason,
+    ...(failedCIWatch(task.codingAutonomy) && { ciWatchStartedAt: new Date().toISOString() }) };
+  const saved = await save(task, state, {}, undefined, guard);
   // An unconfirmed worker/model stays held in the active slot for reconciliation.
   if (state.runs.at(-1)?.finishedAt) await clearActive(state.runs.at(-1).requestId);
   return saved;
@@ -207,7 +229,9 @@ async function select(config) {
     if (task.codingAutonomy.state === 'correction') {
       if (task.codingAutonomy.runs.length > task.codingAutonomy.limits.maxResumes) { await block(task, 'resume_limit'); continue; }
       if (!['review', 'blocked'].includes(task.status) || task.automationLease || task.codingCapacity) continue;
-      const state = { ...task.codingAutonomy, state: 'queued' };
+      const state = { ...task.codingAutonomy, spent: ciSpent(task.codingAutonomy), state: 'queued' };
+      const exhausted = policy.exhausted({ ...task, codingAutonomy: state });
+      if (exhausted) { await block(task, `cumulative_${exhausted}`); continue; }
       task = await save(task, state, { status: 'queued', assignee: null, heartbeatAt: null },
         { to: 'queued', kind: 'requeued', channel: 'task_preparation', reason: 'Core bounded correction', declaredActor: 'core-coding-autonomy' });
     }
@@ -313,29 +337,41 @@ async function dispatch(task, config) {
 }
 async function observe(task) {
   const state = task.codingAutonomy;
+  const watchingFailure = failedCIWatch(state);
+  const last = state.runs.at(-1);
+  if (!last?.finishedAt || task.automationLease || task.codingCapacity || !['review', 'blocked'].includes(task.status)) return;
+  const guard = { status: task.status, assignee: task.assignee ?? null, updatedAt: task.updatedAt,
+    automationLease: null, codingCapacity: null,
+    'codingAutonomy.pr.head': state.pr.head, 'codingAutonomy.runs': { $size: state.runs.length },
+    [`codingAutonomy.runs.${state.runs.length - 1}.requestId`]: last.requestId,
+    [`codingAutonomy.runs.${state.runs.length - 1}.finishedAt`]: last.finishedAt };
   const now = Date.now();
   if (Date.parse(state.nextObservationAt) > now) return;
-  const elapsed = Math.floor((now - Date.parse(state.ciStartedAt)) / 1000);
-  if (elapsed + (state.spent.ciSeconds || 0) >= state.limits.ciSeconds) return block(task, 'ci_timeout');
+  const cursor = watchingFailure ? { ciWatchStartedAt: ciWatchStart(state, now) } : {};
+  const elapsed = ciElapsed(state, now);
+  if (elapsed + (state.spent.ciSeconds || 0) >= state.limits.ciSeconds) return block(task, 'ci_timeout', guard);
   let observation;
   try { observation = await control.observe({ pipelineId: task.pipelineId, requestId: state.runs.at(-1).requestId, pr: state.pr }); }
   catch {
     const failures = (state.observationFailures || 0) + 1;
-    return save(task, { ...state, observationFailures: failures,
-      nextObservationAt: new Date(now + Math.min(300000, 15000 * 2 ** Math.min(failures, 5))).toISOString() });
+    return save(task, { ...state, ...cursor, observationFailures: failures,
+      nextObservationAt: new Date(now + Math.min(300000, 15000 * 2 ** Math.min(failures, 5))).toISOString() }, {}, undefined, guard);
   }
   const verdict = policy.verdict(observation, state.pr);
-  const next = { ...state, observations: [...state.observations.slice(-19), observation], observationFailures: 0,
-    nextObservationAt: new Date(now + 30000).toISOString() };
+  const next = { ...state, ...cursor, observations: [...state.observations.slice(-19), observation], observationFailures: 0,
+    nextObservationAt: new Date(now + OBSERVATION_MS).toISOString() };
   if (verdict === 'stale') {
     // External head changes are evidence of operator contribution. Reconcile
     // them through the worker; never attribute their green CI to our old head.
     next.manualInterventions = [...state.manualInterventions, { kind: 'remote_branch_update', head: observation.head, at: new Date(now).toISOString() }];
     next.correction = { kind: 'remote_head_changed', head: observation.head };
     next.state = 'correction';
-  } else if (verdict === 'success') next.state = 'ready_for_review';
+  } else if (verdict === 'success') {
+    next.state = 'ready_for_review'; next.reason = null;
+    if (watchingFailure) delete next.correction;
+  }
   else if (verdict === 'closed') { next.state = 'closed'; next.reason = observation.merged ? 'pr_merged_externally' : 'pr_closed_externally'; }
-  else if (['conflict', 'failure'].includes(verdict)) {
+  else if (['conflict', 'failure'].includes(verdict) && !(watchingFailure && verdict === 'failure')) {
     const diagnostic = policy.digest([verdict, observation.baseHead, state.pr.diffFingerprint || state.pr.head,
       observation.checks.map(c => [c.name, c.state, c.diagnostics])]);
     if (state.seenDiagnostics.includes(diagnostic)) { next.state = 'blocked'; next.reason = 'repeated_diagnostic'; }
@@ -346,8 +382,14 @@ async function observe(task) {
         checks: observation.checks.filter(c => c.state !== 'success').slice(0, 10) };
     }
   }
-  if (next.state !== 'waiting_ci') next.spent = { ...state.spent, ciSeconds: (state.spent.ciSeconds || 0) + elapsed };
-  return save(task, next);
+  // A rerun can settle the same published commit without another coding turn.
+  // Keep observing a queued CI failure while work is paused or resume-limited;
+  // repeated reads are not a repeated diagnostic from a new worker attempt.
+  if (state.state === 'waiting_ci' && next.state !== 'waiting_ci') {
+    next.spent = { ...state.spent, ciSeconds: (state.spent.ciSeconds || 0) + elapsed };
+    if (failedCIWatch(next)) next.ciWatchStartedAt = new Date(now).toISOString();
+  } else if (watchingFailure && !failedCIWatch(next)) next.spent = ciSpent(state);
+  return save(task, next, {}, undefined, guard);
 }
 async function tick() {
   if (ticking || !control) return;
@@ -371,7 +413,12 @@ async function tick() {
     }
     // Bound one sweep and choose the least recently due PR first. No task can
     // monopolize observations; this cadence is independent of shared queue jobs.
-    const waiting = await Task.find({ 'codingAutonomy.state': 'waiting_ci' })
+    const waiting = await Task.find({ status: { $in: ['review', 'blocked'] }, automationLease: null, codingCapacity: null, $or: [
+      { 'codingAutonomy.state': 'waiting_ci' },
+      { 'codingAutonomy.authorized': true, 'codingAutonomy.correction.kind': 'failure',
+        $or: [{ 'codingAutonomy.state': 'correction' },
+          { 'codingAutonomy.state': 'blocked', 'codingAutonomy.reason': 'resume_limit' }] }
+    ] })
       .sort({ 'codingAutonomy.nextObservationAt': 1, pipelineId: 1 }).limit(2).lean();
     for (const task of waiting) await observe(task);
     config = await settings();
