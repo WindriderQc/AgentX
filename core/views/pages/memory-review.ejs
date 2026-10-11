@@ -33,6 +33,19 @@
     <article><i class="fas fa-heart-pulse"></i><div><strong id="mrStatHealth">—</strong><span>Ecosystem health</span></div></article>
   </section>
 
+  <section id="mrNext" class="mr-next" aria-live="polite" hidden>
+    <span class="mr-next-icon"><i id="mrNextIcon" class="fas fa-key"></i></span>
+    <div class="mr-next-copy">
+      <span class="mr-eyebrow">Next step</span>
+      <strong id="mrNextTitle">--</strong>
+      <span id="mrNextText">--</span>
+    </div>
+    <div class="mr-next-actions">
+      <button id="mrNextSecondary" class="mr-btn mr-btn-secondary" type="button" hidden>--</button>
+      <button id="mrNextPrimary" class="mr-btn mr-btn-apply" type="button">--</button>
+    </div>
+  </section>
+
   <section id="mrPulse" class="mr-pulse mr-pulse-loading" aria-labelledby="mrPulseTitle">
     <div class="mr-pulse-icon"><i id="mrPulseIcon" class="fas fa-spinner fa-spin"></i></div>
     <div class="mr-pulse-copy">
@@ -52,7 +65,7 @@
     <span><i class="fas fa-route"></i> Apply to owner</span>
   </section>
 
-  <details id="mrIntelligence" class="mr-intelligence" open>
+  <details id="mrIntelligence" class="mr-intelligence">
     <summary><span><i class="fas fa-chart-simple"></i> Dream intelligence</span><small>Runtime coverage, quality signals, and memory atlas</small></summary>
     <div id="mrInsightsState" class="mr-state">Loading insight…</div>
     <div id="mrInsightsGrid" class="mr-insights-grid" hidden>
@@ -100,6 +113,7 @@
         <div class="mr-run-summary">
           <div class="mr-run-title-row"><h2 id="mrRunTitle">--</h2><button id="mrCopyLink" class="mr-icon-btn" type="button" title="Copy link to this run"><i class="fas fa-link"></i><span class="sr-only">Copy run link</span></button></div>
           <div id="mrRunNarrative" class="mr-run-narrative"></div>
+          <div id="mrRunProgress" class="mr-progress" hidden></div>
           <div id="mrRunFacts" class="mr-run-facts"></div>
           <div id="mrCollectors" class="mr-collectors"></div>
           <p class="mr-guarantee">

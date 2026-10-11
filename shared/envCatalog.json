@@ -1881,6 +1881,16 @@
       "secret": false,
       "description": "Maximum review exceptions per memory review run. Unset: a built-in limit."
     },
+    "MEMORY_REVIEW_EXPECTED_RUNTIMES": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Comma-separated memory review runtimes this instance collects (agentx, claude-code, codex, external). A runtime left out is shown as not collected instead of missing. Unset or invalid: all four are expected."
+    },
     "MEMORY_REVIEW_JOB_ID": {
       "services": [
         "core"

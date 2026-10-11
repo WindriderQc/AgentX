@@ -206,8 +206,10 @@ function summarizeRuns(runs, limit, now = new Date(), {
   const staleRuntimes = Object.values(runtimes)
     .filter((runtime) => runtime.health === 'stale')
     .map((runtime) => runtime.runtime);
+  const expected = policy.expectedRuntimes();
+  Object.values(runtimes).forEach((runtime) => { runtime.expected = expected.includes(runtime.runtime); });
   const missingRuntimes = Object.values(runtimes)
-    .filter((runtime) => runtime.health === 'not_seen')
+    .filter((runtime) => runtime.health === 'not_seen' && expected.includes(runtime.runtime))
     .map((runtime) => runtime.runtime);
   const activeRuns = runs.filter((run) => ['collecting', 'synthesizing'].includes(run.status));
   const activeRun = activeRuns[0] || null;
