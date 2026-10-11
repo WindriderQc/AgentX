@@ -18,11 +18,16 @@ const SECRETARY_DIRECTIVE = 'This request belongs to Main and the Secretary, not
 
 // A conservative migration selector, never an authorization decision. Ambiguous
 // requests and effects retain the existing native owner/approval path.
+function requestsReadEffects(text) {
+  const input = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return /\b(?:envoi\w*|envoie|send\w*|repond\w*|reply|draft\w*|redig\w*|modifi\w*|modify|change\w*|supprim\w*|delet\w*|effac\w*|archiv\w*|tri\w*|organis\w*|marqu\w*|mark|cre\w*|add|ajout\w*|transfer\w*|forward|unsubscribe|desabonn\w*|achete\w*|buy|reserve\w*|book|publie\w*|publish)\b/.test(input);
+}
+
 function requestsSecretaryRead(text) {
   if (!requestsSecretary(text)) return false;
   const input = String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  if (/\b(?:envoi\w*|envoie|send\w*|repond\w*|reply|draft\w*|redig\w*|modifi\w*|modify|change\w*|supprim\w*|delet\w*|effac\w*|archiv\w*|tri\w*|organis\w*|marqu\w*|mark|cre\w*|add|ajout\w*|transfer\w*|forward|unsubscribe|desabonn\w*)\b/.test(input)) return false;
+  if (requestsReadEffects(input)) return false;
   return /\b(?:lis|lire|read|lectur\w*|resum\w*|summari\w*|cherch\w*|search|verifi\w*|check|regard\w*|look|list\w*|quels?|quelle?s?|quoi|combien|what|which|how many)\b/.test(input);
 }
 
-module.exports = { requestsSecretary, requestsSecretaryRead, SECRETARY_DIRECTIVE };
+module.exports = { requestsSecretary, requestsSecretaryRead, requestsReadEffects, SECRETARY_DIRECTIVE };

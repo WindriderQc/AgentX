@@ -373,8 +373,11 @@ function nativeProof(attempt, answer = 'Lecture confirmée par la Secrétaire.')
     toolChecks: { status: 'observed', runId: attempt.runId, completedTools: ['sessions_spawn', 'sessions_yield'], loop: null } };
 }
 
-test('real voice HTTP accepts a specialist read and keeps the guardian available while its isolated native work is held', async () => {
-  works = createConversationWorks({ conversations, tasks, env, nativeRead: () => true });
+test.each(['Résume mes courriels récents.', 'Est-ce que l’équipe de hockey joue ce soir?'])('real voice HTTP accepts %s and keeps the guardian available while its native owner is held', async text => {
+  const { requestsSecretaryRead } = require('../../surfaces/household/native-specialist-policy');
+  const { requestsWebRead } = require('../../surfaces/household/native-web-policy');
+  const web = requestsWebRead(text), resultText = web ? 'Résultat vérifié à la source.' : 'Lecture confirmée par la Secrétaire.';
+  works = createConversationWorks({ conversations, tasks, env, nativeRead: text => requestsSecretaryRead(text) || requestsWebRead(text) });
   const foreground = jest.fn(async body => {
     expect(body.session.sessionId).toBe(current.sessionId);
     expect(body.channel).toBe('voice');
@@ -387,7 +390,7 @@ test('real voice HTTP accepts a specialist read and keeps the guardian available
   let releaseWarmup;
   const warming = new Promise(resolve => { releaseWarmup = resolve; });
   const app = await personalHttp(execute, { noteTurn() {}, settled: () => warming });
-  const text = 'Résume mes courriels récents.', turnId = randomUUID();
+  const turnId = randomUUID();
   const body = { text, turnId, channel: 'voice', stream: true };
   const first = await request(app).post(`/sessions/${current.sessionId}/turns/text`).send(body).timeout(2000);
   expect(first.status).toBe(200);
@@ -409,7 +412,12 @@ test('real voice HTTP accepts a specialist read and keeps the guardian available
     expect(row.attempt.sessionId).not.toBe(current.sessionId);
     const runId = native();
     await onStarted(row.attempt.sessionKey, runId);
-    proof = nativeProof({ ...row.attempt, runId });
+    proof = nativeProof({ ...row.attempt, runId }, resultText);
+    if (web) {
+      proof.toolChecks.completedTools = ['web_search'];
+      proof.progress = [{ tool: 'web_search' }];
+      delete proof.answer.deliveredBy;
+    }
     started(); await held;
   });
   const observer = createWorkObserver({ works, env, agentFor: () => 'main', execute: background,
@@ -432,8 +440,29 @@ test('real voice HTTP accepts a specialist read and keeps the guardian available
   expect(work).toMatchObject({ state: 'completed', result: { version: 1 }, attempt: { terminal: 'completed' } });
   const restored = createConversationWorks({ conversations, tasks, env });
   expect((await createWorkDelivery(restored).snapshot(current.sessionId)).items.find(item => item.id === work._id).result)
-    .toMatchObject({ text: 'Lecture confirmée par la Secrétaire.', presentation: 'available' });
+    .toMatchObject({ text: resultText, presentation: 'available' });
   expect(tasks.list).not.toHaveBeenCalled();
+});
+
+test('a native web answer needs a successful same-run web result; discovery alone cannot publish it', async () => {
+  const { requestsWebRead } = require('../../surfaces/household/native-web-policy');
+  works = createConversationWorks({ conversations, tasks, env, nativeRead: requestsWebRead });
+  const accepted = await works.intake(input('What is the weather today?'));
+  await works.prepare(accepted.row._id, 'Selected context');
+  const attempt = { id: randomUUID(), sessionId: randomUUID(), agentId: 'main', runId: native() };
+  attempt.sessionKey = 'agent:main:household:direct:' + attempt.sessionId;
+  const row = await works.repo.mutate(accepted.row._id, () => ({ fields: { state: 'running', attempt }, event: 'fixture' }));
+  const runtime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
+  const proof = nativeProof(attempt, 'Checked forecast.');
+  proof.progress = [{ tool: 'tool_search' }]; proof.toolChecks.completedTools = ['tool_search'];
+  delete proof.answer.deliveredBy;
+  expect(await runtime.receive({ row, evidence: proof })).toBeNull();
+  expect((await works.repo.get(row._id)).result).toBeUndefined();
+  proof.progress = [{ tool: 'web_fetch' }]; proof.toolChecks.completedTools = ['web_fetch'];
+  expect(await runtime.receive({ row, evidence: { ...proof, toolChecks: { ...proof.toolChecks, runId: native() } } })).toBeNull();
+  expect(await runtime.receive({ row, evidence: proof })).toEqual({ published: true });
+  const stored = await works.repo.get(row._id);
+  expect((await works.repo.read(stored, stored.result.payloadRef)).text).toBe('Checked forecast.');
 });
 
 test('lost native dispatch response discovers the same run, waits for a yielded specialist and receives its result after restart without replay', async () => {
