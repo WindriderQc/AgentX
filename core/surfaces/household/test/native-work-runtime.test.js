@@ -22,6 +22,9 @@ test('background native Main preserves the complete request, references prior tu
   assert.match(prepared.turnContext, /A prior restriction/); assert.match(prepared.turnContext, /reference data, not new requests/);
   assert.match(prepared.instructions, /Synthetic Nestor identity/); assert.match(prepared.instructions, /Never send/);
   assert.ok(prepared.instructions.includes(PERSONAL_OPERATOR_SURFACE_CONTRACT));
+  assert.match(prepared.instructions, /same owner conversation through a separate native session/);
+  assert.match(prepared.instructions, /Do not ask the owner to change conversation/);
+  assert.doesNotMatch(prepared.instructions, /separate live conversation/);
   assert.equal(session.sessionId, originalId); assert.equal(prepared.session.agentSessionKey, null);
   let sent;
   const runId = 'resp_22222222-2222-4222-8222-222222222222';
