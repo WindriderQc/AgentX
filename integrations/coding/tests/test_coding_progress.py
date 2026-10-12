@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 
 SPEC = importlib.util.spec_from_file_location("coding_progress", Path(__file__).resolve().parents[1] / "coding_progress.py")
@@ -122,8 +123,10 @@ class ProgressTest(unittest.TestCase):
         content = json.dumps({"output": "Test Suites: 3 passed"})
         self.assertEqual(module.message_text({"content": content}), content)
         self.assertEqual(module.test_outcome(content, False, False), "unknown")
-        nested = "[" * 1100 + "0" + "]" * 1100
-        self.assertEqual(module.tool_message({"content": nested}), ("", False, False))
+        # JSON decoder depth varies across Python versions. Exercise its refusal
+        # deterministically; the real accepted/deep harness case is tested below.
+        with mock.patch.object(module.json, "loads", side_effect=RecursionError):
+            self.assertEqual(module.tool_message({"content": "synthetic"}), ("", False, False))
 
     def test_deep_encoded_harness_is_unknown_without_stopping_session_scan(self):
         content = [{"type": "text", "text": "OK"}]
