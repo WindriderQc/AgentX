@@ -317,6 +317,9 @@
     return body.data?.text || body.text || body.transcript || '';
   }
 
+  // A forgotten press must not leave the mic open: a turn stops itself after this long.
+  const MAX_RECORDING_MS = 30000;
+
   function bindRecorder(button, onText, prefix) {
     if (!button) return;
     const idleLabel = button.textContent;
@@ -390,8 +393,18 @@
         const recorder = new MediaRecorder(stream);
         const recording = { recorder, stream, button, discard: false };
         state.recording = recording;
+        const stopNow = () => { if (recorder.state !== 'inactive') recorder.stop(); };
+        // Leaving the page drops the capture; running out of time sends what was said.
+        const drop = () => { recording.discard = true; stopNow(); };
+        const onHidden = () => { if (document.hidden) drop(); };
+        const limit = setTimeout(() => { setVoiceStatus(prefix, 'stopping', 'Time is up · preparing what you said…'); stopNow(); }, MAX_RECORDING_MS);
+        document.addEventListener('visibilitychange', onHidden);
+        window.addEventListener('pagehide', drop);
         recorder.addEventListener('dataavailable', (event) => { if (event.data.size) state.chunks.push(event.data); });
         recorder.addEventListener('stop', async () => {
+          clearTimeout(limit);
+          document.removeEventListener('visibilitychange', onHidden);
+          window.removeEventListener('pagehide', drop);
           stream.getTracks().forEach((track) => track.stop());
           if (state.recording === recording) state.recording = null;
           button.classList.remove('recording');
@@ -416,7 +429,8 @@
           } finally {
             state.chunks = [];
             button.disabled = state.micMuted || !supported;
-            if (!failed || state.micMuted) ready();
+            // After a failure the status keeps its message, but the button must say Talk again.
+            if (!failed || state.micMuted) ready(); else button.textContent = idleLabel;
           }
         });
         recorder.start();
