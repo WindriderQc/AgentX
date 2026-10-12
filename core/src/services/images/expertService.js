@@ -12,16 +12,16 @@ const MAX_ENVELOPE_UNITS = 60000, MAX_ENVELOPE_BYTES = 65536;
 const failure = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const boundedText = value => typeof value === 'string' && value.length <= constraints.MAX_BRIEF && value.isWellFormed();
 const identity = sessionId => {
-  if (!ID.test(sessionId || '')) throw failure('Conversation imageX invalide.');
+  if (!ID.test(sessionId || '')) throw failure('Invalid imageX conversation.');
   return { sessionId, packId: 'atelier', scopeId: 'workspace' };
 };
 const evidence = turn => turn.toolEvidence?.imagex || {};
 function expertError(error, context) {
   const field = /Image expert changed the requested (width|height|profile)/.exec(error.message || '')?.[1];
   if (!field) return { error: String(error.message).slice(0, 240) };
-  const name = { width: 'la largeur', height: 'la hauteur', profile: 'la recette' }[field];
+  const name = { width: 'width', height: 'height', profile: 'recipe' }[field];
   return { errorCode: 'IMAGE_EXPERT_SETTINGS_CHANGED',
-    error: `Hermes a proposé de modifier ${name} choisie. La proposition a été refusée pour préserver ${context.width} × ${context.height} et la recette ${context.profile}. Ton brief reste conservé.` };
+    error: `Hermes proposed changing the chosen ${name}. The proposal was refused to preserve ${context.width} × ${context.height} and the recipe ${context.profile}. Your brief is kept.` };
 }
 const publicTurn = turn => ({ id: turn.traceId, sessionId: turn.sessionId, mode: turn.modeId,
   input: turn.inputText, text: turn.replyText, state: turn.outcome, createdAt: turn.createdAt,
@@ -32,7 +32,7 @@ function boundEnvelope(envelope) {
   for (;;) {
     const json = JSON.stringify(envelope);
     if (json.length <= MAX_ENVELOPE_UNITS && Buffer.byteLength(json, 'utf8') <= MAX_ENVELOPE_BYTES) return envelope;
-    if (!envelope.history.length) throw failure('Brief et demande dépassent la capacité du relais Hermes (60 000 caractères UTF-16 / 65 536 octets JSON). Réduis le texte avant de continuer.');
+    if (!envelope.history.length) throw failure('Brief and request exceed the Hermes relay capacity (60,000 UTF-16 characters / 65,536 JSON bytes). Shorten the text before continuing.');
     envelope.history.splice(0, 2); // Only discard complete oldest user/assistant pairs.
   }
 }
@@ -44,27 +44,27 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
     const dashboardUrl = officialDashboardUrl();
     if (!bridge.configured()) return { configured: false, available: false, dashboardUrl };
     try { return { configured: true, available: true, ...await bridge.invoke({ action: 'describe' }, { timeoutMs: 12000 }), dashboardUrl }; }
-    catch { return { configured: true, available: false, dashboardUrl, message: 'Le relais Hermes ne répond pas. La création manuelle reste disponible.' }; }
+    catch { return { configured: true, available: false, dashboardUrl, message: 'The Hermes relay does not answer. Manual creation remains available.' }; }
   }
   async function resource(id) {
-    if (!['identity', 'agentx-images', 'comfyui', 'learning', 'memory'].includes(id)) throw failure('Fichier imageX inconnu.', 404);
+    if (!['identity', 'agentx-images', 'comfyui', 'learning', 'memory'].includes(id)) throw failure('Unknown imageX file.', 404);
     return (await bridge.invoke({ action: 'resource', id }, { timeoutMs: 12000 })).resource;
   }
   async function sessions() {
     return conversations.listSessions({ packId: 'atelier', scopeId: 'workspace' }, { limit: 30 });
   }
   async function createSession() {
-    return conversations.createSession({ ...identity(randomUUID()), modeId: 'imagex', label: 'Conversation imageX',
+    return conversations.createSession({ ...identity(randomUUID()), modeId: 'imagex', label: 'imageX conversation',
       agentId: 'imagex', backend: 'openclaw' });
   }
   async function turns(sessionId) {
     const scope = identity(sessionId);
-    if (!await conversations.getSession(scope)) throw failure('Conversation imageX introuvable.', 404);
+    if (!await conversations.getSession(scope)) throw failure('imageX conversation not found.', 404);
     const rows = await conversations.listTurns(scope, { limit: 50 });
     for (const row of rows) {
       if (['accepted', 'running'].includes(row.outcome) && !running.has(row.traceId)) {
         row.outcome = 'interrupted';
-        row.toolEvidence = { imagex: { ...evidence(row), error: 'La consultation a été interrompue par un redémarrage. Tu peux envoyer une nouvelle demande.' } };
+        row.toolEvidence = { imagex: { ...evidence(row), error: 'The consultation was interrupted by a restart. You can send a new request.' } };
         await conversations.updateTurn({ ...scope, traceId: row.traceId }, { $set: { outcome: row.outcome, toolEvidence: row.toolEvidence } });
       }
     }
@@ -72,20 +72,20 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
   }
   function validate(input) {
     if (!input || !ID.test(input.clientTurnId || '') || !['consult', 'plan'].includes(input.mode)
-      || !boundedText(input.message) || !input.message.trim()) throw failure('La demande imageX exige un texte Unicode valide de 32 000 caractères UTF-16 au maximum.');
+      || !boundedText(input.message) || !input.message.trim()) throw failure('The imageX request requires valid Unicode text of at most 32,000 UTF-16 characters.');
     const context = input.context || {};
     if (!boundedText(context.prompt)
-      || !Number.isInteger(context.referenceCount) || context.referenceCount < 0 || context.referenceCount > 2) throw failure('Contexte image invalide.');
+      || !Number.isInteger(context.referenceCount) || context.referenceCount < 0 || context.referenceCount > 2) throw failure('Invalid image context.');
     const recipe = imageService.status().profiles.find(row => row.id === context.profile);
     if (!recipe || ![context.width, context.height].every(n => Number.isInteger(n) && n >= 256 && n <= 2752 && n % 32 === 0)
-      || context.width * context.height > recipe.maxPixels) throw failure('Choisis une recette et un format disponibles.');
+      || context.width * context.height > recipe.maxPixels) throw failure('Choose an available recipe and format.');
     const protectedItems = constraints.validate(context.constraints);
     const policy = textPolicy.validate(context.textPolicy);
     textPolicy.known(policy, protectedItems);
     constraints.composeBrief(context.prompt, protectedItems);
     const clean = { prompt: context.prompt, profile: context.profile, width: context.width, height: context.height, referenceCount: context.referenceCount,
       ...(protectedItems && { constraints: protectedItems }), ...(policy && { textPolicy: policy }) };
-    if (input.mode === 'plan' && !clean.prompt.trim()) throw failure('Écris ton brief avant de demander une proposition.');
+    if (input.mode === 'plan' && !clean.prompt.trim()) throw failure('Write your brief before asking for a proposal.');
     return { clientTurnId: input.clientTurnId, mode: input.mode, message: input.message, context: clean };
   }
   async function execute(scope, turn, envelope, controller) {
@@ -110,14 +110,14 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
         if (proposal[field] !== envelope.request[field]) throw new Error(`Image expert changed the requested ${field}`);
       }
       if (proposal && (typeof proposal.prompt !== 'string' || !proposal.prompt.trim()
-        || proposal.prompt.length > 8000 || typeof proposal.reason !== 'string' || proposal.reason.length > 2000)) throw new Error('Proposition Hermes invalide.');
-      if (envelope.action === 'plan' && !proposal) throw new Error('Hermes n’a pas fourni de proposition applicable.');
+        || proposal.prompt.length > 8000 || typeof proposal.reason !== 'string' || proposal.reason.length > 2000)) throw new Error('Invalid Hermes proposal.');
+      if (envelope.action === 'plan' && !proposal) throw new Error('Hermes did not provide an applicable proposal.');
       if (proposal && (details.context.constraints || details.context.textPolicy || proposal.textPlan)) {
         const protectedItems = constraints.validate(details.context.constraints);
         const plan = textPolicy.validatePlan(proposal.textPlan, details.context.textPolicy, protectedItems);
         const policy = textPolicy.applyPlan(plan, details.context.textPolicy, protectedItems);
         const visualPrompt = textPolicy.visual(proposal.prompt, protectedItems, policy);
-        if (!visualPrompt.trim()) throw new Error('Hermes n’a pas fourni de description visuelle.');
+        if (!visualPrompt.trim()) throw new Error('Hermes did not provide a visual description.');
         proposal = { profile: proposal.profile, width: proposal.width, height: proposal.height, reason: proposal.reason,
           visualPrompt, prompt: textPolicy.compose(visualPrompt, protectedItems, policy),
           ...(protectedItems && { constraints: protectedItems }), ...(policy && { textPolicy: policy }), ...(plan && { textPlan: plan }) };
@@ -127,25 +127,25 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
       await conversations.updateTurn({ ...scope, traceId: turn.traceId }, { $set: { outcome: 'completed',
         replyText: proposal ? proposal.reason : result.text, model: result.model || '', sourceCompletedAt: new Date() } });
     } catch (error) {
-      await save(controller.signal.aborted ? { error: 'Consultation arrêtée.' } : expertError(error, details.context));
+      await save(controller.signal.aborted ? { error: 'Consultation stopped.' } : expertError(error, details.context));
       await conversations.updateTurn({ ...scope, traceId: turn.traceId }, { $set: { outcome: controller.signal.aborted ? 'cancelled' : 'failed' } });
     } finally { running.delete(turn.traceId); }
   }
   async function accept(sessionId, raw) {
     const scope = identity(sessionId), input = validate(raw);
-    if (admissions.has(sessionId)) throw failure('Une demande est déjà en cours d’enregistrement.', 409);
+    if (admissions.has(sessionId)) throw failure('A request is already being recorded.', 409);
     admissions.set(sessionId, true);
     try {
-      if (!await conversations.getSession(scope)) throw failure('Conversation imageX introuvable.', 404);
+      if (!await conversations.getSession(scope)) throw failure('imageX conversation not found.', 404);
       const hash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
       const previous = await conversations.getTurn({ ...scope, traceId: input.clientTurnId });
       if (previous) {
-        if (evidence(previous).requestSha256 !== hash) throw failure('Cette demande appartient à un autre message.', 409);
+        if (evidence(previous).requestSha256 !== hash) throw failure('This request belongs to another message.', 409);
         return publicTurn(previous);
       }
       const rows = await conversations.listTurns(scope, { limit: 50 });
-      if (rows.some(row => ['accepted', 'running'].includes(row.outcome) && running.has(row.traceId))) throw failure('Hermes travaille déjà dans cette conversation.', 409);
-      if (!bridge.configured()) throw failure('Le lien vers Hermes n’est pas configuré.', 503);
+      if (rows.some(row => ['accepted', 'running'].includes(row.outcome) && running.has(row.traceId))) throw failure('Hermes is already working in this conversation.', 409);
+      if (!bridge.configured()) throw failure('The link to Hermes is not configured.', 503);
       const available = await workshop.overview();
       const status = { configured: imageService.status().configured, profiles: available.profiles,
         maxReferences: 2, dimensions: available.dimensions };
@@ -170,7 +170,7 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
   }
   async function cancel(sessionId, turnId) {
     const scope = identity(sessionId), job = running.get(turnId);
-    if (!ID.test(turnId || '') || !await conversations.getTurn({ ...scope, traceId: turnId })) throw failure('Consultation introuvable.', 404);
+    if (!ID.test(turnId || '') || !await conversations.getTurn({ ...scope, traceId: turnId })) throw failure('Consultation not found.', 404);
     if (job?.sessionId === sessionId) job.controller.abort();
     return { requested: !!job };
   }

@@ -1,7 +1,7 @@
 'use strict';
 const { forSurface } = require('../surfaceConversationService');
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
-const fail = () => Object.assign(new Error('La proposition imageX associée est introuvable ou invalide.'), { statusCode: 409 });
+const fail = () => Object.assign(new Error('The associated imageX proposal is missing or invalid.'), { statusCode: 409 });
 function validate(value) {
   if (value === undefined) return undefined;
   if (!value || Array.isArray(value) || Object.keys(value).some(key => !['sessionId', 'turnId'].includes(key))

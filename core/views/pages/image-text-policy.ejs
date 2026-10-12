@@ -1,12 +1,12 @@
 <section id="image-text-policy" class="image-text-policy" aria-labelledby="image-text-policy-title">
-  <label id="image-text-policy-title" class="image-text-toggle" for="image-text-enabled"><input id="image-text-enabled" type="checkbox">Textes dans l’image</label>
-  <p class="image-help">Sans cette option, le rendu reçoit la consigne de ne dessiner aucun texte. Le brief saisi reste conservé.</p>
+  <label id="image-text-policy-title" class="image-text-toggle" for="image-text-enabled"><input id="image-text-enabled" type="checkbox">Text in the image</label>
+  <p class="image-help">Without this option, the render is told to draw no text. The entered brief is kept.</p>
   <div id="image-text-options" hidden>
-    <label for="image-text-strategy">Comment préparer les textes ?</label>
-    <select id="image-text-strategy"><option value="auto">Hermes conseille</option><option value="single-pass">Une passe · texte généré avec l’image</option><option value="two-pass">Deux passes · image puis calques exacts</option></select>
-    <p class="image-help">Hermes aide à choisir les textes essentiels et leurs emplacements. Quelques mots peuvent être tentés dans le rendu ; des noms nombreux ou précis peuvent être ajoutés ensuite en calques.</p>
+    <label for="image-text-strategy">How should the text be prepared?</label>
+    <select id="image-text-strategy"><option value="auto">Hermes advises</option><option value="single-pass">One pass · text generated with the image</option><option value="two-pass">Two passes · image, then exact layers</option></select>
+    <p class="image-help">Hermes helps choose the essential text and its placement. A few words can be tried in the render; many or precise names can be added afterwards as layers.</p>
     <ol id="image-text-policy-labels" class="image-text-policy-labels"></ol>
-    <div class="image-text-policy-actions"><button id="image-text-policy-add" type="button" class="quiet-button">Ajouter un texte exact</button><button id="image-text-policy-advice" type="button" class="quiet-button">Préparer les textes avec Hermes</button></div>
+    <div class="image-text-policy-actions"><button id="image-text-policy-add" type="button" class="quiet-button">Add an exact text</button><button id="image-text-policy-advice" type="button" class="quiet-button">Prepare the text with Hermes</button></div>
   </div>
   <p id="image-text-policy-status" class="image-help" role="status" aria-live="polite"></p>
 </section>

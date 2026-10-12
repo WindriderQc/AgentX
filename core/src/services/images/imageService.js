@@ -28,14 +28,14 @@ async function initialize() {
     await ImageOperation.createCollection();
     await ImageOperation.createIndexes();
     await ImageOperation.updateMany({ state: { $in: ACTIVE } }, { $set: {
-      state: 'unknown', error: 'Service redémarré pendant une opération. Récupération requise ; aucune nouvelle génération automatique.'
+      state: 'unknown', error: 'Service restarted during an operation. Recovery required; no automatic new generation.'
     } }, { writeConcern: { w: 1, j: true } });
     const queued = await ImageOperation.find({ state: 'queued' }).select('queueRequestId').lean();
     for (const op of queued) {
       let job;
       try { job = await require('../heavyWorkQueueService').get(op.queueRequestId); } catch { /* Missing queue evidence stays unknown. */ }
       if (!job || ['dispatching', 'running', 'uncertain'].includes(job.state)) {
-        await save(op._id, { state: 'unknown', error: 'Dispatch précédent sans reçu de fin. Aucune relance automatique.' });
+        await save(op._id, { state: 'unknown', error: 'Previous dispatch without a completion receipt. No automatic retry.' });
       }
     }
   })();
@@ -64,27 +64,27 @@ async function save(id, changes, unset = {}) {
   return updated.lean();
 }
 function validate(body, config) {
-  if (!body || typeof body !== 'object' || typeof body.actionKey !== 'string' || !/^[a-zA-Z0-9:_.-]{8,160}$/.test(body.actionKey)) throw fail('Une identité de demande est requise.');
-  if (typeof body.prompt !== 'string' || !body.prompt.trim() || body.prompt.length > 8000) throw fail('Décris l’image en 8 000 caractères au maximum.');
+  if (!body || typeof body !== 'object' || typeof body.actionKey !== 'string' || !/^[a-zA-Z0-9:_.-]{8,160}$/.test(body.actionKey)) throw fail('A request identity is required.');
+  if (typeof body.prompt !== 'string' || !body.prompt.trim() || body.prompt.length > 8000) throw fail('Describe the image in at most 8,000 characters.');
   const id = body.profile || config.defaultProfile;
   const profile = config.profiles[id];
   if (!profile) throw fail('Profil image inconnu.');
   const width = Number(body.width || 1024), height = Number(body.height || 1024);
-  if (!qualified(profile, width, height)) throw fail('Résolution non qualifiée pour ce profil.');
+  if (!qualified(profile, width, height)) throw fail('Resolution not qualified for this profile.');
   const seed = body.seed === undefined ? crypto.randomInt(0, 2 ** 48 - 1) : Number(body.seed);
   if (!Number.isSafeInteger(seed) || seed < 0) throw fail('Graine invalide.');
   const recipe = requestedRecipe(body);
   const expert = expertProvenance.validate(body.expert);
   const parent = validateParent(body.parent);
-  if (body.references !== undefined && !Array.isArray(body.references)) throw fail('Références image invalides.');
-  if ((body.references || []).length + (parent ? 1 : 0) > 2) throw fail('Deux références au maximum, parent compris.');
+  if (body.references !== undefined && !Array.isArray(body.references)) throw fail('Invalid image references.');
+  if ((body.references || []).length + (parent ? 1 : 0) > 2) throw fail('Two references at most, including the parent.');
   const originals = (body.references || []).map(item => {
-    if (typeof item !== 'string' || item.length > 3 * 1024 * 1024 || !/^[A-Za-z0-9+/]+={0,2}$/.test(item)) throw fail('Référence image invalide ou trop volumineuse.');
+    if (typeof item !== 'string' || item.length > 3 * 1024 * 1024 || !/^[A-Za-z0-9+/]+={0,2}$/.test(item)) throw fail('Invalid or oversized image reference.');
     const bytes = Buffer.from(item, 'base64');
     try {
       const image = decode(bytes, 4194304);
       if (Math.max(image.width, image.height) / Math.min(image.width, image.height) > 8) throw new Error('Extreme aspect ratio');
-    } catch { throw fail('La référence doit être une image PNG/JPEG complète de 4 MP maximum, avec un ratio maximal de 8:1.'); }
+    } catch { throw fail('The reference must be a complete PNG/JPEG image of at most 4 MP, with a maximum aspect ratio of 8:1.'); }
     return bytes;
   });
   const protectedItems = constraints.validate(body.constraints);
@@ -102,16 +102,16 @@ async function accept(body, { conversation, signal } = {}) {
   assertSupportedRequest(body);
   await initialize();
   const config = loadConfig();
-  if (!config || !defaultArchive().enabled) throw fail('Le service d’images locales n’est pas configuré.', 503);
+  if (!config || !defaultArchive().enabled) throw fail('The local image service is not configured.', 503);
   const input = validate(body, config);
   if (conversation) {
-    if (input.expert) throw fail('Une proposition de l’Atelier ne peut pas être attachée à une autre surface.', 403);
+    if (input.expert) throw fail('A Workshop proposal cannot be attached to another surface.', 403);
     conversation = normalizeConversation(conversation);
     input.requestHash = hash(JSON.stringify([input.requestHash, conversation.surface, conversation.sessionId, conversation.packId, conversation.scopeId]));
   }
   const prior = await ImageOperation.findOne({ actionKey: body.actionKey }).lean();
   if (prior) {
-    if (prior.requestHash !== input.requestHash) throw fail('Cette identité appartient déjà à une autre demande.', 409);
+    if (prior.requestHash !== input.requestHash) throw fail('This identity already belongs to another request.', 409);
     return publicOperation(prior);
   }
   assertRecipe(input.recipe, input.profile);
@@ -121,7 +121,7 @@ async function accept(body, { conversation, signal } = {}) {
   const referenceStorage = await retainReferences(prepared);
   signal?.throwIfAborted();
   const client = createComfyClient(config.workerUrl);
-  try { await client.ready(input.profile, { allowBusy: true }); } catch { throw fail('Le PC image est indisponible ou le modèle requis est absent.', 503); }
+  try { await client.ready(input.profile, { allowBusy: true }); } catch { throw fail('The image PC is unavailable or the required model is missing.', 503); }
   signal?.throwIfAborted();
   const id = crypto.randomUUID();
   let op;
@@ -137,7 +137,7 @@ async function accept(body, { conversation, signal } = {}) {
     if (error.code !== 11000) throw error;
     const raced = await ImageOperation.findOne({ actionKey: body.actionKey }).lean();
     if (raced && raced.requestHash === input.requestHash) return publicOperation(raced);
-    throw fail('Une image est déjà en cours ou doit être récupérée. Fais une nouvelle demande après sa fin.', 409);
+    throw fail('An image is already in progress or must be recovered. Make a new request once it finishes.', 409);
   }
   try {
     const job = await workQueue.enroll(op, config, body);
@@ -146,7 +146,7 @@ async function accept(body, { conversation, signal } = {}) {
     await workQueue.dispatch(op, accepted => setImmediate(() => execute(accepted, config, client)
       .catch(error => logger.error('Local image operation failed', { id, error: error.message }))));
   } catch (error) {
-    await save(id, { state: 'unknown', error: 'Enregistrement en file incertain. Consulte le même reçu avant toute relance.' });
+    await save(id, { state: 'unknown', error: 'Queue registration uncertain. Check the same receipt before any retry.' });
     throw error;
   }
   return publicOperation(await ImageOperation.findById(id).lean());
@@ -180,14 +180,14 @@ async function execute(op, config, client) {
     const stored = await ImageOperation.findById(op._id).select('+referenceStorage +references').lean();
     if (!stored || !isDeepStrictEqual(stored.referenceStorage, op.referenceStorage)
       || !isDeepStrictEqual(stored.lineage, op.lineage)) {
-      throw fail('Les références archivées ne correspondent pas à la demande acceptée.', 503);
+      throw fail('The archived references do not match the accepted request.', 503);
     }
     const references = await loadReferences(stored);
     await persist({ state: 'reserving' });
     reservation = await reserve(config, op, persist, cancelled);
     await client.ready(op.profile);
     const stats = await client.json('/system_stats');
-    if (stats.devices?.[0]?.vram_free < stats.devices?.[0]?.vram_total * 0.75) throw new Error('GPU utilisé par une autre application. Nouvelle demande requise.');
+    if (stats.devices?.[0]?.vram_free < stats.devices?.[0]?.vram_total * 0.75) throw new Error('GPU used by another application. New request required.');
     const refs = [];
     for (let i = 0; i < references.length; i++) {
       await reservation.assertOwned(); refs.push(await client.upload(references[i], `agentx-${op._id}-${i}.png`));
@@ -229,14 +229,14 @@ async function execute(op, config, client) {
 async function get(id) {
   await initialize();
   const op = await ImageOperation.findById(id).lean();
-  if (!op) throw fail('Opération image inconnue.', 404);
+  if (!op) throw fail('Unknown image operation.', 404);
   return publicOperation(op);
 }
 // The native conversation adapter observes only the already accepted action.
 // Reading this receipt does not initialize/recover a worker or dispatch work.
 async function getForAction(id, actionKey) {
   const op = await ImageOperation.findOne({ _id: id, actionKey }).lean();
-  if (!op) throw fail('Opération image inconnue pour cette demande.', 404);
+  if (!op) throw fail('Unknown image operation for this request.', 404);
   return publicOperation(op);
 }
 function normalizeConversation(conversation) {
@@ -250,7 +250,7 @@ function conversationQuery(conversation) {
 async function getForConversation(id, conversation) {
   await initialize();
   const op = await ImageOperation.findOne({ _id: id, ...conversationQuery(conversation) }).lean();
-  if (!op) throw fail('Image inconnue dans cette conversation.', 404);
+  if (!op) throw fail('Unknown image in this conversation.', 404);
   return publicOperation(op);
 }
 async function listForConversation(conversation) {
@@ -259,7 +259,7 @@ async function listForConversation(conversation) {
 }
 async function draft(id) {
   const op = await ImageOperation.findById(id).select('+request').lean();
-  if (!op) throw fail('Opération image inconnue.', 404);
+  if (!op) throw fail('Unknown image operation.', 404);
   return { ...op.request, ...(op.request.constraints && { constraints: constraints.validate(op.request.constraints) }), profile: op.profile.id };
 }
 // The Atelier's own renders. Renders made inside a Nestor or Family
@@ -271,7 +271,7 @@ async function list() {
 async function cancel(id) {
   await initialize();
   const op = await ImageOperation.findById(id).lean();
-  if (!op) throw fail('Opération image inconnue.', 404);
+  if (!op) throw fail('Unknown image operation.', 404);
   if (op.state === 'queued') {
     const job = await require('../heavyWorkQueueService').get(op.queueRequestId);
     await require('../heavyWorkQueueService').cancel(job.id, { expectedRevision: job.revision }, 'core-images');
@@ -287,19 +287,19 @@ async function image(id) {
 }
 async function retryArchive(id) {
   const op = await ImageOperation.findById(id).select('+output +workerUrl').lean();
-  if (op?.state !== 'archive_failed' || !op.runtimeRestored) throw fail('Cette opération ne permet pas une reprise d’archive.', 409);
+  if (op?.state !== 'archive_failed' || !op.runtimeRestored) throw fail('This operation does not allow an archive retry.', 409);
   const config = loadConfig();
-  if (!config || op.workerUrl !== config.workerUrl) throw fail('Le worker initial doit être configuré pour récupérer cette image.', 409);
+  if (!config || op.workerUrl !== config.workerUrl) throw fail('The original worker must be configured to recover this image.', 409);
   const artifact = await archive(id, createComfyClient(config.workerUrl), op.output);
   return publicOperation(await save(id, { artifact, state: 'completed', error: null }));
 }
 async function recover(id) {
   await initialize();
   const op = await ImageOperation.findById(id).select('+admission +snapshot +output +workerUrl').lean();
-  if (!op) throw fail('Opération image inconnue.', 404);
+  if (!op) throw fail('Unknown image operation.', 404);
   const config = loadConfig();
   if (!config) throw fail('Image worker configuration is required', 503);
-  if (op.workerUrl !== config.workerUrl) throw fail('Le worker initial doit être configuré pour récupérer cette image.', 409);
+  if (op.workerUrl !== config.workerUrl) throw fail('The original worker must be configured to recover this image.', 409);
   const client = createComfyClient(config.workerUrl);
   const result = await require('./imageRecovery').recoverOperation(op, client,
     (changes, unset) => save(id, changes, unset), output => archive(id, client, output));

@@ -40,14 +40,14 @@ test('changing variants updates evidence and untouched dimensions while preservi
   form.input('prompt', 'Keep my exact brief'); form.input('seed', '1729');
   form.fields.entry.value = '1'; await form.change('entry');
   expect(form.fields.prompt.value).toBe('Keep my exact brief'); expect(form.fields.seed.value).toBe('1729');
-  expect(form.fields.width.value).toBe(2048); expect(form.fields.evidence.textContent).toContain('40 étapes');
+  expect(form.fields.width.value).toBe(2048); expect(form.fields.evidence.textContent).toContain('40 steps');
 });
 test('a selection changed during export cannot download an old plan or permit simultaneous export', async () => {
   const b = browser(), form = await select(b), waiting = deferred(); b.fetch.mockReturnValueOnce(waiting.promise);
   const exportPromise = form.onsubmit({ preventDefault() {} });
   form.fields.entry.value = '1'; await form.change('entry'); expect(form.fields.export.disabled).toBe(true);
   waiting.resolve(response({ id: 'old-intent' })); await exportPromise;
-  expect(b.download).not.toHaveBeenCalled(); expect(form.fields.status.textContent).toContain('Choix modifié');
+  expect(b.download).not.toHaveBeenCalled(); expect(form.fields.status.textContent).toContain('Choice changed');
   expect(form.fields.export.disabled).toBe(false);
 });
 test('a detached form cannot download a completed old export', async () => {
@@ -61,7 +61,7 @@ test('a changed catalogue keeps the whole request draft but requires a fresh rec
   const next = b.draw(); b.fetch.mockResolvedValueOnce(response({ catalogue: { ...evidence, sha256: 'b'.repeat(64) } })); await b.ui.bind();
   expect(next.fields.entry.value).toBe(''); expect(next.fields.export.disabled).toBe(true);
   expect(next.fields.prompt.value).toBe('Keep this brief'); expect(next.fields.approved.value).toBe('Keep the jar');
-  expect(next.fields.width.value).toBe('4096'); expect(next.fields.status.textContent).toContain('recettes ont changé');
+  expect(next.fields.width.value).toBe('4096'); expect(next.fields.status.textContent).toContain('recipes changed');
   next.fields.entry.value = '1'; await next.change('entry'); expect(next.fields.prompt.value).toBe('Keep this brief');
   expect(next.fields.width.value).toBe('4096');
 });

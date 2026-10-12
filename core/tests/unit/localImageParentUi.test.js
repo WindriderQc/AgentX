@@ -92,9 +92,9 @@ test('choosing a starter is read-only and applying it preserves the parent and r
   const original = ui.get('image-prompt').value;
   ui.get('image-starter').value = 'precise-edit'; await ui.fire('image-starter', 'change');
   expect(ui.get('image-prompt').value).toBe(original); expect(ui.post).toHaveLength(0);
-  expect(ui.get('image-starter-references').textContent).toContain('Actuellement : 1');
+  expect(ui.get('image-starter-references').textContent).toContain('Currently: 1');
   expect(ui.get('image-starter-recipe').textContent).toContain('Fixture');
-  expect(ui.get('image-starter-replace').textContent).toContain('remplace le brief actuel');
+  expect(ui.get('image-starter-replace').textContent).toContain('replaces the current brief');
   await ui.fire('image-starter-apply');
   expect(ui.get('image-prompt').value).toContain('[modification précise et emplacement]');
   expect(ui.get('image-seed').value).toBe('73'); expect(ui.post).toHaveLength(0);
@@ -107,7 +107,7 @@ test('starter reference guidance counts the chosen parent plus a separate upload
   ui.get('image-references').files = [{ type: 'image/png', name: 'scene.png' }];
   await ui.fire('image-references', 'change');
   ui.get('image-starter').value = 'two-image-composition'; await ui.fire('image-starter', 'change');
-  expect(ui.get('image-starter-references').textContent).toContain('2 références. Actuellement : 2');
+  expect(ui.get('image-starter-references').textContent).toContain('2 references. Currently: 2');
   expect(ui.post).toHaveLength(0);
 });
 test('a pending generation locks starter application and a missing catalogue leaves manual briefs usable', async () => {
@@ -121,7 +121,7 @@ test('a pending generation locks starter application and a missing catalogue lea
   const prompt = ui.get('image-prompt').value; await ui.fire('image-starter-apply');
   expect(ui.get('image-prompt').value).toBe(prompt); release(); await submitted;
   const offline = await studio({ starterFailure: true });
-  expect(offline.get('image-starter-status').textContent).toContain('écrire ton brief directement');
+  expect(offline.get('image-starter-status').textContent).toContain('write your brief directly');
   await offline.fire('image-form', 'submit'); expect(offline.post).toHaveLength(1);
 });
 test('an interrupted POST retains the chosen parent and exact action identity on retry', async () => {
@@ -141,7 +141,7 @@ test('two uploaded files with a chosen parent refuse before POST', async () => {
   const ui = await studio(); await ui.fire('image-use-reference');
   ui.get('image-references').files = [{ type: 'image/png' }, { type: 'image/png' }];
   await ui.fire('image-form', 'submit'); expect(ui.post).toHaveLength(0);
-  expect(ui.get('image-status').textContent).toContain('Deux références');
+  expect(ui.get('image-status').textContent).toContain('Two references');
 });
 test('starting a new brief clears the archived parent', async () => {
   const ui = await studio(); await ui.fire('image-use-reference'); await ui.fire('image-new');
@@ -167,10 +167,10 @@ test('editing a brief refreshes its protected budget and rejects overflow before
   await ui.fire('image-form', 'input');
   expect(ui.get('image-create').disabled).toBe(true);
   expect(ui.get('image-constraints-counter').dataset.invalid).toBe('true');
-  expect(ui.get('image-constraints-counter').textContent).toContain('dépassent 8 000');
+  expect(ui.get('image-constraints-counter').textContent).toContain('exceed 8,000');
   ui.get('image-references').files = [{ type: 'image/png', name: 'fixture.png' }];
   await ui.fire('image-form', 'submit');
-  expect(ui.get('image-status').textContent).toContain('dépassent 8 000');
+  expect(ui.get('image-status').textContent).toContain('exceed 8,000');
   expect(ui.post).toHaveLength(0);
   expect(ui.imageDecode).not.toHaveBeenCalled(); expect(ui.canvas).not.toHaveBeenCalled();
   ui.get('image-prompt').value = 'A shorter visual brief';
@@ -185,11 +185,11 @@ test('a full long brief blocks generation but keeps a valid Hermes planning cont
   ui.get('image-prompt').value = prompt; await ui.fire('image-form', 'input');
   expect(ui.get('image-create').disabled).toBe(true);
   expect(ui.expertController.getContext()).toMatchObject({ prompt, constraintsInvalid: false, constraints: draftConstraints });
-  expect(ui.get('image-brief-counter').textContent).toContain('Affiner mon brief');
+  expect(ui.get('image-brief-counter').textContent).toContain('Refine my brief');
   expect(ui.get('image-prompt').value).toBe(prompt);
   ui.get('image-prompt').value = 'x'.repeat(32001); await ui.fire('image-form', 'input');
   expect(ui.expertController.getContext().constraintsInvalid).toBe(true);
-  expect(ui.get('image-brief-counter').textContent).toContain('32 000');
+  expect(ui.get('image-brief-counter').textContent).toContain('32,000');
 });
 test('applying a condensed Hermes proposal refreshes rendering controls and preserves provenance, parent and seed', async () => {
   const ui = await studio({ constraintsEnabled: true, expertEnabled: true });
@@ -218,7 +218,7 @@ test('direct generation submission refuses a raw over-budget brief before decodi
   await ui.fire('image-form', 'submit');
   expect(ui.post).toHaveLength(0); expect(ui.imageDecode).not.toHaveBeenCalled();
   expect(ui.get('image-prompt').value).toBe(prompt);
-  expect(ui.get('image-status').textContent).toContain('32 000');
+  expect(ui.get('image-status').textContent).toContain('32,000');
 });
 test('the raw render budget blocks an 8010-unit padded brief even though the canonical description fits', async () => {
   const ui = await studio({ constraintsEnabled: true, expertEnabled: true });
@@ -227,12 +227,12 @@ test('the raw render budget blocks an 8010-unit padded brief even though the can
   expect(ui.get('image-create').disabled).toBe(true);
   expect(ui.expertController.getContext().constraintsInvalid).toBe(false);
   expect(ui.get('image-brief-counter').dataset.invalid).toBe('true');
-  expect(ui.get('image-brief-counter').textContent).toContain('texte saisi');
+  expect(ui.get('image-brief-counter').textContent).toContain('entered text');
   ui.get('image-references').files = [{ type: 'image/png', name: 'fixture.png' }];
   await ui.fire('image-form', 'submit');
   expect(ui.post).toHaveLength(0); expect(ui.imageDecode).not.toHaveBeenCalled();
   expect(ui.get('image-prompt').value).toBe(prompt);
-  expect(ui.get('image-status').textContent).toContain('saisi dépasse 8 000');
+  expect(ui.get('image-status').textContent).toContain('entered brief exceeds 8,000');
 });
 test('historical child details show the recorded parent link and archive preview', async () => {
   const ui = await studio({ requested: childId, lineage: { version: 1, parent: { operationId: parentId, sha256: checksum, width: 512, height: 512 } } });
@@ -275,8 +275,8 @@ test('historical recipe facts retain their saved pair and prepared graph digest'
 test('old details do not invent historical recipe or graph facts from the current profile', async () => {
   const ui = await studio({ availableRecipe: { id: 'current-recipe', version: '2' } }); await settle();
   const labels = ui.get('image-saved-recipe').querySelectorAll('dt').map(el => el.textContent);
-  expect(labels).not.toContain('Recette enregistrée'); expect(labels).not.toContain('Version enregistrée');
-  expect(labels).not.toContain('Graphe préparé (SHA-256)'); expect(ui.post).toHaveLength(0);
+  expect(labels).not.toContain('Recorded recipe'); expect(labels).not.toContain('Recorded version');
+  expect(labels).not.toContain('Prepared graph (SHA-256)'); expect(ui.post).toHaveLength(0);
 });
 
 test('an archive export requires a manual click and downloads historical pieces without a POST', async () => {

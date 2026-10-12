@@ -7,7 +7,7 @@ const constraints = require('../../../public/js/image-brief-constraints');
 const textPolicy = require('../../../public/js/image-text-policy');
 const { validateGraph, object, uuid, digest, sha } = require('./exportGraphV1');
 const fail = (message, statusCode) => Object.assign(new Error(message), { statusCode });
-const invalid = () => fail('Les données archivées sont incohérentes ou indisponibles.', 503);
+const invalid = () => fail('The archived data is inconsistent or unavailable.', 503);
 const requireValid = value => { if (!value) throw invalid(); };
 const SELECT = '+execution +referenceStorage +request';
 const PART_NAME = /^(graph\.json|output\.(png|jpg)|reference-[01]-(source\.(png|jpg)|worker\.png))$/;
@@ -19,7 +19,7 @@ function references(op) {
   if (Object.hasOwn(op, 'referenceStorage') && op.referenceStorage !== undefined) requireValid(object(op.referenceStorage));
   if (!op.referenceStorage) {
     if (op.lineage?.references?.length) {
-      throw fail('Les références historiques complètes ne sont pas enregistrées pour cet export.', 409);
+      throw fail('The complete historical references are not recorded for this export.', 409);
     }
     requireValid(!op.lineage); return { entries: [], lineage: undefined };
   }
@@ -71,12 +71,12 @@ async function verify(receipt, part) {
 
 async function bundle(id, requestedName) {
   if (!uuid(id) || requestedName !== undefined && (typeof requestedName !== 'string' || !PART_NAME.test(requestedName))) {
-    throw fail('Pièce ou opération image inconnue.', 404);
+    throw fail('Unknown image part or operation.', 404);
   }
   const op = await read(id);
-  if (!op) throw fail('Opération image inconnue.', 404);
-  if (op.state !== 'completed' || op.runtimeRestored !== true) throw fail('L’export exige une image terminée et ses ressources restituées.', 409);
-  if (!op.execution || !op.artifact) throw fail('Cette opération historique ne possède pas un export complet enregistré.', 409);
+  if (!op) throw fail('Unknown image operation.', 404);
+  if (op.state !== 'completed' || op.runtimeRestored !== true) throw fail('The export requires a finished image with its resources returned.', 409);
+  if (!op.execution || !op.artifact) throw fail('This historical operation has no complete recorded export.', 409);
   requireValid(op._id === id && typeof op.profile?.id === 'string' && /^[a-z0-9-]{1,50}$/.test(op.profile.id));
   let protectedItems, policy;
   try {
@@ -101,7 +101,7 @@ async function bundle(id, requestedName) {
   }
   pieces.push({ receipt: op.artifact, part: descriptor(id, op.artifact, 'output') });
   const parts = [graphPart, ...pieces.map(item => item.part)];
-  if (requestedName !== undefined && !parts.some(p => p.name === requestedName)) throw fail('Pièce image inconnue.', 404);
+  if (requestedName !== undefined && !parts.some(p => p.name === requestedName)) throw fail('Unknown image part.', 404);
   // Validate every advertised piece before publishing a manifest. Repeated part
   // requests independently re-read all receipts; no durable validation cache.
   let bytes = requestedName === 'graph.json' ? graph : undefined;
@@ -110,7 +110,7 @@ async function bundle(id, requestedName) {
     if (item.part.name === requestedName) bytes = verified;
   }
   const latest = await read(id);
-  if (!latest || identity(latest) !== identity(op)) throw fail('L’opération a changé pendant son export. Recharge son état.', 409);
+  if (!latest || identity(latest) !== identity(op)) throw fail('The operation changed during its export. Reload its state.', 409);
   if (requestedName !== undefined) return { bytes, mimeType: parts.find(p => p.name === requestedName).mimeType, filename: requestedName };
   return { schemaVersion: 1, operation: { id, state: 'completed', runtimeRestored: true },
     recipe: { id: op.profile.id, family: op.profile.family, ...(declaration && { declaredIdentity: declaration }) },
