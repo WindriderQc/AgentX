@@ -571,12 +571,30 @@
       }
 
       updateEditorStats();
+      editorSnapshot = editorState();
       elements.promptEditorModal.hidden = false;
       isolateModalBackground();
       if (documentRef.body && documentRef.body.classList) documentRef.body.classList.add('modal-open');
       var focusTarget = basePrompt ? elements.systemPromptInput : elements.promptNameInput;
       if (focusTarget && typeof focusTarget.focus === 'function') focusTarget.focus();
       else if (typeof elements.promptEditorModal.focus === 'function') elements.promptEditorModal.focus();
+    }
+
+    var editorSnapshot = '';
+    var editorSaving = false;
+
+    function editorState() {
+      return [elements.promptNameInput, elements.promptDescriptionInput, elements.systemPromptInput,
+        elements.promptActiveInput, elements.promptTrafficWeightInput]
+        .map(function (field) { return field ? String(field.value == null ? '' : field.value) : ''; }).join('\u0000');
+    }
+
+    // Cancel, close, Escape and the backdrop: never mid-save, and never over unsaved text without asking.
+    function dismissEditor() {
+      if (editorSaving) return;
+      var confirmFn = windowRef && typeof windowRef.confirm === 'function' ? windowRef.confirm.bind(windowRef) : null;
+      if (confirmFn && editorState() !== editorSnapshot && !confirmFn('Discard the unsaved changes to this prompt?')) return;
+      closeEditor();
     }
 
     function closeEditor() {
@@ -622,6 +640,7 @@
       var saveLabel = saveButton && saveButton.querySelector('span');
       if (saveButton) saveButton.disabled = true;
       if (saveLabel) saveLabel.textContent = 'Saving…';
+      editorSaving = true;
       setEditorError('');
 
       return requestJson(fetchImpl, '/api/prompts', {
@@ -649,13 +668,20 @@
           }, function (error) {
             closeEditor();
             notify('Saved ' + name + ' v' + version + ', but it could not be activated: ' + (error && error.message ? error.message : 'unknown error') + '. Use Make active on the version.', 'error');
-          }).then(function () { return loadPrompts(); }).then(function () { return true; });
+          }).then(function () { return loadPrompts(); }).then(function () {
+            // The re-rendered list replaced the button that opened the editor.
+            var focused = documentRef.activeElement;
+            if ((!focused || focused === documentRef.body || !focused.isConnected) && elements.createPromptBtn
+              && typeof elements.createPromptBtn.focus === 'function') elements.createPromptBtn.focus();
+            return true;
+          });
         })
         .catch(function (error) {
           setEditorError(error && error.message ? error.message : 'Prompt could not be saved.');
           return false;
         })
         .finally(function () {
+          editorSaving = false;
           if (saveButton) saveButton.disabled = false;
           if (saveLabel) saveLabel.textContent = 'Save new version';
         });
@@ -712,13 +738,19 @@
       if (elements.createPromptBtn) elements.createPromptBtn.addEventListener('click', function () { openEditor(null); });
       if (elements.emptyCreateBtn) elements.emptyCreateBtn.addEventListener('click', function () { openEditor(null); });
       if (elements.exportPromptsBtn) elements.exportPromptsBtn.addEventListener('click', exportPrompts);
-      if (elements.promptEditorCloseBtn) elements.promptEditorCloseBtn.addEventListener('click', closeEditor);
-      if (elements.promptEditorCancelBtn) elements.promptEditorCancelBtn.addEventListener('click', closeEditor);
+      if (elements.promptEditorCloseBtn) elements.promptEditorCloseBtn.addEventListener('click', dismissEditor);
+      if (elements.promptEditorCancelBtn) elements.promptEditorCancelBtn.addEventListener('click', dismissEditor);
       if (elements.promptEditorForm) elements.promptEditorForm.addEventListener('submit', savePrompt);
       if (elements.systemPromptInput) elements.systemPromptInput.addEventListener('input', updateEditorStats);
       if (elements.promptEditorModal) {
+        // A text selection dragged out of the dialog ends on the backdrop: only a press there closes.
+        var pressedBackdrop = false;
+        elements.promptEditorModal.addEventListener('mousedown', function (event) {
+          pressedBackdrop = event.target === elements.promptEditorModal;
+        });
         elements.promptEditorModal.addEventListener('click', function (event) {
-          if (event.target === elements.promptEditorModal) closeEditor();
+          if (event.target === elements.promptEditorModal && pressedBackdrop) dismissEditor();
+          pressedBackdrop = false;
         });
       }
       if (elements.promptListContainer) {
@@ -739,7 +771,7 @@
         if (!elements.promptEditorModal || elements.promptEditorModal.hidden) return;
         if (event.key === 'Escape') {
           if (typeof event.preventDefault === 'function') event.preventDefault();
-          closeEditor();
+          dismissEditor();
           return;
         }
         if (event.key === 'Tab') {
