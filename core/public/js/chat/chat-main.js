@@ -331,7 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (modelBadge) {
       modelBadge.textContent = hostState.mode === 'router'
-        ? `${modeLabel} · automatic`
+        ? `${modeLabel} · ${state.lastRoutedModel || 'automatic'}`
         : (elements.modelSelect?.value || hostState.primaryPin || 'Model not selected');
     }
     if (hostField) hostField.textContent = hostState.mode === 'router' ? 'Server-routed' : currentHostLabel();
