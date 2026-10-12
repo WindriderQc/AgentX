@@ -165,9 +165,9 @@ async function nativeTerminal() {
   delete last.recovery;
   Object.assign(last, { head: HEAD, pendingInferences: [] });
   last.modelReceipts[0].state = 'completed';
+  last.modelReceipts[0].settlement = { state: 'completed', finishedAt: last.modelReceipts[0].finishedAt };
   const attempt = original.automationAttempts.at(-1);
-  Object.assign(attempt.evidence, { source: 'coding-autonomous/v1', failureCodes: ['no_useful_progress'],
-    routing: { status: 'verified', requestCount: 1, sessionCallCount: 1 } });
+  Object.assign(attempt.evidence, { source: 'coding-autonomous/v1', failureCodes: ['no_useful_progress'] });
   await Task.updateOne({ pipelineId: '0001' }, { $set: {
     codingAutonomy: original.codingAutonomy, automationAttempts: original.automationAttempts } });
   const previous = await queue.get(QUEUE);
@@ -193,7 +193,7 @@ test('a clean native no-progress stop receives a separately labelled grant witho
   expect(policy.remaining(retry)).toEqual(policy.remaining(after));
   await expect(grant(grantBody())).rejects.toThrow('different');
 });
-test.each(['pending', 'unknown', 'no-model', 'attempt-mismatch', 'unreceived-result', 'unverified-routing',
+test.each(['pending', 'unknown', 'no-model', 'attempt-mismatch', 'unreceived-result', 'unreceived-settlement', 'settlement-time', 'duplicate-call',
   'published', 'checkpoint', 'unclosed-campaign', 'unreceived-release', 'operator-stop', 'runner-error', 'native-hold'])
 ('native continuation refuses %s without credit or dispatch', async kind => {
   const previous = await nativeTerminal();
@@ -203,7 +203,12 @@ test.each(['pending', 'unknown', 'no-model', 'attempt-mismatch', 'unreceived-res
   if (kind === 'no-model') change['codingAutonomy.runs.0.modelReceipts'] = [];
   if (kind === 'attempt-mismatch') change['automationAttempts.0.attempt'] = 2;
   if (kind === 'unreceived-result') change['automationAttempts.0.resultRequestFingerprint'] = null;
-  if (kind === 'unverified-routing') change['automationAttempts.0.evidence.routing.status'] = 'unknown';
+  if (kind === 'unreceived-settlement') change['codingAutonomy.runs.0.modelReceipts.0.settlement.state'] = 'unknown';
+  if (kind === 'settlement-time') change['codingAutonomy.runs.0.modelReceipts.0.settlement.finishedAt'] = new Date().toISOString();
+  if (kind === 'duplicate-call') {
+    const calls = (await run()).modelReceipts;
+    change['codingAutonomy.runs.0.modelReceipts'] = [...calls, calls[0]];
+  }
   if (kind === 'published') change['codingAutonomy.pr'] = { head: HEAD };
   if (kind === 'checkpoint') change['codingAutonomy.runs.0.head'] = 'a'.repeat(40);
   if (kind === 'unclosed-campaign') previous.state = 'dispatching';

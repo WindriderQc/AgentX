@@ -305,8 +305,11 @@ success or authorize arbitrary scope changes.
 A clean unpublished native budget or no-progress stop uses the same endpoint
 with `CONTINUE_NATIVE_CHECKPOINT_WITH_ADDITIONAL_BUDGET`. This is a distinct
 authority: the exact latest worker must be finished and recorded in Core, its
-model journal must contain only completed calls, and its native attempt must
-retain verified routing and the matching failure receipt. First pause autonomy,
+model journal must contain only uniquely identified completed calls with their
+durably acknowledged Core settlements, and its native attempt must retain the
+matching failure receipt. Core admits each journalled inference through the
+native capacity and lease. A late settlement can be observed after the failed
+worker's verdict without replacing or upgrading that verdict. First pause autonomy,
 withdraw this task's authorization and finish its original campaign as failed
 through the operator entrance. Then name a new active campaign and the exact
 clean checkpoint. No administrative recovery is invented. Operator stops,

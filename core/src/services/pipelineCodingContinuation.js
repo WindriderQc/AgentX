@@ -47,13 +47,15 @@ async function evidence(task, requestId, wanted, control) {
     || run.recovery.nativeAttemptFingerprint !== policy.digest(attempt)))
     throw fail('Administrative recovery must retain its confirmed original evidence');
   if (native && (run.recovery || state.pr || run.result !== 'blocked' || run.head !== wanted.head
-    || run.pendingInferences?.length || !run.modelReceipts?.length || run.modelReceipts.some(call => call.state !== 'completed')
+    || run.pendingInferences?.length || !run.modelReceipts?.length
+    || new Set(run.modelReceipts.map(call => call.callId)).size !== run.modelReceipts.length
+    || run.modelReceipts.some(call => !UUID.test(call.callId) || call.state !== 'completed'
+      || call.settlement?.state !== 'completed' || call.settlement.finishedAt !== call.finishedAt
+      || !Number.isFinite(Date.parse(call.startedAt)) || !Number.isFinite(Date.parse(call.finishedAt)))
     || task.automationAttempts.filter(item => item.dispatchRequestId === requestId).length !== 1
     || attempt.attempt !== run.expectedAttemptCount + 1 || attempt.finalState !== 'blocked'
     || !Number.isFinite(Date.parse(attempt.completedAt)) || !/^[a-f0-9]{64}$/.test(attempt.resultRequestFingerprint || '')
-    || attempt.evidence?.source !== 'coding-autonomous/v1' || attempt.evidence.routing?.status !== 'verified'
-    || attempt.evidence.routing.requestCount !== run.modelReceipts.length
-    || attempt.evidence.routing.sessionCallCount !== run.modelReceipts.length))
+    || attempt.evidence?.source !== 'coding-autonomous/v1'))
     throw fail('Native continuation requires an unpublished terminal attempt with every model call completed');
   if (native && state.runs.slice(0, -1).some(old => (old.pendingInferences?.length
     || old.modelReceipts?.some(call => call.state !== 'completed')) && (!old.finishedAt
