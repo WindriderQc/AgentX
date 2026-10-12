@@ -64,6 +64,13 @@ shell command. The dispatcher profile runs the coding Python suites; the bounded
 Core profile runs `inferenceRuntimePolicy`. Neither replaces full PR CI or
 product acceptance. Dependency edits require separate operator handling.
 
+The autonomous worker receives Core's remaining cumulative work, test, model
+duration and model-call budgets, plus the exact installed verification command.
+Model waiting and reasoning consume the model duration budget even when the
+work deadline is longer. The same native command supplies the worker's focused
+test loop and the runner's independent verification. Unknown profiles refuse
+before model execution.
+
 Before publication the runner checks exact authorized paths, all unpublished
 commit blobs (including added-then-removed artifacts), credentials, private
 paths, generated content, links/submodules, source size rules, test results and
