@@ -382,7 +382,7 @@
       // A network retry retains its identity; an explicit next creation gets a new one.
       if (!request || request.signature !== signature) request = { signature, payload: { ...payload, actionKey: crypto.randomUUID() } };
       const result = await api('/operations', request.payload);
-      localStorage.setItem('agentx-image-operation', result.operation.id); request = null; show(result.operation, 'generation');
+      request = null; show(result.operation, 'generation');
     } catch (error) { $('image-status').textContent = error.message; }
     finally { pendingSubmit = false; controls(); }
   });
