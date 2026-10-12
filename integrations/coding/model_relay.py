@@ -18,6 +18,7 @@ import subprocess
 import sys
 import threading
 import uuid
+import time
 from urllib.parse import urlsplit
 
 
@@ -31,6 +32,7 @@ class ModelOnly(BaseHTTPRequestHandler):
     model_url = ""
     observer = staticmethod(lambda _event: None)
     runner_headers = {}
+    drain_on_disconnect = False
 
     def refuse(self) -> None:
         body = b'{"error":{"message":"The coding worker can reach the model route only.","type":"invalid_request_error"}}'
@@ -59,12 +61,24 @@ class ModelOnly(BaseHTTPRequestHandler):
                                headers={"Content-Type": "application/json", "x-service-caller": "coding-run",
                                         **self.runner_headers, "x-agentx-coding-call": str(uuid.uuid4())})
             with connection.getresponse() as upstream:
-                self.send_response(upstream.status)
-                self.send_header("Content-Type", upstream.headers.get("Content-Type", "application/json"))
-                self.end_headers()
+                disconnected = False
+                try:
+                    self.send_response(upstream.status)
+                    self.send_header("Content-Type", upstream.headers.get("Content-Type", "application/json"))
+                    self.end_headers()
+                except OSError:
+                    if not self.drain_on_disconnect:
+                        raise
+                    disconnected = True
                 while chunk := upstream.read1(65536):
-                    self.wfile.write(chunk)
-                    self.wfile.flush()
+                    if not disconnected:
+                        try:
+                            self.wfile.write(chunk)
+                            self.wfile.flush()
+                        except OSError:
+                            if not self.drain_on_disconnect:
+                                raise
+                            disconnected = True
         except (OSError, http.client.HTTPException):
             pass  # Stopping the worker closes its in-flight Core request too.
         finally:
@@ -100,6 +114,22 @@ class UnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
         with self.guard:
             self.upstreams.discard(upstream)
 
+    def drain(self, seconds, heartbeat=None):
+        # Close admission first; keep only already tracked native requests until
+        # EOF or the caller's remaining hard budget. EOF is not a success receipt.
+        with self.guard:
+            self.closing = True
+        deadline = time.monotonic() + max(0, seconds)
+        while time.monotonic() < deadline:
+            with self.guard:
+                if not self.upstreams:
+                    return True
+            if heartbeat:
+                heartbeat()
+            time.sleep(min(0.25, max(0, deadline - time.monotonic())))
+        with self.guard:
+            return not self.upstreams
+
     def shutdown(self):
         with self.guard:
             self.closing = True
@@ -112,12 +142,12 @@ class UnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
         super().shutdown()
 
 
-def serve(socket_path: str, model_url: str, observer=None, runner_headers=None) -> UnixServer:
+def serve(socket_path: str, model_url: str, observer=None, runner_headers=None, drain_on_disconnect=False) -> UnixServer:
     """Start the runner-side relay; the caller shuts it down."""
     if os.path.exists(socket_path):
         os.unlink(socket_path)
     handler = type("Handler", (ModelOnly,), {"model_url": model_url.rstrip("/"),
-                    "observer": staticmethod(observer or (lambda _event: None)), "runner_headers": runner_headers or {}})
+                    "observer": staticmethod(observer or (lambda _event: None)), "runner_headers": runner_headers or {}, "drain_on_disconnect": drain_on_disconnect})
     server = UnixServer(socket_path, handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server

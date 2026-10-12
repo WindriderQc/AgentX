@@ -317,13 +317,17 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
         progress.set_stage("model_wait")
     relay = model_relay.serve(str(home / "model.sock"), MODEL_URL,
                              progress.model_events.put if progress else None,
-                             getattr(progress, "relay_headers", None))
+                             getattr(progress, "relay_headers", None),
+                             drain_on_disconnect=bool(progress and progress.cumulative_limits))
     try:
         return supervise(sandbox(workspace, home, [
             "python3", "/opt/coding/model_relay.py", "inside", "/home/agent/model.sock", str(RELAY_PORT), "--",
             "/opt/dsh/node_modules/.bin/dsh", "--profile", "headless", "--patch", "/opt/coding/guard.patch.yml", "--", prompt,
         ], network=False, timeout_seconds=timeout_seconds), progress, home, workspace)
     finally:
+        if progress and progress.cumulative_limits:
+            remaining = min(120, progress.model_remaining(), max(0, progress.hard_deadline - progress.now()))
+            relay.drain(remaining, heartbeat=progress.tick)
         relay.shutdown()
         relay.server_close()
 

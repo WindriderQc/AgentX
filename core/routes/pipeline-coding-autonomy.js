@@ -15,5 +15,6 @@ router.post('/coding-autonomy/tasks/:id/authorization', route(req => service.aut
 router.post('/coding-autonomy/tasks/:id/review', route(req => service.recordReview(req.params.id, req.body || {})));
 router.post('/coding-autonomy/tasks/:id/runs/:requestId/stop', route(req => service.stop(req.params.id, req.params.requestId, req.body || {})));
 router.post('/coding-autonomy/tasks/:id/runs/:requestId/recover', route(req => service.recover(req.params.id, req.params.requestId, req.body || {})));
+router.post('/coding-autonomy/tasks/:id/runs/:requestId/continuation', route(req => service.continueRecovered(req.params.id, req.params.requestId, req.body || {})));
 router.get('/coding-autonomy/tasks/:id/runs/:requestId/manifest', route(req => service.workerManifest(req.params.id, req.params.requestId)));
 module.exports = router;
