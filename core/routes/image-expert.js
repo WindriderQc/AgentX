@@ -8,7 +8,7 @@ function createRouter(service = createService()) {
     res.set('Cache-Control', 'private, no-store');
     try { await handler(req, res); }
     catch (error) { res.status(error.statusCode || 503).json({ ok: false,
-      message: error.statusCode ? error.message : 'Le spécialiste imageX est indisponible.' }); }
+      message: error.statusCode ? error.message : 'The imageX specialist is unavailable.' }); }
   };
   router.get('/status', wrap(async (_req, res) => res.json({ ok: true, ...await service.status() })));
   router.get('/resources/:id', wrap(async (req, res) => res.json({ ok: true, resource: await service.resource(req.params.id) })));
