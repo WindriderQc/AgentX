@@ -21,6 +21,7 @@ function recipeInfo(id, profile = {}) {
   let declaration;
   try { declaration = declaredRecipe(profile.recipe); } catch { /* Legacy profile metadata is not a recipe declaration. */ }
   return { id, label: profile.label || id, family: profile.family || null,
+    ...(profile.sampling && { sampling: profile.sampling }),
     ...(declaration && { declaredIdentity: declaration }),
     diffusion: profile.diffusion || null, encoder: profile.encoder || null, vae: profile.vae || null,
     precision, steps: profile.steps ?? null, maxPixels: profile.maxPixels ?? null,

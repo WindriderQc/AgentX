@@ -50,13 +50,17 @@ const bridge = { configured: () => available, async invoke(envelope) {
     prompt: condensed, profile: envelope.request.profile, width: envelope.request.width, height: envelope.request.height, reason: 'Description condensée ; les contraintes sont conservées.', ...(textPlan && { textPlan }) } };
 } };
 const fixturePng = new PNG({ width: 1024, height: 1024 }); fixturePng.data.fill(180); const imageBytes = PNG.sync.write(fixturePng), imageSha = hash(imageBytes);
+const turbo = req('./src/services/images/workshopPresentation').recipeInfo('turbo', { family: 'qwen21', sampling: 'qwen21-turbo',
+  label: 'Synthetic Turbo', steps: 8, maxPixels: 4300800, recipe: { id: 'fixture-turbo', version: '1' } });
+const profiles = [{ id: 'quality', family: 'qwen21', label: 'Synthetic recipe', steps: 25, maxPixels: 4194304 },
+  { id: 'fast', family: 'klein', label: 'Synthetic Klein', steps: 4, maxPixels: 1048576 }, turbo];
 const operation = id => ({ id, state: 'completed', runtimeRestored: true, profile: 'quality', label: 'Synthetic recipe',
   createdAt: '2026-01-01T00:00:00Z', updatedAt: id === createdId ? new Date(Date.UTC(2026, 0, 1) + generation.length).toISOString() : '2026-01-01T00:00:00Z', artifact: { width: 1024, height: 1024, sha256: imageSha, url: `/api/images/operations/${id}/image` } });
-const imageService = { status: () => ({ configured: true, defaultProfile: 'quality', profiles: [{ id: 'quality', label: 'Synthetic recipe', maxPixels: 4194304 }] }),
+const imageService = { status: () => ({ configured: true, defaultProfile: 'quality', profiles }),
   list: async () => [operation(parentId)], get: async id => operation(id), image: async () => ({ bytes: imageBytes, mimeType: 'image/png' }),
   draft: async () => ({ ...copy(generation.at(-1)), visualPrompt: generation.at(-1)?.prompt }),
   async accept(body) { textContract.compose(body.prompt, body.constraints, body.textPolicy); generation.push(copy(body)); return operation(createdId); } };
-const workshop = { overview: async () => ({ worker: null, profiles: [{ id: 'quality', family: 'qwen21', label: 'Synthetic recipe', steps: 25, maxPixels: 4194304 }] }),
+const workshop = { overview: async () => ({ worker: null, profiles }),
   details: async id => ({ id, recipe: { id: 'quality', label: 'Synthetic recipe', family: 'qwen21', steps: 25 }, request: { prompt: 'Synthetic archived image', seed: 42, width: 1024, height: 1024 },
     ...(id === createdId && { request: { ...copy(generation.at(-1)), prompt: textContract.compose(generation.at(-1).prompt, generation.at(-1).constraints, generation.at(-1).textPolicy) } }),
     ...(id === createdId && generation.at(-1)?.parent && { lineage: { version: 1, parent: { ...generation.at(-1).parent, width: 1024, height: 1024 } } }), actualDimensions: { width: 1024, height: 1024 }, runtimeRestored: true }) };
@@ -95,6 +99,16 @@ async function open(page, id) { const selector = ['seed-settings', 'brief-plan-i
     await page.goto(url);
     await page.waitForFunction(() => document.getElementById('imagex-connection').textContent.includes('connected'));
     await page.waitForFunction(() => !document.getElementById('image-new').disabled);
+    assert.equal(await page.locator('#image-profile option').count(), 3);
+    await page.locator('#image-profile').selectOption('turbo');
+    assert.match(await page.locator('#image-recipe-summary').textContent(), /8 étapes/);
+    assert.equal(await page.locator('#image-size option[value="2400,1792"]').count(), 1);
+    assert.equal(await page.locator('#image-size option').count(), 7);
+    await page.locator('#image-size').selectOption('2400,1792');
+    assert.equal(generation.length, renderBefore, 'Selecting Turbo and its format starts no render');
+    await page.locator('#image-profile').selectOption('quality');
+    await page.locator('#image-size').selectOption('1024,1024');
+    checks.push(`${device}: classic, Klein and Turbo are selectable; Turbo advertises eight steps and seven formats, without a generation.`);
     assert.equal(await page.locator('#imagex').evaluate(el => el.open), false);
     assert.equal(await page.locator('#image-create').isDisabled(), true);
     assert.equal(await page.locator('#image-text-editor').isVisible(), false);

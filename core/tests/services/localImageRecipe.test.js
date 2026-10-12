@@ -106,6 +106,20 @@ test('an unpaired legacy request keeps the original request hash identity', asyn
   const stored = await ImageOperation.findById(accepted.id).lean();
   expect(stored.requestHash).toBe(sha(JSON.stringify({ prompt: input.prompt, width: 512, height: 768, seed: 42, profile: 'quality', references: [] })));
 });
+test('a Turbo request journals v2 before dispatch and replays once after the recipe changes', async () => {
+  configure({ ...makeProfile('qwen21'), sampling: 'qwen21-turbo', steps: 8 });
+  const input = body(), accepted = await service.accept(input), done = await terminal(accepted.id);
+  expect(done.state).toBe('completed'); expect(submittedRecords).toHaveLength(1);
+  const { stored, graph } = submittedRecords[0];
+  expect(stored.execution).toMatchObject({ builder: { version: 2 }, graphSha256: sha(JSON.stringify(graph)) });
+  expect(stored.execution.graph).toEqual(graph);
+  expect(graph.sigmas.class_type).toBe('ManualSigmas');
+  configure({ ...makeProfile('qwen21'), steps: 25, recipe: { ...identity, version: '2.0' } });
+  createComfyClient.mockClear(); reserve.mockClear(); client.submit.mockClear();
+  expect((await service.accept(input)).id).toBe(accepted.id);
+  expect(createComfyClient).not.toHaveBeenCalled(); expect(reserve).not.toHaveBeenCalled(); expect(client.submit).not.toHaveBeenCalled();
+  expect((await presentation.details(accepted.id)).recipe).toMatchObject({ sampling: 'qwen21-turbo', steps: 8 });
+});
 test.each([['klein', false], ['qwen21', false], ['klein', true], ['qwen21', true]])(
   'every new %s operation (declared=%s) journals the submitted graph before submission and preserves it at terminal', async (family, declared) => {
     configure(makeProfile(family, declared));

@@ -147,6 +147,25 @@ describe('server-verified archived image parents', () => {
     const oversized = PNG.sync.write({ width: 2049, height: 2048, data: Buffer.alloc(2049 * 2048 * 4, 255) });
     const p = await parent({}, oversized); await refused(body(p), 400);
   });
+  test('a full 4.3 MP Qwen parent supports Turbo editing, durable references and export without resizing', async () => {
+    const width = 2400, height = 1792;
+    const bytes = PNG.sync.write({ width, height, data: Buffer.alloc(width * height * 4, 255) });
+    const turbo = { ...profile, family: 'qwen21', sampling: 'qwen21-turbo', steps: 8, maxPixels: width * height };
+    const p = await parent({ profile: { ...turbo, id: 'quality' } }, bytes);
+    p.artifact = { ...p.artifact, width, height };
+    await ImageOperation.updateOne({ _id: p._id }, { $set: { artifact: p.artifact } });
+    loadConfig.mockReturnValue({ workerUrl: 'http://127.0.0.1:8188', ollamaHosts: ['http://127.0.0.1:11434'],
+      profiles: { quality: turbo }, defaultProfile: 'quality' });
+    const child = await service.accept(body(p, { width, height })); await completed(child.id);
+    expect(client.upload.mock.calls[0][0]).toEqual(bytes);
+    const details = await presentation.details(child.id);
+    expect(details.lineage.parent).toMatchObject({ width, height, sha256: sha(bytes) });
+    const exported = await require('../../src/services/images/recipeExport').manifest(child.id);
+    expect(exported.execution.builder.version).toBe(2);
+    expect(exported.parts.find(part => part.name === 'reference-0-source.png')).toMatchObject({ width, height, sha256: sha(bytes) });
+    jest.clearAllMocks();
+    await refused({ actionKey: 'manual-4-3mp', prompt: 'Edit', references: [bytes.toString('base64')] }, 400);
+  }, 180000);
   test('historical operations keep their existing reading without an invented parent', async () => {
     const p = await parent(); const details = await presentation.details(p._id);
     expect(details.lineage == null).toBe(true);

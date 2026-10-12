@@ -1,6 +1,7 @@
 'use strict';
 const crypto = require('node:crypto');
 const { workflow } = require('./workflows');
+const { SAMPLING } = require('./qwenTurbo');
 const BUILDER = Object.freeze({ id: 'agentx.local-images.workflows', version: 1 });
 const token = value => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,79}$/.test(value);
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
@@ -28,7 +29,7 @@ function assertRecipe(expected, profile) {
 
 function buildExecution(profile, request, references, id) {
   const graph = workflow(profile, request, references, id);
-  return { version: 1, builder: { ...BUILDER }, graph,
+  return { version: 1, builder: { ...BUILDER, version: profile.sampling === SAMPLING ? 2 : BUILDER.version }, graph,
     graphSha256: crypto.createHash('sha256').update(JSON.stringify(graph)).digest('hex'),
     parameters: { width: request.width, height: request.height, seed: request.seed, steps: profile.steps } };
 }

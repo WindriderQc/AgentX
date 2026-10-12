@@ -3,12 +3,13 @@ const crypto = require('node:crypto');
 const { defaultArchive } = require('../imageArchive');
 const { decode } = require('./codec');
 const { TRANSFORM } = require('./parentReference');
+const { MAX_OUTPUT_PIXELS } = require('./sizes');
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const unavailable = () => Object.assign(new Error('Image references unavailable or inconsistent'), { statusCode: 503 });
 const requireValid = value => { if (!value) throw unavailable(); };
 
-function checkedImage(bytes) {
-  const image = decode(bytes, 4194304);
+function checkedImage(bytes, maxPixels = 4194304) {
+  const image = decode(bytes, maxPixels);
   requireValid(Math.max(image.width, image.height) / Math.min(image.width, image.height) <= 8);
   return image;
 }
@@ -41,7 +42,7 @@ async function loadReferences(op) {
       return legacy.map((item, index) => {
         const bytes = Buffer.isBuffer(item) ? item : item?._bsontype === 'Binary'
           ? Buffer.from(item.buffer.subarray(0, item.position)) : Buffer.from(item);
-        checkedImage(bytes);
+        checkedImage(bytes, op.lineage?.parent && index === 0 ? MAX_OUTPUT_PIXELS : 4194304);
         if (declared) requireValid(hash(bytes) === declared[index].workerSha256);
         return bytes;
       });
@@ -55,7 +56,8 @@ async function loadReferences(op) {
       const entry = storage.entries[i], expected = declared[i];
       requireValid(entry?.source?.sha256 === expected.sourceSha256 && entry?.worker?.sha256 === expected.workerSha256);
       const source = await defaultArchive().read(entry.source), worker = await defaultArchive().read(entry.worker);
-      const sourceImage = checkedImage(source.bytes), workerImage = checkedImage(worker.bytes);
+      const cap = op.lineage.parent && i === 0 ? MAX_OUTPUT_PIXELS : 4194304;
+      const sourceImage = checkedImage(source.bytes, cap), workerImage = checkedImage(worker.bytes, cap);
       requireValid(worker.mimeType === 'image/png' && sourceImage.width === workerImage.width && sourceImage.height === workerImage.height);
       for (const [saved, actual] of [[entry.source, sourceImage], [entry.worker, workerImage]]) {
         receipt(saved, actual);
@@ -77,7 +79,8 @@ async function retainReferences(prepared) {
     const entries = [];
     for (let i = 0; i < prepared.sources.length; i++) {
       const source = prepared.sources[i], worker = prepared.references[i];
-      const sourceImage = checkedImage(source), workerImage = checkedImage(worker);
+      const cap = prepared.lineage?.parent && i === 0 ? MAX_OUTPUT_PIXELS : 4194304;
+      const sourceImage = checkedImage(source, cap), workerImage = checkedImage(worker, cap);
       requireValid(hash(source) === declared[i].sourceSha256 && hash(worker) === declared[i].workerSha256 && workerImage.mimeType === 'image/png');
       const existing = i === 0 ? prepared.parentArtifact : null;
       const sourceStored = existing?.origin && existing.archivedAt ? existing
