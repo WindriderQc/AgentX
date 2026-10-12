@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/assets/data-toolbox/janitor-review.css?v=refresh-phone-20261009">
   <link rel="stylesheet" href="/assets/data-toolbox/iot.css?v=iot-pieces-20261011">
   <link rel="stylesheet" href="/assets/data-toolbox/iot-pieces.css?v=iot-pieces-20261011">
+  <link rel="stylesheet" href="/assets/data-toolbox/iot-configuration.css?v=iot-controls-20261012">
   <link rel="stylesheet" href="/assets/data-toolbox/phone.css?v=mqtt-heartbeats-20261010">
 </head>
 <body>
@@ -30,10 +31,10 @@
 
     <section class="guardrail" role="note" aria-label="What this page can change">
       <details>
-        <summary><strong>No filesystem actions.</strong> <span>This page can send nine kinds of change to Data.</span> <span class="guardrail-toggle" aria-hidden="true"></span></summary>
+        <summary><strong>No filesystem actions.</strong> <span>This page can send fifteen kinds of change to Data.</span> <span class="guardrail-toggle" aria-hidden="true"></span></summary>
         <div id="guardrailDetail" class="guardrail-detail">
-          <p>Survivor choices and accept/reject decisions are saved to Data as a record of intent for a later, separately confirmed cleanup; a local draft takes over when Data cannot be reached. Preview, apply, move and delete endpoints are not exposed here.</p>
-          <p>This page sends nine kinds of change to Data:</p>
+          <p>Survivor choices and accept/reject decisions are saved to Data as a record of intent for a later, separately confirmed cleanup; a local draft takes over when Data cannot be reached. Janitor preview, apply, move and delete endpoints are not exposed here.</p>
+          <p>This page sends fifteen kinds of change to Data:</p>
           <ol>
             <li data-write="network-device-update">a network device's record (name, known flag, type, location, notes);</li>
             <li data-write="network-scan-request">a network scan request for the active collector;</li>
@@ -43,7 +44,13 @@
             <li data-write="report-generate">the generation of a report from the Storage tab;</li>
             <li data-write="report-delete">the deletion of a report from the Storage tab;</li>
             <li data-write="iot-device-update">an IoT device’s display name, location and notes;</li>
-            <li data-write="iot-command">an explicit GPIO ON/OFF or reboot command from the IoT tab.</li>
+            <li data-write="iot-command">an explicit GPIO ON/OFF or reboot command from the IoT tab;</li>
+            <li data-write="iot-profile-save">the creation or editing of an IoT configuration profile in Data;</li>
+            <li data-write="iot-profile-assign">the assignment of a profile version to an IoT device, without sending it;</li>
+            <li data-write="iot-profile-apply">the explicit publication of that profile to the device;</li>
+            <li data-write="iot-timer-save">daily output timers saved in Data, without sending them;</li>
+            <li data-write="iot-timer-apply">the explicit publication or disabling of a daily timer on the device;</li>
+            <li data-write="iot-control-resolve">the reconciliation of an uncertain application against a fresh device report, without sending anything.</li>
           </ol>
           <p>A report is a file in Data's own report store, never on the scanned disks.</p>
         </div>
@@ -81,9 +88,10 @@
   <script src="/assets/data-toolbox/iot-charts.js?v=iot-pieces-20261011" defer></script>
   <script src="/assets/data-toolbox/iot-combined.js?v=iot-pieces-20261011" defer></script>
   <script src="/assets/data-toolbox/iot-fleet.js?v=iot-pieces-20261011" defer></script>
-  <script src="/assets/data-toolbox/iot-commands.js?v=iot-pieces-20261011" defer></script>
+  <script src="/assets/data-toolbox/iot-commands.js?v=iot-controls-20261012" defer></script>
   <script src="/assets/data-toolbox/iot-events.js?v=iot-pieces-20261011" defer></script>
-  <script src="/assets/data-toolbox/iot.js?v=iot-pieces-20261011" defer></script>
+  <script src="/assets/data-toolbox/iot-configuration.js?v=iot-controls-20261012" defer></script>
+  <script src="/assets/data-toolbox/iot.js?v=iot-controls-20261012" defer></script>
   <script src="/assets/data-toolbox/gpu.js?v=refresh-phone-20261009" defer></script>
   <script src="/assets/data-toolbox/mqtt.js?v=mqtt-heartbeats-20261010" defer></script>
   <script src="/assets/data-toolbox/live-map.js?v=refresh-phone-20261009" defer></script>
@@ -94,6 +102,6 @@
   <script src="/assets/data-toolbox/storage-views.js?v=refresh-phone-20261009" defer></script>
   <script src="/assets/data-toolbox/activity.js?v=mqtt-heartbeats-20261010" defer></script>
   <script src="/assets/data-toolbox/janitor-review.js?v=refresh-phone-20261009" defer></script>
-  <script src="/assets/data-toolbox/app.js?v=iot-20261009" defer></script>
+  <script src="/assets/data-toolbox/app.js?v=iot-controls-20261012" defer></script>
 </body>
 </html>

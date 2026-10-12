@@ -113,8 +113,6 @@ function iotConsumerHtml() {
 /** What the former IoT pages offered and has no backend today. Text only: no control. */
 function iotMissingHtml() {
   return `<details class="card iot-missing"><summary>Pas encore revenu des anciennes pages</summary><ul>
-    <li><strong>Minuteries quotidiennes par sortie</strong> (les anciens « Timerz ») — côté serveur : Data ne conserve aucune minuterie et n’en publie aucune ; côté appareil : seules les commandes GPIO ON, GPIO OFF et redémarrage font partie du contrat actuel.</li>
-    <li><strong>Profils de configuration des entrées/sorties</strong> poussés à l’appareil — côté serveur : Data ne stocke aucun profil et ne publie aucune configuration ; il note seulement qu’un appareil a parlé sur <span class="mono">esp32/config</span>.</li>
     <li><strong>Caméras</strong> — côté serveur : Data ne reçoit, ne conserve et ne relaie aucune image ni aucun flux.</li>
     </ul></details>`;
 }
