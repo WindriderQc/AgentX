@@ -6,7 +6,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const listeningKey = 'household.space.' + space + '.listening';
   const sessionBase = '/api/voice-personas/' + (family ? 'family' : 'private') + '/sessions';
   const [{ personas: catalog, runtime }, agentCatalog] = await Promise.all([api('/api/voice-personas/catalog'),
-    family ? Promise.resolve({ agents: [{ id: 'family', name: 'Nestor Famille' }] }) : api('/api/voice-personas/private/agents').catch(() => null)]);
+    family ? Promise.resolve({ agents: [{ id: 'family', name: 'Nestor Family' }] }) : api('/api/voice-personas/private/agents').catch(() => null)]);
   const personas = family ? catalog.filter(p => p.id === 'nestor') : catalog;
   const agents = agentCatalog?.agents?.length ? agentCatalog.agents : [{ id: 'main', name: 'Main', personalNotes: true }];
   if (!personas?.length) throw new Error('No style is available. Choose one in Prompts.');
@@ -131,8 +131,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     draftFiles.forEach((file, index) => {
       const row = document.createElement('div'); row.className = 'conversation-attachment';
       const label = document.createElement('span'); label.textContent = file.name;
-      const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'button'; remove.textContent = 'Retirer';
-      remove.disabled = textBusy; remove.setAttribute('aria-label', `Retirer ${file.name}`);
+      const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'button'; remove.textContent = 'Remove';
+      remove.disabled = textBusy; remove.setAttribute('aria-label', `Remove ${file.name}`);
       remove.onclick = () => { draftFiles.splice(index, 1); renderDraftFiles(); };
       row.append(label, remove); host.append(row);
     });
@@ -516,7 +516,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     holdScreen(active || textBusy);
     el('conversationStart').disabled = textBusy && !active;
     el('conversationStart').hidden = enteringSpace && !active;
-    el('conversationStart').textContent = active ? 'Pause' : conversation.session ? 'Reprendre' : 'Activer Nestor';
+    el('conversationStart').textContent = active ? 'Pause' : conversation.session ? 'Resume' : 'Turn on Nestor';
     const lockReason = renderTeam(active || textBusy);
     // Language and interruption are read at each turn, so they stay changeable while the conversation runs.
     for (const node of [language, interruption]) { node.disabled = false; node.title = ''; }
@@ -645,7 +645,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     el('conversationPresence').style.setProperty('--presence-color', P.visual(visual)?.color || '#52cfc5');
     el('personaDescription').textContent = p.description || p.name;
     const speech = P.speechFor(p, language.value === 'en' ? 'en' : 'fr', selection().voice);
-    el('voiceDescription').textContent = `Voix de ${p.name.split(' ·')[0]} : ${speech.provider} · ${speech.voice}.`;
+    el('voiceDescription').textContent = `${p.name.split(' ·')[0]}’s voice: ${speech.provider} · ${speech.voice}.`;
   }
   const restoreProfile = () => {
     const profile = P.profile(preferences.profiles[picker.value]);
