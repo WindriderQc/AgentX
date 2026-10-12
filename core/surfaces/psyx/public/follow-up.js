@@ -4,7 +4,7 @@
 // their outcome in one tap, and short 0-10 self-ratings with their trend.
 // Loaded before app.js, whose shared state and helpers these functions use at call time.
 
-const OUTCOME_LABELS = { worked: 'Ça a marché', partly: 'En partie', did_not_work: 'Pas marché', not_done: 'Pas fait' };
+const OUTCOME_LABELS = { worked: 'It worked', partly: 'Partly', did_not_work: 'Didn’t work', not_done: 'Not done' };
 const CHECK_IN_AFTER_MESSAGES = 8;
 const followUp = { askedIn: new Set(), lastNote: '', openingDone: false };
 
@@ -19,11 +19,11 @@ function dueExperiments() {
 // The part of an experiment card about its follow-up: when, and how it went.
 function experimentFollowUpHtml(item) {
   const open = ['planned', 'active'].includes(item.status);
-  const when = item.checkInAt ? new Date(item.checkInAt).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long' }) : '';
+  const when = item.checkInAt ? new Date(item.checkInAt).toLocaleDateString('en-CA', { day: 'numeric', month: 'long' }) : '';
   const head = item.outcome && !open
-    ? `<p class="experiment-outcome">Résultat : <strong>${escapeHtml(OUTCOME_LABELS[item.outcome] || item.outcome)}</strong></p>`
-    : open && when ? `<p class="experiment-due ${experimentIsDue(item) ? 'due' : ''}">${experimentIsDue(item) ? 'À faire le point' : `Faire le point le ${escapeHtml(when)}`}</p>` : '';
-  const buttons = open ? `<div class="outcome-actions" role="group" aria-label="Comment ça s’est passé?">${Object.entries(OUTCOME_LABELS)
+    ? `<p class="experiment-outcome">Result: <strong>${escapeHtml(OUTCOME_LABELS[item.outcome] || item.outcome)}</strong></p>`
+    : open && when ? `<p class="experiment-due ${experimentIsDue(item) ? 'due' : ''}">${experimentIsDue(item) ? 'Time to check in' : `Check in on ${escapeHtml(when)}`}</p>` : '';
+  const buttons = open ? `<div class="outcome-actions" role="group" aria-label="How did it go?">${Object.entries(OUTCOME_LABELS)
     .map(([outcome, label]) => `<button type="button" data-experiment-outcome="${escapeHtml(item.id)}" data-outcome="${outcome}">${label}</button>`).join('')}</div>` : '';
   return head + buttons;
 }
@@ -39,14 +39,14 @@ async function recordOutcome(id, outcome) {
 }
 
 function checkInButtons(phase) {
-  return `<div class="check-in-scale" role="group" aria-label="De 0 à 10">${Array.from({ length: 11 }, (_, score) =>
+  return `<div class="check-in-scale" role="group" aria-label="From 0 to 10">${Array.from({ length: 11 }, (_, score) =>
     `<button type="button" data-check-in="${score}" data-phase="${phase}">${score}</button>`).join('')}</div>`;
 }
 
 // Opening a new session: one optional rating before starting.
 function openingCheckInHtml() {
-  if (followUp.openingDone) return `<p class="check-in-done">${escapeHtml(followUp.lastNote)}. Merci.</p>`;
-  return `<div class="check-in"><p><strong>Avant de commencer :</strong> ce qui te pèse, ça pèse combien en ce moment, de 0 à 10? <em>Facultatif.</em></p>${checkInButtons('start')}</div>`;
+  if (followUp.openingDone) return `<p class="check-in-done">${escapeHtml(followUp.lastNote)}. Thank you.</p>`;
+  return `<div class="check-in"><p><strong>Before we start:</strong> how heavy is what’s weighing on you right now, from 0 to 10? <em>Optional.</em></p>${checkInButtons('start')}</div>`;
 }
 
 // Once per conversation, after a few exchanges, a discreet invitation to rate again.
@@ -55,7 +55,7 @@ function maybeAskCheckIn() {
   const messagesSoFar = state.history.filter((item) => item.role !== 'action').length;
   if (!state.conversationId || followUp.askedIn.has(state.conversationId) || messagesSoFar < CHECK_IN_AFTER_MESSAGES) return;
   followUp.askedIn.add(state.conversationId);
-  box.innerHTML = `<div class="check-in"><p>Et maintenant, ça pèse combien, de 0 à 10?</p>${checkInButtons('during')}<button type="button" class="check-in-close" data-check-in-close aria-label="Plus tard">×</button></div>`;
+  box.innerHTML = `<div class="check-in"><p>And now, how heavy is it, from 0 to 10?</p>${checkInButtons('during')}<button type="button" class="check-in-close" data-check-in-close aria-label="Later">×</button></div>`;
   box.hidden = false;
 }
 
@@ -64,7 +64,7 @@ async function recordCheckIn(score, phase) {
     method: 'POST', body: JSON.stringify({ score, phase })
   });
   state.psyxState = response.state;
-  followUp.lastNote = `Noté : ${score}/10`;
+  followUp.lastNote = `Noted: ${score}/10`;
   if (phase === 'start') followUp.openingDone = true;
   $('checkInPrompt').hidden = true;
   renderPsyXState();
@@ -83,11 +83,11 @@ function renderCheckInTrend() {
   const week = items.filter((item) => Date.now() - new Date(item.at).getTime() < 7 * 24 * 60 * 60 * 1000);
   const average = week.length ? (week.reduce((sum, item) => sum + item.score, 0) / week.length).toFixed(1) : '—';
   $('checkInTrend').innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Évolution des ${items.length} dernières mesures">
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Trend of the last ${items.length} ratings">
       <polyline points="${points}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>
-      ${items.map((item, index) => `<circle cx="${x(index).toFixed(1)}" cy="${y(item.score).toFixed(1)}" r="2.5"><title>${item.score}/10 · ${escapeHtml(new Date(item.at).toLocaleDateString('fr-CA'))}</title></circle>`).join('')}
+      ${items.map((item, index) => `<circle cx="${x(index).toFixed(1)}" cy="${y(item.score).toFixed(1)}" r="2.5"><title>${item.score}/10 · ${escapeHtml(new Date(item.at).toLocaleDateString('en-CA'))}</title></circle>`).join('')}
     </svg>
-    <p class="state-help">Dernière : <strong>${items.at(-1).score}/10</strong> · moyenne sur 7 jours : ${average}${followUp.lastNote ? ` · ${escapeHtml(followUp.lastNote)}` : ''}</p>`;
+    <p class="state-help">Latest: <strong>${items.at(-1).score}/10</strong> · 7-day average: ${average}${followUp.lastNote ? ` · ${escapeHtml(followUp.lastNote)}` : ''}</p>`;
 }
 
 function renderFollowUp() {
@@ -115,7 +115,7 @@ function wireFollowUp() {
       if (outcome) await recordOutcome(outcome.dataset.experimentOutcome, outcome.dataset.outcome);
       else await recordCheckIn(Number(checkIn.dataset.checkIn), checkIn.dataset.phase);
     } catch (error) {
-      stateSaveStatus.textContent = 'échec de l’enregistrement';
+      stateSaveStatus.textContent = 'save failed';
     } finally {
       pending = false;
     }

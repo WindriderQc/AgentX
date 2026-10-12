@@ -138,26 +138,26 @@ test('device cards render real latest values, zero and unknowns, escape names, a
   assert.match(page.content.innerHTML, /&lt;img src=x onerror=evil\(\)&gt;/);
   assert.doesNotMatch(page.content.innerHTML, /<img src=x/);
   assert.match(page.elements['#iotCards'].innerHTML, /<strong>0<small>/);
-  assert.match(page.elements['#iotCards'].innerHTML, /Hors ligne/);
+  assert.match(page.elements['#iotCards'].innerHTML, /Offline/);
   assert.match(page.elements['#iotSeries'].innerHTML, /<canvas id="iotCombinedChart"/);
   assert.equal(page.requests.filter(call => call.method !== 'GET').length, 0);
   assert.deepEqual(plain(page.iotState.keys), ['temperature', 'wifi_rssi']);
 });
 
 test('no devices or no live points stays empty and never fabricates charts', async () => {
-  const empty = await open({ devices: [] }); assert.match(empty.content.innerHTML, /Aucun appareil reçu/);
+  const empty = await open({ devices: [] }); assert.match(empty.content.innerHTML, /No device received yet/);
   assert.equal(empty.requests.length, 2);
   const page = await open({ read: () => ({ measures: {} }) });
-  assert.match(page.elements['#iotSeries'].innerHTML, /Aucune mesure reçue/);
+  assert.match(page.elements['#iotSeries'].innerHTML, /No reading received/);
   assert.doesNotMatch(page.elements['#iotSeries'].innerHTML, /class="iot-chart"|id="iotCombinedChart"/);
 });
 
 test('an offline broker preserves dated values and disables device commands', async () => {
   const page = await open({ connected: false });
-  assert.match(page.content.innerHTML, /MQTT déconnecté/);
-  assert.match(page.elements['#iotActions'].innerHTML, /type="submit" disabled>Préparer l’envoi/);
-  assert.match(page.elements['#iotActions'].innerHTML, /Commandes désactivées : Data n’est pas connecté au broker MQTT\./);
-  assert.match(page.elements['#iotCards'].innerHTML, /Dernier message/);
+  assert.match(page.content.innerHTML, /MQTT disconnected/);
+  assert.match(page.elements['#iotActions'].innerHTML, /type="submit" disabled>Prepare send/);
+  assert.match(page.elements['#iotActions'].innerHTML, /Commands disabled: Data is not connected to the MQTT broker\./);
+  assert.match(page.elements['#iotCards'].innerHTML, /Last message/);
 });
 
 test('polling discovers the first device and its first measures without requiring a manual refresh', async () => {
@@ -187,7 +187,7 @@ test('history uses exact shared bounds and batches devices with more than twelve
   assert.equal(new Set(calls.map(call => call.query.get('to'))).size, 1);
   assert.equal(Date.parse(calls[0].query.get('to')) - Date.parse(calls[0].query.get('from')), 168 * 3600000);
   assert.equal(Object.keys(page.iotState.series.measures).length, 25);
-  assert.match(page.elements['#iotSeries'].innerHTML, /Historique/);
+  assert.match(page.elements['#iotSeries'].innerHTML, /History/);
 });
 
 test('a delayed device selection and an obsolete poll cannot overwrite the current device', async () => {
@@ -224,7 +224,7 @@ test('device saves are explicit; a command is sent only after its confirmation, 
   const sent = page.iotCommandSend(); await page.iotCommandSend();
   assert.equal(page.requests.filter(call => call.method === 'POST').length, 1);
   release(); await sent;
-  assert.match(page.elements['#iotCommandOutcome'].innerHTML, /Peut-être envoyé.*outcome unknown.*aucun nouvel envoi automatique/);
+  assert.match(page.elements['#iotCommandOutcome'].innerHTML, /Maybe sent.*outcome unknown.*nothing is resent automatically/);
   assert.deepEqual(plain(page.requests.find(call => call.method === 'POST').body), { command: 'io_on', gpio: 2 });
 });
 
@@ -238,7 +238,7 @@ test('charts preserve timestamp spacing, breaks across missing minutes, and expo
   assert.equal((chart.match(/<polyline/g) || []).length, 2);
   const plotted = [...chart.matchAll(/data-iot-point[^>]*cx="([0-9.]+)"/g)].map(match => Number(match[1]));
   assert.equal((plotted[1] - plotted[0]) / (plotted[2] - plotted[0]), 1 / 60, 'a minute occupies one sixtieth of the hour');
-  assert.match(chart, /dernière période en cours/);
+  assert.match(chart, /last period in progress/);
   assert.match(chart, /<table>/);
   assert.match(chart, /&lt;temperature&gt;/);
   assert.doesNotMatch(chart, /NaN|Infinity/);

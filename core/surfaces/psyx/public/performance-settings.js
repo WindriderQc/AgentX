@@ -13,6 +13,6 @@ function applyPerformancePreferences(values = {}) {
 function wirePerformancePreferences() {
   performancePreferences = ConversationPreferences.mount({ button: $('performancePsyx'), api, endpoint: '/api/psyx/preferences',
     onSaved: data => { applyPerformancePreferences(data.values); watchDream(); },
-    integrations: [{ title: 'Modèles, routage et localisation', href: '#', action: () => { $('tabSetup').click(); openDrawer('insights'); $('routingDetails').scrollIntoView({ block: 'nearest' }); } }]
+    integrations: [{ title: 'Models, routing and location', href: '#', action: () => { $('tabSetup').click(); openDrawer('insights'); $('routingDetails').scrollIntoView({ block: 'nearest' }); } }]
   });
 }

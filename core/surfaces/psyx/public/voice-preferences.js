@@ -26,7 +26,7 @@
     inputDeviceId: ''
   });
   const PROVIDER_LABELS = Object.freeze({ kokoro: 'Kokoro', windows_sapi: 'Windows SAPI', voxcpm: 'Cloned voice' });
-  const LANGUAGE_LABELS = Object.freeze({ fr: 'Français', en: 'Anglais' });
+  const LANGUAGE_LABELS = Object.freeze({ fr: 'French', en: 'English' });
 
   function lower(value) {
     return String(value == null ? '' : value).trim().toLowerCase();

@@ -19,7 +19,7 @@ function browser(file, extras = {}) {
     state: { psyxState: null, voice: { reachable: false }, routing: null },
     window: { isSecureContext: true }, navigator: { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [] }) } },
     $: element, escapeHtml: value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]),
-    SOURCE_LABELS: { user: 'toi', psyx: 'PsyX' }, ...extras
+    SOURCE_LABELS: { user: 'you', psyx: 'PsyX' }, ...extras
   };
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'public', file), 'utf8'), context);
@@ -35,7 +35,7 @@ test('understanding escapes statements and provenance, separates proposals, and 
   assert.doesNotMatch(html, /<img|<script/);
   assert.match(html, /&lt;script&gt;private evidence/);
   assert.match(html, /source&quot;session/);
-  assert.match(html, /ne font pas encore partie de la mémoire/);
+  assert.match(html, /not yet part of the memory/);
   b.wireFormulation();
   element('formulationList').listeners.input({ target: { value: 'Private unfinished correction', closest: () => ({ dataset: { formulationKey: 'patterns', formulationId: 'p', formulationRevision: '7' } }) } });
   b.state.psyxState.revision = 8;
@@ -55,10 +55,10 @@ test('setup distinguishes disabled voice, LAN access, insecure capture and local
   const { context: b, element } = browser('setup.js');
   b.window.isSecureContext = false;
   b.setSetupCapabilities({ privacy: { configured: false }, voice: { enabled: false }, review: { automatic: true } });
-  assert.match(element('setupChecklist').innerHTML, /LAN privé : aucun compte ni code exigé/);
-  assert.match(element('setupChecklist').innerHTML, /Facultative, non configurée/);
-  assert.match(element('setupChecklist').innerHTML, /HTTPS ou localhost requis/);
-  assert.match(element('setupChecklist').innerHTML, /Désactivé : les réponses et revues/);
+  assert.match(element('setupChecklist').innerHTML, /Private LAN: no account or code required/);
+  assert.match(element('setupChecklist').innerHTML, /Optional, not configured/);
+  assert.match(element('setupChecklist').innerHTML, /HTTPS or localhost required/);
+  assert.match(element('setupChecklist').innerHTML, /Off: replies and reviews/);
   assert.equal(element('testSetupMicrophone').disabled, true);
   b.clearSetup();
   assert.equal(element('setupChecklist').innerHTML, '');
@@ -85,6 +85,6 @@ test('microphone test stops all tracks after successful capture and does not upl
   b.wireSetup();
   await element('testSetupMicrophone').listeners.click();
   assert.equal(stopped, 2);
-  assert.match(element('setupChecklist').innerHTML, /permission accordée/);
-  assert.match(element('setupNotice').textContent, /aucun audio n’est conservé/);
+  assert.match(element('setupChecklist').innerHTML, /permission granted/);
+  assert.match(element('setupNotice').textContent, /no audio is kept/);
 });

@@ -26,10 +26,10 @@ function frontierLocationFor(depth) {
 
 // The setup checklist row about content leaving the house.
 function frontierSetupLabel() {
-  if (!frontierUi.supported) return 'Réponses, revues et portraits sur les voies locales';
-  return { all: `Conversations, revues et portraits par ${frontierUi.model}; le contexte sélectionné est transmis au cloud`,
-    deep: `Réponses profondes, revues et portraits par ${frontierUi.model}; les réponses normales sont locales`,
-    local: `Réponses, revues et portraits locaux; ${frontierUi.model} est désactivé` }[frontierMode()];
+  if (!frontierUi.supported) return 'Replies, reviews and portraits on the local lanes';
+  return { all: `Conversations, reviews and portraits by ${frontierUi.model}; the selected context is sent to the cloud`,
+    deep: `Deep replies, reviews and portraits by ${frontierUi.model}; normal replies are local`,
+    local: `Local replies, reviews and portraits; ${frontierUi.model} is turned off` }[frontierMode()];
 }
 
 function renderFrontier(control = null) {
@@ -43,8 +43,8 @@ function renderFrontier(control = null) {
   badge.dataset.location = cloud ? 'frontier' : 'local';
   badge.textContent = note || (cloud ? `☁ ${frontierUi.model}` : 'Local');
   badge.title = cloud
-    ? 'Cette réponse transmet le contexte sélectionné au modèle cloud. AgentX conserve les données de référence; le service distant peut aussi conserver des traces.'
-    : 'Cette réponse est produite sur tes machines.';
+    ? 'This reply sends the selected context to the cloud model. AgentX keeps the reference data; the remote service may also keep traces.'
+    : 'This reply is produced on your machines.';
   $('frontierSection').hidden = !frontierUi.supported;
   for (const input of document.querySelectorAll('input[name="frontierMode"]')) input.checked = input.value === frontierMode();
   for (const node of document.querySelectorAll('[data-frontier-model]')) node.textContent = frontierUi.model;
@@ -52,21 +52,21 @@ function renderFrontier(control = null) {
 
 // After a reply: say so when the cloud model was asked but the local route answered.
 function noteFrontierResult(result) {
-  frontierUi.fallbackNote = result?.routing?.fallbackFrom === 'frontier' ? `Local · ${frontierUi.model} indisponible` : '';
+  frontierUi.fallbackNote = result?.routing?.fallbackFrom === 'frontier' ? `Local · ${frontierUi.model} unavailable` : '';
 }
 
 function wireFrontier() {
   for (const input of document.querySelectorAll('input[name="frontierMode"]')) {
     input.addEventListener('change', async () => {
       if (!input.checked) return;
-      $('frontierStatus').textContent = 'Enregistrement…';
+      $('frontierStatus').textContent = 'Saving…';
       try {
         const result = await api('/api/psyx/state/settings', { method: 'POST', body: JSON.stringify({ frontierMode: input.value }) });
         state.psyxState = result.state;
         frontierUi.fallbackNote = '';
-        $('frontierStatus').textContent = 'Enregistré.';
+        $('frontierStatus').textContent = 'Saved.';
       } catch (error) {
-        $('frontierStatus').textContent = 'Le réglage n’a pas été enregistré.';
+        $('frontierStatus').textContent = 'The setting was not saved.';
       }
       renderPsyXState();
       renderSetup();

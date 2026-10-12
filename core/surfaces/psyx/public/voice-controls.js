@@ -16,12 +16,12 @@ function syncVoicePreferenceControls() {
   $('voiceLanguage').value = prefs.language;
   $('voiceTtsProvider').value = prefs.ttsProvider;
   const choices = window.VoixAudio?.choices(state.voice.catalog, prefs.language, prefs.ttsProvider) || [];
-  const select = $('voiceTtsVoice'); select.replaceChildren(new Option('Voix par défaut de la langue', ''));
+  const select = $('voiceTtsVoice'); select.replaceChildren(new Option('Default voice for the language', ''));
   for (const voice of choices) {
-    const option = new Option(`${voice.name} · ${voice.locale}${voice.available ? '' : ' · indisponible'}`, voice.id);
+    const option = new Option(`${voice.name} · ${voice.locale}${voice.available ? '' : ' · unavailable'}`, voice.id);
     option.disabled = !voice.available; option.title = voice.reason || ''; select.add(option);
   }
-  if (prefs.ttsVoice && !choices.some(v => v.id === prefs.ttsVoice)) select.add(new Option(`Enregistrée / personnalisée : ${prefs.ttsVoice}`, prefs.ttsVoice));
+  if (prefs.ttsVoice && !choices.some(v => v.id === prefs.ttsVoice)) select.add(new Option(`Saved / custom: ${prefs.ttsVoice}`, prefs.ttsVoice));
   select.value = prefs.ttsVoice; select.disabled = !state.voice.reachable;
   $('voiceTtsCustom').value = prefs.ttsVoice; $('voiceTtsCustom').disabled = !state.voice.reachable;
   for (const option of $('voiceTtsProvider').options) {
@@ -29,7 +29,7 @@ function syncVoicePreferenceControls() {
     option.disabled = provider ? !provider.available : false;
     option.title = provider?.reason || '';
   }
-  $('voicePreferenceSummary').textContent = `Ce navigateur parle avec ${voicePreferences.describePreferences(prefs, state.voice.status)}. Appliqué à chaque requête; les réglages partagés de VoiX ne changent pas.`;
+  $('voicePreferenceSummary').textContent = `This browser speaks with ${voicePreferences.describePreferences(prefs, state.voice.status)}. Applied to each request; the shared VoiX settings do not change.`;
 }
 
 function updateVoicePreference(field, value) {
@@ -40,8 +40,8 @@ function updateVoicePreference(field, value) {
   const rejected = field === 'ttsVoice' && String(value || '').trim() && !state.voice.prefs.ttsVoice;
   syncVoicePreferenceControls();
   $('voiceActionStatus').textContent = rejected
-    ? 'Choisis une voix installée ou un mélange Kokoro valide.'
-    : 'Enregistré dans ce navigateur. Les réglages partagés de VoiX n’ont pas changé.';
+    ? 'Choose an installed voice or a valid Kokoro blend.'
+    : 'Saved in this browser. The shared VoiX settings did not change.';
 }
 
 function voiceSecureContextAvailable() {
@@ -52,25 +52,25 @@ function updateVoiceButton() {
   const recording = state.voice.recorder?.state === 'recording';
   const available = state.voice.enabled && state.voice.reachable && voiceSecureContextAvailable();
   voiceRecord.disabled = !recording && (!available || !state.ready || state.busy || state.voice.recordingPending);
-  voiceRecord.textContent = recording ? 'Stop' : 'Micro';
+  voiceRecord.textContent = recording ? 'Stop' : 'Mic';
   voiceRecord.classList.toggle('recording', recording);
-  voiceRecord.setAttribute('aria-label', recording ? 'Arrêter l’enregistrement' : 'Enregistrer un message vocal');
+  voiceRecord.setAttribute('aria-label', recording ? 'Stop recording' : 'Record a voice message');
   voiceRecord.title = available
-    ? (recording ? 'Arrêter et transcrire cet enregistrement' : 'Enregistrer un message vocal privé et local')
-    : 'L’enregistrement demande l’adresse HTTPS de confiance de PsyX et un service VoiX joignable';
+    ? (recording ? 'Stop and transcribe this recording' : 'Record a private, local voice message')
+    : 'Recording needs the trusted PsyX HTTPS address and a reachable VoiX service';
 }
 
 function renderVoiceStatus(status = null, error = null) {
   const secure = voiceSecureContextAvailable();
-  $('voiceSecureNotice').textContent = secure ? '' : 'Le micro est bloqué à cette adresse. Ouvre PsyX par son adresse HTTPS de confiance.';
+  $('voiceSecureNotice').textContent = secure ? '' : 'The microphone is blocked at this address. Open PsyX through its trusted HTTPS address.';
   $('voiceStatusDot').classList.toggle('online', Boolean(status?.reachable));
   $('voiceStatusDot').classList.toggle('offline', !status?.reachable);
   $('voiceStatusText').textContent = !state.voice.enabled
-    ? 'La voix n’est pas activée sur cette installation'
-    : status?.reachable ? (status.activeUpstream === 'fallback' ? 'Voix locale de secours active' : 'VoiX local est prêt') : 'VoiX local est indisponible';
+    ? 'Voice is not enabled on this installation'
+    : status?.reachable ? (status.activeUpstream === 'fallback' ? 'Fallback local voice active' : 'Local VoiX is ready') : 'Local VoiX is unavailable';
   $('voiceStatusDetail').textContent = status?.reachable
-    ? `Reconnaissance ${status.config?.whisperModel || 'Whisper'} · synthèse par défaut ${status.config?.ttsProvider || 'locale'} · VoiX ${status.serviceVersion || ''}`
-    : (error?.message || 'L’audio reste désactivé tant que le service de voix privé est injoignable.');
+    ? `Recognition ${status.config?.whisperModel || 'Whisper'} · default synthesis ${status.config?.ttsProvider || 'local'} · VoiX ${status.serviceVersion || ''}`
+    : (error?.message || 'Audio stays off while the private voice service is unreachable.');
   for (const id of ['voiceLanguage', 'voiceTtsProvider', 'voiceInputDevice', 'voiceFindDevices', 'voiceTest']) {
     $(id).disabled = !status?.reachable;
   }
@@ -84,7 +84,7 @@ async function loadVoiceStatus() {
     renderVoiceStatus();
     return;
   }
-  $('voiceStatusText').textContent = 'Vérification de VoiX local…';
+  $('voiceStatusText').textContent = 'Checking local VoiX…';
   try {
     const [status, catalog] = await Promise.all([api('/api/psyx/voice/status', { cache: 'no-store' }), api('/api/psyx/voice/catalog', { cache: 'no-store' }).catch(() => null)]);
     state.voice.catalog = catalog;
@@ -101,15 +101,15 @@ async function loadVoiceStatus() {
 }
 
 async function refreshMicrophones({ requestPermission = false } = {}) {
-  if (!voiceSecureContextAvailable()) throw new Error('Utilise l’adresse HTTPS de confiance de PsyX pour autoriser le micro.');
+  if (!voiceSecureContextAvailable()) throw new Error('Use the trusted PsyX HTTPS address to allow the microphone.');
   if (requestPermission) {
     const permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     permissionStream.getTracks().forEach((track) => track.stop());
   }
   const devices = (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === 'audioinput');
   const selected = state.voice.prefs.inputDeviceId;
-  $('voiceInputDevice').innerHTML = '<option value="">Micro par défaut du système</option>' + devices.map((device, index) =>
-    `<option value="${escapeHtml(device.deviceId)}">${escapeHtml(device.label || `Micro ${index + 1}`)}</option>`
+  $('voiceInputDevice').innerHTML = '<option value="">System default microphone</option>' + devices.map((device, index) =>
+    `<option value="${escapeHtml(device.deviceId)}">${escapeHtml(device.label || `Microphone ${index + 1}`)}</option>`
   ).join('');
   $('voiceInputDevice').value = devices.some((device) => device.deviceId === selected) ? selected : '';
 }
@@ -117,7 +117,7 @@ async function refreshMicrophones({ requestPermission = false } = {}) {
 async function transcribeRecording(blob) {
   const captureSequence = state.voice.captureSequence;
   if (!state.ready) return;
-  $('voiceActionStatus').textContent = 'Transcription locale…';
+  $('voiceActionStatus').textContent = 'Transcribing locally…';
   const response = await fetch('/api/psyx/voice/transcribe', {
     method: 'POST',
     credentials: 'same-origin',
@@ -130,12 +130,12 @@ async function transcribeRecording(blob) {
   const payload = await response.json().catch(() => ({}));
   assertCurrentCapture(captureSequence);
 
-  if (!response.ok || payload.ok === false) throw new Error(payload.message || `La transcription a échoué (${response.status})`);
+  if (!response.ok || payload.ok === false) throw new Error(payload.message || `Transcription failed (${response.status})`);
   const transcript = String(payload.data?.text || payload.text || '').trim();
-  if (!transcript) throw new Error('Aucune parole détectée.');
+  if (!transcript) throw new Error('No speech detected.');
   input.value = input.value.trim() ? `${input.value.trim()} ${transcript}` : transcript;
   resizeInput();
-  $('voiceActionStatus').textContent = 'Transcrit localement. Aucun audio n’a été conservé.';
+  $('voiceActionStatus').textContent = 'Transcribed locally. No audio was kept.';
   // Only a reply that will be spoken is asked for in spoken form; dictation read on screen stays a normal reply.
   if (state.voice.prefs.autoSend) await sendMessage(input.value, state.voice.prefs.spokenReplies && state.voice.reachable ? { source: 'voice' } : {});
   else input.focus();
@@ -164,7 +164,7 @@ async function startVoiceRecording() {
   if ($('voiceSessionDialog').open) return;
   const captureSequence = state.voice.captureSequence;
   if (!state.ready) return;
-  if (!voiceSecureContextAvailable()) throw new Error('Utilise l’adresse HTTPS de confiance de PsyX pour enregistrer.');
+  if (!voiceSecureContextAvailable()) throw new Error('Use the trusted PsyX HTTPS address to record.');
   state.voice.speech?.cancel();
   const deviceId = state.voice.prefs.inputDeviceId;
   const mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -184,12 +184,12 @@ async function startVoiceRecording() {
   });
   recorder.start(250);
   state.voice.stopTimer = setTimeout(() => void stopVoiceRecording().catch(showVoiceError), 120000);
-  $('voiceActionStatus').textContent = 'Enregistrement… appuie sur Stop quand tu as fini.';
+  $('voiceActionStatus').textContent = 'Recording… press Stop when you are done.';
   updateVoiceButton();
 }
 
 function showVoiceError(error) {
-  $('voiceActionStatus').textContent = error?.message || 'La voix a échoué.';
+  $('voiceActionStatus').textContent = error?.message || 'Voice failed.';
   updateVoiceButton();
 }
 
@@ -214,9 +214,9 @@ async function toggleVoiceRecording() {
 async function speakText(text) {
   if (!state.ready || !state.voice.enabled || !state.voice.reachable || !String(text || '').trim()) return;
   try {
-    if (!window.VoixAudio) throw new Error('Le lecteur de voix local est indisponible.');
+    if (!window.VoixAudio) throw new Error('The local voice player is unavailable.');
     state.voice.speech ||= new window.VoixAudio.Speech({
-      onReceipt: receipt => { $('voiceActionStatus').textContent = `Voix : ${receipt.provider} · ${receipt.voice} · ${receipt.language}`; },
+      onReceipt: receipt => { $('voiceActionStatus').textContent = `Voice: ${receipt.provider} · ${receipt.voice} · ${receipt.language}`; },
       onMetrics: metrics => { $('voiceActionStatus').title = JSON.stringify(metrics); },
     });
     const request = voicePreferences.synthesisRequest(spokenVoiceText(text), state.voice.prefs);
@@ -228,7 +228,7 @@ async function speakText(text) {
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
 
-        throw new Error(payload.message || `La synthèse a échoué (${response.status})`);
+        throw new Error(payload.message || `Speech synthesis failed (${response.status})`);
       }
       return response;
     });
@@ -245,10 +245,10 @@ function wireVoiceControls() {
   });
   $('voiceRefresh').addEventListener('click', loadVoiceStatus);
   $('voiceFindDevices').addEventListener('click', async () => {
-    $('voiceActionStatus').textContent = 'Demande d’accès au micro…';
+    $('voiceActionStatus').textContent = 'Requesting microphone access…';
     try {
       await refreshMicrophones({ requestPermission: true });
-      $('voiceActionStatus').textContent = 'Micros actualisés.';
+      $('voiceActionStatus').textContent = 'Microphones refreshed.';
     } catch (error) { showVoiceError(error); }
   });
   $('voiceSpokenReplies').addEventListener('change', () => {
@@ -267,7 +267,7 @@ function wireVoiceControls() {
   $('voiceTtsProvider').addEventListener('change', () => updateVoicePreference('ttsProvider', $('voiceTtsProvider').value));
   $('voiceTtsVoice').addEventListener('change', () => updateVoicePreference('ttsVoice', $('voiceTtsVoice').value.trim()));
   $('voiceTest').addEventListener('click', () => speakText(voicePreferences.testSentence(state.voice.prefs)));
-  $('voiceStop').addEventListener('click', () => { cancelVoiceCapture(); stopVoiceSession(); state.voice.speech?.cancel(); $('voiceActionStatus').textContent = 'Voix arrêtée.'; });
+  $('voiceStop').addEventListener('click', () => { cancelVoiceCapture(); stopVoiceSession(); state.voice.speech?.cancel(); $('voiceActionStatus').textContent = 'Voice stopped.'; });
   $('voiceTtsCustom').addEventListener('change', () => updateVoicePreference('ttsVoice', $('voiceTtsCustom').value.trim()));
   voiceDialog.addEventListener('close', cancelVoiceCapture);
   document.addEventListener('visibilitychange', () => { if (document.hidden) cancelVoiceCapture(); });
