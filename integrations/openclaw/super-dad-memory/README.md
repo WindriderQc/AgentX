@@ -80,6 +80,17 @@ attempt cannot acquire the dedicated worker's model-facing tool capabilities. Th
 instance supplies `conversationWorkAgentId` and a private `conversationWorkToken`
 matching Core, and grants the dedicated worker only this tool. See
 [the Core contract](../../../docs/NESTOR_CONVERSATION_WORK.md).
+
+In Core's `native` mode, every accepted personal work uses complete Main rather
+than the dedicated worker. Main's `conversation_work context` relays one private
+`native_context` read using the hook's exact session/run identity, without an
+arbitrary work selector. It refreshes canonical requests, current recent turns,
+guardian replies and pending or received results. It grants no worker task or
+publication capability. Main retains its installed native tools and specialists;
+Core receives the exact native final answer, including a tool-free reasoning
+answer or a private no-work review of an adequate greeting. The continuity
+catalog advertises `nativeConversation` so an older installation refuses before
+dispatch.
 # Native web consultation budget
 
 For a Core-bound background Main web consultation, the pre-tool hook asks Core
@@ -87,6 +98,8 @@ to admit each native call using the host's session, run and call identities.
 Core retains the limits and admissions in the existing conversation work.
 After four web reads or eight total calls, further tools are blocked and Main
 must conclude from checked sources or describe the actual lookup limitation.
+General complete Main work has sixteen parent tool admissions and four web reads;
+the web-only limit does not consume its remaining non-web permissions.
 Ordinary guardian runs and specialist consultations preserve their native
 tools. This adds no model-visible tool or grant. Deployment requires matching
 Core and plugin versions; the continuity catalog advertises the budget hook.

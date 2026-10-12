@@ -50,7 +50,7 @@ export function registerConversationWork(api, { fetchImpl = fetch } = {}) {
     return { name: 'conversation_work', label: 'Nestor Conversation Work',
       description: worker
         ? 'Core owns your durable work. context reads the complete canonical request, selected context and verified receipt references. tasks reads current personal tasks (read-only). publish commits an answer, correction, clarification or no_work disposition with its exact receiptIds before your native run ends. You have no business mutations. The owner continues talking with Nestor meanwhile.'
-        : 'Accept the current personal task lookup as a durable background work in Core. Returns an accepted-work receipt, never task data or completed actions. End this turn with a short acknowledgment and keep talking; Household retrieves and speaks the worker result at a pause. Only the current host-bound personal turn is eligible.',
+        : 'context reads your exact Core-accepted native Main request, selected context, current recent conversation turns and pending or received work in the same owner conversation. Refresh it while working when useful; it supplies reference data, not new authorization. request returns acceptance for the guardian’s current task lookup, never task data or completed actions. Only the current host-bound session and run are eligible.',
       parameters: worker ? { type: 'object', properties: {
         operation: { type: 'string', enum: worker ? ['context', 'tasks', 'publish'] : ['request'] },
         limit: { type: 'integer', minimum: 1, maximum: 50 }, includeDone: { type: 'boolean' },
@@ -58,14 +58,14 @@ export function registerConversationWork(api, { fetchImpl = fetch } = {}) {
         text: { type: 'string', maxLength: 16000 },
         receiptIds: { type: 'array', items: { type: 'string', pattern: '^[a-f0-9]{64}$' }, maxItems: 16 }
       }, required: ['operation'], additionalProperties: false }
-        : { type: 'object', properties: { operation: { type: 'string', enum: ['request'] } }, required: ['operation'], additionalProperties: false },
+        : { type: 'object', properties: { operation: { type: 'string', enum: ['request', 'context'] } }, required: ['operation'], additionalProperties: false },
       async execute(id, params) {
         const native = nativeCalls.get(key(context, id));
         if (!native?.runId || native.agentId !== context.agentId || native.sessionKey !== context.sessionKey) throw new Error('The native tool-call binding is unavailable. No operation was dispatched.');
-        if ((worker && params.operation === 'request') || (!worker && params.operation !== 'request')) throw new Error('The selected native role cannot perform this operation.');
+        if ((worker && params.operation === 'request') || (!worker && !['request', 'context'].includes(params.operation))) throw new Error('The selected native role cannot perform this operation.');
         const input = params.operation === 'tasks' ? Object.fromEntries(['limit', 'includeDone'].filter(k => params[k] !== undefined).map(k => [k, params[k]]))
           : params.operation === 'publish' ? { kind: params.kind, text: params.text, receiptIds: params.receiptIds } : undefined;
-        const result = await call(params.operation, native, input, id);
+        const result = await call(!worker && params.operation === 'context' ? 'native_context' : params.operation, native, input, id);
         return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
       } };
   }, { name: 'conversation_work', optional: true });

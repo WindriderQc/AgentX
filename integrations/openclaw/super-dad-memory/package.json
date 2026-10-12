@@ -1,6 +1,6 @@
 {
   "name": "@agentx/openclaw-super-dad-memory",
-  "version": "2.3.3",
+  "version": "2.4.0",
   "type": "module",
   "description": "Nestor private context, memory and verified personal workflows.",
   "files": [
