@@ -200,8 +200,9 @@
       if (work && ['failed', 'cancelled', 'paused'].includes(work.state)) {
         const labels = { failed: 'Échec', cancelled: 'Annulé', paused: 'En pause' };
         const reasons = { native_preparation_refused: 'préparation de l’agent refusée',
+          CONVERSATION_CONTEXT_REQUIRED: 'contexte insuffisant pour relire toute la conversation',
           native_result_not_published: 'résultat non publié', owner_cancelled_before_dispatch: 'annulé avant relais' };
-        const code = typeof work.reason === 'string' && /^[a-z][a-z0-9_]{0,79}$/.test(work.reason) ? work.reason : '';
+        const code = typeof work.reason === 'string' && (Object.hasOwn(reasons, work.reason) || /^[a-z][a-z0-9_]{0,79}$/.test(work.reason)) ? work.reason : '';
         return [labels[work.state], `Travail ${work.id} · ${reasons[code] || (code ? `motif Core : ${code}` : 'motif non détaillé')}`];
       }
       if (work?.result) return work.includedIn?.length ? ['Inclus', `Travail ${work.id} · contexte du tour ${work.includedIn[0].targetTurnId}`]

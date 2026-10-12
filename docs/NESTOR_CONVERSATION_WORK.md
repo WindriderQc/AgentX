@@ -24,10 +24,35 @@ no subagents and no cloud/CPU fallback. Grant only `conversation_work` plus the
 native tool-discovery transport. Do not reuse Main, the family agent or an
 existing specialist. Preserve the installed guardian and worker model/context
 contracts; the worker request bounds output to 4,096 tokens without changing
-model residency or context. The worker gets selected Core context through the
-context tool, and explicitly marked excerpts of recent turns. The complete
+model residency or context. Core supplies the complete canonical conversation
+before the worker's first invocation, separately from selected personal memory.
+The context tool refreshes that complete conversation, including original input,
+guardian replies, shown text, attachment references and recorded tool evidence.
+It also includes every published background answer on its source turn, with
+the complete retained tool evidence and separate presentation receipts; a
+published answer is not proof that the owner saw or heard it. Earlier boss
+corrections are not limited by the guardian's selected-feedback window.
+Coverage names the first/last turn and turn count; neither UI pagination limits
+nor a recent-turn window define the boss's context. Isolated native Main
+consultations receive the same complete conversation. The complete
 current human request is always retained and returned. Inputs outside the
 4,000-character intake budget refuse instead of truncating.
+
+The combined selected-memory and conversation reference block must fit the
+existing 96,000-character work-context budget. Preparation refuses with
+`CONVERSATION_CONTEXT_REQUIRED` before native dispatch if it does not fit;
+it never substitutes a summary, clips messages or drops older turns. This is
+an application context bound, not a change to the installed model window.
+Personal background review also receives the complete conversation and recorded
+tool evidence. An oversized review is disclosed without inference or partial
+advice. The guardian retains the last completed feedback, with its source-turn
+identity and an explicit distinction from newer turns that could not be reviewed.
+Family review keeps its separate existing context policy and scope.
+
+The guardian remains available while the boss works and receives the latest
+completed feedback and durable work results on subsequent turns. Roles, context
+ownership and tool permissions belong to the product; changing a model or its
+reasoning effort does not change this contract or supply additional tools.
 
 Only Main's standard personal voice turns enter this capability. Text, Open,
 explicit specialist requests, LLMx and family conversation retain their existing

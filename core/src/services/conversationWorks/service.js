@@ -5,6 +5,7 @@ const exchanges = require('../conversations/exchangeReceipts');
 const { OWNER, SCOPED, EXCHANGE_SCOPE, ACTIVE, LIMITS, hash, fail, notFound,
   eligible, sessionScope, validateResult } = require('./contract');
 const { createRepository } = require('./repository');
+const { readTurnContext, assertContextSize } = require('../conversations/turnContext');
 
 function createConversationWorks({ conversations, tasks, env = process.env, repository = createRepository(), classify = () => false, nativeOnly = () => false, nativeRead = () => false,
   nativeBudget = () => null, exchangeStore = exchanges, now = () => new Date() } = {}) {
@@ -118,16 +119,40 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     const turn = await conversations.getTurn({ ...query(row.sessionId), traceId: row.turnId });
     if (!turn || hash(turn.inputText) !== row.requestSha256) throw fail('CONVERSATION_WORK_CONTEXT_UNAVAILABLE', 'The complete canonical request is unavailable.', 503);
     const selected = row.contextRef ? await repo.read(row, row.contextRef) : { selectedContext: '' };
+    const conversation = await conversationContext(row.sessionId);
+    assertContextSize(selected.selectedContext + JSON.stringify(conversation), LIMITS.context);
     return { authority: 'core.conversation-works', id: row._id, turnId: row.turnId,
       request: turn.inputText, guardianReply: turn.replyText, guardianOutcome: turn.outcome,
       guardianEvidence: turn.toolEvidence ? { authority: turn.toolEvidence.authority, runId: turn.toolEvidence.runId,
-        status: turn.toolEvidence.status, receipts: (turn.toolEvidence.receipts || []).slice(-40) } : null, selectedContext: selected.selectedContext,
+        status: turn.toolEvidence.status, receipts: turn.toolEvidence.receipts || [] } : null, selectedContext: selected.selectedContext,
       attachments: turn.attachments || [], mode: row.mode, classification: row.classification,
       capabilities: row.mode === 'read' ? ['tasks.personal.list'] : [],
-      recentTurns: (await conversations.listTurns(query(row.sessionId), { limit: 12, sort: { createdAt: -1 } })).map(turn => ({
-        turnId: turn.traceId, outcome: turn.outcome, inputText: turn.inputText.length > 2000 ? turn.inputText.slice(0, 2000) + ' [shortened context; complete turn retained in Core]' : turn.inputText,
-        replyText: turn.replyText.length > 2000 ? turn.replyText.slice(0, 2000) + ' [shortened context; complete turn retained in Core]' : turn.replyText })),
+      conversation,
       receiptIds: row.tools.map(item => item.id) };
+  }
+  async function conversationContext(sessionId) {
+    await session(sessionId);
+    const conversation = await readTurnContext(conversations, query(sessionId));
+    const turns = new Map(conversation.turns.map(turn => [turn.turnId, turn]));
+    // Published background answers are part of Nestor's dialogue even though
+    // they do not replace the guardian's immutable assistant slot. No UI or
+    // guardian-feedback window limits this trusted context read (Mongo limit 0).
+    const rows = await repo.find({ sessionId, 'result.version': { $exists: true }, 'result.kind': { $ne: 'no_work' } }, 0);
+    for (const row of rows) {
+      const turn = turns.get(row.turnId);
+      if (!turn) throw fail('CONVERSATION_WORK_CONTEXT_UNAVAILABLE', 'A background answer has no canonical conversation turn.', 503);
+      const result = await repo.read(row, row.result.payloadRef);
+      const evidence = [];
+      for (const tool of row.tools) evidence.push({ id: tool.id, tool: tool.tool, status: tool.status,
+        runId: tool.runId, data: await repo.read(row, tool.payloadRef) });
+      (turn.workResults ||= []).push({ authority: 'core.conversation-works', workId: row._id,
+        version: row.result.version, publishedAt: row.result.publishedAt, kind: result.kind, text: result.text,
+        receiptIds: result.receiptIds, toolEvidence: evidence,
+        presentation: { state: row.delivery?.state || 'unknown',
+          receipts: (row.delivery?.receipts || []).map(({ stage, at }) => ({ stage, at })) } });
+    }
+    conversation.coverage.workResultCount = rows.length;
+    return conversation;
   }
   async function readTasks(context, input, callId) {
     const row = await binding(context);
@@ -249,7 +274,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
         }
         await repo.mutate(id, async (saved, fence) => saved.state !== 'received' ? null : {
           fields: { contextReady: true, contextRef: saved.contextRef || await repo.payload(saved, { selectedContext:
-            'Recovered human intake. Selected turn context was not committed; use canonical recent turns and state what is missing.' }, fence),
+            'Recovered human intake. Selected personal context was not committed; use the complete canonical conversation and state what is missing.' }, fence),
             state: 'queued', guardian: { ...saved.guardian, state: ['pending', 'running'].includes(saved.guardian?.state) ? 'uncertain' : saved.guardian?.state } }, event: 'intake_recovered' });
       }
       if (['completed', 'failed', 'cancelled'].includes(row.state) && row.guardian?.state !== 'pending') await finalize(row);
@@ -262,7 +287,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       conversationId: row.conversationId }, 'completed', { packets: 0, statusCode: 200,
       conversationId: row.conversationId, workId: row._id });
   }
-  return { repo, intake, retained, prepare, guardianStarted, guardianSettled, binding, request, contextForWorker, readTasks,
+  return { repo, intake, retained, prepare, guardianStarted, guardianSettled, binding, request, contextForWorker, conversationContext, readTasks,
     admitNativeTool: require('./native-budget').createNativeBudget({ repo, conversations, session, query, policy: nativeBudget, now }),
     publish, publishNative: require('./native-results').createNativeResultReceiver({ repo, session, now }),
     recover, finalize, handled, guardianContext, guardianContextWithRefs, taskAcceptance, nativeAcceptance, wake: () => wake(), session, query, eligible: (current, channel) => eligible(current, channel, env), wakeWith: fn => { wake = fn; } };
