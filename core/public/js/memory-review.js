@@ -590,7 +590,7 @@
       return `<div class="mr-candidate-actions">${unlock}<button type="button" class="mr-btn ${allowed ? 'mr-btn-apply' : 'mr-btn-secondary'}" data-action="apply" ${allowed ? '' : `disabled title="${title}"`}>
         <i class="fas fa-route"></i> ${candidate.status === 'apply_failed' ? 'Retry apply' : 'Apply to owner'}</button></div>`;
     }
-    return '';
+    return candidate.status === 'parked' ? '<div class="mr-candidate-actions"><span class="mr-action-hint">Parked: this run had already reached its limit of review exceptions. Nothing is written for it, and it cannot be decided here.</span></div>' : '';
   }
 
   function renderCandidates() {
