@@ -98,7 +98,9 @@
     updateStartReadiness();
   }
 
-  function readPanelFromDOM() {
+  // Editing keeps every card, even unfinished ones, so card positions match;
+  // only a convened panel needs complete agents.
+  function readPanelFromDOM({ complete = true } = {}) {
     const panel = [];
     document.querySelectorAll('#formAgents .rt-agent-edit-card').forEach((card) => {
       const agent = {};
@@ -110,7 +112,7 @@
       if (session) {
         agent.runtimeConfig = { sessionKey: session };
       }
-      if (agent.agentId && (agent.runtime !== 'model' || agent.model)) panel.push(agent);
+      if (!complete || (agent.agentId && (agent.runtime !== 'model' || agent.model))) panel.push(agent);
     });
     return panel;
   }
@@ -591,6 +593,7 @@
 
     const panel = readPanelFromDOM();
     if (!panel.length) { showToast('Panel must have at least one agent', 'error'); return; }
+    if (panel.length < readPanelFromDOM({ complete: false }).length) { showToast('Give every agent an id and a model, or remove it', 'error'); return; }
     if (!$('formSynthModel').value.trim()) { showToast('Select a synthesizer model', 'error'); return; }
 
     const body = {
@@ -665,7 +668,7 @@
     const remove = e.target.closest('[data-remove]');
     if (remove) {
       const i = Number(remove.getAttribute('data-remove'));
-      currentPanel = readPanelFromDOM();
+      currentPanel = readPanelFromDOM({ complete: false });
       currentPanel.splice(i, 1);
       renderPanel();
       return;
@@ -691,9 +694,10 @@
       showToast(chairAgent() ? 'Team seated: Nestor presides and gives the verdict; the others debate.' : 'Team seated: each agent answers as itself.', 'info');
     });
     $('formAddAgent').addEventListener('click', () => {
-      currentPanel = readPanelFromDOM();
+      currentPanel = readPanelFromDOM({ complete: false });
+      const taken = currentPanel.map((agent) => Number(/^agent-(\d+)$/.exec(agent.agentId || '')?.[1]) || 0);
       currentPanel.push({
-        agentId: `agent-${currentPanel.length + 1}`,
+        agentId: `agent-${Math.max(currentPanel.length, ...taken) + 1}`,
         role: 'Agent', runtime: 'model', model: '', systemPrompt: '', enableWebSearch: false
       });
       renderPanel();
