@@ -21,7 +21,7 @@ STAGES = {"preparing", "dependencies", "model_wait", "model_generation", "tool",
 PHASES = {"preparing", "running", "delivering", "finished"}
 REASONS = {"model_budget_reserve", "hard_budget", "soft_budget_no_progress", "no_useful_progress", "model_call_limit",
            "operator_stop",
-           "worker_exit", "no_changes", "dependencies_failed", "dependencies_changed", "runner_error",
+           "worker_exit", "model_output_limit", "no_changes", "dependencies_failed", "dependencies_changed", "runner_error",
            "tests_failed", "generated_artifacts", "ineligible_task", "runtime_unavailable", "runtime_changed",
            "model_wait_inactive", "model_generation_inactive", "tool_inactive", "test_inactive"}
 REASONS.update({"continuation_checkpoint_changed", "github_token_missing", "git_reconciliation", "git_conflict_remaining", "verification_profile_unknown", "progress_history_limit", "model_termination_unverified", "authorization_removed", "queue_window_closed"})
@@ -283,6 +283,25 @@ class Progress:
     def test_remaining(self):
         return max(0, (self.cumulative_limits or {"testSeconds": STAGE_LIMITS["test"]})["testSeconds"] - self.stage_spent["testSeconds"])
 
+    def model_guidance(self):
+        """Read an advisory snapshot without touching billing or progress timers."""
+        if not self.cumulative_limits or self.phase != "running" or self.stop_reason:
+            return None
+        current, stage = self.now(), self.stage
+        elapsed = max(0, current - self.accounted_at)
+        remaining = {"workSeconds": max(0, int(min(self.hard_deadline, self.queue_deadline) - current)),
+            "modelSeconds": max(0, int(self.cumulative_limits["modelSeconds"] - self.stage_spent["modelSeconds"]
+                                      - (elapsed if stage in {"model_wait", "model_generation"} else 0))),
+            "testSeconds": max(0, int(self.cumulative_limits["testSeconds"] - self.stage_spent["testSeconds"]
+                                     - (elapsed if stage == "test" else 0))),
+            "modelCalls": max(0, self.cumulative_limits["modelCalls"] - self.model_calls),
+            "noProgressSeconds": max(0, int(self.no_progress_limit - (current - self.last_useful)))}
+        return ("Runner-owned budget update before this request (seconds, except modelCalls): " +
+                json.dumps(remaining, sort_keys=True) +
+                ". This advisory grants no authorization or extra budget. Model time includes reasoning. "
+                "Reading and repeated diagnostics do not count as useful progress. "
+                "Make the next necessary source correction and run focused tests; finish before these limits.")
+
     def write(self):
         if not self.path:
             return
@@ -326,6 +345,8 @@ class Progress:
             self.set_stage("model_wait")
         elif kind == "assistant/chunk":
             self.set_stage("model_generation")
+        elif kind == "turn/end" and isinstance(data.get("reason"), dict) and data["reason"].get("kind") == "max-tokens":
+            self.stop_reason = self.stop_reason or "model_output_limit"
         elif kind == "tool/call":
             args = data.get("arguments") or {}
             if isinstance(args, str):

@@ -66,6 +66,13 @@ product acceptance. Dependency edits require separate operator handling.
 
 The autonomous worker receives Core's remaining cumulative work, test, model
 duration and model-call budgets, plus the exact installed verification command.
+Before each model request, the relay adds a fresh runner budget advisory with
+the remaining durations, model calls and no-progress window. It preserves the
+worker's complete history and model options; the advisory is not saved back into
+the harness history and never grants authorization, credit or useful progress.
+The native Core admission and runner limits remain authoritative. A harness
+`max-tokens` termination records `model_output_limit` and blocks publication;
+it does not enlarge the model's output limit or the task's attempt ceiling.
 Model waiting and reasoning consume the model duration budget even when the
 work deadline is longer. The same native command supplies the worker's focused
 test loop and the runner's independent verification. Unknown profiles refuse

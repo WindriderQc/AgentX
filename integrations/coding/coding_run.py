@@ -323,7 +323,8 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
     relay = model_relay.serve(str(home / "model.sock"), MODEL_URL,
                              progress.model_events.put if progress else None,
                              getattr(progress, "relay_headers", None),
-                             drain_on_disconnect=bool(progress and progress.cumulative_limits))
+                             drain_on_disconnect=bool(progress and progress.cumulative_limits),
+                             budget_guidance=getattr(progress, "model_guidance", None))
     try:
         return supervise(sandbox(workspace, home, [
             "python3", "/opt/coding/model_relay.py", "inside", "/home/agent/model.sock", str(RELAY_PORT), "--",
