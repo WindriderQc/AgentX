@@ -236,7 +236,7 @@
     const response = await fetch(`/api/finance/${path}`, { method: 'POST', credentials: 'same-origin',
       headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     const data = await response.json().catch(() => null);
-    if (!response.ok || data?.status !== 'success') throw new Error(data?.message || `Erreur ${response.status}`);
+    if (!response.ok || data?.status !== 'success') throw new Error(data?.message || `Error ${response.status}`);
     return data.data;
   }
 
