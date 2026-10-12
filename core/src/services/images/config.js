@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const net = require('node:net');
 const { limits } = require('./sizes');
 const { declaredRecipe } = require('./recipeExecution');
+const { validateSampling } = require('./qwenTurbo');
 
 function localUrl(value) {
   const u = new URL(value);
@@ -29,6 +30,7 @@ function loadConfig() {
       if (!/^[a-zA-Z0-9_.-]+\.safetensors$/.test(p[key] || '')) throw new Error('Invalid image model filename');
     }
     if (!Number.isInteger(p.steps) || p.steps < 1 || p.steps > 50) throw new Error('Invalid image step count');
+    validateSampling(p);
     if (!Number.isInteger(p.maxPixels) || p.maxPixels < 262144 || p.maxPixels > limits(p.family).maxPixels) throw new Error('Invalid image pixel budget');
     if (p.recipe !== undefined) p.recipe = declaredRecipe(p.recipe);
   }

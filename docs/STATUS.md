@@ -129,6 +129,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   the selected operation with its brief and seed and can reuse its image as a
   reference. Operation observation never creates another image. Profiles and physical GPU placement require
   instance qualification; see [local images](LOCAL_IMAGES.md).
+  An optional Qwen 2.1 Turbo recipe uses the checkpoint's eight-step schedule
+  for creation and edits at Qwen's configured formats. It retains a versioned
+  archived graph/export; full-size Qwen originals remain usable as parents.
   Atelier also embeds the optional Hermes imageX specialist: conversation,
   editable prompt proposals, operational console, routing facts and read-only
   profile documents. Core retains the conversations and verifies proposal links

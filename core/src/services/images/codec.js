@@ -19,10 +19,11 @@ function decode(bytes, maxPixels = 16 * 1024 * 1024) {
   return { mimeType, width: result.width, height: result.height, data: result.data };
 }
 
-function reference(bytes) {
-  const result = decode(bytes, 4194304);
+function referenceWithin(bytes, maxPixels) {
+  const result = decode(bytes, maxPixels);
   // The worker sees decoded pixels, with no uploaded EXIF, paths or instructions in metadata.
   return PNG.sync.write({ width: result.width, height: result.height, data: result.data });
 }
+function reference(bytes) { return referenceWithin(bytes, 4194304); }
 
-module.exports = { decode, reference };
+module.exports = { decode, reference, referenceWithin };
