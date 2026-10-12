@@ -92,7 +92,8 @@ function identityFromDetail(detail) {
 
 function summarizeIdentityConsistency(services) {
     const identities = services.map((service) => service.identity).filter(Boolean);
-    const missing = services.filter((service) => !service.identity).map((service) => service.id);
+    // A service that is down has no identity to compare; that is an outage, reported as such, not a deployment mismatch.
+    const missing = services.filter((service) => !service.identity && service.status !== 'down').map((service) => service.id);
     const distinct = (key) => [...new Set(identities.map((identity) => identity[key]))];
     const profiles = distinct('profile');
     const versions = distinct('version');

@@ -76,6 +76,9 @@
         present('attention', 'Chat route not observed', 'Open Chat to inspect or choose an installed model.', 'fa-circle-question');
       } else if (!routeReady) {
         present('attention', 'Chat route needs attention', 'Open Chat, then Take the controls to choose an installed model.', 'fa-triangle-exclamation');
+      } else if (services.some(service => service.status === 'down')) {
+        const down = services.filter(service => service.status === 'down').map(service => service.label || service.id).join(', ');
+        present('attention', 'Chat route is available', `${down} not responding; open System details.`, 'fa-triangle-exclamation');
       } else if (!['ok', 'mixed'].includes(payload.consistency?.status)) {
         present('attention', 'Deployment needs attention', 'Open System details to inspect the service versions.', 'fa-triangle-exclamation');
       } else if (payload.summary?.status !== 'ok') {
