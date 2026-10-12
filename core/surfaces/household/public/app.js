@@ -118,6 +118,17 @@
     return state.session;
   }
 
+  // One question at a time on the Kids Room and Reader pages: a second send while
+  // Nestor answers would be refused (409) and the first answer would overwrite it.
+  let asking = false;
+  async function oneAtATime(formId, work) {
+    if (asking) return;
+    asking = true;
+    const button = document.querySelector(`#${formId} button.primary`);
+    if (button) button.disabled = true;
+    try { await work(); } finally { asking = false; if (button) button.disabled = false; }
+  }
+
   async function turn(packId, text, channel = 'text', options = {}) {
     const privateLane = packId === 'personal_operator';
     const scopeId = options.scopeId || (privateLane ? 'personal' : 'family');
@@ -518,7 +529,8 @@
       setRuntime(false, 'profiles unavailable · safe chat ready');
     }
     profileSelect.addEventListener('change', refreshRoom);
-    async function askForHelp(text, channel = 'text') {
+    function askForHelp(text, channel = 'text') { return oneAtATime('kidHelpForm', () => helpTurn(text, channel)); }
+    async function helpTurn(text, channel) {
       const reply = document.getElementById('kidHelpReply');
       reply.textContent = 'Thinking…';
       const chore = activeKidMode === 'mission' ? currentRoom?.next?.title : '';
@@ -535,7 +547,7 @@
       event.preventDefault();
       const input = document.getElementById('kidHelpInput');
       const text = input.value.trim();
-      if (!text) return;
+      if (!text || asking) return;
       input.value = '';
       await askForHelp(text);
     });
@@ -594,7 +606,8 @@
     app.innerHTML = readerTemplate();
     setRuntime(true, 'reader ready');
     let lastReply = '';
-    async function ask(text, channel = 'text') {
+    function ask(text, channel = 'text') { return oneAtATime('readerForm', () => readerTurn(text, channel)); }
+    async function readerTurn(text, channel) {
       const reply = document.getElementById('readerReply');
       const heard = document.getElementById('readerHeard');
       // Always show what reached Nestor so a parent can tell a hearing problem from a thinking problem.
@@ -610,7 +623,7 @@
         await playSound(result.data.sound);
       } catch (error) { reply.textContent = `Try again? ${error.message}`; }
     }
-    document.getElementById('readerForm').addEventListener('submit', async (event) => { event.preventDefault(); const input = document.getElementById('readerInput'); const text = input.value.trim(); if (!text) return; input.value = ''; await ask(text); });
+    document.getElementById('readerForm').addEventListener('submit', async (event) => { event.preventDefault(); const input = document.getElementById('readerInput'); const text = input.value.trim(); if (!text || asking) return; input.value = ''; await ask(text); });
     document.getElementById('readerReplay').addEventListener('click', () => speak(lastReply, 'fr'));
     bindRecorder(document.getElementById('readerMic'), (text) => ask(text, 'voice'), 'reader');
   }
