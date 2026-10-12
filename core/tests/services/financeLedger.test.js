@@ -433,8 +433,18 @@ describe('statement coverage', () => {
       await ingestDocument(await writeDoc(name, name), { readText, extract: extractWith(statement({ period })) });
     }
     expect((await query.coverage()).series).toEqual([
-      { series: 'Caisse Exemple ···0000', first: '2026-01', last: '2026-04', months: 2, missing: ['2026-02', '2026-03'] }
+      { series: 'Caisse Exemple ···0000', first: '2026-01', last: '2026-04', months: 2, missing: ['2026-02', '2026-03'],
+        gaps: [{ from: '2026-02-01', to: '2026-03-31' }] }
     ]);
+  });
+
+  test('finds a gap between statements that end and start mid-month', async () => {
+    for (const [name, period] of [['a.pdf', ['2026-01-15', '2026-02-14']], ['c.pdf', ['2026-03-15', '2026-04-14']]]) {
+      await ingestDocument(await writeDoc(name, name), { readText, extract: extractWith(statement({ period })) });
+    }
+    const [series] = (await query.coverage()).series;
+    expect(series.gaps).toEqual([{ from: '2026-02-15', to: '2026-03-14' }]);
+    expect(series.missing).toEqual(['2026-02', '2026-03']);
   });
 });
 

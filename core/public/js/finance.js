@@ -152,7 +152,7 @@
     $('financeCoverageList').replaceChildren(...series.map((s) => el('li', {},
       el('strong', {}, s.series), `: ${s.first} → ${s.last} · ${s.months} months`,
       s.missing.length
-        ? el('span', { class: 'finance-missing' }, ` · missing: ${s.missing.join(', ')}`)
+        ? el('span', { class: 'finance-missing' }, ` · missing: ${(s.gaps || []).map((g) => `${g.from} → ${g.to}`).join(', ') || s.missing.join(', ')}`)
         : el('span', { class: 'finance-complete' }, ' · complete'))));
   }
 
