@@ -5,7 +5,7 @@
 
 const FinanceStatement = require('../../../models/FinanceStatement');
 const FinanceTransaction = require('../../../models/FinanceTransaction');
-const { ledgerFilter } = require('./ledgers');
+const { ledgerFilter, isLiability } = require('./ledgers');
 
 const MAX_ROWS = 500;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -124,7 +124,9 @@ async function balances({ ledger } = {}) {
       if (!latest.has(account.accountKey)) {
         latest.set(account.accountKey, {
           accountKey: account.accountKey, code: account.code, issuer: statement.issuer,
-          balanceCents: account.closingCents, asOf: statement.periodEnd
+          balanceCents: account.closingCents, asOf: statement.periodEnd,
+          // A card or loan balance is owed (positive) or a credit (negative), not money held.
+          liability: isLiability(account.code)
         });
       }
     }

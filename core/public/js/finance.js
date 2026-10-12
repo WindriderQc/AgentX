@@ -55,11 +55,18 @@
     box.textContent = error ? `Data unavailable: ${error.message}` : '';
   }
 
+  // Cards and loans show what is owed, so they never read like money held.
+  function owedLabel(account) {
+    if (!account.liability) return money(account.balanceCents);
+    if (account.balanceCents > 0) return `${money(account.balanceCents)} owed`;
+    return account.balanceCents < 0 ? `${money(-account.balanceCents)} in credit` : `${money(0)} owed`;
+  }
+
   function renderBalances(accounts) {
     const tiles = $('financeBalances');
     tiles.replaceChildren(...accounts.map((account) => el('article', { class: 'finance-tile' },
       el('span', { class: 'finance-tile-label' }, `${account.code} · ${account.issuer}`),
-      el('strong', { class: 'finance-tile-value' }, money(account.balanceCents)),
+      el('strong', { class: 'finance-tile-value' }, owedLabel(account)),
       el('span', { class: 'finance-tile-date' }, `as of ${account.asOf}`))));
     if (!accounts.length) tiles.append(el('p', { class: 'finance-note' }, 'No reconciled statement yet.'));
     const select = $('financeAccount');
@@ -209,15 +216,22 @@
       try {
         await post('transactions/decisions', { transactions: [{ id: row.dataset.id, category: select.value || null,
           tags: tags.value.split(',').map((t) => t.trim()).filter(Boolean) }] });
-        await search();
+        // Categories, months and merchants all move with one decision, not just the search.
+        await refresh();
       } catch (error) {
         fail(error.message);
       }
     });
   }
 
+  // A filter change starts new reads; an older answer arriving last must not
+  // overwrite the figures of the filters now shown.
+  let refreshRun = 0;
+  let searchRun = 0;
+
   async function search(event) {
     event?.preventDefault();
+    const run = ++searchRun;
     const { q, tag } = searchParams();
     const box = $('financeSearchResult');
     updateExportLink();
@@ -225,19 +239,21 @@
     if (!q && !tag && !$('financeCategory').value) { box.replaceChildren(); return; }
     try {
       const data = await api('transactions', { ...searchParams(), limit: 50 });
+      if (run !== searchRun) return;
       const t = data.totals;
       box.replaceChildren(
         el('p', { class: 'finance-search-total' }, `${t.count} transaction(s) · out ${money(t.outCents)} · in ${money(t.inCents)}`),
         el('table', { class: 'finance-table' },
+          el('thead', {}, el('tr', {}, ...['Date', 'Description', 'Account', 'Category', 'Amount', ''].map((label) => el('th', { scope: 'col' }, label)))),
           el('tbody', {}, ...data.rows.map((row) => el('tr', { 'data-id': row.id, 'data-category': row.manual ? row.category || '' : '',
             'data-tags': row.manual ? (row.tags || []).join(', ') : '' },
             el('td', {}, row.date), el('td', {}, row.description), el('td', {}, row.accountCode),
             el('td', { class: 'finance-cat-cell' }, `${row.category || '—'}${row.tags?.length ? ` #${row.tags.join(' #')}` : ''}${row.manual ? ' ✎' : ''}`),
             el('td', { class: 'num' }, money(row.flowCents ?? row.amountCents)),
-            el('td', {}, el('button', { type: 'button', class: 'finance-link', 'data-edit': row.id }, 'Categorize')))))),
+            el('td', {}, el('button', { type: 'button', class: 'finance-link', 'data-edit': row.id, 'aria-label': `Categorize ${row.description} (${row.date})` }, 'Categorize')))))),
         ...(data.truncated ? [el('p', { class: 'finance-note' }, 'The 50 most recent are shown; the total covers everything.')] : []));
     } catch (error) {
-      box.replaceChildren(el('p', { class: 'finance-error' }, error.message));
+      if (run === searchRun) box.replaceChildren(el('p', { class: 'finance-error' }, error.message));
     }
   }
 
@@ -300,17 +316,19 @@
   }
 
   async function refresh() {
+    const run = ++refreshRun;
     try {
       const f = filters();
       const [monthly, merchants, byCategory, pending] = await Promise.all([api('summary/monthly', f),
         api('summary/merchants', { ...f, limit: 12 }), api('summary/categories', f), api('uncategorized', { limit: 1 })]);
+      if (run !== refreshRun) return;
       renderMonthly(monthly);
       renderMerchants(merchants.merchants || []);
       renderCategories(byCategory.categories || [], pending);
       await search();
       showError(null);
     } catch (error) {
-      showError(error);
+      if (run === refreshRun) showError(error);
     }
   }
 
