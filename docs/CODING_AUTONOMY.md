@@ -33,6 +33,11 @@ original identity. Completed native attempts remain immutable. Core can observe
 several PRs while one host worker runs. Observations have their own cadence,
 separate from the shared heavy-work dispatcher, and each sweep reads at most
 two due PRs, oldest first. Failed reads back off to five minutes.
+Queued CI failures continue observing the same commit while paused or blocked
+by the resume limit. A successful CI rerun can reach `ready_for_review` without
+another worker; its waiting time consumes the existing cumulative CI budget.
+Human review requests, source conflicts, stopped tasks and active corrections
+retain their own execution barriers.
 
 The runner preserves source checkpoints before fetching only `main` and the
 exact task branch. It merges remote operator contributions and current main

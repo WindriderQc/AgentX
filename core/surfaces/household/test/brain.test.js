@@ -54,6 +54,9 @@ test('a scheduled review is delivered to a waiting page and informs the next tur
   const context = brain.contextFor(SESSION.sessionId);
   assert.match(context, /advisory/);
   assert.match(context, /huit pattes, pas six/);
+  assert.match(review.adviceId, /^[a-f0-9-]{36}$/);
+  assert.deepEqual(brain.contextWithRefs(SESSION.sessionId), { text: context, refs: [{ source: 'brain',
+    adviceId: review.adviceId, version: 1, sourceTurnId: 'trace-1', coverage: ['corrections', 'interjection'] }] });
   assert.equal(await brain.wait(SESSION.sessionId, 'another-trace', { timeoutMs: 10 }), null, 'a review of another turn is not delivered');
 });
 

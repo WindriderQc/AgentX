@@ -8,6 +8,14 @@ function createWorkDelivery(works) {
     return { id: row._id, turnId: row.turnId, sessionId: row.sessionId, state: row.state,
       revision: row.revision, receivedAt: row.receivedAt, updatedAt: row.updatedAt,
       classification: row.classification, guardianStatus: row.guardian?.state || 'unknown', sequence: row.sequence, reason: row.reason || '',
+      // Only execution identities and bounded receipt metadata reach the browser.
+      // Session keys, tool payloads, selected context and prompts stay private.
+      guardianRunId: row.guardian?.runId || null,
+      attempt: row.attempt ? { id: row.attempt.id, agentId: row.attempt.agentId, runId: row.attempt.runId || null } : null,
+      tools: (row.tools || []).map(tool => ({ id: tool.id, tool: tool.tool, status: tool.status,
+        runId: tool.runId || null, at: tool.at })),
+      nativeAdmissions: (row.nativeAdmissions || []).map(call => ({ id: call.id, tool: call.tool, at: call.at })),
+      resultDisposition: row.result?.kind || null,
       controllable: row.classification !== 'native_only' && !row.attempt && ['received', 'queued', 'paused'].includes(row.state),
       result: result && result.kind !== 'no_work' ? { ...result, version: row.result.version,
         deliveryId: row.delivery.id, presentation: row.delivery.state } : null,
