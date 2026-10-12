@@ -96,15 +96,28 @@ def test_kind(command: str) -> str | None:
             return "jest"
         if exe in {"npm", "pnpm", "yarn"} and any(re.fullmatch(r"test(?::[\w-]+)?", t) for t in tokens[1:3]):
             return "npm_test"
-        if exe == "node" and any(t.endswith("run-jest.js") for t in tokens[1:2]):
+        if exe == "node" and any(t.endswith("run-jest.js") or Path(t).parts[-3:] == ("jest", "bin", "jest.js") for t in tokens[1:2]):
             return "jest"
         if exe == "node" and "--test" in tokens:
             return "node_test"
     return None
 
 
+def tool_content(content):
+    """Decode the installed harness envelope, not arbitrary JSON test output."""
+    if isinstance(content, str):
+        try:
+            decoded = json.loads(content)
+        except (ValueError, RecursionError):
+            return content
+        if isinstance(decoded, list) and decoded and all(isinstance(item, dict)
+                and item.get("type") in {"tool-result", "text"} for item in decoded):
+            return decoded
+    return content
+
+
 def message_text(message: dict) -> str:
-    content = message.get("content", "")
+    content = tool_content(message.get("content", ""))
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -313,7 +326,7 @@ class Progress:
             pending = self.pending_tests.pop((session, call_id), None)
             if pending:
                 content = message_text(message)
-                blocks = message.get("content", [])
+                blocks = tool_content(message.get("content", []))
                 errored = message.get("isError") or (isinstance(blocks, list) and any(
                     isinstance(block, dict) and block.get("isError") for block in blocks))
                 outcome = test_outcome(content, bool(errored), pending[2])

@@ -90,6 +90,41 @@ class ProgressTest(unittest.TestCase):
         self.assertNotIn("private", self.progress.path.read_text())
         self.assertNotIn("command", self.progress.path.read_text())
 
+    def test_native_jest_and_encoded_harness_results_charge_tests_without_masking_failure(self):
+        command = "/opt/node/bin/node benchmark/node_modules/jest/bin/jest.js --config /opt/coding/jest.benchmark.config.cjs --runInBand 2>&1 | tail -60"
+        self.clock[0] = 10
+        self.call(command=command)
+        self.assertEqual((self.progress.stage, self.progress.current_test), ("test", "jest"))
+        self.clock[0] = 13
+        content = json.dumps([{"type": "tool-result", "isError": False, "content": [
+            {"type": "text", "text": "FAIL synthetic.test.js\nTests: 7 failed, 38 passed\nPrivate fixture"}]}])
+        self.progress.event({"type": "tool/result", "data": {"message": {
+            "source": {"callId": "1"}, "content": content}}})
+        self.assertEqual(self.progress.last_test, {"name": "jest", "outcome": "failed"})
+        self.assertEqual(self.progress.usage()["testSeconds"], 3)
+        self.assertEqual(self.progress.last_useful, 13)
+        self.progress.write()
+        self.assertNotIn("Private fixture", self.progress.path.read_text())
+        self.assertNotIn("--config", self.progress.path.read_text())
+
+    def test_encoded_tool_error_cannot_be_reported_as_passing_from_successful_shell(self):
+        self.call()
+        content = json.dumps([{"type": "tool-result", "isError": True,
+                               "content": [{"type": "text", "text": "Synthetic execution error"}]}])
+        self.progress.event({"type": "tool/result", "data": {"message": {
+            "source": {"callId": "1"}, "content": content}}})
+        self.assertEqual(self.progress.last_test, {"name": "jest", "outcome": "failed"})
+
+    def test_native_jest_detection_and_json_decoder_do_not_promote_mentions_or_arbitrary_json(self):
+        for command in ["echo node benchmark/node_modules/jest/bin/jest.js",
+                        "node synthetic.js benchmark/node_modules/jest/bin/jest.js"]:
+            self.assertIsNone(module.test_kind(command))
+        content = json.dumps({"output": "Test Suites: 3 passed"})
+        self.assertEqual(module.message_text({"content": content}), content)
+        self.assertEqual(module.test_outcome(content, False, False), "unknown")
+        nested = "[" * 1100 + "0" + "]" * 1100
+        self.assertEqual(module.message_text({"content": nested}), nested)
+
     def test_incomplete_session_record_is_retried_and_old_history_is_not_replayed(self):
         log = self.root / ".dsh/progress-sessions/project/session/session.jsonl"
         log.parent.mkdir(parents=True)
