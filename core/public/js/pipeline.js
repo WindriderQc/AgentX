@@ -5,7 +5,7 @@
   const STATUS_ORDER = ['queued', 'in_progress', 'review', 'blocked', 'done'];
   const OPEN_ORDER = { blocked: 0, review: 1, in_progress: 2, queued: 3, done: 4 };
   const STALE_HEARTBEAT_MS = 60 * 60 * 1000;
-  const AUTO_REFRESH_MS = 10 * 1000;
+  const AUTO_REFRESH_MS = 60 * 1000; // matches the Auto-refresh button's promise
   const STORAGE_AUTO = 'agentx.pipeline.autoRefresh';
   const STORAGE_REVIEWER = 'agentx.pipeline.reviewer';
 
@@ -877,9 +877,9 @@
     renderDispatchControl();
   }
 
-  async function loadTasks({ auxiliary = true } = {}) {
+  async function loadTasks({ auxiliary = true, silent = false } = {}) {
     const version = ++state.taskReadVersion;
-    setLoading(true);
+    if (!silent) setLoading(true);
     state.attention?.refresh();
     if (auxiliary) {
       loadTeamPerformance();
@@ -915,7 +915,7 @@
       state.autoTimer = null;
     }
     if (enabled) {
-      state.autoTimer = window.setInterval(() => { if (!document.hidden) loadTasks({ silent: true }); }, AUTO_REFRESH_MS);
+      state.autoTimer = window.setInterval(() => { if (!document.hidden) loadTasks({ silent: true, auxiliary: false }); }, AUTO_REFRESH_MS); // tasks only: panels keep what the user reads or ticks
     }
     if (btn) {
       btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
