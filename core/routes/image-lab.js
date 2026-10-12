@@ -53,7 +53,7 @@ async function occupancy({ listActive, hosts }) {
       row.blocked ||= row.workloads > 0 || row.inferences > 0;
     }
     return { available: true, observedAt, maintenance: !!active.maintenance, byHost };
-  } catch { return { available: false, observedAt, reason: 'Relevé Core indisponible ; admission à vérifier' }; }
+  } catch { return { available: false, observedAt, reason: 'Core reading unavailable; admission to check' }; }
 }
 
 // A workshop session deposits a lot on the shared drive as a folder holding its images and a
@@ -74,16 +74,16 @@ function lotGroups(dir) {
       if (!trials.has(key)) trials.set(key, { image, items: [] });
       trials.get(key).items.push({ id: `${folder}-${image.arm}-${image.pass}`, title: image.recipe, src: address(image.file), original: address(image.file),
         width, height, previewWidth: Math.min(width, 960), previewHeight: Math.round(height * Math.min(width, 960) / width), sha256: image.sha256,
-        kind: 'master', seed: image.seed, seconds: image.generationSeconds, timeScope: 'Génération observée', status: 'Proposition',
-        note: m.outsidePercentPixelsOver8 !== undefined ? `${String(m.outsidePercentPixelsOver8).replace('.', ',')} % des pixels modifiés hors de la zone demandée.` : image.components?.diffusion });
+        kind: 'master', seed: image.seed, seconds: image.generationSeconds, timeScope: 'Observed generation', status: 'Proposal',
+        note: m.outsidePercentPixelsOver8 !== undefined ? `${m.outsidePercentPixelsOver8}% of pixels changed outside the requested zone.` : image.components?.diffusion });
     }
     for (const [key, { image, items }] of trials) {
       const reference = image.references?.[0];
       groups.push({ id: `lot-${folder}-${key}`.toLowerCase(), title: `${record.trialTitles?.[image.trial] || image.trial} · ${image.case}`, category: record.category || 'edition',
-        description: `${record.title} Dossier ${folder}.`, items, defaultPair: [0, Math.min(1, items.length - 1)], brief: image.brief,
-        scope: [record.scope, words.length ? `Avis reçus : « ${words.join(' » « ')} »` : null].filter(Boolean).join(' '),
+        description: `${record.title} Folder ${folder}.`, items, defaultPair: [0, Math.min(1, items.length - 1)], brief: image.brief,
+        scope: [record.scope, words.length ? `Feedback received: “${words.join('” “')}”` : null].filter(Boolean).join(' '),
         evidence: address('lot.json'),
-        ...(reference && { reference: { ...items[0], id: `${folder}-reference`, title: 'Image de départ', src: address(reference), original: address(reference), sha256: undefined } }) });
+        ...(reference && { reference: { ...items[0], id: `${folder}-reference`, title: 'Starting image', src: address(reference), original: address(reference), sha256: undefined } }) });
     }
   }
   return groups;
@@ -94,7 +94,7 @@ function createRouter({ code = CODE, data = dataRoot, lots = lotsRoot, sources =
   const intentResponse = handler => (req, res) => {
     res.set('Cache-Control', 'private, no-store').set('X-Content-Type-Options', 'nosniff');
     try { handler(req, res); }
-    catch (error) { res.status(error.statusCode || 503).json({ ok: false, message: error.statusCode ? error.message : 'Recettes indisponibles.' }); }
+    catch (error) { res.status(error.statusCode || 503).json({ ok: false, message: error.statusCode ? error.message : 'Recipes unavailable.' }); }
   };
   router.get('/api/recipes/:id', intentResponse((req, res) => res.json({ ok: true, catalogue: labIntent.catalogue(req.params.id, data()) })));
   router.post('/api/intents', express.json({ limit: '32kb' }), intentResponse((req, res) => {

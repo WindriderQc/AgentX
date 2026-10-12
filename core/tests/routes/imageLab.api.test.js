@@ -71,7 +71,7 @@ test('a lot deposited on the shared drive becomes a comparison without any edit'
   expect(group).toMatchObject({ id: 'lot-2026-10-08-trial-p3-e01', title: 'Consistency · E01', category: 'edition', brief: 'Change the jar.', defaultPair: [0, 1] });
   expect(group.items.map(i => i.title)).toEqual(['With adapter', 'Without']);
   expect(group.items[0]).toMatchObject({ original: '/images/labo/lots/2026-10-08-trial/a.png', width: 1216, previewWidth: 960, previewHeight: 707, seconds: 55.3 });
-  expect(group.items[0].note).toContain('12,1 %'); expect(group.scope).toContain('the jar is good');
+  expect(group.items[0].note).toContain('12.1%'); expect(group.scope).toContain('the jar is good');
   expect(group.reference.original).toBe('/images/labo/lots/2026-10-08-trial/references/start.png');
   expect((await request(app()).get('/images/labo/lots/2026-10-08-trial/a.png').expect(200)).body.toString()).toBe('png');
   await request(app()).get('/images/labo/lots/2026-10-08-trial/.hidden').expect(404);

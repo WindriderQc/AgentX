@@ -52,32 +52,32 @@ test('a native MAX creation remains parentless and distinct from low-noise refin
 });
 test('catalogue changes and wrong entry identities refuse instead of choosing another recipe', () => {
   const request = body(); fs.appendFileSync(path.join(dir, 'lab-resources/ready/recipes/scenes.json'), '\n');
-  expect(() => prepare(request, dir)).toThrow('Le catalogue a changé');
+  expect(() => prepare(request, dir)).toThrow('The catalogue changed');
   request.labSelection.catalogueSha256 = catalogue('scenes', dir).sha256; request.labSelection.entryId = 'missing';
-  expect(() => prepare(request, dir)).toThrow('Cette entrée');
+  expect(() => prepare(request, dir)).toThrow('This entry');
 });
 test.each(['graph', 'parent', 'qualified', 'workerUrl'])('refuses caller-supplied %s without inventing an execution contract', key => {
-  expect(() => prepare({ ...body(), [key]: 'untrusted' }, dir)).toThrow('Intention');
+  expect(() => prepare({ ...body(), [key]: 'untrusted' }, dir)).toThrow('recipe intent');
 });
 test.each([{ width: 16384 }, { height: 257 }, { seed: -1 }, { prompt: '' }, { approvedElements: 'x'.repeat(2001) }])('bounds human request fields: %o', changes => {
   expect(() => prepare({ ...body(), ...changes }, dir)).toThrow();
 });
 test('rejects unknown paths, absent data, oversized catalogues, incompatible schema and duplicate entries', () => {
-  expect(() => catalogue('../scenes', dir)).toThrow('Catalogue inconnu');
-  expect(() => catalogue('scenes', null)).toThrow('indisponibles');
-  put('scenes', { schemaVersion: 2 }); expect(() => catalogue('scenes', dir)).toThrow('incompatible');
-  put('scenes', fixture('scenes', [{ id: 'same' }, { id: 'same' }])); expect(() => catalogue('scenes', dir)).toThrow('ambiguë');
+  expect(() => catalogue('../scenes', dir)).toThrow('Unknown catalogue');
+  expect(() => catalogue('scenes', null)).toThrow('unavailable');
+  put('scenes', { schemaVersion: 2 }); expect(() => catalogue('scenes', dir)).toThrow('Incompatible catalogue');
+  put('scenes', fixture('scenes', [{ id: 'same' }, { id: 'same' }])); expect(() => catalogue('scenes', dir)).toThrow('Ambiguous');
   fs.writeFileSync(path.join(dir, 'lab-resources/ready/recipes/scenes.json'), Buffer.alloc(2 * 1024 * 1024 + 1));
-  expect(() => catalogue('scenes', dir)).toThrow('indisponibles');
+  expect(() => catalogue('scenes', dir)).toThrow('unavailable');
 });
 test('a catalogue symlink or directory is refused before opening a descriptor', () => {
   const filename = path.join(dir, 'lab-resources/ready/recipes/scenes.json');
   fs.renameSync(filename, filename + '.saved'); fs.symlinkSync(filename + '.saved', filename);
   const open = jest.spyOn(fs, 'openSync');
-  try { expect(() => catalogue('scenes', dir)).toThrow('indisponibles'); expect(open).not.toHaveBeenCalled(); }
+  try { expect(() => catalogue('scenes', dir)).toThrow('unavailable'); expect(open).not.toHaveBeenCalled(); }
   finally { open.mockRestore(); }
   fs.unlinkSync(filename); fs.mkdirSync(filename);
-  expect(() => catalogue('scenes', dir)).toThrow('indisponibles');
+  expect(() => catalogue('scenes', dir)).toThrow('unavailable');
 });
 test.each([{ id: 'bad', role: 'refine' }, { id: 'bad', role: 'native', parentSHA256: PARENT }, { id: 'bad', role: 'other' }])('rejects inconsistent MAX role/parent evidence: %o', record => {
   put('finish16', fixture('finish16', [record])); expect(() => catalogue('finish16', dir)).toThrow();
