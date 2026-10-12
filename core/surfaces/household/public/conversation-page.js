@@ -735,7 +735,10 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (shown && !input.value.trim()) input.value = text;
       if (conversation.current(epoch)) conversation.fail(error, epoch);
     }
-    finally { composer.sync(); textBusy = false; conversation.show(conversation.state, el('conversationStatus').textContent); }
+    finally {
+      composer.sync(); textBusy = false; conversation.show(conversation.state, el('conversationStatus').textContent);
+      if (document.hidden) void releaseOpen(); // finished while the page was hidden
+    }
   };
   async function typedDuringVoice() {
     const input = el('conversationMessage'), text = input.value.trim(); if (!text) return;
@@ -750,7 +753,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     if (!await conversation.typed(text, { attachments }) && !input.value.trim()) input.value = text;
     composer.sync();
   }
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { stopPreview(); conversation.stop(true); void releaseOpen(); } });
+  // A hidden page stops listening; a typed turn already sent is left to finish.
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { stopPreview(); if (!textBusy) { conversation.stop(true); void releaseOpen(); } } });
   window.addEventListener('pagehide', () => { work?.dispose(); clearInterval(audioReviewClock); stopPreview(); conversation.stop(); void openHold.release({ watch: false }); });
   el('runtimePill').textContent = 'ready';
   conversation.show('idle');
