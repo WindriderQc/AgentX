@@ -319,3 +319,5 @@ body.mr-modal-open { overflow: hidden; }
   .mr-next-actions .mr-btn { padding: 7px 9px; font-size: .78rem; }
   .mr-candidate, #mrCandidateFilters { scroll-margin-top: 128px; }
 }
+
+.mr-run-towrite { color: #ffb85c; }

@@ -344,7 +344,9 @@
       const total = Object.values(review).reduce((sum, count) => sum + (Number(count) || 0), 0);
       const active = ['collecting', 'synthesizing'].includes(run.status);
       const overdue = !!run.reconciliation?.overdue;
-      const outcome = pending ? `<b>${pending}</b> awaiting review`
+      const toWrite = (review.approved || 0) + (review.apply_failed || 0);
+      const outcome = toWrite ? `<b class="mr-run-towrite">${toWrite}</b> accepted, not written${pending ? ` · <b>${pending}</b> awaiting` : ''}`
+        : pending ? `<b>${pending}</b> awaiting review`
         : overdue ? 'Handoff overdue'
           : active ? 'Collection in progress'
           : quiet ? 'Quiet · no reviewer call'
@@ -380,6 +382,10 @@
         // A linked run may be older than the 30 listed; it still loads by id.
         const target = requested
           || state.selectedRunId
+          // A run holding accepted candidates that are not written yet comes
+          // before a newer run that only has proposals: its owner already
+          // decided, and that decision is what waits.
+          || state.runs.find(acceptedNotWritten)?.runId
           || state.runs.find((run) => run.status === 'ready_for_review' || run.status === 'partially_reviewed')?.runId
           || state.runs.find((run) => run.status === 'completed')?.runId
           || state.runs[0].runId;
@@ -392,6 +398,8 @@
       return false;
     }
   }
+
+  const acceptedNotWritten = (run) => ((run.reviewCounts?.approved || 0) + (run.reviewCounts?.apply_failed || 0)) > 0;
 
   async function selectRun(runId) {
     // Drop the previous run first: its Authorize button and link must not
