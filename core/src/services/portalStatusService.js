@@ -14,6 +14,7 @@
  */
 
 const { createServiceIdentity, SAFE_REVISION } = require('../../../shared/serviceIdentity');
+const { refreshOllamaHealth } = require('./ollamaHealthProbe');
 
 const CORE_VERSION = require('../../package.json').version || '0.0.0';
 const PROBE_TIMEOUT_MS = Number(process.env.PORTAL_HEALTH_TIMEOUT_MS) || 1500;
@@ -186,7 +187,18 @@ async function probe(svc, localHealth) {
  * @param {Object} [localHealth] core's in-process systemHealth ({mongodb,ollama})
  * @returns {Promise<Object>} { generated_at, summary, services[] }
  */
-async function getPortalStatus(localHealth) {
+const OLLAMA_STATUS_MAX_AGE_MS = 10000;
+
+// Only GET /health refreshed the Ollama status. Outside Docker nothing calls
+// it, so Home showed Model setup needed forever; a stale status is re-probed.
+async function refreshStaleOllama(localHealth) {
+    const lastCheck = Date.parse(localHealth?.ollama?.lastCheck || '');
+    if (Date.now() - lastCheck < OLLAMA_STATUS_MAX_AGE_MS) return;
+    await refreshOllamaHealth(localHealth).catch(() => {});
+}
+
+async function getPortalStatus(localHealth, { refreshOllama = false } = {}) {
+    if (refreshOllama && localHealth) await refreshStaleOllama(localHealth);
     const services = await Promise.all(SERVICES.map((service) => probe(service, localHealth)));
     const consistency = summarizeIdentityConsistency(services);
     const count = (s) => services.filter((r) => r.status === s).length;

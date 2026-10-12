@@ -516,7 +516,7 @@ app.get('/api/config', require('../routes/public-config').createPublicConfigHand
 app.get('/api/portal/health', async (_req, res) => {
   try {
     const portalStatusService = require('./services/portalStatusService');
-    const data = await portalStatusService.getPortalStatus(systemHealth);
+    const data = await portalStatusService.getPortalStatus(systemHealth, { refreshOllama: true });
     res.set('Cache-Control', 'no-store');
     res.json(data);
   } catch (err) {

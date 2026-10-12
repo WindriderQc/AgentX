@@ -156,6 +156,22 @@ describe('portalStatusService', () => {
     expect(status.consistency.status).toBe('ok');
   });
 
+  it('re-probes a stale Ollama status only when asked', async () => {
+    const health = { mongodb: { status: 'connected' }, ollama: { status: 'checking' } };
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).includes('/api/tags')) return { ok: true, status: 200 };
+      const service = String(url).includes('3081') ? 'agentx-benchmark' : 'agentx-rag';
+      return { status: 200, ok: true, json: jest.fn().mockResolvedValue({ ok: true, status: 'ok', ...identity(service) }) };
+    });
+
+    await getPortalStatus(health);
+    expect(health.ollama.status).toBe('checking');
+
+    await getPortalStatus(health, { refreshOllama: true });
+    expect(['connected', 'error']).toContain(health.ollama.status);
+    expect(typeof health.ollama.lastCheck).toBe('string');
+  });
+
   it('accepts every build revision a service may embed', async () => {
     process.env.AGENTX_BUILD_REVISION = 'v1.4.0';
     global.fetch = jest.fn(async (url) => ({
