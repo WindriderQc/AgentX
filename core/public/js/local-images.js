@@ -88,7 +88,7 @@
   async function api(route, body) {
     const r = await fetch(`/api/images${route}`, { method: body === undefined ? 'GET' : 'POST',
       ...(body !== undefined && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
-    const result = await r.json(); if (!r.ok || !result.ok) throw new Error(result.message || 'Service indisponible.'); return result;
+    const result = await r.json(); if (!r.ok || !result.ok) throw Object.assign(new Error(result.message || 'Service indisponible.'), { status: r.status }); return result;
   }
   function controls() {
     const block = locked();
@@ -279,7 +279,12 @@
   async function poll() {
     const id = operation?.id; if (!id) return;
     try { const result = await api(`/operations/${encodeURIComponent(id)}`); if (operation?.id === id) show(result.operation); }
-    catch { if (operation?.id !== id) return; $('image-status').textContent = 'Connexion interrompue. Vérification de la demande enregistrée…'; pollTimer = setTimeout(poll, 5000); }
+    catch (error) {
+      if (operation?.id !== id) return;
+      // A 4xx will not heal by retrying (unknown or removed request): stop and unlock the form.
+      if (error.status >= 400 && error.status < 500) { operation = null; controls(); $('image-status').textContent = `Cette demande n’est plus suivie : ${error.message}`; return; }
+      $('image-status').textContent = 'Connexion interrompue. Vérification de la demande enregistrée…'; pollTimer = setTimeout(poll, 5000);
+    }
   }
   function renderHistory() {
     const query = $('image-search').value.trim().toLocaleLowerCase('fr-CA');
