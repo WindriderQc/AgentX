@@ -31,10 +31,10 @@ export const SESSION_MODE_TASK = {
   deep: 'deep_reasoning',
 };
 
-const ROUTING_MODE_LABELS = { quick: 'Quick', standard: 'Standard', deep: 'Deep', manual: 'Manual' };
+const ROUTING_MODE_LABELS = { quick: 'Fast', standard: 'Balanced', deep: 'Deep reasoning', manual: 'Manual' };
 
 export function routingModeLabel(mode) {
-  return ROUTING_MODE_LABELS[mode] || 'Standard';
+  return ROUTING_MODE_LABELS[mode] || 'Balanced';
 }
 
 export function routingMode(elements, state) {
@@ -148,7 +148,7 @@ export function getHostChatState(elements, state, defaults) {
       unavailableKind: hasInstalledModel ? null : 'model setup',
       reason: hasInstalledModel
         ? (isAutoRoutingMode(elements, state)
-            ? 'Standard mode classifies each turn and selects an eligible server-owned route.'
+            ? 'Balanced mode classifies each turn and selects an eligible server-owned route.'
             : `${routingModeLabel(routingMode(elements, state))} mode uses its fixed server-owned task lane.`)
         : 'Install at least one model in the connected Ollama runtime to start a conversation.'
     };
@@ -761,7 +761,7 @@ export function updateRoutingModeUi(elements, state, defaults) {
       ? routeNeedsAttention
         ? hostState.reason
         : isAutoRoutingMode(elements, state)
-          ? 'Standard mode classifies this turn and selects an eligible host/model.'
+          ? 'Balanced mode classifies this turn and selects an eligible host/model.'
           : `${modeLabel} mode uses its fixed server-owned task lane.`
       : hostState.reason || 'Use the configured host and its pinned or loaded model.';
   }

@@ -175,7 +175,7 @@ export function updateHeaderBar(agent, state) {
       // Server-routed modes: never assert the saved manual model — it is NOT
       // what answers. Show the last model that actually replied if we have
       // one, otherwise a neutral mode label until the first reply lands.
-      const label = { quick: 'Quick', standard: 'Standard', deep: 'Deep' }[mode] || 'Standard';
+      const label = { quick: 'Fast', standard: 'Balanced', deep: 'Deep reasoning' }[mode] || 'Balanced';
       modelBadgeEl.textContent = state.lastRoutedModel || `${label} mode`;
     }
   }

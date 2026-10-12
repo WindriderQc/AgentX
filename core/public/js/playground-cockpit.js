@@ -9,8 +9,8 @@
   const COLLAPSE_KEY = 'agentx.playground.cockpit.collapsed.v1';
   const COMPACT_DISCLOSURE_QUERY = '(max-width: 720px), (max-height: 640px)';
   const MODE_META = {
-    quick: { label: 'Quick chat', task: 'Fast route', tone: 'router' },
-    standard: { label: 'Standard chat', task: 'Core router', tone: 'router' },
+    quick: { label: 'Fast chat', task: 'Fast route', tone: 'router' },
+    standard: { label: 'Balanced chat', task: 'Core router', tone: 'router' },
     deep: { label: 'Deep reasoning', task: 'Deep router', tone: 'router' },
     manual: { label: 'Manual route', task: 'Explicit choice', tone: 'manual' },
   };
