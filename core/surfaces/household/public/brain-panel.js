@@ -65,6 +65,8 @@
           const review = body?.data?.review;
           if (mine !== generation || !review) return null;
           render(review.suggestions || []);
+          if (review.status === 'context_required') onRevision({ id: `brain-${traceId}-context`, kind: 'text',
+            title: 'Relecture indisponible', body: 'Cette conversation dépasse le contexte disponible pour sa relecture complète. Aucune revue partielle n’a été utilisée.' });
           (review.revisions || []).forEach((revision, index) => onRevision({ id: `brain-${traceId}-${index}`, kind: 'text', title: `Révisé · ${revision.title}`, body: revision.body }));
           if (mayInterject(quiet, review.interjection)) onInterject(review.interjection);
           return review;

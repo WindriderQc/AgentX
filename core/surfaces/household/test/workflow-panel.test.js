@@ -105,6 +105,15 @@ test('a received or queued work does not claim review activity before a dispatch
   assert.equal(stageState('review', model.snapshot().turns[0])[0], 'En cours');
 });
 
+test('complete-context refusal discloses the unavailable review without claiming activity or advice', () => {
+  const model = createModel(); model.begin('session-1', 'turn-a', 'voice');
+  model.ingest('session-1', { items: [work('work-a', 'turn-a', 2,
+    { state: 'failed', reason: 'CONVERSATION_CONTEXT_REQUIRED', attempt: null })],
+    events: [event(1, 'work-a', 'preparation_refused', '2030-01-01T12:00:00Z')] });
+  assert.deepEqual(stageState('review', model.snapshot().turns[0]),
+    ['Échec', 'Travail work-a · contexte insuffisant pour relire toute la conversation']);
+});
+
 test('a completed review with no useful addition remains visible as completed', () => {
   const model = createModel(); model.begin('session-1', 'turn-a', 'voice');
   model.ingest('session-1', { items: [work('work-a', 'turn-a', 4,

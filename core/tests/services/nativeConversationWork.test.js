@@ -83,14 +83,23 @@ test('a greeting keeps the live guardian and is then reviewed by complete Main w
 });
 
 test('shared native context refresh sees new turns and pending work, without foreign selectors or worker privileges', async () => {
+  const older = [];
+  for (let index = 0; index < 14; index++) older.push(await conversations.recordTurn({ ...works.query(current.sessionId),
+    traceId: randomUUID(), outcome: 'completed',
+    inputText: index === 0 ? 'Earlier restriction: ' + 'x'.repeat(3000) + ' LAST_RESTRICTION' : `Question ${index}`,
+    replyText: index === 0 ? 'Earlier correction: ' + 'y'.repeat(3000) + ' LAST_CORRECTION' : `Reply ${index}` }));
   const row = await admitted();
   const before = await works.contextForNative(context(row));
   expect(before.request).toBe('Help me compare these two options.');
+  expect(before.conversation.coverage).toMatchObject({ complete: true, turnCount: 15, firstTurnId: older[0].traceId, lastTurnId: row.turnId });
+  expect(before.conversation.turns[0]).toMatchObject({ inputText: older[0].inputText, replyText: older[0].replyText });
   const later = await works.intake(input('Here is another detail to consider.'));
   await works.prepare(later.row._id, 'New detail.');
   await conversations.settleTurn({ ...works.query(current.sessionId), traceId: later.row.turnId, replyText: 'Detail received.' });
   const after = await works.contextForNative(context(row));
-  expect(after.recentTurns).toEqual(expect.arrayContaining([expect.objectContaining({ inputText: 'Here is another detail to consider.', replyText: 'Detail received.' })]));
+  expect(after.conversation.turns).toEqual(expect.arrayContaining([expect.objectContaining({ inputText: 'Here is another detail to consider.', replyText: 'Detail received.' })]));
+  expect(after.conversation.coverage.turnCount).toBe(16);
+  expect(after.conversation.turns[0]).toMatchObject({ inputText: older[0].inputText, replyText: older[0].replyText });
   expect(after.workContext).toContain(later.row._id);
   expect(after.nativeOwner).toBe('main'); expect(after).not.toHaveProperty('capabilities');
   for (const patch of [{ runId: 'resp_' + randomUUID() }, { agentId: 'family' }, { sessionKey: 'foreign' }, { workId: later.row._id }]) {
@@ -230,7 +239,7 @@ test('real voice HTTP acknowledges a clear work request immediately and keeps th
     const row = await works.repo.get(hash(current.sessionId + '\n' + turnId));
     expect(row).toMatchObject({ state: 'running', classification: 'native_work', attempt: { agentId: 'main' } });
     expect(row.result).toBeUndefined();
-    expect((await works.contextForNative(context(row))).recentTurns).toEqual(expect.arrayContaining([
+    expect((await works.contextForNative(context(row))).conversation.turns).toEqual(expect.arrayContaining([
       expect.objectContaining({ inputText: 'Bonjour.', replyText: 'Bonjour ! Je suis disponible.' })]));
   } finally { release(); await running; }
   const row = await works.repo.get(hash(current.sessionId + '\n' + turnId));
@@ -272,7 +281,7 @@ test('ordinary conversation gets a real guardian response while Main is busy, an
     expect(await works.guardianTool(bound)).toMatchObject({ delegated: true, execution: 'pending' });
     const first = await works.repo.get(accepted.row._id);
     await expect(works.guardianTool(context(first))).rejects.toMatchObject({ statusCode: 404 });
-    expect((await works.contextForNative(context(first))).recentTurns).toEqual(expect.arrayContaining([
+    expect((await works.contextForNative(context(first))).conversation.turns).toEqual(expect.arrayContaining([
       expect.objectContaining({ inputText: text, replyText: 'On reprend tranquillement. Je suis là.' })]));
   } finally { release(); await running; }
 });

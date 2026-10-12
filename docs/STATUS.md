@@ -84,6 +84,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   Main web research with durable tool admission limits or Main/Secretary consultation
   while the guardian remains available. Core retains results through reconnect, fences
   uncertain dispatches and separates display, playback start and completion.
+  Personal review, task workers and native consultations receive the complete
+  canonical conversation separately from selected memory, including recorded
+  tool evidence. Oversized context refuses rather than dropping older turns.
   The feature defaults off; text, Open, specialists and Famille keep their
   existing contracts. See [conversation work](NESTOR_CONVERSATION_WORK.md).
 - **Conversation recovery.** Playground retains accepted requests and response

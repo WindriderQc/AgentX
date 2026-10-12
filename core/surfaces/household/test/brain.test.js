@@ -153,11 +153,59 @@ test('a long shown list reaches the reviewer marked as shortened, never silently
   const steps = Array.from({ length: 10 }, (_, index) => `${index + 1}. **Étape ${index + 1}** : ${'détail '.repeat(40)}`).join('\n');
   const shown = transcript([{ inputText: 'Donne-moi 10 étapes', replyText: 'Voici 10 étapes.', display: [{ kind: 'list', body: steps }] }]);
   assert.match(shown, /10\. \*\*Étape 10\*\*/, 'a ten-step list of this size is reviewed whole');
-  const huge = transcript([{ display: [{ kind: 'text', body: 'x'.repeat(9000) }] }]);
+  const huge = transcript([{ display: [{ kind: 'text', body: 'x'.repeat(9000) }] }], { complete: false });
   assert.match(huge, /shortened for this review only; the person saw the complete text\]$/);
   const prompt = reviewerPrompt({ family: false });
   assert.match(prompt, /never claim or suggest that Nestor was cut off/);
   assert.match(prompt, /Never praise, grade or comment on Nestor's answer/);
+});
+
+test('personal review keeps the entire conversation, long text and tool evidence in canonical order', async () => {
+  const turns = Array.from({ length: 18 }, (_, index) => ({ traceId: `turn-${index}`, inputText: `Question ${index}`, replyText: `Reply ${index}` }));
+  turns[0].inputText = 'Earlier restriction: ' + 'x'.repeat(3000) + ' KEEP_THE_LAST_DETAIL';
+  turns[0].replyText = 'y'.repeat(3500) + ' EARLIER_CORRECTION';
+  turns[0].display = [{ kind: 'text', body: 'z'.repeat(9000) + ' COMPLETE_SHOWN_TEXT' }];
+  turns[0].toolEvidence = { status: 'observed', receipts: [{ tool: 'synthetic_read', result: 'VERIFIED_SOURCE' }] };
+  turns[0].workResults = [{ text: 'Prior boss correction: ' + 'w'.repeat(3000) + ' LAST_BOSS_DETAIL', presentation: { state: 'displayed' } }];
+  const calls = [];
+  const brain = createBrain({ inference: inferenceReturning(REVIEW, calls), loadTurns: async () => turns, delayMs: 0,
+    env: { HOUSEHOLD_BRAIN_ENABLED: 'true' } });
+  brain.schedule({ session: SESSION, pack: {}, traceId: 'turn-17' });
+  const review = await brain.wait(SESSION.sessionId, 'turn-17');
+  const context = calls[0].body.messages[1].content;
+  for (const turn of turns) {
+    assert.ok(context.includes(turn.inputText)); assert.ok(context.includes(turn.replyText));
+  }
+  assert.ok(context.includes(turns[0].display[0].body)); assert.match(context, /VERIFIED_SOURCE/);
+  assert.ok(context.includes(turns[0].workResults[0].text)); assert.match(context, /"state":"displayed"/);
+  assert.doesNotMatch(context, /shortened for this review/);
+  assert.ok(context.indexOf('Question 1\n') < context.indexOf('Question 17\n'));
+  assert.deepEqual(review.conversationCoverage, { complete: true, turnCount: 18, firstTurnId: 'turn-0', lastTurnId: 'turn-17' });
+});
+
+test('an oversized complete review refuses before inference and discloses the missing review', async () => {
+  const calls = [];
+  const brain = createBrain({ inference: inferenceReturning(REVIEW, calls), loadTurns: async () => [{ inputText: 'x'.repeat(100000) }],
+    delayMs: 0, env: { HOUSEHOLD_BRAIN_ENABLED: 'true' } });
+  brain.schedule({ session: SESSION, pack: {}, traceId: 'oversized' });
+  const refusal = await brain.wait(SESSION.sessionId, 'oversized');
+  assert.equal(refusal.status, 'context_required'); assert.equal(calls.length, 0);
+  assert.equal(brain.contextFor(SESSION.sessionId), '', 'a refused review cannot become advice');
+});
+
+test('a refused later review preserves the last completed feedback and identifies its older coverage', async () => {
+  let turns = TURNS;
+  const brain = createBrain({ inference: inferenceReturning(REVIEW), loadTurns: async () => turns, delayMs: 0,
+    env: { HOUSEHOLD_BRAIN_ENABLED: 'true' } });
+  brain.schedule({ session: SESSION, pack: {}, traceId: 'completed' });
+  const completed = await brain.wait(SESSION.sessionId, 'completed');
+  turns = [{ inputText: 'x'.repeat(100000) }];
+  brain.schedule({ session: SESSION, pack: {}, traceId: 'refused' });
+  assert.equal((await brain.wait(SESSION.sessionId, 'refused')).status, 'context_required');
+  const context = brain.contextWithRefs(SESSION.sessionId);
+  assert.match(context.text, /huit pattes/); assert.match(context.text, /does not validate newer turns/);
+  assert.equal(context.refs[0].adviceId, completed.adviceId);
+  assert.equal(context.refs[0].sourceTurnId, 'completed');
 });
 
 test('live preferences enable the optional brain, block disabled work, and discard admitted results without cancellation', async () => {
