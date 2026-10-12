@@ -22,8 +22,6 @@
   const hermesBase = String(root.dataset.hermesBase || '').replace(/\/+$/, '');
   const openclawControlDirect = String(root.dataset.openclawControlDirect || '').replace(/\/+$/, '');
   const openclawControlLaunch = String(root.dataset.openclawControlLaunch || '').replace(/\/+$/, '');
-  const openclawControlMode = String(root.dataset.openclawControlMode || 'unconfigured');
-  const openclawTunnelCommand = String(root.dataset.openclawControlTunnel || '').trim();
 
   const byId = (id) => document.getElementById(id);
   const asArray = (value) => Array.isArray(value) ? value : [];
@@ -617,73 +615,6 @@
     if (closeButton) closeButton.focus();
   }
 
-  function openOpenClawHandoff(path, trigger) {
-    const safePath = normalizedNativePath(path);
-    const handoff = asObject(state.data?.handoffs?.openclaw);
-    const capability = asArray(handoff.capabilities).find((item) => item.path === safePath);
-    const command = handoff.tunnelCommand || openclawTunnelCommand;
-    const destination = openclawControlUrl(safePath);
-    const body = `
-      <section class="agent-ops-drawer-lead">
-        <div>${badge('Official authority', 'live', 'fa-shield-halved')}${badge('Secure context', 'warning', 'fa-lock')}</div>
-        <p>This deployment is explicitly configured to open the official Control UI through a localhost SSH tunnel.</p>
-      </section>
-      <section class="agent-ops-drawer-facts">
-        <article><span>Destination</span><strong>${esc(capability?.label || humanize(safePath.slice(1) || 'overview'))}</strong></article>
-        <article><span>Authority</span><strong>OpenClaw Control UI</strong></article>
-        <article><span>Launch mode</span><strong>SSH localhost tunnel</strong></article>
-        <article><span>Gateway</span><strong>${esc(openclawControlDirect || 'Configured runtime')}</strong></article>
-      </section>
-      <section class="agent-ops-drawer-section">
-        <div class="agent-ops-drawer-label"><span>1 · Start the configured handoff</span><small>Run this on the workstation</small></div>
-        <div class="agent-ops-tunnel-command">
-          <code>${esc(command || 'Tunnel command is not configured.')}</code>
-          ${command ? '<button class="agent-ops-button compact" type="button" data-copy-openclaw-tunnel><i class="fas fa-copy"></i><span>Copy tunnel command</span></button>' : ''}
-        </div>
-      </section>
-      <section class="agent-ops-drawer-section">
-        <div class="agent-ops-drawer-label"><span>2 · Open the native surface</span><small>The tunnel must remain running</small></div>
-        <p class="agent-ops-drawer-note">Agent Ops routes native runtime work to the official OpenClaw Control UI.</p>
-      </section>
-      <footer class="agent-ops-drawer-actions">
-        <a class="agent-ops-button primary" href="${esc(destination)}" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right"></i>Open ${esc(capability?.label || 'Control UI')}</a>
-        <a class="agent-ops-button" href="/nerve-center"><i class="fas fa-wave-square"></i>AgentX runtime evidence</a>
-      </footer>`;
-
-    showDrawer({
-      eyebrow: 'Secure runtime handoff',
-      title: 'OpenClaw Control 7.1',
-      id: safePath,
-      icon: 'fa-satellite-dish',
-      body,
-      trigger
-    });
-  }
-
-  async function copyOpenClawTunnel(button) {
-    const handoff = asObject(state.data?.handoffs?.openclaw);
-    const command = handoff.tunnelCommand || openclawTunnelCommand;
-    if (!command) return;
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(command);
-      } else {
-        const textarea = document.createElement('textarea');
-        textarea.value = command;
-        textarea.setAttribute('readonly', '');
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.select();
-        if (!document.execCommand('copy')) throw new Error('copy unavailable');
-        textarea.remove();
-      }
-      button.innerHTML = '<i class="fas fa-check"></i><span>Copied</span>';
-    } catch {
-      button.innerHTML = '<i class="fas fa-triangle-exclamation"></i><span>Copy failed</span>';
-    }
-  }
-
   function openAgentDrawer(registryId, trigger) {
     if (!state.data) return;
     const agent = asArray(state.data.agents).find((item) => item.registryId === registryId || item.id === registryId);
@@ -1005,18 +936,6 @@
   byId('agentOpsRefresh').addEventListener('click', load);
   byId('agentOpsUnavailableRetry')?.addEventListener('click', load);
   root.addEventListener('click', (event) => {
-    const nativeControl = event.target.closest('[data-openclaw-native]');
-    if (nativeControl && openclawControlMode === 'ssh-tunnel') {
-      event.preventDefault();
-      openOpenClawHandoff(nativeControl.dataset.openclawNative, nativeControl);
-      return;
-    }
-    const copyTunnel = event.target.closest('[data-copy-openclaw-tunnel]');
-    if (copyTunnel) {
-      event.preventDefault();
-      copyOpenClawTunnel(copyTunnel);
-      return;
-    }
     if (advanced && advanced.handleClick(event)) return;
     const metric = event.target.closest('[data-metric-tab]');
     if (metric) {

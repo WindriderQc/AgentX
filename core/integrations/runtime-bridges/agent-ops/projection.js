@@ -893,7 +893,6 @@ async function buildAgentOpsProjection(options = {}) {
     handoffs: {
       openclaw: {
         status: sources.openclaw.status,
-        requiresTunnel: false,
         capabilities: [
           { label: 'Overview', path: '/overview', icon: 'fa-gauge-high' },
           { label: 'Agents', path: '/agents', icon: 'fa-users-gear' },
