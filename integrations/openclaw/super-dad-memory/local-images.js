@@ -40,7 +40,7 @@ export function registerLocalImages(api, { fetchImpl = fetch, name = 'local_imag
         return result.sessionId;
       } catch (cause) {
         // Ordinary owner turns are not background works and retain their route.
-        if (cause.statusCode === 404) return householdId;
+        if (cause.statusCode === 404 || cause.statusCode === 400 && cause.code === 'CONVERSATION_WORK_OPERATION_INVALID') return householdId;
         throw cause;
       }
     };

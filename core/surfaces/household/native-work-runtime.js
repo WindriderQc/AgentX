@@ -58,9 +58,9 @@ function nativeWorkRuntime({ works, conversations, agentClient, continuity, atta
       if (!turn || hash(turn.inputText) !== row.requestSha256) return null;
       const secretary = (row.mode === 'native' ? requestsSecretary : requestsSecretaryRead)(turn.inputText), web = requestsWebRead(turn.inputText);
       if (!nativeWork(row) || row.mode !== 'native' && !secretary && !web) return null;
-      if (row.classification === 'native_work' && evidence.answer?.text?.trim() === NO_WORK
-          && (turn.outcome !== 'completed' || !turn.replyText?.trim() || secretary || web
-            || requestsTaskCheck(turn.inputText) || requestsReadEffects(turn.inputText))) return null;
+      if (row.mode === 'native' && evidence.answer?.text?.trim() === NO_WORK
+          && (turn.outcome !== 'completed' || !turn.replyText?.trim() || row.classification === 'native_work'
+            && (secretary || web || requestsTaskCheck(turn.inputText) || requestsReadEffects(turn.inputText)))) return null;
       if (secretary && (!evidence.progress?.some(call => call.tool === 'sessions_spawn' && call.agentId === 'secretary')
           || !checks?.completedTools?.includes('sessions_spawn') || !checks.completedTools.includes('sessions_yield')
           || !evidence.answer?.deliveredBy)) return null;

@@ -277,8 +277,9 @@ test('ordinary conversation gets a real guardian response while Main is busy, an
   } finally { release(); await running; }
 });
 
-test('Main can disposition an adequate conversational guardian answer without duplicating it', async () => {
-  const row = await admitted();
+test.each(['Help me compare these two options.', 'Bonjour.'])
+('Main can disposition an adequate guardian answer but cannot hide a missing reply: %s', async text => {
+  const row = await admitted(text);
   const runtime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
   expect(await runtime.receive({ row, evidence: proof(row.attempt, NO_WORK) })).toBeNull();
   await conversations.settleTurn({ ...works.query(current.sessionId), traceId: row.turnId, replyText: 'An adequate answer from the guardian.' });
