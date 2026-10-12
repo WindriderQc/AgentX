@@ -35,6 +35,7 @@ function iotCommandDisarm(note = '') {
 
 /** First step: freeze the message and show it. Returns the refusal, or '' when armed. */
 function iotCommandArm(id, fields) {
+  if (typeof iotConfigDisarm === 'function') { iotConfigDisarm(); iotPaint('#iotConfigConfirmation', ''); }
   iotCommandDisarm(); iotCommand.outcome = null;
   const device = iotDevice();
   if (!device || device.id !== id) return 'Appareil modifié : commande non préparée.';
