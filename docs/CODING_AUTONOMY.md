@@ -107,7 +107,7 @@ just to wait.
      "hosts": ["http://gpu.example.test:11434"],
      "estimatedMinutes": 120,
      "notBefore": "2030-01-01T10:00:00-05:00",
-     "startBefore": "2030-01-01T10:15:00-05:00",
+     "startBefore": "2030-01-01T12:00:00-05:00",
      "source": {"type": "coding", "ref": "coding-session-reference", "taskId": "0123"},
      "executor": {"mode": "operator", "receiptRef": "private-receipt-reference"}
    }
@@ -128,6 +128,16 @@ just to wait.
    scope is finished/stopped, independently verify native release and close the
    same queue request through its operator-finish protocol. The loop does not
    manufacture that operator release receipt.
+
+Core re-validates the active reservation and its `startBefore` when it selects
+a worker, when the runner reads the worker manifest and on every model call.
+A `startBefore` that covers only the initial dispatch can therefore cut off
+subsequent calls even while the reserved slot has not ended. Size the reviewed
+finite window to cover the intended model calls and corrections, not just the
+first attempt. A campaign reservation grants queue admission only, never
+native admission, and an expired window is refused; it is never silently
+extended or replayed. An early failed turn keeps its local source checkpoint
+and cumulative costs and does not deliver a validated PR.
 
 API base: `/api/pipeline/coding-autonomy`. `GET /` exposes the switch revision,
 active request and task projections. `POST /config` requires `confirm: true`,
