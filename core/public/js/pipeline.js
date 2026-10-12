@@ -794,11 +794,10 @@
         toast('success', `Correction requested for task ${pipelineId}; it is back in the guarded queue.`);
         if (state.drawer.task?.automation?.mode === 'review_only') await giveTaskToTeam(pipelineId);
       } else if (action === 'requeue') {
-        const ok = window.confirm(`Release task ${pipelineId} back to the queue? Its worker claim and heartbeat will be cleared.`);
-        if (!ok) return;
+        if (!window.confirm(`Release task ${pipelineId} back to the queue? Its worker claim and heartbeat will be cleared.`)) return;
         await fetchJson(`/api/pipeline/tasks/${encodeURIComponent(pipelineId)}/status`, {
           method: 'POST',
-          body: JSON.stringify({ status: 'queued' })
+          body: JSON.stringify({ status: 'queued', by: readStorage(STORAGE_REVIEWER) || 'pipeline-ui' }) // the audit names who released it
         });
         toast('success', `Task ${pipelineId} released back to the queue.`);
       } else if (action === 'add-note') {
