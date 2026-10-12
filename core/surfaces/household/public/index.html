@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -17,16 +17,16 @@
   <link rel="stylesheet" href="/assets/household/workflow-cockpit.css?v=cockpit-1">
 </head>
 <body class="household-product">
-  <a class="skip" href="#app">Aller au contenu</a>
+  <a class="skip" href="#app">Skip to content</a>
   <!-- product-navigation -->
   <main id="app" tabindex="-1"></main>
   <dialog id="readingVoiceDialog" aria-labelledby="readingVoiceTitle">
-    <h2 id="readingVoiceTitle">Voix des lectures</h2>
-    <p>Pour les lectures et réponses parlées de Famille, Enfants et Super Dad sur ce navigateur.</p>
-    <label>Français<select id="readingVoiceFr"><option value="">Voix par défaut</option></select></label>
+    <h2 id="readingVoiceTitle">Reading voices</h2>
+    <p>For readings and spoken replies in Family, Kids and Super Dad on this browser.</p>
+    <label>French<select id="readingVoiceFr"><option value="">Default voice</option></select></label>
     <label>English<select id="readingVoiceEn"><option value="">Default voice</option></select></label>
     <p id="readingVoiceStatus" role="status"></p>
-    <div class="actions"><button type="button" id="readingVoicePreview">Écouter le français</button><button type="button" id="readingVoiceStop">Arrêter</button><button type="button" id="readingVoiceSave">Enregistrer</button><button type="button" id="readingVoiceClose">Fermer</button></div>
+    <div class="actions"><button type="button" id="readingVoicePreview">Preview French voice</button><button type="button" id="readingVoiceStop">Stop</button><button type="button" id="readingVoiceSave">Save</button><button type="button" id="readingVoiceClose">Close</button></div>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="/js/voice/speech-language.js?v=spoken-reply-1" defer></script>

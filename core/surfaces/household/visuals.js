@@ -22,7 +22,7 @@ const FILE_SOURCES = Object.freeze(['photos', 'media']);
 const IMAGE_TYPES = Object.freeze({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' });
 const IMAGE_PREFERENCE = Object.freeze({ jpg: 3, jpeg: 3, webp: 2, png: 2, gif: 1 });
 const LIMITS = Object.freeze({ query: 200, candidates: 25, timeoutMs: 8000, terms: 4 });
-const SOURCE_LABELS = Object.freeze({ web: 'Internet', photos: 'Photos de la famille', media: 'Médias de la maison', generated: 'Image générée' });
+const SOURCE_LABELS = Object.freeze({ web: 'Internet', photos: 'Family photos', media: 'Household media', generated: 'Generated image' });
 const MAX_GENERATED_BYTES = 20 * 1024 * 1024;
 
 function parseRoots(value) {

@@ -1,4 +1,4 @@
-/* Dad's Desk "À trier", "Idées à trier" and the household shopping list (Dad's Desk and the
+/* Dad's Desk "To sort", "Ideas to sort" and the household shopping list (Dad's Desk and the
    Kids Room). Core owns both; these cards only read and call its routes.
    app.js renders the pages, so the cards mount next to its elements. */
 (function () {
@@ -12,30 +12,30 @@
     return body.data;
   }
   const post = (url, payload) => api(url, { method: 'POST', body: JSON.stringify(payload) });
-  const day = (value) => value ? new Date(value).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  const day = (value) => value ? new Date(value).toLocaleDateString('en-CA', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
   // A chosen day means noon local time, like the desk's other date pickers.
   const noon = (value) => new Date(`${value}T12:00:00`).toISOString();
 
-  // ---- À trier: old deadlines to confirm and tasks whose activity passed ----
+  // ---- To sort: old deadlines to confirm and tasks whose activity passed ----
   function mountTriage(host) {
     host.dataset.mounted = 'true';
-    host.innerHTML = `<div class="row"><div class="grow"><p class="card-kicker">À trier</p><h2>Encore utile ?</h2>
-      <p class="muted">Vieilles échéances (souvent tirées d'anciens courriels) et tâches dont l'activité est passée. Rien ne se ferme tout seul : fermez-la, ou donnez la date de l'activité qu'elle sert, ou une nouvelle échéance.</p></div>
+    host.innerHTML = `<div class="row"><div class="grow"><p class="card-kicker">To sort</p><h2>Still useful?</h2>
+      <p class="muted">Old due dates (often taken from old emails) and tasks whose activity has passed. Nothing closes on its own: close it, give the date of the activity it serves, or set a new due date.</p></div>
       <span data-triage-count class="pill">…</span></div><p data-triage-status class="muted" role="status"></p><div data-triage-list class="stack"></div>`;
     const list = host.querySelector('[data-triage-list]');
     const status = (message) => { host.querySelector('[data-triage-status]').textContent = message; };
     const row = (task) => {
       const why = task.lane === 'expired'
-        ? `activité passée le ${day(task.relevantUntil)}`
-        : `échéance du ${day(task.dueAt)}${task.createdAt ? ` · capturée le ${day(task.createdAt)}` : ''}`;
+        ? `activity passed on ${day(task.relevantUntil)}`
+        : `due ${day(task.dueAt)}${task.createdAt ? ` · captured ${day(task.createdAt)}` : ''}`;
       const since = Date.parse(task.lane === 'expired' ? task.relevantUntil : task.dueAt);
       const age = Number.isFinite(since) ? Math.floor((Date.now() - since) / 86400000) : '';
       return `<div class="dad-task ${task.lane === 'expired' ? '' : 'stale'}" data-ref="${esc(task.id)}" data-task-ref="${esc(task.id)}" data-task-age="${age}">
         <div class="dad-task-main"><span class="dad-task-id">#${esc(task.id)}</span><div><strong>${esc(task.title)}</strong><small>${esc(why)}</small></div></div>
-        <div class="row wrap dad-task-actions"><button class="compact dad-done" data-triage="close">Fermer</button>
-        <input type="date" data-triage-date aria-label="Date pour #${esc(task.id)}">
-        <button class="compact" data-triage="relevant" title="La tâche reste utile jusqu'à cette date (jour de l'activité)">Utile jusqu'au</button>
-        <button class="compact" data-triage="due" title="Nouvelle date pour faire la tâche">Nouvelle échéance</button></div></div>`;
+        <div class="row wrap dad-task-actions"><button class="compact dad-done" data-triage="close">Close</button>
+        <input type="date" data-triage-date aria-label="Date for #${esc(task.id)}">
+        <button class="compact" data-triage="relevant" title="The task stays useful until this date (day of the activity)">Useful until</button>
+        <button class="compact" data-triage="due" title="New date to do the task">New due date</button></div></div>`;
     };
     async function load() {
       try {
@@ -44,9 +44,9 @@
         host.querySelector('[data-triage-count]').textContent = String(tasks.length);
         host.hidden = tasks.length === 0 && !host.dataset.touched;
         list.innerHTML = tasks.length ? tasks.map(row).join('')
-          : '<div class="dad-clear"><span>✓</span><strong>Rien à trier.</strong><small>Aucune vieille échéance ni activité passée.</small></div>';
+          : '<div class="dad-clear"><span>✓</span><strong>Nothing to sort.</strong><small>No old due date or past activity.</small></div>';
         window.HouseholdDadDay?.clamp?.(list, 3);
-        window.HouseholdDadDay?.selectable?.(list, { close: (ref) => post('/api/secretary/tasks/complete', { ref, note: 'Fermée en lot depuis Dad\'s Desk : plus utile.', by: 'household-dad-desk' }), done: (closed) => { host.dataset.touched = 'true'; status(`${closed} tâche${closed === 1 ? '' : 's'} fermée${closed === 1 ? '' : 's'}.`); return load(); } });
+        window.HouseholdDadDay?.selectable?.(list, { close: (ref) => post('/api/secretary/tasks/complete', { ref, note: 'Fermée en lot depuis Dad\'s Desk : plus utile.', by: 'household-dad-desk' }), done: (closed) => { host.dataset.touched = 'true'; status(`${closed} task${closed === 1 ? '' : 's'} closed.`); return load(); } });
       } catch (error) { status(error.message); }
     }
     list.addEventListener('click', async (event) => {
@@ -56,45 +56,45 @@
       const ref = item.dataset.ref;
       const date = item.querySelector('[data-triage-date]').value;
       const action = button.dataset.triage;
-      if (action !== 'close' && !date) { status('Choisissez d\'abord une date.'); return; }
+      if (action !== 'close' && !date) { status('Choose a date first.'); return; }
       button.disabled = true;
       host.dataset.touched = 'true';
       try {
         if (action === 'close') await post('/api/secretary/tasks/complete', { ref, note: 'Fermée depuis Dad\'s Desk : plus utile.', by: 'household-dad-desk' });
         if (action === 'relevant') await post('/api/secretary/tasks/update', { ref, relevantUntil: noon(date), by: 'household-dad-desk' });
         if (action === 'due') await post('/api/secretary/tasks/update', { ref, dueAt: noon(date), by: 'household-dad-desk' });
-        status(`#${ref} : ${action === 'close' ? 'fermée' : action === 'relevant' ? `utile jusqu'au ${day(noon(date))}` : `nouvelle échéance le ${day(noon(date))}`}.`);
+        status(`#${ref}: ${action === 'close' ? 'closed' : action === 'relevant' ? `useful until ${day(noon(date))}` : `new due date ${day(noon(date))}`}.`);
         await load();
       } catch (error) { button.disabled = false; status(error.message); }
     });
     load();
   }
 
-  // ---- Idées à trier: ideas and reminders from the children and Nestor (#13) ----
+  // ---- Ideas to sort: ideas and reminders from the children and Nestor (#13) ----
   function mountIdeas(host) {
     host.dataset.mounted = 'true';
-    host.innerHTML = `<div class="row"><div class="grow"><p class="card-kicker">Idées à trier</p><h2>Idées et rappels</h2>
-      <p class="muted">Ce que les enfants ou Nestor ont noté pour vous. Rien n'est fait avant votre choix : retenir (un fait), tâche perso, TODO AgentX, plus tard ou rejeter.</p></div>
+    host.innerHTML = `<div class="row"><div class="grow"><p class="card-kicker">Ideas to sort</p><h2>Ideas and reminders</h2>
+      <p class="muted">What the kids or Nestor noted for you. Nothing happens before you choose: remember (a fact), personal task, AgentX TODO, later or reject.</p></div>
       <span data-ideas-count class="pill">…</span></div><p data-ideas-status class="muted" role="status"></p><div data-ideas-list class="stack"></div>`;
     const list = host.querySelector('[data-ideas-list]');
     const status = (message) => { host.querySelector('[data-ideas-status]').textContent = message; };
-    const from = (idea) => `${idea.origin === 'family' ? 'Enfants' : idea.origin === 'secretary' ? 'Secrétaire' : 'Nestor'} · ${idea.memory ? 'à retenir' : idea.kind === 'reminder' ? 'rappel' : 'idée'}${idea.createdAt ? ` · ${day(idea.createdAt)}` : ''}`;
+    const from = (idea) => `${idea.origin === 'family' ? 'Kids' : idea.origin === 'secretary' ? 'Secretary' : 'Nestor'} · ${idea.memory ? 'to remember' : idea.kind === 'reminder' ? 'reminder' : 'idea'}${idea.createdAt ? ` · ${day(idea.createdAt)}` : ''}`;
     const row = (idea) => `<div class="dad-task" data-idea="${esc(idea.id)}">
         <div class="dad-task-main"><div><strong>${esc(idea.text)}</strong><small>${esc(from(idea))}</small></div></div>
-        <div class="row wrap dad-task-actions">${idea.memory ? '<button class="compact primary" data-idea-action="memory">Retenir</button>' : ''}<button class="compact${idea.memory ? '' : ' primary'}" data-idea-action="personal">Tâche perso</button>
-        <select class="compact" data-idea-service aria-label="Service du TODO AgentX">
-          <option value="">Service du TODO…</option><option value="agentx-coding">Coding Team</option>
+        <div class="row wrap dad-task-actions">${idea.memory ? '<button class="compact primary" data-idea-action="memory">Remember</button>' : ''}<button class="compact${idea.memory ? '' : ' primary'}" data-idea-action="personal">Personal task</button>
+        <select class="compact" data-idea-service aria-label="AgentX TODO service">
+          <option value="">TODO service…</option><option value="agentx-coding">Coding Team</option>
           <option value="core">Core</option><option value="benchmark">Benchmark</option>
           <option value="rag">RAG</option><option value="data">Data</option>
-        </select><button class="compact" data-idea-action="task">TODO AgentX</button><button class="compact" data-idea-action="park">Plus tard</button>
-        <button class="compact danger" data-idea-action="reject">Rejeter</button></div></div>`;
+        </select><button class="compact" data-idea-action="task">AgentX TODO</button><button class="compact" data-idea-action="park">Later</button>
+        <button class="compact danger" data-idea-action="reject">Reject</button></div></div>`;
     async function load() {
       try {
         const ideas = ((await api('/api/family/ideas')).ideas || []).filter((idea) => idea.status === 'inbox' || idea.status === 'triaged');
         host.querySelector('[data-ideas-count]').textContent = String(ideas.length);
         host.hidden = ideas.length === 0 && !host.dataset.touched;
         list.innerHTML = ideas.length ? ideas.map(row).join('')
-          : '<div class="dad-clear"><span>✓</span><strong>Rien à trier.</strong><small>Aucune idée ni rappel en attente.</small></div>';
+          : '<div class="dad-clear"><span>✓</span><strong>Nothing to sort.</strong><small>No idea or reminder waiting.</small></div>';
         window.HouseholdDadDay?.clamp?.(list, 3);
       } catch (error) { status(error.message); }
     }
@@ -104,19 +104,19 @@
       const id = button.closest('[data-idea]').dataset.idea;
       const action = button.dataset.ideaAction;
       const service = action === 'task' ? button.closest('[data-idea]').querySelector('[data-idea-service]').value : '';
-      if (action === 'task' && !service) { status('Choisissez le service du TODO AgentX.'); return; }
+      if (action === 'task' && !service) { status('Choose the AgentX TODO service.'); return; }
       button.disabled = true;
       host.dataset.touched = 'true';
       try {
         if (action === 'memory') {
           await post(`/api/family/ideas/${encodeURIComponent(id)}/promote`, { targetType: 'memory' });
-          status('Retenu dans tes souvenirs.');
+          status('Saved to your memories.');
         } else if (action === 'personal' || action === 'task') {
           const data = await post(`/api/family/ideas/${encodeURIComponent(id)}/promote`, { targetType: action, ...(service ? { service } : {}) });
-          status(`${action === 'task' ? 'TODO AgentX' : 'Tâche perso'} #${data.task.pipelineId} créée.`);
+          status(`${action === 'task' ? 'AgentX TODO' : 'Personal task'} #${data.task.pipelineId} created.`);
         } else {
           await post(`/api/family/ideas/${encodeURIComponent(id)}/set-aside`, { action });
-          status(action === 'park' ? 'Gardée pour plus tard.' : 'Rejetée.');
+          status(action === 'park' ? 'Kept for later.' : 'Rejected.');
         }
         await load();
       } catch (error) { button.disabled = false; status(error.message); }
@@ -128,15 +128,15 @@
   function mountShopping(host) {
     host.dataset.mounted = 'true';
     const parent = host.dataset.shoppingList === 'dad';
-    host.innerHTML = `<p class="card-kicker">Épicerie</p><h2>${parent ? 'Liste d\'épicerie' : 'Il manque quelque chose ?'}</h2>
-      <p class="muted">${parent ? 'La même liste que Nestor. Cochez ce qui est acheté.' : 'Ajoute ce qu\'il faut acheter. Papa verra la liste.'}</p>
-      <form data-shopping-form class="row"><input data-shopping-input maxlength="120" required autocomplete="off" placeholder="lait, pommes, pain…" aria-label="Article à acheter" class="grow"><button class="primary">Ajouter</button></form>
+    host.innerHTML = `<p class="card-kicker">Groceries</p><h2>${parent ? 'Grocery list' : 'Missing something?'}</h2>
+      <p class="muted">${parent ? 'The same list as Nestor. Check off what was bought.' : 'Add what needs buying. Dad will see the list.'}</p>
+      <form data-shopping-form class="row"><input data-shopping-input maxlength="120" required autocomplete="off" placeholder="milk, apples, bread…" aria-label="Item to buy" class="grow"><button class="primary">Add</button></form>
       <p data-shopping-status class="muted" role="status"></p><ul data-shopping-items class="shopping-items stack"></ul>`;
     const items = host.querySelector('[data-shopping-items]');
     const status = (message) => { host.querySelector('[data-shopping-status]').textContent = message; };
     const render = (list = []) => {
-      items.innerHTML = list.length ? list.map((text) => `<li class="row"><span class="grow">${esc(text)}</span>${parent ? `<button class="compact" data-bought="${esc(text)}">Acheté ✓</button>` : ''}</li>`).join('')
-        : '<li class="muted">La liste est vide.</li>';
+      items.innerHTML = list.length ? list.map((text) => `<li class="row"><span class="grow">${esc(text)}</span>${parent ? `<button class="compact" data-bought="${esc(text)}">Bought ✓</button>` : ''}</li>`).join('')
+        : '<li class="muted">The list is empty.</li>';
     };
     const load = async () => { try { render((await api('/api/family/shopping')).items); } catch (error) { status(error.message); } };
     host.querySelector('[data-shopping-form]').addEventListener('submit', async (event) => {
@@ -147,7 +147,7 @@
       try {
         const data = await post('/api/family/shopping/add', { items: wanted });
         input.value = '';
-        status(data.alreadyThere?.length ? `Déjà sur la liste : ${data.alreadyThere.join(', ')}.` : 'Ajouté.');
+        status(data.alreadyThere?.length ? `Already on the list: ${data.alreadyThere.join(', ')}.` : 'Added.');
         render(data.items);
       } catch (error) { status(error.message); }
     });

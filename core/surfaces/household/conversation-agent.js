@@ -252,7 +252,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
           { type: 'message', role: 'user', content: contextualContent }] })
       });
       phase('accepted');
-      if (!response.ok) throw new Error(`Nestor n’a pas pu prendre ta demande (erreur ${response.status}). Réessaie dans un moment.`);
+      if (!response.ok) throw new Error(`Nestor could not take your request (error ${response.status}). Try again in a moment.`);
       const decoder = new TextDecoder();
       let pending = '';
       const consume = async line => {
@@ -284,8 +284,8 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
             return;
           }
           // The native message ("internal error", a busy host…) is for the log;
-          // the person gets a plain French outcome.
-          throw Object.assign(new Error('Nestor n’a pas pu finir sa réponse cette fois. Réessaie dans un moment.'),
+          // the person gets a plain outcome.
+          throw Object.assign(new Error('Nestor could not finish its answer this time. Try again in a moment.'),
             { detail: row.response?.error?.message || row.type });
         }
         if (row.type === 'response.completed') {
@@ -352,7 +352,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
         break;
       }
       await stopWatching();
-      if (!terminal) throw new Error('La connexion avec Nestor s’est coupée avant sa réponse. Réessaie ta demande.');
+      if (!terminal) throw new Error('The connection to Nestor dropped before its answer. Try your request again.');
       // Native hooks carry the run identity; historical/global receipts never
       // count as evidence for this turn. Their absence is visible, not empty.
       // Native fallback attempts share the run ID. Their agent_end hooks can
@@ -392,10 +392,10 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       if (streamFailure) throw streamFailure;
       if (!browserCall && (evidence?.answer?.status !== 'ready' || evidence.answer.runId !== runId || !evidence.answer.text?.trim()
           || (evidence.answerObservation !== undefined && !retainedAnswer))) {
-        if (replacedStream) throw new Error('Nestor a réécrit sa réponse et je n’ai pas pu la récupérer. Réessaie ta demande.');
-        if (delegated === 'image') throw new Error('L’image n’était pas prête après 5 minutes. Redemande-la plus tard.');
-        if (delegated) throw new Error('L’autre agent n’a pas répondu après 5 minutes. Redemande plus tard.');
-        throw new Error('Nestor n’a pas donné de réponse finale. Réessaie ta demande.');
+        if (replacedStream) throw new Error('Nestor rewrote its answer and it could not be recovered. Try your request again.');
+        if (delegated === 'image') throw new Error('The image was not ready after 5 minutes. Ask for it again later.');
+        if (delegated) throw new Error('The other agent did not answer after 5 minutes. Ask again later.');
+        throw new Error('Nestor did not give a final answer. Try your request again.');
       }
       if (!browserCall) {
         answer = evidence.answer.text;
@@ -434,7 +434,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
           signal?.throwIfAborted();
           return deliver(checkFailure(language.decided ? language.language : 'fr') + (imageDelivery ? '\n\n' + imageDelivery.text : ''), imageDelivery);
         }
-        throw Object.assign(new Error('L’arrêt de Nestor n’est pas encore confirmé. La conversation est en pause.'), { code: 'NESTOR_TOOL_LOOP_UNCONFIRMED' });
+        throw Object.assign(new Error('Nestor’s stop is not confirmed yet. The conversation is paused.'), { code: 'NESTOR_TOOL_LOOP_UNCONFIRMED' });
       }
       // A terminal native model failure does not cancel its accepted Core image.
       // Observe the same run; never send another request or acquire tools for a
@@ -469,7 +469,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
           // A run cancelled while the gateway was still preparing (no output, no tool) never
           // writes agent_end. The native session lane serializes the next turn, so it is over.
           if (!settled && !generating && signal?.aborted) settled = true;
-          if (!settled) throw new Error('L’arrêt de Nestor n’est pas encore confirmé. La conversation est en pause.');
+          if (!settled) throw new Error('Nestor’s stop is not confirmed yet. The conversation is paused.');
           if (signal?.aborted) return { text: answer, sessionKey, runId, interrupted: true,
             tools: { status: evidence?.run ? 'observed' : 'unavailable', authority: `openclaw/${agentIdFor(session)}`, runId, receipts: evidence?.receipts || [], run: evidence?.run || null, performedBy: nativePerformedBy(evidence, agentIdFor(session), runId) },
             metadata: { model: evidence?.run?.model || '', provider: evidence?.run?.provider || '', routingSource: `openclaw/${agentIdFor(session)}`, runId } };

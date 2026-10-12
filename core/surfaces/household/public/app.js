@@ -25,7 +25,7 @@
     readingDialog.showModal();
     document.getElementById('readingVoiceSave').disabled = true;
     document.getElementById('readingVoicePreview').disabled = true;
-    const status = document.getElementById('readingVoiceStatus'); status.textContent = 'Chargement des voix locales…';
+    const status = document.getElementById('readingVoiceStatus'); status.textContent = 'Loading local voices…';
     try {
       const catalog = await api('/api/voix/catalog');
       for (const [language, select] of Object.entries(readingSelects)) {
@@ -33,26 +33,26 @@
         for (const provider of catalog.providers || []) {
           const group = document.createElement('optgroup'); group.label = provider.name;
           for (const voice of window.VoixAudio.choices(catalog, language, provider.id)) {
-            const option = new Option(`${voice.name} · ${voice.locale}${voice.available ? '' : ' · indisponible'}`, window.VoixAudio.voiceKey(voice));
+            const option = new Option(`${voice.name} · ${voice.locale}${voice.available ? '' : ' · unavailable'}`, window.VoixAudio.voiceKey(voice));
             option.disabled = !voice.available; group.append(option);
           }
           if (group.children.length) select.append(group);
         }
         const saved = readingVoices[language] || '';
         if (saved && ![...select.options].some(option => option.value === saved)) {
-          const option = new Option(`Voix enregistrée indisponible : ${saved.split('|')[1]}`, saved); option.disabled = true; select.append(option);
+          const option = new Option(`Saved voice unavailable: ${saved.split('|')[1]}`, saved); option.disabled = true; select.append(option);
         }
         select.value = saved;
       }
-      status.textContent = 'L’aperçu utilise le haut-parleur de ce navigateur.';
+      status.textContent = 'The preview plays through this browser’s speaker.';
       document.getElementById('readingVoiceSave').disabled = false;
       document.getElementById('readingVoicePreview').disabled = false;
-    } catch { status.textContent = 'Le catalogue local est indisponible. Les choix enregistrés sont conservés.'; }
+    } catch { status.textContent = 'The local catalog is unavailable. Saved choices are kept.'; }
   };
   document.getElementById('readingVoiceSave').onclick = () => {
     readingVoices = window.PersonaPresentation.selections(Object.fromEntries(Object.entries(readingSelects).map(([language, select]) => [language, select.value])));
-    try { localStorage.setItem(readingVoiceKey, JSON.stringify(readingVoices)); document.getElementById('readingVoiceStatus').textContent = 'Voix enregistrées sur ce navigateur.'; }
-    catch { document.getElementById('readingVoiceStatus').textContent = 'Choix actifs pour cet onglet. Le navigateur refuse l’enregistrement.'; }
+    try { localStorage.setItem(readingVoiceKey, JSON.stringify(readingVoices)); document.getElementById('readingVoiceStatus').textContent = 'Voices saved on this browser.'; }
+    catch { document.getElementById('readingVoiceStatus').textContent = 'Choices apply to this tab only. The browser refuses to save them.'; }
   };
   document.getElementById('readingVoicePreview').onclick = () => speak('Bonjour. Voici la voix choisie pour les lectures en français.', 'fr',
     window.VoixAudio.splitVoice(readingSelects.fr.value) || { provider: 'kokoro', voice: 'ff_siwis' });
@@ -99,7 +99,7 @@
 
   function clock() {
     const node = document.getElementById('clock');
-    if (node) node.textContent = new Intl.DateTimeFormat('fr-CA', { hour: '2-digit', minute: '2-digit' }).format(new Date());
+    if (node) node.textContent = new Intl.DateTimeFormat('en-CA', { hour: '2-digit', minute: '2-digit' }).format(new Date());
   }
 
   async function ensureSession(packId, scopeId = 'family', modeId = '', signal) {
@@ -136,7 +136,7 @@
   }
 
   function voiceBar(prefix) {
-    return `<div class="voice-bar" aria-label="Voice privacy controls"><span id="${prefix}VoiceState" class="voice-state" data-state="checking" role="status" aria-live="polite">Push-to-talk · checking microphone…</span><div class="voice-toggles"><button id="${prefix}MicToggle" class="compact" type="button" aria-pressed="false">Micro actif</button><button id="${prefix}SoundToggle" class="compact" type="button" aria-pressed="false">Son actif</button></div></div>`;
+    return `<div class="voice-bar" aria-label="Voice privacy controls"><span id="${prefix}VoiceState" class="voice-state" data-state="checking" role="status" aria-live="polite">Push-to-talk · checking microphone…</span><div class="voice-toggles"><button id="${prefix}MicToggle" class="compact" type="button" aria-pressed="false">Mic on</button><button id="${prefix}SoundToggle" class="compact" type="button" aria-pressed="false">Sound on</button></div></div>`;
   }
 
   function setVoiceStatus(prefix, status, label) {
@@ -238,17 +238,15 @@
 
   // A sound is a reward, not a surprise: the chip stays on screen so the child
   // can play it again without asking again.
-  function showSoundChip(node, sound, language = 'fr') {
+  function showSoundChip(node, sound) {
     if (!node) return;
     node.querySelectorAll('[data-sound-chip]').forEach((chip) => chip.remove());
     if (!sound || !sound.url) return;
-    const english = language === 'en';
-    const label = english ? sound.label.en : sound.label.fr;
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'sound-chip';
     chip.dataset.soundChip = sound.id;
-    chip.innerHTML = `<span aria-hidden="true">${esc(sound.emoji)}</span><span>${esc(english ? `Hear ${label} again` : `Réécoute ${label}`)}</span>`;
+    chip.innerHTML = `<span aria-hidden="true">${esc(sound.emoji)}</span><span>${esc(`Hear ${sound.label.en} again`)}</span>`;
     chip.addEventListener('click', () => playSound(sound, { afterSpeech: false }));
     node.appendChild(chip);
   }
@@ -323,19 +321,19 @@
       if (state.micMuted) {
         button.disabled = true;
         button.title = 'Microphone paused';
-        setVoiceStatus(prefix, 'muted', 'Micro coupé · aucune capture possible');
+        setVoiceStatus(prefix, 'muted', 'Mic off · no capture possible');
       } else if (!window.isSecureContext) {
         button.disabled = true;
         button.title = 'Microphone requires trusted HTTPS';
-        setVoiceStatus(prefix, 'unavailable', 'Texte prêt · ouvre le lien HTTPS de confiance pour parler');
+        setVoiceStatus(prefix, 'unavailable', 'Text ready · open the trusted HTTPS link to talk');
       } else if (!supported) {
         button.disabled = true;
         button.title = 'Microphone capture is unavailable in this browser';
-        setVoiceStatus(prefix, 'unavailable', 'Micro indisponible · utilise le clavier');
+        setVoiceStatus(prefix, 'unavailable', 'Mic unavailable · use the keyboard');
       } else {
         button.disabled = false;
         button.title = 'Push to talk. Nothing listens until you press.';
-        setVoiceStatus(prefix, 'ready', 'Micro prêt · appuie pour parler · jamais en écoute continue');
+        setVoiceStatus(prefix, 'ready', 'Mic ready · press to talk · never listening continuously');
       }
     }
 
@@ -343,7 +341,7 @@
       micToggle.addEventListener('click', () => {
         state.micMuted = !state.micMuted;
         micToggle.setAttribute('aria-pressed', String(state.micMuted));
-        micToggle.textContent = state.micMuted ? 'Micro coupé' : 'Micro actif';
+        micToggle.textContent = state.micMuted ? 'Mic off' : 'Mic on';
         if (state.micMuted && state.recording) {
           state.recording.discard = true;
           if (state.recording.recorder.state !== 'inactive') state.recording.recorder.stop();
@@ -355,7 +353,7 @@
       soundToggle.addEventListener('click', () => {
         state.outputMuted = !state.outputMuted;
         soundToggle.setAttribute('aria-pressed', String(state.outputMuted));
-        soundToggle.textContent = state.outputMuted ? 'Son coupé' : 'Son actif';
+        soundToggle.textContent = state.outputMuted ? 'Sound off' : 'Sound on';
         if (state.outputMuted) stopPlayback();
       });
     }
@@ -364,13 +362,13 @@
     button.addEventListener('click', async () => {
       if (state.recording) {
         if (state.recording.button !== button) return;
-        setVoiceStatus(prefix, 'stopping', 'Capture terminée · préparation…');
+        setVoiceStatus(prefix, 'stopping', 'Capture done · preparing…');
         if (state.recording.recorder.state !== 'inactive') state.recording.recorder.stop();
         return;
       }
       if (state.micMuted || !supported) return;
       try {
-        setVoiceStatus(prefix, 'permission', 'Autorise le micro pour ce tour seulement…');
+        setVoiceStatus(prefix, 'permission', 'Allow the mic for this turn only…');
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         if (state.micMuted) {
           stream.getTracks().forEach((track) => track.stop());
@@ -395,10 +393,10 @@
           button.disabled = true;
           let failed = false;
           try {
-            setVoiceStatus(prefix, 'transcribing', 'Transcription locale…');
+            setVoiceStatus(prefix, 'transcribing', 'Transcribing locally…');
             const text = await transcribe(new Blob(state.chunks, { type: recorder.mimeType || 'audio/webm' }));
-            if (!text) throw new Error('Aucun mot entendu. Réessaie ou utilise le clavier.');
-            setVoiceStatus(prefix, 'thinking', 'Nestor prépare sa réponse…');
+            if (!text) throw new Error('No words heard. Try again or use the keyboard.');
+            setVoiceStatus(prefix, 'thinking', 'Nestor is preparing an answer…');
             await onText(text);
           } catch (error) {
             failed = true;
@@ -414,9 +412,9 @@
         button.classList.add('recording');
         button.textContent = stopLabel;
         button.setAttribute('aria-pressed', 'true');
-        setVoiceStatus(prefix, 'listening', 'Micro actif · appuie encore pour terminer');
+        setVoiceStatus(prefix, 'listening', 'Mic on · press again to finish');
       } catch (error) {
-        setVoiceStatus(prefix, 'error', 'Micro refusé · utilise le clavier ou change la permission');
+        setVoiceStatus(prefix, 'error', 'Mic denied · use the keyboard or change the permission');
         toast(error.message);
       }
     });
@@ -424,23 +422,23 @@
 
   async function loadPanel() {
     await window.mountConversation({ app, api, esc, space: 'family' });
-    app.insertAdjacentHTML('beforeend', `<section class="ecosystem-primary household-spaces" aria-label="Activités en famille"><a class="ecosystem-primary-link" href="/kids"><span class="ecosystem-primary-index">01</span><span><small>Enfants</small><strong>Apprendre & participer</strong><span>Les activités et les responsabilités de la maison.</span></span></a><a class="ecosystem-primary-link" href="/lecture"><span class="ecosystem-primary-index">02</span><span><small>Lecture</small><strong>Lire ensemble</strong><span>Découvrir un texte avec Nestor.</span></span></a></section>`);
+    app.insertAdjacentHTML('beforeend', `<section class="ecosystem-primary household-spaces" aria-label="Family activities"><a class="ecosystem-primary-link" href="/kids"><span class="ecosystem-primary-index">01</span><span><small>Kids</small><strong>Learn & pitch in</strong><span>Activities and household responsibilities.</span></span></a><a class="ecosystem-primary-link" href="/lecture"><span class="ecosystem-primary-index">02</span><span><small>Reading</small><strong>Read together</strong><span>Explore a text with Nestor.</span></span></a></section>`);
     const shopping = document.createElement('section'); shopping.className = 'card household-shared-list'; app.append(shopping);
     window.HouseholdShopping.mount({ host: shopping, api, esc });
   }
 
   async function loadMemories() {
-    app.innerHTML = `<section class="home-heading"><p class="eyebrow">Super Dad · privé</p><h1>Mes souvenirs.</h1><p class="lede">Les faits, préférences et décisions que tu demandes à ton agent de retenir.</p></section><section class="memory-page"><details id="selectedNotes"></details><details id="memoryEvidence" hidden></details><details><summary>Souvenirs précédents</summary><p>Les notes conservées dans le carnet Household restent consultables ici.</p><button id="legacyNotesLoad" type="button">Consulter les anciennes notes</button><div id="legacyNotesList"></div></details></section>`;
+    app.innerHTML = `<section class="home-heading"><p class="eyebrow">Super Dad · private</p><h1>My memories.</h1><p class="lede">The facts, preferences and decisions you ask your agent to remember.</p></section><section class="memory-page"><details id="selectedNotes"></details><details id="memoryEvidence" hidden></details><details><summary>Earlier memories</summary><p>Notes kept in the Household notebook remain available here.</p><button id="legacyNotesLoad" type="button">View older notes</button><div id="legacyNotesList"></div></details></section>`;
     window.mountPersonalNotes({ host: document.getElementById('selectedNotes'), evidence: document.getElementById('memoryEvidence'), api, esc });
     document.getElementById('selectedNotes').open = true;
     document.getElementById('legacyNotesLoad').onclick = async () => {
-      const host = document.getElementById('legacyNotesList'); host.textContent = 'Chargement…';
+      const host = document.getElementById('legacyNotesList'); host.textContent = 'Loading…';
       try {
         const result = await api('/api/voice-personas/memory/search', { method: 'POST', body: JSON.stringify({ packId: 'personal_operator', scopeId: 'personal', query: '' }) });
-        host.innerHTML = result.memory.results.map(note => `<article class="personal-note"><p>${esc(note.text)}</p><small>Ancien carnet · ${esc(note.topic)}</small></article>`).join('') || '<p>Aucune ancienne note.</p>';
-      } catch { host.textContent = 'Les anciennes notes sont indisponibles pour le moment.'; }
+        host.innerHTML = result.memory.results.map(note => `<article class="personal-note"><p>${esc(note.text)}</p><small>Old notebook · ${esc(note.topic)}</small></article>`).join('') || '<p>No older notes.</p>';
+      } catch { host.textContent = 'Older notes are unavailable right now.'; }
     };
-    setRuntime(true, 'page prête');
+    setRuntime(true, 'page ready');
   }
 
   // Ma journée lives in dad-day.js; it borrows the shared helpers.
@@ -449,7 +447,7 @@
   }
 
   function kidsTemplate() {
-    return `<section class="kids-room"><div class="kids-shell"><a id="kidSoundDoor" class="kids-sound-door" href="/kids/sounds" hidden><span class="kids-sound-door-mark" aria-hidden="true">🔊</span><span><strong>Mur des sons</strong><small id="kidSoundDoorCount">sons à découvrir</small></span></a><header class="kids-header"><div><p class="eyebrow">Coin des enfants · revu par papa · IA locale · sans outils</p><h1>Une chose à la fois.</h1><p class="lede">Pose une question, apprends, pratique ou trouve une petite étape sécuritaire. Pas besoin de profil; papa approuve chaque tâche cochée.</p></div><label class="kids-profile"><span>Qui es-tu? (facultatif)</span><select id="kidProfile" aria-label="Profil de la famille (facultatif)"><option value="">Invité</option></select></label></header><div id="kidsEmpty" class="kids-welcome" hidden><div><p class="card-kicker">Prêt tout de suite</p><h2>Tu peux poser tes questions.</h2><p>Pas besoin de nom pour parler à Nestor ou utiliser la Lecture. Un profil sert seulement à tes responsabilités à la maison.</p></div><div class="row wrap"><a class="button primary" href="/lecture">Ouvrir la Lecture</a><a class="button" href="/dad/family">Papa : ajouter profils et tâches</a></div></div><section id="kidsContent" class="kids-grid" hidden><article id="kidNextCard" class="next-chore"><p class="card-kicker">Qu’est-ce que je fais maintenant?</p><div id="kidNext"></div></article><aside id="kidProgressCard" class="kids-progress"><p class="card-kicker">Aujourd’hui</p><div id="kidProgress"></div></aside><article class="kids-help"><div class="row"><div class="grow"><p class="card-kicker">Nestor t’aide à apprendre</p><h2>Comment je peux t’aider?</h2></div><a class="button compact" href="/lecture">Ouvrir la Lecture</a></div><div class="kid-ai-boundary" role="note"><strong>Nestor est une IA, pas une personne.</strong><span>Il peut se tromper. Ne donne pas d’informations privées. Un parent peut relire cette conversation. Vérifie les choses importantes avec un adulte de confiance.</span></div><div class="kid-mode-grid" aria-label="Choisis comment Nestor t’aide"><button type="button" class="kid-mode active" data-kid-mode-choice="family" data-description="Une réponse courte et claire, et une façon de la vérifier." aria-pressed="true"><strong>Demander</strong><small>Une réponse claire</small></button><button type="button" class="kid-mode" data-kid-mode-choice="learn" data-description="Comprendre une idée avec un exemple et une question pour vérifier." aria-pressed="false"><strong>Apprendre</strong><small>Expliquer + vérifier</small></button><button type="button" class="kid-mode" data-kid-mode-choice="steps" data-description="Découper une tâche sécuritaire en petites étapes, une à la fois." aria-pressed="false"><strong>Étapes</strong><small>Commencer petit</small></button><button type="button" class="kid-mode" data-kid-mode-choice="practice" data-description="Une question à la fois, avec une correction douce." aria-pressed="false"><strong>Pratiquer</strong><small>Un essai à la fois</small></button><button type="button" class="kid-mode" data-kid-mode-choice="mission" data-description="De l’aide pour une responsabilité déjà approuvée par un parent." aria-pressed="false"><strong>Mission maison</strong><small>Tâches approuvées</small></button></div><p id="kidModeDescription" class="kid-mode-description">Une réponse courte et claire, et une façon de la vérifier.</p><div class="kid-starters" aria-label="Idées de questions"><button type="button" data-kid-prompt-mode="learn" data-kid-prompt="Pourquoi les feuilles changent-elles de couleur? Aide-moi à comprendre.">Apprendre quelque chose</button><button type="button" data-kid-prompt-mode="steps" data-kid-prompt="Aide-moi à commencer une tâche sécuritaire, une petite étape à la fois.">Commencer prudemment</button><button type="button" data-kid-prompt-mode="practice" data-kid-prompt="Fais-moi pratiquer avec une question à la fois.">Pratiquer</button><button type="button" data-kid-prompt-mode="mission" data-kid-prompt="Aide-moi avec une responsabilité que mon parent a déjà approuvée.">Mission maison</button></div>${voiceBar('kid')}<div id="kidHelpReply" class="reader-reply small" role="status" aria-live="polite">Je peux t’aider à réfléchir et à apprendre. Je ne peux pas utiliser d’outils, contrôler la maison ou approuver une tâche.</div><form id="kidHelpForm" class="reader-controls"><button id="kidHelpMic" class="mic" type="button" data-stop-label="■ Arrêter" aria-label="Demander à voix haute">● Parler</button><input id="kidHelpInput" maxlength="300" autocomplete="off" placeholder="Avec quoi veux-tu de l’aide?" aria-label="Demander de l’aide à Nestor"><button class="primary">Demander</button></form></article></section></div></section>`;
+    return `<section class="kids-room"><div class="kids-shell"><a id="kidSoundDoor" class="kids-sound-door" href="/kids/sounds" hidden><span class="kids-sound-door-mark" aria-hidden="true">🔊</span><span><strong>Sound wall</strong><small id="kidSoundDoorCount">sounds to discover</small></span></a><header class="kids-header"><div><p class="eyebrow">Kids corner · reviewed by Dad · local AI · no tools</p><h1>One thing at a time.</h1><p class="lede">Ask a question, learn, practice or find a small safe step. No profile needed; Dad approves every checked task.</p></div><label class="kids-profile"><span>Who are you? (optional)</span><select id="kidProfile" aria-label="Family profile (optional)"><option value="">Guest</option></select></label></header><div id="kidsEmpty" class="kids-welcome" hidden><div><p class="card-kicker">Ready right away</p><h2>You can ask your questions.</h2><p>No name needed to talk to Nestor or use Reading. A profile is only for your household responsibilities.</p></div><div class="row wrap"><a class="button primary" href="/lecture">Open Reading</a><a class="button" href="/dad/family">Dad: add profiles and tasks</a></div></div><section id="kidsContent" class="kids-grid" hidden><article id="kidNextCard" class="next-chore"><p class="card-kicker">What do I do now?</p><div id="kidNext"></div></article><aside id="kidProgressCard" class="kids-progress"><p class="card-kicker">Today</p><div id="kidProgress"></div></aside><article class="kids-help"><div class="row"><div class="grow"><p class="card-kicker">Nestor helps you learn</p><h2>How can I help?</h2></div><a class="button compact" href="/lecture">Open Reading</a></div><div class="kid-ai-boundary" role="note"><strong>Nestor is an AI, not a person.</strong><span>It can be wrong. Don’t share private information. A parent can read this conversation. Check important things with a trusted adult.</span></div><div class="kid-mode-grid" aria-label="Choose how Nestor helps you"><button type="button" class="kid-mode active" data-kid-mode-choice="family" data-description="A short, clear answer and a way to check it." aria-pressed="true"><strong>Ask</strong><small>A clear answer</small></button><button type="button" class="kid-mode" data-kid-mode-choice="learn" data-description="Understand an idea with an example and a question to check." aria-pressed="false"><strong>Learn</strong><small>Explain + check</small></button><button type="button" class="kid-mode" data-kid-mode-choice="steps" data-description="Break a safe task into small steps, one at a time." aria-pressed="false"><strong>Steps</strong><small>Start small</small></button><button type="button" class="kid-mode" data-kid-mode-choice="practice" data-description="One question at a time, with gentle correction." aria-pressed="false"><strong>Practice</strong><small>One try at a time</small></button><button type="button" class="kid-mode" data-kid-mode-choice="mission" data-description="Help with a responsibility a parent already approved." aria-pressed="false"><strong>Home mission</strong><small>Approved tasks</small></button></div><p id="kidModeDescription" class="kid-mode-description">A short, clear answer and a way to check it.</p><div class="kid-starters" aria-label="Question ideas"><button type="button" data-kid-prompt-mode="learn" data-kid-prompt="Why do leaves change color? Help me understand.">Learn something</button><button type="button" data-kid-prompt-mode="steps" data-kid-prompt="Help me start a safe task, one small step at a time.">Start carefully</button><button type="button" data-kid-prompt-mode="practice" data-kid-prompt="Help me practice with one question at a time.">Practice</button><button type="button" data-kid-prompt-mode="mission" data-kid-prompt="Help me with a responsibility my parent already approved.">Home mission</button></div>${voiceBar('kid')}<div id="kidHelpReply" class="reader-reply small" role="status" aria-live="polite">Je peux t’aider à réfléchir et à apprendre. Je ne peux pas utiliser d’outils, contrôler la maison ou approuver une tâche.</div><form id="kidHelpForm" class="reader-controls"><button id="kidHelpMic" class="mic" type="button" data-stop-label="■ Stop" aria-label="Ask out loud">● Talk</button><input id="kidHelpInput" maxlength="300" autocomplete="off" placeholder="What do you want help with?" aria-label="Ask Nestor for help"><button class="primary">Ask</button></form></article></section></div></section>`;
   }
 
   async function loadKids() {
@@ -470,7 +468,7 @@
         button.setAttribute('aria-pressed', String(active));
       });
       document.getElementById('kidModeDescription').textContent = choice.dataset.description;
-      document.getElementById('kidHelpReply').textContent = `Mode ${choice.querySelector('strong').textContent} prêt. Avec quoi veux-tu de l’aide?`;
+      document.getElementById('kidHelpReply').textContent = `${choice.querySelector('strong').textContent} mode ready. What do you want help with?`;
     }
     async function refreshRoom() {
       const profileId = profileSelect.value;
@@ -480,10 +478,10 @@
         currentRoom = data.room;
         const next = data.room.next;
         document.getElementById('kidNext').innerHTML = next
-          ? `<div class="kid-chore-title"><span class="kid-avatar">${esc(data.profile.avatar)}</span><div><h2>${esc(next.title)}</h2><p>${esc(next.note || 'Tu sais quoi faire. Demande à Nestor si tu veux de l’aide.')}</p></div></div><div class="kid-chore-meta"><span>${'★'.repeat(next.stars)}</span><span>${esc(next.cadence === 'once' ? 'une fois' : `chaque ${next.cadence === 'daily' ? 'jour' : 'semaine'}`)}</span>${next.overdue ? '<span class="danger-box">en retard</span>' : next.dueToday ? '<span class="warning">pour aujourd’hui</span>' : ''}</div><button id="kidCheckIn" class="primary kid-done" data-ref="${esc(next.id)}">C’est fait!</button>`
-          : `<div class="kid-clear"><span>✓</span><h2>${data.room.waiting.length ? 'Tout est coché.' : 'Tout est fait!'}</h2><p>${data.room.waiting.length ? 'Papa va vérifier ce que tu as coché.' : 'Va jouer, lire, créer ou aider quelqu’un.'}</p></div>`;
+          ? `<div class="kid-chore-title"><span class="kid-avatar">${esc(data.profile.avatar)}</span><div><h2>${esc(next.title)}</h2><p>${esc(next.note || 'You know what to do. Ask Nestor if you want help.')}</p></div></div><div class="kid-chore-meta"><span>${'★'.repeat(next.stars)}</span><span>${esc(next.cadence === 'once' ? 'once' : `every ${next.cadence === 'daily' ? 'day' : 'week'}`)}</span>${next.overdue ? '<span class="danger-box">overdue</span>' : next.dueToday ? '<span class="warning">due today</span>' : ''}</div><button id="kidCheckIn" class="primary kid-done" data-ref="${esc(next.id)}">Done!</button>`
+          : `<div class="kid-clear"><span>✓</span><h2>${data.room.waiting.length ? 'Everything is checked.' : 'All done!'}</h2><p>${data.room.waiting.length ? 'Dad will check what you checked off.' : 'Go play, read, create or help someone.'}</p></div>`;
         const upcoming = data.room.available.slice(next ? 1 : 0, 4);
-        document.getElementById('kidProgress').innerHTML = `<div class="kid-score"><strong>${data.room.completedToday}</strong><span>approuvées aujourd’hui</span></div><div class="kid-score"><strong>${data.room.waiting.length}</strong><span>en attente de papa</span></div>${upcoming.length ? `<div class="kid-upcoming"><small>Plus tard</small>${upcoming.map((task) => `<span>${esc(task.title)}</span>`).join('')}</div>` : ''}`;
+        document.getElementById('kidProgress').innerHTML = `<div class="kid-score"><strong>${data.room.completedToday}</strong><span>approved today</span></div><div class="kid-score"><strong>${data.room.waiting.length}</strong><span>waiting for Dad</span></div>${upcoming.length ? `<div class="kid-upcoming"><small>Later</small>${upcoming.map((task) => `<span>${esc(task.title)}</span>`).join('')}</div>` : ''}`;
         const checkIn = document.getElementById('kidCheckIn');
         if (checkIn) checkIn.addEventListener('click', async () => {
           checkIn.disabled = true;
@@ -503,7 +501,7 @@
       const hasProfiles = data.profiles.length > 0;
       profileSelect.innerHTML = hasProfiles
         ? data.profiles.map((profile) => `<option value="${esc(profile.id)}">${esc(profile.avatar)} ${esc(profile.displayName)}</option>`).join('')
-        : '<option value="">Invité</option>';
+        : '<option value="">Guest</option>';
       document.getElementById('kidsEmpty').hidden = hasProfiles;
       document.getElementById('kidsContent').hidden = false;
       document.getElementById('kidNextCard').hidden = !hasProfiles;
@@ -512,7 +510,7 @@
       if (hasProfiles) await refreshRoom(); else setRuntime(true, 'safe chat ready');
     } catch (error) {
       document.getElementById('kidsEmpty').hidden = false;
-      document.getElementById('kidsEmpty').innerHTML = `<div><p class="card-kicker">Profils indisponibles</p><h2>L’aide reste disponible.</h2><p>${esc(error.message)}</p></div><a class="button primary" href="/lecture">Ouvrir la Lecture</a>`;
+      document.getElementById('kidsEmpty').innerHTML = `<div><p class="card-kicker">Profiles unavailable</p><h2>Help is still available.</h2><p>${esc(error.message)}</p></div><a class="button primary" href="/lecture">Open Reading</a>`;
       document.getElementById('kidsContent').hidden = false;
       document.getElementById('kidNextCard').hidden = true;
       document.getElementById('kidProgressCard').hidden = true;
@@ -522,16 +520,16 @@
     profileSelect.addEventListener('change', refreshRoom);
     async function askForHelp(text, channel = 'text') {
       const reply = document.getElementById('kidHelpReply');
-      reply.textContent = 'Je réfléchis…';
+      reply.textContent = 'Thinking…';
       const chore = activeKidMode === 'mission' ? currentRoom?.next?.title : '';
       try {
         const result = await turn('kidx_nestor', `${chore ? `Responsabilité gérée par le parent dans Kids Room : « ${chore} ». ` : ''}${text}`, channel, { modeId: activeKidMode });
         reply.textContent = result.reply;
         const language = replyLanguage(result);
         await speak(result.reply, language);
-        showSoundChip(reply, result.data.sound, language);
+        showSoundChip(reply, result.data.sound);
         await playSound(result.data.sound);
-      } catch (error) { reply.textContent = `On réessaie? ${error.message}`; }
+      } catch (error) { reply.textContent = `Try again? ${error.message}`; }
     }
     document.getElementById('kidHelpForm').addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -554,14 +552,14 @@
     try {
       const catalog = await api('/api/voice-personas/sounds');
       if (catalog.sounds.length) {
-        document.getElementById('kidSoundDoorCount').textContent = `${catalog.sounds.length} sons à découvrir`;
+        document.getElementById('kidSoundDoorCount').textContent = `${catalog.sounds.length} sounds to discover`;
         document.getElementById('kidSoundDoor').hidden = false;
       }
     } catch (_error) { /* no door, the room still works */ }
   }
 
   function kidSoundsTemplate() {
-    return `<section class="kids-room"><div class="kids-shell"><header class="kids-header"><div><p class="eyebrow">Mur des sons · animaux et imagination</p><h1>Touche un animal pour l’entendre</h1><p class="lede">Découvre les cris des animaux et un bruitage de T-Rex ! Les imitations et les bruitages sont indiqués. Nestor joue les mêmes sons quand tu les lui demandes.</p></div><a class="button" href="/kids">← Retour</a></header><div id="kidSoundWall" class="sound-wall" role="group" aria-label="Sons d’animaux"></div><div id="kidSoundsEmpty" class="empty" hidden>Aucun son n’est installé pour l’instant.</div><p class="muted sound-credits"><a href="/assets/household/sounds/CREDITS.md" target="_blank" rel="noopener">Sources, auteurs et licences des sons</a></p></div></section>`;
+    return `<section class="kids-room"><div class="kids-shell"><header class="kids-header"><div><p class="eyebrow">Sound wall · animals and imagination</p><h1>Tap an animal to hear it</h1><p class="lede">Discover animal calls and a T-Rex sound effect! Imitations and sound effects are marked. Nestor plays the same sounds when you ask for them.</p></div><a class="button" href="/kids">← Back</a></header><div id="kidSoundWall" class="sound-wall" role="group" aria-label="Animal sounds"></div><div id="kidSoundsEmpty" class="empty" hidden>No sounds are installed yet.</div><p class="muted sound-credits"><a href="/assets/household/sounds/CREDITS.md" target="_blank" rel="noopener">Sound sources, authors and licenses</a></p></div></section>`;
   }
 
   // The wall plays from the same catalog the turn selects from, so a tap can
@@ -572,8 +570,8 @@
     try {
       const catalog = await api('/api/voice-personas/sounds');
       const byId = new Map(catalog.sounds.map((sound) => [sound.id, sound]));
-      const labelOf = (sound) => sound.label.fr.replace(/^(?:un|une|des)\s+/, '');
-      const alphabet = new Intl.Collator('fr', { sensitivity: 'base', ignorePunctuation: true });
+      const labelOf = (sound) => sound.label.en.replace(/^(?:a|an|the)\s+/i, '');
+      const alphabet = new Intl.Collator('en', { sensitivity: 'base', ignorePunctuation: true });
       const sortedSounds = [...catalog.sounds].sort((a, b) => alphabet.compare(labelOf(a), labelOf(b)));
       wall.innerHTML = sortedSounds.map((sound) => `<button type="button" class="sound-tile" data-sound-id="${esc(sound.id)}"><span aria-hidden="true">${esc(sound.emoji)}</span><small>${esc(labelOf(sound))}</small></button>`).join('');
       wall.addEventListener('click', (event) => {
@@ -581,15 +579,15 @@
         if (tile) playSound(byId.get(tile.dataset.soundId), { afterSpeech: false });
       });
       document.getElementById('kidSoundsEmpty').hidden = Boolean(catalog.sounds.length);
-      setRuntime(true, `${catalog.sounds.length} sons prêts`);
+      setRuntime(true, `${catalog.sounds.length} sounds ready`);
     } catch (error) {
       document.getElementById('kidSoundsEmpty').hidden = false;
-      setRuntime(false, 'sons indisponibles');
+      setRuntime(false, 'sounds unavailable');
     }
   }
 
   function readerTemplate() {
-    return `<section class="reader"><div class="reader-shell"><div class="reader-face" aria-hidden="true">☺</div><p class="eyebrow">KidX Reader · Nestor</p><h1>Quel mot veux-tu comprendre?</h1>${voiceBar('reader')}<div id="readerReply" class="reader-reply" role="status" aria-live="polite">Appuie sur le micro ou écris ton mot.</div><p id="readerHeard" class="muted reader-heard" aria-live="polite"></p><form id="readerForm" class="reader-controls"><button id="readerMic" class="mic" type="button" data-stop-label="■ Termine" aria-label="Record a word">● Parle</button><input id="readerInput" maxlength="180" autocomplete="off" placeholder="écris ton mot ou ta phrase…" aria-label="Word or phrase"><button class="primary">Demande</button></form><div class="row" style="justify-content:center;margin-top:1rem"><button id="readerReplay" type="button" disabled>Réécoute</button><a class="button" href="/panel">Maison</a></div></div></section>`;
+    return `<section class="reader"><div class="reader-shell"><div class="reader-face" aria-hidden="true">☺</div><p class="eyebrow">KidX Reader · Nestor</p><h1>Which word do you want to understand?</h1>${voiceBar('reader')}<div id="readerReply" class="reader-reply" role="status" aria-live="polite">Press the mic or type your word.</div><p id="readerHeard" class="muted reader-heard" aria-live="polite"></p><form id="readerForm" class="reader-controls"><button id="readerMic" class="mic" type="button" data-stop-label="■ Done" aria-label="Record a word">● Talk</button><input id="readerInput" maxlength="180" autocomplete="off" placeholder="type your word or sentence…" aria-label="Word or phrase"><button class="primary">Ask</button></form><div class="row" style="justify-content:center;margin-top:1rem"><button id="readerReplay" type="button" disabled>Hear again</button><a class="button" href="/panel">Home</a></div></div></section>`;
   }
 
   async function loadReader() {
@@ -600,17 +598,17 @@
       const reply = document.getElementById('readerReply');
       const heard = document.getElementById('readerHeard');
       // Always show what reached Nestor so a parent can tell a hearing problem from a thinking problem.
-      heard.textContent = channel === 'voice' ? `J'ai entendu : « ${text} »` : `Tu as écrit : « ${text} »`;
-      reply.textContent = 'Je réfléchis…';
+      heard.textContent = channel === 'voice' ? `Heard: “${text}”` : `You typed: “${text}”`;
+      reply.textContent = 'Thinking…';
       try {
         const result = await turn('kidx_reader', text, channel);
         lastReply = result.reply;
         reply.textContent = lastReply;
         document.getElementById('readerReplay').disabled = false;
         await speak(lastReply, 'fr');
-        showSoundChip(reply, result.data.sound, 'fr');
+        showSoundChip(reply, result.data.sound);
         await playSound(result.data.sound);
-      } catch (error) { reply.textContent = `On réessaie? ${error.message}`; }
+      } catch (error) { reply.textContent = `Try again? ${error.message}`; }
     }
     document.getElementById('readerForm').addEventListener('submit', async (event) => { event.preventDefault(); const input = document.getElementById('readerInput'); const text = input.value.trim(); if (!text) return; input.value = ''; await ask(text); });
     document.getElementById('readerReplay').addEventListener('click', () => speak(lastReply, 'fr'));
@@ -664,7 +662,7 @@
   }
 
   async function start() {
-    navActive(); app.innerHTML = '<div class="empty" role="status">Chargement…</div>';
+    navActive(); app.innerHTML = '<div class="empty" role="status">Loading…</div>';
     try {
       if (location.pathname === '/panel') return await loadPanel();
       if (['/dad/memories', '/voice-personas', '/voice-personas.html'].includes(location.pathname)) return await loadMemories();
@@ -678,10 +676,10 @@
       if (location.pathname === '/voice-personas/debug') return await loadPersonas();
       if (['/voice', '/voice.html', '/voix'].includes(location.pathname)) return await window.mountConversation({ app, api, esc });
       if (location.pathname === '/device-check') return await window.HouseholdDeviceCheck.load({ app, esc, state, api, toast, transcribe, stopPlayback, setRuntime });
-      app.innerHTML = '<div class="empty">Page introuvable.</div>';
+      app.innerHTML = '<div class="empty">Page not found.</div>';
     } catch (error) {
-      console.error('Household page initialization failed', error); setRuntime(false, 'indisponible');
-      app.innerHTML = '<article class="card full danger-box"><h1>Cette page est momentanément indisponible.</h1><p>Réessaie dans un instant.</p><button type="button" id="householdRetry">Réessayer</button></article>'; document.getElementById('householdRetry').onclick = () => location.reload();
+      console.error('Household page initialization failed', error); setRuntime(false, 'unavailable');
+      app.innerHTML = '<article class="card full danger-box"><h1>This page is temporarily unavailable.</h1><p>Try again in a moment.</p><button type="button" id="householdRetry">Try again</button></article>'; document.getElementById('householdRetry').onclick = () => location.reload();
     } finally {
       if (['/dad', '/dad/day', '/dad/memories', '/dad/family', '/panel', '/kids', '/kids/sounds', '/lecture'].includes(location.pathname)) {
         window.HouseholdNavigation.mount(app, location.pathname);

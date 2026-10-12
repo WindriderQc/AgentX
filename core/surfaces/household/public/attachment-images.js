@@ -31,7 +31,7 @@
   async function reduce(file) {
     if (SENDABLE.has(file.type) && file.size <= LIMIT) return file;
     const bitmap = await root.createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => null);
-    if (!bitmap) throw new Error('Le navigateur ne peut pas lire cette photo. Choisis une photo JPEG ou PNG.');
+    if (!bitmap) throw new Error('The browser cannot read this photo. Choose a JPEG or PNG photo.');
     try {
       for (const edge of EDGES) {
         const { width, height } = fitWithin(bitmap.width, bitmap.height, edge);
@@ -44,7 +44,7 @@
         }
       }
     } finally { bitmap.close?.(); }
-    throw new Error('Cette photo reste trop lourde, même réduite.');
+    throw new Error('This photo is still too large, even reduced.');
   }
 
   const api = { LIMIT, MAX_ORIGINAL, isImage, accepts, fitWithin, reducedName, reduce };

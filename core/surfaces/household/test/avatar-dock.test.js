@@ -70,6 +70,6 @@ test('the conversation page feeds the dock and the face module is same-origin', 
 
 test('without the 3D face the picture is said in words', () => {
   assert.equal(sceneCaption({ kind: 'add', a: 8, b: 5 }), '8 + 5 = 13');
-  assert.equal(sceneCaption({ kind: 'count', to: 47 }), 'On compte jusqu’à 47');
+  assert.equal(sceneCaption({ kind: 'count', to: 47 }), 'Counting to 47');
   assert.equal(sceneCaption(null), '');
 });

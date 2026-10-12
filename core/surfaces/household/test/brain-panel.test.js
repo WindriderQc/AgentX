@@ -45,7 +45,7 @@ test('a review becomes tappable questions, a revised block and at most one remar
   assert.equal(h.container.hidden, false);
   buttons[1].listeners.click();
   assert.deepEqual(h.asked, ['Combien de pattes a un crabe?']);
-  assert.deepEqual(h.revised, [{ id: 'brain-t1-0', kind: 'text', title: 'Révisé · Pattes', body: 'Araignée : 8 pattes' }]);
+  assert.deepEqual(h.revised, [{ id: 'brain-t1-0', kind: 'text', title: 'Revised · Pattes', body: 'Araignée : 8 pattes' }]);
   assert.deepEqual(h.spoken, [REVIEW.interjection]);
   h.brain.cancel();
   assert.equal(h.container.hidden, true, 'a new turn clears the previous suggestions');
