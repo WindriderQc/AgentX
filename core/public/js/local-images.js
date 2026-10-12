@@ -233,8 +233,10 @@
     $('image-result-origin').textContent = source === 'library' ? 'BIBLIOTHÈQUE' : source === 'continuation' ? 'DEPUIS LA CONVERSATION' : 'CETTE DEMANDE';
     $('image-result-origin').hidden = false;
     $('image-preview-help').textContent = source === 'library' ? 'Consultation d’une image conservée. Ton brief et tes références restent inchangés.' : 'Le résultat est disponible après archivage et restitution des ressources.';
-    if (source !== 'library' || busy || op.state === 'unknown') $('image-status').textContent = `${statuses[op.state] || op.state}${op.error ? ' ' + op.error : ''}`;
-    $('image-cancel').hidden = !busy; $('image-recover').hidden = !['unknown', 'archive_failed'].includes(op.state);
+    if (source !== 'library' || busy || op.state === 'unknown') $('image-status').textContent = `${statuses[op.state] || op.state}${op.error ? ' ' + op.error : ''}${busy && op.cancelRequested ? ' · Annulation demandée…' : ''}`;
+    // Archiving and restoring always finish; once asked, cancelling again does nothing.
+    $('image-cancel').hidden = !busy || ['archiving', 'restoring'].includes(op.state); $('image-cancel').disabled = Boolean(op.cancelRequested);
+    $('image-recover').hidden = !['unknown', 'archive_failed'].includes(op.state);
     $('image-stages').hidden = !busy;
     const stage = { accepted: 0, reserving: 0, generating: 1, archiving: 2, restoring: 3 }[op.state];
     [...$('image-stages').children].forEach((el, i) => { el.className = i === stage ? 'current' : i < stage ? 'done' : ''; if (i === stage) el.setAttribute('aria-current', 'step'); else el.removeAttribute('aria-current'); });
