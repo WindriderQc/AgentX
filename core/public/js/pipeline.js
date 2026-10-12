@@ -124,6 +124,7 @@
   function normalizedIdentity(value) {
     return String(value || '').trim().toLowerCase().replace(/[_\s]+/g, '-').replace(/[^a-z0-9-]/g, '');
   }
+  const assertIndependentReviewer = (by) => { if (normalizedIdentity(by) === normalizedIdentity(state.drawer.task?.assignee)) throw new Error('The reviewer identity must differ from the worker.'); };
 
   function matchesContext(task) {
     const context = state.context;
@@ -768,6 +769,7 @@
       } else if (action === 'confirm-done') {
         const by = String(new FormData(form).get('by') || '').trim();
         if (!by) return;
+        assertIndependentReviewer(by);
         writeStorage(STORAGE_REVIEWER, by);
         await fetchJson(`/api/pipeline/tasks/${encodeURIComponent(pipelineId)}/status`, {
           method: 'POST',
@@ -779,9 +781,7 @@
         const by = String(data.get('by') || '').trim();
         const reason = String(data.get('reason') || '').trim();
         if (!by || !reason) return;
-        if (normalizedIdentity(by) === normalizedIdentity(state.drawer.task?.assignee)) {
-          throw new Error('The reviewer identity must differ from the worker.');
-        }
+        assertIndependentReviewer(by);
         writeStorage(STORAGE_REVIEWER, by);
         await fetchJson(`/api/pipeline/tasks/${encodeURIComponent(pipelineId)}/feedback`, {
           method: 'POST',

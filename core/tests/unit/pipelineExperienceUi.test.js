@@ -148,6 +148,7 @@ describe('Pipeline open-work experience', () => {
     expect(script).toContain('Correction requested: ${reason}');
     expect(script).toContain("body: JSON.stringify({ status: 'queued', by })");
     expect(script).toContain('The reviewer identity must differ from the worker.');
+    expect(script).toMatch(/action === 'confirm-done'[\s\S]{0,200}assertIndependentReviewer\(by\)/);
   });
 
   test('reopens the existing correction path for a closed unmerged delivery', () => {
