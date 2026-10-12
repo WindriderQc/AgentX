@@ -111,6 +111,16 @@
       }
     }
 
+    // Removing or resetting a persona cannot be undone: the first click asks.
+    function confirmed(button, prompt) {
+      if (button.dataset.confirming) return true;
+      const label = button.textContent;
+      button.dataset.confirming = '1';
+      button.textContent = prompt;
+      setTimeout(() => { delete button.dataset.confirming; button.textContent = label; }, 4000);
+      return false;
+    }
+
     function ensureDialog() {
       if (dialog) return;
       dialog = document.createElement('dialog');
@@ -119,8 +129,10 @@
       dialog.addEventListener('click', (event) => {
         if (event.target.closest('[data-editor-close]')) dialog.close();
         else if (event.target.closest('[data-editor-reset]')) {
+          if (!confirmed(event.target.closest('[data-editor-reset]'), 'Click again to discard your edits')) return;
           finish(() => call('DELETE', `/api/prompts/catalog/${encodeURIComponent(current.name)}/edit`));
         } else if (event.target.closest('[data-editor-remove]')) {
+          if (!confirmed(event.target.closest('[data-editor-remove]'), 'Click again to remove')) return;
           finish(() => call('DELETE', `/api/prompts/catalog/${encodeURIComponent(current.name)}`));
         }
       });
