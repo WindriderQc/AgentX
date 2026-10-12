@@ -471,7 +471,7 @@ export function renderMessage(message, state, elements) {
 
   // Feedback controls for actual AI responses
   if (role === 'assistant' && messageId && !messageId.startsWith('a-')) {
-    bubble.appendChild(buildFeedbackRow(messageId, state, elements));
+    bubble.appendChild(buildFeedbackRow(messageId, state, elements, message.feedback));
   }
 
   // Per-message routing badge (Chat Intelligence layer)
@@ -487,9 +487,19 @@ export function renderMessage(message, state, elements) {
   elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
 }
 
-function buildFeedbackRow(messageId, state, elements) {
+function buildFeedbackRow(messageId, state, elements, savedFeedback = null) {
   const row = document.createElement('div');
   row.className = 'feedback-row';
+
+  // Feedback already given stays visible after a reload instead of asking again.
+  const savedRating = Number(savedFeedback?.rating);
+  if (savedRating === 1 || savedRating === -1) {
+    const saved = document.createElement('span');
+    saved.className = 'muted';
+    saved.textContent = savedRating > 0 ? 'Marked helpful.' : 'Marked as needing work.';
+    row.appendChild(saved);
+    return row;
+  }
 
   const label = document.createElement('span');
   label.className = 'muted';
