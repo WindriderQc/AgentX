@@ -617,6 +617,7 @@
       renderDrawer(task);
     } catch (error) {
       if (!state.drawer.open || state.drawer.pipelineId !== pipelineId) return;
+      if (title) title.textContent = 'Task unavailable';
       body.innerHTML = `<div class="pipeline-error"><i class="fas fa-circle-exclamation" aria-hidden="true"></i> ${escapeHtml(error.message || error)}</div>`;
     }
   }
