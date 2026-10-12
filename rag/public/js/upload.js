@@ -10,14 +10,21 @@
   var HISTORY_KEY = 'rag-ingest-history';
   var HISTORY_MAX = 20;
   var MAX_TEXT_LENGTH = 2_000_000;
-  var FILE_WARN_SIZE = 5 * 1024 * 1024;   // 5MB
-  var FILE_MAX_SIZE = 50 * 1024 * 1024;    // 50MB
+  // 2,000,000 characters fit in at most 8 MB of UTF-8; anything bigger cannot be added.
+  var FILE_WARN_SIZE = 1024 * 1024;        // 1 MB
+  var FILE_MAX_SIZE = 8 * 1024 * 1024;     // 8 MB
   var ALLOWED_EXTS = ['.txt', '.md', '.json', '.csv'];
 
   // State
   var fileText = null;
   var activeTab = 'paste';
   var isIngesting = false;
+  // The source label a file filled in: replaced by the next file, cleared when
+  // leaving the file tab, but never when the person typed their own.
+  var autoSource = '';
+  // Each file read is numbered: a slower earlier read never replaces a newer file.
+  var readCount = 0;
+  var currentReader = null;
 
   // ── DOM refs ───────────────────────────────────────────
 
@@ -78,6 +85,10 @@
       btn.classList.add('active');
       tabPaste.hidden = activeTab !== 'paste';
       tabFile.hidden = activeTab !== 'file';
+      if (activeTab === 'paste' && autoSource && metaSource.value === autoSource) {
+        metaSource.value = '';
+        autoSource = '';
+      }
       updateIngestAvailability();
       setIngestStatus(
         hasDocumentText() ? 'ok' : 'loading',
@@ -128,24 +139,46 @@
     return dot >= 0 ? name.slice(dot).toLowerCase() : '';
   }
 
+  function rejectFile(title, detail) {
+    fileWarning.textContent = detail;
+    fileWarning.hidden = false;
+    fileText = null;
+    updateIngestAvailability();
+    setIngestStatus('error', title, detail);
+  }
+
+  // Binary content (PDF, DOCX, images) read as text carries NUL bytes or many
+  // replacement characters; indexing it would only add noise to the corpus.
+  function looksBinary(text) {
+    if (text.indexOf('\u0000') !== -1) return true;
+    var replaced = (text.match(/\uFFFD/g) || []).length;
+    return text.length > 0 && replaced / text.length > 0.01;
+  }
+
   function handleFile(file) {
     fileWarning.hidden = true;
     fileWarning.textContent = '';
+    if (currentReader && currentReader.readyState === 1) currentReader.abort();
+    var read = ++readCount;
+    fileText = null;
 
     if (file.size > FILE_MAX_SIZE) {
-      fileWarning.textContent = 'File too large (max 50 MB). Please choose a smaller file.';
+      fileWarning.textContent = 'File too large (max 8 MB, at most ' + MAX_TEXT_LENGTH.toLocaleString() + ' characters of text). Please choose a smaller file.';
       fileWarning.hidden = false;
       fileText = null;
       fileInfo.hidden = true;
       updateIngestAvailability();
-      setIngestStatus('error', 'File rejected', 'The selected file is larger than the 50 MB browser upload limit.');
+      setIngestStatus('error', 'File rejected', 'The selected file is larger than the 8 MB limit.');
       return;
     }
 
     var ext = getExtension(file.name);
     var warnings = [];
     if (ALLOWED_EXTS.indexOf(ext) === -1) {
-      warnings.push('Unsupported file type \u2014 text extraction may not work correctly');
+      fileInfo.hidden = true;
+      updateIngestAvailability();
+      rejectFile('File type not supported', 'Choose a ' + ALLOWED_EXTS.join(', ') + ' file. Other formats (PDF, Word, images) are not read as text here.');
+      return;
     }
     if (file.size > FILE_WARN_SIZE) {
       warnings.push('Large file \u2014 ingestion may take a while');
@@ -158,12 +191,30 @@
     fileName.textContent = file.name;
     fileSize.textContent = formatBytes(file.size);
     fileInfo.hidden = false;
-    if (!metaSource.value.trim()) metaSource.value = file.name;
+    if (!metaSource.value.trim() || metaSource.value === autoSource) {
+      metaSource.value = file.name;
+      autoSource = file.name;
+    }
 
-    var reader = new FileReader();
     setIngestStatus('loading', 'Reading file', file.name + ' is being read locally before ingestion.');
+    readAs(file, read, 'utf-8');
+  }
+
+  function readAs(file, read, encoding) {
+    var reader = new FileReader();
+    currentReader = reader;
     reader.onload = function (e) {
+      if (read !== readCount) return;
       var loadedText = typeof e.target.result === 'string' ? e.target.result : '';
+      if (loadedText.indexOf('\u0000') === -1 && loadedText.indexOf('\uFFFD') !== -1 && encoding === 'utf-8') {
+        // Not valid UTF-8 but no NUL bytes: most likely a Windows-1252 (Latin-1) text file.
+        readAs(file, read, 'windows-1252');
+        return;
+      }
+      if (looksBinary(loadedText)) {
+        rejectFile('File is not text', file.name + ' does not contain readable text. Choose a plain text, Markdown, JSON or CSV file.');
+        return;
+      }
       if (loadedText.length > MAX_TEXT_LENGTH) {
         fileWarning.textContent = 'File text is too long (max ' + MAX_TEXT_LENGTH.toLocaleString() + ' characters). Please choose a smaller file.';
         fileWarning.hidden = false;
@@ -177,17 +228,18 @@
       setIngestStatus(
         'ok',
         'File ready',
-        file.name + ' is loaded and ready to add.'
+        file.name + ' is loaded and ready to add' + (encoding === 'utf-8' ? '.' : ' (read as Windows-1252 text).')
       );
     };
     reader.onerror = function () {
+      if (read !== readCount) return;
       fileWarning.textContent = 'Failed to read file.';
       fileWarning.hidden = false;
       fileText = null;
       updateIngestAvailability();
       setIngestStatus('error', 'File read failed', 'Choose another file or paste the document text instead.');
     };
-    reader.readAsText(file);
+    reader.readAsText(file, encoding);
   }
 
   dropZone.addEventListener('click', function () {
@@ -198,6 +250,8 @@
     if (e.target.files && e.target.files[0]) {
       handleFile(e.target.files[0]);
     }
+    // Choosing the same file again must fire change again.
+    fileInput.value = '';
   });
 
   dropZone.addEventListener('dragover', function (e) {
@@ -262,6 +316,20 @@
       return;
     }
 
+    // An explicit ID that already exists replaces that document: say so first.
+    if (documentId) {
+      var existing = null;
+      var unknown = false;
+      try { existing = (await RAG.getDocument(documentId)).data; } catch (e) { unknown = e.status !== 404; }
+      var question = existing
+        ? 'Document ' + documentId + (existing.source ? ' (source ' + existing.source + ')' : '') + ' already exists. Adding this text replaces all of its passages. Continue?'
+        : 'Agent X could not check whether document ' + documentId + ' exists. If it does, adding this text replaces it. Continue?';
+      if ((existing || unknown) && !window.confirm(question)) {
+        setIngestStatus('warn', 'Nothing added', 'The existing document was left unchanged.');
+        return;
+      }
+    }
+
     // Show spinner, disable button
     isIngesting = true;
     updateIngestAvailability();
@@ -280,8 +348,9 @@
       var res = await RAG.ingestDocument(params);
       var d = res.data;
       var alreadyIndexed = d.unchanged === true;
-      setIngestStatus('ok', alreadyIndexed ? 'Already indexed' : 'Knowledge added', alreadyIndexed
-        ? 'This exact source and content was already searchable, so no duplicate was added.'
+      var replaced = d.status === 'updated';
+      setIngestStatus('ok', alreadyIndexed ? 'Already indexed' : (replaced ? 'Document replaced' : 'Knowledge added'), alreadyIndexed
+        ? 'This exact source and content was already searchable, so no duplicate was added. Chunk settings were not applied; use Maintenance to reindex with new settings.'
         : 'Your source is searchable in ' + d.chunkCount + ' passage' + (d.chunkCount === 1 ? '' : 's') + '.');
       showResult(true, null, d, source || 'api');
       addToHistory({
@@ -317,12 +386,13 @@
     resultArea.hidden = false;
     if (success && data) {
       var alreadyIndexed = data.unchanged === true;
+      var heading = alreadyIndexed ? 'Already indexed' : (data.status === 'updated' ? 'Document replaced' : 'Knowledge added');
       var sourceHref = documentContext
         ? documentContext.documentsHref({ docId: data.documentId, source: source })
         : '/rag/documents';
       resultArea.className = 'result-success';
       resultArea.innerHTML =
-        '<div class="result-callout"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span><strong>' + (alreadyIndexed ? 'Already indexed' : 'Knowledge added') + '</strong>' +
+        '<div class="result-callout"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span><strong>' + heading + '</strong>' +
         '<small><span class="mono">' + escHtml(data.documentId) + '</span> · ' + data.chunkCount + ' searchable passage' + (data.chunkCount === 1 ? '' : 's') + '</small></span></div>' +
         '<div class="result-actions"><a class="btn btn-primary" href="/rag/search">Ask about it</a>' +
         '<a class="btn btn-secondary" href="' + escHtml(sourceHref) + '">View source</a></div>';
@@ -347,8 +417,10 @@
     }
   }
 
+  // Local history is a convenience: blocked or full storage must never turn a
+  // successful ingest into a reported failure.
   function saveHistory(arr) {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(arr));
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(arr)); } catch (e) { /* history stays unsaved */ }
   }
 
   function addToHistory(entry) {
@@ -383,7 +455,7 @@
   }
 
   btnClearHistory.addEventListener('click', function () {
-    localStorage.removeItem(HISTORY_KEY);
+    try { localStorage.removeItem(HISTORY_KEY); } catch (e) { /* nothing stored */ }
     renderHistory();
   });
 
