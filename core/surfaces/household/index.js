@@ -371,7 +371,7 @@ function register(api) {
     validClientTurnId, nestorClient, memberWork
   });
   registerBrowserSessionControls('/private', 'personal_operator'); visuals.register(personas); brain.register(personas); memberWork.register(personas);
-  registerBrowserSessionControls('/family', 'kidx_nestor', 'family');
+  registerBrowserSessionControls('/family', VOIX_FAMILY_PACK_ID, VOIX_FAMILY_SCOPE_ID, personas, null, VOIX_FAMILY_MODE_ID);
   const personalAttachments = sessionId => runtimeServices.attachments.forConversation({
     surface: 'household', sessionId, packId: 'personal_operator', scopeId: 'personal'
   });

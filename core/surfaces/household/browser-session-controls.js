@@ -18,9 +18,11 @@ function createBrowserSessionControls({
   personas, conversations, envelope, cleanText, fail, activePersonaTurns,
   validClientTurnId, nestorClient, memberWork = null
 }) {
-  function registerBrowserSessionControls(prefix, packId, scopeId, router = personas, consumer = null) {
+  // modeId narrows a space to the one mode its turn route accepts, so nothing it
+  // lists or resumes is refused on the first turn.
+  function registerBrowserSessionControls(prefix, packId, scopeId, router = personas, consumer = null, modeId = null) {
     const sessionScope = consumer === 'llmx' ? llmx.sessionScope(scopeId === 'family' ? 'family' : 'personal')
-      : { packId, ...(scopeId ? { scopeId } : {}) };
+      : { packId, ...(scopeId ? { scopeId } : {}), ...(modeId ? { modeId } : {}) };
     router.get(`${prefix}/sessions/recent`, async (req, res) => {
       try {
         const limit = Math.max(1, Math.min(Number(req.query.limit) || 3, 5));
