@@ -187,7 +187,7 @@ window.ShortcutsHelpModal = window.ShortcutsHelpModal || (() => {
 
   function configureShortcutTriggers() {
     if (typeof document.querySelectorAll !== 'function') return;
-    document.querySelectorAll('[data-nav-action="show-shortcuts"], #showShortcutsBtn').forEach(trigger => {
+    document.querySelectorAll('[data-nav-action="show-shortcuts"], [data-home-action="show-shortcuts"], #showShortcutsBtn').forEach(trigger => {
       trigger.setAttribute('aria-haspopup', 'dialog');
       trigger.setAttribute('aria-controls', dialogId);
       if (!trigger.hasAttribute('aria-expanded')) trigger.setAttribute('aria-expanded', 'false');
@@ -238,7 +238,7 @@ window.ShortcutsHelpModal = window.ShortcutsHelpModal || (() => {
     if (_isOpen || _isClosing) return;
     const opener = document.activeElement;
     _trigger = opener && typeof opener.matches === 'function'
-      && opener.matches('[data-nav-action="show-shortcuts"], #showShortcutsBtn')
+      && opener.matches('[data-nav-action="show-shortcuts"], [data-home-action="show-shortcuts"], #showShortcutsBtn')
       ? opener
       : null;
     if (_trigger) {
