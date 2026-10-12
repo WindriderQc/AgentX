@@ -27,6 +27,8 @@ async function prepare(headers, model, signal) {
   const startedAt = new Date();
   const modelMs = remaining(task).modelSeconds * 1000 - Math.max(nativeModelMs(run, startedAt.getTime()), (run.currentUsage?.modelSeconds || 0) * 1000);
   if (modelMs <= 0) throw fail('Cumulative model duration exhausted', 'CODING_MODEL_BUDGET');
+  const reserveMs = Math.min(120, Math.floor(remaining(task).modelSeconds / 4)) * 1000;
+  if (modelMs <= reserveMs) throw fail('Preserve the remaining model budget for native completion', 'CODING_MODEL_RESERVE');
   if (run.pendingInferences?.length)
     throw fail('A prior coding inference has not settled; reconcile it before another call', 'CODING_INFERENCE_COMPLETION_PENDING');
   const deadlineAt = startedAt.getTime() + modelMs;

@@ -275,3 +275,50 @@ identities. Keep live manifests, host inventories, raw logs and dated results
 outside Git. Any operator correction of worker source is labelled assisted and
 cannot count as an autonomous result. Live qualification is tracked in
 [issue #681](https://github.com/WindriderQc/AgentX/issues/681).
+
+### Explicit continuation after administrative recovery
+
+A recovered failure is still a failure. `authorization` cannot reset its spent
+budget or history. With autonomy paused and its active slot free, an operator can
+POST `/api/pipeline/coding-autonomy/tasks/:id/runs/:requestId/continuation` for the
+exact last administratively recovered execution. Confirm with
+`CONTINUE_RECOVERED_CHECKPOINT_WITH_ADDITIONAL_BUDGET`, a stable `key`, current
+`expectedRevision`, exact native `head`, a new active operator `queueRequestId`
+linked to the same task/coding session, reviewed `verificationProfile`, correction
+`text`, `additionalRuns` and explicit `budget` credits for `workSeconds`,
+`testSeconds`, `modelSeconds`, `modelCalls` and `ciSeconds`.
+
+Each grant is bounded by the normal per-campaign caps. The additional worker
+count replaces any unused resume allowance and remains within the original
+reviewed native attempt ceiling. The original limits, spent costs, attempts,
+UNKNOWN and pending receipts remain unchanged. A recorded operator intervention
+starts a new no-progress window without erasing the source/test history. The
+next request links to the recovered request on the same card and private branch;
+the runner refuses an absent, dirty or substituted checkpoint before model work.
+
+Activation is fenced until the grant write has been durably acknowledged. After
+a lost reply, reconcile the same key and fingerprint; never submit a replacement
+grant. Retrying adds no budget and creates no worker. This procedure records an
+operator continuation; it does not turn the earlier failure into autonomous
+success or authorize arbitrary scope changes.
+
+`agentx-benchmark-artifact-tests/v1` is a native network-isolated verifier for
+`artifactComparison*`, paired statistics and paired regression tests. Its Jest
+configuration comes from the installed runner, rather than the worker checkout.
+Loopback HTTP fixtures are permitted; production services and databases are not
+reachable. Independent review and full CI must still accept the published commit.
+
+The coding model route preserves up to 120 seconds (one quarter for shorter
+budgets) for completion. Core refuses fresh calls inside that reserve before
+journal/admission. The runner stops source work before the hard model ceiling and
+drains existing Core connections under heartbeat within the remaining work/model/queue
+budget, including after a worker disconnect. EOF alone does not prove successful
+inference: only the native Core receipt can permit publication and resource
+release. An unfinished or uncertain native call retains UNKNOWN and its fence.
+
+An unpublished worker checkpoint with an exact received native `tests_failed`
+verdict and completed model calls can receive a bounded local correction. Core
+retains the original operator review guidance, charges the failed run and links
+the next worker; the native feedback carries bounded test diagnostics as
+untrusted data. Operator stops, exhausted budgets, unknown runtime outcomes and
+published PR review remain subject to their existing gates.
