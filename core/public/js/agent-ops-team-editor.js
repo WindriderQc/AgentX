@@ -91,13 +91,23 @@
       box.hidden = false;
     }
 
+    let busy = false;
+    // One request at a time: a double click must not save two versions or
+    // post a second creation.
     async function finish(work) {
+      if (busy) return;
+      busy = true;
+      const buttons = [...dialog.querySelectorAll('button:not([data-editor-close])')];
+      buttons.forEach((button) => { button.disabled = true; });
       try {
         await work();
         dialog.close();
         await reload();
       } catch (error) {
         fail(error.message);
+      } finally {
+        busy = false;
+        buttons.forEach((button) => { button.disabled = false; });
       }
     }
 
