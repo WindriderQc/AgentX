@@ -228,3 +228,16 @@ test.each(['family', 'personal'])('a newly created %s lane task reports complete
   expect(task.transitions[0]).toMatchObject({ seq: 1, kind: 'created' });
   expect(task.transitionLog).toMatchObject({ coverage: 'complete', reason: null });
 });
+
+test('accepting a result refuses the worker as reviewer and accepts anyone else', async () => {
+  const id = await create();
+  await harness.request.post(`/api/pipeline/tasks/${id}/claim`).send({ assignee: 'worker-a' }).expect(200);
+  await harness.request.post(`/api/pipeline/tasks/${id}/feedback`).send({ by: 'worker-a', status: 'done', text: 'Ready' }).expect(200);
+
+  const refused = await status(id, { status: 'done', by: 'Worker A' }).expect(409);
+  expect(refused.body.code).toBe('REVIEWER_IS_WORKER');
+  expect((await read(id)).status).toBe('review');
+
+  await status(id, { status: 'done', by: 'reviewer-b' }).expect(200);
+  expect((await read(id)).status).toBe('done');
+});
