@@ -26,7 +26,7 @@
       row.textContent = (service.label || service.id) + ': ' + (service.status || 'unknown') + latency + issues;
       serviceDetails.appendChild(row);
     }
-    if (!serviceDetails.childElementCount) serviceDetails.textContent = 'Service status not observed.';
+    if (!serviceDetails.childElementCount) serviceDetails.replaceChildren(Object.assign(document.createElement('li'), { textContent: 'Service status not observed.' }));
     const consistency = payload.consistency || {};
     const issues = Array.isArray(consistency.issues) ? consistency.issues : [];
     const ecosystem = payload.summary?.ecosystem || {};
@@ -90,7 +90,7 @@
       }
     } catch (_error) {
       present('blocked', 'Status not observed', 'The tools still open; refresh to check Agent X again.', 'fa-circle-question');
-      serviceDetails.textContent = 'Service status not observed.';
+      serviceDetails.replaceChildren(Object.assign(document.createElement('li'), { textContent: 'Service status not observed.' }));
       consistencyDetail.textContent = '';
       updated.textContent = 'Not observed';
     } finally {
