@@ -65,9 +65,10 @@ class InMemoryVectorStore extends VectorStoreAdapter {
 
   _filterByMetadata(results, filters) {
     Object.keys(filters).forEach(key => {
+      // Like Qdrant: a result carries every requested tag.
       if (key === 'tags') {
         if (filters.tags && filters.tags.length > 0) {
-          results = results.filter(r => r.metadata.tags && r.metadata.tags.some(tag => filters.tags.includes(tag)));
+          results = results.filter(r => r.metadata.tags && filters.tags.every(tag => r.metadata.tags.includes(tag)));
         }
       } else if (key === 'linkTarget') {
         results = results.filter(r => [r.metadata.noteName, ...(r.metadata.aliases || [])]
@@ -88,7 +89,7 @@ class InMemoryVectorStore extends VectorStoreAdapter {
     Object.keys(filters).forEach(key => {
       if (key === 'tags') {
         if (filters.tags && filters.tags.length > 0) {
-          docs = docs.filter(d => d.tags && d.tags.some(tag => filters.tags.includes(tag)));
+          docs = docs.filter(d => d.tags && filters.tags.every(tag => d.tags.includes(tag)));
         }
       } else {
         docs = docs.filter(d => d[key] === filters[key]);

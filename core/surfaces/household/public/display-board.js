@@ -1,12 +1,12 @@
 'use strict';
 
-// "À l'écran": what Nestor shows rather than says (#167). Blocks arrive from
+// "On screen": what Nestor shows rather than says (#167). Blocks arrive from
 // the reply stream as `show` events, or with a restored turn. Nothing here is
 // ever handed to speech. A secret is masked until explicitly revealed and is
 // only available live; a restored one says it was not retained.
 (function exposeDisplayBoard(root) {
   const MAX_BLOCKS = 30;
-  const KIND_LABELS = { text: 'Note', list: 'Liste', table: 'Tableau', code: 'Code', link: 'Lien', secret: 'Secret', image: 'Image', scene: '3D' };
+  const KIND_LABELS = { text: 'Note', list: 'List', table: 'Table', code: 'Code', link: 'Link', secret: 'Secret', image: 'Image', scene: '3D' };
   const STAGE_WAIT_MS = 4000;
 
   function node(tag, className, text) {
@@ -63,27 +63,27 @@
   }
 
   function copyButton(text) {
-    const button = node('button', 'display-block-action', 'Copier');
+    const button = node('button', 'display-block-action', 'Copy');
     button.type = 'button';
     button.addEventListener('click', async () => {
-      try { await navigator.clipboard.writeText(text); button.textContent = 'Copié'; }
-      catch { button.textContent = 'Copie impossible'; }
-      setTimeout(() => { button.textContent = 'Copier'; }, 1500);
+      try { await navigator.clipboard.writeText(text); button.textContent = 'Copied'; }
+      catch { button.textContent = 'Copy failed'; }
+      setTimeout(() => { button.textContent = 'Copy'; }, 1500);
     });
     return button;
   }
 
   function secretBody(block, actions) {
-    if (block.redacted || !block.body) return node('p', 'display-block-note', 'Affiché une seule fois, masqué, et non conservé.');
+    if (block.redacted || !block.body) return node('p', 'display-block-note', 'Shown once, masked, and not kept.');
     const value = node('code', 'display-block-secret', '•'.repeat(12));
     value.dataset.masked = 'true';
-    const reveal = node('button', 'display-block-action', 'Afficher');
+    const reveal = node('button', 'display-block-action', 'Show');
     reveal.type = 'button';
     reveal.addEventListener('click', () => {
       const masked = value.dataset.masked === 'true';
       value.textContent = masked ? block.body : '•'.repeat(12);
       value.dataset.masked = String(!masked);
-      reveal.textContent = masked ? 'Masquer' : 'Afficher';
+      reveal.textContent = masked ? 'Hide' : 'Show';
     });
     actions.append(reveal, copyButton(block.body));
     return value;
@@ -95,11 +95,11 @@
     if (block.source === 'local' && root.ConversationImages) return root.ConversationImages.create(block, { space });
     const image = block.status === 'found' ? block.image : null;
     const href = image && (/^\/api\/voice-personas\/(?:family|private)\/visuals\/(?:file|generated)\?/.test(image.url) ? image.url : safeUrl(image.url));
-    if (!href) return node('p', 'display-block-note', 'Aucune image trouvée pour « ' + block.body + ' ».');
+    if (!href) return node('p', 'display-block-note', 'No image found for “' + block.body + '”.');
     const figure = node('figure', 'display-block-figure');
     const img = node('img');
     img.src = href; img.alt = block.title || block.body; img.loading = 'lazy'; img.decoding = 'async'; img.referrerPolicy = 'no-referrer';
-    img.addEventListener('error', () => figure.replaceChildren(node('p', 'display-block-note', 'Cette image n’est plus disponible.')), { once: true });
+    img.addEventListener('error', () => figure.replaceChildren(node('p', 'display-block-note', 'This image is no longer available.')), { once: true });
     const caption = node('figcaption', 'display-block-caption');
     caption.append(node('span', '', image.sourceLabel || block.source || ''));
     const origin = safeUrl(image.origin);
@@ -163,7 +163,7 @@
     return card;
   }
 
-  function create(container, { secrets = false, kinds = null, heading = 'À l’écran', space = 'personal' } = {}) {
+  function create(container, { secrets = false, kinds = null, heading = 'On screen', space = 'personal' } = {}) {
     const list = node('div', 'display-board-list');
     container.replaceChildren(node('h2', 'display-board-heading', heading), list);
     const update = () => { container.hidden = !list.childElementCount; };

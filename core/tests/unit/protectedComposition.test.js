@@ -110,7 +110,7 @@ test.each([
 
 test('refuses oversized PNG headers before pixel allocation', () => {
   const parent = image(); parent.writeUInt32BE(MAX_PIXELS + 1, 16);
-  expect(() => compose(parent, image(), [{ x: 0, y: 0, width: 1, height: 1 }])).toThrow('limites');
+  expect(() => compose(parent, image(), [{ x: 0, y: 0, width: 1, height: 1 }])).toThrow('limits');
 });
 
 test.each(['parent', 'result'])('refuses an interlaced PNG %s header before invoking any image decoder', target => {
@@ -119,7 +119,7 @@ test.each(['parent', 'result'])('refuses an interlaced PNG %s header before invo
   const pngRead = jest.spyOn(PNG.sync, 'read'), jpegDecode = jest.spyOn(jpeg, 'decode');
   try {
     expect(() => compose(target === 'parent' ? interlaced : ordinary, target === 'result' ? interlaced : ordinary,
-      [{ x: 0, y: 0, width: 1, height: 1 }])).toThrow('PNG entrelacés');
+      [{ x: 0, y: 0, width: 1, height: 1 }])).toThrow('Interlaced PNGs');
     expect(pngRead).not.toHaveBeenCalled(); expect(jpegDecode).not.toHaveBeenCalled();
   } finally { pngRead.mockRestore(); jpegDecode.mockRestore(); }
 });

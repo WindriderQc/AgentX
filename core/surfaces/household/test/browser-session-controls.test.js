@@ -65,5 +65,20 @@ test('an unconfirmed stop after generation started answers a plain French 503, n
   const result = await interrupt();
   assert.equal(result.status, 503);
   assert.equal(result.body.code, 'VOICE_INTERRUPTION_FAILED');
-  assert.match(result.body.message, /L’arrêt de Nestor n’est pas encore confirmé/);
+  assert.match(result.body.message, /Nestor’s stop is not confirmed yet/);
+});
+
+test('a space bound to one mode lists only sessions its turn route accepts', async () => {
+  const routes = {};
+  let filter;
+  const router = { get(path, handler) { routes[path] = handler; }, post() {} };
+  const register = createBrowserSessionControls({ personas: router, activePersonaTurns: new Map(),
+    conversations: { async listSessions(query) { filter = query; return []; } },
+    envelope: (res, data) => res.reply(200, data), fail: (res, status, message) => res.reply(status, { message }),
+    cleanText: value => String(value || ''), validClientTurnId: () => true, nestorClient: async () => ({}) });
+  register('/family', 'kidx_nestor', 'family', router, null, 'family');
+  const result = await new Promise(resolve => routes['/family/sessions/recent']({ query: {} }, { reply: (status, body) => resolve({ status, body }) }));
+  assert.equal(result.status, 200);
+  assert.equal(filter.modeId, 'family');
+  assert.equal(filter.packId, 'kidx_nestor');
 });

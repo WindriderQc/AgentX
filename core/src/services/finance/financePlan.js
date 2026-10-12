@@ -150,6 +150,14 @@ async function applyOps(ops) {
   return { applied, plan: saved };
 }
 
+// The newest month counts only once it is complete: a month a few days in
+// would be divided like a full one and make the averages look too low.
+function lastFullMonth(latestDate) {
+  const [year, month, day] = latestDate.slice(0, 10).split('-').map(Number);
+  const monthEnd = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return day >= monthEnd ? latestDate : new Date(Date.UTC(year, month - 2, 1)).toISOString().slice(0, 10);
+}
+
 function lastMonths(latestDate, count) {
   const [year, month] = latestDate.slice(0, 7).split('-').map(Number);
   return Array.from({ length: count }, (_, i) => new Date(Date.UTC(year, month - 1 - (count - 1 - i), 1)).toISOString().slice(0, 7));
@@ -166,8 +174,9 @@ async function situation({ months } = {}) {
 
   const debts = plan.debts.map((debt) => {
     const account = findAccount(debt.accountCode, debt.issuer);
-    return { ...debt, liveBalanceCents: account ? Math.abs(account.balanceCents) : null, asOf: account?.asOf || null,
-      currentCents: account ? Math.abs(account.balanceCents) : debt.balanceCents };
+    // A liability's positive balance is owed; a credit balance (overpaid) is not debt.
+    const owed = account ? Math.max(account.balanceCents, 0) : null;
+    return { ...debt, liveBalanceCents: owed, asOf: account?.asOf || null, currentCents: account ? owed : debt.balanceCents };
   });
   const credit = plan.credit.map((line) => {
     const account = findAccount(line.accountCode, line.issuer);
@@ -177,9 +186,12 @@ async function situation({ months } = {}) {
   });
 
   const latest = await FinanceTransaction.findOne(PERSO).sort({ date: -1 }).select('date').lean();
-  const monthsWindow = latest ? lastMonths(latest.date, window) : [];
+  // A statement ending on a month's last day completes that month even when its last
+  // transaction is earlier; otherwise the newest transaction's month is partial.
+  const statementEnd = accounts.map((account) => account.asOf).filter(Boolean).sort().at(-1) || '';
+  const monthsWindow = latest ? lastMonths(lastFullMonth(statementEnd > latest.date ? statementEnd : latest.date), window) : [];
   const rows = monthsWindow.length ? await FinanceTransaction.find({
-    ...PERSO, date: { $gte: `${monthsWindow[0]}-01`, $lte: latest.date }, category: { $ne: TRANSFERS },
+    ...PERSO, date: { $gte: `${monthsWindow[0]}-01`, $lte: `${monthsWindow.at(-1)}-31` }, category: { $ne: TRANSFERS },
     ...(plan.excludeTags.length && { tags: { $nin: plan.excludeTags } })
   }).select('date flowCents category tags').lean() : [];
 

@@ -402,6 +402,12 @@ router.post('/tasks/:id/status', async (req, res) => {
       );
     }
 
+    // Accepting a result is a review: the worker cannot review their own work.
+    const identity = (value) => String(value || '').trim().toLowerCase().replace(/[_\s]+/g, '-').replace(/[^a-z0-9-]/g, '');
+    if (status === 'done' && current.status === 'review' && identity(b.by) && identity(b.by) === identity(current.assignee)) {
+      return envelope.error(res, 409, `The reviewer must differ from the worker (${current.assignee})`, 'REVIEWER_IS_WORKER');
+    }
+
     const update = { $set: { status } };
     if (current.resolution?.kind === 'superseded' && status !== 'done' && b.reopen === true) {
       update.$unset = { ...(update.$unset || {}), resolution: 1 };

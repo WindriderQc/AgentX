@@ -39,7 +39,7 @@ async function evaluate({ now = new Date(), env = process.env } = {}) {
   const review = await FinanceStatement.find({ status: 'needs_review' }).select('fileName problems').lean();
   for (const statement of review) {
     found.push({ key: `review:${statement.fileName}`, kind: 'statement_needs_review', severity: 'warning',
-      title: `Relevé à vérifier : ${statement.fileName}`, facts: { fileName: statement.fileName, problems: statement.problems } });
+      title: `Statement to review: ${statement.fileName}`, facts: { fileName: statement.fileName, problems: statement.problems } });
   }
 
   const latest = await FinanceStatement.findOne({ status: 'reconciled', ...PERSO }).sort({ periodEnd: -1 }).select('periodEnd').lean();
@@ -47,7 +47,7 @@ async function evaluate({ now = new Date(), env = process.env } = {}) {
     const ageDays = Math.floor((now - new Date(`${latest.periodEnd}T00:00:00Z`)) / DAY_MS);
     if (ageDays > config.staleDays) {
       found.push({ key: `stale:${latest.periodEnd}`, kind: 'stale_data', severity: 'info',
-        title: `Aucun relevé depuis le ${latest.periodEnd} (${ageDays} jours)`, facts: { lastPeriodEnd: latest.periodEnd, ageDays } });
+        title: `No statement since ${latest.periodEnd} (${ageDays} days)`, facts: { lastPeriodEnd: latest.periodEnd, ageDays } });
     }
   }
 
@@ -55,7 +55,7 @@ async function evaluate({ now = new Date(), env = process.env } = {}) {
     for (const account of (await balances({ ledger: 'perso' })).accounts) {
       if (config.minBalanceAccounts.includes(account.code) && account.balanceCents < config.minBalanceCents) {
         found.push({ key: `low:${account.accountKey}:${account.asOf}`, kind: 'low_balance', severity: 'critical',
-          title: `Solde ${account.code} sous le coussin au ${account.asOf}`,
+          title: `${account.code} balance below the cushion on ${account.asOf}`,
           facts: { account: account.code, asOf: account.asOf, balanceCents: account.balanceCents, minimumCents: config.minBalanceCents } });
       }
     }
@@ -67,7 +67,7 @@ async function evaluate({ now = new Date(), env = process.env } = {}) {
       category: { $ne: TRANSFERS } }).sort({ flowCents: 1 }).limit(20).select('date description flowCents accountKey category').lean();
     for (const row of large) {
       found.push({ key: `large:${row.accountKey}:${row.date}:${row.description}:${-row.flowCents}`, kind: 'large_expense',
-        severity: 'info', title: `Grosse dépense le ${row.date} : ${row.description}`,
+        severity: 'info', title: `Large expense on ${row.date}: ${row.description}`,
         facts: { date: row.date, description: row.description, amountCents: row.flowCents, category: row.category || null } });
     }
 
@@ -76,7 +76,7 @@ async function evaluate({ now = new Date(), env = process.env } = {}) {
     for (const charge of analysis.recurring) {
       if (lastMonths.includes(charge.firstMonth)) {
         found.push({ key: `recurring:${charge.description}:${charge.firstMonth}`, kind: 'new_recurring_charge', severity: 'warning',
-          title: `Nouvelle charge récurrente : ${charge.description}`,
+          title: `New recurring charge: ${charge.description}`,
           facts: { description: charge.description, since: charge.firstMonth, monthlyCents: charge.monthlyCents, yearlyCents: charge.yearlyCents } });
       }
     }
@@ -85,7 +85,7 @@ async function evaluate({ now = new Date(), env = process.env } = {}) {
       if (trend.category !== 'Non classé' && -trend.changeCents >= config.categorySpikeCents
         && trend.previousMonthlyCents && trend.recentMonthlyCents < trend.previousMonthlyCents * 1.5) {
         found.push({ key: `spike:${trend.category}:${period}`, kind: 'category_spike', severity: 'warning',
-          title: `Hausse des dépenses : ${trend.category}`, facts: trend });
+          title: `Spending increase: ${trend.category}`, facts: trend });
       }
     }
   }

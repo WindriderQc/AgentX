@@ -36,7 +36,7 @@ function readReview(raw) {
     corrections: list(value.corrections, LIMITS.corrections, item => text(item?.text ?? item, LIMITS.correction)),
     revisions: list(value.revisions, LIMITS.revisions, item => {
       const body = typeof item?.body === 'string' ? item.body.trim().slice(0, LIMITS.revisionBody) : '';
-      return body ? { title: text(item.title, LIMITS.revisionTitle) || 'Révision', body } : null;
+      return body ? { title: text(item.title, LIMITS.revisionTitle) || 'Revision', body } : null;
     }),
     interjection: interjection ? { text: interjection, urgent: value.interjection?.urgent === true } : null
   };

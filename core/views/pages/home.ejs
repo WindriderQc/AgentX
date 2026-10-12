@@ -1,9 +1,9 @@
 <% const navigation = buildProductNavigation({ ...locals, service: 'core' }); const demo = locals.agentxProfile === 'demo'; %>
 <main class="agentx-home">
   <section class="agentx-home__hero" aria-labelledby="home-title">
-    <p class="agentx-home__eyebrow"><span aria-hidden="true"></span> <%= demo ? 'YOUR LOCAL AI WORKSPACE' : 'TON ÉCOSYSTÈME, À PORTÉE DE MAIN' %></p>
-    <h1 id="home-title"><%= demo ? 'What do you want to do?' : 'À toi de jouer.' %></h1>
-    <p class="agentx-home__lede"><%= demo ? 'Start a conversation, explore your documents, or compare models.' : 'Un espace pour toi. Un pour la famille. Un pour tes idées.' %></p>
+    <p class="agentx-home__eyebrow"><span aria-hidden="true"></span> <%= demo ? 'YOUR LOCAL AI WORKSPACE' : 'YOUR ECOSYSTEM, WITHIN REACH' %></p>
+    <h1 id="home-title"><%= demo ? 'What do you want to do?' : 'Your move.' %></h1>
+    <p class="agentx-home__lede"><%= demo ? 'Start a conversation, explore your documents, or compare models.' : 'One space for you. One for the family. One for your ideas.' %></p>
   </section>
   <% if (demo) { %>
   <section class="agentx-home__tasks" aria-label="Start with Agent X">
@@ -49,7 +49,7 @@
   </section>
 
   <% } else { %>
-  <section class="home-spaces" aria-label="Choisir un espace">
+  <section class="home-spaces" aria-label="Choose a space">
     <% navigation.spaces.forEach((space, index) => { %>
     <a class="home-space home-space--<%= space.id %>" href="<%= space.href %>">
       <span class="home-space__top"><span class="home-space__number">0<%= index + 1 %></span><i class="fas <%= space.icon %>" aria-hidden="true"></i></span>
@@ -75,7 +75,7 @@
       ? (new URL(hostHome.url, 'http://agentx.invalid').pathname.replace(/\/+$/, '').toLowerCase() || '/') : null; %>
     <% if (locals.hostHome && !['/', '/portal', '/ecosystem'].includes(hostHomePath)) { %><a class="home-host-link" id="host-home-link" href="<%= hostHome.url %>"><%= hostHome.label || 'Back to host' %> ↗</a><% } %>
     <details class="home-tools" id="homeTools">
-      <summary><span><%= demo ? 'All tools' : 'Tous les outils' %></span><i class="fas fa-plus" aria-hidden="true"></i></summary>
+      <summary><span>All tools</span><i class="fas fa-plus" aria-hidden="true"></i></summary>
       <div class="home-tool-grid">
       <% navigation.navItems.forEach(group => { %>
         <section class="home-tool-group" aria-labelledby="home-<%= group.id %>">
@@ -92,11 +92,11 @@
       </div>
     </details>
     <details class="home-tools home-health" id="homeHealth">
-      <summary><span><%= demo ? 'System details' : 'État du système' %></span><small id="homeUpdated">—</small><i class="fas fa-plus" aria-hidden="true"></i></summary>
+      <summary><span>System details</span><small id="homeUpdated">—</small><i class="fas fa-plus" aria-hidden="true"></i></summary>
       <div class="agentx-home__readiness" id="homeReadiness" data-state="loading" role="status" aria-live="polite">
         <span class="agentx-home__readiness-icon" aria-hidden="true"><i class="fas fa-circle-notch"></i></span>
-        <span class="agentx-home__readiness-copy"><strong id="homeReadinessLabel">État non observé</strong><small id="homeReadinessDetail">Ouvre ce panneau pour vérifier les services.</small></span>
-        <button id="homeStatusRefresh" type="button" aria-label="Refresh Agent X readiness"><i class="fas fa-rotate" aria-hidden="true"></i><span>Actualiser</span></button>
+        <span class="agentx-home__readiness-copy"><strong id="homeReadinessLabel">Status not observed</strong><small id="homeReadinessDetail">Open this panel to check the services.</small></span>
+        <button id="homeStatusRefresh" type="button" aria-label="Refresh Agent X readiness"><i class="fas fa-rotate" aria-hidden="true"></i><span>Refresh</span></button>
       </div>
       <p>Core, Benchmark, and RAG HTTP contracts, required dependency health, and deployment consistency.</p>
       <ul id="homeServiceDetails"></ul><p id="homeConsistency"></p>

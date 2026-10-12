@@ -71,10 +71,10 @@ function createImageArchive({ dir = process.env.IMAGE_ARCHIVE_DIR, now = () => n
     if (!root) return null;
     if (!ORIGINS.has(origin)) throw Object.assign(new Error('Unknown image origin'), { statusCode: 400 });
     const data = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes || []);
-    if (!data.length) throw Object.assign(new Error('Image vide.'), { statusCode: 400 });
-    if (data.length > MAX_BYTES) throw Object.assign(new Error('L’original dépasse 50 Mo.'), { statusCode: 413 });
+    if (!data.length) throw Object.assign(new Error('Empty image.'), { statusCode: 400 });
+    if (data.length > MAX_BYTES) throw Object.assign(new Error('The original exceeds 50 MB.'), { statusCode: 413 });
     const mimeType = sniff(data);
-    if (!mimeType) throw Object.assign(new Error('Ce fichier n’est pas une image reconnue.'), { statusCode: 400 });
+    if (!mimeType) throw Object.assign(new Error('This file is not a recognized image.'), { statusCode: 400 });
     const sha256 = crypto.createHash('sha256').update(data).digest('hex');
     const at = now();
     const relative = path.posix.join(origin, String(at.getUTCFullYear()), String(at.getUTCMonth() + 1).padStart(2, '0'),

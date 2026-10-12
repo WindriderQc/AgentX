@@ -12,7 +12,9 @@
     toast.textContent = msg;
     toast.style.background = type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#007bff';
     toast.style.display = 'block';
-    setTimeout(() => { toast.style.display = 'none'; }, 4500);
+    // A newer toast keeps its full time on screen.
+    clearTimeout(showToast.timer);
+    showToast.timer = setTimeout(() => { toast.style.display = 'none'; }, 4500);
   }
   async function jsonFetch(url, opts = {}) {
     const resp = await fetch(url, opts);
@@ -98,7 +100,9 @@
     updateStartReadiness();
   }
 
-  function readPanelFromDOM() {
+  // Editing keeps every card, even unfinished ones, so card positions match;
+  // only a convened panel needs complete agents.
+  function readPanelFromDOM({ complete = true } = {}) {
     const panel = [];
     document.querySelectorAll('#formAgents .rt-agent-edit-card').forEach((card) => {
       const agent = {};
@@ -110,7 +114,7 @@
       if (session) {
         agent.runtimeConfig = { sessionKey: session };
       }
-      if (agent.agentId && (agent.runtime !== 'model' || agent.model)) panel.push(agent);
+      if (!complete || (agent.agentId && (agent.runtime !== 'model' || agent.model))) panel.push(agent);
     });
     return panel;
   }
@@ -182,6 +186,7 @@
   let liveDoc = null;
   let liveEventSource = null;
   const agentRefs = {}; // agentId -> { card, body, stats, status }
+  const searchNotes = {}; // agentId -> web search note shown when its turn starts
 
   function clearLive() {
     if (liveEventSource) { try { liveEventSource.close(); } catch {} liveEventSource = null; }
@@ -189,6 +194,7 @@
     $('liveSynthesis').classList.add('rt-hidden');
     $('liveQuality').classList.add('rt-hidden');
     Object.keys(agentRefs).forEach((k) => delete agentRefs[k]);
+    Object.keys(searchNotes).forEach((k) => delete searchNotes[k]);
     liveDoc = null;
   }
 
@@ -227,7 +233,7 @@
           'Content-Type': 'application/json',
           ...(token ? { 'x-roundtable-chair-token': token } : {})
         },
-        body: JSON.stringify({ text, author: 'Example User', source: 'web-ui' })
+        body: JSON.stringify({ text, source: 'web-ui' })
       });
       $('liveInterjection').value = '';
       showToast('Interjection queued for the next phase', 'success');
@@ -249,7 +255,6 @@
         },
         body: JSON.stringify({
           decision,
-          actor: 'Example User',
           note: $('liveDecisionNote').value.trim()
         })
       });
@@ -343,7 +348,8 @@
       refs.status.textContent = 'running';
       refs.status.className = 'rt-agent-status running';
       refs.round.textContent = `round ${data.round}`;
-      refs.body.textContent = '';
+      refs.body.textContent = searchNotes[data.agentId] || '';
+      delete searchNotes[data.agentId];
       return;
     }
 
@@ -378,8 +384,8 @@
     }
 
     if (type === 'web-search-done') {
-      const refs = agentRefs[data.agentId];
-      if (refs) refs.body.textContent = `[web search: ${data.resultCount} results]\n\n${refs.body.textContent}`;
+      // The search runs before the turn starts, which clears the card: keep the note for it.
+      searchNotes[data.agentId] = `[web search: ${data.resultCount} results]\n\n`;
       return;
     }
 
@@ -420,16 +426,32 @@
       return;
     }
 
+    if (type === 'done' && data.status === 'no-stream') {
+      // The run is not finished, but no orchestrator in this Core process streams it
+      // (restart or another process): show its saved state and check again.
+      try { liveEventSource?.close(); } catch {}
+      liveEventSource = null;
+      showToast('This council has no live stream here; its saved state refreshes every 15 s.', 'info');
+      const id = liveDoc?._id;
+      setTimeout(() => { if (id && liveDoc?._id === id) attachLive(id); }, 15000);
+      return;
+    }
+
     if (type === 'done') {
-      setPhase('done');
+      const stopped = data.status === 'failed' || data.status === 'timeout';
+      const current = document.querySelector('#livePhases .rt-phase.active');
+      if (stopped && current) current.classList.replace('active', 'error');
+      else setPhase('done');
       if (liveDoc) liveDoc.status = data.status || liveDoc.status;
       $('liveStatus').textContent = `#${liveDoc?._id?.substring(liveDoc._id.length - 8) || 'council'} — ${String(data.status || 'finished').toUpperCase()}`;
       if (liveEventSource) {
         try { liveEventSource.close(); } catch {}
         liveEventSource = null;
       }
-      if (data.status === 'failed' || data.status === 'timeout') {
+      if (stopped) {
         showToast(`Council ${data.status}: ${data.error || 'unknown error'}`, 'error');
+      } else if (data.status !== 'completed') {
+        showToast(`Council ended: ${data.status || 'unknown status'}`, 'info');
       } else {
         showToast(`Council completed in ${fmtDuration(data.totalDurationMs)}${liveDoc?.qualityScores ? '' : ' — advisory answer ready'}`, 'success');
       }
@@ -443,8 +465,11 @@
   async function pollQualityScores(id, attempts) {
     if (attempts <= 0) return;
     await new Promise((r) => setTimeout(r, 6000));
+    // Another council opened since: its scores are not this one's.
+    if (liveDoc?._id !== id) return;
     try {
       const { data } = await jsonFetch(`/api/roundtable/${id}`);
+      if (liveDoc?._id !== id) return;
       if (data?.qualityScores) {
         renderQualityScores(data);
         return;
@@ -577,7 +602,11 @@
             try { handleEvent(ev, JSON.parse(e.data)); } catch {}
           });
         });
-        liveEventSource.onerror = () => { try { liveEventSource.close(); } catch {} };
+        // A dropped connection reloads the saved state and subscribes again.
+        liveEventSource.onerror = () => {
+          try { liveEventSource.close(); } catch {}
+          setTimeout(() => { if (liveDoc?._id === id && ['pending', 'running'].includes(liveDoc.status)) attachLive(id); }, 5000);
+        };
       }
     } catch (err) {
       showToast(`Failed to load Council: ${err.message}`, 'error');
@@ -591,6 +620,7 @@
 
     const panel = readPanelFromDOM();
     if (!panel.length) { showToast('Panel must have at least one agent', 'error'); return; }
+    if (panel.length < readPanelFromDOM({ complete: false }).length) { showToast('Give every agent an id and a model, or remove it', 'error'); return; }
     if (!$('formSynthModel').value.trim()) { showToast('Select a synthesizer model', 'error'); return; }
 
     const body = {
@@ -642,11 +672,11 @@
         const quality = d.qualityScores?.synthesis?.overall;
         const qualityStr = typeof quality === 'number' ? ` · 🏅 ${quality.toFixed(1)}/10` : '';
         return `
-          <div class="rt-history-item" data-id="${d._id}">
+          <div class="rt-history-item" data-id="${escape(String(d._id))}" role="button" tabindex="0" aria-label="Open council: ${escape(short)}">
             <div class="rt-history-row">
-              <div class="rt-history-q">${escape(short)}${d.question.length > 120 ? '…' : ''}</div>
+              <div class="rt-history-q">${escape(short)}${(d.question || '').length > 120 ? '…' : ''}</div>
               <div class="rt-history-meta">
-                <span class="rt-history-status ${d.status}">${d.status}</span>
+                <span class="rt-history-status ${escape(d.status || '')}">${escape(d.status || '')}</span>
                 <span>${fmtDate(d.createdAt)}</span>
                 <span>${fmtDuration(d.totalDurationMs)}</span>
                 <span>${turns} turns${qualityStr}</span>
@@ -665,17 +695,26 @@
     const remove = e.target.closest('[data-remove]');
     if (remove) {
       const i = Number(remove.getAttribute('data-remove'));
-      currentPanel = readPanelFromDOM();
+      currentPanel = readPanelFromDOM({ complete: false });
       currentPanel.splice(i, 1);
       renderPanel();
       return;
     }
     const item = e.target.closest('.rt-history-item');
-    if (item) {
-      clearLive();
-      attachLive(item.getAttribute('data-id'));
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
+    if (item) openHistoryItem(item);
+  });
+
+  function openHistoryItem(item) {
+    clearLive();
+    attachLive(item.getAttribute('data-id'));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  document.addEventListener('keydown', (e) => {
+    const item = e.target.closest?.('.rt-history-item');
+    if (!item || (e.key !== 'Enter' && e.key !== ' ')) return;
+    e.preventDefault();
+    openHistoryItem(item);
   });
 
   document.addEventListener('DOMContentLoaded', async () => {
@@ -691,9 +730,10 @@
       showToast(chairAgent() ? 'Team seated: Nestor presides and gives the verdict; the others debate.' : 'Team seated: each agent answers as itself.', 'info');
     });
     $('formAddAgent').addEventListener('click', () => {
-      currentPanel = readPanelFromDOM();
+      currentPanel = readPanelFromDOM({ complete: false });
+      const taken = currentPanel.map((agent) => Number(/^agent-(\d+)$/.exec(agent.agentId || '')?.[1]) || 0);
       currentPanel.push({
-        agentId: `agent-${currentPanel.length + 1}`,
+        agentId: `agent-${Math.max(currentPanel.length, ...taken) + 1}`,
         role: 'Agent', runtime: 'model', model: '', systemPrompt: '', enableWebSearch: false
       });
       renderPanel();

@@ -102,9 +102,9 @@ test('the notice carries the privacy warning and its button is the consent', asy
   await assert.rejects(fallback.transcribe(new Blob(['a']), 'fr'));
   render();
   assert.equal(panel.notice.hidden, false);
-  assert.match(panel.notice.text(), /quitte ce réseau local/);
-  assert.match(panel.indicator.textContent, /l’audio peut quitter cet appareil/);
-  panel.notice.find('Utiliser la reconnaissance du navigateur').onclick();
+  assert.match(panel.notice.text(), /leaves this local network/);
+  assert.match(panel.indicator.textContent, /audio may leave this device/);
+  panel.notice.find('Use browser recognition').onclick();
   render();
   assert.equal(resumed, 1);
   assert.equal(panel.notice.hidden, true);

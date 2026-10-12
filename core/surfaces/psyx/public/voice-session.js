@@ -39,7 +39,7 @@ async function voiceSessionFetch(path, options, signal) {
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
 
-    throw Object.assign(new Error(payload.message || `La voix a échoué (${response.status}).`), { code: payload.code, status: response.status });
+    throw Object.assign(new Error(payload.message || `Voice failed (${response.status}).`), { code: payload.code, status: response.status });
   }
   return response;
 }
@@ -67,10 +67,10 @@ function syncVoiceSessionControls() {
 }
 
 function createPsyXVoiceSession() {
-  const labels = { idle: 'Prêt à t’écouter.', starting: 'Ouverture du micro…', listening: 'Je t’écoute.',
-    hearing: 'Tu as la parole.', transcribing: 'Je t’ai entendu…', thinking: 'Je réfléchis.', waiting: 'Un instant…',
-    preparing: 'Préparation de la voix…', speaking: 'PsyX te répond.', paused: 'Micro et voix arrêtés.', error: 'La voix a été arrêtée.',
-    reviewing: 'Je n’ai pas réussi à transcrire. Appuie sur Commencer pour reprendre.', resuming: 'Je reprends l’écoute…' };
+  const labels = { idle: 'Ready to listen.', starting: 'Opening the microphone…', listening: 'Listening.',
+    hearing: 'Go ahead.', transcribing: 'I heard you…', thinking: 'Thinking.', waiting: 'One moment…',
+    preparing: 'Preparing the voice…', speaking: 'PsyX is replying.', paused: 'Microphone and voice stopped.', error: 'Voice was stopped.',
+    reviewing: 'I couldn’t transcribe that. Press Start to continue.', resuming: 'Listening again…' };
   return new window.AgentXVoice.Conversation({
     holdingDelayMs: null,
     speechText: spokenVoiceText,
@@ -98,7 +98,7 @@ function createPsyXVoiceSession() {
     },
     turn: async (_session, text, signal) => {
       const reply = await sendMessage(text, { source: 'voice', voiceSession: true, signal });
-      if (!reply) throw new Error('La réponse n’a pas été confirmée. Reprends lorsque PsyX est prêt.');
+      if (!reply) throw new Error('The reply was not confirmed. Continue when PsyX is ready.');
       return reply;
     },
     // Full confirmed replies reach the speech boundary. This keeps Markdown
@@ -112,8 +112,8 @@ function createPsyXVoiceSession() {
     message: () => {},
   }, (phase, detail) => {
     // The shared loop's own detail for a failed transcription is in English; PsyX shows its label.
-    $('voiceSessionPhase').textContent = phase === 'error' ? 'La voix a été arrêtée. Vérifie l’accès au micro et la connexion locale, puis reprends.'
-      : phase === 'reviewing' ? labels.reviewing : detail || labels[phase] || 'Un instant…';
+    $('voiceSessionPhase').textContent = phase === 'error' ? 'Voice was stopped. Check microphone access and the local connection, then continue.'
+      : phase === 'reviewing' ? labels.reviewing : detail || labels[phase] || 'One moment…';
     $('voiceSessionDialog').dataset.phase = phase;
     psyxVoicePhase = phase;
     syncVoiceSessionControls();
@@ -138,7 +138,7 @@ function wireVoiceSession() {
     syncVoiceSessionSafety();
     syncVoiceSessionControls();
     if (!state.voice.enabled || !state.voice.reachable) {
-      $('voiceSessionPhase').textContent = 'La voix locale est indisponible. Vérifie les réglages de voix.';
+      $('voiceSessionPhase').textContent = 'Local voice is unavailable. Check the voice settings.';
       return;
     }
     await startPsyXVoiceSession();

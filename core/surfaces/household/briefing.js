@@ -166,37 +166,37 @@ function dadDesk(reportBody = {}, taskItems = [], cronBody = {}, now = new Date(
       }
     : { unlabelled: null, capped: false, days: 7, checkedAt: null, error: boundedText(mailBacklogBody.error, 200) || 'The unlabelled count is unavailable.' };
   const triageAge = !triage
-    ? 'La tâche de tri Gmail est absente d’OpenClaw.'
+    ? 'The Gmail triage job is missing from OpenClaw.'
     : !triage.enabled
-      ? `Le tri Gmail est désactivé${triage.ageHours === null ? '' : ` · dernier passage il y a ${triage.ageHours} h`}.`
-      : `Dernier tri Gmail : ${triage.ageHours === null ? 'jamais' : `il y a ${triage.ageHours} h`}${triage.cadenceMinutes ? ` · attendu toutes les ${triage.cadenceMinutes} min` : ''}.`;
+      ? `Gmail triage is disabled${triage.ageHours === null ? '' : ` · last run ${triage.ageHours} h ago`}.`
+      : `Last Gmail triage: ${triage.ageHours === null ? 'never' : `${triage.ageHours} h ago`}${triage.cadenceMinutes ? ` · expected every ${triage.cadenceMinutes} min` : ''}.`;
   const mailSummary = cronUnavailable
-    ? 'L’état du Secretary Gmail est indisponible.'
+    ? 'The Secretary Gmail status is unavailable.'
     : triageStopped
       ? triageAge
       : mailReady
-        ? `Le tri Gmail et sa surveillance fonctionnent${triage.cadenceMinutes ? ` · rattrapage toutes les ${triage.cadenceMinutes} min` : ''}.`
-        : 'Le tri Gmail ou sa surveillance est à vérifier.';
+        ? `Gmail triage and its watchdog are running${triage.cadenceMinutes ? ` · catch-up every ${triage.cadenceMinutes} min` : ''}.`
+        : 'Gmail triage or its watchdog needs checking.';
   const decisions = [
-    ...(stale.length ? [{ id: 'schedule-stale', audience: 'dad', severity: 'warning', title: `${stale.length} ${stale.length === 1 ? 'tâche attend' : 'tâches attendent'} une date depuis longtemps`, detail: 'Donnez-lui une date, terminez-la, ou laissez-la sans date volontairement.', href: '#dad-inbox' }] : []),
-    ...(tasks.some((task) => task.expired) ? [{ id: 'expired', audience: 'dad', severity: 'info', title: `${tasks.filter((task) => task.expired).length} ${tasks.filter((task) => task.expired).length === 1 ? 'tâche dont l’activité est passée' : 'tâches dont l’activité est passée'}`, detail: 'L’activité qu’elle servait est passée : fermez-la.', href: '#dad-triage' }] : []),
-    ...(tasks.some((task) => task.recheck) ? [{ id: 'recheck', audience: 'dad', severity: 'info', title: `${tasks.filter((task) => task.recheck).length} ${tasks.filter((task) => task.recheck).length === 1 ? 'vieille échéance' : 'vieilles échéances'} à confirmer`, detail: 'Capturée en retard ou en retard depuis des semaines : fermez-la, ou donnez-lui la date de son activité.', href: '#dad-triage' }] : []),
-    ...(tasks.some((task) => task.overdue) ? [{ id: 'overdue', audience: 'dad', severity: 'warning', title: `${tasks.filter((task) => task.overdue).length} ${tasks.filter((task) => task.overdue).length === 1 ? 'tâche en retard' : 'tâches en retard'}`, detail: 'Terminez-la ou replanifiez-la ; le bureau ne déplace jamais une échéance en silence.', href: '#dad-focus' }] : []),
-    ...(triageStopped ? [{ id: 'mail-triage', audience: 'dad', severity: 'warning', title: 'Le tri Gmail est arrêté', detail: `${triageAge}${backlog.unlabelled ? ` ${backlog.unlabelled}${backlog.capped ? '+' : ''} courriels récents de la boîte de réception sont sans étiquette.` : ''}`, href: '#dad-mail' }] : []),
-    ...(family.status === 'review' ? [{ id: 'family-review', audience: 'dad', severity: 'warning', title: 'Revoir les suivis des enfants', detail: family.summary, href: family.href }] : []),
-    ...(memoryReview.queueStatus === 'pending' ? [{ id: 'memory-review', audience: 'dad', severity: 'info', title: `${memoryReview.pending} ${memoryReview.pending === 1 ? 'proposition de mémoire en attente' : 'propositions de mémoire en attente'}`, detail: 'Revoyez chaque proposition une à une ; rien n’est promu en silence.', href: '/memory-review' }] : []),
-    ...(activationOpen.length ? [{ id: 'household-activation', audience: 'dad', severity: activationOpen.some((item) => item.status === 'attention') ? 'warning' : 'info', title: `${activationOpen.length} ${activationOpen.length === 1 ? 'étape de mise en service attend' : 'étapes de mise en service attendent'} votre décision`, detail: activationOpen.slice(0, 3).map((item) => boundedText(item.label, 80)).filter(Boolean).join(' · '), href: activationOpen[0]?.href || '/dad' }] : []),
-    ...(['yellow', 'red'].includes(cloudHealth) ? [{ id: 'cloud-budget', audience: 'dad', severity: 'warning', title: cloudHealth === 'red' ? 'Le budget LLM cloud demande votre attention' : 'Le budget LLM cloud approche de sa limite', detail: `${cloudRequests} ${cloudRequests === 1 ? 'appel cloud attribué' : 'appels cloud attribués'} sur ${utilization.period}.`, href: '/analytics' }] : [])
+    ...(stale.length ? [{ id: 'schedule-stale', audience: 'dad', severity: 'warning', title: `${stale.length} ${stale.length === 1 ? 'task has' : 'tasks have'} been waiting for a date for a long time`, detail: 'Give it a date, finish it, or leave it undated on purpose.', href: '#dad-inbox' }] : []),
+    ...(tasks.some((task) => task.expired) ? [{ id: 'expired', audience: 'dad', severity: 'info', title: `${tasks.filter((task) => task.expired).length} ${tasks.filter((task) => task.expired).length === 1 ? 'task whose activity has passed' : 'tasks whose activity has passed'}`, detail: 'The activity it served has passed: close it.', href: '#dad-triage' }] : []),
+    ...(tasks.some((task) => task.recheck) ? [{ id: 'recheck', audience: 'dad', severity: 'info', title: `${tasks.filter((task) => task.recheck).length} ${tasks.filter((task) => task.recheck).length === 1 ? 'old due date' : 'old due dates'} to confirm`, detail: 'Captured late or overdue for weeks: close it, or give it the date of its activity.', href: '#dad-triage' }] : []),
+    ...(tasks.some((task) => task.overdue) ? [{ id: 'overdue', audience: 'dad', severity: 'warning', title: `${tasks.filter((task) => task.overdue).length} ${tasks.filter((task) => task.overdue).length === 1 ? 'overdue task' : 'overdue tasks'}`, detail: 'Finish it or reschedule it; the desk never moves a due date silently.', href: '#dad-focus' }] : []),
+    ...(triageStopped ? [{ id: 'mail-triage', audience: 'dad', severity: 'warning', title: 'Gmail triage is stopped', detail: `${triageAge}${backlog.unlabelled ? ` ${backlog.unlabelled}${backlog.capped ? '+' : ''} recent inbox emails have no label.` : ''}`, href: '#dad-mail' }] : []),
+    ...(family.status === 'review' ? [{ id: 'family-review', audience: 'dad', severity: 'warning', title: 'Review the kids’ follow-ups', detail: family.summary, href: family.href }] : []),
+    ...(memoryReview.queueStatus === 'pending' ? [{ id: 'memory-review', audience: 'dad', severity: 'info', title: `${memoryReview.pending} ${memoryReview.pending === 1 ? 'memory proposal waiting' : 'memory proposals waiting'}`, detail: 'Review each proposal one by one; nothing is promoted silently.', href: '/memory-review' }] : []),
+    ...(activationOpen.length ? [{ id: 'household-activation', audience: 'dad', severity: activationOpen.some((item) => item.status === 'attention') ? 'warning' : 'info', title: `${activationOpen.length} ${activationOpen.length === 1 ? 'setup step awaits' : 'setup steps await'} your decision`, detail: activationOpen.slice(0, 3).map((item) => boundedText(item.label, 80)).filter(Boolean).join(' · '), href: activationOpen[0]?.href || '/dad' }] : []),
+    ...(['yellow', 'red'].includes(cloudHealth) ? [{ id: 'cloud-budget', audience: 'dad', severity: 'warning', title: cloudHealth === 'red' ? 'The cloud LLM budget needs your attention' : 'The cloud LLM budget is nearing its limit', detail: `${cloudRequests} ${cloudRequests === 1 ? 'attributed cloud call' : 'attributed cloud calls'} over ${utilization.period}.`, href: '/analytics' }] : [])
   ].slice(0, 6);
 
   return {
     generatedAt: new Date(now).toISOString(),
     status: decisions.length ? 'attention' : 'clear',
     headline: focus.length
-      ? `${focus.length} en focus · ${inbox.length} sans date.`
+      ? `${focus.length} in focus · ${inbox.length} undated.`
       : inbox.length
-        ? `Rien de planifié · ${inbox.length} sans date.`
-        : 'Votre liste personnelle est vide.',
+        ? `Nothing scheduled · ${inbox.length} undated.`
+        : 'Your personal list is empty.',
     focus,
     inbox: inbox.slice(0, 12),
     upcoming: upcoming.slice(0, 8),

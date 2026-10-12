@@ -200,7 +200,16 @@
       setControlRoom('danger', 'fa-circle-xmark', 'RECOVERY ACTION REQUIRED', 'Backup schedule configuration is invalid', 'No automatic backup will be created until BACKUP_SCHEDULE_CRON / BACKUP_SCHEDULE_TZ are fixed.');
     } else {
       incident.hidden = true;
-      if (lastStatus === 'success') {
+      // A success only stays healthy while the scheduler keeps running on time.
+      const everyMs = Number(schedule.normalEveryMs);
+      const successAge = Date.now() - Date.parse(schedule.lastSuccessAt || schedule.lastFinishedAt || '');
+      const overdueMs = schedule.nextRunAt ? Date.now() - Date.parse(schedule.nextRunAt) : 0;
+      const stale = schedule.enabled && ((everyMs > 0 && successAge > everyMs * 1.5) || overdueMs > 60 * 60 * 1000);
+      if (lastStatus === 'running') {
+        setControlRoom('loading', 'fa-spinner', 'BACKUP CYCLE RUNNING', 'A backup cycle is in progress', 'Layer results appear when the cycle finishes.');
+      } else if (lastStatus === 'success' && stale) {
+        setControlRoom('warning', 'fa-clock', 'RECOVERY STALE', 'No backup cycle has completed on schedule', `The last success was ${schedule.lastSuccessAt ? formatDate(schedule.lastSuccessAt) : 'not timestamped'}; the scheduler may have stopped. Check Core and create a backup now.`);
+      } else if (lastStatus === 'success') {
         setControlRoom('healthy', 'fa-circle-check', 'RECOVERY HEALTHY', 'Latest backup cycle completed', schedule.lastSuccessSource === 'reconciled_from_artifact'
           ? 'The last occurrence was reconciled from an existing artifact after an interrupted cycle; no failure is recorded.'
           : 'All three logical backup layers completed without a recorded failure.');
@@ -279,14 +288,14 @@
       </span>`;
   }
 
-  function typedConfirmation(action, name, description) {
+  function typedConfirmation(action, name, description, title = 'Confirm permanent deletion') {
     const expected = `${action} ${name}`;
     const dialog = $('backupConfirmDialog');
     if (!dialog?.showModal) {
       return Promise.resolve(window.prompt(`${description}\n\nType ${expected} to continue.`) === expected);
     }
     if (confirmationResolve) confirmationResolve(false);
-    $('backupConfirmTitle').textContent = 'Confirm permanent deletion';
+    $('backupConfirmTitle').textContent = title;
     $('backupConfirmDescription').textContent = description;
     $('backupConfirmExpected').textContent = expected;
     $('backupConfirmInput').value = '';
@@ -334,7 +343,7 @@
     try {
       const { backup } = await jsonFetch('/api/operations/backup', { method: 'POST' });
       showToast(`MongoDB backup created: ${backup.name}`, 'success');
-      await loadMongoBackups();
+      await Promise.all([loadMongoBackups(), loadConfig()]); // the overview reflects the new artifact
     } catch (err) {
       showToast(`Backup failed: ${err.message}`, 'error');
     } finally {
@@ -379,8 +388,9 @@
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running…';
     try {
       const { snapshot } = await jsonFetch('/api/operations/qdrant/backup', { method: 'POST' });
-      showToast(`Qdrant snapshot created: ${snapshot.name}`, 'success');
-      await loadQdrantBackups();
+      if (snapshot.persistentCopy === true) showToast(`Qdrant snapshot created: ${snapshot.name}`, 'success');
+      else showToast(`Snapshot ${snapshot.name} exists only on the Qdrant server: its copy to recovery storage failed.`, 'error');
+      await Promise.all([loadQdrantBackups(), loadConfig()]); // the overview reflects the new artifact
     } catch (err) {
       showToast(`Snapshot failed: ${err.message}`, 'error');
     } finally {
@@ -426,7 +436,7 @@
     try {
       const { backup } = await jsonFetch('/api/operations/config/backup', { method: 'POST' });
       showToast(`Config backup created: ${backup.name} (${backup.sourceCount || 0} supported sources)`, 'success');
-      await loadConfigBackups();
+      await Promise.all([loadConfigBackups(), loadConfig()]); // the overview reflects the new artifact
     } catch (err) {
       showToast(`Config backup failed: ${err.message}`, 'error');
     } finally {
@@ -482,11 +492,14 @@
 
   async function saveConfig() {
     const btn = $('cfgSaveBtn');
-    const retentionDays = Number($('cfgRetentionDays').value);
-    if (!Number.isFinite(retentionDays) || retentionDays < 0) {
-      showToast('Retention must be a non-negative integer', 'error');
+    const raw = $('cfgRetentionDays').value.trim();
+    const retentionDays = Number(raw);
+    // An empty field is not 0: 0 keeps every backup forever, so it is asked for explicitly.
+    if (!raw || !Number.isInteger(retentionDays) || retentionDays < 0) {
+      showToast('Retention must be a whole number of days (0 keeps backups forever)', 'error');
       return;
     }
+    if (retentionDays === 0 && !await typedConfirmation('KEEP', 'FOREVER', 'Turn off automatic pruning? Backups will accumulate until deleted by hand.', 'Confirm unbounded retention')) return;
     btn.disabled = true;
     btn.textContent = 'Saving…';
     try {

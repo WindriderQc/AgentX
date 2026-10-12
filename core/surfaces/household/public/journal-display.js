@@ -29,9 +29,9 @@
     if (block.kind === 'image') {
       const source = esc(SOURCE_LABELS[block.source] || block.source || 'unknown source');
       const href = block.status === 'found' ? imageUrl(block.image?.url) : '';
-      if (!href) return `<li><span class="journal-shown-kind">${label}</span> <em>no picture found</em> for « ${esc(block.body)} » · ${source}</li>`;
+      if (!href) return `<li><span class="journal-shown-kind">${label}</span> <em>no picture found</em> for “${esc(block.body)}” · ${source}</li>`;
       const origin = imageUrl(block.image?.origin);
-      return `<li><span class="journal-shown-kind">${label}</span>${title} · « ${esc(block.body)} » · ${source}`
+      return `<li><span class="journal-shown-kind">${label}</span>${title} · “${esc(block.body)}” · ${source}`
         + (origin ? ` · <a href="${esc(origin)}" target="_blank" rel="noopener noreferrer">${esc(block.image?.originTitle || 'origin')}</a>` : '')
         + `<img class="journal-shown-image" src="${esc(href)}" alt="${esc(block.title || block.body)}" loading="lazy" referrerpolicy="no-referrer"></li>`;
     }
@@ -74,7 +74,7 @@
 
   function row(entry, { esc, sound = null }) {
     const flags = Array.isArray(entry.safetyFlags) ? entry.safetyFlags : [];
-    const soundNote = entry.soundId ? ` · offered ${esc(sound ? `${sound.emoji} ${sound.label.fr}` : entry.soundId)}` : '';
+    const soundNote = entry.soundId ? ` · offered ${esc(sound ? `${sound.emoji} ${sound.label.en}` : entry.soundId)}` : '';
     return `<div class="audit ${entry.parentAttention || flags.length ? 'danger-box' : ''}"><strong>${esc(entry.inputText || 'No retained preview')}</strong>`
       + `<div>${esc(entry.replyText)}</div>${shown(entry, esc)}`
       + `<small>${esc(new Date(entry.createdAt).toLocaleString())} · ${esc(entry.packId || 'unknown lane')} · ${esc(entry.channel)} · ${esc(entry.model || 'deterministic')} · ${entry.durationMs}ms${esc(voiceTimings(entry))}${soundNote}${flags.length ? ` · ${esc(flags.join(', '))}` : ''}</small></div>`;

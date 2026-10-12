@@ -45,7 +45,7 @@ test('a review becomes tappable questions, a revised block and at most one remar
   assert.equal(h.container.hidden, false);
   buttons[1].listeners.click();
   assert.deepEqual(h.asked, ['Combien de pattes a un crabe?']);
-  assert.deepEqual(h.revised, [{ id: 'brain-t1-0', kind: 'text', title: 'Révisé · Pattes', body: 'Araignée : 8 pattes' }]);
+  assert.deepEqual(h.revised, [{ id: 'brain-t1-0', kind: 'text', title: 'Revised · Pattes', body: 'Araignée : 8 pattes' }]);
   assert.deepEqual(h.spoken, [REVIEW.interjection]);
   h.brain.cancel();
   assert.equal(h.container.hidden, true, 'a new turn clears the previous suggestions');
@@ -71,6 +71,6 @@ test('a refused complete review is disclosed without presenting corrections or s
   const h = panel({ traceId: 't1', status: 'context_required', suggestions: [], revisions: [], interjection: null });
   await h.brain.follow('s', 't1');
   assert.equal(h.revised.length, 1);
-  assert.match(h.revised[0].body, /Aucune revue partielle/);
+  assert.match(h.revised[0].body, /No partial review was used/);
   assert.deepEqual(h.spoken, []); assert.deepEqual(h.asked, []);
 });

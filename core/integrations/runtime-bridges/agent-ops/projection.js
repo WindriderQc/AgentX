@@ -2,6 +2,7 @@
 
 const fs = require('fs/promises');
 const path = require('path');
+const { NEW_MEMBER_TEMPLATE_PATH, buildHandoffs } = require('./handoffs');
 
 const DEFAULT_REPO_ROOT = '/etc/agentx';
 const DEFAULT_TIMEOUT_MS = 5_000;
@@ -678,7 +679,7 @@ async function buildAgentOpsProjection(options = {}) {
   const registryInput = await settled('registry', read(path.join(repoRoot, 'config/agent-registry.yml')));
   const hermesRuntimeStatus = registryInput.ok ? parseRuntimeStatus(registryInput.value, 'hermes') : null;
   const hermesExpected = !String(hermesRuntimeStatus || '').startsWith('retired');
-  const [manifestInput, scheduledInput, leadInput, pipeline, ecosystem, alerts, budget, hermes, openclaw] = await Promise.all([
+  const [manifestInput, scheduledInput, leadInput, pipeline, ecosystem, alerts, budget, hermes, openclaw, newMemberInput] = await Promise.all([
     settled('manifest', read(path.join(repoRoot, 'config/openclaw-agent-manifest.yml'))),
     settled('schedules', read(path.join(repoRoot, 'SCHEDULED.md'))),
     settled('lead', read(path.join(repoRoot, 'LEAD.md'))),
@@ -688,6 +689,7 @@ async function buildAgentOpsProjection(options = {}) {
     settled('budget', get('/api/budget/status')),
     settled('hermes', get('/api/hermes/status')),
     settled('openclaw', options.getOpenClawRuntimeEvidence ? options.getOpenClawRuntimeEvidence() : Promise.resolve(options.openclawEvidence || null)),
+    settled('newMember', Promise.resolve().then(() => read(path.join(repoRoot, NEW_MEMBER_TEMPLATE_PATH)))), // optional instance file
   ]);
 
   const registryAgents = registryInput.ok ? parseAgentRegistry(registryInput.value) : [];
@@ -890,25 +892,7 @@ async function buildAgentOpsProjection(options = {}) {
     },
     sources,
     runtimeLayers,
-    handoffs: {
-      openclaw: {
-        status: sources.openclaw.status,
-        requiresTunnel: false,
-        capabilities: [
-          { label: 'Overview', path: '/overview', icon: 'fa-gauge-high' },
-          { label: 'Agents', path: '/agents', icon: 'fa-users-gear' },
-          { label: 'Sessions', path: '/sessions', icon: 'fa-clock-rotate-left' },
-          { label: 'Automations', path: '/cron', icon: 'fa-calendar-days' },
-        ],
-      },
-      agentx: {
-        complements: [
-          { label: 'Nerve Center', href: '/nerve-center', icon: 'fa-brain', reason: 'Machine, model, and routing health.' },
-          { label: 'AgentX Pipeline', href: '/pipeline', icon: 'fa-list-check', reason: 'Coding work, ownership, progress, and feedback.' },
-          { label: 'Memory Review', href: '/memory-review', icon: 'fa-book-open', reason: 'Approval-first memory evidence.' },
-        ],
-      },
-    },
+    handoffs: buildHandoffs(sources.openclaw.status, newMemberInput),
     warnings,
     utilization: {
       period: cleanText(budgetStatus.period).slice(0, 24) || '24h',

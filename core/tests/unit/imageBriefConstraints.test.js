@@ -26,7 +26,7 @@ test('retains exact user intent, order, Unicode and multiline text without extra
 test('never truncates an oversized composed prompt or interprets a similar constraint block', () => {
   const similar = 'A scene\n\nCONTRAINTES EXPLICITES À CONSERVER\nAn unrelated block';
   expect(constraints.visual(similar, manifest())).toBe(similar);
-  expect(() => constraints.compose('x'.repeat(8000), manifest())).toThrow('dépassent');
+  expect(() => constraints.compose('x'.repeat(8000), manifest())).toThrow('exceed');
   expect(constraints.compose('x'.repeat(8000))).toHaveLength(8000);
   expect(constraints.validate({ version: 1, items: [] })).toBeUndefined();
 });
@@ -38,18 +38,18 @@ test('planning keeps a long original brief and the same exact suffix within a se
   expect(constraints.visual(composed, value)).toBe(original);
   expect(composed).toBe(original + '\n\n' + constraints.block(value));
   expect(constraints.composeBrief(composed, value)).toBe(composed);
-  expect(() => constraints.compose(original, value)).toThrow('8 000');
+  expect(() => constraints.compose(original, value)).toThrow('8,000');
   expect(constraints.MAX_PROMPT).toBe(8000); expect(constraints.MAX_BRIEF).toBe(32000);
 });
 
 test('planning and rendering limits count UTF-16 units, including the protected suffix, without cutting text', () => {
   expect(constraints.composeBrief('💡'.repeat(16000))).toHaveLength(32000);
-  expect(() => constraints.composeBrief('💡'.repeat(16000) + 'x')).toThrow('32 000');
+  expect(() => constraints.composeBrief('💡'.repeat(16000) + 'x')).toThrow('32,000');
   const value = manifest(), suffixLength = constraints.block(value).length + 2;
   expect(constraints.composeBrief('x'.repeat(32000 - suffixLength), value)).toHaveLength(32000);
-  expect(() => constraints.composeBrief('x'.repeat(32001 - suffixLength), value)).toThrow('32 000');
+  expect(() => constraints.composeBrief('x'.repeat(32001 - suffixLength), value)).toThrow('32,000');
   expect(constraints.compose('x'.repeat(8000 - suffixLength), value)).toHaveLength(8000);
-  expect(() => constraints.compose('x'.repeat(8001 - suffixLength), value)).toThrow('8 000');
+  expect(() => constraints.compose('x'.repeat(8001 - suffixLength), value)).toThrow('8,000');
 });
 
 test.each([
@@ -73,7 +73,7 @@ test('native requests persist free visual text and the exact protected snapshot 
   const modified = manifest(); modified.items[0].text = 'Another exact title';
   expect(imageRequest({ ...body, constraints: modified }, config).requestHash).not.toBe(input.requestHash);
   expect(imageRequest(request(), config).request).toEqual({ prompt: 'A warm scene', width: 1024, height: 1024, seed: 42 });
-  expect(() => imageRequest({ ...body, prompt: 'x'.repeat(8000) }, config)).toThrow('dépassent');
+  expect(() => imageRequest({ ...body, prompt: 'x'.repeat(8000) }, config)).toThrow('exceed');
 });
 
 function browserUi() {

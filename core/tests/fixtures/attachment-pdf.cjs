@@ -22,7 +22,7 @@ async function main() {
     const messages = await store.prepare([{ role: 'user', content: 'Read', attachments: [ref] }], 'agentx');
     assert.match(messages[0].content, /AgentX synthetic PDF attachment/);
     assert.ok((await store.download(ref.id)).data.equals(Buffer.from(pdf('AgentX synthetic PDF attachment'))));
-    await assert.rejects(store.upload(payload('')), /entre 1 et 24 000/);
+    await assert.rejects(store.upload(payload('')), /1 to 24,000 characters/);
     await assert.rejects(store.upload({ name: 'broken.pdf', dataUrl: `data:application/pdf;base64,${Buffer.from('%PDF-broken').toString('base64')}` }), /PDF/);
     process.stdout.write('PDF_ATTACHMENT_OK\n');
   } finally { await mongoose.disconnect(); }

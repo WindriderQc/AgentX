@@ -116,9 +116,9 @@ function fleetSummary(body = {}) {
     .filter((issue) => issue.code !== 'active_alerts')
     .map((issue) => cleanText(issue.message, 240));
   for (const alert of (data.alerts || []).filter((entry) => entry.status === 'active').slice(0, 5)) {
-    attention.push(cleanText(alert.title || alert.ruleName || 'Alerte active', 240));
+    attention.push(cleanText(alert.title || alert.ruleName || 'Active alert', 240));
   }
-  if (data.health?.status !== 'ok' && !attention.length) attention.push('État opérationnel à vérifier');
+  if (data.health?.status !== 'ok' && !attention.length) attention.push('Operational status needs checking');
   return {
     status: configuredHosts > 0 && hosts.length === configuredHosts && hosts.every((host) => host.status === 'ok') ? 'ok' : 'degraded',
     attention: attention.filter(Boolean).slice(0, 5),

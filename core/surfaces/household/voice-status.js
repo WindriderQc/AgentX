@@ -30,11 +30,11 @@ function createVoiceStatus({ readCatalog, now = () => Date.now() }) {
   };
 }
 
-// One French line for the owner, empty when everything speaks.
-function voiceLine(engines, format = (iso) => new Date(iso).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })) {
+// One line for the owner, empty when everything speaks.
+function voiceLine(engines, format = (iso) => new Date(iso).toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' })) {
   const voxcpm = engines?.voxcpm;
   if (!voxcpm?.configured || voxcpm.ready !== false) return '';
-  return `Voix de Nestor (Gazz) indisponible depuis ${format(voxcpm.since)}${engines.kokoro?.ready ? ' · voix de secours Kokoro' : ''}`;
+  return `Nestor voice (Gazz) unavailable since ${format(voxcpm.since)}${engines.kokoro?.ready ? ' · Kokoro backup voice' : ''}`;
 }
 
 module.exports = { createVoiceStatus, voiceLine };

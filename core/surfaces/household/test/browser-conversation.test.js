@@ -456,7 +456,7 @@ test('the upload ceiling fails explicitly instead of submitting a partial turn',
   const endpoint = new Endpoint(1000);
   endpoint.maxSamples = 1000;
   for (let i = 0; i < 10; i++) assert.equal(endpoint.push(new Float32Array(100).fill(0.1)), null);
-  assert.throws(() => endpoint.push(new Float32Array(100).fill(0.1)), /Aucun message partiel/);
+  assert.throws(() => endpoint.push(new Float32Array(100).fill(0.1)), /No partial message was sent/);
   assert.equal(endpoint.total, 1000);
 });
 

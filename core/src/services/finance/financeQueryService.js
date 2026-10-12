@@ -5,7 +5,7 @@
 
 const FinanceStatement = require('../../../models/FinanceStatement');
 const FinanceTransaction = require('../../../models/FinanceTransaction');
-const { ledgerFilter } = require('./ledgers');
+const { ledgerFilter, isLiability } = require('./ledgers');
 
 const MAX_ROWS = 500;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -124,7 +124,9 @@ async function balances({ ledger } = {}) {
       if (!latest.has(account.accountKey)) {
         latest.set(account.accountKey, {
           accountKey: account.accountKey, code: account.code, issuer: statement.issuer,
-          balanceCents: account.closingCents, asOf: statement.periodEnd
+          balanceCents: account.closingCents, asOf: statement.periodEnd,
+          // A card or loan balance is owed (positive) or a credit (negative), not money held.
+          liability: isLiability(account.code)
         });
       }
     }
@@ -140,30 +142,43 @@ async function statements({ status, ledger } = {}) {
   return { statements: rows.map(({ _id, ...rest }) => ({ id: String(_id), ...rest })) };
 }
 
-// Which months each statement series (issuer + account) covers, and the gaps
-// between its first and last statement, so the owner knows what to fetch.
+const DAY_MS = 86400000;
+const dayAfter = (date, days) => new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
+
+function monthsBetween(from, to) {
+  const months = [];
+  for (let key = from.slice(0, 7); key <= to.slice(0, 7); key = dayAfter(`${key}-28`, 7).slice(0, 7)) months.push(key);
+  return months;
+}
+
+// Which months each statement series (issuer + account) covers, and the days
+// no statement covers between its first and last one, so the owner knows what
+// to fetch. A statement ending mid-month leaves a gap even when the months on
+// either side are present.
 async function coverage({ ledger } = {}) {
   const rows = await FinanceStatement.find({ status: 'reconciled', ...ledgerFilter(ledger) }).select('issuer accountLast4 periodStart periodEnd').lean();
   const series = new Map();
   for (const row of rows) {
+    const from = row.periodStart || row.periodEnd;
+    const to = row.periodEnd || row.periodStart;
+    if (!from) continue;
     const name = `${row.issuer}${row.accountLast4 ? ` ···${row.accountLast4}` : ''}`;
-    const months = series.get(name) || new Set();
-    for (const date of [row.periodStart, row.periodEnd]) if (date) months.add(date.slice(0, 7));
-    series.set(name, months);
+    series.set(name, [...(series.get(name) || []), { from, to }]);
   }
   const result = [];
-  for (const [name, months] of series) {
-    const sorted = [...months].sort();
-    const missing = [];
-    let [year, month] = sorted[0].split('-').map(Number);
-    for (;;) {
-      const key = `${year}-${String(month).padStart(2, '0')}`;
-      if (key > sorted.at(-1)) break;
-      if (!months.has(key)) missing.push(key);
-      month += 1;
-      if (month === 13) { year += 1; month = 1; }
+  for (const [name, periods] of series) {
+    periods.sort((a, b) => a.from.localeCompare(b.from));
+    const covered = new Set();
+    const gaps = [];
+    let reached = null;
+    for (const period of periods) {
+      if (reached && period.from > dayAfter(reached, 1)) gaps.push({ from: dayAfter(reached, 1), to: dayAfter(period.from, -1) });
+      monthsBetween(period.from, period.to).forEach((month) => covered.add(month));
+      if (!reached || period.to > reached) reached = period.to;
     }
-    result.push({ series: name, first: sorted[0], last: sorted.at(-1), months: sorted.length, missing });
+    const missing = [...new Set(gaps.flatMap((gap) => monthsBetween(gap.from, gap.to)))];
+    const sorted = [...covered].sort();
+    result.push({ series: name, first: sorted[0], last: sorted.at(-1), months: sorted.length, missing, gaps });
   }
   return { series: result.sort((a, b) => a.series.localeCompare(b.series)) };
 }

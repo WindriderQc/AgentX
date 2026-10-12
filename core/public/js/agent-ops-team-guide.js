@@ -3,39 +3,44 @@
 
   // The "new member" guide of the Team view. Core does not write the agent
   // runtime's configuration: the harness owns its tools and permissions and
-  // stays replaceable. The guide prepares the entry to paste there, with the
-  // narrowest tool profile, and says what to do before coming back to give
-  // the agent an identity.
+  // stays replaceable. The entry format belongs to the instance, which
+  // supplies it as config/agent-ops-new-member.json (handoffs.newMember):
+  // { runtime, entryPath, entry, notes[] }, where entry may use {{id}},
+  // {{name}} and {{model}} in keys and string values.
 
   const ID = /^[a-z][a-z0-9-]{0,63}$/;
 
-  // The configuration entry for one agent, keyed by its id. Tools start minimal:
-  // widening them is a deliberate edit in the harness.
-  function entry({ id, name, model }) {
-    return { [id]: {
-      name,
-      workspace: `~/.openclaw/workspace-${id}`,
-      agentDir: `~/.openclaw/agents/${id}/agent`,
-      model: { primary: model, fallbacks: [] },
-      identity: { name },
-      tools: { profile: 'minimal' }
-    } };
+  function fill(value, fields) {
+    if (typeof value === 'string') return value.replace(/\{\{(id|name|model)\}\}/g, (_match, key) => fields[key]);
+    if (Array.isArray(value)) return value.map((item) => fill(item, fields));
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).map(([key, item]) => [fill(key, fields), fill(item, fields)]));
+    }
+    return value;
+  }
+
+  // The configuration entry for one agent, from the instance's template.
+  function entry(template, fields) {
+    return template?.entry ? fill(template.entry, fields) : null;
   }
 
   function create({ esc }) {
     let dialog = null;
+    let template = null;
 
     function snippet() {
       const data = new FormData(dialog.querySelector('form'));
       const fields = { id: String(data.get('id') || '').trim(), name: String(data.get('name') || '').trim(), model: String(data.get('model') || '').trim() };
       const output = dialog.querySelector('[data-guide-output]');
-      const ready = ID.test(fields.id) && fields.name && fields.model;
-      output.textContent = ready ? JSON.stringify(entry(fields), null, 2) : 'Fill in the three fields to prepare the entry.';
+      const ready = Boolean(template) && ID.test(fields.id) && fields.name && fields.model;
+      output.textContent = !template ? 'This instance supplies no entry template (config/agent-ops-new-member.json).'
+        : ready ? JSON.stringify(entry(template, fields), null, 2) : 'Fill in the three fields to prepare the entry.';
       dialog.querySelector('[data-guide-copy]').disabled = !ready;
       dialog.querySelector('[data-guide-identity]').textContent = fields.id || 'the new agent';
     }
 
-    function open(models = []) {
+    function open(models = [], newMember = null) {
+      template = newMember?.entry ? newMember : null;
       if (!dialog) {
         dialog = document.createElement('dialog');
         dialog.className = 'agent-ops-editor';
@@ -67,7 +72,8 @@
           <label>Model<input name="model" maxlength="160" required list="agentOpsGuideModels" value="${esc(known[0] || '')}">
             <datalist id="agentOpsGuideModels">${known.map((model) => `<option value="${esc(model)}"></option>`).join('')}</datalist></label>
           <ol class="agent-ops-guide-steps">
-            <li>Add this entry under <code>agents.entries</code> in the runtime configuration. It starts with the minimal tool profile; add tools there, one need at a time.
+            <li>${template ? `Add this entry under <code>${esc(template.entryPath || 'the agent list')}</code> in the ${esc(template.runtime || 'agent runtime')} configuration.` : 'Add the agent to its runtime configuration.'}
+              ${(template?.notes || []).map((note) => `<p class="agent-ops-editor-note">${esc(note)}</p>`).join('')}
               <pre data-guide-output></pre>
               <button type="button" class="agent-ops-button" data-guide-copy disabled>Copy the entry</button></li>
             <li>Create its workspace with the instruction files that say what it answers for (its role).</li>

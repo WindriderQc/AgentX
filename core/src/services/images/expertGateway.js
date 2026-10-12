@@ -2,7 +2,7 @@
 // Credentials stay in Core. The browser only reaches the Atelier surface API.
 function configured(env = process.env) { return !!(env.OPENCLAW_GATEWAY_URL && env.OPENCLAW_GATEWAY_TOKEN); }
 async function invoke(input, { onEvent = () => {}, signal, timeoutMs = 180000, env = process.env, fetchImpl = fetch } = {}) {
-  if (!configured(env)) throw Object.assign(new Error('Le lien vers Hermes n’est pas configuré.'), { statusCode: 503 });
+  if (!configured(env)) throw Object.assign(new Error('The link to Hermes is not configured.'), { statusCode: 503 });
   const base = new URL(env.OPENCLAW_GATEWAY_URL);
   if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash) throw new Error('Invalid expert gateway origin');
   const controller = new AbortController(), abort = () => controller.abort();
@@ -14,12 +14,12 @@ async function invoke(input, { onEvent = () => {}, signal, timeoutMs = 180000, e
       method: 'POST', redirect: 'error', signal: controller.signal,
       headers: { Authorization: `Bearer ${env.OPENCLAW_GATEWAY_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(input)
     });
-    if (!response.ok) throw new Error('Le relais Hermes est indisponible.');
+    if (!response.ok) throw new Error('The Hermes relay is unavailable.');
     const decoder = new TextDecoder(); let pending = '', bytes = 0, result;
     const consume = async line => {
       if (!line.trim()) return;
       const event = JSON.parse(line);
-      if (event.type === 'error') throw new Error(event.message || 'La consultation Hermes a échoué.');
+      if (event.type === 'error') throw new Error(event.message || 'The Hermes consultation failed.');
       if (event.type === 'result') {
         if (result) throw new Error('Duplicate expert result');
         result = event.result;
@@ -27,13 +27,13 @@ async function invoke(input, { onEvent = () => {}, signal, timeoutMs = 180000, e
     };
     for await (const chunk of response.body) {
       bytes += chunk.byteLength;
-      if (bytes > 262144) throw new Error('La réponse Hermes dépasse la limite.');
+      if (bytes > 262144) throw new Error('The Hermes answer exceeds the limit.');
       pending += decoder.decode(chunk, { stream: true });
       const lines = pending.split('\n'); pending = lines.pop();
       for (const line of lines) await consume(line);
     }
     pending += decoder.decode(); if (pending) await consume(pending);
-    if (result?.ok !== true || result.expert !== 'hermes') throw new Error('Hermes n’a pas fourni de résultat confirmé.');
+    if (result?.ok !== true || result.expert !== 'hermes') throw new Error('Hermes did not provide a confirmed result.');
     return result;
   } finally { controller.abort(); clearTimeout(timer); signal?.removeEventListener('abort', abort); }
 }

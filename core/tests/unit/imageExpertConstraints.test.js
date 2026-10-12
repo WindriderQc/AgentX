@@ -60,7 +60,7 @@ test('an oversized proposal fails visibly instead of dropping protected items', 
   const f = fixture({ ...proposal, prompt: 'x'.repeat(8000) }), session = await f.service.createSession();
   await f.service.accept(session.sessionId, { clientTurnId: randomUUID(), mode: 'plan', message: 'Refine', context: context() });
   const [turn] = await f.settle(session.sessionId);
-  expect(turn.state).toBe('failed'); expect(turn.error).toContain('dépassent'); expect(turn.proposal).toBeUndefined();
+  expect(turn.state).toBe('failed'); expect(turn.error).toContain('exceed'); expect(turn.proposal).toBeUndefined();
 });
 
 test('old consultations and proposal shape remain compatible without protected items', async () => {
@@ -70,8 +70,8 @@ test('old consultations and proposal shape remain compatible without protected i
   expect(turn.proposal).toEqual(proposal); expect(turn.context).toEqual(plain);
 });
 
-test.each([{ field: 'width', value: 512, label: 'largeur' }, { field: 'height', value: 512, label: 'hauteur' },
-  { field: 'profile', value: 'other', label: 'recette' }])('a changed $field fails with a useful diagnosis and preserves the canonical brief', async ({ field, value, label }) => {
+test.each([{ field: 'width', value: 512, label: 'width' }, { field: 'height', value: 512, label: 'height' },
+  { field: 'profile', value: 'other', label: 'recipe' }])('a changed $field fails with a useful diagnosis and preserves the canonical brief', async ({ field, value, label }) => {
   const f = fixture({ ...proposal, [field]: value }), session = await f.service.createSession();
   const raw = { clientTurnId: randomUUID(), mode: 'plan', message: 'Refine', context: context() };
   await f.service.accept(session.sessionId, raw);
@@ -88,7 +88,7 @@ test('the native bridge width refusal is translated and remains terminal without
   await f.service.accept(session.sessionId, { clientTurnId: randomUUID(), mode: 'plan', message: 'Refine', context: context() });
   const [turn] = await f.settle(session.sessionId);
   expect(turn.state).toBe('failed'); expect(turn.errorCode).toBe('IMAGE_EXPERT_SETTINGS_CHANGED');
-  expect(turn.error).toContain('Ton brief reste conservé');
+  expect(turn.error).toContain('Your brief is kept');
   expect(f.bridge.invoke).toHaveBeenCalledTimes(1);
 });
 
@@ -142,7 +142,7 @@ test('a model proposal exceeding the unchanged final 8000-unit limit is rejected
   const f = fixture({ ...proposal, prompt: 'x'.repeat(8001) }), session = await f.service.createSession();
   await f.service.accept(session.sessionId, { clientTurnId: randomUUID(), mode: 'plan', message: 'Refine', context: context() });
   const [turn] = await f.settle(session.sessionId);
-  expect(turn.state).toBe('failed'); expect(turn.error).toContain('Proposition Hermes invalide'); expect(turn.proposal).toBeUndefined();
+  expect(turn.state).toBe('failed'); expect(turn.error).toContain('Invalid Hermes proposal'); expect(turn.proposal).toBeUndefined();
 });
 
 async function envelopeFixture() {
@@ -163,7 +163,7 @@ test('the exact serialized studio envelope accepts 60000 UTF-16 units and refuse
   expect(JSON.stringify(f.bridge.invoke.mock.calls[0][0])).toHaveLength(60000);
   f.rows.clear();
   await expect(f.service.accept(f.session.sessionId, { ...raw, clientTurnId: randomUUID(), message: message + 'x' }))
-    .rejects.toThrow('capacité du relais Hermes');
+    .rejects.toThrow('Hermes relay capacity');
   expect(f.bridge.invoke).toHaveBeenCalledTimes(1); expect(f.conversations.recordTurn).toHaveBeenCalledTimes(1);
 });
 
@@ -176,14 +176,14 @@ test.each(['界', '💡'])('the exact JSON envelope accepts 65536 UTF-8 bytes wi
   expect(Buffer.byteLength(json, 'utf8')).toBe(65536); expect(json.length).toBeLessThan(60000);
   f.rows.clear();
   await expect(f.service.accept(f.session.sessionId, { ...raw, clientTurnId: randomUUID(), message: message + 'x' }))
-    .rejects.toThrow('capacité du relais Hermes');
+    .rejects.toThrow('Hermes relay capacity');
   expect(f.bridge.invoke).toHaveBeenCalledTimes(1); expect(f.conversations.recordTurn).toHaveBeenCalledTimes(1);
 });
 
 test('JSON escaping participates in the transport budget before accepting a new input', async () => {
   const f = await envelopeFixture();
   const raw = { clientTurnId: randomUUID(), mode: 'consult', message: 'START' + '\u0000'.repeat(12000) + 'END', context: f.plain };
-  await expect(f.service.accept(f.session.sessionId, raw)).rejects.toThrow('capacité du relais Hermes');
+  await expect(f.service.accept(f.session.sessionId, raw)).rejects.toThrow('Hermes relay capacity');
   expect(f.bridge.invoke).not.toHaveBeenCalled(); expect(f.conversations.recordTurn).not.toHaveBeenCalled();
 });
 
@@ -217,6 +217,6 @@ test('the isolated HTTP router accepts a body over 40kb and returns a clear sema
   const app = express(); app.use('/expert', createRouter(f.service));
   const response = await request(app).post(`/expert/sessions/${session.sessionId}/turns`).send(raw);
   expect(response.status).toBe(400); expect(response.body).toMatchObject({ ok: false });
-  expect(response.body.message).toContain('capacité du relais Hermes');
+  expect(response.body.message).toContain('Hermes relay capacity');
   expect(f.conversations.recordTurn).not.toHaveBeenCalled(); expect(f.bridge.invoke).not.toHaveBeenCalled();
 });

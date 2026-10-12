@@ -13,7 +13,7 @@ function registerRecapRoutes(router, { base, serviceFor, generate, busy = () => 
     }
   };
   const idle = (req, res) => {
-    if (busy(req, res)) throw Object.assign(new Error('Attends la fin de la réponse avant de faire le point.'),
+    if (busy(req, res)) throw Object.assign(new Error('Wait for the reply to finish before writing a recap.'),
       { code: 'CONVERSATION_RECAP_BUSY', statusCode: 409 });
   };
   router.get(`${base}/recap/latest`, route(service => service.latest()));
@@ -24,7 +24,7 @@ function registerRecapRoutes(router, { base, serviceFor, generate, busy = () => 
   }));
   router.post(`${base}/:id/recap/draft`, route(async (service, req, res) => {
     idle(req, res);
-    if (!await allowDraft(req, res)) throw Object.assign(new Error('La proposition automatique est désactivée dans les réglages. Tu peux écrire ton point directement.'),
+    if (!await allowDraft(req, res)) throw Object.assign(new Error('The automatic draft is turned off in settings. You can write your recap yourself.'),
       { code: 'CONVERSATION_RECAP_DRAFT_DISABLED', statusCode: 409 });
     return { ...await service.draft(req.params.id, generate), canDraft: await allowDraft(req, res) };
   }));

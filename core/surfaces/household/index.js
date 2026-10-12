@@ -356,7 +356,7 @@ function register(api) {
   const activePersonaTurns = new Map();
   if (preferenceStore) require('../../src/services/conversationPreferences/routes').registerPreferenceRoutes(personas, {
     base: '/preferences', serviceFor: req => {
-      if (req.query.space && !['nestor', 'family'].includes(req.query.space)) throw Object.assign(new Error('Choisis Nestor ou Famille.'), { statusCode: 400 });
+      if (req.query.space && !['nestor', 'family'].includes(req.query.space)) throw Object.assign(new Error('Choose Nestor or Family.'), { statusCode: 400 });
       return preferencesFor(req.query.space === 'family');
     }, onSaved: req => brain.reconfigure(req.query.space === 'family')
   });
@@ -381,7 +381,7 @@ function register(api) {
     validClientTurnId, nestorClient, memberWork
   });
   registerBrowserSessionControls('/private', 'personal_operator'); visuals.register(personas); brain.register(personas); memberWork.register(personas);
-  registerBrowserSessionControls('/family', 'kidx_nestor', 'family');
+  registerBrowserSessionControls('/family', VOIX_FAMILY_PACK_ID, VOIX_FAMILY_SCOPE_ID, personas, null, VOIX_FAMILY_MODE_ID);
   const personalAttachments = sessionId => runtimeServices.attachments.forConversation({
     surface: 'household', sessionId, packId: 'personal_operator', scopeId: 'personal'
   });
@@ -396,14 +396,14 @@ function register(api) {
       await conversations.exportSession(personalSessionScope(req.params.sessionId), res);
     } catch (error) {
       if (res.headersSent) return res.destroy();
-      return fail(res, error.statusCode || 500, error.statusCode ? error.message : 'Export indisponible.', error.code);
+      return fail(res, error.statusCode || 500, error.statusCode ? error.message : 'Export unavailable.', error.code);
     }
   });
   personas.delete('/:space(private|family)/sessions/:sessionId', async (req, res) => { // explicit confirmation, no authenticated human identity
-    if (req.body?.confirmation !== 'DELETE CONVERSATION') return fail(res, 400, 'Confirme l’effacement de cette conversation.', 'CONVERSATION_DELETE_CONFIRMATION_REQUIRED');
-    if (activePersonaTurns.has(req.params.sessionId)) return fail(res, 409, 'Arrête la réponse en cours avant d’effacer la conversation.', 'VOICE_TURN_IN_PROGRESS');
+    if (req.body?.confirmation !== 'DELETE CONVERSATION') return fail(res, 400, 'Confirm deleting this conversation.', 'CONVERSATION_DELETE_CONFIRMATION_REQUIRED');
+    if (activePersonaTurns.has(req.params.sessionId)) return fail(res, 409, 'Stop the current answer before deleting the conversation.', 'VOICE_TURN_IN_PROGRESS');
     try { return envelope(res, await conversations.deleteSession((req.params.space === 'family' ? familySessionScope : personalSessionScope)(req.params.sessionId))); }
-    catch (error) { return fail(res, error.statusCode || 500, error.statusCode ? error.message : 'Effacement incomplet. Réessaie pour terminer.', error.code); }
+    catch (error) { return fail(res, error.statusCode || 500, error.statusCode ? error.message : 'Deletion incomplete. Try again to finish.', error.code); }
   });
   require('./attachment-routes').registerAttachmentRoutes(personas, { express, personalAttachments, envelope, fail });
   const conversationImages = require('./conversation-images').createConversationImages({ conversations });

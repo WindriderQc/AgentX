@@ -32,9 +32,9 @@ const {
 } = require('./controls');
 const { validateRuntimeConfiguration } = require('./runtimeParticipantAdapter');
 
-let activeRoundtableId = null;
-function setActiveRoundtable(id) { activeRoundtableId = id; }
-function getActiveRoundtableId() { return activeRoundtableId; }
+// Councils may overlap; the most recently started one is the active one shown.
+const activeRoundtableIds = new Set();
+function getActiveRoundtableId() { return [...activeRoundtableIds].pop() || null; }
 
 /**
  * Create + fire-and-forget execution. Returns the pending doc; the
@@ -89,7 +89,7 @@ async function startRoundtable(options = {}) {
   emitter.setMaxListeners(20);
   emitterRegistry.set(id, emitter);
 
-  setActiveRoundtable(id);
+  activeRoundtableIds.add(id);
   runRoundtable(id, emitter)
     .then(async () => {
       const completedDoc = await getRoundtable(id);
@@ -104,9 +104,7 @@ async function startRoundtable(options = {}) {
       }
     })
     .catch((err) => logger.error('Background roundtable failed', { id, error: err.message }))
-    .finally(() => {
-      if (activeRoundtableId === id) setActiveRoundtable(null);
-    });
+    .finally(() => activeRoundtableIds.delete(id));
 
   return doc;
 }
@@ -115,13 +113,14 @@ function getEmitter(id) {
   return emitterRegistry.get(id) || null;
 }
 
-// Graceful shutdown — mark active roundtable as failed so the UI can surface it.
+// Graceful shutdown — mark every active roundtable as failed so the UI can surface it.
 process.on('SIGTERM', async () => {
-  if (!activeRoundtableId) return;
-  logger.warn('SIGTERM — marking active roundtable as failed', { id: activeRoundtableId });
+  if (!activeRoundtableIds.size) return;
+  const ids = [...activeRoundtableIds];
+  logger.warn('SIGTERM — marking active roundtables as failed', { ids });
   try {
-    await Roundtable.updateOne(
-      { _id: activeRoundtableId, status: 'running' },
+    await Roundtable.updateMany(
+      { _id: { $in: ids }, status: 'running' },
       { $set: { status: 'failed', error: 'Process terminated (SIGTERM)', completedAt: new Date() } }
     );
   } catch (err) {

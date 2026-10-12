@@ -19,10 +19,12 @@
         parent.operationId, parent.sha256, parent.width, parent.height]) };
     }
     const status = text => { $('status').textContent = text; };
+    // Messages raised here or sent by the service speak to the person; engine errors are rephrased.
+    const notice = message => Object.assign(new Error(message), { notice: true });
     function readable(error) {
       const message = error?.message || '';
-      if (message.includes('SHA-256')) return 'L’empreinte de l’image reçue ne correspond pas à l’archive.';
-      return /^(Le |Les |La |L’|Un |Une |Choisis |Deux |Cette )/.test(message) ? message : 'L’image ou la composition reçue ne peut pas être vérifiée.';
+      if (message.includes('SHA-256')) return 'The received image’s fingerprint does not match the archive.';
+      return error?.notice ? message : 'The received image or composition cannot be verified.';
     }
     function clearDownloads() {
       $('downloads').hidden = true; $('output').removeAttribute('src');
@@ -51,17 +53,17 @@
       regions.forEach((region, index) => {
         const li = document.createElement('li'), button = document.createElement('button');
         li.append(document.createTextNode(`${index + 1} · (${region.x}, ${region.y}) · ${region.width} × ${region.height} px`));
-        button.type = 'button'; button.className = 'quiet-button'; button.textContent = 'Retirer';
+        button.type = 'button'; button.className = 'quiet-button'; button.textContent = 'Remove';
         button.addEventListener('click', () => { if (busy || !active || active.key !== pair()?.key) return; regions.splice(index, 1); changed(); }); li.append(button); $('regions').append(li);
       });
       controls();
     }
-    function changed() { cache.set(active.key, regions.map(r => ({ ...r }))); clearDownloads(); list(); paint(); status('Zones modifiées. Compose pour vérifier et télécharger le résultat.'); }
+    function changed() { cache.set(active.key, regions.map(r => ({ ...r }))); clearDownloads(); list(); paint(); status('Zones changed. Compose to verify and download the result.'); }
     function add(region) {
       if (busy || !active || active.key !== pair()?.key) return;
       if (regions.length >= 20 || !Object.values(region).every(Number.isSafeInteger) || region.x < 0 || region.y < 0
         || region.width < 1 || region.height < 1 || region.x + region.width > active.parent.width || region.y + region.height > active.parent.height) {
-        status('Choisis une zone entière dans les dimensions du parent ; 20 zones au maximum.'); return;
+        status('Choose a whole zone within the parent’s dimensions; 20 zones at most.'); return;
       }
       regions.push(region); changed();
     }
@@ -73,39 +75,39 @@
     function rectangle(a, b) { return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y) }; }
     async function verifiedImage(descriptor, operationId, signal) {
       const response = await fetchImpl(`/api/images/operations/${encodeURIComponent(operationId)}/image`, { signal });
-      if (!response.ok) throw new Error('Le parent archivé ne peut pas être chargé.');
+      if (!response.ok) throw notice('The archived parent cannot be loaded.');
       const blob = await response.blob();
-      if (blob.size > 50 * 1024 * 1024) throw new Error('Le parent dépasse la limite de lecture.');
+      if (blob.size > 50 * 1024 * 1024) throw notice('The parent exceeds the read limit.');
       const dataUrl = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(blob); });
       const project = root.ImageTextProject.create({ operationId, sha256: descriptor.sha256, width: descriptor.width, height: descriptor.height, dataUrl });
       await root.ImageTextProject.verifySource(project);
       const image = new Image(); image.src = dataUrl; await image.decode();
-      if (image.naturalWidth !== descriptor.width || image.naturalHeight !== descriptor.height) throw new Error('Les dimensions décodées du parent sont incohérentes.');
+      if (image.naturalWidth !== descriptor.width || image.naturalHeight !== descriptor.height) throw notice('The parent’s decoded dimensions are inconsistent.');
       return image;
     }
     async function prepare() {
       const selected = pair(); if (!selected || busy || selected.parent.width !== selected.operation.artifact.width
         || selected.parent.height !== selected.operation.artifact.height) return;
-      const token = ++epoch; busy = true; request = new AbortController(); controls(); status('Vérification du parent archivé…');
+      const token = ++epoch; busy = true; request = new AbortController(); controls(); status('Checking the archived parent…');
       try {
         const image = await verifiedImage(selected.parent, selected.parent.operationId, request.signal);
         if (token !== epoch || selected.key !== pair()?.key) return;
         active = selected; parentImage = image; regions = (cache.get(selected.key) || []).map(r => ({ ...r }));
-        $('workspace').hidden = false; list(); paint(); status('Parent vérifié. Choisis les zones à remplacer.');
+        $('workspace').hidden = false; list(); paint(); status('Parent verified. Choose the zones to replace.');
       } catch (error) { if (token === epoch) status(readable(error)); }
       finally { if (token === epoch) { busy = false; request = null; controls(); } }
     }
     async function build() {
       if (busy || !active || active.key !== pair()?.key || !regions.length) return;
       const selected = active, token = ++epoch, chosen = regions.map(r => ({ ...r }));
-      busy = true; request = new AbortController(); clearDownloads(); controls(); status('Composition et vérification des pixels hors des zones…');
+      busy = true; request = new AbortController(); clearDownloads(); controls(); status('Composing and verifying the pixels outside the zones…');
       try {
         const response = await fetchImpl(`/api/images/operations/${encodeURIComponent(selected.operation.id)}/protected-composition`, {
           method: 'POST', signal: request.signal, headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ parentSha256: selected.parent.sha256, resultSha256: selected.operation.artifact.sha256, regions: chosen })
         });
         const body = await response.json();
-        if (!response.ok || !body.ok) throw new Error(body.message || 'La composition n’est pas disponible.');
+        if (!response.ok || !body.ok) throw notice(body.message || 'The composition is not available.');
         if (token !== epoch || selected.key !== pair()?.key) return;
         const receipt = body.receipt;
         if (receipt?.schema !== 'agentx.protected-image-composition/v1' || receipt.parent?.operationId !== selected.parent.operationId
@@ -116,7 +118,7 @@
           || !/^[0-9a-f]{64}$/.test(receipt.proof.outsideRgbaSha256 || '')
           || ![receipt.proof.protectedPixels, receipt.proof.selectedPixels].every(n => Number.isInteger(n) && n >= 0)
           || receipt.proof.protectedPixels + receipt.proof.selectedPixels !== receipt.width * receipt.height
-          || JSON.stringify(receipt.regions) !== JSON.stringify(chosen) || typeof body.png !== 'string') throw new Error('Le reçu ne correspond pas aux zones sélectionnées.');
+          || JSON.stringify(receipt.regions) !== JSON.stringify(chosen) || typeof body.png !== 'string') throw notice('The receipt does not match the selected zones.');
         const project = root.ImageTextProject.create({ operationId: selected.operation.id, sha256: receipt.proof.outputSha256,
           width: selected.parent.width, height: selected.parent.height, dataUrl: `data:image/png;base64,${body.png}` });
         await root.ImageTextProject.verifySource(project);
@@ -125,7 +127,7 @@
         const pngUrl = URL.createObjectURL(new Blob([bytes], { type: 'image/png' })); urls.add(pngUrl);
         const receiptUrl = URL.createObjectURL(new Blob([JSON.stringify(receipt, null, 2) + '\n'], { type: 'application/json' })); urls.add(receiptUrl);
         $('png').href = pngUrl; $('receipt').href = receiptUrl; $('output').src = pngUrl; $('downloads').hidden = false;
-        status(`${new Intl.NumberFormat('fr-CA').format(receipt.proof.protectedPixels)} pixels hors des zones conservés et vérifiés. Télécharge la composition et son reçu.`);
+        status(`${new Intl.NumberFormat('en-US').format(receipt.proof.protectedPixels)} pixels outside the zones kept and verified. Download the composition and its receipt.`);
       } catch (error) { if (token === epoch) status(readable(error)); }
       finally { if (token === epoch) { busy = false; request = null; controls(); } }
     }
@@ -137,7 +139,7 @@
         contextKey = key; ++epoch; request?.abort(); request = null; busy = false; active = null; parentImage = null; regions = []; drag = null;
         clearDownloads(); $('workspace').hidden = true;
         status(selected && (selected.parent.width !== selected.operation.artifact.width || selected.parent.height !== selected.operation.artifact.height)
-          ? 'Dimensions différentes : cette composition ne peut pas être préparée sans modifier le format. Choisis un résultat au format du parent.' : 'Prépare le parent pour choisir les zones.');
+          ? 'Different dimensions: this composition cannot be prepared without changing the format. Choose a result in the parent’s format.' : 'Prepare the parent to choose the zones.');
       }
       controls();
     }

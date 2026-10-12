@@ -1,17 +1,17 @@
 'use strict';
 
 const IOT_METRICS = Object.freeze({
-  temperature: { label: 'Température', tone: 'coral', icon: 'temperature', order: 1 },
-  humidity: { label: 'Humidité', tone: 'blue', icon: 'drop', order: 2 },
-  wifi_rssi: { label: 'Signal Wi-Fi', tone: 'mint', icon: 'wifi', order: 3 },
-  battery_voltage: { label: 'Batterie', tone: 'gold', icon: 'battery', order: 4 },
-  cpu_temperature: { label: 'Température CPU', tone: 'violet', icon: 'chip', order: 5 },
-  pressure: { label: 'Pression', tone: 'blue', icon: 'pressure', order: 6 },
+  temperature: { label: 'Temperature', tone: 'coral', icon: 'temperature', order: 1 },
+  humidity: { label: 'Humidity', tone: 'blue', icon: 'drop', order: 2 },
+  wifi_rssi: { label: 'Wi-Fi signal', tone: 'mint', icon: 'wifi', order: 3 },
+  battery_voltage: { label: 'Battery', tone: 'gold', icon: 'battery', order: 4 },
+  cpu_temperature: { label: 'CPU temperature', tone: 'violet', icon: 'chip', order: 5 },
+  pressure: { label: 'Pressure', tone: 'blue', icon: 'pressure', order: 6 },
   altitude: { label: 'Altitude', tone: 'violet', icon: 'altitude', order: 7 },
-  dht_temperature: { label: 'Température DHT', tone: 'coral', icon: 'temperature', order: 8 },
-  free_heap: { label: 'Mémoire libre', tone: 'mint', icon: 'chip', order: 9 },
-  cpu_frequency: { label: 'Fréquence CPU', tone: 'violet', icon: 'chip', order: 10 },
-  lux: { label: 'Luminosité', tone: 'gold', icon: 'sun', order: 11 }
+  dht_temperature: { label: 'DHT temperature', tone: 'coral', icon: 'temperature', order: 8 },
+  free_heap: { label: 'Free memory', tone: 'mint', icon: 'chip', order: 9 },
+  cpu_frequency: { label: 'CPU frequency', tone: 'violet', icon: 'chip', order: 10 },
+  lux: { label: 'Light', tone: 'gold', icon: 'sun', order: 11 }
 });
 const IOT_COLORS = Object.freeze({ temperature: '#ff9b73', humidity: '#67b8ff', wifi_rssi: '#62dbac',
   battery_voltage: '#f4cf75', cpu_temperature: '#c58bfa', pressure: '#59dbe8', altitude: '#859cff',

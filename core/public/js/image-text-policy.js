@@ -6,43 +6,43 @@
 })(typeof window !== 'undefined' ? window : globalThis, function (constraints) {
   'use strict';
   var MAX_LABELS = 20, MAX_TOTAL = 4000;
-  var STRATEGIES = { auto: 'Hermes conseille', 'single-pass': 'Une passe · texte généré', 'two-pass': 'Deux passes · calques exacts' };
+  var STRATEGIES = { auto: 'Hermes advises', 'single-pass': 'One pass · generated text', 'two-pass': 'Two passes · exact layers' };
   function fail(message) { throw Object.assign(new Error(message), { statusCode: 400 }); }
   function record(value, keys) {
-    if (!value || Object.prototype.toString.call(value) !== '[object Object]' || Object.keys(value).some(function (key) { return keys.indexOf(key) < 0; }) || keys.some(function (key) { return !Object.prototype.hasOwnProperty.call(value, key); })) fail('Préparation des textes invalide.');
+    if (!value || Object.prototype.toString.call(value) !== '[object Object]' || Object.keys(value).some(function (key) { return keys.indexOf(key) < 0; }) || keys.some(function (key) { return !Object.prototype.hasOwnProperty.call(value, key); })) fail('Invalid text preparation.');
   }
   function text(value, maximum, empty) {
-    if (typeof value !== 'string' || (!empty && !value.trim()) || Array.from(value).length > maximum) fail('Texte ou placement trop long ou vide.');
+    if (typeof value !== 'string' || (!empty && !value.trim()) || Array.from(value).length > maximum) fail('Text or placement too long or empty.');
     for (var character of value) {
       var point = character.codePointAt(0);
-      if ((point < 32 && point !== 9 && point !== 10 && point !== 13) || (point >= 0xD800 && point <= 0xDFFF) || point === 0xFFFE || point === 0xFFFF) fail('Un libellé contient un caractère invalide.');
+      if ((point < 32 && point !== 9 && point !== 10 && point !== 13) || (point >= 0xD800 && point <= 0xDFFF) || point === 0xFFFE || point === 0xFFFF) fail('A label contains an invalid character.');
     }
     return value;
   }
   function labels(value) {
-    if (!Array.isArray(value) || value.length > MAX_LABELS) fail('Vingt libellés au maximum.');
+    if (!Array.isArray(value) || value.length > MAX_LABELS) fail('Twenty labels at most.');
     var ids = new Set(), total = 0;
     return value.map(function (item) {
       record(item, ['id', 'text', 'placement']);
-      if (typeof item.id !== 'string' || !/^[A-Za-z0-9_.:-]{1,160}$/.test(item.id) || ids.has(item.id)) fail('Identité de libellé invalide.');
+      if (typeof item.id !== 'string' || !/^[A-Za-z0-9_.:-]{1,160}$/.test(item.id) || ids.has(item.id)) fail('Invalid label identity.');
       ids.add(item.id);
       var clean = { id: item.id, text: text(item.text, 300, false), placement: text(item.placement, 240, true) };
       total += Array.from(clean.text).length + Array.from(clean.placement).length;
-      if (total > MAX_TOTAL) fail('Les textes et placements dépassent 4 000 caractères.');
+      if (total > MAX_TOTAL) fail('The text and placements exceed 4,000 characters.');
       return clean;
     });
   }
   function validate(value) {
     if (value === undefined) return undefined;
     record(value, ['version', 'enabled', 'strategy', 'labels']);
-    if (value.version !== 1 || typeof value.enabled !== 'boolean' || typeof value.strategy !== 'string' || !Object.prototype.hasOwnProperty.call(STRATEGIES, value.strategy)) fail('Choix de texte invalide.');
+    if (value.version !== 1 || typeof value.enabled !== 'boolean' || typeof value.strategy !== 'string' || !Object.prototype.hasOwnProperty.call(STRATEGIES, value.strategy)) fail('Invalid text choice.');
     return { version: 1, enabled: value.enabled, strategy: value.strategy, labels: labels(value.labels) };
   }
   function known(value, protectedItems) {
     var policy = validate(value), items = constraints.validate(protectedItems);
     if (!policy) return [];
     var exact = (items?.items || []).filter(function (item) { return item.kind === 'exact-text'; });
-    if (!policy.enabled && exact.length) fail('Le brief contient des contraintes de texte exact. Coche « Textes dans l’image » ou retire ces contraintes.');
+    if (!policy.enabled && exact.length) fail('The brief contains exact text constraints. Check "Text in the image" or remove these constraints.');
     if (!policy.enabled) return [];
     var result = policy.labels.slice();
     exact.forEach(function (item) {
@@ -53,16 +53,16 @@
   function validatePlan(value, requested, protectedItems) {
     var policy = validate(requested);
     if (!policy?.enabled) {
-      if (value !== undefined) fail('Hermes a proposé des textes alors que leur génération est désactivée.');
+      if (value !== undefined) fail('Hermes proposed text while text generation is turned off.');
       return undefined;
     }
     record(value, ['version', 'strategy', 'reason', 'labels']);
-    if (value.version !== 1 || !['single-pass', 'two-pass'].includes(value.strategy) || (policy.strategy !== 'auto' && value.strategy !== policy.strategy)) fail('Hermes a changé la méthode de texte choisie.');
+    if (value.version !== 1 || !['single-pass', 'two-pass'].includes(value.strategy) || (policy.strategy !== 'auto' && value.strategy !== policy.strategy)) fail('Hermes changed the chosen text method.');
     var result = { version: 1, strategy: value.strategy, reason: text(value.reason, 1000, false), labels: labels(value.labels) };
-    if (!result.labels.length) fail('Hermes doit proposer les textes à afficher avant de préparer l’image.');
+    if (!result.labels.length) fail('Hermes must propose the text to display before preparing the image.');
     known(policy, protectedItems).forEach(function (item) {
       var proposed = result.labels.find(function (label) { return label.id === item.id; });
-      if (!proposed || proposed.text !== item.text || (item.placement && proposed.placement !== item.placement)) fail('Hermes a modifié ou omis un texte exact ou son placement demandé.');
+      if (!proposed || proposed.text !== item.text || (item.placement && proposed.placement !== item.placement)) fail('Hermes changed or omitted an exact text or its requested placement.');
     });
     return result;
   }
@@ -83,8 +83,8 @@
     var policy = validate(value);
     if (!policy) return '';
     var items = known(policy, protectedItems);
-    if (policy.enabled && policy.strategy === 'auto') fail('Demande conseil à Hermes ou choisis une ou deux passes avant de créer.');
-    if (policy.enabled && !items.length) fail('Indique les textes exacts, ou demande à Hermes de les proposer.');
+    if (policy.enabled && policy.strategy === 'auto') fail('Ask Hermes for advice or choose one or two passes before creating.');
+    if (policy.enabled && !items.length) fail('Enter the exact text, or ask Hermes to propose it.');
     return letteringBlock(policy, items);
   }
   function suffix(protectedItems, policy, labels) {
@@ -121,7 +121,7 @@
     if (value === undefined) return constraints.compose(prompt, protectedItems);
     var result = inspect(prompt, protectedItems, value);
     if (result.needsPlan) block(value, protectedItems);
-    if (result.renderUnits > constraints.MAX_PROMPT) fail('Rendu final : ' + result.renderUnits + ' / 8 000 caractères, dont ' + result.overheadUnits + ' de consignes. Réduis la description à ' + result.maxVisualUnits + ' caractères maximum ou affine le brief avec Hermes.');
+    if (result.renderUnits > constraints.MAX_PROMPT) fail('Final render: ' + result.renderUnits + ' / 8,000 characters, including ' + result.overheadUnits + ' of instructions. Shorten the description to at most ' + result.maxVisualUnits + ' characters or refine the brief with Hermes.');
     return result.prompt;
   }
   return { MAX_LABELS: MAX_LABELS, STRATEGIES: Object.freeze(STRATEGIES), validate: validate, known: known, validatePlan: validatePlan, applyPlan: applyPlan, block: block, visual: visual, inspect: inspect, planningBudget: planningBudget, compose: compose };
