@@ -78,3 +78,9 @@ test('web dispatch requires the native budget hook before inference', async () =
       getTurn: async () => ({ inputText: text }), listTurns: () => assert.fail('Unbounded dispatch') } });
   await assert.rejects(runtime.prepare({ row: { sessionId: 'session', turnId: 'turn', requestSha256: hash(text) } }), /bounded web consultations/);
 });
+
+test('complete native conversation dispatch requires the matching adapter before invoking a model', async () => {
+  const runtime = nativeWorkRuntime({ continuity: async () => ({ capabilities: { isolatedWork: true, nativeReadBudget: true } }),
+    conversations: { getTurn: () => assert.fail('Old adapter must refuse before dispatch') } });
+  await assert.rejects(runtime.prepare({ row: { mode: 'native' } }), /complete native conversation work/);
+});

@@ -13,6 +13,8 @@ function setup(fetchImpl) {
   registerConversationWork({ pluginConfig: { agentxUrl: 'http://core.test', conversationWorkAgentId: 'worker',
     conversationWorkToken: 'synthetic-secret-value' }, on(name, hook) { hooks[name] = hook; }, registerTool(value) { factory = value; } },
   { fetchImpl: async (url, options) => {
+    if (JSON.parse(options.body).operation === 'guardian_tool') return { ok: false, status: 404,
+      json: async () => ({ code: 'CONVERSATION_WORK_NOT_FOUND', message: 'No complete-mode guardian' }) };
     posted.push({ url, options, body: JSON.parse(options.body) });
     return fetchImpl ? fetchImpl(posted.at(-1)) : { ok: true, json: async () => ({ ok: true,
       data: { authority: 'core.conversation-works', accepted: true, id: 'a'.repeat(64), state: 'queued', execution: 'pending' } }) };
@@ -26,7 +28,7 @@ test('the host-bound tool is optional, packaged, and keeps its private token out
   const h = setup();
   assert.equal(h.factory(native('family')), null); assert.equal(h.factory(native('secretary')), null);
   const main = h.factory(native('main')), worker = h.factory(native('worker'));
-  assert.deepEqual(main.parameters.properties.operation.enum, ['request']);
+  assert.deepEqual(main.parameters.properties.operation.enum, ['request', 'context']);
   assert.deepEqual(worker.parameters.properties.operation.enum, ['context', 'tasks', 'publish']);
   assert.equal(JSON.stringify(main).includes('synthetic-secret-value'), false);
   assert.equal(main.parameters.properties.workId, undefined);
@@ -44,6 +46,15 @@ test('execute binds the real call id and run from the hook, and never trusts fac
   assert.equal(h.posted[0].options.headers.Authorization, 'Bearer synthetic-secret-value');
   await h.hooks.after_tool_call({ toolCallId: 'call' }, context);
   await assert.rejects(tool.execute('call', { operation: 'request' }), /binding is unavailable/);
+});
+test('Main refreshes shared context through its actual native call and cannot use worker publication or task grants', async () => {
+  const h = setup(), context = native('main'), tool = h.factory(context);
+  await h.hooks.before_tool_call({ toolName: 'conversation_work', toolCallId: 'context', runId }, context);
+  await tool.execute('context', { operation: 'context', workId: 'foreign', runId: 'forged' });
+  assert.equal(h.posted[0].body.operation, 'native_context');
+  assert.deepEqual(h.posted[0].body.context, context);
+  assert.equal(h.posted[0].body.input, undefined);
+  for (const operation of ['publish', 'tasks']) await assert.rejects(tool.execute('context', { operation }), /role cannot/);
 });
 test('the guardian legacy read is blocked only when Core owns that current turn', async () => {
   const h = setup(), context = native('main');

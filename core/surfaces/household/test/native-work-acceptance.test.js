@@ -52,3 +52,10 @@ test('background acknowledgment does not replace explicit models, Open, text or 
     assert.equal((await execute(input)).text, 'Native reply'); assert.equal(calls, 1);
   }
 });
+
+test('ordinary native-mode conversation invokes the guardian after verifying its canonical Main intake', async () => {
+  const input = request(); let calls = 0;
+  input.readAcceptedNativeWork = async () => ({ ...input.acceptance, mode: 'native', foreground: 'guardian' });
+  const execute = createConversationExecutor({ agentClient: async () => { calls++; return { text: 'I’m here. Tell me more.' }; } });
+  assert.equal((await execute(input)).text, 'I’m here. Tell me more.'); assert.equal(calls, 1);
+});

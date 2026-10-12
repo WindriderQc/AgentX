@@ -15,6 +15,7 @@ async function nativeWorkAcknowledgment(request) {
     throw Object.assign(new Error('The accepted consultation cannot be verified. No replacement was dispatched.'),
       { code: 'CONVERSATION_WORK_ACCEPTANCE_UNAVAILABLE', statusCode: 503 });
   }
+  if (work.mode === 'native' && work.foreground === 'guardian') return null;
   const en = scoreSpeechLanguage(text).language === 'en';
   const answer = work.resultReady
     ? en ? 'The consultation result is ready. I’ll present it at the next pause.' : 'Le résultat de la consultation est prêt. Je te le présente à la prochaine pause.'
@@ -22,7 +23,9 @@ async function nativeWorkAcknowledgment(request) {
       : work.state === 'cancelled' ? en ? 'This consultation was cancelled.' : 'Cette consultation a été annulée.'
         : work.state === 'paused' ? en ? 'The consultation is paused. You can keep talking to me.' : 'La consultation est en pause. Tu peux continuer à me parler.'
           : work.state === 'uncertain' ? en ? 'Your request is saved. I’m still waiting for its execution receipt.' : 'Ta demande est enregistrée. Son reçu d’exécution reste à vérifier.'
-            : en ? 'Your consultation request is saved. You can keep talking to me while it runs.' : 'Ta demande de consultation est enregistrée. Tu peux continuer à me parler pendant la vérification.';
+            : work.mode === 'native'
+              ? en ? 'I’m on it. You can keep talking to me while I work.' : 'Je m’en occupe. Tu peux continuer à me parler pendant ce temps.'
+              : en ? 'Your consultation request is saved. You can keep talking to me while it runs.' : 'Ta demande de consultation est enregistrée. Tu peux continuer à me parler pendant la vérification.';
   request.signal?.throwIfAborted();
   await request.onSettled?.();
   request.onDelta?.(answer);

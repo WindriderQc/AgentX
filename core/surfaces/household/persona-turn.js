@@ -308,6 +308,9 @@ function createPersonaTurnHandler({
         const currentDirective = [turnDirective(context), acceptedTaskWork
           ? 'Core has already accepted this current personal task lookup. Its verified intake is ' + JSON.stringify(acceptedTaskWork)
             + '. Give a short acknowledgment and keep handling any other parts of the request with your existing capabilities. This lookup belongs to the separate worker: no second dispatch, task-list call or agent discovery is needed. Acceptance is not task data or task completion.'
+          : '', acceptedNativeWork?.mode === 'native'
+          ? 'Core owns this accepted Main work: ' + JSON.stringify(acceptedNativeWork)
+            + '. Respond conversationally while native Main handles the requested work. No tools or second dispatch from the guardian; acceptance is not completion.'
           : ''].filter(Boolean).join('\n\n');
         const nativeInstructions = nativeInstructionsFor({ turnSession, pack, selectedMode, channel: req.body?.channel,
           soundPlayback: !pack.childSafe && browserSoundPlayback && !preselected,
@@ -340,7 +343,7 @@ function createPersonaTurnHandler({
           warmup?.noteTurn(session);
           // A canonical acknowledgment invokes no native turn and can finish
           // while opening warm-up still owns the guardian's native session.
-          if (!acceptedNativeWork) await warmup?.settled(session.sessionId);
+          if (!acceptedNativeWork || acceptedNativeWork.foreground === 'guardian') await warmup?.settled(session.sessionId);
         }
 
         serverPhases.prepared = Date.now() - startedAt;
