@@ -40,7 +40,7 @@ test('the imageX/Hermès advice sits in the same space as the brief and format',
   expect(plan).toBeGreaterThan(advice);
   expect(planningHelp).toBeGreaterThan(plan);
   expect(form).toContain('type="button"');
-  expect(form.slice(advice, planningHelp)).toContain('Affiner mon brief');
+  expect(form.slice(advice, planningHelp)).toContain('Refine my brief');
 });
 test('the specialist conversation remains outside the brief form with unique advice controls', () => {
   const form = imageFormSegment(page);
