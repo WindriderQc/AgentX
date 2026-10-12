@@ -35,7 +35,7 @@ test('a preparing drawing becomes an image only after verified completion; all p
   assert.equal(holder.find('img'), undefined);
   await until(() => holder.find('img'));
   assert.equal(holder.find('img').src, ready.artifact.url);
-  assert.match(holder.text(), /Ton image est prête/);
+  assert.match(holder.text(), /Your image is ready/);
   assert.equal(reads.length, 2);
   assert.ok(reads.every(read => read.url === pending.statusUrl && !read.options.method));
   assert.equal(holder.find('a').href, '/images?operation=' + id);
@@ -58,7 +58,7 @@ test('terminal failure does not loop or create another drawing, and removed card
   let reads = 0;
   const holder = create(block(pending), { space: 'family', delay: 5, fetcher: async () => { reads += 1; return response({ ...pending, state: 'unknown' }); } });
   await until(() => reads === 1); await new Promise(resolve => setTimeout(resolve, 20));
-  assert.equal(reads, 1); assert.match(holder.text(), /Aucune nouvelle image/); holder._dispose();
+  assert.equal(reads, 1); assert.match(holder.text(), /No new image is started/); holder._dispose();
   const disconnected = create(block(pending), { space: 'family', fetcher: async () => { assert.fail('A removed card must not poll'); } });
   disconnected.isConnected = false; await new Promise(resolve => setTimeout(resolve, 10)); disconnected._dispose();
 });

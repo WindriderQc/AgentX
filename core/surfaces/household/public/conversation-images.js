@@ -3,10 +3,10 @@
   const UUID = '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';
   const ROUTE = new RegExp('^/api/voice-personas/(family|private)/sessions/[a-zA-Z0-9_-]{1,80}/images/(' + UUID + ')$');
   const ACTIVE = new Set(['queued', 'accepted', 'reserving', 'generating', 'archiving', 'restoring']);
-  const LABELS = { queued: 'Ton dessin attend son tour.', accepted: 'Ton dessin est demandé.', reserving: 'Préparation du dessin…', generating: 'Ton dessin prend forme…',
-    archiving: 'Conservation du dessin…', restoring: 'Dernières vérifications…', completed: 'Ton image est prête.',
-    failed: 'Le dessin n’a pas pu être préparé.', cancelled: 'Le dessin a été annulé.',
-    archive_failed: 'Le dessin attend sa récupération dans l’atelier.', unknown: 'L’état du dessin doit être vérifié dans l’atelier. Aucune nouvelle image n’est lancée automatiquement.' };
+  const LABELS = { queued: 'Your drawing is waiting its turn.', accepted: 'Your drawing has been requested.', reserving: 'Preparing the drawing…', generating: 'Your drawing is taking shape…',
+    archiving: 'Saving the drawing…', restoring: 'Final checks…', completed: 'Your image is ready.',
+    failed: 'The drawing could not be prepared.', cancelled: 'The drawing was cancelled.',
+    archive_failed: 'The drawing is waiting to be recovered in the workshop.', unknown: 'The drawing’s state must be checked in the workshop. No new image is started automatically.' };
   function node(tag, text) { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; return el; }
   function valid(operation, space) {
     const match = ROUTE.exec(operation?.statusUrl || '');
@@ -18,22 +18,22 @@
     holder.append(status);
     let operation = block.operation, timer, controller, disposed = false;
     holder._dispose = () => { disposed = true; clearTimeout(timer); controller?.abort(); };
-    if (!valid(operation, space)) { status.textContent = block.body || 'Demande image indisponible.'; return holder; }
+    if (!valid(operation, space)) { status.textContent = block.body || 'Image request unavailable.'; return holder; }
     const statusUrl = operation.statusUrl, id = operation.id;
     const links = node('div'); links.className = 'display-block-actions';
-    const atelier = node('a', 'Continuer dans l’atelier'); atelier.href = `/images?operation=${id}`; atelier.target = '_blank'; atelier.rel = 'noopener noreferrer';
+    const atelier = node('a', 'Continue in the workshop'); atelier.href = `/images?operation=${id}`; atelier.target = '_blank'; atelier.rel = 'noopener noreferrer';
     links.append(atelier); holder.append(links);
     let figure;
     function show(op) {
       operation = op;
       const ready = op.state === 'completed' && op.runtimeRestored === true
         && /^[a-f0-9]{64}$/.test(op.artifact?.sha256 || '') && op.artifact.url === statusUrl + '/image';
-      status.textContent = ready ? LABELS.completed : op.state === 'completed' ? 'La disponibilité de l’image reste à confirmer.' : LABELS[op.state] || LABELS.unknown;
+      status.textContent = ready ? LABELS.completed : op.state === 'completed' ? 'The image’s availability is still to be confirmed.' : LABELS[op.state] || LABELS.unknown;
       if (ready && !figure) {
         figure = node('figure'); figure.className = 'display-block-figure';
-        const img = node('img'); img.src = op.artifact.url; img.alt = block.title || block.body || 'Création locale'; img.loading = 'lazy'; img.decoding = 'async';
-        img.addEventListener('error', () => { figure.replaceChildren(node('p', 'Cette image n’est plus disponible.')); }, { once: true });
-        const download = node('a', 'Télécharger l’image'); download.href = op.artifact.url; download.download = `image-${id}.png`;
+        const img = node('img'); img.src = op.artifact.url; img.alt = block.title || block.body || 'Local creation'; img.loading = 'lazy'; img.decoding = 'async';
+        img.addEventListener('error', () => { figure.replaceChildren(node('p', 'This image is no longer available.')); }, { once: true });
+        const download = node('a', 'Download the image'); download.href = op.artifact.url; download.download = `image-${id}.png`;
         figure.append(img, download); holder.append(figure);
       }
       if (!ready && figure) { figure.remove(); figure = null; }
@@ -51,8 +51,8 @@
         if (!disposed && show(data.operation)) timer = setTimeout(poll, delay);
       } catch (error) {
         if (disposed) return;
-        status.textContent = error.terminal ? 'Cette demande n’est plus disponible dans la conversation.'
-          : 'Connexion interrompue. Vérification du dessin en cours…';
+        status.textContent = error.terminal ? 'This request is no longer available in the conversation.'
+          : 'Connection interrupted. Checking the drawing…';
         if (!error.terminal) timer = setTimeout(poll, 5000);
       } finally { clearTimeout(timeout); }
     }
