@@ -248,11 +248,11 @@
       <p>Recent automation receipts, pipeline transitions, sessions, and source degradation.</p>
     </div>
     <div class="agent-ops-activity-controls" role="group" aria-label="Filter Agent Ops activity">
-      <button class="active" type="button" data-activity-kind="all">All</button>
-      <button type="button" data-activity-kind="automation">Automations</button>
-      <button type="button" data-activity-kind="work">Work</button>
-      <button type="button" data-activity-kind="operator">Operator</button>
-      <button type="button" data-activity-kind="source">Sources</button>
+      <button class="active" type="button" aria-pressed="true" data-activity-kind="all">All</button>
+      <button type="button" aria-pressed="false" data-activity-kind="automation">Automations</button>
+      <button type="button" aria-pressed="false" data-activity-kind="work">Work</button>
+      <button type="button" aria-pressed="false" data-activity-kind="session">Sessions</button>
+      <button type="button" aria-pressed="false" data-activity-kind="source">Sources</button>
     </div>
     <div class="agent-ops-activity" id="agentOpsActivity"></div>
   </section>

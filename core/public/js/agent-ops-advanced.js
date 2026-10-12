@@ -127,7 +127,7 @@
     }
 
     function activityIcon(kind) {
-      return { automation: 'fa-clock-rotate-left', work: 'fa-list-check', operator: 'fa-fingerprint', source: 'fa-tower-broadcast' }[kind] || 'fa-wave-square';
+      return { automation: 'fa-clock-rotate-left', work: 'fa-list-check', session: 'fa-fingerprint', source: 'fa-tower-broadcast' }[kind] || 'fa-wave-square';
     }
 
     function activityAction(item) {
@@ -145,7 +145,7 @@
         'kind', 'title', 'detail', 'status', 'ownerId', 'targetId', 'evidence'
       ]));
       byId('agentOpsTabActivityCount').textContent = all.length;
-      root.querySelectorAll('[data-activity-kind]').forEach((button) => button.classList.toggle('active', button.dataset.activityKind === activityKind));
+      root.querySelectorAll('[data-activity-kind]').forEach((button) => { button.classList.toggle('active', button.dataset.activityKind === activityKind); button.setAttribute('aria-pressed', String(button.dataset.activityKind === activityKind)); });
       byId('agentOpsActivity').innerHTML = items.length ? items.map((item) => `
         <article class="agent-ops-activity-item">
           <span class="agent-ops-activity-icon"><i class="fas ${activityIcon(item.kind)}"></i></span>
