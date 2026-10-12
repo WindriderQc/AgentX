@@ -57,10 +57,10 @@ export async function loadHistoryList(elements, state) {
 
       div.innerHTML = `
         <div class="history-item-header">
-          <div class="title">${sanitizeHTML(item.title)}${scoreBadge}</div>
+          <button type="button" class="title history-open-btn" aria-current="${state.conversationId === item.id ? 'true' : 'false'}">${sanitizeHTML(item.title)}${scoreBadge}</button>
           <div class="history-item-actions">
-            <button class="history-menu-btn ghost" title="More actions" data-id="${item.id}" style="padding:2px 6px;font-size:0.7rem;flex-shrink:0;">
-              <i class="fas fa-ellipsis-v"></i>
+            <button type="button" class="history-menu-btn ghost" title="More actions" aria-label="More actions" aria-haspopup="menu" data-id="${item.id}" style="padding:2px 6px;font-size:0.7rem;flex-shrink:0;">
+              <i class="fas fa-ellipsis-v" aria-hidden="true"></i>
             </button>
           </div>
         </div>
@@ -102,35 +102,44 @@ function showHistoryContextMenu(btn, item, state, elements) {
 
   const menu = document.createElement('div');
   menu.className = 'history-context-menu';
+  menu.setAttribute('role', 'menu');
   menu.innerHTML = `
-    <button class="ctx-menu-item" data-action="rename"><i class="fas fa-pen"></i> Rename</button>
-    <button class="ctx-menu-item" data-action="export"><i class="fas fa-download"></i> Export</button>
-    <button class="ctx-menu-item ctx-menu-danger" data-action="delete"><i class="fas fa-trash"></i> Delete</button>
+    <button type="button" role="menuitem" class="ctx-menu-item" data-action="rename"><i class="fas fa-pen" aria-hidden="true"></i> Rename</button>
+    <button type="button" role="menuitem" class="ctx-menu-item" data-action="export"><i class="fas fa-download" aria-hidden="true"></i> Export</button>
+    <button type="button" role="menuitem" class="ctx-menu-item ctx-menu-danger" data-action="delete"><i class="fas fa-trash" aria-hidden="true"></i> Delete</button>
   `;
 
-  // Position near the button
+  // Position near the button, kept inside the viewport.
   const rect = btn.getBoundingClientRect();
   menu.style.position = 'fixed';
   menu.style.top = `${rect.bottom + 4}px`;
-  menu.style.left = `${rect.left - 100}px`;
+  menu.style.left = `${Math.max(8, rect.left - 100)}px`;
   menu.style.zIndex = '9999';
 
   document.body.appendChild(menu);
+  btn.setAttribute('aria-expanded', 'true');
+  menu.querySelector('[role="menuitem"]')?.focus();
 
-  // Close on outside click
+  const dismiss = (restoreFocus) => {
+    menu.remove();
+    btn.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('click', closeMenu);
+    document.removeEventListener('keydown', closeMenu);
+    if (restoreFocus) btn.focus();
+  };
+  // Close on outside click or Escape; Escape returns focus to the button.
   const closeMenu = (e) => {
-    if (!menu.contains(e.target)) {
-      menu.remove();
-      document.removeEventListener('click', closeMenu);
-    }
+    if (e.type === 'keydown' ? e.key !== 'Escape' : menu.contains(e.target)) return;
+    dismiss(e.type === 'keydown');
   };
   setTimeout(() => document.addEventListener('click', closeMenu), 0);
+  document.addEventListener('keydown', closeMenu);
 
   // Actions
   menu.addEventListener('click', async (e) => {
     const action = e.target.closest('[data-action]')?.dataset.action;
     if (!action) return;
-    menu.remove();
+    dismiss(false);
 
     if (action === 'rename') {
       const newTitle = prompt('Rename conversation:', item.title);

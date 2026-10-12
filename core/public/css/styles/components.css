@@ -282,6 +282,23 @@ body {
   min-width: 0;
 }
 
+/* The title is the button that opens the conversation. */
+.history-item .history-open-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.history-item .history-open-btn:focus-visible {
+  outline: 2px solid var(--accent, #7cf0ff);
+  outline-offset: 2px;
+}
+
 .history-item-header {
   display: flex;
   align-items: center;
