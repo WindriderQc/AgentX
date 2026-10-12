@@ -20,9 +20,17 @@ async function acknowledge(task, marker) {
     throw refusal('Original native verdict or model journal changed during verification');
   const prefix = `codingAutonomy.runs.${task.codingAutonomy.runs.length - 1}`;
   const run = task.codingAutonomy.runs.at(-1);
+  // Embedded-document equality depends on BSON field order; Mongoose recasts
+  // historical attempt documents. Match the durable native verdict by leaves.
+  const attemptPrefix = `automationAttempts.${task.automationAttempts.length - 1}`;
+  const attempt = task.automationAttempts.at(-1);
+  const attemptQuery = Object.fromEntries(['dispatchRequestId', 'assignee', 'attempt', 'completedAt',
+    'finalState', 'resultRequestFingerprint'].map(key => [`${attemptPrefix}.${key}`, attempt[key]]));
+  if (attempt.evidence?.workerReceiptFingerprint)
+    attemptQuery[`${attemptPrefix}.evidence.workerReceiptFingerprint`] = attempt.evidence.workerReceiptFingerprint;
   const checked = await Task.updateOne({ pipelineId: task.pipelineId, status: 'blocked', automationLease: null,
     'codingAutonomy.authorized': false, 'codingCapacityRecovery.fingerprint': marker.fingerprint,
-    automationAttempts: task.automationAttempts, 'codingAutonomy.spent': task.codingAutonomy.spent,
+    ...attemptQuery, 'codingAutonomy.spent': task.codingAutonomy.spent,
     [`${prefix}.requestId`]: marker.requestId, [`${prefix}.modelReceipts`]: run.modelReceipts,
     [`${prefix}.pendingInferences`]: run.pendingInferences },
   { $set: { 'codingCapacityRecovery.acknowledgedAt': new Date().toISOString() } }, { writeConcern: WC });

@@ -160,3 +160,10 @@ test('model journal changes during residency read cannot authorize recovery rele
   expect((await raw()).workloads).toHaveLength(1);
   expect((await Settings.findById('coding-autonomy')).active.recovery.kind).toBe('coding-capacity');
 });
+
+test('native historical BSON attempt field order does not prevent exact verdict acknowledgement', async () => {
+  const task = await Task.findOne({ pipelineId: '0001' }).lean();
+  const historical = Object.fromEntries(Object.entries(task.automationAttempts[0]).reverse());
+  await Task.collection.updateOne({ pipelineId: '0001' }, { $set: { automationAttempts: [historical] } });
+  expect(await prepare()).toMatchObject({ prepared: true });
+});
