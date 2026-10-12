@@ -153,7 +153,7 @@ def test_worker_health_reuses_success_for_ten_seconds_and_failure_for_two(monkey
         return httpx.Response(200, json={"ready": True, "voice": "narrator"}, request=httpx.Request("GET", address))
     monkeypatch.setattr(catalog.httpx, "get", health)
 
-    assert catalog.worker_ready() == (False, "VoxCPM2 worker is unavailable")
+    assert catalog.worker_ready() == (False, "Pocket TTS worker is unavailable")
     worker["up"] = True
     clock[0] += 1.9
     assert catalog.worker_ready()[0] is False and len(probes) == 1, "a failure is reused briefly"

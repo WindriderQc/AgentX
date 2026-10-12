@@ -1,4 +1,4 @@
-"""Synthetic, audio-ephemeral round-trip check for VoxCPM2 sentence endings.
+"""Synthetic, audio-ephemeral round-trip check for Pocket TTS sentence endings.
 
 The ASR comparison only selects clips for human review. It cannot prove that a
 word was spoken or omitted. No waveform is written to disk.
@@ -118,9 +118,9 @@ def collect_stream(session: requests.Session, base_url: str, text: str, voice: s
             if kind == "meta":
                 if rate is not None or event.get("protocol") != "voix-pcm-v1" or event.get("voice") != voice:
                     raise ValueError("Unexpected stream metadata")
-                if event.get("encoding") != "f32le" or event.get("channels") != 1 or event.get("sample_rate") != 48000:
+                if event.get("encoding") != "f32le" or event.get("channels") != 1 or event.get("sample_rate") not in (16000, 22050, 24000, 44100, 48000):
                     raise ValueError("Unexpected audio format")
-                rate = 48000
+                rate = event["sample_rate"]
             elif kind == "audio":
                 if rate is None or event.get("sequence") != frames + 1:
                     raise ValueError("Missing or reordered audio frame")
@@ -170,7 +170,7 @@ def main() -> int:
         sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default="http://127.0.0.1:8091")
-    parser.add_argument("--voice", required=True, help="served VoxCPM voice id")
+    parser.add_argument("--voice", required=True, help="served cloned-voice id")
     parser.add_argument("--label", required=True, help="configuration label for this run")
     parser.add_argument("--only", help="comma-separated 1-based sentence numbers for diagnosis")
     parser.add_argument("--report", type=Path, help="optional JSON report; contains text and timing, never audio")
