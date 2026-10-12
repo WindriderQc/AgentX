@@ -314,6 +314,8 @@ export function renderMessage(message, state, elements) {
       editBtn.innerHTML = '<i class="fas fa-pen"></i>';
       editBtn.addEventListener('click', () => {
         elements.messageInput.value = content;
+        // Same path as typing: the composer resizes and the count updates.
+        elements.messageInput.dispatchEvent(new Event('input', { bubbles: true }));
         elements.messageInput.focus();
       });
       actionBar.appendChild(editBtn);
