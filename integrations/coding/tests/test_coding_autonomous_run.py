@@ -18,6 +18,29 @@ autonomous = runner.coding_autonomous
 KEY = '11111111-2222-4333-8444-555555555555'
 
 class AutonomousBoundaryTest(unittest.TestCase):
+    def test_unknown_verification_profile_refuses_before_worker_or_test_command(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); (root / 'task-0001').mkdir()
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=root)
+            manifest = {'scope': ['source.py'], 'verificationProfile': 'uninstalled-profile',
+                        'remaining': {'workSeconds': 100, 'modelCalls': 8, 'modelSeconds': 90, 'testSeconds': 90},
+                        'limits': {'noProgressSeconds': 100}, 'spent': {}}
+            task = {'status': 'in_progress', 'automationLease': {'leaseId': 'original', 'dispatchRequestId': KEY},
+                    'automation': {'verificationProfile': 'agentx-core-runner-tests/v1'},
+                    'codingAutonomy': {'runs': [{'requestId': KEY, 'pendingInferences': [], 'modelReceipts': []}]}}
+            feedback = []
+            def request(url, body=None):
+                if '/manifest' in url: return {'data': manifest}
+                if '/feedback' in url: feedback.append(body); return {}
+                return {'data': {'task': task}}
+            r = SimpleNamespace(**vars(runner)); r.request = request; r.WORKSPACES = root
+            r.install_dependencies = Mock(); r.dependency_state = Mock(return_value='same')
+            r.run_worker = Mock(); r.supervise = Mock(); r.begin_publication = Mock()
+            with patch.object(autonomous.coding_git, 'reconcile', return_value={'conflicts': []}):
+                self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 1)
+            r.run_worker.assert_not_called(); r.supervise.assert_not_called(); r.begin_publication.assert_not_called()
+            self.assertEqual(feedback[0]['attemptEvidence']['failureCodes'], ['verification_profile_unknown'])
+
     def test_unresolved_model_receipt_refuses_before_publication_lock_or_push(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); (root / 'task-0001').mkdir()

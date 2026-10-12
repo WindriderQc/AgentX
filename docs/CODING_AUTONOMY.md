@@ -64,6 +64,13 @@ shell command. The dispatcher profile runs the coding Python suites; the bounded
 Core profile runs `inferenceRuntimePolicy`. Neither replaces full PR CI or
 product acceptance. Dependency edits require separate operator handling.
 
+The autonomous worker receives Core's remaining cumulative work, test, model
+duration and model-call budgets, plus the exact installed verification command.
+Model waiting and reasoning consume the model duration budget even when the
+work deadline is longer. The same native command supplies the worker's focused
+test loop and the runner's independent verification. Unknown profiles refuse
+before model execution.
+
 Before publication the runner checks exact authorized paths, all unpublished
 commit blobs (including added-then-removed artifacts), credentials, private
 paths, generated content, links/submodules, source size rules, test results and
@@ -301,6 +308,22 @@ a lost reply, reconcile the same key and fingerprint; never submit a replacement
 grant. Retrying adds no budget and creates no worker. This procedure records an
 operator continuation; it does not turn the earlier failure into autonomous
 success or authorize arbitrary scope changes.
+
+A clean unpublished native budget or no-progress stop uses the same endpoint
+with `CONTINUE_NATIVE_CHECKPOINT_WITH_ADDITIONAL_BUDGET`. This is a distinct
+authority: the exact latest worker must be finished and recorded in Core, its
+model journal must contain only uniquely identified completed calls with their
+durably acknowledged Core settlements, and its native attempt must retain the
+matching failure receipt. Core admits each journalled inference through the
+native capacity and lease. A late settlement can be observed after the failed
+worker's verdict without replacing or upgrading that verdict. First pause autonomy,
+withdraw this task's authorization and finish its original campaign as failed
+through the operator entrance. Then name a new active campaign and the exact
+clean checkpoint. No administrative recovery is invented. Operator stops,
+runner errors, active admissions, publication and unresolved calls refuse this
+path. Original costs, failures, limits and the native attempt ceiling remain
+unchanged; explicit credits and a new no-progress window are journalled as an
+operator intervention.
 
 `agentx-benchmark-artifact-tests/v1` is a native network-isolated verifier for
 `artifactComparison*`, paired statistics and paired regression tests. Its Jest
