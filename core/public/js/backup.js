@@ -279,14 +279,14 @@
       </span>`;
   }
 
-  function typedConfirmation(action, name, description) {
+  function typedConfirmation(action, name, description, title = 'Confirm permanent deletion') {
     const expected = `${action} ${name}`;
     const dialog = $('backupConfirmDialog');
     if (!dialog?.showModal) {
       return Promise.resolve(window.prompt(`${description}\n\nType ${expected} to continue.`) === expected);
     }
     if (confirmationResolve) confirmationResolve(false);
-    $('backupConfirmTitle').textContent = 'Confirm permanent deletion';
+    $('backupConfirmTitle').textContent = title;
     $('backupConfirmDescription').textContent = description;
     $('backupConfirmExpected').textContent = expected;
     $('backupConfirmInput').value = '';
@@ -483,11 +483,14 @@
 
   async function saveConfig() {
     const btn = $('cfgSaveBtn');
-    const retentionDays = Number($('cfgRetentionDays').value);
-    if (!Number.isFinite(retentionDays) || retentionDays < 0) {
-      showToast('Retention must be a non-negative integer', 'error');
+    const raw = $('cfgRetentionDays').value.trim();
+    const retentionDays = Number(raw);
+    // An empty field is not 0: 0 keeps every backup forever, so it is asked for explicitly.
+    if (!raw || !Number.isInteger(retentionDays) || retentionDays < 0) {
+      showToast('Retention must be a whole number of days (0 keeps backups forever)', 'error');
       return;
     }
+    if (retentionDays === 0 && !await typedConfirmation('KEEP', 'FOREVER', 'Turn off automatic pruning? Backups will accumulate until deleted by hand.', 'Confirm unbounded retention')) return;
     btn.disabled = true;
     btn.textContent = 'Saving…';
     try {
