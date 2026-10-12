@@ -164,8 +164,8 @@ async function workerManifest(id, requestId) {
   policy.assertTask(task);
   if (!state?.authorized || terminal.has(state.state) || run?.requestId !== requestId || !config.active
     || config.active.requestId !== requestId || state.basis !== policy.basis(task)) throw policy.fail('This execution no longer has task authority');
-  await campaign(task, task.codingCapacity?.host);
-  return { pipelineId: id, requestId, parentRequestId: run.parentRequestId, remaining: policy.remaining(task),
+  const job = await campaign(task, task.codingCapacity?.host);
+  return { queueEndAt: job.reservation.end, pipelineId: id, requestId, parentRequestId: run.parentRequestId, remaining: policy.remaining(task),
     limits: { ...state.limits, maxResumes: policy.totalLimits(state).maxResumes }, verificationProfile: state.verificationProfile || task.automation.verificationProfile, spent: policy.spent(state), lastUsefulWorkSeconds: state.lastUsefulWorkSeconds || 0,
     progressWindowStartedAtWorkSeconds: state.progressWindowStartedAtWorkSeconds || 0,
     continuationCheckpoint: (state.budgetGrants || []).find(grant => grant.parentRequestId === run.parentRequestId)?.head || null,
@@ -321,6 +321,22 @@ async function dispatch(task, config) {
     if (state.reason === 'operator_stop' || !state.authorized) Object.assign(next, { state: 'stopped', reason: state.reason || 'authorization_removed' });
     else if (receipt.stopReason === 'git_conflict_remaining' && task.status === 'blocked')
       Object.assign(next, { state: 'correction', reason: null, correction: { kind: 'git_conflict_remaining', head: receipt.checkpoint } });
+    else if (receipt.result === 'blocked' && receipt.stopReason === 'tests_failed' && task.status === 'blocked'
+      && !state.pr && !receipt.pr && receipt.lastTest?.outcome === 'failed'
+      && /^[a-f0-9]{40}$/.test(receipt.checkpoint || '') && run.modelReceipts?.length
+      && run.modelReceipts.every(call => call.state === 'completed')
+      && task.automationAttempts.filter(attempt => attempt.dispatchRequestId === run.requestId).length === 1
+      && task.automationAttempts.at(-1)?.dispatchRequestId === run.requestId
+      && task.automationAttempts.at(-1)?.attempt === run.expectedAttemptCount + 1
+      && task.automationAttemptCount === run.expectedAttemptCount + 1
+      && task.automationAttempts.at(-1)?.finalState === 'blocked'
+      && Number.isFinite(Date.parse(task.automationAttempts.at(-1)?.completedAt))
+      && /^[a-f0-9]{64}$/.test(task.automationAttempts.at(-1)?.resultRequestFingerprint || '')
+      && task.automationAttempts.at(-1)?.evidence?.source === 'coding-autonomous/v1'
+      && task.automationAttempts.at(-1)?.evidence?.verification?.status === 'failed'
+      && task.automationAttempts.at(-1)?.evidence?.failureCodes?.includes('tests_failed'))
+      Object.assign(next, { state: 'correction', reason: null, correction: { kind: 'local_tests', head: receipt.checkpoint,
+        ...(state.correction?.text && { text: state.correction.text, by: state.correction.by }) } });
     else if (receipt.result !== 'review' || task.status !== 'review' || !receipt.pr) Object.assign(next, { state: 'blocked', reason: next.reason || receipt.stopReason || 'publication_unverified' });
     else {
       if (state.pr && (state.pr.number !== receipt.pr.number || state.pr.branch !== receipt.pr.branch)) return block(task, 'pr_identity_changed');

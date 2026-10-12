@@ -94,14 +94,16 @@ beforeEach(async () => {
   const original = await task(); const state = original.codingAutonomy; const last = state.runs[0];
   last.finishedAt = new Date().toISOString(); last.result = 'blocked';
   last.usage = { workSeconds: 100, testSeconds: 3, modelSeconds: 2, modelCalls: 1 };
-  last.recovery = { state: 'confirmed', authority: 'operator-reconciliation', releaseVerifiedAt: new Date().toISOString(),
+  last.recovery = { campaignId: QUEUE, state: 'confirmed', authority: 'operator-reconciliation', releaseVerifiedAt: new Date().toISOString(),
     historicalJournalFingerprint: policy.digest([last.modelReceipts, last.pendingInferences]),
     nativeAttemptFingerprint: policy.digest(original.automationAttempts[0]) };
   state.state = 'stopped'; state.basis = policy.basis(original);
   await Task.updateOne({ pipelineId: '0001' }, { $set: { codingAutonomy: state } });
   await Settings.updateOne({ _id: 'coding-autonomy' }, { $set: { active: null } });
+  const previousJob = structuredClone(job);
+  queue.get.mockImplementation(async id => structuredClone(id === QUEUE ? previousJob : job));
   job = { id: NEXT_QUEUE, state: 'dispatching', source: { type: 'coding', ref: 'synthetic-session', taskId: '0001' },
-    hosts: [HOST], executor: { mode: 'operator' }, reservation: {
+    hosts: [HOST], resourceIds: [], executor: { mode: 'operator' }, reservation: {
       start: new Date(Date.now() - 10000).toISOString(), end: new Date(Date.now() + 3600000).toISOString() } };
   control.status.mockResolvedValue({ busy: false, run: { pipelineId: '0001', requestId: REQUEST, phase: 'finished',
     progress: { pipelineId: '0001', requestId: REQUEST, phase: 'finished', coreRecorded: true, result: 'blocked', checkpoint: HEAD } } });
@@ -160,4 +162,14 @@ test('a second key cannot double-credit the same recovered execution', async () 
   await grant();
   await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.authorized': false, 'codingAutonomy.state': 'stopped' } });
   await expect(grant(grantBody({ key: 'second', expectedRevision: (await task()).codingAutonomy.revision }))).rejects.toThrow('already received');
+});
+
+test('an unmapped same-host foreign inference still vetoes continuation', async () => {
+  await Runtime.collection.updateOne({ _id: 'runtime' }, { $set: { inferences: [{ requestId: 'foreign', host: HOST, state: 'UNKNOWN' }] } });
+  await expect(grant()).rejects.toThrow('authority remains held');
+  expect((await task()).codingAutonomy.budgetGrants).toBeUndefined();
+});
+test('a campaign from a different coding session cannot resume the original card', async () => {
+  job.source.ref = 'another-session';
+  await expect(grant()).rejects.toThrow('same task and coding session');
 });

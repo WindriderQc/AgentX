@@ -203,6 +203,8 @@ class Progress:
         self.accounted_at = self.started
         self.stage_spent = {"testSeconds": 0.0, "modelSeconds": 0.0}
         self.cumulative_limits = None
+        self.model_worker_active = False
+        self.queue_deadline = float("inf")
         self.core_recorded = False
         self.pr = self.manual_head = None
         self.prior_work = self.useful_work = 0
@@ -210,14 +212,16 @@ class Progress:
 
     def carry(self, manifest):
         self.cumulative_limits = manifest["remaining"]
+        if manifest.get("queueEndAt"):
+            self.queue_deadline = self.now() + max(0, datetime.fromisoformat(manifest["queueEndAt"].replace("Z", "+00:00")).timestamp() - datetime.now(timezone.utc).timestamp())
         self.hard_deadline = self.started + self.cumulative_limits["workSeconds"]
         self.soft_deadline = min(self.soft_deadline, self.hard_deadline)
         self.seen_states.update(manifest.get("seenStates", []))
         self.seen_tests.update(manifest.get("seenTests", []))
         self.no_progress_limit = manifest["limits"]["noProgressSeconds"]
         self.prior_work = manifest.get("spent", {}).get("workSeconds", 0)
-        self.useful_work = max(manifest.get("lastUsefulWorkSeconds", 0), manifest.get("progressWindowStartedAtWorkSeconds", 0))
-        self.last_useful = self.started - max(0, self.prior_work - self.useful_work)
+        self.useful_work = manifest.get("lastUsefulWorkSeconds", 0)
+        self.last_useful = self.started - max(0, self.prior_work - max(self.useful_work, manifest.get("progressWindowStartedAtWorkSeconds", 0)))
         self.write()
 
     def account(self):
@@ -392,7 +396,7 @@ class Progress:
             elif self.cumulative_limits and (self.stage_spent["modelSeconds"] >= self.cumulative_limits["modelSeconds"]
                                              or self.stage_spent["testSeconds"] >= self.cumulative_limits["testSeconds"]):
                 self.stop_reason = "hard_budget"
-            elif self.cumulative_limits and self.model_remaining() <= min(120, self.cumulative_limits["modelSeconds"] // 4):
+            elif self.cumulative_limits and self.model_worker_active and self.model_remaining() <= min(120, self.cumulative_limits["modelSeconds"] // 4):
                 self.stop_reason = "model_budget_reserve"
             elif self.stage in STAGE_LIMITS and current - self.stage_since >= STAGE_LIMITS[self.stage]:
                 self.stop_reason = f"{self.stage}_inactive"

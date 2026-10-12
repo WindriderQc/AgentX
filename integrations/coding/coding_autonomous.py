@@ -165,6 +165,7 @@ def execute(r, args, progress):
         verification = 'passed' if test.returncode == 0 and not progress.check_stop() else 'failed'
         progress.last_test = {'name': 'unittest' if profile == 'agentx-dispatcher-tests/v1' else 'jest', 'outcome': verification}
         if verification != 'passed':
+            summary = 'Independent verification failed (untrusted test output):\n' + (getattr(test, 'stdout', '') or getattr(test, 'stderr', '') or '(no output)')[-2000:] + '\n' + summary[-1500:]
             reason = progress.stop_reason or 'tests_failed'
             raise RuntimeError('Independent tests did not pass')
         if r.git(workspace, 'status', '--porcelain', '--untracked-files=no'):

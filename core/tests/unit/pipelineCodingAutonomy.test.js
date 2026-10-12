@@ -601,3 +601,32 @@ test('a task taken by another worker after selection cancels only the unreceived
   const original = await Task.findOne({ pipelineId: '0001' }).lean();
   expect(original.assignee).toBe('other-worker'); expect(original.codingAutonomy.reason).toBe('task_owned_elsewhere');
 });
+
+test.each(['tests_failed', 'hard_budget', 'operator_stop'])('only exact native unpublished test failure %s can select a bounded correction', async reason => {
+  await task(); await authorize();
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.correction': { kind: 'operator_continuation', text: 'Original reviewed guidance', by: 'operator' } } });
+  await enable(); const active = await launch();
+  const claimed = await claimEligibleTask(active.pipelineId, 'coding-team', new Date(), { automated: true, dispatchRequestId: active.requestId });
+  const startedAt = new Date(Date.now() - 2000).toISOString(), finishedAt = new Date().toISOString();
+  await Task.updateOne({ pipelineId: active.pipelineId }, { $set: { 'codingAutonomy.runs.0.modelReceipts': [{
+    callId: '40000000-0000-4000-8000-000000000001', state: 'completed', startedAt, finishedAt }] } });
+  const response = await request(app).post(`/api/pipeline/tasks/${active.pipelineId}/feedback`).send({
+    by: 'coding-team', assignee: 'coding-team', leaseId: claimed.automationLease.leaseId,
+    text: 'Independent verification failed (untrusted test output): synthetic assertion.', status: 'blocked',
+    attemptEvidence: { schema: 'agentx.pipeline-automation-evidence/v1', verification: { status: 'failed' },
+      changes: {}, usage: {}, failureCodes: [reason], source: 'coding-autonomous/v1',
+      workerReceiptFingerprint: 'b'.repeat(64), routing: { status: 'verified', provider: 'ollama', effectiveModel: 'synthetic-model',
+        requestCount: 1, sessionCallCount: 1, evidenceFingerprint: 'c'.repeat(64) } } });
+  expect(response.status).toBe(200);
+  receipts.set(active.requestId, { pipelineId: active.pipelineId, requestId: active.requestId, phase: 'finished',
+    progress: terminalProgress(active, { result: 'blocked', stopReason: reason, pr: null,
+      lastTest: { name: 'jest', outcome: 'failed' } }) });
+  await service.tick(); const after = await Task.findOne({ pipelineId: active.pipelineId }).lean();
+  expect(after.codingAutonomy.runs[0].finishedAt).toBeTruthy();
+  expect(after.codingAutonomy.spent.modelCalls).toBe(1);
+  if (reason === 'tests_failed') {
+    expect(after.codingAutonomy.runs).toHaveLength(2);
+    expect(after.codingAutonomy.runs[1].parentRequestId).toBe(active.requestId);
+    expect(after.codingAutonomy.correction).toEqual({ kind: 'local_tests', head: HEAD, text: 'Original reviewed guidance', by: 'operator' });
+  } else expect(after.codingAutonomy.runs).toHaveLength(1);
+});

@@ -55,16 +55,18 @@ async function evidence(task, requestId, wanted, control) {
     || host.run.progress.coreRecorded !== true || host.run.progress.checkpoint !== wanted.head
     || host.run.progress.result !== attempt.finalState)
     throw fail('The exact stopped worker checkpoint must have its native terminal receipt');
+  const previous = await queue.get(state.queueRequestId);
   const job = await queue.get(wanted.queueRequestId), now = new Date().toISOString();
   if (job.id !== wanted.queueRequestId || job.id === state.queueRequestId || job.executor?.mode !== 'operator'
-    || job.source?.type !== 'coding' || !job.source.ref || job.source.taskId !== task.pipelineId
-    || !['dispatching', 'running'].includes(job.state) || !job.hosts?.length || !job.reservation
+    || previous.id !== run.recovery.campaignId || previous.source?.type !== 'coding'
+    || job.source?.type !== 'coding' || !job.source.ref || job.source.ref !== previous.source.ref || job.source.taskId !== task.pipelineId
+    || !['dispatching', 'running'].includes(job.state) || !job.hosts?.length || !Array.isArray(job.resourceIds) || !job.reservation
     || now < job.reservation.start || now >= job.reservation.end || (job.startBefore && now >= job.startBefore))
     throw fail('A new approved active operator campaign must name this same task and coding session');
   const runtime = await Runtime.findById('runtime').lean(), topology = resourceTopology();
-  const physical = new Set(resourcesFor(topology, job.hosts.map(hostUrlKey)));
+  const physical = new Set([...(job.resourceIds || []), ...resourcesFor(topology, job.hosts.map(hostUrlKey))]);
   if (!runtime || !topologyMatches(runtime, topology) || runtime.maintenance
-    || [...(runtime.workloads || []), ...(runtime.inferences || [])].some(item => item.requestId === requestId
+    || [...(runtime.workloads || []), ...(runtime.inferences || [])].some(item => item.requestId === requestId || queue.runtimeOverlaps(job, item)
       || (item.resourceIds || []).some(id => physical.has(id))
       || resourcesFor(topology, (item.hosts || [item.host]).filter(Boolean).map(hostUrlKey)).some(id => physical.has(id))))
     throw fail('Native runtime authority remains held; reconcile its original owner first');

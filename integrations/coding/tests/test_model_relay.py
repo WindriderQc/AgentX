@@ -91,3 +91,15 @@ class RelayDrainTest(unittest.TestCase):
         self.assertFalse(server.drain(0.02))
         self.assertIn(first, server.upstreams)
         self.assertFalse(server.track(socket.socket()))
+
+    def test_stop_gate_prevents_forwarding_an_already_connected_request(self):
+        from unittest.mock import Mock
+        server = relay.UnixServer('/tmp/unused-agentx-relay-test', relay.ModelOnly, bind_and_activate=False)
+        server.server_close()
+        first, second = socket.socketpair()
+        self.addCleanup(first.close); self.addCleanup(second.close)
+        self.assertTrue(server.track(first))
+        connection = Mock(sock=first)
+        server.begin_drain()
+        self.assertFalse(server.dispatch(connection, '/v1/chat/completions', b'{}', {}))
+        connection.request.assert_not_called()

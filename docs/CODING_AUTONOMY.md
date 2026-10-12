@@ -311,7 +311,14 @@ reachable. Independent review and full CI must still accept the published commit
 The coding model route preserves up to 120 seconds (one quarter for shorter
 budgets) for completion. Core refuses fresh calls inside that reserve before
 journal/admission. The runner stops source work before the hard model ceiling and
-drains existing Core connections under heartbeat within the remaining work/model
+drains existing Core connections under heartbeat within the remaining work/model/queue
 budget, including after a worker disconnect. EOF alone does not prove successful
 inference: only the native Core receipt can permit publication and resource
 release. An unfinished or uncertain native call retains UNKNOWN and its fence.
+
+An unpublished worker checkpoint with an exact received native `tests_failed`
+verdict and completed model calls can receive a bounded local correction. Core
+retains the original operator review guidance, charges the failed run and links
+the next worker; the native feedback carries bounded test diagnostics as
+untrusted data. Operator stops, exhausted budgets, unknown runtime outcomes and
+published PR review remain subject to their existing gates.

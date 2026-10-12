@@ -57,9 +57,10 @@ class ModelOnly(BaseHTTPRequestHandler):
             if not self.server.track(connection.sock):
                 return
             upstream_socket = connection.sock
-            connection.request("POST", target.path + (f"?{target.query}" if target.query else ""), body=body,
-                               headers={"Content-Type": "application/json", "x-service-caller": "coding-run",
-                                        **self.runner_headers, "x-agentx-coding-call": str(uuid.uuid4())})
+            if not self.server.dispatch(connection, target.path + (f"?{target.query}" if target.query else ""), body,
+                               {"Content-Type": "application/json", "x-service-caller": "coding-run",
+                                **self.runner_headers, "x-agentx-coding-call": str(uuid.uuid4())}):
+                return
             with connection.getresponse() as upstream:
                 disconnected = False
                 try:
@@ -114,11 +115,28 @@ class UnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
         with self.guard:
             self.upstreams.discard(upstream)
 
+    def begin_drain(self):
+        with self.guard:
+            self.closing = True
+
+    def dispatch(self, connection, path, body, headers):
+        # Serialize the actual send with admission closure. A connected socket
+        # alone is not permission to forward after the worker stop fence.
+        with self.guard:
+            if self.closing:
+                return False
+            connection.sock.settimeout(10)
+            try:
+                connection.request("POST", path, body=body, headers=headers)
+            finally:
+                if connection.sock:
+                    connection.sock.settimeout(UPSTREAM_TIMEOUT_SECONDS)
+            return True
+
     def drain(self, seconds, heartbeat=None):
         # Close admission first; keep only already tracked native requests until
         # EOF or the caller's remaining hard budget. EOF is not a success receipt.
-        with self.guard:
-            self.closing = True
+        self.begin_drain()
         deadline = time.monotonic() + max(0, seconds)
         while time.monotonic() < deadline:
             with self.guard:
