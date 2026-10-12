@@ -111,7 +111,7 @@
               <p>${esc(lane.responsibility)}</p>
             </div>
             <div class="agent-ops-lane-signals">${signals.join('') || '<div class="agent-ops-lane-empty">No active work or cadence attributed.</div>'}</div>
-            <div class="agent-ops-lane-load ${esc(lane.load)}"><strong>${lane.signalCount}</strong><small>${esc(lane.load)} load</small>${lane.blockedCount ? `<span class="agent-ops-badge bad">${lane.blockedCount} blocked</span>` : ''}</div>
+            <div class="agent-ops-lane-load ${esc(lane.load)}"><strong>${esc(lane.signalCount)}</strong><small>${esc(lane.load)} load</small>${lane.blockedCount ? `<span class="agent-ops-badge bad">${esc(lane.blockedCount)} blocked</span>` : ''}</div>
           </article>`;
       }).join('') : empty('No ownership lanes match this filter.', 'fa-diagram-project');
 

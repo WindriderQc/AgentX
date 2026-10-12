@@ -838,7 +838,7 @@
           <div class="agent-ops-drawer-time"><i class="fas fa-forward-step"></i><strong>${esc(item.nextRunAt ? formatDate(item.nextRunAt) : 'No live next-run timestamp')}</strong></div>
         </div>
         <div class="agent-ops-drawer-section">
-          <div class="agent-ops-drawer-label"><span>Last evidence</span><small>${item.lastRun ? timeAgo(item.lastRun) : humanize(item.confidence)}</small></div>
+          <div class="agent-ops-drawer-label"><span>Last evidence</span><small>${esc(item.lastRun ? timeAgo(item.lastRun) : humanize(item.confidence))}</small></div>
           <div class="agent-ops-drawer-time"><i class="fas fa-clock-rotate-left"></i><strong>${esc(item.lastRun ? formatDate(item.lastRun) : item.source || 'Documentation only')}</strong></div>
         </div>
       </section>
