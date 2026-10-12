@@ -134,7 +134,7 @@ test('different image dimensions disable the slider and retain each image propor
   expect(b.field('mode').options[1].disabled).toBe(true);
   b.field('mode').value = 'slider'; b.field('mode').trigger('change');
   expect(b.field('mode').value).toBe('side'); expect(b.field('slider').hidden).toBe(true);
-  expect(b.field('dimensions').textContent).toContain('Dimensions différentes');
+  expect(b.field('dimensions').textContent).toContain('Different dimensions');
 });
 
 test('slider supports accessible percentage controls and native size without altering images', async () => {
@@ -142,7 +142,7 @@ test('slider supports accessible percentage controls and native size without alt
   b.field('mode').value = 'slider'; b.field('mode').trigger('change');
   b.field('position').value = '25'; b.field('position').trigger('input');
   expect(b.field('slider-result').style.clipPath).toBe('inset(0 75% 0 0)');
-  expect(b.field('percent').textContent).toBe('25 %');
+  expect(b.field('percent').textContent).toBe('25%');
   b.field('zoom').value = 'native'; b.field('zoom').trigger('change'); expect(b.field('stage').style.width).toBe('400px');
 });
 
@@ -161,14 +161,14 @@ test('manual review exports its provenance, exact constraint and explicit user o
   expect(review).toMatchObject({ schema: 'agentx.image-review.v1', mode: 'manual', pair: {
     parent, result: { operationId: resultId, sha256: resultSha, width: 400, height: 200 } } });
   expect(review.items[0]).toMatchObject({ text: 'Texte exact : Maison', sourceItemId: 'exact-1', status: 'difference', note: 'Le titre visible est différent.' });
-  expect(b.field('review-status').textContent).toContain('1 écarts observés'); expect(b.field('review-status').textContent).not.toContain('à enregistrer');
+  expect(b.field('review-status').textContent).toContain('1 difference observed'); expect(b.field('review-status').textContent).not.toContain('to save');
 });
 
 test('manual observations survive switching selection and returning to the same verified archives', async () => {
   const b = browser(); await b.load(); b.edit(0, 'note', 'À conserver en revenant.');
   b.setContext({ operation: metadata(parentId), details: { id: parentId } }); expect(b.field('workspace').hidden).toBe(true);
   b.setContext(context()); await b.load(); expect(b.item(0, 'note').value).toBe('À conserver en revenant.');
-  expect(b.field('review-status').textContent).toContain('à enregistrer');
+  expect(b.field('review-status').textContent).toContain('to save');
 });
 
 test('reopening a matching review restores manual status without any new API requests', async () => {
@@ -181,9 +181,9 @@ test('reopening a matching review restores manual status without any new API req
 test('a review for another archive or a changed recorded constraint never replaces current observations', async () => {
   const b = browser(); await b.load(); b.edit(0, 'note', 'Mon observation'); const review = await b.export();
   await b.import({ ...review, pair: { ...review.pair, result: { ...review.pair.result, sha256: sha } } });
-  expect(b.field('error').textContent).toContain('Choisis'); expect(b.item(0, 'note').value).toBe('Mon observation');
+  expect(b.field('error').textContent).toContain('Choose'); expect(b.item(0, 'note').value).toBe('Mon observation');
   await b.import({ ...review, items: [{ ...review.items[0], text: 'Autre contrainte' }] });
-  expect(b.field('error').textContent).toContain('contrainte enregistrée'); expect(b.item(0, 'note').value).toBe('Mon observation');
+  expect(b.field('error').textContent).toContain('constraint recorded'); expect(b.item(0, 'note').value).toBe('Mon observation');
 });
 
 test('declining replacement preserves dirty notes and an invalid field cannot be exported', async () => {
@@ -205,6 +205,6 @@ test('stale imports do not attach observations to a changed selection', async ()
 test('oversized import files are refused before parsing and displayed object URLs are released on destroy', async () => {
   const b = browser(); await b.load(); const read = jest.fn();
   b.field('file').files = [{ size: 200001, text: read }]; await b.field('file').trigger('change');
-  expect(read).not.toHaveBeenCalled(); expect(b.field('error').textContent).toContain('taille autorisée');
+  expect(read).not.toHaveBeenCalled(); expect(b.field('error').textContent).toContain('allowed size');
   b.controller.destroy(); expect(b.urls.revokeObjectURL).toHaveBeenCalledTimes(2);
 });
