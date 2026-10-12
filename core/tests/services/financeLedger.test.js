@@ -474,6 +474,20 @@ describe('category suggestions', () => {
     ]);
     expect(await FinanceRule.countDocuments()).toBe(0);
   });
+  test('bounds a long description to a valid pattern and proposes only the viewed ledger', async () => {
+    const long = statement();
+    long.accounts[0].transactions[0].description = 'PAIEMENT PREAUTORISE FOURNISSEUR DE SERVICES MUNICIPAUX ET SCOLAIRES REFERENCE 0042 COMPTE CLIENT';
+    await ingestDocument(await writeDoc('june-long.pdf'), { readText, extract: extractWith(long) });
+    const execute = async () => ({ ok: true, status: 200, body: { message: { content: JSON.stringify({ suggestions: [] }) } } });
+    const { suggestions } = await suggest({ limit: 5 }, { execute });
+    const pattern = suggestions.find((s) => s.description.startsWith('PAIEMENT PREAUTORISE')).pattern;
+    expect(pattern.length).toBeLessThanOrEqual(80);
+    expect(pattern).toBe('paiement preautorise fournisseur de services municipaux et scolaires reference');
+    await expect(categories.saveRules({ pattern, category: 'Services publics' })).resolves.toBeTruthy();
+    let called = false;
+    expect(await suggest({ limit: 5, ledger: 'corp' }, { execute: async () => { called = true; } })).toEqual({ suggestions: [] });
+    expect(called).toBe(false);
+  });
 });
 
 describe('financial plan and situation', () => {

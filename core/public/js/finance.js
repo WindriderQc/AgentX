@@ -258,7 +258,7 @@
     status.textContent = 'The local model is thinking (up to a minute)…';
     try {
       if (!categoryList.length) categoryList = (await api('rules')).categories || [];
-      const { suggestions } = await post('suggestions', { limit: 15 });
+      const { suggestions } = await post('suggestions', { limit: 15, ...(LEDGER ? { ledger: LEDGER } : {}) });
       const rows = suggestions.map((s, index) => {
         const select = el('select', { 'data-field': 'category', 'aria-label': `Category for ${s.description}` },
           el('option', { value: '' }, '—'), ...categoryList.map((name) => el('option', { value: name }, name)));
