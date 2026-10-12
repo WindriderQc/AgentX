@@ -16,16 +16,16 @@ test("Dad's Desk calls a stopped Gmail triage by its name and counts the mail it
   assert.equal(silent.mail.status, 'stopped');
   assert.equal(silent.mail.triage.late, true);
   assert.equal(silent.mail.triage.ageHours, 74.9);
-  assert.match(silent.mail.summary, /Dernier tri Gmail : il y a 74\.9 h · attendu toutes les 5 min/);
+  assert.match(silent.mail.summary, /Last Gmail triage: 74\.9 h ago · expected every 5 min/);
   assert.deepEqual(silent.mail.backlog, { unlabelled: 61, capped: false, days: 7, checkedAt: '2026-09-19T19:58:00.000Z' });
   const decision = silent.decisions.find((entry) => entry.id === 'mail-triage');
   assert.equal(decision.severity, 'warning');
-  assert.match(decision.detail, /61 courriels récents de la boîte de réception sont sans étiquette/);
+  assert.match(decision.detail, /61 recent inbox emails have no label/);
   assert.equal(silent.status, 'attention');
 
   const paused = desk({ enabled: false, lastRunStatus: 'error', lastRunAtMs: lastRun }, { error: 'Gmail authorization is missing or revoked; the owner must run gog auth add' });
   assert.equal(paused.mail.status, 'stopped');
-  assert.match(paused.mail.summary, /désactivé · dernier passage il y a 74\.9 h/);
+  assert.match(paused.mail.summary, /disabled · last run 74\.9 h ago/);
   assert.equal(paused.mail.backlog.unlabelled, null);
   assert.match(paused.mail.backlog.error, /gog auth add/);
 
