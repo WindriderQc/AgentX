@@ -20,15 +20,21 @@
     holder._dispose = () => { disposed = true; clearTimeout(timer); controller?.abort(); };
     if (!valid(operation, space)) { status.textContent = block.body || 'Image request unavailable.'; return holder; }
     const statusUrl = operation.statusUrl, id = operation.id;
-    const links = node('div'); links.className = 'display-block-actions';
-    const atelier = node('a', 'Continue in the workshop'); atelier.href = `/images?operation=${id}`; atelier.target = '_blank'; atelier.rel = 'noopener noreferrer';
-    links.append(atelier); holder.append(links);
+    // The workshop is the adult Atelier: a family drawing stays in its conversation.
+    const family = space === 'family';
+    if (!family) {
+      const links = node('div'); links.className = 'display-block-actions';
+      const atelier = node('a', 'Continue in the workshop'); atelier.href = `/images?operation=${id}`; atelier.target = '_blank'; atelier.rel = 'noopener noreferrer';
+      links.append(atelier); holder.append(links);
+    }
+    const label = (state) => (family && (state === 'archive_failed' || state === 'unknown' || !LABELS[state])
+      ? 'The drawing needs a parent to check it. No new drawing is started automatically.' : LABELS[state] || LABELS.unknown);
     let figure;
     function show(op) {
       operation = op;
       const ready = op.state === 'completed' && op.runtimeRestored === true
         && /^[a-f0-9]{64}$/.test(op.artifact?.sha256 || '') && op.artifact.url === statusUrl + '/image';
-      status.textContent = ready ? LABELS.completed : op.state === 'completed' ? 'The image’s availability is still to be confirmed.' : LABELS[op.state] || LABELS.unknown;
+      status.textContent = ready ? LABELS.completed : op.state === 'completed' ? 'The image’s availability is still to be confirmed.' : label(op.state);
       if (ready && !figure) {
         figure = node('figure'); figure.className = 'display-block-figure';
         const img = node('img'); img.src = op.artifact.url; img.alt = block.title || block.body || 'Local creation'; img.loading = 'lazy'; img.decoding = 'async';
