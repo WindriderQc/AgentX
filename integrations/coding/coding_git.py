@@ -22,13 +22,22 @@ def audit(git, workspace, base, artifact, scope=None):
     if len(commits) > 100:
         raise GitRefusal('Publication history exceeds the reviewed budget')
     for commit in commits:
+        trusted_trees = [base]
+        parents = git(workspace, 'rev-list', '--parents', '-n', '1', commit).split()[1:]
+        if len(parents) > 1:
+            for parent in parents:
+                try:
+                    git(workspace, 'merge-base', '--is-ancestor', parent, base)
+                except subprocess.CalledProcessError:
+                    continue
+                trusted_trees.append(parent)
         names = git(workspace, 'diff-tree', '--root', '--no-commit-id', '-r', '-m', '--name-only', '-z', commit).split('\0')
         for name in filter(None, names):
-            try:
-                if git(workspace, 'rev-parse', '--verify', f'{commit}:{name}') == git(workspace, 'rev-parse', '--verify', f'{base}:{name}'):
-                    continue  # A reviewed upstream blob brought in by a merge.
-            except subprocess.CalledProcessError:
-                pass
+            entry = git(workspace, 'ls-tree', commit, '--', name)
+            if any(entry == git(workspace, 'ls-tree', tree, '--', name) for tree in trusted_trees):
+                # Only exact entries from the current base or a proven upstream
+                # merge parent are inherited, including their mode and absence.
+                continue
             paths.add(name)
             if artifact(name) or PRIVATE.search(name):
                 raise GitRefusal('Publication contains private or generated artifacts')
@@ -38,7 +47,7 @@ def audit(git, workspace, base, artifact, scope=None):
                 continue  # Deleted in this commit; earlier content is inspected above.
             if len(content) > 2 * 1024 * 1024 or SECRET.search(content):
                 raise GitRefusal('Publication contains unreviewed large content or credentials')
-            mode = git(workspace, 'ls-tree', commit, '--', name).split(' ', 1)[0]
+            mode = entry.split(' ', 1)[0]
             if mode in {'120000', '160000'}:
                 raise GitRefusal('Publication introduces a link or submodule')
     for name in changes(git, workspace, base):
