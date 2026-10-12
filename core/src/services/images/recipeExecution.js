@@ -16,13 +16,13 @@ function declaredRecipe(value) {
 function requestedRecipe(body) {
   if (!Object.hasOwn(body, 'recipeId') && !Object.hasOwn(body, 'recipeVersion')) return undefined;
   if (!Object.hasOwn(body, 'recipeId') || !Object.hasOwn(body, 'recipeVersion')
-      || !token(body.recipeId) || !token(body.recipeVersion)) throw fail('Une recette attendue exige un ID et une version valides.');
+      || !token(body.recipeId) || !token(body.recipeVersion)) throw fail('An expected recipe requires a valid ID and version.');
   return { id: body.recipeId, version: body.recipeVersion };
 }
 
 function assertRecipe(expected, profile) {
   if (expected && (profile.recipe?.id !== expected.id || profile.recipe?.version !== expected.version)) {
-    throw fail('La recette attendue ne correspond plus à ce profil. Recharge les recettes disponibles.', 409);
+    throw fail('The expected recipe no longer matches this profile. Reload the available recipes.', 409);
   }
 }
 

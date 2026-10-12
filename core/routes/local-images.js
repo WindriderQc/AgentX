@@ -12,7 +12,7 @@ function createRouter(images = service, workshop = presentation, exports = recip
     try { await handler(req, res); }
     catch (error) {
       res.status(error.statusCode || 503).json({ ok: false, code: 'LOCAL_IMAGE_ERROR',
-        message: error.statusCode ? error.message : 'Le service image est indisponible. Consulte son état avant une nouvelle demande.' });
+        message: error.statusCode ? error.message : 'The image service is unavailable. Check its status before a new request.' });
     }
   };
   router.get('/status', wrap(async (_req, res) => res.json({ ok: true, ...images.status() })));
@@ -53,7 +53,7 @@ function mount(app) {
     footerJs: '<script src="/js/image-starters.js" defer></script><script src="/js/image-brief-constraints.js" defer></script><script src="/js/image-brief-constraints-ui.js" defer></script><script src="/js/image-text-policy.js" defer></script><script src="/js/image-text-policy-ui.js" defer></script><script src="/js/image-expert.js" defer></script><script src="/js/image-text-project.js" defer></script><script src="/js/image-text-editor.js" defer></script><script src="/js/image-compare.js" defer></script><script src="/js/image-protected-composition.js" defer></script><script src="/js/image-layout-guide.js" defer></script><script src="/js/local-images.js" defer></script>'
   }));
   app.get('/images/guide', (_req, res) => res.render('layouts/main', {
-    pageView: '../pages/images-guide', title: 'AgentX · Images · Comment ça marche', service: 'core', activePage: 'images', showNav: true,
+    pageView: '../pages/images-guide', title: 'AgentX · Images · How it works', service: 'core', activePage: 'images', showNav: true,
     headCss: '<link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/css/local-images.css"><link rel="stylesheet" href="/css/local-images-guide.css">',
     footerJs: '<script src="/js/local-images-guide.js" defer></script>'
   }));

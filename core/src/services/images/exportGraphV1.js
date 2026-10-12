@@ -3,7 +3,7 @@
 // with the current workflow/profile: the original graph bytes remain the part.
 const crypto = require('node:crypto');
 const { isDeepStrictEqual } = require('node:util');
-const fail = () => Object.assign(new Error('Le graphe enregistré est incohérent ou non exportable.'), { statusCode: 503 });
+const fail = () => Object.assign(new Error('The recorded graph is inconsistent or not exportable.'), { statusCode: 503 });
 const requireValid = value => { if (!value) throw fail(); };
 const object = value => value && typeof value === 'object' && !Array.isArray(value)
   && [Object.prototype, null].includes(Object.getPrototypeOf(value));
