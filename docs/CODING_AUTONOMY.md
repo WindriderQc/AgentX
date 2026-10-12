@@ -180,6 +180,37 @@ through the native owner; do not delete admissions or quarantine.
 
 ## Reconcile a stopped execution
 
+An expired coding workload with a received blocked worker verdict retains its
+native fence. Before deploying Core, its owner can run
+`node scripts/recover-coding-capacity.js prepare <private-intent.json>` once in
+the reviewed Core image, using the instance's external environment/database
+and network. This command starts no server and invokes only Core's coding owner.
+The intent contains `pipelineId`, original `requestId`, a stable `key`,
+`confirm: true`, `workerTerminated: true` and confirmation
+`ORIGINAL_CODING_WORKER_TERMINATED_RECOVER_NATIVE_CAPACITY`. Independently verify
+the exact host unit stopped first; pause autonomy and withdraw authorization.
+The command checks the original host receipt and durable native verdict,
+journals the original persistent resident set, and adopts the existing recovery
+identity. Active children, foreign workloads, maintenance or changed topology
+refuse. It never substitutes a new workload or caller-provided principal.
+
+Keep that adopted fence while the instance operator recovers any UNKNOWN child
+through its native owner. A controlled restart must follow the queued campaign
+and installed host-unit procedure; preserve its exact restart timestamp and
+received receipt. Restart recovery records a durable, idempotent native release
+receipt, retaining the original UNKNOWN evidence. After restoration, run the
+same command with `recover-children` and the verified native `restartReceipt`
+in the private intent when recovering the original coding parent's children;
+Core derives their exact proofs from its prepared journal. Then run the
+same command with `complete` and the same private intent. It checks the complete
+persistent resident set, digests, contexts and aggregate GPU bytes before VERIFIED,
+RESTORED and atomic parent release. Unresolved children still refuse. On a lost
+answer, reconcile the same key and original receipt, never repeat a restart.
+For a deployment blocked by that original fence, a reviewed recovery candidate
+may be mounted read-only into the installed Core image for this one-shot command;
+record its exact source revision and hashes outside Git. This is operator
+reconciliation, not autonomous delivery or an installation of the candidate.
+
 Pause autonomy and withdraw the original task authorization. After independently
 verifying the original worker termination and native resource release, close its
 original operator campaign through the heavy-work queue. In Pipeline, confirm

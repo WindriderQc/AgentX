@@ -351,6 +351,20 @@ async function recoverInferenceAfterRuntimeRestart({ id, generation, principal, 
   if (!id || !generation || !exactReceipt) {
     return { recovered: false, reason: 'exact inference proof and runtime restart receipt required' };
   }
+  const current = await RuntimeCoordination.findById('runtime').select('+releaseReceipts').lean();
+  const prior = (current?.releaseReceipts || []).find(item => item.admissionId === id
+    && item.generation === generation && item.recovered === true
+    && (!principal || item.principal === principal));
+  if (prior) return prior.receipt?.restartedAt === receipt.restartedAt
+    ? { ...prior, idempotent: true }
+    : { recovered: false, reason: 'original runtime restart receipt differs' };
+  const owned = (current?.inferences || []).find(item => item.admissionId === id
+    && item.generation === generation && item.state === 'UNKNOWN'
+    && (!principal || item.principal === principal));
+  if (!owned) return { recovered: false, reason: 'matching quarantined inference was not found' };
+  const releaseReceipt = { ...owned, contract: 'agentx.ollama-runtime-restart/v1',
+    coordinationKind: 'inference', released: true, recovered: true,
+    releasedAt: new Date(), receipt };
   const exactInference = {
     admissionId: id,
     generation,
@@ -363,15 +377,16 @@ async function recoverInferenceAfterRuntimeRestart({ id, generation, principal, 
       _id: 'runtime',
       inferences: { $elemMatch: exactInference }
     },
-    { $pull: { inferences: { admissionId: id, generation, state: 'UNKNOWN', ...(principal && { principal }) } } },
-    { new: false }
+    { $pull: { inferences: { admissionId: id, generation, state: 'UNKNOWN', ...(principal && { principal }) } },
+      $push: { releaseReceipts: { $each: [releaseReceipt], $slice: -100 } } },
+    { new: false, writeConcern: { w: 1, j: true } }
   ).lean();
   const inference = recovered?.inferences?.find((entry) => entry.admissionId === id
     && entry.generation === generation
     && entry.state === 'UNKNOWN'
     && (!principal || entry.principal === principal));
   return inference
-    ? { recovered: true, admissionId: id, generation, principal: inference.principal, receipt }
+    ? releaseReceipt
     : { recovered: false, reason: 'matching quarantined inference was not found' };
 }
 

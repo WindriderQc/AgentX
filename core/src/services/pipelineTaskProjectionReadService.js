@@ -34,6 +34,10 @@ function redactTaskLeaseIds(task) {
       const { admissionId, generation, workloadId, ...visible } = row.codingCapacity;
       return visible;
     })() } : {}),
+    ...(row.codingCapacityRecovery ? { codingCapacityRecovery: {
+      key: row.codingCapacityRecovery.key, requestId: row.codingCapacityRecovery.requestId,
+      state: row.codingCapacityRecovery.state
+    } } : {}),
     ...(row.automationLease ? { automationLease: withoutLeaseId(row.automationLease) } : {}),
     ...(Array.isArray(row.automationAttempts)
       ? { automationAttempts: row.automationAttempts.map(withoutLeaseId) } : {}),
