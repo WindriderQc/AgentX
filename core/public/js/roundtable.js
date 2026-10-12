@@ -229,7 +229,7 @@
           'Content-Type': 'application/json',
           ...(token ? { 'x-roundtable-chair-token': token } : {})
         },
-        body: JSON.stringify({ text, author: 'Example User', source: 'web-ui' })
+        body: JSON.stringify({ text, source: 'web-ui' })
       });
       $('liveInterjection').value = '';
       showToast('Interjection queued for the next phase', 'success');
@@ -251,7 +251,6 @@
         },
         body: JSON.stringify({
           decision,
-          actor: 'Example User',
           note: $('liveDecisionNote').value.trim()
         })
       });
