@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from http.server import BaseHTTPRequestHandler
 import http.client
+import json
 import os
 import socket
 import socketserver
@@ -27,12 +28,29 @@ MAX_REQUEST_BYTES = 64 * 1024 * 1024
 UPSTREAM_TIMEOUT_SECONDS = 3600
 
 
+def with_budget_guidance(body: bytes, guidance: str | None) -> bytes:
+    """Add ephemeral runner context; preserve the harness history and model options."""
+    if not isinstance(guidance, str) or not guidance or len(guidance) > 2000:
+        return body
+    try:
+        value = json.loads(body)
+        if not isinstance(value, dict) or not isinstance(value.get("messages"), list) or not value["messages"]:
+            return body
+        if not all(isinstance(message, dict) for message in value["messages"]):
+            return body
+        value["messages"].append({"role": "system", "content": guidance})
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
+    except (ValueError, UnicodeDecodeError, RecursionError):
+        return body
+
+
 class ModelOnly(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"  # The reply ends when the connection closes, which also carries a stream.
     model_url = ""
     observer = staticmethod(lambda _event: None)
     runner_headers = {}
     drain_on_disconnect = False
+    budget_guidance = staticmethod(lambda: None)
 
     def refuse(self) -> None:
         body = b'{"error":{"message":"The coding worker can reach the model route only.","type":"invalid_request_error"}}'
@@ -48,6 +66,10 @@ class ModelOnly(BaseHTTPRequestHandler):
             self.refuse()
             return
         body = self.rfile.read(length)
+        body = with_budget_guidance(body, self.budget_guidance())
+        if len(body) > MAX_REQUEST_BYTES:
+            self.refuse()
+            return
         target = urlsplit(f"{self.model_url}/chat/completions")
         connection_type = http.client.HTTPSConnection if target.scheme == "https" else http.client.HTTPConnection
         connection = connection_type(target.hostname, target.port, timeout=UPSTREAM_TIMEOUT_SECONDS)
@@ -160,12 +182,15 @@ class UnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
         super().shutdown()
 
 
-def serve(socket_path: str, model_url: str, observer=None, runner_headers=None, drain_on_disconnect=False) -> UnixServer:
+def serve(socket_path: str, model_url: str, observer=None, runner_headers=None, drain_on_disconnect=False,
+          budget_guidance=None) -> UnixServer:
     """Start the runner-side relay; the caller shuts it down."""
     if os.path.exists(socket_path):
         os.unlink(socket_path)
     handler = type("Handler", (ModelOnly,), {"model_url": model_url.rstrip("/"),
-                    "observer": staticmethod(observer or (lambda _event: None)), "runner_headers": runner_headers or {}, "drain_on_disconnect": drain_on_disconnect})
+                    "observer": staticmethod(observer or (lambda _event: None)), "runner_headers": runner_headers or {},
+                    "drain_on_disconnect": drain_on_disconnect,
+                    "budget_guidance": staticmethod(budget_guidance or (lambda: None))})
     server = UnixServer(socket_path, handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server

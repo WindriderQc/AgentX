@@ -292,6 +292,40 @@ class ProgressTest(unittest.TestCase):
         self.assertEqual(self.progress.model_remaining(), 100)
         self.assertEqual(self.progress.usage()["testSeconds"], 10)
 
+    def test_live_budget_guidance_tracks_time_without_granting_progress_or_changing_accounting(self):
+        self.assertIsNone(self.progress.model_guidance())
+        self.progress.carry({"remaining": {"workSeconds": 5000, "modelSeconds": 600, "modelCalls": 40, "testSeconds": 500},
+                             "limits": {"noProgressSeconds": 2700}})
+        self.progress.set_stage("model_wait")
+        self.clock[0] = 100
+        before = (self.progress.accounted_at, dict(self.progress.stage_spent), self.progress.last_useful)
+        text = self.progress.model_guidance()
+        remaining = json.loads(text[text.index("{"):text.index("}") + 1])
+        self.assertEqual(remaining, {"workSeconds": 4900, "modelSeconds": 500, "modelCalls": 40,
+                                     "testSeconds": 500, "noProgressSeconds": 2600})
+        self.assertEqual(before, (self.progress.accounted_at, self.progress.stage_spent, self.progress.last_useful))
+        self.assertIsNone(self.progress.progress_at)
+        self.clock[0] = 200
+        self.progress.set_stage("test")
+        self.clock[0] = 230
+        text = self.progress.model_guidance()
+        remaining = json.loads(text[text.index("{"):text.index("}") + 1])
+        self.assertEqual((remaining["modelSeconds"], remaining["testSeconds"]), (400, 470))
+        self.progress.stop_reason = "operator_stop"
+        self.assertIsNone(self.progress.model_guidance())
+
+    def test_native_harness_output_limit_is_explicit_without_replacing_an_operator_stop(self):
+        self.progress.event({"type": "turn/end", "data": {"reason": {"kind": "completed"}}})
+        self.assertIsNone(self.progress.stop_reason)
+        self.progress.event({"type": "turn/end", "data": {"reason": {"kind": "max-tokens"}}})
+        self.assertEqual(self.progress.stop_reason, "model_output_limit")
+        self.assertIsNone(self.progress.progress_at)
+        self.progress.finish("blocked")
+        self.assertEqual(module.safe_progress(json.loads(self.progress.path.read_text()), KEY, "0001")["stopReason"], "model_output_limit")
+        self.progress.stop_reason = "operator_stop"
+        self.progress.event({"type": "turn/end", "data": {"reason": {"kind": "max-tokens"}}})
+        self.assertEqual(self.progress.stop_reason, "operator_stop")
+
 
 if __name__ == "__main__":
     unittest.main()
