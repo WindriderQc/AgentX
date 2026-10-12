@@ -157,6 +157,11 @@ Default cumulative per-task limits:
 | CI waiting across all executions | 60 minutes |
 | No useful source/test progress | 45 minutes |
 
+Worker test observation recognizes the installed Node Jest entry point and
+correlates the harness's encoded tool-result envelope with its original call.
+Filtered output cannot hide a failing test or tool error. Only test names,
+outcomes and durations enter progress receipts; commands and output stay private.
+
 These limits can be reduced on authorization, never reset by a correction or
 reauthorization of a started campaign. Work and the reviewed native attempt
 duration must allow at least the native lease minimum of ten seconds.

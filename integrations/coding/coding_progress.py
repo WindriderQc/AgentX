@@ -96,21 +96,59 @@ def test_kind(command: str) -> str | None:
             return "jest"
         if exe in {"npm", "pnpm", "yarn"} and any(re.fullmatch(r"test(?::[\w-]+)?", t) for t in tokens[1:3]):
             return "npm_test"
-        if exe == "node" and any(t.endswith("run-jest.js") for t in tokens[1:2]):
+        if exe == "node" and any(t.endswith("run-jest.js") or Path(t).parts[-3:] == ("jest", "bin", "jest.js") for t in tokens[1:2]):
             return "jest"
         if exe == "node" and "--test" in tokens:
             return "node_test"
     return None
 
 
+def tool_message(message: dict) -> tuple[str, bool, bool]:
+    """Extract bounded harness text and errors; malformed evidence stays unknown."""
+    if not isinstance(message, dict) or type(message.get("isError", False)) is not bool:
+        return "", False, False
+    stack = [(message.get("content", ""), 0)]
+    text, errored, visited, size = [], message.get("isError", False), 0, 0
+    while stack:
+        content, depth = stack.pop()
+        visited += 1
+        if depth > 64 or visited > 4096:
+            return "", False, False
+        if isinstance(content, str):
+            try:
+                decoded = json.loads(content)
+            except ValueError:
+                decoded = None
+            except RecursionError:
+                return "", False, False
+            # Only harness blocks are envelopes. Arbitrary JSON is plain output.
+            if isinstance(decoded, list) and any(isinstance(item, dict) and "type" in item for item in decoded):
+                content = decoded
+            else:
+                size += len(content)
+                if size > 4 * 1024 * 1024:
+                    return "", False, False
+                text.append(content)
+                continue
+        if not isinstance(content, list) or len(content) + visited + len(stack) > 4096:
+            return "", False, False
+        children = []
+        for item in content:
+            if not isinstance(item, dict) or type(item.get("isError", False)) is not bool:
+                return "", False, False
+            errored = errored or item.get("isError", False)
+            if item.get("type") == "tool-result" and "content" in item:
+                children.append((item["content"], depth + 1))
+            elif item.get("type") == "text" and isinstance(item.get("text"), str):
+                children.append((item["text"], depth + 1))
+            else:
+                return "", False, False
+        stack.extend(reversed(children))
+    return "\n".join(text), errored, True
+
+
 def message_text(message: dict) -> str:
-    content = message.get("content", "")
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return "\n".join(message_text(item) if item.get("type") == "tool-result" else item.get("text", "")
-                         for item in content if isinstance(item, dict))
-    return ""
+    return tool_message(message)[0]
 
 
 def test_outcome(content: str, errored: bool, reliable_exit: bool) -> str:
@@ -293,7 +331,7 @@ class Progress:
             if isinstance(args, str):
                 try:
                     args = json.loads(args)
-                except ValueError:
+                except (ValueError, RecursionError):
                     args = {}
             name = test_kind(str(args.get("command", ""))) if isinstance(args, dict) and data.get("name") == "bash" else None
             call_id = data.get("callId")
@@ -312,11 +350,8 @@ class Progress:
             call_id = source.get("callId") if isinstance(source, dict) else None
             pending = self.pending_tests.pop((session, call_id), None)
             if pending:
-                content = message_text(message)
-                blocks = message.get("content", [])
-                errored = message.get("isError") or (isinstance(blocks, list) and any(
-                    isinstance(block, dict) and block.get("isError") for block in blocks))
-                outcome = test_outcome(content, bool(errored), pending[2])
+                content, errored, valid = tool_message(message)
+                outcome = test_outcome(content, errored, pending[2]) if valid else "unknown"
                 signature = hashlib.sha256(json.dumps([pending[1], outcome, self.source_signature]).encode()).hexdigest()
                 if outcome != "unknown" and signature not in self.seen_tests:
                     self.seen_tests.add(signature)
@@ -357,7 +392,7 @@ class Progress:
                     offset = stream.tell()
                     try:
                         self.event(json.loads(line), str(path))
-                    except (ValueError, UnicodeDecodeError):
+                    except (ValueError, UnicodeDecodeError, RecursionError):
                         continue
             self.offsets[path] = offset
 
