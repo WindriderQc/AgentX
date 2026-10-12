@@ -18,9 +18,22 @@
   }
   const dollars = (value) => `${value < 0 ? '-' : ''}$${Math.abs(Math.round(value)).toLocaleString('en-US')}`;
   const monthLabel = (m) => { const [y, mm] = m.split('-'); return `${MONTHS[Number(mm) - 1]} ${y.slice(2)}`; };
-  // Accepts 1234.56, 1,234.56 and the French 1 234,56.
-  const parseAmount = (text) => { const clean = String(text).replace(/\s/g, ''); return Number.parseFloat(clean.includes('.') ? clean.replace(/,/g, '') : clean.replace(',', '.')) || 0; };
-  const toCents = (id) => Math.round(parseAmount($(id).value) * 100);
+  // Accepts 1234.56, 1,234.56 and the French 1 234,56; empty is 0 and anything else is
+  // refused, never read as its leading digits.
+  const parseAmount = (text) => {
+    const clean = String(text).replace(/[\s$]/g, '');
+    if (!clean) return 0;
+    const plain = clean.includes('.') ? clean.replace(/,/g, '') : clean.replace(',', '.');
+    return /^-?\d+(\.\d+)?$/.test(plain) ? Number(plain) : Number.NaN;
+  };
+  const toCents = (id) => {
+    const value = parseAmount($(id).value);
+    if (Number.isNaN(value)) {
+      const label = $(id).closest('label')?.childNodes[0]?.textContent.trim() || 'an amount';
+      throw new Error(`Check ${label}: write a number such as 1234.56.`);
+    }
+    return Math.round(value * 100);
+  };
 
   function el(tag, attrs = {}, ...children) {
     const node = document.createElement(tag);
@@ -65,12 +78,12 @@
 
   async function runDebt(event) {
     event?.preventDefault();
-    const params = new URLSearchParams({
-      months: String(Math.round((Number($('simYears').value) || 6) * 12)),
-      extraMonthlyCents: String(toCents('simExtra')), lumpSumCents: String(toCents('simLump')),
-      lumpSumMonth: String(Number($('simLumpMonth').value) || 1), annualBonusCents: String(toCents('simBonus'))
-    });
     try {
+      const params = new URLSearchParams({
+        months: String(Math.round((Number($('simYears').value) || 6) * 12)),
+        extraMonthlyCents: String(toCents('simExtra')), lumpSumCents: String(toCents('simLump')),
+        lumpSumMonth: String(Number($('simLumpMonth').value) || 1), annualBonusCents: String(toCents('simBonus'))
+      });
       const d = await getJson(`/api/finance/simulate/debt?${params}`);
       const labels = d.baseline.points.map((p) => monthLabel(p.month));
       lineChart($('debtChart'), labels, [
@@ -91,17 +104,19 @@
   function readEvents() {
     return String($('fcEvents').value).split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
       const [month, amount, ...label] = line.split(/[;|]/).map((part) => part.trim());
-      return { month, amountCents: Math.round(parseAmount(amount || '0') * 100), label: label.join(' ') };
+      const value = parseAmount(amount || '0');
+      if (Number.isNaN(value)) throw new Error(`Check the event "${line}": its amount must be a number.`);
+      return { month, amountCents: Math.round(value * 100), label: label.join(' ') };
     });
   }
 
   async function runForecast(event) {
     event?.preventDefault();
-    const body = { months: 12, cushionCents: toCents('fcCushion'), events: readEvents(),
-      includeProvisions: $('fcProvisions').checked ? 'true' : 'false' };
-    if ($('fcIncome').value) body.incomeCents = toCents('fcIncome');
-    if ($('fcSpend').value) body.spendCents = toCents('fcSpend');
     try {
+      const body = { months: 12, cushionCents: toCents('fcCushion'), events: readEvents(),
+        includeProvisions: $('fcProvisions').checked ? 'true' : 'false' };
+      if ($('fcIncome').value) body.incomeCents = toCents('fcIncome');
+      if ($('fcSpend').value) body.spendCents = toCents('fcSpend');
       const f = await getJson('/api/finance/simulate/forecast', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       if (!$('fcIncome').value) $('fcIncome').placeholder = String(Math.round(f.assumptions.incomeCents / 100));
       if (!$('fcSpend').value) $('fcSpend').placeholder = String(Math.round(f.assumptions.spendCents / 100));

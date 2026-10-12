@@ -163,7 +163,7 @@
   fetch('/api/finance/situation', { credentials: 'same-origin' })
     .then((response) => response.json())
     .then((body) => {
-      if (body?.status !== 'success') return;
+      if (body?.status !== 'success') { $('financeSituationNote').textContent = `Situation unavailable for now${body?.message ? `: ${body.message}` : ''}.`; return; }
       render(body.data);
       const excluded = (body.data.excludeTags || []).join(',');
       fetch(`/api/finance/summary/monthly?excludeCategory=Virements%20internes&excludeTag=${encodeURIComponent(excluded)}`, { credentials: 'same-origin' })

@@ -59,17 +59,18 @@
   };
   const toCents = (text) => (String(text).trim() === '' ? null : Math.round(toNumber(text) * 100));
 
+  // Each generated control is named by its column, since the table has no visible label per cell.
   function input(field, value) {
-    const [key, , kind] = field;
-    if (kind === 'bool') return el('input', { type: 'checkbox', 'data-key': key, checked: value ? '' : false });
+    const [key, label, kind] = field;
+    if (kind === 'bool') return el('input', { type: 'checkbox', 'data-key': key, 'aria-label': label, checked: value ? '' : false });
     if (Array.isArray(kind) || kind === 'category') {
       const options = kind === 'category' ? categories.map((c) => [c, c]) : kind;
-      const select = el('select', { 'data-key': key }, ...options.map(([v, label]) => el('option', { value: v }, label)));
+      const select = el('select', { 'data-key': key, 'aria-label': label }, ...options.map(([v, label]) => el('option', { value: v }, label)));
       select.value = value || options[0]?.[0] || '';
       return select;
     }
     const shown = kind === 'money' ? toDollars(value) : kind === 'rate' ? (Number.isFinite(value) ? (value / 100).toString() : '') : (value ?? '');
-    return el('input', { type: 'text', 'data-key': key, 'data-kind': kind || 'text', value: String(shown), class: kind === 'long' ? 'finance-edit-long' : '' });
+    return el('input', { type: 'text', 'data-key': key, 'data-kind': kind || 'text', 'aria-label': label, value: String(shown), class: kind === 'long' ? 'finance-edit-long' : '' });
   }
 
   function readRow(row, section) {
@@ -87,12 +88,12 @@
   function render() {
     const body = $('planEditorBody');
     const tabs = SECTIONS.map((section) => el('button', { type: 'button', class: `finance-tab${section === current ? ' finance-tab-on' : ''}`,
-      'data-section': section.key }, section.label));
+      role: 'tab', 'aria-selected': String(section === current), 'data-section': section.key }, section.label));
     let editor;
     if (current.scalar) {
-      editor = el('textarea', { id: 'planScalar', rows: '4', class: 'finance-edit-area' }, plan[current.key] || '');
+      editor = el('textarea', { id: 'planScalar', rows: '4', class: 'finance-edit-area', 'aria-label': current.label }, plan[current.key] || '');
     } else if (current.list) {
-      editor = el('input', { type: 'text', id: 'planList', class: 'finance-edit-long', value: (plan[current.key] || []).join(', ') });
+      editor = el('input', { type: 'text', id: 'planList', class: 'finance-edit-long', 'aria-label': `${current.label}, comma-separated`, value: (plan[current.key] || []).join(', ') });
     } else {
       const rows = (plan[current.key] || []).map((item) => el('tr', {},
         ...current.fields.map((field) => el('td', {}, input(field, item[field[0]]))),
