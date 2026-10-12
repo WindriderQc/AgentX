@@ -392,7 +392,11 @@ router.get('/documents', async (req, res) => {
   try {
     const filters = {};
     if (req.query.source) filters.source = String(req.query.source);
-    if (req.query.tags) filters.tags = String(req.query.tags).split(',');
+    // "tag1, tag2" as typed: trim each tag and drop empty ones, or none would match.
+    if (req.query.tags) {
+      const tags = String(req.query.tags).split(',').map((tag) => tag.trim()).filter(Boolean);
+      if (tags.length) filters.tags = tags;
+    }
 
     // Parse and clamp pagination params
     let limit = req.query.limit !== undefined ? Math.floor(Number(req.query.limit)) : DOCS_LIMIT_DEFAULT;

@@ -282,6 +282,14 @@ describe('GET /api/rag/documents', () => {
     );
   });
 
+  it('trims typed tags and drops empty ones', async () => {
+    mockStore.listDocuments.mockResolvedValue({ documents: [], total: 0 });
+
+    await request(buildApp()).get('/api/rag/documents?tags=' + encodeURIComponent('a, b ,,'));
+
+    expect(mockStore.listDocuments).toHaveBeenCalledWith({ tags: ['a', 'b'] }, expect.any(Object));
+  });
+
   it('splits comma-separated tags into array filter', async () => {
     mockStore.listDocuments.mockResolvedValue({ documents: [], total: 0 });
 
