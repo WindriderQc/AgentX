@@ -31,8 +31,8 @@ function renderOpening() {
     return;
   }
   recap.innerHTML = [
-    last ? `<p><strong>La dernière fois :</strong> ${escapeHtml(last.summary)}${last.commitment ? ` <em>Tu voulais : ${escapeHtml(last.commitment)}</em>` : ''}</p>` : '',
-    ...experiments.map((item) => `<p><strong>${experimentIsDue(item) ? 'À faire le point' : 'Expérience en cours'} :</strong> ${escapeHtml(item.action)}</p>`),
+    last ? `<p><strong>Last time:</strong> ${escapeHtml(last.summary)}${last.commitment ? ` <em>You wanted to: ${escapeHtml(last.commitment)}</em>` : ''}</p>` : '',
+    ...experiments.map((item) => `<p><strong>${experimentIsDue(item) ? 'Time to check in' : 'Experiment in progress'}:</strong> ${escapeHtml(item.action)}</p>`),
     openingCheckInHtml()
   ].join('');
   recap.hidden = false;

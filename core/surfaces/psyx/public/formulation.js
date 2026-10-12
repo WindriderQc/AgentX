@@ -4,18 +4,18 @@
 const formulationDrafts = new Map();
 
 const FORMULATION_SECTIONS = {
-  goals: 'Tes objectifs', activeThreads: 'Ce qui t’occupe', patterns: 'Les tendances observées',
-  hypotheses: 'Les hypothèses à vérifier', openLoops: 'Les questions ouvertes', notes: 'Ce que tu veux retenir'
+  goals: 'Your goals', activeThreads: 'What’s on your mind', patterns: 'Observed patterns',
+  hypotheses: 'Hypotheses to check', openLoops: 'Open questions', notes: 'What you want to remember'
 };
 
 function formulationProvenance(item) {
-  const source = SOURCE_LABELS[item.source] || 'source inconnue';
-  const date = item.updatedAt ? new Date(item.updatedAt).toLocaleDateString('fr-CA') : null;
-  const bits = [source, item.correctedBy === 'user' ? 'corrigé par toi' : null, date].filter(Boolean);
+  const source = SOURCE_LABELS[item.source] || 'unknown source';
+  const date = item.updatedAt ? new Date(item.updatedAt).toLocaleDateString('en-CA') : null;
+  const bits = [source, item.correctedBy === 'user' ? 'corrected by you' : null, date].filter(Boolean);
   const evidence = (item.evidence || []).map(text => `<blockquote>${escapeHtml(text)}</blockquote>`).join('');
   return `<small>${escapeHtml(bits.join(' · '))}</small>${item.sourceConversationId
-    ? `<small>Séance source : ${escapeHtml(item.sourceConversationId)}</small>`
-    : '<small>Séance source non enregistrée.</small>'}${evidence}`;
+    ? `<small>Source session: ${escapeHtml(item.sourceConversationId)}</small>`
+    : '<small>Source session not recorded.</small>'}${evidence}`;
 }
 
 function renderFormulation() {
@@ -27,16 +27,16 @@ function renderFormulation() {
     if (!items.length) return '';
     return `<section class="state-section"><h4>${escapeHtml(title)}</h4>${items.map(item => `
       <article class="proposal-card" data-formulation-key="${escapeHtml(key)}" data-formulation-id="${escapeHtml(item.id)}" data-formulation-revision="${formulationDrafts.get(`${key}:${item.id}`)?.revision ?? state.psyxState.revision}">
-        <label>Observation révisable<textarea rows="3" maxlength="${key === 'notes' ? 1000 : 500}" aria-label="Corriger l’observation">${escapeHtml(formulationDrafts.get(`${key}:${item.id}`)?.text ?? item.text)}</textarea></label>
+        <label>Revisable observation<textarea rows="3" maxlength="${key === 'notes' ? 1000 : 500}" aria-label="Correct the observation">${escapeHtml(formulationDrafts.get(`${key}:${item.id}`)?.text ?? item.text)}</textarea></label>
         ${formulationProvenance(item)}
-        <div class="proposal-actions"><button type="button" data-formulation-save>Enregistrer ma correction</button><button type="button" data-formulation-remove>Retirer</button></div>
+        <div class="proposal-actions"><button type="button" data-formulation-save>Save my correction</button><button type="button" data-formulation-remove>Remove</button></div>
       </article>`).join('')}</section>`;
   }).join('');
   const pending = state.psyxState?.proposals || [];
-  container.innerHTML = sections || '<p class="state-empty">Aucune observation validée pour l’instant. Les revues de tes séances pourront proposer des pistes que tu choisiras de garder.</p>';
-  if (pending.length) container.innerHTML += `<section class="state-section"><h4>À valider (${pending.length})</h4><p class="state-help">Ces propositions ne font pas encore partie de la mémoire utilisée pour répondre.</p>${pending.map(item => `
-    <article class="proposal-card"><strong>${escapeHtml(item.text || item.hypothesis || item.result || 'Suivi d’expérience')}</strong>
-      <small>Revue PsyX · séance source : ${escapeHtml(item.conversationId || 'non enregistrée')}</small>
+  container.innerHTML = sections || '<p class="state-empty">No approved observations yet. Reviews of your sessions can suggest leads that you choose to keep.</p>';
+  if (pending.length) container.innerHTML += `<section class="state-section"><h4>To approve (${pending.length})</h4><p class="state-help">These proposals are not yet part of the memory used to reply.</p>${pending.map(item => `
+    <article class="proposal-card"><strong>${escapeHtml(item.text || item.hypothesis || item.result || 'Experiment follow-up')}</strong>
+      <small>PsyX review · source session: ${escapeHtml(item.conversationId || 'not recorded')}</small>
       ${(item.evidence || []).map(text => `<blockquote>${escapeHtml(text)}</blockquote>`).join('')}
     </article>`).join('')}</section>`;
   $('formulationProposals').hidden = !pending.length;
@@ -61,7 +61,7 @@ function wireFormulation() {
       if (button.hasAttribute('data-formulation-remove')) await removeStateItem(key, id);
       else {
         const text = card.querySelector('textarea').value.trim();
-        if (!text) throw new Error('Écris une observation ou choisis Retirer.');
+        if (!text) throw new Error('Write an observation or choose Remove.');
         const result = await api(`/api/psyx/state/items/${encodeURIComponent(key)}/${encodeURIComponent(id)}`, {
           method: 'PATCH', body: JSON.stringify({ text, expectedRevision: Number(card.dataset.formulationRevision) })
         });
@@ -70,12 +70,12 @@ function wireFormulation() {
         renderPsyXState();
       }
       formulationDrafts.delete(`${key}:${id}`);
-      $('formulationStatus').textContent = 'Ta modification est enregistrée.';
+      $('formulationStatus').textContent = 'Your change is saved.';
     } catch (error) {
 
       if (error.status === 409) { formulationDrafts.delete(`${key}:${id}`); await loadPsyXState().catch(() => {}); }
       $('formulationStatus').textContent = error.status === 409
-        ? 'La mémoire a changé entre-temps. Vérifie la nouvelle observation avant de la corriger.' : error.message;
+        ? 'Memory changed in the meantime. Check the new observation before correcting it.' : error.message;
     } finally { button.disabled = false; }
   });
 }
