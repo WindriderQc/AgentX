@@ -178,6 +178,8 @@
       } else if (action.kind === 'open-preset') openPreset(action.tab, action.preset);
       else if (action.kind === 'open-tab') activateTab(action.tab);
       else if (action.kind === 'inspect-automation') openAutomationDrawer(action.targetId, trigger);
+      // Budget and cloud warnings point to another page of this app.
+      else if (action.kind === 'open-link' && /^\/(?!\/)/.test(String(action.href || ''))) window.location.assign(action.href);
     }
 
     function handleClick(event) {
