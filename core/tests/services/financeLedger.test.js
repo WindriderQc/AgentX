@@ -490,6 +490,22 @@ describe('financial plan and situation', () => {
     ]);
   });
 
+  test('leaves a partial newest month out of the averages and an overpaid card out of the debt', async () => {
+    // Only this statement: it ends mid-June, so June is not complete yet.
+    await require('../../models/FinanceStatement').deleteMany({});
+    await require('../../models/FinanceTransaction').deleteMany({});
+    const partial = statement({ period: ['2026-06-01', '2026-06-15'] });
+    partial.accounts[1] = { code: 'MC 1', opening_cents: 1000, closing_cents: -5000,
+      transactions: [{ date: '2026-06-05', description: 'Paiement', amount_cents: -6000, balance_after_cents: -5000 }] };
+    await ingestDocument(await writeDoc('june-partial.pdf'), { readText, extract: extractWith(partial) });
+    await plan.savePlan({ debts: [{ name: 'Marge', accountCode: 'MC1', rateBp: 845, paymentCents: 0 }] });
+    const s = await plan.situation({ months: 1 });
+    expect(s.window.months).toEqual(['2026-05']);
+    expect(s.monthly).toEqual({ inCents: 0, outCents: 0, netCents: 0 });
+    expect(s.debts[0]).toMatchObject({ liveBalanceCents: 0, currentCents: 0 });
+    expect(s.totalDebtCents).toBe(0);
+  });
+
   test('combines the plan with live ledger balances, budget actuals and net worth', async () => {
     await plan.savePlan({
       phase: 'Reconstruction', budget: [
