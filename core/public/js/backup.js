@@ -379,7 +379,8 @@
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running…';
     try {
       const { snapshot } = await jsonFetch('/api/operations/qdrant/backup', { method: 'POST' });
-      showToast(`Qdrant snapshot created: ${snapshot.name}`, 'success');
+      if (snapshot.persistentCopy === true) showToast(`Qdrant snapshot created: ${snapshot.name}`, 'success');
+      else showToast(`Snapshot ${snapshot.name} exists only on the Qdrant server: its copy to recovery storage failed.`, 'error');
       await loadQdrantBackups();
     } catch (err) {
       showToast(`Snapshot failed: ${err.message}`, 'error');
