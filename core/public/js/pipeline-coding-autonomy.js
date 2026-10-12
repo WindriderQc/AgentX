@@ -19,8 +19,11 @@
   function confirmed() {
     if (!$('codingAutonomyConfirm').checked) throw new Error('Confirm the reviewed task scope and campaign first.');
   }
+  function renderStatus(suffix = '') {
+    $('codingAutonomyStatus').textContent = `${snapshot.enabled ? 'Enabled' : 'Paused'} · ${snapshot.tasks.filter(t => t.authorized).length} explicitly authorized tasks · ${snapshot.active ? `active task ${snapshot.active.pipelineId}, request ${snapshot.active.requestId}` : 'no active execution'}${suffix}`;
+  }
   function render() {
-    $('codingAutonomyStatus').textContent = `${snapshot.enabled ? 'Enabled' : 'Paused'} · ${snapshot.tasks.filter(t => t.authorized).length} explicitly authorized tasks · ${snapshot.active ? `active task ${snapshot.active.pipelineId}, request ${snapshot.active.requestId}` : 'no active execution'}`;
+    renderStatus();
     const list = $('codingAutonomyTasks');
     list.replaceChildren();
     for (const task of snapshot.tasks) {
@@ -88,10 +91,21 @@
       article.append(history); list.append(article);
     }
   }
-  async function refresh() {
-    if (busy) return;
+  // Something typed or ticked in a task card that a rebuild would erase.
+  function editing() {
+    const list = $('codingAutonomyTasks');
+    return list.contains(document.activeElement)
+      || [...list.querySelectorAll('textarea')].some(field => field.value)
+      || [...list.querySelectorAll('input[type="checkbox"]')].some(box => box.checked);
+  }
+  async function refresh({ background = false } = {}) {
+    if (busy || (background && document.hidden)) return;
     busy = true;
-    try { snapshot = await request(base); render(); }
+    try {
+      snapshot = await request(base);
+      if (background && editing()) renderStatus(' · task cards update once your edit is sent or cleared');
+      else render();
+    }
     catch (error) { $('codingAutonomyStatus').textContent = error.message; }
     finally { busy = false; }
   }
@@ -107,7 +121,7 @@
     if (!$('pipelineCodingAutonomy')) return;
     document.querySelectorAll('[data-autonomy-switch]').forEach(button => button.addEventListener('click', () => act(() => request(`${base}/config`,
       { enabled: button.dataset.autonomySwitch === 'true', confirm: true, expectedRevision: snapshot.revision }))));
-    $('codingAutonomyRefresh').addEventListener('click', refresh);
+    $('codingAutonomyRefresh').addEventListener('click', () => refresh());
     $('codingAutonomyCampaign').addEventListener('submit', event => {
       event.preventDefault(); const id = new FormData(event.target).get('queueRequestId');
       act(async () => {
@@ -127,7 +141,7 @@
         limits: { maxResumes: Number(data.get('maxResumes')), workSeconds: Number(data.get('workMinutes')) * 60,
           ciSeconds: Number(data.get('ciMinutes')) * 60 } }));
     });
-    refresh(); timer = setInterval(refresh, 15000);
+    refresh(); timer = setInterval(() => refresh({ background: true }), 15000);
     window.addEventListener('pagehide', () => clearInterval(timer), { once: true });
   });
 })();
