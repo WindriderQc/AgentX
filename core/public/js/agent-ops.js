@@ -963,8 +963,7 @@
       availability?.clear();
       state.data = body.data || body;
       renderAll(state.data);
-      activateTab(state.tab, false, false);
-      renderCurrentFilteredView();
+      renderCurrentFilteredView(); // keeps the tab, search and preset the user chose
       const warnings = asArray(state.data.warnings);
       setStatus(
         warnings.length ? 'attention' : 'good',
