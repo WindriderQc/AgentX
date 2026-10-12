@@ -129,13 +129,16 @@ just to wait.
    same queue request through its operator-finish protocol. The loop does not
    manufacture that operator release receipt.
 
-Core re-validates the active reservation and its `startBefore` when it selects
-a worker, when the runner reads the worker manifest and on every model call.
-A `startBefore` that covers only the initial dispatch can therefore cut off
-subsequent calls even while the reserved slot has not ended. Size the reviewed
-finite window to cover the intended model calls and corrections, not just the
-first attempt. A campaign reservation grants queue admission only, never
-native admission, and an expired window is refused; it is never silently
+For Coding Team, Core re-validates the active reservation and its
+`startBefore` when it selects a worker, when the runner reads the worker
+manifest and on every model call; other heavy-work executors keep their own
+window protocol. A `startBefore` that covers only the initial dispatch can
+therefore cut off subsequent calls even while the reserved slot has not
+ended. Size the reviewed finite window to cover the intended model calls and
+corrections, not just the first attempt. A campaign reservation is a planned
+slot: it does not grant runtime or native admission or permission to
+dispatch. Native admission and the explicit operator begin remain separate
+requirements, and an expired window is refused; it is never silently
 extended or replayed. An early failed turn keeps its local source checkpoint
 and cumulative costs and does not deliver a validated PR.
 
