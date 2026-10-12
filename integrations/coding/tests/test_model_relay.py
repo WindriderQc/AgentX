@@ -51,13 +51,13 @@ class RelayStopTest(unittest.TestCase):
         self.assertEqual(json.loads(body), original)
 
     def test_absent_guidance_and_malformed_requests_keep_original_bytes(self):
-        for body in [b'{}', b'[]', b'{', b'{"messages":[7]}']:
+        for body in [b'{}', b'[]', b'{', b'{"messages":[7]}', b'{ "messages": [] }']:
             self.assertEqual(relay.with_budget_guidance(body, 'Synthetic advisory'), body)
         body = b'{ "messages": [] }'
         self.assertEqual(relay.with_budget_guidance(body, None), body)
 
     def test_guidance_cannot_expand_a_request_beyond_the_native_size_limit(self):
-        body = b'{"messages":[]}'
+        body = b'{"messages":[{"role":"user","content":"Synthetic task"}]}'
         observed = []
         with tempfile.TemporaryDirectory() as directory:
             path = str(Path(directory) / 'model.sock')

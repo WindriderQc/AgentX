@@ -34,7 +34,7 @@ def with_budget_guidance(body: bytes, guidance: str | None) -> bytes:
         return body
     try:
         value = json.loads(body)
-        if not isinstance(value, dict) or not isinstance(value.get("messages"), list):
+        if not isinstance(value, dict) or not isinstance(value.get("messages"), list) or not value["messages"]:
             return body
         if not all(isinstance(message, dict) for message in value["messages"]):
             return body
