@@ -262,9 +262,11 @@ async function draft(id) {
   if (!op) throw fail('Opération image inconnue.', 404);
   return { ...op.request, ...(op.request.constraints && { constraints: constraints.validate(op.request.constraints) }), profile: op.profile.id };
 }
+// The Atelier's own renders. Renders made inside a Nestor or Family
+// conversation belong to that conversation and are listed there only.
 async function list() {
   await initialize();
-  return (await ImageOperation.find().sort({ createdAt: -1 }).limit(30).lean()).map(publicOperation);
+  return (await ImageOperation.find({ conversation: { $exists: false } }).sort({ createdAt: -1 }).limit(30).lean()).map(publicOperation);
 }
 async function cancel(id) {
   await initialize();
