@@ -65,5 +65,5 @@ test('an unconfirmed stop after generation started answers a plain French 503, n
   const result = await interrupt();
   assert.equal(result.status, 503);
   assert.equal(result.body.code, 'VOICE_INTERRUPTION_FAILED');
-  assert.match(result.body.message, /L’arrêt de Nestor n’est pas encore confirmé/);
+  assert.match(result.body.message, /Nestor’s stop is not confirmed yet/);
 });
