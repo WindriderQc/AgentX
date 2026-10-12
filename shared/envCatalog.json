@@ -1839,6 +1839,16 @@
       "description": "Days a mail journal entry is kept, counted from the mail's date; Mongo removes it afterwards. Applies to entries recorded after a change. 0 keeps entries forever; an invalid value uses 365.",
       "fallback": "365"
     },
+    "MEMORY_NOTE_MEANING_MIN_SCORE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Similarity (0-1) from which a memory note is recalled by meaning, before the word matches. Calibrated per embedding model; 1 switches recall by meaning off. Unset: 0.5."
+    },
     "MEMORY_NOTE_RETENTION_DAYS": {
       "services": [
         "core"

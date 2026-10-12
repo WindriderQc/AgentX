@@ -313,6 +313,19 @@ Surface records use a distinct internal user namespace and are not exposed by
 the default Playground history API. PsyX transcripts are namespaced away from
 ordinary chat.
 
+Personal Nestor's background review and isolated native work receive the full
+canonical conversation, independently of the guardian's history policy and
+selected personal memory. Core's trusted `readTurns` reads one scoped, verified
+transcript in canonical order without the list API's pagination cap. Complete
+context includes original requests, replies, displayed content, attachment
+references and recorded tool evidence. Core joins published background answers
+and their retained evidence to the source turns; separate presentation receipts
+distinguish available, displayed and spoken content. The existing work-context budget refuses
+oversized input explicitly instead of selecting a recent tail or shortening
+messages. The guardian consumes the latest completed advice/results with their
+source-turn identities while new work proceeds. Model selection changes the
+execution route, not these role or context contracts.
+
 Execution selection distinguishes local direct inference from OpenClaw, whose
 model and agent modes are separate. Provider credentials and the native cloud
 catalogue belong to OpenClaw. Core keeps conversation/context persistence and

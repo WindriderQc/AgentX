@@ -66,3 +66,11 @@ test('quiet keeps the remark unspoken, and a superseded review is ignored', asyn
   assert.equal(await pending, null);
   assert.deepEqual(late.spoken, []);
 });
+
+test('a refused complete review is disclosed without presenting corrections or speaking', async () => {
+  const h = panel({ traceId: 't1', status: 'context_required', suggestions: [], revisions: [], interjection: null });
+  await h.brain.follow('s', 't1');
+  assert.equal(h.revised.length, 1);
+  assert.match(h.revised[0].body, /No partial review was used/);
+  assert.deepEqual(h.spoken, []); assert.deepEqual(h.asked, []);
+});

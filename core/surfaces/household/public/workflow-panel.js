@@ -200,8 +200,9 @@
       if (work && ['failed', 'cancelled', 'paused'].includes(work.state)) {
         const labels = { failed: 'Failed', cancelled: 'Cancelled', paused: 'Paused' };
         const reasons = { native_preparation_refused: 'agent preparation refused',
+          CONVERSATION_CONTEXT_REQUIRED: 'not enough context to review the whole conversation',
           native_result_not_published: 'result not published', owner_cancelled_before_dispatch: 'cancelled before handoff' };
-        const code = typeof work.reason === 'string' && /^[a-z][a-z0-9_]{0,79}$/.test(work.reason) ? work.reason : '';
+        const code = typeof work.reason === 'string' && (Object.hasOwn(reasons, work.reason) || /^[a-z][a-z0-9_]{0,79}$/.test(work.reason)) ? work.reason : '';
         return [labels[work.state], `Work ${work.id} · ${reasons[code] || (code ? `Core reason: ${code}` : 'reason not detailed')}`];
       }
       if (work?.result) return work.includedIn?.length ? ['Included', `Work ${work.id} · context of turn ${work.includedIn[0].targetTurnId}`]

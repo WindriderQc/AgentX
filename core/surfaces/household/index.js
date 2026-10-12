@@ -202,7 +202,17 @@ function register(api) {
   // a clip that is not on disk is never advertised nor selected.
   const sounds = soundLibrary.createSoundLibrary({ soundsDir: path.join(publicRoot, 'sounds'), logger }), visuals = createVisuals({ logger }), brain = createBrain({ inference: runtimeServices.inference, conversations, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT, logger,
     preferencesFor: family => preferencesFor(family).read(),
-    loadTurns: session => loadSessionAuditRows(conversations, session, { historyTurns: 12 }).then(rows => rows.slice().reverse().map(publicAudit)) });
+    loadTurns: async session => {
+      if (session.packId === 'personal_operator' && session.scopeId === 'personal') {
+        if (conversationWorks) {
+          const context = await conversationWorks.conversationContext(session.sessionId);
+          return context.turns.map(turn => ({ ...turn, traceId: turn.turnId }));
+        }
+        return conversations.readTurns({ sessionId: session.sessionId, packId: session.packId, scopeId: session.scopeId });
+      }
+      const rows = await loadSessionAuditRows(conversations, session, { historyTurns: 12 });
+      return rows.slice().reverse().map(publicAudit);
+    } });
 
 
   for (const name of ['browser-conversation', 'speech-language', 'playback-hold', 'voice-capture-worklet']) {

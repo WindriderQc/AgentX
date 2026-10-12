@@ -4,6 +4,18 @@ const { createHash } = require('node:crypto');
 const MemoryNote = require('../../models/MemoryNote');
 const { sealText } = require('./identifierVault');
 const { createIndex } = require('./memoryNoteIndex');
+const { scoreFloor } = require('../helpers/scoreFloor');
+
+// A note is recalled by meaning when its similarity to the request reaches
+// this floor. Measured with qllama/bge-m3:f16 on 24 owner questions
+// (2026-10-12): the right note scored 0.47 to 0.67, the closest note to an
+// off-topic request 0.47 at most. Another embedding model needs its own
+// value; 1 switches recall by meaning off.
+const DEFAULT_MEANING_FLOOR = 0.5;
+const meaningFloor = () => scoreFloor(process.env.MEMORY_NOTE_MEANING_MIN_SCORE, DEFAULT_MEANING_FLOOR);
+// A conversation waits for this answer: a slow embedding host costs the
+// recall by meaning, never the turn.
+const MEANING_TIMEOUT_MS = 1500;
 
 const error = (message, statusCode = 400) => Object.assign(new Error(message), {
   statusCode, code: 'MEMORY_NOTE_INVALID'
@@ -175,7 +187,24 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
         .slice(0, limitOf(limit, 8));
       offset = page.nextOffset;
     } while (offset !== null);
-    return { ok: true, authority: 'agentx.core', notes: best.map(entry => entry.note), total: page.total };
+    // Words find what is named; meaning finds what is asked another way
+    // ("is the Canadien playing tonight" and a note about following the
+    // Canadiens share no word). Notes close in meaning come first, the word
+    // matches follow, and without an index or an embedding host the result is
+    // the word matches alone, as before.
+    const cap = limitOf(limit, 8);
+    const floor = meaningFloor();
+    let byMeaning = [];
+    if (floor < 1) {
+      try {
+        const found = await index.nearest(active(), [query],
+          { limit: cap, minScore: floor, embedOptions: { timeoutMs: MEANING_TIMEOUT_MS } });
+        byMeaning = found.results[0].hits.map(hit => project(hit.note));
+      } catch { byMeaning = []; }
+    }
+    const seen = new Set(byMeaning.map(note => note.id));
+    const notes = [...byMeaning, ...best.map(entry => entry.note).filter(note => !seen.has(note.id))].slice(0, cap);
+    return { ok: true, authority: 'agentx.core', notes, total: page.total };
   }
 
   // Notes of this space closest in meaning to each text. Same boundary as
