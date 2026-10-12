@@ -94,8 +94,13 @@ window.HouseholdParents = { async load({ app, api, esc, setRuntime, toast }) {
           const catalog = await api('/api/voice-personas/sounds').catch(() => ({ sounds: [] }));
           (catalog.sounds || []).forEach((sound) => soundsById.set(sound.id, sound));
         }
-        const data = await api('/api/voice-personas/audit/recent?childSafe=true&limit=80');
-        journalRows = Array.isArray(data.audit) ? data.audit : [];
+        // Flagged turns older than the recent window still belong in "to review".
+        const [data, flagged] = await Promise.all([api('/api/voice-personas/audit/recent?childSafe=true&limit=80'),
+          api('/api/voice-personas/alerts').catch(() => ({ alerts: { items: [] } }))]);
+        const recent = Array.isArray(data.audit) ? data.audit : [];
+        const seen = new Set(recent.map((row) => row.id));
+        const older = (flagged.alerts?.items || []).filter((row) => row.id && !seen.has(row.id));
+        journalRows = recent.concat(older).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
         renderJournal();
       } catch (error) { document.getElementById('journal').innerHTML = `<div class="empty">${esc(error.message)}</div>`; }
     }
