@@ -111,7 +111,8 @@ describe('simple-to-expert UX contract', () => {
     expect(source).toContain("elements.configDrawer.inert = !isOpen");
     expect(source).toContain("document.body.classList.toggle('chat-controls-open', isOpen)");
     expect(source).toContain("if (e.key === 'Escape' && elements.configDrawer?.classList.contains('open'))");
-    expect(source).toContain('configDrawerOpener.focus({ preventScroll: true })');
+    expect(source).toContain('modal?.activate(elements.configDrawer, { initialFocus: elements.configDrawer, onRequestClose: closeConfigDrawer })');
+    expect(source).toContain('modal?.deactivate(elements.configDrawer, { restoreFocus })');
   });
 
   test('manual control requires and then loads an explicit model choice', () => {
