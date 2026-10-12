@@ -189,19 +189,29 @@
   function editRow(button) {
     const row = button.closest('tr');
     const cell = row.querySelector('.finance-cat-cell');
-    const select = el('select', { 'aria-label': 'Category' }, el('option', { value: '' }, '— rules —'),
+    const select = el('select', { 'aria-label': 'Category' }, el('option', { value: '' }, '— rules decide —'),
       ...categoryList.map((name) => el('option', { value: name }, name)));
     const tags = el('input', { type: 'text', placeholder: 'tags, comma-separated', 'aria-label': 'Tags', maxlength: '120' });
+    // Start from the owner's current decision, so OK without a change keeps it.
+    const decided = row.dataset.category || '';
+    select.value = decided;
+    tags.value = row.dataset.tags || '';
     const save = el('button', { type: 'button', class: 'finance-link' }, 'OK');
     cell.replaceChildren(select, tags, save);
     button.remove();
     save.addEventListener('click', async () => {
+      cell.querySelector('.finance-error')?.remove();
+      const fail = (message) => cell.append(el('span', { class: 'finance-error' }, ` ${message}`));
+      // No category means "let the rules decide", which drops the decision and its tags.
+      if (!select.value && tags.value.trim()) return fail('Pick a category to keep tags.');
+      if (!select.value && !decided) return search();
+      if (!select.value && !window.confirm('Remove your decision for this transaction? The rules apply again.')) return;
       try {
         await post('transactions/decisions', { transactions: [{ id: row.dataset.id, category: select.value || null,
           tags: tags.value.split(',').map((t) => t.trim()).filter(Boolean) }] });
         await search();
       } catch (error) {
-        cell.append(el('span', { class: 'finance-error' }, ` ${error.message}`));
+        fail(error.message);
       }
     });
   }
@@ -219,7 +229,8 @@
       box.replaceChildren(
         el('p', { class: 'finance-search-total' }, `${t.count} transaction(s) · out ${money(t.outCents)} · in ${money(t.inCents)}`),
         el('table', { class: 'finance-table' },
-          el('tbody', {}, ...data.rows.map((row) => el('tr', { 'data-id': row.id },
+          el('tbody', {}, ...data.rows.map((row) => el('tr', { 'data-id': row.id, 'data-category': row.manual ? row.category || '' : '',
+            'data-tags': row.manual ? (row.tags || []).join(', ') : '' },
             el('td', {}, row.date), el('td', {}, row.description), el('td', {}, row.accountCode),
             el('td', { class: 'finance-cat-cell' }, `${row.category || '—'}${row.tags?.length ? ` #${row.tags.join(' #')}` : ''}${row.manual ? ' ✎' : ''}`),
             el('td', { class: 'num' }, money(row.flowCents ?? row.amountCents)),
