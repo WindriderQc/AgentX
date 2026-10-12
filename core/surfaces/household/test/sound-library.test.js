@@ -130,6 +130,39 @@ test('an explicit named request wins over a stray imitation', () => {
   assert.equal(selected('what sound does a cow make, meow?'), 'cow');
 });
 
+test('a new sound request wins over an earlier animal mentioned as context', () => {
+  for (const [text, id] of [
+    ['The elephant is big. Can I hear a bird?', 'bird'],
+    ['The bird is small. Play the sound of an elephant.', 'elephant'],
+    ['The elephant is big, play the sound of a bird.', 'bird'],
+    ['The elephant is big and I want to hear a bird.', 'bird'],
+    ['La vache est jolie. Quel bruit fait le cochon d’Inde?', 'guinea-pig'],
+    ['Le chat est mignon et je veux entendre le chien.', 'dog'],
+    ['Le chien aboie. Imite miaou!', 'cat'],
+    ['I like elephants. Can I hear a T. rex?', 'trex'],
+    ['Play the sound of a cow after the elephant.', 'cow'],
+    ['Fais le bruit du chat, puis parle-moi du chien.', 'cat']
+  ]) assert.equal(selected(text), id, text);
+});
+
+test('a missing requested recording never substitutes an earlier available animal', () => {
+  const options = { ids: ['elephant'] };
+  assert.equal(soundLibrary.selectSound('The elephant is big. Play the sound of a bird.', options), null);
+  assert.equal(soundLibrary.selectSound('The elephant is big and I want to hear a bird.', options), null);
+  assert.equal(soundLibrary.selectSound('Play the sounds of a bird and an elephant.', options), null);
+  assert.equal(soundLibrary.selectSound('Play the sound of an elephant.', options).id, 'elephant');
+});
+
+test('an unavailable species in a new request never replays a contextual animal', () => {
+  for (const text of ['The elephant is big. Play the sound of a crocodile.',
+    'The elephant is big and I want to hear a crocodile.',
+    'Le chat est mignon. Fais le bruit du lama.']) {
+    assert.equal(selected(text), null, text);
+    assert.equal(soundLibrary.selectSound(text, { explicitSoundIntent: true }), null, text);
+  }
+  assert.equal(selected('La vache fait quoi?'), 'cow', 'subject-first questions retain their subject');
+});
+
 test('ordinary questions and homework select nothing', () => {
   assert.equal(selected('pourquoi le ciel est bleu'), null);
   assert.equal(selected('aide-moi avec mes devoirs de maths'), null);
