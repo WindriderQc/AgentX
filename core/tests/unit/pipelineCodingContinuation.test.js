@@ -158,6 +158,116 @@ test('new dispatch is a linked second run on the same card and consumes its own 
   expect(manifest.continuationCheckpoint).toBe(HEAD);
   expect(manifest.verificationProfile).toBe('agentx-dispatcher-tests/v1');
 });
+
+const nativeBody = extra => grantBody({ confirmation: continuation.NATIVE_CONFIRMATION, ...extra });
+async function nativeTerminal() {
+  const original = await task(), last = original.codingAutonomy.runs.at(-1);
+  delete last.recovery;
+  Object.assign(last, { head: HEAD, pendingInferences: [] });
+  last.modelReceipts[0].state = 'completed';
+  const attempt = original.automationAttempts.at(-1);
+  Object.assign(attempt.evidence, { source: 'coding-autonomous/v1', failureCodes: ['no_useful_progress'],
+    routing: { status: 'verified', requestCount: 1, sessionCallCount: 1 } });
+  await Task.updateOne({ pipelineId: '0001' }, { $set: {
+    codingAutonomy: original.codingAutonomy, automationAttempts: original.automationAttempts } });
+  const previous = await queue.get(QUEUE);
+  previous.releaseReceipt.confirmation = 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED';
+  queue.get.mockImplementation(async id => structuredClone(id === QUEUE ? previous : job));
+  control.status.mockResolvedValue({ busy: false, run: { pipelineId: '0001', requestId: REQUEST, phase: 'finished',
+    progress: { pipelineId: '0001', requestId: REQUEST, phase: 'finished', coreRecorded: true,
+      result: 'blocked', checkpoint: HEAD, stopReason: 'no_useful_progress' } } });
+  return previous;
+}
+test('a clean native no-progress stop receives a separately labelled grant without fabricated recovery', async () => {
+  await nativeTerminal(); const before = await task();
+  const after = await grant(nativeBody());
+  expect(after.codingAutonomy.runs).toEqual(before.codingAutonomy.runs);
+  expect(after.codingAutonomy.spent).toEqual(before.codingAutonomy.spent);
+  expect(after.automationAttempts).toEqual(before.automationAttempts);
+  expect(after.automation).toEqual(before.automation);
+  expect(after.codingAutonomy.budgetGrants[0]).toMatchObject({ checkpointAuthority: 'native-terminal', parentRequestId: REQUEST });
+  expect(after.codingAutonomy.runs[0].recovery).toBeUndefined();
+  expect((await settings()).active).toBeNull(); expect(control.launch).not.toHaveBeenCalled();
+  const retry = await grant(nativeBody());
+  expect(retry.codingAutonomy.budgetGrants).toHaveLength(1);
+  expect(policy.remaining(retry)).toEqual(policy.remaining(after));
+  await expect(grant(grantBody())).rejects.toThrow('different');
+});
+test.each(['pending', 'unknown', 'no-model', 'attempt-mismatch', 'unreceived-result', 'unverified-routing',
+  'published', 'checkpoint', 'unclosed-campaign', 'unreceived-release', 'operator-stop', 'runner-error', 'native-hold'])
+('native continuation refuses %s without credit or dispatch', async kind => {
+  const previous = await nativeTerminal();
+  const change = {};
+  if (kind === 'pending') change['codingAutonomy.runs.0.pendingInferences'] = [CALL];
+  if (kind === 'unknown') change['codingAutonomy.runs.0.modelReceipts.0.state'] = 'unknown';
+  if (kind === 'no-model') change['codingAutonomy.runs.0.modelReceipts'] = [];
+  if (kind === 'attempt-mismatch') change['automationAttempts.0.attempt'] = 2;
+  if (kind === 'unreceived-result') change['automationAttempts.0.resultRequestFingerprint'] = null;
+  if (kind === 'unverified-routing') change['automationAttempts.0.evidence.routing.status'] = 'unknown';
+  if (kind === 'published') change['codingAutonomy.pr'] = { head: HEAD };
+  if (kind === 'checkpoint') change['codingAutonomy.runs.0.head'] = 'a'.repeat(40);
+  if (kind === 'unclosed-campaign') previous.state = 'dispatching';
+  if (kind === 'unreceived-release') delete previous.releaseReceipt.receiptSha256;
+  if (['operator-stop', 'runner-error'].includes(kind)) {
+    const reason = kind.replace('-', '_');
+    change['automationAttempts.0.evidence.failureCodes'] = [reason];
+    const host = await control.status(); host.run.progress.stopReason = reason; control.status.mockResolvedValue(host);
+  }
+  if (kind === 'native-hold') await Runtime.collection.updateOne({ _id: 'runtime' },
+    { $set: { inferences: [{ requestId: REQUEST, host: HOST, state: 'UNKNOWN' }] } });
+  if (Object.keys(change).length) await Task.updateOne({ pipelineId: '0001' }, { $set: change });
+  const before = await task();
+  await expect(grant(nativeBody())).rejects.toThrow();
+  expect(await task()).toEqual(before); expect((await settings()).active).toBeNull();
+  expect(control.launch).not.toHaveBeenCalled();
+});
+test('clean terminal authority cannot stand in for administrative recovery or raise the native attempt ceiling', async () => {
+  await expect(grant(nativeBody())).rejects.toThrow('completed');
+  await nativeTerminal();
+  await expect(grant()).rejects.toThrow('Administrative recovery');
+  await expect(grant(nativeBody({ additionalRuns: 2 }))).rejects.toThrow('ceiling');
+});
+test('a final native continuation preserves the earlier confirmed UNKNOWN and links the third worker', async () => {
+  await nativeTerminal(); const original = await task();
+  const olderId = '10000000-0000-4000-8000-000000000002';
+  const older = structuredClone(original.codingAutonomy.runs[0]);
+  const olderAttempt = structuredClone(original.automationAttempts[0]);
+  older.requestId = olderAttempt.dispatchRequestId = olderId;
+  older.pendingInferences = [OTHER_CALL];
+  older.modelReceipts = [{ callId: OTHER_CALL, state: 'unknown', startedAt: older.startedAt, finishedAt: older.finishedAt }];
+  older.recovery = { state: 'confirmed', authority: 'operator-reconciliation', releaseVerifiedAt: new Date().toISOString(),
+    historicalJournalFingerprint: policy.digest([older.modelReceipts, older.pendingInferences]),
+    nativeAttemptFingerprint: policy.digest(olderAttempt) };
+  original.codingAutonomy.runs[0].expectedAttemptCount = 1;
+  original.automationAttempts[0].attempt = 2;
+  original.codingAutonomy.runs.unshift(older); original.automationAttempts.unshift(olderAttempt);
+  const { fingerprint, ...automationIntent } = original.automation;
+  original.automation = normalizePipelineAutomationIntent({ ...automationIntent,
+    budgets: { ...original.automation.budgets, maxAttempts: 3 } });
+  original.codingAutonomy.basis = policy.basis(original);
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { codingAutonomy: original.codingAutonomy,
+    automation: original.automation, automationAttempts: original.automationAttempts, automationAttemptCount: 2 } });
+  const before = await task(); await grant(nativeBody());
+  const accepted = await task(); expect(accepted.codingAutonomy.runs).toEqual(before.codingAutonomy.runs);
+  expect(accepted.automationAttempts).toEqual(before.automationAttempts);
+  expect(policy.remaining(accepted).maxResumes).toBe(1);
+  await autonomy.configure({ enabled: true, confirm: true, expectedRevision: (await settings()).revision });
+  await autonomy.tick(); const next = await task();
+  expect(next.codingAutonomy.runs).toHaveLength(3);
+  expect(next.codingAutonomy.runs[0]).toEqual(older);
+  expect(next.codingAutonomy.runs[2].parentRequestId).toBe(REQUEST);
+  const manifest = await autonomy.workerManifest('0001', next.codingAutonomy.runs[2].requestId);
+  expect(manifest.continuationCheckpoint).toBe(HEAD);
+});
+test('an unconfirmed historical UNKNOWN cannot be bypassed by a later clean receipt', async () => {
+  await nativeTerminal(); const original = await task();
+  const older = structuredClone(original.codingAutonomy.runs[0]);
+  older.requestId = '10000000-0000-4000-8000-000000000002';
+  older.pendingInferences = [OTHER_CALL]; older.modelReceipts[0].state = 'unknown';
+  original.codingAutonomy.runs.unshift(older);
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { codingAutonomy: original.codingAutonomy } });
+  await expect(grant(nativeBody())).rejects.toThrow('Historical');
+});
 test('a second key cannot double-credit the same recovered execution', async () => {
   await grant();
   await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.authorized': false, 'codingAutonomy.state': 'stopped' } });

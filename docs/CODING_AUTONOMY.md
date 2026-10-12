@@ -302,6 +302,19 @@ grant. Retrying adds no budget and creates no worker. This procedure records an
 operator continuation; it does not turn the earlier failure into autonomous
 success or authorize arbitrary scope changes.
 
+A clean unpublished native budget or no-progress stop uses the same endpoint
+with `CONTINUE_NATIVE_CHECKPOINT_WITH_ADDITIONAL_BUDGET`. This is a distinct
+authority: the exact latest worker must be finished and recorded in Core, its
+model journal must contain only completed calls, and its native attempt must
+retain verified routing and the matching failure receipt. First pause autonomy,
+withdraw this task's authorization and finish its original campaign as failed
+through the operator entrance. Then name a new active campaign and the exact
+clean checkpoint. No administrative recovery is invented. Operator stops,
+runner errors, active admissions, publication and unresolved calls refuse this
+path. Original costs, failures, limits and the native attempt ceiling remain
+unchanged; explicit credits and a new no-progress window are journalled as an
+operator intervention.
+
 `agentx-benchmark-artifact-tests/v1` is a native network-isolated verifier for
 `artifactComparison*`, paired statistics and paired regression tests. Its Jest
 configuration comes from the installed runner, rather than the worker checkout.

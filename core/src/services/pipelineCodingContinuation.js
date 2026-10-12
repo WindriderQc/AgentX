@@ -9,12 +9,14 @@ const { hostUrlKey } = require('../../../shared/ollamaHostConfig');
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const ID = 'coding-autonomy', WC = { w: 1, j: true };
 const CONFIRMATION = 'CONTINUE_RECOVERED_CHECKPOINT_WITH_ADDITIONAL_BUDGET';
+const NATIVE_CONFIRMATION = 'CONTINUE_NATIVE_CHECKPOINT_WITH_ADDITIONAL_BUDGET';
+const NATIVE_STOPS = new Set(['no_useful_progress', 'model_budget_reserve', 'model_call_limit', 'hard_budget', 'soft_budget_no_progress']);
 const CREDITS = ['workSeconds', 'testSeconds', 'modelSeconds', 'modelCalls', 'ciSeconds'];
 const PROFILES = ['agentx-dispatcher-tests/v1', 'agentx-core-runner-tests/v1', 'agentx-benchmark-artifact-tests/v1'];
 const fail = message => policy.fail(message, 'CODING_CONTINUATION_UNVERIFIED');
 const same = (a, b) => a?.key === b.key && a?.fingerprint === b.fingerprint;
 function intent(input, requestId) {
-  if (input.confirm !== true || input.confirmation !== CONFIRMATION || !UUID.test(requestId)
+  if (input.confirm !== true || ![CONFIRMATION, NATIVE_CONFIRMATION].includes(input.confirmation) || !UUID.test(requestId)
     || !/^[a-zA-Z0-9:_-]{1,160}$/.test(input.key || '') || !/^[a-f0-9]{40}$/.test(input.head || '')
     || !UUID.test(input.queueRequestId || '') || !PROFILES.includes(input.verificationProfile)
     || !Number.isSafeInteger(input.expectedRevision) || !Number.isSafeInteger(input.additionalRuns)
@@ -25,6 +27,7 @@ function intent(input, requestId) {
     || typeof input.text !== 'string' || !input.text.trim() || input.text.length > 4000)
     throw policy.fail('Review the exact recovered checkpoint, campaign, credits and additional worker count', 'CODING_CONTINUATION_INVALID', 400);
   const value = { key: input.key, parentRequestId: requestId, head: input.head, queueRequestId: input.queueRequestId,
+    ...(input.confirmation === NATIVE_CONFIRMATION && { checkpointAuthority: 'native-terminal' }),
     verificationProfile: input.verificationProfile, additionalRuns: input.additionalRuns,
     budget: Object.fromEntries(CREDITS.map(key => [key, input.budget[key]])), text: input.text.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '') };
   return { ...value, fingerprint: policy.digest(value) };
@@ -35,12 +38,30 @@ async function evidence(task, requestId, wanted, control) {
   const attempt = task.automationAttempts?.at(-1);
   if (state?.authorized !== false || state.state !== 'stopped' || task.status !== 'blocked'
     || (task.assignee && task.assignee !== 'coding-team') || task.automationLease || task.codingCapacity || state.basis !== policy.basis(task)
-    || run?.requestId !== requestId || !run.finishedAt || run.recovery?.state !== 'confirmed'
-    || run.recovery.authority !== 'operator-reconciliation' || !run.recovery.releaseVerifiedAt
-    || run.recovery.historicalJournalFingerprint !== policy.digest([run.modelReceipts, run.pendingInferences])
-    || attempt?.dispatchRequestId !== requestId || run.recovery.nativeAttemptFingerprint !== policy.digest(attempt)
+    || run?.requestId !== requestId || !run.finishedAt || attempt?.dispatchRequestId !== requestId
     || task.automationAttemptCount !== attempt.attempt || !control)
-    throw fail('Only the exact administratively recovered, released execution can receive a continuation');
+    throw fail('Only the exact stopped, released execution can receive a continuation');
+  const native = wanted.checkpointAuthority === 'native-terminal';
+  if (!native && (run.recovery?.state !== 'confirmed' || run.recovery.authority !== 'operator-reconciliation'
+    || !run.recovery.releaseVerifiedAt || run.recovery.historicalJournalFingerprint !== policy.digest([run.modelReceipts, run.pendingInferences])
+    || run.recovery.nativeAttemptFingerprint !== policy.digest(attempt)))
+    throw fail('Administrative recovery must retain its confirmed original evidence');
+  if (native && (run.recovery || state.pr || run.result !== 'blocked' || run.head !== wanted.head
+    || run.pendingInferences?.length || !run.modelReceipts?.length || run.modelReceipts.some(call => call.state !== 'completed')
+    || task.automationAttempts.filter(item => item.dispatchRequestId === requestId).length !== 1
+    || attempt.attempt !== run.expectedAttemptCount + 1 || attempt.finalState !== 'blocked'
+    || !Number.isFinite(Date.parse(attempt.completedAt)) || !/^[a-f0-9]{64}$/.test(attempt.resultRequestFingerprint || '')
+    || attempt.evidence?.source !== 'coding-autonomous/v1' || attempt.evidence.routing?.status !== 'verified'
+    || attempt.evidence.routing.requestCount !== run.modelReceipts.length
+    || attempt.evidence.routing.sessionCallCount !== run.modelReceipts.length))
+    throw fail('Native continuation requires an unpublished terminal attempt with every model call completed');
+  if (native && state.runs.slice(0, -1).some(old => (old.pendingInferences?.length
+    || old.modelReceipts?.some(call => call.state !== 'completed')) && (!old.finishedAt
+    || old.recovery?.state !== 'confirmed' || old.recovery.authority !== 'operator-reconciliation'
+    || !old.recovery.releaseVerifiedAt
+    || old.recovery.historicalJournalFingerprint !== policy.digest([old.modelReceipts, old.pendingInferences])
+    || old.recovery.nativeAttemptFingerprint !== policy.digest(task.automationAttempts.find(item => item.dispatchRequestId === old.requestId)))))
+    throw fail('Historical unresolved calls retain their original reconciliation barrier');
   if ((state.budgetGrants || []).length >= 100 || wanted.additionalRuns > task.automation.budgets.maxAttempts - task.automationAttemptCount)
     throw fail('Additional workers must remain within the original reviewed native attempt ceiling');
   if ((state.budgetGrants || []).some(grant => grant.parentRequestId === requestId))
@@ -55,14 +76,24 @@ async function evidence(task, requestId, wanted, control) {
     || host.run.progress.coreRecorded !== true || host.run.progress.checkpoint !== wanted.head
     || host.run.progress.result !== attempt.finalState)
     throw fail('The exact stopped worker checkpoint must have its native terminal receipt');
+  if (native && (host.run.progress.pr || !NATIVE_STOPS.has(host.run.progress.stopReason)
+    || !attempt.evidence.failureCodes?.includes(host.run.progress.stopReason)))
+    throw fail('Only a proven native budget or no-progress stop can receive this continuation');
   const previous = await queue.get(state.queueRequestId);
   const job = await queue.get(wanted.queueRequestId), now = new Date().toISOString();
   if (job.id !== wanted.queueRequestId || job.id === state.queueRequestId || job.executor?.mode !== 'operator'
-    || previous.id !== run.recovery.campaignId || previous.source?.type !== 'coding'
+    || (!native && previous.id !== run.recovery.campaignId) || previous.source?.type !== 'coding'
     || job.source?.type !== 'coding' || !job.source.ref || job.source.ref !== previous.source.ref || job.source.taskId !== task.pipelineId
     || !['dispatching', 'running'].includes(job.state) || !job.hosts?.length || !Array.isArray(job.resourceIds) || !job.reservation
     || now < job.reservation.start || now >= job.reservation.end || (job.startBefore && now >= job.startBefore))
     throw fail('A new approved active operator campaign must name this same task and coding session');
+  if (native && (previous.state !== 'failed' || !Number.isFinite(Date.parse(previous.finishedAt))
+    || previous.source.taskId !== task.pipelineId || previous.releaseReceipt?.authority !== 'operator-attestation'
+    || previous.releaseReceipt.confirmation !== 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED'
+    || previous.releaseReceipt.operationId !== previous.dispatchId || !previous.dispatchId
+    || previous.releaseReceipt.receiptRef !== previous.executor?.receiptRef
+    || !/^[a-f0-9]{64}$/.test(previous.releaseReceipt.receiptSha256 || '')))
+    throw fail('Close the original failed campaign through its native operator receipt before continuing');
   const runtime = await Runtime.findById('runtime').lean(), topology = resourceTopology();
   const physical = new Set([...(job.resourceIds || []), ...resourcesFor(topology, job.hosts.map(hostUrlKey))]);
   if (!runtime || !topologyMatches(runtime, topology) || runtime.maintenance
@@ -127,4 +158,4 @@ async function continueRecovered(pipelineId, requestId, input, control) {
   await release(pipelineId, requestId, wanted);
   return Task.findOne({ pipelineId }).lean();
 }
-module.exports = { continueRecovered, CONFIRMATION };
+module.exports = { continueRecovered, CONFIRMATION, NATIVE_CONFIRMATION };
