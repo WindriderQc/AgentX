@@ -324,6 +324,8 @@
     if (!button) return;
     const idleLabel = button.textContent;
     const stopLabel = button.dataset.stopLabel || '■ Stop';
+    // The accessible name follows the visible one: Talk, then Stop while recording.
+    const idleAria = button.getAttribute('aria-label') || idleLabel;
     const micToggle = document.getElementById(`${prefix}MicToggle`);
     const soundToggle = document.getElementById(`${prefix}SoundToggle`);
     const supported = window.isSecureContext && navigator.mediaDevices?.getUserMedia && window.MediaRecorder;
@@ -331,6 +333,7 @@
     function ready() {
       button.classList.remove('recording');
       button.textContent = idleLabel;
+      button.setAttribute('aria-label', idleAria);
       button.setAttribute('aria-pressed', 'false');
       if (state.micMuted) {
         button.disabled = true;
@@ -430,12 +433,13 @@
             state.chunks = [];
             button.disabled = state.micMuted || !supported;
             // After a failure the status keeps its message, but the button must say Talk again.
-            if (!failed || state.micMuted) ready(); else button.textContent = idleLabel;
+            if (!failed || state.micMuted) ready(); else { button.textContent = idleLabel; button.setAttribute('aria-label', idleAria); }
           }
         });
         recorder.start();
         button.classList.add('recording');
         button.textContent = stopLabel;
+        button.setAttribute('aria-label', 'Stop recording and send');
         button.setAttribute('aria-pressed', 'true');
         setVoiceStatus(prefix, 'listening', 'Mic on · press again to finish');
       } catch (error) {

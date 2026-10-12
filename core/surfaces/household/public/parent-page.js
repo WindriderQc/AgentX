@@ -35,6 +35,7 @@ window.HouseholdParents = { async load({ app, api, esc, setRuntime, toast }) {
     // rather than disappearing from the parent's view.
     const soundsById = new Map();
     const journalRecentLimit = 8;
+    let familyLoaded = false;
     async function refreshFamily() {
       const request = ++familyRequest;
       try {
@@ -63,11 +64,17 @@ window.HouseholdParents = { async load({ app, api, esc, setRuntime, toast }) {
           try { await api('/api/family/profiles/archive', { method: 'POST', body: JSON.stringify({ profileId: button.dataset.id }) }); await refreshFamily(); }
           catch (error) { toast(error.message); button.disabled = false; }
         }));
+        familyLoaded = true;
         setRuntime(true, 'family tracking ready');
       } catch (error) {
         if (request !== familyRequest) return;
         setRuntime(false, 'family tracking unavailable');
         document.querySelector('[data-family-coverage]').textContent = 'Could not refresh. The tasks shown may have changed. Try again with Refresh.';
+        // A first load that fails would leave the page saying Loading… with its forms hidden: retry on its own.
+        if (!familyLoaded) {
+          document.getElementById('parentSummary').textContent = 'Family tracking unavailable · retrying…';
+          setTimeout(refreshFamily, 10000);
+        }
       }
     }
     function renderJournal() {

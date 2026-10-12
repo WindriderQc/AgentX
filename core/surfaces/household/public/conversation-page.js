@@ -117,7 +117,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const work = family ? null : NestorWork.create({ host: el('conversationWork'), base: sessionBase, api,
     getConversation: () => conversation, maySpeak: () => !textBusy,
     onSnapshot: (id, data) => workflow.ingest(id, data), onPollError: id => workflow.pollFailure(id) });
-  const personalNotes = mountPersonalNotes({ host: el('conversationNotes'), evidence: el('conversationPersonalContext'), api, esc });
+  // The parent's private notes never mount in the family space, even hidden.
+  const personalNotes = family ? { show() {} } : mountPersonalNotes({ host: el('conversationNotes'), evidence: el('conversationPersonalContext'), api, esc });
   const selected = () => personas.find(p => p.id === picker.value) || personas[0];
   const blockedOpenMessage = 'The alternate model is unavailable. The inference host must be restored to continue.';
   const interruption = el('conversationInterruption');
@@ -267,7 +268,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     try {
       response = await fetch(`${sessionBase}/${encodeURIComponent(session.sessionId)}/turns/text`, {
         method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
-      if (!response.ok) { const body = await response.json(); throw new Error(body.message || 'Conversation unavailable'); }
+      if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || 'Conversation unavailable'); }
     } catch (error) { workflow?.stream(turnId, { type: signal.aborted ? 'interrupted' : 'error' }); throw error; }
     work?.follow(session.sessionId);
     if (response.status === 202) {
