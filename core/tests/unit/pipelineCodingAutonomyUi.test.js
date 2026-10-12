@@ -94,6 +94,26 @@ test('confirmed recovery keeps a finalization form while the original selection 
   expect(JSON.parse(mutation.options.body)).toMatchObject({ callIds: [KEY], receiptRef: '/private/received.json',
     receiptSha256: 'b'.repeat(64), key: `coding-recovery:${KEY}` });
 });
+function stateWithRemaining(workSeconds, testSeconds, modelSeconds, modelCalls, ciSeconds) {
+  const snapshot = state();
+  snapshot.tasks[0].remaining = { workSeconds, testSeconds, modelSeconds, modelCalls, ciSeconds };
+  return snapshot;
+}
+function remainingLine(nodes) {
+  return descendants(nodes.codingAutonomyTasks).map(n => n.textContent).find(t => t.startsWith('Remaining:'));
+}
+test('sub-minute remaining budgets display exact positive seconds instead of zero minutes', async () => {
+  const { nodes } = setup(stateWithRemaining(0, 1, 59, 7, 60)); await flush();
+  expect(remainingLine(nodes)).toBe('Remaining: 0 min work, 1 sec tests, 59 sec model, 7 calls, 1 min CI');
+});
+test('remaining budgets of one minute or more keep whole minutes while mixed sub-minute fields stay in seconds', async () => {
+  const { nodes } = setup(stateWithRemaining(60, 120, 60, 7, 59)); await flush();
+  expect(remainingLine(nodes)).toBe('Remaining: 1 min work, 2 min tests, 1 min model, 7 calls, 59 sec CI');
+});
+test('remaining budgets keep minute and second precision for mixed fields above one minute', async () => {
+  const { nodes } = setup(stateWithRemaining(61, 90, 3601, 7, 0)); await flush();
+  expect(remainingLine(nodes)).toBe('Remaining: 1 min 1 sec work, 1 min 30 sec tests, 60 min 1 sec model, 7 calls, 0 min CI');
+});
 test('an API-created recovery key survives a lost fence acknowledgement in the operator form', async () => {
   const snapshot = state('blocked'); const task = snapshot.tasks[0]; task.authorized = false; task.pr = null;
   task.authorizationRevision = 10; task.runs[0] = { requestId: KEY, pendingInferenceCount: 1, unresolvedCallIds: [KEY] };
