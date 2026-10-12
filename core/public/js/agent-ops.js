@@ -948,7 +948,10 @@
     renderCurrentFilteredView();
   }
 
+  let loadInFlight = false;
   async function load() {
+    if (loadInFlight) return; // a manual refresh and the timer must not race
+    loadInFlight = true;
     setLoading(true);
     if (!state.data) setStatus('loading', 'Building the control-plane view…', 'Checking registry and runtime sources.');
     try {
@@ -978,6 +981,7 @@
           .forEach((id) => { const element = byId(id); if (element) element.innerHTML = empty('Data unavailable.', 'fa-triangle-exclamation'); });
       }
     } finally {
+      loadInFlight = false;
       setLoading(false);
     }
   }
@@ -1110,5 +1114,5 @@
 
   activateTab(window.location.hash.replace('#', '') || 'overview', false);
   load();
-  window.setInterval(load, 60_000);
+  window.setInterval(() => { if (!document.hidden) load(); }, 60_000);
 })();
