@@ -118,12 +118,12 @@ describe('demo navigation', () => {
     const res = await api.get('/');
     expect(res.status).toBe(200);
     expect(res.text).toContain('data-agentx-profile="demo"');
-    expect(res.text).toContain('Atelier');
+    expect(res.text).toContain('Workshop');
     expect(res.text).toContain('Ask your knowledge');
     expect(res.text).toContain('Compare models');
     expect(res.text).toContain('href="http://localhost:3080/" class="nav-brand"');
-    expect(res.text).not.toContain('Personnel');
-    expect(res.text).not.toContain('Famille');
+    expect(res.text).not.toContain('Personal');
+    expect(res.text).not.toContain('Family');
     expect(res.text).not.toContain('Nerve Center');
     expect(res.text).not.toContain('OpenClaw');
   });
