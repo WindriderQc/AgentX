@@ -31,6 +31,7 @@ function createServiceIdentity({
 }
 
 module.exports = {
+  SAFE_REVISION,
   UNKNOWN_REVISION,
   normalizeRevision,
   createServiceIdentity,

@@ -140,6 +140,25 @@ describe('portalStatusService', () => {
     expect(status.consistency.issues).toEqual(['Mixed build revisions: test-revision, earlier-revision']);
   });
 
+  it('accepts every build revision a service may embed', async () => {
+    process.env.AGENTX_BUILD_REVISION = 'v1.4.0';
+    global.fetch = jest.fn(async (url) => ({
+      status: 200,
+      json: jest.fn().mockResolvedValue({
+        ok: true,
+        status: 'ok',
+        ...identity(String(url).includes('3081') ? 'agentx-benchmark' : 'agentx-rag', { revision: 'v1.4.0' })
+      })
+    }));
+
+    const status = await getPortalStatus({
+      mongodb: { status: 'connected' },
+      ollama: { status: 'connected' }
+    });
+
+    expect(status.consistency).toMatchObject({ status: 'ok', missing: [], revisions: ['v1.4.0'] });
+  });
+
   it('rejects a reachable endpoint that reports the wrong service identity', async () => {
     global.fetch = jest.fn(async () => {
       return {

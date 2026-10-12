@@ -13,7 +13,7 @@
  * so this routes identically to how core already reaches its siblings.
  */
 
-const { createServiceIdentity } = require('../../../shared/serviceIdentity');
+const { createServiceIdentity, SAFE_REVISION } = require('../../../shared/serviceIdentity');
 
 const CORE_VERSION = require('../../package.json').version || '0.0.0';
 const PROBE_TIMEOUT_MS = Number(process.env.PORTAL_HEALTH_TIMEOUT_MS) || 1500;
@@ -84,7 +84,8 @@ function identityFromDetail(detail) {
     if (!/^agentx-[a-z0-9-]+$/.test(source.service)) return null;
     if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(source.version)) return null;
     if (!['demo', 'full'].includes(source.profile)) return null;
-    if (!/^(?:[A-Fa-f0-9]{7,64}|[A-Za-z][A-Za-z0-9_-]{0,127})$/.test(source.revision)) return null;
+    // Accept exactly what services may embed (v1.4.0, release/1.0, 1.4.0-3-gabc…).
+    if (!SAFE_REVISION.test(source.revision)) return null;
     if (!Number.isFinite(Date.parse(source.ts)) || new Date(source.ts).toISOString() !== source.ts) return null;
     return Object.freeze(Object.fromEntries(required.map((key) => [key, source[key]])));
 }
