@@ -428,7 +428,7 @@ function listConfigBackups() {
       .sort((a, b) => new Date(b.date) - new Date(a.date));
   } catch (err) {
     logger.error('Failed to list config backups', { error: err.message });
-    return [];
+    if (err.code === 'ENOENT') return []; throw err; // an unreadable inventory is not an empty one
   }
 }
 
@@ -651,7 +651,7 @@ function listBackups() {
     return backups;
   } catch (err) {
     logger.error('Failed to list backups', { error: err.message });
-    return [];
+    if (err.code === 'ENOENT') return []; throw err; // an unreadable inventory is not an empty one
   }
 }
 

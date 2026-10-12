@@ -198,6 +198,17 @@ describe('backupService durable storage behavior', () => {
     expect(service.listConfigBackups()).toEqual([]);
   });
 
+  test('an unreadable inventory is reported, not shown as empty', () => {
+    const service = require('../../src/services/backupService');
+    const readdir = jest.spyOn(fs, 'readdirSync').mockImplementation(() => { throw Object.assign(new Error('I/O error'), { code: 'EIO' }); });
+    try {
+      expect(() => service.listBackups()).toThrow('I/O error');
+      expect(() => service.listConfigBackups()).toThrow('I/O error');
+    } finally {
+      readdir.mockRestore();
+    }
+  });
+
   test('delete operations are confined to their exact recovery artifact class', () => {
     const service = require('../../src/services/backupService');
     fs.mkdirSync(backupDir, { recursive: true });
