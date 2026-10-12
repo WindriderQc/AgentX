@@ -212,7 +212,7 @@
     return 'Agent X could not read prompt evidence. Check Core and MongoDB, then retry.';
   }
 
-  function renderVersion(groupName, prompt) {
+  function renderVersion(groupName, prompt, soleActive) {
     var stats = promptStats(prompt);
     var status = prompt.isActive ? 'active' : 'inactive';
     var statusLabel = prompt.isActive ? 'Active' : 'Inactive';
@@ -233,6 +233,11 @@
       promptCanRun(prompt)
         ? '    <a class="icon-btn prompt-version-run" href="' + escapeHtml(buildPromptRunHref(groupName, version)) + '" aria-label="Try ' + escapeHtml(groupName) + ' version ' + escapeHtml(version) + ' in Chat" title="Try this exact version in Chat"><i class="fas fa-play" aria-hidden="true"></i><span class="sr-only">Try exact version</span></a>'
         : '',
+      personaSource(prompt) || soleActive ? '' : [
+        '    <button class="icon-btn" type="button" data-action="activate" data-prompt-name="' + escapeHtml(groupName) + '" data-prompt-version="' + escapeHtml(version) + '" aria-label="Make ' + escapeHtml(groupName) + ' version ' + escapeHtml(version) + ' the only active version" title="Make this the only active version">',
+        '      <i class="fas fa-circle-check" aria-hidden="true"></i><span class="sr-only">Make active</span>',
+        '    </button>'
+      ].join(''),
       personaSource(prompt) ? '' : [
         '    <button class="icon-btn" type="button" data-action="new-version" data-prompt-name="' + escapeHtml(groupName) + '" data-prompt-version="' + escapeHtml(version) + '" aria-label="Create a new version of ' + escapeHtml(groupName) + ' from version ' + escapeHtml(version) + '" title="Use this version as a starting point">',
         '      <i class="fas fa-code-branch" aria-hidden="true"></i><span class="sr-only">Use as base</span>',
@@ -275,7 +280,10 @@
         '  </div>',
         '  <p class="prompt-description">' + escapeHtml(description) + '</p>',
         '  <ul class="versions-list" aria-label="Versions of ' + escapeHtml(group.name) + '">',
-        group.versions.map(function (prompt) { return renderVersion(group.name, prompt); }).join(''),
+        group.versions.map(function (prompt) {
+          var active = group.versions.filter(function (item) { return item.isActive; });
+          return renderVersion(group.name, prompt, active.length === 1 && active[0] === prompt);
+        }).join(''),
         '  </ul>',
         '  <div class="prompt-card-actions">',
         activeRepresentative
@@ -550,7 +558,7 @@
         elements.promptDescriptionInput.value = String(basePrompt.description || '');
         elements.systemPromptInput.value = String(basePrompt.systemPrompt || '');
         elements.promptTrafficWeightInput.value = String(basePrompt.trafficWeight == null ? 100 : basePrompt.trafficWeight);
-        elements.promptActiveInput.checked = false;
+        elements.promptActiveInput.value = 'off';
       } else {
         elements.promptEditorTitle.textContent = 'Create prompt';
         elements.promptEditorContext.textContent = 'Create version 1. It starts inactive unless you choose otherwise.';
@@ -559,7 +567,7 @@
         elements.promptDescriptionInput.value = '';
         elements.systemPromptInput.value = '';
         elements.promptTrafficWeightInput.value = '100';
-        elements.promptActiveInput.checked = false;
+        elements.promptActiveInput.value = 'off';
       }
 
       updateEditorStats();
@@ -592,6 +600,7 @@
       var name = String(elements.promptNameInput.value || '').trim();
       var systemPrompt = String(elements.systemPromptInput.value || '');
       var trafficWeight = Number(elements.promptTrafficWeightInput.value);
+      var selection = String(elements.promptActiveInput.value || 'off');
 
       if (!name) {
         setEditorError('Prompt name is required.');
@@ -622,7 +631,8 @@
           name: name,
           systemPrompt: systemPrompt,
           description: String(elements.promptDescriptionInput.value || '').trim(),
-          isActive: elements.promptActiveInput.checked === true,
+          // A replacement starts inactive and then becomes the only active version.
+          isActive: selection === 'beside',
           trafficWeight: trafficWeight
         })
       }, timeoutMs)
@@ -630,9 +640,16 @@
           if (!payload || payload.status === 'error' || payload.ok === false) {
             throw new Error((payload && (payload.message || payload.error)) || 'Prompt could not be saved.');
           }
-          closeEditor();
-          notify('Saved ' + name + ' as a new version. Use Try in Chat to exercise an exact version.', 'success');
-          return loadPrompts().then(function () { return true; });
+          var version = payload.data && payload.data.version;
+          var activation = selection === 'replace' ? activateVersion(name, version) : Promise.resolve();
+          // The version exists either way: close the editor so a retry cannot save it twice.
+          return activation.then(function () {
+            closeEditor();
+            notify('Saved ' + name + ' v' + version + (selection === 'replace' ? ', now the only active version.' : '. Use Try in Chat to exercise an exact version.'), 'success');
+          }, function (error) {
+            closeEditor();
+            notify('Saved ' + name + ' v' + version + ', but it could not be activated: ' + (error && error.message ? error.message : 'unknown error') + '. Use Make active on the version.', 'error');
+          }).then(function () { return loadPrompts(); }).then(function () { return true; });
         })
         .catch(function (error) {
           setEditorError(error && error.message ? error.message : 'Prompt could not be saved.');
@@ -642,6 +659,31 @@
           if (saveButton) saveButton.disabled = false;
           if (saveLabel) saveLabel.textContent = 'Save new version';
         });
+    }
+
+    // Makes one version the only active one: a promotion or a rollback.
+    function activateVersion(name, version) {
+      return requestJson(fetchImpl, '/api/prompts/' + encodeURIComponent(name) + '/ab-test', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ versions: [{ version: Number(version), weight: 100 }] })
+      }, timeoutMs).then(function (payload) {
+        if (!payload || payload.status === 'error') {
+          throw new Error((payload && payload.message) || 'The version could not be activated.');
+        }
+        return payload;
+      });
+    }
+
+    function confirmActivate(name, version) {
+      var confirmFn = windowRef && typeof windowRef.confirm === 'function' ? windowRef.confirm.bind(windowRef) : null;
+      if (confirmFn && !confirmFn('Make ' + name + ' v' + version + ' the only active version? Every other version of it stops receiving traffic.')) return;
+      activateVersion(name, version)
+        .then(function () {
+          notify(name + ' v' + version + ' is now the only active version.', 'success');
+          return loadPrompts();
+        })
+        .catch(function (error) { notify(error && error.message ? error.message : 'The version could not be activated.', 'error'); });
     }
 
     function exportPrompts() {
@@ -682,9 +724,13 @@
       if (elements.promptListContainer) {
         elements.promptListContainer.addEventListener('click', function (event) {
           var action = event.target && event.target.closest
-            ? event.target.closest('[data-action="new-version"]')
+            ? event.target.closest('[data-action="new-version"], [data-action="activate"]')
             : null;
           if (!action) return;
+          if (action.dataset.action === 'activate') {
+            confirmActivate(action.dataset.promptName, action.dataset.promptVersion);
+            return;
+          }
           var prompt = findVersion(action.dataset.promptName, action.dataset.promptVersion);
           if (prompt) openEditor(prompt);
         });
