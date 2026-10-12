@@ -123,7 +123,51 @@ class ProgressTest(unittest.TestCase):
         self.assertEqual(module.message_text({"content": content}), content)
         self.assertEqual(module.test_outcome(content, False, False), "unknown")
         nested = "[" * 1100 + "0" + "]" * 1100
-        self.assertEqual(module.message_text({"content": nested}), nested)
+        self.assertEqual(module.tool_message({"content": nested}), ("", False, False))
+
+    def test_deep_encoded_harness_is_unknown_without_stopping_session_scan(self):
+        content = [{"type": "text", "text": "OK"}]
+        for _ in range(350):
+            content = [{"type": "tool-result", "content": content}]
+        encoded = json.dumps(content)
+        self.assertIsInstance(json.loads(encoded), list)
+        log = self.root / ".dsh/progress-sessions/project/session/session.jsonl"
+        log.parent.mkdir(parents=True)
+        events = [
+            {"type": "tool/call", "data": {"callId": "1", "name": "bash", "arguments": {
+                "command": "node benchmark/node_modules/jest/bin/jest.js --runInBand"}}},
+            {"type": "tool/result", "data": {"message": {"source": {"callId": "1"}, "content": encoded}}},
+            {"type": "assistant/chunk", "data": {"chunk": "Synthetic private text"}},
+        ]
+        log.write_text("".join(json.dumps(event) + "\n" for event in events))
+        self.clock[0] = 10
+        self.progress.scan(self.root, self.workspace)
+        self.assertEqual(self.progress.last_test, {"name": "jest", "outcome": "unknown"})
+        self.assertEqual(self.progress.stage, "model_generation")
+        self.assertIsNone(self.progress.progress_at)
+
+    def test_invalid_text_and_blocks_cannot_receive_successful_exit_credit(self):
+        for index, content in enumerate([
+            [{"type": "text", "text": 7}], [{"type": "text", "text": {"output": "OK"}}],
+            [{"type": "text", "text": "OK"}, 7], [{"type": [], "text": "OK"}],
+            [{"type": "tool-result", "isError": "false", "content": "OK"}],
+        ]):
+            with self.subTest(content=content):
+                self.call(str(index))
+                self.progress.event({"type": "tool/result", "data": {"message": {
+                    "source": {"callId": str(index)}, "content": json.dumps(content)}}})
+                self.assertEqual(self.progress.last_test, {"name": "jest", "outcome": "unknown"})
+                self.assertIsNone(self.progress.progress_at)
+
+    def test_nested_harness_error_is_retained_and_text_remains_private(self):
+        self.call()
+        content = [{"type": "tool-result", "content": [{"type": "tool-result", "isError": True,
+                   "content": [{"type": "text", "text": "Synthetic private error"}]}]}]
+        self.progress.event({"type": "tool/result", "data": {"message": {
+            "source": {"callId": "1"}, "content": json.dumps(content)}}})
+        self.assertEqual(self.progress.last_test, {"name": "jest", "outcome": "failed"})
+        self.progress.write()
+        self.assertNotIn("Synthetic private error", self.progress.path.read_text())
 
     def test_incomplete_session_record_is_retried_and_old_history_is_not_replayed(self):
         log = self.root / ".dsh/progress-sessions/project/session/session.jsonl"
