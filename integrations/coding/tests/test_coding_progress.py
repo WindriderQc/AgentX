@@ -178,6 +178,38 @@ class ProgressTest(unittest.TestCase):
         self.result("2", "Ran 31 tests in 2.9s\n\nOK")
         self.assertEqual(self.progress.last_test["outcome"], "passed")
 
+    def test_model_reserve_stops_worker_before_cumulative_hard_ceiling(self):
+        self.progress.model_worker_active = True
+        self.progress.carry({"remaining": {"workSeconds": 5000, "modelSeconds": 600, "modelCalls": 40, "testSeconds": 500},
+            "limits": {"noProgressSeconds": 2700}})
+        self.progress.set_stage("model_wait")
+        self.clock[0] = 479
+        self.assertIsNone(self.progress.tick())
+        self.clock[0] = 480
+        self.assertEqual(self.progress.tick(), "model_budget_reserve")
+        self.assertEqual(self.progress.model_remaining(), 120)
+        self.assertEqual(self.progress.usage()["modelSeconds"], 480)
+
+    def test_explicit_progress_window_changes_only_timer_without_adding_work_credit(self):
+        self.progress.carry({"remaining": {"workSeconds": 5000, "modelSeconds": 600, "modelCalls": 40, "testSeconds": 500},
+            "limits": {"noProgressSeconds": 2700}, "spent": {"workSeconds": 5000},
+            "lastUsefulWorkSeconds": 100, "progressWindowStartedAtWorkSeconds": 5000})
+        self.assertIsNone(self.progress.tick())
+        self.assertEqual(self.progress.prior_work, 5000)
+        self.assertEqual(self.progress.useful_work, 100)
+        self.assertEqual(json.loads(self.progress.path.read_text())["lastUsefulWorkSeconds"], 100)
+        self.assertEqual(self.progress.usage()["workSeconds"], 0)
+
+    def test_independent_verification_can_run_without_spending_model_reserve(self):
+        self.progress.carry({"remaining": {"workSeconds": 5000, "modelSeconds": 600, "modelCalls": 40, "testSeconds": 500},
+            "limits": {"noProgressSeconds": 2700}})
+        self.progress.stage_spent["modelSeconds"] = 500
+        self.progress.set_stage("test")
+        self.clock[0] = 10
+        self.assertIsNone(self.progress.tick())
+        self.assertEqual(self.progress.model_remaining(), 100)
+        self.assertEqual(self.progress.usage()["testSeconds"], 10)
+
 
 if __name__ == "__main__":
     unittest.main()

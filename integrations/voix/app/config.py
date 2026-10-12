@@ -38,7 +38,7 @@ def _get_float(name: str, default: float) -> float:
 
 @dataclass(frozen=True)
 class Settings:
-    # Default language of a request that names none (recognition warm-up, VoxCPM2).
+    # Default language of a request that names none (recognition warm-up, Pocket TTS).
     voix_language: str
     voix_startup_warmup: bool
     # Recognition (faster-whisper).
@@ -63,7 +63,7 @@ class Settings:
     windows_sapi_rate: int
     voxcpm_base_url: str = ""
     voxcpm_voice: str = "nestor-a"
-    voxcpm_voice_name: str = "Voice A · VoxCPM2"
+    voxcpm_voice_name: str = "Voice A · Pocket TTS"
     voxcpm_timeout_seconds: float = 60.0
     # One active synthesis engine; old client choices migrate without running another engine.
     tts_pocket_only: bool = False
@@ -118,7 +118,7 @@ def load_settings() -> Settings:
         windows_sapi_rate=_get_int("WINDOWS_SAPI_RATE", 0),
         voxcpm_base_url=os.getenv("VOXCPM_BASE_URL", "").strip().rstrip("/"),
         voxcpm_voice=os.getenv("VOXCPM_VOICE", "nestor-a").strip(),
-        voxcpm_voice_name=os.getenv("VOXCPM_VOICE_NAME", "").strip() or "Voice A · VoxCPM2",
+        voxcpm_voice_name=os.getenv("VOXCPM_VOICE_NAME", "").strip() or "Voice A · Pocket TTS",
         voxcpm_timeout_seconds=_get_float("VOXCPM_TIMEOUT_SECONDS", 60.0),
         tts_pocket_only=_get_bool("TTS_POCKET_ONLY", False),
         tts_voice_aliases=json.loads(os.getenv("TTS_VOICE_ALIASES", "{}")),

@@ -180,6 +180,37 @@ through the native owner; do not delete admissions or quarantine.
 
 ## Reconcile a stopped execution
 
+An expired coding workload with a received blocked worker verdict retains its
+native fence. Before deploying Core, its owner can run
+`node scripts/recover-coding-capacity.js prepare <private-intent.json>` once in
+the reviewed Core image, using the instance's external environment/database
+and network. This command starts no server and invokes only Core's coding owner.
+The intent contains `pipelineId`, original `requestId`, a stable `key`,
+`confirm: true`, `workerTerminated: true` and confirmation
+`ORIGINAL_CODING_WORKER_TERMINATED_RECOVER_NATIVE_CAPACITY`. Independently verify
+the exact host unit stopped first; pause autonomy and withdraw authorization.
+The command checks the original host receipt and durable native verdict,
+journals the original persistent resident set, and adopts the existing recovery
+identity. Active children, foreign workloads, maintenance or changed topology
+refuse. It never substitutes a new workload or caller-provided principal.
+
+Keep that adopted fence while the instance operator recovers any UNKNOWN child
+through its native owner. A controlled restart must follow the queued campaign
+and installed host-unit procedure; preserve its exact restart timestamp and
+received receipt. Restart recovery records a durable, idempotent native release
+receipt, retaining the original UNKNOWN evidence. After restoration, run the
+same command with `recover-children` and the verified native `restartReceipt`
+in the private intent when recovering the original coding parent's children;
+Core derives their exact proofs from its prepared journal. Then run the
+same command with `complete` and the same private intent. It checks the complete
+persistent resident set, digests, contexts and aggregate GPU bytes before VERIFIED,
+RESTORED and atomic parent release. Unresolved children still refuse. On a lost
+answer, reconcile the same key and original receipt, never repeat a restart.
+For a deployment blocked by that original fence, a reviewed recovery candidate
+may be mounted read-only into the installed Core image for this one-shot command;
+record its exact source revision and hashes outside Git. This is operator
+reconciliation, not autonomous delivery or an installation of the candidate.
+
 Pause autonomy and withdraw the original task authorization. After independently
 verifying the original worker termination and native resource release, close its
 original operator campaign through the heavy-work queue. In Pipeline, confirm
@@ -244,3 +275,50 @@ identities. Keep live manifests, host inventories, raw logs and dated results
 outside Git. Any operator correction of worker source is labelled assisted and
 cannot count as an autonomous result. Live qualification is tracked in
 [issue #681](https://github.com/WindriderQc/AgentX/issues/681).
+
+### Explicit continuation after administrative recovery
+
+A recovered failure is still a failure. `authorization` cannot reset its spent
+budget or history. With autonomy paused and its active slot free, an operator can
+POST `/api/pipeline/coding-autonomy/tasks/:id/runs/:requestId/continuation` for the
+exact last administratively recovered execution. Confirm with
+`CONTINUE_RECOVERED_CHECKPOINT_WITH_ADDITIONAL_BUDGET`, a stable `key`, current
+`expectedRevision`, exact native `head`, a new active operator `queueRequestId`
+linked to the same task/coding session, reviewed `verificationProfile`, correction
+`text`, `additionalRuns` and explicit `budget` credits for `workSeconds`,
+`testSeconds`, `modelSeconds`, `modelCalls` and `ciSeconds`.
+
+Each grant is bounded by the normal per-campaign caps. The additional worker
+count replaces any unused resume allowance and remains within the original
+reviewed native attempt ceiling. The original limits, spent costs, attempts,
+UNKNOWN and pending receipts remain unchanged. A recorded operator intervention
+starts a new no-progress window without erasing the source/test history. The
+next request links to the recovered request on the same card and private branch;
+the runner refuses an absent, dirty or substituted checkpoint before model work.
+
+Activation is fenced until the grant write has been durably acknowledged. After
+a lost reply, reconcile the same key and fingerprint; never submit a replacement
+grant. Retrying adds no budget and creates no worker. This procedure records an
+operator continuation; it does not turn the earlier failure into autonomous
+success or authorize arbitrary scope changes.
+
+`agentx-benchmark-artifact-tests/v1` is a native network-isolated verifier for
+`artifactComparison*`, paired statistics and paired regression tests. Its Jest
+configuration comes from the installed runner, rather than the worker checkout.
+Loopback HTTP fixtures are permitted; production services and databases are not
+reachable. Independent review and full CI must still accept the published commit.
+
+The coding model route preserves up to 120 seconds (one quarter for shorter
+budgets) for completion. Core refuses fresh calls inside that reserve before
+journal/admission. The runner stops source work before the hard model ceiling and
+drains existing Core connections under heartbeat within the remaining work/model/queue
+budget, including after a worker disconnect. EOF alone does not prove successful
+inference: only the native Core receipt can permit publication and resource
+release. An unfinished or uncertain native call retains UNKNOWN and its fence.
+
+An unpublished worker checkpoint with an exact received native `tests_failed`
+verdict and completed model calls can receive a bounded local correction. Core
+retains the original operator review guidance, charges the failed run and links
+the next worker; the native feedback carries bounded test diagnostics as
+untrusted data. Operator stops, exhausted budgets, unknown runtime outcomes and
+published PR review remain subject to their existing gates.

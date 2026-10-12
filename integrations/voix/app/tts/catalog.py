@@ -36,7 +36,7 @@ def _served_voices(data: dict) -> dict[str, str]:
 def worker_ready() -> tuple[bool, str]:
     global _worker_health
     if not settings.voxcpm_base_url:
-        return False, "VoxCPM2 worker is not configured"
+        return False, "Pocket TTS worker is not configured"
     # Reuse a ready answer for 10 s; retry a failure after 2 s so recovery is noticed quickly.
     if time.monotonic() - _worker_health[0] < (10 if _worker_health[1] else 2):
         return _worker_health[1:3]
@@ -65,12 +65,12 @@ def _probe_worker() -> tuple[bool, str]:
         voices = _served_voices(data)
         _worker_model = str(data.get("model") or "")
         ready = bool(data.get("ready") and settings.voxcpm_voice in voices)
-        reason = "" if ready else "VoxCPM2 is warming up or does not serve the configured voice"
+        reason = "" if ready else "Pocket TTS is warming up or does not serve the configured voice"
         if settings.tts_pocket_only and _worker_model != "kyutai/pocket-tts":
             ready, reason = False, "Pocket-only synthesis requires a Pocket TTS worker"
     except (httpx.HTTPError, ValueError):
         _worker_model = ""
-        ready, reason = False, "VoxCPM2 worker is unavailable"
+        ready, reason = False, "Pocket TTS worker is unavailable"
     _worker_health = (time.monotonic(), ready, reason, voices if ready else {})
     return ready, reason
 
@@ -140,5 +140,5 @@ def catalog() -> dict:
     return {"schema": 1, "streamProtocol": "voix-pcm-v1", "providers": [
         {"id": "kokoro", "name": "Kokoro", "available": kokoro_ready, "streaming": "clause", "reason": "" if kokoro_ready else "Kokoro assets are not installed"},
         {"id": "windows_sapi", "name": "Windows SAPI", "available": bool(sapi), "streaming": "clause", "reason": sapi_reason or ("" if sapi else "No Windows voices installed")},
-        {"id": "voxcpm", "name": "VoxCPM2", "available": ready, "streaming": "frames", "reason": reason}],
+        {"id": "voxcpm", "name": "Pocket TTS", "available": ready, "streaming": "frames", "reason": reason}],
         "voices": voices, "defaults": {"provider": settings.tts_provider, "kokoro": provider.language_profiles("kokoro"), "voxcpm": settings.voxcpm_voice}}

@@ -57,7 +57,7 @@ async def pcm_events(text: str, profile: dict):
 
 
 async def speech_chunks(text: str, profile: dict, cancel):
-    # Frame-streaming VoxCPM retains its full prosodic context. Local engines
+    # Frame-streaming Pocket TTS retains its full prosodic context. Local engines
     # that return complete buffers start after the first sentence of a long reply.
     clauses = [text]
     if profile["provider"] != "voxcpm":

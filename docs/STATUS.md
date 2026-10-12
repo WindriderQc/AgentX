@@ -47,7 +47,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   an MQTT message by hand, asking the storage collector for a scan,
   storing the owner's duplicate-review decisions (intent only: no file is deleted),
   generating or deleting a report, editing an IoT device's display name, location
-  and notes, and explicitly sending a GPIO or reboot command. Its IoT tab shows
+  and notes, and explicitly sending a GPIO or reboot command. The IoT controls also save and
+  assign versioned profiles, save daily timers, explicitly publish either to
+  compatible firmware and reconcile uncertain publications against fresh
+  device reports. Daily execution belongs to the device. Its IoT tab shows
   device cards, raw live graphs and sampled history; Système links directly to it.
   It also shows storage growth and Data's
   activity log. The `demo` profile keeps chat,
@@ -81,6 +84,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   Main web research with durable tool admission limits or Main/Secretary consultation
   while the guardian remains available. Core retains results through reconnect, fences
   uncertain dispatches and separates display, playback start and completion.
+  Personal review, task workers and native consultations receive the complete
+  canonical conversation separately from selected memory, including recorded
+  tool evidence. Oversized context refuses rather than dropping older turns.
   The feature defaults off; text, Open, specialists and Famille keep their
   existing contracts. See [conversation work](NESTOR_CONVERSATION_WORK.md).
 - **Conversation recovery.** Playground retains accepted requests and response

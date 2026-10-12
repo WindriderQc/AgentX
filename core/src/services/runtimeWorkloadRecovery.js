@@ -447,6 +447,11 @@ async function resolveWorkloadRecovery({ recoveryId, recoveryGeneration, princip
   const prior = await RuntimeCoordination.findOneAndUpdate(
     {
       _id: 'runtime',
+      // Restoration never proves a child inference terminated. Serialize this
+      // fence with inference admission, as the normal workload release does.
+      inferences: { $not: { $elemMatch: {
+        workloadAdmissionId: owned.admissionId, workloadGeneration: owned.generation
+      } } },
       workloads: { $elemMatch: {
         admissionId: owned.admissionId,
         generation: owned.generation,
@@ -475,7 +480,7 @@ async function resolveWorkloadRecovery({ recoveryId, recoveryGeneration, princip
       } },
       $push: { releaseReceipts: { $each: [releaseReceipt], $slice: -100 } }
     },
-    { new: false }
+    { new: false, writeConcern: { w: 1, j: true } }
   ).lean();
   return prior ? releaseReceipt : { released: false, reason: 'recovery proof changed during release' };
 }

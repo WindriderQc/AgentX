@@ -1,7 +1,7 @@
 """Pocket TTS worker: the cloned-voice worker protocol, served on the processor.
 
-It speaks the same HTTP protocol and reads the same voices directory as the
-VoxCPM2 worker (``voxcpm_server``), so the speech service reaches it through
+It uses the shared HTTP protocol and reference loader in ``cloned_voice_worker``,
+so the speech service reaches it through
 the same ``VOXCPM_BASE_URL`` and nothing else changes for a caller. Run with the
 optional requirements-pocket.txt environment. The model is loaded once; audio
 and request text are never written to disk. No graphics memory is used.
@@ -14,7 +14,7 @@ import threading
 
 import numpy as np
 
-from app.tts.voxcpm_server import Worker, handler_for, load_voices
+from app.tts.cloned_voice_worker import Worker, handler_for, load_voices
 
 MODEL = "kyutai/pocket-tts"
 # The model's default end-of-speech threshold (-4) ends about one sentence in
@@ -48,7 +48,7 @@ def main():
                         help="diagnostic: send the last generated chunk without softening")
     args = parser.parse_args()
     # A transcript beside a reference is ignored: this engine clones from the audio alone.
-    references = load_voices(args.voices_dir, continuation=False)
+    references = load_voices(args.voices_dir)
     if not references:
         parser.error("--voices-dir holds no <id>.wav reference")
     default = args.voice if args.voice in references else next(iter(references))

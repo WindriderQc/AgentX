@@ -35,6 +35,7 @@ def test_pocket_catalog_does_not_touch_kokoro_assets_or_windows(pocket_only, mon
     assert {(v["id"], v["language"]) for v in result["voices"]} == {
         ("narrator", "fr"), ("narrator", "en"), ("helper", "fr"), ("helper", "en")}
     assert result["defaults"] == {"provider": "voxcpm", "voxcpm": "narrator"}
+    assert provider.resolve("voxcpm")["sample_rate"] == 24000
 
 
 @pytest.mark.parametrize("retired", ["kokoro", "windows_sapi"])

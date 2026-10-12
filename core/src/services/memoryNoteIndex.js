@@ -25,9 +25,9 @@ const textMark = text => createHash('sha256').update(String(text)).digest('hex')
 
 // Core's own embedding route chooses the host, admits the call and refuses an
 // input the model would cut, exactly as it does for the document store.
-async function embedThroughCore(text, { model = embeddingModel() } = {}) {
+async function embedThroughCore(text, { model = embeddingModel(), timeoutMs = EMBED_TIMEOUT_MS } = {}) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), EMBED_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(`http://127.0.0.1:${process.env.PORT || 3080}/api/inference/embed`, {
       method: 'POST', signal: controller.signal,
@@ -77,7 +77,7 @@ function createIndex({ embed = embedThroughCore, model = embeddingModel } = {}) 
   }
 
   // `filter` is the caller's space boundary; this module never widens it.
-  async function nearest(filter, queries, { limit = 3, minScore = 0 } = {}) {
+  async function nearest(filter, queries, { limit = 3, minScore = 0, embedOptions } = {}) {
     const notes = await MemoryNote.find(filter).select('+embedding').lean();
     const current = notes.filter(isCurrent);
     // Nothing indexed: there is nothing to compare, so no embedding is asked.
@@ -87,7 +87,7 @@ function createIndex({ embed = embedThroughCore, model = embeddingModel } = {}) 
     const results = [];
     for (const query of queries) {
       let vector;
-      try { vector = await embed(query); } catch (error) { results.push({ query, error: error.message, hits: [] }); continue; }
+      try { vector = await embed(query, embedOptions); } catch (error) { results.push({ query, error: error.message, hits: [] }); continue; }
       results.push({ query, hits: current
         .map(note => ({ note, score: cosine(vector, note.embedding) }))
         .filter(hit => hit.score >= minScore)

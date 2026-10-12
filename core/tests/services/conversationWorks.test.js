@@ -60,6 +60,69 @@ test('accepts complete human input before any model and settles the same slot ex
   expect((await conversations.getSession({ sessionId: current.sessionId })).turnCount).toBe(1);
 });
 
+test('worker context returns the complete conversation and refreshes old corrections and evidence', async () => {
+  const oldTurns = [];
+  for (let index = 0; index < 16; index++) oldTurns.push(await conversations.recordTurn({ sessionId: current.sessionId,
+    packId: 'personal_operator', scopeId: 'personal', traceId: randomUUID(), outcome: 'completed',
+    inputText: index === 0 ? 'x'.repeat(3000) + ' EARLIER_RESTRICTION' : `Question ${index}`,
+    replyText: index === 0 ? 'y'.repeat(3000) + ' EARLIER_ANSWER' : `Answer ${index}`,
+    ...(index === 0 && { toolEvidence: { status: 'observed', receipts: [{ tool: 'synthetic_read', result: 'VERIFIED_SOURCE' }] } }) }));
+  const job = await startWork('Review the current answer.');
+  const data = await works.contextForWorker(job.context);
+  expect(data.conversation.coverage).toMatchObject({ complete: true, turnCount: 17, firstTurnId: oldTurns[0].traceId, lastTurnId: job.row.turnId });
+  expect(data.conversation.turns[0]).toMatchObject({ inputText: oldTurns[0].inputText, replyText: oldTurns[0].replyText,
+    toolEvidence: { status: 'observed', receipts: [{ tool: 'synthetic_read', result: 'VERIFIED_SOURCE' }] } });
+  expect(data.selectedContext).toBe('Selected personal context');
+  await conversations.updateTurn({ sessionId: current.sessionId, traceId: oldTurns[0].traceId },
+    { $set: { display: [{ kind: 'text', body: 'Received correction.' }] } });
+  expect((await works.contextForWorker(job.context)).conversation.turns[0].display[0].body).toBe('Received correction.');
+  expect(data.recentTurns).toBeUndefined();
+});
+
+test('oversized worker context explicitly refuses instead of returning only recent turns', async () => {
+  for (let index = 0; index < 7; index++) await conversations.recordTurn({ sessionId: current.sessionId,
+    packId: 'personal_operator', scopeId: 'personal', traceId: randomUUID(), inputText: 'x'.repeat(15000), replyText: 'Reply' });
+  const job = await startWork();
+  await expect(works.contextForWorker(job.context)).rejects.toMatchObject({ code: 'CONVERSATION_CONTEXT_REQUIRED', statusCode: 409 });
+});
+
+test('complete boss context retains older background answers, their full read evidence and actual presentation', async () => {
+  const answers = [];
+  for (let index = 0; index < 6; index++) {
+    const job = await startWork();
+    if (index === 0) tasks.list.mockResolvedValueOnce({ tasks: [{ id: 'synthetic-old-task', title: 'Source ' + 'x'.repeat(3000) + ' LAST_SOURCE_DETAIL' }], totalCount: 1 });
+    const read = await works.readTasks(job.context, { limit: 5 }, 'native-call');
+    const text = index === 0 ? 'Earlier correction: ' + 'y'.repeat(4000) + ' LAST_ANSWER_DETAIL' : `Background answer ${index}`;
+    await works.publish(job.context, { kind: 'answer', text, receiptIds: [read.receipt.id] });
+    const saved = await works.repo.get(job.row._id);
+    if (index === 0) {
+      const delivery = createWorkDelivery(works), deviceSession = randomUUID(), deliveryId = saved.delivery.id;
+      await delivery.receipt(current.sessionId, deliveryId, { stage: 'displayed', resultVersion: 1, sequence: 1, deviceSession });
+      const claimed = await delivery.receipt(current.sessionId, deliveryId, { stage: 'claim', resultVersion: 1, sequence: 2, deviceSession });
+      await delivery.receipt(current.sessionId, deliveryId, { stage: 'started', resultVersion: 1, sequence: 3, deviceSession, claimToken: claimed.claimToken });
+      await delivery.receipt(current.sessionId, deliveryId, { stage: 'completed', resultVersion: 1, sequence: 4, deviceSession, claimToken: claimed.claimToken });
+    }
+    answers.push({ turnId: job.row.turnId, text });
+  }
+  const latest = await startWork('Review this answer.');
+  const { conversation } = await works.contextForWorker(latest.context);
+  expect(conversation.coverage).toMatchObject({ complete: true, turnCount: 7, workResultCount: 6 });
+  for (const answer of answers) expect(conversation.turns.find(turn => turn.turnId === answer.turnId).workResults[0].text).toBe(answer.text);
+  const first = conversation.turns[0].workResults[0];
+  expect(first.toolEvidence[0].data.tasks[0].title).toMatch(/LAST_SOURCE_DETAIL$/);
+  expect(first.presentation).toMatchObject({ state: 'completed', receipts: [{ stage: 'displayed' }, { stage: 'claim' }, { stage: 'started' }, { stage: 'completed' }] });
+  expect(conversation.turns[1].workResults[0].presentation.state).toBe('available');
+  const family = await conversations.createSession({ sessionId: randomUUID(), packId: 'kidx_nestor', scopeId: 'family', modeId: 'standard' });
+  await expect(works.conversationContext(family.sessionId)).rejects.toMatchObject({ statusCode: 404 });
+});
+
+test('large retained work evidence counts toward the complete-context budget', async () => {
+  tasks.list.mockResolvedValueOnce({ tasks: [{ id: 'synthetic-task', title: 'x'.repeat(100000) }], totalCount: 1 });
+  await result();
+  const job = await startWork('Review this answer.');
+  await expect(works.contextForWorker(job.context)).rejects.toMatchObject({ code: 'CONVERSATION_CONTEXT_REQUIRED' });
+});
+
 test('a greeting remains eligible for background review after the Gardien settles', async () => {
   const accepted = await works.intake(input('Bonjour.'));
   expect(accepted.row).toMatchObject({ classification: 'unclassified', state: 'received' });
@@ -261,6 +324,17 @@ test('an ambiguous dispatch holds the global owner through restart and settles o
   expect((await works.repo.get(accepted.row._id)).state).toBe('failed');
   expect((await mongoose.connection.collection('conversation_work_dispatch').findOne({ _id: OWNER })).workId).toBeNull();
   restarted.stop();
+});
+
+test('complete-context refusal releases preparation without any native dispatch or replacement', async () => {
+  const accepted = await works.intake(input()); await works.prepare(accepted.row._id, 'context');
+  const execute = jest.fn(), observe = jest.fn();
+  const observer = createWorkObserver({ works, env, execute, observe,
+    prepare: async () => { throw Object.assign(new Error('Complete context does not fit'), { code: 'CONVERSATION_CONTEXT_REQUIRED' }); } });
+  await observer.tick(); await observer.tick(); observer.stop();
+  expect(execute).not.toHaveBeenCalled(); expect(observe).not.toHaveBeenCalled();
+  expect(await works.repo.get(accepted.row._id)).toMatchObject({ state: 'failed', attempt: null, reason: 'CONVERSATION_CONTEXT_REQUIRED' });
+  expect((await mongoose.connection.collection('conversation_work_dispatch').findOne({ _id: OWNER })).workId).toBeNull();
 });
 
 test('HTTP native entry point refuses a family identity, forged work parameters and missing private token', async () => {

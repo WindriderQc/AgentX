@@ -90,6 +90,12 @@ def execute(r, args, progress):
     try:
         if progress.check_stop():
             raise RuntimeError('Operator stopped before preparation')
+        if manifest.get('continuationCheckpoint'):
+            if (not workspace.exists() or r.git(workspace, 'branch', '--show-current') != branch
+                    or r.git(workspace, 'rev-parse', 'HEAD') != manifest['continuationCheckpoint']
+                    or r.git(workspace, 'status', '--porcelain', '--untracked-files=normal')):
+                reason = 'continuation_checkpoint_changed'
+                raise RuntimeError('The recovered private checkpoint must be resumed exactly')
         if not workspace.exists():
             r.WORKSPACES.mkdir(mode=0o700, exist_ok=True)
             clone = r.supervise(['timeout', '-k', '30', str(r.CLONE_TIMEOUT_SECONDS), 'git', 'clone',
@@ -145,9 +151,10 @@ def execute(r, args, progress):
         progress.set_stage('test')
         # Reuse the reviewed verification profile; commands are native constants,
         # never GitHub logs or task-provided shell fragments.
-        profile = task['automation']['verificationProfile']
+        profile = manifest.get('verificationProfile') or task['automation']['verificationProfile']
         commands = {
             'agentx-dispatcher-tests/v1': ['python3', '-m', 'unittest', 'discover', '-s', 'integrations/coding/tests'],
+            'agentx-benchmark-artifact-tests/v1': ['/opt/node/bin/node', 'benchmark/node_modules/jest/bin/jest.js', '--config', '/opt/coding/jest.benchmark.config.cjs', '--runInBand'],
             'agentx-core-runner-tests/v1': ['/opt/node/bin/node', 'core/node_modules/jest/bin/jest.js', '--config', 'core/jest.coding.config.js', '--runInBand'],
         }
         if profile not in commands:
@@ -158,6 +165,7 @@ def execute(r, args, progress):
         verification = 'passed' if test.returncode == 0 and not progress.check_stop() else 'failed'
         progress.last_test = {'name': 'unittest' if profile == 'agentx-dispatcher-tests/v1' else 'jest', 'outcome': verification}
         if verification != 'passed':
+            summary = 'Independent verification failed (untrusted test output):\n' + (getattr(test, 'stdout', '') or getattr(test, 'stderr', '') or '(no output)')[-2000:] + '\n' + summary[-1500:]
             reason = progress.stop_reason or 'tests_failed'
             raise RuntimeError('Independent tests did not pass')
         if r.git(workspace, 'status', '--porcelain', '--untracked-files=no'):

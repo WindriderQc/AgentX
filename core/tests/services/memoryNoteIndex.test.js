@@ -31,7 +31,8 @@ describe('memory note meaning index with real Mongo', () => {
     await settle();
     const found = await owner.similar('What do I drink at breakfast?', { minScore: 0.5 });
     expect(found.results[0].notes.map(note => note.text)).toEqual(['I never touch espresso in the morning']);
-    expect((await owner.search('What do I drink at breakfast?')).notes).toEqual([]);
+    // The owner's search now recalls it too, where words alone found nothing.
+    expect((await owner.search('What do I drink at breakfast?')).notes.map(note => note.text)).toEqual(['I never touch espresso in the morning']);
     expect(found).toMatchObject({ indexed: 2, unindexed: 0 });
   });
 
