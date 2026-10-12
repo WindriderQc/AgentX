@@ -172,8 +172,8 @@ describe('buildComparisonContract', () => {
 
     test('different effective contexts are explicit non-authoritative confounds', () => {
         const contract = buildComparisonContract(
-            armA({ settings: executionSettings({ num_ctx: 8192 }), batch: batchDoc({ batchId: SPEC_A.batch_id, cohort: 'cohort-a', model: SPEC_A.model, host: HOST_A, digest: DIGEST_A, candidates: [candidate(SPEC_A.model, HOST_A, DIGEST_A, { execution: { ...candidate(SPEC_A.model, HOST_A, DIGEST_A).execution, num_ctx: 8192 } })]) }),
-            armB({ settings: executionSettings({ num_ctx: 4096 }), batch: batchDoc({ batchId: SPEC_B.batch_id, cohort: 'cohort-b', model: SPEC_B.model, host: HOST_B, digest: DIGEST_B, candidates: [candidate(SPEC_B.model, HOST_B, DIGEST_B, { execution: { ...candidate(SPEC_B.model, HOST_B, DIGEST_B).execution, num_ctx: 4096 } })]) }));
+            armA({ settings: executionSettings({ num_ctx: 8192 }), batch: batchDoc({ batchId: SPEC_A.batch_id, cohort: 'cohort-a', model: SPEC_A.model, host: HOST_A, digest: DIGEST_A, candidates: [candidate(SPEC_A.model, HOST_A, DIGEST_A, { execution: { ...candidate(SPEC_A.model, HOST_A, DIGEST_A).execution, num_ctx: 8192 } })] }) }),
+            armB({ settings: executionSettings({ num_ctx: 4096 }), batch: batchDoc({ batchId: SPEC_B.batch_id, cohort: 'cohort-b', model: SPEC_B.model, host: HOST_B, digest: DIGEST_B, candidates: [candidate(SPEC_B.model, HOST_B, DIGEST_B, { execution: { ...candidate(SPEC_B.model, HOST_B, DIGEST_B).execution, num_ctx: 4096 } })] }) }));
         expect(contract.compatible).toBe(false);
         expect(contract.checks.num_ctx.status).toBe('mismatch');
         expect(contract.confounds).toContain('effective_context');
