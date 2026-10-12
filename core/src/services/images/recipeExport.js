@@ -6,6 +6,7 @@ const { declaredRecipe } = require('./recipeExecution');
 const constraints = require('../../../public/js/image-brief-constraints');
 const textPolicy = require('../../../public/js/image-text-policy');
 const { validateGraph, object, uuid, digest, sha } = require('./exportGraphV1');
+const { validateGraph: validateTurboGraph } = require('./exportGraphV2');
 const fail = (message, statusCode) => Object.assign(new Error(message), { statusCode });
 const invalid = () => fail('Les données archivées sont incohérentes ou indisponibles.', 503);
 const requireValid = value => { if (!value) throw invalid(); };
@@ -57,12 +58,12 @@ function descriptor(id, receipt, role, index) {
     url: `/api/images/operations/${id}/export/parts/${name}` };
 }
 
-async function verify(receipt, part) {
+async function verify(receipt, part, maxPixels = 4194304) {
   try {
     const loaded = await defaultArchive().read(receipt);
     requireValid(Buffer.isBuffer(loaded.bytes) && loaded.bytes.length === part.size
       && sha(loaded.bytes) === part.sha256 && loaded.mimeType === part.mimeType);
-    const image = decode(loaded.bytes, part.role === 'output' ? 4300800 : 4194304);
+    const image = decode(loaded.bytes, part.role === 'output' ? 4300800 : maxPixels);
     requireValid(image.width === part.width && image.height === part.height && image.mimeType === part.mimeType);
     if (part.role !== 'output') requireValid(Math.max(image.width, image.height) / Math.min(image.width, image.height) <= 8);
     return loaded.bytes;
@@ -86,7 +87,7 @@ async function bundle(id, requestedName) {
       && textPolicy.compose(op.request.visualPrompt, protectedItems, policy) === op.request.prompt);
   } catch { throw invalid(); }
   const { entries, lineage } = references(op);
-  const graph = validateGraph(op, entries.length);
+  const graph = (op.execution.builder?.version === 2 ? validateTurboGraph : validateGraph)(op, entries.length);
   let declaration;
   if (op.profile.recipe !== undefined) {
     try { declaration = declaredRecipe(op.profile.recipe); } catch { throw invalid(); }
@@ -106,14 +107,16 @@ async function bundle(id, requestedName) {
   // requests independently re-read all receipts; no durable validation cache.
   let bytes = requestedName === 'graph.json' ? graph : undefined;
   for (const item of pieces) {
-    const verified = await verify(item.receipt, item.part);
+    const cap = lineage?.parent && item.part.index === 0 ? 4300800 : 4194304;
+    const verified = await verify(item.receipt, item.part, cap);
     if (item.part.name === requestedName) bytes = verified;
   }
   const latest = await read(id);
   if (!latest || identity(latest) !== identity(op)) throw fail('L’opération a changé pendant son export. Recharge son état.', 409);
   if (requestedName !== undefined) return { bytes, mimeType: parts.find(p => p.name === requestedName).mimeType, filename: requestedName };
   return { schemaVersion: 1, operation: { id, state: 'completed', runtimeRestored: true },
-    recipe: { id: op.profile.id, family: op.profile.family, ...(declaration && { declaredIdentity: declaration }) },
+    recipe: { id: op.profile.id, family: op.profile.family, ...(op.profile.sampling && { sampling: op.profile.sampling }),
+      ...(declaration && { declaredIdentity: declaration }) },
     request: { prompt: op.request.prompt, width: op.request.width, height: op.request.height, seed: op.request.seed,
       ...((protectedItems || policy) && { visualPrompt: op.request.visualPrompt }),
       ...(protectedItems && { constraints: protectedItems }), ...(policy && { textPolicy: policy }) },

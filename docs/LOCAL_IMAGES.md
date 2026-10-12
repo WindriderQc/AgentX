@@ -401,8 +401,9 @@ using the same endpoint identities as Core inference. The optional
 also fences Core consumers on configured physical GPU aliases. It does not
 discover devices or stop games, voice workers or other unmanaged consumers.
 
-The `qwen21` family uses Qwen-Image-2.1 ConvRot INT8 diffusion and encoder
-files, its own VAE, Euler/simple sampling and lossless CPU prefix caching.
+The `qwen21` family supports instance-selected Qwen-Image-2.1 diffusion and
+encoder files (BF16 or qualified quantized weights), its own VAE, Euler/simple
+sampling and lossless CPU prefix caching.
 Its license is research/evaluation: label that profile explicitly. Enable
 only the resolution and step budget qualified on the actual host. References
 are decoded, bounded to an 8:1 aspect ratio, and their editing pixel budget is explicit; a large source photo
@@ -412,6 +413,45 @@ Qwen editing follows the first reference's framing at the
 selected pixel budget, with a margin for its 32-pixel rounding.
 It preserves the generated output at full
 quality; upload originals remain the conversation attachment capability's job.
+
+An optional Turbo profile uses the same `qwen21` size and reference handling,
+with `sampling: "qwen21-turbo"` and exactly eight steps. Core uses the
+[checkpoint's published sigmas](https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/d65dbc9a7e8f6b5479e33dee6030eaab2a906509/model_index.json)
+through `ManualSigmas`, Euler, CFG 1 and the existing CPU prefix cache. An
+eight-step simple scheduler is not that recipe. Other sampling values or
+incompatible families/step counts refuse configuration. For example, add this
+entry to the external manifest's `profiles` after installing its named files:
+
+```json
+"qwen-turbo": {
+  "label": "Qwen 2.1 Turbo · Accéléré",
+  "family": "qwen21",
+  "sampling": "qwen21-turbo",
+  "diffusion": "qwen_image_2.1_turbo_bf16.safetensors",
+  "encoder": "qwen3vl_8b_bf16.safetensors",
+  "vae": "qwen_image_2.1_vae_bf16.safetensors",
+  "steps": 8,
+  "maxPixels": 4300800,
+  "recipe": { "id": "qwen21-turbo-bf16-8", "version": "1" },
+  "license": "Qwen-Image-2.1 Turbo Research / Evaluation",
+  "presentation": {
+    "description": "Création et retouches en 8 étapes (BF16), jusqu’à 4,3 MP. Pour explorer plus vite ; vérifier les détails et les interactions."
+  }
+}
+```
+
+This advertises a third choice through the existing Atelier selector, API and
+image specialist; it does not change the default or the conversation drawing
+profile. The configured labels and descriptions do not establish a quality
+ranking. Checkpoints retain their own licensing terms. New Turbo operations
+record workflow builder v2; their exports verify the frozen schedule and exact
+archived graph. Existing Klein and classic Qwen graphs retain builder v1 and
+their historical export contract.
+
+A verified archived Qwen parent may use its recipe's full 4,300,800-pixel
+envelope, so a 2400 × 1792 creation can be retouched without reducing its
+original. Uploaded references retain their 4,194,304-pixel limit. Parent
+references retain the original framing, ordered lineage and source/worker hashes.
 
 ## Request and recovery contract
 

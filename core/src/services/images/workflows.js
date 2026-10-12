@@ -1,7 +1,9 @@
 'use strict';
+const { SAMPLING, SIGMAS, validateSampling } = require('./qwenTurbo');
 
 // Server-owned graphs. Callers select a qualified profile, never arbitrary nodes.
 function workflow(profile, { prompt, seed, width, height }, references, id) {
+  validateSampling(profile);
   const graph = {};
   const add = (key, class_type, inputs) => { graph[key] = { class_type, inputs }; return [key, 0]; };
   const model = add('model', 'UNETLoader', { unet_name: profile.diffusion, weight_dtype: profile.weightDtype || 'default' });
@@ -15,8 +17,16 @@ function workflow(profile, { prompt, seed, width, height }, references, id) {
     add('text', 'TextEncodeQwenImage21', inputs);
     const latent = references.length ? ['text', 2] : add('latent', 'EmptyLatentImage', { width, height, batch_size: 1 });
     const cached = add('cache', 'QwenImage21Cache', { model, device: 'cpu', dtype: 'default' });
-    samples = add('sample', 'KSampler', { model: cached, positive: ['text', 0], negative: ['text', 1], latent_image: latent,
-      seed, steps: profile.steps, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1 });
+    if (profile.sampling === SAMPLING) {
+      const guider = add('guider', 'CFGGuider', { model: cached, positive: ['text', 0], negative: ['text', 1], cfg: 1 });
+      const sampler = add('sampler', 'KSamplerSelect', { sampler_name: 'euler' });
+      const sigmas = add('sigmas', 'ManualSigmas', { sigmas: SIGMAS.join(', ') });
+      const noise = add('noise', 'RandomNoise', { noise_seed: seed });
+      samples = add('sample', 'SamplerCustomAdvanced', { noise, guider, sampler, sigmas, latent_image: latent });
+    } else {
+      samples = add('sample', 'KSampler', { model: cached, positive: ['text', 0], negative: ['text', 1], latent_image: latent,
+        seed, steps: profile.steps, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1 });
+    }
   } else if (profile.family === 'klein') {
     let positive = add('text', 'CLIPTextEncode', { clip, text: prompt });
     let negative = add('zero', 'ConditioningZeroOut', { conditioning: positive });
