@@ -16,7 +16,7 @@ async function requireImageSupport({ messages, model, hostUrl, signal, fetch }) 
     if (!body?.capabilities?.includes('vision')) throw new Error('vision unavailable');
   } catch {
     signal?.throwIfAborted();
-    throw Object.assign(new Error('Ce modèle ne confirme pas la prise en charge des images. Choisis un modèle avec vision avant de réessayer.'),
+    throw Object.assign(new Error('This model does not confirm image support. Choose a vision model and try again.'),
       { statusCode: 400, code: 'INFERENCE_VISION_REQUIRED' });
   } finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); }
 }
