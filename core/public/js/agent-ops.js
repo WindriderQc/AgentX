@@ -388,7 +388,7 @@
       .sort((a, b) => {
         const aTime = a.nextRunAt ? new Date(a.nextRunAt).getTime() : Number.MAX_SAFE_INTEGER;
         const bTime = b.nextRunAt ? new Date(b.nextRunAt).getTime() : Number.MAX_SAFE_INTEGER;
-        return aTime - bTime || a.name.localeCompare(b.name);
+        return aTime - bTime || String(a.name || '').localeCompare(String(b.name || ''));
       })
       .slice(0, 5);
 
