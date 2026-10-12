@@ -294,12 +294,12 @@
   }
 
   function dueCell(task) {
-    if (task.status === 'done' || !task.dueAt) return '<span class="pipeline-subtle">--</span>';
-    const date = new Date(task.dueAt);
-    if (Number.isNaN(date.getTime())) return '<span class="pipeline-subtle">--</span>';
-    const days = Math.round((date.getTime() - Date.now()) / 86400000);
+    const date = new Date(task.dueAt || NaN);
+    if (task.status === 'done' || Number.isNaN(date.getTime())) return '<span class="pipeline-subtle">--</span>';
+    const startOfDay = (value) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+    const days = Math.round((startOfDay(date) - startOfDay(new Date())) / 86400000); // calendar days, not 24h blocks
     const label = date.toLocaleDateString([], { month: 'short', day: '2-digit' });
-    if (days < 0) return `<span class="pipeline-due overdue" title="Due ${escapeHtml(label)}"><i class="fas fa-circle-exclamation" aria-hidden="true"></i>${Math.abs(days)}d overdue</span>`;
+    if (date.getTime() < Date.now()) return `<span class="pipeline-due overdue" title="Due ${escapeHtml(label)}"><i class="fas fa-circle-exclamation" aria-hidden="true"></i>${days < 0 ? `${-days}d overdue` : 'overdue'}</span>`;
     if (days === 0) return `<span class="pipeline-due today" title="Due ${escapeHtml(label)}"><i class="fas fa-hourglass-half" aria-hidden="true"></i>today</span>`;
     return `<span class="pipeline-due" title="Due ${escapeHtml(label)}">in ${days}d</span>`;
   }
