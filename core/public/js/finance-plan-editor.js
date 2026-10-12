@@ -9,23 +9,23 @@
 
   const SEVERITY = [['critical', 'Urgent'], ['warning', 'Important'], ['info', 'Info']];
   const SECTIONS = [
-    { key: 'openItems', label: 'Dossiers ouverts', fields: [['title', 'Titre'], ['detail', 'Détail', 'long'], ['severity', 'Priorité', SEVERITY]] },
-    { key: 'watch', label: 'Vigie', fields: [['date', 'Date'], ['what', 'Quoi', 'long'], ['status', 'Statut']] },
-    { key: 'debts', label: 'Dettes', fields: [['name', 'Dette', 'long'], ['accountCode', 'Code compte'], ['issuer', 'Émetteur'],
-      ['balanceCents', 'Solde ($, si pas lié)', 'money'], ['rateBp', 'Taux (%)', 'rate'], ['paymentCents', 'Paiement ($)', 'money'],
-      ['status', 'Statut'], ['endDate', 'Fin (AAAA-MM-JJ)']] },
-    { key: 'credit', label: 'Crédit', fields: [['name', 'Compte', 'long'], ['accountCode', 'Code compte'], ['issuer', 'Émetteur'],
-      ['limitCents', 'Limite ($)', 'money'], ['balanceCents', 'Solde ($, si pas lié)', 'money'], ['status', 'Statut']] },
-    { key: 'budget', label: 'Budget', fields: [['label', 'Poste', 'long'], ['category', 'Catégorie', 'category'], ['tag', 'Tag'],
-      ['monthlyCents', 'Par mois ($)', 'money']] },
-    { key: 'provisions', label: 'Provisions', fields: [['name', 'Dépense', 'long'], ['annualCents', 'Annuel ($)', 'money'], ['due', 'Échéance'], ['note', 'Note', 'long']] },
-    { key: 'assets', label: 'Actifs', fields: [['name', 'Actif'], ['valueCents', 'Valeur ($)', 'money'], ['asOf', 'Au (AAAA-MM-JJ)'], ['note', 'Note']] },
-    { key: 'taxRoom', label: 'Abris fiscaux', fields: [['name', 'Abri'], ['roomCents', 'Droits ($)', 'money'], ['asOf', 'Année / date']] },
-    { key: 'allocations', label: 'Affectation', fields: [['step', 'Geste', 'long'], ['amountCents', 'Montant ($)', 'money'], ['amountText', 'ou texte'],
-      ['status', 'Statut'], ['effect', 'Effet', 'long']] },
-    { key: 'milestones', label: 'Réglé', fields: [['text', 'Élément', 'long'], ['done', 'Fait', 'bool']] },
+    { key: 'openItems', label: 'Open items', fields: [['title', 'Title'], ['detail', 'Detail', 'long'], ['severity', 'Priority', SEVERITY]] },
+    { key: 'watch', label: 'Watch', fields: [['date', 'Date'], ['what', 'What', 'long'], ['status', 'Status']] },
+    { key: 'debts', label: 'Debts', fields: [['name', 'Debt', 'long'], ['accountCode', 'Account code'], ['issuer', 'Issuer'],
+      ['balanceCents', 'Balance ($, if not linked)', 'money'], ['rateBp', 'Rate (%)', 'rate'], ['paymentCents', 'Payment ($)', 'money'],
+      ['status', 'Status'], ['endDate', 'End (YYYY-MM-DD)']] },
+    { key: 'credit', label: 'Credit', fields: [['name', 'Account', 'long'], ['accountCode', 'Account code'], ['issuer', 'Issuer'],
+      ['limitCents', 'Limit ($)', 'money'], ['balanceCents', 'Balance ($, if not linked)', 'money'], ['status', 'Status']] },
+    { key: 'budget', label: 'Budget', fields: [['label', 'Line', 'long'], ['category', 'Category', 'category'], ['tag', 'Tag'],
+      ['monthlyCents', 'Per month ($)', 'money']] },
+    { key: 'provisions', label: 'Provisions', fields: [['name', 'Expense', 'long'], ['annualCents', 'Annual ($)', 'money'], ['due', 'Due'], ['note', 'Note', 'long']] },
+    { key: 'assets', label: 'Assets', fields: [['name', 'Asset'], ['valueCents', 'Value ($)', 'money'], ['asOf', 'As of (YYYY-MM-DD)'], ['note', 'Note']] },
+    { key: 'taxRoom', label: 'Tax shelters', fields: [['name', 'Shelter'], ['roomCents', 'Room ($)', 'money'], ['asOf', 'Year / date']] },
+    { key: 'allocations', label: 'Allocation', fields: [['step', 'Step', 'long'], ['amountCents', 'Amount ($)', 'money'], ['amountText', 'or text'],
+      ['status', 'Status'], ['effect', 'Effect', 'long']] },
+    { key: 'milestones', label: 'Settled', fields: [['text', 'Item', 'long'], ['done', 'Done', 'bool']] },
     { key: 'phase', label: 'Phase', scalar: true },
-    { key: 'excludeTags', label: 'Tags exceptionnels', list: true }
+    { key: 'excludeTags', label: 'Exceptional tags', list: true }
   ];
 
   let plan = null;
@@ -41,11 +41,13 @@
     return node;
   }
 
-  const toDollars = (cents) => (Number.isFinite(cents) ? (cents / 100).toFixed(2).replace('.', ',') : '');
-  const toCents = (text) => {
-    const clean = String(text).replace(/\s/g, '').replace(',', '.');
-    return clean === '' ? null : Math.round(Number.parseFloat(clean) * 100);
+  const toDollars = (cents) => (Number.isFinite(cents) ? (cents / 100).toFixed(2) : '');
+  // Accepts 1234.56, 1,234.56 and the French 1 234,56.
+  const toNumber = (text) => {
+    const clean = String(text).replace(/\s/g, '');
+    return Number.parseFloat(clean.includes('.') ? clean.replace(/,/g, '') : clean.replace(',', '.'));
   };
+  const toCents = (text) => (String(text).trim() === '' ? null : Math.round(toNumber(text) * 100));
 
   function input(field, value) {
     const [key, , kind] = field;
@@ -56,7 +58,7 @@
       select.value = value || options[0]?.[0] || '';
       return select;
     }
-    const shown = kind === 'money' ? toDollars(value) : kind === 'rate' ? (Number.isFinite(value) ? (value / 100).toString().replace('.', ',') : '') : (value ?? '');
+    const shown = kind === 'money' ? toDollars(value) : kind === 'rate' ? (Number.isFinite(value) ? (value / 100).toString() : '') : (value ?? '');
     return el('input', { type: 'text', 'data-key': key, 'data-kind': kind || 'text', value: String(shown), class: kind === 'long' ? 'finance-edit-long' : '' });
   }
 
@@ -66,7 +68,7 @@
       const node = row.querySelector(`[data-key="${key}"]`);
       if (kind === 'bool') item[key] = node.checked;
       else if (kind === 'money') item[key] = toCents(node.value);
-      else if (kind === 'rate') item[key] = node.value.trim() === '' ? null : Math.round(Number.parseFloat(node.value.replace(',', '.')) * 100);
+      else if (kind === 'rate') item[key] = node.value.trim() === '' ? null : Math.round(toNumber(node.value) * 100);
       else item[key] = node.value.trim();
     }
     return item;
@@ -91,8 +93,8 @@
     }
     body.replaceChildren(el('div', { class: 'finance-tabs', role: 'tablist' }, ...tabs), editor,
       el('div', { class: 'finance-edit-actions' },
-        ...(current.scalar || current.list ? [] : [el('button', { type: 'button', class: 'finance-link', id: 'planAdd' }, '+ Ajouter une ligne')]),
-        el('button', { type: 'button', class: 'finance-button', id: 'planSave' }, 'Enregistrer'),
+        ...(current.scalar || current.list ? [] : [el('button', { type: 'button', class: 'finance-link', id: 'planAdd' }, '+ Add a row')]),
+        el('button', { type: 'button', class: 'finance-button', id: 'planSave' }, 'Save'),
         el('span', { class: 'finance-note', id: 'planStatus', 'aria-live': 'polite' })));
   }
 
@@ -101,17 +103,17 @@
     if (current.scalar) value = $('planScalar').value;
     else if (current.list) value = $('planList').value.split(',').map((t) => t.trim()).filter(Boolean);
     else value = [...$('planTable').tBodies[0].rows].map((row) => readRow(row, current));
-    $('planStatus').textContent = 'Enregistrement…';
+    $('planStatus').textContent = 'Saving…';
     try {
       const response = await fetch(`/api/finance/plan/${current.key}`, { method: 'PUT', credentials: 'same-origin',
         headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value }) });
       const body = await response.json();
-      if (!response.ok || body.status !== 'success') throw new Error(body.message || `Erreur ${response.status}`);
+      if (!response.ok || body.status !== 'success') throw new Error(body.message || `Error ${response.status}`);
       plan = body.data;
-      $('planStatus').textContent = 'Enregistré — rechargement…';
+      $('planStatus').textContent = 'Saved — reloading…';
       setTimeout(() => window.location.reload(), 600);
     } catch (error) {
-      $('planStatus').textContent = `Refusé : ${error.message}`;
+      $('planStatus').textContent = `Rejected: ${error.message}`;
     }
   }
 
@@ -127,11 +129,11 @@
   }
 
   const header = document.querySelector('.finance-header');
-  header.append(el('button', { type: 'button', class: 'finance-button finance-edit-toggle', id: 'planEditToggle' }, '✎ Modifier le plan'),
+  header.append(el('button', { type: 'button', class: 'finance-button finance-edit-toggle', id: 'planEditToggle' }, '✎ Edit the plan'),
     el('section', { class: 'finance-card', id: 'planEditor', hidden: '' },
-      el('h2', {}, 'Modifier le plan'),
-      el('p', { class: 'finance-note' }, 'Choisis une section, modifie, puis « Enregistrer ». Montants en dollars (1234,56), taux en %. '
-        + 'Un code compte (EOP, CARD, MC2, PR3…) lie la ligne au solde réel du ledger.'),
+      el('h2', {}, 'Edit the plan'),
+      el('p', { class: 'finance-note' }, 'Choose a section, edit it, then Save. Amounts in dollars (1234.56), rates in %. '
+        + 'An account code (EOP, CARD, MC2, PR3…) links the row to the real ledger balance.'),
       el('div', { id: 'planEditorBody' })));
   $('planEditToggle').addEventListener('click', open);
   $('planEditor').addEventListener('click', (event) => {

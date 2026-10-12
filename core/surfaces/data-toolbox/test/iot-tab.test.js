@@ -37,7 +37,7 @@ async function relayApp(t, respond) {
 
 test('IoT is directly discoverable in the full navigation and stays outside demo', () => {
   const groups = buildProductNavigation({ agentxProfile: 'full' }).navItems;
-  assert.ok(groups.flatMap(group => group.children).some(item => item.href === '/data-toolbox#iot' && item.label === 'Appareils IoT'));
+  assert.ok(groups.flatMap(group => group.children).some(item => item.href === '/data-toolbox#iot' && item.label === 'IoT devices'));
   assert.ok(!buildProductNavigation({ agentxProfile: 'demo' }).navItems.flatMap(group => group.children).some(item => item.id === 'iot'));
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
   assert.match(html, /href="#iot" data-tab="iot"/);

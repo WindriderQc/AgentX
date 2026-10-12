@@ -15,8 +15,8 @@ function navigationLocals(app, res, extra = {}) {
 
 function registerProductHome(app) {
   app.get(['/', '/portal', '/ecosystem'], (_req, res) => res.render('layouts/main', {
-    ...navigationLocals(app, res), pageView: '../pages/home', title: 'AgentX · Accueil',
-    activePage: 'portal', bodyClass: 'product-home', pageLanguage: app.locals.agentxProfile === 'demo' ? 'en' : 'fr',
+    ...navigationLocals(app, res), pageView: '../pages/home', title: 'AgentX · Home',
+    activePage: 'portal', bodyClass: 'product-home', pageLanguage: 'en',
     headCss: '<link rel="stylesheet" href="/css/home.css">',
     footerJs: '<script src="/js/home.js" defer></script>'
   }));

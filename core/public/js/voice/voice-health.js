@@ -21,9 +21,9 @@
     turn(turnId, timings = {}) {
       if (turnId !== this.turnId) { this.turnId = turnId; this.usedTool = this.tool; this.tool = false; }
       const reasons = [];
-      if (timings.sttServer >= STT_SLOW_MS) reasons.push(`transcription lente (${seconds(timings.sttServer)} s)`);
+      if (timings.sttServer >= STT_SLOW_MS) reasons.push(`slow transcription (${seconds(timings.sttServer)} s)`);
       const wait = timings.firstDelta - timings.requestSent;
-      if (!this.usedTool && wait >= REPLY_SLOW_MS) reasons.push(`réponse lente (${seconds(wait)} s)`);
+      if (!this.usedTool && wait >= REPLY_SLOW_MS) reasons.push(`slow reply (${seconds(wait)} s)`);
       this.reasons = reasons;
     }
     // The player's metrics of one spoken clause.
@@ -32,8 +32,8 @@
     }
     notice() {
       const choppy = this.segments.filter(Boolean).length >= 2;
-      const reasons = [...this.reasons, ...(choppy ? ['voix saccadée'] : [])];
-      return reasons.length ? `Performance réduite : ${reasons.join(', ')}.` : '';
+      const reasons = [...this.reasons, ...(choppy ? ['choppy voice'] : [])];
+      return reasons.length ? `Reduced performance: ${reasons.join(', ')}.` : '';
     }
   }
 

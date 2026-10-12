@@ -228,7 +228,7 @@
         return null;
       }
       if (this.total + samples.length > this.maxSamples) {
-        throw new Error('La prise de parole dépasse la taille acceptée. Fais une pause entre tes idées, puis réactive le micro. Aucun message partiel n’a été envoyé.');
+        throw new Error('This utterance is longer than the accepted size. Pause between ideas, then turn the microphone back on. No partial message was sent.');
       }
       this.frames.push(samples); this.total += samples.length; this.heard += samples.length;
       this.silenceSamples = voiced ? 0 : this.silenceSamples + samples.length;
@@ -924,7 +924,7 @@
         let resumeTimer;
         try {
           await Promise.race([context.resume(), new Promise((resolve, reject) => {
-            resumeTimer = setTimeout(() => reject(new Error('Appuyez sur Activer Nestor pour autoriser le son sur cet appareil.')), 1500);
+            resumeTimer = setTimeout(() => reject(new Error('Press the start button to allow sound on this device.')), 1500);
           })]);
         } finally { clearTimeout(resumeTimer); }
         if (closed || signal.aborted) throw new Error('Microphone start cancelled.');
@@ -1056,7 +1056,7 @@
 
   async function recording(sound, signal) {
     const response = await root.fetch(sound.url, { signal });
-    if (!response.ok) throw new Error('Cet enregistrement est indisponible. Réessaie avec le bouton de lecture.');
+    if (!response.ok) throw new Error('This recording is unavailable. Try again with the play button.');
     return response.arrayBuffer();
   }
 

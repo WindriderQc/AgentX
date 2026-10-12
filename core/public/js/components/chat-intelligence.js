@@ -127,8 +127,8 @@ const ChatIntelligence = (() => {
     // Live replies carry an object; persisted routing carries the flat marker.
     const degraded = info.degraded && typeof info.degraded === 'object' ? info.degraded : (info.degraded === true ? info : null);
     if (degraded) {
-      const from = degraded.fallbackFrom?.model ? ` (${_esc(degraded.fallbackFrom.model)} indisponible)` : '';
-      parts.push(`<span class="ci-badge-degraded" title="${_esc(degraded.reason || '')}">mode dégradé${from}</span>`);
+      const from = degraded.fallbackFrom?.model ? ` (${_esc(degraded.fallbackFrom.model)} unavailable)` : '';
+      parts.push(`<span class="ci-badge-degraded" title="${_esc(degraded.reason || '')}">degraded mode${from}</span>`);
     }
 
     badge.innerHTML = parts.join(' ');

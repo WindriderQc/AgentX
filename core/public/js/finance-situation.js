@@ -10,7 +10,7 @@
     if (!Number.isFinite(cents)) return '—';
     const sign = cents < 0 ? '-' : '';
     const abs = Math.abs(Math.round(cents));
-    return `${sign}${String(Math.trunc(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')},${String(abs % 100).padStart(2, '0')} $`;
+    return `${sign}$${String(Math.trunc(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${String(abs % 100).padStart(2, '0')}`;
   }
 
   function el(tag, attrs = {}, ...children) {
@@ -30,18 +30,19 @@
   }
 
   function rate(bp) {
-    return Number.isFinite(bp) ? `${(bp / 100).toFixed(2).replace('.', ',')} %` : '—';
+    return Number.isFinite(bp) ? `${(bp / 100).toFixed(2)}%` : '—';
   }
 
   function show(id, visible) { $(id).hidden = !visible; }
 
   // Status words get a colored dot; the word itself always stays visible.
+  // Plan statuses are owner-entered data, so both French and English stems count.
   function badge(status) {
     const text = String(status || '');
     if (!text) return '';
     const key = text.toLowerCase();
-    const tone = /(pay|sold|sain|fait|décid|attendu|ferm|coussin|réglé|ok)/.test(key) ? 'good'
-      : /(bloqu|échu|retard|ouvert|critique)/.test(key) ? 'bad' : 'warn';
+    const tone = /(pay|paid|sold|sain|fait|done|décid|decid|attendu|expected|ferm|closed|coussin|cushion|réglé|settled|ok)/.test(key) ? 'good'
+      : /(bloqu|block|échu|overdue|retard|late|ouvert|open|critique|critical)/.test(key) ? 'bad' : 'warn';
     return el('span', { class: `finance-badge finance-badge-${tone}` }, text);
   }
 
@@ -52,7 +53,7 @@
     const bad = css.getPropertyValue('--series-out').trim();
     const text = css.getPropertyValue('--finance-muted').trim();
     const grid = css.getPropertyValue('--finance-grid').trim();
-    const MONTHS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const labels = months.map((m) => { const [y, mm] = m.month.split('-'); return `${MONTHS[Number(mm) - 1]} ${y.slice(2)}`; });
     const values = months.map((m) => m.netCents / 100);
     const labelPlugin = {
@@ -65,7 +66,7 @@
         ctx.textAlign = 'center';
         chart.getDatasetMeta(0).data.forEach((bar, i) => {
           const v = months[i].netCents;
-          ctx.fillText(`${v > 0 ? '+' : ''}${Math.round(v / 100).toLocaleString('fr-CA')} $`, bar.x, v >= 0 ? bar.y - 5 : bar.y + 13);
+          ctx.fillText(`${v > 0 ? '+' : v < 0 ? '-' : ''}$${Math.abs(Math.round(v / 100)).toLocaleString('en-US')}`, bar.x, v >= 0 ? bar.y - 5 : bar.y + 13);
         });
         ctx.restore();
       }
@@ -76,35 +77,35 @@
         type: 'bar',
         data: { labels, datasets: [{ data: values, backgroundColor: values.map((v) => (v >= 0 ? good : bad)), borderRadius: 4, maxBarThickness: 40 }] },
         options: { responsive: true, maintainAspectRatio: false, animation: false,
-          plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `Net : ${money(Math.round(c.parsed.y * 100))}` } } },
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `Net: ${money(Math.round(c.parsed.y * 100))}` } } },
           scales: { x: { grid: { display: false }, ticks: { color: text } },
-            y: { grid: { color: grid }, border: { display: false }, ticks: { color: text, callback: (v) => `${Math.round(v).toLocaleString('fr-CA')} $` } } } },
+            y: { grid: { color: grid }, border: { display: false }, ticks: { color: text, callback: (v) => `$${Math.round(v).toLocaleString('en-US')}` } } } },
         plugins: [labelPlugin]
       });
     }
-    $('financeNetNote').textContent = 'Entrées − sorties par mois, tous comptes, virements internes exclus'
-      + (excludedTags.length ? ` et mouvements exceptionnels (${excludedTags.map((t) => `#${t}`).join(', ')}) exclus` : '')
-      + ' · 12 derniers mois avec données';
+    $('financeNetNote').textContent = 'In − out per month, all accounts, internal transfers excluded'
+      + (excludedTags.length ? ` and exceptional movements (${excludedTags.map((t) => `#${t}`).join(', ')}) excluded` : '')
+      + ' · last 12 months with data';
   }
 
   function render(s) {
     $('financePhase').textContent = s.phase || '';
-    const asOf = s.cash?.asOf ? `au ${s.cash.asOf}` : '';
-    const window = s.window?.months?.length ? `moyenne ${s.window.months[0]} → ${s.window.months.at(-1)}` : '';
+    const asOf = s.cash?.asOf ? `as of ${s.cash.asOf}` : '';
+    const window = s.window?.months?.length ? `average ${s.window.months[0]} → ${s.window.months.at(-1)}` : '';
     $('financeSituation').replaceChildren(
-      tile('Encaisse (compte EOP)', s.cash ? money(s.cash.balanceCents) : '—', asOf),
-      tile('Dette totale', money(s.totalDebtCents), `${s.debts.length} dette(s) suivie(s)`),
-      tile('Crédit disponible', money(s.creditAvailableCents), 'limites − soldes utilisés'),
-      tile('Valeur nette', money(s.netWorthCents),
-        s.assets.length ? `${s.assets.map((a) => `${a.name} ${money(a.valueCents)}`).join(' + ')} + encaisse − dettes` : 'actifs + encaisse − dettes',
+      tile('Cash (EOP account)', s.cash ? money(s.cash.balanceCents) : '—', asOf),
+      tile('Total debt', money(s.totalDebtCents), `${s.debts.length} tracked debt(s)`),
+      tile('Available credit', money(s.creditAvailableCents), 'limits − used balances'),
+      tile('Net worth', money(s.netWorthCents),
+        s.assets.length ? `${s.assets.map((a) => `${a.name} ${money(a.valueCents)}`).join(' + ')} + cash − debts` : 'assets + cash − debts',
         s.netWorthCents < 0 ? 'finance-tile-bad' : ''),
-      ...(s.taxRoom.length ? [tile('Abris fiscaux disponibles', money(s.taxRoomCents),
+      ...(s.taxRoom.length ? [tile('Available tax shelters', money(s.taxRoomCents),
         s.taxRoom.map((t) => `${t.name} ${money(t.roomCents)}`).join(' + '))] : []),
-      tile('Net mensuel moyen', money(s.monthly.netCents), window, s.monthly.netCents < 0 ? 'finance-tile-bad' : 'finance-tile-good'));
+      tile('Average monthly net', money(s.monthly.netCents), window, s.monthly.netCents < 0 ? 'finance-tile-bad' : 'finance-tile-good'));
     $('financeSituationNote').textContent = s.planUpdatedAt
-      ? `Plan mis à jour le ${String(s.planUpdatedAt).slice(0, 10)} · soldes et réels tirés du ledger, virements internes`
-        + `${s.excludeTags?.length ? ` et mouvements exceptionnels (${s.excludeTags.map((t) => `#${t}`).join(', ')})` : ''} exclus.`
-      : 'Aucun plan enregistré : budget, dettes et provisions apparaîtront une fois le plan importé.';
+      ? `Plan updated ${String(s.planUpdatedAt).slice(0, 10)} · balances and actuals from the ledger, internal transfers`
+        + `${s.excludeTags?.length ? ` and exceptional movements (${s.excludeTags.map((t) => `#${t}`).join(', ')})` : ''} excluded.`
+      : 'No saved plan: budget, debts and provisions appear once the plan is imported.';
 
     $('financeDone').replaceChildren(...s.milestones.map((m) => el('li', { class: m.done ? 'finance-done' : 'finance-todo' },
       `${m.done ? '✓' : '○'} ${m.text}`)));
@@ -124,7 +125,7 @@
     show('financeWatchCard', s.watch.length > 0);
 
     $('financeDebts').tBodies[0].replaceChildren(...s.debts.map((d) => el('tr', {},
-      el('td', {}, d.name), el('td', { class: 'num' }, money(d.currentCents), d.asOf ? el('small', {}, ` au ${d.asOf}`) : ''),
+      el('td', {}, d.name), el('td', { class: 'num' }, money(d.currentCents), d.asOf ? el('small', {}, ` as of ${d.asOf}`) : ''),
       el('td', { class: 'num' }, rate(d.rateBp)), el('td', { class: 'num' }, money(d.paymentCents)), el('td', {}, badge(d.status)))));
     show('financeDebtsCard', s.debts.length > 0);
 
@@ -148,14 +149,14 @@
           el('span', { class: `finance-budget-actual${over ? ' finance-budget-actual-over' : ''}`, style: `width:${width(b.actualMonthlyCents)}` }))));
     }));
     $('financeBudgetNote').textContent = s.window?.months?.length
-      ? `Réel = moyenne de ${s.window.months.length} mois (${s.window.months[0]} → ${s.window.months.at(-1)}) · total dépenses budget ${money(s.budgetTotals.monthlyCents)} vs réel ${money(s.budgetTotals.actualMonthlyCents)}`
+      ? `Actual = average of ${s.window.months.length} months (${s.window.months[0]} → ${s.window.months.at(-1)}) · total budget spending ${money(s.budgetTotals.monthlyCents)} vs actual ${money(s.budgetTotals.actualMonthlyCents)}`
       : '';
     show('financeBudgetCard', s.budget.length > 0);
 
     $('financeProvisions').tBodies[0].replaceChildren(...s.provisions.map((p) => el('tr', {},
       el('td', {}, p.name), el('td', { class: 'num' }, money(p.annualCents)), el('td', { class: 'num' }, money(Math.round(p.annualCents / 12))),
       el('td', {}, [p.due, p.note].filter(Boolean).join(' · ')))));
-    $('financeProvisionsNote').textContent = s.provisions.length ? `≈ ${money(s.provisionsMonthlyCents)} à mettre de côté chaque mois` : '';
+    $('financeProvisionsNote').textContent = s.provisions.length ? `≈ ${money(s.provisionsMonthlyCents)} to set aside each month` : '';
     show('financeProvisionsCard', s.provisions.length > 0);
   }
 
@@ -170,5 +171,5 @@
         .then((monthly) => { if (monthly?.status === 'success') renderNet(monthly.data.months.slice(-12), body.data.excludeTags || []); })
         .catch(() => {});
     })
-    .catch(() => { $('financeSituationNote').textContent = 'Situation indisponible pour le moment.'; });
+    .catch(() => { $('financeSituationNote').textContent = 'Situation unavailable for now.'; });
 }());
