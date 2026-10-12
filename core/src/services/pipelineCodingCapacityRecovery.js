@@ -30,6 +30,9 @@ async function acknowledge(task, marker) {
     attemptQuery[`${attemptPrefix}.evidence.workerReceiptFingerprint`] = attempt.evidence.workerReceiptFingerprint;
   const checked = await Task.updateOne({ pipelineId: task.pipelineId, status: 'blocked', automationLease: null,
     'codingAutonomy.authorized': false, 'codingCapacityRecovery.fingerprint': marker.fingerprint,
+    automationAttemptCount: task.automationAttemptCount,
+    [`automationAttempts.${task.automationAttempts.length}`]: { $exists: false },
+    [`codingAutonomy.runs.${task.codingAutonomy.runs.length}`]: { $exists: false },
     ...attemptQuery, 'codingAutonomy.spent': task.codingAutonomy.spent,
     [`${prefix}.requestId`]: marker.requestId, [`${prefix}.modelReceipts`]: run.modelReceipts,
     [`${prefix}.pendingInferences`]: run.pendingInferences },
