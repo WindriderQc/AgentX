@@ -89,6 +89,8 @@ describe('IoT profiles and daily timers, disposable Mongo and synthetic MQTT', (
     expect((await controls.applyProfile(ID, body)).outcome).toBe('acknowledged');
     await expect(controls.applyProfile(ID, { ...body, restoreOnBoot: false })).rejects.toMatchObject({ statusCode: 409 });
     expect(calls).toHaveLength(1);
+    expect(await db.collection('appevents').countDocuments({ type: 'iot.control_published', 'meta.requestId': body.requestId })).toBe(1);
+    expect(await db.collection('appevents').countDocuments({ type: 'iot.control_acknowledged', 'meta.requestId': body.requestId })).toBe(1);
   });
   test('a daily timer uses the exact SBQC pair; a newer matching report acknowledges it, cancellation uses one non-retained message', async () => {
     const doc = await schedule();

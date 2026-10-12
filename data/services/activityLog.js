@@ -54,7 +54,16 @@ const EVENT_TYPES = Object.freeze({
   'iot.device_stale': 'An IoT device not reported offline has been silent for five minutes.',
   'iot.device_recovered': 'A stale IoT device spoke again.',
   'iot.command_sent': 'A command was published to an IoT device.',
-  'iot.command_failed': 'A command to an IoT device could not be published.'
+  'iot.command_failed': 'A command to an IoT device could not be published.',
+  'iot.profile_saved': 'A versioned profile was saved without publishing.',
+  'iot.profile_assigned': 'A profile version was assigned without publishing.',
+  'iot.timer_saved': 'A desired daily timer was saved without publishing.',
+  'iot.control_published': 'A profile or timer was published; firmware application is unconfirmed.',
+  'iot.control_not_sent': 'An application was refused before publication.',
+  'iot.control_uncertain': 'An application publication was partial or unconfirmed.',
+  'iot.control_acknowledged': 'A later firmware report matches the intended configuration.',
+  'iot.control_resolved': 'An operator reconciled an application against a later firmware report.',
+  'iot.control_receive_failed': 'A firmware control report or boot request could not be processed.'
 });
 
 function validationError(message) {

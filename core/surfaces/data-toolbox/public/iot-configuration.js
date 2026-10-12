@@ -2,6 +2,20 @@
 
 const iotConfiguration = { device: '', data: null, profiles: [], error: '', note: '', armed: null, timeout: null, generation: 0, editor: '' };
 const iotConfigModes = { IN: 'Entrée', OUT: 'Sortie', INPULL: 'Entrée pull-up', INPULLD: 'Entrée pull-down' };
+function iotConfigError(error, application = false) {
+  const message = error.message || '';
+  if (/MQTT.*(?:disconnected|unconfigured|not connected)/i.test(message)) return 'MQTT est déconnecté ou non configuré. Rien n’a été envoyé ni mis en file.';
+  if (/Profile.*(?:changed|already exists|does not exist)/i.test(message)) return 'Ce profil a été modifié ou existe déjà. Actualise avant d’enregistrer.';
+  if (/Device settings changed|application needs reconciliation/i.test(message)) return 'Les réglages ont changé ou une tentative attend une vérification. Actualise avant de continuer.';
+  if (/Device is not online/i.test(message)) return 'L’appareil n’est pas en ligne. Rien n’a été envoyé.';
+  if (/fresh.*(?:state|report)/i.test(message)) return 'Il faut une déclaration récente de l’appareil pour continuer.';
+  if (/staging|Publication is still running/i.test(message)) return 'Attends la fin de l’envoi et une nouvelle déclaration de l’appareil avant de vérifier.';
+  if (/GPIO.*available/i.test(message)) return 'Cette broche n’est pas une sortie numérique disponible sur l’appareil.';
+  if (/unknown|fetch|unreadable|network/i.test(message)) return application
+    ? 'Résultat de l’envoi inconnu. Actualise pour retrouver cette tentative avant tout nouvel envoi.'
+    : 'Résultat de la requête inconnu. Actualise avant de recommencer.';
+  return 'Requête refusée. Vérifie les broches, modes, noms, horaires et la version enregistrée avant de continuer.';
+}
 function iotConfigurationReset() {
   iotConfigDisarm(); iotConfiguration.generation++;
   Object.assign(iotConfiguration, { device: iotState.selected, data: null, error: '', note: '', editor: '' });
@@ -15,7 +29,7 @@ async function iotConfigurationLoad() {
     Object.assign(iotConfiguration, { device: id, data, profiles: array(profiles.profiles), error: '' });
   } catch (error) {
     if (id !== iotState.selected || generation !== iotConfiguration.generation || seq !== state.renderSeq || state.tab !== 'iot') return;
-    iotConfiguration.error = error.message;
+    iotConfiguration.error = iotConfigError(error);
   }
   iotPaint('#iotConfiguration', iotConfigurationHtml());
 }
@@ -134,8 +148,8 @@ async function iotConfigWork(work, success, application = false) {
     await iotConfigurationLoad();
   } catch (error) {
     if (id === iotState.selected && seq === state.renderSeq && state.tab === 'iot') {
-      iotConfiguration.note = error.message;
-      const note = document.querySelector('#iotConfigNote'); if (note) note.textContent = error.message;
+      iotConfiguration.note = iotConfigError(error, application);
+      const note = document.querySelector('#iotConfigNote'); if (note) note.textContent = iotConfiguration.note;
       if (application) await iotConfigurationLoad();
     }
   } finally {

@@ -18,7 +18,8 @@ function createControls({ db, monitor, deviceOr404, seen, now = () => new Date()
   const settings = db.collection(SETTINGS);
   const operations = db.collection(OPERATIONS);
   const profiles = db.collection(PROFILES);
-  const event = (type, meta) => activity.record(db, { type: `iot.${type}`, message: `IoT ${type.replaceAll('_', ' ')}.`, meta }).catch(() => null);
+  const event = (type, meta) => activity.record(db, { type: `iot.${type}`, message: `IoT ${type.replaceAll('_', ' ')}.`,
+    severity: /(?:not_sent|uncertain|failed)$/.test(type) ? 'warning' : 'info', meta }).catch(() => null);
   async function getSettings(id) {
     await deviceOr404(id);
     await settings.updateOne({ _id: id }, { $setOnInsert: defaults(id) }, { upsert: true });

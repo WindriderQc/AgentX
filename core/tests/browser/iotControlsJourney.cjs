@@ -108,7 +108,7 @@ async function prepare(page, selector) { await page.locator(selector).click(); a
   await open(page, 'Créer ou modifier'); await page.locator('#iotProfileEditorSelect').selectOption('Culture');
   await page.locator('[data-field=name]').fill('Brouillon conservé');
   await controls.saveProfile('Culture', { revision: 1, config: [pin] });
-  await page.locator('#iotProfileEditor button[type=submit]').click(); await waitNote(page, 'reload');
+  await page.locator('#iotProfileEditor button[type=submit]').click(); await waitNote(page, 'Actualise');
   assert.equal(await page.locator('[data-field=name]').inputValue(), 'Brouillon conservé');
   // Broker disconnect after preview: no publish and no deferred work on reconnection.
   await open(page, 'Affecter'); await prepare(page, '[data-iot-profile-prepare]'); connected = false;

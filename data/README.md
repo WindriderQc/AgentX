@@ -743,6 +743,10 @@ field, a message over 300 characters or a `meta` over 4 KiB are refused.
 | `iot.device_stale` | a device not reported offline has been silent for 5 minutes | warning |
 | `iot.device_recovered` | a stale device speaks again | info |
 | `iot.command_sent` | a command was published to a device (`meta.command`, `meta.gpio`, `meta.topic`) | info |
+| `iot.profile_saved`, `iot.profile_assigned`, `iot.timer_saved` | desired profile/version assignment or timer saved; no MQTT publication | info |
+| `iot.control_published`, `iot.control_acknowledged` | publication receipt, then separately a later matching firmware report (`meta.deviceId`, `requestId`, `kind`, `io`) | info |
+| `iot.control_not_sent`, `iot.control_uncertain`, `iot.control_receive_failed` | refused/uncertain publication or failed report/boot-request processing | warning |
+| `iot.control_resolved` | explicit reconciliation against a later fresh report, with `meta.outcome`; no new send | info |
 | `iot.command_failed` | a valid command could not be published (no broker link, or unconfirmed write) | warning |
 
 Only changes are recorded: a feed that keeps failing, a broker that keeps
