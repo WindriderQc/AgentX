@@ -164,8 +164,7 @@ window.ShortcutsHelpModal = window.ShortcutsHelpModal || (() => {
       category: 'General',
       items: [
         { keys: 'Ctrl+/', description: 'Show keyboard shortcuts' },
-        { keys: 'Escape', description: 'Close dialogs and modals' },
-        { keys: 'Ctrl+Shift+B', description: 'Toggle Buddy panel' }
+        { keys: 'Escape', description: 'Close dialogs and modals' }
       ]
     }
   ];
