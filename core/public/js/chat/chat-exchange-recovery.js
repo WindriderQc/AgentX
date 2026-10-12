@@ -53,6 +53,13 @@ export async function refreshSavedExchanges({ append = false } = {}) {
       erase.textContent = 'Erase copy';
       erase.setAttribute('aria-label', `Erase recovery copy from ${at}`);
       erase.addEventListener('click', async () => {
+        // Erasing cannot be undone: the first click asks, the second erases.
+        if (!erase.dataset.confirming) {
+          erase.dataset.confirming = '1';
+          erase.textContent = 'Click again to erase';
+          setTimeout(() => { delete erase.dataset.confirming; erase.textContent = 'Erase copy'; }, 4000);
+          return;
+        }
         erase.disabled = true;
         try {
           await fetchExchange(`/api/history/receipts/${encodeURIComponent(row.id)}`, { method: 'DELETE' });
