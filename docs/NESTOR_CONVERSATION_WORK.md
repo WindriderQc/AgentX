@@ -1,10 +1,12 @@
 # Durable Nestor conversation work
 
 Core's optional `conversationWorks` capability lets personal voice dialogue
-continue while a separate native Nestor worker checks personal tasks or reviews
-a completed conversational turn. Conservative current public-information reads
-and explicit personal mailbox reads run in isolated background Main sessions,
-retaining Main's web tools and native Secretary delegation.
+continue while the complete native Nestor Main works in an isolated session.
+In `native` mode, every accepted work request uses Main, including personal tasks,
+reasoning, web, specialists and authorized actions. Capability keywords never
+select a restricted agent. Main retains its installed tools, memory, model,
+permissions and approval contracts. The live guardian continues ordinary
+conversation and support while Main works.
 Nestor remains the single visible identity.
 Core owns acceptance, complete requests, execution metadata, verified task reads,
 structured results and presentation receipts. OpenClaw owns the native agent/tool
@@ -12,12 +14,55 @@ loop. Polling the browser projection never starts inference.
 
 ## Contract
 
-Enable `PERSONAL_CONVERSATION_WORK_MODE=read` (or `observe` for review without
-business reads), `PERSONAL_CONVERSATION_WORK_AGENT_ID` and a private
+Enable `PERSONAL_CONVERSATION_WORK_MODE=native`,
+`PERSONAL_CONVERSATION_WORK_AGENT_ID` and a private
 `PERSONAL_CONVERSATION_WORK_TOKEN`. The default mode is `off`. The native plugin
 needs the same token in `conversationWorkToken`, and the dedicated agent ID in
 `conversationWorkAgentId`. Tokens stay in instance secret configuration, never
 model parameters or browser requests.
+
+Core accepts complete work requests before any model inference. An immediate
+canonical acknowledgment handles clear work requests. Ordinary dialogue receives
+a real guardian response even while another Main work is active; its request
+still reaches complete Main. Selectors only choose this foreground reply style,
+never the boss's capabilities. The native pre-tool hook fences all tools in the
+exact Core-bound guardian run, so the guardian cannot duplicate Main's work.
+Text, legacy and background Main runs retain their native tools.
+Main can disposition an adequate, completed canonical guardian reply as
+`no_work`, without duplicate
+speech. Other requests receive Main's exact completed native answer, including
+reasoning that needs no tools. Requested task, web and Secretary consultations
+retain their existing requirements for actual same-run tool evidence.
+
+The boss and guardian share Core's canonical conversation and work state.
+Main starts with the exact request, selected context, original local date and
+recent turns. Its host-bound `conversation_work context` can refresh current
+turns, guardian replies and pending or received work during execution. This route
+cannot select another conversation or run, acquire the legacy worker's task or
+publication permissions, or survive conversation erasure. Context is reference
+data, not an extra request or authorization. This does not implement the separate
+intent-amendment or native-approval bridge tracked in #664.
+
+The host-only `native_owner` probe resolves image operations to the original
+canonical owner session. Both `local_image` and `imagex` preserve the actual
+native run/call action identity; their model parameters cannot select an owner.
+An unavailable owner observation stops before specialist planning or submission.
+
+General native work admits at most sixteen parent tool calls and four web calls.
+After the web limit, non-web tools remain available within the total budget.
+Pure web consultations keep their existing stricter limit below. Specialist
+tools retain their native owners. The matching native adapter must advertise
+`nativeConversation`; an older adapter refuses new native work before inference.
+No tools, execution permissions or approval bypasses are granted by this mode.
+
+## Legacy migration modes
+
+`read` retains bounded task reads/review through the dedicated worker and isolated
+Main for conservative public-information and mailbox reads. `observe` retains
+review without business reads. Both use the same durable intake and delivery.
+The dedicated ID remains configured for already accepted legacy work; enabling
+`native` does not change those records, identities, tool scopes or unknown runs.
+Disabling new intake likewise retains accepted native work for reconciliation.
 
 The dedicated agent has its own workspace, no visible channel, no heartbeat,
 no subagents and no cloud/CPU fallback. Grant only `conversation_work` plus the

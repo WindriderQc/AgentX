@@ -20,6 +20,7 @@ test('Main personal sessions and the configured worker support exact dispatch di
     messages: [{ role: 'assistant', __openclaw: { runId } },
       { role: 'assistant', __openclaw: { runId: 'announce:requester-settle:synthetic' } }] }) });
   assert.equal((await operate({ operation: 'agents' })).capabilities.isolatedWork, true);
+  assert.equal((await operate({ operation: 'agents' })).capabilities.nativeConversation, true);
   assert.equal(householdWorkspace({ agentId: 'main', sessionKey }, config), workspace);
   assert.equal(householdWorkspace({ agentId: 'family', sessionKey }, config), null);
   assert.deepEqual((await operate({ operation: 'work_attempt', sessionKey })).run, run);
