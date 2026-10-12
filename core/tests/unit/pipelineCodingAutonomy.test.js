@@ -498,8 +498,15 @@ test('Core model deadline aborts an uncompleted call without claiming terminatio
   expect(durable.codingAutonomy.runs[0].pendingInferences).toHaveLength(1);
   expect(durable.codingAutonomy.runs[0].modelReceipts[0].state).toBe('unknown');
   expect(durable.automationLease.leaseId).toBe(claimed.automationLease.leaseId); expect(durable.codingCapacity.admissionId).toBe('fixture');
+  // Node can fire a timeout just before its wall-clock deadline. An unknown
+  // receipt still fences another call even when a fraction of the budget remains.
   await expect(inference.prepare({ ...headers, 'x-agentx-coding-call': '10000000-0000-4000-8000-000000000002' }, 'synthetic-model'))
-    .rejects.toMatchObject({ code: 'CODING_MODEL_BUDGET' });
+    .rejects.toMatchObject({ code: expect.stringMatching(/^CODING_(?:MODEL_BUDGET|INFERENCE_COMPLETION_PENDING)$/) });
+  const refused = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(refused.codingAutonomy.runs[0].modelReceipts).toHaveLength(1);
+  expect(refused.codingAutonomy.runs[0].pendingInferences).toHaveLength(1);
+  expect(refused.automationLease.leaseId).toBe(claimed.automationLease.leaseId);
+  expect(refused.codingCapacity.admissionId).toBe('fixture');
 });
 test('changed remote head becomes an explicit manual intervention and worker correction', async () => {
   await task(); await authorize(); await enable(); const first = await launch(); await complete(first);
