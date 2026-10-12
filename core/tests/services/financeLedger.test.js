@@ -537,6 +537,17 @@ describe('simulations', () => {
     expect(sim.addMonths('2026-11', 3)).toBe('2027-02');
   });
 
+  test('keeps rolling a paid-off debt payment into the others after its payoff month', () => {
+    const debts = [
+      { name: 'Small', balanceCents: 10000, rateBp: 0, paymentCents: 10000 },
+      { name: 'Large', balanceCents: 1000000, rateBp: 0, paymentCents: 10000 }
+    ];
+    const run = sim.runTrajectory(debts, { months: 4, start: '2026-01', extraMonthlyCents: 0, lumpSumCents: 0, lumpSumMonth: 0, annualBonusCents: 0 });
+    expect(run.debts.find((d) => d.name === 'Small').paidOffMonth).toBe('2026-02');
+    // Month 1: 10,000 + 10,000 paid; months 2-4: the full 20,000 goes to Large.
+    expect(run.points.map((p) => p.totalCents)).toEqual([1010000, 990000, 970000, 950000, 930000]);
+  });
+
   test('projects cash from the budget, provisions and one-off events', async () => {
     const FinancePlan = require('../../models/FinancePlan');
     await FinancePlan.deleteMany({});

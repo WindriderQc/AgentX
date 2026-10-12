@@ -32,13 +32,14 @@ function runTrajectory(debts, { months, extraMonthlyCents, lumpSumCents, lumpSum
     const month = addMonths(start, i);
     let extra = extraMonthlyCents + (i === lumpSumMonth ? lumpSumCents : 0) + (month.endsWith('-12') ? annualBonusCents : 0);
     for (const debt of state) {
-      if (debt.balance <= 0) continue;
+      // A debt paid off frees its whole payment for the others, every month after.
+      if (debt.balance <= 0) { extra += debt.payment; continue; }
       const interest = Math.round((debt.balance * debt.rateBp) / 10000 / 12);
       debt.interest += interest;
       debt.balance += interest;
       const paid = Math.min(debt.payment, debt.balance);
       debt.balance -= paid;
-      extra += debt.payment - paid; // a debt paid off frees its payment for the others
+      extra += debt.payment - paid; // the unused part of a final payment
     }
     for (const debt of [...state].sort((a, b) => b.rateBp - a.rateBp)) {
       if (extra <= 0) break;
