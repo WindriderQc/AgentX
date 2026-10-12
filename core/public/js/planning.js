@@ -1123,8 +1123,8 @@
         closeTaskOrganizer();
         return;
       }
-      const card = event.target.closest?.('[data-planning-item-id]');
-      if (card && (event.key === 'Enter' || event.key === ' ')) {
+      const card = event.target.closest?.('[data-planning-item-id]'); // the card itself, not a link or button inside it
+      if (card && event.target === card && (event.key === 'Enter' || event.key === ' ')) {
         event.preventDefault();
         window.PlanningEditor?.openItem(card.dataset.planningItemId);
       }
