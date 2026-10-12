@@ -31,8 +31,8 @@ const ChatIntelligence = (() => {
    * Bind to the inline CI fields already in the header bar (no separate bar created).
    */
   function _createStatusBar(composerEl) {
-    // Fields are embedded in .chat-header-bar in index.html
-    const headerBar = document.querySelector('.chat-header-bar');
+    // Fields are embedded in the chat page's instruments strip.
+    const headerBar = document.getElementById('chatExpertStrip');
     if (!headerBar) return;
     _statusBarEl = headerBar; // re-use as sentinel so updateStatusBar works
 
