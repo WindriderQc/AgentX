@@ -942,7 +942,7 @@
   }
 
   function focusSearch(tab, query) {
-    activateTab(tab, true, false);
+    activateTab(tab, true); // a jump to one item must not stay inside an earlier status preset
     state.query = String(query || '').trim().toLowerCase();
     byId('agentOpsSearch').value = query || '';
     renderCurrentFilteredView();
