@@ -245,7 +245,7 @@ function buildDegradedState(failureClass, retryCandidate, options = {}) {
   return {
     degraded: true,
     degradedReason: failureClass,
-    userCue: options.userCue || 'mode dégradé',
+    userCue: options.userCue || 'degraded mode',
     fallbackType: modelChanged ? 'cross_model' : 'same_model',
     selectionPolicy: modelChanged ? 'operator_pinned_exact_artifact' : 'same_model_other_host',
     modelChanged,
