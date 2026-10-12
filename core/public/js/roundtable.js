@@ -12,7 +12,9 @@
     toast.textContent = msg;
     toast.style.background = type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#007bff';
     toast.style.display = 'block';
-    setTimeout(() => { toast.style.display = 'none'; }, 4500);
+    // A newer toast keeps its full time on screen.
+    clearTimeout(showToast.timer);
+    showToast.timer = setTimeout(() => { toast.style.display = 'none'; }, 4500);
   }
   async function jsonFetch(url, opts = {}) {
     const resp = await fetch(url, opts);
@@ -184,6 +186,7 @@
   let liveDoc = null;
   let liveEventSource = null;
   const agentRefs = {}; // agentId -> { card, body, stats, status }
+  const searchNotes = {}; // agentId -> web search note shown when its turn starts
 
   function clearLive() {
     if (liveEventSource) { try { liveEventSource.close(); } catch {} liveEventSource = null; }
@@ -191,6 +194,7 @@
     $('liveSynthesis').classList.add('rt-hidden');
     $('liveQuality').classList.add('rt-hidden');
     Object.keys(agentRefs).forEach((k) => delete agentRefs[k]);
+    Object.keys(searchNotes).forEach((k) => delete searchNotes[k]);
     liveDoc = null;
   }
 
@@ -344,7 +348,8 @@
       refs.status.textContent = 'running';
       refs.status.className = 'rt-agent-status running';
       refs.round.textContent = `round ${data.round}`;
-      refs.body.textContent = '';
+      refs.body.textContent = searchNotes[data.agentId] || '';
+      delete searchNotes[data.agentId];
       return;
     }
 
@@ -379,8 +384,8 @@
     }
 
     if (type === 'web-search-done') {
-      const refs = agentRefs[data.agentId];
-      if (refs) refs.body.textContent = `[web search: ${data.resultCount} results]\n\n${refs.body.textContent}`;
+      // The search runs before the turn starts, which clears the card: keep the note for it.
+      searchNotes[data.agentId] = `[web search: ${data.resultCount} results]\n\n`;
       return;
     }
 
@@ -433,14 +438,17 @@
     }
 
     if (type === 'done') {
-      setPhase('done');
+      const stopped = data.status === 'failed' || data.status === 'timeout';
+      const current = document.querySelector('#livePhases .rt-phase.active');
+      if (stopped && current) current.classList.replace('active', 'error');
+      else setPhase('done');
       if (liveDoc) liveDoc.status = data.status || liveDoc.status;
       $('liveStatus').textContent = `#${liveDoc?._id?.substring(liveDoc._id.length - 8) || 'council'} — ${String(data.status || 'finished').toUpperCase()}`;
       if (liveEventSource) {
         try { liveEventSource.close(); } catch {}
         liveEventSource = null;
       }
-      if (data.status === 'failed' || data.status === 'timeout') {
+      if (stopped) {
         showToast(`Council ${data.status}: ${data.error || 'unknown error'}`, 'error');
       } else if (data.status !== 'completed') {
         showToast(`Council ended: ${data.status || 'unknown status'}`, 'info');
@@ -457,8 +465,11 @@
   async function pollQualityScores(id, attempts) {
     if (attempts <= 0) return;
     await new Promise((r) => setTimeout(r, 6000));
+    // Another council opened since: its scores are not this one's.
+    if (liveDoc?._id !== id) return;
     try {
       const { data } = await jsonFetch(`/api/roundtable/${id}`);
+      if (liveDoc?._id !== id) return;
       if (data?.qualityScores) {
         renderQualityScores(data);
         return;
@@ -661,11 +672,11 @@
         const quality = d.qualityScores?.synthesis?.overall;
         const qualityStr = typeof quality === 'number' ? ` · 🏅 ${quality.toFixed(1)}/10` : '';
         return `
-          <div class="rt-history-item" data-id="${d._id}">
+          <div class="rt-history-item" data-id="${escape(String(d._id))}" role="button" tabindex="0" aria-label="Open council: ${escape(short)}">
             <div class="rt-history-row">
-              <div class="rt-history-q">${escape(short)}${d.question.length > 120 ? '…' : ''}</div>
+              <div class="rt-history-q">${escape(short)}${(d.question || '').length > 120 ? '…' : ''}</div>
               <div class="rt-history-meta">
-                <span class="rt-history-status ${d.status}">${d.status}</span>
+                <span class="rt-history-status ${escape(d.status || '')}">${escape(d.status || '')}</span>
                 <span>${fmtDate(d.createdAt)}</span>
                 <span>${fmtDuration(d.totalDurationMs)}</span>
                 <span>${turns} turns${qualityStr}</span>
@@ -690,11 +701,20 @@
       return;
     }
     const item = e.target.closest('.rt-history-item');
-    if (item) {
-      clearLive();
-      attachLive(item.getAttribute('data-id'));
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
+    if (item) openHistoryItem(item);
+  });
+
+  function openHistoryItem(item) {
+    clearLive();
+    attachLive(item.getAttribute('data-id'));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  document.addEventListener('keydown', (e) => {
+    const item = e.target.closest?.('.rt-history-item');
+    if (!item || (e.key !== 'Enter' && e.key !== ' ')) return;
+    e.preventDefault();
+    openHistoryItem(item);
   });
 
   document.addEventListener('DOMContentLoaded', async () => {
