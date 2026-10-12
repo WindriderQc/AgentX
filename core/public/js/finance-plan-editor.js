@@ -31,6 +31,14 @@
   let plan = null;
   let categories = [];
   let current = SECTIONS[0];
+  let rendered = '';
+
+  // The editor's typed state, to tell an edited section from the one rendered.
+  function snapshot() {
+    return JSON.stringify([...$('planEditorBody').querySelectorAll('input, select, textarea')]
+      .map((node) => (node.type === 'checkbox' ? node.checked : node.value)));
+  }
+  const dirty = () => Boolean(plan) && !$('planEditor').hidden && snapshot() !== rendered;
 
   function el(tag, attrs = {}, ...children) {
     const node = document.createElement(tag);
@@ -44,8 +52,10 @@
   const toDollars = (cents) => (Number.isFinite(cents) ? (cents / 100).toFixed(2) : '');
   // Accepts 1234.56, 1,234.56 and the French 1 234,56.
   const toNumber = (text) => {
-    const clean = String(text).replace(/\s/g, '');
-    return Number.parseFloat(clean.includes('.') ? clean.replace(/,/g, '') : clean.replace(',', '.'));
+    const clean = String(text).replace(/[\s$]/g, '');
+    const plain = clean.includes('.') ? clean.replace(/,/g, '') : clean.replace(',', '.');
+    // Anything but a plain number is unreadable, never a guess.
+    return /^-?\d+(\.\d+)?$/.test(plain) ? Number(plain) : Number.NaN;
   };
   const toCents = (text) => (String(text).trim() === '' ? null : Math.round(toNumber(text) * 100));
 
@@ -96,6 +106,7 @@
         ...(current.scalar || current.list ? [] : [el('button', { type: 'button', class: 'finance-link', id: 'planAdd' }, '+ Add a row')]),
         el('button', { type: 'button', class: 'finance-button', id: 'planSave' }, 'Save'),
         el('span', { class: 'finance-note', id: 'planStatus', 'aria-live': 'polite' })));
+    rendered = snapshot();
   }
 
   async function save() {
@@ -103,6 +114,9 @@
     if (current.scalar) value = $('planScalar').value;
     else if (current.list) value = $('planList').value.split(',').map((t) => t.trim()).filter(Boolean);
     else value = [...$('planTable').tBodies[0].rows].map((row) => readRow(row, current));
+    const unreadable = Array.isArray(value) && value.some((item) => item && typeof item === 'object'
+      && Object.values(item).some((field) => typeof field === 'number' && !Number.isFinite(field)));
+    if (unreadable) { $('planStatus').textContent = 'Check the amounts and rates: write numbers such as 1234.56 or 4.5.'; return; }
     $('planStatus').textContent = 'Saving…';
     try {
       const response = await fetch(`/api/finance/plan/${current.key}`, { method: 'PUT', credentials: 'same-origin',
@@ -110,6 +124,7 @@
       const body = await response.json();
       if (!response.ok || body.status !== 'success') throw new Error(body.message || `Error ${response.status}`);
       plan = body.data;
+      rendered = snapshot();
       $('planStatus').textContent = 'Saved — reloading…';
       setTimeout(() => window.location.reload(), 600);
     } catch (error) {
@@ -117,15 +132,21 @@
     }
   }
 
+  // Hiding the panel keeps what is typed in it; only the first opening loads the plan.
   async function open() {
     const panel = $('planEditor');
     panel.hidden = !panel.hidden;
-    if (panel.hidden || plan) { if (plan) render(); return; }
-    const [p, r] = await Promise.all([fetch('/api/finance/plan', { credentials: 'same-origin' }).then((x) => x.json()),
-      fetch('/api/finance/rules', { credentials: 'same-origin' }).then((x) => x.json())]);
-    plan = p.data;
-    categories = r.data?.categories || [];
-    render();
+    if (panel.hidden || plan) return;
+    try {
+      const [p, r] = await Promise.all([fetch('/api/finance/plan', { credentials: 'same-origin' }).then((x) => x.json()),
+        fetch('/api/finance/rules', { credentials: 'same-origin' }).then((x) => x.json())]);
+      if (p.status !== 'success' || !p.data) throw new Error(p.message || 'the plan could not be read');
+      plan = p.data;
+      categories = r.data?.categories || [];
+      render();
+    } catch (error) {
+      $('planEditorBody').replaceChildren(el('p', { class: 'finance-error' }, `Plan unavailable: ${error.message}. Close and reopen to retry.`));
+    }
   }
 
   const header = document.querySelector('.finance-header');
@@ -138,7 +159,12 @@
   $('planEditToggle').addEventListener('click', open);
   $('planEditor').addEventListener('click', (event) => {
     const tab = event.target.closest('[data-section]');
-    if (tab) { current = SECTIONS.find((s) => s.key === tab.dataset.section); render(); return; }
+    if (tab) {
+      if (dirty() && !window.confirm(`Discard the unsaved changes to ${current.label}?`)) return;
+      current = SECTIONS.find((s) => s.key === tab.dataset.section);
+      render();
+      return;
+    }
     if (event.target.closest('[data-remove]')) { event.target.closest('tr').remove(); return; }
     if (event.target.id === 'planAdd') {
       $('planTable').tBodies[0].append(el('tr', {}, ...current.fields.map((field) => el('td', {}, input(field, field[2] === 'bool' ? false : null))),
@@ -147,4 +173,5 @@
     }
     if (event.target.id === 'planSave') save();
   });
+  window.addEventListener('beforeunload', (event) => { if (dirty()) event.preventDefault(); });
 }());
