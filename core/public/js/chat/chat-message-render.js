@@ -15,6 +15,7 @@ function sanitizeHTML(dirty) {
       "'": '&#39;'
     })[character]);
   }
+  guardImageSources();
   return DOMPurify.sanitize(dirty, {
     ALLOWED_TAGS: [
       'p', 'br', 'strong', 'em', 'u', 'code', 'pre',
@@ -22,8 +23,24 @@ function sanitizeHTML(dirty) {
       'h3', 'h4', 'h5', 'h6', 'span', 'div', 'table',
       'thead', 'tbody', 'tr', 'th', 'td', 'img'
     ],
-    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'id'],
+    // No id: model HTML must not shadow the page's own element ids.
+    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class'],
     ALLOW_DATA_ATTR: false
+  });
+}
+
+let imageSourcesGuarded = false;
+
+// Model output can be steered by retrieved or web content. An image from
+// another host would be fetched automatically and could carry conversation
+// text in its URL, so only same-origin paths and inline data images load.
+function guardImageSources() {
+  if (imageSourcesGuarded) return;
+  imageSourcesGuarded = true;
+  DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+    if (node.tagName === 'IMG' && !/^(\/(?!\/)|data:image\/)/i.test(node.getAttribute('src') || '')) {
+      node.removeAttribute('src');
+    }
   });
 }
 
@@ -150,6 +167,14 @@ export function setStatus(elements, text, tone = 'muted') {
 export function setFeedback(elements, text, tone = 'muted') {
   elements.feedback.textContent = text;
   elements.feedback.style.color = tone === 'success' ? '#9ff6ff' : tone === 'error' ? '#ffb3b8' : tone === 'warning' ? '#ffd166' : 'var(--muted)';
+  // #feedback sits in the controls drawer, which is closed by default.
+  // Anything the user must act on also shows beside the composer.
+  const notice = document.getElementById('chatNotice');
+  if (!notice) return;
+  const show = Boolean(text) && ['error', 'warning', 'info'].includes(tone);
+  notice.textContent = show ? text : '';
+  notice.dataset.tone = tone;
+  notice.hidden = !show;
 }
 
 export function handleSendButtonAction({ elements, state, helpers }) {
@@ -289,6 +314,8 @@ export function renderMessage(message, state, elements) {
       editBtn.innerHTML = '<i class="fas fa-pen"></i>';
       editBtn.addEventListener('click', () => {
         elements.messageInput.value = content;
+        // Same path as typing: the composer resizes and the count updates.
+        elements.messageInput.dispatchEvent(new Event('input', { bubbles: true }));
         elements.messageInput.focus();
       });
       actionBar.appendChild(editBtn);
@@ -446,7 +473,7 @@ export function renderMessage(message, state, elements) {
 
   // Feedback controls for actual AI responses
   if (role === 'assistant' && messageId && !messageId.startsWith('a-')) {
-    bubble.appendChild(buildFeedbackRow(messageId, state, elements));
+    bubble.appendChild(buildFeedbackRow(messageId, state, elements, message.feedback));
   }
 
   // Per-message routing badge (Chat Intelligence layer)
@@ -462,9 +489,19 @@ export function renderMessage(message, state, elements) {
   elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
 }
 
-function buildFeedbackRow(messageId, state, elements) {
+function buildFeedbackRow(messageId, state, elements, savedFeedback = null) {
   const row = document.createElement('div');
   row.className = 'feedback-row';
+
+  // Feedback already given stays visible after a reload instead of asking again.
+  const savedRating = Number(savedFeedback?.rating);
+  if (savedRating === 1 || savedRating === -1) {
+    const saved = document.createElement('span');
+    saved.className = 'muted';
+    saved.textContent = savedRating > 0 ? 'Marked helpful.' : 'Marked as needing work.';
+    row.appendChild(saved);
+    return row;
+  }
 
   const label = document.createElement('span');
   label.className = 'muted';

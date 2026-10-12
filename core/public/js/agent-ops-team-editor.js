@@ -91,14 +91,34 @@
       box.hidden = false;
     }
 
+    let busy = false;
+    // One request at a time: a double click must not save two versions or
+    // post a second creation.
     async function finish(work) {
+      if (busy) return;
+      busy = true;
+      const buttons = [...dialog.querySelectorAll('button:not([data-editor-close])')];
+      buttons.forEach((button) => { button.disabled = true; });
       try {
         await work();
         dialog.close();
         await reload();
       } catch (error) {
         fail(error.message);
+      } finally {
+        busy = false;
+        buttons.forEach((button) => { button.disabled = false; });
       }
+    }
+
+    // Removing or resetting a persona cannot be undone: the first click asks.
+    function confirmed(button, prompt) {
+      if (button.dataset.confirming) return true;
+      const label = button.textContent;
+      button.dataset.confirming = '1';
+      button.textContent = prompt;
+      setTimeout(() => { delete button.dataset.confirming; button.textContent = label; }, 4000);
+      return false;
     }
 
     function ensureDialog() {
@@ -109,8 +129,10 @@
       dialog.addEventListener('click', (event) => {
         if (event.target.closest('[data-editor-close]')) dialog.close();
         else if (event.target.closest('[data-editor-reset]')) {
+          if (!confirmed(event.target.closest('[data-editor-reset]'), 'Click again to discard your edits')) return;
           finish(() => call('DELETE', `/api/prompts/catalog/${encodeURIComponent(current.name)}/edit`));
         } else if (event.target.closest('[data-editor-remove]')) {
+          if (!confirmed(event.target.closest('[data-editor-remove]'), 'Click again to remove')) return;
           finish(() => call('DELETE', `/api/prompts/catalog/${encodeURIComponent(current.name)}`));
         }
       });

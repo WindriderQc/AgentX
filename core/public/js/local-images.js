@@ -88,7 +88,7 @@
   async function api(route, body) {
     const r = await fetch(`/api/images${route}`, { method: body === undefined ? 'GET' : 'POST',
       ...(body !== undefined && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
-    const result = await r.json(); if (!r.ok || !result.ok) throw new Error(result.message || 'Service indisponible.'); return result;
+    const result = await r.json(); if (!r.ok || !result.ok) throw Object.assign(new Error(result.message || 'Service indisponible.'), { status: r.status }); return result;
   }
   function controls() {
     const block = locked();
@@ -233,8 +233,10 @@
     $('image-result-origin').textContent = source === 'library' ? 'BIBLIOTHÈQUE' : source === 'continuation' ? 'DEPUIS LA CONVERSATION' : 'CETTE DEMANDE';
     $('image-result-origin').hidden = false;
     $('image-preview-help').textContent = source === 'library' ? 'Consultation d’une image conservée. Ton brief et tes références restent inchangés.' : 'Le résultat est disponible après archivage et restitution des ressources.';
-    if (source !== 'library' || busy || op.state === 'unknown') $('image-status').textContent = `${statuses[op.state] || op.state}${op.error ? ' ' + op.error : ''}`;
-    $('image-cancel').hidden = !busy; $('image-recover').hidden = !['unknown', 'archive_failed'].includes(op.state);
+    if (source !== 'library' || busy || op.state === 'unknown') $('image-status').textContent = `${statuses[op.state] || op.state}${op.error ? ' ' + op.error : ''}${busy && op.cancelRequested ? ' · Annulation demandée…' : ''}`;
+    // Archiving and restoring always finish; once asked, cancelling again does nothing.
+    $('image-cancel').hidden = !busy || ['archiving', 'restoring'].includes(op.state); $('image-cancel').disabled = Boolean(op.cancelRequested);
+    $('image-recover').hidden = !['unknown', 'archive_failed'].includes(op.state);
     $('image-stages').hidden = !busy;
     const stage = { accepted: 0, reserving: 0, generating: 1, archiving: 2, restoring: 3 }[op.state];
     [...$('image-stages').children].forEach((el, i) => { el.className = i === stage ? 'current' : i < stage ? 'done' : ''; if (i === stage) el.setAttribute('aria-current', 'step'); else el.removeAttribute('aria-current'); });
@@ -277,7 +279,12 @@
   async function poll() {
     const id = operation?.id; if (!id) return;
     try { const result = await api(`/operations/${encodeURIComponent(id)}`); if (operation?.id === id) show(result.operation); }
-    catch { if (operation?.id !== id) return; $('image-status').textContent = 'Connexion interrompue. Vérification de la demande enregistrée…'; pollTimer = setTimeout(poll, 5000); }
+    catch (error) {
+      if (operation?.id !== id) return;
+      // A 4xx will not heal by retrying (unknown or removed request): stop and unlock the form.
+      if (error.status >= 400 && error.status < 500) { operation = null; controls(); $('image-status').textContent = `Cette demande n’est plus suivie : ${error.message}`; return; }
+      $('image-status').textContent = 'Connexion interrompue. Vérification de la demande enregistrée…'; pollTimer = setTimeout(poll, 5000);
+    }
   }
   function renderHistory() {
     const query = $('image-search').value.trim().toLocaleLowerCase('fr-CA');
@@ -356,6 +363,8 @@
       $('image-references').dispatchEvent(new Event('change')); $('image-prompt').focus();
     } catch (error) { $('image-status').textContent = error.message; }
   });
+  // Enter in a one-line field (sketch zone, seed, constraint) must not submit: submitting starts a GPU render.
+  $('image-form').addEventListener('keydown', event => { if (event.key === 'Enter' && event.target instanceof HTMLInputElement) event.preventDefault(); });
   $('image-form').addEventListener('submit', async event => {
     event.preventDefault(); if (locked() || !config?.configured) return;
     pendingSubmit = true; controls(); ++draftEpoch;
@@ -380,7 +389,7 @@
       // A network retry retains its identity; an explicit next creation gets a new one.
       if (!request || request.signature !== signature) request = { signature, payload: { ...payload, actionKey: crypto.randomUUID() } };
       const result = await api('/operations', request.payload);
-      localStorage.setItem('agentx-image-operation', result.operation.id); request = null; show(result.operation, 'generation');
+      request = null; show(result.operation, 'generation');
     } catch (error) { $('image-status').textContent = error.message; }
     finally { pendingSubmit = false; controls(); }
   });

@@ -110,7 +110,9 @@
           <button id="workspaceNewChatBtn" class="chat-command-secondary" type="button" title="Start new chat" aria-label="Start new chat">
             <i class="fas fa-plus" aria-hidden="true"></i><span>New chat</span>
           </button>
-          <button id="conversationPerformance" class="chat-command-secondary" type="button">Contexte et performance</button>
+          <button id="conversationPerformance" class="chat-command-secondary" type="button" aria-label="Contexte et performance">
+            <i class="fas fa-gauge-high" aria-hidden="true"></i><span>Contexte et performance</span>
+          </button>
           <button id="toggleConfigBtn" class="take-controls-button" type="button" aria-label="Open precision controls" aria-expanded="false" aria-controls="configDrawer">
             <i class="fas fa-sliders" aria-hidden="true"></i><span>Take the controls</span>
           </button>
@@ -127,7 +129,6 @@
           <select id="headerPersonaSelect" class="header-persona-dropdown" aria-label="Persona" style="display: none;">
             <option value="default_chat">Default</option>
           </select>
-          <button class="icon-btn" id="headerDevToggle" title="Show precision controls" aria-label="Show precision controls"><i class="fas fa-flask" aria-hidden="true"></i></button>
           <button class="ghost small" id="headerChangeBtn" title="Change agent" style="display:none;">Change</button>
           <span class="chat-expert-strip__spacer"></span>
           <div class="header-pill" id="conversationTokens" style="display: none;">
@@ -238,6 +239,7 @@
           </section>
         </div>
         <p class="chat-announcements" id="chatAnnouncements" role="status" aria-live="polite" aria-atomic="true"></p>
+        <p class="chat-notice" id="chatNotice" role="status" aria-live="polite" hidden></p>
         <details id="exchangeRecovery" class="exchange-recovery">
           <summary>Recover a refused or interrupted exchange</summary>
           <p>The accepted request and received response stay in Agent X. Erasing a copy keeps the saved conversation; erasing a conversation also erases its copies.</p>
@@ -278,7 +280,7 @@
                   <option value="Brainstorm next steps for my project.">Brainstorm</option>
                 </select>
                 <button class="icon-btn" id="roundtableBtn" title="Open in Council — hands this question to the multi-model deliberation page; you review the panel and convene it there" aria-label="Open in Council"><i class="fas fa-users" aria-hidden="true"></i><span>Open in Council</span></button>
-                <button class="ghost small" id="clearBtn">Clear conversation</button>
+                <button class="ghost small" id="clearBtn" type="button" title="Start a new conversation; this one stays in History">New conversation</button>
               </div>
             </details>
             <span class="char-count" id="charCount"></span>
@@ -338,13 +340,13 @@
                 <span class="pg-state-pill" id="pgRouteState" data-tone="loading">Resolving</span>
               </div>
               <div class="pg-mode-switch" aria-label="Conversation routing mode">
-                <button type="button" data-playground-mode="quick" data-cockpit-tip-title="Quick" data-cockpit-tip="Prefer the fastest eligible route for short, lightweight work."><i class="fas fa-bolt"></i><span>Quick</span></button>
-                <button type="button" data-playground-mode="standard" data-cockpit-tip-title="Standard" data-cockpit-tip="Use the normal server-owned route for everyday conversation."><i class="fas fa-route"></i><span>Standard</span></button>
-                <button type="button" data-playground-mode="deep" data-cockpit-tip-title="Deep" data-cockpit-tip="Prefer the deep-reasoning lane for harder analysis; the server still selects the eligible host and model."><i class="fas fa-brain"></i><span>Deep</span></button>
+                <button type="button" data-playground-mode="quick" data-cockpit-tip-title="Fast" data-cockpit-tip="Prefer the fastest eligible route for short, lightweight work."><i class="fas fa-bolt"></i><span>Fast</span></button>
+                <button type="button" data-playground-mode="standard" data-cockpit-tip-title="Balanced" data-cockpit-tip="Use the normal server-owned route for everyday conversation."><i class="fas fa-route"></i><span>Balanced</span></button>
+                <button type="button" data-playground-mode="deep" data-cockpit-tip-title="Deep reasoning" data-cockpit-tip="Prefer the deep-reasoning lane for harder analysis; the server still selects the eligible host and model."><i class="fas fa-brain"></i><span>Deep reasoning</span></button>
                 <button type="button" data-playground-mode="manual" data-cockpit-tip-title="Manual" data-cockpit-tip="Unlock explicit host and exact-model selection for inspection or controlled experiments."><i class="fas fa-crosshairs"></i><span>Manual</span></button>
               </div>
               <div class="pg-route-flow" aria-label="Current inference workflow">
-                <div class="pg-route-node" tabindex="0" data-cockpit-tip-title="Request intent" data-cockpit-tip="The selected conversation mode translated into a routing intent."><i class="fas fa-message"></i><span>Request</span><strong id="pgRouteIntent">Standard chat</strong></div>
+                <div class="pg-route-node" tabindex="0" data-cockpit-tip-title="Request intent" data-cockpit-tip="The selected conversation mode translated into a routing intent."><i class="fas fa-message"></i><span>Request</span><strong id="pgRouteIntent">Balanced chat</strong></div>
                 <i class="fas fa-arrow-right pg-route-arrow" aria-hidden="true"></i>
                 <div class="pg-route-node router" tabindex="0" data-cockpit-tip-title="Core decision" data-cockpit-tip="Core applies the active routing policy. Playground displays that decision; it does not maintain a second router."><i class="fas fa-code-branch"></i><span>Decision</span><strong id="pgRouteDecision">Core router</strong></div>
                 <i class="fas fa-arrow-right pg-route-arrow" aria-hidden="true"></i>
@@ -381,7 +383,7 @@
 
   <!-- Config Drawer (slides from right) -->
   <div class="config-drawer-backdrop" id="configDrawerBackdrop" aria-hidden="true"></div>
-  <div class="config-drawer" id="configDrawer" role="dialog" aria-hidden="true" aria-labelledby="configDrawerTitle" tabindex="-1" inert>
+  <div class="config-drawer" id="configDrawer" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="configDrawerTitle" tabindex="-1" inert>
     <div class="config-drawer-header">
       <div>
         <span class="config-drawer-eyebrow"><i class="fas fa-sliders" aria-hidden="true"></i> Expert depth</span>
@@ -399,6 +401,9 @@
         </button>
         <button class="ghost small" id="showShortcutsBtn" type="button" aria-haspopup="dialog" aria-controls="keyboardShortcutsDialog" aria-expanded="false" style="flex:1;" title="Keyboard Shortcuts (Ctrl+/)">
           <i class="fas fa-keyboard" aria-hidden="true" style="margin-right:5px;"></i>Shortcuts
+        </button>
+        <button class="ghost small" id="headerDevToggle" type="button" aria-pressed="false" style="flex:1;" title="Show host, model, system prompt and tuning controls">
+          <i class="fas fa-flask" aria-hidden="true" style="margin-right:5px;"></i>Precision
         </button>
       </div>
 

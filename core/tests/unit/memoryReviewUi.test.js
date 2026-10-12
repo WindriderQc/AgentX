@@ -5,6 +5,8 @@ const root = path.resolve(__dirname, '../..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 const view = read('views/pages/memory-review.ejs');
 const controller = read('public/js/memory-review.js');
+const keys = read('public/js/memory-review-keys.js');
+const copy = read('public/js/memory-review-copy.js');
 const styles = read('public/css/memory-review.css');
 
 describe('Dreaming Review UI contract', () => {
@@ -34,7 +36,7 @@ describe('Dreaming Review UI contract', () => {
     expect(controller).toContain("run.status === 'completed'");
     expect(controller).toContain('Quiet night—nothing trustworthy new');
     expect(controller).toContain('Why AgentX trusts this');
-    expect(controller).toContain('Rollback removes the working-memory document');
+    expect(copy).toContain('Rollback removes the working-memory document');
     expect(styles).toContain('.mr-empty[hidden] { display: none; }');
     expect(styles).toContain('@media (max-width: 560px)');
   });
@@ -49,7 +51,7 @@ describe('Dreaming Review UI contract', () => {
     expect(controller).toContain("if (pending.action === 'authorize') showCandidates('approved')");
     expect(controller).toContain('accepted, not written yet');
     expect(controller).toContain('Not collected on this instance');
-    expect(controller).toContain('Becomes one of the notes your agents read');
+    expect(copy).toContain('Becomes one of the notes your agents read');
     expect(styles).toContain('.mr-next { position: sticky;');
   });
 
@@ -59,7 +61,8 @@ describe('Dreaming Review UI contract', () => {
     expect(view).toContain('Copy digest');
     expect(view).toContain('Find a run');
     expect(view).toContain('<kbd>J</kbd>/<kbd>K</kbd>');
-    expect(controller).toContain("a: 'approve', r: 'reject', d: 'defer', e: 'edit_approve'");
+    expect(keys).toContain("a: 'approve', r: 'reject', d: 'defer', e: 'edit_approve'");
+    expect(controller).toContain('MemoryReviewKeys.resolveShortcut');
     expect(controller).toContain('Copy clarification question');
     expect(controller).toContain('Summary unavailable; derived from run history');
     expect(controller).toContain('Safe automation ·');

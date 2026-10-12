@@ -31,10 +31,10 @@ export const SESSION_MODE_TASK = {
   deep: 'deep_reasoning',
 };
 
-const ROUTING_MODE_LABELS = { quick: 'Quick', standard: 'Standard', deep: 'Deep', manual: 'Manual' };
+const ROUTING_MODE_LABELS = { quick: 'Fast', standard: 'Balanced', deep: 'Deep reasoning', manual: 'Manual' };
 
 export function routingModeLabel(mode) {
-  return ROUTING_MODE_LABELS[mode] || 'Standard';
+  return ROUTING_MODE_LABELS[mode] || 'Balanced';
 }
 
 export function routingMode(elements, state) {
@@ -148,7 +148,7 @@ export function getHostChatState(elements, state, defaults) {
       unavailableKind: hasInstalledModel ? null : 'model setup',
       reason: hasInstalledModel
         ? (isAutoRoutingMode(elements, state)
-            ? 'Standard mode classifies each turn and selects an eligible server-owned route.'
+            ? 'Balanced mode classifies each turn and selects an eligible server-owned route.'
             : `${routingModeLabel(routingMode(elements, state))} mode uses its fixed server-owned task lane.`)
         : 'Install at least one model in the connected Ollama runtime to start a conversation.'
     };
@@ -442,9 +442,9 @@ export function persistSettings(elements, state, defaults, refreshMessages, setF
     options: readOptions(elements),
   };
   localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(payload));
-  state.settings = payload;
-  state.showStats = payload.showStats;
-  refreshMessages();
+  const statsChanged = state.showStats !== payload.showStats; // the only setting saved messages show
+  state.settings = payload; state.showStats = payload.showStats;
+  if (statsChanged && !state.streamAbortController) refreshMessages(); // never drop a streaming reply
   setFeedback('Defaults saved locally.', 'success');
 }
 
@@ -761,7 +761,7 @@ export function updateRoutingModeUi(elements, state, defaults) {
       ? routeNeedsAttention
         ? hostState.reason
         : isAutoRoutingMode(elements, state)
-          ? 'Standard mode classifies this turn and selects an eligible host/model.'
+          ? 'Balanced mode classifies this turn and selects an eligible host/model.'
           : `${modeLabel} mode uses its fixed server-owned task lane.`
       : hostState.reason || 'Use the configured host and its pinned or loaded model.';
   }
@@ -804,12 +804,12 @@ export function initDevModeToggle() {
   if (!devToggleBtn) return;
 
   const isDevMode = localStorage.getItem('agentx_dev_mode') === 'true';
-  if (isDevMode) devToggleBtn.classList.add('active');
+  devToggleBtn.classList.toggle('active', isDevMode); devToggleBtn.setAttribute('aria-pressed', String(isDevMode));
   applyDevMode(isDevMode);
 
   devToggleBtn.addEventListener('click', () => {
     const active = devToggleBtn.classList.toggle('active');
-    localStorage.setItem('agentx_dev_mode', String(active));
+    devToggleBtn.setAttribute('aria-pressed', String(active)); localStorage.setItem('agentx_dev_mode', String(active));
     applyDevMode(active);
   });
 }

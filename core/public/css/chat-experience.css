@@ -313,3 +313,19 @@ body[data-agentx-profile="demo"] .chat-command-bar { padding-left: 186px; }
   .chat-command-bar *, .chat-routing-lab *, .config-drawer,
   .config-drawer-backdrop, .chat-layout * { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Warnings and errors that would otherwise only reach the closed drawer. */
+.chat-notice {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--muted, #94a3b8);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text, #e2e8f0);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+.chat-notice[hidden] { display: none; }
+.chat-notice[data-tone="error"] { border-left-color: #ff6b7a; }
+.chat-notice[data-tone="warning"] { border-left-color: #ffd166; }
+.chat-notice[data-tone="info"] { border-left-color: #7cf0ff; }

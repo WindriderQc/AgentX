@@ -461,11 +461,10 @@
         "core"
       ],
       "forwarded": true,
-      "default": "http://127.0.0.1:${BENCHMARK_PORT:-3181}/benchmark",
-      "hostVar": "BENCHMARK_PORT",
+      "default": "${BENCHMARK_PUBLIC_URL:-http://127.0.0.1:${BENCHMARK_PORT:-3181}/benchmark}",
       "category": "network",
       "secret": false,
-      "description": "Browser-facing Benchmark URL used for Core portal links and accepted as a parental-gateway origin. Compose sets it from BENCHMARK_PORT; unset natively: no Benchmark link."
+      "description": "Browser-facing Benchmark URL used for Core portal links and accepted as a parental-gateway origin. Compose defaults it to the loopback address from BENCHMARK_PORT; set it in the instance env file for a LAN gateway. Unset natively: no Benchmark link."
     },
     "BENCHMARK_TERMINAL_FAILURE_RATE_THRESHOLD": {
       "services": [
@@ -2856,11 +2855,10 @@
         "core"
       ],
       "forwarded": true,
-      "default": "http://127.0.0.1:${RAG_PORT:-3182}/rag",
-      "hostVar": "RAG_PORT",
+      "default": "${RAG_PUBLIC_URL:-http://127.0.0.1:${RAG_PORT:-3182}/rag}",
       "category": "network",
       "secret": false,
-      "description": "Browser-facing RAG URL used for Core portal links and accepted as a parental-gateway origin. Compose sets it from RAG_PORT; unset natively: no RAG link."
+      "description": "Browser-facing RAG URL used for Core portal links and accepted as a parental-gateway origin. Compose defaults it to the loopback address from RAG_PORT; set it in the instance env file for a LAN gateway. Unset natively: no RAG link."
     },
     "REQUIRE_PROFILED_MODELS": {
       "services": [

@@ -111,7 +111,7 @@
               <p>${esc(lane.responsibility)}</p>
             </div>
             <div class="agent-ops-lane-signals">${signals.join('') || '<div class="agent-ops-lane-empty">No active work or cadence attributed.</div>'}</div>
-            <div class="agent-ops-lane-load ${esc(lane.load)}"><strong>${lane.signalCount}</strong><small>${esc(lane.load)} load</small>${lane.blockedCount ? `<span class="agent-ops-badge bad">${lane.blockedCount} blocked</span>` : ''}</div>
+            <div class="agent-ops-lane-load ${esc(lane.load)}"><strong>${esc(lane.signalCount)}</strong><small>${esc(lane.load)} load</small>${lane.blockedCount ? `<span class="agent-ops-badge bad">${esc(lane.blockedCount)} blocked</span>` : ''}</div>
           </article>`;
       }).join('') : empty('No ownership lanes match this filter.', 'fa-diagram-project');
 
@@ -127,7 +127,7 @@
     }
 
     function activityIcon(kind) {
-      return { automation: 'fa-clock-rotate-left', work: 'fa-list-check', operator: 'fa-fingerprint', source: 'fa-tower-broadcast' }[kind] || 'fa-wave-square';
+      return { automation: 'fa-clock-rotate-left', work: 'fa-list-check', session: 'fa-fingerprint', source: 'fa-tower-broadcast' }[kind] || 'fa-wave-square';
     }
 
     function activityAction(item) {
@@ -145,7 +145,7 @@
         'kind', 'title', 'detail', 'status', 'ownerId', 'targetId', 'evidence'
       ]));
       byId('agentOpsTabActivityCount').textContent = all.length;
-      root.querySelectorAll('[data-activity-kind]').forEach((button) => button.classList.toggle('active', button.dataset.activityKind === activityKind));
+      root.querySelectorAll('[data-activity-kind]').forEach((button) => { button.classList.toggle('active', button.dataset.activityKind === activityKind); button.setAttribute('aria-pressed', String(button.dataset.activityKind === activityKind)); });
       byId('agentOpsActivity').innerHTML = items.length ? items.map((item) => `
         <article class="agent-ops-activity-item">
           <span class="agent-ops-activity-icon"><i class="fas ${activityIcon(item.kind)}"></i></span>
@@ -178,6 +178,8 @@
       } else if (action.kind === 'open-preset') openPreset(action.tab, action.preset);
       else if (action.kind === 'open-tab') activateTab(action.tab);
       else if (action.kind === 'inspect-automation') openAutomationDrawer(action.targetId, trigger);
+      // Budget and cloud warnings point to another page of this app.
+      else if (action.kind === 'open-link' && /^\/(?!\/)/.test(String(action.href || ''))) window.location.assign(action.href);
     }
 
     function handleClick(event) {

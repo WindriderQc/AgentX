@@ -11,32 +11,13 @@
   const labels = {
     ready_for_review: 'Ready for review', partially_reviewed: 'Partially reviewed', completed: 'Complete',
     failed: 'Needs attention', collecting: 'Collecting', synthesizing: 'Reflecting',
-    proposed: 'Exception', approved: 'Approved', auto_approved: 'Policy approved', rejected: 'Ignored', deferred: 'Deferred',
+    proposed: 'Pending', approved: 'Approved', auto_approved: 'Policy approved', rejected: 'Rejected', deferred: 'Deferred',
     parked: 'Parked', shadowed: 'Shadowed', applied: 'Applied', apply_failed: 'Apply failed', applying: 'Applying',
     shared_fact: 'Memory note', soft_memory: 'Working memory', artifact: 'Knowledge artifact', runtime_local: 'Runtime-local proposal',
     skill_draft: 'Skill draft', pipeline_task: 'Follow-up task', git_change: 'Source change', ignore: 'No action',
     agentx: 'AgentX', 'claude-code': 'Claude Code', codex: 'Codex', external: 'External',
   };
-  const trustHelp = {
-    explicit_memory_request: 'You explicitly asked an agent to remember this.',
-    authenticated_owner_statement: 'This was observed in an authenticated owner turn; Core still decides whether it is fact, inference, or noise.',
-    observed_project_event: 'This came from the configured accepted project history. It is event context, not a personal preference.',
-    verified_runtime_evidence: 'The runtime directly verified this state.',
-    verified_git_or_test_outcome: 'A repository or test result independently verified it.',
-    explicit_owner_instruction: 'This came from a direct owner instruction.',
-    repeated_owner_preference: 'The same owner preference appeared in independent sessions.',
-    household_member_statement: 'Someone of the household said this on a family page. It is not the owner speaking and is never applied without review.',
-  };
-  const targetHelp = {
-    shared_fact: ['Your memory notes', 'Becomes one of the notes your agents read, after this one approved write.', 'You can correct or forget it in the memory editor.'],
-    soft_memory: ['AgentX working memory', 'Stores a provisional, confidence-tagged inference with expiry.', 'Rollback removes the working-memory document; recall never confirms it.'],
-    artifact: ['AgentX knowledge artifact', 'Creates a concise durable artifact—never a transcript archive.', 'Rollback removes the created artifact document.'],
-    pipeline_task: ['AgentX delivery pipeline', 'Creates one reviewable, unassigned follow-up task.', 'Rollback closes the task as cancelled.'],
-    git_change: ['Governed source change', 'Creates a follow-up task or exact patch proposal; it does not edit git automatically.', 'No repository file is changed by this apply.'],
-    skill_draft: ['Skill authoring lane', 'Creates a reviewed draft/task; it never installs a runtime skill.', 'No live skill is changed by this apply.'],
-    runtime_local: ['Owning runtime', 'Produces a copyable pending proposal for the owning runtime; AgentX writes nothing there.', 'Nothing external is changed automatically.'],
-    ignore: ['No destination', 'This classification is retained for audit only.', 'No semantic write is available.'],
-  };
+  const { trustHelp, targetHelp, actionCopy } = window.MemoryReviewCopy;
 
   async function apiJson(url, options = {}) {
     const response = await fetch(url, {
@@ -118,9 +99,11 @@
         ? `Safe automation · ${config.reviewExceptionBudget} exceptions max`
         : config.automationMode === 'shadow' ? 'Standing policy · shadow evaluation' : 'Manual compatibility mode';
       badge.classList.toggle('mr-mode-apply', config.mode === 'apply');
+      return true;
     } catch (error) {
       $('mrModeBadge').textContent = 'Configuration unavailable';
       toast(`Dreaming configuration unavailable: ${error.message}`, 'error');
+      return false;
     }
   }
 
@@ -179,7 +162,7 @@
     }
     const { latest, totals, health } = insight;
     let tone = 'healthy';
-    let icon = 'fa-sparkles';
+    let icon = 'fa-wand-magic-sparkles';
     let title = 'The ecosystem is calm';
     let text = 'Recent evidence was reviewed safely and there is nothing requiring your attention.';
     if (health.errors) {
@@ -320,13 +303,16 @@
         loadCollectingAlert(),
       ]);
       renderOverview(); renderPulse(); renderInsights();
+      return true;
     } catch (error) {
+      $('mrInsightsState').hidden = false;
       $('mrInsightsState').textContent = `Insight summary unavailable: ${error.message}`;
       $('mrPulse').className = 'mr-pulse mr-pulse-attention';
       $('mrPulseIcon').className = 'fas fa-triangle-exclamation';
       $('mrPulseTitle').textContent = 'Run history is still available';
       $('mrPulseText').textContent = 'The optional aggregate summary could not load. Candidate review remains unaffected.';
       renderOverview();
+      return false;
     }
   }
 
@@ -363,7 +349,8 @@
           : active ? 'Collection in progress'
           : quiet ? 'Quiet · no reviewer call'
             : total ? 'Review complete' : 'No review candidates';
-      return `<li><button type="button" class="mr-run-item ${run.runId === state.selectedRunId ? 'active' : ''}" data-run-id="${esc(run.runId)}">
+      const selected = run.runId === state.selectedRunId;
+      return `<li><button type="button" class="mr-run-item ${selected ? 'active' : ''}" ${selected ? 'aria-current="true"' : ''} data-run-id="${esc(run.runId)}">
         <span class="mr-run-title">${esc(friendlyRunTitle(run))}</span><span class="mr-chip mr-status-${esc(hasError || overdue ? 'failed' : run.status)}">${esc(label(hasError || overdue ? 'failed' : run.status))}</span>
         <small class="mr-run-id" title="${esc(run.runId)}">${esc(run.runId)}</small>
         <span class="mr-run-foot"><span>${outcome}</span><span>${esc(runtimes.map(label).join(' · ') || 'No collectors')}</span></span>
@@ -383,28 +370,37 @@
       renderOverview();
       if (!state.runs.length) {
         message.innerHTML = '<strong>No dreams yet.</strong><br>The first scheduled reconciliation will appear here.';
-        return;
+        return true;
       }
       renderRuns();
       $('mrRunList').hidden = false;
       message.hidden = true;
       if (select) {
         const requested = new URLSearchParams(window.location.search).get('run');
-        const target = state.runs.find((run) => run.runId === requested)?.runId
+        // A linked run may be older than the 30 listed; it still loads by id.
+        const target = requested
           || state.selectedRunId
           || state.runs.find((run) => run.status === 'ready_for_review' || run.status === 'partially_reviewed')?.runId
           || state.runs.find((run) => run.status === 'completed')?.runId
           || state.runs[0].runId;
         await selectRun(target);
       }
+      return true;
     } catch (error) {
       message.textContent = `Could not load Dreaming runs: ${error.message}`;
       toast(message.textContent, 'error');
+      return false;
     }
   }
 
   async function selectRun(runId) {
+    // Drop the previous run first: its Authorize button and link must not
+    // stay usable while another run is selected.
     state.selectedRunId = runId;
+    state.run = null;
+    ['mrRunNarrative', 'mrRunFacts', 'mrCollectors', 'mrAuditList'].forEach((id) => { $(id).innerHTML = ''; });
+    $('mrRunTitle').textContent = 'Loading…';
+    $('mrCandidateFilters').hidden = true;
     $('mrDetailEmpty').hidden = true;
     $('mrDetail').hidden = false;
     $('mrCandidatesState').hidden = false;
@@ -412,7 +408,9 @@
     $('mrCandidateList').innerHTML = '';
     renderRuns();
     try {
-      state.run = await apiJson(`/api/memory-review/runs/${encodeURIComponent(runId)}`);
+      const run = await apiJson(`/api/memory-review/runs/${encodeURIComponent(runId)}`);
+      if (state.selectedRunId !== runId) return; // a later click won
+      state.run = run;
       const url = new URL(window.location.href);
       url.searchParams.set('run', runId);
       window.history.replaceState({}, '', url);
@@ -422,6 +420,8 @@
         state.focusAfter = null;
       }
     } catch (error) {
+      if (state.selectedRunId !== runId) return;
+      $('mrRunTitle').textContent = 'Run unavailable';
       $('mrCandidatesState').textContent = `Could not load this run: ${error.message}`;
       toast($('mrCandidatesState').textContent, 'error');
     }
@@ -450,7 +450,7 @@
     if (!(run.candidates || []).length) return `<i class="fas ${currentCoverageNeedsAttention ? 'fa-triangle-exclamation' : 'fa-moon'}"></i><div><strong>${currentCoverageNeedsAttention ? 'Quiet run; current collector coverage needs attention' : 'Quiet, healthy reconciliation'}</strong><span>${filtered} noisy or ineligible item${filtered === 1 ? '' : 's'} filtered; ${eligible ? `${eligible} eligible observation${eligible === 1 ? '' : 's'} produced no durable proposal.` : 'the review model was not needed.'}${currentCoverageNeedsAttention ? ' This historical run does not override the current coverage warning above.' : ''}</span></div>`;
     const auto = (run.candidates || []).filter((item) => item.apply?.automated && item.status === 'applied').length;
     const exceptions = (run.candidates || []).filter((item) => ['proposed', 'deferred', 'apply_failed'].includes(item.status)).length;
-    return `<i class="fas fa-sparkles"></i><div><strong>${auto} automatic update${auto === 1 ? '' : 's'} · ${exceptions} exception${exceptions === 1 ? '' : 's'}</strong><span>Safe reversible context flows automatically; only exceptions ask for judgment.</span></div>`;
+    return `<i class="fas fa-wand-magic-sparkles"></i><div><strong>${auto} automatic update${auto === 1 ? '' : 's'} · ${exceptions} exception${exceptions === 1 ? '' : 's'}</strong><span>Safe reversible context flows automatically; only exceptions ask for judgment.</span></div>`;
   }
 
   function renderRun() {
@@ -687,15 +687,6 @@
     $('mrAuditList').innerHTML = (state.run?.audit || []).slice().reverse().map((entry) => `<li class="mr-audit-${esc(entry.level)}"><time>${esc(shortDate(entry.at))}</time><strong>${esc(label(entry.event))}</strong><span>by ${esc(entry.by)}</span>${entry.detail ? `<em>${esc(entry.detail)}</em>` : ''}</li>`).join('') || '<li>No audit entries.</li>';
   }
 
-  const actionCopy = {
-    approve: ['Approve this candidate?', 'It becomes eligible for a separate apply action. Nothing is written yet.', 'Approve candidate', 'fa-check', 'mr-btn-approve'],
-    reject: ['Reject this candidate?', 'The normalized claim stays suppressed until materially new evidence appears.', 'Reject candidate', 'fa-xmark', 'mr-btn-reject'],
-    defer: ['Defer this candidate?', 'Keep it pending so future recurrence can strengthen or clarify it.', 'Defer candidate', 'fa-clock', 'mr-btn-secondary'],
-    edit_approve: ['Edit and approve', 'Refine the wording while preserving the original proposal and evidence.', 'Save & approve', 'fa-pen', 'mr-btn-approve'],
-    apply: ['Apply this approved candidate?', 'AgentX will route this single change through the target owner and record the result.', 'Apply to owner', 'fa-route', 'mr-btn-apply'],
-    authorize: ['Authorize reviewed writes for this run?', 'This unlocks individual apply buttons. It does not apply anything by itself.', 'Authorize run', 'fa-key', 'mr-btn-apply'],
-  };
-
   function openAction(action, candidateId, trigger) {
     const copy = actionCopy[action];
     if (!copy) return;
@@ -711,9 +702,11 @@
     $('mrNoteField').hidden = !['approve', 'reject', 'defer', 'edit_approve'].includes(action);
     $('mrActionStatement').value = action === 'edit_approve' ? candidate?.statement || '' : '';
     $('mrActionNote').value = '';
-    if (candidate && ['approve', 'edit_approve', 'apply'].includes(action)) {
+    if (candidate) {
+      const number = state.run.candidates.indexOf(candidate) + 1;
       $('mrActionPreview').hidden = false;
-      $('mrActionPreview').innerHTML = targetPreview(candidate);
+      $('mrActionPreview').innerHTML = `<p class="mr-action-candidate"><b>#${number}</b> ${esc(candidate.statement)}</p>`
+        + (['approve', 'edit_approve', 'apply'].includes(action) ? targetPreview(candidate) : '');
     } else {
       $('mrActionPreview').hidden = true;
       $('mrActionPreview').innerHTML = '';
@@ -733,7 +726,7 @@
   async function submitAction(event) {
     event.preventDefault();
     const pending = state.pendingAction;
-    if (!pending) return;
+    if (!pending || !state.run) return;
     const body = {};
     let url;
     if (pending.action === 'authorize') {
@@ -768,21 +761,18 @@
     } finally { submit.disabled = false; }
   }
 
-  function focusedCandidate() {
-    const items = [...document.querySelectorAll('.mr-candidate')];
-    const active = document.activeElement?.closest?.('.mr-candidate');
-    return { items, index: Math.max(0, items.indexOf(active)) };
-  }
-
   document.querySelectorAll('[data-status-filter]').forEach((button) => button.addEventListener('click', () => {
-    document.querySelectorAll('[data-status-filter]').forEach((item) => item.classList.remove('active'));
-    button.classList.add('active'); state.filter = button.dataset.statusFilter; renderCandidates();
+    document.querySelectorAll('[data-status-filter]').forEach((item) => { item.classList.toggle('active', item === button); item.setAttribute('aria-pressed', String(item === button)); });
+    state.filter = button.dataset.statusFilter; renderCandidates();
   }));
   $('mrRunSearch').addEventListener('input', (event) => { state.runSearch = event.target.value.trim(); renderRuns(); });
   $('mrRunStatus').addEventListener('change', (event) => { state.runFilter = event.target.value; renderRuns(); });
-  $('mrRefreshBtn').addEventListener('click', async () => { await Promise.all([loadConfig(), loadInsights(), loadRuns()]); toast('Dreaming Review refreshed.', 'success'); });
+  $('mrRefreshBtn').addEventListener('click', async () => {
+    const loaded = await Promise.all([loadConfig(), loadInsights(), loadRuns()]);
+    if (loaded.every(Boolean)) toast('Dreaming Review refreshed.', 'success');
+  });
   $('mrShareBtn').addEventListener('click', () => copyText(state.insights?.safeDigest || 'Dreaming Review status is unavailable.', 'Statement-free digest copied.'));
-  $('mrCopyLink').addEventListener('click', () => copyText(window.location.href, 'Link to this run copied.'));
+  $('mrCopyLink').addEventListener('click', () => (state.run ? copyText(window.location.href, 'Link to this run copied.') : toast('This run has not loaded.', 'error')));
   $('mrActionForm').addEventListener('submit', submitAction);
   $('mrActionClose').addEventListener('click', closeAction);
   $('mrActionCancel').addEventListener('click', closeAction);
@@ -790,26 +780,14 @@
   document.addEventListener('keydown', (event) => {
     if (!$('mrActionBackdrop').hidden) {
       if (event.key === 'Escape') return closeAction();
-      if (event.key !== 'Tab') return;
-      const focusable = [...$('mrActionModal').querySelectorAll('button:not(:disabled), textarea:not([hidden])')]
-        .filter((element) => element.offsetParent !== null);
-      if (!focusable.length) return;
-      const first = focusable[0]; const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-      return;
+      return MemoryReviewKeys.trapTab(event, $('mrActionModal'));
     }
     if (/INPUT|TEXTAREA|SELECT|SUMMARY/.test(document.activeElement?.tagName || '') || event.ctrlKey || event.metaKey || event.altKey) return;
-    const key = event.key.toLowerCase();
-    const { items, index } = focusedCandidate();
-    if (!items.length) return;
-    if (key === 'j' || key === 'k') {
-      event.preventDefault();
-      items[Math.max(0, Math.min(items.length - 1, index + (key === 'j' ? 1 : -1)))].focus();
-      return;
-    }
-    const action = { a: 'approve', r: 'reject', d: 'defer', e: 'edit_approve' }[key];
-    if (action) items[index].querySelector(`[data-action="${action}"]`)?.click();
+    const items = [...document.querySelectorAll('.mr-candidate')];
+    const index = items.indexOf(document.activeElement?.closest?.('.mr-candidate'));
+    const shortcut = MemoryReviewKeys.resolveShortcut(event.key, { count: items.length, index });
+    if (shortcut?.move !== undefined) { event.preventDefault(); items[shortcut.move].focus(); }
+    if (shortcut?.action) items[index].querySelector(`[data-action="${shortcut.action}"]`)?.click();
   });
 
   // The statistics panel stays out of the way while a run waits for the
@@ -830,5 +808,6 @@
     try { window.localStorage.setItem(INTELLIGENCE_KEY, event.target.open ? '1' : '0'); } catch { /* private mode */ }
   });
 
-  (async () => { await Promise.all([loadConfig(), loadInsights(), loadRuns()]); placeIntelligence(); })();
+  // Config decides whether Authorize and Apply are offered, so it loads first.
+  (async () => { await loadConfig(); await Promise.all([loadInsights(), loadRuns()]); placeIntelligence(); })();
 })();

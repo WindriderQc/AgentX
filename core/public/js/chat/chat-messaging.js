@@ -242,6 +242,8 @@ export async function sendMessageStreamFetch(
   let thinkingContent = '';
   let doneReceived = false;
   let requestAbortController = null;
+  const viewAtSend = state.viewEpoch || 0;
+  const viewChanged = () => (state.viewEpoch || 0) !== viewAtSend;
 
   const safeParseJson = (text, fallback) => {
     try { return JSON.parse(text); } catch { return fallback; }
@@ -282,6 +284,7 @@ export async function sendMessageStreamFetch(
     }
     if (eventName === 'done') {
       const finalData = typeof rawData === 'string' ? safeParseJson(rawData, {}) : rawData;
+      if (viewChanged()) { doneReceived = true; helpers.loadHistoryList(); return; }
       state.conversationId = finalData.conversationId || state.conversationId;
       const routingInfo = buildRoutingInfo(finalData);
       if (routingInfo?.model) state.lastRoutedModel = routingInfo.model;
@@ -388,6 +391,7 @@ export async function sendMessageStreamFetch(
       throw new Error('The response stream ended before completion.');
     }
   } catch (err) {
+    if (viewChanged()) { console.error('Detached reply failed:', err); return; }
     if (isUserRequestedStreamStop(err, state, requestAbortController)) {
       if (elements.chatWindow.contains(assistantMessageDiv)) elements.chatWindow.removeChild(assistantMessageDiv);
       if (!doneReceived) {
@@ -461,7 +465,7 @@ export async function sendMessage(ctx, turnAction = null) {
   const { elements, state, defaults, helpers } = ctx;
   if (state.sending) return;
   if (state.warming) {
-    helpers.setFeedback('Model is still loading, please wait…', 'muted');
+    helpers.setFeedback('Model is still loading, please wait…', 'warning');
     return;
   }
 
@@ -548,6 +552,8 @@ export async function sendMessage(ctx, turnAction = null) {
 
   // Declared outside try so the failure path can still report the requested model.
   let payload = null;
+  const viewAtSend = state.viewEpoch || 0;
+  const viewChanged = () => (state.viewEpoch || 0) !== viewAtSend;
   try {
     payload = {
       ...buildPayload(
@@ -574,6 +580,7 @@ export async function sendMessage(ctx, turnAction = null) {
       error.code = data.code || null;
       throw error;
     }
+    if (viewChanged()) { helpers.loadHistoryList(); return; } // saved; another view is open
 
     state.profile = data.data?.profile || state.profile;
     state.conversationId = data.data?.conversationId || state.conversationId;
@@ -621,6 +628,7 @@ export async function sendMessage(ctx, turnAction = null) {
     if (window.checkSetupProgress) setTimeout(() => window.checkSetupProgress(), 500);
   } catch (err) {
     console.error(err);
+    if (viewChanged()) return;
     const failure = chatFailureDetails(err);
     const failedContent = `\u26a0\ufe0f ${failure.message}\n\n${failure.guidance}`;
     helpers.appendMessage(
@@ -638,8 +646,10 @@ export async function sendMessage(ctx, turnAction = null) {
       model: payload?.model
     });
   } finally {
-    state.sending = false;
-    elements.sendBtn.textContent = 'Send';
+    if (!viewChanged()) {
+      state.sending = false;
+      elements.sendBtn.textContent = 'Send';
+    }
   }
 }
 

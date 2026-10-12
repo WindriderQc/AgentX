@@ -2,8 +2,9 @@
  * Chat history — loadHistoryList, loadConversation, search/filters
  */
 import { sanitizeHTML } from './chat-messaging.js';
+export { initHistorySearch } from './chat-history-search.js';
 
-function renderHistoryState(elements, state, title, detail = '') {
+export function renderHistoryState(elements, state, title, detail = '') {
   const container = elements?.historyList;
   if (!container) return;
   container.innerHTML = '';
@@ -27,6 +28,8 @@ function renderHistoryState(elements, state, title, detail = '') {
 }
 
 export async function loadHistoryList(elements, state) {
+  // While a search or filter is active, refreshes keep showing its results.
+  if (state.historySearch?.active()) return state.historySearch.run();
   renderHistoryState(elements, 'loading', 'Loading conversation history…');
   try {
     const res = await fetch('/api/history');
@@ -44,44 +47,7 @@ export async function loadHistoryList(elements, state) {
       return [];
     }
 
-    data.forEach(item => {
-      const div = document.createElement('div');
-      div.className = 'history-item';
-      if (state.conversationId === item.id) div.classList.add('active');
-
-      let scoreBadge = '';
-      if (item.qualityScore != null) {
-        const color = item.qualityScore >= 80 ? '#22c55e' : item.qualityScore >= 60 ? '#eab308' : item.qualityScore >= 40 ? '#f59e0b' : '#ef4444';
-        scoreBadge = `<span class="quality-badge" style="background:${color};color:#000;padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:700;margin-left:6px;" title="Quality: ${item.qualityScore}/100">${item.qualityScore}</span>`;
-      }
-
-      div.innerHTML = `
-        <div class="history-item-header">
-          <div class="title">${sanitizeHTML(item.title)}${scoreBadge}</div>
-          <div class="history-item-actions">
-            <button class="history-menu-btn ghost" title="More actions" data-id="${item.id}" style="padding:2px 6px;font-size:0.7rem;flex-shrink:0;">
-              <i class="fas fa-ellipsis-v"></i>
-            </button>
-          </div>
-        </div>
-        <div class="date">${new Date(item.date).toLocaleString()}</div>
-      `;
-
-      // Click to load conversation
-      div.querySelector('.title').parentElement.addEventListener('click', (e) => {
-        if (!e.target.closest('.history-menu-btn')) {
-          state._helpers.loadConversation(item.id);
-        }
-      });
-
-      // Context menu button
-      div.querySelector('.history-menu-btn').addEventListener('click', (e) => {
-        e.stopPropagation();
-        showHistoryContextMenu(e.currentTarget, item, state, elements);
-      });
-
-      elements.historyList.appendChild(div);
-    });
+    renderHistoryItems(elements, state, data);
     return data;
   } catch (err) {
     console.error('Failed to load history', err);
@@ -95,6 +61,49 @@ export async function loadHistoryList(elements, state) {
   }
 }
 
+// Renders one row per conversation: { id, title, date, qualityScore? }.
+export function renderHistoryItems(elements, state, data) {
+  elements.historyList.innerHTML = '';
+  data.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'history-item';
+    if (state.conversationId === item.id) div.classList.add('active');
+
+    let scoreBadge = '';
+    if (item.qualityScore != null) {
+      const color = item.qualityScore >= 80 ? '#22c55e' : item.qualityScore >= 60 ? '#eab308' : item.qualityScore >= 40 ? '#f59e0b' : '#ef4444';
+      scoreBadge = `<span class="quality-badge" style="background:${color};color:#000;padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:700;margin-left:6px;" title="Quality: ${item.qualityScore}/100">${item.qualityScore}</span>`;
+    }
+
+    div.innerHTML = `
+      <div class="history-item-header">
+        <button type="button" class="title history-open-btn" aria-current="${state.conversationId === item.id ? 'true' : 'false'}">${sanitizeHTML(item.title)}${scoreBadge}</button>
+        <div class="history-item-actions">
+          <button type="button" class="history-menu-btn ghost" title="More actions" aria-label="More actions" aria-haspopup="menu" data-id="${item.id}" style="padding:2px 6px;font-size:0.7rem;flex-shrink:0;">
+            <i class="fas fa-ellipsis-v" aria-hidden="true"></i>
+          </button>
+        </div>
+      </div>
+      <div class="date">${new Date(item.date).toLocaleString()}</div>
+    `;
+
+    // Click to load conversation
+    div.querySelector('.title').parentElement.addEventListener('click', (e) => {
+      if (!e.target.closest('.history-menu-btn')) {
+        state._helpers.loadConversation(item.id);
+      }
+    });
+
+    // Context menu button
+    div.querySelector('.history-menu-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      showHistoryContextMenu(e.currentTarget, item, state, elements);
+    });
+
+    elements.historyList.appendChild(div);
+  });
+}
+
 function showHistoryContextMenu(btn, item, state, elements) {
   // Remove any existing context menu
   const existing = document.querySelector('.history-context-menu');
@@ -102,35 +111,44 @@ function showHistoryContextMenu(btn, item, state, elements) {
 
   const menu = document.createElement('div');
   menu.className = 'history-context-menu';
+  menu.setAttribute('role', 'menu');
   menu.innerHTML = `
-    <button class="ctx-menu-item" data-action="rename"><i class="fas fa-pen"></i> Rename</button>
-    <button class="ctx-menu-item" data-action="export"><i class="fas fa-download"></i> Export</button>
-    <button class="ctx-menu-item ctx-menu-danger" data-action="delete"><i class="fas fa-trash"></i> Delete</button>
+    <button type="button" role="menuitem" class="ctx-menu-item" data-action="rename"><i class="fas fa-pen" aria-hidden="true"></i> Rename</button>
+    <button type="button" role="menuitem" class="ctx-menu-item" data-action="export"><i class="fas fa-download" aria-hidden="true"></i> Export</button>
+    <button type="button" role="menuitem" class="ctx-menu-item ctx-menu-danger" data-action="delete"><i class="fas fa-trash" aria-hidden="true"></i> Delete</button>
   `;
 
-  // Position near the button
+  // Position near the button, kept inside the viewport.
   const rect = btn.getBoundingClientRect();
   menu.style.position = 'fixed';
   menu.style.top = `${rect.bottom + 4}px`;
-  menu.style.left = `${rect.left - 100}px`;
+  menu.style.left = `${Math.max(8, rect.left - 100)}px`;
   menu.style.zIndex = '9999';
 
   document.body.appendChild(menu);
+  btn.setAttribute('aria-expanded', 'true');
+  menu.querySelector('[role="menuitem"]')?.focus();
 
-  // Close on outside click
+  const dismiss = (restoreFocus) => {
+    menu.remove();
+    btn.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('click', closeMenu);
+    document.removeEventListener('keydown', closeMenu);
+    if (restoreFocus) btn.focus();
+  };
+  // Close on outside click or Escape; Escape returns focus to the button.
   const closeMenu = (e) => {
-    if (!menu.contains(e.target)) {
-      menu.remove();
-      document.removeEventListener('click', closeMenu);
-    }
+    if (e.type === 'keydown' ? e.key !== 'Escape' : menu.contains(e.target)) return;
+    dismiss(e.type === 'keydown');
   };
   setTimeout(() => document.addEventListener('click', closeMenu), 0);
+  document.addEventListener('keydown', closeMenu);
 
   // Actions
   menu.addEventListener('click', async (e) => {
     const action = e.target.closest('[data-action]')?.dataset.action;
     if (!action) return;
-    menu.remove();
+    dismiss(false);
 
     if (action === 'rename') {
       const newTitle = prompt('Rename conversation:', item.title);
@@ -192,7 +210,24 @@ function showHistoryContextMenu(btn, item, state, elements) {
   });
 }
 
+/**
+ * A reply still streaming belongs to the conversation it was sent in. When
+ * the view switches (new chat, another conversation) it is detached: the
+ * request keeps running so the server still saves it, but it no longer
+ * writes into the new view or holds the Send button as Stop.
+ */
+export function detachActiveReply(state, elements) {
+  state.viewEpoch = (state.viewEpoch || 0) + 1;
+  if (!state.streamAbortController && !state.sending) return;
+  state.streamAbortController = null;
+  state.streamStopRequestedController = null;
+  state.sending = false;
+  elements.sendBtn.disabled = false;
+  elements.sendBtn.textContent = 'Send';
+}
+
 export async function loadConversation(id, state, elements, helpers, preserveModelSelection = false) {
+  if (id !== state.conversationId) detachActiveReply(state, elements);
   try {
     const res = await fetch(`/api/history/${id}`);
     if (!res.ok) {

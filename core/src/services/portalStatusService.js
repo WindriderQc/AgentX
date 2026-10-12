@@ -13,7 +13,8 @@
  * so this routes identically to how core already reaches its siblings.
  */
 
-const { createServiceIdentity } = require('../../../shared/serviceIdentity');
+const { createServiceIdentity, SAFE_REVISION } = require('../../../shared/serviceIdentity');
+const { refreshOllamaHealth } = require('./ollamaHealthProbe');
 
 const CORE_VERSION = require('../../package.json').version || '0.0.0';
 const PROBE_TIMEOUT_MS = Number(process.env.PORTAL_HEALTH_TIMEOUT_MS) || 1500;
@@ -84,14 +85,16 @@ function identityFromDetail(detail) {
     if (!/^agentx-[a-z0-9-]+$/.test(source.service)) return null;
     if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(source.version)) return null;
     if (!['demo', 'full'].includes(source.profile)) return null;
-    if (!/^(?:[A-Fa-f0-9]{7,64}|[A-Za-z][A-Za-z0-9_-]{0,127})$/.test(source.revision)) return null;
+    // Accept exactly what services may embed (v1.4.0, release/1.0, 1.4.0-3-gabc…).
+    if (!SAFE_REVISION.test(source.revision)) return null;
     if (!Number.isFinite(Date.parse(source.ts)) || new Date(source.ts).toISOString() !== source.ts) return null;
     return Object.freeze(Object.fromEntries(required.map((key) => [key, source[key]])));
 }
 
 function summarizeIdentityConsistency(services) {
     const identities = services.map((service) => service.identity).filter(Boolean);
-    const missing = services.filter((service) => !service.identity).map((service) => service.id);
+    // A service that is down has no identity to compare; that is an outage, reported as such, not a deployment mismatch.
+    const missing = services.filter((service) => !service.identity && service.status !== 'down').map((service) => service.id);
     const distinct = (key) => [...new Set(identities.map((identity) => identity[key]))];
     const profiles = distinct('profile');
     const versions = distinct('version');
@@ -184,7 +187,18 @@ async function probe(svc, localHealth) {
  * @param {Object} [localHealth] core's in-process systemHealth ({mongodb,ollama})
  * @returns {Promise<Object>} { generated_at, summary, services[] }
  */
-async function getPortalStatus(localHealth) {
+const OLLAMA_STATUS_MAX_AGE_MS = 10000;
+
+// Only GET /health refreshed the Ollama status. Outside Docker nothing calls
+// it, so Home showed Model setup needed forever; a stale status is re-probed.
+async function refreshStaleOllama(localHealth) {
+    const lastCheck = Date.parse(localHealth?.ollama?.lastCheck || '');
+    if (Date.now() - lastCheck < OLLAMA_STATUS_MAX_AGE_MS) return;
+    await refreshOllamaHealth(localHealth).catch(() => {});
+}
+
+async function getPortalStatus(localHealth, { refreshOllama = false } = {}) {
+    if (refreshOllama && localHealth) await refreshStaleOllama(localHealth);
     const services = await Promise.all(SERVICES.map((service) => probe(service, localHealth)));
     const consistency = summarizeIdentityConsistency(services);
     const count = (s) => services.filter((r) => r.status === s).length;

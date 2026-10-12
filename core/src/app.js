@@ -516,7 +516,7 @@ app.get('/api/config', require('../routes/public-config').createPublicConfigHand
 app.get('/api/portal/health', async (_req, res) => {
   try {
     const portalStatusService = require('./services/portalStatusService');
-    const data = await portalStatusService.getPortalStatus(systemHealth);
+    const data = await portalStatusService.getPortalStatus(systemHealth, { refreshOllama: true });
     res.set('Cache-Control', 'no-store');
     res.json(data);
   } catch (err) {
@@ -675,7 +675,7 @@ app.get('/memory-review', (req, res) => {
       '<link rel="stylesheet" href="/styles.css">',
       '<link rel="stylesheet" href="/css/memory-review.css">'
     ].join('\n'),
-    footerJs: '<script src="/js/memory-review.js"></script>'
+    footerJs: '<script src="/js/memory-review-copy.js"></script><script src="/js/memory-review-keys.js"></script><script src="/js/memory-review.js"></script>'
   });
 });
 

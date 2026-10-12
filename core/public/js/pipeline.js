@@ -5,7 +5,7 @@
   const STATUS_ORDER = ['queued', 'in_progress', 'review', 'blocked', 'done'];
   const OPEN_ORDER = { blocked: 0, review: 1, in_progress: 2, queued: 3, done: 4 };
   const STALE_HEARTBEAT_MS = 60 * 60 * 1000;
-  const AUTO_REFRESH_MS = 10 * 1000;
+  const AUTO_REFRESH_MS = 60 * 1000; // matches the Auto-refresh button's promise
   const STORAGE_AUTO = 'agentx.pipeline.autoRefresh';
   const STORAGE_REVIEWER = 'agentx.pipeline.reviewer';
 
@@ -124,6 +124,7 @@
   function normalizedIdentity(value) {
     return String(value || '').trim().toLowerCase().replace(/[_\s]+/g, '-').replace(/[^a-z0-9-]/g, '');
   }
+  const assertIndependentReviewer = (by) => { if (normalizedIdentity(by) === normalizedIdentity(state.drawer.task?.assignee)) throw new Error('The reviewer identity must differ from the worker.'); };
 
   function matchesContext(task) {
     const context = state.context;
@@ -293,12 +294,12 @@
   }
 
   function dueCell(task) {
-    if (task.status === 'done' || !task.dueAt) return '<span class="pipeline-subtle">--</span>';
-    const date = new Date(task.dueAt);
-    if (Number.isNaN(date.getTime())) return '<span class="pipeline-subtle">--</span>';
-    const days = Math.round((date.getTime() - Date.now()) / 86400000);
+    const date = new Date(task.dueAt || NaN);
+    if (task.status === 'done' || Number.isNaN(date.getTime())) return '<span class="pipeline-subtle">--</span>';
+    const startOfDay = (value) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+    const days = Math.round((startOfDay(date) - startOfDay(new Date())) / 86400000); // calendar days, not 24h blocks
     const label = date.toLocaleDateString([], { month: 'short', day: '2-digit' });
-    if (days < 0) return `<span class="pipeline-due overdue" title="Due ${escapeHtml(label)}"><i class="fas fa-circle-exclamation" aria-hidden="true"></i>${Math.abs(days)}d overdue</span>`;
+    if (date.getTime() < Date.now()) return `<span class="pipeline-due overdue" title="Due ${escapeHtml(label)}"><i class="fas fa-circle-exclamation" aria-hidden="true"></i>${days < 0 ? `${-days}d overdue` : 'overdue'}</span>`;
     if (days === 0) return `<span class="pipeline-due today" title="Due ${escapeHtml(label)}"><i class="fas fa-hourglass-half" aria-hidden="true"></i>today</span>`;
     return `<span class="pipeline-due" title="Due ${escapeHtml(label)}">in ${days}d</span>`;
   }
@@ -616,6 +617,7 @@
       renderDrawer(task);
     } catch (error) {
       if (!state.drawer.open || state.drawer.pipelineId !== pipelineId) return;
+      if (title) title.textContent = 'Task unavailable';
       body.innerHTML = `<div class="pipeline-error"><i class="fas fa-circle-exclamation" aria-hidden="true"></i> ${escapeHtml(error.message || error)}</div>`;
     }
   }
@@ -768,6 +770,7 @@
       } else if (action === 'confirm-done') {
         const by = String(new FormData(form).get('by') || '').trim();
         if (!by) return;
+        assertIndependentReviewer(by);
         writeStorage(STORAGE_REVIEWER, by);
         await fetchJson(`/api/pipeline/tasks/${encodeURIComponent(pipelineId)}/status`, {
           method: 'POST',
@@ -779,9 +782,7 @@
         const by = String(data.get('by') || '').trim();
         const reason = String(data.get('reason') || '').trim();
         if (!by || !reason) return;
-        if (normalizedIdentity(by) === normalizedIdentity(state.drawer.task?.assignee)) {
-          throw new Error('The reviewer identity must differ from the worker.');
-        }
+        assertIndependentReviewer(by);
         writeStorage(STORAGE_REVIEWER, by);
         await fetchJson(`/api/pipeline/tasks/${encodeURIComponent(pipelineId)}/feedback`, {
           method: 'POST',
@@ -794,11 +795,10 @@
         toast('success', `Correction requested for task ${pipelineId}; it is back in the guarded queue.`);
         if (state.drawer.task?.automation?.mode === 'review_only') await giveTaskToTeam(pipelineId);
       } else if (action === 'requeue') {
-        const ok = window.confirm(`Release task ${pipelineId} back to the queue? Its worker claim and heartbeat will be cleared.`);
-        if (!ok) return;
+        if (!window.confirm(`Release task ${pipelineId} back to the queue? Its worker claim and heartbeat will be cleared.`)) return;
         await fetchJson(`/api/pipeline/tasks/${encodeURIComponent(pipelineId)}/status`, {
           method: 'POST',
-          body: JSON.stringify({ status: 'queued' })
+          body: JSON.stringify({ status: 'queued', by: readStorage(STORAGE_REVIEWER) || 'pipeline-ui' }) // the audit names who released it
         });
         toast('success', `Task ${pipelineId} released back to the queue.`);
       } else if (action === 'add-note') {
@@ -877,9 +877,9 @@
     renderDispatchControl();
   }
 
-  async function loadTasks({ auxiliary = true } = {}) {
+  async function loadTasks({ auxiliary = true, silent = false } = {}) {
     const version = ++state.taskReadVersion;
-    setLoading(true);
+    if (!silent) setLoading(true);
     state.attention?.refresh();
     if (auxiliary) {
       loadTeamPerformance();
@@ -915,7 +915,7 @@
       state.autoTimer = null;
     }
     if (enabled) {
-      state.autoTimer = window.setInterval(() => { if (!document.hidden) loadTasks({ silent: true }); }, AUTO_REFRESH_MS);
+      state.autoTimer = window.setInterval(() => { if (!document.hidden) loadTasks({ silent: true, auxiliary: false }); }, AUTO_REFRESH_MS); // tasks only: panels keep what the user reads or ticks
     }
     if (btn) {
       btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');

@@ -76,7 +76,7 @@
       // Do not change selections made while the option list was loading.
       const nowSelected = [...$(fields.planningItemIds).selectedOptions].map(option => option.value);
       setRoadmap(data.items || [], nowSelected);
-      $('pipelineRoadmapStatus').textContent = data.items?.length ? 'Optional. Select related items; Ctrl/Cmd selects several on desktop.' : 'No roadmap items yet. You can add them in Planning.';
+      $('pipelineRoadmapStatus').textContent = data.items?.length ? 'Optional. Select related items; Ctrl/Cmd selects several on desktop.' : 'No roadmap items to link. Planning is a frozen reference; leave this empty.';
     } catch {
       if (sourceKey !== openGeneration) return;
       $('pipelineRoadmapStatus').textContent = 'Roadmap is unavailable. Existing links are kept; other task fields can still be saved.';

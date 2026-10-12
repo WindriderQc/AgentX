@@ -43,6 +43,8 @@ window.AgentXModalAccessibility = window.AgentXModalAccessibility || (() => {
       if (!control || control.hidden || control.disabled) return false;
       if (typeof control.getAttribute === 'function' && control.getAttribute('aria-hidden') === 'true') return false;
       if (typeof control.closest === 'function' && control.closest('[hidden], [aria-hidden="true"], [inert]')) return false;
+      // Not rendered (display: none ancestor, closed <details>): Tab skips it too.
+      if (typeof control.getClientRects === 'function' && control.getClientRects().length === 0) return false;
       return true;
     });
   }
@@ -162,8 +164,7 @@ window.ShortcutsHelpModal = window.ShortcutsHelpModal || (() => {
       category: 'General',
       items: [
         { keys: 'Ctrl+/', description: 'Show keyboard shortcuts' },
-        { keys: 'Escape', description: 'Close dialogs and modals' },
-        { keys: 'Ctrl+Shift+B', description: 'Toggle Buddy panel' }
+        { keys: 'Escape', description: 'Close dialogs and modals' }
       ]
     }
   ];
@@ -186,7 +187,7 @@ window.ShortcutsHelpModal = window.ShortcutsHelpModal || (() => {
 
   function configureShortcutTriggers() {
     if (typeof document.querySelectorAll !== 'function') return;
-    document.querySelectorAll('[data-nav-action="show-shortcuts"], #showShortcutsBtn').forEach(trigger => {
+    document.querySelectorAll('[data-nav-action="show-shortcuts"], [data-home-action="show-shortcuts"], #showShortcutsBtn').forEach(trigger => {
       trigger.setAttribute('aria-haspopup', 'dialog');
       trigger.setAttribute('aria-controls', dialogId);
       if (!trigger.hasAttribute('aria-expanded')) trigger.setAttribute('aria-expanded', 'false');
@@ -237,7 +238,7 @@ window.ShortcutsHelpModal = window.ShortcutsHelpModal || (() => {
     if (_isOpen || _isClosing) return;
     const opener = document.activeElement;
     _trigger = opener && typeof opener.matches === 'function'
-      && opener.matches('[data-nav-action="show-shortcuts"], #showShortcutsBtn')
+      && opener.matches('[data-nav-action="show-shortcuts"], [data-home-action="show-shortcuts"], #showShortcutsBtn')
       ? opener
       : null;
     if (_trigger) {

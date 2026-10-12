@@ -388,7 +388,7 @@
       .sort((a, b) => {
         const aTime = a.nextRunAt ? new Date(a.nextRunAt).getTime() : Number.MAX_SAFE_INTEGER;
         const bTime = b.nextRunAt ? new Date(b.nextRunAt).getTime() : Number.MAX_SAFE_INTEGER;
-        return aTime - bTime || a.name.localeCompare(b.name);
+        return aTime - bTime || String(a.name || '').localeCompare(String(b.name || ''));
       })
       .slice(0, 5);
 
@@ -838,7 +838,7 @@
           <div class="agent-ops-drawer-time"><i class="fas fa-forward-step"></i><strong>${esc(item.nextRunAt ? formatDate(item.nextRunAt) : 'No live next-run timestamp')}</strong></div>
         </div>
         <div class="agent-ops-drawer-section">
-          <div class="agent-ops-drawer-label"><span>Last evidence</span><small>${item.lastRun ? timeAgo(item.lastRun) : humanize(item.confidence)}</small></div>
+          <div class="agent-ops-drawer-label"><span>Last evidence</span><small>${esc(item.lastRun ? timeAgo(item.lastRun) : humanize(item.confidence))}</small></div>
           <div class="agent-ops-drawer-time"><i class="fas fa-clock-rotate-left"></i><strong>${esc(item.lastRun ? formatDate(item.lastRun) : item.source || 'Documentation only')}</strong></div>
         </div>
       </section>
@@ -942,13 +942,16 @@
   }
 
   function focusSearch(tab, query) {
-    activateTab(tab, true, false);
+    activateTab(tab, true); // a jump to one item must not stay inside an earlier status preset
     state.query = String(query || '').trim().toLowerCase();
     byId('agentOpsSearch').value = query || '';
     renderCurrentFilteredView();
   }
 
+  let loadInFlight = false;
   async function load() {
+    if (loadInFlight) return; // a manual refresh and the timer must not race
+    loadInFlight = true;
     setLoading(true);
     if (!state.data) setStatus('loading', 'Building the control-plane view…', 'Checking registry and runtime sources.');
     try {
@@ -963,8 +966,7 @@
       availability?.clear();
       state.data = body.data || body;
       renderAll(state.data);
-      activateTab(state.tab, false, false);
-      renderCurrentFilteredView();
+      renderCurrentFilteredView(); // keeps the tab, search and preset the user chose
       const warnings = asArray(state.data.warnings);
       setStatus(
         warnings.length ? 'attention' : 'good',
@@ -979,6 +981,7 @@
           .forEach((id) => { const element = byId(id); if (element) element.innerHTML = empty('Data unavailable.', 'fa-triangle-exclamation'); });
       }
     } finally {
+      loadInFlight = false;
       setLoading(false);
     }
   }
@@ -1111,5 +1114,5 @@
 
   activateTab(window.location.hash.replace('#', '') || 'overview', false);
   load();
-  window.setInterval(load, 60_000);
+  window.setInterval(() => { if (!document.hidden) load(); }, 60_000);
 })();

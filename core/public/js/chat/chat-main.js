@@ -18,7 +18,7 @@ import {
   cancelModelWarmup, handleSendButtonAction
 } from './chat-messaging.js';
 import {
-  loadHistoryList as _loadHistoryList, loadConversation as _loadConversation
+  loadHistoryList as _loadHistoryList, loadConversation as _loadConversation, detachActiveReply, initHistorySearch
 } from './chat-history.js';
 import { initAgentSystem, reapplyAgentModel, updateHeaderBar } from './chat-agents.js';
 import {
@@ -104,7 +104,6 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleConfigBtn: document.getElementById('toggleConfigBtn'),
   };
   const welcomeMarkup = elements.chatWindow?.innerHTML || '';
-  let configDrawerOpener = null;
 
   // Copy defaults so server config can mutate them
   const defaults = { ...DEFAULTS, options: { ...DEFAULTS.options } };
@@ -171,11 +170,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function clearChat({ showToast = true } = {}) {
+    detachActiveReply(state, elements);
     state.history = [];
     state.conversationId = null;
     state.stats = { messages: 0, replies: 0 };
-    // New conversation → the previous reply's routed model no longer applies.
-    state.lastRoutedModel = null;
+    state.lastRoutedModel = null; // the previous reply's routed model no longer applies
     elements.chatWindow.innerHTML = welcomeMarkup;
     state.threadId = `t-${Date.now().toString(36)}`;
     elements.threadId.textContent = state.threadId;
@@ -271,12 +270,10 @@ document.addEventListener('DOMContentLoaded', () => {
     expertStrip?.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
     if (expertStrip) expertStrip.inert = !isOpen;
 
-    if (isOpen) {
-      configDrawerOpener = document.activeElement;
-      elements.configDrawer.focus({ preventScroll: true });
-    } else if (restoreFocus && configDrawerOpener instanceof HTMLElement) {
-      configDrawerOpener.focus({ preventScroll: true });
-    }
+    // A modal dialog: Tab stays inside, Escape closes, focus returns to the opener.
+    const modal = window.AgentXModalAccessibility;
+    if (isOpen) modal?.activate(elements.configDrawer, { initialFocus: elements.configDrawer, onRequestClose: closeConfigDrawer });
+    else modal?.deactivate(elements.configDrawer, { restoreFocus });
   }
 
   // Context-preserving expert controls
@@ -334,7 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (modelBadge) {
       modelBadge.textContent = hostState.mode === 'router'
-        ? `${modeLabel} · automatic`
+        ? `${modeLabel} · ${state.lastRoutedModel || 'automatic'}`
         : (elements.modelSelect?.value || hostState.primaryPin || 'Model not selected');
     }
     if (hostField) hostField.textContent = hostState.mode === 'router' ? 'Server-routed' : currentHostLabel();
@@ -869,8 +866,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ]},
         { category: 'General', items: [
           { keys: 'Ctrl+/', description: 'Show keyboard shortcuts' },
-          { keys: 'Escape', description: 'Close dialogs and modals' },
-          { keys: 'Ctrl+Shift+B', description: 'Toggle Buddy panel' }
+          { keys: 'Escape', description: 'Close dialogs and modals' }
         ]}
       ]);
     }
@@ -951,7 +947,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    const history = await _loadHistoryList(elements, state);
+    initHistorySearch(elements, state); const history = await _loadHistoryList(elements, state);
     if (history && history.length > 0) {
       let loaded = false;
       const candidates = history.slice(0, 5);

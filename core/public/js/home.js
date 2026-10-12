@@ -26,7 +26,7 @@
       row.textContent = (service.label || service.id) + ': ' + (service.status || 'unknown') + latency + issues;
       serviceDetails.appendChild(row);
     }
-    if (!serviceDetails.childElementCount) serviceDetails.textContent = 'Service status not observed.';
+    if (!serviceDetails.childElementCount) serviceDetails.replaceChildren(Object.assign(document.createElement('li'), { textContent: 'Service status not observed.' }));
     const consistency = payload.consistency || {};
     const issues = Array.isArray(consistency.issues) ? consistency.issues : [];
     const ecosystem = payload.summary?.ecosystem || {};
@@ -51,13 +51,15 @@
     const timeout = setTimeout(() => controller.abort(), 8000);
     const options = { credentials: 'same-origin', cache: 'no-store', signal: controller.signal };
     try {
-      const [response, routingResponse] = await Promise.all([
-        fetch('/api/portal/health', options),
-        fetch('/api/models/routing', options).catch(() => null)
+      // Each body is read as soon as it arrives: a slow routing probe hitting
+      // the timeout must not abort a health answer already received.
+      const [payload, routingPayload] = await Promise.all([
+        fetch('/api/portal/health', options).then(response => {
+          if (!response.ok) throw new Error('Status unavailable');
+          return response.json();
+        }),
+        fetch('/api/models/routing', options).then(response => (response.ok ? response.json() : null)).catch(() => null)
       ]);
-      if (!response.ok) throw new Error('Status unavailable');
-      const payload = await response.json();
-      const routingPayload = routingResponse?.ok ? await routingResponse.json() : null;
       if (document.documentElement?.dataset.agentxAccess === 'locked') return;
       const routing = routingPayload?.data || routingPayload;
       const services = Array.isArray(payload.services) ? payload.services : [];
@@ -76,6 +78,9 @@
         present('attention', 'Chat route not observed', 'Open Chat to inspect or choose an installed model.', 'fa-circle-question');
       } else if (!routeReady) {
         present('attention', 'Chat route needs attention', 'Open Chat, then Take the controls to choose an installed model.', 'fa-triangle-exclamation');
+      } else if (services.some(service => service.status === 'down')) {
+        const down = services.filter(service => service.status === 'down').map(service => service.label || service.id).join(', ');
+        present('attention', 'Chat route is available', `${down} not responding; open System details.`, 'fa-triangle-exclamation');
       } else if (!['ok', 'mixed'].includes(payload.consistency?.status)) {
         present('attention', 'Deployment needs attention', 'Open System details to inspect the service versions.', 'fa-triangle-exclamation');
       } else if (payload.summary?.status !== 'ok') {
@@ -85,7 +90,7 @@
       }
     } catch (_error) {
       present('blocked', 'Status not observed', 'The tools still open; refresh to check Agent X again.', 'fa-circle-question');
-      serviceDetails.textContent = 'Service status not observed.';
+      serviceDetails.replaceChildren(Object.assign(document.createElement('li'), { textContent: 'Service status not observed.' }));
       consistencyDetail.textContent = '';
       updated.textContent = 'Not observed';
     } finally {

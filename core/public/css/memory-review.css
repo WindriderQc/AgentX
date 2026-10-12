@@ -217,14 +217,16 @@ kbd { display: inline-grid; min-width: 20px; height: 20px; place-items: center; 
 .mr-audit-list time, .mr-audit-list em { color: rgba(225,231,245,.46); }
 .mr-audit-error { color: #f48181; } .mr-audit-warn { color: #ffbd66; }
 
-.mr-modal-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 20px; background: rgba(5,8,14,.78); backdrop-filter: blur(6px); }
+.mr-modal-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 20px; overflow-y: auto; background: rgba(5,8,14,.78); backdrop-filter: blur(6px); }
 .mr-modal-backdrop[hidden] { display: none; }
-.mr-modal { position: relative; width: min(520px,100%); padding: 25px; border: 1px solid rgba(128,148,190,.36); border-radius: 16px; background: #151d2e; box-shadow: 0 28px 90px rgba(0,0,0,.55); }
+.mr-modal { position: relative; width: min(520px,100%); max-height: calc(100dvh - 40px); overflow-y: auto; padding: 25px; border: 1px solid rgba(128,148,190,.36); border-radius: 16px; background: #151d2e; box-shadow: 0 28px 90px rgba(0,0,0,.55); }
 .mr-modal-close { position: absolute; top: 13px; right: 13px; border: 0; color: rgba(225,231,245,.62); background: transparent; cursor: pointer; font-size: 1rem; }
 .mr-modal-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; color: #a99cff; background: rgba(141,123,255,.14); }
 .mr-modal h2 { margin: 13px 0 5px; font-size: 1.15rem; }
 .mr-modal > p { margin: 0 0 17px; color: rgba(225,231,245,.62); font-size: .8rem; line-height: 1.5; }
 .mr-action-preview { margin: -5px 0 14px; }
+.mr-action-candidate { margin: 0 0 10px; padding: 10px 12px; border-left: 3px solid #a99cff; border-radius: 8px; background: rgba(8,13,23,.58); font-size: .82rem; line-height: 1.5; overflow-wrap: anywhere; }
+.mr-action-candidate b { margin-right: 4px; color: #a99cff; }
 .mr-modal label { display: block; margin: 11px 0; color: rgba(245,247,253,.84); font-size: .76rem; font-weight: 600; }
 .mr-modal label[hidden] { display: none; }
 .mr-modal textarea { width: 100%; margin-top: 6px; padding: 10px; border: 1px solid rgba(128,148,190,.36); border-radius: 9px; color: inherit; background: rgba(8,13,23,.58); resize: vertical; font: inherit; }
