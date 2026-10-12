@@ -91,6 +91,20 @@ Core receives the exact native final answer, including a tool-free reasoning
 answer or a private no-work review of an adequate greeting. The continuity
 catalog advertises `nativeConversation` so an older installation refuses before
 dispatch.
+
+The private guardian-work probe binds the same host run to Core's accepted
+native-mode turn. All guardian tool calls, including deferred actions, are
+blocked while complete Main owns that work. Ordinary conversation still gets
+the guardian's native reply. Legacy turns and background Main do not acquire
+this restriction. A known guardian remains fenced if Core later fails or its
+conversation is erased.
+
+Image tools resolve a background Main's original owner conversation through the
+private, host-bound `native_owner` probe before creating, reading or cancelling
+an operation. The action key still uses the exact native run and tool call.
+`imagex` uses the shared memory plugin's private binding configuration. Ordinary
+owner turns keep their existing image routes; a failed owner probe never starts
+specialist planning or an image submission.
 # Native web consultation budget
 
 For a Core-bound background Main web consultation, the pre-tool hook asks Core

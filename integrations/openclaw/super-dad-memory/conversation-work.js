@@ -1,3 +1,4 @@
+import { createGuardianWorkGuard } from './guardian-work.js';
 // Native identity comes from the host hook, never the model's parameters.
 const key = (context, id) => `${context.sessionKey}:${id}`;
 const household = context => /^[a-z][a-z0-9_-]{0,63}$/.test(context?.agentId || '') && new RegExp(`^agent:${context.agentId}:household:direct:[a-f0-9-]{36}$`).test(context.sessionKey || '');
@@ -22,6 +23,7 @@ export function registerConversationWork(api, { fetchImpl = fetch } = {}) {
       || ['main', 'family'].includes(config.conversationWorkAgentId)) return;
   const nativeCalls = new Map();
   const call = createConversationWorkClient({ baseUrl: config.agentxUrl, token: config.conversationWorkToken, fetchImpl });
+  const guard = createGuardianWorkGuard(call);
   api.on('before_tool_call', async (event, context) => {
     if (!household(context)) return;
     const id = event.toolCallId || context.toolCallId, runId = event.runId || context.runId;
@@ -31,6 +33,8 @@ export function registerConversationWork(api, { fetchImpl = fetch } = {}) {
       nativeCalls.set(key(context, id), native);
       if (nativeCalls.size > 1000) nativeCalls.delete(nativeCalls.keys().next().value);
     }
+    const delegated = await guard(native);
+    if (delegated) return delegated;
     const taskLookup = ['list_personal_tasks', 'agentx__list_personal_tasks', 'personal_briefing',
       'agentx__personal_briefing', 'nestor_briefing'].includes(name)
       || name === 'nestor_context' && (event.toolName === 'tool_call' ? event.params?.args : event.params)?.includeTasks === true;

@@ -7,7 +7,7 @@ const { OWNER, SCOPED, EXCHANGE_SCOPE, ACTIVE, LIMITS, hash, fail, notFound,
 const { createRepository } = require('./repository');
 
 function createConversationWorks({ conversations, tasks, env = process.env, repository = createRepository(), classify = () => false, nativeOnly = () => false, nativeRead = () => false,
-  nativeBudget = () => null, exchangeStore = exchanges, now = () => new Date() } = {}) {
+  nativeBudget = () => null, nativeForeground = () => true, exchangeStore = exchanges, now = () => new Date() } = {}) {
   const repo = repository;
   let wake = () => {};
   const classification = (text, mode) => mode === 'native' ? simple(text) ? 'native_review' : 'native_work'
@@ -210,9 +210,18 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     const row = await repo.get(id);
     if (!row || !['read', 'native'].includes(row.mode) || !['native_read', 'native_work'].includes(row.classification)) return null;
     await session(row.sessionId);
+    const turn = await conversations.getTurn({ ...query(row.sessionId), traceId: row.turnId });
+    if (!turn || hash(turn.inputText) !== row.requestSha256) throw notFound();
     return { authority: 'core.conversation-works', accepted: true, id: row._id,
       sessionId: row.sessionId, turnId: row.turnId, requestSha256: row.requestSha256,
-      state: row.state, resultReady: Boolean(row.result), mode: row.mode };
+      state: row.state, resultReady: Boolean(row.result), mode: row.mode,
+      foreground: row.mode === 'native' && !nativeForeground(turn.inputText) ? 'guardian' : 'acknowledge' };
+  }
+  async function guardianTool(context) {
+    const row = await binding(context, 'guardian');
+    if (row.mode !== 'native') throw notFound();
+    return { authority: 'core.conversation-works', delegated: true, id: row._id, state: row.state,
+      execution: row.result ? 'completed' : ['failed', 'cancelled'].includes(row.state) ? row.state : 'pending' };
   }
   let recoveryCursor;
   async function recover() {
@@ -267,7 +276,9 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       conversationId: row.conversationId, workId: row._id });
   }
   return { repo, intake, retained, prepare, guardianStarted, guardianSettled, binding, request, contextForWorker, readTasks,
-    contextForNative: context => contextForWorker(context, 'boss'),
+    contextForNative: context => contextForWorker(context, 'boss'), guardianTool,
+    nativeOwner: async context => { const row = await binding(context, 'boss');
+      return { authority: 'core.conversation-works', id: row._id, sessionId: row.sessionId }; },
     admitNativeTool: require('./native-budget').createNativeBudget({ repo, conversations, session, query, policy: nativeBudget, now }),
     publish, publishNative: require('./native-results').createNativeResultReceiver({ repo, session, now }),
     recover, finalize, handled, guardianContext, guardianContextWithRefs, taskAcceptance, nativeAcceptance, wake: () => wake(), session, query, eligible: (current, channel) => eligible(current, channel, env), wakeWith: fn => { wake = fn; } };

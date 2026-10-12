@@ -5,8 +5,8 @@ continue while the complete native Nestor Main works in an isolated session.
 In `native` mode, every accepted work request uses Main, including personal tasks,
 reasoning, web, specialists and authorized actions. Capability keywords never
 select a restricted agent. Main retains its installed tools, memory, model,
-permissions and approval contracts. Nestor's short greetings and acknowledgments
-remain on the live guardian, then receive a private Main review.
+permissions and approval contracts. The live guardian continues ordinary
+conversation and support while Main works.
 Nestor remains the single visible identity.
 Core owns acceptance, complete requests, execution metadata, verified task reads,
 structured results and presentation receipts. OpenClaw owns the native agent/tool
@@ -22,9 +22,14 @@ needs the same token in `conversationWorkToken`, and the dedicated agent ID in
 model parameters or browser requests.
 
 Core accepts complete work requests before any model inference. An immediate
-canonical acknowledgment leaves the live guardian session available while Main
-works. Short conversational replies use that guardian before Main reviews them.
-An adequate greeting receives a verified `no_work` disposition, without duplicate
+canonical acknowledgment handles clear work requests. Ordinary dialogue receives
+a real guardian response even while another Main work is active; its request
+still reaches complete Main. Selectors only choose this foreground reply style,
+never the boss's capabilities. The native pre-tool hook fences all tools in the
+exact Core-bound guardian run, so the guardian cannot duplicate Main's work.
+Text, legacy and background Main runs retain their native tools.
+Main can disposition an adequate, completed canonical guardian reply as
+`no_work`, without duplicate
 speech. Other requests receive Main's exact completed native answer, including
 reasoning that needs no tools. Requested task, web and Secretary consultations
 retain their existing requirements for actual same-run tool evidence.
@@ -37,6 +42,11 @@ cannot select another conversation or run, acquire the legacy worker's task or
 publication permissions, or survive conversation erasure. Context is reference
 data, not an extra request or authorization. This does not implement the separate
 intent-amendment or native-approval bridge tracked in #664.
+
+The host-only `native_owner` probe resolves image operations to the original
+canonical owner session. Both `local_image` and `imagex` preserve the actual
+native run/call action identity; their model parameters cannot select an owner.
+An unavailable owner observation stops before specialist planning or submission.
 
 General native work admits at most sixteen parent tool calls and four web calls.
 After the web limit, non-web tools remain available within the total budget.

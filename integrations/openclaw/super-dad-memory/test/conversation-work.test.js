@@ -13,6 +13,8 @@ function setup(fetchImpl) {
   registerConversationWork({ pluginConfig: { agentxUrl: 'http://core.test', conversationWorkAgentId: 'worker',
     conversationWorkToken: 'synthetic-secret-value' }, on(name, hook) { hooks[name] = hook; }, registerTool(value) { factory = value; } },
   { fetchImpl: async (url, options) => {
+    if (JSON.parse(options.body).operation === 'guardian_tool') return { ok: false, status: 404,
+      json: async () => ({ code: 'CONVERSATION_WORK_NOT_FOUND', message: 'No complete-mode guardian' }) };
     posted.push({ url, options, body: JSON.parse(options.body) });
     return fetchImpl ? fetchImpl(posted.at(-1)) : { ok: true, json: async () => ({ ok: true,
       data: { authority: 'core.conversation-works', accepted: true, id: 'a'.repeat(64), state: 'queued', execution: 'pending' } }) };

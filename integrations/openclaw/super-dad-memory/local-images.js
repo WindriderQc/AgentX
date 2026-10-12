@@ -3,6 +3,7 @@ import { readFile, realpath, stat, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { privateOwnerContext } from './store.js';
 import { mediaRoot } from './media.js';
+import { createConversationWorkClient } from './conversation-work.js';
 
 export function imageActionKey(context, toolCallId) {
   if (!context?.sessionKey || !context.runId || !toolCallId) throw new Error('Native session, run and tool-call identities are required');
@@ -11,23 +12,40 @@ export function imageActionKey(context, toolCallId) {
 export function registerLocalImages(api, { fetchImpl = fetch, name = 'local_image', planImage, consultImage } = {}) {
   const nativeCalls = new Map();
   const callKey = (context, id) => `${context.sessionKey}:${id}`;
+  const toolName = event => event.toolName === 'tool_call' ? String(event.params?.id || '').split(':').at(-1) : event.toolName;
   api.on?.('before_tool_call', (event, context) => {
     const id = event.toolCallId || context.toolCallId;
     const runId = event.runId || context.runId;
-    if (event.toolName !== name || !id || !runId || !context.sessionKey) return;
+    if (toolName(event) !== name || !id || !runId || !context.sessionKey) return;
     nativeCalls.set(callKey(context, id), { ...context, runId });
     if (nativeCalls.size > 1000) nativeCalls.delete(nativeCalls.keys().next().value);
   });
   api.on?.('after_tool_call', (event, context) => {
-    if (event.toolName === name) nativeCalls.delete(callKey(context, event.toolCallId || context.toolCallId));
+    if (toolName(event) === name) nativeCalls.delete(callKey(context, event.toolCallId || context.toolCallId));
   });
   api.registerTool(context => {
     if (!privateOwnerContext(context, api.config)) return null;
     const base = api.pluginConfig?.agentxUrl;
     if (!base) return null;
     const householdId = /^agent:main:household:direct:([a-f0-9-]{36})$/.exec(context.sessionKey || '')?.[1];
-    const operationBase = householdId ? `/api/voice-personas/private/sessions/${householdId}/images` : '/api/images/operations';
-    const call = async (route, body) => {
+    const token = api.pluginConfig?.conversationWorkToken
+      || api.config?.plugins?.entries?.['super-dad-memory']?.config?.conversationWorkToken;
+    const owner = token && householdId ? createConversationWorkClient({ baseUrl: base, token, fetchImpl }) : null;
+    const ownerFor = async native => {
+      if (!owner) return householdId;
+      if (!/^resp_[a-f0-9-]{36}$/.test(native.runId || '')) throw new Error('Native image owner binding unavailable');
+      try {
+        const result = await owner('native_owner', native);
+        if (!/^[a-f0-9-]{36}$/.test(result.sessionId || '')) throw new Error('Invalid native image owner');
+        return result.sessionId;
+      } catch (cause) {
+        // Ordinary owner turns are not background works and retain their route.
+        if (cause.statusCode === 404) return householdId;
+        throw cause;
+      }
+    };
+    const call = async (route, body, sessionId = householdId) => {
+      const operationBase = sessionId ? `/api/voice-personas/private/sessions/${sessionId}/images` : '/api/images/operations';
       const r = await fetchImpl(new URL(route === '/status' ? '/api/images/status' : operationBase + route.replace(/^\/operations/, ''), base), {
         method: body === undefined ? 'GET' : 'POST', redirect: 'error', signal: AbortSignal.timeout(30000),
         ...(body !== undefined && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
@@ -50,13 +68,15 @@ export function registerLocalImages(api, { fetchImpl = fetch, name = 'local_imag
       }, required: ['action'], additionalProperties: false },
       async execute(id, params) {
         let result, actionKey, expert;
+        const native = { ...context, ...nativeCalls.get(callKey(context, id)) };
+        const sessionId = ['create', 'status', 'cancel'].includes(params.action) ? await ownerFor(native) : householdId;
         if (params.action === 'profiles') result = await call('/status');
         else if (params.action === 'consult' && consultImage) {
           expert = await consultImage(params.prompt, await call('/status'));
           result = { ok: true, expert };
         }
         else if (params.action === 'create') {
-          actionKey = imageActionKey({ ...context, ...nativeCalls.get(callKey(context, id)) }, id);
+          actionKey = imageActionKey(native, id);
           const references = [];
           for (const name of params.referencePaths || []) {
             const root = await realpath(mediaRoot(process.env, api.pluginConfig?.mediaRoot));
@@ -70,11 +90,11 @@ export function registerLocalImages(api, { fetchImpl = fetch, name = 'local_imag
             const planned = await planImage({ ...request, referenceCount: references.length }, await call('/status'), actionKey);
             request = planned.request; expert = planned.expert;
           }
-          result = await call('/operations', { ...request, actionKey, references });
+          result = await call('/operations', { ...request, actionKey, references }, sessionId);
         } else {
           if (!/^[a-f0-9-]{36}$/.test(params.operationId || '')) throw new Error('An exact image operation id is required');
           result = await call(`/operations/${params.operationId}${params.action === 'cancel' ? '/cancel' : ''}`,
-            params.action === 'cancel' ? {} : undefined);
+            params.action === 'cancel' ? {} : undefined, sessionId);
         }
         if (expert) result.expert = expert;
         if (result.operation) {

@@ -20,7 +20,7 @@ function createNativeResultReceiver({ repo, session, now }) {
       throw fail('CONVERSATION_WORK_NATIVE_RESULT_INVALID', 'The exact completed native answer and tool evidence are required.', 409);
     }
     const receiptId = hash(attempt.id + '\n' + attempt.runId + '\nnative_answer');
-    const noWork = row.classification === 'native_review' && answer.text.trim() === NO_WORK;
+    const noWork = row.mode === 'native' && answer.text.trim() === NO_WORK;
     const result = { kind: noWork ? 'no_work' : 'answer', text: noWork ? '' : answer.text.trim(), receiptIds: [receiptId] };
     const fingerprint = hash(JSON.stringify(result));
     const saved = await repo.mutate(id, async (current, fence) => {

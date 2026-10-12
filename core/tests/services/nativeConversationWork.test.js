@@ -107,8 +107,15 @@ test('native context is a private host-bound route and is revoked on erasure', a
   expect((await request(app).post('/native/work').send(body)).status).toBe(404);
   const read = await request(app).post('/native/work').set('Authorization', 'Bearer ' + env.PERSONAL_CONVERSATION_WORK_TOKEN).send(body);
   expect(read.status).toBe(200); expect(read.body.data.request).toBe('Help me compare these two options.');
+  const owner = await request(app).post('/native/work').set('Authorization', 'Bearer ' + env.PERSONAL_CONVERSATION_WORK_TOKEN)
+    .send({ operation: 'native_owner', context: context(row) });
+  expect(owner.status).toBe(200); expect(owner.body.data.sessionId).toBe(current.sessionId);
+  for (const patch of [{ agentId: 'nestor-worker' }, { runId: 'resp_' + randomUUID() }, { sessionId: current.sessionId }]) {
+    await expect(works.nativeOwner({ ...context(row), ...patch })).rejects.toMatchObject({ statusCode: 404 });
+  }
   await conversations.deleteSession(works.query(current.sessionId));
   await expect(works.contextForNative(context(row))).rejects.toMatchObject({ statusCode: 404 });
+  await expect(works.nativeOwner(context(row))).rejects.toMatchObject({ statusCode: 404 });
   await expect(works.publishNative(row._id, proof(row.attempt))).rejects.toMatchObject({ statusCode: 404 });
 });
 
@@ -195,15 +202,15 @@ test('a lost native response is reconciled by the original Main identity, never 
   expect((await mongoose.connection.collection('conversation_work_dispatch').findOne({ _id: OWNER })).workId).toBeNull();
 });
 
-test('real voice HTTP acknowledges an arbitrary request immediately and keeps the guardian free while complete Main works', async () => {
-  const text = 'Compare the two options we discussed.', turnId = randomUUID();
+test('real voice HTTP acknowledges a clear work request immediately and keeps the guardian free while complete Main works', async () => {
+  const text = 'Regarde mes tâches.', turnId = randomUUID();
   const foreground = jest.fn(async body => ({ text: 'Bonjour ! Je suis disponible.', metadata: { model: 'guardian-model' },
     sessionKey: `agent:main:household:direct:${current.sessionId}`, tools: { status: 'observed', receipts: [] } }));
   const executor = createConversationExecutor({ env, inference: {}, agentClient: foreground });
   const app = await personalHttp(executor);
   const first = await request(app).post(`/sessions/${current.sessionId}/turns/text`)
     .send({ text, turnId, channel: 'voice', stream: true }).timeout(3000);
-  expect(first.status).toBe(200); expect(first.text).toContain('I’m on it');
+  expect(first.status).toBe(200); expect(first.text).toContain('Je m’en occupe');
   expect(foreground).not.toHaveBeenCalled();
   let release, started;
   const held = new Promise(resolve => { release = resolve; }), dispatched = new Promise(resolve => { started = resolve; });
@@ -213,7 +220,7 @@ test('real voice HTTP acknowledges an arbitrary request immediately and keeps th
   continuity.mockImplementation(async req => req.operation === 'agents'
     ? { capabilities: { isolatedWork: true, nativeReadBudget: true, nativeConversation: true } }
     : req.operation === 'work_attempt' ? { runId: req.runId, sessionKey: req.sessionKey }
-      : proof({ runId: req.runId, sessionKey: req.sessionKey }));
+      : proof({ runId: req.runId, sessionKey: req.sessionKey }, 'The completed native answer.', ['list_personal_tasks']));
   const running = works.observer.tick();
   try {
     await Promise.race([dispatched, running.then(() => { throw new Error('Native attempt ended before its dispatch fixture'); })]);
@@ -231,6 +238,53 @@ test('real voice HTTP acknowledges an arbitrary request immediately and keeps th
   const disabled = capability.create({ conversations, env: { ...env, PERSONAL_CONVERSATION_WORK_MODE: 'off' } });
   expect((await createWorkDelivery(disabled).snapshot(current.sessionId)).items.find(item => item.id === row._id).result.text)
     .toBe('The completed native answer.');
+});
+
+test('ordinary conversation gets a real guardian response while Main is busy, and still reaches Main with shared context', async () => {
+  const accepted = await works.intake(input('Compare these options.'));
+  await works.prepare(accepted.row._id, 'Context.');
+  let release, started;
+  const held = new Promise(resolve => { release = resolve; }), dispatched = new Promise(resolve => { started = resolve; });
+  execute.mockImplementation(async body => {
+    await body.onStarted(`agent:main:household:direct:${body.session.sessionId}`, 'resp_' + randomUUID()); started(); await held;
+  });
+  const running = works.observer.tick();
+  try {
+    await Promise.race([dispatched, running.then(() => { throw new Error('Native attempt ended before fixture'); })]);
+    const guardian = jest.fn(async body => {
+      expect((await body.readAcceptedNativeWork()).foreground).toBe('guardian');
+      expect(body.turnDirective).toContain('No tools or second dispatch from the guardian');
+      const runId = 'resp_' + randomUUID(), key = `agent:main:household:direct:${current.sessionId}`;
+      await body.onStarted(key, runId);
+      return { text: 'On reprend tranquillement. Je suis là.', sessionKey: key, runId,
+        metadata: { model: 'guardian-model' }, tools: { status: 'observed', receipts: [] } };
+    });
+    const warmup = { noteTurn() {}, settled: jest.fn(async () => {}) };
+    const app = await personalHttp(createConversationExecutor({ env, inference: {}, agentClient: guardian }), warmup);
+    const turnId = randomUUID(), text = 'Je me suis perdu dans mes réflexions.';
+    const response = await request(app).post(`/sessions/${current.sessionId}/turns/text`).send({ text, turnId, channel: 'voice', stream: true }).timeout(3000);
+    expect(response.status).toBe(200); expect(response.text).toContain('On reprend tranquillement');
+    expect(guardian).toHaveBeenCalledTimes(1); expect(warmup.settled).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenCalledTimes(1);
+    const followup = await works.repo.get(hash(current.sessionId + '\n' + turnId));
+    expect(followup).toMatchObject({ classification: 'native_work', mode: 'native', state: 'queued' });
+    const bound = { agentId: 'main', sessionKey: followup.guardian.sessionKey, runId: followup.guardian.runId };
+    expect(await works.guardianTool(bound)).toMatchObject({ delegated: true, execution: 'pending' });
+    const first = await works.repo.get(accepted.row._id);
+    await expect(works.guardianTool(context(first))).rejects.toMatchObject({ statusCode: 404 });
+    expect((await works.contextForNative(context(first))).recentTurns).toEqual(expect.arrayContaining([
+      expect.objectContaining({ inputText: text, replyText: 'On reprend tranquillement. Je suis là.' })]));
+  } finally { release(); await running; }
+});
+
+test('Main can disposition an adequate conversational guardian answer without duplicating it', async () => {
+  const row = await admitted();
+  const runtime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
+  expect(await runtime.receive({ row, evidence: proof(row.attempt, NO_WORK) })).toBeNull();
+  await conversations.settleTurn({ ...works.query(current.sessionId), traceId: row.turnId, replyText: 'An adequate answer from the guardian.' });
+  expect(await runtime.receive({ row, evidence: proof(row.attempt, NO_WORK) })).toEqual({ published: true });
+  expect((await createWorkDelivery(works).snapshot(current.sessionId)).items[0])
+    .toMatchObject({ resultDisposition: 'no_work', result: null, pending: false });
 });
 
 async function personalHttp(executeConversation, warmup = null) {

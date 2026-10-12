@@ -15,6 +15,7 @@ async function nativeWorkAcknowledgment(request) {
     throw Object.assign(new Error('The accepted consultation cannot be verified. No replacement was dispatched.'),
       { code: 'CONVERSATION_WORK_ACCEPTANCE_UNAVAILABLE', statusCode: 503 });
   }
+  if (work.mode === 'native' && work.foreground === 'guardian') return null;
   const en = scoreSpeechLanguage(text).language === 'en';
   const answer = work.resultReady
     ? en ? 'The consultation result is ready. I’ll present it at the next pause.' : 'Le résultat de la consultation est prêt. Je te le présente à la prochaine pause.'

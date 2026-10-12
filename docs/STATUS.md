@@ -72,7 +72,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   request before inference. Native mode sends all work to complete Main with its
   installed tools, memory, specialists and approval contracts while the guardian
   stays available. Both share canonical Core context; Main can refresh it while
-  working. Short greetings receive Main review without duplicate speech.
+  working. Ordinary dialogue receives a real guardian response while Main runs;
+  its tool work remains exclusively with Main. Adequate replies receive Main
+  review without duplicate speech.
   Legacy read mode uses an isolated worker for bounded task reads and review.
   Conservative mailbox and current public-information
   reads receive an immediate saved-request acknowledgment and use isolated native
