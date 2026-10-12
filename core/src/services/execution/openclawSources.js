@@ -22,7 +22,7 @@ async function openClawModels({ client = createOpenClawExecutionClient() } = {})
     parameterSupport: descriptor.parameterSupport || {},
     chatAllowed: selection.mode === 'agent' || (descriptor.isolation?.singleCallQualified === true && descriptor.billing?.kind !== 'unknown' && (descriptor.billing?.kind !== 'paid' || catalogue.policy?.maxRequestCostNanodollars > 0)), billing: descriptor.billing || { kind: 'unknown' }, origin: descriptor.origin || null,
     executionFingerprint: descriptor.fingerprint, observedAt: catalogue.observedAt, expiresAt: catalogue.expiresAt });
-  return [...catalogue.models.map(model => project({ source: 'openclaw', mode: 'model', model: model.model }, `${model.name} · modèle`, model)),
+  return [...catalogue.models.map(model => project({ source: 'openclaw', mode: 'model', model: model.model }, `${model.name} · model`, model)),
     ...catalogue.agents.map(agent => project({ source: 'openclaw', mode: 'agent', agentId: agent.agentId }, `${agent.name} · agent`, agent))];
 }
 
