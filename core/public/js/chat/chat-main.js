@@ -18,7 +18,7 @@ import {
   cancelModelWarmup, handleSendButtonAction
 } from './chat-messaging.js';
 import {
-  loadHistoryList as _loadHistoryList, loadConversation as _loadConversation, detachActiveReply
+  loadHistoryList as _loadHistoryList, loadConversation as _loadConversation, detachActiveReply, initHistorySearch
 } from './chat-history.js';
 import { initAgentSystem, reapplyAgentModel, updateHeaderBar } from './chat-agents.js';
 import {
@@ -948,7 +948,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    const history = await _loadHistoryList(elements, state);
+    initHistorySearch(elements, state); const history = await _loadHistoryList(elements, state);
     if (history && history.length > 0) {
       let loaded = false;
       const candidates = history.slice(0, 5);

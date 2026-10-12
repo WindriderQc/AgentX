@@ -202,6 +202,7 @@ body {
   gap: 4px;
   margin-top: 4px;
 }
+.tag-chip { padding: 2px 8px; border: 1px solid var(--panel-border); border-radius: 999px; background: var(--panel-bg); color: inherit; font-size: 0.75rem; cursor: pointer; }
 .tags-suggestions {
   position: absolute;
   top: 100%;
