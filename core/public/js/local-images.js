@@ -356,6 +356,8 @@
       $('image-references').dispatchEvent(new Event('change')); $('image-prompt').focus();
     } catch (error) { $('image-status').textContent = error.message; }
   });
+  // Enter in a one-line field (sketch zone, seed, constraint) must not submit: submitting starts a GPU render.
+  $('image-form').addEventListener('keydown', event => { if (event.key === 'Enter' && event.target instanceof HTMLInputElement) event.preventDefault(); });
   $('image-form').addEventListener('submit', async event => {
     event.preventDefault(); if (locked() || !config?.configured) return;
     pendingSubmit = true; controls(); ++draftEpoch;
