@@ -3,10 +3,10 @@
    Chrome and Edge send the microphone audio to the browser vendor's cloud service. */
 (function (root) {
   'use strict';
-  const NOTICE = 'La transcription locale est indisponible. Tu peux utiliser la reconnaissance vocale de ce navigateur à la place.';
-  const DISCLAIMER = 'Attention : dans Chrome et Edge, l’audio du micro est envoyé au service infonuagique de l’éditeur du navigateur et quitte ce réseau local. '
-    + 'Ce choix est mémorisé pour cet espace sur ce navigateur ; tu peux le retirer dans Réglages › Écoute.';
-  const INDICATOR = 'Reconnaissance du navigateur — l’audio peut quitter cet appareil';
+  const NOTICE = 'Local transcription is unavailable. You can use this browser’s speech recognition instead.';
+  const DISCLAIMER = 'Warning: in Chrome and Edge, microphone audio is sent to the browser vendor’s cloud service and leaves this local network. '
+    + 'This choice is remembered for this space on this browser; you can remove it in Settings › Listening.';
+  const INDICATOR = 'Browser recognition — audio may leave this device';
   const MODEL = 'browser-speech-recognition';
 
   // Only an unreachable peer counts: a refused or malformed request is not a reason
@@ -56,7 +56,7 @@
       };
       current.onerror = event => {
         if (!['not-allowed', 'service-not-allowed', 'audio-capture'].includes(event?.error)) return;
-        blocked = 'Ce navigateur a refusé la reconnaissance vocale.'; stopRecognizer(); changed();
+        blocked = 'This browser refused speech recognition.'; stopRecognizer(); changed();
       };
       // Browsers end continuous recognition after silence or a time limit.
       current.onend = () => {
@@ -126,13 +126,13 @@
   function mountSpeechFallbackPanel(fallback, { notice, settings, indicator }, { onConsent = () => {} } = {}) {
     const text = fallback.text, doc = notice.ownerDocument;
     const node = (tag, props = {}) => Object.assign(doc.createElement(tag), props);
-    const accept = node('button', { type: 'button', className: 'button primary', textContent: 'Utiliser la reconnaissance du navigateur' });
-    const later = node('button', { type: 'button', className: 'button', textContent: 'Pas maintenant' });
+    const accept = node('button', { type: 'button', className: 'button primary', textContent: 'Use browser recognition' });
+    const later = node('button', { type: 'button', className: 'button', textContent: 'Not now' });
     const actions = node('div', { className: 'conversation-audio-actions' }); actions.append(accept, later);
     notice.replaceChildren(node('p', { textContent: text.notice }), node('p', { className: 'muted', textContent: text.disclaimer }), actions);
     const toggle = node('input', { type: 'checkbox', id: 'conversationBrowserStt' });
     const label = node('label', { className: 'conversation-toggle' });
-    label.append(toggle, ' Reconnaissance du navigateur si la transcription locale est indisponible');
+    label.append(toggle, ' Browser recognition when local transcription is unavailable');
     const status = node('p', { className: 'muted' });
     settings.replaceChildren(label, node('p', { className: 'muted', textContent: text.disclaimer }), status);
     indicator.textContent = text.indicator;
@@ -142,7 +142,7 @@
     const render = (current = fallback.state()) => {
       settings.hidden = !current.available; notice.hidden = !current.needed; indicator.hidden = !current.running;
       toggle.checked = current.consented;
-      status.textContent = current.blocked || (current.active ? 'Active : la transcription locale est indisponible.' : '');
+      status.textContent = current.blocked || (current.active ? 'Active: local transcription is unavailable.' : '');
     };
     render();
     return render;

@@ -151,7 +151,7 @@ test('the conversation page mentions the slower backup only while it answers', (
   assert.equal(upstreamNotice({ active: 'fallback' }), BACKUP_NOTICE);
   assert.equal(upstreamNotice('primary'), '');
   assert.equal(upstreamNotice(null), '');
-  assert.match(BACKUP_NOTICE, /^Voix de secours \(serveur principal indisponible\) : réponses plus lentes\.$/);
+  assert.match(BACKUP_NOTICE, /^Backup voice \(main server unavailable\): slower replies\.$/);
   assert.equal(composeNotice('', 'primary'), '');
   assert.equal(composeNotice('Voix choisie indisponible : voix de secours.', 'fallback'),
     `Voix choisie indisponible : voix de secours. ${BACKUP_NOTICE}`);
