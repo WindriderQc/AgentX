@@ -422,6 +422,17 @@
       return;
     }
 
+    if (type === 'done' && data.status === 'no-stream') {
+      // The run is not finished, but no orchestrator in this Core process streams it
+      // (restart or another process): show its saved state and check again.
+      try { liveEventSource?.close(); } catch {}
+      liveEventSource = null;
+      showToast('This council has no live stream here; its saved state refreshes every 15 s.', 'info');
+      const id = liveDoc?._id;
+      setTimeout(() => { if (id && liveDoc?._id === id) attachLive(id); }, 15000);
+      return;
+    }
+
     if (type === 'done') {
       setPhase('done');
       if (liveDoc) liveDoc.status = data.status || liveDoc.status;
@@ -432,6 +443,8 @@
       }
       if (data.status === 'failed' || data.status === 'timeout') {
         showToast(`Council ${data.status}: ${data.error || 'unknown error'}`, 'error');
+      } else if (data.status !== 'completed') {
+        showToast(`Council ended: ${data.status || 'unknown status'}`, 'info');
       } else {
         showToast(`Council completed in ${fmtDuration(data.totalDurationMs)}${liveDoc?.qualityScores ? '' : ' — advisory answer ready'}`, 'success');
       }
@@ -579,7 +592,11 @@
             try { handleEvent(ev, JSON.parse(e.data)); } catch {}
           });
         });
-        liveEventSource.onerror = () => { try { liveEventSource.close(); } catch {} };
+        // A dropped connection reloads the saved state and subscribes again.
+        liveEventSource.onerror = () => {
+          try { liveEventSource.close(); } catch {}
+          setTimeout(() => { if (liveDoc?._id === id && ['pending', 'running'].includes(liveDoc.status)) attachLive(id); }, 5000);
+        };
       }
     } catch (err) {
       showToast(`Failed to load Council: ${err.message}`, 'error');
