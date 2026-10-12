@@ -370,6 +370,7 @@ async function createConfigBackup() {
 
   operationInProgress = `config-backup:${tarName}`;
   logger.info('Starting config backup', { tarName });
+  let completed = false;
 
   try {
     const included = [];
@@ -398,17 +399,12 @@ async function createConfigBackup() {
     logger.info('Config backup completed', { tarName, size, included });
 
     const pruned = pruneOld(BACKUP_DIR, (e) => e.isFile() && /^config-.*\.tar\.gz$/.test(e.name));
+    completed = true;
 
-    return {
-      name: tarName,
-      path: tarPath,
-      size,
-      timestamp: new Date().toISOString(),
-      includes: included,
-      pruned
-    };
+    return { name: tarName, path: tarPath, size, timestamp: new Date().toISOString(), includes: included, pruned };
   } finally {
     fs.rmSync(stagingDir, { recursive: true, force: true });
+    if (!completed && fs.existsSync(tarPath)) fs.rmSync(tarPath, { force: true });
     operationInProgress = null;
   }
 }
