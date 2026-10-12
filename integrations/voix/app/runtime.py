@@ -60,7 +60,7 @@ class RuntimeConfig:
             if settings.tts_pocket_only and provider != settings.tts_provider:
                 raise ValueError("This instance uses one synthesis provider; other engines are retired")
             if provider == "voxcpm" and not settings.voxcpm_base_url:
-                raise ValueError("Configure VOXCPM_BASE_URL before selecting VoxCPM2")
+                raise ValueError("Configure VOXCPM_BASE_URL before selecting Pocket TTS")
             return provider
         if key in ("tts_voice_en", "tts_voice_fr"):
             voice = str(value or "").strip()

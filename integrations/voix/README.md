@@ -3,7 +3,7 @@
 This directory holds AgentX's local speech service (historically "VoiX") and its
 optional spoken-controls adapter. The service turns audio into text
 (faster-whisper) and text into audio (Kokoro, Windows SAPI, or an optional
-VoxCPM2 cloned voice) for AgentX Core, on the instance's voice host.
+Pocket TTS cloned voice) for AgentX Core, on the instance's voice host.
 
 It owns no conversation, memory, microphone or speaker. Spoken conversation runs
 in the Household page: the browser captures and plays audio, Core owns the turn
@@ -53,7 +53,7 @@ A synthesis request names its own `tts_provider`, `language` and `voice`; the
 applied choice comes back in `X-Voix-Provider`, `X-Voix-Voice` and
 `X-Voix-Language`. An unavailable cloned-voice worker answers `503` before any audio:
 the caller chooses another voice, the service never substitutes one
-([docs/voxcpm-streaming.md](docs/voxcpm-streaming.md)).
+([docs/pocket-streaming.md](docs/pocket-streaming.md)).
 
 ## Install and start
 

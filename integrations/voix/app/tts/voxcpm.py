@@ -1,7 +1,7 @@
-"""Cancellable LAN streaming client for a warmed cloned-voice worker.
+"""Cancellable LAN streaming client for a warmed Pocket TTS worker.
 
-The worker speaks ``voix-pcm-v1`` and declares its own sample rate: the VoxCPM2
-worker streams 48 kHz, the Pocket TTS worker 24 kHz.
+The module name and VOXCPM settings retain the installed transport contract;
+no VoxCPM model or dependency is used. The worker declares its sample rate.
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ SAMPLE_RATES = (16000, 22050, 24000, 44100, 48000)
 
 def _url() -> str:
     if not settings.voxcpm_base_url:
-        raise ValueError("VOXCPM_BASE_URL is required for VoxCPM2")
+        raise ValueError("VOXCPM_BASE_URL is required for Pocket TTS")
     return settings.voxcpm_base_url.rstrip("/")
 
 
@@ -44,7 +44,7 @@ def preload() -> None:
         data = response.json()
     served = {item.get("id") for item in data.get("voices") or [] if isinstance(item, dict)} or {data.get("voice")}
     if not data.get("ready") or settings.voxcpm_voice not in served:
-        raise RuntimeError("VoxCPM2 worker is not ready with the configured voice")
+        raise RuntimeError("Pocket TTS worker is not ready with the configured voice")
     if settings.tts_pocket_only and data.get("model") != "kyutai/pocket-tts":
         raise RuntimeError("Pocket-only synthesis requires a Pocket TTS worker")
 
@@ -85,7 +85,7 @@ class Decoder:
                 raise ValueError("Incomplete audio stream")
             self.done = True
         elif kind == "error":
-            raise RuntimeError("VoxCPM2 synthesis failed")
+            raise RuntimeError("Pocket TTS synthesis failed")
         else:
             raise ValueError("Unexpected audio stream event")
         return None
@@ -117,7 +117,7 @@ async def stream(text: str, *, voice: str | None = None, language=None, cancel=N
                         if samples is not None:
                             yield samples, decoder.rate, (time.perf_counter() - started) * 1000
                 if not decoder.done:
-                    raise RuntimeError("VoxCPM2 stream ended before completion")
+                    raise RuntimeError("Pocket TTS stream ended before completion")
             finally:
                 if not decoder.done:
                     # An explicit cancellation also covers queued requests and a
@@ -132,7 +132,7 @@ async def stream(text: str, *, voice: str | None = None, language=None, cancel=N
 
 def synthesize(text: str, *, language=None, voice=None):
     async def collect():
-        chunks, rate, elapsed = [], 48000, 0.0
+        chunks, rate, elapsed = [], 24000, 0.0
         async for samples, rate, elapsed in stream(text, voice=voice, language=language):
             chunks.append(samples)
         return np.concatenate(chunks), rate, elapsed

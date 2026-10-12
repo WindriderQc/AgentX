@@ -29,6 +29,9 @@
     "supertest": "^7.2.2"
   },
   "overrides": {
+    "mammoth": {
+      "argparse": "^2.0.1"
+    },
     "glob": "^13.0.6",
     "test-exclude": "^8.0.0",
     "@istanbuljs/load-nyc-config": {

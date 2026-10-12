@@ -6,7 +6,7 @@ import pytest
 
 from app.tts import voxcpm
 from app.tts.pocket_server import stream_voice
-from app.tts.voxcpm_server import LEAD_SILENCE, TAIL_SILENCE, Worker, at_rate, soften_ending
+from app.tts.cloned_voice_worker import LEAD_SILENCE, TAIL_SILENCE, Worker, at_rate, soften_ending
 
 
 class FakeModel:

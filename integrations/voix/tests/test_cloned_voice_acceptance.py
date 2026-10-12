@@ -4,7 +4,7 @@ import json
 import numpy as np
 import pytest
 
-from scripts import voxcpm_ending_acceptance as acceptance
+from scripts import cloned_voice_acceptance as acceptance
 
 
 class FakeResponse:
@@ -32,24 +32,25 @@ class FakeSession:
         return FakeResponse(self.events)
 
 
-def events():
+def events(rate=24000):
     audio = np.array([0.0, 0.2, -0.1], dtype="<f4")
     return [
         {"type": "meta", "protocol": "voix-pcm-v1", "encoding": "f32le", "channels": 1,
-         "sample_rate": 48000, "voice": "sample-voice"},
+         "sample_rate": rate, "voice": "sample-voice"},
         {"type": "audio", "sequence": 1, "samples": 3,
          "pcm": base64.b64encode(audio.tobytes()).decode("ascii")},
         {"type": "done", "frames": 1, "samples": 3, "generation_ms": 500},
     ]
 
 
-def test_acceptance_decodes_complete_stream_without_saving_audio():
-    result = acceptance.collect_stream(FakeSession(events()), "http://localhost", "Bonjour.", "sample-voice")
+@pytest.mark.parametrize("rate", [24000, 48000])
+def test_acceptance_decodes_complete_stream_without_saving_audio(rate):
+    result = acceptance.collect_stream(FakeSession(events(rate)), "http://localhost", "Bonjour.", "sample-voice")
     assert np.allclose(result["audio"], [0.0, 0.2, -0.1])
-    assert result["sample_rate"] == 48000
+    assert result["sample_rate"] == rate
     assert result["first_signal_ms"] is not None
     assert result["generation_ms"] == 500
-    assert acceptance.wav_bytes(result["audio"], 48000)[:4] == b"RIFF"
+    assert acceptance.wav_bytes(result["audio"], rate)[:4] == b"RIFF"
 
 
 @pytest.mark.parametrize("change", [
