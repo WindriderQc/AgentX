@@ -60,7 +60,7 @@ test('an oversized proposal fails visibly instead of dropping protected items', 
   const f = fixture({ ...proposal, prompt: 'x'.repeat(8000) }), session = await f.service.createSession();
   await f.service.accept(session.sessionId, { clientTurnId: randomUUID(), mode: 'plan', message: 'Refine', context: context() });
   const [turn] = await f.settle(session.sessionId);
-  expect(turn.state).toBe('failed'); expect(turn.error).toContain('dépassent'); expect(turn.proposal).toBeUndefined();
+  expect(turn.state).toBe('failed'); expect(turn.error).toContain('exceed'); expect(turn.proposal).toBeUndefined();
 });
 
 test('old consultations and proposal shape remain compatible without protected items', async () => {
