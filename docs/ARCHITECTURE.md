@@ -48,9 +48,10 @@ See [heavy work](HEAVY_WORK_QUEUE.md).
 
 Core's `conversationWorks` capability owns durable personal request intake,
 work revisions, native attempt/session identity, verified task-read references,
-results and ordered delivery events. Household composes its guardian and an
-isolated native worker, plus isolated native owner sessions for migrated specialist
-reads; OpenClaw owns their native loops. A dispatch fence
+results and ordered delivery events. Household composes its guardian and isolated
+native Main sessions for complete personal work, with host-bound refresh of the
+shared Core conversation. Accepted legacy reads retain their restricted worker
+or native Main owner; OpenClaw owns their native loops. A dispatch fence
 precedes the outbound worker request, and uncertain attempts require exact native
 reconciliation. Work payloads use the existing transcript owner's storage and
 erasure barrier. Browser presentation ownership prevents automatic duplicate

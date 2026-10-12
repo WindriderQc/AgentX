@@ -47,7 +47,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   an MQTT message by hand, asking the storage collector for a scan,
   storing the owner's duplicate-review decisions (intent only: no file is deleted),
   generating or deleting a report, editing an IoT device's display name, location
-  and notes, and explicitly sending a GPIO or reboot command. Its IoT tab shows
+  and notes, and explicitly sending a GPIO or reboot command. The IoT controls also save and
+  assign versioned profiles, save daily timers, explicitly publish either to
+  compatible firmware and reconcile uncertain publications against fresh
+  device reports. Daily execution belongs to the device. Its IoT tab shows
   device cards, raw live graphs and sampled history; Système links directly to it.
   It also shows storage growth and Data's
   activity log. The `demo` profile keeps chat,
@@ -68,9 +71,15 @@ Instance configuration, data and deployment receipts remain outside Git.
   Playground, PsyX, personal Nestor and Famille. Their shared editor explains
   resource effects, offers presets and requires an explicit save; Famille
   controls live in the parental space.
-- **Nestor guardian and worker.** Optional personal voice work commits the human
-  request before guardian inference and uses an isolated native worker for
-  bounded task reads and review. Conservative mailbox and current public-information
+- **Nestor guardian and brain.** Optional personal voice work commits the human
+  request before inference. Native mode sends all work to complete Main with its
+  installed tools, memory, specialists and approval contracts while the guardian
+  stays available. Both share canonical Core context; Main can refresh it while
+  working. Ordinary dialogue receives a real guardian response while Main runs;
+  its tool work remains exclusively with Main. Adequate replies receive Main
+  review without duplicate speech.
+  Legacy read mode uses an isolated worker for bounded task reads and review.
+  Conservative mailbox and current public-information
   reads receive an immediate saved-request acknowledgment and use isolated native
   Main web research with durable tool admission limits or Main/Secretary consultation
   while the guardian remains available. Core retains results through reconnect, fences

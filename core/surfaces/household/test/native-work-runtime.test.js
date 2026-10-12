@@ -71,29 +71,34 @@ test('a current web question retains the adult audience and original local date 
   } finally { if (previous === undefined) delete process.env.PLANNING_TIME_ZONE; else process.env.PLANNING_TIME_ZONE = previous; }
 });
 
-test('native research receives all older restrictions, replies and evidence without clipping', async () => {
+for (const mode of ['read', 'native']) test(`${mode} Main receives all older restrictions, replies and evidence before first invocation`, async () => {
   const text = 'Read the synthetic sources.';
   const turns = Array.from({ length: 20 }, (_, index) => ({ traceId: `turn-${index}`, inputText: `Question ${index}`, replyText: `Reply ${index}` }));
   turns[0].inputText += 'x'.repeat(3000) + ' LAST_RESTRICTION';
   turns[0].replyText += 'y'.repeat(3000) + ' LAST_CORRECTION';
   turns[0].toolEvidence = { status: 'observed', receipts: [{ tool: 'synthetic_read', result: 'EXACT_EVIDENCE' }] };
   const runtime = runtimeWithContext({ works: { query: sessionId => ({ sessionId }) },
-    continuity: async () => ({ capabilities: { isolatedWork: true, nativeReadBudget: true } }), conversations: {
+    continuity: async () => ({ capabilities: { isolatedWork: true, nativeReadBudget: true, nativeConversation: true } }), conversations: {
       getTurn: async () => ({ inputText: text, attachments: [] }), readTurns: async () => turns,
       listTurns: () => assert.fail('Research must not select a tail') } });
-  const prepared = await runtime.prepare({ row: { sessionId: 'session', turnId: 'current', requestSha256: hash(text),
+  const prepared = await runtime.prepare({ row: { mode, classification: mode === 'native' ? 'native_work' : 'native_read', sessionId: 'session', turnId: 'current', requestSha256: hash(text),
     attempt: { sessionId: 'work-session', agentId: 'main' } }, session: {}, selectedContext: 'Selected memory only.' });
   for (const turn of turns) { assert.ok(prepared.turnContext.includes(turn.inputText)); assert.ok(prepared.turnContext.includes(turn.replyText)); }
   assert.match(prepared.turnContext, /EXACT_EVIDENCE/); assert.doesNotMatch(prepared.turnContext, /shortened context/);
   assert.match(prepared.turnContext, /"complete":true,"turnCount":20/);
+  if (mode === 'native') {
+    assert.match(prepared.instructions, /complete native Nestor Main/);
+    assert.match(prepared.instructions, /existing permissions and approval contracts/);
+    assert.doesNotMatch(prepared.instructions, /Never send, draft, modify/);
+  }
 });
 
-test('native preparation refuses an oversized conversation instead of dispatching a shortened one', async () => {
+for (const mode of ['read', 'native']) test(`${mode} Main refuses an oversized complete conversation before invocation`, async () => {
   const text = 'Read sources.';
   const runtime = runtimeWithContext({ works: { query: sessionId => ({ sessionId }) },
-    continuity: async () => ({ capabilities: { isolatedWork: true } }), conversations: {
+    continuity: async () => ({ capabilities: { isolatedWork: true, nativeConversation: true } }), conversations: {
       getTurn: async () => ({ inputText: text }), readTurns: async () => [{ inputText: 'x'.repeat(100000) }] } });
-  await assert.rejects(runtime.prepare({ row: { sessionId: 'session', requestSha256: hash(text), attempt: {} }, session: {} }),
+  await assert.rejects(runtime.prepare({ row: { mode, sessionId: 'session', requestSha256: hash(text), attempt: {} }, session: {} }),
     error => error.code === 'CONVERSATION_CONTEXT_REQUIRED');
 });
 
@@ -110,4 +115,10 @@ test('web dispatch requires the native budget hook before inference', async () =
     works: { query: sessionId => ({ sessionId }) }, conversations: {
       getTurn: async () => ({ inputText: text }), listTurns: () => assert.fail('Unbounded dispatch') } });
   await assert.rejects(runtime.prepare({ row: { sessionId: 'session', turnId: 'turn', requestSha256: hash(text) } }), /bounded web consultations/);
+});
+
+test('complete native conversation dispatch requires the matching adapter before invoking a model', async () => {
+  const runtime = nativeWorkRuntime({ continuity: async () => ({ capabilities: { isolatedWork: true, nativeReadBudget: true } }),
+    conversations: { getTurn: () => assert.fail('Old adapter must refuse before dispatch') } });
+  await assert.rejects(runtime.prepare({ row: { mode: 'native' } }), /complete native conversation work/);
 });
