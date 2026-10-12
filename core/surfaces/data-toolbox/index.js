@@ -405,9 +405,9 @@ async function buildStatus() {
   const healthy = Object.values(sources).filter((source) => source.ok).length;
   return {
     extension: 'aio-ops-data-toolbox',
-    version: '1.10.0',
+    version: '1.11.0',
     owner: 'agentx',
-    // Nine write families are relayed: PATCH /network/devices/:mac (name, known flag,
+    // Fifteen write families are relayed: PATCH /network/devices/:mac (name, known flag,
     // type, location, notes), POST /network/scan (one scan request for the
     // collectors), POST /mqtt/publish (one MQTT message sent by hand),
     // POST /storage/scans (ask the native collector to read a source again:
@@ -419,10 +419,10 @@ async function buildStatus() {
     // are POST /reports and DELETE /reports/:filename: a report is a file in
     // Data's own report store, never on the scanned disks, which is what
     // `filesystemMutationsExposed` is about. IoT device metadata and explicit
-    // GPIO/reboot commands are the two additional families (iot-relay.js).
+    // GPIO/reboot commands, profiles, timers and reconciliation compose IoT.
     readOnly: false,
     mutationsExposed: true,
-    writes: ['network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision', 'report-generate', 'report-delete', 'iot-device-update', 'iot-command'],
+    writes: ['network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision', 'report-generate', 'report-delete', 'iot-device-update', 'iot-command', 'iot-profile-save', 'iot-profile-assign', 'iot-profile-apply', 'iot-timer-save', 'iot-timer-apply', 'iot-control-resolve'],
     filesystemMutationsExposed: false,
     dataService: { baseUrl: dataBaseUrl(), healthy, total: entries.length },
     collectorPlacement: collectorPlacement(),
@@ -667,8 +667,8 @@ function register(api) {
 
 module.exports = {
   id: 'aio-ops-data-toolbox',
-  version: '1.10.0',
-  capabilities: ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision', 'report-generate', 'report-delete', 'iot-device-update', 'iot-command'],
+  version: '1.11.0',
+  capabilities: ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision', 'report-generate', 'report-delete', 'iot-device-update', 'iot-command', 'iot-profile-save', 'iot-profile-assign', 'iot-profile-apply', 'iot-timer-save', 'iot-timer-apply', 'iot-control-resolve'],
   register,
   boundedInt,
   pickQuery,

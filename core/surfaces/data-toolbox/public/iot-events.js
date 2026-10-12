@@ -9,12 +9,19 @@ const IOT_EVENTS_SHOWN = 8;
 const IOT_EVENTS_EVERY_MS = 30000;
 const IOT_EVENT_NAMES = Object.freeze({
   'iot.device_first_seen': 'First seen', 'iot.device_online': 'Online', 'iot.device_offline': 'Offline',
-  'iot.device_stale': 'Silent', 'iot.device_recovered': 'Back', 'iot.command_sent': 'Command sent', 'iot.command_failed': 'Command failed'
+  'iot.device_stale': 'Silent', 'iot.device_recovered': 'Back', 'iot.command_sent': 'Command sent', 'iot.command_failed': 'Command failed',
+  'iot.profile_saved': 'Profile saved', 'iot.profile_assigned': 'Profile assigned', 'iot.timer_saved': 'Timers saved',
+  'iot.control_published': 'Configuration published', 'iot.control_not_sent': 'Configuration not sent',
+  'iot.control_uncertain': 'Delivery to check', 'iot.control_acknowledged': 'Configuration reported applied',
+  'iot.control_resolved': 'Attempt checked', 'iot.control_receive_failed': 'Configuration report failed'
 });
 const iotEvents = { device: '', rows: null, total: 0, read: 0, error: '', at: 0, generation: 0 };
 
 function iotEventDetail(event) {
   const meta = event.meta && typeof event.meta === 'object' ? event.meta : {};
+  if (meta.requestId) return `${meta.kind === 'timer' ? `minuterie GPIO ${meta.io}` : 'profil'} · tentative ${meta.requestId}`;
+  if (event.type === 'iot.profile_assigned') return meta.profileName || 'Affectation retirée';
+  if (event.type === 'iot.timer_saved') return `GPIO ${meta.io} · ${meta.enabled ? 'activée' : 'désactivée'}`;
   if (String(event.type).startsWith('iot.command_')) {
     const gpio = Number.isInteger(meta.gpio) ? ` GPIO ${meta.gpio}` : '';
     return `${meta.command || 'command'}${gpio}${meta.topic ? ` → ${meta.topic}` : ''}${meta.error ? ` · ${meta.error}` : ''}`;

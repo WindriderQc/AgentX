@@ -113,8 +113,6 @@ function iotConsumerHtml() {
 /** What the former IoT pages offered and has no backend today. Text only: no control. */
 function iotMissingHtml() {
   return `<details class="card iot-missing"><summary>Not back yet from the former pages</summary><ul>
-    <li><strong>Daily timers per output</strong> (the former "Timerz") — server side: Data keeps no timer and publishes none; device side: only the GPIO ON, GPIO OFF and reboot commands are part of the current contract.</li>
-    <li><strong>Input/output configuration profiles</strong> pushed to the device — server side: Data stores no profile and publishes no configuration; it only notes that a device spoke on <span class="mono">esp32/config</span>.</li>
     <li><strong>Cameras</strong> — server side: Data receives, keeps and relays no image or stream.</li>
     </ul></details>`;
 }

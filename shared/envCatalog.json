@@ -2498,7 +2498,7 @@
       "default": null,
       "category": "household",
       "secret": false,
-      "description": "Dedicated isolated native agent for personal conversation work. Use a new profile with only conversation_work; do not reuse Main, Famille or a specialist."
+      "description": "Dedicated isolated agent for legacy observe/read conversation work. Retain its conversation_work-only profile for accepted legacy attempts; native mode uses complete Main without changing this profile."
     },
     "PERSONAL_CONVERSATION_WORK_MODE": {
       "services": [
@@ -2508,7 +2508,7 @@
       "default": "off",
       "category": "household",
       "secret": false,
-      "description": "Personal Main voice conversation work: off (default), observe (review only), or read (durable worker task reads). Existing accepted modes remain immutable when new intake is disabled."
+      "description": "Personal Main voice conversation work: off (default), observe (legacy review), read (legacy bounded reads), or native (complete Main work and shared-context refresh while the guardian stays available). Accepted modes and native identities remain immutable."
     },
     "PERSONAL_CONVERSATION_WORK_TOKEN": {
       "services": [

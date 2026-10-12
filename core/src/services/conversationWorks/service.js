@@ -3,14 +3,15 @@
 const { randomUUID } = require('node:crypto');
 const exchanges = require('../conversations/exchangeReceipts');
 const { OWNER, SCOPED, EXCHANGE_SCOPE, ACTIVE, LIMITS, hash, fail, notFound,
-  eligible, sessionScope, validateResult } = require('./contract');
+  MODES, nativeWork, simple, eligible, sessionScope, validateResult } = require('./contract');
 const { createRepository } = require('./repository');
 
 function createConversationWorks({ conversations, tasks, env = process.env, repository = createRepository(), classify = () => false, nativeOnly = () => false, nativeRead = () => false,
-  nativeBudget = () => null, exchangeStore = exchanges, now = () => new Date() } = {}) {
+  nativeBudget = () => null, nativeForeground = () => true, exchangeStore = exchanges, now = () => new Date() } = {}) {
   const repo = repository;
   let wake = () => {};
-  const classification = (text, mode) => mode === 'read' && nativeRead(text) ? 'native_read'
+  const classification = (text, mode) => mode === 'native' ? simple(text) ? 'native_review' : 'native_work'
+    : mode === 'read' && nativeRead(text) ? 'native_read'
     : classify(text) ? 'tasks_read' : nativeOnly(text) ? 'native_only' : 'unclassified';
   const query = sessionId => ({ sessionId, ...SCOPED });
   async function session(sessionId) {
@@ -25,7 +26,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     const row = await repo.get(hash(current.sessionId + '\n' + turnId));
     if (row) return row;
     const receipt = await exchangeStore.read(EXCHANGE_SCOPE, hash(EXCHANGE_SCOPE + '\n' + turnId));
-    return receipt?.request?.body?.sessionId === current.sessionId && ['read', 'observe'].includes(receipt.request.body.mode)
+    return receipt?.request?.body?.sessionId === current.sessionId && MODES.includes(receipt.request.body.mode)
       ? { mode: receipt.request.body.mode } : null;
   }
   async function intake({ session: current, turnId, text, attachments = [], channel = 'voice' }) {
@@ -58,7 +59,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     if (typeof context !== 'string' || context.length > LIMITS.context) throw fail('CONVERSATION_WORK_CONTEXT_REQUIRED', 'The selected context exceeds the work budget.', 409);
     const row = await repo.mutate(id, async (current, fence) => current.contextReady ? null : {
       fields: { contextReady: true, contextRef: await repo.payload(current, { selectedContext: context }, fence),
-        state: current.state === 'received' && ['tasks_read', 'native_read'].includes(current.classification) ? 'queued' : current.state }, event: 'context_ready' });
+        state: current.state === 'received' && ['tasks_read', 'native_read', 'native_work'].includes(current.classification) ? 'queued' : current.state }, event: 'context_ready' });
     wake(); return row;
   }
   const guardianStarted = (id, sessionKey, runId) => repo.mutate(id, current => ({
@@ -69,7 +70,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       // original guardian returns. Its exact settlement still owns that intake.
       const nativeIntake = current.classification === 'native_only' && ['received', 'uncertain'].includes(current.state)
         && !current.attempt && !current.result;
-      const nextState = nativeIntake ? state : current.state === 'received' && !['native_only', 'native_read'].includes(current.classification)
+      const nextState = nativeIntake ? state : current.state === 'received' && !['native_only', 'native_read', 'native_work'].includes(current.classification)
         ? state === 'cancelled' ? 'cancelled' : current.contextReady ? 'queued' : current.state : current.state;
       return { fields: { guardian: { ...current.guardian, state }, state: nextState,
         ...(nativeIntake && { reason: '' }) }, event: 'guardian_settled' };
@@ -80,32 +81,34 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
   async function binding(context, role = 'worker') {
     if (!context || Object.keys(context).some(key => !['agentId', 'sessionKey', 'runId'].includes(key))
       || !/^resp_[a-f0-9-]{36}$/.test(context.runId || '')) throw notFound();
-    const rows = await repo.find(role === 'worker'
+    const rows = await repo.find(role !== 'guardian'
       ? { 'attempt.sessionKey': context.sessionKey }
       : { 'guardian.sessionKey': context.sessionKey, 'guardian.runId': context.runId }, 1);
     let row = rows[0];
-    const identity = role === 'worker' ? row?.attempt : row?.guardian;
-    const expected = role === 'worker' ? row?.attempt?.agentId : 'main';
+    const identity = role !== 'guardian' ? row?.attempt : row?.guardian;
+    const expected = role !== 'guardian' ? row?.attempt?.agentId : 'main';
     if (!row || context.agentId !== expected || !identity || identity.sessionKey !== context.sessionKey
       || (identity.runId && identity.runId !== context.runId)) throw notFound();
     await session(row.sessionId);
-    if (role === 'worker' && (row.classification === 'native_read' || !row.attempt || ['failed', 'cancelled'].includes(row.state))) throw notFound();
-    if (role === 'worker' && !identity.runId) row = await repo.mutate(row._id, current => {
+    if (role === 'boss' && (row.mode !== 'native' || !nativeWork(row) || context.agentId !== 'main'
+        || !['running', 'dispatching', 'uncertain'].includes(row.state))) throw notFound();
+    if (role === 'worker' && (nativeWork(row) || !row.attempt || ['failed', 'cancelled'].includes(row.state))) throw notFound();
+    if (role !== 'guardian' && !identity.runId) row = await repo.mutate(row._id, current => {
       if (current.attempt?.runId && current.attempt.runId !== context.runId) throw notFound();
       return { fields: { attempt: { ...current.attempt, runId: context.runId }, state: 'running' }, event: 'native_observed' };
     });
-    if (role === 'worker' && row.state === 'uncertain') row = await repo.mutate(row._id, current => ({
+    if (role !== 'guardian' && row.state === 'uncertain') row = await repo.mutate(row._id, current => ({
       fields: { state: current.result ? 'result_ready' : 'running' }, event: 'native_call_observed' }));
     return row;
   }
   async function request(context) {
     const row = await binding(context, 'guardian');
-    if (row.mode !== 'read') throw fail('CONVERSATION_WORK_OBSERVE_ONLY', 'Observation mode cannot accept a tool lookup.', 409);
+    if (!['read', 'native'].includes(row.mode)) throw fail('CONVERSATION_WORK_OBSERVE_ONLY', 'Observation mode cannot accept a tool lookup.', 409);
     const updated = await repo.mutate(row._id, current => {
       if (current.result || ['failed', 'cancelled', 'completed'].includes(current.state)) {
         return null;
       }
-      if (current.classification === 'tasks_read') return null;
+      if (current.mode === 'native' || current.classification === 'tasks_read') return null;
       return { fields: { classification: 'tasks_read', state: current.contextReady && current.state === 'received' ? 'queued' : current.state }, event: 'read_requested' };
     });
     if (updated.state === 'completed' && !updated.result) throw fail('CONVERSATION_WORK_ALREADY_HANDLED', 'This turn is already handled. No lookup was queued.', 409);
@@ -113,8 +116,8 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       turnId: updated.turnId, state: updated.state, execution: updated.result ? 'completed' : ['failed', 'cancelled'].includes(updated.state) ? updated.state : 'pending',
       result: updated.result ? { version: updated.result.version, deliveryId: updated.delivery.id } : null };
   }
-  async function contextForWorker(context) {
-    const row = await binding(context);
+  async function contextForWorker(context, role = 'worker') {
+    const row = await binding(context, role);
     const turn = await conversations.getTurn({ ...query(row.sessionId), traceId: row.turnId });
     if (!turn || hash(turn.inputText) !== row.requestSha256) throw fail('CONVERSATION_WORK_CONTEXT_UNAVAILABLE', 'The complete canonical request is unavailable.', 503);
     const selected = row.contextRef ? await repo.read(row, row.contextRef) : { selectedContext: '' };
@@ -123,7 +126,8 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       guardianEvidence: turn.toolEvidence ? { authority: turn.toolEvidence.authority, runId: turn.toolEvidence.runId,
         status: turn.toolEvidence.status, receipts: (turn.toolEvidence.receipts || []).slice(-40) } : null, selectedContext: selected.selectedContext,
       attachments: turn.attachments || [], mode: row.mode, classification: row.classification,
-      capabilities: row.mode === 'read' ? ['tasks.personal.list'] : [],
+      ...(role === 'worker' && { capabilities: row.mode === 'read' ? ['tasks.personal.list'] : [] }),
+      ...(role === 'boss' && { nativeOwner: 'main', workContext: await guardianContext(row.sessionId, row._id) }),
       recentTurns: (await conversations.listTurns(query(row.sessionId), { limit: 12, sort: { createdAt: -1 } })).map(turn => ({
         turnId: turn.traceId, outcome: turn.outcome, inputText: turn.inputText.length > 2000 ? turn.inputText.slice(0, 2000) + ' [shortened context; complete turn retained in Core]' : turn.inputText,
         replyText: turn.replyText.length > 2000 ? turn.replyText.slice(0, 2000) + ' [shortened context; complete turn retained in Core]' : turn.replyText })),
@@ -175,7 +179,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
   async function guardianContextWithRefs(sessionId, excludingId) {
     await session(sessionId);
     const rows = await repo.find({ sessionId, classification: { $ne: 'simple' }, 'result.kind': { $ne: 'no_work' },
-      $or: [{ 'result.version': { $exists: true } }, { classification: { $in: ['tasks_read', 'native_read'] } }],
+      $or: [{ 'result.version': { $exists: true } }, { classification: { $in: ['tasks_read', 'native_read', 'native_work'] } }],
       ...(excludingId && { _id: { $ne: excludingId } }) }, 4, { sequence: -1, _id: -1 });
     const useful = rows.filter(row => row.classification !== 'simple' && row.result?.kind !== 'no_work');
     if (!useful.length) return { text: '', refs: [] };
@@ -204,11 +208,20 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
   }
   async function nativeAcceptance(id) {
     const row = await repo.get(id);
-    if (!row || row.mode !== 'read' || row.classification !== 'native_read') return null;
+    if (!row || !['read', 'native'].includes(row.mode) || !['native_read', 'native_work'].includes(row.classification)) return null;
     await session(row.sessionId);
+    const turn = await conversations.getTurn({ ...query(row.sessionId), traceId: row.turnId });
+    if (!turn || hash(turn.inputText) !== row.requestSha256) throw notFound();
     return { authority: 'core.conversation-works', accepted: true, id: row._id,
       sessionId: row.sessionId, turnId: row.turnId, requestSha256: row.requestSha256,
-      state: row.state, resultReady: Boolean(row.result) };
+      state: row.state, resultReady: Boolean(row.result), mode: row.mode,
+      foreground: row.mode === 'native' && !nativeForeground(turn.inputText) ? 'guardian' : 'acknowledge' };
+  }
+  async function guardianTool(context) {
+    const row = await binding(context, 'guardian');
+    if (row.mode !== 'native') throw notFound();
+    return { authority: 'core.conversation-works', delegated: true, id: row._id, state: row.state,
+      execution: row.result ? 'completed' : ['failed', 'cancelled'].includes(row.state) ? row.state : 'pending' };
   }
   let recoveryCursor;
   async function recover() {
@@ -219,7 +232,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       if (item.state !== 'accepted') continue;
       const receipt = await exchangeStore.read(EXCHANGE_SCOPE, item.id);
       const input = receipt?.request?.body;
-      if (!input || !['read', 'observe'].includes(input.mode)) continue;
+      if (!input || !MODES.includes(input.mode)) continue;
       const current = await session(input.sessionId).catch(() => null);
       if (!current) continue;
       const id = hash(input.sessionId + '\n' + input.clientTurnId);
@@ -263,6 +276,9 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       conversationId: row.conversationId, workId: row._id });
   }
   return { repo, intake, retained, prepare, guardianStarted, guardianSettled, binding, request, contextForWorker, readTasks,
+    contextForNative: context => contextForWorker(context, 'boss'), guardianTool,
+    nativeOwner: async context => { const row = await binding(context, 'boss');
+      return { authority: 'core.conversation-works', id: row._id, sessionId: row.sessionId }; },
     admitNativeTool: require('./native-budget').createNativeBudget({ repo, conversations, session, query, policy: nativeBudget, now }),
     publish, publishNative: require('./native-results').createNativeResultReceiver({ repo, session, now }),
     recover, finalize, handled, guardianContext, guardianContextWithRefs, taskAcceptance, nativeAcceptance, wake: () => wake(), session, query, eligible: (current, channel) => eligible(current, channel, env), wakeWith: fn => { wake = fn; } };

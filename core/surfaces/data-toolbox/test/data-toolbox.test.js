@@ -190,10 +190,10 @@ function registeredSurface() {
   return { mounts, routers };
 }
 
-test('manifest identifies the AIOps Data Toolbox contract and its nine write families', () => {
+test('manifest identifies the AIOps Data Toolbox contract and its fifteen write families', () => {
   assert.equal(toolbox.id, 'aio-ops-data-toolbox');
-  assert.equal(toolbox.version, '1.10.0');
-  assert.deepEqual(toolbox.capabilities, ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision', 'report-generate', 'report-delete', 'iot-device-update', 'iot-command']);
+  assert.equal(toolbox.version, '1.11.0');
+  assert.deepEqual(toolbox.capabilities, ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision', 'report-generate', 'report-delete', 'iot-device-update', 'iot-command', 'iot-profile-save', 'iot-profile-assign', 'iot-profile-apply', 'iot-timer-save', 'iot-timer-apply', 'iot-control-resolve']);
   assert.throws(() => toolbox.register({ contractVersion: 1 }), /contract v2/);
 });
 
@@ -210,7 +210,7 @@ test('query projection keeps only allowlisted, bounded values', () => {
   assert.throws(() => toolbox.safeName('../private', 'collection'), /Invalid collection/);
 });
 
-test('registration mounts the cockpit, GET proxy families and exactly nine write families', () => {
+test('registration mounts the cockpit, GET proxy families and exactly fifteen write families', () => {
   const { mounts, routers } = registeredSurface();
   const appPaths = mounts.map((entry) => entry.path);
   assert.ok(appPaths.includes('/assets/data-toolbox'));
@@ -223,10 +223,10 @@ test('registration mounts the cockpit, GET proxy families and exactly nine write
   assert.deepEqual(routes.filter((route) => route.method !== 'get').map((route) => `${route.method} ${route.path}`),
     ['post /storage/scans', 'post /network/scan', 'patch /network/devices/:mac', 'post /mqtt/publish',
       'put /janitor/review-decisions/:sha256', 'post /janitor/review-decisions/batch', 'delete /janitor/review-decisions/:sha256',
-      'post /reports', 'delete /reports/:filename', 'patch /iot/devices/:id', 'post /iot/devices/:id/commands'],
+      'post /reports', 'delete /reports/:filename', 'patch /iot/devices/:id', 'post /iot/devices/:id/commands', 'put /iot/profiles/:name', 'put /iot/devices/:id/profile', 'post /iot/devices/:id/profile/apply', 'put /iot/devices/:id/timers/:io', 'post /iot/devices/:id/timers/:io/apply', 'post /iot/devices/:id/operations/:requestId/resolve'],
     'the only mutations are a storage scan request, a network scan request, the edit of a network device record, publishing an MQTT message, the three writes of a Janitor review decision (store, import, remove), and generating or deleting a report');
   // No approval, preview or execution route of the janitor is relayed, under any method.
-  assert.deepEqual(routes.filter((route) => /approve|reject|preview|apply|execute|\/run$/.test(route.path)), []);
+  assert.deepEqual(routes.filter((route) => !route.path.startsWith('/iot/') && /approve|reject|preview|apply|execute|\/run$/.test(route.path)), []);
   for (const route of [
     '/status', '/storage/summary', '/storage/files', '/storage/scans/:scanId', '/storage/cleanup', '/storage/directory-count', '/network/devices', '/network/scan-requests/:id',
     '/hardware/collectors', '/hardware/latest', '/hardware/history', '/hardware/occupancy',
@@ -371,11 +371,11 @@ test('browser bundle keeps all operator domains and explicit guardrails', () => 
   // list behind a disclosure: every write family of the manifest is named
   // there, each with its own explanation, and nothing else is listed.
   const guardrail = html.match(/<section class="guardrail" role="note"[^>]*>([\s\S]*?)<\/section>/)[1];
-  assert.match(guardrail, /<details>\s*<summary><strong>No filesystem actions\.<\/strong> <span>This page can send nine kinds of change to Data\.<\/span>/);
+  assert.match(guardrail, /<details>\s*<summary><strong>No filesystem actions\.<\/strong> <span>This page can send fifteen kinds of change to Data\.<\/span>/);
   assert.doesNotMatch(guardrail, /<details open/);
   const listed = [...guardrail.matchAll(/<li data-write="([a-z-]+)">([^<]+)<\/li>/g)].map((match) => [match[1], match[2]]);
   const families = toolbox.capabilities.filter((capability) => !['data-toolbox-ui', 'data-readonly-projection'].includes(capability));
-  assert.equal(families.length, 9);
+  assert.equal(families.length, 15);
   assert.deepEqual(listed.map(([family]) => family), families);
   assert.deepEqual(Object.fromEntries(listed), {
     'network-device-update': "a network device's record (name, known flag, type, location, notes);",
@@ -386,18 +386,24 @@ test('browser bundle keeps all operator domains and explicit guardrails', () => 
     'report-generate': 'the generation of a report from the Storage tab;',
     'report-delete': 'the deletion of a report from the Storage tab;',
     'iot-device-update': 'an IoT device’s display name, location and notes;',
-    'iot-command': 'an explicit GPIO ON/OFF or reboot command from the IoT tab.'
+    'iot-command': 'an explicit GPIO ON/OFF or reboot command from the IoT tab;',
+    'iot-profile-save': 'the creation or editing of an IoT configuration profile in Data;',
+    'iot-profile-assign': 'the assignment of a profile version to an IoT device, without sending it;',
+    'iot-profile-apply': 'the explicit publication of that profile to the device;',
+    'iot-timer-save': 'daily output timers saved in Data, without sending them;',
+    'iot-timer-apply': 'the explicit publication or disabling of a daily timer on the device;',
+    'iot-control-resolve': 'the reconciliation of an uncertain application against a fresh device report, without sending anything.'
   });
-  assert.match(guardrail, /<p>This page sends nine kinds of change to Data:<\/p>\s*<ol>/);
+  assert.match(guardrail, /<p>This page sends fifteen kinds of change to Data:<\/p>\s*<ol>/);
   assert.match(guardrail, /<p>A report is a file in Data's own report store, never on the scanned disks\.<\/p>/);
   // The Overview repeats the page's own list in full, from the same element.
   assert.match(guardrail, /<div id="guardrailDetail"/);
   assert.match(app, /document\.querySelector\('#guardrailDetail'\)\?\.innerHTML/);
   assert.match(app, /<h3>What this page can change<\/h3>\$\{detail\}/);
-  assert.match(html, /Preview, apply, move and delete endpoints are not exposed here/);
+  assert.match(html, /Janitor preview, apply, move and delete endpoints are not exposed here/);
   assert.doesNotMatch(html, /Storage scan, preview/);
   assert.doesNotMatch(html, /The only change this page sends/);
-  assert.match(app, /Write routes<\/span><strong>11 in 9 families · network device record, network scan request, MQTT publish, storage scan request, Janitor review decisions \(save, import, remove\), report generation, report deletion, IoT device record, IoT command</);
+  assert.match(app, /Write routes<\/span><strong>17 in 15 families · network device record, network scan request, MQTT publish, storage scan request, Janitor review decisions \(save, import, remove\), report generation, report deletion, IoT device record, IoT command, IoT profile save\/assign\/apply, IoT timer save\/apply, IoT application reconciliation</);
   assert.match(css, /@media \(max-width: 620px\)/);
 });
 

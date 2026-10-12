@@ -32,6 +32,7 @@ const backfill = require('./backfill');
 const history = require('./history');
 const commands = require('./commands');
 const defaultActivity = require('./activity');
+const { createControls } = require('./controls');
 
 const TICK_MS = 5_000;
 const ROLLUP_INTERVAL_MS = 5 * MINUTE_MS;
@@ -46,6 +47,7 @@ function httpError(statusCode, message) {
 function createIot({ now = () => new Date(), activity = defaultActivity, monitor: defaultMonitor = null } = {}) {
   let db = null;
   let registry = null;
+  let controls = null;
   let loading = null;
   let monitor = defaultMonitor;
   let aggregator = createMinuteAggregator();
@@ -90,7 +92,17 @@ function createIot({ now = () => new Date(), activity = defaultActivity, monitor
     db = database;
     registry = createRegistry({ bootAt: now(), emit: onRegistryEvent });
     const mine = registry;
-    loading = mine.load(database).then(() => mine, (error) => { loading = null; db = null; throw error; });
+    loading = mine.load(database).then(() => {
+      controls = createControls({ db: database, monitor: {
+        status: () => monitor?.status?.(), publish: body => monitor.publish(body)
+      }, now,
+        deviceOr404: async id => {
+          const device = topics.isDeviceId(id) ? mine.get(id) : null;
+          if (!device) throw httpError(404, 'Unknown IoT device');
+          return mine.toPublic(device, now());
+        }, seen: id => mine.seen(id, now()) });
+      return mine;
+    }, (error) => { loading = null; db = null; throw error; });
     return loading;
   }
 
@@ -106,6 +118,8 @@ function createIot({ now = () => new Date(), activity = defaultActivity, monitor
    */
   function handleMessage(topic, payload, packet = {}) {
     if (!registry) return '';
+    const controlled = controls?.handleMessage(topic, payload, packet);
+    if (controlled !== null && controlled !== undefined) return controlled ? refuse(controlled) : '';
     const parsed = topics.parseTopic(topic);
     if (parsed.kind === 'ignored') return '';
     counters.messages += 1;
@@ -266,6 +280,7 @@ function createIot({ now = () => new Date(), activity = defaultActivity, monitor
     if (removeListener) removeListener();
     removeListener = null;
     consuming = false;
+    if (controls) await controls.drain();
     if (!registry || !db) return;
     await writeBuckets(takeBuckets('takeAll'));
     try { await registry.persist(db, { all: true }); }
@@ -378,9 +393,10 @@ function createIot({ now = () => new Date(), activity = defaultActivity, monitor
   return {
     ready, start, stop, tick, maintain, handleMessage, status,
     listDevices, getDevice, patchDevice, readHistory, readLive, sendCommand,
+    control: async database => { await ready(database); return controls; },
     isConsuming: () => consuming,
     _reset() {
-      db = null; registry = null; loading = null;
+      db = null; registry = null; loading = null; controls = null;
       aggregator = createMinuteAggregator(); legacyData = createMinuteAggregator(); legacyAlive = createMinuteAggregator();
       pending = []; resetCounters();
     }

@@ -1,25 +1,27 @@
 'use strict';
 
 const { randomUUID } = require('node:crypto');
-const { hash, fail, notFound, LIMITS } = require('./contract');
+const { hash, fail, notFound, LIMITS, nativeWork, NO_WORK } = require('./contract');
 
 // Trusted native adapter only: this is deliberately absent from the model and
 // browser routes. The original attempt owns its final transcript and receipts.
 function createNativeResultReceiver({ repo, session, now }) {
   return async function publishNative(id, evidence) {
     const row = await repo.get(id);
-    if (!row || row.classification !== 'native_read' || !row.attempt) throw notFound();
+    if (!row || !nativeWork(row) || row.attempt?.agentId !== 'main') throw notFound();
     await session(row.sessionId);
     const { attempt } = row, { run, answer, toolChecks } = evidence || {};
-    if (run?.runId !== attempt.runId || run.sessionKey !== attempt.sessionKey || run.status !== 'completed'
+    if (evidence?.ok !== true || evidence.authority !== 'openclaw.nestor' || evidence.operation !== 'turn'
+        || run?.runId !== attempt.runId || run.sessionKey !== attempt.sessionKey || run.status !== 'completed'
         || answer?.runId !== attempt.runId || answer.status !== 'ready' || evidence.answerObservation !== undefined
         || typeof answer.text !== 'string' || !answer.text.trim() || answer.text.length > LIMITS.result
         || toolChecks?.status !== 'observed' || toolChecks.runId !== attempt.runId
-        || !Array.isArray(toolChecks.completedTools) || !toolChecks.completedTools.length || toolChecks.loop) {
+        || !Array.isArray(toolChecks.completedTools) || row.classification === 'native_read' && !toolChecks.completedTools.length || toolChecks.loop) {
       throw fail('CONVERSATION_WORK_NATIVE_RESULT_INVALID', 'The exact completed native answer and tool evidence are required.', 409);
     }
     const receiptId = hash(attempt.id + '\n' + attempt.runId + '\nnative_answer');
-    const result = { kind: 'answer', text: answer.text.trim(), receiptIds: [receiptId] };
+    const noWork = row.mode === 'native' && answer.text.trim() === NO_WORK;
+    const result = { kind: noWork ? 'no_work' : 'answer', text: noWork ? '' : answer.text.trim(), receiptIds: [receiptId] };
     const fingerprint = hash(JSON.stringify(result));
     const saved = await repo.mutate(id, async (current, fence) => {
       if (current.attempt?.id !== attempt.id || current.attempt.runId !== attempt.runId) throw notFound();

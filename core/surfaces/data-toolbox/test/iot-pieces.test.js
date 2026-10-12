@@ -83,14 +83,14 @@ const open = async (store = {}, storage) => { const page = browser(fakeData(stor
 const posts = page => page.requests.filter(call => call.method !== 'GET');
 const memory = (initial = {}) => { const saved = new Map(Object.entries(initial)); return { saved, getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) }; };
 
-test('the page loads the added scripts before the tab and keeps the write list at nine', () => {
+test('the page loads the added scripts before the tab and keeps the write list complete', () => {
   const html = fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8');
   for (const file of ['iot-fleet.js', 'iot-commands.js', 'iot-events.js']) {
     assert.ok(html.indexOf(`/assets/data-toolbox/${file}`) > 0 && html.indexOf(`/assets/data-toolbox/${file}`) < html.indexOf('/assets/data-toolbox/iot.js'), file);
   }
   assert.match(html, /iot-pieces\.css/);
-  assert.match(html, /This page can send nine kinds of change to Data/);
-  assert.equal((html.match(/data-write="/g) || []).length, 9);
+  assert.match(html, /This page can send fifteen kinds of change to Data/);
+  assert.equal((html.match(/data-write="/g) || []).length, 15);
   assert.doesNotMatch(html, /https?:\/\/(?!www\.w3\.org)/, 'no external address, no CDN');
   for (const file of fs.readdirSync(PUBLIC).filter(name => /^iot.*\.js$/.test(name))) {
     assert.doesNotMatch(fs.readFileSync(path.join(PUBLIC, file), 'utf8'), /\b(alert|confirm|prompt)\s*\(/, `${file} opens no native dialog`);
@@ -469,9 +469,9 @@ test('the "not back yet" note is collapsed text with no control', async () => {
   const note = page.iotMissingHtml();
   assert.match(note, /^<details class="card iot-missing"><summary>Not back yet from the former pages<\/summary>/);
   assert.doesNotMatch(note, /<details[^>]* open/);
-  assert.equal((note.match(/<li>/g) || []).length, 3);
-  assert.match(note, /Daily timers per output.*Timerz.*server side.*device side/s);
-  assert.match(note, /Input\/output configuration profiles.*server side/s);
+  assert.equal((note.match(/<li>/g) || []).length, 1);
+  assert.doesNotMatch(note, /Daily timers per output/);
+  assert.doesNotMatch(note, /configuration profiles/);
   assert.match(note, /Cameras.*server side/s);
   assert.doesNotMatch(note, /<button|<a |<input|<select|data-iot-/);
   assert.ok(page.elements['#content'].innerHTML.includes(note));

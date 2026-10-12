@@ -149,6 +149,7 @@ function iotSelect(id) {
   iotState.keys = array(iotDevice()?.measures).slice(0, 6).map(measure => measure.key);
   iotState.feedback = '';
   iotCommandDisarm(); iotCommand.outcome = null;
+  if (typeof iotConfigurationReset === 'function') { iotConfigurationReset(); iotConfigurationLoad(); }
   iotPaint('#iotFeedback', '');
   iotPaint('#iotCards', iotCards());
   iotPaint('#iotRegistry', iotRegistryHtml());
@@ -164,6 +165,7 @@ async function iotSnapshot() {
 }
 
 async function iotTab() {
+  if (typeof iotConfigDisarm === 'function') iotConfigDisarm();
   const seq = state.renderSeq;
   const snapshot = await iotSnapshot();
   if (seq !== state.renderSeq || state.tab !== 'iot') return;
@@ -179,6 +181,7 @@ async function iotTab() {
     <div class="iot-section-title"><div><p class="iot-eyebrow">TELEMETRY</p><h3>Readings over time</h3></div><span class="iot-section-hint">All readings on the same time axis.</span></div>
     <section id="iotControls"></section><section id="iotSeries" aria-label="Reading charts"></section>
     <p id="iotFeedback" class="iot-feedback" role="status"></p><section id="iotActions"></section>
+    <section id="iotConfiguration" aria-label="Profiles and timers"></section>
     <section id="iotEvents" aria-label="Device events"></section>
     <section id="iotConsumer">${iotConsumerHtml()}</section><section id="iotMissing">${iotMissingHtml()}</section></div>`;
   const selected = iotState.devices.some(device => device.id === iotState.selected) ? iotState.selected : iotState.devices[0]?.id;
@@ -186,6 +189,7 @@ async function iotTab() {
     if (selected !== iotState.selected || !iotState.keys.length) await iotSelect(selected);
     else {
       iotPaint('#iotControls', iotControls()); iotPaint('#iotActions', iotActionsHtml()); iotLoadEvents(); await iotLoadSeries();
+      if (typeof iotConfigurationLoad === 'function') await iotConfigurationLoad();
     }
   } else iotPaint('#iotSeries', '<p class="iot-empty">Charts will appear with the first readings.</p>');
   if (seq !== state.renderSeq || state.tab !== 'iot') return;
@@ -194,7 +198,8 @@ async function iotTab() {
 }
 
 const iotRefresher = tabRefresher({ tab: 'iot', everyMs: 2000, stamp: 'iotRefresh', holds: true,
-  ready: () => iotState.loaded, blocked: () => iotState.pending ? 'an action is in progress' : iotCommand.armed ? 'a command is awaiting confirmation' : '',
+  ready: () => iotState.loaded, blocked: () => iotState.pending ? 'an action is in progress' : iotCommand.armed ? 'a command is awaiting confirmation'
+    : typeof iotConfiguration !== 'undefined' && iotConfiguration.armed ? 'a configuration is awaiting confirmation' : '',
   async read() {
     const generation = iotState.generation;
     const snapshot = await iotSnapshot();
@@ -202,7 +207,8 @@ const iotRefresher = tabRefresher({ tab: 'iot', everyMs: 2000, stamp: 'iotRefres
       ? await iotSafe(iotReadSeries()) : null;
     const selected = iotState.selected;
     const events = selected && Date.now() - iotEvents.at >= IOT_EVENTS_EVERY_MS ? await iotSafe(iotReadEvents(selected)) : null;
-    return { ...snapshot, series, generation, events, selected };
+    const configuration = selected && typeof iotConfiguration !== 'undefined' ? await iotSafe(api(`${iotPath(selected)}/controls`)) : null;
+    return { ...snapshot, series, generation, events, selected, configuration };
   },
   apply(answer) {
     if (answer.generation !== iotState.generation) return { warning: 'Chart selection changed.' };
@@ -217,6 +223,9 @@ const iotRefresher = tabRefresher({ tab: 'iot', everyMs: 2000, stamp: 'iotRefres
     iotPaint('#iotConsumer', iotConsumerHtml());
     if (!answer.devices.error) iotPaint('#iotRegistry', iotRegistryHtml());
     if (answer.events) { iotApplyEvents(answer.selected, answer.events); iotPaint('#iotEvents', iotEventsHtml()); }
+    if (answer.configuration && answer.selected === iotState.selected && !answer.configuration.error) {
+      iotConfiguration.data = answer.configuration.data; iotPaint('#iotConfiguration', iotConfigurationHtml());
+    }
     if (!answer.devices.error) iotPaint('#iotCount', number(iotState.devices.length));
     iotPaint('#iotCards', answer.devices.error ? `<p class="notice warning">${e(answer.devices.error)}</p>` : iotCards());
     if (!iotDevice() && iotState.devices.length && !answer.devices.error) iotSelect(iotState.devices[0].id);

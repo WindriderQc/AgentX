@@ -11,7 +11,7 @@ routes and the MQTT tab the three `/api/v1/mqtt` routes described below. The
 Activity tab and the Overview's recent-activity card read `GET /api/v1/events`;
 the Storage tab's Growth view reads `GET /api/v1/storage/trends` and its
 Reports view the `/api/v1/exports` routes. The Toolbox reads, with
-nine kinds of write: a network device's record (`PATCH /api/v1/network/devices/:id`:
+fifteen kinds of write: a network device's record (`PATCH /api/v1/network/devices/:id`:
 name, known flag, type, location, notes), a network scan request
 (`POST /api/v1/network/scan`, followed through
 `GET /api/v1/network/scan-requests/:id`), an MQTT message published by
@@ -23,7 +23,7 @@ that deletes no file), the generation (`POST /api/v1/exports/generate`,
 with a type and a format and nothing else) and the deletion
 (`DELETE /api/v1/exports/:filename`) of a report, a file in Data's own report
 store, an IoT device's owner metadata, and an explicit GPIO or reboot command
-([IoT devices](#iot-devices-and-sensor-history)). The Toolbox does not relay
+([IoT devices](#iot-devices-and-sensor-history)), saving and assigning an IoT profile, explicitly applying that profile, saving and explicitly applying a daily timer, and reconciling an uncertain application against a fresh device report. The Toolbox does not relay
 `POST /api/v1/events` or the event stream. Data stores the network device fields as given, with no length limit of its own:
 the Toolbox relay bounds them (name and location 80 characters, notes 500, a
 fixed list of types). A collector sweep rewrites only what it observed (IP,
@@ -591,6 +591,102 @@ A published command is not a confirmed action: the device answers nothing,
 only switches a GPIO configured as a digital output, and an offline device
 never receives it. Like the MQTT routes, these have no login of their own.
 
+### Profiles and daily output timers
+
+Data owns versioned profiles, device assignments and publication receipts. The
+firmware owns execution of daily timers; Data has no output scheduler. Core
+relays the bounded HTTP routes and shows desired settings separately from the
+latest firmware report. Existing devices are not enrolled automatically.
+
+The wire contract below is shared with iYak32. All control publications are
+QoS 0 and **not retained**. A disconnected broker refuses immediately, with no
+queue or reconnect retry. Saving a profile, assignment or timer sends nothing.
+Editing a profile never changes an assignment: assignments freeze its version.
+
+| Topic | Sender → receiver | Payload and behavior |
+|---|---|---|
+| `esp32/config` | device → Data | device ID alone, not JSON; Data answers only an explicitly enrolled assignment, once per reported boot, with fresh version-1 state and an online device; firmware requests only when its local `isConfigFromServer` flag is enabled; retained requests are ignored |
+| `esp32/<device>/configIOs` | Data → device | legacy JSON array `[{io, mode, lbl, isA, name}]`; validate the whole patch before saving/applying; preserve unrelated local pins and polarity; `io` integer 0–48, `mode` IN/OUT/INPULL/INPULLD, `isA` boolean; firmware refuses unavailable or incompatible GPIOs |
+| `esp32/<device>/io/sunrise` | Data → device | `GPIO:HH:mm:ss`, daily start, in the device's configured local timezone |
+| `esp32/<device>/io/nightfall` | Data → device | `GPIO:HH:mm:ss`, daily stop; both start/stop messages must arrive within 20 seconds for that GPIO, in either order; incomplete pairs expire without changing the saved schedule |
+| `esp32/<device>/io/timer/disable` | Data → device | decimal GPIO; persist cancellation and turn the timed output OFF; no deferred action |
+| `esp32/<device>/state` | device → Data | version-1 report below, at connection, after configuration/timer changes, and periodically; reports are not retained and never treated as numeric sensor readings |
+
+A profile has a name of at most 64 characters and at most 32 unique pins.
+`lbl` and `name` are strings of at most 64 characters (empty is allowed);
+analog pins must use IN. The sorted JSON array is at most 3,800 UTF-8 bytes.
+A legacy patch may omit unrelated pins; the report describes the full effective
+configuration. Firmware must own label/name strings after parsing.
+
+A device report is at most 8 KiB. It contains exactly these fields:
+
+```json
+{
+  "version": 1, "bootId": "abcdef01", "serial": 1,
+  "config": [{"io": 15, "mode": "OUT", "lbl": "D15", "isA": false, "name": "Lamp"}],
+  "timers": [{"io": 15, "tStart": "23:00:00", "tStop": "06:00:00", "enabled": true, "nextStart": "2026-01-02T04:00:00Z"}],
+  "outputs": [{"io": 15, "active": false, "available": true, "inverted": false}],
+  "clockValid": true, "timezone": "UTC-0500", "localTime": "2026-01-01 07:00:00", "lastError": null
+}
+```
+
+`bootId` is a fresh 8–32 hexadecimal character identity for each device boot.
+`serial` is a monotonically increasing non-negative integer within that boot.
+`config` retains the five historical fields; `outputs` separately reports the
+logical ON/OFF state, availability and polarity of configured digital outputs.
+`lastError` is null or a bounded 180-character refusal reason. A report is fresh
+for 60 seconds. Old serials and retained reports cannot acknowledge an action.
+`nextStart` is the next daily start as UTC ISO seconds, or null when disabled,
+clock-invalid or unavailable; the page also shows the device's local timezone.
+
+Timers keep the `{io,tStart,tStop}` shape, adding an explicit `enabled` boolean.
+Times are daily wall-clock times, not calendar dates; equal start/stop is refused.
+Start after stop crosses midnight. The firmware persists complete schedules
+before acknowledging them. A new or changed schedule waits for its next start;
+restoring a schedule after reboot keeps its output OFF until the next start,
+even if boot occurs inside an active interval. An invalid clock never activates
+an output; a running device can continue its clock and saved timers without
+MQTT. Power loss without a valid time source cannot establish the current hour.
+An unavailable/reconfigured GPIO cannot execute a timer. Default form values
+06:00:00 and 23:59:59 do not activate anything by themselves.
+
+HTTP under `/api/v1/iot` (Core exposes the same suffix under
+`/api/data-toolbox/iot`):
+
+| Method and suffix | Body / result |
+|---|---|
+| GET `/profiles` | bounded profiles list: ID (name), revision, config, updatedAt |
+| PUT `/profiles/:name` | `{revision,config}`; revision 0 creates, existing saves compare the current revision; conflict 409 |
+| GET `/devices/:id/controls` | desired profile snapshot and timers, revision, restoreOnBoot, latest observed report and its freshness, current/last operation |
+| PUT `/devices/:id/profile` | `{revision,profileName,profileRevision}`; null name unassigns; resets automatic boot replies; sends nothing |
+| PUT `/devices/:id/timers/:io` | `{revision,io,tStart,tStop,enabled}`; stores one daily schedule per output; sends nothing |
+| POST `/devices/:id/profile/apply` | `{requestId,revision,restoreOnBoot}`; UUID identifies this exact attempt; successful publication can explicitly enroll future boot replies |
+| POST `/devices/:id/timers/:io/apply` | `{requestId,revision}`; sends the saved pair, or one disable message |
+| POST `/devices/:id/operations/:requestId/resolve` | `{observedBootId,observedSerial}`; explicitly reconciles the current attempt against the latest fresh report after the staging/publication window; sends nothing |
+
+Applications require an online device, a connected broker and fresh version-1
+firmware state. Timer activation also requires a reported available output.
+The persistent per-device fence stores the complete attempt before receipt insertion or publication. An interrupted receipt insertion keeps that identity available for explicit reconciliation; a running publication cannot be reconciled concurrently. The original
+UUID recovers the same receipt after a lost HTTP response and never republishes;
+using it for different intent is refused. No new application or settings edit
+can replace an unresolved attempt. Publication is `published`, a refused send is
+`not_sent`, a timed-out/partial publication is `uncertain`. Only a later firmware
+report matching the target establishes `acknowledged` (configuration applied,
+not physical relay/motor acceptance). An incomplete timer pair can remain
+uncertain; reconciliation needs a fresh report received at least 25 seconds
+after dispatch and a 30-second elapsed window before releasing its fence.
+
+Collections: `iot_profiles`, `iot_controls`, `iot_control_operations`, each with
+its native unique `_id`. Application receipts and unresolved fences survive
+Data restarts. Only synthetic fixtures qualify automatic tests; deployment
+and a separately authorized physical-device trial are separate acceptance.
+
+The browser journey uses actual Toolbox assets, Core relays, Data HTTP routes
+and disposable Mongo with a synthetic device. Run `npm run test:iot:browser`
+in Core with Playwright available in `NODE_PATH` and `IOT_REPORT_DIR` outside
+the checkout. It checks desktop/mobile layout, preview/confirmation, canceled
+and expired actions, CAS conflicts, disconnection and a lost HTTP reply.
+
 ### Backfill of the former raw points
 
 Before the IoT store, the `sensors` live feed stored one `livedata_points`
@@ -647,6 +743,10 @@ field, a message over 300 characters or a `meta` over 4 KiB are refused.
 | `iot.device_stale` | a device not reported offline has been silent for 5 minutes | warning |
 | `iot.device_recovered` | a stale device speaks again | info |
 | `iot.command_sent` | a command was published to a device (`meta.command`, `meta.gpio`, `meta.topic`) | info |
+| `iot.profile_saved`, `iot.profile_assigned`, `iot.timer_saved` | desired profile/version assignment or timer saved; no MQTT publication | info |
+| `iot.control_published`, `iot.control_acknowledged` | publication receipt, then separately a later matching firmware report (`meta.deviceId`, `requestId`, `kind`, `io`) | info |
+| `iot.control_not_sent`, `iot.control_uncertain`, `iot.control_receive_failed` | refused/uncertain publication or failed report/boot-request processing | warning |
+| `iot.control_resolved` | explicit reconciliation against a later fresh report, with `meta.outcome`; no new send | info |
 | `iot.command_failed` | a valid command could not be published (no broker link, or unconfirmed write) | warning |
 
 Only changes are recorded: a feed that keeps failing, a broker that keeps
