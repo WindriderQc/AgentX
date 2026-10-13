@@ -200,12 +200,12 @@ def test_identity(command: str) -> str:
     stem = command[:end]
     if redirect is not None:
         target = r"(?:'[^']*'|\"[^\"$`]*\"|(?:\\.|[^\s<>|;&()\\])+)"
-        suffix = rf"(?:\d*>>?&?\s*{target}\s*)+"
+        suffix = rf"(?:[12]?>>?&?\s*{target}\s*)+"
         if re.fullmatch(suffix, stem[redirect:]):
             stem = stem[:redirect]
     try:
         # Quoting changes expansions; keep their original spelling conservatively.
-        if any(char in stem for char in "$*?[]~"):
+        if any(char in stem for char in "$*?[]~{}"):
             return hashlib.sha256(command.encode()).hexdigest()
         payload = json.dumps(shlex.split(stem), separators=(",", ":"))
     except ValueError:

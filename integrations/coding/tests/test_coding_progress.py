@@ -168,6 +168,10 @@ class ProgressTest(unittest.TestCase):
         pairs = [
             ("--testNamePattern '$CASE'", '--testNamePattern "$CASE"'),
             ("tests/*.test.js", "'tests/*.test.js'"),
+            ("tests/{a,b}.test.js", "'tests/{a,b}.test.js'"),
+            ("0>&1", ""),
+            ("3>&1", ""),
+            ("10>&1", ""),
             ("| tail -20|node other-test.js", "| tail -20"),
             ("| tail -20\nnode other-test.js", "| tail -20"),
             ("| awk 'BEGIN {system(\"node other-test.js\")}'", "| tail -20"),
