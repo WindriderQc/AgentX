@@ -1324,7 +1324,7 @@ test('a silent wait speaks one holding phrase in the turn language; a quick repl
   await nextTimer(); await nextTimer();
   assert.equal(spoken.length, 1);
   assert.equal(spoken[0].language, 'fr');
-  assert.ok(['Un instant…', 'Je regarde ça…', 'Laisse-moi réfléchir une seconde…'].includes(spoken[0].text));
+  assert.equal(spoken[0].text, 'Un petit instant…');
   slow.resolve({ text: 'Voici la réponse.' }); await exchange;
   assert.deepEqual(spoken.map(row => row.text).slice(1), ['Voici la réponse.']);
   h.conversation.stop();
@@ -1333,7 +1333,7 @@ test('a silent wait speaks one holding phrase in the turn language; a quick repl
   await q.conversation.start({ language: 'fr' }); await q.say(); await new Promise(r => setTimeout(r, 80));
   assert.deepEqual(quick, ['Tout de suite.']);
   q.conversation.stop();
-  assert.equal(holdingPhrase('en', 0), 'One moment…');
+  assert.equal(holdingPhrase('en', 0), 'Just one moment…');
 });
 
 test('the browser voice fallback speaks the text in the turn locale and stops on cancel', async () => {
@@ -1413,6 +1413,14 @@ test('the holding phrase heard back is echo: it neither interrupts nor replaces 
   assert.deepEqual(spoken.map(row => row.text).slice(1), ['Voici la réponse.']);
   assert.equal(h.conversation.state, 'listening');
   h.conversation.stop();
+});
+
+test('the brief bilingual holding notice remains distinguishable from a valid short answer', () => {
+  for (const language of ['fr', 'en']) {
+    const notice = holdingPhrase(language);
+    assert.equal(isSpokenEcho(notice, notice), true);
+    for (const answer of ['7', 'oui', 'merci', 'one', 'moment']) assert.equal(isSpokenEcho(answer, notice), false);
+  }
 });
 
 test('the holding phrase waits a few seconds by default', () => {
