@@ -72,6 +72,41 @@ beforeEach(async () => {
 });
 afterEach(() => service.configureControl(null));
 
+test.each(['merged', 'failed', 'changed-head'])('finished PR observation sees %s while paused without resuming, accepting or rewriting costs', async outcome => {
+  await task(); await authorize(); await enable(); const first = await launch(); await complete(first);
+  observations.set(first.requestId, { ...PR, state: 'open', mergeable: 'clean',
+    checks: policy.CHECKS.map(name => ({ name, head: HEAD, state: 'success' })) });
+  await service.tick();
+  await service.configure({ enabled: false, confirm: true, expectedRevision: (await service.settings()).revision });
+  await service.authorize('0001', { authorized: false, confirm: true,
+    expectedRevision: (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy.revision });
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.deliveryNextObservationAt': new Date(0).toISOString() } });
+  const before = await Task.findOne({ pipelineId: '0001' }).lean();
+  const remoteHead = outcome === 'changed-head' ? 'f'.repeat(40) : HEAD;
+  observations.set(first.requestId, { ...PR, head: remoteHead, state: outcome === 'merged' ? 'closed' : 'open',
+    merged: outcome === 'merged', mergeable: 'unknown',
+    checks: policy.CHECKS.map(name => ({ name, head: remoteHead, state: name === 'tests (core)' ? 'failure' : 'success' })) });
+  await service.tick(); const after = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(after.status).toBe('review'); expect(after.codingAutonomy.state).toBe('stopped'); expect(after.codingAutonomy.authorized).toBe(false);
+  expect(after.codingAutonomy.delivery).toMatchObject({ merged: outcome === 'merged', ci: 'failure', headMatches: outcome !== 'changed-head', acceptance: 'not_recorded' });
+  expect(after.automationAttempts).toEqual(before.automationAttempts); expect(after.codingAutonomy.runs).toEqual(before.codingAutonomy.runs);
+  expect(after.codingAutonomy.spent).toEqual(before.codingAutonomy.spent); expect(after.codingAutonomy.pr).toEqual(before.codingAutonomy.pr);
+  expect(control.launch).toHaveBeenCalledTimes(1); expect(await selected()).toBeNull();
+  const reads = control.observe.mock.calls.length; await service.tick(); expect(control.observe).toHaveBeenCalledTimes(reads);
+});
+test('late PR observation cannot overwrite a concurrent stop or task decision', async () => {
+  const delivery = require('../../src/services/pipelineCodingDelivery');
+  await task(); await authorize(); await enable(); const first = await launch(); await complete(first);
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.state': 'ready_for_review' } });
+  const before = await Task.findOne({ pipelineId: '0001' }).lean();
+  control.observe.mockImplementationOnce(async () => {
+    await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.state': 'stopped', 'codingAutonomy.authorized': false }, $inc: { 'codingAutonomy.revision': 1 } });
+    return { ...PR, state: 'closed', merged: true, checks: [] };
+  });
+  await expect(delivery.refresh(before, control, service.save)).rejects.toThrow('changed');
+  expect((await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy).toMatchObject({ state: 'stopped', authorized: false });
+});
+
 test('routing and idea intake grant no autonomous execution; switch defaults off', async () => {
   await task(); await enable(); await service.tick(); expect(control.launch).not.toHaveBeenCalled(); expect(await selected()).toBeNull();
   await Settings.deleteMany({}); expect((await service.status()).enabled).toBe(false);
@@ -440,7 +475,7 @@ test.each(['stopped', 'closed', 'dispatching'])('CI rerun does not revive or rew
   observations.set(active.requestId, { ...PR, state: 'open', mergeable: 'clean',
     checks: policy.CHECKS.map(name => ({ name, head: HEAD, state: 'success' })) });
   await observeNow();
-  expect(control.observe).toHaveBeenCalledTimes(count);
+  expect(control.observe).toHaveBeenCalledTimes(count + (['stopped', 'closed'].includes(state) ? 1 : 0));
   expect((await service.status()).tasks[0].state).toBe(state);
   expect(control.launch).toHaveBeenCalledTimes(1);
 });

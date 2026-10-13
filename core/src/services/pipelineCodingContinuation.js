@@ -4,19 +4,24 @@ const Settings = require('../../models/PipelineCodingAutonomy');
 const Runtime = require('../../models/RuntimeCoordination');
 const queue = require('./heavyWorkQueueService');
 const policy = require('./pipelineCodingAutonomyPolicy');
+const { normalizePipelineAutomationIntent } = require('../../../shared/pipelineAutomationContract');
 const { resourceTopology, resourcesFor, topologyMatches } = require('./runtimePhysicalResources');
 const { hostUrlKey } = require('../../../shared/ollamaHostConfig');
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const ID = 'coding-autonomy', WC = { w: 1, j: true };
 const CONFIRMATION = 'CONTINUE_RECOVERED_CHECKPOINT_WITH_ADDITIONAL_BUDGET';
 const NATIVE_CONFIRMATION = 'CONTINUE_NATIVE_CHECKPOINT_WITH_ADDITIONAL_BUDGET';
+const REVIEWED_CONFIRMATION = 'CONTINUE_TERMINAL_CHECKPOINT_WITH_REVIEWED_ATTEMPT_LIMIT';
 const NATIVE_STOPS = new Set(['no_useful_progress', 'model_budget_reserve', 'model_call_limit', 'hard_budget', 'soft_budget_no_progress']);
+const REVIEWED_STOPS = new Set([...NATIVE_STOPS, 'worker_exit', 'model_output_limit', 'tests_failed']);
 const CREDITS = ['workSeconds', 'testSeconds', 'modelSeconds', 'modelCalls', 'ciSeconds'];
+const TOTAL_CEILINGS = Object.freeze(Object.fromEntries(CREDITS.map(key => [key, policy.DEFAULT_LIMITS[key] * 4])));
 const PROFILES = ['agentx-dispatcher-tests/v1', 'agentx-core-runner-tests/v1', 'agentx-benchmark-artifact-tests/v1'];
 const fail = message => policy.fail(message, 'CODING_CONTINUATION_UNVERIFIED');
 const same = (a, b) => a?.key === b.key && a?.fingerprint === b.fingerprint;
 function intent(input, requestId) {
-  if (input.confirm !== true || ![CONFIRMATION, NATIVE_CONFIRMATION].includes(input.confirmation) || !UUID.test(requestId)
+  const reviewed = input.confirmation === REVIEWED_CONFIRMATION;
+  if (input.confirm !== true || ![CONFIRMATION, NATIVE_CONFIRMATION, REVIEWED_CONFIRMATION].includes(input.confirmation) || !UUID.test(requestId)
     || !/^[a-zA-Z0-9:_-]{1,160}$/.test(input.key || '') || !/^[a-f0-9]{40}$/.test(input.head || '')
     || !UUID.test(input.queueRequestId || '') || !PROFILES.includes(input.verificationProfile)
     || !Number.isSafeInteger(input.expectedRevision) || !Number.isSafeInteger(input.additionalRuns)
@@ -24,10 +29,16 @@ function intent(input, requestId) {
     || !input.budget || Object.keys(input.budget).length !== CREDITS.length
     || CREDITS.some(key => !Number.isSafeInteger(input.budget[key]) || input.budget[key] < (key === 'workSeconds' ? 10 : 1)
       || input.budget[key] > policy.DEFAULT_LIMITS[key])
-    || typeof input.text !== 'string' || !input.text.trim() || input.text.length > 4000)
+    || typeof input.text !== 'string' || !input.text.trim() || input.text.length > 4000
+    || (reviewed ? !Number.isSafeInteger(input.expectedNativeAttemptLimit) || !Number.isSafeInteger(input.nativeAttemptLimit)
+      || !/^[a-f0-9]{64}$/.test(input.expectedAutomationFingerprint || '')
+      || input.nativeAttemptLimit < input.expectedNativeAttemptLimit || input.nativeAttemptLimit > 10
+      : input.expectedNativeAttemptLimit !== undefined || input.nativeAttemptLimit !== undefined))
     throw policy.fail('Review the exact recovered checkpoint, campaign, credits and additional worker count', 'CODING_CONTINUATION_INVALID', 400);
   const value = { key: input.key, parentRequestId: requestId, head: input.head, queueRequestId: input.queueRequestId,
-    ...(input.confirmation === NATIVE_CONFIRMATION && { checkpointAuthority: 'native-terminal' }),
+    ...([NATIVE_CONFIRMATION, REVIEWED_CONFIRMATION].includes(input.confirmation) && { checkpointAuthority: 'native-terminal' }),
+    ...(reviewed && { attemptLimit: { before: input.expectedNativeAttemptLimit, after: input.nativeAttemptLimit,
+      originalFingerprint: input.expectedAutomationFingerprint } }),
     verificationProfile: input.verificationProfile, additionalRuns: input.additionalRuns,
     budget: Object.fromEntries(CREDITS.map(key => [key, input.budget[key]])), text: input.text.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '') };
   return { ...value, fingerprint: policy.digest(value) };
@@ -36,7 +47,7 @@ async function evidence(task, requestId, wanted, control) {
   policy.assertTask(task);
   const state = task.codingAutonomy, run = state?.runs.at(-1);
   const attempt = task.automationAttempts?.at(-1);
-  if (state?.authorized !== false || state.state !== 'stopped' || task.status !== 'blocked'
+  if (state?.authorized !== false || state.state !== 'stopped' || state.disposition || task.status !== 'blocked'
     || (task.assignee && task.assignee !== 'coding-team') || task.automationLease || task.codingCapacity || state.basis !== policy.basis(task)
     || run?.requestId !== requestId || !run.finishedAt || attempt?.dispatchRequestId !== requestId
     || task.automationAttemptCount !== attempt.attempt || !control)
@@ -64,7 +75,14 @@ async function evidence(task, requestId, wanted, control) {
     || old.recovery.historicalJournalFingerprint !== policy.digest([old.modelReceipts, old.pendingInferences])
     || old.recovery.nativeAttemptFingerprint !== policy.digest(task.automationAttempts.find(item => item.dispatchRequestId === old.requestId)))))
     throw fail('Historical unresolved calls retain their original reconciliation barrier');
-  if ((state.budgetGrants || []).length >= 100 || wanted.additionalRuns > task.automation.budgets.maxAttempts - task.automationAttemptCount)
+  const ceiling = wanted.attemptLimit?.after ?? task.automation.budgets.maxAttempts;
+  if (wanted.attemptLimit && (wanted.attemptLimit.before !== task.automation.budgets.maxAttempts
+    || wanted.attemptLimit.originalFingerprint !== task.automation.fingerprint
+    || (ceiling !== wanted.attemptLimit.before && task.planRevision != null)))
+    throw fail('Review the current native attempt limit; an existing plan must be explicitly reconciled before amendment');
+  if (wanted.attemptLimit && CREDITS.some(key => policy.totalLimits(state)[key] + wanted.budget[key] > TOTAL_CEILINGS[key]))
+    throw fail('The cumulative task budget, including every previous grant, exceeds the reviewed continuation ceiling');
+  if ((state.budgetGrants || []).length >= 100 || wanted.additionalRuns > ceiling - task.automationAttemptCount)
     throw fail('Additional workers must remain within the original reviewed native attempt ceiling');
   if ((state.budgetGrants || []).some(grant => grant.parentRequestId === requestId))
     throw fail('This recovered execution already received its continuation; reconcile that grant');
@@ -78,7 +96,7 @@ async function evidence(task, requestId, wanted, control) {
     || host.run.progress.coreRecorded !== true || host.run.progress.checkpoint !== wanted.head
     || host.run.progress.result !== attempt.finalState)
     throw fail('The exact stopped worker checkpoint must have its native terminal receipt');
-  if (native && (host.run.progress.pr || !NATIVE_STOPS.has(host.run.progress.stopReason)
+  if (native && (host.run.progress.pr || !(wanted.attemptLimit ? REVIEWED_STOPS : NATIVE_STOPS).has(host.run.progress.stopReason)
     || !attempt.evidence.failureCodes?.includes(host.run.progress.stopReason)))
     throw fail('Only a proven native budget or no-progress stop can receive this continuation');
   const previous = await queue.get(state.queueRequestId);
@@ -144,12 +162,19 @@ async function continueRecovered(pipelineId, requestId, input, control) {
   task = await Task.findOne({ pipelineId }).lean();
   await evidence(task, requestId, wanted, control);
   const state = task.codingAutonomy, at = new Date().toISOString();
+  const { fingerprint: originalFingerprint, ...originalIntent } = task.automation;
+  const automation = wanted.attemptLimit ? normalizePipelineAutomationIntent({ ...originalIntent,
+    budgets: { ...originalIntent.budgets, maxAttempts: wanted.attemptLimit.after } }) : task.automation;
   const grant = { ...wanted, schema: 'agentx.coding-budget-grant/v1', authority: 'operator-continuation', at,
+    ...(wanted.attemptLimit && { originalAutomation: task.automation, originalBasis: state.basis,
+      amendedAutomationFingerprint: automation.fingerprint }),
     originalLimits: state.limits, spentBefore: policy.spent(state) };
   const saved = await Task.updateOne({ pipelineId, updatedAt: task.updatedAt, 'codingAutonomy.revision': state.revision,
-    'codingAutonomy.authorized': false, status: 'blocked', assignee: task.assignee,
+    'codingAutonomy.authorized': false, 'automation.fingerprint': originalFingerprint,
+    automationAttemptCount: task.automationAttemptCount, planRevision: task.planRevision ?? null, status: 'blocked', assignee: task.assignee,
     automationLease: { $exists: false }, codingCapacity: { $exists: false } },
-  { $set: { codingAutonomy: { ...state, revision: state.revision + 1, authorized: true, state: 'correction', reason: null,
+  { $set: { ...(wanted.attemptLimit && { automation }), codingAutonomy: { ...state,
+    basis: policy.basis({ ...task, automation }), revision: state.revision + 1, authorized: true, state: 'correction', reason: null,
     budgetGrants: [...(state.budgetGrants || []), grant], resumeCeiling: state.runs.length - 1 + wanted.additionalRuns,
     progressWindowStartedAtWorkSeconds: policy.spent(state).workSeconds || 0,
     queueRequestId: wanted.queueRequestId, verificationProfile: wanted.verificationProfile,
@@ -160,4 +185,4 @@ async function continueRecovered(pipelineId, requestId, input, control) {
   await release(pipelineId, requestId, wanted);
   return Task.findOne({ pipelineId }).lean();
 }
-module.exports = { continueRecovered, CONFIRMATION, NATIVE_CONFIRMATION };
+module.exports = { continueRecovered, CONFIRMATION, NATIVE_CONFIRMATION, REVIEWED_CONFIRMATION, TOTAL_CEILINGS };

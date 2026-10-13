@@ -337,6 +337,52 @@ path. Original costs, failures, limits and the native attempt ceiling remain
 unchanged; explicit credits and a new no-progress window are journalled as an
 operator intervention.
 
+### Reviewed terminal continuation and native attempt limits
+
+Pipeline offers **Record reviewed continuation** for a stopped, unpublished
+failed checkpoint with authorization removed and autonomy paused. The operator
+reviews a new campaign, five additional budgets, the correction and the total
+native attempt limit. Its separate confirmation is
+`CONTINUE_TERMINAL_CHECKPOINT_WITH_REVIEWED_ATTEMPT_LIMIT`. The continuation API
+also requires `expectedNativeAttemptLimit`, `nativeAttemptLimit` and
+`expectedAutomationFingerprint`. Worker exit, output limit and failed tests
+can use this reviewed path only when the matching native terminal failure and
+every current model settlement are durably received. Operator stops refuse.
+
+The native ceiling is at most ten attempts; a grant authorizes at most three
+additional workers. Each credit retains the ordinary per-campaign cap, and the
+cumulative limits, including the original allocation and every earlier grant,
+are at most 57,600 work seconds, 19,200 test seconds, 21,600 model seconds,
+512 model calls and 14,400 CI seconds. An amendment changes only the native
+attempt ceiling, saves the complete original intent and basis, and atomically
+records the normalized fingerprint, current basis and grant. An existing plan
+refuses a changed ceiling until its binding is reconciled. Original attempt
+counts, scopes, limits, costs, failures and UNKNOWN receipts remain recorded.
+The older confirmations cannot extend the native ceiling or accept worker exit.
+A lost response still requires the same key and intent; the grant never launches
+a worker inline.
+
+### Finished deliveries and qualification archives
+
+Finished PRs remain observable while execution is paused or authorization is
+removed. A bounded, backed-off read records merge/closure and the newest checks
+on their exact remote commit, with the original worker head retained. It does
+not change attempt outcomes, costs, execution authorization or task status.
+Merge and failed CI can both be recorded. Human acceptance, installation and
+product acceptance remain separate receipts. A closed PR refuses new review
+corrections through the coding loop.
+
+An operator can **Archive qualification** with a private receipt reference,
+SHA-256, reason and outcome (`passed`, `abandoned` or `superseded`). The API
+`POST /api/pipeline/coding-autonomy/tasks/:id/disposition` requires confirmation
+`ARCHIVE_QUALIFICATION_WITH_ORIGINAL_RECEIPTS`, the exact latest `requestId` and
+`expectedRevision`. The worker must be finished with authorization removed and
+without an active claim. This is an operator annotation, not task delivery:
+the task status and its dependency barriers remain in force, including original
+UNKNOWN outcomes. An identical retry preserves the same annotation. Archived
+qualifications and closed tasks remain accessible through the history toggle;
+the live panel counts waiting work, blocked cards and review separately.
+
 `agentx-benchmark-artifact-tests/v1` is a native network-isolated verifier for
 `artifactComparison*`, paired statistics and paired regression tests. Its Jest
 configuration comes from the installed runner, rather than the worker checkout.

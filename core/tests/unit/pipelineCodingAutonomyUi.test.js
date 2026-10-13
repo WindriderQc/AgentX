@@ -48,6 +48,45 @@ test('operator sees separate PR, CI, native completion, scope and manual interve
   expect(text).toContain('PR published. CI not yet observed'); expect(text).toContain('product acceptance have no receipt');
   expect(text).toContain('Synthetic <script> task'); // textContent, never markup parsing.
 });
+test('idle status separates blocked cards from work awaiting execution and keeps archived qualifications accessible', async () => {
+  const snapshot = state('stopped'); Object.assign(snapshot.tasks[0], { taskStatus: 'blocked', authorized: false, disposition: { kind: 'qualification', outcome: 'abandoned' } });
+  const { nodes } = setup(snapshot); await flush();
+  expect(nodes.codingAutonomyStatus.textContent).toContain('0 authorized tasks waiting · 0 blocked');
+  expect(descendants(nodes.codingAutonomyTasks).some(n => n.textContent.includes('Synthetic <script> task'))).toBe(false);
+  descendants(nodes.codingAutonomyTasks).find(n => n.textContent.startsWith('Show archived')).events.click();
+  expect(descendants(nodes.codingAutonomyTasks).some(n => n.textContent.includes('Original execution outcomes'))).toBe(true);
+});
+test('merged PR and failed CI remain visible as separate facts without acceptance', async () => {
+  const snapshot = state('ready_for_review'); snapshot.tasks[0].delivery = { merged: true, state: 'closed',
+    headMatches: true, observedAt: 'synthetic-time', ci: 'failure', checks: [{ name: 'tests (core)', state: 'failure' }] };
+  const { nodes } = setup(snapshot); await flush(); const text = descendants(nodes.codingAutonomyTasks).map(n => n.textContent).join('\n');
+  expect(text).toContain('PR #42 · merged'); expect(text).toContain('CI failure on the published commit');
+  expect(text).toContain('Human acceptance remains a separate decision'); expect(text).not.toContain('Draft PR');
+});
+test('reviewed continuation sends the original checkpoint and intent with explicit cumulative credits', async () => {
+  const snapshot = state('stopped'), task = snapshot.tasks[0];
+  Object.assign(task, { authorized: false, taskStatus: 'blocked', pr: null, authorizationRevision: 12,
+    nativeAttemptCount: 3, nativeAttemptLimit: 3, automationFingerprint: 'b'.repeat(64), verificationProfile: 'agentx-core-runner-tests/v1' });
+  task.runs[0].head = 'a'.repeat(40);
+  const { nodes, calls } = setup(snapshot); await flush(); nodes.codingAutonomyConfirm.checked = true;
+  const form = descendants(nodes.codingAutonomyTasks).find(n => n.events.submit && descendants(n).some(child => child.textContent === 'Record reviewed continuation'));
+  expect(form).toBeDefined();
+  const field = title => descendants(form).find(n => n.textContent === title).children[0];
+  field('New approved coding campaign').value = KEY;
+  descendants(form).find(n => n.textContent.startsWith('Correction based')).children[0].value = 'Fix the exact preserved test failure.';
+  await form.events.submit({ preventDefault() {} }); await flush();
+  const mutation = calls.find(call => call.options.method === 'POST');
+  expect(mutation.url).toBe(`/api/pipeline/coding-autonomy/tasks/0001/runs/${KEY}/continuation`);
+  expect(JSON.parse(mutation.options.body)).toMatchObject({ expectedRevision: 12, expectedNativeAttemptLimit: 3,
+    nativeAttemptLimit: 4, expectedAutomationFingerprint: 'b'.repeat(64), head: 'a'.repeat(40), additionalRuns: 1,
+    budget: { workSeconds: 3600, testSeconds: 900, modelSeconds: 1800, modelCalls: 32, ciSeconds: 900 } });
+});
+test('a merged PR offers authorization withdrawal and refuses another review correction in the UI', async () => {
+  const snapshot = state('ready_for_review'); snapshot.tasks[0].delivery = { merged: true, state: 'closed',
+    headMatches: true, ci: 'success', observedAt: 'synthetic-time', checks: [] };
+  const { nodes } = setup(snapshot); await flush(); const text = descendants(nodes.codingAutonomyTasks).map(n => n.textContent);
+  expect(text).toContain('Remove task authorization'); expect(text).not.toContain('Send correction to the Coding Team');
+});
 test('switch requires explicit operator confirmation and uses the current durable revision', async () => {
   const { nodes, switches, calls } = setup(state()); await flush();
   switches[0].events.click(); await flush(); expect(calls).toHaveLength(1);

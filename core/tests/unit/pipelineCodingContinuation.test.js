@@ -8,6 +8,7 @@ const autonomy = require('../../src/services/pipelineCodingAutonomyService');
 const recovery = require('../../src/services/pipelineCodingAutonomyRecovery');
 const continuation = require('../../src/services/pipelineCodingContinuation');
 const policy = require('../../src/services/pipelineCodingAutonomyPolicy');
+const { claimEligibleTask } = require('../../src/services/pipelineTaskService');
 const { normalizePipelineAutomationIntent } = require('../../../shared/pipelineAutomationContract');
 jest.mock('../../src/services/heavyWorkQueueService', () => ({
   get: jest.fn(), runtimeOverlaps: jest.requireActual('../../src/services/heavyWorkQueueService').runtimeOverlaps,
@@ -287,4 +288,86 @@ test('an unmapped same-host foreign inference still vetoes continuation', async 
 test('a campaign from a different coding session cannot resume the original card', async () => {
   job.source.ref = 'another-session';
   await expect(grant()).rejects.toThrow('same task and coding session');
+});
+
+async function reviewedBody(extra = {}) {
+  const current = await task();
+  return grantBody({ confirmation: continuation.REVIEWED_CONFIRMATION,
+    expectedAutomationFingerprint: current.automation.fingerprint,
+    expectedNativeAttemptLimit: current.automation.budgets.maxAttempts,
+    nativeAttemptLimit: current.automation.budgets.maxAttempts, ...extra });
+}
+async function workerExit() {
+  await nativeTerminal();
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'automationAttempts.0.evidence.failureCodes': ['worker_exit'] } });
+  const host = await control.status(); host.run.progress.stopReason = 'worker_exit'; control.status.mockResolvedValue(host);
+}
+test('reviewed terminal continuation permits a real fourth native claim and retains the three original attempts', async () => {
+  await workerExit(); const current = await task();
+  const latest = current.automationAttempts[0], run = current.codingAutonomy.runs[0];
+  const attempts = [1, 2, 3].map(attempt => ({ ...latest, attempt, dispatchRequestId: attempt === 3 ? REQUEST : `10000000-0000-4000-8000-00000000000${attempt + 2}` }));
+  const runs = attempts.map(attempt => ({ ...run, requestId: attempt.dispatchRequestId, expectedAttemptCount: attempt.attempt - 1 }));
+  const { fingerprint, ...intent } = current.automation;
+  const automation = normalizePipelineAutomationIntent({ ...intent, budgets: { ...intent.budgets, maxAttempts: 3 } });
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { automation, automationAttempts: attempts, automationAttemptCount: 3,
+    codingAutonomy: { ...current.codingAutonomy, runs, basis: policy.basis({ ...current, automation }) } } });
+  const before = await task(); const input = await reviewedBody({ nativeAttemptLimit: 5, additionalRuns: 2 });
+  const after = await grant(input);
+  expect(after.automationAttempts).toEqual(before.automationAttempts);
+  expect(after.codingAutonomy.runs).toEqual(before.codingAutonomy.runs);
+  expect(after.codingAutonomy.spent).toEqual(before.codingAutonomy.spent);
+  expect(after.automation).toEqual(normalizePipelineAutomationIntent({ ...intent, budgets: { ...intent.budgets, maxAttempts: 5 } }));
+  expect(after.codingAutonomy.basis).toBe(policy.basis(after));
+  expect(after.codingAutonomy.budgetGrants[0]).toMatchObject({ originalAutomation: before.automation, originalBasis: before.codingAutonomy.basis });
+  await autonomy.configure({ enabled: true, confirm: true, expectedRevision: (await settings()).revision }); await autonomy.tick();
+  const selected = await task(), next = selected.codingAutonomy.runs.at(-1);
+  const claimed = await claimEligibleTask('0001', 'coding-team', new Date(), { automated: true, dispatchRequestId: next.requestId });
+  expect(claimed.automationAttemptCount).toBe(4); expect(claimed.toObject().automationAttempts.slice(0, 3)).toEqual(before.automationAttempts);
+  expect(next.parentRequestId).toBe(REQUEST);
+  expect((await autonomy.workerManifest('0001', next.requestId)).continuationCheckpoint).toBe(HEAD);
+});
+test('old authority cannot authorize worker exit or silently amend the native ceiling', async () => {
+  await workerExit(); await expect(grant(nativeBody())).rejects.toThrow('budget or no-progress');
+  await expect(grant(nativeBody({ nativeAttemptLimit: 3 }))).rejects.toThrow('Review');
+  const before = await task(); await grant(await reviewedBody());
+  expect((await task()).automation).toEqual(before.automation);
+});
+test.each(['ceiling', 'fingerprint', 'plan', 'cumulative', 'unknown', 'pending', 'operator-stop'])
+('reviewed extension refuses %s without dispatch or credit', async kind => {
+  await workerExit(); let input = await reviewedBody({ nativeAttemptLimit: 3 });
+  if (kind === 'ceiling') input.nativeAttemptLimit = 11;
+  if (kind === 'fingerprint') input.expectedAutomationFingerprint = 'e'.repeat(64);
+  if (kind === 'plan') await Task.updateOne({ pipelineId: '0001' }, { $set: { planRevision: 1 } });
+  if (kind === 'cumulative') await Task.updateOne({ pipelineId: '0001' }, { $set: {
+    'codingAutonomy.budgetGrants': [{ budget: { ...input.budget, modelSeconds: continuation.TOTAL_CEILINGS.modelSeconds } }] } });
+  if (kind === 'unknown') await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.runs.0.modelReceipts.0.state': 'unknown' } });
+  if (kind === 'pending') await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.runs.0.pendingInferences': [CALL] } });
+  if (kind === 'operator-stop') { const host = await control.status(); host.run.progress.stopReason = 'operator_stop'; control.status.mockResolvedValue(host); }
+  const before = await task(); await expect(grant(input)).rejects.toThrow();
+  expect(await task()).toEqual(before); expect(control.launch).not.toHaveBeenCalled();
+});
+test('lost amendment acknowledgement reconciles the same intent without increasing its ceiling or credit twice', async () => {
+  await workerExit(); const input = await reviewedBody({ nativeAttemptLimit: 3 });
+  const spy = interceptWrite(Task, update => update.$set?.automation,
+    async commit => { await commit(); throw new Error('Synthetic lost amendment reply'); });
+  await expect(grant(input)).rejects.toThrow('lost amendment'); spy.mockRestore();
+  const before = await task(); expect((await settings()).active).toBeTruthy();
+  const after = await grant(input);
+  expect(after.automation).toEqual(before.automation); expect(after.codingAutonomy.budgetGrants).toHaveLength(1);
+  expect(policy.remaining(after)).toEqual(policy.remaining(before)); expect((await settings()).active).toBeNull();
+});
+test('qualification archive preserves the blocked task, every original UNKNOWN and attempt, and grants no execution authority', async () => {
+  const disposition = require('../../src/services/pipelineCodingDisposition');
+  const before = await task(); const input = { confirm: true, confirmation: disposition.CONFIRMATION,
+    expectedRevision: 10, requestId: REQUEST, outcome: 'abandoned', reason: 'Disposable qualification concluded; original UNKNOWN retained.',
+    receiptRef: REF, receiptSha256: SHA };
+  const after = await disposition.archive('0001', input);
+  expect(after.status).toBe('blocked'); expect(after.automationAttempts).toEqual(before.automationAttempts);
+  expect(after.codingAutonomy.runs).toEqual(before.codingAutonomy.runs);
+  expect(after.codingAutonomy.spent).toEqual(before.codingAutonomy.spent); expect(after.codingAutonomy.authorized).toBe(false);
+  expect(after.codingAutonomy.disposition).toMatchObject({ kind: 'qualification', outcome: 'abandoned' });
+  const retry = await disposition.archive('0001', input); expect(retry.codingAutonomy.revision).toBe(after.codingAutonomy.revision);
+  await expect(disposition.archive('0001', { ...input, outcome: 'passed' })).rejects.toThrow('preserve');
+  await expect(grant(grantBody({ expectedRevision: after.codingAutonomy.revision }))).rejects.toThrow('stopped');
+  expect(control.launch).not.toHaveBeenCalled(); expect(control.stop).not.toHaveBeenCalled();
 });
