@@ -1742,3 +1742,38 @@ test('browser speech failure cannot become completed playback after its start ev
     assert.equal(scheduled, 1);
   } finally { delete globalThis.speechSynthesis; delete globalThis.SpeechSynthesisUtterance; }
 });
+
+
+test('English browser playback selects an English voice even when the default is French', async () => {
+  const { speakWithBrowser } = require('../public/browser-conversation');
+  const previous = { synth: globalThis.speechSynthesis, utterance: globalThis.SpeechSynthesisUtterance };
+  const voices = [{ name: 'French default', lang: 'fr-CA' }, { name: 'English speaker', lang: 'en-US' }], spoken = [];
+  globalThis.SpeechSynthesisUtterance = function (text) { this.text = text; };
+  globalThis.speechSynthesis = { getVoices: () => voices, cancel() {}, speak(utterance) {
+    spoken.push(utterance); setImmediate(() => utterance.onend()); } };
+  try {
+    await speakWithBrowser({ text: 'Complete English answer.', language: 'en' }, new AbortController().signal);
+    assert.equal(spoken[0].voice.name, 'English speaker');
+    assert.equal(spoken[0].lang, 'en-CA');
+  } finally { globalThis.speechSynthesis = previous.synth; globalThis.SpeechSynthesisUtterance = previous.utterance; }
+});
+
+test('an asynchronously discovered English voice is awaited and voice discovery is cancellable', async () => {
+  const { speakWithBrowser } = require('../public/browser-conversation');
+  const previous = { synth: globalThis.speechSynthesis, utterance: globalThis.SpeechSynthesisUtterance };
+  let changed, voices = [], spoken = 0, listening = 0;
+  globalThis.SpeechSynthesisUtterance = function (text) { this.text = text; };
+  globalThis.speechSynthesis = { getVoices: () => voices,
+    addEventListener(_event, handler) { changed = handler; listening++; },
+    removeEventListener() { listening--; }, cancel() {}, speak(utterance) { spoken++; setImmediate(() => utterance.onend()); } };
+  try {
+    const pending = speakWithBrowser({ text: 'Hello', language: 'en' }, new AbortController().signal);
+    assert.equal(spoken, 0);
+    voices = [{ name: 'English voice', lang: 'en-US' }]; changed(); await pending;
+    assert.equal(spoken, 1); assert.equal(listening, 0);
+    voices = []; const abort = new AbortController();
+    const cancelled = speakWithBrowser({ text: 'Never spoken', language: 'en' }, abort.signal);
+    abort.abort(); await cancelled;
+    assert.equal(spoken, 1); assert.equal(listening, 0);
+  } finally { globalThis.speechSynthesis = previous.synth; globalThis.SpeechSynthesisUtterance = previous.utterance; }
+});

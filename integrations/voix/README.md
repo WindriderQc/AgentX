@@ -85,8 +85,11 @@ assignments should also be updated so agent settings name their current voices.
 The worker loads one model and a voice state per `<id>.wav` reference, with an
 optional `<id>.name` label. Add references and restart the worker to discover
 them. Qualify ordinary short and longer utterances in each language actually
-used before retiring an instance's useful voice assignments. A configured French
-worker does not establish English quality merely because the catalogue lists it.
+used before retiring an instance's useful voice assignments. Worker health declares `languages` from the loaded `--language french|english`
+model. The catalogue and synthesis admission use that evidence: a French worker
+is not advertised or dispatched as English. A worker without language evidence
+cannot satisfy language-specific synthesis. Update the relay and worker together;
+voice quality is still qualified separately on the actual devices.
 
 ### Other existing deployments
 
@@ -151,9 +154,8 @@ repository root, runs the pure spoken-controls tests without any dependency.
 
 This optional adapter adds a bounded command recognizer to the speech service
 process. Vosk checks the complete mono PCM WAV for a standalone Stop/silence
-command while general transcription already runs, so an ordinary request waits
-for the longer of the two passes, not their sum; a recognized command answers
-at once and the transcription started beside it is dropped unread. Unknown
+command before general transcription starts. A recognized Stop never launches
+Whisper; ordinary speech pays the bounded CPU classification pass then Whisper. Unknown
 words and mixed requests retain Whisper, its language choice and its decoder.
 Core remains the conversation and memory owner. No audio or transcript is
 stored by this adapter.

@@ -39,7 +39,7 @@ def main():
     parser.add_argument("--voices-dir", required=True,
                         help="directory of <id>.wav references (+ optional <id>.name label)")
     parser.add_argument("--voice", default="nestor-a", help="default voice id among the references")
-    parser.add_argument("--language", default="french", help="Pocket TTS language model (default: french)")
+    parser.add_argument("--language", default="french", choices=("french", "english"), help="Pocket TTS language model (default: french)")
     parser.add_argument("--eos-threshold", type=float, default=EOS_THRESHOLD,
                         help=f"end-of-speech threshold (default: {EOS_THRESHOLD})")
     parser.add_argument("--bind", default="127.0.0.1")
@@ -63,7 +63,7 @@ def main():
         yield from stream_voice(model, states[voice], text)
 
     worker = Worker(generate, default, {key: value["name"] for key, value in references.items()},
-                    soften_final=not args.no_end_fade, sample_rate=int(model.sample_rate), model=MODEL, tag="pocket")
+                    soften_final=not args.no_end_fade, sample_rate=int(model.sample_rate), model=MODEL, tag="pocket", languages=({"french": "fr", "english": "en"}[args.language],))
     server = ThreadingHTTPServer((args.bind, args.port), handler_for(worker))
     server.daemon_threads = True
     thread = threading.Thread(target=server.serve_forever, daemon=True)

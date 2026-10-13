@@ -23,6 +23,7 @@ class Job:
     id: str
     text: str
     voice: str
+    language: str = ""
     output: queue.Queue = field(default_factory=lambda: queue.Queue(maxsize=2))
     cancelled: threading.Event = field(default_factory=threading.Event)
 
@@ -60,7 +61,7 @@ def soften_ending(audio: np.ndarray, rate: int = REFERENCE_RATE) -> np.ndarray:
 
 class Worker:
     def __init__(self, generate, voice: str, voices: dict[str, str] | None = None, *, soften_final: bool = True,
-                 sample_rate: int = REFERENCE_RATE, model: str = "kyutai/pocket-tts", tag: str = "pocket"):
+                 sample_rate: int = REFERENCE_RATE, model: str = "kyutai/pocket-tts", tag: str = "pocket", languages: tuple[str, ...] = ()):
         """``voice`` is the default id; ``voices`` maps every served id to its display name.
         ``sample_rate`` is the rate of the audio ``generate`` yields; ``model`` and ``tag``
         name the engine in ``/health`` and in the log."""
@@ -71,6 +72,7 @@ class Worker:
         self.sample_rate = sample_rate
         self.model = model
         self.tag = tag
+        self.languages = tuple(language for language in languages if language in {"fr", "en"})
         self.ready = False
         self.pending = queue.Queue()
         self.active = {}
@@ -83,7 +85,10 @@ class Worker:
         text, request_id = payload.get("text"), payload.get("id")
         if not isinstance(text, str) or not text.strip() or not isinstance(request_id, str) or not request_id:
             raise ValueError("A request id and nonempty text are required")
-        job = Job(request_id, text, voice)
+        language = str(payload.get("language") or (self.languages[0] if self.languages else "")).lower().replace("_", "-").split("-")[0]
+        if language and language not in self.languages:
+            raise ValueError("The worker does not serve the requested language")
+        job = Job(request_id, text, voice, language)
         with self.lock:
             if request_id in self.active:
                 raise ValueError("Request already active")
@@ -178,7 +183,7 @@ def handler_for(worker):
                 return self.respond(404, {"error": "Not found"})
             self.respond(200, dict(ready=worker.ready, model=worker.model, voice=worker.voice,
                                    voices=[{"id": key, "name": name} for key, name in worker.voices.items()],
-                                   sample_rate=worker.sample_rate, streaming=True))
+                                   sample_rate=worker.sample_rate, streaming=True, languages=list(worker.languages)))
 
         def do_DELETE(self):
             prefix = "/v1/requests/"

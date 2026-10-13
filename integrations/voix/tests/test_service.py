@@ -295,6 +295,7 @@ def test_http_speech_removes_markdown_before_every_engine(monkeypatch, provider,
     monkeypatch.setattr(voxcpm, "synthesize", synthesize)
     monkeypatch.setattr(voxcpm, "stream", stream)
     monkeypatch.setattr("app.tts.catalog.worker_ready", lambda: (True, ""))
+    monkeypatch.setattr("app.tts.catalog.worker_languages", lambda: ("fr", "en"))
     response = client.post(path, json={text_field: text, "tts_provider": provider,
                                       "language": "fr", "response_format": "wav"})
     assert response.status_code == 200
@@ -324,7 +325,7 @@ def _voxcpm_worker(monkeypatch, *, up):
         probes.append(url)
         if not up:
             raise httpx.ConnectError("refused")
-        return httpx.Response(200, json={"ready": True, "voice": "nestor-a",
+        return httpx.Response(200, json={"ready": True, "voice": "nestor-a", "languages": ["fr"],
                                          "voices": [{"id": "nestor-a"}, {"id": "helper"}]},
                               request=httpx.Request("GET", url))
     monkeypatch.setattr(catalog.httpx, "get", health)

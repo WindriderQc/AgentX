@@ -111,6 +111,7 @@ def test_cloned_voice_shows_its_configured_name(monkeypatch):
     monkeypatch.setattr(catalog, "settings", replace(catalog.settings, voxcpm_base_url="http://127.0.0.1:8092",
                                                      voxcpm_voice="owner", voxcpm_voice_name="Owner (clone)"))
     monkeypatch.setattr(catalog, "worker_ready", lambda: (True, ""))
+    monkeypatch.setattr(catalog, "worker_languages", lambda: ("fr", "en"))
     monkeypatch.setattr(windows_sapi, "installed_voices", lambda: [])
     rows = [v for v in catalog.catalog()["voices"] if v["provider"] == "voxcpm"]
     assert {(v["id"], v["name"], v["language"]) for v in rows} == {("owner", "Owner (clone)", "fr"), ("owner", "Owner (clone)", "en")}
@@ -122,6 +123,7 @@ def test_catalog_lists_every_voice_a_ready_worker_serves_and_accepts_them(monkey
                                                      voxcpm_voice="narrator", voxcpm_voice_name="Narrator (default)"))
     monkeypatch.setattr(provider, "settings", catalog.settings)
     monkeypatch.setattr(catalog, "worker_ready", lambda: (True, ""))
+    monkeypatch.setattr(catalog, "worker_languages", lambda: ("fr", "en"))
     monkeypatch.setattr(catalog, "worker_voices", lambda: {"narrator": "narrator", "helper": "Helper"})
     monkeypatch.setattr(windows_sapi, "installed_voices", lambda: [])
     rows = {(v["id"], v["language"]): v["name"] for v in catalog.catalog()["voices"] if v["provider"] == "voxcpm"}

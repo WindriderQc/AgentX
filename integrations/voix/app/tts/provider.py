@@ -144,13 +144,16 @@ def resolve(provider=None, *, language=None, voice=None) -> dict:
         if not ready:
             raise VoiceUnavailable(reason)
         profile = request_overrides(selected, language=language or settings.voix_language, voice=voice)
+        if (profile.get("language") or "").split("-")[0] not in catalog.worker_languages():
+            raise VoiceUnavailable("Pocket TTS worker does not declare support for the requested language")
     return {"provider": selected, **profile, "sample_rate": output_rate(selected)}
 
 
 def language_profiles(provider: str | None = None) -> list[dict]:
     if _selected(provider) == "voxcpm":
-        return [{"language": language, "locale": locale, "voice": settings.voxcpm_voice}
-                for language, locale in (("en", "en-us"), ("fr", "fr-fr"))]
+        from app.tts import catalog
+        return [{"language": language, "locale": {"en": "en-us", "fr": "fr-fr"}[language], "voice": settings.voxcpm_voice}
+                for language in catalog.worker_languages()]
     if _selected(provider) != "kokoro":
         return []
     profiles = []

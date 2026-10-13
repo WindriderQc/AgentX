@@ -865,22 +865,43 @@
   }
 
   // Last rung of the voice ladder: the device's own speech synthesis, cancelled like PCM playback.
+  async function browserSpeechVoice(synth, profile, signal) {
+    const pick = () => speechLanguage.pickBrowserVoice(synth.getVoices(), profile);
+    const existing = pick();
+    if (existing || profile.language !== 'en' || signal.aborted) return existing;
+    // Chrome can populate voices asynchronously. Never silently use a French voice for English.
+    return new Promise(resolve => {
+      let timer;
+      const done = () => { clearTimeout(timer); synth.removeEventListener?.('voiceschanged', changed);
+        signal.removeEventListener('abort', done); resolve(pick()); };
+      const changed = () => { if (pick()) done(); };
+      synth.addEventListener?.('voiceschanged', changed);
+      signal.addEventListener('abort', done, { once: true }); timer = setTimeout(done, 1500);
+      if (signal.aborted) done(); else changed();
+    });
+  }
+
   function speakWithBrowser({ text, language }, signal, onScheduled) {
     const synth = root.speechSynthesis;
     if (!synth || signal.aborted) return Promise.resolve();
-    return new Promise((resolve, reject) => {
-      const utterance = new root.SpeechSynthesisUtterance(text);
-      const profile = speechLanguage.PROFILES?.[language === 'en' ? 'en' : 'fr'];
-      utterance.lang = profile?.locale || (language === 'en' ? 'en-CA' : 'fr-CA');
-      const voice = speechLanguage.pickBrowserVoice?.(synth.getVoices(), profile);
-      if (voice) utterance.voice = voice;
-      const done = () => { signal.removeEventListener('abort', stop); resolve(); };
-      const stop = () => { synth.cancel(); done(); };
-      utterance.onstart = () => onScheduled?.();
-      utterance.onend = done; utterance.onerror = () => { signal.removeEventListener('abort', stop); reject(new Error('Browser speech could not complete.')); };
-      signal.addEventListener('abort', stop, { once: true });
-      synth.speak(utterance);
-    });
+    const profile = speechLanguage.PROFILES?.[language === 'en' ? 'en' : 'fr'];
+    const start = voice => {
+      if (signal.aborted) return Promise.resolve();
+      if (language === 'en' && !voice) throw new Error('No English speech voice is available on this device. The complete answer remains on screen.');
+      return new Promise((resolve, reject) => {
+        const utterance = new root.SpeechSynthesisUtterance(text);
+        utterance.lang = profile?.locale || (language === 'en' ? 'en-CA' : 'fr-CA');
+        if (voice) utterance.voice = voice;
+        const done = () => { signal.removeEventListener('abort', stop); resolve(); };
+        const stop = () => { synth.cancel(); done(); };
+        utterance.onstart = () => onScheduled?.();
+        utterance.onend = done; utterance.onerror = () => { signal.removeEventListener('abort', stop); reject(new Error('Browser speech could not complete.')); };
+        signal.addEventListener('abort', stop, { once: true });
+        synth.speak(utterance);
+      });
+    };
+    const voice = speechLanguage.pickBrowserVoice(synth.getVoices(), profile);
+    return voice || language !== 'en' ? start(voice) : browserSpeechVoice(synth, profile, signal).then(start);
   }
 
   async function openAudio(signal, onError = () => {}, options = {}) {
