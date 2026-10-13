@@ -4,6 +4,7 @@ const { requestsTaskCheck } = require('./tool-turn-guard');
 const { requestsSecretary, requestsSecretaryRead, requestsReadEffects } = require('./native-specialist-policy');
 const { requestsWebRead } = require('./native-web-policy');
 const { requestsPipelineRead } = require('./native-pipeline-policy');
+const { awaitingMain } = require('./guardian-reply');
 const { PERSONAL_OPERATOR_SURFACE_CONTRACT } = require('./packs');
 const { LIMITS, hash, MODES, nativeWork } = require('../../src/services/conversationWorks/contract');
 const { formatTurnContext, assertContextSize } = require('../../src/services/conversations/turnContext');
@@ -18,6 +19,7 @@ function registerWorkRuntime({ router, conversations, tasks, agentClient, contin
     return null;
   }
   const works = capability.create({ conversations, tasks, env, classify: requestsTaskCheck,
+    guardianNeedsMain: awaitingMain,
     nativeOnly: requestsSecretary, nativeRead: text => requestsSecretaryRead(text) || requestsWebRead(text),
     nativeForeground: text => requestsTaskCheck(text) || requestsPipelineRead(text) || requestsSecretary(text) || requestsWebRead(text) || requestsReadEffects(text),
     nativeBudget: (text, mode) => requestsWebRead(text) && !requestsSecretaryRead(text) && !requestsTaskCheck(text)

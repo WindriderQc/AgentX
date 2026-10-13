@@ -4,6 +4,25 @@ const assert = require('node:assert/strict');
 const { MAIN_REQUIRED, createGuardianReply } = require('../guardian-reply');
 const { createConversationExecutor } = require('../conversation-executor');
 
+test('an unmarked promise to return Main’s result cannot be classified as an answered request', () => {
+  for (const text of [
+    "C'est fait, je demande au cerveau principal de faire le calcul pour toi. Je te reviens dès qu'il a le résultat.",
+    'Je te reviens dès que le résultat est disponible.',
+    'Je confie la vérification à Main.',
+    'Je regarde ça.', 'Je vais vérifier ce document.', 'I will check it.',
+    "I'll ask Main to calculate it and get back to you.",
+    'Main va vérifier le résultat.'
+  ]) assert.equal(createGuardianReply().finish(text).disposition, 'awaiting_main', text);
+  for (const text of [
+    'Il était une fois Main, qui disait : je te reviens avec le résultat.',
+    'La blague : Main demande pourquoi le pingouin passe par ici.',
+    'Le calcul est fait : 317 × 29 = 9193.',
+    'Je regarde ce chiffre : 9193.',
+    "Je vais te raconter une histoire. Il était une fois un renard.",
+    'Je pense que tu pourrais demander ce calcul à Main.'
+  ]) assert.equal(createGuardianReply().finish(text).disposition, 'answered', text);
+});
+
 test('a fragmented routing prefix never reaches spoken deltas, including an exact-prefix chunk', () => {
   const raw = '  ' + MAIN_REQUIRED + '\n Je vérifie ça pour toi.';
   for (let split = 1; split < raw.length; split++) {

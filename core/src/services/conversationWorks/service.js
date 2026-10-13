@@ -8,7 +8,7 @@ const { createRepository } = require('./repository');
 const { readTurnContext, assertContextSize } = require('../conversations/turnContext');
 
 function createConversationWorks({ conversations, tasks, env = process.env, repository = createRepository(), classify = () => false, nativeOnly = () => false, nativeRead = () => false,
-  nativeBudget = () => null, nativeForeground = () => true, exchangeStore = exchanges, now = () => new Date() } = {}) {
+  nativeBudget = () => null, nativeForeground = () => true, guardianNeedsMain = () => false, exchangeStore = exchanges, now = () => new Date() } = {}) {
   const repo = repository;
   let wake = () => {};
   const classification = (text, mode) => mode === 'native' ? simple(text) || !nativeForeground(text) ? 'native_review' : 'native_work'
@@ -142,7 +142,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     assertContextSize(selected.selectedContext + JSON.stringify(conversation), LIMITS.context);
     return { authority: 'core.conversation-works', id: row._id, turnId: row.turnId,
       request: turn.inputText, guardianReply: turn.replyText, guardianOutcome: turn.outcome,
-      guardianDisposition: row.guardian?.disposition || 'unknown',
+      guardianDisposition: row.mode === 'native' && guardianNeedsMain(turn.replyText) ? 'awaiting_main' : row.guardian?.disposition || 'unknown',
       guardianEvidence: turn.toolEvidence ? { authority: turn.toolEvidence.authority, runId: turn.toolEvidence.runId,
         status: turn.toolEvidence.status, receipts: turn.toolEvidence.receipts || [] } : null, selectedContext: selected.selectedContext,
       attachments: turn.attachments || [], mode: row.mode, classification: row.classification,
@@ -269,11 +269,12 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     if (row.mode === 'native' && (row.guardian?.disposition === 'awaiting_main'
         || row.guardian?.state === 'failed')) return true;
     if (row.classification === 'native_review' || row.foreground === 'guardian') {
-      if (row.guardian?.disposition === 'answered') return false;
       // Older accepted turns have no semantic guardian disposition. Their
       // original verified tool work can still return without redispatching it.
       const turn = await conversations.getTurn({ ...query(row.sessionId), traceId: row.turnId });
       if (!turn || hash(turn.inputText) !== row.requestSha256 || simple(turn.inputText)) return false;
+      if (row.mode === 'native' && guardianNeedsMain(turn.replyText)) return true;
+      if (row.guardian?.disposition === 'answered') return false;
       if (!evidence) {
         const receipt = row.tools?.find(tool => tool.tool === 'native.consultation' && tool.runId === row.attempt?.runId);
         if (receipt) evidence = await repo.read(row, receipt.payloadRef);
