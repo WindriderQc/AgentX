@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { registerNativeReadBudget } from '../native-read-budget.js';
 import { readFile } from 'node:fs/promises';
 const native = { agentId: 'main', sessionKey: 'agent:main:household:direct:11111111-1111-4111-8111-111111111111' };
-const event = { toolName: 'tool_call', params: { id: 'openclaw:core:web_fetch' }, toolCallId: 'real-call',
+const event = { toolName: 'web_fetch', params: { url: 'https://synthetic.test/source' }, toolCallId: 'real-call',
   runId: 'resp_22222222-2222-4222-8222-222222222222' };
 function setup(answers) {
   let hook; const bodies = [];
@@ -16,13 +16,26 @@ function setup(answers) {
   } });
   return { hook, bodies };
 }
-test('native wrapper identity admits and blocks through Core without exposing a new model tool', async () => {
+test('resolved native tool identity admits and blocks through Core without exposing a new model tool', async () => {
   const h = setup([{ status: 200, admitted: true }, { status: 200, admitted: false }]);
   assert.equal(await h.hook(event, native), undefined);
   assert.deepEqual(h.bodies[0], { operation: 'native_budget', context: { ...native, runId: event.runId }, input: { tool: 'web_fetch' }, callId: 'real-call' });
   const blocked = await h.hook({ ...event, toolName: 'web_search', toolCallId: 'second' }, native);
   assert.equal(blocked.block, true); assert.match(blocked.blockReason, /Finish now/);
   assert.equal(h.bodies[1].input.tool, 'web_search');
+});
+test('a deferred dispatch and its resolved execution consume one admission, and denial fences the execution', async () => {
+  const h = setup([{ status: 200, admitted: true }, { status: 200, admitted: false }]);
+  const dispatch = { ...event, toolName: 'tool_call', params: { id: 'openclaw:core:web_fetch', args: event.params }, toolCallId: 'dispatch-call' };
+  assert.equal(await h.hook(dispatch, native), undefined);
+  assert.equal(h.bodies.length, 0, 'Dispatch alone is not research');
+  assert.equal(await h.hook(event, native), undefined);
+  assert.equal(h.bodies.length, 1);
+  assert.equal(h.bodies[0].callId, 'real-call');
+  assert.equal(await h.hook({ ...dispatch, toolCallId: 'next-dispatch' }, native), undefined);
+  const blocked = await h.hook({ ...event, toolCallId: 'next-execution' }, native);
+  assert.equal(blocked.block, true);
+  assert.equal(h.bodies.length, 2, 'The actual next execution still requires Core admission');
 });
 test('ordinary guardian runs cache the absence of a budget and preserve native tools', async () => {
   const h = setup([{ status: 404 }]);
