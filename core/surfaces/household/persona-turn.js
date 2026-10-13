@@ -5,6 +5,7 @@
 // visuals. Household's register() creates it once with its runtime services
 // and shares it between the browser persona routes and the native consumers.
 
+const { readingRequested } = require('../../src/services/voice/presentation');
 const crypto = require('crypto');
 const personaCatalog = require('./persona-catalog');
 const { agentInstructions, agentIdFor, personalVoice } = require('./conversation-agent');
@@ -341,7 +342,7 @@ function createPersonaTurnHandler({
         entry.dispatched = true;
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
         const replyLanguage = context.speechLanguage || (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
-        const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ allowSecrets: !pack.childSafe, language: replyLanguage,
+        const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(text), allowSecrets: !pack.childSafe, language: replyLanguage,
           onSay: delta => { if (!res.writableEnded) event('delta', { delta }); },
           // One consultation per reply, and a member does not consult in turn.
           onConsult: request => { if (!member) consultRequest ||= teamAddress.consultedMember(request, team, agentIdFor(session)); }, onShow: block => {

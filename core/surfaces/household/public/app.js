@@ -303,7 +303,7 @@
         for (const choice of choices) {
           const response = await fetch('/api/voix/synthesize/stream', {
             method: 'POST', signal, credentials: 'include', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: segment, language: profile.language, tts_provider: choice.provider,
+            body: JSON.stringify({ text: segment ?? text, language: profile.language, tts_provider: choice.provider,
               voice: choice.voice || '', native_defaults: choice.native_defaults === true }),
           });
           if (response.ok) return response;

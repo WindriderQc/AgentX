@@ -186,3 +186,16 @@ test('explicit reading prose remains complete beyond the former reply projection
   assert.equal(result.say, source);
   assert.equal(plainReply(result.say), source);
 });
+
+
+test('an explicit reading request reads every list item instead of the ordinary spoken introduction', () => {
+  const { readingRequested } = require('../../../src/services/voice/presentation');
+  for (const request of ['Lis-moi la liste entière.', 'Peux-tu me lire les étapes?', 'Read this aloud.', 'Could you read the full text?']) assert.equal(readingRequested(request), true);
+  for (const request of ['Pourquoi lire ce livre?', 'Readiness status?', 'Explique-moi le document.', 'Comment vont mes tâches?']) assert.equal(readingRequested(request), false);
+  const source = Array.from({ length: 12 }, (_, index) => `- Élément ${index + 1}: explication complète.`).join('\n');
+  const reading = run(chunks(source, 21), { readAloud: true });
+  assert.equal(reading.display[0].body, source);
+  for (let index = 1; index <= 12; index++) assert.ok(reading.say.includes(`Élément ${index}: explication complète.`));
+  assert.ok(!reading.say.includes('Les premiers éléments'));
+  assert.ok(run(chunks(source, 21)).say.includes('La liste complète est à l’écran'));
+});

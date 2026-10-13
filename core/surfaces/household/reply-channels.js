@@ -82,7 +82,7 @@ function listSummary(lines, lang) {
   return items.length ? (lang === 'en' ? 'First items: ' : 'Les premiers éléments : ') + items.join('; ') + '. ' : '';
 }
 
-function createReplyChannels({ allowSecrets = false, language = 'fr', onSay = () => {}, onShow = () => {}, onConsult = () => {} } = {}) {
+function createReplyChannels({ allowSecrets = false, language = 'fr', readAloud = false, onSay = () => {}, onShow = () => {}, onConsult = () => {} } = {}) {
   const lang = languageOf(language);
   const display = [];
   let pending = '', inShow = false, showAttributes = null, received = false, ended = false;
@@ -126,6 +126,10 @@ function createReplyChannels({ allowSecrets = false, language = 'fr', onSay = ()
     if (!group) return;
     const { kind, lines } = group;
     group = null;
+    if (readAloud) {
+      const complete = (kind === 'code' ? lines.filter(row => !LINE.fence.test(row)) : lines).join('\n');
+      addBlock(kind, '', complete); speakProse(complete + '\n'); return;
+    }
     if (kind === 'list' && lines.length <= LIMITS.spokenListItems) { speakProse(lines.join('\n') + '\n'); return; }
     const body = kind === 'code' ? lines.filter(row => !LINE.fence.test(row)).join('\n') : lines.join('\n');
     const shown = addBlock(kind, '', body);
