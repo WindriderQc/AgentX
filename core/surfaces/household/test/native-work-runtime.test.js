@@ -47,6 +47,7 @@ test('background native Main preserves the complete request, references prior tu
   assert.equal(privateOwnerContext({ agentId: 'main', sessionKey: sent.headers['x-openclaw-session-key'] }), true);
   assert.equal(sent.headers['x-openclaw-model'], undefined);
   assert.equal(JSON.parse(sent.body).model, 'openclaw/main');
+  assert.equal(JSON.parse(sent.body).max_output_tokens, 4096, 'Legacy read consultations keep their existing bound');
   assert.equal(result.metadata.model, 'native-main-model');
   assert.match(JSON.stringify(JSON.parse(sent.body).input), /Résume mes courriels récents/);
 });
@@ -87,10 +88,11 @@ for (const mode of ['read', 'native']) test(`${mode} Main receives all older res
   assert.match(prepared.turnContext, /EXACT_EVIDENCE/); assert.doesNotMatch(prepared.turnContext, /shortened context/);
   assert.match(prepared.turnContext, /"complete":true,"turnCount":20/);
   if (mode === 'native') {
+    assert.equal(prepared.maxOutputTokens, undefined, 'Complete Main retains its native reasoning and answer budget');
     assert.match(prepared.instructions, /complete native Nestor Main/);
     assert.match(prepared.instructions, /existing permissions and approval contracts/);
     assert.doesNotMatch(prepared.instructions, /Never send, draft, modify/);
-  }
+  } else assert.equal(prepared.maxOutputTokens, 4096);
 });
 
 for (const mode of ['read', 'native']) test(`${mode} Main refuses an oversized complete conversation before invocation`, async () => {

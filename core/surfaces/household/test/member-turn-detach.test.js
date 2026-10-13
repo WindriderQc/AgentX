@@ -15,12 +15,12 @@ const records = require('../persona-records');
 const sessionId = 'synthetic-session';
 const tick = () => new Promise(resolve => setTimeout(resolve, 5));
 
-function harness() {
+function harness({ nativeWork = false } = {}) {
   const pack = packs.packById('personal_operator');
   const session = { sessionId, status: 'active', packId: pack.id, modeId: pack.defaultMode, scopeId: pack.defaultScopeId,
     backend: 'openclaw', agentId: 'main', turnCount: 0,
     persona: { id: 'nestor', version: 1, name: 'Nestor', identity: 'Synthetic personality overlay.', voice: {} }, voice: { language: 'auto' } };
-  const turns = [], requests = [];
+  const turns = [], requests = [], intakes = [];
   const conversations = {
     getSession: async () => ({ ...session }),
     updateSession: async (_query, update) => {
@@ -31,6 +31,13 @@ function harness() {
     listTurns: async () => turns, getTurn: async () => null,
     recordTurn: async turn => { const row = { ...turn, _id: `turn-${turns.length}`, createdAt: new Date() }; turns.unshift(row); session.turnCount += 1; return row; }
   };
+  conversations.settleTurn = conversations.recordTurn;
+  const conversationWorks = nativeWork ? {
+    eligible: () => true,
+    intake: async input => { intakes.push(input); return { row: { _id: 'accepted-native-work', state: 'received' } }; },
+    prepare: async () => {}, guardianStarted: async () => {}, guardianSettled: async () => {},
+    guardianInstructions: 'Synthetic guardian instructions.'
+  } : null;
   const memberWork = createMemberWork({ conversations });
   const activePersonaTurns = new Map();
   // Each agent run stays open until the test settles it.
@@ -44,7 +51,8 @@ function harness() {
   };
   const handle = createPersonaTurnHandler({
     logger: null, runtimeServices: { attachments: { ids: () => [] } }, conversations, executeConversation,
-    conversationEnv: { HOUSEHOLD_TEAM_MEMBERS: JSON.stringify({ secretary: ['secrétaire'] }) },
+    conversationEnv: { HOUSEHOLD_TEAM_MEMBERS: JSON.stringify({ secretary: ['secrétaire'] }),
+      ...(nativeWork && { PERSONAL_CONVERSATION_WORK_MODE: 'native' }) }, conversationWorks,
     requireNativeAgent: async () => {},
     familyTasks: { listProfileDetails: async () => ({ profiles: [] }), listProfiles: async () => ({ profiles: [] }), room: async () => ({ room: { available: [] } }) },
     ownerMemory: {}, familyMemory: {},
@@ -76,8 +84,31 @@ function harness() {
     res.close = () => listeners.close?.();
     return res;
   };
-  return { session, turns, requests, memberWork, activePersonaTurns, speak };
+  return { session, turns, requests, intakes, memberWork, activePersonaTurns, speak };
 }
+
+test('a native specialist request enters canonical Main work before its guardian runs', async () => {
+  const h = harness({ nativeWork: true });
+  const text = 'Demande à la secrétaire si ses outils de lecture sont disponibles, sans lire ni envoyer de courriel.';
+  const turnId = '11111111-1111-4111-8111-111111111111';
+  const reply = h.speak(text, turnId);
+  while (!h.requests.length) await tick();
+  assert.equal(h.intakes.length, 1);
+  assert.equal(h.intakes[0].text, text); assert.equal(h.intakes[0].turnId, turnId);
+  assert.equal(h.requests[0].agentId, 'main');
+  assert.match(h.requests[0].request.instructions, /Synthetic guardian instructions/);
+  assert.equal(reply.events.some(event => event.activity?.kind === 'member_addressed'), false);
+  h.requests[0].answer('Je m’en occupe.'); await reply.finished;
+  assert.equal(h.turns[0].traceId, turnId);
+});
+
+test('a direct specialist address keeps its native speaker without creating Main work', async () => {
+  const h = harness({ nativeWork: true });
+  const reply = h.speak('Secrétaire, quels courriels attendent?', 'turn-direct');
+  while (!h.requests.length) await tick();
+  assert.equal(h.intakes.length, 0); assert.equal(h.requests[0].agentId, 'secretary');
+  h.requests[0].answer('La réponse de la secrétaire.'); await reply.finished;
+});
 
 test('speaking again detaches the member, the conversation agent answers, and the member reply is kept', async () => {
   const h = harness();

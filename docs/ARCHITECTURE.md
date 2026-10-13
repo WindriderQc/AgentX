@@ -75,6 +75,11 @@ personality may declare the agent it belongs to (`agentId` in the Household
 catalog), which gives Super Dad its team cards and a member's voice. A
 scheduled job runs on the agent that owns its capability, in isolated sessions.
 
+In native personal voice mode, asking Nestor to consult a specialist stays with
+Main and uses its installed delegation tools. Addressing that specialist directly
+still selects its own speaker. Complete Main uses its native output budget;
+the legacy background read profile retains its separate 4096-token bound.
+
 Chat and consumer routing are not yet fully converged on one path. Family and
 child memory and tools stay scoped even where the mechanism is shared.
 
