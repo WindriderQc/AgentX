@@ -69,7 +69,8 @@ function batchDoc({ batchId, cohort, digest, host, candidates, judges, execution
             responseMode: 'final_only',
             fixedSettings: {
                 sampling_profile: 'controlled', temperature: 0.2, top_p: 0.9, top_k: 40,
-                repeat_penalty: 1.05, seed: 42, seed_policy: 'fixed', api_mode: 'chat', repeats: 1
+                repeat_penalty: 1.05, seed: 42, seed_policy: 'fixed', api_mode: 'chat', repeats: 1,
+                answer_contract_mode: 'auto', include_length_hint: false, thinking_final_answer_policy: 'visible_required'
             },
             candidates
         }

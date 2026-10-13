@@ -53,7 +53,8 @@ const CONTEXT_TERMS = Object.freeze(['num_ctx']);
 const BUDGET_TERMS = Object.freeze(['num_predict']);
 const CONTROL_TERMS = Object.freeze([
     'temperature', 'top_p', 'top_k', 'repeat_penalty', 'seed', 'seed_policy',
-    'sampling_profile', 'api_mode', 'response_mode', 'response_budget_rule', 'think', 'send_think'
+    'sampling_profile', 'api_mode', 'response_mode', 'response_budget_rule', 'think', 'send_think',
+    'answer_contract_mode', 'include_length_hint', 'thinking_final_answer_policy'
 ]);
 const GENERATION_TERMS = Object.freeze([...CONTEXT_TERMS, ...BUDGET_TERMS, ...CONTROL_TERMS]);
 // Non-authoritative confounds: these differ between artifacts by definition or
@@ -72,21 +73,28 @@ const CONFOUND_BY_TERM = Object.freeze({
     response_mode: 'generation_controls',
     response_budget_rule: 'generation_controls',
     think: 'generation_controls',
-    send_think: 'generation_controls'
+    send_think: 'generation_controls',
+    answer_contract_mode: 'generation_controls', include_length_hint: 'generation_controls',
+    thinking_final_answer_policy: 'generation_controls'
 });
 const { judgeCohortSettings, multiJudgeCohortSettings } = require('../../../../shared/benchmarkTargetContract');
 
+const { normalizeModelTag } = require('../../../../shared/modelNames');
+const { normalizeHostUrl } = require('../../../../shared/artifactIdentity');
+const { fingerprint } = require('../../../../shared/workerContract');
 const { qualificationContractFingerprint } = require('./judgeQualificationContract');
 const REQUIRED_GENERATION_TERMS = new Set(GENERATION_TERMS.filter(term => term !== 'response_budget_rule'));
 
 const NON_JUDGE_AUTHORITIES = new Set(['deterministic', 'executable']);
 const MIXED = Symbol('mixed');
+const SAVED_NULL = Symbol('saved-null');
 
 const distinct = (values) => [...new Set(values.filter((value) => value !== null && value !== undefined && value !== ''))];
-const hostOf = (value) => String(value || '').replace(/\/+$/, '').toLowerCase();
-const identityOf = (model, host) => (model ? `${String(model).trim().toLowerCase()}@${hostOf(host)}` : null);
+const hostOf = normalizeHostUrl;
+const identityOf = (model, host) => (model ? `${normalizeModelTag(model).toLowerCase()}@${hostOf(host)}` : null);
 
 function normalizeScalar(value) {
+    if (value === SAVED_NULL) return value;
     if (value === null || value === undefined) return null;
     if (typeof value === 'string') {
         const trimmed = value.trim().toLowerCase();
@@ -116,6 +124,19 @@ function stableJson(value) {
     return `{${keys.map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
 }
 
+// Writer qualification folds :latest even when the saved execution retains it.
+// Normalize identities only; artifact digests, settings and policy stay exact.
+function judgeJson(value) {
+    function canonical(node) {
+        if (!node || typeof node !== 'object') return node;
+        if (Array.isArray(node)) return node.map(canonical);
+        return Object.fromEntries(Object.entries(node).map(([key, entry]) => [key,
+            typeof entry === 'string' && key === 'model' ? normalizeModelTag(entry).toLowerCase()
+                : typeof entry === 'string' && key === 'host' ? hostOf(entry) : canonical(entry)]));
+    }
+    return stableJson(canonical(value));
+}
+
 /**
  * A whole-object control (judge execution/qualification settings, multi-judge
  * policy). All saved copies must agree, else `MIXED`; none saved is absent.
@@ -123,7 +144,7 @@ function stableJson(value) {
 function resolveObjectControl(sources) {
     const values = sources
         .filter((value) => value !== null && value !== undefined)
-        .map(stableJson);
+        .map(judgeJson);
     const unique = distinct(values);
     if (unique.length > 1) return MIXED;
     return unique.length === 1 ? unique[0] : null;
@@ -195,11 +216,8 @@ function extractControl(rows, batch, spec, term) {
             ...candidates.map((candidate) => getPath(candidate, 'execution.sampling.repeat_penalty')),
             fixed?.repeat_penalty, executionConfig?.repeat_penalty
         ],
-        seed: [
-            ...rows.map((row) => getPath(row, 'execution_settings.seed')),
-            ...candidates.map((candidate) => getPath(candidate, 'execution.sampling.seed')),
-            fixed?.seed, executionConfig?.seed
-        ],
+        seed: [...rows.map(row => row.execution_settings), ...candidates.map(candidate => candidate.execution?.sampling), fixed, executionConfig]
+            .filter(source => source && Object.hasOwn(source, 'seed')).map(source => source.seed === null ? SAVED_NULL : source.seed),
         seed_policy: [
             ...rows.map((row) => getPath(row, 'execution_settings.seed_policy')),
             ...candidates.map((candidate) => getPath(candidate, 'execution.sampling.seed_policy')),
@@ -215,7 +233,10 @@ function extractControl(rows, batch, spec, term) {
             batch?.inference_contract_campaign?.responseMode, executionConfig?.response_mode].map(normalizeMode),
         response_budget_rule: [executionConfig?.response_budget_rule],
         think: [...rows.map(row => row.execution_settings?.think), ...candidates.map(candidate => candidate.mode?.think)],
-        send_think: candidates.map(candidate => candidate.mode?.sendThink)
+        send_think: candidates.map(candidate => candidate.mode?.sendThink),
+        answer_contract_mode: [fixed?.answer_contract_mode, executionConfig?.answer_contract_mode],
+        include_length_hint: [fixed?.include_length_hint, executionConfig?.include_length_hint],
+        thinking_final_answer_policy: [fixed?.thinking_final_answer_policy, executionConfig?.thinking_final_answer_policy]
     };
     return resolveControl(sources[term] || []);
 }
@@ -251,10 +272,10 @@ function completeJudgedRow(row) {
         const target = expected.find(judge => identityOf(judge.model, judge.host) === identityOf(vote.judge_model, vote.judge_host));
         if (!target || !Number.isFinite(vote.quality_score) || vote.quality_score < 0 || vote.quality_score > 10
             || !qualifiedTarget(vote.judge_model, vote.judge_host, vote.execution_contract, vote.qualification_contract)
-            || stableJson(target.contract) !== stableJson(vote.execution_contract)
+            || judgeJson(target.contract) !== judgeJson(vote.execution_contract)
             || stableJson(target.settings) !== stableJson(vote.qualification_contract.settings)
             || (vote.qualification_contract.escalation !== null
-                && stableJson(vote.qualification_contract.escalation) !== stableJson(policy))) return false;
+                && judgeJson(vote.qualification_contract.escalation) !== judgeJson(policy))) return false;
     }
     const primaryScores = policy.judges.map(judge => scores.find(vote => identityOf(vote.judge_model, vote.judge_host) === identityOf(judge.model, judge.host)).quality_score);
     const divergence = Math.max(...primaryScores) - Math.min(...primaryScores);
@@ -348,17 +369,43 @@ function collectArmEvidence({ spec, batch, rows }) {
 }
 
 function compareTerm(valueA, valueB) {
-    const mixed = valueA === MIXED || valueB === MIXED;
-    if (mixed) return { status: 'ambiguous', kind: 'mixed', valueA: 'mixed', valueB: 'mixed' };
-    const missing = (value) => value === null || value === undefined;
+    if (valueA === MIXED || valueB === MIXED) return { status: 'ambiguous', kind: 'mixed', valueA: 'mixed', valueB: 'mixed' };
+    const missing = value => value === null || value === undefined;
+    const display = value => value === SAVED_NULL ? null : value;
     if (missing(valueA) && missing(valueB)) return { status: 'absent', valueA: null, valueB: null };
-    if (missing(valueA) !== missing(valueB)) {
-        // One arm saved a value, the other has no comparable evidence for it.
-        return { status: 'ambiguous', kind: 'missing', valueA, valueB };
+    if (missing(valueA) !== missing(valueB)) return { status: 'ambiguous', kind: 'missing', valueA: display(valueA), valueB: display(valueB) };
+    return { status: stableJson(valueA) === stableJson(valueB) ? 'match' : 'mismatch', valueA: display(valueA), valueB: display(valueB) };
+}
+
+/** Catalogue fingerprints do not cover appended instructions. Compare saved effective requests per shared prompt without exposing their text. */
+function effectivePromptChecks(rowsA, rowsB) {
+    const fields = ['hint_applied', 'hint_text', 'answer_contract_applied', 'answer_contract_mode',
+        'answer_contract_target_tokens', 'answer_contract_max_tokens', 'answer_contract_text',
+        'thinking_final_answer_text'];
+    const collect = rows => {
+        const prompts = new Map();
+        for (const row of rows) {
+            const key = row.prompt_id ? `id:${row.prompt_id}` : row.prompt_name ? `name:${row.prompt_name}` : null;
+            if (!key) continue;
+            const saved = Object.fromEntries(fields.filter(field => Object.hasOwn(row.execution_settings || {}, field))
+                .map(field => [field, row.execution_settings[field]]));
+            if (typeof row.prompt === 'string') saved.prompt = row.prompt;
+            const value = Object.keys(saved).length ? fingerprint(saved) : null;
+            if (!prompts.has(key)) prompts.set(key, new Set());
+            prompts.get(key).add(value);
+        }
+        return prompts;
+    };
+    const a = collect(rowsA), b = collect(rowsB), valuesA = {}, valuesB = {};
+    let hasEvidence = false;
+    for (const key of [...a.keys()].filter(key => b.has(key)).sort()) {
+        if (a.get(key).size !== 1 || b.get(key).size !== 1) return compareTerm(MIXED, MIXED);
+        const left = [...a.get(key)][0], right = [...b.get(key)][0];
+        if ((left === null) !== (right === null)) return compareTerm(left, right);
+        hasEvidence ||= left !== null;
+        valuesA[key] = left; valuesB[key] = right;
     }
-    return stableJson(valueA) === stableJson(valueB)
-        ? { status: 'match', valueA, valueB }
-        : { status: 'mismatch', valueA, valueB };
+    return compareTerm(hasEvidence ? stableJson(valuesA) : null, hasEvidence ? stableJson(valuesB) : null);
 }
 
 function termCategory(term) {
@@ -377,7 +424,8 @@ function buildComparisonContract(armA, armB) {
     const evidenceB = collectArmEvidence(armB);
     const hasJudged = evidenceA.hasJudged || evidenceB.hasJudged;
 
-    const checks = { scorer_version: compareTerm(evidenceA.scorerVersion, evidenceB.scorerVersion) };
+    const checks = { scorer_version: compareTerm(evidenceA.scorerVersion, evidenceB.scorerVersion),
+        effective_prompt: effectivePromptChecks(armA.rows, armB.rows) };
     for (const [name, judgeA, judgeB] of [
         ['judge_identity', evidenceA.judge.identity, evidenceB.judge.identity],
         ['judge_num_ctx', evidenceA.judge.numCtx, evidenceB.judge.numCtx],
@@ -463,10 +511,11 @@ function buildComparisonContract(armA, armB) {
     const runtimeB = evidenceB.candidateProvenance.map((candidate) => candidate.runtimeFingerprint).filter(Boolean);
     if (runtimeA.length && runtimeB.length && runtimeA.join(',') !== runtimeB.join(',')) confounds.add('runtime_fingerprint');
 
-    // Confounds are only surfaced as warnings when the explicit frozen
-    // contract is the evidence: under a shared cohort, different contender
-    // artifacts are the point of the comparison, not a warning.
+    // Artifact differences are provenance; unverifiable controls explain why
+    // an otherwise paired comparison cannot be authoritative.
     const warnings = [];
+    if (reasons.includes('candidate_selection_unverified')) warnings.push('Saved campaign candidates do not unambiguously bind to the selected model and host.');
+    if (reasons.includes('judge_evidence_unverified')) warnings.push('Saved judge qualifications or consensus evidence are incomplete or contradictory.');
     if (confounds.has('artifact_digest')) warnings.push('The arms ran different artifact digests: retained as provenance, a confound, not a defect.');
     if (evidence === 'frozen_contract') {
         for (const [term, check] of Object.entries(checks)) {
@@ -478,6 +527,9 @@ function buildComparisonContract(armA, armB) {
                 && REQUIRED_JUDGE_TERMS.has(term) && hasJudged) {
                 warnings.push(`No saved judge ${term.replace('judge_', '')} evidence: judged scores cannot be verified as comparable.`);
             }
+        }
+        for (const term of reasons.filter(reason => reason.startsWith('frozen_evidence_missing:')).map(reason => reason.split(':')[1])) {
+            if (termCategory(term) !== 'judge') warnings.push(`No saved ${term} evidence: the comparison contract cannot be verified.`);
         }
         if (confounds.has('runtime_fingerprint')) warnings.push('The arms ran different host/runtime fingerprints: a non-authoritative confound.');
         if (confounds.has('effective_context')) warnings.push('The arms used different effective contexts: a non-authoritative confound.');

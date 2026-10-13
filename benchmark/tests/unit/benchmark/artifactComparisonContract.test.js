@@ -67,7 +67,8 @@ function batchDoc({ batchId, cohort, model, host, digest, candidates, judges, ex
             responseMode: 'final_only',
             fixedSettings: {
                 sampling_profile: 'controlled', temperature: 0.2, top_p: 0.9, top_k: 40,
-                repeat_penalty: 1.05, seed: 42, seed_policy: 'fixed', api_mode: 'chat', repeats: 1
+                repeat_penalty: 1.05, seed: 42, seed_policy: 'fixed', api_mode: 'chat', repeats: 1,
+                answer_contract_mode: 'auto', include_length_hint: false, thinking_final_answer_policy: 'visible_required'
             },
             candidates: candidates || [candidate(model, host, digest)]
         }
@@ -255,5 +256,50 @@ describe('buildComparisonContract', () => {
         const emptyBatch = { ...batch, inference_contract_campaign: null, execution_config: {} };
         const noSettings = rows(SPEC_A.model, HOST_A, DIGEST_A).map((row) => ({ ...row, execution_settings: null }));
         expect(extractControl(noSettings, emptyBatch, SPEC_A, 'seed')).toBeNull();
+    });
+
+    test('an explicitly saved null seed matches but absent seed evidence remains unverified', () => {
+        const a = armA({ settings: executionSettings({ seed: null }) });
+        const b = armB({ settings: executionSettings({ seed: null }) });
+        const qualified = buildComparisonContract(a, b);
+        expect(qualified.authoritative).toBe(true);
+        expect(qualified.checks.seed).toEqual({ status: 'match', valueA: null, valueB: null });
+        for (const arm of [a, b]) {
+            arm.rows.forEach(row => delete row.execution_settings.seed);
+            delete arm.batch.inference_contract_campaign.candidates[0].execution.sampling.seed;
+            delete arm.batch.inference_contract_campaign.fixedSettings.seed;
+        }
+        expect(buildComparisonContract(a, b).reasons).toContain('frozen_evidence_missing:seed');
+        expect(buildComparisonContract(a, b).authoritative).toBe(false);
+    });
+
+    test('writer qualification normalizes the latest alias without losing actual judge identity', () => {
+        const a = armA({ judges: [judgeConfig('gamma-synthetic:latest')] });
+        const b = armB({ judges: [judgeConfig('gamma-synthetic')] });
+        expect(a.rows[0].judge_qualification_contract.artifact.model).toBe('gamma-synthetic');
+        expect(buildComparisonContract(a, b).authoritative).toBe(true);
+    });
+
+    test.each([
+        ['answer_contract_mode', 'off'], ['include_length_hint', true], ['thinking_final_answer_policy', 'off']
+    ])('same catalogue prompt fingerprint cannot hide changed %s instructions', (key, value) => {
+        const a = armA(), b = armB();
+        b.batch.inference_contract_campaign.fixedSettings[key] = value;
+        expect(buildComparisonContract(a, b).authoritative).toBe(false);
+        expect(buildComparisonContract(a, b).reasons).toContain(`${key}_mismatch`);
+    });
+
+    test('effective saved request text and appended hints are compared without returning their contents', () => {
+        const a = armA(), b = armB();
+        for (const arm of [a, b]) arm.rows.forEach(row => { row.prompt = `Request for ${row.prompt_id}`; });
+        expect(buildComparisonContract(a, b).authoritative).toBe(true);
+        b.rows[0].prompt += '\nDifferent answer instructions';
+        const changed = buildComparisonContract(a, b);
+        expect(changed.authoritative).toBe(false);
+        expect(changed.reasons).toContain('effective_prompt_mismatch');
+        expect(JSON.stringify(changed)).not.toContain('Different answer instructions');
+        b.rows[0].prompt = a.rows[0].prompt;
+        b.rows[0].execution_settings = { ...b.rows[0].execution_settings, hint_applied: true, hint_text: 'Changed length hint' };
+        expect(buildComparisonContract(a, b).authoritative).toBe(false);
     });
 });

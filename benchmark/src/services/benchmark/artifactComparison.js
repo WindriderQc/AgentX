@@ -40,7 +40,7 @@ const { buildComparisonContract } = require('./artifactComparisonContract');
 const MIN_CATEGORY_PAIRS = 2;
 const NON_JUDGE_AUTHORITIES = new Set(['deterministic', 'executable']);
 const RESULT_FIELDS = [
-    'model', 'host', 'model_digest', 'prompt_id', 'prompt_fingerprint', 'prompt_name', 'prompt_category',
+    'model', 'host', 'model_digest', 'prompt', 'prompt_id', 'prompt_fingerprint', 'prompt_name', 'prompt_category',
     'quality_score', 'judge_model', 'judge_host', 'judge_scores', 'evaluation_authority',
     'judge_escalated', 'judge_consensus', 'judge_divergence', 'judge_tiebreaker_used',
     'success', 'infra_error', 'needs_review', 'excluded_from_leaderboard',
