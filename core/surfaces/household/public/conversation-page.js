@@ -36,7 +36,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       </details>
       <label class="conversation-toggle"><input id="conversationOpen" type="checkbox"> Alternate model (Open) <span class="muted">Change this conversation’s model</span></label><p id="conversationOpenStatus" class="muted" role="status" hidden></p>
       <details id="conversationOpenDetails" hidden><summary>Alternate model details</summary><p id="conversationOpenContext" class="muted"></p></details>
-      <details><summary>Voice and language</summary><label for="conversationLanguage">Language</label><select id="conversationLanguage"><option value="auto">Automatic · French / English</option><option value="fr">French</option><option value="en">English</option></select>
+      <details><summary>Voice and language</summary><label for="conversationLanguage">Language</label><select id="conversationLanguage"><option value="fr">Français québécois</option><option value="en">English</option></select>
       <p id="voiceDescription" class="muted"></p>
       <button id="conversationPreview" class="button" type="button">Preview voice</button><p id="conversationPreviewStatus" class="muted" role="status"></p>
       <p id="conversationSpeechReceipt" class="muted" hidden></p>
@@ -267,7 +267,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     let response;
     try {
       response = await fetch(`${sessionBase}/${encodeURIComponent(session.sessionId)}/turns/text`, {
-        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
+        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, language: language.value, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
       if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || 'Conversation unavailable'); }
     } catch (error) { workflow?.stream(turnId, { type: signal.aborted ? 'interrupted' : 'error' }); throw error; }
     work?.follow(session.sessionId);
@@ -490,7 +490,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     // locale greeted a French family in English. The line
     // shows in the transcript too, and the face opens its eyes as it is spoken.
     async greet(session, signal) {
-      const lang = language.value === 'en' || (language.value === 'auto' && session?.voice?.language === 'en') ? 'en' : 'fr';
+      const lang = language.value === 'en' ? 'en' : 'fr';
       const text = lastGreeting = NestorGreetings.greetingFor({ space, language: lang, wakeWord: !!conversation.selection?.wakeWord, previous: lastGreeting });
       // While the greeting is spoken, Core warms this conversation's own prompt (voice-warmup.js),
       // so the first question is not preceded by a full prompt read. Best effort.
@@ -664,7 +664,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     const timeout = setTimeout(() => abort.abort(), 30000);
     el('conversationPreview').textContent = 'Stop voice';
     el('conversationPreviewStatus').textContent = 'Preparing the voice…';
-    const lang = language.value === 'auto' ? (navigator.language?.startsWith('fr') ? 'fr' : 'en') : language.value;
+    const lang = language.value === 'en' ? 'en' : 'fr';
     const persona = conversation.session?.persona || selected();
     const name = persona.id === 'native_personality' ? selectedAgent().name : persona.name.split(' ·')[0];
     const text = lang === 'fr' ? 'Bonjour, je suis ' + name + '. Voici ma voix pour notre prochaine conversation.'
@@ -805,7 +805,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       agentPicker.value = saved.agentId || 'main';
       backendPicker.value = saved.backend || runtime?.defaultBackend || 'openclaw';
       picker.value = saved.persona?.id || 'nestor'; open.checked = !!saved.inference?.open;
-      language.value = data.session.voice?.language || 'auto';
+      language.value = P.profile(data.session.voice).language;
       transcript.replaceChildren(); partial = null; clearBoard(); brain.reset();
       (data.turns || []).forEach(turn => {
         if (turn.inputText) message('user', turn.inputText, false, null, turn.attachments);

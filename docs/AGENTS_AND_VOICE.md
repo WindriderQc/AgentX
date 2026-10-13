@@ -180,7 +180,13 @@ holding phrase while waiting for reply text; available text drops a phrase that
 has not started. `say_end` flushes the last clause before a Household turn's
 remaining completion work. PsyX waits for its confirmed reply and keeps holding
 phrases off. One selected language applies throughout a turn, including notices
-and holding phrases; an explicit French or English preference wins.
+and holding phrases. Nestor and Family browser conversations default to Quebec
+French (`fr`, browser locale `fr-CA`); English requires an explicit selection.
+Saved automatic choices become French, while explicit English choices remain.
+The browser sends its current choice with each turn, including resumed sessions,
+and Core places that language directive outside the reference-data block. The
+choice does not change the installed native model or context. A locale label
+does not certify the synthesizer's accent; listening qualification is separate.
 
 Household's ladder tries the explicit browser choice, the personality's effective
 voice, its declared catalog fallback if present, then the device voice. A voice
