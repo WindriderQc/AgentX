@@ -75,6 +75,21 @@ class CodingRunTest(unittest.TestCase):
         self.assertEqual(runner.git(self.workspace, "status", "--porcelain"), "")
         self.assertTrue((self.workspace / "result.txt").exists())
 
+    def test_auto_resolves_the_coding_route_before_worker_dispatch(self):
+        self.exit_code = 0
+        def request(url, *args, **kwargs):
+            if url.endswith('/api/router/config'):
+                return {'data': {'taskModels': {'code_generation': {'model': 'selected-open', 'host': 'primary'}}}}
+            return self.request(url, *args, **kwargs)
+        def worker(*args, **kwargs):
+            self.assertEqual(runner.MODEL, 'selected-open')
+            return self.worker(*args, **kwargs)
+        with mock.patch.object(runner, 'MODEL', 'auto'), mock.patch.object(runner, 'request', request), \
+                mock.patch.object(runner, 'run_worker', worker), \
+                mock.patch.object(runner, 'push_and_open_pr', return_value='https://example.test/pr'), \
+                mock.patch.dict(os.environ, {'GH_TOKEN': 'fixture-token'}), mock.patch('builtins.print'):
+            self.assertEqual(runner.main(), 0)
+
     def test_operator_stop_preserves_checkpoint_and_forbids_publication_even_after_worker_success(self):
         key = "11111111-2222-4333-8444-555555555555"
         receipts = self.workspace.parent / "receipts"

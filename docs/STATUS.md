@@ -301,7 +301,7 @@ Issues hold the current work and remaining acceptance:
 |---|---|
 | Playground screen capture through canonical attachments | [#2](https://github.com/WindriderQc/AgentX/issues/2) |
 | Real-device acceptance for phone, microphone and voice | [#3](https://github.com/WindriderQc/AgentX/issues/3) |
-| DSH Studio bounded-session runtime claims | [#4](https://github.com/WindriderQc/AgentX/issues/4) |
+| Principal model selection and DSH Studio qualification | [#734](https://github.com/WindriderQc/AgentX/issues/734) |
 | Qualify benchmark judges against human references | [#6](https://github.com/WindriderQc/AgentX/issues/6) |
 | Evaluate dedicated collections for family and personal tasks | [#7](https://github.com/WindriderQc/AgentX/issues/7) |
 | Bounded maintenance actions through Core | [#8](https://github.com/WindriderQc/AgentX/issues/8) |

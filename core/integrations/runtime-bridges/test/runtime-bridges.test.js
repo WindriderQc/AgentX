@@ -1467,3 +1467,32 @@ test('ordinary OpenClaw tool loops receive done only after Core releases the pre
   await ended;
   assert.match(chunks.join(''), /"done":true/);
 });
+
+for (const [name, register, endpoint] of [
+  ['OpenClaw', registerOpenClawProtocol, '/api/chat'],
+  ['OpenAI', registerHermesProtocol, '/v1/chat/completions']
+]) test(`${name} resolves the principal alias per request without changing explicit choices`, async () => {
+  let selected = 'model-a';
+  const calls = [];
+  const services = runtimeServices(async (request, options) => {
+    calls.push({ request, options });
+    return { ok: true, status: 200, body: { model: request.model, message: { content: 'done' }, done: true },
+      metadata: { model: request.model, hostKey: 'primary', upstreamProtocol: 'ollama' } };
+  });
+  services.routing.getEffectiveSnapshot = async () => {
+    const current = snapshot();
+    current.tasks.daily_operator = { ...current.tasks.daily_operator, model: selected, contextSize: 196608 };
+    return current;
+  };
+  const router = register({ express: fakeExpress(), runtimeServices: services, logger: {} });
+  for (const model of ['agentx-primary', 'agentx-primary', 'model-a']) {
+    const res = new Response();
+    await route(router, 'post', endpoint).handlers[0](new Request({ body: { model, messages: [{ role: 'user', content: 'hello' }] } }), res);
+    assert.equal(res.statusCode, 200);
+    selected = 'model-b';
+  }
+  assert.deepEqual(calls.map(call => call.request.model), ['model-a', 'model-b', 'model-a']);
+  assert.equal(calls[0].request.options.num_ctx, 196608);
+  assert.equal(calls[1].options.hostUrl, 'http://model-host.test:11434');
+  assert.equal(calls[2].options.hostUrl, undefined);
+});

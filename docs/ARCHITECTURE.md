@@ -83,6 +83,14 @@ the legacy background read profile retains its separate 4096-token bound.
 Chat and consumer routing are not yet fully converged on one path. Family and
 child memory and tools stay scoped even where the mechanism is shared.
 
+Nerve Center's principal model choice reuses HostPreference's first resident
+and matching ordinary RouterTaskConfig routes. Both alternatives retain the
+same pin context; other residents and dedicated routes keep their contracts.
+Consumers explicitly selecting `agentx-primary` follow `daily_operator` through
+the existing Core bridges. Concrete model selections remain explicit. Studio
+has request-scoped admission; Coding Team freezes the native capacity model
+for each attempt. See [Studio setup](DSH_RESUMPTION.md).
+
 Task routing sends each task type to its configured model and host. Light
 tasks (quick reactions, short Nestor answers, RAG helpers, the janitor) may
 carry an instance-configured fallback ladder: when the primary is unavailable

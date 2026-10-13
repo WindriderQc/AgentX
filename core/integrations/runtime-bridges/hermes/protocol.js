@@ -15,12 +15,14 @@ const { ollamaMessages } = require('./messages');
 const { registerHermesVision } = require('./vision');
 const { settledStream } = require('../openclaw/settled-stream');
 const { isPreRoutingValidationRefusal } = require('../../../src/extensions/trustedRuntimeServices');
+const { PRINCIPAL_MODEL_ALIAS, resolvePrincipalAlias } = require('../principal-model');
 
 const HERMES_HARNESS_VERSION = '1.2.0';
 const HERMES_CONSUMER_CONTRACT = 'hermes-runtime-v1';
 
 function approvedModels(snapshot) {
   const models = new Set(uniqueEffectiveModels(snapshot).map((task) => task.model));
+  if (snapshot.tasks?.daily_operator?.model) models.add(PRINCIPAL_MODEL_ALIAS);
   const authority = String(process.env.HERMES_AUTHORITY_MODEL || '').trim();
   if (authority) models.add(authority);
   return [...models];
@@ -222,17 +224,20 @@ function registerHermesProtocol({ express, runtimeServices, logger }) {
         });
       }
       const snapshot = await runtimeServices.routing.getEffectiveSnapshot({ includeCatalog: false });
-      const model = requireApprovedModel(snapshot, body.model);
+      const principalTarget = resolvePrincipalAlias(snapshot, body.model);
+      const model = requireApprovedModel(snapshot, principalTarget?.model || body.model);
       coding = await require('../../../src/services/pipelineCodingInferenceService').prepare(req.headers, model, abort.signal);
       inferenceOptions = {
         signal: abort.signal,
         consumerContract: HERMES_CONSUMER_CONTRACT,
         observePromptPrefix: true,
+        ...(principalTarget && { hostUrl: principalTarget.hostUrl }),
         ...(coding?.options || {})
       };
       const result = await whenAdmitted(() => runtimeServices.inference.execute({
         mode: 'chat',
         model,
+        ...(principalTarget && { options: { num_ctx: principalTarget.numCtx } }),
         messages: ollamaMessages(body.messages),
         stream: body.stream === true,
         tools: body.tools,
@@ -281,7 +286,8 @@ function registerHermesProtocol({ express, runtimeServices, logger }) {
           'Cache-Control': 'no-cache, no-transform',
           Connection: 'keep-alive'
         });
-        const admitted = coding ? settledStream(result.stream, codingCompletion) : result.stream;
+        const completion = codingCompletion || result.completion;
+        const admitted = completion ? settledStream(result.stream, completion) : result.stream;
         const stream = result.metadata.upstreamProtocol === 'openai'
           ? admitted
           : new OllamaToOpenAiSse(model);

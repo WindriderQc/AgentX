@@ -10,6 +10,7 @@
 const express = require('express');
 const { requestPrincipal } = require('../src/helpers/requestCaller');
 const router = express.Router();
+router.use(require('./nerve-center-principal-model'));
 const logger = require('../config/logger');
 
 const { getAllModelsHealth } = require('../src/services/modelRouter');

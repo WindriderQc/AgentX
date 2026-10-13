@@ -1,9 +1,8 @@
 # Local coding worker
 
-**DSH Studio integration is deferred.** Its launcher reserves the inference
-host for the whole web-server lifetime. Keep the code and private workspaces,
-but do not enable permanent Studio startup. See
-[the decision, preserved state and resumption checks](../../docs/DSH_RESUMPTION.md).
+DSH powers both the isolated coding worker and the human-operated Studio.
+Studio uses Core's OpenAI gateway with request-scoped admission; an idle web
+server holds no inference host. See [Studio setup and qualification](../../docs/DSH_RESUMPTION.md).
 
 Core Pipeline is the task queue. One local worker takes one task, writes the
 change and opens a draft pull request. Reviewing that pull request, with its
@@ -22,7 +21,7 @@ into autonomous authorization.
 ## One run
 
 ```bash
-AGENTX_CODING_MODEL=<model Core serves> GH_TOKEN=<token> \
+AGENTX_CODING_MODEL=auto GH_TOKEN=<token> \
   python3 integrations/coding/coding_run.py 0903
 ```
 
@@ -37,6 +36,10 @@ turn pushes the branch, opens the draft pull request and records the result
 on the ticket (`review`, or `blocked` when nothing changed or the worker stopped
 early). Running the same task again continues in its existing workspace, so an
 answer on the ticket becomes a follow-up.
+
+`auto` (the default) follows Core's `code_generation` route. Each autonomous
+attempt freezes the concrete model from its native capacity claim. An explicit
+`AGENTX_CODING_MODEL` remains a dedicated choice and must match that claim.
 
 The runner uses four protections:
 
@@ -165,5 +168,7 @@ launch the replacement worker with the same request id.
 
 ## DSH wrappers
 
-`dsh-studio.sh` and `dsh-headless.sh` are the older Studio and Nestor-tool
-wrappers around `with-agentx-claim.js`. The coding worker does not use them.
+`dsh-studio.sh` prepares a private copy of native settings and points its
+`agentx-primary` model at Core. It preserves the configured workspace and
+isolation boundary. `dsh-headless.sh` retains its bounded-session claim wrapper;
+the isolated Coding Team worker has its own native task/capacity lifecycle.

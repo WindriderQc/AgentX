@@ -45,7 +45,7 @@ const {
   HOUSEHOLD_OPEN_HOLD_IDLE_MS, HOUSEHOLD_OPEN_HOLD_OWNER, HOUSEHOLD_OPEN_HOLD_WAIT_TIMEOUT_MS
 } = require('./open-lane-hold');
 const {
-  HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_MODEL, HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_DIGEST, HOUSEHOLD_PERMISSIVE_CONTEXT, PERSONAL_OPERATOR_SURFACE_CONTRACT, PACKS,
+  HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_MODEL, HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_DIGEST, PERSONAL_OPERATOR_SURFACE_CONTRACT, PACKS,
   SAFETY_SUPPORT, packIdsSharingMemory, packById, packSummary, modeSummary,
   inferenceTargetForMode
 } = require('./packs');
@@ -127,7 +127,17 @@ function cleanScope(value, fallback = 'default') {
 function createOpenLaneHold(options = {}) {
   const pack = PACKS.find((entry) => entry.id === 'personal_operator');
   const mode = pack?.modes.find((entry) => entry.id === 'open');
-  return createHostHold({ ...options, resolveTarget: (env) => inferenceTargetForMode(pack, mode, env) });
+  return createHostHold({ ...options, resolveTarget: async env => {
+    const target = inferenceTargetForMode(pack, mode, env);
+    const snapshot = await options.runtimeServices?.routing?.getEffectiveSnapshot({ includeCatalog: false });
+    const daily = snapshot?.tasks?.daily_operator;
+    if (daily?.hostUrl !== target.hostUrl || !(daily?.contextSize > 0)) {
+      throw Object.assign(new Error('Open needs the principal route and its configured context.'), {
+        statusCode: 409, code: 'OPEN_CONTEXT_UNAVAILABLE'
+      });
+    }
+    return { ...target, numCtx: daily.contextSize };
+  } });
 }
 
 function register(api) {
@@ -187,7 +197,7 @@ function register(api) {
     if (model !== target?.model) return null;
     const state = await openHold.status();
     if (!state.active) return null;
-    return { ...target, contextSize: target.numCtx,
+    return { ...target, numCtx: state.numCtx, contextSize: state.numCtx,
       inferenceContract: { capabilities: { tools: { supported: true }, thinking: { supported: true } } } };
   };
   let catalogReady;
@@ -581,7 +591,6 @@ module.exports = {
   HOUSEHOLD_CONSUMER_CONTRACT,
   HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_MODEL,
   HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_DIGEST,
-  HOUSEHOLD_PERMISSIVE_CONTEXT,
   MEMORY_CONTRACT,
   SAFETY_SUPPORT,
   nextRoutineDue,

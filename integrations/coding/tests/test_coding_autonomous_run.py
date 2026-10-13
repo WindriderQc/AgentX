@@ -71,6 +71,7 @@ class AutonomousBoundaryTest(unittest.TestCase):
                 self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 1)
             r.begin_publication.assert_not_called(); publish.assert_not_called()
             self.assertEqual(feedback[0]['attemptEvidence']['failureCodes'], ['model_termination_unverified'])
+            self.assertEqual(r.run_worker.call_args.kwargs['model'], 'synthetic')
 
     def test_stop_with_revoked_manifest_cancels_native_capacity_without_worker_or_model(self):
         with tempfile.TemporaryDirectory() as directory:
