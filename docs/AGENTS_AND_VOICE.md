@@ -182,6 +182,15 @@ PsyX keeps a responding degraded service reachable, displays its degraded state,
 and lets transcription use the shared transport's existing retry/backup policy.
 Reachability does not certify synthesis, loaded models or acoustic quality.
 
+Standalone spoken controls (`stop`, `stop talking`, `arrête`, `arrête de parler`,
+`arrête-toi`, `tais-toi`, `silence`, optionally addressed to Nestor) share complete
+utterance examples across the browser and CPU detector. Mixed commands such as
+“stop et lis la suite” retain their request text; the CPU detector also requires
+its existing word-confidence threshold. Grammar coverage is separate from
+recognizer/model and microphone qualification. A spoken Stop cuts playback;
+already accepted Main work belongs to Core and continues independently. Task
+cancellation is a distinct command and requires its own execution receipt.
+
 The loop speaks clauses and prepares at most one ahead. Household can play a
 holding phrase while waiting for reply text; available text drops a phrase that
 has not started. `say_end` flushes the last clause before a Household turn's

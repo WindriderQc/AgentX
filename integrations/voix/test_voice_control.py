@@ -4,6 +4,7 @@ import json
 import threading
 import unittest
 import wave
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 from voice_control import VoiceControl, is_stop_result, recognize
@@ -22,6 +23,13 @@ def wav(seconds=.1, rate=16000, channels=1):
 
 
 class VoiceControlTest(unittest.TestCase):
+    def test_the_cpu_detector_obeys_the_same_complete_utterance_examples_as_the_browser(self):
+        examples = json.loads((Path(__file__).parents[2] / "shared/voice-control-examples.json").read_text())
+        for text in examples["stop"]:
+            with self.subTest(text=text): self.assertTrue(is_stop_result([result(text)]))
+        for text in examples["speech"]:
+            with self.subTest(text=text): self.assertFalse(is_stop_result([result(text)]))
+
     def test_only_complete_confident_commands_are_controls(self):
         for text in ["stop", "stop stop stop stop", "nestor silence", "silence nestor", "arrête", "tais toi"]:
             with self.subTest(text=text):

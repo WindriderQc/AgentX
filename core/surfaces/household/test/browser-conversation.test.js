@@ -1,10 +1,16 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Endpoint, EchoGuard, wav, Conversation, WakeWindow, isTranscriptHallucination, isSpokenEcho, holdingPhrase } = require('../public/browser-conversation');
+const { Endpoint, EchoGuard, wav, Conversation, WakeWindow, isStopControl, isTranscriptHallucination, isSpokenEcho, holdingPhrase } = require('../public/browser-conversation');
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const nextTimer = () => new Promise((resolve) => setTimeout(resolve, 10));
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { resolve, promise }; };
+
+test('browser Stop uses the same complete-utterance examples as the CPU control detector', () => {
+  const examples = require('../../../../shared/voice-control-examples.json');
+  for (const text of examples.stop) assert.equal(isStopControl(text), true, text);
+  for (const text of examples.speech) assert.equal(isStopControl(text), false, text);
+});
 
 function harness(overrides = {}) {
   const calls = [], messages = [], phases = [];
