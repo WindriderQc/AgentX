@@ -25,7 +25,13 @@ For a compact voice guardian, additionally set
 `PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID` and the matching plugin
 `conversationGuardianAgentId`. Install a separate native agent with its own
 small workspace, the existing voice model, `tools.deny: ["*"]`, no skills,
-heartbeat or subagents. Main's workspace, model, tools and permissions stay
+heartbeat or subagents. Give this agent a separate native provider alias whose
+model entry sets `compat.supportsTools: false`. Copy the existing voice endpoint,
+credentials, routing headers, model ID and token limits unchanged; only this
+guardian alias disables model tools. Native OpenClaw uses that capability before
+constructing bundled MCP runtimes, whereas the agent's final deny policy alone
+can still incur an unnecessary MCP connection timeout. Keep the final deny
+policy and native guardian hook as execution fences. Main's workspace, model, tools and permissions stay
 unchanged. The guardian remains an internal role, hidden from the speaker list.
 New intakes persist its identity; existing Main guardian runs retain their exact
 owner. Each guardian turn has a fresh native session containing up to six recent
