@@ -73,6 +73,7 @@
           <button type="button" class="pipeline-task-card" data-pipeline-task="${escapeHtml(entry.task.pipelineId)}">
             <span class="pipeline-card-top"><strong>${escapeHtml(entry.task.pipelineId)}</strong>${statusBadge(entry.task.status)}</span>
             <span class="pipeline-card-title">${escapeHtml(entry.task.title)}</span>
+            ${archivedQualification(entry.task) ? `<span class="pipeline-card-event">Archived qualification · ${escapeHtml(entry.task.codingAutonomy.disposition.outcome)}</span>` : ''}
             <span class="pipeline-card-event">${escapeHtml(entry.label)}${entry.attempt ? ` · attempt ${escapeHtml(entry.attempt)}` : ''}</span>
           </button></li>`).join('')}</ol>
         ${events.length > state.timelineLimit ? `<button type="button" class="pipeline-btn compact" data-more-events>Show more events (${events.length - state.timelineLimit} remaining)</button>` : ''}

@@ -49,6 +49,7 @@ test('timeline history remains available without changing recorded dates or stat
   realBoard.renderProgression();
   expect(nodes.pipelineProgression.innerHTML).toContain('Original blocked result');
   expect(nodes.pipelineProgression.innerHTML).toContain('2030-01-01T00:00:00Z');
+  expect(nodes.pipelineProgression.innerHTML).toContain('Archived qualification · abandoned');
   expect(state.tasks[0].status).toBe('blocked');
 });
 test.each(['blocked', 'review'])('an archived %s dossier preserves its receipts and offers no resume or product acceptance', status => {
