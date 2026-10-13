@@ -83,6 +83,7 @@ const { normalizeModelTag } = require('../../../../shared/modelNames');
 const { normalizeHostUrl } = require('../../../../shared/artifactIdentity');
 const { fingerprint } = require('../../../../shared/workerContract');
 const { qualificationContractFingerprint } = require('./judgeQualificationContract');
+const { seedForRepeat } = require('./config');
 const REQUIRED_GENERATION_TERMS = new Set(GENERATION_TERMS.filter(term => term !== 'response_budget_rule'));
 
 const NON_JUDGE_AUTHORITIES = new Set(['deterministic', 'executable']);
@@ -185,6 +186,18 @@ function extractControl(rows, batch, spec, term) {
     const candidates = armCandidates(batch, spec);
     const fixed = batch?.inference_contract_campaign?.fixedSettings || null;
     const executionConfig = batch?.execution_config || null;
+    const frozen = [...candidates.map(candidate => candidate.execution?.sampling), fixed, executionConfig];
+    const seeds = sources => sources.filter(source => source && Object.hasOwn(source, 'seed'))
+        .map(source => source.seed === null ? SAVED_NULL : source.seed);
+    if (term === 'seed' && extractControl(rows, batch, spec, 'seed_policy') === 'repeat_index_v1') {
+        const base = resolveControl(seeds(frozen));
+        if (base === null || base === MIXED || (base !== SAVED_NULL && !Number.isSafeInteger(base))) return MIXED;
+        const valid = rows.every(row => Object.hasOwn(row.execution_settings || {}, 'seed')
+            && Number.isSafeInteger(row.repeat_index) && row.repeat_index >= 0
+            && row.execution_settings.seed === seedForRepeat({ seed: base === SAVED_NULL ? null : base,
+                seed_policy: 'repeat_index_v1' }, row.repeat_index));
+        return valid ? base : MIXED;
+    }
     const sources = {
         num_ctx: [
             ...rows.map((row) => getPath(row, 'execution_settings.num_ctx')),
@@ -216,8 +229,7 @@ function extractControl(rows, batch, spec, term) {
             ...candidates.map((candidate) => getPath(candidate, 'execution.sampling.repeat_penalty')),
             fixed?.repeat_penalty, executionConfig?.repeat_penalty
         ],
-        seed: [...rows.map(row => row.execution_settings), ...candidates.map(candidate => candidate.execution?.sampling), fixed, executionConfig]
-            .filter(source => source && Object.hasOwn(source, 'seed')).map(source => source.seed === null ? SAVED_NULL : source.seed),
+        seed: seeds([...rows.map(row => row.execution_settings), ...frozen]),
         seed_policy: [
             ...rows.map((row) => getPath(row, 'execution_settings.seed_policy')),
             ...candidates.map((candidate) => getPath(candidate, 'execution.sampling.seed_policy')),
@@ -309,16 +321,39 @@ function judgeSources(rows, batch) {
         complete: judged.every(completeJudgedRow), legacy,
         numCtx: resolveControl([judgeConfig?.num_ctx, ...judged.map(row => row.judge_execution_contract?.num_ctx)]),
         execution: resolveObjectControl([judgeConfig?.execution_contract, ...judged.map(row => row.judge_execution_contract)]),
-        qualification: resolveObjectControl(judged.map(row => row.judge_qualification_contract)),
+        qualification: resolveObjectControl(judged.map(row => row.judge_qualification_contract
+            ? { ...row.judge_qualification_contract, escalation: null } : null)),
         settings: resolveObjectControl([judgeConfig ? judgeCohortSettings(judgeConfig) : null,
             ...judged.map(row => row.judge_qualification_contract?.settings)]),
         multiJudge: resolveObjectControl([judgeConfig?.multi_judge?.enabled ? multiJudgeCohortSettings(judgeConfig.multi_judge) : null,
             ...judged.map(row => row.judge_qualification_contract?.escalation)]),
-        participants: resolveObjectControl(judged.map(row => (row.judge_scores || []).map(score => ({
-            identity: identityOf(score.judge_model, score.judge_host), execution: score.execution_contract,
-            qualification: score.qualification_contract
-        })).sort((a, b) => String(a.identity).localeCompare(String(b.identity)))))
+        participants: participantEvidence(judged)
     };
+}
+
+// Escalation is selected per result, not once for the entire campaign.
+function participantEvidence(rows) {
+    const evidence = new Map();
+    for (const row of rows) {
+        const key = `${row.prompt_id || row.prompt_name || row.prompt_fingerprint}|${row.repeat_index ?? 0}`;
+        const value = judgeJson({ escalated: !!row.judge_escalated, tiebreaker: !!row.judge_tiebreaker_used,
+            votes: (row.judge_scores || []).map(score => ({
+                identity: identityOf(score.judge_model, score.judge_host), execution: score.execution_contract,
+                qualification: score.qualification_contract ? { ...score.qualification_contract, escalation: null } : null
+            })).sort((a, b) => String(a.identity).localeCompare(String(b.identity))) });
+        if (evidence.has(key) && evidence.get(key) !== value) evidence.set(key, MIXED);
+        else evidence.set(key, value);
+    }
+    return evidence;
+}
+
+function compareParticipants(a, b) {
+    const left = {}, right = {};
+    for (const key of [...a.keys()].filter(key => b.has(key)).sort()) {
+        if (a.get(key) === MIXED || b.get(key) === MIXED) return compareTerm(MIXED, MIXED);
+        left[key] = a.get(key); right[key] = b.get(key);
+    }
+    return compareTerm(stableJson(left), stableJson(right));
 }
 
 /**
@@ -425,15 +460,15 @@ function buildComparisonContract(armA, armB) {
     const hasJudged = evidenceA.hasJudged || evidenceB.hasJudged;
 
     const checks = { scorer_version: compareTerm(evidenceA.scorerVersion, evidenceB.scorerVersion),
-        effective_prompt: effectivePromptChecks(armA.rows, armB.rows) };
+        effective_prompt: effectivePromptChecks(armA.rows, armB.rows),
+        judge_participants: compareParticipants(evidenceA.judge.participants, evidenceB.judge.participants) };
     for (const [name, judgeA, judgeB] of [
         ['judge_identity', evidenceA.judge.identity, evidenceB.judge.identity],
         ['judge_num_ctx', evidenceA.judge.numCtx, evidenceB.judge.numCtx],
         ['judge_execution_contract', evidenceA.judge.execution, evidenceB.judge.execution],
         ['judge_qualification_contract', evidenceA.judge.qualification, evidenceB.judge.qualification],
         ['judge_settings', evidenceA.judge.settings, evidenceB.judge.settings],
-        ['judge_multi_judge', evidenceA.judge.multiJudge, evidenceB.judge.multiJudge],
-        ['judge_participants', evidenceA.judge.participants, evidenceB.judge.participants]
+        ['judge_multi_judge', evidenceA.judge.multiJudge, evidenceB.judge.multiJudge]
     ]) {
         checks[name] = compareTerm(judgeA, judgeB);
     }

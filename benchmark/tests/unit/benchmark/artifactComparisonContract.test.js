@@ -1,4 +1,5 @@
 const { buildJudgeQualificationContract } = require('../../../src/services/benchmark/judgeQualificationContract');
+const { seedForRepeat } = require('../../../src/services/benchmark/config');
 const {
     buildComparisonContract,
     collectArmEvidence,
@@ -111,6 +112,22 @@ function makeArm({ spec, side, base = {} }) {
 
 const armA = (base = {}) => makeArm({ spec: SPEC_A, side: 'a', base });
 const armB = (base = {}) => makeArm({ spec: SPEC_B, side: 'b', base });
+
+function mixedJudgedArm(side, { tiebreaker = false } = {}) {
+    const config = judgeConfig();
+    config.multi_judge = { enabled: true, judges: [judgeConfig(), judgeConfig('delta-synthetic')],
+        tiebreaker: judgeConfig('epsilon-synthetic') };
+    const arm = side === 'a' ? armA({ judges: [config] }) : armB({ judges: [config] });
+    const row = arm.rows[1];
+    const targets = [...config.multi_judge.judges, ...(tiebreaker ? [config.multi_judge.tiebreaker] : [])];
+    Object.assign(row, { judge_escalated: true, judge_tiebreaker_used: tiebreaker,
+        judge_consensus: tiebreaker ? 'tiebreaker_resolved' : 'agreement', judge_divergence: tiebreaker ? 3 : 1,
+        judge_qualification_contract: buildJudgeQualificationContract(config, { escalation: config.multi_judge }),
+        judge_scores: targets.map((target, index) => ({ judge_model: target.model, judge_host: target.host,
+            quality_score: (tiebreaker ? [7, 4, 6] : [7, 6])[index], execution_contract: target.execution_contract,
+            qualification_contract: buildJudgeQualificationContract(target) })) });
+    return arm;
+}
 
 describe('buildComparisonContract', () => {
     test('different single-contender batches with the same frozen common contract are compatible', () => {
@@ -278,6 +295,54 @@ describe('buildComparisonContract', () => {
         const b = armB({ judges: [judgeConfig('gamma-synthetic')] });
         expect(a.rows[0].judge_qualification_contract.artifact.model).toBe('gamma-synthetic');
         expect(buildComparisonContract(a, b).authoritative).toBe(true);
+    });
+
+    test('repeat policy compares the frozen base while verifying each actual received seed', () => {
+        const settings = executionSettings({ seed: 17, seed_policy: 'repeat_index_v1' });
+        const a = armA({ settings: { ...settings } }), b = armB({ settings: { ...settings } });
+        for (const arm of [a, b]) arm.rows.forEach((row, index) => {
+            row.repeat_index = index;
+            row.execution_settings = { ...settings, seed: seedForRepeat(settings, index) };
+        });
+        expect(buildComparisonContract(a, b).authoritative).toBe(true);
+        expect(buildComparisonContract(a, b).checks.seed.valueA).toBe(17);
+        b.rows[1].execution_settings.seed = 99;
+        expect(buildComparisonContract(a, b).authoritative).toBe(false);
+    });
+
+    test('repeat null seed stays explicit and a missing repeat identity cannot validate a numeric seed', () => {
+        const a = armA({ settings: executionSettings({ seed: null, seed_policy: 'repeat_index_v1' }) });
+        const b = armB({ settings: executionSettings({ seed: null, seed_policy: 'repeat_index_v1' }) });
+        for (const arm of [a, b]) arm.rows.forEach((row, index) => { row.repeat_index = index; });
+        expect(buildComparisonContract(a, b).authoritative).toBe(true);
+        b.rows[1].execution_settings = { ...b.rows[1].execution_settings, seed: 18 };
+        expect(buildComparisonContract(a, b).authoritative).toBe(false);
+        b.rows[1].execution_settings.seed = null;
+        delete b.rows[1].repeat_index;
+        expect(buildComparisonContract(a, b).authoritative).toBe(false);
+    });
+
+    test('an unknown policy cannot explain different received seeds by borrowing the repeat formula', () => {
+        const a = armA({ settings: executionSettings({ seed_policy: 'unknown_policy' }) });
+        const b = armB({ settings: executionSettings({ seed_policy: 'unknown_policy' }) });
+        for (const arm of [a, b]) arm.rows[1].execution_settings = { ...arm.rows[1].execution_settings, seed: 43 };
+        expect(buildComparisonContract(a, b).authoritative).toBe(false);
+    });
+
+    test.each([false, true])('a campaign can mix ordinary and escalated prompts with tiebreaker=%s', tiebreaker => {
+        const a = mixedJudgedArm('a', { tiebreaker }), b = mixedJudgedArm('b', { tiebreaker });
+        expect(buildComparisonContract(a, b).authoritative).toBe(true);
+        // A different completed prompt set is coverage, not a different judge policy.
+        b.rows.pop();
+        expect(buildComparisonContract(a, b).authoritative).toBe(true);
+    });
+
+    test('mixed campaigns still reject contradictory participant evidence on a shared prompt', () => {
+        const a = mixedJudgedArm('a'), b = mixedJudgedArm('b');
+        b.rows[1].judge_scores[1].execution_contract = { ...b.rows[1].judge_scores[1].execution_contract,
+            artifact: { ...b.rows[1].judge_scores[1].execution_contract.artifact, digest: 'e'.repeat(64) } };
+        expect(buildComparisonContract(a, b).authoritative).toBe(false);
+        expect(buildComparisonContract(a, b).reasons).toContain('judge_evidence_unverified');
     });
 
     test.each([
