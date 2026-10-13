@@ -14,6 +14,34 @@ const fetch = require('node-fetch');
 const alertService = require('./alertService');
 const { resolveHostKey } = require('./modelRouter');
 const { protectContext } = require('./routing/contextIntegrityPolicy');
+const { normalizeHostUrl, validateHostUrl, getHostUrls, hostUrlKey } = require('../helpers/ollamaHostConfig');
+
+// An explicit chain is exhaustive: excluded hosts must not be loaded by failover.
+// Caller host overrides retain their existing single-host, allowlisted behavior.
+function embeddingHostCandidates(target, explicitHost = false) {
+    if (explicitHost) return [normalizeHostUrl(target)];
+    const setting = process.env.AGENTX_EMBEDDING_HOST_CHAIN;
+    let hosts;
+    if (setting !== undefined && setting.trim()) {
+        try { hosts = JSON.parse(setting); }
+        catch { throw new Error('AGENTX_EMBEDDING_HOST_CHAIN must be a non-empty JSON array of configured hosts'); }
+        if (!Array.isArray(hosts) || !hosts.length || hosts.some(host => typeof host !== 'string' || !host.trim())) {
+            throw new Error('AGENTX_EMBEDDING_HOST_CHAIN must be a non-empty JSON array of configured hosts');
+        }
+        hosts = hosts.map(host => {
+            const checked = validateHostUrl(host);
+            if (!checked.valid || !checked.host) throw new Error('AGENTX_EMBEDDING_HOST_CHAIN contains an unconfigured host');
+            return checked.host;
+        });
+    } else hosts = [target, ...getHostUrls()];
+    const unique = new Map();
+    for (const host of hosts) {
+        const normalized = normalizeHostUrl(host);
+        if (normalized) unique.set(hostUrlKey(normalized), normalized);
+    }
+    if (!unique.size) throw new Error('No Ollama host configured for embeddings');
+    return [...unique.values()];
+}
 
 // /api/embed supports overflow refusal; the legacy endpoint silently cuts.
 function prepareEmbeddingPayload(hostUrl, model, input, keepAlive, signal) {
@@ -71,6 +99,7 @@ function isModelMissingResponse(response) {
 }
 
 module.exports = {
+    embeddingHostCandidates,
     EMBED_TIMEOUT_MS,
     prepareEmbeddingPayload,
     isEmbedHostLive,

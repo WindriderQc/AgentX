@@ -77,6 +77,16 @@ and secrets outside the checkout; never copy production volumes into Git.
 
 ### Settings catalog and Configuration view
 
+`AGENTX_EMBEDDING_HOST_CHAIN` optionally restricts the embedding proxy to an
+ordered JSON array of registered host IDs or allowlisted URLs, for example
+`["primary","secondary","cpu-embed"]`. It replaces the default routed-host
+plus fleet fallback for implicit embedding requests. An exhausted chain refuses
+rather than loading an excluded host; malformed or unregistered entries refuse
+before inference. Explicit allowlisted host overrides remain single-host requests.
+Install the same embedding artifact on every candidate and preserve its vector
+dimensions. Configure model residency and native admission separately; naming a
+host in this chain does not reserve resources or authorize model installation.
+
 `shared/envCatalog.json` lists every setting an instance can give the services.
 It has two kinds of entries:
 - variables `docker-compose.yml` forwards from the instance env file (`forwarded: true`, with their compose default);
