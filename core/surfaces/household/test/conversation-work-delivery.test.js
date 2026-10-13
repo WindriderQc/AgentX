@@ -46,3 +46,12 @@ test('an older review projection without the new flag cannot automatically speak
   try { h.feed.follow('owner-session'); await tick(); await h.feed.naturalPause(); assert.deepEqual(h.spoken, []); }
   finally { h.feed.dispose(); delete global.document; }
 });
+
+test('Core can authorize an outstanding verified result on an older review and it speaks once', async () => {
+  const h = fixture([item('original-tool-result', true, 'native_review')]);
+  try {
+    h.feed.follow('owner-session'); await tick(); await h.feed.poll(); await h.feed.naturalPause();
+    assert.deepEqual(h.spoken, ['original-tool-result']);
+    assert.equal(h.stages.filter(stage => stage === 'claim').length, 1);
+  } finally { h.feed.dispose(); delete global.document; }
+});

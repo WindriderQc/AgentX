@@ -53,12 +53,28 @@ Main reads the actual completed reply rather than racing to answer the same
 question. A review may complete remaining authorized work with Main's full
 capabilities. Main can disposition an adequate, completed canonical guardian reply as
 `no_work`, without duplicate
-speech. Other requests receive Main's exact completed native answer, including
-reasoning that needs no tools. Review prose is kept on screen and can be heard
-using Listen; it never claims automatic speech. Core enforces this distinction,
-including for a stale browser. Foreground work results retain automatic delivery
+speech. When a dedicated guardian cannot finish a request, its native reply starts
+with `[[NESTOR_MAIN_REQUIRED]]` before a brief acknowledgment. Core removes that
+prefix from streamed speech and canonical prose, retains `awaiting_main`, and
+promotes the accepted work without changing its request or execution identity.
+This disposition changes presentation only; it grants no execution authority.
+Other requests receive Main's exact completed native answer, including
+reasoning that needs no tools. An answered guardian turn's alternate review
+prose is kept for explicit Listen. Older turns without this disposition can
+deliver their exact retained substantive tool result; discovery and context
+reads alone do not authorize a second voice. Core enforces this distinction,
+including for a stale browser. Awaited work results retain automatic delivery
 through the conversation's single speech queue. Requested task, web and Secretary consultations
 retain their existing requirements for actual same-run tool evidence.
+
+Pipeline priority/status reads use the existing `ecosystem_snapshot` tool with
+`mode: "pipeline"` and a 5,000-character ceiling. This focused projection keeps
+exact status counts and up to eight visible active task summaries ordered by
+numeric priority, without unrelated alert and runtime arrays. Private task
+records remain withheld and coverage is explicit. Main reports unavailable
+fields without repeatedly rediscovering the same tools or delegating the same
+read. Engineering Pipeline work remains distinct from personal tasks and the
+heavy-work planning queue.
 
 The boss and guardian share Core's canonical conversation and work state.
 Main starts with the exact request, selected context, original local date and

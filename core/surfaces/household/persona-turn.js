@@ -480,7 +480,7 @@ function createPersonaTurnHandler({
       entry.traceId = traceId;
       if (entry.workId) {
         if (routeTier === 'deterministic') await conversationWorks.handled(entry.workId);
-        await conversationWorks.guardianSettled(entry.workId, 'completed');
+        await conversationWorks.guardianSettled(entry.workId, 'completed', metadata.guardianDisposition);
       }
       if (!entry.workId && !isLlmX && (!preferencesFor || (await preferencesFor(pack.childSafe).read()).values.backgroundReview)) brain.schedule({ session, pack, traceId });
       entry.replyText = replyText;

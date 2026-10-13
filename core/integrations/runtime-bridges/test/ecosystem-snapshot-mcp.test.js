@@ -107,6 +107,35 @@ function response() {
   };
 }
 
+test('compact pipeline mode retains highest visible priorities and exact counts within a small tool response', async () => {
+  const work = { counts: { queued: 15, blocked: 1 }, countsComplete: true, active: [
+    ...Array.from({ length: 14 }, (_, i) => ({ pipelineId: String(100 + i), title: 'Synthetic task ' + i, status: 'queued', priority: 14 - i, spec: 'PRIVATE_SPEC' })),
+    { pipelineId: 'private', title: 'PRIVATE_TITLE', service: 'personal', priority: 1 },
+    { pipelineId: 'blocked', title: 'Visible blocked task', status: 'blocked', priority: 1, dependsOn: ['111'] }
+  ], recent: [] };
+  const result = await callEcosystemSnapshot({ mode: 'pipeline', maxChars: 5000 }, { projectionProvider: async () => projection({ work }) });
+  assert.equal(result.isError, false);
+  const focused = result.structuredContent;
+  assert.equal(focused.mode, 'pipeline'); assert.deepEqual(focused.pipeline.counts, work.counts);
+  assert.equal(focused.pipeline.countsComplete, true); assert.equal(focused.pipeline.withheldActiveCount, 1);
+  assert.equal(focused.pipeline.priorityScope, 'visible-non-private-active-tasks');
+  assert.deepEqual(focused.pipeline.active.slice(0, 2).map(t => t.priority), [1, 1]);
+  assert.equal(focused.pipeline.active.length, 8); assert.equal(focused.pipeline.truncated, true);
+  assert.ok(JSON.stringify(focused).length <= 5000);
+  assert.doesNotMatch(JSON.stringify(focused), /PRIVATE_SPEC|PRIVATE_TITLE/);
+  assert.equal(focused.alerts, undefined); assert.equal(focused.runtime, undefined);
+});
+
+test('a missing pipeline priority remains unknown and cannot outrank an explicit priority', async () => {
+  const work = { counts: { queued: 3 }, countsComplete: true, active: [
+    { pipelineId: 'unknown', priority: null, status: 'queued' }, { pipelineId: 'missing', status: 'queued' },
+    { pipelineId: 'first', priority: 1, status: 'queued' }
+  ], recent: [] };
+  const result = await callEcosystemSnapshot({ mode: 'pipeline', maxChars: 5000 }, { projectionProvider: async () => projection({ work }) });
+  assert.equal(result.isError, false); assert.equal(result.structuredContent.pipeline.active[0].pipelineId, 'first');
+  assert.deepEqual(result.structuredContent.pipeline.active.slice(1).map(t => t.priority), [null, null]);
+});
+
 function request(body, headers = {}) {
   return {
     method: 'POST',

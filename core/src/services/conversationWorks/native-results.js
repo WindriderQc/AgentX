@@ -22,7 +22,7 @@ function createNativeResultReceiver({ repo, session, now, automaticSpeech }) {
     const receiptId = hash(attempt.id + '\n' + attempt.runId + '\nnative_answer');
     const noWork = row.mode === 'native' && answer.text.trim() === NO_WORK;
     const result = { kind: noWork ? 'no_work' : 'answer', text: noWork ? '' : answer.text.trim(), receiptIds: [receiptId] };
-    const speak = await automaticSpeech(row);
+    const speak = await automaticSpeech(row, evidence);
     const fingerprint = hash(JSON.stringify(result));
     const saved = await repo.mutate(id, async (current, fence) => {
       if (current.attempt?.id !== attempt.id || current.attempt.runId !== attempt.runId) throw notFound();
