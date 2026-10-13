@@ -338,7 +338,7 @@
 
   function bindLearningVoice(button, onText, prefix) {
     if (!button || !window.HouseholdLearningVoice) return;
-    state.learningVoice = window.HouseholdLearningVoice.mount({ button,
+    state.learningVoice = window.HouseholdLearningVoice.mount({ button, wakeWord: prefix !== 'persona',
       micToggle: document.getElementById(`${prefix}MicToggle`), soundToggle: document.getElementById(`${prefix}SoundToggle`),
       status: document.getElementById(`${prefix}VoiceState`),
       language: () => readingLanguage, muted: () => state.outputMuted,

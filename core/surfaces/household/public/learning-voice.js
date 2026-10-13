@@ -10,7 +10,7 @@
   const speech = typeof module === 'object' && module.exports
     ? require('../../../public/js/voice/speech-language') : root.NestorSpeech;
 
-  function create({ turn, transcribe, synthesize, language = () => 'fr', muted = () => false,
+  function create({ turn, transcribe, synthesize, wakeWord = true, language = () => 'fr', muted = () => false,
     changed = () => {}, openAudio = (signal, failed, options) => shared.openAudio(signal, failed, { ...options, observeSpeech: true }) }) {
     let pending = null;
     const conversation = new shared.Conversation({
@@ -36,7 +36,7 @@
     }, changed);
     return {
       conversation,
-      start: () => conversation.start({ language: language(), wakeWord: true, interruption: true }),
+      start: () => conversation.start({ language: language(), wakeWord, interruption: true }),
       pause: () => conversation.stop(true),
       setLanguage: value => conversation.setLanguage(value),
       stopSpeech: () => conversation.interrupt(undefined, { stop: true }),
@@ -54,7 +54,7 @@
   }
 
   function mount({ button, micToggle, soundToggle, status, turn, transcribe, synthesize,
-    language, muted, setMuted, stopPlayback }) {
+    language, muted, setMuted, stopPlayback, wakeWord = true }) {
     const labels = { idle: 'Microphone off · enable voice to start', paused: 'Microphone off',
       starting: 'Opening the microphone…', listening: 'Listening · Hey/Eille/Oh/Ah Nestor to activate',
       hearing: 'Listening…', transcribing: 'Transcribing…', thinking: 'Preparing the answer…',
@@ -71,9 +71,9 @@
       micToggle.setAttribute('aria-pressed', String(!resting));
       status.dataset.state = phase;
       status.textContent = phase === 'error' ? detail || 'Voice unavailable · use the keyboard' : labels[phase] || detail;
-      if (phase === 'listening' && controller?.conversation.wake.active()) status.textContent = 'Conversation active · continues until Pause';
+      if (phase === 'listening' && (!wakeWord || controller?.conversation.wake.active())) status.textContent = 'Conversation active · continues until Pause';
     };
-    controller = create({ turn, transcribe, synthesize, language, muted, changed: render });
+    controller = create({ turn, transcribe, synthesize, language, muted, changed: render, wakeWord });
     const toggle = async () => {
       if (['idle', 'paused', 'error', 'reviewing'].includes(controller.conversation.state)) {
         stopPlayback(); await controller.start();

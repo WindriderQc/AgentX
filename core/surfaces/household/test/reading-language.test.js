@@ -117,3 +117,15 @@ test('typing while Lecture listens produces one request and one playback through
   assert.equal(h.played.length, 1);
   await h.pauseVoice();
 });
+
+test('a complete screen block survives a missing renderer and explicit replay reads its entire body', async () => {
+  const full = 'Un paragraphe complet. '.repeat(300) + 'FIN DU DOCUMENT';
+  const h = await browser({ turnResponse: () => Response.json({ data: {
+    reply: { text: 'La réponse complète est à l’écran.' }, display: [{ id: 'b1', kind: 'text', body: full }],
+  } }) });
+  await h.ask();
+  assert.ok(h.element('readerReply').textContent.includes(full));
+  await h.element('readerReplay').listeners.click();
+  const parts = h.requests.filter(row => row.url.endsWith('/synthesize/stream')).slice(1);
+  assert.equal(parts.map(row => row.body.text).join(''), full);
+});

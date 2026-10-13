@@ -88,3 +88,8 @@ test('Stop during initial reading synthesis cancels that request and cannot star
   assert.equal(h.controller.conversation.state, 'listening');
   h.controller.pause();
 });
+
+test('the personal adapter can keep open listening while learning pages default to wake activation', async () => {
+  const h = harness({ wakeWord: false }); await h.controller.start(); await h.say('bonjour');
+  assert.equal(h.requested[0].text, 'bonjour'); h.controller.pause();
+});
