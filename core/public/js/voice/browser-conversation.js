@@ -55,32 +55,17 @@
     constructor(now = () => Date.now()) { this.now = now; this.until = 0; }
     active() { return this.now() < this.until; }
     arm() { this.until = 0; }
-    extend() { this.until = this.now() + 30000; }
+    extend() { this.until = Infinity; }
     accept(text, followup = this.active()) {
       const value = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-      if (/^(?:merci nestor|dors nestor|bonne nuit nestor)[.!?]*$/.test(value)) {
+      if (/^(?:dors nestor|bonne nuit nestor)[.!?]*$/.test(value)) {
         this.arm(); return { text: '', activated: false };
       }
       // Local STT can hear « Eille Nestor » as « Hey, Nesta » or similar variants.
-      const prefix = /^(?:(?:eille|heille|aille|hey|hei|he|eh|ey|ay|aye|elle|et|hi)(?:\s+|\s*[,!:.–—-]+\s*)nest(?:or|er|ore|a|o|ar)s?|einestor|heynestor)\b[\s,!?.:–—-]*/i.exec(value);
+      const prefix = /^(?:(?:eille|heille|hey|hei|he|eh|ey|oh|ah)(?:\s+|\s*[,!:.–—-]+\s*)nest(?:or|er|ore|a|o|ar)s?|einestor|heynestor)\b[\s,!?.:–—-]*/i.exec(value);
       if (prefix) { this.extend(); return { text: text.trim().slice(prefix[0].length).trim(), activated: true }; }
       return { text: followup ? text.trim() : '', activated: false };
     }
-  }
-
-  // Speech-to-text invents these whole sentences from silence or noise (they are
-  // subtitle credits in its training data). A transcript that is nothing but one
-  // of them is treated as silence: no turn, no reply. It stays in the review.
-  const TRANSCRIPT_HALLUCINATIONS = new Set(['thank you', 'thank you very much', 'thank you so much', 'thanks for watching',
-    'thank you for watching', 'thanks for watching and see you next time', 'please subscribe', 'you', 'bye',
-    'merci d avoir regarde', 'merci d avoir regarde cette video', 'sous titres realises par la communaute d amara org',
-    'sous titrage st 501', 'sous titrage societe radio canada', 'sous titres par amara org']);
-  function isTranscriptHallucination(text) {
-    const value = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-      .replace(/[^a-z0-9]+/g, ' ').trim();
-    // A lone digit from hands-free STT is indistinguishable from a short noise
-    // artifact. Require a word or an addressed phrase before starting a turn.
-    return /^\d$/.test(value) || TRANSCRIPT_HALLUCINATIONS.has(value);
   }
 
   // Phones delay and process their own speaker output beyond what EchoGuard's
@@ -114,7 +99,8 @@
     const words = value => String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
       .match(/[a-z0-9]+/g) || [];
     const heard = words(text), said = new Set(words(spoken));
-    if (!heard.length || !said.size) return false;
+    // A short answer can repeat the offered choice; lexical overlap is not echo evidence.
+    if (heard.length < 3 || !said.size) return false;
     return heard.filter(word => said.has(word)).length / heard.length >= 0.7;
   }
 
@@ -495,7 +481,7 @@
       try { result = await this.io.transcribe(blob, this.selection.language, this.abort.signal); } catch { /* the whole sound is still recognized when it ends */ }
       let text = typeof result === 'string' ? result : String(result?.text || '');
       const stopControl = result?.control === 'stop' || isStopControl(text);
-      if (isTranscriptHallucination(text) || !stopControl && isSpokenEcho(text, turn.spoken)) text = '';
+      if (!stopControl && isSpokenEcho(text, turn.spoken)) text = '';
       if (turn.candidate !== candidate || !this.owns(turn)) return;
       if (!(text.trim() || stopControl)) {
         // No words so far: a reply that was waiting for this sound may start.
@@ -593,7 +579,6 @@
         if (!overReply) this.io.transcriptionDone?.(turn.id, turn.timeline?.values());
         this.recognitionWarmAt = this.io.now ? this.io.now() : Date.now(); // it just ran
         this.audio.recordTranscription?.(excerptId, stopControl ? 'control' : text.trim() ? 'transcribed' : 'empty', text, typeof result === 'object' && result ? result : {});
-        if (isTranscriptHallucination(text)) text = '';
         if (previous?.candidate && !stopControl && isSpokenEcho(text, previous.spoken)) text = '';
         if (previous?.candidate && this.owns(previous)) {
           if (!text.trim() && !stopControl) { this.resumeCandidate(previous); return; }
@@ -1067,7 +1052,7 @@
     return response.arrayBuffer();
   }
 
-  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, speakWithBrowser, isStopControl, isTranscriptHallucination, isSpokenEcho, holdingPhrase, HOLDING_DELAY_MS, INTERRUPTION_PROBE_MS, MAX_CAPTURE_BYTES, nextSpeechChunkLength };
+  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, speakWithBrowser, isStopControl, isSpokenEcho, holdingPhrase, HOLDING_DELAY_MS, INTERRUPTION_PROBE_MS, MAX_CAPTURE_BYTES, nextSpeechChunkLength };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else { root.AgentXVoice = api; root.NestorConversation = api; }
 })(typeof window === 'undefined' ? globalThis : window);

@@ -11,7 +11,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const agents = agentCatalog?.agents?.length ? agentCatalog.agents : [{ id: 'main', name: 'Main', personalNotes: true }];
   if (!personas?.length) throw new Error('No style is available. Choose one in Prompts.');
   app.innerHTML = `<section class="conversation-shell">
-    <header class="conversation-heading"><p class="eyebrow">${family ? 'Nestor · Family' : 'Super Dad · Personal'}</p><h1>With Nestor.</h1><p id="conversationListeningHint">${family ? "Say “Hey Nestor” or “Eille Nestor”, then speak naturally." : "Open conversation: speak freely while the mic is on."}</p></header>
+    <header class="conversation-heading"><p class="eyebrow">${family ? 'Nestor · Family' : 'Super Dad · Personal'}</p><h1>With Nestor.</h1><p id="conversationListeningHint">${family ? "Say “Hey/Eille/Oh/Ah Nestor”, then speak naturally." : "Open conversation: speak freely while the mic is on."}</p></header>
     <nav class="conversation-toolbar" aria-label="Conversation actions">
       <button id="conversationNew" class="button" type="button">New conversation</button>
       <button id="conversationHistoryToggle" class="button" type="button" aria-expanded="false" aria-controls="conversationHistory">Recent</button>
@@ -44,7 +44,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       <p id="conversationPreferencesStatus" class="muted"></p></details>
       <details id="conversationNotes" hidden></details>
       <details><summary>Listening</summary><label class="conversation-toggle"><input id="conversationInterruption" type="checkbox" checked> Interrupt Nestor by speaking</label><p id="conversationInterruptionStatus" class="muted">Uses the browser’s echo cancellation. A headset can help in a noisy room.</p>
-      <label class="conversation-toggle"><input id="conversationWake" type="checkbox" ${family ? "checked" : ""}> Require “Hey Nestor”</label><p class="muted">With the wake word, Nestor goes back to standby after 30 seconds without input or as soon as you say “Merci Nestor”. In an open conversation, it answers speech while the mic is on. Speech is transcribed on the local network before the name is detected; only sentences addressed to Nestor enter the conversation.</p><div id="conversationBrowserSttSettings" hidden></div>${family ? '' : '<a href="/device-check" class="conversation-native">Check the mic and speaker</a>'}</details>
+      <label class="conversation-toggle"><input id="conversationWake" type="checkbox" ${family ? "checked" : ""}> Activate with “Hey/Eille/Oh/Ah Nestor”</label><p class="muted">After activation, the conversation continues until Pause. “Dors Nestor” or “Bonne nuit Nestor” also returns it to standby. Saying “Nestor” alone does not activate it. In an open conversation, it answers speech while the mic is on. Speech is transcribed on the local network before the name is detected; only sentences addressed to Nestor enter the conversation.</p><div id="conversationBrowserSttSettings" hidden></div>${family ? '' : '<a href="/device-check" class="conversation-native">Check the mic and speaker</a>'}</details>
       <details id="conversationAudio" class="conversation-audio"><summary>Audio and transcription</summary>
         <p id="conversationDevice" class="muted">This device’s microphone and speakers</p>
         <p class="muted">Replay up to 20 seconds from this microphone, or the end of your last utterance. A clip stays in this tab for at most 2 minutes. Pause, New conversation or leaving the page erases it.</p>
@@ -184,7 +184,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   try { storage = window.localStorage; } catch { /* preferences remain usable in memory */ }
   let preferences = P.read(storage, catalog);
   try { const savedListening = storage?.getItem(listeningKey); el('conversationWake').checked = (['wake', 'open'].includes(savedListening) ? savedListening : defaultListening) === 'wake'; } catch {}
-  const describeListening = () => { el('conversationListeningHint').textContent = el('conversationWake').checked ? 'Say “Hey Nestor” or “Eille Nestor”, then speak naturally.' : 'Open conversation: speak freely while the mic is on.'; };
+  const describeListening = () => { el('conversationListeningHint').textContent = el('conversationWake').checked ? 'Say “Hey/Eille/Oh/Ah Nestor”, then speak naturally.' : 'Open conversation: speak freely while the mic is on.'; };
   el('conversationWake').onchange = () => { conversation.setWakeWord(el('conversationWake').checked); try { storage?.setItem(listeningKey, el('conversationWake').checked ? 'wake' : 'open'); } catch {} describeListening(); };
   describeListening();
   picker.value = family ? 'nestor' : preferences.personaId;

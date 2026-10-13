@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Endpoint, EchoGuard, wav, Conversation, WakeWindow, isStopControl, isTranscriptHallucination, isSpokenEcho, holdingPhrase } = require('../public/browser-conversation');
+const { Endpoint, EchoGuard, wav, Conversation, WakeWindow, isStopControl, isSpokenEcho, holdingPhrase } = require('../public/browser-conversation');
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const nextTimer = () => new Promise((resolve) => setTimeout(resolve, 10));
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { resolve, promise }; };
@@ -133,14 +133,14 @@ test('ordinary short corrections and English speech keep their original transcri
   assert.deepEqual(submitted, ['Orion.', "Let's go.", 'Numéro 6', 'Stop, explique le budget.']);
 });
 
-for (const kind of ['empty', 'hallucinated', 'digit', 'failed', 'echo']) {
+for (const kind of ['empty', 'failed', 'echo']) {
   test(`a ${kind} noise candidate during playback resumes the same response without cancelling history`, async () => {
     const playing = deferred(); let transcriptions = 0, turns = 0, syntheses = 0;
     const h = harness({ transcribe: async () => {
       if (++transcriptions === 1) return 'Bonjour';
       if (kind === 'failed') throw new Error('STT unavailable');
       if (kind === 'echo') return 'Réponse à terminer';
-      return kind === 'empty' ? '' : kind === 'digit' ? '6.' : 'Thanks for watching.';
+      return '';
     }, turn: async () => { turns++; return { text: 'Une réponse à terminer.' }; },
     synthesize: async () => { syntheses++; return new ArrayBuffer(10); },
     interrupt: () => assert.fail('noise must not cancel playback or native history') });
@@ -252,24 +252,33 @@ test('ending during an unconfirmed onset releases the held answer without playin
   assert.equal(h.conversation.state, 'idle');
 });
 
-test('wake accepts only an addressed prefix, bounded follow-ups, and explicit sleep', () => {
+test('wake requires an interjection and stays active until explicitly paused or put to sleep', () => {
   let now = 1000;
   const wake = new WakeWindow(() => now);
   assert.equal(wake.accept('On parle de Nestor dans la cuisine.').text, '');
   assert.equal(wake.accept('Hey Nestor, pourquoi le ciel est bleu ?').text, 'pourquoi le ciel est bleu ?');
   assert.equal(wake.accept('Et les nuages ?').text, 'Et les nuages ?');
   now += 30001;
-  assert.equal(wake.accept('Une discussion ambiante.').text, '');
+  assert.equal(wake.accept('Une nouvelle réponse.').text, 'Une nouvelle réponse.');
+  wake.arm();
+  for (const mention of ['Nestor', 'Nestor, bonjour', 'Et Nestor est parti.', 'Elle Nestor, bonjour']) {
+    assert.deepEqual(wake.accept(mention), { text: '', activated: false });
+  }
   assert.equal(wake.accept('Eille Nestor !').activated, true);
   // What speech-to-text actually writes for « Eille Nestor ».
-  for (const heard of ['Hé Nestor, bonjour', 'Et Nestor, bonjour', 'Elle Nestor, bonjour', 'Aye, Nestor bonjour', 'Hey Nester bonjour', 'Hey, Nesta, bonjour', 'Hé Nesto bonjour', 'Einestor bonjour', 'Eille,Nestor bonjour', 'Heille Nestor bonjour']) {
+  for (const heard of ['Hé Nestor, bonjour', 'Oh Nestor, bonjour', 'Ah, Nestor bonjour', 'Hey Nester bonjour', 'Hey, Nesta, bonjour', 'Hé Nesto bonjour', 'Einestor bonjour', 'Eille,Nestor bonjour', 'Heille Nestor bonjour']) {
     now += 31000;
     assert.deepEqual(wake.accept(heard), { text: 'bonjour', activated: true }, heard);
   }
   now += 31000;
+  assert.equal(wake.active(), true);
+  wake.arm();
   assert.equal(wake.accept('Elle parle de Nestor.').activated, false);
   assert.equal(wake.accept('Et puis Nestor est parti.').activated, false);
-  assert.equal(wake.accept('Merci Nestor.').text, '');
+  wake.extend();
+  assert.equal(wake.accept('Merci Nestor.').text, 'Merci Nestor.');
+  assert.equal(wake.active(), true);
+  assert.equal(wake.accept('Dors Nestor.').text, '');
   assert.equal(wake.active(), false);
 });
 
@@ -285,9 +294,11 @@ test('wake standby never sends ambient speech to the agent or transcript', async
   phrase = 'Comment vas-tu ?'; h.beginSpeech(); await h.say();
   assert.equal(modelCalls, 1); assert.equal(h.messages[0].text, phrase);
   phrase = 'Merci Nestor'; h.beginSpeech(); await h.say();
-  assert.equal(modelCalls, 1);
+  assert.equal(modelCalls, 2);
+  phrase = 'Dors Nestor'; h.beginSpeech(); await h.say();
+  assert.equal(modelCalls, 2);
   phrase = 'Encore une discussion ambiante'; h.beginSpeech(); await h.say();
-  assert.equal(modelCalls, 1);
+  assert.equal(modelCalls, 2);
   h.conversation.stop();
 });
 
@@ -338,7 +349,7 @@ test('a command spoken over the wake acknowledgement stops that playback', async
   h.conversation.stop();
 });
 
-test('wake follow-up starts after playback and expires before the next ambient phrase', async () => {
+test('wake conversation remains active after long silence and resets on Pause', async () => {
   let now = 1000, phrase = 'Hey Nestor, bonjour.', turns = 0;
   const h = harness({ now: () => now, transcribe: async () => phrase,
     turn: async () => { turns++; now += 50000; return { text: 'Bonjour.' }; } });
@@ -350,11 +361,13 @@ test('wake follow-up starts after playback and expires before the next ambient p
   assert.equal(h.conversation.wake.active(), true, 'the full window follows the completed reply');
   now += 2;
   phrase = 'La télévision parle encore.'; h.beginSpeech(); await h.say();
-  assert.equal(turns, 1); assert.equal(h.messages.length, 2);
+  assert.equal(turns, 2); assert.equal(h.messages.length, 4);
+  h.conversation.stop(true);
+  assert.equal(h.conversation.wake.active(), false);
   h.conversation.stop();
   await h.conversation.start({ wakeWord: false });
   h.beginSpeech(); await h.say();
-  assert.equal(turns, 2, 'open listening accepts speech without the name');
+  assert.equal(turns, 3, 'open listening accepts speech without the name');
   h.conversation.stop();
 });
 
@@ -1137,27 +1150,19 @@ test('a waiting notice is spoken before the answer that follows it (#62)', async
   h.conversation.stop();
 });
 
-test('speech-to-text phantom sentences and lone digits from noise never become a turn', async () => {
-  for (const text of ['Thank you very much.', ' thank you. ', 'Thanks for watching!', 'Sous-titres réalisés par la communauté d’Amara.org', 'Merci d’avoir regardé.', '6.']) {
-    assert.equal(isTranscriptHallucination(text), true, text);
+test('every nonempty recognized reply is considered, including numbers and thanks', async () => {
+  const texts = ['7', 'oui', 'merci', 'bye', 'Thank you very much.', 'Thanks for watching!',
+    'Sous-titres réalisés par la communauté d’Amara.org', 'Merci d’avoir regardé.', '6.'];
+  for (const phrase of texts) {
+    const submitted = [];
+    const h = harness({ transcribe: async () => phrase,
+      turn: async (_session, value) => { submitted.push(value); return { text: 'Compris.' }; } });
+    await h.conversation.start({ wakeWord: false, language: 'fr' });
+    h.beginSpeech(); await h.say();
+    assert.deepEqual(submitted, [phrase]);
+    h.conversation.stop();
   }
-  for (const text of ['Merci Nestor', 'Thank you Nestor for the story', 'Combien font 3 + 4 ?', 'Numéro 6', 'Hey Nestor, 6.', '']) {
-    assert.equal(isTranscriptHallucination(text), false, text);
-  }
-  let phrase = 'Thank you very much.', turns = 0;
-  const h = harness({ transcribe: async () => phrase, turn: async () => { turns++; return { text: 'Bonjour.' }; } });
-  await h.conversation.start({ wakeWord: false, language: 'fr' });
-  h.beginSpeech(); await h.say();
-  assert.equal(turns, 0, 'open listening ignores the phantom sentence');
-  assert.deepEqual(h.messages, []);
-  phrase = '6.'; h.beginSpeech(); await h.say();
-  assert.equal(turns, 0, 'a lone digit cannot trigger a new model turn');
-  assert.deepEqual(h.messages, []);
-  phrase = 'Bonjour Nestor'; h.beginSpeech(); await h.say();
-  assert.equal(turns, 1, 'and still hears the next real phrase');
-  h.conversation.stop();
 });
-
 test('"Hey Nestor" is answered with the page’s own wake reply', async () => {
   const spoken = [];
   const h = harness({ transcribe: async () => 'Hey Nestor', wakeReply: () => ({ text: 'Dis-moi !', language: 'fr' }),

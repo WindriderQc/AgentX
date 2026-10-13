@@ -166,9 +166,9 @@ test('recognizer text reaches the same turn path, including the wake-word filter
   assert.deepEqual(h.turns, ['quelle heure est-il']);
   assert.deepEqual(h.messages.slice(0, 2), [{ role: 'user', text: 'quelle heure est-il' }, { role: 'assistant', text: 'Salut' }]);
 
-  // A subtitle hallucination stays silence on this path too.
-  h.beginSpeech(); instances[0].say('Merci d’avoir regardé'); await h.say(); await tick();
-  assert.equal(h.turns.length, 1);
+  // Recognized thanks remain a valid follow-up after activation.
+  h.beginSpeech(); instances.at(-1).say('Merci d’avoir regardé'); await h.say(); await tick();
+  assert.deepEqual(h.turns, ['quelle heure est-il', 'Merci d’avoir regardé']);
 
   conversation.stop();
   assert.equal(instances.at(-1).aborted, true, 'stopping the conversation stops the recognizer');
