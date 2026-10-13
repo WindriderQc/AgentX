@@ -110,12 +110,12 @@ function createOpenLaneHold({
       return pending;
     },
     async status() {
-      const primary = target();
+      const primary = await target();
       if (!supported) return notSupported(primary);
       return project(primary, await hosts.getHoldStatus({ hostUrl: primary.hostUrl }));
     },
     async acquire() {
-      const primary = target();
+      const primary = await target();
       if (!supported) return notSupported(primary);
       const status = await hosts.acquireHold({
         hostUrl: primary.hostUrl,
@@ -129,7 +129,7 @@ function createOpenLaneHold({
       return project(primary, status);
     },
     async touch({ warm = true, signal } = {}) {
-      const primary = target();
+      const primary = await target();
       if (!supported) return notSupported(primary);
       signal?.throwIfAborted();
       try {
@@ -187,7 +187,7 @@ function createOpenLaneHold({
       return status;
     },
     async release() {
-      const primary = target();
+      const primary = await target();
       if (!supported) return { ...notSupported(primary), released: false };
       let id = holdId;
       if (!id) {

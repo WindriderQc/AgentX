@@ -131,7 +131,19 @@ async function clearPinnedModel(hostUrl) {
   return mutatePins(hostUrl, () => ({ pinnedModels: [], status: 'idle' }));
 }
 
+// Replace the principal resident without adding a third resident or changing
+// the context/keep-alive contract of any pin.
+async function replacePrimaryPin(hostUrl, expectedModel, model) {
+  normalizeEntry({ model });
+  return mutatePins(hostUrl, entries => {
+    if (!entries[0] || entries[0].model !== expectedModel) {
+      throw pinError('Principal pin changed; reload and retry', 'HOST_PIN_CONFLICT', 409);
+    }
+    return { pinnedModels: [{ ...entries[0], model }, ...entries.slice(1)], status: 'restoring' };
+  });
+}
+
 module.exports = {
   normalizePinUpdate, getPinStatus, setPinnedModel, addPinnedModel,
-  updatePinnedModel, removePinnedModel, clearPinnedModel
+  updatePinnedModel, removePinnedModel, clearPinnedModel, replacePrimaryPin
 };

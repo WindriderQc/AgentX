@@ -83,6 +83,9 @@ def execute(r, args, progress):
     if task['automationLease'].get('dispatchRequestId') != key:
         raise RuntimeError('Task belongs to another request')
     lease = task['automationLease']
+    # Freeze the concrete model selected by the existing capacity claim for
+    # this attempt; a later principal switch never changes an active worker.
+    capacity_model = task.get('codingCapacity', {}).get('model')
     progress.heartbeat = lambda: r.request(f'{r.CORE}/api/pipeline/tasks/{task_id}/heartbeat',
                                         {'assignee': r.WORKER, 'leaseId': lease['leaseId']})
     progress.relay_headers = {'x-agentx-coding-task': task_id, 'x-agentx-coding-request': key,
@@ -145,7 +148,11 @@ def execute(r, args, progress):
                    'Git index/merge metadata is read-only; the runner completes it after your source edits. '
                    'Do not ask for credentials, networking or a production checkout.')
         progress.phase = 'running'
-        run = r.run_worker(workspace, prompt, max(1, int(progress.hard_deadline - progress.now())), progress)
+        if not capacity_model or r.MODEL not in ('auto', 'agentx-primary', capacity_model):
+            reason = 'coding_model_mismatch'
+            raise RuntimeError('The configured worker model differs from its native capacity')
+        r.MODEL = capacity_model
+        run = r.run_worker(workspace, prompt, max(1, int(progress.hard_deadline - progress.now())), progress, model=r.MODEL)
         summary = (run.stdout or run.stderr or '(no summary)')[-4000:]
         progress.phase = 'delivering'
         progress.set_stage('checkpoint')

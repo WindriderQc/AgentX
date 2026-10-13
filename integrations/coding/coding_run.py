@@ -36,7 +36,7 @@ HERE = Path(__file__).resolve().parent
 CORE = os.environ.get("AGENTX_CORE_URL", "http://127.0.0.1:3180").rstrip("/")
 REPOSITORY = os.environ.get("AGENTX_CODING_REPOSITORY", "WindriderQc/AgentX")
 BASE_BRANCH = os.environ.get("AGENTX_CODING_BASE_BRANCH", "main")
-MODEL = os.environ.get("AGENTX_CODING_MODEL", "")
+MODEL = os.environ.get("AGENTX_CODING_MODEL", "auto")
 MODEL_URL = os.environ.get("AGENTX_CODING_MODEL_URL", f"{CORE}/api/hermes-openai/patient/v1")
 WORKSPACES = Path.home() / "dsh-workspaces"
 DSH_ROOT = Path(os.environ.get("AGENTX_DSH_ROOT", str(Path.home() / "dsh")))
@@ -312,10 +312,10 @@ def terminate(process):
         process.wait()
 
 
-def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None) -> subprocess.CompletedProcess:
+def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None, model=None) -> subprocess.CompletedProcess:
     home = worker_home(workspace)
     (home / ".dsh").mkdir(exist_ok=True)
-    (home / ".dsh/settings.yaml").write_text(SETTINGS.format(url=f"http://127.0.0.1:{RELAY_PORT}/v1", model=MODEL))
+    (home / ".dsh/settings.yaml").write_text(SETTINGS.format(url=f"http://127.0.0.1:{RELAY_PORT}/v1", model=model or MODEL))
     if progress:
         progress.model_worker_active = True
         progress.baseline(home, workspace)
@@ -437,6 +437,7 @@ def main() -> int:
 
 
 def execute(args, progress) -> int:
+    global MODEL
     if getattr(args, "autonomous", False):
         return coding_autonomous.execute(SimpleNamespace(**globals()), args, progress)
     # The same eligibility rule as the Pipeline launch control: a direct task id
@@ -454,6 +455,12 @@ def execute(args, progress) -> int:
         progress.finish("blocked", "ineligible_task")
         print(f"task {args.task_id} is not a queued, unowned, non-private agentx-coding task; not started", file=sys.stderr)
         return 2
+
+    if MODEL in ("auto", "agentx-primary"):
+        route = request(f"{CORE}/api/router/config")["data"]["taskModels"]["code_generation"]
+        MODEL = route["model"]
+        if not MODEL or MODEL in ("auto", "agentx-primary"):
+            raise RuntimeError("Core did not resolve a concrete coding model")
 
     # The claim makes the task visibly in progress and refuses a second worker.
     request(f"{CORE}/api/pipeline/tasks/{args.task_id}/claim", {"assignee": WORKER})

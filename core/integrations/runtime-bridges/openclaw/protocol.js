@@ -10,6 +10,7 @@ const {
   uniqueEffectiveModels
 } = require('../common');
 const { PIPELINE_MODEL_ALIAS } = require('../pipeline-attribution');
+const { PRINCIPAL_MODEL_ALIAS, resolvePrincipalAlias } = require('../principal-model');
 const { settledStream } = require('./settled-stream');
 const { sendBusyReply, wantsBusyReply } = require('./busy-reply');
 const {
@@ -68,6 +69,10 @@ function registerOpenClawProtocol({
         details: modelDetails(task)
       }));
       const pipelineTask = snapshot.tasks?.code_generation;
+      const principalTask = snapshot.tasks?.daily_operator;
+      if (principalTask?.model) models.push({ name: PRINCIPAL_MODEL_ALIAS, model: PRINCIPAL_MODEL_ALIAS,
+        modified_at: snapshot.generatedAt, size: 0, digest: principalTask.inferenceContract?.artifact?.digest || '',
+        details: modelDetails(principalTask) });
       if (pipelineTask?.model
         && pipelineTask.model !== PIPELINE_MODEL_ALIAS
         && pipelineTask?.inferenceContract?.qualification?.qualified === true) {
@@ -114,7 +119,8 @@ function registerOpenClawProtocol({
         includeArtifactIdentity: true
       });
       const requestedModel = String(req.body?.model || '').trim();
-      const conversationTarget = await resolveConversationTarget?.(requestedModel);
+      const conversationTarget = resolvePrincipalAlias(snapshot, requestedModel)
+        || await resolveConversationTarget?.(requestedModel);
       const task = requestedModel === PIPELINE_MODEL_ALIAS
         ? snapshot.tasks?.code_generation
         : conversationTarget || enforceEffectiveModel(snapshot, req.body || {});
@@ -150,9 +156,11 @@ function registerOpenClawProtocol({
         error.code = 'PIPELINE_ATTRIBUTION_UNAVAILABLE';
         throw error;
       }
-      const effectiveBody = pipeline ? { ...body, model: pipeline.effectiveModel } : body;
       const snapshot = await runtimeServices.routing.getEffectiveSnapshot({ includeCatalog: false });
-      const conversationTarget = !pipeline && await resolveConversationTarget?.(String(body.model || '').trim());
+      const principalTarget = !pipeline && resolvePrincipalAlias(snapshot, String(body.model || '').trim());
+      const effectiveBody = pipeline ? { ...body, model: pipeline.effectiveModel }
+        : principalTarget ? { ...body, model: principalTarget.model } : body;
+      const conversationTarget = principalTarget || (!pipeline && await resolveConversationTarget?.(String(body.model || '').trim()));
       if (!conversationTarget) enforceEffectiveModel(snapshot, effectiveBody);
       // One model serves several uses; each declares its own reasoning in the
       // headers of its gateway provider (`x-agentx-think: off` for a spoken lane).
@@ -191,7 +199,7 @@ function registerOpenClawProtocol({
       if (pipeline) request.timeoutMs = Math.min(request.timeoutMs || 600000,
         await pipelineAttribution.revalidate(leaseId));
       // #143: only an opted-in conversation on a routed model may degrade.
-      const fallbackTask = !pipeline && !conversationTarget && wantsBusyReply(req, mode)
+      const fallbackTask = !pipeline && (!conversationTarget || principalTarget) && wantsBusyReply(req, mode)
         && typeof runtimeServices.routing.planFallback === 'function' ? conversationFallbackTask() : null;
       const primaryRun = () => runtimeServices.inference.execute(request, {
         signal: abort.signal,

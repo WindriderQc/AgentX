@@ -10,10 +10,8 @@ function cleanText(value, max = 4000) {
   return String(value || '').trim().slice(0, max);
 }
 
-const HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_MODEL = 'huihui_ai/Qwen3.8-abliterated:27b-q8_0';
+const { PRODUCT_PERMISSIVE_MODEL: HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_MODEL } = require('../../src/services/modelRouterDefaults');
 const HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_DIGEST = '150af2e2fa9b3e09d6dfd1cf6f315bb9cb7d688af157d1cc1c9fe1a809ebb230';
-// The native agent includes its identity, skill catalog and tool schemas.
-const HOUSEHOLD_PERMISSIVE_CONTEXT = 32768;
 
 const PERSONAL_OPERATOR_SURFACE_CONTRACT = [
   'This is the owner’s private local conversation. Reply in the language of his latest message; default to Canadian French only when unclear. Keep everyday conversation natural and brief.',
@@ -199,7 +197,7 @@ function modeSummary(mode) {
   };
 }
 
-function inferenceTargetForMode(pack, mode, env = process.env) {
+function inferenceTargetForMode(pack, mode, env = process.env, contextSize = null) {
   if (pack?.id !== 'personal_operator' || mode?.lane !== 'permissive-local') return null;
   const primary = {
     tier: 'primary',
@@ -209,7 +207,7 @@ function inferenceTargetForMode(pack, mode, env = process.env) {
       512
     ),
     hostUrl: cleanText(env.HOUSEHOLD_PERMISSIVE_PRIMARY_HOST_URL || env.OLLAMA_HOST, 512).replace(/\/+$/, ''),
-    numCtx: HOUSEHOLD_PERMISSIVE_CONTEXT
+    numCtx: contextSize
   };
   if (!primary.hostUrl) {
     const error = new Error('The preferred inference-host permissive lane is not configured on this runtime.');
@@ -223,7 +221,6 @@ function inferenceTargetForMode(pack, mode, env = process.env) {
 module.exports = {
   HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_MODEL,
   HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_DIGEST,
-  HOUSEHOLD_PERMISSIVE_CONTEXT,
   PERSONAL_OPERATOR_SURFACE_CONTRACT,
   FAMILY_AGENT_PROMPT,
   PACKS,

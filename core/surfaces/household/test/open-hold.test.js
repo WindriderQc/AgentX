@@ -121,7 +121,9 @@ function serverFixture(acquireDelay) {
     async getHoldStatus() { return state; },
     async touchHold() { return state; }
   };
-  return { calls, hold: household.createOpenLaneHold({ runtimeServices: { hosts }, env: { HOUSEHOLD_PERMISSIVE_PRIMARY_HOST_URL: 'http://inference-host:11434' } }) };
+  return { calls, hold: household.createOpenLaneHold({ runtimeServices: { hosts, routing: {
+    getEffectiveSnapshot: async () => ({ tasks: { daily_operator: { hostUrl: 'http://inference-host:11434', contextSize: 196608 } } })
+  } }, env: { HOUSEHOLD_PERMISSIVE_PRIMARY_HOST_URL: 'http://inference-host:11434' } }) };
 }
 
 test('server orders a release behind its pending acquire and ignores delayed older requests', async () => {
@@ -153,8 +155,20 @@ test('a disconnected turn releases an acquisition that completes after cancellat
   const { hold, calls } = serverFixture(delay.promise);
   const controller = new AbortController();
   const refreshing = hold.touch({ signal: controller.signal });
+  await new Promise(setImmediate); // Reach the native acquire before cancelling.
   controller.abort(); delay.resolve();
   await refreshing;
   assert.deepEqual(calls, ['acquire', 'release']);
   assert.equal((await hold.status()).active, false);
+});
+
+test('Open inherits the principal context and refuses missing context before a host mutation', async () => {
+  const { hold } = serverFixture();
+  assert.equal((await hold.status()).numCtx, 196608);
+  const acquireHold = async () => { throw new Error('must not mutate'); };
+  const unavailable = household.createOpenLaneHold({ runtimeServices: { hosts: {
+    acquireHold, touchHold() {}, releaseHold() {}, getHoldStatus() {}
+  }, routing: { getEffectiveSnapshot: async () => ({ tasks: {} }) } },
+  env: { HOUSEHOLD_PERMISSIVE_PRIMARY_HOST_URL: 'http://inference-host:11434' } });
+  await assert.rejects(unavailable.acquire(), { code: 'OPEN_CONTEXT_UNAVAILABLE' });
 });
