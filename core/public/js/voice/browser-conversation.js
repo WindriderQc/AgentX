@@ -55,32 +55,17 @@
     constructor(now = () => Date.now()) { this.now = now; this.until = 0; }
     active() { return this.now() < this.until; }
     arm() { this.until = 0; }
-    extend() { this.until = this.now() + 30000; }
+    extend() { this.until = Infinity; }
     accept(text, followup = this.active()) {
       const value = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-      if (/^(?:merci nestor|dors nestor|bonne nuit nestor)[.!?]*$/.test(value)) {
+      if (/^(?:dors nestor|bonne nuit nestor)[.!?]*$/.test(value)) {
         this.arm(); return { text: '', activated: false };
       }
       // Local STT can hear « Eille Nestor » as « Hey, Nesta » or similar variants.
-      const prefix = /^(?:(?:eille|heille|aille|hey|hei|he|eh|ey|ay|aye|elle|et|hi)(?:\s+|\s*[,!:.–—-]+\s*)nest(?:or|er|ore|a|o|ar)s?|einestor|heynestor)\b[\s,!?.:–—-]*/i.exec(value);
+      const prefix = /^(?:(?:eille|heille|hey|hei|he|eh|ey|oh|ah)(?:\s+|\s*[,!:.–—-]+\s*)nest(?:or|er|ore|a|o|ar)s?|einestor|heynestor)\b[\s,!?.:–—-]*/i.exec(value);
       if (prefix) { this.extend(); return { text: text.trim().slice(prefix[0].length).trim(), activated: true }; }
       return { text: followup ? text.trim() : '', activated: false };
     }
-  }
-
-  // Speech-to-text invents these whole sentences from silence or noise (they are
-  // subtitle credits in its training data). A transcript that is nothing but one
-  // of them is treated as silence: no turn, no reply. It stays in the review.
-  const TRANSCRIPT_HALLUCINATIONS = new Set(['thank you', 'thank you very much', 'thank you so much', 'thanks for watching',
-    'thank you for watching', 'thanks for watching and see you next time', 'please subscribe', 'you', 'bye',
-    'merci d avoir regarde', 'merci d avoir regarde cette video', 'sous titres realises par la communaute d amara org',
-    'sous titrage st 501', 'sous titrage societe radio canada', 'sous titres par amara org']);
-  function isTranscriptHallucination(text) {
-    const value = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-      .replace(/[^a-z0-9]+/g, ' ').trim();
-    // A lone digit from hands-free STT is indistinguishable from a short noise
-    // artifact. Require a word or an addressed phrase before starting a turn.
-    return /^\d$/.test(value) || TRANSCRIPT_HALLUCINATIONS.has(value);
   }
 
   // Phones delay and process their own speaker output beyond what EchoGuard's
@@ -88,8 +73,8 @@
   // was transcribed and treated as the user interrupting. Words that the
   // current reply has just spoken are an echo, not a new request.
   const HOLDING = Object.freeze({
-    fr: ['Un instant…'],
-    en: ['One moment…']
+    fr: ['Un petit instant…'],
+    en: ['Just one moment…']
   });
   // Silence before a reply's first words after which Nestor says one holding phrase.
   const HOLDING_DELAY_MS = 3000;
@@ -114,7 +99,8 @@
     const words = value => String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
       .match(/[a-z0-9]+/g) || [];
     const heard = words(text), said = new Set(words(spoken));
-    if (!heard.length || !said.size) return false;
+    // A short answer can repeat the offered choice; lexical overlap is not echo evidence.
+    if (heard.length < 3 || !said.size) return false;
     return heard.filter(word => said.has(word)).length / heard.length >= 0.7;
   }
 
@@ -442,14 +428,25 @@
       try {
         // The remark is one utterance: the chosen language, else its own words.
         const language = speechLanguage.turnSpeechLanguage(reply.text, reply.language, this.selection?.language);
-        const bytes = await this.io.synthesize({ ...reply, language }, this.abort.signal);
+        const segments = speechLanguage.splitSpeechText((this.io.speechText || speechLanguage.speechText)(reply.text));
+        if (!segments.length) return false;
+        const bytes = await this.io.synthesize({ ...reply, text: segments[0], language }, this.abort.signal);
         if (!idle()) { discardSpeech(bytes); return false; }
         turn = { epoch, id: root.crypto.randomUUID(), request: new AbortController(), speech: new AbortController(),
-          interrupted: false, local: true, replyStarted: true, spoken: reply.text };
+          interrupted: false, local: true, replyStarted: true, spoken: '' };
         this.activeTurn = turn;
         lifetimeSignal.addEventListener('abort', cancel, { once: true });
         this.audio.quiet(); this.monitor(turn); this.show('speaking');
-        await this.audio.play(bytes, turn.speech.signal, false, null, { onScheduled });
+        let scheduled = false;
+        for (let index = 0; index < segments.length; index++) {
+          const audio = index ? await this.io.synthesize({ ...reply, text: segments[index], language }, turn.speech.signal) : bytes;
+          if (!this.owns(turn)) { discardSpeech(audio); return false; }
+          turn.spoken = (turn.spoken + ' ' + segments[index]).slice(-800);
+          await this.audio.play(audio, turn.speech.signal, false, null, { onScheduled() {
+            if (!scheduled) { scheduled = true; onScheduled?.(); }
+          } });
+          if (!this.owns(turn)) return false;
+        }
         await this.audio.settle?.(turn.speech.signal);
         await this.awaitCandidate(turn);
         if (!this.owns(turn)) return false;
@@ -495,7 +492,7 @@
       try { result = await this.io.transcribe(blob, this.selection.language, this.abort.signal); } catch { /* the whole sound is still recognized when it ends */ }
       let text = typeof result === 'string' ? result : String(result?.text || '');
       const stopControl = result?.control === 'stop' || isStopControl(text);
-      if (isTranscriptHallucination(text) || !stopControl && isSpokenEcho(text, turn.spoken)) text = '';
+      if (!stopControl && isSpokenEcho(text, turn.spoken)) text = '';
       if (turn.candidate !== candidate || !this.owns(turn)) return;
       if (!(text.trim() || stopControl)) {
         // No words so far: a reply that was waiting for this sound may start.
@@ -575,7 +572,7 @@
       const lifetimeSignal = this.abort.signal;
       const excerptId = this.audio.reviewStatus?.().id;
       this.audio.recordTranscription?.(excerptId, 'pending', '', { turnId: turn.id, bytes: blob.size });
-      let transcribed = false;
+      let transcribed = false, captureOutcome = 'failed';
       const cancel = () => { turn.request.abort(); turn.speech.abort(); this.releaseCandidate(turn); };
       lifetimeSignal.addEventListener('abort', cancel, { once: true });
       try {
@@ -589,12 +586,11 @@
         let text = typeof result === 'string' ? result : String(result?.text || '');
         const stopControl = result?.control === 'stop' || isStopControl(text);
         if (!this.current(epoch)) return;
-        transcribed = true; turn.timeline?.mark('sttDone'); turn.timeline?.measure('sttServer', result?.sttMs);
+        transcribed = true; captureOutcome = stopControl ? 'stop' : text.trim() ? 'recognized' : 'empty'; turn.timeline?.mark('sttDone'); turn.timeline?.measure('sttServer', result?.sttMs);
         if (!overReply) this.io.transcriptionDone?.(turn.id, turn.timeline?.values());
         this.recognitionWarmAt = this.io.now ? this.io.now() : Date.now(); // it just ran
         this.audio.recordTranscription?.(excerptId, stopControl ? 'control' : text.trim() ? 'transcribed' : 'empty', text, typeof result === 'object' && result ? result : {});
-        if (isTranscriptHallucination(text)) text = '';
-        if (previous?.candidate && !stopControl && isSpokenEcho(text, previous.spoken)) text = '';
+        if (previous?.candidate && !stopControl && isSpokenEcho(text, previous.spoken)) { text = ''; captureOutcome = 'echo'; }
         if (previous?.candidate && this.owns(previous)) {
           if (!text.trim() && !stopControl) { this.resumeCandidate(previous); return; }
           this.interrupt(previous, { stop: stopControl || isStopControl(text) });
@@ -614,6 +610,7 @@
         }
         if (this.selection.wakeWord && text.trim()) {
           const accepted = this.wake.accept(text, wakeFollowup);
+          captureOutcome = accepted.activated ? 'activation' : accepted.text ? 'recognized' : 'not_addressed';
           text = accepted.text;
           if (accepted.activated && !text) {
             this.activeTurn = null; this.turnPending = false;
@@ -625,6 +622,7 @@
         if (!text.trim()) { this.activeTurn = null; this.turnPending = false; this.listen(epoch); return; }
         await this.respond(turn, text, epoch, result?.detectedLanguage);
       } catch (error) {
+        if (!turn.interrupted && turn.timeline?.marks.firstAudio !== undefined) turn.timeline.finish('failed');
         if (!turn.interrupted && this.current(epoch)) {
           if (!transcribed) this.audio.recordTranscription?.(excerptId, 'failed');
           if (!transcribed && previous?.candidate && this.owns(previous)) {
@@ -641,11 +639,11 @@
         // Playback can already be queued while a stream is being cancelled.
         if (turn.interrupted) { turn.speech.abort(); await turn.interruption?.catch(() => {}); }
         lifetimeSignal.removeEventListener('abort', cancel);
-        if (!overReply) this.io.transcriptionEnded?.(turn.id);
+        if (!overReply) this.io.transcriptionEnded?.(turn.id, { outcome: this.abort?.signal.aborted ? 'cancelled' : captureOutcome });
         this.reportTimeline(turn); // a turn that ended before any reply audio
       }
     }
-    // A surface that keeps voice timings receives each voice turn's timeline once:
+    // A surface receives the scheduling snapshot and subsequent changed terminal evidence:
     // when the reply's first clause starts playing, else when the turn ends.
     reportTimeline(turn) {
       void turn.timeline?.report(values => this.io.timings(turn.session, turn.id, values), () => turn.interrupted, turn.requestEnded);
@@ -662,7 +660,7 @@
       let replyLanguageChosen = !!speechLanguage.explicitSpeechLanguage(this.selection.language);
       // `notice` marks words that are not the reply (a waiting notice): the
       // timeline's first audio is the reply's own first clause.
-      const speak = (text, notice = false) => {
+      const speakSegment = (text, notice = false) => {
         text = (this.io.speechText || speechLanguage.speechText)(text);
         if (!text.trim() || !this.owns(turn)) return false;
         // In automatic mode the reply's own words choose its voice once. A
@@ -703,8 +701,14 @@
           }
           this.monitor(turn);
           this.show('speaking'); turn.replyStarted = true;
-          if (!notice) { turn.timeline?.mark('firstAudio'); this.reportTimeline(turn); }
-          try { await this.audio.play(bytes, turn.speech.signal); }
+          // Preserve firstAudio as the legacy playback-request offset.
+          // Actual scheduling comes from the player and can follow silent padding.
+          if (!notice) turn.timeline?.mark('firstAudio');
+          const callbacks = notice ? {} : {
+            onScheduled: () => turn.timeline?.mark('firstFrameScheduled'),
+            onSignalScheduled: () => { turn.timeline?.mark('firstSignalScheduled'); this.reportTimeline(turn); },
+          };
+          try { await this.audio.play(bytes, turn.speech.signal, false, null, callbacks); }
           catch (error) {
             // An accepted stream can still fail while it plays (its engine stopped).
             // Say that one clause again with the next voice; never twice in a turn.
@@ -715,7 +719,7 @@
             await this.awaitCandidate(turn);
             if (!this.owns(turn)) return;
             this.show('speaking');
-            await this.audio.play(bytes, turn.speech.signal);
+            await this.audio.play(bytes, turn.speech.signal, false, null, callbacks);
           }
         }).catch(error => { if (!turn.interrupted) speechError = error; });
         prefetchSlot = previousPlayback;
@@ -727,6 +731,11 @@
       // The phrase never delays the answer: it is dropped when reply text arrives
       // before it plays, and it does not hold the synthesis of the first clause.
       let holdingSpeech = null;
+      const speak = (text, notice = false) => {
+        let scheduled = false;
+        for (const segment of speechLanguage.splitSpeechText((this.io.speechText || speechLanguage.speechText)(text))) scheduled = speakSegment(segment, notice) || scheduled;
+        return scheduled;
+      };
       const dropHolding = () => { if (holdingSpeech && !holdingSpeech.playing) holdingSpeech.abort.abort(); };
       turn.session = this.session; turn.timeline?.mark('requestSent');
       const response = this.io.turn(this.session, text, turn.request.signal, delta => {
@@ -781,7 +790,7 @@
       dropHolding();
       speak(streamed ? pending : reply.text);
       await playback;
-      if (speechError) throw speechError;
+      if (speechError) { turn.timeline?.finish('failed'); throw speechError; }
       if (!this.owns(turn)) return;
       if (reply.sound) {
         this.show('preparing');
@@ -793,6 +802,7 @@
       }
       await this.audio.settle?.(turn.speech.signal);
       if (!this.owns(turn)) return;
+      if (turn.timeline?.marks.firstAudio !== undefined) turn.timeline.finish('completed');
       if (this.selection.wakeWord) this.wake.extend();
       this.activeTurn = null;
       this.listen(epoch);
@@ -857,22 +867,43 @@
   }
 
   // Last rung of the voice ladder: the device's own speech synthesis, cancelled like PCM playback.
+  async function browserSpeechVoice(synth, profile, signal) {
+    const pick = () => speechLanguage.pickBrowserVoice(synth.getVoices(), profile);
+    const existing = pick();
+    if (existing || profile.language !== 'en' || signal.aborted) return existing;
+    // Chrome can populate voices asynchronously. Never silently use a French voice for English.
+    return new Promise(resolve => {
+      let timer;
+      const done = () => { clearTimeout(timer); synth.removeEventListener?.('voiceschanged', changed);
+        signal.removeEventListener('abort', done); resolve(pick()); };
+      const changed = () => { if (pick()) done(); };
+      synth.addEventListener?.('voiceschanged', changed);
+      signal.addEventListener('abort', done, { once: true }); timer = setTimeout(done, 1500);
+      if (signal.aborted) done(); else changed();
+    });
+  }
+
   function speakWithBrowser({ text, language }, signal, onScheduled) {
     const synth = root.speechSynthesis;
     if (!synth || signal.aborted) return Promise.resolve();
-    return new Promise((resolve, reject) => {
-      const utterance = new root.SpeechSynthesisUtterance(text);
-      const profile = speechLanguage.PROFILES?.[language === 'en' ? 'en' : 'fr'];
-      utterance.lang = profile?.locale || (language === 'en' ? 'en-CA' : 'fr-CA');
-      const voice = speechLanguage.pickBrowserVoice?.(synth.getVoices(), profile);
-      if (voice) utterance.voice = voice;
-      const done = () => { signal.removeEventListener('abort', stop); resolve(); };
-      const stop = () => { synth.cancel(); done(); };
-      utterance.onstart = () => onScheduled?.();
-      utterance.onend = done; utterance.onerror = () => { signal.removeEventListener('abort', stop); reject(new Error('Browser speech could not complete.')); };
-      signal.addEventListener('abort', stop, { once: true });
-      synth.speak(utterance);
-    });
+    const profile = speechLanguage.PROFILES?.[language === 'en' ? 'en' : 'fr'];
+    const start = voice => {
+      if (signal.aborted) return Promise.resolve();
+      if (language === 'en' && !voice) throw new Error('No English speech voice is available on this device. The complete answer remains on screen.');
+      return new Promise((resolve, reject) => {
+        const utterance = new root.SpeechSynthesisUtterance(text);
+        utterance.lang = profile?.locale || (language === 'en' ? 'en-CA' : 'fr-CA');
+        if (voice) utterance.voice = voice;
+        const done = () => { signal.removeEventListener('abort', stop); resolve(); };
+        const stop = () => { synth.cancel(); done(); };
+        utterance.onstart = () => onScheduled?.();
+        utterance.onend = done; utterance.onerror = () => { signal.removeEventListener('abort', stop); reject(new Error('Browser speech could not complete.')); };
+        signal.addEventListener('abort', stop, { once: true });
+        synth.speak(utterance);
+      });
+    };
+    const voice = speechLanguage.pickBrowserVoice(synth.getVoices(), profile);
+    return voice || language !== 'en' ? start(voice) : browserSpeechVoice(synth, profile, signal).then(start);
   }
 
   async function openAudio(signal, onError = () => {}, options = {}) {
@@ -962,7 +993,7 @@
         playSignal?.addEventListener('abort', finish, { once: true });
         if (playSignal?.aborted || closed) finish();
       });
-      const play = async (bytes, playSignal, isReview = false, gain = null, { onScheduled } = {}) => {
+      const play = async (bytes, playSignal, isReview = false, gain = null, { onScheduled, onSignalScheduled } = {}) => {
         if (!root.VoixAudio) throw new Error('The local speech player is unavailable.');
         const abort = new AbortController(); activePlay = abort;
         const cancel = () => abort.abort();
@@ -982,7 +1013,7 @@
           if (bytes?.browserSpeech) return await speakWithBrowser(bytes.browserSpeech, abort.signal, onScheduled);
           return await new root.VoixAudio.Player(!isReview && playbackHold ? playbackHold.playerContext : context, {
             destinations: output ? [output] : isReview ? [context.destination] : [observed ? analyser : context.destination, { node, input: 1 }],
-            onMetrics: options.onPlaybackMetrics, onScheduled,
+            onMetrics: options.onPlaybackMetrics, onScheduled, onSignalScheduled,
           }).play(bytes, abort.signal, { rate: gain !== null ? 1 : options.playbackRate?.() || 1 });
         } finally {
           output?.disconnect();
@@ -1061,7 +1092,7 @@
     return response.arrayBuffer();
   }
 
-  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, speakWithBrowser, isTranscriptHallucination, isSpokenEcho, holdingPhrase, HOLDING_DELAY_MS, INTERRUPTION_PROBE_MS, MAX_CAPTURE_BYTES, nextSpeechChunkLength };
+  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, speakWithBrowser, isStopControl, isSpokenEcho, holdingPhrase, HOLDING_DELAY_MS, INTERRUPTION_PROBE_MS, MAX_CAPTURE_BYTES, nextSpeechChunkLength };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else { root.AgentXVoice = api; root.NestorConversation = api; }
 })(typeof window === 'undefined' ? globalThis : window);

@@ -16,6 +16,7 @@ LOCALES = {"a": "en-US", "b": "en-GB", "f": "fr-FR", "e": "es-ES", "h": "hi-IN",
 _worker_health = (0.0, False, "Not checked", {})
 _worker_probe = threading.Lock()
 _worker_model = ""
+_worker_languages = ()
 
 
 def _beside_request(task) -> None:
@@ -56,7 +57,7 @@ def worker_ready() -> tuple[bool, str]:
 
 
 def _probe_worker() -> tuple[bool, str]:
-    global _worker_health, _worker_model
+    global _worker_health, _worker_model, _worker_languages
     voices = {}
     try:
         response = httpx.get(settings.voxcpm_base_url + "/health", timeout=2, trust_env=False)
@@ -64,12 +65,15 @@ def _probe_worker() -> tuple[bool, str]:
         data = response.json()
         voices = _served_voices(data)
         _worker_model = str(data.get("model") or "")
+        reported = data.get("languages")
+        _worker_languages = tuple(dict.fromkeys(language for language in reported if isinstance(language, str) and language in {"fr", "en"})) if isinstance(reported, list) else ()
         ready = bool(data.get("ready") and settings.voxcpm_voice in voices)
         reason = "" if ready else "Pocket TTS is warming up or does not serve the configured voice"
         if settings.tts_pocket_only and _worker_model != "kyutai/pocket-tts":
             ready, reason = False, "Pocket-only synthesis requires a Pocket TTS worker"
     except (httpx.HTTPError, ValueError):
         _worker_model = ""
+        _worker_languages = ()
         ready, reason = False, "Pocket TTS worker is unavailable"
     _worker_health = (time.monotonic(), ready, reason, voices if ready else {})
     return ready, reason
@@ -81,6 +85,12 @@ def worker_voices() -> dict[str, str]:
     return dict(_worker_health[3])
 
 
+def worker_languages() -> tuple[str, ...]:
+    """Declared languages of the loaded worker; missing evidence is never bilingual."""
+    ready, _ = worker_ready()
+    return _worker_languages if ready else ()
+
+
 def catalog() -> dict:
     if settings.tts_pocket_only and settings.tts_provider == "voxcpm":
         # No Kokoro assets, SAPI process or retired engine is even inspected.
@@ -89,12 +99,13 @@ def catalog() -> dict:
         served = worker_voices() or {settings.voxcpm_voice: settings.voxcpm_voice}
         for voice_id, label in served.items():
             name = settings.voxcpm_voice_name if voice_id == settings.voxcpm_voice and label == voice_id else label
-            for language in ("fr", "en"):
+            for language in worker_languages():
                 voices.append({"id": voice_id, "provider": "voxcpm", "name": name, "locale": language,
                                "language": language, "available": ready, "reason": reason})
         return {"schema": 1, "streamProtocol": "voix-pcm-v1", "providers": [
             {"id": "voxcpm", "name": "Pocket TTS",
-             "available": ready, "streaming": "frames", "reason": reason}],
+             "available": ready and bool(worker_languages()), "languages": list(worker_languages()), "streaming": "frames",
+             "reason": reason or ("" if worker_languages() else "Worker language capability is not declared")}],
             "voices": voices, "defaults": {"provider": "voxcpm", "voxcpm": settings.voxcpm_voice}}
     model, path = get_kokoro_asset_paths()
     voices = []
@@ -134,11 +145,12 @@ def catalog() -> dict:
         served = worker_voices() or {settings.voxcpm_voice: settings.voxcpm_voice}
         for voice_id, label in served.items():
             name = settings.voxcpm_voice_name if voice_id == settings.voxcpm_voice and label == voice_id else label
-            for language in ("fr", "en"):
+            for language in worker_languages():
                 voices.append({"id": voice_id, "provider": "voxcpm", "name": name, "locale": language,
                                "language": language, "available": ready, "reason": reason})
     return {"schema": 1, "streamProtocol": "voix-pcm-v1", "providers": [
         {"id": "kokoro", "name": "Kokoro", "available": kokoro_ready, "streaming": "clause", "reason": "" if kokoro_ready else "Kokoro assets are not installed"},
         {"id": "windows_sapi", "name": "Windows SAPI", "available": bool(sapi), "streaming": "clause", "reason": sapi_reason or ("" if sapi else "No Windows voices installed")},
-        {"id": "voxcpm", "name": "Pocket TTS", "available": ready, "streaming": "frames", "reason": reason}],
+        {"id": "voxcpm", "name": "Pocket TTS", "available": ready and bool(worker_languages()), "languages": list(worker_languages()), "streaming": "frames",
+             "reason": reason or ("" if worker_languages() else "Worker language capability is not declared")}],
         "voices": voices, "defaults": {"provider": settings.tts_provider, "kokoro": provider.language_profiles("kokoro"), "voxcpm": settings.voxcpm_voice}}

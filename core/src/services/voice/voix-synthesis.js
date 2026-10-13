@@ -13,7 +13,9 @@ const PROVIDERS = ['kokoro', 'windows_sapi', 'voxcpm'];
 
 function createSynthesisHandler({ upstream, timeoutMs, fail, cleanText }) {
   return async function synthesizeSpeech(req, res) {
-    const text = synthesisText(cleanText(req.body?.text || req.body?.input, 4000), req.body?.tts_provider);
+    const rawText = req.body?.text || req.body?.input;
+    if (typeof rawText !== 'string') return fail(res, 400, 'text is required', 'VOIX_INVALID_REQUEST');
+    const text = synthesisText(rawText, req.body?.tts_provider);
     if (!text) return fail(res, 400, 'text is required', 'VOIX_INVALID_REQUEST');
     const requestedLanguage = cleanText(req.body?.language, 16);
     if (requestedLanguage && !normalizeSpeechLanguage(requestedLanguage)) {
@@ -25,7 +27,7 @@ function createSynthesisHandler({ upstream, timeoutMs, fail, cleanText }) {
     if (!PROVIDERS.includes(provider)) return fail(res, 400, 'Unknown voice provider', 'VOIX_INVALID_TTS_PROVIDER');
     const streaming = (req.path || '').endsWith('/stream');
     let payload;
-    try { payload = normalizeSynthesisRequest({ text, language: profile.language,
+    try { payload = normalizeSynthesisRequest({ text: rawText, language: profile.language,
       voice: requestedVoice || (provider === 'kokoro' && req.body?.native_defaults !== true ? profile.nativeVoice : ''),
       ttsProvider: provider }); }
     catch (error) { return fail(res, error.statusCode || 400, error.message, 'VOIX_INVALID_REQUEST'); }

@@ -6,6 +6,7 @@ const { Readable } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const Attachment = require('../../models/ConversationAttachment');
 const TURN_TEXT_LIMIT = 16000;
+const SURFACE_REPLY_LIMITS = Object.freeze({ household: 50000 });
 const SURFACE_INPUT_LIMITS = Object.freeze({ 'image-workshop': 32000 });
 
 // The deployed topology has one Core writer. Serialize file writes, exports and
@@ -68,6 +69,7 @@ function turnView(conversation, message, users) {
 // receive Mongo models. Both session state and text use canonical conversations.
 function forSurface(surface) {
   if (typeof surface !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(surface)) throw failure('A server-selected surface is required');
+  const replyTextLimit = Object.hasOwn(SURFACE_REPLY_LIMITS, surface) ? SURFACE_REPLY_LIMITS[surface] : TURN_TEXT_LIMIT;
   const inputTextLimit = Object.hasOwn(SURFACE_INPUT_LIMITS, surface) ? SURFACE_INPUT_LIMITS[surface] : TURN_TEXT_LIMIT;
   const sessionQuery = query => ({ surface, ...mapFields(query, sessionField), 'surfaceSession.deletedAt': { $exists: false } });
   const rootForTurn = query => ({ surface,
@@ -132,7 +134,7 @@ function forSurface(surface) {
     const { inputText = '', replyText = '', attachments = [], ...event } = input;
     if (typeof event.traceId !== 'string' || !/^[a-zA-Z0-9_.:-]{1,260}$/.test(event.traceId)
       || typeof inputText !== 'string' || typeof replyText !== 'string'
-      || inputText.length > inputTextLimit || replyText.length > TURN_TEXT_LIMIT) throw failure('Invalid bounded conversation turn');
+      || inputText.length > inputTextLimit || replyText.length > replyTextLimit) throw failure('Invalid bounded conversation turn');
     const now = new Date();
     const refs = attachments.length ? await require('./conversationAttachmentService').forConversation({ surface,
       sessionId: event.sessionId, packId: event.packId, scopeId: event.scopeId }).references(attachments.map(item => item.id)) : [];

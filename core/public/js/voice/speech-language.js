@@ -150,6 +150,25 @@
     return text.replace(/([.!?\n])(?:[ \t]*[»”"])+(?=\s|$|[.!?,;:])/g, '$1').trim();
   }
 
+  // Lossless transport segmentation. This chooses request boundaries, never a summary.
+  function splitSpeechText(value, maxLength = 4000) {
+    if (!Number.isInteger(maxLength) || maxLength < 2) throw new TypeError('Invalid speech segment size');
+    const text = String(value || ''), chunks = [];
+    let start = 0;
+    while (start < text.length) {
+      let end = Math.min(start + maxLength, text.length);
+      if (end < text.length) {
+        const candidate = text.slice(start, end);
+        const boundary = candidate.lastIndexOf(' ');
+        if (boundary >= maxLength / 2) end = start + boundary + 1;
+        // A UTF-16 surrogate pair belongs to the same request.
+        if (/[\uD800-\uDBFF]/.test(text[end - 1]) && /[\uDC00-\uDFFF]/.test(text[end])) end--;
+      }
+      chunks.push(text.slice(start, end)); start = end;
+    }
+    return chunks;
+  }
+
   function pickBrowserVoice(voices, profile) {
     const expected = normalizeSpeechLanguage(profile?.language);
     const matches = Array.from(voices || []).filter((voice) => normalizeSpeechLanguage(voice.lang) === expected);
@@ -168,6 +187,7 @@
     turnSpeechLanguage,
     speechText,
     synthesisText,
+    splitSpeechText,
     withoutMediaReferences,
     transcriptionLanguage,
     pickBrowserVoice,

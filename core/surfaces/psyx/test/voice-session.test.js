@@ -43,6 +43,22 @@ function wiring(extras = {}) {
 }
 const spoken = h => h.calls.filter(call => call.url?.endsWith('synthesize/stream')).map(call => JSON.parse(call.options.body));
 
+test('the PsyX session forwards recognition language and timing to the shared loop', async () => {
+  const h = wiring({ fetch: async () => new Response(JSON.stringify({ data: {
+    text: 'Bonjour', language: 'fr', detectedLanguage: 'en', sttMs: 451,
+    model: 'effective-recognizer', effectiveModel: 'effective-recognizer', requestedModel: 'client-hint',
+  } })) });
+  h.context.wireVoiceSession();
+  await h.$('voiceSessionStart').listeners.click();
+  const result = await h.captured.io.transcribe(new Blob(['RIFF'], { type: 'audio/wav' }), 'fr', new AbortController().signal);
+  assert.equal(result.detectedLanguage, 'en');
+  assert.equal(result.sttMs, 451);
+  assert.equal(result.model, 'effective-recognizer');
+  assert.equal(result.effectiveModel, 'effective-recognizer');
+  assert.equal(result.requestedModel, 'client-hint');
+  h.context.stopVoiceSession();
+});
+
 test('private voice uses only PsyX routes, a scoped female voice and the canonical text turn', async () => {
   const h = browser(); h.context.wireVoiceSession();
   await h.$('voiceSessionOpen').listeners.click();
@@ -167,7 +183,8 @@ test('PsyX keeps no voice timeline: the shared loop measures only for a surface 
   h.captured.io.timings = async (_session, turnId, timings) => { sent.push({ turnId, timings }); return {}; };
   await h.say();
   assert.equal(sent.length, 1);
-  assert.deepEqual(Object.keys(sent[0].timings).sort(), ['firstAudio', 'firstDelta', 'interrupted', 'requestSent', 'sttDone']);
+  assert.deepEqual(Object.keys(sent[0].timings).sort(), ['firstAudio', 'firstDelta', 'interrupted', 'playbackOutcome', 'requestSent', 'sttDone']);
+  assert.equal(sent[0].timings.playbackOutcome, 'completed');
   h.context.stopVoiceSession();
 });
 

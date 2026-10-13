@@ -26,7 +26,7 @@ const LINE = Object.freeze({
   table: /^\s*\|/
 });
 
-function plainReply(value, max = 5000) {
+function plainReply(value, max = Infinity) {
   return String(value || '').trim().slice(0, max)
     .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
     .replace(/^(?:#{1,6}|>)\s*/gm, '')
@@ -82,7 +82,7 @@ function listSummary(lines, lang) {
   return items.length ? (lang === 'en' ? 'First items: ' : 'Les premiers éléments : ') + items.join('; ') + '. ' : '';
 }
 
-function createReplyChannels({ allowSecrets = false, language = 'fr', onSay = () => {}, onShow = () => {}, onConsult = () => {} } = {}) {
+function createReplyChannels({ allowSecrets = false, language = 'fr', readAloud = false, onSay = () => {}, onShow = () => {}, onConsult = () => {} } = {}) {
   const lang = languageOf(language);
   const display = [];
   let pending = '', inShow = false, showAttributes = null, received = false, ended = false;
@@ -96,12 +96,11 @@ function createReplyChannels({ allowSecrets = false, language = 'fr', onSay = ()
     onSay(text);
   };
   const addBlock = (kind, title, body, extra = {}) => {
-    const content = String(body || '').replace(/^\n+|\s+$/g, '').slice(0, LIMITS.body);
+    const content = String(body || '').replace(/^\n+|\s+$/g, '');
     if (!content.trim()) return false;
     if (kind === 'secret' && !allowSecrets) return false;
     // A consult block is a request to Core (#41), never something to display or to store.
     if (kind === 'consult') { onConsult({ member: title, question: content }); return false; }
-    if (display.length >= LIMITS.blocks) return false;
     const block = { id: 'b' + (display.length + 1), kind, title, body: content, ...extra };
     display.push(block);
     onShow(block);
@@ -127,6 +126,10 @@ function createReplyChannels({ allowSecrets = false, language = 'fr', onSay = ()
     if (!group) return;
     const { kind, lines } = group;
     group = null;
+    if (readAloud) {
+      const complete = (kind === 'code' ? lines.filter(row => !LINE.fence.test(row)) : lines).join('\n');
+      addBlock(kind, '', complete); speakProse(complete + '\n'); return;
+    }
     if (kind === 'list' && lines.length <= LIMITS.spokenListItems) { speakProse(lines.join('\n') + '\n'); return; }
     const body = kind === 'code' ? lines.filter(row => !LINE.fence.test(row)).join('\n') : lines.join('\n');
     const shown = addBlock(kind, '', body);
@@ -265,8 +268,8 @@ function contract({ family = false, imageSources = [] } = {}) {
   return [
     'Your reply reaches two places: everything outside a show block is spoken aloud; show blocks are displayed on the user\'s screen and never spoken.',
     `${SPOKEN_REPLY_INSTRUCTION} When details are on screen, say so naturally, for example "je te l'ai mis à l'écran".`,
-    'For a priority or task question, speak the one to three most useful items and their deadlines outside the show block. A screen pointer alone is not an answer.',
-    `Put anything meant to be read rather than heard inside <show kind="list|table|code|text|link${family ? '' : '|secret'}" title="short title">…</show>: lists longer than three items, steps, tables, code, commands, links, identifiers and long details. Markdown is allowed inside show blocks only.`,
+    'Unless explicitly asked to read the complete text aloud, for a priority or task question speak the one to three most useful items and their deadlines outside the show block. A screen pointer alone is not an answer.',
+    `Except for explicitly requested readings, put anything meant to be read rather than heard inside <show kind="list|table|code|text|link${family ? '' : '|secret'}" title="short title">…</show>: lists longer than three items, steps, tables, code, commands, links, identifiers and long details. Markdown is allowed inside show blocks only.`,
     family
       ? 'Never show passwords, keys, account details or private information.'
       : 'Use kind="secret" for passwords, keys and tokens: it is displayed masked, is not retained and is never spoken.',

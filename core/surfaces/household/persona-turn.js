@@ -5,6 +5,7 @@
 // visuals. Household's register() creates it once with its runtime services
 // and shares it between the browser persona routes and the native consumers.
 
+const { readingRequested } = require('../../src/services/voice/presentation');
 const crypto = require('crypto');
 const personaCatalog = require('./persona-catalog');
 const { agentInstructions, agentIdFor, personalVoice } = require('./conversation-agent');
@@ -70,6 +71,9 @@ function createPersonaTurnHandler({
       return fail(res, 413, 'The text exceeds the 4,000-character limit. Nothing was shortened or sent to the model.', 'VOICE_PERSONA_TEXT_TOO_LARGE');
     }
     if (!userText && !isOpening) return fail(res, 400, 'text is required', 'VOICE_PERSONA_TEXT_REQUIRED');
+    if (!isLlmX && req.body?.language !== undefined && !['fr', 'en'].includes(req.body.language)) {
+      return fail(res, 400, 'language must be fr or en', 'VOICE_PERSONA_INVALID_LANGUAGE');
+    }
     if (!consult && activePersonaTurns.has(req.params.sessionId)) return fail(res, 409, 'Wait for this conversation to finish its reply.', 'VOICE_TURN_IN_PROGRESS');
     let clientTurnId = consult ? consult.turnId : (isLlmX || ((access === 'private' || requiredSession?.browser === true) && req.body?.channel === 'voice'
       && (req.body?.stream === true || ['read', 'observe'].includes(conversationEnv.PERSONAL_CONVERSATION_WORK_MODE))))
@@ -169,8 +173,9 @@ function createPersonaTurnHandler({
         }
       }
       const workshop = workshopContext(req.body?.workshop, session);
+      const preferredSpeechLanguage = isLlmX ? null : (req.body?.language || session.voice?.language) === 'en' ? 'en' : 'fr';
       const safety = assessSafety(userText, { adult: !pack.childSafe });
-      const childBoundary = childBoundaryReply(pack, safety, userText), mathTurn = pack.childSafe && !isLlmX && !childBoundary && !safety.deterministicEscalation ? mathTurnFor(userText) : null;
+      const childBoundary = childBoundaryReply(pack, safety, userText), mathTurn = pack.childSafe && !isLlmX && !childBoundary && !safety.deterministicEscalation ? mathTurnFor(userText, preferredSpeechLanguage) : null;
       let replyText, sceneProposal = null, display = [];
       // Only browser child-safe turns offer clips, and never over a safety
       // escalation or boundary reply. Native VoiX owns its own playback and does
@@ -271,7 +276,8 @@ function createPersonaTurnHandler({
         sound = (pack.childSafe ? !requiredSession || requiredSession.browser === true : browserSoundPlayback) ? sounds.select(userText) : null;
         const preselected = Boolean(sound);
         const context = { memories, savedNow, captured: family.captured, knowledgeContext: [members, knowledge.context, family.chores].filter(Boolean).join('\n\n'),
-          modeId: session.modeId, sound, latestUserText: userText };
+          modeId: session.modeId, sound, latestUserText: userText,
+          speechLanguage: preferredSpeechLanguage };
         let lastProposal = null, previousBrowserOutput = null;
         const nativeBrowserReply = sceneEnabled && backend === 'openclaw';
         if (isLlmX && !isOpening) {
@@ -335,8 +341,8 @@ function createPersonaTurnHandler({
         abort.signal.throwIfAborted();
         entry.dispatched = true;
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
-        const replyLanguage = (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
-        const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ allowSecrets: !pack.childSafe, language: replyLanguage,
+        const replyLanguage = context.speechLanguage || (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
+        const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, language: replyLanguage,
           onSay: delta => { if (!res.writableEnded) event('delta', { delta }); },
           // One consultation per reply, and a member does not consult in turn.
           onConsult: request => { if (!member) consultRequest ||= teamAddress.consultedMember(request, team, agentIdFor(session)); }, onShow: block => {
@@ -357,7 +363,7 @@ function createPersonaTurnHandler({
           guardianStreaming: true, maxOutputTokens: 1024 } : {}), pack: isOpening ? { ...pack, maxTokens: 180 }
           : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText,
           history: features.historyContext === false ? [] : guardianSession ? dedicatedGuardian.history(history) : history, streaming, channel: req.body?.channel,
-          conversationFeatures: features,
+          conversationFeatures: features, ...(preferredSpeechLanguage ? { speechLanguage: preferredSpeechLanguage } : {}),
           ...(acceptedTaskWork ? { readAcceptedTaskWork: () => conversationWorks.taskAcceptance(entry.workId) } : {}),
           ...(acceptedNativeWork ? { readAcceptedNativeWork: () => conversationWorks.nativeAcceptance(entry.workId) } : {}),
           attachments: entry.attachments, attachmentStore,
@@ -417,7 +423,7 @@ function createPersonaTurnHandler({
           evidence: toolEvidence, turnId: clientTurnId || entry.imageTurnId, signal: abort.signal, member: Boolean(member),
           onShow: block => event('show', { block }) });
         const parsed = sceneEnabled ? llmx.sceneReply(result.text, req.llmx.sceneContext) : { text: channels ? channels.end().say : result.text, sceneProposal: null };
-        replyText = plainReply(parsed.text, 5000);
+        replyText = plainReply(parsed.text);
         sceneProposal = parsed.sceneProposal;
         entry.naturalReply = replyText;
         if (isOpening && !abort.signal.aborted && (!/^Hello\b/.test(replyText) || replyText.length > 600)) {

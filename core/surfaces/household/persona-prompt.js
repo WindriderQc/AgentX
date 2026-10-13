@@ -53,7 +53,9 @@ function memoryBlock(memories) {
 
 // One detector, shared with the browser, rather than a second word list that
 // can drift from it. Québécois French is the default; English must be clear.
-function replyLanguageDirective(text) {
+function replyLanguageDirective(text, preferred) {
+  if (preferred === 'en') return ' Selected language: English. Reply in English for this turn.';
+  if (preferred === 'fr') return ' Langue choisie : français québécois. Réponds en français québécois pour ce tour.';
   if (!String(text || '').trim()) return '';
   return scoreSpeechLanguage(text).language === 'en'
     ? ' Latest-message language: English. Reply only in English for this turn.'
@@ -105,7 +107,9 @@ function soundBlock(sound, language = 'fr') {
 // directive placed there was ignored: Nestor answered that it cannot make
 // sounds while the recording played. Directives are sent in their own block.
 function turnDirective(context = {}) {
-  return soundBlock(context.sound, scoreSpeechLanguage(context.latestUserText).language).trim();
+  const language = context.speechLanguage || scoreSpeechLanguage(context.latestUserText).language;
+  return [context.speechLanguage ? replyLanguageDirective(context.latestUserText, language).trim() : '',
+    soundBlock(context.sound, language).trim()].filter(Boolean).join('\n\n');
 }
 
 // savedNow is set only after the write actually succeeded, so a failed save
@@ -126,7 +130,7 @@ function systemPromptFor(pack, context = {}) {
   const knowledge = cleanText(context.knowledgeContext, 12000);
   const knowledgeBlock = knowledge ? `\n\nApproved knowledge:\n${knowledge}` : '';
   const notes = memoryBlock(context.memories).replace('Saved notes:', context.personalContext ? 'Earlier Household notes (separate source):' : 'Saved notes:');
-  return `${context.contextOnly ? '' : base + modeBlock}${saved}${notes}${context.personalContext || ''}${knowledgeBlock}${context.contextOnly ? '' : soundBlock(context.sound, scoreSpeechLanguage(context.latestUserText).language)}${replyLanguageDirective(context.latestUserText)}`;
+  return `${context.contextOnly ? '' : base + modeBlock}${saved}${notes}${context.personalContext || ''}${knowledgeBlock}${context.contextOnly ? '' : soundBlock(context.sound, context.speechLanguage || scoreSpeechLanguage(context.latestUserText).language)}${context.speechLanguage && context.contextOnly ? '' : replyLanguageDirective(context.latestUserText, context.speechLanguage)}`;
 }
 
 const SAFETY_RULES = Object.freeze([

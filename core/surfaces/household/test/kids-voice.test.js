@@ -44,12 +44,12 @@ test('a conversation without a personality keeps the former reading default', ()
 test('Kids Room and Lecture create Nestor conversations and speak through the shared ladder', () => {
   const app = fs.readFileSync(path.join(__dirname, '../public/app.js'), 'utf8');
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
-  assert.match(app, /body: JSON\.stringify\(\{ packId, scopeId, modeId, personaId: 'nestor' \}\)/);
+  assert.match(app, /body: JSON\.stringify\(\{ packId, scopeId, modeId, personaId: 'nestor', language: readingLanguage \}\)/);
   assert.match(app, /window\.PersonaPresentation\.speechChoices\(state\.session\?\.persona, profile\.language, \{ selections: readingVoices \}\)/);
   // No second, fixed voice choice beside the ladder.
   assert.doesNotMatch(app, /voice: profile\.nativeVoice/);
   // Both pages go through the same speak(); the ladder's script loads before the page script.
   assert.match(app, /await speak\(result\.reply, language\);/);
-  assert.match(app, /await speak\(lastReply, 'fr'\);/);
+  assert.match(app, /await speak\(lastReply, lastLanguage\);/);
   assert.ok(html.indexOf('persona-presentation.js') > 0 && html.indexOf('persona-presentation.js') < html.indexOf('/app.js'));
 });

@@ -11,7 +11,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const agents = agentCatalog?.agents?.length ? agentCatalog.agents : [{ id: 'main', name: 'Main', personalNotes: true }];
   if (!personas?.length) throw new Error('No style is available. Choose one in Prompts.');
   app.innerHTML = `<section class="conversation-shell">
-    <header class="conversation-heading"><p class="eyebrow">${family ? 'Nestor · Family' : 'Super Dad · Personal'}</p><h1>With Nestor.</h1><p id="conversationListeningHint">${family ? "Say “Hey Nestor” or “Eille Nestor”, then speak naturally." : "Open conversation: speak freely while the mic is on."}</p></header>
+    <header class="conversation-heading"><p class="eyebrow">${family ? 'Nestor · Family' : 'Super Dad · Personal'}</p><h1>With Nestor.</h1><p id="conversationListeningHint">${family ? "Say “Hey/Eille/Oh/Ah Nestor”, then speak naturally." : "Open conversation: speak freely while the mic is on."}</p></header>
     <nav class="conversation-toolbar" aria-label="Conversation actions">
       <button id="conversationNew" class="button" type="button">New conversation</button>
       <button id="conversationHistoryToggle" class="button" type="button" aria-expanded="false" aria-controls="conversationHistory">Recent</button>
@@ -36,7 +36,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       </details>
       <label class="conversation-toggle"><input id="conversationOpen" type="checkbox"> Alternate model (Open) <span class="muted">Change this conversation’s model</span></label><p id="conversationOpenStatus" class="muted" role="status" hidden></p>
       <details id="conversationOpenDetails" hidden><summary>Alternate model details</summary><p id="conversationOpenContext" class="muted"></p></details>
-      <details><summary>Voice and language</summary><label for="conversationLanguage">Language</label><select id="conversationLanguage"><option value="auto">Automatic · French / English</option><option value="fr">French</option><option value="en">English</option></select>
+      <details><summary>Voice and language</summary><label for="conversationLanguage">Language</label><select id="conversationLanguage"><option value="fr">Français québécois</option><option value="en">English</option></select>
       <p id="voiceDescription" class="muted"></p>
       <button id="conversationPreview" class="button" type="button">Preview voice</button><p id="conversationPreviewStatus" class="muted" role="status"></p>
       <p id="conversationSpeechReceipt" class="muted" hidden></p>
@@ -44,7 +44,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       <p id="conversationPreferencesStatus" class="muted"></p></details>
       <details id="conversationNotes" hidden></details>
       <details><summary>Listening</summary><label class="conversation-toggle"><input id="conversationInterruption" type="checkbox" checked> Interrupt Nestor by speaking</label><p id="conversationInterruptionStatus" class="muted">Uses the browser’s echo cancellation. A headset can help in a noisy room.</p>
-      <label class="conversation-toggle"><input id="conversationWake" type="checkbox" ${family ? "checked" : ""}> Require “Hey Nestor”</label><p class="muted">With the wake word, Nestor goes back to standby after 30 seconds without input or as soon as you say “Merci Nestor”. In an open conversation, it answers speech while the mic is on. Speech is transcribed on the local network before the name is detected; only sentences addressed to Nestor enter the conversation.</p><div id="conversationBrowserSttSettings" hidden></div>${family ? '' : '<a href="/device-check" class="conversation-native">Check the mic and speaker</a>'}</details>
+      <label class="conversation-toggle"><input id="conversationWake" type="checkbox" ${family ? "checked" : ""}> Activate with “Hey/Eille/Oh/Ah Nestor”</label><p class="muted">After activation, the conversation continues until Pause. “Dors Nestor” or “Bonne nuit Nestor” also returns it to standby. Saying “Nestor” alone does not activate it. In an open conversation, it answers speech while the mic is on. Speech is transcribed on the local network before the name is detected; only sentences addressed to Nestor enter the conversation.</p><div id="conversationBrowserSttSettings" hidden></div>${family ? '' : '<a href="/device-check" class="conversation-native">Check the mic and speaker</a>'}</details>
       <details id="conversationAudio" class="conversation-audio"><summary>Audio and transcription</summary>
         <p id="conversationDevice" class="muted">This device’s microphone and speakers</p>
         <p class="muted">Replay up to 20 seconds from this microphone, or the end of your last utterance. A clip stays in this tab for at most 2 minutes. Pause, New conversation or leaving the page erases it.</p>
@@ -184,7 +184,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   try { storage = window.localStorage; } catch { /* preferences remain usable in memory */ }
   let preferences = P.read(storage, catalog);
   try { const savedListening = storage?.getItem(listeningKey); el('conversationWake').checked = (['wake', 'open'].includes(savedListening) ? savedListening : defaultListening) === 'wake'; } catch {}
-  const describeListening = () => { el('conversationListeningHint').textContent = el('conversationWake').checked ? 'Say “Hey Nestor” or “Eille Nestor”, then speak naturally.' : 'Open conversation: speak freely while the mic is on.'; };
+  const describeListening = () => { el('conversationListeningHint').textContent = el('conversationWake').checked ? 'Say “Hey/Eille/Oh/Ah Nestor”, then speak naturally.' : 'Open conversation: speak freely while the mic is on.'; };
   el('conversationWake').onchange = () => { conversation.setWakeWord(el('conversationWake').checked); try { storage?.setItem(listeningKey, el('conversationWake').checked ? 'wake' : 'open'); } catch {} describeListening(); };
   describeListening();
   picker.value = family ? 'nestor' : preferences.personaId;
@@ -260,6 +260,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     return data.session;
   }
   async function streamedTurn(session, text, signal, onDelta = () => {}, { turnId, attachmentIds, onNotice, onSayEnd } = {}) {
+    const turnLanguage = language.value === 'en' ? 'en' : 'fr';
     turnId ||= crypto.randomUUID();
     personalNotes.show(null);
     activeBrowserTurn = turnId; activity('turn'); brain.cancel(); turnSpeaker = null;
@@ -267,7 +268,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     let response;
     try {
       response = await fetch(`${sessionBase}/${encodeURIComponent(session.sessionId)}/turns/text`, {
-        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
+        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, language: turnLanguage, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
       if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || 'Conversation unavailable'); }
     } catch (error) { workflow?.stream(turnId, { type: signal.aborted ? 'interrupted' : 'error' }); throw error; }
     work?.follow(session.sessionId);
@@ -276,7 +277,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       const body = await response.json();
       const saved = body.data;
       if (saved?.reply) return saved.reply;
-      return { text: 'Ta demande est enregistrée. Je vérifie son résultat sans la relancer.', language: 'fr' };
+      return { text: turnLanguage === 'en' ? 'Your request is saved. I’m checking its result without running it again.'
+        : 'Ta demande est enregistrée. Je vérifie son résultat sans la relancer.', language: turnLanguage };
     }
     const reader = response.body.getReader(), decoder = new TextDecoder();
     let pending = '', answer = '', result, noticed = false, workAccepted = false;
@@ -314,7 +316,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
           ? 'Loading your Open model… your message is waiting here.'
           : 'Waiting for the current model work on inference-host…';
         // In a voice turn Nestor says it once, before the answer (#62).
-        if (event.phase === 'waiting_host' && !noticed) { noticed = true; activity('host-busy'); onNotice?.('Un instant, je termine un test en cours sur mon ordinateur.'); }
+        if (event.phase === 'waiting_host' && !noticed) { noticed = true; activity('host-busy'); onNotice?.(turnLanguage === 'en'
+          ? 'One moment, I’m finishing a test on my computer.' : 'Un instant, je termine un test en cours sur mon ordinateur.'); }
       }
       if (event.type === 'delta' && !interruptedTurns.has(turnId)) {
         answer += event.delta;
@@ -468,7 +471,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     transcribe: (blob, lang, signal) => speechFallback.transcribe(blob, lang, signal),
     transcriptionStarted: turnId => workflow?.capture(conversation.session?.sessionId, turnId),
     transcriptionDone: (turnId, values) => workflow?.timings(turnId, values),
-    transcriptionEnded: turnId => workflow?.captureEnd(turnId),
+    transcriptionEnded: (turnId, receipt) => workflow?.captureEnd(turnId, receipt),
     // Recognition started during a pause uses the local transcriber only: the browser's own
     // recognizer hands its text over once, and an early failure must not switch engines.
     transcribeEarly: (blob, lang, signal) => (speechFallback.state().active ? null : transcribeLocal(blob, lang, signal)),
@@ -490,7 +493,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     // locale greeted a French family in English. The line
     // shows in the transcript too, and the face opens its eyes as it is spoken.
     async greet(session, signal) {
-      const lang = language.value === 'en' || (language.value === 'auto' && session?.voice?.language === 'en') ? 'en' : 'fr';
+      const lang = language.value === 'en' ? 'en' : 'fr';
       const text = lastGreeting = NestorGreetings.greetingFor({ space, language: lang, wakeWord: !!conversation.selection?.wakeWord, previous: lastGreeting });
       // While the greeting is spoken, Core warms this conversation's own prompt (voice-warmup.js),
       // so the first question is not preceded by a full prompt read. Best effort.
@@ -510,7 +513,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     if (state === 'idle' && !open.checked) void releaseOpen();
     if (state === 'starting') void speechFallback.probe(() => api('/api/voix/health'));
     speechFallback.sync();
-    el('conversationStatus').textContent = detail || (state === 'listening' && conversation.selection?.wakeWord ? (conversation.wake.active() ? 'Listening. Go on, or say “Merci Nestor”.' : 'Standby · say “Hey Nestor”.') : labels[state]);
+    el('conversationStatus').textContent = detail || (state === 'listening' && conversation.selection?.wakeWord ? (conversation.wake.active() ? 'Listening · conversation continues until Pause.' : 'Standby · say “Hey/Eille/Oh/Ah Nestor”.') : labels[state]);
     el('conversationPresence').dataset.state = state;
     const reviewing = state === 'reviewing';
     const active = !['idle', 'paused', 'error', 'reviewing'].includes(state);
@@ -548,7 +551,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     settings: el('conversationBrowserSttSettings'), indicator: el('conversationBrowserSttIndicator') },
   { onConsent: () => { if (conversation.state === 'reviewing') void conversation.start(selection()); } });
   function renderAudioReview() {
-    if (conversation.state === 'listening' && conversation.selection?.wakeWord) el('conversationStatus').textContent = conversation.wake.active() ? 'Listening. Go on, or say “Merci Nestor”.' : 'Standby · say “Hey Nestor”.';
+    if (conversation.state === 'listening' && conversation.selection?.wakeWord) el('conversationStatus').textContent = conversation.wake.active() ? 'Listening · conversation continues until Pause.' : 'Standby · say “Hey/Eille/Oh/Ah Nestor”.';
     const info = conversation.audio?.reviewStatus();
     const reviewing = conversation.state === 'reviewing';
     const canReview = ['listening', 'hearing', 'reviewing'].includes(conversation.state) && !conversation.activeTurn && !conversation.turnPending;
@@ -664,7 +667,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     const timeout = setTimeout(() => abort.abort(), 30000);
     el('conversationPreview').textContent = 'Stop voice';
     el('conversationPreviewStatus').textContent = 'Preparing the voice…';
-    const lang = language.value === 'auto' ? (navigator.language?.startsWith('fr') ? 'fr' : 'en') : language.value;
+    const lang = language.value === 'en' ? 'en' : 'fr';
     const persona = conversation.session?.persona || selected();
     const name = persona.id === 'native_personality' ? selectedAgent().name : persona.name.split(' ·')[0];
     const text = lang === 'fr' ? 'Bonjour, je suis ' + name + '. Voici ma voix pour notre prochaine conversation.'
@@ -805,7 +808,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       agentPicker.value = saved.agentId || 'main';
       backendPicker.value = saved.backend || runtime?.defaultBackend || 'openclaw';
       picker.value = saved.persona?.id || 'nestor'; open.checked = !!saved.inference?.open;
-      language.value = data.session.voice?.language || 'auto';
+      language.value = P.profile(data.session.voice).language;
       transcript.replaceChildren(); partial = null; clearBoard(); brain.reset();
       (data.turns || []).forEach(turn => {
         if (turn.inputText) message('user', turn.inputText, false, null, turn.attachments);

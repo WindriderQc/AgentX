@@ -68,7 +68,7 @@ test('a voice turn reports its offsets from the end of speech when its first rep
   assert.equal(h.sent.length, 1);
   assert.equal(h.sent[0].sessionId, 'family-1');
   assert.match(h.sent[0].turnId, /^[a-f0-9-]{36}$/);
-  assert.deepEqual(h.sent[0].timings, { sttDone: 600, requestSent: 600, firstDelta: 4600, firstAudio: 5100, interrupted: false });
+  assert.deepEqual(h.sent[0].timings, { sttDone: 600, requestSent: 600, firstDelta: 4600, firstAudio: 5100, interrupted: false, playbackOutcome: 'completed' });
   await h.say();
   assert.equal(h.sent.length, 2, 'one report per turn');
   assert.notEqual(h.sent[1].turnId, h.sent[0].turnId);
@@ -83,6 +83,33 @@ test('a measure keeps a reported duration beside the marks; anything else is ign
   assert.deepEqual(timeline.values(), { requestSent: 0, sttServer: 450, audioMs: 4200, silenceMs: 1000, interrupted: false });
 });
 
+test('a voice turn keeps playback requested, frame scheduled and non-silent signal scheduled separate', async () => {
+  const h = loop();
+  h.audio.play = async (_bytes, _signal, _review, _gain, callbacks) => {
+    assert.deepEqual(h.sent, [], 'a playback request is not a scheduling receipt');
+    h.clock.at += 100;
+    callbacks.onScheduled();
+    assert.deepEqual(h.sent, [], 'silent padding does not attest a signal');
+    h.clock.at += 400;
+    callbacks.onSignalScheduled();
+  };
+  await h.conversation.start({ language: 'fr' }); await h.say();
+  assert.deepEqual(h.sent[0].timings, { sttDone: 600, requestSent: 600, firstDelta: 4600,
+    firstAudio: 5100, firstFrameScheduled: 5200, firstSignalScheduled: 5600, interrupted: false });
+  assert.deepEqual(normalizeVoiceTimings(h.sent[0].timings), h.sent[0].timings);
+  h.conversation.stop();
+});
+
+test('a failed player retains the request time without inventing scheduled audio', async () => {
+  const h = loop();
+  h.audio.play = async () => { throw new Error('No output device'); };
+  await h.conversation.start({ language: 'fr' }); await h.say();
+  assert.equal(h.sent[0].timings.firstAudio, 5100);
+  assert.equal(h.sent[0].timings.firstFrameScheduled, undefined);
+  assert.equal(h.sent[0].timings.firstSignalScheduled, undefined);
+  h.conversation.stop();
+});
+
 test('a voice turn reports what explains its transcription: silence waited, clip length and recognition time', async () => {
   let utterance;
   const h = loop({ async transcribe() { h.clock.at += 600; return { text: 'Bonjour Nestor', sttMs: 450 }; } });
@@ -90,7 +117,7 @@ test('a voice turn reports what explains its transcription: silence waited, clip
   await h.conversation.start({ language: 'fr' });
   await utterance(new Blob(['sample']), { audioMs: 4200.4, silenceMs: 1000 });
   assert.deepEqual(h.sent[0].timings, { sttDone: 600, requestSent: 600, firstDelta: 4600, firstAudio: 5100,
-    silenceMs: 1000, audioMs: 4200, sttServer: 450, interrupted: false });
+    silenceMs: 1000, audioMs: 4200, sttServer: 450, interrupted: false, playbackOutcome: 'completed' });
   h.conversation.stop();
 });
 
@@ -205,4 +232,23 @@ test('a turn still in flight answers pending; an unknown turn and invalid timing
   }
   assert.equal(h.updates.filter(row => row.filter.clientTurnId === h.recorded).length, 0, 'nothing is written for a refused request');
   assert.equal(h.routes['llmx:/llmx/sessions/:sessionId/voice-timings'], undefined, 'the LLMx consumer has no voice timings route');
+});
+
+
+test('terminal playback and interruption update an already received scheduling snapshot in order', async () => {
+  const gate = deferred(), sent = [];
+  const timeline = new VoiceTimeline(() => 100);
+  timeline.mark('requestSent'); timeline.mark('firstSignalScheduled');
+  const send = async values => { sent.push(values); if (sent.length === 1) await gate.promise; return {}; };
+  const first = timeline.report(send); await tick();
+  timeline.finish('completed'); const completed = timeline.report(send);
+  assert.equal(sent.length, 1, 'terminal receipt cannot overtake the older write');
+  gate.resolve(); await Promise.all([first, completed]);
+  assert.equal(sent.length, 2); assert.equal(sent[0].playbackOutcome, undefined);
+  assert.equal(sent[1].playbackOutcome, 'completed');
+  await timeline.report(send, () => true);
+  assert.equal(sent[2].interrupted, true);
+  assert.deepEqual(normalizeVoiceTimings(sent[2]), sent[2]);
+  await timeline.report(send, () => true); assert.equal(sent.length, 3, 'identical snapshots are not repeated');
+  assert.equal(normalizeVoiceTimings({ requestSent: 0, playbackOutcome: 'invented' }).playbackOutcome, undefined);
 });

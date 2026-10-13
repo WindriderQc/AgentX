@@ -8,7 +8,7 @@ const { techniquesSystemMessage } = require('./techniques');
 const { familyTimeZone } = require('../household/family');
 const { SPOKEN_REPLY_INSTRUCTION } = require('../../services/voice/presentation');
 
-const PROMPT_VERSION = 5;
+const PROMPT_VERSION = 6;
 const MODE_CONFIG = Object.freeze({
   talk: { title: 'Talk', short: 'Stay with the lived experience.', description: 'Stay close to lived experience, help name what is happening, and do not jump prematurely into analysis or solutions.' },
   analyze: { title: 'Analyze', short: 'Map the mechanism.', description: 'Map triggers, beliefs, emotional dynamics, contradictions, competing hypotheses, and causal loops.' },
@@ -35,9 +35,11 @@ function frontierLocation(mode, depth) {
   return mode === 'all' || (mode === 'deep' && depth === 'deep') ? 'frontier' : 'local';
 }
 
+const TYPED_LANGUAGE_INSTRUCTION = "Always answer in the language of the user's latest message, French unless the user writes in another language, even though these instructions are in English. In French, use a natural Québec register and tutoie the user.";
+
 const SYSTEM_PROMPT = `You are PsyX, a private psychological thinking partner and behavior-change companion for one adult user.
 
-Always answer in the language of the user's latest message, French unless the user writes in another language, even though these instructions are in English. In French, use a natural Québec register and tutoie the user.
+${TYPED_LANGUAGE_INSTRUCTION}
 
 Help the user understand himself accurately, identify high-leverage patterns, reduce unnecessary suffering and internal friction, make better decisions under emotional load, improve relationships and parenting, and convert insight into observable change. Optimize for clarity -> leverage -> experiment -> feedback -> adaptation. Do not optimize for reassurance, endless conversation, or insight that never changes behavior.
 
@@ -174,7 +176,7 @@ function longitudinalSystemMessage(state, { conversationId = null, budget = 'loc
 
 const SESSION_OPENING = 'This is the first message of a new session. Acknowledge what the user brings first. Then, if recent sessions or active experiments in the longitudinal state relate to it, connect in one sentence and ask how a planned experiment went. Never force it.';
 
-function composeSystemContext(state, control, { conversationId = null, safety = null, voice = false, budget = 'local', time = null, features = {} } = {}) {
+function composeSystemContext(state, control, { conversationId = null, safety = null, voice = false, voiceLanguage = 'fr', budget = 'local', time = null, features = {} } = {}) {
   // AgentX's external contract caps an individual local message at 16k
   // characters: persona and controls first, then the profile, then fallible
   // longitudinal memory in what remains. A frontier model takes a wide budget.
@@ -188,8 +190,11 @@ function composeSystemContext(state, control, { conversationId = null, safety = 
   const memory = longitudinalSystemMessage(state, { conversationId, budget, maxCharacters: (wide ? 40000 : 6000 - profile.length - measures.length) - portrait.length });
   const opening = !conversationId && (state.sessionDigests?.length || state.experiments?.some(item => ['planned', 'active'].includes(item.status)))
     ? SESSION_OPENING : '';
-  return [SYSTEM_PROMPT, profile, portrait, measures, memory, techniques, controlSystemMessage(control), time ? timeSystemMessage(time) : '', opening,
-    voice ? `${SPOKEN_REPLY_INSTRUCTION} This is a spoken turn. Answer naturally in two to five short sentences, usually 30 to 90 words, without lists. Ask at most one question.` : '',
+  const system = voice ? SYSTEM_PROMPT.replace(TYPED_LANGUAGE_INSTRUCTION, voiceLanguage === 'en'
+    ? 'The browser explicitly selected English for this spoken turn. Reply in English.'
+    : 'The spoken language is français québécois. Réponds en français québécois et tutoie la personne, même si des mots anglais figurent dans sa transcription.') : SYSTEM_PROMPT;
+  return [system, profile, portrait, measures, memory, techniques, controlSystemMessage(control), time ? timeSystemMessage(time) : '', opening,
+    voice ? `${SPOKEN_REPLY_INSTRUCTION} This is a spoken turn. Usually use 30 to 90 words without lists; explicit readings may be longer. Ask at most one question.` : '',
     safety ? SAFETY_INSTRUCTION : ''].filter(Boolean).join('\n\n');
 }
 

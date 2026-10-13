@@ -307,7 +307,7 @@ function register(api) {
       if (backend === 'openclaw') await requireNativeAgent(agentId);
       const presentation = req.body?.voice?.presentation;
       if (presentation && !['masculine', 'feminine'].includes(presentation)) throw Object.assign(new Error('Invalid voice presentation'), { statusCode: 400 });
-      const language = req.body?.language || 'auto';
+      const language = req.body?.language || (consumer === 'llmx' ? 'auto' : 'fr');
       if (!['auto', 'en', 'fr'].includes(language)) throw Object.assign(new Error('Invalid voice language'), { statusCode: 400 });
       const session = await conversations.createSession({
         sessionId: crypto.randomUUID(),

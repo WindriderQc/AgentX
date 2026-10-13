@@ -67,3 +67,45 @@ def test_the_client_accepts_the_rate_a_worker_declares_and_refuses_an_unknown_on
     for rate in (0, 11025, "24000", None):
         with pytest.raises(ValueError):
             voxcpm.Decoder("narrator").accept(meta(rate))
+
+
+@pytest.mark.parametrize("sample_rate", [24000, 48000])
+def test_empty_generation_fails_despite_padding_and_releases_the_request(sample_rate):
+    closed = []
+
+    def generate(text, voice):
+        try:
+            if text == "Following":
+                yield np.full(100, 0.1, dtype=np.float32)
+        finally:
+            closed.append(text)
+
+    worker = Worker(generate, "narrator", sample_rate=sample_rate)
+
+    def consume(text):
+        job = worker.submit(dict(id="same-request", text=text, voice="narrator"))
+        thread = threading.Thread(target=worker.execute, args=(job,), daemon=True)
+        thread.start()
+        events = []
+        try:
+            while not events or events[-1]["type"] not in ("done", "error"):
+                events.append(job.output.get(timeout=1))
+        finally:
+            worker.cancel(job.id)
+            thread.join(timeout=1)
+        assert not thread.is_alive()
+        assert not worker.active
+        return events
+
+    events = consume("Empty")
+    assert [event["type"] for event in events] == ["meta", "audio", "error"]
+    audio = np.frombuffer(base64.b64decode(events[1]["pcm"]), dtype="<f4")
+    assert audio.size == at_rate(LEAD_SILENCE, sample_rate) and not audio.any()
+    decoder = voxcpm.Decoder("narrator")
+    decoder.accept(events[0])
+    decoder.accept(events[1])
+    with pytest.raises(RuntimeError, match="synthesis failed"):
+        decoder.accept(events[-1])
+    assert not decoder.done
+    assert consume("Following")[-1]["type"] == "done"
+    assert closed == ["Empty", "Following"]

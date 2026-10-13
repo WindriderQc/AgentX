@@ -109,7 +109,7 @@ async def stream(text: str, *, voice: str | None = None, language=None, cancel=N
                                      verify=_tls_context()) as client:
             try:
                 async with client.stream("POST", _url() + "/v1/stream", json={
-                    "id": request_id, "text": text, "voice": selected_voice,
+                    "id": request_id, "text": text, "voice": selected_voice, "language": language,
                 }) as response:
                     response.raise_for_status()
                     async for line in response.aiter_lines():

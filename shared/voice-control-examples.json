@@ -1,0 +1,12 @@
+{
+  "stop": [
+    "Stop", "STOP!", "stop talking", "Nestor, stop talking!", "stop talking Nestor",
+    "arrête", "arrête de parler", "arrête-toi", "Nestor, arrête de parler", "arrête-toi Nestor",
+    "tais-toi", "silence", "silence Nestor", "Stop, stop, stop!", "Nestor stop silence Nestor"
+  ],
+  "speech": [
+    "", "Nestor", "stop et lis la suite", "stop talking about that", "arrête la tâche",
+    "annule la tâche", "arrête de parler et écoute", "silence dans la bibliothèque",
+    "ne t'arrête pas", "tais-toi puis recommence", "[unk]", "stop [unk]"
+  ]
+}

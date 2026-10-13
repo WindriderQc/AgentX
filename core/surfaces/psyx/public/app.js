@@ -557,7 +557,8 @@ async function sendMessage(text, overrides = {}) {
     await streamChat({
       message: humanText,
       conversationId: state.conversationId || undefined,
-      psyx: { mode: effectiveMode, depth: effectiveDepth, action: actionType, source: overrides.source === 'voice' ? 'voice' : 'text' }
+      psyx: { mode: effectiveMode, depth: effectiveDepth, action: actionType, source: overrides.source === 'voice' ? 'voice' : 'text',
+        ...(overrides.source === 'voice' ? { language: state.voice.prefs.language } : {}) }
     }, (event, data) => {
       if (state.turnSequence !== turnSequence) return;
       if (event === 'token') { stream.append(data.content || ''); overrides.onDelta?.(data.content || ''); }

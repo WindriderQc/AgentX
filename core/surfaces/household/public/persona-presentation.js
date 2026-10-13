@@ -9,7 +9,7 @@
   }
   function profile(value = {}) {
     const selected = selections(value?.selections);
-    return { language: ['auto', 'fr', 'en'].includes(value?.language) ? value.language : 'auto',
+    return { language: value?.language === 'en' ? 'en' : 'fr',
       voice: ['masculine', 'feminine'].includes(value?.voice) ? value.voice : '',
       ...(Object.keys(selected).length ? { selections: selected } : {}), visual: visual(value?.visual) };
   }

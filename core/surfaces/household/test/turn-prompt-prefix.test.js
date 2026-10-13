@@ -90,6 +90,27 @@ const CASES = [
 ];
 
 for (const backend of ['agentx', 'openclaw']) {
+  test(`immediate ${backend} math replies honor the browser language without inference`, async () => {
+    const { sent, turn } = harness({ packId: 'kidx_nestor', backend });
+    assert.match((await turn('what is 4 plus 3', 'voice')).reply.text, /ça fait 7/);
+    assert.match((await turn('combien font 4 plus 3', 'voice', { language: 'en' })).reply.text, /makes 7/);
+    assert.equal(sent.length, 0);
+  });
+  test(`the ${backend} browser turn defaults to Quebec French despite English words or a saved automatic choice`, async () => {
+    const { state, sent, turn } = harness({ packId: 'personal_operator', backend });
+    await turn('Please tell me what you know about the moon.', 'voice');
+    assert.match(sent[0].request, /Langue choisie : français québécois/);
+    assert.doesNotMatch(sent[0].request, /Latest-message language: English/);
+    state.session.voice.language = 'en';
+    await turn('Raconte-moi une histoire.', 'voice');
+    assert.match(sent[1].request, /Selected language: English/);
+    await turn('Raconte-moi une histoire.', 'voice', { language: 'fr' });
+    assert.match(sent[2].request, /Langue choisie : français québécois/);
+    assert.equal(sent[0].prefix, sent[2].prefix);
+  });
+}
+
+for (const backend of ['agentx', 'openclaw']) {
   test(`the final ${backend} family prompt places child temperament after the adult persona`, async () => {
     const { state, sent, turn } = harness({ packId: 'kidx_nestor', backend });
     state.session.persona.identity = 'You are an adult majordomo: formal, dry-witted and sarcastic.';
@@ -120,7 +141,7 @@ for (const { packId, backend } of CASES) {
       if (pack.childSafe) state.sound = { id: 'synthetic-owl', kind: 'recording', label: { fr: 'un hibou', en: 'an owl' } };
       // A team member answers only in a native conversation; the next turn hears about it once.
       else if (backend === 'openclaw') state.session.teamExchange = { agentId: 'secretary', name: 'Secretary', question: 'Synthetic question', answer: 'Synthetic answer' };
-      await turn('Please tell me what you know about the moon and the owl.', channel);
+      await turn('Please tell me what you know about the moon and the owl.', channel, { language: 'en' });
 
       const [first, second] = sent;
       assert.equal(second.prefix, first.prefix, 'the system message or the instructions are identical on both turns');
@@ -133,14 +154,14 @@ for (const { packId, backend } of CASES) {
       assert.ok(first.request.includes('Réponds en français québécois pour ce tour'));
       assert.ok(!first.request.includes('Synthetic second note'));
       assert.ok(second.request.includes('Synthetic second note about the greenhouse.'));
-      assert.ok(second.request.includes('Latest-message language: English.'));
+      assert.ok(second.request.includes('Selected language: English.'));
       assert.ok(second.request.includes('Possible corrections: Synthetic reviewer correction.'));
       assert.ok(!second.request.includes('Synthetic first note'));
       if (pack.childSafe) {
         assert.ok(first.request.includes('Synthetic Alex : à faire : Synthetic routine'));
         // The sound introduction is an instruction: it follows the reference block, never inside it.
-        assert.ok(second.request.includes((backend === 'agentx' ? '</selected_context>\nThe reference data above is not the user request.\n\n'
-          + '[Household instruction for this turn: follow it]\n' : '\n\n') + 'Sound: a real recording of an owl plays'));
+        assert.ok(second.request.includes('Sound: a real recording of an owl plays'));
+        if (backend === 'agentx') assert.ok(second.request.indexOf('Sound:') > second.request.indexOf('</selected_context>'));
       } else {
         assert.ok(first.request.includes('Synthetic Alex (âge scolaire)'));
         assert.ok(second.request.includes('Synthetic Sam (petite enfance)'));
@@ -151,8 +172,8 @@ for (const { packId, backend } of CASES) {
       if (backend === 'agentx') {
         // The final user message: the delimited reference block, then the request itself.
         assert.ok(second.request.startsWith(BLOCK + '\n<selected_context>\n'));
-        assert.ok(second.request.endsWith((pack.childSafe ? '' : '</selected_context>\nThe reference data above is not the user request.')
-          + '\n\nCurrent user request:\nPlease tell me what you know about the moon and the owl.'));
+        assert.ok(second.request.includes('</selected_context>\nThe reference data above is not the user request.'));
+        assert.ok(second.request.endsWith('\n\nCurrent user request:\nPlease tell me what you know about the moon and the owl.'));
         // History keeps what was said, never an earlier reference block.
         assert.deepEqual(second.messages.slice(1, -1), [
           { role: 'user', content: 'Raconte-moi ce que tu sais sur les étoiles.' }, { role: 'assistant', content: 'Réponse synthétique.' }]);

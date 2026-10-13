@@ -39,21 +39,29 @@ test('STT and Gardien remain observable while a review is deliberately delayed',
   assert.equal(stageState('tts', row)[0], 'Unknown');
 });
 
-test('live transcription is visible before a model request without claiming Gardien activity', () => {
+test('microphone captures stay separate from submitted conversation turns', () => {
   const model = createModel();
-  model.capture('session-1', 'turn-a');
-  const pending = model.snapshot().turns[0];
-  assert.equal(stageState('stt', pending)[0], 'In progress');
-  assert.equal(stageState('guardian', pending)[0], 'Unknown');
-  model.timings('turn-a', { sttDone: 720 });
-  assert.equal(stageState('stt', model.snapshot().turns[0])[0], 'Done');
-  model.captureEnd('turn-a');
-  assert.equal(stageState('guardian', model.snapshot().turns[0])[0], 'Unknown');
-  model.begin('session-1', 'turn-b', 'voice');
-  model.stream('turn-b', { type: 'accepted' });
-  assert.equal(stageState('guardian', model.snapshot().turns[1])[0], 'Waiting');
+  model.begin('session-1', 'accepted', 'voice');
+  model.stream('accepted', { type: 'done', data: {} });
+  model.capture('session-1', 'stop-capture');
+  let view = model.snapshot();
+  assert.deepEqual(view.turns.map(row => row.id), ['accepted']);
+  assert.equal(stageState('stt', view.captures[0])[0], 'In progress');
+  model.timings('stop-capture', { sttDone: 171 });
+  model.captureEnd('stop-capture', { outcome: 'stop' });
+  view = model.snapshot();
+  assert.equal(view.turns.length, 1);
+  assert.equal(view.captures[0].captureOutcome, 'stop');
+  assert.equal(view.captures[0].live, false);
+  model.capture('session-1', 'next');
+  model.begin('session-1', 'next', 'voice');
+  model.stream('next', { type: 'accepted' });
+  model.captureEnd('next', { outcome: 'recognized' });
+  view = model.snapshot();
+  assert.deepEqual(view.turns.map(row => row.id), ['accepted', 'next']);
+  assert.equal(view.captures.length, 1);
+  assert.equal(stageState('guardian', view.turns[1])[0], 'Waiting');
 });
-
 test('a waiting-host signal never masks terminal or stale Gardien evidence', () => {
   const model = createModel(); model.begin('session-1', 'turn-a', 'voice');
   model.stream('turn-a', { type: 'status', phase: 'waiting_host' });
@@ -471,4 +479,24 @@ test('browser projection exposes exact execution IDs without context, payloads o
   assert.equal(projected.attempt.agentId, 'main');
   assert.equal(projected.tools[0].id, 'receipt-a');
   assert.doesNotMatch(JSON.stringify(projected), /secret-|sessionKey|payloadRef|contextRef/);
+});
+
+
+test('voice tracking distinguishes frame, signal, interruption and typed playback', () => {
+  const row = { channel: 'voice', works: [], reviews: [], voiceTimings: { firstFrameScheduled: 900 } };
+  assert.equal(stageState('tts', row)[0], 'Frame scheduled');
+  row.voiceTimings.firstSignalScheduled = 1200;
+  assert.equal(stageState('tts', row)[0], 'Signal scheduled');
+  row.voiceTimings.interrupted = true;
+  assert.equal(stageState('tts', row)[0], 'Interrupted');
+  assert.equal(stageState('tts', { channel: 'voice', interrupted: true, works: [], reviews: [] })[0], 'Interrupted');
+  assert.equal(stageState('tts', { ...row, channel: 'text', voiceTimings: { firstSignalScheduled: 1200 } })[0], 'Signal scheduled');
+});
+
+
+test('completed and failed playback receipts take precedence over earlier scheduling', () => {
+  const row = { channel: 'voice', works: [], reviews: [], voiceTimings: { firstSignalScheduled: 800, playbackOutcome: 'completed' } };
+  assert.equal(stageState('tts', row)[0], 'Done');
+  row.voiceTimings.playbackOutcome = 'failed'; assert.equal(stageState('tts', row)[0], 'Failed');
+  row.voiceTimings.interrupted = true; assert.equal(stageState('tts', row)[0], 'Interrupted');
 });

@@ -3,7 +3,8 @@
 // A voice turn's browser timeline: offsets in ms from the moment the end of the
 // person's speech was decided. A surface stores only these known marks, as
 // bounded whole numbers, on the turn it recorded.
-const MARKS = Object.freeze(['sttDone', 'requestSent', 'firstDelta', 'holdingPhrase', 'firstAudio']);
+const MARKS = Object.freeze(['sttDone', 'requestSent', 'firstDelta', 'holdingPhrase', 'firstAudio',
+  'firstFrameScheduled', 'firstSignalScheduled']);
 const MAX_OFFSET_MS = 10 * 60 * 1000;
 // Durations that explain the marks: silence waited before the end of speech was
 // decided, length of the captured clip, recognition time reported by the speech service.
@@ -24,7 +25,8 @@ function normalizeVoiceTimings(input) {
     const value = input[measure];
     if (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= MAX_OFFSET_MS) timings[measure] = Math.round(value);
   }
-  return { ...timings, interrupted: input.interrupted === true };
+  return { ...timings, interrupted: input.interrupted === true,
+    ...(['completed', 'failed'].includes(input.playbackOutcome) && { playbackOutcome: input.playbackOutcome }) };
 }
 
 module.exports = { normalizeVoiceTimings, MARKS, MEASURES, MAX_OFFSET_MS };

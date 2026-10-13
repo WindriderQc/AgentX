@@ -22,20 +22,21 @@
   <main id="app" tabindex="-1"></main>
   <dialog id="readingVoiceDialog" aria-labelledby="readingVoiceTitle">
     <h2 id="readingVoiceTitle">Reading voices</h2>
-    <p>For readings and spoken replies in Family, Kids and Super Dad on this browser.</p>
+    <label>Language for Kids Room and Lecture<select id="readingLanguage"><option value="fr">Français québécois</option><option value="en">English</option></select></label>
+    <p>For readings and spoken replies in Kids Room and Lecture on this browser. French is the default; select English explicitly.</p>
     <label>French<select id="readingVoiceFr"><option value="">Default voice</option></select></label>
     <label>English<select id="readingVoiceEn"><option value="">Default voice</option></select></label>
     <p id="readingVoiceStatus" role="status"></p>
-    <div class="actions"><button type="button" id="readingVoicePreview">Preview French voice</button><button type="button" id="readingVoiceStop">Stop</button><button type="button" id="readingVoiceSave">Save</button><button type="button" id="readingVoiceClose">Close</button></div>
+    <div class="actions"><button type="button" id="readingVoicePreview">Preview selected language</button><button type="button" id="readingVoiceStop">Stop</button><button type="button" id="readingVoiceSave">Save</button><button type="button" id="readingVoiceClose">Close</button></div>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/js/voice/speech-language.js?v=spoken-reply-1" defer></script>
-  <script src="/api/voix/player.js?v=1.56.4" defer></script>
-  <script src="/assets/household/persona-presentation.js?v=team-1" defer></script>
+  <script src="/js/voice/speech-language.js?v=voice-contracts-1" defer></script>
+  <script src="/api/voix/player.js?v=voice-contracts-1" defer></script>
+  <script src="/assets/household/persona-presentation.js?v=voice-contracts-1" defer></script>
   <script src="/js/voice/playback-hold.js?v=voice-noise-1" defer></script>
-  <script src="/js/voice/voice-timeline.js?v=stt-measures-1" defer></script>
+  <script src="/js/voice/voice-timeline.js?v=voice-contracts-1" defer></script>
   <script src="/js/voice/voice-health.js?v=voice-health-1" defer></script>
-  <script src="/js/voice/browser-conversation.js?v=control-before-whisper-1" defer></script>
+  <script src="/js/voice/browser-conversation.js?v=voice-contracts-1" defer></script>
   <script src="/js/voice/speech-ladder.js?v=spoken-reply-1" defer></script>
   <script src="/assets/household/open-hold.js?v=1.56.4" defer></script>
   <script src="/assets/household/personal-notes.js?v=core-notes-1" defer></script>
@@ -52,9 +53,9 @@
   <script src="/js/conversation-preferences.js?v=1" defer></script>
   <script src="/js/conversation-recap.js?v=2" defer></script>
   <script src="/assets/household/conversation-composer.js?v=everyday-1" defer></script>
-  <script src="/assets/household/conversation-work.js?v=work-1" defer></script>
-  <script src="/assets/household/workflow-panel.js?v=workflow-1" defer></script>
-  <script src="/assets/household/conversation-page.js?v=everyday-1" defer></script>
+  <script src="/assets/household/conversation-work.js?v=voice-contracts-1" defer></script>
+  <script src="/assets/household/workflow-panel.js?v=voice-contracts-1" defer></script>
+  <script src="/assets/household/conversation-page.js?v=voice-contracts-1" defer></script>
   <script src="/assets/household/secretary-rules.js?v=rules-1" defer></script>
   <script src="/assets/household/desk-cards.js?v=remember-1" defer></script>
   <script src="/assets/household/family-conversations.js?v=family-review-1" defer></script>
@@ -63,9 +64,9 @@
   <script src="/assets/household/household-navigation.js?v=everyday-1" defer></script>
   <script src="/assets/household/family-organizer.js?v=everyday-1" defer></script>
   <script src="/assets/household/dad-day.js?v=everyday-1" defer></script>
-  <script src="/assets/household/journal-display.js?v=stt-measures-1" defer></script>
+  <script src="/assets/household/journal-display.js?v=voice-contracts-1" defer></script>
   <script src="/assets/household/parent-page.js?v=everyday-1" defer></script>
   <script src="/assets/household/device-check-page.js?v=device-check-1" defer></script>
-  <script src="/assets/household/app.js?v=everyday-1" defer></script>
+  <script src="/assets/household/app.js?v=voice-contracts-1" defer></script>
 </body>
 </html>

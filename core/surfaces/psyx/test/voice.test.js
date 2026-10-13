@@ -49,6 +49,23 @@ test('PsyX has no path that writes the shared VoiX configuration', async () => {
   assert.deepEqual(requests.map((item) => `${item.method} ${item.path}`), ['POST /api/tts']);
 });
 
+for (const available of [true, false]) {
+  test(`a degraded speech service remains reachable and reports recognition availability (${available}) without leaking decoder errors`, async () => {
+    const client = createVoiceClient(VOICE_CONFIG, async url => {
+      if (url.endsWith('/health')) return Response.json({ status: 'degraded', recognition: {
+        available, degraded: true, cpu_fallback_enabled: available, failure_reason: 'private CUDA detail'
+      } });
+      return new Response('{}', { status: 404 });
+    });
+    const status = await client.status();
+    assert.equal(status.reachable, true);
+    assert.equal(status.serviceState, 'degraded');
+    assert.equal(status.recognitionAvailable, available);
+    assert.equal(status.nativeAvailable, false);
+    assert.doesNotMatch(JSON.stringify(status), /private CUDA/);
+  });
+}
+
 test('voice sanitizers omit internal service configuration', () => {
   assert.deepEqual(sanitizeConfig({ config: { brain: 'nestor', language: 'en', tts_provider: 'kokoro' }, static: { whisper_model: 'small' } }), {
     language: 'en', inputDevice: '', outputDevice: '', ttsProvider: 'kokoro', ttsVoice: '', ttsLanguageProfiles: [], whisperModel: 'small', running: false, applies: null
@@ -181,6 +198,25 @@ test('the instance-qualified spoken Stop endpoint is shared with PsyX without cr
     return new Response(JSON.stringify({ text: '', control: 'stop' }));
   });
   assert.deepEqual(await client.transcribe(Buffer.from('RIFF'), { contentType: 'audio/wav', language: 'fr' }), { text: '', control: 'stop', language: 'fr' });
+});
+
+test('PsyX preserves bounded recognition evidence without exposing arbitrary upstream fields', async () => {
+  const client = createVoiceClient(VOICE_CONFIG, async () => new Response(JSON.stringify({
+    text: 'Bonjour', language: 'fr', detectedLanguage: 'en', sttMs: 451.4,
+    model: 'effective-recognizer', effectiveModel: 'effective-recognizer', requestedModel: 'client-hint',
+    private: 'not-a-transcription-field',
+  })));
+  const result = await client.transcribe(Buffer.from('RIFF'), { contentType: 'audio/wav', language: 'fr' });
+  assert.deepEqual(result, { text: 'Bonjour', language: 'fr', detectedLanguage: 'en', sttMs: 451,
+    model: 'effective-recognizer', effectiveModel: 'effective-recognizer', requestedModel: 'client-hint' });
+});
+
+test('invalid recognition metadata remains absent rather than becoming invented values', async () => {
+  const client = createVoiceClient(VOICE_CONFIG, async () => new Response(JSON.stringify({
+    text: 'Bonjour', detectedLanguage: { private: true }, sttMs: -1, model: ['not-a-model'],
+  })));
+  assert.deepEqual(await client.transcribe(Buffer.from('RIFF'), { contentType: 'audio/wav', language: 'fr' }),
+    { text: 'Bonjour', language: 'fr' });
 });
 
 test('browser voice remains ready on the shared backup without reading or borrowing native device state', async t => {

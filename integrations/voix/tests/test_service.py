@@ -295,6 +295,7 @@ def test_http_speech_removes_markdown_before_every_engine(monkeypatch, provider,
     monkeypatch.setattr(voxcpm, "synthesize", synthesize)
     monkeypatch.setattr(voxcpm, "stream", stream)
     monkeypatch.setattr("app.tts.catalog.worker_ready", lambda: (True, ""))
+    monkeypatch.setattr("app.tts.catalog.worker_languages", lambda: ("fr", "en"))
     response = client.post(path, json={text_field: text, "tts_provider": provider,
                                       "language": "fr", "response_format": "wav"})
     assert response.status_code == 200
@@ -324,7 +325,7 @@ def _voxcpm_worker(monkeypatch, *, up):
         probes.append(url)
         if not up:
             raise httpx.ConnectError("refused")
-        return httpx.Response(200, json={"ready": True, "voice": "nestor-a",
+        return httpx.Response(200, json={"ready": True, "voice": "nestor-a", "languages": ["fr"],
                                          "voices": [{"id": "nestor-a"}, {"id": "helper"}]},
                               request=httpx.Request("GET", url))
     monkeypatch.setattr(catalog.httpx, "get", health)
@@ -660,3 +661,24 @@ def test_transcription_reports_detected_language_for_one_voice_per_reply(monkeyp
     body = client.post("/v1/audio/transcriptions", files={"file": ("mic.wav", b"RIFFfake")}, data={"language": "fr-en"}).json()
     assert body["language"] == "fr-en"
     assert body["detectedLanguage"] == "en"
+
+
+@pytest.mark.parametrize("requested_model", [None, "requested-model-not-loaded"])
+def test_transcription_names_the_configured_model_instead_of_echoing_a_requested_model(monkeypatch, requested_model):
+    calls = []
+
+    def transcribe(raw, filename, language):
+        calls.append(language)
+        return "Bonjour.", 12.0
+
+    monkeypatch.setattr(service, "_transcribe_bytes", transcribe)
+    body = client.post(
+        "/v1/audio/transcriptions",
+        files={"file": ("mic.wav", b"RIFFfake")},
+        data={"language": "fr", **({"model": requested_model} if requested_model else {})},
+    ).json()
+    assert body["model"] == service.settings.whisper_model
+    assert body["effectiveModel"] == service.settings.whisper_model
+    assert body["requestedModel"] == requested_model
+    assert body["text"] == "Bonjour." and body["sttMs"] == 12
+    assert calls == ["fr"]

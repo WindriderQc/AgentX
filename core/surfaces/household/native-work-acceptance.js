@@ -17,7 +17,7 @@ async function nativeWorkAcknowledgment(request) {
       { code: 'CONVERSATION_WORK_ACCEPTANCE_UNAVAILABLE', statusCode: 503 });
   }
   if (work.mode === 'native' && work.foreground === 'guardian') return null;
-  const en = scoreSpeechLanguage(text).language === 'en';
+  const en = (['fr', 'en'].includes(request.speechLanguage) ? request.speechLanguage : scoreSpeechLanguage(text).language) === 'en';
   const answer = work.resultReady
     ? en ? 'The consultation result is ready. I’ll present it at the next pause.' : 'Le résultat de la consultation est prêt. Je te le présente à la prochaine pause.'
     : work.state === 'failed' ? en ? 'The consultation failed. Its request and status remain saved.' : 'La consultation a échoué. La demande et son état restent enregistrés.'

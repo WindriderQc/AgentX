@@ -8,6 +8,7 @@ function voiceError(message, code, statusCode = 502) {
 function choice(value) { return String(value ?? '').trim().toLowerCase(); }
 const { normalizeSynthesisRequest: coreSynthesisRequest } = require('../../../src/services/voice/request');
 const { createVoiceTransport } = require('../../../src/services/voice/transport');
+const { transcriptionMetadata } = require('../../../src/services/voice/transcription-metadata');
 function normalizeSynthesisRequest(request) {
   return coreSynthesisRequest(request, { errorPrefix: 'PSYX_VOICE' });
 }
@@ -103,7 +104,10 @@ function createVoiceClient(config, fetchImpl) {
       ]) : [null, null];
       return {
         enabled: true,
-        reachable: health.status === 'ok',
+        reachable: ['ok', 'degraded'].includes(health.status),
+        serviceState: ['ok', 'degraded'].includes(health.status) ? health.status : 'unknown',
+        recognitionAvailable: typeof health.recognition?.available === 'boolean' ? health.recognition.available
+          : health.recognition?.degraded && health.recognition?.cpu_fallback_enabled === false ? false : null,
         serviceVersion: String(health.version || ''),
         activeUpstream: observed.upstream,
         nativeAvailable: Boolean(settings && devicePayload),
@@ -141,10 +145,11 @@ function createVoiceClient(config, fetchImpl) {
       const endpoint = process.env.VOIX_SPOKEN_CONTROLS_ENABLED === 'true'
         ? '/v1/audio/transcriptions/controls' : '/v1/audio/transcriptions';
       const result = await json(endpoint, { method: 'POST', body: form, signal }, voice.longTimeoutMs);
-      if (result.control === 'stop') return { text: '', control: 'stop', language: normalizedLanguage || 'auto' };
+      const metadata = transcriptionMetadata(result);
+      if (result.control === 'stop') return { text: '', control: 'stop', language: normalizedLanguage || 'auto', ...metadata };
       const text = String(result.text || '').trim();
       if (!text) throw voiceError('No speech was detected in the recording.', 'PSYX_VOICE_NO_SPEECH', 422);
-      return { text, language: result.language || normalizedLanguage || 'auto' };
+      return { text, language: result.language || normalizedLanguage || 'auto', ...metadata };
     },
 
     async synthesize(request, signal) {

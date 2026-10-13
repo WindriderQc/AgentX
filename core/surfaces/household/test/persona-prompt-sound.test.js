@@ -31,3 +31,13 @@ test('the sound introduction is a directive of its own, absent from the turn ref
   assert.doesNotMatch(systemPromptFor(null, { ...context, contextOnly: true }), /Son :/);
   assert.equal(turnDirective({ latestUserText: 'Bonjour' }), '');
 });
+
+test('an explicit browser language controls the reply and sound without inferring a switch', () => {
+  const french = { speechLanguage: 'fr', sound: SOUND, latestUserText: 'Can you play the elephant sound?' };
+  assert.match(turnDirective(french), /Réponds en français québécois/);
+  assert.match(turnDirective(french), /Son :/);
+  assert.doesNotMatch(systemPromptFor(null, { ...french, contextOnly: true }), /Langue choisie|Son :|Latest-message language/);
+  const english = { ...french, speechLanguage: 'en', latestUserText: 'Fais le son de l’éléphant' };
+  assert.match(turnDirective(english), /Selected language: English/);
+  assert.match(turnDirective(english), /Sound:/);
+});

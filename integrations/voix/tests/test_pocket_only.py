@@ -19,6 +19,7 @@ def pocket_only(monkeypatch, tmp_path):
         monkeypatch.setattr(module, "settings", settings)
     monkeypatch.setattr(service, "speech", runtime.RuntimeConfig.from_settings())
     monkeypatch.setattr(catalog, "worker_ready", lambda: (True, ""))
+    monkeypatch.setattr(catalog, "worker_languages", lambda: ("fr",))
     monkeypatch.setattr(catalog, "worker_voices", lambda: {"narrator": "Narrator", "helper": "Helper"})
     monkeypatch.setattr(catalog, "_worker_model", "kyutai/pocket-tts")
     monkeypatch.setenv("VOIX_PREFERENCES_PATH", str(tmp_path / "preferences.json"))
@@ -33,7 +34,7 @@ def test_pocket_catalog_does_not_touch_kokoro_assets_or_windows(pocket_only, mon
     result = catalog.catalog()
     assert [(p["id"], p["name"]) for p in result["providers"]] == [("voxcpm", "Pocket TTS")]
     assert {(v["id"], v["language"]) for v in result["voices"]} == {
-        ("narrator", "fr"), ("narrator", "en"), ("helper", "fr"), ("helper", "en")}
+        ("narrator", "fr"), ("helper", "fr")}
     assert result["defaults"] == {"provider": "voxcpm", "voxcpm": "narrator"}
     assert provider.resolve("voxcpm")["sample_rate"] == 24000
 

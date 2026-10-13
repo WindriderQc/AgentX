@@ -175,12 +175,48 @@ VoiX transport, synthesis validation, deadlines and stream forwarding. Household
 and PsyX compose these with their session adapters. Native devices retain their
 own capture and playback qualification.
 
+Speech health reports recognition routing availability separately from overall
+service degradation. GPU backoff with CPU fallback disabled reports
+`recognition.available: false`; it does not claim that CPU recognition is ready.
+PsyX keeps a responding degraded service reachable, displays its degraded state,
+and lets transcription use the shared transport's existing retry/backup policy.
+Reachability does not certify synthesis, loaded models or acoustic quality.
+
+Standalone spoken controls (`stop`, `stop talking`, `arrête`, `arrête de parler`,
+`arrête-toi`, `tais-toi`, `silence`, optionally addressed to Nestor) share complete
+utterance examples across the browser and CPU detector. Mixed commands such as
+“stop et lis la suite” retain their request text; the CPU detector also requires
+its existing word-confidence threshold. Grammar coverage is separate from
+recognizer/model and microphone qualification. A spoken Stop cuts playback;
+already accepted Main work belongs to Core and continues independently. Task
+cancellation is a distinct command and requires its own execution receipt.
+
+Wake mode requires an interjection before Nestor (Hey/Eille/Heille/Hé/Eh/Oh/Ah,
+including known name transcriptions). A name alone or an ordinary reference such
+as “et Nestor” does not activate it. Once activated, the conversation stays open
+until Pause or an explicit sleep request; there is no inactivity expiry. Family
+defaults to wake mode, Personal to open listening. Nonempty recognized responses,
+including single digits, thanks and goodbye, are not discarded by a lexical noise
+blacklist. Acoustic noise/echo handling and recognition quality remain distinct.
+
 The loop speaks clauses and prepares at most one ahead. Household can play a
 holding phrase while waiting for reply text; available text drops a phrase that
 has not started. `say_end` flushes the last clause before a Household turn's
 remaining completion work. PsyX waits for its confirmed reply and keeps holding
 phrases off. One selected language applies throughout a turn, including notices
-and holding phrases; an explicit French or English preference wins.
+and holding phrases. Nestor and Family browser conversations default to Quebec
+French (`fr`, browser locale `fr-CA`); English requires an explicit selection.
+Kids Room and Lecture share a browser-local language choice in Reading voices,
+sent to recognition, each reply request and playback. A pending reply keeps the
+language captured for that turn; replay retains the reply's selected language.
+PsyX sends its own browser voice preference with spoken chat requests; its
+spoken prompt uses Quebec French by default and English only when selected.
+Typed PsyX chat retains its existing latest-message language behavior.
+Saved automatic choices become French, while explicit English choices remain.
+The browser sends its current choice with each turn, including resumed sessions,
+and Core places that language directive outside the reference-data block. The
+choice does not change the installed native model or context. A locale label
+does not certify the synthesizer's accent; listening qualification is separate.
 
 Household's ladder tries the explicit browser choice, the personality's effective
 voice, its declared catalog fallback if present, then the device voice. A voice
@@ -222,12 +258,11 @@ the timeline's marks do not.
 
 **Resources the voice needs**
 
-- The speech host keeps recognition and its synthesis engines in video memory.
-  Whatever else is resident on that card, a language model included, fits
-  beside them with headroom: once the memory is oversubscribed, the idle speech
-  processes are pushed out and the first utterance after a pause pays for their
-  return. A model shares that card only when it is pinned there; one loaded for
-  a short job leaves on its own.
+- The speech host keeps engines warmed on their configured devices. GPU
+  recognition needs video-memory headroom beside resident language models and
+  other CUDA consumers. CPU synthesis such as Pocket TTS needs CPU and RAM
+  capacity; it does not require a second synthesis model in video memory.
+  Qualify simultaneous use without changing installed residency or contexts.
 - The spoken lane's model is resident and fully in video memory on the host
   configured for it. `voice_persona_chat` stays on that host: it never follows
   its model to another host, the speech host included. Another caller on the
@@ -241,9 +276,10 @@ the timeline's marks do not.
 - Every spoken turn records its timeline, its server phases and its model
   phases. A change to the voice path is kept only with a measurement before and
   after on comparable turns.
-- A speech engine that fails during a turn falls back audibly. A speech host
-  that is off leaves no server voice: that case is an accepted gap until a
-  backup speech peer is qualified.
+- A speech engine that fails during a turn follows the surface's declared
+  fallback policy. An instance with a configured backup speech peer qualifies
+  stateless transcription and synthesis there; without a qualified backup,
+  losing the speech host leaves server voice unavailable.
 
 ## Measure the path that the person experiences
 
@@ -254,9 +290,15 @@ the timeline's marks do not.
 | `firstTokenMs` | Dispatch to the first streamed content, thinking or tool-call frame | Not necessarily visible reply text or audible speech |
 | `admissionWaitMs`, `hostGateWaitMs`, `retry` | Waits before Ollama received the call: runtime admission, Core's host gate, and retries with their backoff | Absent on rows recorded before they existed; Ollama's internal queue is not reported separately |
 | `promptPrefix.divergence` | First structural change between observed agent calls on the same host/model | Hashes/counts, not token-level cache evidence; unobserved callers can interfere |
-| Household `voiceTimings` | Browser endpoint decision to transcription, request, reply text, holding and first reply playback; plus the trailing silence waited (`silenceMs`), the clip length (`audioMs`) and the recognition time the speech service reports (`sttServer`) | Marks start after the trailing silence; browser timing, not physical speech end or acoustic output |
+| Household `voiceTimings` | Browser endpoint decision to transcription, request, reply text, holding and playback requested (`firstAudio`, legacy name); first frame scheduled and first non-silent frame scheduled are separate player callbacks. Also the trailing silence waited (`silenceMs`), clip length (`audioMs`) and service recognition time (`sttServer`) | A nonzero sample distinguishes a signal frame from padding; it does not identify speech. Marks start after trailing silence and do not attest acoustic output |
 | Household `serverTimings` | From the turn request: context prepared, answer back; for a native agent run, gateway accepted, run created, generation or tool started, stream ended, final answer read | Server clock only; a deterministic reply has none, the direct lane has no run steps |
 | Device acceptance | Actual capture, interruption, reconnect and audible reply | Must be checked on the intended device |
+
+`firstFrameScheduled` is the first successful player scheduling callback;
+`firstSignalScheduled` is the first such PCM frame containing a nonzero sample.
+Silent padding can establish the former without the latter. A browser speech
+engine's start event provides scheduling evidence only, because its PCM is not
+available to this player. None of these marks proves a first audible word.
 
 Unreported phases stay absent rather than becoming zero. Prefix observations
 apply to instrumented OpenClaw/Hermes calls; they are not universal direct-lane
@@ -298,3 +340,26 @@ access, backup speech readiness or French Canadian speech quality.
 Open implementation and acceptance work is tracked in [status](STATUS.md#open)
 and the linked issues. Private measurements and review priorities belong in the
 owner's review record, rather than this distributable reference.
+
+Long requested readings use lossless ordered synthesis segments and remain
+interruptible. Normal long replies keep their full screen content with a brief
+spoken introduction; an explicit reading request overrides short spoken guidance
+and list summarization. Screen blocks and spoken projection are not silently
+clipped. Household accepts spoken reply records up to 50,000 UTF-16 units and
+refuses an oversized record explicitly; other surface turn bounds remain intact.
+Core synthesis similarly rejects requests beyond its 50,000-unit boundary rather
+than shortening them. Browser segmentation keeps each request within 4,000 units.
+
+Microphone captures that do not submit a Core request are kept apart from the
+conversation turns in the workflow view. Stop, activation, empty transcription
+and rejected ambient speech have their own local labels; they never invent a
+Guardian/Main run. Work polling continues during result playback. Audio frame
+scheduling and nonzero-signal scheduling are distinct browser observations.
+
+Pocket workers declare the language of their loaded model in health. A French
+worker is not advertised or dispatched as English; missing language evidence is
+unavailable rather than guessed. Household can use an explicitly matching English
+browser voice through its existing final fallback. Voice discovery waits briefly
+for Chrome and cancellation also cancels that wait. Fluency and speaker delivery
+still require device acceptance. Deploy the speech service and worker together
+before relying on these capabilities in a new Core build.

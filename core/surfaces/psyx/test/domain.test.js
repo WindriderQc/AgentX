@@ -130,6 +130,10 @@ test('spoken turns request short unformatted replies without overriding crisis s
   assert.match(spoken, /30 to 90 words/); assert.match(spoken, /without headings, Markdown/);
   assert.match(spoken, /Preserve all necessary crisis resources/);
   assert.match(spoken, /SAFETY|immediate safety/i);
+  assert.match(spoken, /Réponds en français québécois/);
+  assert.doesNotMatch(spoken, /Always answer in the language of the user's latest message/);
+  assert.match(composeSystemContext(base, control, { voice: true, voiceLanguage: 'en' }), /explicitly selected English/);
+  assert.match(composeSystemContext(base, control), /Always answer in the language of the user's latest message/);
 });
 
 test('memory written to the user is marked as such for the chat model', () => {

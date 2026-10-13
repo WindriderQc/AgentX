@@ -98,9 +98,10 @@
           onSnapshot(sessionId, data);
           cursor = data.cursor; more = data.hasMore;
         } while (more && !disposed);
-        await naturalPause();
       } catch { if (currentGeneration === generation) onPollError(sessionId); }
       finally { polling = false; }
+      // Playback can take minutes. Core polling remains independent of it.
+      void naturalPause();
     }
     function follow(id) {
       if (disposed || !id || id === sessionId) return;

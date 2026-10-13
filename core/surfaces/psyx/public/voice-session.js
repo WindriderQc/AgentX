@@ -93,7 +93,12 @@ function createPsyXVoiceSession() {
       }
       const payload = await response.json();
       const transcript = payload.data || payload;
+      const metadata = {};
+      for (const key of ['model', 'effectiveModel', 'requestedModel', 'detectedLanguage', 'sttMs']) {
+        if (transcript[key] !== undefined) metadata[key] = transcript[key];
+      }
       return { text: transcript.text || '', language: transcript.language || language,
+        ...metadata,
         ...(transcript.control === 'stop' ? { control: 'stop' } : {}) };
     },
     turn: async (_session, text, signal) => {

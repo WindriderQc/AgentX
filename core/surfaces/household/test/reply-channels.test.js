@@ -167,3 +167,35 @@ test('removing a generated picture reference leaves single spaces, even across s
     assert.equal(result.display[0].source, 'generated');
   }
 });
+
+
+test('long display content and every block survive presentation and history', () => {
+  const body = 'Contenu complet. '.repeat(700) + 'FIN DU DOCUMENT';
+  const source = 'Voici le document à l’écran.\n' + Array.from({ length: 23 }, (_, index) => `<show kind="text" title="${index}">${body}</show>`).join('');
+  const result = run(chunks(source, 103));
+  assert.equal(result.display.length, 23);
+  assert.ok(result.display.every(block => block.body === body));
+  assert.equal(storedDisplay(result.display).at(-1).body, body);
+  assert.ok(historyText(result.say, result.display).includes(body));
+  assert.equal(result.say.trim(), 'Voici le document à l’écran.');
+});
+
+test('explicit reading prose remains complete beyond the former reply projection limit', () => {
+  const source = 'Texte à lire entièrement. '.repeat(400) + 'DERNIERS MOTS';
+  const result = run(chunks(source, 77));
+  assert.equal(result.say, source);
+  assert.equal(plainReply(result.say), source);
+});
+
+
+test('an explicit reading request reads every list item instead of the ordinary spoken introduction', () => {
+  const { readingRequested } = require('../../../src/services/voice/presentation');
+  for (const request of ['Lis-moi la liste entière.', 'Peux-tu me lire les étapes?', 'Read this aloud.', 'Could you read the full text?']) assert.equal(readingRequested(request), true);
+  for (const request of ['Pourquoi lire ce livre?', 'Readiness status?', 'Explique-moi le document.', 'Comment vont mes tâches?']) assert.equal(readingRequested(request), false);
+  const source = Array.from({ length: 12 }, (_, index) => `- Élément ${index + 1}: explication complète.`).join('\n');
+  const reading = run(chunks(source, 21), { readAloud: true });
+  assert.equal(reading.display[0].body, source);
+  for (let index = 1; index <= 12; index++) assert.ok(reading.say.includes(`Élément ${index}: explication complète.`));
+  assert.ok(!reading.say.includes('Les premiers éléments'));
+  assert.ok(run(chunks(source, 21)).say.includes('La liste complète est à l’écran'));
+});

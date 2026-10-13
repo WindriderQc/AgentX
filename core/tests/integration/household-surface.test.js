@@ -1109,7 +1109,7 @@ describe('built-in Household surface on Core', () => {
       expect(executeForTest.mock.calls.length).toBe(inferences);
       const cow = (await turn({ text: 'Quel bruit fait la vache?', channel: 'voice' }).expect(200)).body.data;
       expect(cow.sound).toMatchObject({ id: 'cow', play: 'after-reply' });
-      expect(lastInference().messages.at(-1).content).toContain('[Household instruction for this turn: follow it]\nSon : un vrai enregistrement (une vache) joue');
+      expect(lastInference().messages.at(-1).content).toContain('[Household instruction for this turn: follow it]\nLangue choisie : français québécois. Réponds en français québécois pour ce tour.\n\nSon : un vrai enregistrement (une vache) joue');
       expect(lastInference().taskType).toBe('voice_persona_chat');
       expect(agentForTest.mock.calls.length).toBe(nativeRuns + 1);
     } finally {

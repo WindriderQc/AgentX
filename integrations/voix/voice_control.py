@@ -11,10 +11,10 @@ from concurrent.futures import ThreadPoolExecutor
 # Controls need their own bounded executor, including when that pool is full.
 _CONTROL_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="voix-controls")
 
+COMMANDS = ("stop", "stop talking", "silence", "arrête", "arrête de parler", "arrête toi", "tais toi")
 GRAMMAR = json.dumps([
-    "stop", "stop stop", "stop stop stop", "silence", "nestor silence",
-    "silence nestor", "nestor stop", "stop nestor", "arrête", "tais toi", "[unk]",
-], ensure_ascii=False)
+    phrase for command in COMMANDS for phrase in (command, "nestor " + command, command + " nestor")
+] + ["stop stop", "stop stop stop", "[unk]"], ensure_ascii=False)
 
 
 def is_stop_result(results):
@@ -23,7 +23,9 @@ def is_stop_result(results):
     text = " ".join(row.get("text", "") for row in results).strip().lower()
     text = "".join(char for char in unicodedata.normalize("NFD", text)
                    if unicodedata.category(char) != "Mn")
-    command = r"(?:stop|silence|arrete|tais toi)"
+    text = " ".join("".join(" " if unicodedata.category(char)[0] in "PS" else char
+                            for char in text).split())
+    command = r"(?:stop(?: talking)?|silence|arrete(?: de parler| toi)?|tais toi)"
     pattern = r"^(?:nestor )?" + command + r"(?: nestor)?(?: " + command + r"(?: nestor)?)*$"
     if not re.fullmatch(pattern, text):
         return False
