@@ -109,7 +109,7 @@ class Worker:
 
     def execute(self, job):
         stream = None
-        frames, total = 0, 0
+        frames, total, generated_samples = 0, 0, 0
         try:
             if not self.send(job, dict(type="meta", protocol="voix-pcm-v1", sample_rate=self.sample_rate,
                                        encoding="f32le", channels=1, voice=job.voice)):
@@ -136,6 +136,7 @@ class Worker:
                 audio = np.asarray(chunk, dtype="<f4").reshape(-1)
                 if not audio.size or not np.isfinite(audio).all():
                     raise ValueError("Invalid generated audio")
+                generated_samples += audio.size
                 if pending is not None and not emit(pending):
                     return
                 pending = audio
@@ -143,7 +144,8 @@ class Worker:
                 final = soften_ending(pending, self.sample_rate) if self.soften_final else pending
                 if not emit(final) or not emit(np.zeros(at_rate(TAIL_SILENCE, self.sample_rate), dtype="<f4")):
                     return
-            if frames and not job.cancelled.is_set():
+            # Padding is transport audio, not evidence that the model spoke.
+            if generated_samples and not job.cancelled.is_set():
                 self.send(job, dict(type="done", frames=frames, samples=int(total)))
             elif not job.cancelled.is_set():
                 self.send(job, dict(type="error", message="No audio generated"))
