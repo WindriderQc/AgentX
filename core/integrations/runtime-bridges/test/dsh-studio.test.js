@@ -60,6 +60,8 @@ function response() {
       else this.headers[name] = value;
       return this;
     },
+    type(value) { this.headers['Content-Type'] = value; return this; },
+    send(value) { this.body = value; return this; },
     json(value) { this.body = value; return this; },
     redirect(code, location) { this.statusCode = code; this.headers.Location = location; return this; },
     end() { return this; },
@@ -157,6 +159,31 @@ test('launcher sets a host-only secure cookie and the access check accepts only 
     check(request(), denied);
     assert.equal(denied.statusCode, 401);
     assert.equal(denied.body.code, 'DSH_STUDIO_ACCESS_REQUIRED');
+  });
+});
+
+test('external navigation commits the launcher before Studio and keeps the token out of its page', () => {
+  withEnvironment({
+    CORE_PUBLIC_URL: 'https://agentx.example',
+    DSH_STUDIO_PUBLIC_URL: 'https://agentx.example:18791',
+    DSH_STUDIO_ACCESS_SECRET: 'z'.repeat(48),
+  }, () => {
+    const router = registerDshStudioOperations({ express: fakeExpress() });
+    const launched = response();
+    router.routes.find(route => route.path === '/control-launch').handlers.at(-1)(
+      request({ 'Sec-Fetch-Site': 'cross-site' }), launched);
+    assert.equal(launched.statusCode, 200);
+    assert.equal(launched.headers.Location, undefined);
+    assert.equal(launched.headers['Content-Type'], 'html');
+    assert.match(launched.headers['Set-Cookie'], /HttpOnly; Secure; SameSite=Strict/);
+    assert.match(launched.body, /http-equiv="refresh" content="0;url=https:\/\/agentx\.example:18791"/);
+    assert.match(launched.body, /href="https:\/\/agentx\.example:18791"/);
+    assert.equal(launched.headers['Cache-Control'], 'no-store, max-age=0');
+    const cookie = launched.headers['Set-Cookie'].split(';')[0];
+    assert.equal(launched.body.includes(cookie.split('=')[1]), false);
+    const checked = response();
+    router.routes.find(route => route.path === '/access-check').handlers.at(-1)(request({ cookie }), checked);
+    assert.equal(checked.statusCode, 204);
   });
 });
 
