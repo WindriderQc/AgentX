@@ -46,7 +46,8 @@ afterEach(() => works.observer.stop());
 
 test.each([['Regarde mes tâches.', 'native_work'], ['Ajoute une tâche personnelle pour demain.', 'native_work'],
   ['Résume mes courriels récents.', 'native_work'], ['Demande à la secrétaire de rédiger un courriel.', 'native_work'],
-  ['Does the team play tonight?', 'native_work'], ['Compare the two options from our discussion.', 'native_review'],
+  ['Does the team play tonight?', 'native_work'], ['Quelles sont mes tâches prioritaires ?', 'native_work'],
+  ['Compare the two options from our discussion.', 'native_review'],
   ['Une demande inconnue de tous les anciens sélecteurs.', 'native_review']])
 ('every accepted work request reaches complete native Main: %s', async (text, classification) => {
   const accepted = await works.intake(input(text));
