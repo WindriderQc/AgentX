@@ -43,7 +43,7 @@
                 ? '<span style="display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.3);color:#fbbf24;font-size:0.68rem;letter-spacing:0.06em;text-transform:uppercase;">Override</span>'
                 : '<span style="display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;background:rgba(74,222,128,0.12);border:1px solid rgba(74,222,128,0.28);color:#4ade80;font-size:0.68rem;letter-spacing:0.06em;text-transform:uppercase;">Deployment default</span>';
             taskRows += `
-                <tr data-task="${task}">
+                <tr data-task="${shared.escapeHtml(task)}">
                     <td class="nc-td-md">
                         <div class="nc-row-flex-sb">
                             <div class="nc-fw6">${shared.escapeHtml(taskLabel)}</div>
@@ -57,16 +57,16 @@
                         </div>
                     </td>
                     <td class="nc-td-md nc-task-model">
-                        <select class="nc-inline-select nc-task-model-select" data-task="${task}" aria-label="Model for ${shared.escapeHtml(task)}" style="min-width:210px;">
+                        <select class="nc-inline-select nc-task-model-select" data-task="${shared.escapeHtml(task)}" aria-label="Model for ${shared.escapeHtml(task)}" style="min-width:210px;">
                             ${availableModels.map(model => (
                                 `<option value="${shared.escapeHtml(model)}" ${model === entry.model ? 'selected' : ''}>${shared.escapeHtml(shared.shortModel(model))}</option>`
                             )).join('')}
                         </select>
                     </td>
                     <td class="nc-td-md nc-task-host">
-                        <select class="nc-inline-select nc-task-host-select" data-task="${task}" aria-label="Host for ${shared.escapeHtml(task)}" style="min-width:120px;">
+                        <select class="nc-inline-select nc-task-host-select" data-task="${shared.escapeHtml(task)}" aria-label="Host for ${shared.escapeHtml(task)}" style="min-width:120px;">
                             ${hostKeys.map(hostKey => (
-                                `<option value="${hostKey}" ${hostKey === entry.host ? 'selected' : ''}>${hostKey.toUpperCase()}</option>`
+                                `<option value="${shared.escapeHtml(hostKey)}" ${hostKey === entry.host ? 'selected' : ''}>${shared.escapeHtml(hostKey.toUpperCase())}</option>`
                             )).join('')}
                         </select>
                     </td>

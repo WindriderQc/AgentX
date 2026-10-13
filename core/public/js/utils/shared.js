@@ -20,15 +20,14 @@ window.AgentXUtils = (() => {
 
   /**
    * Escape HTML special characters to prevent XSS.
-   * Uses DOM-based escaping for correctness.
    * @param {*} str
    * @returns {string}
    */
+  // Quotes are escaped too: callers put the result inside attribute values,
+  // where an unescaped " would end the attribute (DOM textContent leaves quotes).
   function escapeHtml(str) {
     if (!str && str !== 0) return '';
-    const div = document.createElement('div');
-    div.textContent = String(str);
-    return div.innerHTML;
+    return String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
   /**
