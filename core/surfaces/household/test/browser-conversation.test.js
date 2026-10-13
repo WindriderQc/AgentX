@@ -937,6 +937,23 @@ for (const text of ['Stop, stop, stop.', 'Nestor, arrête de parler !', 'Arrête
   });
 }
 
+test('a spoken Stop over a long reply does not warm the general speech model', async () => {
+  let clock = 0, warmed = 0, transcriptions = 0;
+  const h = harness({ now: () => clock, warm: async () => { warmed++; },
+    transcribe: async () => ++transcriptions === 1 ? 'Bonjour' : { text: '', control: 'stop' },
+    interrupt: async () => ({}) });
+  h.audio.canInterrupt = true;
+  h.audio.play = (_bytes, signal) => new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+  await h.conversation.start({}); const first = h.say(); await tick();
+  const before = warmed;
+  clock = 60_000; // beyond the ordinary recognition warm interval
+  h.beginSpeech(); await tick();
+  assert.equal(warmed, before, 'a control must not start a GPU warm-up');
+  await h.say(); await first;
+  assert.equal(h.conversation.state, 'listening');
+  h.conversation.stop();
+});
+
 test('an interruption with a new question retains the entire request for the same native conversation', async () => {
   let transcriptions = 0; const submitted = [];
   const h = harness({ transcribe: async () => ++transcriptions === 1 ? 'Bonjour' : 'Stop, explique le budget.',

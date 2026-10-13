@@ -83,6 +83,7 @@ def test_transient_cuda_failure_recovers_with_original_audio_and_settings(monkey
         "device": "cuda", "compute_type": "int8_float16", "degraded": False,
         "retry_after_seconds": 0, "retrying": False, "consecutive_gpu_failures": 0,
         "failure_reason": None,
+        "cpu_fallback_enabled": True,
     }
     assert set(whisper._models) == {("cuda", "int8_float16")}
 
@@ -107,7 +108,8 @@ def test_repeated_cuda_failures_back_off_without_hot_reload_loop(monkeypatch, ru
 
 
 def test_cpu_only_deployment_never_attempts_gpu(monkeypatch, runtime):
-    monkeypatch.setattr(whisper, "settings", replace(whisper.settings, whisper_device="cpu"))
+    monkeypatch.setattr(whisper, "settings", replace(whisper.settings,
+        whisper_device="cpu", whisper_cpu_fallback=False))
     monkeypatch.setattr(whisper, "_prefer_cpu", True)
     calls = []
     install_model(monkeypatch, lambda device, *_: calls.append(device))
@@ -118,6 +120,39 @@ def test_cpu_only_deployment_never_attempts_gpu(monkeypatch, runtime):
     assert whisper.warm() is None
     assert calls == ["cpu", "cpu"]
     assert whisper.backend_status()["degraded"] is False
+
+
+def test_disabled_cpu_fallback_refuses_oom_and_backoff_without_loading_cpu(monkeypatch, runtime):
+    monkeypatch.setattr(whisper, "settings", replace(whisper.settings, whisper_cpu_fallback=False))
+    calls = []
+    def run(device, _audio, options):
+        calls.append(device)
+        assert options["beam_size"] == 5 and options["vad_filter"] is True
+        if len(calls) == 1: raise RuntimeError("CUDA out of memory: private decoder detail")
+    install_model(monkeypatch, run)
+    for attempt in range(2):
+        with pytest.raises(whisper.RecognitionUnavailable, match="temporarily unavailable"):
+            whisper.transcribe_path("sample.wav", language="fr")
+        assert calls == ["cuda"], "backoff must not start a CPU decode or another GPU attempt"
+    assert whisper.backend_status()["cpu_fallback_enabled"] is False
+    with pytest.raises(whisper.RecognitionUnavailable): whisper.preload_model()
+    assert whisper.warm() is None
+    assert set(whisper._models) == set()
+    runtime[0] += 30
+    assert whisper.transcribe_path("sample.wav", language="fr")[0] == "Bonjour."
+    assert calls == ["cuda", "cuda"]
+    assert whisper.backend_status()["degraded"] is False
+
+
+def test_disabled_cpu_fallback_also_applies_to_a_failed_preload(monkeypatch, runtime):
+    monkeypatch.setattr(whisper, "settings", replace(whisper.settings, whisper_cpu_fallback=False))
+    built = []
+    def unavailable(device, _compute):
+        built.append(device)
+        raise RuntimeError("CUDA out of memory")
+    monkeypatch.setattr(whisper, "_build_model", unavailable)
+    with pytest.raises(whisper.RecognitionUnavailable): whisper.preload_model()
+    assert built == ["cuda"]
 
 
 def test_non_cuda_and_cpu_errors_surface_without_replaying(monkeypatch, runtime):

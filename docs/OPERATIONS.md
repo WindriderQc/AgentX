@@ -850,10 +850,17 @@ shows "Voix de secours (serveur principal indisponible) : réponses plus lentes.
 while the backup answers. Caller disconnects cancel transcription and synthesis;
 no backup starts after cancellation. Deadlines cover body reads; both surfaces
 reject a synthesis error event before streaming audio.
+On a GPU speech host with a qualified backup, `WHISPER_CPU_FALLBACK=false`
+returns retryable HTTP 503 on CUDA failure and during its recovery interval.
+Core can then use the configured backup without waiting for local CPU decoding.
+The default remains true for speech installations without a backup; an explicitly
+configured CPU host retains its CPU decoder.
 The optional [spoken-controls adapter](../integrations/voix/README.md) adds local
 Stop/silence recognition on the same VoiX process before Whisper transcription.
 `VOIX_SPOKEN_CONTROLS_ENABLED=true` selects that shared upload endpoint for Household and PsyX only after the
 instance installs and qualifies its model. False preserves ordinary transcription.
+Recognized controls never launch Whisper. Interrupt candidates also skip the
+browser's GPU warm-up; normal conversation capture retains it.
 In Nestor browser replies, energy is not speech: a sound the microphone hears
 over a reply is a candidate, and the reply keeps playing. A candidate that goes
 on for 0.8 s is recognized as far as it was heard, and every candidate is

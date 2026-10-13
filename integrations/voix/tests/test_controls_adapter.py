@@ -68,12 +68,32 @@ def test_adapter_adds_its_two_routes_to_the_speech_service(adapter):
 
 
 def test_a_spoken_stop_answers_as_a_control_and_ordinary_speech_as_text(adapter, monkeypatch):
-    monkeypatch.setattr(adapter, "_transcribe_bytes", lambda raw, filename, language: ("bonjour", 5.0))
+    decoded = []
+    def transcribe(raw, filename, language):
+        decoded.append((raw, language))
+        return ("bonjour", 5.0)
+    monkeypatch.setattr(adapter, "_transcribe_bytes", transcribe)
     client = TestClient(adapter.app)
     upload = {"file": ("mic.wav", wav(), "audio/wav")}
     stopped = client.post("/v1/audio/transcriptions/controls", files=upload).json()
     assert stopped["control"] == "stop" and stopped["text"] == ""
+    assert decoded == []
     adapter.control.model.heard = "[unk]"
     spoken = client.post("/v1/audio/transcriptions/controls", files=upload, data={"language": "fr"}).json()
     assert spoken["text"] == "bonjour" and "control" not in spoken
     assert spoken["language"] == "fr" and spoken["model"] == service.settings.whisper_model
+    assert decoded == [(wav(), "fr")]
+
+
+def test_standalone_stop_still_works_when_general_gpu_recognition_is_unavailable(adapter, monkeypatch):
+    def unavailable(*_args):
+        raise service.RecognitionUnavailable("private decoder detail")
+    monkeypatch.setattr(adapter, "_transcribe_bytes", unavailable)
+    client = TestClient(adapter.app)
+    upload = {"file": ("mic.wav", wav(), "audio/wav")}
+    stopped = client.post("/v1/audio/transcriptions/controls", files=upload)
+    assert stopped.status_code == 200 and stopped.json()["control"] == "stop"
+    adapter.control.model.heard = "stop [unk]"
+    request = client.post("/v1/audio/transcriptions/controls", files=upload)
+    assert request.status_code == 503 and request.json()["code"] == "STT_GPU_UNAVAILABLE"
+    assert "private" not in request.text

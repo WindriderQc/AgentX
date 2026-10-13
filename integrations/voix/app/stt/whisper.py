@@ -43,6 +43,15 @@ _dll_directories: list[object] = []
 _last_run_at: float | None = None
 
 
+class RecognitionUnavailable(RuntimeError):
+    """The configured GPU is unavailable and this instance forbids CPU decode."""
+
+
+def _require_backend(device: str) -> None:
+    if device == "cpu" and settings.whisper_device != "cpu" and not settings.whisper_cpu_fallback:
+        raise RecognitionUnavailable("GPU speech recognition is temporarily unavailable.")
+
+
 def _configure_windows_cuda_runtime() -> None:
     if sys.platform != "win32":
         return
@@ -104,6 +113,7 @@ def backend_status() -> dict:
             "retrying": _retrying,
             "consecutive_gpu_failures": _gpu_failures,
             "failure_reason": _failure_reason,
+            "cpu_fallback_enabled": settings.whisper_cpu_fallback,
         }
 
 
@@ -128,7 +138,9 @@ def _gpu_failed(device: str, compute: str, exc: Exception) -> None:
         _failure_reason = reason
     with _models_lock:
         _models.pop((device, compute), None)
-    _LOG.warning("Recognition using CPU after %s; GPU retry eligible in %s seconds", reason, delay)
+    _LOG.warning("Recognition %s after %s; GPU retry eligible in %s seconds",
+                 "using CPU" if settings.whisper_cpu_fallback else "unavailable",
+                 reason, delay)
 
 
 def _gpu_recovered(device: str) -> None:
@@ -147,12 +159,15 @@ def _gpu_recovered(device: str) -> None:
 def preload_model() -> dict[str, str]:
     with _inference_lock:
         device, compute = _next_backend()
+        _require_backend(device)
         try:
             _get_model(device, compute)
         except Exception as exc:
             if device == "cpu" or not _is_cuda_runtime_error(exc):
                 raise
             _gpu_failed(device, compute, exc)
+            if not settings.whisper_cpu_fallback:
+                raise RecognitionUnavailable("GPU speech recognition is temporarily unavailable.") from exc
             device, compute = "cpu", "int8"
             _get_model(device, compute)
         # Loading alone does not prove decoding recovered; only a successful run does.
@@ -225,6 +240,7 @@ def _run(model, audio: np.ndarray | str | BinaryIO, language: str, *, vad_filter
 def _transcribe_locked(audio, language: str, *, vad_filter: bool = False, cpu_fallback: bool = True):
     global _retrying
     device, compute = _next_backend()
+    _require_backend(device)
     initial_position = audio.tell() if hasattr(audio, "tell") else None
     with _state_lock:
         _retrying = _prefer_cpu and device != "cpu"
@@ -235,6 +251,8 @@ def _transcribe_locked(audio, language: str, *, vad_filter: bool = False, cpu_fa
             if device == "cpu" or not _is_cuda_runtime_error(exc):
                 raise
             _gpu_failed(device, compute, exc)
+            if not settings.whisper_cpu_fallback:
+                raise RecognitionUnavailable("GPU speech recognition is temporarily unavailable.") from exc
             if not cpu_fallback:
                 raise
             if initial_position is not None:

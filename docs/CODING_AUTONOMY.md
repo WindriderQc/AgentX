@@ -181,6 +181,9 @@ Worker test observation recognizes the installed Node Jest entry point and
 correlates the harness's encoded tool-result envelope with its original call.
 Filtered output cannot hide a failing test or tool error. Only test names,
 outcomes and durations enter progress receipts; commands and output stay private.
+Recognized display filters and trailing log destinations do not make the same
+test invocation and outcome useful again. Test selectors, environment and working
+directory remain part of its identity; existing recorded history is preserved.
 
 These limits can be reduced on authorization, never reset by a correction or
 reauthorization of a started campaign. Work and the reviewed native attempt
