@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import queue
 import shlex
+import signal
 import stat
 import subprocess
 import tempfile
@@ -71,7 +72,43 @@ def source_state(workspace: Path) -> str:
     return digest.hexdigest()
 
 
-def test_kind(command: str) -> str | None:
+def timeout_command(tokens: list[str]) -> list[str]:
+    """Recognize GNU timeout wrappers without executing or guessing shell text."""
+    duration = r"\d+(?:\.\d+)?[smhd]?"
+    for _ in range(4):
+        if not tokens or Path(tokens[0]).name != "timeout":
+            return tokens
+        index = 1
+        while index < len(tokens) and tokens[index].startswith("-"):
+            option = tokens[index]
+            index += 1
+            if option == "--":
+                break
+            if option in {"--foreground", "--preserve-status", "--verbose", "-v"}:
+                continue
+            flag, separator, value = option.partition("=")
+            if flag not in {"-k", "--kill-after", "-s", "--signal"}:
+                return []
+            if not separator:
+                if index >= len(tokens):
+                    return []
+                value = tokens[index]
+                index += 1
+            if flag in {"-k", "--kill-after"}:
+                if not re.fullmatch(duration, value):
+                    return []
+            else:
+                try:
+                    signal.Signals(int(value) if value.isdigit() else getattr(signal, "SIG" + value.removeprefix("SIG")))
+                except (AttributeError, ValueError):
+                    return []
+        if index >= len(tokens) or not re.fullmatch(duration, tokens[index]):
+            return []
+        tokens = tokens[index + 1:]
+    return []
+
+
+def test_command(command: str) -> tuple[str, bool] | None:
     try:
         shlex.split(command)
     except ValueError:
@@ -85,22 +122,29 @@ def test_kind(command: str) -> str | None:
             continue
         while tokens and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", tokens[0]):
             tokens.pop(0)
+        timed = bool(tokens and Path(tokens[0]).name == "timeout")
+        tokens = timeout_command(tokens)
         if not tokens:
             continue
         exe = Path(tokens[0]).name
         if exe in {"pytest", "pytest-3"}:
-            return "pytest"
+            return "pytest", timed
         if exe in {"python", "python3"} and tokens[1:3] in [["-m", "pytest"], ["-m", "unittest"]]:
-            return tokens[2]
+            return tokens[2], timed
         if exe in {"jest", "npx"} and (exe == "jest" or tokens[1:2] == ["jest"]):
-            return "jest"
+            return "jest", timed
         if exe in {"npm", "pnpm", "yarn"} and any(re.fullmatch(r"test(?::[\w-]+)?", t) for t in tokens[1:3]):
-            return "npm_test"
+            return "npm_test", timed
         if exe == "node" and any(t.endswith("run-jest.js") or Path(t).parts[-3:] == ("jest", "bin", "jest.js") for t in tokens[1:2]):
-            return "jest"
+            return "jest", timed
         if exe == "node" and "--test" in tokens:
-            return "node_test"
+            return "node_test", timed
     return None
+
+
+def test_kind(command: str) -> str | None:
+    match = test_command(command)
+    return match[0] if match else None
 
 
 def tool_message(message: dict) -> tuple[str, bool, bool]:
@@ -151,11 +195,13 @@ def message_text(message: dict) -> str:
     return tool_message(message)[0]
 
 
-def test_outcome(content: str, errored: bool, reliable_exit: bool) -> str:
+def test_outcome(content: str, errored: bool, reliable_exit: bool, timed: bool = False) -> str:
     """A successful output filter does not prove the test before it passed."""
     content = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", content)
     if re.search(r"\[(?:timed out|killed by signal)", content):
         return "unknown"
+    if timed and any(len(code) > 3 or int(code) >= 124 for code in re.findall(r"\[exit code: (\d+)\]", content)):
+        return "unknown"  # timeout/launcher failure or ambiguous signal termination
     failures = (r"(?m)^\s*(?:FAILED\b|FAIL(?:\s|$)|"
                 r"(?:Test Suites|Tests):[^\n]*\b[1-9]\d* failed\b|"
                 r"# fail [1-9]\d*\b|=+[^\n]*\b[1-9]\d* failed\b)")
@@ -354,13 +400,13 @@ class Progress:
                     args = json.loads(args)
                 except (ValueError, RecursionError):
                     args = {}
-            name = test_kind(str(args.get("command", ""))) if isinstance(args, dict) and data.get("name") == "bash" else None
+            test = test_command(str(args.get("command", ""))) if isinstance(args, dict) and data.get("name") == "bash" else None
             call_id = data.get("callId")
-            if isinstance(call_id, str) and name:
+            if isinstance(call_id, str) and test:
                 command = str(args.get("command", ""))
                 # Shell pipelines and fallbacks can mask the test's exit code.
                 reliable = not re.search(r"[|;]", command)
-                self.pending_tests[(session, call_id)] = (name, hashlib.sha256(command.encode()).hexdigest(), reliable)
+                self.pending_tests[(session, call_id)] = (test[0], hashlib.sha256(command.encode()).hexdigest(), reliable, test[1])
             self.current_test = next(iter(self.pending_tests.values()))[0] if self.pending_tests else None
             self.set_stage("test" if self.current_test else "tool")
         elif kind == "tool/result":
@@ -372,7 +418,7 @@ class Progress:
             pending = self.pending_tests.pop((session, call_id), None)
             if pending:
                 content, errored, valid = tool_message(message)
-                outcome = test_outcome(content, errored, pending[2]) if valid else "unknown"
+                outcome = test_outcome(content, errored, pending[2], pending[3]) if valid else "unknown"
                 signature = hashlib.sha256(json.dumps([pending[1], outcome, self.source_signature]).encode()).hexdigest()
                 if outcome != "unknown" and signature not in self.seen_tests:
                     self.seen_tests.add(signature)
