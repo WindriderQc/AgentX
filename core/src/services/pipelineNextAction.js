@@ -25,12 +25,17 @@ function taskNextAction(task, { now = new Date(), dependencyStatuses = new Map()
     authorization: 'not_granted', reference: /^\d{3,4}$/.test(task.pipelineId) ? `/pipeline?task=${task.pipelineId}` : null,
     diagnostics: [], attention: false, rank: 9, icon: 'fa-circle-info', tone: 'attention' };
   const action = (code, actor, label, detail, next, extra = {}) => ({ ...base, code, actor, label, detail, action: next, ...extra });
+  if (task.codingAutonomy?.disposition?.kind === 'qualification') return action('qualification_archived', 'none',
+    `Archived qualification · ${task.codingAutonomy.disposition.outcome}`,
+    'The operator annotated this qualification. Original attempt outcomes, model receipts and dependency barriers remain in force.',
+    'Consult the separate qualification receipt and original execution history.', { tone: 'attention' });
   if (task.status === 'done') return action('none', 'none', 'Closed task record',
     'Closure is recorded; it does not prove merge, deployment or device acceptance.', 'Consult the separate delivery receipts.');
   if (task.status === 'blocked') {
     const diagnostics = describePipelineFailures(latest?.evidence);
-    return action('inspect_blocker', 'human', 'Blocked task needs inspection',
-      diagnostics.length ? `Recorded failure category: ${diagnostics[0].category}.` : 'The blocking cause has no structured evidence.',
+    const known = diagnostics.find(item => item.recognizedCode);
+    return action('inspect_blocker', 'human', known ? `Blocked · ${known.code}` : 'Blocked task needs inspection',
+      diagnostics.length ? `Recorded failure category: ${diagnostics[0].category}.${task.codingAutonomy?.authorized === false ? ' Autonomous execution authorization is removed; this card is not queued.' : ''}` : 'The blocking cause has no structured evidence.',
       'Inspect the dossier and reconcile the recorded effects before deciding a correction or retry.',
       { attention: true, rank: 0, icon: 'fa-hand', tone: 'blocked', diagnostics });
   }

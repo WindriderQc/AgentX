@@ -72,6 +72,71 @@ beforeEach(async () => {
 });
 afterEach(() => service.configureControl(null));
 
+test.each(['merged', 'failed', 'changed-head'])('finished PR observation sees %s while paused without resuming, accepting or rewriting costs', async outcome => {
+  await task(); await authorize(); await enable(); const first = await launch(); await complete(first);
+  observations.set(first.requestId, { ...PR, state: 'open', mergeable: 'clean',
+    checks: policy.CHECKS.map(name => ({ name, head: HEAD, state: 'success' })) });
+  await service.tick();
+  await service.configure({ enabled: false, confirm: true, expectedRevision: (await service.settings()).revision });
+  await service.authorize('0001', { authorized: false, confirm: true,
+    expectedRevision: (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy.revision });
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.deliveryNextObservationAt': new Date(0).toISOString() } });
+  const before = await Task.findOne({ pipelineId: '0001' }).lean();
+  const remoteHead = outcome === 'changed-head' ? 'f'.repeat(40) : HEAD;
+  observations.set(first.requestId, { ...PR, head: remoteHead, state: outcome === 'merged' ? 'closed' : 'open',
+    merged: outcome === 'merged', mergeable: 'unknown',
+    checks: policy.CHECKS.map(name => ({ name, head: remoteHead, state: name === 'tests (core)' ? 'failure' : 'success' })) });
+  await service.tick(); const after = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(after.status).toBe('review'); expect(after.codingAutonomy.state).toBe('stopped'); expect(after.codingAutonomy.authorized).toBe(false);
+  expect(after.codingAutonomy.delivery).toMatchObject({ merged: outcome === 'merged', ci: 'failure', headMatches: outcome !== 'changed-head', acceptance: 'not_recorded' });
+  expect(after.automationAttempts).toEqual(before.automationAttempts); expect(after.codingAutonomy.runs).toEqual(before.codingAutonomy.runs);
+  expect(after.codingAutonomy.spent).toEqual(before.codingAutonomy.spent); expect(after.codingAutonomy.pr).toEqual(before.codingAutonomy.pr);
+  expect(control.launch).toHaveBeenCalledTimes(1); expect(await selected()).toBeNull();
+  const reads = control.observe.mock.calls.length; await service.tick(); expect(control.observe).toHaveBeenCalledTimes(reads);
+});
+test('late PR observation cannot overwrite a concurrent stop or task decision', async () => {
+  const delivery = require('../../src/services/pipelineCodingDelivery');
+  await task(); await authorize(); await enable(); const first = await launch(); await complete(first);
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.state': 'ready_for_review' } });
+  const before = await Task.findOne({ pipelineId: '0001' }).lean();
+  control.observe.mockImplementationOnce(async () => {
+    await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.state': 'stopped', 'codingAutonomy.authorized': false }, $inc: { 'codingAutonomy.revision': 1 } });
+    return { ...PR, state: 'closed', merged: true, checks: [] };
+  });
+  await expect(delivery.refresh(before, control, service.save)).rejects.toThrow('changed');
+  expect((await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy).toMatchObject({ state: 'stopped', authorized: false });
+});
+test.each(['merged', 'changed-head', 'ownership-race'])('fresh review observation refuses %s before another coding turn', async kind => {
+  await task(); await authorize(); await enable(); const first = await launch(); await complete(first);
+  const before = await Task.findOne({ pipelineId: '0001' }).lean();
+  control.observe.mockImplementationOnce(async () => {
+    if (kind === 'ownership-race') await Task.updateOne({ pipelineId: '0001' }, { $set: { status: 'in_progress', assignee: 'other-owner' } });
+    return { ...PR, state: kind === 'merged' ? 'closed' : 'open', merged: kind === 'merged',
+      head: kind === 'changed-head' ? 'f'.repeat(40) : HEAD, checks: [] };
+  });
+  await expect(service.recordReview('0001', { confirm: true, head: HEAD, text: 'Synthetic exact-head correction' })).rejects.toThrow();
+  const after = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(after.codingAutonomy).toEqual(before.codingAutonomy); expect(after.automationAttempts).toEqual(before.automationAttempts);
+  if (kind === 'ownership-race') expect(after.assignee).toBe('other-owner');
+  expect(control.launch).toHaveBeenCalledTimes(1);
+});
+test.each([
+  ['waiting_ci', true, null, true], ['correction', true, 'failure', true], ['blocked', true, 'failure', true],
+  ['ready_for_review', true, null, false], ['stopped', false, 'failure', false], ['closed', false, null, false],
+  ['correction', true, 'human_review', false], ['correction', true, 'conflict', false],
+])('CI campaign watch projection follows native ownership and state %s/%s/%s', async (state, authorized, correction, expected) => {
+  await task(); await authorize(); await enable(); const first = await launch(); await complete(first);
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.state': state, 'codingAutonomy.authorized': authorized,
+    'codingAutonomy.reason': 'resume_limit', 'codingAutonomy.ciWatchStartedAt': new Date().toISOString(),
+    'codingAutonomy.correction': correction ? { kind: correction } : null } });
+  const record = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(service.projection(record).ciObservationActive).toBe(expected);
+  expect(service.projection({ ...record, automationLease: { expiresAt: new Date() } }).ciObservationActive).toBe(false);
+  expect(service.projection({ ...record, codingCapacity: { requestId: first.requestId } }).ciObservationActive).toBe(false);
+  const unfinished = structuredClone(record); delete unfinished.codingAutonomy.runs.at(-1).finishedAt;
+  expect(service.projection(unfinished).ciObservationActive).toBe(false);
+});
+
 test('routing and idea intake grant no autonomous execution; switch defaults off', async () => {
   await task(); await enable(); await service.tick(); expect(control.launch).not.toHaveBeenCalled(); expect(await selected()).toBeNull();
   await Settings.deleteMany({}); expect((await service.status()).enabled).toBe(false);
@@ -440,7 +505,7 @@ test.each(['stopped', 'closed', 'dispatching'])('CI rerun does not revive or rew
   observations.set(active.requestId, { ...PR, state: 'open', mergeable: 'clean',
     checks: policy.CHECKS.map(name => ({ name, head: HEAD, state: 'success' })) });
   await observeNow();
-  expect(control.observe).toHaveBeenCalledTimes(count);
+  expect(control.observe).toHaveBeenCalledTimes(count + (['stopped', 'closed'].includes(state) ? 1 : 0));
   expect((await service.status()).tasks[0].state).toBe(state);
   expect(control.launch).toHaveBeenCalledTimes(1);
 });

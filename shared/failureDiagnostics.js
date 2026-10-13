@@ -81,9 +81,9 @@ register('admissionRecovery', ['RUNTIME_INFERENCE_RECOVERY_REQUIRED', 'RUNTIME_I
 register('availability', ['connection_unavailable', 'provider_temporarily_unavailable',
   'ECONNREFUSED', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH']);
 register('rejection', ['provider_rejected', 'INFERENCE_PROVIDER_REJECTED']);
-register('worker', ['worker_process_failed', 'runner_error']);
+register('worker', ['worker_process_failed', 'runner_error', 'worker_exit']);
 register('result', ['empty_response', 'thinking_only', 'no_diff_in_final', 'patch_did_not_apply']);
-register('verification', ['independent_verification_failed', 'public_test_failed',
+register('verification', ['independent_verification_failed', 'public_test_failed', 'tests_failed',
   'hidden_test_failed', 'regression_failed']);
 register('evaluator', ['grader_error', 'llm_failed', 'no_valid_scores']);
 register('evidence', ['worker_snapshot_receipt_failed', 'attribution_lease_evidence_invalid',
@@ -94,9 +94,11 @@ register('evidence', ['worker_snapshot_receipt_failed', 'attribution_lease_evide
 register('policy', ['protected_scope', 'risk_not_low', 'out_of_scope_edits',
   'paid_execution_disabled', 'fallback_used_for_explicit_model', 'local_zero_cost_nonzero',
   'local_zero_has_billed_origin']);
-register('budget', ['attempt_budget_exhausted', 'cost_budget_exceeded', 'SUCCESS_EXCEEDS_BUDGET']);
-register('timeout', ['ETIMEDOUT', 'timeout']);
-register('cancellation', ['RUNTIME_INFERENCE_ADMISSION_ABORTED', 'cancelled']);
+register('budget', ['attempt_budget_exhausted', 'cost_budget_exceeded', 'SUCCESS_EXCEEDS_BUDGET',
+  'hard_budget', 'soft_budget_no_progress', 'model_budget_reserve', 'model_call_limit', 'model_output_limit',
+  'no_useful_progress', 'resume_limit', 'cumulative_budget_exhausted']);
+register('timeout', ['ETIMEDOUT', 'timeout', 'ci_timeout']);
+register('cancellation', ['RUNTIME_INFERENCE_ADMISSION_ABORTED', 'cancelled', 'operator_stop', 'authorization_removed']);
 register('unknown', ['admission_conflict_unclassified', 'inference_outcome_unknown',
   // This outer code also covers an unacknowledged release after dispatch.
   'RUNTIME_INFERENCE_ADMISSION_DENIED',

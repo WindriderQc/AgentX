@@ -121,7 +121,15 @@ function projection(task) {
     remaining[key] = Math.max(0, remaining[key] - (currentUsage[key] || 0));
   if (state.state === 'waiting_ci' || failedCIWatch(state)) remaining.ciSeconds = Math.max(0, policy.totalLimits(state).ciSeconds - ciSpent(state).ciSeconds);
   return { pipelineId: task.pipelineId, title: task.title, taskStatus: task.status,
-    scope: task.automation.scope, queueRequestId: state.queueRequestId, limits: state.limits, totalLimits: policy.totalLimits(state), budgetGrants: state.budgetGrants || [],
+    nativeAttemptCount: task.automationAttemptCount || 0, nativeAttemptLimit: task.automation.budgets.maxAttempts,
+    automationFingerprint: task.automation.fingerprint,
+    failureCodes: task.automationAttempts?.at(-1)?.evidence?.failureCodes || [],
+    disposition: state.disposition || null, delivery: state.delivery || null,
+    continuationAborts: state.continuationAborts || [],
+    ciObservationActive: Boolean(state.pr && last?.finishedAt && !task.automationLease && !task.codingCapacity
+      && ['review', 'blocked'].includes(task.status) && (state.state === 'waiting_ci' || failedCIWatch(state))),
+    scope: task.automation.scope, verificationProfile: state.verificationProfile || task.automation.verificationProfile,
+    queueRequestId: state.queueRequestId, limits: state.limits, totalLimits: policy.totalLimits(state), budgetGrants: state.budgetGrants || [],
     authorizationRevision: state.revision, authorized: state.authorized, state: state.state, reason: state.reason,
     resumes: Math.max(0, state.runs.length - 1), remaining, pr: state.pr || null,
     lastUsefulProgressAt: state.lastUsefulProgressAt || null, manualInterventions: state.manualInterventions,
@@ -188,13 +196,22 @@ async function recordReview(id, input) {
   let task = await readTask(id);
   const state = task.codingAutonomy;
   if (input.confirm !== true || !state?.pr || input.head !== state.pr.head || task.status !== 'review'
+    || state.delivery?.state === 'closed' || state.delivery?.merged
+    || !state.runs.at(-1)?.finishedAt || task.automationLease || task.codingCapacity || !control
     || !['waiting_ci', 'ready_for_review'].includes(state.state) || !input.text?.trim() || input.text.length > 4000)
     throw policy.fail('Review feedback must name the current PR commit and a completed worker');
+  let observation;
+  try { observation = await control.observe({ pipelineId: id, requestId: state.runs.at(-1).requestId, pr: state.pr }); }
+  catch { throw policy.fail('The current PR cannot be verified; retain this review without starting a correction'); }
+  if (observation.state !== 'open' || observation.merged || observation.head !== state.pr.head)
+    throw policy.fail('The PR was closed or its head changed; reconcile its current delivery before requesting a correction');
+  const guard = { updatedAt: task.updatedAt, status: 'review', assignee: task.assignee ?? null,
+    automationLease: null, codingCapacity: null, 'codingAutonomy.pr.head': state.pr.head };
   const message = input.text.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
   // Human review is labelled data; it is never interpreted as runner commands.
   const correction = { kind: 'human_review', head: input.head, text: message, by: 'operator' };
   task = await save(task, { ...state, spent: ciSpent(state), correction, state: 'correction', reason: null,
-    manualInterventions: [...state.manualInterventions, { kind: 'review_feedback', at: new Date().toISOString(), head: input.head }] });
+    manualInterventions: [...state.manualInterventions, { kind: 'review_feedback', at: new Date().toISOString(), head: input.head }] }, {}, undefined, guard);
   return projection(task);
 }
 async function stop(id, requestId, input = {}) {
@@ -411,6 +428,9 @@ async function observe(task) {
     next.spent = { ...state.spent, ciSeconds: (state.spent.ciSeconds || 0) + elapsed };
     if (failedCIWatch(next)) next.ciWatchStartedAt = new Date(now).toISOString();
   } else if (watchingFailure && !failedCIWatch(next)) next.spent = ciSpent(state);
+  if (['ready_for_review', 'closed'].includes(next.state)) Object.assign(next, {
+    delivery: require('./pipelineCodingDelivery').project(observation, state.pr, now),
+    deliveryNextObservationAt: new Date(now + 60000).toISOString() });
   return save(task, next, {}, undefined, guard);
 }
 async function tick() {
@@ -443,6 +463,7 @@ async function tick() {
     ] })
       .sort({ 'codingAutonomy.nextObservationAt': 1, pipelineId: 1 }).limit(2).lean();
     for (const task of waiting) await observe(task);
+    await require('./pipelineCodingDelivery').sweep(control, save);
     config = await settings();
     if (config.enabled && !config.active) await select(config);
   } finally { ticking = false; }

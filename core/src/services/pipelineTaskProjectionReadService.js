@@ -12,7 +12,8 @@ const SUMMARY_FIELD_LIST = [
   'automationAttempts.attempt automationAttempts.acquiredAt automationAttempts.completedAt automationAttempts.finalState',
   'automationAttempts.reviewedAt automationAttempts.reviewOutcome automationAttempts.evidence.schema',
   'automationAttempts.evidence.failureCodes automationAttempts.evidence.verification.status',
-  'automationAttempts.evidence.inference.state automationAttempts.evidence.inference.cause transitionSeq'
+  'automationAttempts.evidence.inference.state automationAttempts.evidence.inference.cause transitionSeq',
+  'codingAutonomy.authorized codingAutonomy.disposition.kind codingAutonomy.disposition.outcome'
 ].join(' ');
 // Summary reads carry only the most recent transitions; the store keeps more.
 const SUMMARY_FIELDS = {
