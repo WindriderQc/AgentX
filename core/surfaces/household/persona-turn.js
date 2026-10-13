@@ -142,6 +142,7 @@ function createPersonaTurnHandler({
         entry.workId = intake.row._id; entry.traceId = clientTurnId; entry.snapshot ||= {
           sessionId: session.sessionId, packId: pack.id, modeId: session.modeId, scopeId: session.scopeId };
         entry.guardianAgentId = intake.row.guardian?.agentId;
+        entry.guardianSessionId = intake.row.guardian?.sessionId;
         if (intake.duplicate) { entry.auditWritten = true; return envelope(res, { accepted: true, turnId: clientTurnId, workId: entry.workId,
           outcome: intake.turn.outcome, reply: intake.turn.outcome === 'completed' ? { text: intake.turn.replyText } : null,
           replayed: false }, 202); }
@@ -211,7 +212,7 @@ function createPersonaTurnHandler({
         // That member is still on an earlier question: the conversation's agent answers and says so.
         if (member && !consult && memberWork?.active(session.sessionId).some(job => job.agentId === member.agentId)) member = null;
         memberPersona = member ? await teamPersona(member.agentId, runtimeServices.personas) : null;
-        const guardianSession = !member && entry.workId ? dedicatedGuardian.route(session, clientTurnId, entry.guardianAgentId) : null;
+        const guardianSession = !member && entry.workId ? dedicatedGuardian.route(session, entry.guardianSessionId, entry.guardianAgentId) : null;
         const turnSession = member ? teamAddress.memberSession(session, member, memberPersona) : guardianSession || session;
         if (member) {
           speaker = { agentId: member.agentId, name: memberPersona?.name || member.agentId, personaId: memberPersona?.id || null };

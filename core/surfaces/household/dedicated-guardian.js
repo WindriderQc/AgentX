@@ -15,9 +15,10 @@ const instructions = persona => [
   'Return only the natural spoken answer in plain text. No internal narration, stage directions, tool JSON, channel markers or independent messages.'
 ].filter(Boolean).join('\n\n');
 
-function route(session, turnId, agentId) {
+function route(session, sessionId, agentId) {
   if (!agentId || agentId === 'main') return null;
-  return { ...session, sessionId: turnId, agentId, agentSessionKey: null };
+  if (!/^[a-f0-9-]{36}$/.test(sessionId || '')) throw new Error('The accepted guardian session identity is unavailable.');
+  return { ...session, sessionId, agentId, agentSessionKey: null };
 }
 const history = messages => messages.slice(-LIMITS.messages).map(message => ({ ...message,
   content: typeof message.content === 'string' ? excerpt(message.content, LIMITS.message) : message.content }));

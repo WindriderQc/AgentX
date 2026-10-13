@@ -48,16 +48,17 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       throw fail('CONVERSATION_WORK_CAPACITY', 'The request is retained, but too many works are still open.', 503);
     }
     const at = now();
+    const guardianAgentId = !accepted.duplicate && snapshot.mode === 'native'
+      && /^[a-z][a-z0-9_-]{0,63}$/.test(env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID || '')
+      && !['main', 'family', env.PERSONAL_CONVERSATION_WORK_AGENT_ID].includes(env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID)
+      ? env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID : 'main';
     const row = await repo.insert({ _id: id, owner: OWNER, surface: 'household',
       conversationId: current.conversationId, sessionId: current.sessionId, turnId,
       exchangeId: accepted.receipt._id, requestSha256: hash(text), mode: snapshot.mode,
       state: 'received', classification: classification(text, snapshot.mode),
       revision: 0, receivedAt: at, updatedAt: at, contextReady: false, tools: [], events: [], sequence: 0,
       ...(snapshot.mode === 'native' && { foreground: nativeForeground(text) && !simple(text) ? 'acknowledge' : 'guardian' }),
-      guardian: { agentId: !accepted.duplicate && snapshot.mode === 'native'
-        && /^[a-z][a-z0-9_-]{0,63}$/.test(env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID || '')
-        && !['main', 'family', env.PERSONAL_CONVERSATION_WORK_AGENT_ID].includes(env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID)
-        ? env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID : 'main',
+      guardian: { agentId: guardianAgentId, ...(guardianAgentId !== 'main' && { sessionId: randomUUID() }),
         state: accepted.duplicate ? taken.turn.outcome === 'pending' ? 'uncertain' : 'completed' : 'pending' }, erased: false });
     return { row, turn: taken.turn, duplicate: accepted.duplicate || taken.duplicate };
   }
@@ -70,6 +71,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
   }
   const guardianStarted = (id, sessionKey, runId, agentId = 'main') => repo.mutate(id, current => {
     if (agentId !== (current.guardian?.agentId || 'main') || !sessionKey?.startsWith(`agent:${agentId}:household:direct:`)
+        || current.guardian?.sessionId && sessionKey !== `agent:${agentId}:household:direct:${current.guardian.sessionId}`
         || !/^resp_[a-f0-9-]{36}$/.test(runId || '')
         || current.guardian?.runId && (current.guardian.runId !== runId || current.guardian.sessionKey !== sessionKey)) throw notFound();
     return { fields: { guardian: { ...current.guardian, agentId, state: 'running', sessionKey, runId } }, event: 'guardian_started' };

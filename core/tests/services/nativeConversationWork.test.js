@@ -367,10 +367,11 @@ test('the dedicated guardian uses a compact per-turn session, preserves Main his
     const turnId = randomUUID();
     const response = await request(app).post(`/sessions/${current.sessionId}/turns/text`).send({ text: 'Raconte-moi une histoire.', turnId, channel: 'voice', stream: true });
     expect(response.status).toBe(200); expect(response.text).toContain('Il était une fois');
-    expect(guardian.mock.calls[0][0].session.sessionId).toBe(turnId);
+    expect(guardian.mock.calls[0][0].session.sessionId).not.toBe(current.sessionId);
     expect((await conversations.getSession(works.query(current.sessionId))).agentSessionKey).toBe(mainKey);
     const row = await works.repo.get(hash(current.sessionId + '\n' + turnId));
     expect(row.guardian).toMatchObject({ agentId: 'nestor-guardian', state: 'completed' });
+    expect(guardian.mock.calls[0][0].session.sessionId).toBe(row.guardian.sessionId);
     const bound = { agentId: 'nestor-guardian', sessionKey: row.guardian.sessionKey, runId: row.guardian.runId };
     expect(await works.guardianTool(bound)).toMatchObject({ delegated: true });
     await expect(works.guardianTool({ ...bound, agentId: 'main' })).rejects.toMatchObject({ statusCode: 404 });
@@ -419,5 +420,21 @@ test('the dedicated guardian keeps clear-work acknowledgment bound to the canoni
     // requires the exact original run, never a synthetic replacement attempt.
     await works.publishNative(row._id, proof(running.attempt, 'Actual task result.', ['list_personal_tasks']));
     expect((await createWorkDelivery(works).projection(await works.repo.get(row._id))).result.automaticSpeech).toBe(true);
+  } finally { delete env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID; }
+});
+
+test('opaque turn ids and a repeated client turn id in another conversation cannot share a guardian native session', async () => {
+  env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID = 'nestor-guardian';
+  try {
+    const turnId = 'opaque-client-turn-identity', first = await works.intake(input('Bonjour.', turnId));
+    expect(first.row.guardian.sessionId).toMatch(/^[a-f0-9-]{36}$/);
+    expect((await works.intake(input('Bonjour.', turnId))).row.guardian.sessionId).toBe(first.row.guardian.sessionId);
+    const another = await conversations.createSession({ sessionId: randomUUID(), packId: 'personal_operator', scopeId: 'personal',
+      modeId: 'standard', status: 'active', agentId: 'main', backend: 'openclaw' });
+    await expect(works.intake({ session: another, turnId, text: 'Bonjour.' })).rejects.toMatchObject({ statusCode: 409 });
+    const second = await works.intake({ session: another, turnId: 'another-opaque-turn-identity', text: 'Bonjour.' });
+    expect(second.row.guardian.sessionId).not.toBe(first.row.guardian.sessionId);
+    await expect(works.guardianStarted(first.row._id, `agent:nestor-guardian:household:direct:${second.row.guardian.sessionId}`,
+      'resp_' + randomUUID(), 'nestor-guardian')).rejects.toMatchObject({ statusCode: 404 });
   } finally { delete env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID; }
 });
