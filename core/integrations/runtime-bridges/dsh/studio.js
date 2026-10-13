@@ -134,6 +134,15 @@ function registerDshStudioOperations({ express }) {
       Pragma: 'no-cache',
       'Referrer-Policy': 'no-referrer',
     });
+    if (req.get('Sec-Fetch-Site') === 'cross-site') {
+      // Commit a same-site document before navigating to Studio. An external
+      // 302 chain withholds the Strict cookie, including one just minted here.
+      const destination = new URL(config.publicUrl).origin.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+      return res.type('html').send(`<!doctype html><html lang="en"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="0;url=${destination}"><title>Opening DSH Studio</title>
+<body><p>Opening DSH Studio… <a href="${destination}">Continue to Studio</a></p></body></html>`);
+    }
     return res.redirect(302, config.publicUrl);
   });
 
