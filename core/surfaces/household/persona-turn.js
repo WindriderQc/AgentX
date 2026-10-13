@@ -131,7 +131,9 @@ function createPersonaTurnHandler({
         ? personalAttachments(session.sessionId) : null;
       if (requestedAttachments.length && !attachmentStore) return fail(res, 400, 'Attachments are available in personal Nestor.', 'ATTACHMENTS_PERSONAL_ONLY');
       entry.attachments = requestedAttachments.length ? await attachmentStore.references(requestedAttachments) : [];
-      if (!consult && !isLlmX && !teamAddress.addressedMember(userText, teamAddress.teamMembers(conversationEnv), agentIdFor(session))
+      const nativeDelegation = conversationEnv.PERSONAL_CONVERSATION_WORK_MODE === 'native'
+        && Boolean(conversationWorks?.eligible(session, req.body?.channel));
+      if (!consult && !isLlmX && !teamAddress.addressedMember(userText, teamAddress.teamMembers(conversationEnv), agentIdFor(session), { nativeDelegation })
           && (conversationWorks?.eligible(session, req.body?.channel)
             || await conversationWorks?.retained?.(session, req.body?.turnId, req.body?.channel))) {
         clientTurnId ||= req.body.turnId; entry.clientTurnId = clientTurnId;
@@ -203,7 +205,7 @@ function createPersonaTurnHandler({
         const backend = conversationBackend(session.backend, conversationEnv);
         // #41: a turn that names another team member runs in that member's own session.
         const team = backend === 'openclaw' && !pack.childSafe && !isLlmX ? teamAddress.teamMembers(conversationEnv) : [];
-        member = consult ? consult.member : teamAddress.addressedMember(userText, team, agentIdFor(session));
+        member = consult ? consult.member : teamAddress.addressedMember(userText, team, agentIdFor(session), { nativeDelegation });
         // That member is still on an earlier question: the conversation's agent answers and says so.
         if (member && !consult && memberWork?.active(session.sessionId).some(job => job.agentId === member.agentId)) member = null;
         memberPersona = member ? await teamPersona(member.agentId, runtimeServices.personas) : null;
