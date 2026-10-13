@@ -116,6 +116,46 @@ class ProgressTest(unittest.TestCase):
             "source": {"callId": "1"}, "content": content}}})
         self.assertEqual(self.progress.last_test, {"name": "jest", "outcome": "failed"})
 
+    def test_timed_native_jest_charges_budget_while_a_filtered_result_stays_unknown(self):
+        command = ("cd /workspace && TEST_RUN_ID=synthetic timeout 240 /opt/node/bin/node "
+                   "core/node_modules/jest/bin/jest.js --runInBand > /tmp/synthetic-test.log 2>&1; "
+                   "echo status=$?")
+        self.clock[0] = 10
+        self.call(command=command)
+        self.assertEqual((self.progress.stage, self.progress.current_test), ("test", "jest"))
+        self.clock[0] = 250
+        self.result(content="[timed out after 240 seconds]")
+        self.assertEqual(self.progress.usage()["testSeconds"], 240)
+        self.assertEqual(self.progress.last_test, {"name": "jest", "outcome": "unknown"})
+        self.assertIsNone(self.progress.progress_at)
+
+    def test_timeout_wrappers_recognize_tests_without_promoting_mentions_or_bad_options(self):
+        for prefix in ["timeout 240", "/usr/bin/timeout -k 30 4m", "timeout --signal TERM -- 240",
+                       "timeout --foreground --preserve-status --kill-after=30s --signal=9 240"]:
+            with self.subTest(prefix=prefix):
+                self.assertEqual(module.test_kind(prefix + " node core/node_modules/jest/bin/jest.js"), "jest")
+                self.assertEqual(module.test_kind(prefix + " python3 -m unittest"), "unittest")
+        for command in ["echo timeout 240 node core/node_modules/jest/bin/jest.js",
+                        "timeout 240 echo node core/node_modules/jest/bin/jest.js",
+                        "timeout --help node core/node_modules/jest/bin/jest.js",
+                        "timeout --kill-after=bad 240 node core/node_modules/jest/bin/jest.js",
+                        "timeout -k 30", "timeout nope node core/node_modules/jest/bin/jest.js",
+                        "timeout 240 node synthetic.js core/node_modules/jest/bin/jest.js"]:
+            with self.subTest(command=command):
+                self.assertIsNone(module.test_kind(command))
+
+    def test_running_timed_test_stops_at_the_remaining_native_test_budget(self):
+        self.progress.carry({"remaining": {"workSeconds": 5000, "modelSeconds": 600,
+                                           "modelCalls": 40, "testSeconds": 30},
+                             "limits": {"noProgressSeconds": 2700}})
+        self.call(command="timeout 240 node core/node_modules/jest/bin/jest.js --runInBand")
+        self.clock[0] = 29
+        self.assertIsNone(self.progress.tick())
+        self.clock[0] = 30
+        self.assertEqual(self.progress.tick(), "hard_budget")
+        self.assertEqual(self.progress.usage()["testSeconds"], 30)
+        self.assertIsNone(self.progress.progress_at)
+
     def test_native_jest_detection_and_json_decoder_do_not_promote_mentions_or_arbitrary_json(self):
         for command in ["echo node benchmark/node_modules/jest/bin/jest.js",
                         "node synthetic.js benchmark/node_modules/jest/bin/jest.js"]:

@@ -71,6 +71,37 @@ def source_state(workspace: Path) -> str:
     return digest.hexdigest()
 
 
+def timeout_command(tokens: list[str]) -> list[str]:
+    """Recognize GNU timeout wrappers without executing or guessing shell text."""
+    duration = r"\d+(?:\.\d+)?[smhd]?"
+    for _ in range(4):
+        if not tokens or Path(tokens[0]).name != "timeout":
+            return tokens
+        index = 1
+        while index < len(tokens) and tokens[index].startswith("-"):
+            option = tokens[index]
+            index += 1
+            if option == "--":
+                break
+            if option in {"--foreground", "--preserve-status", "--verbose", "-v"}:
+                continue
+            flag, separator, value = option.partition("=")
+            if flag not in {"-k", "--kill-after", "-s", "--signal"}:
+                return []
+            if not separator:
+                if index >= len(tokens):
+                    return []
+                value = tokens[index]
+                index += 1
+            pattern = duration if flag in {"-k", "--kill-after"} else r"(?:[A-Z]+|\d+)"
+            if not re.fullmatch(pattern, value):
+                return []
+        if index >= len(tokens) or not re.fullmatch(duration, tokens[index]):
+            return []
+        tokens = tokens[index + 1:]
+    return []
+
+
 def test_kind(command: str) -> str | None:
     try:
         shlex.split(command)
@@ -85,6 +116,7 @@ def test_kind(command: str) -> str | None:
             continue
         while tokens and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", tokens[0]):
             tokens.pop(0)
+        tokens = timeout_command(tokens)
         if not tokens:
             continue
         exe = Path(tokens[0]).name
