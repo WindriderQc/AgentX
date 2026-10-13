@@ -42,7 +42,7 @@
 const SCORER_TERMS = Object.freeze(['scorer_version']);
 const JUDGE_TERMS = Object.freeze([
     'judge_identity', 'judge_num_ctx', 'judge_execution_contract',
-    'judge_qualification_contract', 'judge_settings', 'judge_multi_judge'
+    'judge_qualification_contract', 'judge_settings', 'judge_multi_judge', 'judge_participants'
 ]);
 // Judge terms whose absence we cannot tolerate when the arms actually carried
  // judged rows: the judge is the authority for those scores, so a missing
@@ -53,7 +53,7 @@ const CONTEXT_TERMS = Object.freeze(['num_ctx']);
 const BUDGET_TERMS = Object.freeze(['num_predict']);
 const CONTROL_TERMS = Object.freeze([
     'temperature', 'top_p', 'top_k', 'repeat_penalty', 'seed', 'seed_policy',
-    'sampling_profile', 'api_mode', 'response_mode', 'response_budget_rule', 'think'
+    'sampling_profile', 'api_mode', 'response_mode', 'response_budget_rule', 'think', 'send_think'
 ]);
 const GENERATION_TERMS = Object.freeze([...CONTEXT_TERMS, ...BUDGET_TERMS, ...CONTROL_TERMS]);
 // Non-authoritative confounds: these differ between artifacts by definition or
@@ -71,9 +71,13 @@ const CONFOUND_BY_TERM = Object.freeze({
     api_mode: 'generation_controls',
     response_mode: 'generation_controls',
     response_budget_rule: 'generation_controls',
-    think: 'generation_controls'
+    think: 'generation_controls',
+    send_think: 'generation_controls'
 });
 const { judgeCohortSettings, multiJudgeCohortSettings } = require('../../../../shared/benchmarkTargetContract');
+
+const { qualificationContractFingerprint } = require('./judgeQualificationContract');
+const REQUIRED_GENERATION_TERMS = new Set(GENERATION_TERMS.filter(term => term !== 'response_budget_rule'));
 
 const NON_JUDGE_AUTHORITIES = new Set(['deterministic', 'executable']);
 const MIXED = Symbol('mixed');
@@ -139,7 +143,7 @@ function armCandidates(batch, spec) {
     const matched = candidates.filter((candidate) =>
         String(candidate?.model || '').trim().toLowerCase() === requestedModel
         && (!requestedHost || String(candidate?.host || '').replace(/\/+$/, '').toLowerCase() === requestedHost));
-    return matched.length ? matched : (candidates.length === 1 ? candidates : []);
+    return matched;
 }
 
 /**
@@ -148,6 +152,14 @@ function armCandidates(batch, spec) {
  * settings, the batch's frozen campaign (candidate and fixed settings), and
  * the batch's saved execution config.
  */
+function normalizeMode(value) {
+    const mode = normalizeScalar(value);
+    if (['off', 'final-only', 'final'].includes(mode)) return 'final_only';
+    if (['explicit-thinking', 'thinking', 'on'].includes(mode)) return 'explicit_thinking';
+    if (['best-qualified', 'thinking_mode'].includes(mode)) return 'best_qualified';
+    return mode;
+}
+
 function extractControl(rows, batch, spec, term) {
     const candidates = armCandidates(batch, spec);
     const fixed = batch?.inference_contract_campaign?.fixedSettings || null;
@@ -199,9 +211,11 @@ function extractControl(rows, batch, spec, term) {
             fixed?.sampling_profile, executionConfig?.sampling_profile
         ],
         api_mode: [fixed?.api_mode, executionConfig?.api_mode],
-        response_mode: [batch?.inference_contract_campaign?.responseMode, executionConfig?.response_mode],
+        response_mode: [...rows.map(row => row.execution_settings?.think_mode), ...candidates.map(candidate => candidate.mode?.name),
+            batch?.inference_contract_campaign?.responseMode, executionConfig?.response_mode].map(normalizeMode),
         response_budget_rule: [executionConfig?.response_budget_rule],
-        think: [...candidates.map((candidate) => candidate?.mode?.think)]
+        think: [...rows.map(row => row.execution_settings?.think), ...candidates.map(candidate => candidate.mode?.think)],
+        send_think: candidates.map(candidate => candidate.mode?.sendThink)
     };
     return resolveControl(sources[term] || []);
 }
@@ -210,48 +224,79 @@ function judgedRows(rows) {
     return rows.filter((row) => !NON_JUDGE_AUTHORITIES.has(row.evaluation_authority));
 }
 
-/** The judge terms one arm's saved evidence carries, from every source. */
-function judgeSources(rows, batch) {
-    const judgeConfig = batch?.judge_config && typeof batch.judge_config === 'object'
-        ? batch.judge_config
-        : null;
-    const judged = judgedRows(rows);
+/** Validate the saved target, including artifact, effective context and qualification. */
+function qualifiedTarget(model, host, execution, qualification) {
+    if (!qualificationContractFingerprint(qualification)
+        || execution?.schema !== 'agentx.benchmark-judge-execution/v1'
+        || identityOf(model, host) !== identityOf(execution.artifact?.model, execution.artifact?.host)
+        || identityOf(model, host) !== identityOf(qualification.artifact.model, qualification.artifact.host)
+        || execution.num_ctx !== qualification.settings.numCtx) return false;
+    return ['digest', 'runtimeFingerprint', 'hostId'].every(key =>
+        (execution.artifact?.[key] ?? null) === (qualification.artifact[key] ?? null));
+}
 
+/** Actual votes must account for the frozen policy and received consensus. */
+function completeJudgedRow(row) {
+    if (!qualifiedTarget(row.judge_model, row.judge_host, row.judge_execution_contract, row.judge_qualification_contract)) return false;
+    const scores = Array.isArray(row.judge_scores) ? row.judge_scores : [];
+    const multi = row.judge_escalated || row.judge_tiebreaker_used || row.judge_consensus || scores.length;
+    if (!multi) return true;
+    const policy = row.judge_qualification_contract.escalation;
+    if (!row.judge_escalated || !policy || !['agreement', 'tiebreaker_resolved'].includes(row.judge_consensus)) return false;
+    const used = row.judge_tiebreaker_used === true;
+    if (used !== (row.judge_consensus === 'tiebreaker_resolved') || (used && !policy.tiebreaker)) return false;
+    const expected = [...policy.judges, ...(used ? [policy.tiebreaker] : [])];
+    if (scores.length !== expected.length || new Set(scores.map(score => identityOf(score.judge_model, score.judge_host))).size !== scores.length) return false;
+    for (const vote of scores) {
+        const target = expected.find(judge => identityOf(judge.model, judge.host) === identityOf(vote.judge_model, vote.judge_host));
+        if (!target || !Number.isFinite(vote.quality_score) || vote.quality_score < 0 || vote.quality_score > 10
+            || !qualifiedTarget(vote.judge_model, vote.judge_host, vote.execution_contract, vote.qualification_contract)
+            || stableJson(target.contract) !== stableJson(vote.execution_contract)
+            || stableJson(target.settings) !== stableJson(vote.qualification_contract.settings)
+            || (vote.qualification_contract.escalation !== null
+                && stableJson(vote.qualification_contract.escalation) !== stableJson(policy))) return false;
+    }
+    const primaryScores = policy.judges.map(judge => scores.find(vote => identityOf(vote.judge_model, vote.judge_host) === identityOf(judge.model, judge.host)).quality_score);
+    const divergence = Math.max(...primaryScores) - Math.min(...primaryScores);
+    // Writer consensus uses a two-point spread and population standard deviation / 5.
+    if ((divergence > 2) !== used || !Number.isFinite(row.judge_divergence)
+        || Math.abs(row.judge_divergence - divergence) > 1e-8) return false;
+    const values = scores.map(score => score.quality_score);
+    const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+    const deviation = Math.sqrt(values.reduce((sum, value) => sum + (value - average) ** 2, 0) / values.length);
+    return 1 - deviation / 5 >= 0.7;
+}
+
+/** Primary and participant contracts are separate canonical collections, never scalars. */
+function judgeSources(rows, batch) {
+    const judged = judgedRows(rows);
+    const judgeConfig = judged.length ? batch?.judge_config || null : null;
     const identities = [];
     if (judgeConfig?.model) identities.push(identityOf(judgeConfig.model, judgeConfig.host));
-    const multiJudges = judgeConfig?.multi_judge?.enabled ? (judgeConfig.multi_judge.judges || []) : [];
-    for (const judge of multiJudges) if (judge?.model) identities.push(identityOf(judge.model, judge.host));
-    if (judgeConfig?.multi_judge?.enabled && judgeConfig.multi_judge.tiebreaker?.model) {
-        identities.push(identityOf(judgeConfig.multi_judge.tiebreaker.model, judgeConfig.multi_judge.tiebreaker.host));
-    }
+    const configured = judgeConfig?.multi_judge?.enabled ? [...(judgeConfig.multi_judge.judges || []),
+        ...(judgeConfig.multi_judge.tiebreaker ? [judgeConfig.multi_judge.tiebreaker] : [])] : [];
+    configured.forEach(judge => identities.push(identityOf(judge.model, judge.host)));
     for (const row of judged) {
         identities.push(identityOf(row.judge_model, row.judge_host));
-        const names = Array.isArray(row.judge_scores) ? row.judge_scores.map((score) => score?.judge_model) : [];
-        const hosts = Array.isArray(row.judge_scores) ? row.judge_scores.map((score) => score?.judge_host) : [];
-        names.forEach((name, index) => identities.push(identityOf(name, hosts[index] || row.judge_host)));
+        (row.judge_scores || []).forEach(score => identities.push(identityOf(score.judge_model, score.judge_host)));
     }
-
+    const judges = distinct(identities).sort();
+    const legacy = !judgeConfig && judged.every(row => !row.judge_execution_contract && !row.judge_qualification_contract
+        && !row.judge_escalated && !row.judge_consensus && !row.judge_tiebreaker_used && !(row.judge_scores || []).length);
     return {
-        identity: resolveControl(identities),
-        numCtx: resolveControl([
-            judgeConfig?.num_ctx,
-            ...judged.map((row) => getPath(row, 'judge_execution_contract.num_ctx'))
-        ]),
-        execution: resolveObjectControl([
-            judgeConfig?.execution_contract,
-            ...judged.map((row) => row.judge_execution_contract)
-        ]),
-        qualification: resolveObjectControl(judged.map((row) => row.judge_qualification_contract)),
-        // The batch's frozen judge config normalizes to the same settings shape
-        // the qualification contract froze at scoring time.
-        settings: resolveObjectControl([
-            judgeConfig ? judgeCohortSettings(judgeConfig) : null,
-            ...judged.map((row) => getPath(row, 'judge_qualification_contract.settings'))
-        ]),
-        multiJudge: resolveObjectControl([
-            judgeConfig?.multi_judge?.enabled ? multiJudgeCohortSettings(judgeConfig.multi_judge) : null,
-            ...judged.map((row) => getPath(row, 'judge_qualification_contract.escalation'))
-        ])
+        judges, identity: judges.length ? stableJson(judges) : null,
+        complete: judged.every(completeJudgedRow), legacy,
+        numCtx: resolveControl([judgeConfig?.num_ctx, ...judged.map(row => row.judge_execution_contract?.num_ctx)]),
+        execution: resolveObjectControl([judgeConfig?.execution_contract, ...judged.map(row => row.judge_execution_contract)]),
+        qualification: resolveObjectControl(judged.map(row => row.judge_qualification_contract)),
+        settings: resolveObjectControl([judgeConfig ? judgeCohortSettings(judgeConfig) : null,
+            ...judged.map(row => row.judge_qualification_contract?.settings)]),
+        multiJudge: resolveObjectControl([judgeConfig?.multi_judge?.enabled ? multiJudgeCohortSettings(judgeConfig.multi_judge) : null,
+            ...judged.map(row => row.judge_qualification_contract?.escalation)]),
+        participants: resolveObjectControl(judged.map(row => (row.judge_scores || []).map(score => ({
+            identity: identityOf(score.judge_model, score.judge_host), execution: score.execution_contract,
+            qualification: score.qualification_contract
+        })).sort((a, b) => String(a.identity).localeCompare(String(b.identity)))))
     };
 }
 
@@ -275,6 +320,9 @@ function collectArmEvidence({ spec, batch, rows }) {
     return {
         spec,
         batch,
+        candidateSelectionVerified: !campaign || (candidates.length > 0
+            && (spec.host || distinct(candidates.map(candidate => hostOf(candidate.host))).length === 1)),
+        judges: judge.judges,
         rows,
         hasJudged: judged.length > 0,
         cohortFingerprint: rowCohorts[0] || batch?.quality_cohort_fingerprint || null,
@@ -335,7 +383,8 @@ function buildComparisonContract(armA, armB) {
         ['judge_execution_contract', evidenceA.judge.execution, evidenceB.judge.execution],
         ['judge_qualification_contract', evidenceA.judge.qualification, evidenceB.judge.qualification],
         ['judge_settings', evidenceA.judge.settings, evidenceB.judge.settings],
-        ['judge_multi_judge', evidenceA.judge.multiJudge, evidenceB.judge.multiJudge]
+        ['judge_multi_judge', evidenceA.judge.multiJudge, evidenceB.judge.multiJudge],
+        ['judge_participants', evidenceA.judge.participants, evidenceB.judge.participants]
     ]) {
         checks[name] = compareTerm(judgeA, judgeB);
     }
@@ -367,9 +416,9 @@ function buildComparisonContract(armA, armB) {
         if (check.status === 'match') return true;
         if (check.status === 'mismatch' || check.status === 'ambiguous') return false;
         // status === 'absent'
-        if (category === 'scorer') return true; // both unversioned: legacy, assumed comparable
+        if (category === 'scorer') return false;
         if (category === 'judge') return !hasJudged || !REQUIRED_JUDGE_TERMS.has(term);
-        return true; // generation absent on both arms: no evidence of a difference
+        return !REQUIRED_GENERATION_TERMS.has(term);
     });
 
     let evidence;
@@ -384,6 +433,10 @@ function buildComparisonContract(armA, armB) {
     }
 
     const reasons = [];
+    if (!evidenceA.candidateSelectionVerified || !evidenceB.candidateSelectionVerified) reasons.push('candidate_selection_unverified');
+    if ([evidenceA, evidenceB].some(arm => arm.hasJudged && !arm.judge.complete
+        && !(sameCohort && !contradicted && arm.judge.legacy))) reasons.push('judge_evidence_unverified');
+    compatible = compatible && reasons.length === 0;
     const confounds = new Set();
     for (const [term, check] of Object.entries(checks)) {
         if (check.status === 'mismatch') {
@@ -392,8 +445,9 @@ function buildComparisonContract(armA, armB) {
             if (confound) confounds.add(confound);
         } else if (check.status === 'ambiguous') {
             reasons.push(`frozen_evidence_${check.kind}:${term}`);
-        } else if (check.status === 'absent' && termCategory(term) === 'judge'
-            && REQUIRED_JUDGE_TERMS.has(term) && hasJudged && evidence === 'frozen_contract') {
+        } else if (check.status === 'absent' && evidence === 'frozen_contract'
+            && (termCategory(term) === 'scorer' || REQUIRED_GENERATION_TERMS.has(term)
+                || (REQUIRED_JUDGE_TERMS.has(term) && hasJudged))) {
             // A judged arm with no saved judge contract: cannot verify the judge.
             reasons.push(`frozen_evidence_missing:${term}`);
         }
@@ -455,7 +509,7 @@ function armProvenance(evidence) {
         batchContractFingerprint: evidence.batch?.batch_contract_fingerprint || null,
         rowCohorts: evidence.rowCohorts,
         candidates: evidence.candidateProvenance,
-        judges: evidence.judge.identity ? evidence.judge.identity.split(', ').filter(Boolean) : []
+        judges: evidence.judge.judges
     };
 }
 

@@ -7,7 +7,7 @@
  * paired statistics when it is eligible: it ran successfully, is not an
  * infrastructure failure, does not await manual review, is not excluded from
  * the leaderboard, has a usable prompt identity and carries a finite score.
- * Everything else is excluded, with the first reason it failed.
+ * Everything else is excluded, with every applicable reason.
  *
  * The reasons are overlapping flags, not a partition: one row can fail several
  * at once. Every applicable flag is counted for that row, so the per-reason
@@ -24,7 +24,8 @@ const EXCLUSION_REASONS = Object.freeze([
     'needs_review',
     'excluded_from_leaderboard',
     'missing_prompt_identity',
-    'missing_or_non_finite_score'
+    'missing_or_non_finite_score',
+    'pending_score'
 ]);
 
 function promptKey(row) {
@@ -41,6 +42,7 @@ function exclusionFlags(row) {
     if (!promptKey(row)) flags.push('missing_prompt_identity');
     const score = row.quality_score;
     if (score === null || score === undefined || !Number.isFinite(score)) flags.push('missing_or_non_finite_score');
+    if (row.scoring_method === 'pending') flags.push('pending_score');
     return flags;
 }
 
