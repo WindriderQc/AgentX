@@ -24,6 +24,7 @@ from app import warmup
 from app.audio_upload import audio_form
 from app.config import TTS_PROVIDERS, settings
 from app.runtime import RuntimeConfig, static_settings
+from app.stt.whisper import RecognitionUnavailable
 from app.tts import preferences as speech_preferences
 from app.tts import provider as tts
 
@@ -60,6 +61,14 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="VoiX", version=VERSION, lifespan=lifespan)
+
+
+@app.exception_handler(RecognitionUnavailable)
+async def recognition_unavailable(_request: Request, _error: RecognitionUnavailable) -> JSONResponse:
+    # Core can retry its existing stateless backup. Never expose decoder errors,
+    # private upload paths or a speculative transcript in an availability reply.
+    return JSONResponse({"error": "GPU speech recognition is temporarily unavailable.",
+                         "code": "STT_GPU_UNAVAILABLE"}, status_code=503)
 
 
 # ======================= health / discovery =======================

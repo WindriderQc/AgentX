@@ -94,9 +94,19 @@ python -m venv .venv
 ```
 
 `requirements.txt` includes the NVIDIA runtime wheels for GPU recognition and
-synthesis; recognition falls back to CPU when CUDA is unavailable. Model files
+synthesis; recognition falls back to CPU when CUDA is unavailable. The optional
+spoken-controls adapter checks its bounded CPU grammar first; a recognized Stop
+never starts or queues Whisper, including while another transcription is busy.
+Mixed commands and questions retain the complete general transcription. Model files
 are downloaded on first use into `cache/` and are never committed. Bind and
 firewall the port for the local network only.
+
+An instance with a qualified `VOIX_FALLBACK_URL` can set
+`WHISPER_CPU_FALLBACK=false` on its GPU speech service. CUDA failure then returns
+HTTP 503 immediately, including during the GPU recovery interval, so Core uses
+its existing stateless backup instead of waiting for a local CPU decode. GPU
+recovery remains request-driven and bounded. CPU-only services keep working;
+the default remains CPU fallback for installations without a backup.
 
 On Windows, `start.ps1` (or `start-voix.cmd`) starts the service in the
 foreground and keeps `logs/voix.log`; `voix.ps1 status|start|stop|restart`

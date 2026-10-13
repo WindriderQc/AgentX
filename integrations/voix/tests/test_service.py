@@ -15,6 +15,16 @@ import app.service as service  # noqa: E402
 client = TestClient(app)
 
 
+def test_unavailable_gpu_returns_a_retryable_private_safe_transcription_error(monkeypatch):
+    def unavailable(*_args):
+        raise service.RecognitionUnavailable("private path and arbitrary decoder detail")
+    monkeypatch.setattr(service, "_transcribe_bytes", unavailable)
+    response = client.post("/v1/audio/transcriptions", files={"file": ("mic.wav", b"audio")})
+    assert response.status_code == 503
+    assert response.json() == {"error": "GPU speech recognition is temporarily unavailable.",
+                               "code": "STT_GPU_UNAVAILABLE"}
+
+
 @pytest.fixture(autouse=True)
 def reset_speech_state(tmp_path, monkeypatch):
     from app.runtime import RuntimeConfig

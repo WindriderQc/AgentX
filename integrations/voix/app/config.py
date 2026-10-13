@@ -45,6 +45,7 @@ class Settings:
     whisper_model: str
     whisper_device: str
     whisper_compute_type: str
+    whisper_cpu_fallback: bool
     whisper_vad_threshold: float
     whisper_hotwords: str
     whisper_initial_prompt: str
@@ -96,6 +97,7 @@ def load_settings() -> Settings:
         whisper_model=os.getenv("WHISPER_MODEL", "large-v3-turbo"),
         whisper_device=os.getenv("WHISPER_DEVICE", "cuda"),
         whisper_compute_type=os.getenv("WHISPER_COMPUTE_TYPE", "float16"),
+        whisper_cpu_fallback=_get_bool("WHISPER_CPU_FALLBACK", True),
         whisper_vad_threshold=_get_float("WHISPER_VAD_THRESHOLD", 0.85),
         # Product names only. An instance adds its own names (people, places)
         # through its external environment, never in this repository.
