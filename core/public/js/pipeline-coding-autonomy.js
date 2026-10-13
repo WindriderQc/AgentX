@@ -219,7 +219,9 @@
         scope: String(data.get('scope')).split('\n').map(p => p.trim()).filter(Boolean),
         verificationProfile: data.get('verificationProfile'),
         limits: { maxResumes: Number(data.get('maxResumes')), workSeconds: Number(data.get('workMinutes')) * 60,
-          ciSeconds: Number(data.get('ciMinutes')) * 60 } }));
+          testSeconds: Number(data.get('testMinutes')) * 60, modelSeconds: Number(data.get('modelMinutes')) * 60,
+          modelCalls: Number(data.get('modelCalls')), ciSeconds: Number(data.get('ciMinutes')) * 60,
+          noProgressSeconds: Number(data.get('noProgressMinutes')) * 60 } }));
     });
     refresh(); timer = setInterval(() => refresh({ background: true }), 15000);
     window.addEventListener('pagehide', () => clearInterval(timer), { once: true });
