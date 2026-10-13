@@ -200,7 +200,7 @@ def test_outcome(content: str, errored: bool, reliable_exit: bool, timed: bool =
     content = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", content)
     if re.search(r"\[(?:timed out|killed by signal)", content):
         return "unknown"
-    if timed and any(int(code) >= 124 for code in re.findall(r"\[exit code: (\d+)\]", content)):
+    if timed and any(len(code) > 3 or int(code) >= 124 for code in re.findall(r"\[exit code: (\d+)\]", content)):
         return "unknown"  # timeout/launcher failure or ambiguous signal termination
     failures = (r"(?m)^\s*(?:FAILED\b|FAIL(?:\s|$)|"
                 r"(?:Test Suites|Tests):[^\n]*\b[1-9]\d* failed\b|"

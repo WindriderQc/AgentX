@@ -174,6 +174,17 @@ class ProgressTest(unittest.TestCase):
         self.result("unwrapped", "[exit code: 124]", error=True)
         self.assertEqual(self.progress.last_test, {"name": "jest", "outcome": "failed"})
 
+    def test_oversized_native_exit_marker_releases_the_correlated_test_stage(self):
+        self.call(command="timeout 240 node core/node_modules/jest/bin/jest.js --runInBand")
+        self.clock[0] = 10
+        self.result(content="[exit code: " + "9" * 5000 + "]", error=True)
+        self.assertEqual(self.progress.last_test, {"name": "jest", "outcome": "unknown"})
+        self.assertEqual(self.progress.pending_tests, {})
+        self.assertIsNone(self.progress.current_test)
+        self.assertEqual(self.progress.stage, "model_wait")
+        self.assertEqual(self.progress.usage()["testSeconds"], 10)
+        self.assertIsNone(self.progress.progress_at)
+
     def test_native_jest_detection_and_json_decoder_do_not_promote_mentions_or_arbitrary_json(self):
         for command in ["echo node benchmark/node_modules/jest/bin/jest.js",
                         "node synthetic.js benchmark/node_modules/jest/bin/jest.js"]:
