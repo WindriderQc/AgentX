@@ -24,8 +24,9 @@
           throw Object.assign(new Error(`Speech request was refused (${response.status}). The complete answer remains on screen.`), { status: response.status });
         }
       }
-      if (!signal.aborted && first <= choices.length && deviceVoice()) {
-        return issued({ browserSpeech: { text, language } }, choices.length);
+      const device = !signal.aborted && first <= choices.length && deviceVoice({ text, language });
+      if (device) {
+        return issued({ browserSpeech: { text, language, ...(device.localOnly === true && { localOnly: true }) } }, choices.length);
       }
       throw new Error(unavailable);
     }

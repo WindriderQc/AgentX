@@ -4,13 +4,16 @@ const { SPOKEN_REPLY_INSTRUCTION } = require('../../src/services/voice/presentat
 
 // A conversation reply has two audiences: the ear and the eye (#166, #167).
 // The model marks what belongs on screen with <show kind="…" title="…">…</show>;
-// everything outside those blocks is the spoken reply. A deterministic net then
+// everything outside those blocks starts in the spoken channel. A deterministic net then
 // diverts what a model still left in its spoken text but nobody should hear
 // read aloud: code, tables, lists longer than three items, links, paths and
 // key-like tokens. Speech (browser TTS and native VoiX) only ever receives the
-// spoken channel; the stored and displayed blocks never reach a voice.
+// spoken channel. Long ordinary prose is introduced briefly and stored on screen;
+// explicit readings and safety resources bypass that presentation limit.
 
 const path = require('node:path');
+const { randomUUID } = require('node:crypto');
+const spokenPresentation = require('../../public/js/voice/spoken-presentation');
 
 const KINDS = Object.freeze(['text', 'list', 'table', 'code', 'link', 'secret', 'image']);
 const LIMITS = Object.freeze({ blocks: 20, body: 8000, title: 120, spokenListItems: 3, token: 24, openTag: 300 });
@@ -82,13 +85,18 @@ function listSummary(lines, lang) {
   return items.length ? (lang === 'en' ? 'First items: ' : 'Les premiers éléments : ') + items.join('; ') + '. ' : '';
 }
 
+function spokenTable(lines) {
+  return lines.map(row => row.replace(/^\s*\||\|\s*$/g, '').split('|').map(cell => cell.trim()).filter(Boolean).join('. ')).join('\n');
+}
+
 function createReplyChannels({ allowSecrets = false, language = 'fr', readAloud = false, onSay = () => {}, onShow = () => {}, onConsult = () => {} } = {}) {
   const lang = languageOf(language);
   const display = [];
   let pending = '', inShow = false, showAttributes = null, received = false, ended = false;
   let line = '', prose = false, group = null, spoken = '';
 
-  const say = text => {
+  const emit = text => {
+    text = text.replace(/[ \t]{2,}/g, ' ');
     // A removed reference must not leave two spaces across stream chunks.
     if (/[ \t]$/.test(spoken)) text = text.replace(/^[ \t]+/, '');
     if (!text) return;
@@ -107,8 +115,18 @@ function createReplyChannels({ allowSecrets = false, language = 'fr', readAloud 
     return true;
   };
   const screenCue = shown => (shown ? ON_SCREEN[lang] : '');
+  let proseBlock;
+  const presentation = spokenPresentation.create({ language: lang, readAloud, onSay: emit, onShow: body => {
+    if (!proseBlock) {
+      proseBlock = { id: 'b' + (display.length + 1), kind: 'text', title: '', body: '', key: 'prose:' + randomUUID() };
+      display.push(proseBlock);
+    }
+    proseBlock.body = body.trim();
+    onShow({ ...proseBlock });
+  } });
+  const say = text => presentation.push(text);
 
-  // Spoken prose is released word by word, so speech is never held for a line.
+  // Clean tokens before presentation so private values never enter the prose block.
   const speakProse = text => {
     say(text.split(/(\s+)/).map(word => {
       // A harness file reference keeps its existing handling (speech drops it),
@@ -117,6 +135,8 @@ function createReplyChannels({ allowSecrets = false, language = 'fr', readAloud 
       if (media) return addBlock('image', '', path.posix.basename(media[1]), { source: 'generated', ref: media[1] }) ? '' : word;
       if (/^MEDIA:/.test(word)) return word;
       const core = word.replace(/^[(«“"']+/, '').replace(/[.,;:!?)»”"']+$/, '');
+      const resource = core.match(/^https?:\/\/(?:www\.)?(suicide\.ca|988\.ca)(?=[/:?#]|$)/i)?.[1];
+      if (resource) { addBlock('link', '', core); return word.replace(core, resource); }
       const kind = core ? tokenKind(core) : '';
       if (!kind) return word;
       return word.replace(core, screenCue(addBlock(kind, '', core)));
@@ -128,11 +148,15 @@ function createReplyChannels({ allowSecrets = false, language = 'fr', readAloud 
     group = null;
     if (readAloud) {
       const complete = (kind === 'code' ? lines.filter(row => !LINE.fence.test(row)) : lines).join('\n');
-      addBlock(kind, '', complete); speakProse(complete + '\n'); return;
+      addBlock(kind, '', complete);
+      speakProse((kind === 'table' ? spokenTable(lines) : complete) + '\n'); return;
     }
     if (kind === 'list' && lines.length <= LIMITS.spokenListItems) { speakProse(lines.join('\n') + '\n'); return; }
     const body = kind === 'code' ? lines.filter(row => !LINE.fence.test(row)).join('\n') : lines.join('\n');
     const shown = addBlock(kind, '', body);
+    if (kind === 'table' && lines.some(spokenPresentation.hasSafetyContent)) {
+      speakProse(spokenTable(lines.filter(spokenPresentation.hasSafetyContent)) + '\n'); return;
+    }
     if (kind === 'list') {
       say(listSummary(lines, lang));
       if (shown) say((lang === 'en' ? 'The full list is on screen.' : 'La liste complète est à l’écran.') + '\n');
@@ -237,7 +261,8 @@ function createReplyChannels({ allowSecrets = false, language = 'fr', readAloud 
         process();
         feedSpoken('');
         closeGroup();
-        if (!spoken.trim() && display.length) say(ONLY_SHOWN[lang]);
+        presentation.end();
+        if (!spoken.trim() && display.length) emit(ONLY_SHOWN[lang]);
       }
       return { say: spoken.replace(/\n{3,}/g, '\n\n').trim(), display: display.slice() };
     }
@@ -250,6 +275,7 @@ function storedDisplay(display = []) {
   return display.map(block => block.kind === 'secret'
     ? { id: block.id, kind: 'secret', title: block.title, body: '', redacted: true }
     : { id: block.id, kind: block.kind, title: block.title, body: block.body,
+      ...(block.kind === 'text' && block.key ? { key: block.key } : {}),
       ...(block.kind === 'image' ? { source: block.source || '', status: block.status || 'missing', image: block.image || null,
         ...(block.operation && { operation: block.operation, key: block.key }) } : {}) });
 }
@@ -266,7 +292,7 @@ function historyText(replyText, display = []) {
 
 function contract({ family = false, imageSources = [] } = {}) {
   return [
-    'Your reply reaches two places: everything outside a show block is spoken aloud; show blocks are displayed on the user\'s screen and never spoken.',
+    'Your reply reaches two places: short prose outside a show block is spoken aloud; long ordinary prose is introduced briefly and displayed completely. Show blocks are displayed on the user\'s screen and never spoken.',
     `${SPOKEN_REPLY_INSTRUCTION} When details are on screen, say so naturally, for example "je te l'ai mis à l'écran".`,
     'Unless explicitly asked to read the complete text aloud, for a priority or task question speak the one to three most useful items and their deadlines outside the show block. A screen pointer alone is not an answer.',
     `Except for explicitly requested readings, put anything meant to be read rather than heard inside <show kind="list|table|code|text|link${family ? '' : '|secret'}" title="short title">…</show>: lists longer than three items, steps, tables, code, commands, links, identifiers and long details. Markdown is allowed inside show blocks only.`,

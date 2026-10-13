@@ -115,11 +115,11 @@ test('a reply made only of screen content still says something', () => {
   assert.equal(result.say, 'I put it on screen.');
 });
 
-test('prose is released word by word, not held until the end of a line', () => {
+test('ordinary prose waits for its presentation decision; a short answer is spoken completely', () => {
   const said = [];
   const channels = createReplyChannels({ onSay: text => said.push(text) });
   channels.push('Bonjour mon ami, comment');
-  assert.equal(said.join(''), 'Bonjour mon ami,');
+  assert.equal(said.join(''), '');
   channels.push(' vas-tu?');
   channels.end();
   assert.equal(said.join(''), 'Bonjour mon ami, comment vas-tu?');
@@ -182,7 +182,7 @@ test('long display content and every block survive presentation and history', ()
 
 test('explicit reading prose remains complete beyond the former reply projection limit', () => {
   const source = 'Texte à lire entièrement. '.repeat(400) + 'DERNIERS MOTS';
-  const result = run(chunks(source, 77));
+  const result = run(chunks(source, 77), { readAloud: true });
   assert.equal(result.say, source);
   assert.equal(plainReply(result.say), source);
 });
@@ -198,4 +198,39 @@ test('an explicit reading request reads every list item instead of the ordinary 
   for (let index = 1; index <= 12; index++) assert.ok(reading.say.includes(`Élément ${index}: explication complète.`));
   assert.ok(!reading.say.includes('Les premiers éléments'));
   assert.ok(run(chunks(source, 21)).say.includes('La liste complète est à l’écran'));
+});
+
+test('unmarked long prose is complete in one screen block and history across model delta boundaries', () => {
+  const source = 'Voici les explications. '.repeat(400) + 'DERNIERS MOTS';
+  for (const size of [1, 7, 77, source.length]) {
+    const result = run(chunks(source, size));
+    assert.match(result.say, /texte complet est à l’écran/);
+    assert.ok(result.say.length < 200);
+    assert.equal(result.display.length, 1);
+    assert.equal(result.display[0].body, source);
+    assert.equal(new Set(result.shown.map(block => block.key)).size, 1);
+    assert.equal(storedDisplay(result.display)[0].body, source);
+    assert.ok(historyText(result.say, result.display).includes(source));
+  }
+});
+
+test('long prose screen fallback cannot persist a secret stripped from the spoken channel', () => {
+  const secret = 'sk-' + 'a1'.repeat(40);
+  const result = run(['Explications ordinaires. '.repeat(40) + secret + ' FIN'], { allowSecrets: true });
+  assert.ok(result.display.some(block => block.kind === 'secret' && block.body === secret));
+  assert.doesNotMatch(result.display.find(block => block.kind === 'text').body, /sk-/);
+  assert.doesNotMatch(historyText(result.say, storedDisplay(result.display)), /sk-/);
+});
+
+test('help contacts remain audible in long prose, URLs and table rows', () => {
+  const result = run(['Contexte. '.repeat(30) + '\n| Contact | https://988.ca |\n| Technique | hidden-value |']);
+  assert.match(result.say, /988.ca/);
+  assert.doesNotMatch(result.say, /hidden-value/);
+  const prose = run(['Contexte. '.repeat(30) + ' Appelle le 988.']);
+  assert.ok(prose.say.endsWith('Appelle le 988.'));
+});
+
+test('an explicit table reading preserves every cell in the spoken channel', () => {
+  const result = run(['| Premier | Deuxième |\n| Troisième | Quatrième |'], { readAloud: true });
+  for (const cell of ['Premier', 'Deuxième', 'Troisième', 'Quatrième']) assert.ok(result.say.includes(cell));
 });

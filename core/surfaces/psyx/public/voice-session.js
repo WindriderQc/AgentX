@@ -5,11 +5,11 @@
 let psyxVoiceSession = null;
 let psyxVoicePhase = 'idle';
 
-function spokenVoiceText(text) {
-  return window.NestorSpeech.speechText(text);
+function spokenVoiceText(text, options) {
+  return window.NestorSpeech.speechText(text, options);
 }
 
-// The private adapter shares rung tracking with Household but keeps device speech disabled.
+// The private adapter allows explicitly selected English on a local system voice only.
 // A failed accepted stream must never request the same selected voice again.
 async function synthesizePsyXSpeech({ text, language, after = null }, signal) {
   state.voice.ladder ||= window.AgentXSpeechLadder.createSpeechLadder({
@@ -20,11 +20,16 @@ async function synthesizePsyXSpeech({ text, language, after = null }, signal) {
       return fetch('/api/psyx/voice/synthesize/stream', { credentials: 'same-origin', method: 'POST', signal,
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) });
     },
-    deviceVoice: () => false,
+    deviceVoice: ({ language }) => language === 'en' && window.speechSynthesis ? { localOnly: true } : false,
     unavailable: 'PsyX speech is unavailable. The complete answer remains on screen.',
   });
-  return state.voice.ladder.speak({ text, language: language || state.voice.prefs.language, after,
+  const speech = await state.voice.ladder.speak({ text, language: language || state.voice.prefs.language, after,
     choices: [{ provider: state.voice.prefs.ttsProvider, voice: state.voice.prefs.ttsVoice }] }, signal);
+  if (speech.browserSpeech) {
+    $('voiceActionStatus').textContent = 'English · local system voice only';
+    $('voiceSessionVoice').textContent = 'English · local system voice only';
+  }
+  return speech;
 }
 
 function chooseInitialVoice(catalog) {
@@ -130,7 +135,7 @@ function createPsyXVoiceSession() {
     message: () => {},
   }, (phase, detail) => {
     // The shared loop's own detail for a failed transcription is in English; PsyX shows its label.
-    $('voiceSessionPhase').textContent = phase === 'error' ? 'Voice was stopped. Check microphone access and the local connection, then continue.'
+    $('voiceSessionPhase').textContent = phase === 'error' ? detail || 'Voice was stopped. Check microphone access and the local connection, then continue.'
       : phase === 'reviewing' ? labels.reviewing : detail || labels[phase] || 'One moment…';
     $('voiceSessionDialog').dataset.phase = phase;
     psyxVoicePhase = phase;

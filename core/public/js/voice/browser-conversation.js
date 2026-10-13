@@ -2,6 +2,7 @@
 (function (root) {
   'use strict';
   const speechLanguage = typeof module !== 'undefined' && module.exports ? require('./speech-language') : root.NestorSpeech;
+  const spokenPresentation = typeof module !== 'undefined' && module.exports ? require('./spoken-presentation') : root.AgentXSpokenPresentation;
   const PlaybackHold = (typeof module !== 'undefined' && module.exports ? require('./playback-hold') : root.NestorPlaybackHold)?.PlaybackHold;
   const VoiceTimeline = (typeof module !== 'undefined' && module.exports ? require('./voice-timeline') : root.AgentXVoiceTimeline)?.VoiceTimeline;
   // Capture while this script is evaluating; currentScript is null once the user opens the microphone.
@@ -417,7 +418,7 @@
     // The background brain may add one short remark at a natural pause (#169):
     // only while listening (awake, if the wake word is on) with no turn in flight.
     // Background results use the same speech confirmation as an ordinary reply.
-    async interject(reply, { onScheduled } = {}) {
+    async interject(reply, { onScheduled, readAloud = false } = {}) {
       const epoch = this.epoch;
       const idle = () => this.current(epoch) && this.state === 'listening' && !this.activeTurn && !this.turnPending
         && (!this.selection?.wakeWord || this.wake.active());
@@ -428,7 +429,7 @@
       try {
         // The remark is one utterance: the chosen language, else its own words.
         const language = speechLanguage.turnSpeechLanguage(reply.text, reply.language, this.selection?.language);
-        const segments = speechLanguage.splitSpeechText((this.io.speechText || speechLanguage.speechText)(reply.text));
+        const segments = speechLanguage.splitSpeechText((this.io.speechText || speechLanguage.speechText)(reply.text, { readAloud }));
         if (!segments.length) return false;
         turn = { epoch, id: root.crypto.randomUUID(), request: new AbortController(), speech: new AbortController(),
           interrupted: false, local: true, replyStarted: false, spoken: '' };
@@ -664,11 +665,12 @@
       let pending = '', streamed = false, firstChunk = true, speechError = null, playback = Promise.resolve();
       let synthesis = Promise.resolve(), prefetchSlot = Promise.resolve();
       let spokenLanguage = speechLanguage.turnSpeechLanguage(text, detectedLanguage, this.selection.language);
+      const readAloud = spokenPresentation.readingRequested(text);
       let replyLanguageChosen = !!speechLanguage.explicitSpeechLanguage(this.selection.language);
       // `notice` marks words that are not the reply (a waiting notice): the
       // timeline's first audio is the reply's own first clause.
       const speakSegment = (text, notice = false) => {
-        text = (this.io.speechText || speechLanguage.speechText)(text);
+        text = (this.io.speechText || speechLanguage.speechText)(text, { readAloud });
         if (!text.trim() || !this.owns(turn)) return false;
         // In automatic mode the reply's own words choose its voice once. A
         // mistaken STT language must not read a French answer in English.
@@ -740,7 +742,7 @@
       let holdingSpeech = null;
       const speak = (text, notice = false) => {
         let scheduled = false;
-        for (const segment of speechLanguage.splitSpeechText((this.io.speechText || speechLanguage.speechText)(text))) scheduled = speakSegment(segment, notice) || scheduled;
+        for (const segment of speechLanguage.splitSpeechText((this.io.speechText || speechLanguage.speechText)(text, { readAloud }))) scheduled = speakSegment(segment, notice) || scheduled;
         return scheduled;
       };
       const dropHolding = () => { if (holdingSpeech && !holdingSpeech.playing) holdingSpeech.abort.abort(); };
@@ -795,7 +797,8 @@
       // An unstreamed reply names its own language; a chosen preference still wins.
       if (!streamed && reply.language && !speechLanguage.explicitSpeechLanguage(this.selection.language)) spokenLanguage = reply.language;
       dropHolding();
-      speak(streamed ? pending : reply.text);
+      speak(streamed ? pending : spokenPresentation.ordinarySpeech(reply.text, { language: spokenLanguage,
+        readAloud, preserveSafety: reply.preserveSafety === true }));
       await playback;
       if (speechError) { turn.timeline?.finish('failed'); throw speechError; }
       if (!this.owns(turn)) return;
@@ -874,8 +877,8 @@
   }
 
   // Last rung of the voice ladder: the device's own speech synthesis, cancelled like PCM playback.
-  async function browserSpeechVoice(synth, profile, signal) {
-    const pick = () => speechLanguage.pickBrowserVoice(synth.getVoices(), profile);
+  async function browserSpeechVoice(synth, profile, signal, localOnly) {
+    const pick = () => speechLanguage.pickBrowserVoice(synth.getVoices(), profile, { localOnly });
     const existing = pick();
     if (existing || profile.language !== 'en' || signal.aborted) return existing;
     // Chrome can populate voices asynchronously. Never silently use a French voice for English.
@@ -890,13 +893,13 @@
     });
   }
 
-  function speakWithBrowser({ text, language }, signal, onScheduled) {
+  function speakWithBrowser({ text, language, localOnly = false }, signal, onScheduled) {
     const synth = root.speechSynthesis;
     if (!synth || signal.aborted) return Promise.resolve();
     const profile = speechLanguage.PROFILES?.[language === 'en' ? 'en' : 'fr'];
     const start = voice => {
       if (signal.aborted) return Promise.resolve();
-      if (language === 'en' && !voice) throw new Error('No English speech voice is available on this device. The complete answer remains on screen.');
+      if ((language === 'en' || localOnly) && !voice) throw new Error(`No ${localOnly ? 'local ' : ''}${language === 'en' ? 'English' : 'French'} speech voice is available on this device. The complete answer remains on screen.`);
       return new Promise((resolve, reject) => {
         let started = false;
         const utterance = new root.SpeechSynthesisUtterance(text);
@@ -911,8 +914,8 @@
         synth.speak(utterance);
       });
     };
-    const voice = speechLanguage.pickBrowserVoice(synth.getVoices(), profile);
-    return voice || language !== 'en' ? start(voice) : browserSpeechVoice(synth, profile, signal).then(start);
+    const voice = speechLanguage.pickBrowserVoice(synth.getVoices(), profile, { localOnly });
+    return voice || language !== 'en' ? start(voice) : browserSpeechVoice(synth, profile, signal, localOnly).then(start);
   }
 
   async function openAudio(signal, onError = () => {}, options = {}) {

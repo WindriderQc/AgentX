@@ -1785,3 +1785,38 @@ test('an asynchronously discovered English voice is awaited and voice discovery 
     assert.equal(spoken, 1); assert.equal(listening, 0);
   } finally { globalThis.speechSynthesis = previous.synth; globalThis.SpeechSynthesisUtterance = previous.utterance; }
 });
+
+test('private English device playback refuses remote voices and selects a local English voice', async () => {
+  const { speakWithBrowser } = require('../public/browser-conversation');
+  const previous = { synth: globalThis.speechSynthesis, utterance: globalThis.SpeechSynthesisUtterance };
+  let voices = [{ name: 'French local', lang: 'fr-CA', localService: true }, { name: 'English remote', lang: 'en-CA', localService: false }];
+  const spoken = []; let changed;
+  globalThis.SpeechSynthesisUtterance = function (text) { this.text = text; };
+  globalThis.speechSynthesis = { getVoices: () => voices, addEventListener(_event, fn) { changed = fn; }, removeEventListener() {}, cancel() {},
+    speak(utterance) { spoken.push(utterance); setImmediate(() => utterance.onend()); } };
+  try {
+    const missing = speakWithBrowser({ text: 'Private retained reply', language: 'en', localOnly: true }, new AbortController().signal);
+    changed();
+    assert.equal(spoken.length, 0, 'remote English cannot satisfy a local-only request');
+    voices.push({ name: 'English local', lang: 'en-US', localService: true }); changed(); await missing;
+    assert.equal(spoken[0].voice.name, 'English local', 'locality outranks the remote voice’s exact locale');
+    voices = voices.filter(voice => voice.localService !== true);
+    await assert.rejects(speakWithBrowser({ text: 'Never sent to remote speech', language: 'en', localOnly: true }, new AbortController().signal), /No local English/);
+    assert.equal(spoken.length, 1);
+  } finally { globalThis.speechSynthesis = previous.synth; globalThis.SpeechSynthesisUtterance = previous.utterance; }
+});
+
+test('an ordinary unstreamed long answer is introduced and displayed whole; explicit reading is complete', async () => {
+  const full = 'Une explication détaillée. '.repeat(100) + 'FIN';
+  for (const request of ['Explique-moi cela', 'Lis-moi la réponse complète']) {
+    const spoken = [];
+    const h = harness({ transcribe: async () => request, turn: async () => ({ text: full, language: 'fr' }),
+      synthesize: async reply => { spoken.push(reply.text); return 'audio'; } });
+    try {
+      await h.conversation.start({ language: 'fr' }); await h.say();
+      assert.equal(h.messages.find(message => message.role === 'assistant').text, full);
+      if (request.startsWith('Lis')) assert.equal(spoken.join(''), full);
+      else { assert.match(spoken.join(''), /texte complet est à l’écran/); assert.ok(spoken.join('').length < 200); }
+    } finally { h.conversation.stop(); }
+  }
+});

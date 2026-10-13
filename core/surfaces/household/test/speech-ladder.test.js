@@ -133,3 +133,13 @@ test('a conversation never automatically repeats a partially scheduled reply', a
   assert.equal(conversation.state, 'error');
   conversation.stop();
 });
+
+test('a private surface can allow only local device speech in the chosen language', async () => {
+  const seen = [];
+  const ladder = createSpeechLadder({ request: async () => new Response('', { status: 503 }),
+    deviceVoice: ({ language }) => { seen.push(language); return language === 'en' && { localOnly: true, language: 'fr', unexpected: true }; } });
+  assert.deepEqual(await ladder.speak({ text: 'Complete retained text', language: 'en', choices }, live()),
+    { browserSpeech: { text: 'Complete retained text', language: 'en', localOnly: true } });
+  await assert.rejects(ladder.speak({ text: 'Texte conservé', language: 'fr', choices }, live()), /unavailable/);
+  assert.deepEqual(seen, ['en', 'fr']);
+});

@@ -18,6 +18,7 @@ test('Core work refreshes while a result is still being read aloud', async () =>
   let snapshots = 0, polls = 0, presentations = 0;
   const receipts = [];
   const context = { document: { createElement: () => new Element() }, crypto: { randomUUID: () => 'device' },
+    AgentXSpokenPresentation: require('../../../public/js/voice/spoken-presentation'),
     AbortSignal, setInterval: () => ({ unref() {} }), clearInterval() {} };
   vm.runInNewContext(fs.readFileSync(require.resolve('../public/conversation-work'), 'utf8'), context);
   const item = { id: 'work', sessionId: 'session', turnId: 'turn', revision: 1, state: 'completed', pending: false,

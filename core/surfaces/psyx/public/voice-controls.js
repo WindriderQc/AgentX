@@ -214,17 +214,19 @@ async function toggleVoiceRecording() {
   }
 }
 
-async function speakText(text) {
+async function speakText(text, { readAloud = true, preserveSafety = false } = {}) {
   if (!state.ready || !state.voice.enabled || !state.voice.reachable || !String(text || '').trim()) return;
   try {
     if (!window.VoixAudio) throw new Error('The local voice player is unavailable.');
     state.voice.speech ||= new window.VoixAudio.Speech({
       retryUnplayed: true,
+      playBrowser: window.AgentXVoice.speakWithBrowser,
       onReceipt: receipt => { $('voiceActionStatus').textContent = `Voice: ${receipt.provider} · ${receipt.voice} · ${receipt.language}`; },
       onMetrics: metrics => { $('voiceActionStatus').title = JSON.stringify(metrics); },
     });
     const language = state.voice.prefs.language;
-    const segments = window.NestorSpeech.splitSpeechText(spokenVoiceText(text));
+    const presented = window.AgentXSpokenPresentation.ordinarySpeech(text, { language, readAloud, preserveSafety });
+    const segments = window.NestorSpeech.splitSpeechText(spokenVoiceText(presented, { readAloud }));
     await state.voice.speech.speak((signal, segment, after) => synthesizePsyXSpeech({ text: segment, language, after }, signal), { segments });
   } catch (error) { if (error.name !== 'AbortError') showVoiceError(error); }
 }

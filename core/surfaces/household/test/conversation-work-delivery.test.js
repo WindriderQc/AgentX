@@ -55,3 +55,18 @@ test('Core can authorize an outstanding verified result on an older review and i
     assert.equal(h.stages.filter(stage => stage === 'claim').length, 1);
   } finally { h.feed.dispose(); delete global.document; }
 });
+
+test('automatic long work results are introduced, while Listen reads the complete retained result', async () => {
+  const row = item('long-result', true), full = 'Première explication. '.repeat(100) + 'FIN';
+  row.result.text = full;
+  const h = fixture([row]);
+  try {
+    h.feed.follow('owner-session'); await tick(); await h.feed.naturalPause();
+    assert.match(h.spoken[0], /texte complet est à l’écran/);
+    assert.equal(h.host.children[0].children[1].textContent, full);
+    assert.match(h.host.children[0].children[0].textContent, /presented/);
+    h.host.children[0].children.find(node => node.type === 'button').onclick(); await tick();
+    assert.equal(h.spoken[1], full);
+    assert.deepEqual(h.stages, ['displayed', 'claim', 'started', 'completed', 'replay', 'started', 'completed']);
+  } finally { h.feed.dispose(); delete global.document; }
+});

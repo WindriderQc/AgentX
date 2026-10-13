@@ -615,8 +615,8 @@ async function sendMessage(text, overrides = {}) {
     noteFrontierResult(finalResult);
     if (finalResult?.review?.scheduled) watchReview(state.conversationId);
     maybeAskCheckIn();
-    if (state.voice.prefs.spokenReplies && !overrides.voiceSession) void speakText(assistantContent);
-    return { text: assistantContent, language: state.voice.prefs.language };
+    if (state.voice.prefs.spokenReplies && !overrides.voiceSession) void speakText(assistantContent, { readAloud: window.AgentXSpokenPresentation.readingRequested(humanText), preserveSafety: !$('safetyBanner').hidden });
+    return { text: assistantContent, language: state.voice.prefs.language, preserveSafety: !$('safetyBanner').hidden };
   } catch (error) {
     if (state.turnSequence !== turnSequence) return;
     if (error.name === 'AbortError') {

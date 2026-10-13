@@ -21,7 +21,7 @@
       createSession: async () => ({ surface: 'household-learning' }),
       transcribe,
       message() {},
-      speechText: text => muted() ? '' : speech.speechText(text),
+      speechText: (text, options) => muted() ? '' : speech.speechText(text, options),
       async turn(_handle, text, signal) {
         const current = pending = Promise.resolve().then(() => turn(text, signal));
         try {
@@ -48,7 +48,7 @@
       async read(reply) {
         if (!conversation.audio) return null;
         conversation.wake.extend(); // an explicit reading button addresses Nestor
-        return conversation.interject(reply);
+        return conversation.interject(reply, { readAloud: true });
       },
     };
   }

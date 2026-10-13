@@ -802,7 +802,12 @@ requests and access refusals do not advance the ladder. Interruption never start
 that retry. The reply can remain unspoken if every
 voice fails. Server replies
 do not use browser `speechSynthesis`. PsyX uses its
-protected chosen-voice route without a device voice fallback. See
+protected chosen-voice route. Explicit English can fall back only to a system
+voice Chrome declares local and English; no matching local voice leaves speech
+unavailable and the complete text visible. French stays on its protected route.
+Ordinary replies beyond three sentences or 600 characters use a brief spoken
+introduction and complete screen text. Explicit reading and Listen replay keep
+all requested content; safety resources bypass that presentation threshold. See
 [shared speech behavior](AGENTS_AND_VOICE.md#shared-speech-behavior).
 
 `HOUSEHOLD_TEAM_MEMBERS` optionally lets the owner address a team member

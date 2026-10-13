@@ -309,7 +309,7 @@
   }
 
   async function speak(text, languageHint = readingLanguage, override = null) {
-    text = window.NestorSpeech.speechText(text);
+    text = window.NestorSpeech.speechText(text, { readAloud: true });
     if (!text || state.outputMuted) return;
     const profile = window.NestorSpeech.speechProfile(text, languageHint);
     stopPlayback();
