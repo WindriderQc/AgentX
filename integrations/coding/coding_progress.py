@@ -150,9 +150,9 @@ def test_kind(command: str) -> str | None:
 def test_identity(command: str) -> str:
     """Ignore output presentation, retaining test arguments and execution context."""
     # Do not guess at substitutions or unknown additional commands.
-    if "$(" in command or "`" in command:
+    if "$(" in command or "`" in command or "\n" in command or "\r" in command:
         return hashlib.sha256(command.encode()).hexdigest()
-    viewers = {"cat", "head", "tail", "grep", "sed", "awk", "wc", "tee"}
+    viewers = {"cat", "head", "tail", "grep", "wc", "tee"}
     quote, escaped, redirect = None, False, None
     end = len(command)
     for index, char in enumerate(command):
@@ -169,12 +169,16 @@ def test_identity(command: str) -> str:
             # || is another command, rather than an output display pipeline.
             tail = command[index + 1:]
             try:
-                display = shlex.split(tail)
+                lexer = shlex.shlex(tail, posix=True, punctuation_chars="|;&<>")
+                lexer.whitespace_split = True
+                lexer.commenters = ""
+                display = list(lexer)
             except ValueError:
                 display = []
             starts = [0] + [i + 1 for i, word in enumerate(display) if word == "|"]
             if (command[index:index + 2] == "||" or not display or
-                    any(i >= len(display) or Path(display[i]).name not in viewers for i in starts) or
+                    any(i >= len(display) or display[i] not in viewers for i in starts) or
+                    any(re.fullmatch(r"[|;&<>]+", word) and word != "|" for word in display) or
                     ";" in tail or "&&" in tail or "||" in tail):
                 return hashlib.sha256(command.encode()).hexdigest()
             end = index
@@ -185,7 +189,7 @@ def test_identity(command: str) -> str:
                 display = shlex.split(tail)
             except ValueError:
                 display = []
-            if (redirect is None or not display or Path(display[0]).name not in viewers or
+            if (redirect is None or not display or display[0] not in viewers or
                     any(char in tail for char in ";&|")):
                 return hashlib.sha256(command.encode()).hexdigest()
             end = index
@@ -195,11 +199,14 @@ def test_identity(command: str) -> str:
             redirect = descriptor.start() if descriptor else index
     stem = command[:end]
     if redirect is not None:
-        target = r"(?:'[^']*'|\"[^\"$`]*\"|[^\s<>|;&()]+)"
+        target = r"(?:'[^']*'|\"[^\"$`]*\"|(?:\\.|[^\s<>|;&()\\])+)"
         suffix = rf"(?:\d*>>?&?\s*{target}\s*)+"
         if re.fullmatch(suffix, stem[redirect:]):
             stem = stem[:redirect]
     try:
+        # Quoting changes expansions; keep their original spelling conservatively.
+        if any(char in stem for char in "$*?[]~"):
+            return hashlib.sha256(command.encode()).hexdigest()
         payload = json.dumps(shlex.split(stem), separators=(",", ":"))
     except ValueError:
         payload = command

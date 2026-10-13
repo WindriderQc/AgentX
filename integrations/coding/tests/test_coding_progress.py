@@ -123,16 +123,17 @@ class ProgressTest(unittest.TestCase):
         invocation = ("cd /workspace && /opt/node/bin/node benchmark/node_modules/jest/bin/jest.js "
                       "--config /opt/coding/jest.benchmark.config.cjs --runInBand")
         suffixes = [" 2>&1 | tail -60", " 2>&1 | grep -E '^Tests:|Suites:' | head -100",
-                    " 2>&1 > /tmp/second.log; wc -l /tmp/second.log", " > '/tmp/third log' 2>&1"]
+                    " 2>&1 > /tmp/second.log; wc -l /tmp/second.log", " > '/tmp/third log' 2>&1",
+                    " > /tmp/first\\ log 2>&1", " > /tmp/second\\ log 2>&1"]
         for index, suffix in enumerate(suffixes):
             self.clock[0] = 10 + index * 15
             self.call(str(index), invocation + suffix)
             self.clock[0] += 3
             self.result(str(index), "FAIL synthetic.test.js\nTests: 15 failed, 44 passed")
             self.assertEqual(self.progress.last_useful, 13)
-        self.assertEqual(self.progress.usage()["testSeconds"], 12)
+        self.assertEqual(self.progress.usage()["testSeconds"], 18)
         self.assertEqual(len(self.progress.seen_tests), 1)
-        self.clock[0] = 74
+        self.clock[0] = 95
         self.assertEqual(self.progress.tick(), "no_useful_progress")
 
     def test_changed_selectors_and_source_keep_useful_test_progress(self):
@@ -161,6 +162,21 @@ class ProgressTest(unittest.TestCase):
         for left, right in pairs:
             with self.subTest(left=left):
                 self.assertNotEqual(module.test_identity(left), module.test_identity(right))
+
+    def test_expansions_and_additional_executors_cannot_be_deduplicated_as_display(self):
+        prefix = "node scripts/run-jest.js "
+        pairs = [
+            ("--testNamePattern '$CASE'", '--testNamePattern "$CASE"'),
+            ("tests/*.test.js", "'tests/*.test.js'"),
+            ("| tail -20|node other-test.js", "| tail -20"),
+            ("| tail -20\nnode other-test.js", "| tail -20"),
+            ("| awk 'BEGIN {system(\"node other-test.js\")}'", "| tail -20"),
+            ("| sed 'e node other-test.js'", "| tail -20"),
+            ("| ./tail -20", "| tail -20"),
+        ]
+        for left, right in pairs:
+            with self.subTest(left=left):
+                self.assertNotEqual(module.test_identity(prefix + left), module.test_identity(prefix + right))
 
     def test_timed_native_jest_charges_budget_while_a_filtered_result_stays_unknown(self):
         command = ("cd /workspace && TEST_RUN_ID=synthetic timeout 240 /opt/node/bin/node "
