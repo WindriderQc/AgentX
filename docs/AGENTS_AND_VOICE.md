@@ -191,6 +191,14 @@ recognizer/model and microphone qualification. A spoken Stop cuts playback;
 already accepted Main work belongs to Core and continues independently. Task
 cancellation is a distinct command and requires its own execution receipt.
 
+Wake mode requires an interjection before Nestor (Hey/Eille/Heille/Hé/Eh/Oh/Ah,
+including known name transcriptions). A name alone or an ordinary reference such
+as “et Nestor” does not activate it. Once activated, the conversation stays open
+until Pause or an explicit sleep request; there is no inactivity expiry. Family
+defaults to wake mode, Personal to open listening. Nonempty recognized responses,
+including single digits, thanks and goodbye, are not discarded by a lexical noise
+blacklist. Acoustic noise/echo handling and recognition quality remain distinct.
+
 The loop speaks clauses and prepares at most one ahead. Household can play a
 holding phrase while waiting for reply text; available text drops a phrase that
 has not started. `say_end` flushes the last clause before a Household turn's
@@ -332,3 +340,26 @@ access, backup speech readiness or French Canadian speech quality.
 Open implementation and acceptance work is tracked in [status](STATUS.md#open)
 and the linked issues. Private measurements and review priorities belong in the
 owner's review record, rather than this distributable reference.
+
+Long requested readings use lossless ordered synthesis segments and remain
+interruptible. Normal long replies keep their full screen content with a brief
+spoken introduction; an explicit reading request overrides short spoken guidance
+and list summarization. Screen blocks and spoken projection are not silently
+clipped. Household accepts spoken reply records up to 50,000 UTF-16 units and
+refuses an oversized record explicitly; other surface turn bounds remain intact.
+Core synthesis similarly rejects requests beyond its 50,000-unit boundary rather
+than shortening them. Browser segmentation keeps each request within 4,000 units.
+
+Microphone captures that do not submit a Core request are kept apart from the
+conversation turns in the workflow view. Stop, activation, empty transcription
+and rejected ambient speech have their own local labels; they never invent a
+Guardian/Main run. Work polling continues during result playback. Audio frame
+scheduling and nonzero-signal scheduling are distinct browser observations.
+
+Pocket workers declare the language of their loaded model in health. A French
+worker is not advertised or dispatched as English; missing language evidence is
+unavailable rather than guessed. Household can use an explicitly matching English
+browser voice through its existing final fallback. Voice discovery waits briefly
+for Chrome and cancellation also cancels that wait. Fluency and speaker delivery
+still require device acceptance. Deploy the speech service and worker together
+before relying on these capabilities in a new Core build.
