@@ -9,6 +9,24 @@ function spokenVoiceText(text) {
   return window.NestorSpeech.speechText(text);
 }
 
+// The private adapter shares rung tracking with Household but keeps device speech disabled.
+// A failed accepted stream must never request the same selected voice again.
+async function synthesizePsyXSpeech({ text, language, after = null }, signal) {
+  state.voice.ladder ||= window.AgentXSpeechLadder.createSpeechLadder({
+    request: async ({ text, language, choice }, signal) => {
+      signal?.throwIfAborted();
+      const request = voicePreferences.synthesisRequest(spokenVoiceText(text),
+        { ...state.voice.prefs, language, ttsProvider: choice.provider, ttsVoice: choice.voice });
+      return fetch('/api/psyx/voice/synthesize/stream', { credentials: 'same-origin', method: 'POST', signal,
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) });
+    },
+    deviceVoice: () => false,
+    unavailable: 'PsyX speech is unavailable. The complete answer remains on screen.',
+  });
+  return state.voice.ladder.speak({ text, language: language || state.voice.prefs.language, after,
+    choices: [{ provider: state.voice.prefs.ttsProvider, voice: state.voice.prefs.ttsVoice }] }, signal);
+}
+
 function chooseInitialVoice(catalog) {
   // Preserve an explicit choice, including the default of a chosen provider.
   try {
@@ -108,12 +126,7 @@ function createPsyXVoiceSession() {
     },
     // Full confirmed replies reach the speech boundary. This keeps Markdown
     // cleanup whole and prevents reading a partial code block or incomplete link.
-    synthesize: async ({ text, language }, signal) => {
-      const request = voicePreferences.synthesisRequest(spokenVoiceText(text), { ...state.voice.prefs, language });
-      const response = await voiceSessionFetch('synthesize/stream', { method: 'POST',
-        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) }, signal);
-      return response;
-    },
+    synthesize: synthesizePsyXSpeech,
     message: () => {},
   }, (phase, detail) => {
     // The shared loop's own detail for a failed transcription is in English; PsyX shows its label.

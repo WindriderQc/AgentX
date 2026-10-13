@@ -224,10 +224,23 @@ saved through Team outranks `HOUSEHOLD_PERSONA_VOICES`; that instance map otherw
 overrides the catalog default. Duplicate choices are skipped.
 A rejected synthesis response advances to the next voice; a request exception
 can go straight to the device fallback where permitted.
-A later synthesis/playback failure permits one clause retry, at most once per
-turn, starting below the failed voice. Interruption cancels upstream work and
-does not initiate fallback. PsyX retries its chosen voice on its protected route
-and has no device voice fallback. Exhausting a ladder can leave text unspoken.
+A failure before audio is scheduled permits one clause retry, at most once per
+turn, starting below the failed voice. A partially scheduled clause is terminal;
+it is never repeated automatically. Explicit replay remains available. Invalid
+requests and access refusals do not advance to another voice. Interruption cancels
+playback and does not initiate fallback. PsyX keeps its protected chosen-voice
+route without device fallback and does not retry that same failed voice.
+Exhausting a ladder can leave text unspoken while the complete result stays visible.
+
+Kids Room and Lecture use the same hands-free conversation loop. Enable voice
+once to grant microphone access, then address Nestor with Hey/Eille/Oh/Ah before
+its name. Bare Nestor does not activate it; after activation short replies continue
+until Pause. Pause or leaving the page closes capture. Stop interrupts speech,
+including speech still being prepared. An already sent learning request may
+settle and show its complete answer; a new request waits for that same request.
+Packs, learning modes and family scopes remain owned by the page and Core.
+Typed turns while listening use the same loop and do not schedule a second playback.
+Screen blocks and complete replay text are retained on learning pages.
 
 The shared speech cleanup removes display markup while preserving prose and
 emergency phone numbers; stored text stays unchanged. This contract needs

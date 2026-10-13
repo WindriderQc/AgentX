@@ -795,9 +795,11 @@ On the Household browser conversation page (Super Dad or Famille), replies use
 `core/public/js/voice/speech-ladder.js`: the selected voice, the personality's
 presentation voice, its declared catalog fallback when present, then the
 browser's own speech where permitted. Duplicate choices are skipped, and a
-rejected synthesis request advances to the next rung. A failure after the stream
-starts permits one clause retry below the failed voice, at most once per turn.
-Interruption never starts that retry. The reply can remain unspoken if every
+rejected synthesis request advances to the next rung. A failure before audio is
+scheduled permits one clause retry below the failed voice, at most once per turn.
+A partially scheduled clause is terminal and requires explicit replay. Invalid
+requests and access refusals do not advance the ladder. Interruption never starts
+that retry. The reply can remain unspoken if every
 voice fails. Server replies
 do not use browser `speechSynthesis`. PsyX uses its
 protected chosen-voice route without a device voice fallback. See

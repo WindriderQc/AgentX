@@ -23,7 +23,7 @@ function browser({ voice = {}, ...extras } = {}) {
     voice: { enabled: true, reachable: true, prefs: { ...prefs.DEFAULTS, ttsProvider: 'windows_sapi', ttsVoice: 'Microsoft Caroline' } } };
   const context = { state, $, voicePreferences: prefs, AbortController, console,
     localStorage: { getItem: () => null }, saveVoicePreferences() {},
-    window: { NestorSpeech: speech, AgentXVoice: { ...shared, openAudio: async () => audio, ...voice }, addEventListener(type, fn) { listeners[type] = fn; } },
+    window: { NestorSpeech: speech, AgentXSpeechLadder: require('../../../public/js/voice/speech-ladder'), AgentXVoice: { ...shared, openAudio: async () => audio, ...voice }, addEventListener(type, fn) { listeners[type] = fn; } },
     document: { hidden: false, addEventListener(type, fn) { listeners[type] = fn; } },
     async fetch(url, options) { calls.push({ url, options });
       return url.endsWith('transcribe') ? new Response(JSON.stringify({ data: { text: 'Je suis débordé.' } })) : new Response('pcm'); },
@@ -199,21 +199,21 @@ test('PsyX speaks only a confirmed reply: its turn sends no text early, so nothi
   h.context.stopVoiceSession();
 });
 
-test('a PsyX voice stream that breaks while it plays is requested once more on the protected route, never elsewhere', async () => {
-  // PsyX has one chosen voice and no device voice: the retry is the same private request.
-  for (const [breaks, phase] of [[1, 'listening'], [2, 'error']]) {
+test('a failed PsyX stream is terminal without repeating the same private voice or using another route', async () => {
+  for (const playbackStarted of [false, true]) {
     let plays = 0;
     const h = browser({ sendMessage: async () => ({ text: 'Je suis là avec toi.', language: 'fr' }) });
     h.audio.play = async speech => {
-      assert.ok(speech instanceof Response, 'only a stream from the protected route is ever played');
-      if (++plays <= breaks) throw new Error('Voice stream failed');
+      assert.ok(speech instanceof Response);
+      plays++;
+      throw Object.assign(new Error('Voice stream failed'), { playbackStarted });
     };
     h.context.wireVoiceSession(); await h.$('voiceSessionStart').listeners.click(); await h.say();
     assert.deepEqual(h.calls.filter(call => call.url).map(call => call.url),
-      ['/api/psyx/voice/warm', '/api/psyx/voice/transcribe', '/api/psyx/voice/synthesize/stream', '/api/psyx/voice/synthesize/stream']);
-    assert.deepEqual(spoken(h).map(request => [request.text, request.voice]), Array(2).fill(['Je suis là avec toi.', 'Microsoft Caroline']));
-    assert.equal(plays, 2);
-    assert.equal(h.$('voiceSessionDialog').dataset.phase, phase);
+      ['/api/psyx/voice/warm', '/api/psyx/voice/transcribe', '/api/psyx/voice/synthesize/stream']);
+    assert.deepEqual(spoken(h).map(request => [request.text, request.voice]), [['Je suis là avec toi.', 'Microsoft Caroline']]);
+    assert.equal(plays, 1);
+    assert.equal(h.$('voiceSessionDialog').dataset.phase, 'error');
     h.context.stopVoiceSession();
   }
 });
