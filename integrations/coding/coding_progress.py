@@ -207,7 +207,9 @@ def test_identity(command: str) -> str:
         # Quoting changes expansions; keep their original spelling conservatively.
         if any(char in stem for char in "$*?[]~{}"):
             return hashlib.sha256(command.encode()).hexdigest()
-        payload = json.dumps(shlex.split(stem), separators=(",", ":"))
+        # Validate quoting without erasing shell operators, quotes or escapes.
+        shlex.split(stem)
+        payload = stem.strip()
     except ValueError:
         payload = command
     return hashlib.sha256(payload.encode()).hexdigest()
