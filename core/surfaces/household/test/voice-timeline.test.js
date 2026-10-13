@@ -83,6 +83,33 @@ test('a measure keeps a reported duration beside the marks; anything else is ign
   assert.deepEqual(timeline.values(), { requestSent: 0, sttServer: 450, audioMs: 4200, silenceMs: 1000, interrupted: false });
 });
 
+test('a voice turn keeps playback requested, frame scheduled and non-silent signal scheduled separate', async () => {
+  const h = loop();
+  h.audio.play = async (_bytes, _signal, _review, _gain, callbacks) => {
+    assert.deepEqual(h.sent, [], 'a playback request is not a scheduling receipt');
+    h.clock.at += 100;
+    callbacks.onScheduled();
+    assert.deepEqual(h.sent, [], 'silent padding does not attest a signal');
+    h.clock.at += 400;
+    callbacks.onSignalScheduled();
+  };
+  await h.conversation.start({ language: 'fr' }); await h.say();
+  assert.deepEqual(h.sent[0].timings, { sttDone: 600, requestSent: 600, firstDelta: 4600,
+    firstAudio: 5100, firstFrameScheduled: 5200, firstSignalScheduled: 5600, interrupted: false });
+  assert.deepEqual(normalizeVoiceTimings(h.sent[0].timings), h.sent[0].timings);
+  h.conversation.stop();
+});
+
+test('a failed player retains the request time without inventing scheduled audio', async () => {
+  const h = loop();
+  h.audio.play = async () => { throw new Error('No output device'); };
+  await h.conversation.start({ language: 'fr' }); await h.say();
+  assert.equal(h.sent[0].timings.firstAudio, 5100);
+  assert.equal(h.sent[0].timings.firstFrameScheduled, undefined);
+  assert.equal(h.sent[0].timings.firstSignalScheduled, undefined);
+  h.conversation.stop();
+});
+
 test('a voice turn reports what explains its transcription: silence waited, clip length and recognition time', async () => {
   let utterance;
   const h = loop({ async transcribe() { h.clock.at += 600; return { text: 'Bonjour Nestor', sttMs: 450 }; } });

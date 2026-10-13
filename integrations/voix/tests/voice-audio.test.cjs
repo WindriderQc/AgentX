@@ -93,3 +93,35 @@ test('scheduled playback fires once after the first successful node start and be
   source.send({ type: 'done', frames: 2, samples: 4800 }); source.close();
   context.nodes.forEach(node => node.onended()); await playing;
 });
+
+test('silent padding schedules a frame without claiming a non-silent signal', async () => {
+  const context = new Context(), source = stream(); let frames = 0, signals = 0;
+  const playing = new Player(context, { onScheduled() { frames++; }, onSignalScheduled() { signals++; } })
+    .play(source.response, new AbortController().signal);
+  source.send(meta);
+  source.send({ ...frame(), pcm: Buffer.from(new Float32Array(2400).buffer).toString('base64') });
+  await tick();
+  assert.equal(frames, 1);
+  assert.equal(signals, 0);
+  source.send(frame(2)); await tick();
+  assert.equal(signals, 1);
+  source.send(frame(3)); await tick(); assert.equal(signals, 1);
+  source.send({ type: 'done', frames: 3, samples: 7200 }); source.close();
+  context.nodes.forEach(node => node.onended());
+  const metrics = await playing;
+  assert.ok(Number.isFinite(metrics.first_signal_scheduled_ms));
+  assert.match(metrics.basis, /not acoustic/);
+});
+
+test('a silent completed stream leaves the signal scheduling time absent', async () => {
+  const context = new Context(), source = stream(); let signals = 0;
+  const playing = new Player(context, { onSignalScheduled() { signals++; } })
+    .play(source.response, new AbortController().signal);
+  source.send(meta);
+  source.send({ ...frame(), pcm: Buffer.from(new Float32Array(2400).buffer).toString('base64') });
+  source.send(done); source.close(); await tick();
+  context.nodes.forEach(node => node.onended());
+  const metrics = await playing;
+  assert.equal(signals, 0);
+  assert.equal(metrics.first_signal_scheduled_ms, undefined);
+});

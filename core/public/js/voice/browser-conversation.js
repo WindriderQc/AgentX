@@ -703,8 +703,14 @@
           }
           this.monitor(turn);
           this.show('speaking'); turn.replyStarted = true;
-          if (!notice) { turn.timeline?.mark('firstAudio'); this.reportTimeline(turn); }
-          try { await this.audio.play(bytes, turn.speech.signal); }
+          // Preserve firstAudio as the legacy playback-request offset.
+          // Actual scheduling comes from the player and can follow silent padding.
+          if (!notice) turn.timeline?.mark('firstAudio');
+          const callbacks = notice ? {} : {
+            onScheduled: () => turn.timeline?.mark('firstFrameScheduled'),
+            onSignalScheduled: () => { turn.timeline?.mark('firstSignalScheduled'); this.reportTimeline(turn); },
+          };
+          try { await this.audio.play(bytes, turn.speech.signal, false, null, callbacks); }
           catch (error) {
             // An accepted stream can still fail while it plays (its engine stopped).
             // Say that one clause again with the next voice; never twice in a turn.
@@ -715,7 +721,7 @@
             await this.awaitCandidate(turn);
             if (!this.owns(turn)) return;
             this.show('speaking');
-            await this.audio.play(bytes, turn.speech.signal);
+            await this.audio.play(bytes, turn.speech.signal, false, null, callbacks);
           }
         }).catch(error => { if (!turn.interrupted) speechError = error; });
         prefetchSlot = previousPlayback;
@@ -962,7 +968,7 @@
         playSignal?.addEventListener('abort', finish, { once: true });
         if (playSignal?.aborted || closed) finish();
       });
-      const play = async (bytes, playSignal, isReview = false, gain = null, { onScheduled } = {}) => {
+      const play = async (bytes, playSignal, isReview = false, gain = null, { onScheduled, onSignalScheduled } = {}) => {
         if (!root.VoixAudio) throw new Error('The local speech player is unavailable.');
         const abort = new AbortController(); activePlay = abort;
         const cancel = () => abort.abort();
@@ -982,7 +988,7 @@
           if (bytes?.browserSpeech) return await speakWithBrowser(bytes.browserSpeech, abort.signal, onScheduled);
           return await new root.VoixAudio.Player(!isReview && playbackHold ? playbackHold.playerContext : context, {
             destinations: output ? [output] : isReview ? [context.destination] : [observed ? analyser : context.destination, { node, input: 1 }],
-            onMetrics: options.onPlaybackMetrics, onScheduled,
+            onMetrics: options.onPlaybackMetrics, onScheduled, onSignalScheduled,
           }).play(bytes, abort.signal, { rate: gain !== null ? 1 : options.playbackRate?.() || 1 });
         } finally {
           output?.disconnect();

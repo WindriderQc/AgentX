@@ -2,7 +2,8 @@
    person's speech was decided. Browser timing, not an acoustic measurement. */
 (function (root) {
   'use strict';
-  const MARKS = Object.freeze(['sttDone', 'requestSent', 'firstDelta', 'holdingPhrase', 'firstAudio']);
+  const MARKS = Object.freeze(['sttDone', 'requestSent', 'firstDelta', 'holdingPhrase', 'firstAudio',
+    'firstFrameScheduled', 'firstSignalScheduled']);
   // Durations in ms that explain the marks: the silence waited before the end of
   // speech was decided, the length of the captured clip, and the recognition time
   // the speech service reports (the rest of `sttDone` is upload and transport).

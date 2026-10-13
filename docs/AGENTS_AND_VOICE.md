@@ -222,12 +222,11 @@ the timeline's marks do not.
 
 **Resources the voice needs**
 
-- The speech host keeps recognition and its synthesis engines in video memory.
-  Whatever else is resident on that card, a language model included, fits
-  beside them with headroom: once the memory is oversubscribed, the idle speech
-  processes are pushed out and the first utterance after a pause pays for their
-  return. A model shares that card only when it is pinned there; one loaded for
-  a short job leaves on its own.
+- The speech host keeps engines warmed on their configured devices. GPU
+  recognition needs video-memory headroom beside resident language models and
+  other CUDA consumers. CPU synthesis such as Pocket TTS needs CPU and RAM
+  capacity; it does not require a second synthesis model in video memory.
+  Qualify simultaneous use without changing installed residency or contexts.
 - The spoken lane's model is resident and fully in video memory on the host
   configured for it. `voice_persona_chat` stays on that host: it never follows
   its model to another host, the speech host included. Another caller on the
@@ -241,9 +240,10 @@ the timeline's marks do not.
 - Every spoken turn records its timeline, its server phases and its model
   phases. A change to the voice path is kept only with a measurement before and
   after on comparable turns.
-- A speech engine that fails during a turn falls back audibly. A speech host
-  that is off leaves no server voice: that case is an accepted gap until a
-  backup speech peer is qualified.
+- A speech engine that fails during a turn follows the surface's declared
+  fallback policy. An instance with a configured backup speech peer qualifies
+  stateless transcription and synthesis there; without a qualified backup,
+  losing the speech host leaves server voice unavailable.
 
 ## Measure the path that the person experiences
 
@@ -254,9 +254,15 @@ the timeline's marks do not.
 | `firstTokenMs` | Dispatch to the first streamed content, thinking or tool-call frame | Not necessarily visible reply text or audible speech |
 | `admissionWaitMs`, `hostGateWaitMs`, `retry` | Waits before Ollama received the call: runtime admission, Core's host gate, and retries with their backoff | Absent on rows recorded before they existed; Ollama's internal queue is not reported separately |
 | `promptPrefix.divergence` | First structural change between observed agent calls on the same host/model | Hashes/counts, not token-level cache evidence; unobserved callers can interfere |
-| Household `voiceTimings` | Browser endpoint decision to transcription, request, reply text, holding and first reply playback; plus the trailing silence waited (`silenceMs`), the clip length (`audioMs`) and the recognition time the speech service reports (`sttServer`) | Marks start after the trailing silence; browser timing, not physical speech end or acoustic output |
+| Household `voiceTimings` | Browser endpoint decision to transcription, request, reply text, holding and playback requested (`firstAudio`, legacy name); first frame scheduled and first non-silent frame scheduled are separate player callbacks. Also the trailing silence waited (`silenceMs`), clip length (`audioMs`) and service recognition time (`sttServer`) | A nonzero sample distinguishes a signal frame from padding; it does not identify speech. Marks start after trailing silence and do not attest acoustic output |
 | Household `serverTimings` | From the turn request: context prepared, answer back; for a native agent run, gateway accepted, run created, generation or tool started, stream ended, final answer read | Server clock only; a deterministic reply has none, the direct lane has no run steps |
 | Device acceptance | Actual capture, interruption, reconnect and audible reply | Must be checked on the intended device |
+
+`firstFrameScheduled` is the first successful player scheduling callback;
+`firstSignalScheduled` is the first such PCM frame containing a nonzero sample.
+Silent padding can establish the former without the latter. A browser speech
+engine's start event provides scheduling evidence only, because its PCM is not
+available to this player. None of these marks proves a first audible word.
 
 Unreported phases stay absent rather than becoming zero. Prefix observations
 apply to instrumented OpenClaw/Hermes calls; they are not universal direct-lane

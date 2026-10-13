@@ -36,17 +36,18 @@
   }
 
   class Player {
-    constructor(context, { destinations, onReceipt, onMetrics, onScheduled } = {}) {
+    constructor(context, { destinations, onReceipt, onMetrics, onScheduled, onSignalScheduled } = {}) {
       this.context = context;
       this.destinations = destinations || [context.destination];
       this.onScheduled = onScheduled || (() => {});
+      this.onSignalScheduled = onSignalScheduled || (() => {});
       this.onReceipt = onReceipt || (() => {}); this.onMetrics = onMetrics || (() => {});
     }
     async play(input, signal, { rate = 1, requestStartedAt } = {}) {
       if (signal.aborted) throw abortError();
       const context = this.context, pending = new Set(), nodes = new Set();
       const started = Number.isFinite(requestStartedAt) ? requestStartedAt : root.performance.now();
-      let cursor = 0, reader, firstScheduled = null, gapMs = 0, gaps = 0, peakBufferedMs = 0;
+      let cursor = 0, reader, firstScheduled = null, firstSignalScheduled = null, gapMs = 0, gaps = 0, peakBufferedMs = 0;
       let rejectAbort, scheduled = false;
       const aborted = new Promise((_, reject) => { rejectAbort = reject; });
       aborted.catch(() => {});
@@ -54,7 +55,7 @@
       const abort = () => { stopNodes(); reader?.cancel().catch(() => {}); rejectAbort(abortError()); };
       signal.addEventListener('abort', abort, { once: true });
       const active = () => { if (signal.aborted) throw abortError(); };
-      const schedule = async buffer => {
+      const schedule = async (buffer, hasSignal) => {
         active();
         while (cursor - context.currentTime > 3 && pending.size) {
           await Promise.race([...pending, aborted]); active();
@@ -77,7 +78,16 @@
         let resolve;
         const done = new Promise(r => { resolve = r; }); pending.add(done);
         node.onended = () => { node.disconnect(); node.buffer = null; nodes.delete(node); pending.delete(done); resolve(); };
-        try { node.start(at); if (!scheduled) { scheduled = true; this.onScheduled(); } }
+        try {
+          node.start(at);
+          if (!scheduled) { scheduled = true; this.onScheduled(); }
+          // A nonzero sample distinguishes a signal frame from silent padding.
+          // This is scheduling evidence, not a speech or acoustic detector.
+          if (hasSignal && firstSignalScheduled === null) {
+            firstSignalScheduled = root.performance.now() - started;
+            this.onSignalScheduled();
+          }
+        }
         catch (error) { node.onended(); throw error; }
       };
       try {
@@ -94,7 +104,7 @@
             if (samples) {
               const buffer = context.createBuffer(1, samples.length, decoder.meta.sample_rate);
               buffer.copyToChannel(samples, 0);
-              await schedule(buffer);
+              await schedule(buffer, samples.some(value => value !== 0));
             }
           };
           for (;;) {
@@ -113,10 +123,15 @@
           const buffer = await Promise.race([context.decodeAudioData(bytes), aborted]); active();
           if (response?.headers) this.onReceipt({ provider: response.headers.get('x-voix-provider'),
             voice: decodeURIComponent(response.headers.get('x-voix-voice') || ''), language: response.headers.get('x-voix-language') });
-          await schedule(buffer);
+          let hasSignal = false;
+          for (let channel = 0; channel < buffer.numberOfChannels && !hasSignal; channel++) {
+            hasSignal = buffer.getChannelData(channel).some(value => value !== 0);
+          }
+          await schedule(buffer, hasSignal);
         }
         await Promise.race([Promise.all([...pending]), aborted]); active();
         const metrics = { first_scheduled_ms: Math.round(firstScheduled || 0), buffer_gap_ms: Math.round(gapMs),
+          ...(firstSignalScheduled !== null ? { first_signal_scheduled_ms: Math.round(firstSignalScheduled) } : {}),
           buffer_gaps: gaps, peak_buffered_ms: Math.round(peakBufferedMs), basis: 'browser scheduling; not acoustic arrival' };
         this.onMetrics(metrics);
         return metrics;
