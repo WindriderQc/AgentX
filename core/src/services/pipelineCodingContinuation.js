@@ -178,11 +178,15 @@ async function continueRecovered(pipelineId, requestId, input, control) {
     if (own && config.enabled === false) await abandon(task, requestId, wanted, fail('Continuation abandoned before grant'));
     throw fail('The abandonment is received; no credit or worker was created. Review changed proof before a new intent');
   }
-  if (!config || config.enabled !== false || (config.active && !own)
-    || task.codingAutonomy?.revision !== input.expectedRevision)
+  if (!config || config.enabled !== false || (config.active && !own))
     throw fail('Pause autonomy, release its active slot and review the current task revision');
-  await evidence(task, requestId, wanted, control);
+  if (task.codingAutonomy?.revision !== input.expectedRevision) {
+    const changed = fail('The task revision changed; review its current evidence before another continuation');
+    if (own) await abandon(task, requestId, wanted, changed);
+    throw changed;
+  }
   if (!own) {
+    await evidence(task, requestId, wanted, control);
     const locked = await Settings.updateOne({ _id: ID, enabled: false, active: null, revision: config.revision },
     { $set: { active: { pipelineId, requestId, recovery: { kind: 'coding-continuation', key: wanted.key,
       fingerprint: wanted.fingerprint } } }, $inc: { revision: 1 } }, { writeConcern: WC });

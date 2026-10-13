@@ -407,12 +407,14 @@ test('an unreceived abandonment retains the exact selection fence and every orig
   interceptWrite(Settings, update => update.$set?.active?.recovery?.kind === 'coding-continuation', async commit => {
     const result = await commit(); await Task.updateOne({ pipelineId: '0001' }, { $set: { planRevision: 1 } }); return result;
   });
-  interceptWrite(Task, update => update.$set?.['codingAutonomy.continuationAborts'],
+  const spy = interceptWrite(Task, update => update.$set?.['codingAutonomy.continuationAborts'],
     async () => ({ acknowledged: false, modifiedCount: 0 }));
   const before = await task(); await expect(grant(input)).rejects.toThrow('acknowledgement uncertain');
   expect((await settings()).active.recovery.key).toBe(input.key);
   expect((await task()).codingAutonomy.runs).toEqual(before.codingAutonomy.runs);
   expect((await task()).codingAutonomy.budgetGrants).toBeUndefined();
+  spy.mockRestore(); await expect(grant(input)).rejects.toThrow('plan');
+  expect((await settings()).active).toBeNull(); expect((await task()).codingAutonomy.continuationAborts).toHaveLength(1);
 });
 test('lost applied abandonment acknowledgement is durably reconciled with the same intent before releasing its fence', async () => {
   await workerExit(); const input = await reviewedBody({ nativeAttemptLimit: 3 });
@@ -424,6 +426,15 @@ test('lost applied abandonment acknowledgement is durably reconciled with the sa
   await expect(grant(input)).rejects.toThrow('acknowledgement uncertain'); spy.mockRestore();
   expect((await settings()).active.recovery.key).toBe(input.key);
   await expect(grant(input)).rejects.toThrow('abandonment is received');
+  expect((await settings()).active).toBeNull(); expect((await task()).codingAutonomy.budgetGrants).toBeUndefined();
+  expect((await task()).codingAutonomy.continuationAborts).toHaveLength(1); expect(control.launch).not.toHaveBeenCalled();
+});
+test('a reservation expiring under the fence receives an unapplied abandonment and no worker', async () => {
+  await workerExit(); const input = await reviewedBody({ nativeAttemptLimit: 3 });
+  interceptWrite(Settings, update => update.$set?.active?.recovery?.kind === 'coding-continuation', async commit => {
+    const result = await commit(); job.reservation.end = new Date(Date.now() - 1000).toISOString(); return result;
+  });
+  await expect(grant(input)).rejects.toThrow('campaign');
   expect((await settings()).active).toBeNull(); expect((await task()).codingAutonomy.budgetGrants).toBeUndefined();
   expect((await task()).codingAutonomy.continuationAborts).toHaveLength(1); expect(control.launch).not.toHaveBeenCalled();
 });
