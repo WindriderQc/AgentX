@@ -513,7 +513,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     if (state === 'idle' && !open.checked) void releaseOpen();
     if (state === 'starting') void speechFallback.probe(() => api('/api/voix/health'));
     speechFallback.sync();
-    el('conversationStatus').textContent = detail || (state === 'listening' && conversation.selection?.wakeWord ? (conversation.wake.active() ? 'Listening. Go on, or say “Merci Nestor”.' : 'Standby · say “Hey Nestor”.') : labels[state]);
+    el('conversationStatus').textContent = detail || (state === 'listening' && conversation.selection?.wakeWord ? (conversation.wake.active() ? 'Listening · conversation continues until Pause.' : 'Standby · say “Hey/Eille/Oh/Ah Nestor”.') : labels[state]);
     el('conversationPresence').dataset.state = state;
     const reviewing = state === 'reviewing';
     const active = !['idle', 'paused', 'error', 'reviewing'].includes(state);
@@ -551,7 +551,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     settings: el('conversationBrowserSttSettings'), indicator: el('conversationBrowserSttIndicator') },
   { onConsent: () => { if (conversation.state === 'reviewing') void conversation.start(selection()); } });
   function renderAudioReview() {
-    if (conversation.state === 'listening' && conversation.selection?.wakeWord) el('conversationStatus').textContent = conversation.wake.active() ? 'Listening. Go on, or say “Merci Nestor”.' : 'Standby · say “Hey Nestor”.';
+    if (conversation.state === 'listening' && conversation.selection?.wakeWord) el('conversationStatus').textContent = conversation.wake.active() ? 'Listening · conversation continues until Pause.' : 'Standby · say “Hey/Eille/Oh/Ah Nestor”.';
     const info = conversation.audio?.reviewStatus();
     const reviewing = conversation.state === 'reviewing';
     const canReview = ['listening', 'hearing', 'reviewing'].includes(conversation.state) && !conversation.activeTurn && !conversation.turnPending;

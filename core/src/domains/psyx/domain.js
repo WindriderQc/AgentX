@@ -194,7 +194,7 @@ function composeSystemContext(state, control, { conversationId = null, safety = 
     ? 'The browser explicitly selected English for this spoken turn. Reply in English.'
     : 'The spoken language is français québécois. Réponds en français québécois et tutoie la personne, même si des mots anglais figurent dans sa transcription.') : SYSTEM_PROMPT;
   return [system, profile, portrait, measures, memory, techniques, controlSystemMessage(control), time ? timeSystemMessage(time) : '', opening,
-    voice ? `${SPOKEN_REPLY_INSTRUCTION} This is a spoken turn. Answer naturally in two to five short sentences, usually 30 to 90 words, without lists. Ask at most one question.` : '',
+    voice ? `${SPOKEN_REPLY_INSTRUCTION} This is a spoken turn. Usually use 30 to 90 words without lists; explicit readings may be longer. Ask at most one question.` : '',
     safety ? SAFETY_INSTRUCTION : ''].filter(Boolean).join('\n\n');
 }
 

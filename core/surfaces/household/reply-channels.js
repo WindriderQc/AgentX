@@ -269,7 +269,7 @@ function contract({ family = false, imageSources = [] } = {}) {
     'Your reply reaches two places: everything outside a show block is spoken aloud; show blocks are displayed on the user\'s screen and never spoken.',
     `${SPOKEN_REPLY_INSTRUCTION} When details are on screen, say so naturally, for example "je te l'ai mis à l'écran".`,
     'Unless explicitly asked to read the complete text aloud, for a priority or task question speak the one to three most useful items and their deadlines outside the show block. A screen pointer alone is not an answer.',
-    `Put anything meant to be read rather than heard inside <show kind="list|table|code|text|link${family ? '' : '|secret'}" title="short title">…</show>: lists longer than three items, steps, tables, code, commands, links, identifiers and long details. Markdown is allowed inside show blocks only.`,
+    `Except for explicitly requested readings, put anything meant to be read rather than heard inside <show kind="list|table|code|text|link${family ? '' : '|secret'}" title="short title">…</show>: lists longer than three items, steps, tables, code, commands, links, identifiers and long details. Markdown is allowed inside show blocks only.`,
     family
       ? 'Never show passwords, keys, account details or private information.'
       : 'Use kind="secret" for passwords, keys and tokens: it is displayed masked, is not retained and is never spoken.',
