@@ -138,6 +138,7 @@ class ProgressTest(unittest.TestCase):
         for command in ["echo timeout 240 node core/node_modules/jest/bin/jest.js",
                         "timeout 240 echo node core/node_modules/jest/bin/jest.js",
                         "timeout --help node core/node_modules/jest/bin/jest.js",
+                        "timeout --signal=NOTASIGNAL 240 node core/node_modules/jest/bin/jest.js",
                         "timeout --kill-after=bad 240 node core/node_modules/jest/bin/jest.js",
                         "timeout -k 30", "timeout nope node core/node_modules/jest/bin/jest.js",
                         "timeout 240 node synthetic.js core/node_modules/jest/bin/jest.js"]:
@@ -155,6 +156,23 @@ class ProgressTest(unittest.TestCase):
         self.assertEqual(self.progress.tick(), "hard_budget")
         self.assertEqual(self.progress.usage()["testSeconds"], 30)
         self.assertIsNone(self.progress.progress_at)
+
+    def test_native_timeout_exit_cannot_credit_progress_or_discard_real_test_failures(self):
+        for index, code in enumerate([124, 125, 126, 127, 137, 143]):
+            with self.subTest(code=code):
+                self.call(str(index), "timeout 240 node core/node_modules/jest/bin/jest.js --runInBand")
+                self.clock[0] += 10
+                self.result(str(index), f"Synthetic wrapper termination\n[exit code: {code}]", error=True)
+                self.assertEqual(self.progress.last_test, {"name": "jest", "outcome": "unknown"})
+                self.assertIsNone(self.progress.progress_at)
+        self.assertEqual(self.progress.usage()["testSeconds"], 60)
+        self.call("real-test", "timeout 240 node core/node_modules/jest/bin/jest.js --runInBand")
+        self.result("real-test", "FAIL synthetic.test.js\n[exit code: 1]", error=True)
+        self.assertEqual(self.progress.last_test, {"name": "jest", "outcome": "failed"})
+        self.assertEqual(self.progress.last_useful, 60)
+        self.call("unwrapped", "node core/node_modules/jest/bin/jest.js --runInBand")
+        self.result("unwrapped", "[exit code: 124]", error=True)
+        self.assertEqual(self.progress.last_test, {"name": "jest", "outcome": "failed"})
 
     def test_native_jest_detection_and_json_decoder_do_not_promote_mentions_or_arbitrary_json(self):
         for command in ["echo node benchmark/node_modules/jest/bin/jest.js",
