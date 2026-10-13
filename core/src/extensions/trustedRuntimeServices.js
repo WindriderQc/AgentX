@@ -642,7 +642,7 @@ function createTrustedRuntimeServices(overrides = {}) {
     }),
     inference: Object.freeze({
       execute(request, options) {
-        return require('../services/execution/openclawInference').withExecutionSource((input, fixed) => executeRoutedInference(deps, input, fixed), deps.openclawClient)(request, options);
+        return require('../services/execution/openclawInference').withExecutionSource(require('../services/embeddingRuntimeHostChain').wrap((input, fixed) => executeRoutedInference(deps, input, fixed), deps), deps.openclawClient)(request, options);
       }
     }),
     routing: Object.freeze({

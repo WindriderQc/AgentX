@@ -77,7 +77,8 @@ and secrets outside the checkout; never copy production volumes into Git.
 
 ### Settings catalog and Configuration view
 
-`AGENTX_EMBEDDING_HOST_CHAIN` optionally restricts the embedding proxy to an
+`AGENTX_EMBEDDING_HOST_CHAIN` optionally restricts the embedding proxy and native
+runtime embedding clients (including OpenClaw's `/api/embed` bridge) to an
 ordered JSON array of registered host IDs or allowlisted URLs, for example
 `["primary","secondary","cpu-embed"]`. It replaces the default routed-host
 plus fleet fallback for implicit embedding requests. An exhausted chain refuses
@@ -86,6 +87,9 @@ before inference. Explicit allowlisted host overrides remain single-host request
 Install the same embedding artifact on every candidate and preserve its vector
 dimensions. Configure model residency and native admission separately; naming a
 host in this chain does not reserve resources or authorize model installation.
+Native runtime clients advance after a proven refusal before dispatch, an
+unreachable host probe or a terminal model-missing reply. An uncertain dispatch,
+timeout or failed completion remains with its native owner for reconciliation.
 
 `shared/envCatalog.json` lists every setting an instance can give the services.
 It has two kinds of entries:
