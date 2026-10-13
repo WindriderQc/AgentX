@@ -35,7 +35,7 @@ test('lettering plans persist, preserve exact labels, restore and reject conflic
   await expect(service.accept(session.sessionId, { ...input, context: { ...input.context, textPolicy: { ...textPolicy, strategy: 'single-pass' } } })).rejects.toMatchObject({ statusCode: 409 });
   bridge.invoke.mockImplementationOnce(async () => ({ proposal: { ...proposal, textPlan: { ...textPlan, labels: [{ ...label, text: 'Misspelled' }] } }, text: 'Changed' }));
   await service.accept(session.sessionId, { ...input, clientTurnId: randomUUID() });
-  expect((await wait(service, session.sessionId))[1]).toMatchObject({ state: 'failed', error: expect.stringContaining('modifié ou omis') });
+  expect((await wait(service, session.sessionId))[1]).toMatchObject({ state: 'failed', error: expect.stringContaining('changed or omitted') });
   expect(imageService.accept).not.toHaveBeenCalled();
 });
 

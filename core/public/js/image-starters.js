@@ -13,13 +13,13 @@
       if (!item) return;
       $('image-starter-description').textContent = item.description;
       const count = item.referenceCount;
-      $('image-starter-references').textContent = `Point de départ : ${count} référence${count > 1 ? 's' : ''}. Actuellement : ${context.referenceCount}.`;
+      $('image-starter-references').textContent = `Starting point: ${count} reference${count > 1 ? 's' : ''}. Currently: ${context.referenceCount}.`;
       const preferred = context.profiles.find(p => p.family === item.preferredFamily);
-      $('image-starter-recipe').textContent = preferred ? `Recette suggérée : ${preferred.label}. Tu peux choisir une autre recette.` : '';
+      $('image-starter-recipe').textContent = preferred ? `Suggested recipe: ${preferred.label}. You can choose another recipe.` : '';
       $('image-starter-tips').replaceChildren(...item.tips.map(tip => {
         const row = document.createElement('li'); row.textContent = tip; return row;
       }));
-      $('image-starter-replace').textContent = context.hasPrompt ? 'Ce bouton remplace le brief actuel. Les références et réglages restent sélectionnés.' : 'Le canevas prépare ton brief. Remplace les passages entre crochets avant de créer.';
+      $('image-starter-replace').textContent = context.hasPrompt ? 'This button replaces the current brief. References and settings stay selected.' : 'The template prepares your brief. Replace the bracketed passages before creating.';
     }
     select.addEventListener('change', refresh);
     button.addEventListener('click', () => {
@@ -30,15 +30,15 @@
     const ready = (async () => {
       try {
         const response = await fetch('/data/image-starters.json');
-        if (!response.ok) throw new Error('Les canevas sont indisponibles pour le moment.');
+        if (!response.ok) throw new Error('Templates are unavailable right now.');
         const data = await response.json();
-        if (data.version !== 1 || !Array.isArray(data.starters) || !data.starters.length) throw new Error('Les canevas sont indisponibles pour le moment.');
+        if (data.version !== 1 || !Array.isArray(data.starters) || !data.starters.length) throw new Error('Templates are unavailable right now.');
         starters = data.starters;
         for (const item of starters) {
           const option = document.createElement('option'); option.value = item.id; option.textContent = item.title; select.append(option);
         }
         refresh();
-      } catch { $('image-starter-status').textContent = 'Les canevas sont indisponibles pour le moment. Tu peux écrire ton brief directement.'; }
+      } catch { $('image-starter-status').textContent = 'Templates are unavailable right now. You can write your brief directly.'; }
     })();
     refresh();
     return { refresh, ready };

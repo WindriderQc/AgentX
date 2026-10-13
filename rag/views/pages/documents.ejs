@@ -18,7 +18,7 @@
     <summary><i class="fa-solid fa-filter" aria-hidden="true"></i> Filter indexed documents</summary>
     <div class="filter-bar">
       <div class="control-group"><label for="filter-source">Source provenance</label><select id="filter-source" class="input-field"><option value="">All sources</option></select></div>
-      <div class="control-group"><label for="filter-tags">Tags</label><input id="filter-tags" class="input-field" type="text" placeholder="tag1, tag2"></div>
+      <div class="control-group"><label for="filter-tags">Tags</label><input id="filter-tags" class="input-field" type="text" placeholder="tag1, tag2" aria-describedby="filter-tags-help"><small id="filter-tags-help" class="field-hint">A document must carry every tag listed.</small></div>
       <button id="btn-apply" class="btn btn-primary" type="button">Apply filters</button>
       <button id="btn-clear" class="btn btn-secondary" type="button">Clear</button>
     </div>

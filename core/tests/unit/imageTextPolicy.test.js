@@ -11,8 +11,8 @@ test('unchecked choices add a no-text instruction without rewriting the visual b
   const disabled = { version: 1, enabled: false, strategy: 'auto', labels: [] };
   expect(policy.compose('A scene', undefined, disabled)).toMatch(/^A scene\n\nGESTION/);
   expect(policy.compose('A scene', undefined, disabled)).toContain('Aucun texte');
-  expect(() => policy.compose('A scene', constraints, disabled)).toThrow(/Coche/);
-  expect(() => policy.validatePlan({ version: 1 }, disabled)).toThrow(/désactivée/);
+  expect(() => policy.compose('A scene', constraints, disabled)).toThrow(/Check "Text in the image"/);
+  expect(() => policy.validatePlan({ version: 1 }, disabled)).toThrow(/turned off/);
   expect(policy.compose('Legacy brief')).toBe('Legacy brief');
 });
 
@@ -28,7 +28,7 @@ test('single pass carries exact words and two passes retain them only in metadat
 
 test('automatic and empty choices require a reviewed plan before rendering', () => {
   expect(() => policy.compose('A scene', undefined, choice('auto'))).toThrow(/Hermes/);
-  expect(() => policy.compose('A scene', undefined, choice('two-pass', []))).toThrow(/textes exacts/);
+  expect(() => policy.compose('A scene', undefined, choice('two-pass', []))).toThrow(/exact text/);
   const plan = { version: 1, strategy: 'two-pass', reason: 'Libellés précis en calques.', labels: [label] };
   expect(policy.applyPlan(plan, choice('auto'))).toEqual(choice());
   expect(policy.applyPlan(plan, choice('auto', []))).toEqual(choice());
@@ -37,12 +37,12 @@ test('automatic and empty choices require a reviewed plan before rendering', () 
 test('Hermes cannot omit, rename, change spelling or move protected exact texts', () => {
   const plan = { version: 1, strategy: 'two-pass', reason: 'Calques.', labels: [label] };
   for (const changed of [{ ...label, text: 'Ecole' }, { ...label, id: 'new-id' }, { ...label, placement: 'ailleurs' }]) {
-    expect(() => policy.validatePlan({ ...plan, labels: [changed] }, choice('auto'))).toThrow(/modifié ou omis/);
+    expect(() => policy.validatePlan({ ...plan, labels: [changed] }, choice('auto'))).toThrow(/changed or omitted/);
   }
-  expect(() => policy.validatePlan(plan, choice('single-pass'))).toThrow(/méthode/);
+  expect(() => policy.validatePlan(plan, choice('single-pass'))).toThrow(/method/);
   const inherited = { ...label, id: 'constraint.exact', placement: '' };
   expect(policy.validatePlan({ ...plan, labels: [inherited] }, choice('auto', []), constraints).labels).toEqual([inherited]);
-  expect(() => policy.validatePlan({ ...plan, labels: [label] }, choice('auto', []), constraints)).toThrow(/modifié ou omis/);
+  expect(() => policy.validatePlan({ ...plan, labels: [label] }, choice('auto', []), constraints)).toThrow(/changed or omitted/);
 });
 
 test('strict schemas, Unicode and combined renderer budgets apply before submission', () => {
@@ -52,7 +52,7 @@ test('strict schemas, Unicode and combined renderer budgets apply before submiss
     expect(() => policy.validate({ ...choice(), ...changed })).toThrow();
   }
   expect(policy.validate(choice('single-pass', [{ ...label, text: '😀'.repeat(300) }])).labels[0].text.length).toBe(600);
-  expect(() => policy.compose('v'.repeat(7990), undefined, choice())).toThrow(/8 000/);
+  expect(() => policy.compose('v'.repeat(7990), undefined, choice())).toThrow(/8,000/);
 });
 
 test('image request identity includes lettering metadata even for identical blank-area prompts', () => {
@@ -79,7 +79,7 @@ test.each([
   expect(policy.compose(full, protectedItems, selection)).toHaveLength(8000);
   const over = policy.inspect(full + 'v', protectedItems, selection);
   expect(over.renderUnits).toBe(8001); expect(over.prompt).toHaveLength(8001);
-  expect(() => policy.compose(full + 'v', protectedItems, selection)).toThrow(/8001.*8 000/);
+  expect(() => policy.compose(full + 'v', protectedItems, selection)).toThrow(/8001.*8,000/);
 });
 
 test('planning gets canonical budgets for each available strategy and remains distinct from ready rendering', () => {

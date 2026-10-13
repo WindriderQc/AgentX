@@ -76,17 +76,17 @@ describe('shared navigation public URL contract', () => {
 
   test('full navigation groups surfaces by use, with one secondary system door', () => {
     const full = buildProductNavigation({ publicUrls, activePage: 'finance' });
-    expect(full.spaces.map(space => space.label)).toEqual(['Personnel', 'Famille', 'Atelier']);
+    expect(full.spaces.map(space => space.label)).toEqual(['Personal', 'Family', 'Workshop']);
     expect(full.spaces.map(space => space.href)).toEqual(['/dad', '/panel', '/pipeline']);
     expect(full.activeSpace.id).toBe('personal-group');
-    expect(full.navItems.filter(space => space.secondary).map(space => space.label)).toEqual(['Système']);
+    expect(full.navItems.filter(space => space.secondary).map(space => space.label)).toEqual(['System']);
     expect(buildProductNavigation({ activePage: 'kids-sounds' }).activeSpace.id).toBe('family-group');
     expect(buildProductNavigation({ service: 'rag', activePage: 'rag-upload' }).activeSpace.id).toBe('workshop-group');
   });
 
   test('demo filters private spaces and destinations while keeping the workshop entry', () => {
     const demo = buildProductNavigation({ agentxProfile: 'demo', publicUrls });
-    expect(demo.spaces.map(space => space.label)).toEqual(['Atelier']);
+    expect(demo.spaces.map(space => space.label)).toEqual(['Workshop']);
     expect(demo.spaces[0].href).toBe('/playground');
     const destinations = demo.navItems.flatMap(group => group.children).map(item => item.href);
     for (const route of ['/dad', '/panel', '/finance', '/psyx', '/pipeline', '/data-toolbox']) {
@@ -101,17 +101,17 @@ describe('shared navigation public URL contract', () => {
     for (const service of ['core', 'benchmark', 'rag']) {
       const html = await renderNav(service, 'full', 'dad-family');
       const destination = (service === 'core' ? '' : publicUrls.core) + '/dad/family';
-      expect(hrefFor(html, 'Suivi familial')).toBe(destination);
-      const anchor = [...html.matchAll(/<a\b[^>]*>[\s\S]*?<\/a>/g)].find(match => match[0].includes('Suivi familial'))[0];
+      expect(hrefFor(html, 'Family follow-up')).toBe(destination);
+      const anchor = [...html.matchAll(/<a\b[^>]*>[\s\S]*?<\/a>/g)].find(match => match[0].includes('Family follow-up'))[0];
       expect(anchor).not.toContain('data-access="adult"');
       expect(anchor).toContain('aria-current="page"');
       expect(html).not.toContain('Suivi des lectures');
       expect(html).not.toContain('Espace parents');
-      expect(hrefFor(await renderNav(service, 'demo'), 'Suivi familial')).toBeUndefined();
+      expect(hrefFor(await renderNav(service, 'demo'), 'Family follow-up')).toBeUndefined();
     }
   });
 
-  test('Chat stays directly reachable in the Atelier menu in both profiles', async () => {
+  test('Chat stays directly reachable in the Workshop menu in both profiles', async () => {
     for (const profile of ['full', 'demo']) {
       const html = await renderNav('core', profile, 'playground');
       expect(hrefFor(html, 'Chat')).toBe('/playground');
@@ -121,7 +121,7 @@ describe('shared navigation public URL contract', () => {
   });
 
   test('composed surfaces stay reachable across services and remain excluded from demo', async () => {
-    const surfaces = { Nestor: '/dad', 'Avec Nestor': '/panel', PsyX: '/psyx', Finance: '/finance', 'Data Toolbox': '/data-toolbox' };
+    const surfaces = { Nestor: '/dad', 'With Nestor': '/panel', PsyX: '/psyx', Finance: '/finance', 'Data Toolbox': '/data-toolbox' };
     for (const service of ['core', 'benchmark', 'rag']) {
       const full = await renderNav(service);
       const demo = await renderNav(service, 'demo', 'playground');
@@ -225,7 +225,7 @@ describe('shared navigation public URL contract', () => {
 
   test('navigation exposes a complete disclosure and keyboard contract', async () => {
     const html = await renderNav('core', 'full', 'pipeline');
-    expect(html).toContain('<nav class="top-nav" aria-label="Navigation principale">');
+    expect(html).toContain('<nav class="top-nav" aria-label="Main navigation">');
     expect(html).toContain('id="nav-trigger-workshop-group"');
     expect(html).toContain('aria-controls="nav-menu-workshop-group"');
     expect(html).toContain('id="nav-menu-workshop-group" aria-labelledby="nav-trigger-workshop-group"');
@@ -269,7 +269,7 @@ describe('shared navigation public URL contract', () => {
         buildProductNavigation, publicUrls, hostHome: { url, label: 'Mon écosystème' }
       });
       expect(html).not.toContain('id="host-home-link"');
-      expect(html).toContain('aria-label="Choisir un espace"');
+      expect(html).toContain('aria-label="Choose a space"');
     }
   );
 

@@ -60,7 +60,7 @@ test.each([
 });
 
 test('JSON parsing rejects oversized UTF-8 and malformed data before applying projects', () => {
-  expect(() => engine.parse('😀'.repeat(17000))).toThrow('volumineux');
+  expect(() => engine.parse('😀'.repeat(17000))).toThrow('too large');
   expect(() => engine.parse('{')).toThrow('JSON');
   expect(() => engine.validate(saved({ boxes: Array.from({ length: 25 }, (_, i) => zone({ id: `zone-${i}` })) }))).toThrow('24');
 });
@@ -76,7 +76,7 @@ test('joining a guide calls only the reference callback and never triggers gener
   const b = browser({ referenceCount: 1 }); await b.import(saved());
   await b.field('attach').trigger('click');
   expect(b.onReference).toHaveBeenCalledTimes(1);
-  expect(b.callbacks[0]).toEqual({ base64: 'c3ludGhldGlj', mimeType: 'image/png', label: 'Esquisse de composition · 1024 × 1024' });
+  expect(b.callbacks[0]).toEqual({ base64: 'c3ludGhldGlj', mimeType: 'image/png', label: 'Composition sketch · 1024 × 1024' });
   expect(b.field('remove-reference').hidden).toBe(false);
   await b.field('remove-reference').trigger('click'); expect(b.onRemoveReference).toHaveBeenCalledTimes(1);
 });
@@ -113,12 +113,12 @@ test('reference capacity is rechecked after asynchronous PNG encoding', async ()
   const b = browser(); await b.import(saved()); const pending = deferred(); b.setPng(callback => pending.promise.then(callback));
   const opening = b.field('attach').trigger('click'); b.setContext({ referenceCount: 2 });
   pending.resolve(new Blob(['PNG'], { type: 'image/png' })); await opening;
-  expect(b.onReference).not.toHaveBeenCalled(); expect(b.field('error').textContent).toContain('références');
+  expect(b.onReference).not.toHaveBeenCalled(); expect(b.field('error').textContent).toContain('references');
 });
 
 test('oversized PNG and oversized base64 refuse before the callback', async () => {
   const b = browser(); await b.import(saved()); b.setPng(callback => callback({ type: 'image/png', size: 2400000 }));
-  await b.field('attach').trigger('click'); expect(b.onReference).not.toHaveBeenCalled(); expect(b.field('error').textContent).toContain('volumineuse');
+  await b.field('attach').trigger('click'); expect(b.onReference).not.toHaveBeenCalled(); expect(b.field('error').textContent).toContain('too large');
   b.setPng(callback => callback(new Blob(['PNG'], { type: 'image/png' }))); b.setData('data:image/png;base64,' + 'A'.repeat(engine.MAX_BASE64_BYTES + 4));
   await b.field('attach').trigger('click'); expect(b.onReference).not.toHaveBeenCalled();
 });
@@ -147,7 +147,7 @@ test('dirty replacement can be declined and failed imports preserve the current 
 test('portable JSON downloads clear dirty state and object URLs are released', async () => {
   const b = browser(); await b.import(saved()); b.edit('name', 'Sauvegardé');
   const before = { preventDefault: jest.fn() }; b.windowEvents.beforeunload(before); expect(before.preventDefault).toHaveBeenCalled();
-  await b.field('json').trigger('click'); expect(b.downloads).toContain('agentx-esquisse.json'); expect(b.urls.revokeObjectURL).toHaveBeenCalledWith('blob:guide');
+  await b.field('json').trigger('click'); expect(b.downloads).toContain('agentx-sketch.json'); expect(b.urls.revokeObjectURL).toHaveBeenCalledWith('blob:guide');
   const after = { preventDefault: jest.fn() }; b.windowEvents.beforeunload(after); expect(after.preventDefault).not.toHaveBeenCalled();
   b.controller.destroy(); expect(b.windowEvents.beforeunload).toBeUndefined();
 });

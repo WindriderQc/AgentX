@@ -244,7 +244,7 @@ function forSurface(surface) {
     const filter = exactSession(query);
     return withSessionWrite(surface, query.sessionId, async () => {
       const row = await Conversation.findOne(filter).lean();
-      if (!row) throw failure('Conversation introuvable.', 404);
+      if (!row) throw failure('Conversation not found.', 404);
       if (!row.surfaceSession.deletedAt) {
         // Replace rather than enumerate content fields: no transcript, native
         // session key, persona, preview, model, metadata or tool receipt survives.
@@ -268,10 +268,10 @@ function forSurface(surface) {
     const filter = exactSession(query);
     return withSessionWrite(surface, query.sessionId, async () => {
       const row = await Conversation.findOne({ ...filter, 'surfaceSession.deletedAt': { $exists: false } }).lean();
-      if (!row) throw failure('Conversation introuvable.', 404);
+      if (!row) throw failure('Conversation not found.', 404);
       const attachmentIds = [...new Set((row.messages || []).flatMap(message => (message.attachments || []).map(item => String(item.id))))];
       const attachmentFilter = { conversationId: row._id, _id: { $in: attachmentIds } };
-      if (await Attachment.countDocuments(attachmentFilter) !== attachmentIds.length) throw failure('Une pièce jointe de cette conversation est indisponible.', 409);
+      if (await Attachment.countDocuments(attachmentFilter) !== attachmentIds.length) throw failure('An attachment in this conversation is unavailable.', 409);
       const cursor = Attachment.find(attachmentFilter).sort({ _id: 1 }).lean().cursor({ batchSize: 1 });
       async function* chunks() {
         // Original bytes are streamed one attachment at a time, never accumulated

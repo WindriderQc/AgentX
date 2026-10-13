@@ -3,27 +3,27 @@
   'use strict';
 
   const STAGES = [
-    ['stt', 'Transcription'], ['guardian', 'Gardien'], ['review', 'Revue'],
-    ['tools', 'Outils'], ['agents', 'Agents'], ['tts', 'Voix']
+    ['stt', 'Transcription'], ['guardian', 'Guardian'], ['review', 'Review'],
+    ['tools', 'Tools'], ['agents', 'Agents'], ['tts', 'Voice']
   ];
   const EVENT_LABELS = {
-    request_received: 'Demande conservée', context_ready: 'Contexte préparé', guardian_started: 'Gardien démarré',
-    guardian_settled: 'Gardien terminé', guardian_handled: 'Réponse directe conservée',
-    read_requested: 'Lecture demandée', dispatch_marked: 'Relais vers le travail privé',
-    native_started: 'Agent démarré', native_observed: 'Agent observé', native_reconciled: 'Agent retrouvé',
-    native_call_observed: 'Appel natif observé', native_tool_admitted: 'Outil admis',
-    tool_result: 'Résultat d’outil vérifié', result_published: 'Avis disponible',
-    native_result_published: 'Résultat natif disponible', native_settled: 'Agent terminé',
-    dispatch_uncertain: 'État du relais inconnu', preparation_refused: 'Préparation refusée',
-    intake_recovered: 'Demande retrouvée', presentation_displayed: 'Résultat affiché',
-    presentation_claim: 'Lecture réservée', presentation_replay: 'Relecture demandée',
-    presentation_started: 'Lecture audio commencée', presentation_completed: 'Lecture audio terminée',
-    presentation_interrupted: 'Lecture audio interrompue', presentation_deferred: 'Lecture audio reportée',
-    owner_pause: 'Travail mis en pause', owner_resume: 'Travail repris', owner_cancel: 'Travail annulé'
+    request_received: 'Request kept', context_ready: 'Context prepared', guardian_started: 'Guardian started',
+    guardian_settled: 'Guardian finished', guardian_handled: 'Direct answer kept',
+    read_requested: 'Read requested', dispatch_marked: 'Handoff to private work',
+    native_started: 'Agent started', native_observed: 'Agent observed', native_reconciled: 'Agent found again',
+    native_call_observed: 'Native call observed', native_tool_admitted: 'Tool admitted',
+    tool_result: 'Tool result verified', result_published: 'Advice available',
+    native_result_published: 'Native result available', native_settled: 'Agent finished',
+    dispatch_uncertain: 'Handoff state unknown', preparation_refused: 'Preparation refused',
+    intake_recovered: 'Request recovered', presentation_displayed: 'Result shown',
+    presentation_claim: 'Playback reserved', presentation_replay: 'Replay requested',
+    presentation_started: 'Audio playback started', presentation_completed: 'Audio playback finished',
+    presentation_interrupted: 'Audio playback interrupted', presentation_deferred: 'Audio playback deferred',
+    owner_pause: 'Work paused', owner_resume: 'Work resumed', owner_cancel: 'Work cancelled'
   };
   const validMs = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
-  const duration = value => validMs(value) ? value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(1)} s` : 'inconnue';
-  const time = value => { const date = new Date(value); if (!Number.isFinite(date.getTime())) return 'heure inconnue';
+  const duration = value => validMs(value) ? value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(1)} s` : 'unknown';
+  const time = value => { const date = new Date(value); if (!Number.isFinite(date.getTime())) return 'unknown time';
     const pad = number => String(number).padStart(2, '0');
     return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`; };
   const safe = value => typeof value === 'string' ? value.slice(0, 160) : '';
@@ -180,66 +180,66 @@
 
   function stageState(stage, row) {
     const work = row.works.at(-1), voice = row.voiceTimings || {}, server = row.serverTimings || {};
-    if (stage === 'stt') return row.channel === 'text' ? ['Sans voix', 'Message écrit']
-      : validMs(voice.sttDone) ? ['Terminé', `Reconnaissance : ${duration(voice.sttDone)} après fin de parole`]
-        : row.phase === 'transcribing' && row.live ? ['En cours', 'Transcription démarrée dans le navigateur']
-          : ['Inconnu', 'Aucune mesure STT conservée'];
+    if (stage === 'stt') return row.channel === 'text' ? ['No voice', 'Written message']
+      : validMs(voice.sttDone) ? ['Done', `Recognition: ${duration(voice.sttDone)} after end of speech`]
+        : row.phase === 'transcribing' && row.live ? ['In progress', 'Transcription started in the browser']
+          : ['Unknown', 'No STT measurement kept'];
     if (stage === 'guardian') {
       const status = work?.guardianStatus;
-      if (row.telemetryStale && ['pending', 'running', 'uncertain'].includes(status)) return ['Incertain', 'Dernier état Core non actualisé'];
-      if (status && status !== 'unknown') return [{ pending: 'En attente', running: 'Actif', completed: 'Terminé', cancelled: 'Interrompu', failed: 'Échec', uncertain: 'Incertain' }[status] || 'Inconnu', work.guardianRunId ? `Run ${work.guardianRunId}` : 'Run non observé'];
-      if (row.done) return ['Inconnu', 'Réponse reçue, exécution du Gardien non attestée'];
-      if (row.error || row.interrupted) return ['Incertain', 'Flux terminé, état du Gardien non attesté'];
-      if (row.deferred) return ['Inconnu', 'Demande conservée, exécution du Gardien non attestée'];
-      if (row.phase === 'waiting_host') return row.telemetryStale ? ['Incertain', 'Dernier état Core non actualisé']
-        : ['En attente', 'Hôte occupé, cause signalée par Core · durée inconnue'];
-      return row.live && row.stream?.includes('accepted') ? ['En attente', 'Requête acceptée, démarrage du Gardien non attesté'] : ['Inconnu', 'Aucun reçu du Gardien'];
+      if (row.telemetryStale && ['pending', 'running', 'uncertain'].includes(status)) return ['Uncertain', 'Latest Core state not refreshed'];
+      if (status && status !== 'unknown') return [{ pending: 'Waiting', running: 'Active', completed: 'Done', cancelled: 'Interrupted', failed: 'Failed', uncertain: 'Uncertain' }[status] || 'Unknown', work.guardianRunId ? `Run ${work.guardianRunId}` : 'Run not observed'];
+      if (row.done) return ['Unknown', 'Answer received, Guardian run not attested'];
+      if (row.error || row.interrupted) return ['Uncertain', 'Stream ended, Guardian state not attested'];
+      if (row.deferred) return ['Unknown', 'Request kept, Guardian run not attested'];
+      if (row.phase === 'waiting_host') return row.telemetryStale ? ['Uncertain', 'Latest Core state not refreshed']
+        : ['Waiting', 'Host busy, cause reported by Core · duration unknown'];
+      return row.live && row.stream?.includes('accepted') ? ['Waiting', 'Request accepted, Guardian start not attested'] : ['Unknown', 'No Guardian receipt'];
     }
     if (stage === 'review') {
       const advice = row.reviews.at(-1);
       if (work && ['failed', 'cancelled', 'paused'].includes(work.state)) {
-        const labels = { failed: 'Échec', cancelled: 'Annulé', paused: 'En pause' };
-        const reasons = { native_preparation_refused: 'préparation de l’agent refusée',
-          CONVERSATION_CONTEXT_REQUIRED: 'contexte insuffisant pour relire toute la conversation',
-          native_result_not_published: 'résultat non publié', owner_cancelled_before_dispatch: 'annulé avant relais' };
+        const labels = { failed: 'Failed', cancelled: 'Cancelled', paused: 'Paused' };
+        const reasons = { native_preparation_refused: 'agent preparation refused',
+          CONVERSATION_CONTEXT_REQUIRED: 'not enough context to review the whole conversation',
+          native_result_not_published: 'result not published', owner_cancelled_before_dispatch: 'cancelled before handoff' };
         const code = typeof work.reason === 'string' && (Object.hasOwn(reasons, work.reason) || /^[a-z][a-z0-9_]{0,79}$/.test(work.reason)) ? work.reason : '';
-        return [labels[work.state], `Travail ${work.id} · ${reasons[code] || (code ? `motif Core : ${code}` : 'motif non détaillé')}`];
+        return [labels[work.state], `Work ${work.id} · ${reasons[code] || (code ? `Core reason: ${code}` : 'reason not detailed')}`];
       }
-      if (work?.result) return work.includedIn?.length ? ['Inclus', `Travail ${work.id} · contexte du tour ${work.includedIn[0].targetTurnId}`]
-        : ['Disponible', `Travail ${work.id} · version ${work.result.version}`];
-      if (work?.resultDisposition === 'no_work') return ['Terminé', `Travail ${work.id} · aucun complément utile`];
-      if (advice) return [advice.replaced ? 'Remplacé' : advice.includedIn?.length ? 'Inclus' : 'Disponible',
-        advice.includedIn?.length ? `Contexte du tour ${advice.includedIn[0].targetTurnId}` : `Avis du tour ${advice.turnId} · inclusion non attestée`];
+      if (work?.result) return work.includedIn?.length ? ['Included', `Work ${work.id} · context of turn ${work.includedIn[0].targetTurnId}`]
+        : ['Available', `Work ${work.id} · version ${work.result.version}`];
+      if (work?.resultDisposition === 'no_work') return ['Done', `Work ${work.id} · nothing useful to add`];
+      if (advice) return [advice.replaced ? 'Replaced' : advice.includedIn?.length ? 'Included' : 'Available',
+        advice.includedIn?.length ? `Context of turn ${advice.includedIn[0].targetTurnId}` : `Advice for turn ${advice.turnId} · inclusion not attested`];
       if (work && ['received', 'queued', 'dispatching', 'running', 'uncertain'].includes(work.state)) {
         const dispatched = row.events?.some(event => event.workId === work.id && event.type === 'dispatch_marked');
         const started = row.events?.some(event => event.workId === work.id && event.type === 'native_started');
         const active = work.state === 'dispatching' && dispatched || work.state === 'running' && (dispatched || started);
-        return [row.telemetryStale || work.state === 'uncertain' ? 'Incertain' : active ? 'En cours' : 'En attente',
-          `${row.telemetryStale ? 'Dernier état Core non actualisé · ' : ''}Travail ${work.id}${active ? ' · relais attesté' : ' · relais non attesté'}`];
+        return [row.telemetryStale || work.state === 'uncertain' ? 'Uncertain' : active ? 'In progress' : 'Waiting',
+          `${row.telemetryStale ? 'Latest Core state not refreshed · ' : ''}Work ${work.id}${active ? ' · handoff attested' : ' · handoff not attested'}`];
       }
-      return ['Inconnu', 'Aucun avis de revue observé'];
+      return ['Unknown', 'No review advice observed'];
     }
     if (stage === 'tools') {
       const worker = (work?.tools || []).length, guardian = row.toolCount || 0;
       const admitted = work?.nativeAdmissions?.length || 0;
-      return worker || guardian ? ['Observés', `Gardien : ${guardian} reçu${guardian > 1 ? 's' : ''} · travail : ${worker} reçu${worker > 1 ? 's' : ''}`]
-        : admitted ? ['Admis', `${admitted} admission${admitted > 1 ? 's' : ''} · résultat non attesté`]
-          : row.activities?.some(item => item.tool) ? ['Signalés', 'Outil signalé par le flux · résultat non attesté'] : ['Inconnu', 'Aucun reçu d’outil'];
+      return worker || guardian ? ['Observed', `Guardian: ${guardian} receipt${guardian > 1 ? 's' : ''} · work: ${worker} receipt${worker > 1 ? 's' : ''}`]
+        : admitted ? ['Admitted', `${admitted} admission${admitted > 1 ? 's' : ''} · result not attested`]
+          : row.activities?.some(item => item.tool) ? ['Reported', 'Tool reported by the stream · result not attested'] : ['Unknown', 'No tool receipt'];
     }
     if (stage === 'agents') {
       const agents = [...new Set([work?.attempt?.agentId, ...(row.activities || []).map(item => item.agentId)].filter(Boolean))];
       const started = row.events?.some(item => item.workId === work?.id && item.type === 'native_started');
       const settled = row.events?.some(item => item.workId === work?.id && item.type === 'native_settled');
       const active = work?.state === 'running' && work.attempt?.runId && started && !settled;
-      return agents.length ? [active ? row.telemetryStale ? 'Incertain' : 'Actif'
-        : work?.attempt?.runId || row.activities?.some(item => item.agentId) ? 'Observé' : 'Relais préparé',
+      return agents.length ? [active ? row.telemetryStale ? 'Uncertain' : 'Active'
+        : work?.attempt?.runId || row.activities?.some(item => item.agentId) ? 'Observed' : 'Handoff prepared',
         `${agents.join(', ')}${work?.attempt?.runId ? ` · run ${work.attempt.runId}` : ''}`]
-        : row.speaker ? ['Observé', row.speaker] : ['Inconnu', 'Aucune délégation attestée'];
+        : row.speaker ? ['Observed', row.speaker] : ['Unknown', 'No delegation attested'];
     }
-    if (stage === 'tts') return row.channel === 'text' ? ['Sans voix', 'Réponse écrite']
-      : validMs(voice.firstAudio) ? [voice.interrupted || row.interrupted ? 'Interrompu' : 'Lecture demandée', `Tentative de lecture : ${duration(voice.firstAudio)} après fin de parole · son non attesté`]
-        : ['Inconnu', 'Aucune tentative de lecture conservée'];
-    return ['Inconnu', 'Aucune donnée'];
+    if (stage === 'tts') return row.channel === 'text' ? ['No voice', 'Written answer']
+      : validMs(voice.firstAudio) ? [voice.interrupted || row.interrupted ? 'Interrupted' : 'Playback requested', `Playback attempt: ${duration(voice.firstAudio)} after end of speech · sound not attested`]
+        : ['Unknown', 'No playback attempt kept'];
+    return ['Unknown', 'No data'];
   }
 
   function node(tag, className, value) {
@@ -249,15 +249,15 @@
   function intervals(events) {
     const starts = { guardian_started: 'guardian_settled', dispatch_marked: 'native_started',
       native_started: 'native_settled', presentation_claim: 'presentation_started' };
-    const labels = { guardian_started: 'Gardien actif', dispatch_marked: 'Relais avant démarrage',
-      native_started: 'Agent actif ou en attente interne', presentation_claim: 'Attente avant lecture' };
+    const labels = { guardian_started: 'Guardian active', dispatch_marked: 'Handoff before start',
+      native_started: 'Agent active or waiting internally', presentation_claim: 'Wait before playback' };
     const out = [];
     for (const start of events) {
       const endType = starts[start.type];
       if (!endType) continue;
       const end = events.find(item => item.workId === start.workId && item.sequence > start.sequence && item.type === endType);
       const elapsed = Date.parse(end?.at) - Date.parse(start.at);
-      if (end && validMs(elapsed)) out.push(`${labels[start.type]} : ${duration(elapsed)} (horloge Core)`);
+      if (end && validMs(elapsed)) out.push(`${labels[start.type]}: ${duration(elapsed)} (Core clock)`);
     }
     return out;
   }
@@ -273,9 +273,9 @@
   function create({ host, signal = null }) {
     const model = createModel();
     let selected = null, turnOffset = 0, eventOffset = 0;
-    const overview = node('div', 'workflow-map'); overview.setAttribute('aria-label', 'Composants du parcours');
+    const overview = node('div', 'workflow-map'); overview.setAttribute('aria-label', 'Workflow components');
     const panel = node('details', 'workflow-panel');
-    const summary = node('summary', 'workflow-toggle', 'Journal et reçus');
+    const summary = node('summary', 'workflow-toggle', 'Log and receipts');
     const body = node('div', 'workflow-body'); panel.append(summary, body); host.append(overview, panel);
     function render() {
       const focused = document.activeElement?.closest?.('[data-key]');
@@ -292,21 +292,21 @@
       const view = model.snapshot();
       const rows = view.turns, current = rows.find(row => row.id === selected) || rows.at(-1);
       if (current) selected = current.id;
-      summary.textContent = `Journal et reçus${rows.length ? ` · ${rows.length} tour${rows.length > 1 ? 's' : ''}` : ''}`;
+      summary.textContent = `Log and receipts${rows.length ? ` · ${rows.length} turn${rows.length > 1 ? 's' : ''}` : ''}`;
       const expanded = new Set([...overview.querySelectorAll?.('details[open]') || [], ...body.querySelectorAll?.('details[open]') || []].map(item => item.dataset.key));
       overview.replaceChildren();
       const chosen = { ...(current || { channel: 'unknown', works: [], reviews: [] }), telemetryStale: view.stale };
       const symbols = { stt: '〰', guardian: '◆', review: '✦', tools: '⌘', agents: '↗', tts: '♫' };
       const stateFor = key => stageState(key, chosen);
-      const isActive = state => ['Actif', 'En cours'].includes(state);
+      const isActive = state => ['Active', 'In progress'].includes(state);
       const card = key => {
         const label = STAGES.find(stage => stage[0] === key)[1], [state, detail] = stateFor(key);
         const element = node('details', 'workflow-component'); element.dataset.key = `stage:${key}`;
         element.dataset.stage = key;
         element.dataset.tone = isActive(state) ? 'active'
-          : ['Échec', 'Incertain', 'Interrompu', 'Annulé', 'En pause', 'En attente'].includes(state) ? 'caution'
-            : ['Terminé', 'Disponible', 'Inclus'].includes(state) ? 'complete'
-              : ['Inconnu', 'Sans voix'].includes(state) ? 'unknown' : 'observed';
+          : ['Failed', 'Uncertain', 'Interrupted', 'Cancelled', 'Paused', 'Waiting'].includes(state) ? 'caution'
+            : ['Done', 'Available', 'Included'].includes(state) ? 'complete'
+              : ['Unknown', 'No voice'].includes(state) ? 'unknown' : 'observed';
         element.open = expanded.has(element.dataset.key);
         const title = node('summary');
         const icon = node('span', 'workflow-icon', symbols[key]); icon.setAttribute('aria-hidden', 'true');
@@ -321,45 +321,45 @@
       const activeCount = STAGES.filter(([key]) => isActive(stateFor(key)[0])).length;
       if (signal) {
         const active = STAGES.filter(([key]) => isActive(stateFor(key)[0])).map(([, label]) => label);
-        const waiting = STAGES.filter(([key]) => stateFor(key)[0] === 'En attente').map(([, label]) => label);
-        signal.textContent = current ? `Tour ${rows.indexOf(current) + 1} · ${active.length ? `En cours : ${active.join(', ')}`
-          : waiting.length ? `En attente : ${waiting.join(', ')}` : 'activité non attestée'}${view.stale ? ' · Core non actualisé' : ''}`
-          : 'Aucun tour en cours';
+        const waiting = STAGES.filter(([key]) => stateFor(key)[0] === 'Waiting').map(([, label]) => label);
+        signal.textContent = current ? `Turn ${rows.indexOf(current) + 1} · ${active.length ? `In progress: ${active.join(', ')}`
+          : waiting.length ? `Waiting: ${waiting.join(', ')}` : 'activity not attested'}${view.stale ? ' · Core not refreshed' : ''}`
+          : 'No turn in progress';
       }
       const compact = root.matchMedia?.('(max-width: 760px)')?.matches;
       const head = node('div', 'workflow-map-head');
       head.dataset.live = String(activeCount > 0 && !view.stale);
       head.dataset.stale = String(view.stale);
       head.append(node('div', 'workflow-kicker', 'SIGNAL / NESTOR'),
-        node('strong', 'workflow-map-title', current ? `Tour ${rows.indexOf(current) + 1} · ${current.channel === 'voice' ? compact ? 'voix' : 'conversation vocale' : current.channel === 'text' ? compact ? 'texte' : 'conversation écrite' : 'canal inconnu'}` : 'En attente d’un tour'));
-      head.append(node('span', 'workflow-live-count', view.stale ? 'Données Core non actualisées' : `${activeCount} composant${activeCount > 1 ? 's' : ''} en cours`));
+        node('strong', 'workflow-map-title', current ? `Turn ${rows.indexOf(current) + 1} · ${current.channel === 'voice' ? compact ? 'voice' : 'voice conversation' : current.channel === 'text' ? compact ? 'text' : 'text conversation' : 'unknown channel'}` : 'Waiting for a turn'));
+      head.append(node('span', 'workflow-live-count', view.stale ? 'Core data not refreshed' : `${activeCount} component${activeCount > 1 ? 's' : ''} in progress`));
       overview.append(head);
-      const meters = node('div', 'workflow-meters'); meters.setAttribute('aria-label', 'Chronos mesurés');
+      const meters = node('div', 'workflow-meters'); meters.setAttribute('aria-label', 'Measured timings');
       const voice = current?.voiceTimings || {}, guardianMs = measuredSpan(current?.events, 'guardian_started', ['guardian_settled']);
       const reviewMs = measuredSpan(current?.events, 'dispatch_marked', ['result_published', 'native_result_published']);
       const meter = (label, value, basis, active = false) => {
         const block = node('div', 'workflow-meter'); block.dataset.active = String(active && !validMs(value) && !view.stale);
         block.append(node('span', 'workflow-meter-label', label),
-          node('strong', 'workflow-meter-value', validMs(value) ? duration(value) : active ? 'En cours' : 'Inconnue'),
+          node('strong', 'workflow-meter-value', validMs(value) ? duration(value) : active ? 'In progress' : 'Unknown'),
           node('small', 'workflow-meter-basis', basis));
         const signal = node('span', 'workflow-meter-signal'); signal.setAttribute('aria-hidden', 'true'); block.append(signal);
         meters.append(block);
       };
-      meter('TRANSCRIPTION', voice.sttDone, 'Navigateur · fin de parole', isActive(stateFor('stt')[0]));
-      meter('GARDIEN', guardianMs, 'Core · début → fin', isActive(stateFor('guardian')[0]));
-      meter('REVUE', reviewMs, 'Core · relais → avis', isActive(stateFor('review')[0]));
-      meter('LECTURE DEMANDÉE', voice.firstAudio, 'Navigateur · fin de parole', isActive(stateFor('tts')[0]));
+      meter('TRANSCRIPTION', voice.sttDone, 'Browser · end of speech', isActive(stateFor('stt')[0]));
+      meter('GUARDIAN', guardianMs, 'Core · start → end', isActive(stateFor('guardian')[0]));
+      meter('REVIEW', reviewMs, 'Core · handoff → advice', isActive(stateFor('review')[0]));
+      meter('PLAYBACK REQUESTED', voice.firstAudio, 'Browser · end of speech', isActive(stateFor('tts')[0]));
       overview.append(meters);
-      const flow = node('div', 'workflow-flow'); flow.setAttribute('aria-label', 'Flux du tour et travail de fond');
+      const flow = node('div', 'workflow-flow'); flow.setAttribute('aria-label', 'Turn flow and background work');
       const origin = node('div', 'workflow-origin');
-      origin.append(node('span', 'workflow-origin-mark', '◎'), node('span', 'workflow-origin-label', current ? `Votre tour · ${current.id}` : 'Votre prochain tour'));
+      origin.append(node('span', 'workflow-origin-mark', '◎'), node('span', 'workflow-origin-label', current ? `Your turn · ${current.id}` : 'Your next turn'));
       flow.append(origin);
       const lanes = node('div', 'workflow-lanes');
       const immediate = node('section', 'workflow-lane workflow-lane-immediate');
       immediate.dataset.connected = String(!!current && (current.channel !== 'unknown' || current.stream?.length
         || current.events?.some(event => event.type === 'guardian_started')));
-      immediate.append(node('h3', 'workflow-lane-title', '01  CONVERSATION DIRECTE'),
-        node('p', 'workflow-lane-subtitle', 'Nestor reste disponible pendant le travail de fond.'));
+      immediate.append(node('h3', 'workflow-lane-title', '01  DIRECT CONVERSATION'),
+        node('p', 'workflow-lane-subtitle', 'Nestor stays available during background work.'));
       const link = connected => { const edge = node('div', 'workflow-edge'); edge.dataset.connected = String(!!connected); edge.setAttribute('aria-hidden', 'true'); return edge; };
       const has = type => current?.events?.some(event => event.type === type);
       immediate.append(card('stt'),
@@ -369,8 +369,8 @@
         card('tts'));
       const background = node('section', 'workflow-lane workflow-lane-background');
       background.dataset.connected = String(!!current?.reviews?.length || !!current?.works?.some(work => work.turnId === current.id && current.events.some(event => event.workId === work.id && event.type === 'request_received')));
-      background.append(node('h3', 'workflow-lane-title', '02  REVUE EN ARRIÈRE-PLAN'),
-        node('p', 'workflow-lane-subtitle', 'Un avis peut arriver après la réponse.'));
+      background.append(node('h3', 'workflow-lane-title', '02  BACKGROUND REVIEW'),
+        node('p', 'workflow-lane-subtitle', 'Advice can arrive after the answer.'));
       background.append(card('review'),
         link(current?.works?.some(work => work.attempt?.agentId && current.events.some(event => event.workId === work.id && event.type === 'native_started'))),
         card('agents'));
@@ -378,69 +378,69 @@
       flow.dataset.hasTurn = String(immediate.dataset.connected === 'true' || background.dataset.connected === 'true');
       lanes.append(immediate, background); flow.append(lanes);
       const services = node('div', 'workflow-services');
-      services.append(node('div', 'workflow-services-heading', 'SERVICES MOBILISÉS'));
+      services.append(node('div', 'workflow-services-heading', 'SERVICES IN USE'));
       const tools = card('tools'); services.append(tools);
       const guardianTools = (current?.toolCount || 0) > 0;
       const reviewTools = current?.works?.some(work => work.tools?.length);
       if (guardianTools || reviewTools) services.append(node('p', 'workflow-handoffs',
-        [guardianTools ? 'Gardien → Outils · reçus du tour' : '', reviewTools ? 'Revue → Outils · reçus du travail' : ''].filter(Boolean).join('    ')));
+        [guardianTools ? 'Guardian → Tools · turn receipts' : '', reviewTools ? 'Review → Tools · work receipts' : ''].filter(Boolean).join('    ')));
       flow.append(services);
-      const resources = node('section', 'workflow-resources'); resources.setAttribute('aria-label', 'Ressources observées');
-      resources.append(node('h3', '', 'RESSOURCES OBSERVÉES'));
+      const resources = node('section', 'workflow-resources'); resources.setAttribute('aria-label', 'Observed resources');
+      resources.append(node('h3', '', 'OBSERVED RESOURCES'));
       const latestWork = current?.works?.at(-1), toolReceipts = (current?.toolCount || 0) + (latestWork?.tools?.length || 0);
       const resource = (label, value) => { const item = node('div', 'workflow-resource'); item.append(node('small', '', label), node('strong', '', value)); resources.append(item); };
-      resource('AGENT / RUN', latestWork?.attempt?.agentId ? `${latestWork.attempt.agentId}${latestWork.attempt.runId ? ` · ${latestWork.attempt.runId}` : ' · run inconnu'}` : 'Aucun run attesté');
-      resource('OUTILS', toolReceipts ? `${toolReceipts} reçu${toolReceipts > 1 ? 's' : ''} observé${toolReceipts > 1 ? 's' : ''}` : 'Aucun reçu');
-      resource('JOURNAL CORE', view.stale ? 'Non actualisé' : view.events.length ? `${view.events.length} événement${view.events.length > 1 ? 's' : ''} reçu${view.events.length > 1 ? 's' : ''}` : 'Aucun événement reçu');
-      const passages = node('section', 'workflow-passages'); passages.setAttribute('aria-label', 'Derniers passages attestés');
-      passages.append(node('h3', '', 'DERNIERS PASSAGES'));
+      resource('AGENT / RUN', latestWork?.attempt?.agentId ? `${latestWork.attempt.agentId}${latestWork.attempt.runId ? ` · ${latestWork.attempt.runId}` : ' · unknown run'}` : 'No run attested');
+      resource('TOOLS', toolReceipts ? `${toolReceipts} receipt${toolReceipts > 1 ? 's' : ''} observed` : 'No receipt');
+      resource('CORE LOG', view.stale ? 'Not refreshed' : view.events.length ? `${view.events.length} event${view.events.length > 1 ? 's' : ''} received` : 'No event received');
+      const passages = node('section', 'workflow-passages'); passages.setAttribute('aria-label', 'Latest attested steps');
+      passages.append(node('h3', '', 'LATEST STEPS'));
       const recent = view.events.slice(-3);
-      if (!recent.length) passages.append(node('p', 'workflow-empty', 'Aucun passage Core attesté.'));
+      if (!recent.length) passages.append(node('p', 'workflow-empty', 'No attested Core step.'));
       for (const item of recent) {
         const owner = rows.find(row => row.id === item.turnId);
         const entry = node('div', 'workflow-passage');
-        entry.append(node('time', '', time(item.at)), node('span', '', EVENT_LABELS[item.type] || 'Événement enregistré'),
-          node('small', '', `${owner ? `Tour ${rows.indexOf(owner) + 1} · ` : ''}Travail ${item.workId}`));
+        entry.append(node('time', '', time(item.at)), node('span', '', EVENT_LABELS[item.type] || 'Recorded event'),
+          node('small', '', `${owner ? `Turn ${rows.indexOf(owner) + 1} · ` : ''}Work ${item.workId}`));
         passages.append(entry);
       }
       overview.append(flow, ...(compact ? [] : [resources, passages]),
-        node('p', 'workflow-map-note', 'Liaisons et passages fondés sur les reçus du tour. Un avis inclus ne prouve pas son influence.'));
+        node('p', 'workflow-map-note', 'Links and steps are based on turn receipts. Included advice does not prove its influence.'));
       body.replaceChildren();
       if (!panel.open) { restoreFocus(); return; }
-      const intro = node('p', 'workflow-intro', 'Étapes observées dans cette conversation. Plusieurs composants peuvent travailler en même temps.');
+      const intro = node('p', 'workflow-intro', 'Steps observed in this conversation. Several components can work at the same time.');
       body.append(intro);
       if (compact) body.append(resources, passages);
-      if (!current) { body.append(node('p', 'workflow-empty', 'Aucun tour enregistré. Les composants apparaîtront ici.')); return; }
-      const picker = node('div', 'workflow-turns'); picker.setAttribute('role', 'group'); picker.setAttribute('aria-label', 'Choisir un tour');
+      if (!current) { body.append(node('p', 'workflow-empty', 'No turn recorded. Components will appear here.')); return; }
+      const picker = node('div', 'workflow-turns'); picker.setAttribute('role', 'group'); picker.setAttribute('aria-label', 'Choose a turn');
       const turnEnd = rows.length - turnOffset, turnStart = Math.max(0, turnEnd - 24);
       if (turnStart > 0) {
-        const older = node('button', 'workflow-more', '24 tours précédents');
+        const older = node('button', 'workflow-more', '24 earlier turns');
         older.type = 'button'; older.dataset.key = 'turns-older'; older.onclick = () => { turnOffset += 24; render(); }; picker.append(older);
       }
       rows.slice(turnStart, turnEnd).forEach((row, index) => {
-        const button = node('button', 'workflow-turn', `Tour ${turnStart + index + 1}${row.interrupted ? ' · interrompu' : ''}`);
+        const button = node('button', 'workflow-turn', `Turn ${turnStart + index + 1}${row.interrupted ? ' · interrupted' : ''}`);
         button.dataset.key = `turn:${row.id}`;
         button.type = 'button'; button.setAttribute('aria-pressed', String(row.id === selected));
         button.onclick = () => { selected = row.id; render(); body.querySelector?.('button[aria-pressed="true"]')?.focus(); }; picker.append(button);
       });
       if (turnOffset > 0) {
-        const newer = node('button', 'workflow-more', '24 tours suivants');
+        const newer = node('button', 'workflow-more', '24 later turns');
         newer.type = 'button'; newer.dataset.key = 'turns-newer'; newer.onclick = () => { turnOffset = Math.max(0, turnOffset - 24); render(); }; picker.append(newer);
       }
       body.append(picker);
-      const identity = node('p', 'workflow-identity', `Tour ${rows.indexOf(current) + 1} · ID ${current.id}`); body.append(identity);
+      const identity = node('p', 'workflow-identity', `Turn ${rows.indexOf(current) + 1} · ID ${current.id}`); body.append(identity);
       const timing = node('div', 'workflow-timing');
       const server = current.serverTimings || {};
-      timing.append(node('h3', '', 'Durées mesurées'), node('p', '',
-        `Navigateur, depuis fin de parole : STT ${duration(voice.sttDone)}, requête ${duration(voice.requestSent)}, premier texte ${duration(voice.firstDelta)}, début de lecture demandé ${duration(voice.firstAudio)}. Cela n'atteste pas un son entendu. Traitement STT déclaré : ${duration(voice.sttServer)}.`),
-        node('p', '', `Serveur, depuis début de requête : contexte prêt à ${duration(server.prepared)}, réponse reçue à ${duration(server.executed)}.`),
-        node('small', '', 'Origines d’horloge distinctes : ces durées ne sont pas additionnées. Une valeur absente reste inconnue.'));
+      timing.append(node('h3', '', 'Measured durations'), node('p', '',
+        `Browser, from end of speech: STT ${duration(voice.sttDone)}, request ${duration(voice.requestSent)}, first text ${duration(voice.firstDelta)}, playback start requested ${duration(voice.firstAudio)}. This does not attest that sound was heard. Reported STT processing: ${duration(voice.sttServer)}.`),
+        node('p', '', `Server, from start of request: context ready at ${duration(server.prepared)}, answer received at ${duration(server.executed)}.`),
+        node('small', '', 'Different clock origins: these durations are not added together. A missing value stays unknown.'));
       for (const value of intervals(current.events)) timing.append(node('p', '', value));
       body.append(timing);
-      const heading = node('h3', '', 'Chronologie commune du travail'); body.append(heading);
+      const heading = node('h3', '', 'Shared work timeline'); body.append(heading);
       const eventEnd = view.events.length - eventOffset, eventStart = Math.max(0, eventEnd - 80);
       if (eventStart > 0) {
-        const older = node('button', 'workflow-more', '80 événements précédents');
+        const older = node('button', 'workflow-more', '80 earlier events');
         older.type = 'button'; older.dataset.key = 'events-older'; older.onclick = () => { eventOffset += 80; render(); }; body.append(older);
       }
       const list = node('ol', 'workflow-events');
@@ -450,41 +450,41 @@
         const entry = node('li', 'workflow-event');
         const when = node('time', '', time(event.at));
         if (event.at) when.dateTime = String(event.at);
-        const label = EVENT_LABELS[event.type] || 'Événement enregistré';
-        entry.append(when, node('span', '', label), node('small', '', `${owner ? `Tour ${rows.indexOf(owner) + 1} · ` : ''}Travail ${event.workId}${work?.attempt?.agentId && /^(dispatch_|native_)/.test(event.type) ? ` · ${work.attempt.agentId}` : ''}`));
+        const label = EVENT_LABELS[event.type] || 'Recorded event';
+        entry.append(when, node('span', '', label), node('small', '', `${owner ? `Turn ${rows.indexOf(owner) + 1} · ` : ''}Work ${event.workId}${work?.attempt?.agentId && /^(dispatch_|native_)/.test(event.type) ? ` · ${work.attempt.agentId}` : ''}`));
         list.append(entry);
       }
       body.append(list);
       if (eventOffset > 0) {
-        const newer = node('button', 'workflow-more', '80 événements suivants');
+        const newer = node('button', 'workflow-more', '80 later events');
         newer.type = 'button'; newer.dataset.key = 'events-newer'; newer.onclick = () => { eventOffset = Math.max(0, eventOffset - 80); render(); }; body.append(newer);
       }
-      if (!view.events.length) body.append(node('p', 'workflow-empty', 'Aucun événement de travail conservé pour cette conversation.'));
-      if (view.gap) body.append(node('p', 'workflow-gap', 'Une partie de l’historique des événements n’est plus disponible. Les étapes manquantes restent inconnues.'));
-      if (view.stale) body.append(node('p', 'workflow-gap', 'Les données Core ne sont plus actualisées. Les étapes encore actives restent incertaines.'));
+      if (!view.events.length) body.append(node('p', 'workflow-empty', 'No work event kept for this conversation.'));
+      if (view.gap) body.append(node('p', 'workflow-gap', 'Part of the event history is no longer available. Missing steps stay unknown.'));
+      if (view.stale) body.append(node('p', 'workflow-gap', 'Core data is no longer refreshed. Steps still active stay uncertain.'));
       for (const work of current.works) {
         const detail = node('details', 'workflow-evidence');
         detail.dataset.key = `work:${work.id}`; detail.open = expanded.has(detail.dataset.key);
-        detail.append(node('summary', '', `Reçus · travail ${work.id}`));
-        detail.append(node('p', '', `Classification ${work.classification || 'inconnue'} · état ${work.state || 'inconnu'} · révision ${work.revision}`));
-        if (work.reason) detail.append(node('p', '', `Cause déclarée : ${work.reason}`));
-        if (work.attempt) detail.append(node('p', '', `Agent ${work.attempt.agentId || 'inconnu'} · tentative ${work.attempt.id || 'inconnue'} · run ${work.attempt.runId || 'inconnu'}`));
-        for (const tool of work.tools || []) detail.append(node('p', '', `Outil ${tool.tool || 'inconnu'} · reçu ${tool.id || 'inconnu'} · run ${tool.runId || 'inconnu'} · ${tool.status || 'état inconnu'}`));
-        for (const call of work.nativeAdmissions || []) detail.append(node('p', '', `Admission ${call.tool || 'outil inconnu'} · ${call.id || 'ID inconnu'} · résultat non attesté`));
-        if (work.result) detail.append(node('p', '', `Avis disponible · version ${work.result.version} · ${work.includedIn?.length ? `inclus dans le contexte du tour ${work.includedIn.map(ref => ref.targetTurnId).join(', ')}` : 'inclusion dans un tour ultérieur non attestée'}. Une inclusion ne prouve pas son influence.`));
-        if (work.resultDisposition === 'no_work') detail.append(node('p', '', 'Revue terminée · aucun complément utile publié.'));
+        detail.append(node('summary', '', `Receipts · work ${work.id}`));
+        detail.append(node('p', '', `Classification ${work.classification || 'unknown'} · state ${work.state || 'unknown'} · revision ${work.revision}`));
+        if (work.reason) detail.append(node('p', '', `Reported cause: ${work.reason}`));
+        if (work.attempt) detail.append(node('p', '', `Agent ${work.attempt.agentId || 'unknown'} · attempt ${work.attempt.id || 'unknown'} · run ${work.attempt.runId || 'unknown'}`));
+        for (const tool of work.tools || []) detail.append(node('p', '', `Tool ${tool.tool || 'unknown'} · receipt ${tool.id || 'unknown'} · run ${tool.runId || 'unknown'} · ${tool.status || 'unknown state'}`));
+        for (const call of work.nativeAdmissions || []) detail.append(node('p', '', `Admission ${call.tool || 'unknown tool'} · ${call.id || 'unknown ID'} · result not attested`));
+        if (work.result) detail.append(node('p', '', `Advice available · version ${work.result.version} · ${work.includedIn?.length ? `included in the context of turn ${work.includedIn.map(ref => ref.targetTurnId).join(', ')}` : 'inclusion in a later turn not attested'}. Inclusion does not prove influence.`));
+        if (work.resultDisposition === 'no_work') detail.append(node('p', '', 'Review finished · nothing useful published.'));
         body.append(detail);
       }
       if (current.activities.length) {
         const activity = node('details', 'workflow-evidence'); activity.dataset.key = `activity:${current.id}`;
-        activity.open = expanded.has(activity.dataset.key); activity.append(node('summary', '', 'Activités signalées pendant ce tour'));
-        for (const item of current.activities) activity.append(node('p', '', `${item.kind === 'tool' ? 'Outil' : 'Relais'} : ${item.tool || item.agentId || 'ID inconnu'}${item.agentId && item.tool ? ` · agent ${item.agentId}` : ''} · résultat non déduit du signal`));
+        activity.open = expanded.has(activity.dataset.key); activity.append(node('summary', '', 'Activities reported during this turn'));
+        for (const item of current.activities) activity.append(node('p', '', `${item.kind === 'tool' ? 'Tool' : 'Handoff'}: ${item.tool || item.agentId || 'unknown ID'}${item.agentId && item.tool ? ` · agent ${item.agentId}` : ''} · result not inferred from the signal`));
         body.append(activity);
       }
       for (const advice of current.reviews) body.append(node('p', 'workflow-advice',
-        `Avis ${advice.key} · ${advice.replaced === true ? 'remplacé' : advice.reconstructed ? 'statut actuel inconnu' : 'disponible'} · ${advice.includedIn?.length ? `inclus dans le contexte du tour ${advice.includedIn.map(ref => ref.targetTurnId).join(', ')}` : 'inclusion non attestée'} · influence non prouvée`));
+        `Advice ${advice.key} · ${advice.replaced === true ? 'replaced' : advice.reconstructed ? 'current status unknown' : 'available'} · ${advice.includedIn?.length ? `included in the context of turn ${advice.includedIn.map(ref => ref.targetTurnId).join(', ')}` : 'inclusion not attested'} · influence not proven`));
       for (const ref of current.adviceRefs || []) body.append(node('p', 'workflow-advice',
-        `Contexte de ce tour : ${ref.source === 'work' ? `travail ${ref.workId}` : `avis ${ref.adviceId}`} · version ${ref.version} · couverture ${(ref.coverage || []).join(', ') || 'inconnue'} · influence non prouvée`));
+        `Context of this turn: ${ref.source === 'work' ? `work ${ref.workId}` : `advice ${ref.adviceId}`} · version ${ref.version} · coverage ${(ref.coverage || []).join(', ') || 'unknown'} · influence not proven`));
       restoreFocus();
     }
     function update(action) { if (action() !== false) render(); }

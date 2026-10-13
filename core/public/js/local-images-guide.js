@@ -1,15 +1,15 @@
 'use strict';
 (() => {
   const $ = id => document.getElementById(id);
-  const mp = pixels => `${new Intl.NumberFormat('fr-CA', { maximumFractionDigits: 2 }).format(pixels / 1e6)} MP`;
+  const mp = pixels => `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(pixels / 1e6)} MP`;
   function node(tag, text, className) { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; }
   function recipeCard(recipe) {
     const card = node('article'); card.append(node('h3', recipe.label));
     if (recipe.description) card.append(node('p', recipe.description));
     const list = node('dl');
-    const rows = [['Étapes', recipe.steps], ['Taille maximale', recipe.maxPixels ? mp(recipe.maxPixels) : null], ['Précision', recipe.precision],
-      ['Générateur', recipe.diffusion], ['Encodeur de texte', recipe.encoder], ['Décodeur', recipe.vae],
-      ['Avec une référence', recipe.editingFraming === 'first-reference' ? 'Le résultat prend le format de la première image jointe.' : 'Le résultat garde le format demandé.']];
+    const rows = [['Steps', recipe.steps], ['Maximum size', recipe.maxPixels ? mp(recipe.maxPixels) : null], ['Precision', recipe.precision],
+      ['Generator', recipe.diffusion], ['Text encoder', recipe.encoder], ['Decoder', recipe.vae],
+      ['With a reference', recipe.editingFraming === 'first-reference' ? 'The result takes the format of the first attached image.' : 'The result keeps the requested format.']];
     for (const [label, value] of rows) { if (value === undefined || value === null || value === '') continue;
       const row = node('div'); row.append(node('dt', label), node('dd', String(value))); list.append(row); }
     card.append(list); return card;
@@ -18,13 +18,13 @@
     const status = $('guide-recipes-status');
     try {
       const r = await fetch('/api/images/workshop'); const view = await r.json();
-      if (!r.ok || !view.ok) throw new Error(view.message || 'Service indisponible.');
-      if (view.worker?.label) $('guide-host').textContent = `PC IMAGE · ${view.worker.label}`.toUpperCase();
+      if (!r.ok || !view.ok) throw new Error(view.message || 'Service unavailable.');
+      if (view.worker?.label) $('guide-host').textContent = `IMAGE PC · ${view.worker.label}`.toUpperCase();
       if (view.worker?.gpu) $('guide-gpu').textContent = view.worker.gpu;
-      if (view.worker?.vramGiB) $('guide-vram').textContent = `${view.worker.vramGiB} Go, une seule, partagée`;
+      if (view.worker?.vramGiB) $('guide-vram').textContent = `${view.worker.vramGiB} GB, only one, shared`;
       $('guide-recipes').replaceChildren(...view.profiles.map(recipeCard));
-      status.textContent = view.profiles.length ? `Jusqu’à ${view.maxReferences} références par demande ; côtés de ${view.dimensions.minEdge} à ${view.dimensions.maxEdge} px.` : 'Aucune recette n’est configurée.';
-    } catch (error) { status.textContent = `Lecture des recettes impossible pour l’instant. ${error.message}`; }
+      status.textContent = view.profiles.length ? `Up to ${view.maxReferences} references per request; sides from ${view.dimensions.minEdge} to ${view.dimensions.maxEdge} px.` : 'No recipe is configured.';
+    } catch (error) { status.textContent = `The recipes cannot be read right now. ${error.message}`; }
   }
   load();
 })();

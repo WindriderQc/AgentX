@@ -302,7 +302,7 @@ describe('degraded state', () => {
     expect(state).toMatchObject({
       degraded: true,
       degradedReason: 'upstream_unavailable',
-      userCue: 'mode dégradé',
+      userCue: 'degraded mode',
       cloudEscalated: false,
     });
     expect(state.retriedTo).toEqual({

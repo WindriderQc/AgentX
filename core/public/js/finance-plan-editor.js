@@ -9,28 +9,36 @@
 
   const SEVERITY = [['critical', 'Urgent'], ['warning', 'Important'], ['info', 'Info']];
   const SECTIONS = [
-    { key: 'openItems', label: 'Dossiers ouverts', fields: [['title', 'Titre'], ['detail', 'Détail', 'long'], ['severity', 'Priorité', SEVERITY]] },
-    { key: 'watch', label: 'Vigie', fields: [['date', 'Date'], ['what', 'Quoi', 'long'], ['status', 'Statut']] },
-    { key: 'debts', label: 'Dettes', fields: [['name', 'Dette', 'long'], ['accountCode', 'Code compte'], ['issuer', 'Émetteur'],
-      ['balanceCents', 'Solde ($, si pas lié)', 'money'], ['rateBp', 'Taux (%)', 'rate'], ['paymentCents', 'Paiement ($)', 'money'],
-      ['status', 'Statut'], ['endDate', 'Fin (AAAA-MM-JJ)']] },
-    { key: 'credit', label: 'Crédit', fields: [['name', 'Compte', 'long'], ['accountCode', 'Code compte'], ['issuer', 'Émetteur'],
-      ['limitCents', 'Limite ($)', 'money'], ['balanceCents', 'Solde ($, si pas lié)', 'money'], ['status', 'Statut']] },
-    { key: 'budget', label: 'Budget', fields: [['label', 'Poste', 'long'], ['category', 'Catégorie', 'category'], ['tag', 'Tag'],
-      ['monthlyCents', 'Par mois ($)', 'money']] },
-    { key: 'provisions', label: 'Provisions', fields: [['name', 'Dépense', 'long'], ['annualCents', 'Annuel ($)', 'money'], ['due', 'Échéance'], ['note', 'Note', 'long']] },
-    { key: 'assets', label: 'Actifs', fields: [['name', 'Actif'], ['valueCents', 'Valeur ($)', 'money'], ['asOf', 'Au (AAAA-MM-JJ)'], ['note', 'Note']] },
-    { key: 'taxRoom', label: 'Abris fiscaux', fields: [['name', 'Abri'], ['roomCents', 'Droits ($)', 'money'], ['asOf', 'Année / date']] },
-    { key: 'allocations', label: 'Affectation', fields: [['step', 'Geste', 'long'], ['amountCents', 'Montant ($)', 'money'], ['amountText', 'ou texte'],
-      ['status', 'Statut'], ['effect', 'Effet', 'long']] },
-    { key: 'milestones', label: 'Réglé', fields: [['text', 'Élément', 'long'], ['done', 'Fait', 'bool']] },
+    { key: 'openItems', label: 'Open items', fields: [['title', 'Title'], ['detail', 'Detail', 'long'], ['severity', 'Priority', SEVERITY]] },
+    { key: 'watch', label: 'Watch', fields: [['date', 'Date'], ['what', 'What', 'long'], ['status', 'Status']] },
+    { key: 'debts', label: 'Debts', fields: [['name', 'Debt', 'long'], ['accountCode', 'Account code'], ['issuer', 'Issuer'],
+      ['balanceCents', 'Balance ($, if not linked)', 'money'], ['rateBp', 'Rate (%)', 'rate'], ['paymentCents', 'Payment ($)', 'money'],
+      ['status', 'Status'], ['endDate', 'End (YYYY-MM-DD)']] },
+    { key: 'credit', label: 'Credit', fields: [['name', 'Account', 'long'], ['accountCode', 'Account code'], ['issuer', 'Issuer'],
+      ['limitCents', 'Limit ($)', 'money'], ['balanceCents', 'Balance ($, if not linked)', 'money'], ['status', 'Status']] },
+    { key: 'budget', label: 'Budget', fields: [['label', 'Line', 'long'], ['category', 'Category', 'category'], ['tag', 'Tag'],
+      ['monthlyCents', 'Per month ($)', 'money']] },
+    { key: 'provisions', label: 'Provisions', fields: [['name', 'Expense', 'long'], ['annualCents', 'Annual ($)', 'money'], ['due', 'Due'], ['note', 'Note', 'long']] },
+    { key: 'assets', label: 'Assets', fields: [['name', 'Asset'], ['valueCents', 'Value ($)', 'money'], ['asOf', 'As of (YYYY-MM-DD)'], ['note', 'Note']] },
+    { key: 'taxRoom', label: 'Tax shelters', fields: [['name', 'Shelter'], ['roomCents', 'Room ($)', 'money'], ['asOf', 'Year / date']] },
+    { key: 'allocations', label: 'Allocation', fields: [['step', 'Step', 'long'], ['amountCents', 'Amount ($)', 'money'], ['amountText', 'or text'],
+      ['status', 'Status'], ['effect', 'Effect', 'long']] },
+    { key: 'milestones', label: 'Settled', fields: [['text', 'Item', 'long'], ['done', 'Done', 'bool']] },
     { key: 'phase', label: 'Phase', scalar: true },
-    { key: 'excludeTags', label: 'Tags exceptionnels', list: true }
+    { key: 'excludeTags', label: 'Exceptional tags', list: true }
   ];
 
   let plan = null;
   let categories = [];
   let current = SECTIONS[0];
+  let rendered = '';
+
+  // The editor's typed state, to tell an edited section from the one rendered.
+  function snapshot() {
+    return JSON.stringify([...$('planEditorBody').querySelectorAll('input, select, textarea')]
+      .map((node) => (node.type === 'checkbox' ? node.checked : node.value)));
+  }
+  const dirty = () => Boolean(plan) && !$('planEditor').hidden && snapshot() !== rendered;
 
   function el(tag, attrs = {}, ...children) {
     const node = document.createElement(tag);
@@ -41,23 +49,28 @@
     return node;
   }
 
-  const toDollars = (cents) => (Number.isFinite(cents) ? (cents / 100).toFixed(2).replace('.', ',') : '');
-  const toCents = (text) => {
-    const clean = String(text).replace(/\s/g, '').replace(',', '.');
-    return clean === '' ? null : Math.round(Number.parseFloat(clean) * 100);
+  const toDollars = (cents) => (Number.isFinite(cents) ? (cents / 100).toFixed(2) : '');
+  // Accepts 1234.56, 1,234.56 and the French 1 234,56.
+  const toNumber = (text) => {
+    const clean = String(text).replace(/[\s$]/g, '');
+    const plain = clean.includes('.') ? clean.replace(/,/g, '') : clean.replace(',', '.');
+    // Anything but a plain number is unreadable, never a guess.
+    return /^-?\d+(\.\d+)?$/.test(plain) ? Number(plain) : Number.NaN;
   };
+  const toCents = (text) => (String(text).trim() === '' ? null : Math.round(toNumber(text) * 100));
 
+  // Each generated control is named by its column, since the table has no visible label per cell.
   function input(field, value) {
-    const [key, , kind] = field;
-    if (kind === 'bool') return el('input', { type: 'checkbox', 'data-key': key, checked: value ? '' : false });
+    const [key, label, kind] = field;
+    if (kind === 'bool') return el('input', { type: 'checkbox', 'data-key': key, 'aria-label': label, checked: value ? '' : false });
     if (Array.isArray(kind) || kind === 'category') {
       const options = kind === 'category' ? categories.map((c) => [c, c]) : kind;
-      const select = el('select', { 'data-key': key }, ...options.map(([v, label]) => el('option', { value: v }, label)));
+      const select = el('select', { 'data-key': key, 'aria-label': label }, ...options.map(([v, label]) => el('option', { value: v }, label)));
       select.value = value || options[0]?.[0] || '';
       return select;
     }
-    const shown = kind === 'money' ? toDollars(value) : kind === 'rate' ? (Number.isFinite(value) ? (value / 100).toString().replace('.', ',') : '') : (value ?? '');
-    return el('input', { type: 'text', 'data-key': key, 'data-kind': kind || 'text', value: String(shown), class: kind === 'long' ? 'finance-edit-long' : '' });
+    const shown = kind === 'money' ? toDollars(value) : kind === 'rate' ? (Number.isFinite(value) ? (value / 100).toString() : '') : (value ?? '');
+    return el('input', { type: 'text', 'data-key': key, 'data-kind': kind || 'text', 'aria-label': label, value: String(shown), class: kind === 'long' ? 'finance-edit-long' : '' });
   }
 
   function readRow(row, section) {
@@ -66,7 +79,7 @@
       const node = row.querySelector(`[data-key="${key}"]`);
       if (kind === 'bool') item[key] = node.checked;
       else if (kind === 'money') item[key] = toCents(node.value);
-      else if (kind === 'rate') item[key] = node.value.trim() === '' ? null : Math.round(Number.parseFloat(node.value.replace(',', '.')) * 100);
+      else if (kind === 'rate') item[key] = node.value.trim() === '' ? null : Math.round(toNumber(node.value) * 100);
       else item[key] = node.value.trim();
     }
     return item;
@@ -75,12 +88,12 @@
   function render() {
     const body = $('planEditorBody');
     const tabs = SECTIONS.map((section) => el('button', { type: 'button', class: `finance-tab${section === current ? ' finance-tab-on' : ''}`,
-      'data-section': section.key }, section.label));
+      role: 'tab', 'aria-selected': String(section === current), 'data-section': section.key }, section.label));
     let editor;
     if (current.scalar) {
-      editor = el('textarea', { id: 'planScalar', rows: '4', class: 'finance-edit-area' }, plan[current.key] || '');
+      editor = el('textarea', { id: 'planScalar', rows: '4', class: 'finance-edit-area', 'aria-label': current.label }, plan[current.key] || '');
     } else if (current.list) {
-      editor = el('input', { type: 'text', id: 'planList', class: 'finance-edit-long', value: (plan[current.key] || []).join(', ') });
+      editor = el('input', { type: 'text', id: 'planList', class: 'finance-edit-long', 'aria-label': `${current.label}, comma-separated`, value: (plan[current.key] || []).join(', ') });
     } else {
       const rows = (plan[current.key] || []).map((item) => el('tr', {},
         ...current.fields.map((field) => el('td', {}, input(field, item[field[0]]))),
@@ -91,9 +104,10 @@
     }
     body.replaceChildren(el('div', { class: 'finance-tabs', role: 'tablist' }, ...tabs), editor,
       el('div', { class: 'finance-edit-actions' },
-        ...(current.scalar || current.list ? [] : [el('button', { type: 'button', class: 'finance-link', id: 'planAdd' }, '+ Ajouter une ligne')]),
-        el('button', { type: 'button', class: 'finance-button', id: 'planSave' }, 'Enregistrer'),
+        ...(current.scalar || current.list ? [] : [el('button', { type: 'button', class: 'finance-link', id: 'planAdd' }, '+ Add a row')]),
+        el('button', { type: 'button', class: 'finance-button', id: 'planSave' }, 'Save'),
         el('span', { class: 'finance-note', id: 'planStatus', 'aria-live': 'polite' })));
+    rendered = snapshot();
   }
 
   async function save() {
@@ -101,42 +115,57 @@
     if (current.scalar) value = $('planScalar').value;
     else if (current.list) value = $('planList').value.split(',').map((t) => t.trim()).filter(Boolean);
     else value = [...$('planTable').tBodies[0].rows].map((row) => readRow(row, current));
-    $('planStatus').textContent = 'Enregistrement…';
+    const unreadable = Array.isArray(value) && value.some((item) => item && typeof item === 'object'
+      && Object.values(item).some((field) => typeof field === 'number' && !Number.isFinite(field)));
+    if (unreadable) { $('planStatus').textContent = 'Check the amounts and rates: write numbers such as 1234.56 or 4.5.'; return; }
+    $('planStatus').textContent = 'Saving…';
     try {
       const response = await fetch(`/api/finance/plan/${current.key}`, { method: 'PUT', credentials: 'same-origin',
         headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value }) });
       const body = await response.json();
-      if (!response.ok || body.status !== 'success') throw new Error(body.message || `Erreur ${response.status}`);
+      if (!response.ok || body.status !== 'success') throw new Error(body.message || `Error ${response.status}`);
       plan = body.data;
-      $('planStatus').textContent = 'Enregistré — rechargement…';
+      rendered = snapshot();
+      $('planStatus').textContent = 'Saved — reloading…';
       setTimeout(() => window.location.reload(), 600);
     } catch (error) {
-      $('planStatus').textContent = `Refusé : ${error.message}`;
+      $('planStatus').textContent = `Rejected: ${error.message}`;
     }
   }
 
+  // Hiding the panel keeps what is typed in it; only the first opening loads the plan.
   async function open() {
     const panel = $('planEditor');
     panel.hidden = !panel.hidden;
-    if (panel.hidden || plan) { if (plan) render(); return; }
-    const [p, r] = await Promise.all([fetch('/api/finance/plan', { credentials: 'same-origin' }).then((x) => x.json()),
-      fetch('/api/finance/rules', { credentials: 'same-origin' }).then((x) => x.json())]);
-    plan = p.data;
-    categories = r.data?.categories || [];
-    render();
+    if (panel.hidden || plan) return;
+    try {
+      const [p, r] = await Promise.all([fetch('/api/finance/plan', { credentials: 'same-origin' }).then((x) => x.json()),
+        fetch('/api/finance/rules', { credentials: 'same-origin' }).then((x) => x.json())]);
+      if (p.status !== 'success' || !p.data) throw new Error(p.message || 'the plan could not be read');
+      plan = p.data;
+      categories = r.data?.categories || [];
+      render();
+    } catch (error) {
+      $('planEditorBody').replaceChildren(el('p', { class: 'finance-error' }, `Plan unavailable: ${error.message}. Close and reopen to retry.`));
+    }
   }
 
   const header = document.querySelector('.finance-header');
-  header.append(el('button', { type: 'button', class: 'finance-button finance-edit-toggle', id: 'planEditToggle' }, '✎ Modifier le plan'),
+  header.append(el('button', { type: 'button', class: 'finance-button finance-edit-toggle', id: 'planEditToggle' }, '✎ Edit the plan'),
     el('section', { class: 'finance-card', id: 'planEditor', hidden: '' },
-      el('h2', {}, 'Modifier le plan'),
-      el('p', { class: 'finance-note' }, 'Choisis une section, modifie, puis « Enregistrer ». Montants en dollars (1234,56), taux en %. '
-        + 'Un code compte (EOP, CARD, MC2, PR3…) lie la ligne au solde réel du ledger.'),
+      el('h2', {}, 'Edit the plan'),
+      el('p', { class: 'finance-note' }, 'Choose a section, edit it, then Save. Amounts in dollars (1234.56), rates in %. '
+        + 'An account code (EOP, CARD, MC2, PR3…) links the row to the real ledger balance.'),
       el('div', { id: 'planEditorBody' })));
   $('planEditToggle').addEventListener('click', open);
   $('planEditor').addEventListener('click', (event) => {
     const tab = event.target.closest('[data-section]');
-    if (tab) { current = SECTIONS.find((s) => s.key === tab.dataset.section); render(); return; }
+    if (tab) {
+      if (dirty() && !window.confirm(`Discard the unsaved changes to ${current.label}?`)) return;
+      current = SECTIONS.find((s) => s.key === tab.dataset.section);
+      render();
+      return;
+    }
     if (event.target.closest('[data-remove]')) { event.target.closest('tr').remove(); return; }
     if (event.target.id === 'planAdd') {
       $('planTable').tBodies[0].append(el('tr', {}, ...current.fields.map((field) => el('td', {}, input(field, field[2] === 'bool' ? false : null))),
@@ -145,4 +174,5 @@
     }
     if (event.target.id === 'planSave') save();
   });
+  window.addEventListener('beforeunload', (event) => { if (dirty()) event.preventDefault(); });
 }());

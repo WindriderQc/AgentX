@@ -21,7 +21,7 @@ function createConversationImages({ conversations, service = images }) {
       statusUrl: base, studioPath: `/images?operation=${operation.id}`,
       ...(operation.artifact && { artifact: { ...operation.artifact, url: base + '/image' } }) };
   }
-  function card(operation, session, title = 'Ton image', body = 'Création locale') {
+  function card(operation, session, title = 'Your image', body = 'Local creation') {
     return { id: `image-${operation.id}`, key: `image:${operation.id}`, kind: 'image', source: 'local',
       title, body, status: operation.state, operation: view(operation, session) };
   }
@@ -59,21 +59,21 @@ function createConversationImages({ conversations, service = images }) {
       try {
         signal.throwIfAborted();
         const config = configuration(), quick = config.conversationProfile;
-        if (!space || native || requested || !config.configured || !quick) throw Object.assign(new Error('Dessin indisponible dans ce tour.'), { statusCode: 409 });
+        if (!space || native || requested || !config.configured || !quick) throw Object.assign(new Error('Drawing unavailable in this turn.'), { statusCode: 409 });
         requested = true;
         const safety = assessSafety(description);
         if (space === 'family' && (safety.deterministicEscalation || childBoundaryReply(pack, safety, description)
-          || FAMILY_UNSUITABLE.test(description.normalize('NFD').replace(/[\u0300-\u036f]/g, '')))) throw Object.assign(new Error('Choisis une autre idée de dessin.'), { statusCode: 400 });
+          || FAMILY_UNSUITABLE.test(description.normalize('NFD').replace(/[\u0300-\u036f]/g, '')))) throw Object.assign(new Error('Choose another drawing idea.'), { statusCode: 400 });
         const prompt = space === 'family' ? 'Age-appropriate illustration for children.\n' + description : description;
         const actionKey = 'household:' + createHash('sha256').update(JSON.stringify([scopeFor(session), turnId, 'image'])).digest('hex');
         const operation = await service.accept({ actionKey, prompt,
           profile: quick.id, width: quick.width, height: quick.height }, { conversation: scopeFor(session), signal });
-        Object.assign(block, card(operation, session, block.title || 'Ton dessin', description));
+        Object.assign(block, card(operation, session, block.title || 'Your drawing', description));
       } catch (error) {
         if (signal.aborted) return;
         Object.assign(block, { source: 'local', status: error.statusCode ? 'failed' : 'unknown', body: error.statusCode
-          ? 'Le dessin n’a pas été accepté. Réessaie quand l’atelier sera disponible, ou choisis une autre idée.'
-          : 'Impossible de confirmer la demande. Vérifie les images de cette conversation avant de demander un autre dessin.' });
+          ? 'The drawing was not accepted. Try again when the workshop is available, or choose another idea.'
+          : 'The request could not be confirmed. Check this conversation’s images before asking for another drawing.' });
       }
       onShow(block);
     }
@@ -85,10 +85,10 @@ function createConversationImages({ conversations, service = images }) {
         res.set('Cache-Control', 'private, no-store');
         try {
           const session = await conversations.getSession({ sessionId: req.params.sessionId });
-          if (!session || spaceFor(session) !== space) throw Object.assign(new Error('Conversation image inconnue.'), { statusCode: 404 });
-          if (req.params.id && !UUID.test(req.params.id)) throw Object.assign(new Error('Image inconnue.'), { statusCode: 404 });
+          if (!session || spaceFor(session) !== space) throw Object.assign(new Error('Unknown image conversation.'), { statusCode: 404 });
+          if (req.params.id && !UUID.test(req.params.id)) throw Object.assign(new Error('Unknown image.'), { statusCode: 404 });
           await handler(req, res, session);
-        } catch (error) { res.status(error.statusCode || 503).json({ ok: false, message: error.statusCode === 404 ? 'Image ou conversation inconnue.' : 'La demande image est indisponible. Vérifie son état avant de réessayer.' }); }
+        } catch (error) { res.status(error.statusCode || 503).json({ ok: false, message: error.statusCode === 404 ? 'Unknown image or conversation.' : 'The image request is unavailable. Check its status before trying again.' }); }
       };
       router.get(base, wrap(async (_req, res, session) => res.json({ ok: true,
         blocks: (await service.listForConversation(scopeFor(session))).map(op => card(op, session)) })));
@@ -96,14 +96,14 @@ function createConversationImages({ conversations, service = images }) {
         operation: view(await service.getForConversation(req.params.id, scopeFor(session)), session) })));
       router.get(base + '/:id/image', wrap(async (req, res, session) => {
         const op = await service.getForConversation(req.params.id, scopeFor(session));
-        if (op.state !== 'completed' || !op.runtimeRestored || !op.artifact) throw Object.assign(new Error('Image en préparation.'), { statusCode: 409 });
+        if (op.state !== 'completed' || !op.runtimeRestored || !op.artifact) throw Object.assign(new Error('Image in preparation.'), { statusCode: 409 });
         const artifact = await service.image(req.params.id);
         res.set({ 'Content-Type': artifact.mimeType, 'X-Content-Type-Options': 'nosniff',
           'Content-Disposition': `inline; filename="image-${op.id}.png"` }).send(artifact.bytes);
       }));
       if (space === 'private') {
         router.post(base, wrap(async (req, res, session) => {
-          if (session.status !== 'active') throw Object.assign(new Error('Conversation terminée.'), { statusCode: 409 });
+          if (session.status !== 'active') throw Object.assign(new Error('Conversation ended.'), { statusCode: 409 });
           const quick = service.status().conversationProfile;
           const input = req.body || {};
           const body = { ...input, ...(!input.profile && quick ? { profile: quick.id,

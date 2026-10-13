@@ -10,6 +10,7 @@ describe('backupService durable storage behavior', () => {
   let backupDir;
   let configRoot;
   let failMongodump;
+  let failConfigTar;
   let archivedConfigFiles;
   let fetchMock;
   const originalEnv = {};
@@ -21,6 +22,7 @@ describe('backupService durable storage behavior', () => {
   beforeEach(() => {
     jest.resetModules();
     failMongodump = false;
+    failConfigTar = false;
     archivedConfigFiles = [];
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'agentx-backup-test-'));
     backupDir = path.join(tempRoot, 'backups');
@@ -69,6 +71,7 @@ describe('backupService durable storage behavior', () => {
             walk(staging);
           }
           fs.writeFileSync(args[1], 'test archive');
+          if (failConfigTar && path.basename(args[1]).startsWith('config-')) return callback(new Error('tar failed'), '', 'failed');
         }
         return callback(null, '', '');
       })
@@ -183,6 +186,27 @@ describe('backupService durable storage behavior', () => {
     const leftovers = fs.readdirSync(backupDir)
       .filter(name => name.startsWith('agentx-'));
     expect(leftovers).toEqual([]);
+  });
+
+  test('a failed config archive leaves no partial file in the inventory', async () => {
+    failConfigTar = true;
+    const service = require('../../src/services/backupService');
+
+    await expect(service.createConfigBackup()).rejects.toThrow('tar failed');
+
+    expect(fs.readdirSync(backupDir).filter(name => name.startsWith('config-'))).toEqual([]);
+    expect(service.listConfigBackups()).toEqual([]);
+  });
+
+  test('an unreadable inventory is reported, not shown as empty', () => {
+    const service = require('../../src/services/backupService');
+    const readdir = jest.spyOn(fs, 'readdirSync').mockImplementation(() => { throw Object.assign(new Error('I/O error'), { code: 'EIO' }); });
+    try {
+      expect(() => service.listBackups()).toThrow('I/O error');
+      expect(() => service.listConfigBackups()).toThrow('I/O error');
+    } finally {
+      readdir.mockRestore();
+    }
   });
 
   test('delete operations are confined to their exact recovery artifact class', () => {

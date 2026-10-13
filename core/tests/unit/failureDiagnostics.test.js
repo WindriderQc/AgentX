@@ -2,6 +2,13 @@
 
 const { describeFailure, describePipelineFailures } = require('../../../shared/failureDiagnostics');
 
+test.each([['worker_exit', 'worker'], ['operator_stop', 'cancellation'], ['hard_budget', 'budget'],
+  ['model_output_limit', 'budget'], ['no_useful_progress', 'budget'], ['tests_failed', 'verification']])
+('native coding stop %s has an exact diagnostic without granting a retry', (code, category) => {
+  expect(describeFailure(code)).toMatchObject({ code, recognizedCode: true, category,
+    recovery: { authorization: 'not_granted' } });
+});
+
 test('pre-dispatch admission refusal explains fresh admission evidence without granting retry', () => {
   const result = describeFailure('workload_reserved', { safeToRetry: true, retryable: true });
   expect(result).toMatchObject({ code: 'workload_reserved', category: 'admission',

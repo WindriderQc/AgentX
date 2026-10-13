@@ -19,18 +19,18 @@
 
   function mount(host) {
     host.dataset.mounted = 'true';
-    host.innerHTML = `<p class="card-kicker">Dates de naissance · parent</p>
-      <p class="muted">Facultatif. Nestor personnel en tire l'âge et la fête de chaque enfant; la page Famille ne la voit jamais.</p>
+    host.innerHTML = `<p class="card-kicker">Birth dates · parent</p>
+      <p class="muted">Optional. Personal Nestor derives each child’s age and birthday from it; the Family page never sees it.</p>
       <div data-birth-list class="stack"></div><p data-birth-status class="muted" role="status"></p>`;
     const list = host.querySelector('[data-birth-list]');
     const status = (message) => { host.querySelector('[data-birth-status]').textContent = message; };
     const row = (profile) => `<form class="parent-chore" data-birth-profile="${esc(profile.id)}"><div class="grow"><strong>${esc(profile.avatar)} ${esc(profile.displayName)}</strong></div>
-      <label><small>Date de naissance</small><input type="date" min="1900-01-01" max="${today()}" value="${esc(profile.birthDate || '')}" aria-label="Date de naissance de ${esc(profile.displayName)}"></label>
-      <button class="compact primary">Enregistrer</button><button type="button" class="compact" data-birth-clear>Effacer</button></form>`;
+      <label><small>Birth date</small><input type="date" min="1900-01-01" max="${today()}" value="${esc(profile.birthDate || '')}" aria-label="Birth date of ${esc(profile.displayName)}"></label>
+      <button class="compact primary">Save</button><button type="button" class="compact" data-birth-clear>Clear</button></form>`;
     async function load() {
       try {
         const { profiles } = await api('/api/family/profiles/details');
-        list.innerHTML = profiles.map(row).join('') || '<div class="empty">Aucun profil.</div>';
+        list.innerHTML = profiles.map(row).join('') || '<div class="empty">No profile.</div>';
         status('');
       } catch (error) { status(error.message); }
     }
@@ -38,7 +38,7 @@
       form.querySelectorAll('button').forEach((button) => { button.disabled = true; });
       try {
         await api('/api/family/profiles/birth-date', { method: 'POST', body: JSON.stringify({ profileId: form.dataset.birthProfile, birthDate }) });
-        status(birthDate ? 'Date de naissance enregistrée.' : 'Date de naissance effacée.');
+        status(birthDate ? 'Birth date saved.' : 'Birth date cleared.');
         await load();
       } catch (error) {
         status(error.message);
@@ -48,7 +48,7 @@
     list.addEventListener('submit', (event) => {
       event.preventDefault();
       const value = event.target.querySelector('input[type="date"]').value;
-      if (!value) { status('Choisis une date, ou utilise Effacer.'); return; }
+      if (!value) { status('Choose a date, or use Clear.'); return; }
       save(event.target, value);
     });
     list.addEventListener('click', (event) => {

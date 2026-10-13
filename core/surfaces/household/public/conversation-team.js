@@ -36,14 +36,14 @@
 
   // Why the pickers do nothing while a conversation exists.
   function lockNotice({ locked, busy, name }) {
-    if (busy) return 'Réglages verrouillés pendant que Nestor travaille.';
+    if (busy) return 'Settings are locked while Nestor is working.';
     if (!locked) return '';
-    return `Conversation en cours avec ${name}. L’agent, la personnalité et la voix restent fixés : « Nouvelle conversation » pour les changer.`;
+    return `Conversation in progress with ${name}. The agent, personality and voice stay fixed: use “New conversation” to change them.`;
   }
 
   function render(nav, { list, activeAgentId, locked, esc }) {
     nav.hidden = list.length < 2;
-    nav.innerHTML = '<span class="team-label">Parler avec</span>' + list.map((member) => {
+    nav.innerHTML = '<span class="team-label">Talk with</span>' + list.map((member) => {
       const active = member.agentId === activeAgentId;
       return `<button type="button" class="team-card${active ? ' active' : ''}" data-agent="${esc(member.agentId)}" data-persona="${esc(member.personaId)}" aria-pressed="${active}"${locked && !active ? ' disabled' : ''}>${esc(member.name)}</button>`;
     }).join('');

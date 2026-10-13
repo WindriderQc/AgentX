@@ -1,9 +1,9 @@
 /* Core's durable work projection. Polling never starts inference. */
 (function (root) {
   'use strict';
-  const labels = { received: 'Demande enregistrée', queued: 'Je m’en occupe en arrière-plan', dispatching: 'Prise en charge en cours',
-    paused: 'Demande en pause', running: 'Je travaille sur ta demande', uncertain: 'Le reçu est en attente de vérification', failed: 'Le travail n’a pas abouti',
-    cancelled: 'Travail arrêté', result_ready: 'Résultat disponible', completed: 'Résultat disponible' };
+  const labels = { received: 'Request saved', queued: 'Handling it in the background', dispatching: 'Being picked up',
+    paused: 'Request paused', running: 'Working on your request', uncertain: 'Receipt awaiting verification', failed: 'The work did not succeed',
+    cancelled: 'Work stopped', result_ready: 'Result available', completed: 'Result available' };
   function create({ host, base, api, getConversation, maySpeak = () => true, onSnapshot = () => {}, onPollError = () => {}, pollMs = 2000 }) {
     const deviceSession = root.crypto.randomUUID(), items = new Map(), cards = new Map(), attempted = new Set(), requested = new Set();
     let sessionId, cursor = 0, sequence = 0, timer, polling = false, presenting = false, disposed = false, generation = 0;
@@ -22,24 +22,24 @@
         cards.set(item.id, card); host.append(card);
       }
       const heading = document.createElement('p'); heading.className = 'conversation-work-status';
-      heading.textContent = item.result ? (item.result.presentation === 'completed' ? 'Nestor · résultat lu' : 'Nestor · résultat disponible') : item.pending && item.state === 'completed' ? 'Demande enregistrée · réponse à vérifier' : labels[item.state] || 'Demande enregistrée';
+      heading.textContent = item.result ? (item.result.presentation === 'completed' ? 'Nestor · result read' : 'Nestor · result available') : item.pending && item.state === 'completed' ? 'Request saved · answer to verify' : labels[item.state] || 'Request saved';
       card.replaceChildren(heading);
       if (item.result) {
         const text = document.createElement('p'); text.className = 'conversation-work-answer'; text.textContent = item.result.text;
         const button = document.createElement('button'); button.type = 'button'; button.className = 'button';
-        button.textContent = requested.has(identity(item)) ? 'Lecture demandée à la prochaine pause' : 'Écouter';
+        button.textContent = requested.has(identity(item)) ? 'Playback requested at the next pause' : 'Listen';
         button.onclick = () => { requested.add(identity(item)); render(item); void naturalPause(); };
         card.append(text, button);
       }
       if (item.controllable) {
         for (const action of [item.state === 'paused' ? 'resume' : 'pause', 'cancel']) {
           const button = document.createElement('button'); button.type = 'button'; button.className = 'button';
-          button.textContent = { pause: 'Mettre en pause', resume: 'Reprendre le travail', cancel: 'Annuler cette demande' }[action];
+          button.textContent = { pause: 'Pause', resume: 'Resume the work', cancel: 'Cancel this request' }[action];
           button.onclick = async () => {
             button.disabled = true;
             try { await api(`${url()}/work/${encodeURIComponent(item.id)}/control`, { method: 'POST',
               body: JSON.stringify({ action, revision: item.revision }) }); await poll(); }
-            catch { heading.textContent = 'La demande a changé. Je vérifie son état.'; button.disabled = false; void poll(); }
+            catch { heading.textContent = 'The request changed. Checking its state.'; button.disabled = false; void poll(); }
           };
           card.append(button);
         }
@@ -66,7 +66,7 @@
         // automatic replay. The saved text remains available for explicit listening.
         if (currentGeneration === generation) {
           const status = cards.get(item.id)?.querySelector('.conversation-work-status');
-          if (status) status.textContent = 'Résultat conservé · lecture non confirmée';
+          if (status) status.textContent = 'Result kept · playback not confirmed';
         }
       } finally { presenting = false; }
     }

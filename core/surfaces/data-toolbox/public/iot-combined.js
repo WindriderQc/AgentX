@@ -113,26 +113,26 @@ function iotNearestValue(metric, time) {
 function iotCombinedReadings(model) {
   return model.metrics.map(metric => {
     const last = metric.points.at(-1);
-    return `<div class="iot-overlay-reading" style="--series:${metric.color}"><span><i aria-hidden="true"></i>${e(metric.label)}</span><strong>${e(iotValue(last?.value))}<small>${e(metric.unit)}</small></strong><small>${last ? e(iotAge(last.ts)) : 'Aucune mesure'}</small></div>`;
+    return `<div class="iot-overlay-reading" style="--series:${metric.color}"><span><i aria-hidden="true"></i>${e(metric.label)}</span><strong>${e(iotValue(last?.value))}<small>${e(metric.unit)}</small></strong><small>${last ? e(iotAge(last.ts)) : 'No reading'}</small></div>`;
   }).join('');
 }
 
 function iotCombinedTables(model) {
-  return model.metrics.map(metric => `<details class="iot-data"><summary>${e(metric.label)} · ${number(metric.points.length)} points${model.live ? '' : ' · médiane, moyenne et min–max'}</summary>
-    <div class="table-wrap" tabindex="0" role="region" aria-label="Valeurs de ${e(metric.label)}"><table><thead><tr><th scope="col">Heure</th><th scope="col">${model.live ? 'Valeur' : 'Médiane'}</th>${model.live ? '' : '<th scope="col">Moyenne</th><th scope="col">Min</th><th scope="col">Max</th><th scope="col">Mesures</th>'}</tr></thead><tbody>${metric.points.map(point => `<tr><th scope="row">${e(date(point.ts))}${point.partial ? ' (en cours)' : ''}</th><td>${model.live ? e(String(point.value)) : Number.isFinite(point.median) ? e(String(point.median)) : '—'} ${e(metric.unit)}</td>${model.live ? '' : `<td>${Number.isFinite(point.mean) ? e(String(point.mean)) : '—'}</td><td>${Number.isFinite(point.min) ? e(String(point.min)) : '—'}</td><td>${Number.isFinite(point.max) ? e(String(point.max)) : '—'}</td><td>${number(point.count)}</td>`}</tr>`).join('')}</tbody></table></div></details>`).join('');
+  return model.metrics.map(metric => `<details class="iot-data"><summary>${e(metric.label)} · ${number(metric.points.length)} points${model.live ? '' : ' · median, mean and min–max'}</summary>
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Values of ${e(metric.label)}"><table><thead><tr><th scope="col">Time</th><th scope="col">${model.live ? 'Value' : 'Median'}</th>${model.live ? '' : '<th scope="col">Mean</th><th scope="col">Min</th><th scope="col">Max</th><th scope="col">Readings</th>'}</tr></thead><tbody>${metric.points.map(point => `<tr><th scope="row">${e(date(point.ts))}${point.partial ? ' (in progress)' : ''}</th><td>${model.live ? e(String(point.value)) : Number.isFinite(point.median) ? e(String(point.median)) : '—'} ${e(metric.unit)}</td>${model.live ? '' : `<td>${Number.isFinite(point.mean) ? e(String(point.mean)) : '—'}</td><td>${Number.isFinite(point.min) ? e(String(point.min)) : '—'}</td><td>${Number.isFinite(point.max) ? e(String(point.max)) : '—'}</td><td>${number(point.count)}</td>`}</tr>`).join('')}</tbody></table></div></details>`).join('');
 }
 
 function iotCombinedHtml() {
   const model = iotCombinedModel();
-  if (!model.populated.length) return '<p class="iot-empty">Aucune mesure reçue sur cette période.</p>';
-  return `<article class="card iot-overlay-card"><header class="iot-overlay-head"><div><p class="iot-eyebrow">${number(model.metrics.length)} MESURES · UN AXE DE TEMPS</p><h3>Courbes superposées</h3></div><span class="iot-live-pill${model.live ? ' live' : ''}"><i aria-hidden="true"></i>${model.live ? 'En direct' : 'Historique'}</span></header>
+  if (!model.populated.length) return '<p class="iot-empty">No reading received in this period.</p>';
+  return `<article class="card iot-overlay-card"><header class="iot-overlay-head"><div><p class="iot-eyebrow">${number(model.metrics.length)} READINGS · ONE TIME AXIS</p><h3>Overlaid charts</h3></div><span class="iot-live-pill${model.live ? ' live' : ''}"><i aria-hidden="true"></i>${model.live ? 'Live' : 'History'}</span></header>
     <div id="iotCombinedReadings" class="iot-overlay-readings">${iotCombinedReadings(model)}</div>
-    <div class="iot-overlay-tools"><p>Chaque courbe a son échelle. Le survol affiche les valeurs dans leur unité.</p><label>Axe affiché<select id="iotCombinedAxis">${model.populated.map(metric => `<option value="${e(metric.key)}"${metric.key === model.axis.key ? ' selected' : ''}>${e(metric.label)}${metric.unit ? ` (${e(metric.unit)})` : ''}</option>`).join('')}</select></label>${model.live ? '' : iotReadingControls()}</div>
+    <div class="iot-overlay-tools"><p>Each curve has its own scale. Hovering shows values in their unit.</p><label>Axis shown<select id="iotCombinedAxis">${model.populated.map(metric => `<option value="${e(metric.key)}"${metric.key === model.axis.key ? ' selected' : ''}>${e(metric.label)}${metric.unit ? ` (${e(metric.unit)})` : ''}</option>`).join('')}</select></label>${model.live ? '' : iotReadingControls()}</div>
     ${model.live ? '' : `<p class="iot-reading-hint"><span id="iotReadingHint">${e(iotReadingHint())}</span> <span id="iotResolutionUsed">${e(iotResolutionUsed())}</span></p>`}
     ${iotAppearanceHtml(model.metrics)}
-    <div class="iot-overlay-plot"><canvas id="iotCombinedChart" tabindex="0" role="img" aria-label="Courbes superposées de ${e(model.metrics.map(metric => metric.label).join(', '))}. Flèches gauche et droite pour consulter les mesures, Échap pour fermer le survol."></canvas><div id="iotCombinedTooltip" class="iot-shared-tooltip" hidden role="status"></div></div>
-    <div class="iot-overlay-foot"><span>Survole ou touche le graphique pour comparer les mesures.</span><span id="iotCombinedWindow">${e(iotCombinedDate(model.start))} → ${e(iotCombinedDate(model.end))}</span></div>
-    <details class="iot-overlay-data"><summary>Consulter les valeurs détaillées</summary><div id="iotCombinedTables">${iotCombinedTables(model)}</div></details></article>`;
+    <div class="iot-overlay-plot"><canvas id="iotCombinedChart" tabindex="0" role="img" aria-label="Overlaid charts of ${e(model.metrics.map(metric => metric.label).join(', '))}. Left and right arrows browse the readings, Escape closes the hover."></canvas><div id="iotCombinedTooltip" class="iot-shared-tooltip" hidden role="status"></div></div>
+    <div class="iot-overlay-foot"><span>Hover or touch the chart to compare readings.</span><span id="iotCombinedWindow">${e(iotCombinedDate(model.start))} → ${e(iotCombinedDate(model.end))}</span></div>
+    <details class="iot-overlay-data"><summary>Show detailed values</summary><div id="iotCombinedTables">${iotCombinedTables(model)}</div></details></article>`;
 }
 
 function iotClearCombined() {
@@ -266,7 +266,7 @@ function iotDrawCombined() {
   const canvas = document.querySelector('#iotCombinedChart');
   if (!canvas || typeof canvas.getContext !== 'function') return;
   if (typeof Chart === 'undefined') {
-    canvas.parentElement.innerHTML = '<p class="notice warning">Le moteur de graphiques est indisponible. Les valeurs détaillées restent accessibles.</p>'; return;
+    canvas.parentElement.innerHTML = '<p class="notice warning">The chart engine is unavailable. Detailed values remain available.</p>'; return;
   }
   const model = iotCombinedModel(); if (!model.populated.length) return;
   if (iotCombined.chart && iotCombined.chart.canvas !== canvas) iotClearCombined();

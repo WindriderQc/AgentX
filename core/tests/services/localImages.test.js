@@ -147,6 +147,7 @@ describe('durable local image operations', () => {
     const other = { ...conversation, sessionId: 'different-session' };
     await expect(service.getForConversation(first.id, other)).rejects.toMatchObject({ statusCode: 404 });
     expect(await service.listForConversation(other)).toEqual([]);
+    expect((await service.list()).map(op => op.id)).not.toContain(first.id);
     await expect(service.accept(body, { conversation: other })).rejects.toMatchObject({ statusCode: 409 });
     await expect(service.accept(body)).rejects.toMatchObject({ statusCode: 409 });
     expect((await service.accept(body, { conversation })).id).toBe(first.id);

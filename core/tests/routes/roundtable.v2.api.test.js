@@ -183,6 +183,18 @@ describe('Roundtable v2 API', () => {
     }));
   });
 
+  test('an owner session is the chair whatever name the request carries', async () => {
+    roundtableService.setDecision.mockResolvedValue({ governance: { decisionStatus: 'approved' } });
+    const unlocked = express();
+    unlocked.use((_req, res, next) => { res.locals.adultUserId = 'owner'; next(); });
+    unlocked.use('/api/roundtable', router);
+    const res = await request(unlocked)
+      .post('/api/roundtable/rt-1/decision')
+      .send({ decision: 'approved', actor: 'Someone Else' });
+    expect(res.status).toBe(200);
+    expect(roundtableService.setDecision).toHaveBeenCalledWith('rt-1', expect.objectContaining({ actor: 'owner' }));
+  });
+
   test('requires the server-side chair token for direct interjections', async () => {
     process.env.ROUNDTABLE_CHAIR_TOKEN = 'chair-secret';
     const rejected = await request(app)

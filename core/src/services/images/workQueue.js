@@ -44,7 +44,7 @@ async function dispatch(op, launch) {
   } else {
     if (['requested', 'reserved'].includes(job.state) && job.startBefore && Date.now() >= Date.parse(job.startBefore)) {
       await queue.cancel(job.id, { expectedRevision: job.revision }, 'core-images');
-      await Images.updateOne({ _id: op._id, state: 'queued' }, { $set: { state: 'cancelled', error: 'Créneau image expiré. Nouvelle demande requise.' }, $unset: { workerSlot: 1 } }, { writeConcern: WC });
+      await Images.updateOne({ _id: op._id, state: 'queued' }, { $set: { state: 'cancelled', error: 'Image slot expired. New request required.' }, $unset: { workerSlot: 1 } }, { writeConcern: WC });
       return false;
     }
     if (!['requested', 'reserved'].includes(job.state)) {

@@ -40,8 +40,8 @@ test('pictures show their source and a thumbnail from an allowed address only', 
   assert.match(html, /src="https:\/\/images\.example\.test\/g\.jpg"[^>]*referrerpolicy="no-referrer"/);
   assert.match(html, /Internet · <a href="https:\/\/zoo\.example\.test\/g"/);
   assert.match(html, /Family photos<img[^>]+src="\/api\/voice-personas\/family\/visuals\/file\?source=photos&amp;path=a\.jpg"/);
-  assert.match(html, /<em>no picture found<\/em> for « licorne »/);
-  assert.match(html, /<em>no picture found<\/em> for « piège »/);
+  assert.match(html, /<em>no picture found<\/em> for “licorne”/);
+  assert.match(html, /<em>no picture found<\/em> for “piège”/);
   assert.doesNotMatch(html, /javascript:/);
 });
 
@@ -53,9 +53,9 @@ test('the math picture records whether it was drawn', () => {
 
 test('the journal row keeps its question, answer, flags and offered sound', () => {
   const html = row({ ...BASE, safetyFlags: ['medical'], soundId: 'rain', display: [{ kind: 'text', body: 'Bonjour' }] },
-    { esc, sound: { emoji: '🌧', label: { fr: 'Pluie' } } });
+    { esc, sound: { emoji: '🌧', label: { fr: 'Pluie', en: 'Rain' } } });
   assert.match(html, /^<div class="audit danger-box"><strong>Montre-moi une girafe<\/strong><div>Je te l’ai mis à l’écran\.<\/div><details/);
-  assert.match(html, /900ms · offered 🌧 Pluie · medical<\/small><\/div>$/);
+  assert.match(html, /900ms · offered 🌧 Rain · medical<\/small><\/div>$/);
 });
 
 test('a spoken turn shows its main delays compactly; a turn without a timeline shows none', () => {

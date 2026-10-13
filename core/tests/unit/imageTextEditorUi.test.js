@@ -77,8 +77,8 @@ test('two-pass labels preload exact spelling and expose provisional placement wi
   expect(b.field('planned').hidden).toBe(false);
   await b.field('planned').trigger('click');
   expect(b.field('content').value).toBe(labels[0].text);
-  expect(b.field('placement-hint').textContent).toContain('provisoire');
-  expect(b.field('status').textContent).toContain('Modifications');
+  expect(b.field('placement-hint').textContent).toContain('provisional');
+  expect(b.field('status').textContent).toContain('Changes to save');
   await b.field('json').trigger('click');
   const exported = b.engine.stringify.mock.calls[0][0];
   expect(exported.labels[0]).toMatchObject({ id: 'planned-0', text: labels[0].text });
@@ -104,7 +104,7 @@ test('a late original fetch cannot replace a project after selection changes', a
 test('JSON can reopen without any selected operation, keeps exact text, and performs no API write', async () => {
   const b = browser(null); await b.import(stored());
   expect(b.fetch).not.toHaveBeenCalled(); expect(b.field('workspace').hidden).toBe(false);
-  expect(b.field('content').value).toBe('Exact'); expect(b.field('status').textContent).toContain('indépendant');
+  expect(b.field('content').value).toBe('Exact'); expect(b.field('status').textContent).toContain('independent');
   await b.field('json').trigger('click');
   expect(b.engine.stringify.mock.calls[0][0].labels[0].text).toBe('Exact');
   expect(b.download).toHaveBeenCalled(); expect(b.urls.revokeObjectURL).toHaveBeenCalledWith('blob:synthetic');
@@ -125,7 +125,7 @@ test('a tampered import preserves the current project and reports its failed ima
   b.engine.verifySource.mockRejectedValueOnce(new Error('Source SHA-256 does not match the embedded image.'));
   await b.import({ ...stored(), labels: [] });
   expect(b.field('content').value).toBe('Exact');
-  expect(b.field('error').hidden).toBe(false); expect(b.field('error').textContent).toContain('empreinte');
+  expect(b.field('error').hidden).toBe(false); expect(b.field('error').textContent).toContain('fingerprint');
 });
 
 test('an import awaiting verification is invalidated by a selection reset', async () => {
@@ -160,7 +160,7 @@ test('an invalid pending field blocks exports until that field is corrected', as
 test('301 characters remain invalid after a color change and never export the previous text', async () => {
   const b = browser(); await b.import(stored());
   b.field('content').value = 'x'.repeat(301); b.field('content').trigger('input');
-  expect(b.field('error').textContent).toContain('300 caractères');
+  expect(b.field('error').textContent).toContain('300 characters');
   b.field('color').value = '#123456'; b.field('color').trigger('input');
   await b.field('json').trigger('click'); expect(b.download).not.toHaveBeenCalled();
   expect(b.field('json').disabled).toBe(true);
@@ -174,7 +174,7 @@ test.each([['x', '101'], ['size', '0']])('invalid %s prevents direct export call
   b.field(name).checkValidity = () => false; b.field(name).value = value; b.field(name).trigger('input');
   await b.field('png').trigger('click'); await b.field('svg').trigger('click'); await b.field('json').trigger('click');
   expect(b.download).not.toHaveBeenCalled(); expect(b.field('json').disabled).toBe(true);
-  expect(b.field('status').textContent).toContain('Modifications');
+  expect(b.field('status').textContent).toContain('Changes to save');
 });
 
 test('canvas placement never discards an invalid pending text or enables exporting its previous value', async () => {

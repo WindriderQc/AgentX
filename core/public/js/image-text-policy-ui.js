@@ -25,18 +25,18 @@ globalThis.AgentXImageTextPolicy = { mount({ getContext, onChange = () => {}, on
     $('image-text-policy-advice').disabled = context.locked || !context.prompt?.trim() || !!getError({ forPlanning: true });
     for (const input of $('image-text-policy-labels').querySelectorAll('textarea, button')) input.disabled = context.locked;
     $('image-text-policy-status').textContent = getError() || (enabled
-      ? $('image-text-strategy').value === 'two-pass' ? 'L’image sera générée sans lettres. Les textes seront préparés ensuite dans les calques, avec un placement à vérifier.' : 'Les textes générés devront être relus après le rendu.'
-      : 'Consigne de rendu : aucun texte dans l’image.');
+      ? $('image-text-strategy').value === 'two-pass' ? 'The image will be generated without letters. The text will then be prepared in layers, with a placement to check.' : 'The generated text must be proofread after the render.'
+      : 'Render instruction: no text in the image.');
   }
   function render() {
     $('image-text-policy-labels').replaceChildren();
     labels.forEach((item, index) => {
-      const row = node('li'), exact = node('label', `Texte exact ${index + 1}`), content = node('textarea'), place = node('label', 'Placement souhaité · facultatif'), placement = node('textarea'), remove = node('button', 'Retirer');
+      const row = node('li'), exact = node('label', `Exact text ${index + 1}`), content = node('textarea'), place = node('label', 'Desired placement · optional'), placement = node('textarea'), remove = node('button', 'Remove');
       content.value = item.text; content.rows = 2; content.maxLength = 600;
       placement.value = item.placement; placement.rows = 2; placement.maxLength = 480;
       content.addEventListener('input', () => { item.text = content.value; refresh(); onChange(); });
       placement.addEventListener('input', () => { item.placement = placement.value; refresh(); onChange(); });
-      remove.type = 'button'; remove.setAttribute('aria-label', `Retirer le texte ${index + 1}`);
+      remove.type = 'button'; remove.setAttribute('aria-label', `Remove text ${index + 1}`);
       remove.addEventListener('click', () => { if (getContext().locked) return; labels = labels.filter(value => value.id !== item.id); render(); onChange(); });
       exact.append(content); place.append(placement); row.append(exact, place, remove); $('image-text-policy-labels').append(row);
     });

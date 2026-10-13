@@ -60,7 +60,7 @@ async function reserve(config, operation, save, isCancelled) {
       workloadId: operation._id, kind: 'images',
       hosts: [config.workerUrl, ...config.ollamaHosts].filter(Boolean), ttl: 120000 });
     if (lease.acquired) break;
-    if (Date.now() >= end) throw new Error('GPU occupé. Fais une nouvelle demande quand il sera disponible.');
+    if (Date.now() >= end) throw new Error('GPU busy. Make a new request when it is available.');
     await sleep(1000);
   } while (true);
   let lost = false, version = lease.recoveryVersion;

@@ -3,9 +3,9 @@
 const IOT_APPEARANCE_STORAGE = 'agentx.iot.curve-styles.v1';
 const IOT_CURVE_PRESETS = Object.freeze({
   signature: { label: 'Signature', width: 1.5, line: 'solid', curve: 'smooth', fill: 'gradient', opacity: 24, points: false, glow: false },
-  clean: { label: 'Épuré', width: 1.5, line: 'solid', curve: 'smooth', fill: 'none', opacity: 18, points: false, glow: false },
-  areas: { label: 'Aires', width: 1.5, line: 'solid', curve: 'smooth', fill: 'gradient', opacity: 18, points: false, glow: false },
-  technical: { label: 'Technique', width: 1, line: 'solid', curve: 'linear', fill: 'none', opacity: 18, points: true, glow: false }
+  clean: { label: 'Clean', width: 1.5, line: 'solid', curve: 'smooth', fill: 'none', opacity: 18, points: false, glow: false },
+  areas: { label: 'Areas', width: 1.5, line: 'solid', curve: 'smooth', fill: 'gradient', opacity: 18, points: false, glow: false },
+  technical: { label: 'Technical', width: 1, line: 'solid', curve: 'linear', fill: 'none', opacity: 18, points: true, glow: false }
 });
 const IOT_SIGNATURE_CURVES = Object.freeze({
   temperature: { fill: 'gradient', opacity: 24 },
@@ -42,9 +42,9 @@ function iotCentral(point, central = iotState.central) {
 }
 /** The reading controls of a history view, shared by both chart layouts. */
 function iotReadingControls() {
-  return `<label>Valeur centrale<select id="iotCentral"><option value="median"${iotState.central === 'median' ? ' selected' : ''}>Médiane</option><option value="mean"${iotState.central === 'mean' ? ' selected' : ''}>Moyenne</option></select></label><label class="iot-range-toggle"><input type="checkbox" id="iotCombinedRanges"${iotState.ranges ? ' checked' : ''}>Bande min–max</label>`;
+  return `<label>Central value<select id="iotCentral"><option value="median"${iotState.central === 'median' ? ' selected' : ''}>Median</option><option value="mean"${iotState.central === 'mean' ? ' selected' : ''}>Mean</option></select></label><label class="iot-range-toggle"><input type="checkbox" id="iotCombinedRanges"${iotState.ranges ? ' checked' : ''}>Min–max band</label>`;
 }
-const iotReadingHint = (combined = iotState.view === 'combined') => `La ligne suit la ${iotState.central === 'mean' ? 'moyenne' : 'médiane'} de chaque tranche de temps${iotState.ranges ? ` ; la bande ombrée va du minimum au maximum mesurés dans la tranche${combined ? ' (plus marquée pour la mesure de l’axe affiché)' : ''}` : ''}.`;
+const iotReadingHint = (combined = iotState.view === 'combined') => `The line follows the ${iotState.central === 'mean' ? 'mean' : 'median'} of each time bucket${iotState.ranges ? `; the shaded band spans the minimum to the maximum measured in the bucket${combined ? ' (stronger for the reading on the axis shown)' : ''}` : ''}.`;
 
 function iotCleanCurveStyle(value = {}) {
   const base = IOT_CURVE_PRESETS.clean;
@@ -106,21 +106,21 @@ function iotAppearanceEditor(metrics) {
   const key = iotAppearanceKey(metrics); const style = iotCurveStyle(key);
   const options = (values, selected) => (Array.isArray(values) ? values : Object.entries(values)).map(([value, label]) => `<option value="${value}"${String(selected) === String(value) ? ' selected' : ''}>${label}</option>`).join('');
   return `<div class="iot-style-controls">
-    <label>Épaisseur<select data-iot-style="width">${options([[.75, 'Très fin · 0,75 px'], [1, 'Fin · 1 px'], [1.5, 'Léger · 1,5 px'], [2, 'Moyen · 2 px'], [3, 'Marqué · 3 px'], [4, 'Épais · 4 px']], style.width)}</select></label>
-    <label>Trait<select data-iot-style="line">${options({ solid: 'Continu', dashed: 'Tirets', dotted: 'Pointillé' }, style.line)}</select></label>
-    <label>Courbe<select data-iot-style="curve">${options({ smooth: 'Lisse', linear: 'Droite', step: 'Paliers' }, style.curve)}</select></label>
-    <label>Remplissage<select data-iot-style="fill">${options({ none: 'Aucun', gradient: 'Dégradé', solid: 'Uni' }, style.fill)}</select></label>
-    <label>Zoom vertical<select data-iot-style="scale">${options({ context: 'Contexte', detail: 'Détail' }, style.scale)}</select></label>
-    <label class="iot-style-opacity">Opacité de l’aire <output id="iotStyleOpacity">${style.opacity} %</output><input type="range" data-iot-style="opacity" min="0" max="40" step="1" value="${style.opacity}"${style.fill === 'none' ? ' disabled' : ''}></label>
-    <div class="iot-style-checks"><label><input type="checkbox" data-iot-style="points"${style.points ? ' checked' : ''}>Points</label><label><input type="checkbox" data-iot-style="glow"${style.glow ? ' checked' : ''}>Halo</label></div>
-    <button type="button" class="iot-style-copy" data-iot-style-copy>Appliquer à toutes</button></div><p class="iot-style-scale-hint">Contexte garde une échelle plus stable. Détail agrandit les petites variations.</p>`;
+    <label>Thickness<select data-iot-style="width">${options([[.75, 'Very thin · 0.75 px'], [1, 'Thin · 1 px'], [1.5, 'Light · 1.5 px'], [2, 'Medium · 2 px'], [3, 'Bold · 3 px'], [4, 'Thick · 4 px']], style.width)}</select></label>
+    <label>Stroke<select data-iot-style="line">${options({ solid: 'Solid', dashed: 'Dashed', dotted: 'Dotted' }, style.line)}</select></label>
+    <label>Curve<select data-iot-style="curve">${options({ smooth: 'Smooth', linear: 'Straight', step: 'Steps' }, style.curve)}</select></label>
+    <label>Fill<select data-iot-style="fill">${options({ none: 'None', gradient: 'Gradient', solid: 'Solid' }, style.fill)}</select></label>
+    <label>Vertical zoom<select data-iot-style="scale">${options({ context: 'Context', detail: 'Detail' }, style.scale)}</select></label>
+    <label class="iot-style-opacity">Area opacity <output id="iotStyleOpacity">${style.opacity} %</output><input type="range" data-iot-style="opacity" min="0" max="40" step="1" value="${style.opacity}"${style.fill === 'none' ? ' disabled' : ''}></label>
+    <div class="iot-style-checks"><label><input type="checkbox" data-iot-style="points"${style.points ? ' checked' : ''}>Points</label><label><input type="checkbox" data-iot-style="glow"${style.glow ? ' checked' : ''}>Glow</label></div>
+    <button type="button" class="iot-style-copy" data-iot-style-copy>Apply to all</button></div><p class="iot-style-scale-hint">Context keeps a steadier scale. Detail magnifies small variations.</p>`;
 }
 
 function iotAppearanceHtml(metrics) {
   const key = iotAppearanceKey(metrics); const style = iotCurveStyle(key);
-  return `<details class="iot-appearance"><summary><svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/><path d="M7 3v4M13 8v4M8 13v4" stroke-width="3"/></svg>Style des courbes<span>Traits · aires · points</span></summary>
-    <div class="iot-style-panel"><div class="iot-style-presets" role="group" aria-label="Rendus des courbes">${Object.entries(IOT_CURVE_PRESETS).map(([id, preset]) => `<button type="button" data-iot-style-preset="${id}">${iotStylePreview(preset)}<span>${preset.label}</span></button>`).join('')}</div>
-    <div class="iot-style-target"><label>Personnaliser<select id="iotStyleMetric">${metrics.map(metric => `<option value="${e(metric.key)}"${metric.key === key ? ' selected' : ''}>${e(metric.label)}</option>`).join('')}</select></label><div id="iotStylePreview">${iotStylePreview(style, metrics.find(metric => metric.key === key)?.color)}</div><span>Réglages conservés sur ce navigateur.</span></div>
+  return `<details class="iot-appearance"><summary><svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/><path d="M7 3v4M13 8v4M8 13v4" stroke-width="3"/></svg>Curve style<span>Strokes · areas · points</span></summary>
+    <div class="iot-style-panel"><div class="iot-style-presets" role="group" aria-label="Curve presets">${Object.entries(IOT_CURVE_PRESETS).map(([id, preset]) => `<button type="button" data-iot-style-preset="${id}">${iotStylePreview(preset)}<span>${preset.label}</span></button>`).join('')}</div>
+    <div class="iot-style-target"><label>Customize<select id="iotStyleMetric">${metrics.map(metric => `<option value="${e(metric.key)}"${metric.key === key ? ' selected' : ''}>${e(metric.label)}</option>`).join('')}</select></label><div id="iotStylePreview">${iotStylePreview(style, metrics.find(metric => metric.key === key)?.color)}</div><span>Settings are kept in this browser.</span></div>
     <div id="iotStyleEditor">${iotAppearanceEditor(metrics)}</div></div></details>`;
 }
 

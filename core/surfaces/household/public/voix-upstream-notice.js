@@ -1,7 +1,7 @@
 /* Conversation notice while Core relays speech through the backup VoiX host. */
 (function (root) {
   'use strict';
-  const BACKUP_NOTICE = 'Voix de secours (serveur principal indisponible) : réponses plus lentes.';
+  const BACKUP_NOTICE = 'Backup voice (main server unavailable): slower replies.';
 
   // Accepts an X-Voix-Upstream header value or a GET /api/voix/upstream payload.
   function upstreamNotice(state) {

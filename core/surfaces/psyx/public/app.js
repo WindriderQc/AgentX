@@ -134,27 +134,27 @@ function setReady(ready, label) {
   setBusy(false);
 }
 
-const AUTO_INFO = { title: 'Auto', short: 'PsyX décide.', description: 'Après chaque réponse, PsyX réfléchit à la conversation et choisit comment répondre ensuite.' };
-// French labels for the interface; the server's English descriptions stay model-facing.
+const AUTO_INFO = { title: 'Auto', short: 'PsyX decides.', description: 'After each reply, PsyX reflects on the conversation and chooses how to reply next.' };
+// Interface labels; the server's descriptions stay model-facing.
 const MODE_LABELS = {
-  talk: { title: 'Écoute', short: 'Rester avec le vécu.', description: 'Rester proche de l’expérience vécue, aider à nommer ce qui se passe, sans sauter trop vite à l’analyse ou aux solutions.' },
-  analyze: { title: 'Analyse', short: 'Comprendre le mécanisme.', description: 'Cartographier déclencheurs, croyances, dynamiques émotionnelles, contradictions, hypothèses concurrentes et boucles.' },
-  challenge: { title: 'Confrontation', short: 'Mettre l’histoire à l’épreuve.', description: 'Confronter les suppositions, l’évitement, la rationalisation et les certitudes que les faits ne soutiennent pas.' },
-  plan: { title: 'Plan', short: 'Passer à l’action.', description: 'Transformer la compréhension en une petite intervention observable : expérience, limite, conversation ou décision.' }
+  talk: { title: 'Listen', short: 'Stay with the experience.', description: 'Stay close to lived experience and help name what is happening, without jumping too fast to analysis or solutions.' },
+  analyze: { title: 'Analyze', short: 'Understand the mechanism.', description: 'Map triggers, beliefs, emotional dynamics, contradictions, competing hypotheses and loops.' },
+  challenge: { title: 'Challenge', short: 'Test the story.', description: 'Challenge assumptions, avoidance, rationalization and certainties the facts do not support.' },
+  plan: { title: 'Plan', short: 'Take action.', description: 'Turn understanding into a small observable step: an experiment, a boundary, a conversation or a decision.' }
 };
 const DEPTH_LABELS = {
-  normal: { title: 'Normale', short: 'Raisonnement local solide.', description: 'Concis, conversationnel et utile.' },
-  deep: { title: 'Profonde', short: 'Raisonnement plus délibéré.', description: 'Formulation délibérée, hypothèses concurrentes, tendances dans le temps et effets de second ordre, sans verbosité.' }
+  normal: { title: 'Normal', short: 'Solid local reasoning.', description: 'Concise, conversational and useful.' },
+  deep: { title: 'Deep', short: 'More deliberate reasoning.', description: 'Deliberate formulation, competing hypotheses, patterns over time and second-order effects, without verbosity.' }
 };
 
 function currentModeInfo(mode = state.mode) {
-  if (mode === 'auto') return state.conversationFeatures?.autoRecommendations === false ? { ...AUTO_INFO, description: 'Auto utilise la posture par défaut. L’adaptation par revue est désactivée dans Contexte et performance.' }
-    : state.conversationFeatures?.backgroundReview === false ? { ...AUTO_INFO, description: 'Auto peut reprendre les recommandations déjà enregistrées. La revue après réponse est désactivée.' } : AUTO_INFO;
+  if (mode === 'auto') return state.conversationFeatures?.autoRecommendations === false ? { ...AUTO_INFO, description: 'Auto uses the default stance. Review-based adaptation is turned off in Context and performance.' }
+    : state.conversationFeatures?.backgroundReview === false ? { ...AUTO_INFO, description: 'Auto can reuse recommendations already saved. The post-reply review is turned off.' } : AUTO_INFO;
   return { title: mode, short: '', description: '', ...state.modeConfig[mode], ...MODE_LABELS[mode] };
 }
 
 function currentDepthInfo(depth = state.depth) {
-  if (depth === 'auto') return state.conversationFeatures?.deepReasoning === false ? { ...AUTO_INFO, short: 'Normale · réflexion approfondie désactivée.' } : AUTO_INFO;
+  if (depth === 'auto') return state.conversationFeatures?.deepReasoning === false ? { ...AUTO_INFO, short: 'Normal · deep reasoning turned off.' } : AUTO_INFO;
   return {
     title: depth,
     short: '',
@@ -183,14 +183,14 @@ function upcomingControl() {
 function renderStance() {
   const control = state.busy && state.applied ? state.applied : upcomingControl();
   const stance = currentModeInfo(control.mode).title || control.mode;
-  const prefix = state.busy && state.applied ? 'Réponse en cours' : 'Prochaine réponse';
+  const prefix = state.busy && state.applied ? 'Current reply' : 'Next reply';
   $('stanceDot').dataset.stance = control.mode;
-  $('stanceLabel').textContent = `${prefix} : ${stance}${control.auto.mode ? ' · auto' : ''}${control.depth === 'deep' ? ' · réflexion profonde' : ''}`;
+  $('stanceLabel').textContent = `${prefix}: ${stance}${control.auto.mode ? ' · auto' : ''}${control.depth === 'deep' ? ' · deep reasoning' : ''}`;
   $('stanceReason').textContent = control.reason
     || (control.auto.mode
       ? state.conversationFeatures?.autoRecommendations === false || state.conversationFeatures?.backgroundReview === false
-        ? currentModeInfo('auto').description : 'PsyX choisit sa posture après avoir réfléchi à la conversation.'
-      : 'Posture choisie par toi. Choisis Auto pour laisser PsyX décider.');
+        ? currentModeInfo('auto').description : 'PsyX chooses its stance after reflecting on the conversation.'
+      : 'Stance chosen by you. Choose Auto to let PsyX decide.');
   renderFrontier(control);
 }
 
@@ -208,9 +208,9 @@ function updateControlExplanation() {
 
 function updateContextStatus() {
   const recentCount = state.history.filter((item) => item.role !== 'action').length;
-  $('contextStatus').textContent = `${recentCount} message${recentCount === 1 ? '' : 's'} récent${recentCount === 1 ? '' : 's'} affiché${recentCount === 1 ? '' : 's'} (maximum ${MAX_CONTEXT_MESSAGES}). Le contexte de confiance est reconstruit depuis le stockage de PsyX.`;
+  $('contextStatus').textContent = `${recentCount} recent message${recentCount === 1 ? '' : 's'} shown (maximum ${MAX_CONTEXT_MESSAGES}). The trusted context is rebuilt from PsyX storage.`;
   const coverage = state.applied?.contextCoverage;
-  if (coverage) $('contextStatus').textContent += ` Pour cette réponse : ${coverage.includedMessages}/${coverage.availableMessages} messages précédents transmis${coverage.complete ? '.' : ' · contexte partiel.'}`;
+  if (coverage) $('contextStatus').textContent += ` For this reply: ${coverage.includedMessages}/${coverage.availableMessages} previous messages sent${coverage.complete ? '.' : ' · partial context.'}`;
 }
 
 function stripLegacyControlPrefix(content) {
@@ -225,7 +225,7 @@ function actionMessage(type) {
   return {
     role: 'action',
     action: type,
-    content: type === 'deep_reflection' ? 'Réflexion profonde demandée' : `Action PsyX · ${type}`
+    content: type === 'deep_reflection' ? 'Deep reflection requested' : `PsyX action · ${type}`
   };
 }
 
@@ -290,7 +290,7 @@ async function reconcileCompletedTurn(conversationId, humanText, actionType, pre
       clearRenderedConversation();
       for (const item of state.history) addMessage(item.role, item.content);
       updateContextStatus();
-      sessionLabel.textContent = conversation.title || `Séance ${String(conversationId).slice(-8)}`;
+      sessionLabel.textContent = conversation.title || `Session ${String(conversationId).slice(-8)}`;
       await loadSessions();
       highlightActiveSession();
       return true;
@@ -315,7 +315,7 @@ async function api(url, options = {}) {
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok || payload.status === 'error' || payload.ok === false) {
-    const error = new Error(payload.message || `La requête a échoué (${response.status})`);
+    const error = new Error(payload.message || `The request failed (${response.status})`);
     error.code = payload.code;
     error.status = response.status;
     throw error;
@@ -329,7 +329,7 @@ async function restoreConversation(conversationId = state.conversationId) {
   if (!conversationId) return;
   try {
     const conversation = await api(`/api/psyx/sessions/${encodeURIComponent(conversationId)}`);
-    if (conversation.promptName && conversation.promptName !== 'psyx') throw new Error('La conversation enregistrée n’est pas une séance PsyX');
+    if (conversation.promptName && conversation.promptName !== 'psyx') throw new Error('The saved conversation is not a PsyX session');
     if (conversation.lifecycle?.status === 'archived') {
       startNewSession(false);
       return;
@@ -342,7 +342,7 @@ async function restoreConversation(conversationId = state.conversationId) {
     clearRenderedConversation();
     for (const item of state.history) addMessage(item.role, item.content);
     updateContextStatus();
-    sessionLabel.textContent = conversation.title || `Séance ${state.conversationId.slice(-8)}`;
+    sessionLabel.textContent = conversation.title || `Session ${state.conversationId.slice(-8)}`;
     highlightActiveSession();
     renderOpening();
     void resumeReviewStatus(state.conversationId);
@@ -359,7 +359,7 @@ async function loadRouting() {
     updateBrainRouting();
   } catch (error) {
     console.warn('Routing config unavailable', error);
-    $('routingDetails').textContent = 'Les détails du routage sont indisponibles.';
+    $('routingDetails').textContent = 'Routing details are unavailable.';
   }
 }
 
@@ -375,7 +375,7 @@ function updateBrainRouting(lastResult = null, note = '') {
   // A frontier reply names its own model; the local lanes come from the router.
   const entry = !lastResult && frontierLocationFor(depth) === 'frontier' ? { model: frontierUi.model, host: '' } : getLaneConfig(depth).entry;
   const routing = lastResult?.routing || {};
-  const model = routing.routedModel || lastResult?.model || entry?.model || 'modèle non résolu';
+  const model = routing.routedModel || lastResult?.model || entry?.model || 'unresolved model';
   const host = routing.routedHost || entry?.host || '';
   routeLabel.textContent = `${currentDepthInfo(depth).title || depth} · ${model}${host ? ` @ ${host}` : ''}${note ? ` · ${note}` : ''}`;
 }
@@ -384,9 +384,9 @@ function renderRoutingDetails() {
   const normal = getLaneConfig('normal');
   const deep = getLaneConfig('deep');
   $('routingDetails').innerHTML = `
-    <div class="route-row"><span>Normale</span><strong>${escapeHtml(normal.entry?.model || '—')}</strong><em>${escapeHtml(normal.entry?.host || '—')}</em><small>voie technique : analysis</small></div>
-    <div class="route-row"><span>Profonde</span><strong>${escapeHtml(deep.entry?.model || '—')}</strong><em>${escapeHtml(deep.entry?.host || '—')}</em><small>voie technique : deep_reasoning</small></div>
-    <p class="state-help">La posture règle l’approche psychologique; ces voies techniques choisissent seulement le modèle qui répond.</p>
+    <div class="route-row"><span>Normal</span><strong>${escapeHtml(normal.entry?.model || '—')}</strong><em>${escapeHtml(normal.entry?.host || '—')}</em><small>technical lane: analysis</small></div>
+    <div class="route-row"><span>Deep</span><strong>${escapeHtml(deep.entry?.model || '—')}</strong><em>${escapeHtml(deep.entry?.host || '—')}</em><small>technical lane: deep_reasoning</small></div>
+    <p class="state-help">The stance sets the psychological approach; these technical lanes only choose which model replies.</p>
   `;
 }
 
@@ -411,31 +411,31 @@ function relativeDate(value) {
   const diff = Date.now() - date.getTime();
   if (!Number.isFinite(diff)) return '';
   const minutes = Math.round(diff / 60000);
-  if (minutes < 2) return 'maintenant';
+  if (minutes < 2) return 'now';
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `${hours}h`;
   const days = Math.round(hours / 24);
-  if (days < 7) return `${days} j`;
+  if (days < 7) return `${days}d`;
   return date.toLocaleDateString();
 }
 
 function renderSessions() {
   const list = $('sessionsList');
   if (!state.sessions.length) {
-    list.innerHTML = `<div class="panel-empty">Aucune séance ${state.sessionStatus === 'archived' ? 'archivée' : 'active'}.</div>`;
+    list.innerHTML = `<div class="panel-empty">No ${state.sessionStatus === 'archived' ? 'archived' : 'active'} sessions.</div>`;
     return;
   }
   list.innerHTML = state.sessions.map((item) => `
     <article class="session-card ${String(item.id) === state.conversationId ? 'active' : ''}" data-session-id="${escapeHtml(item.id)}">
       <button class="session-open" type="button" ${state.sessionStatus === 'archived' ? `data-session-options="${escapeHtml(item.id)}"` : `data-session-open="${escapeHtml(item.id)}"`}>
-        <strong>${escapeHtml(item.title || 'Conversation PsyX')}</strong>
-        <span>${escapeHtml(item.sessionRecap?.summary || sessionDigest(item.id)?.summary || item.preview || 'Pas d’aperçu')}</span>
-        <small>${state.sessionStatus === 'archived' ? 'Archivée · ' : ''}${escapeHtml(relativeDate(item.updatedAt))}${item.model ? ` · ${escapeHtml(item.model)}` : ''}${item.promptVersion ? ` · prompt v${escapeHtml(item.promptVersion)}` : ''}</small>
+        <strong>${escapeHtml(item.title || 'PsyX conversation')}</strong>
+        <span>${escapeHtml(item.sessionRecap?.summary || sessionDigest(item.id)?.summary || item.preview || 'No preview')}</span>
+        <small>${state.sessionStatus === 'archived' ? 'Archived · ' : ''}${escapeHtml(relativeDate(item.updatedAt))}${item.model ? ` · ${escapeHtml(item.model)}` : ''}${item.promptVersion ? ` · prompt v${escapeHtml(item.promptVersion)}` : ''}</small>
       </button>
       <div class="session-actions">
-        <button type="button" data-session-rename="${escapeHtml(item.id)}" aria-label="Renommer la séance">✎</button>
-        <button type="button" data-session-options="${escapeHtml(item.id)}" aria-label="Options de la séance">•••</button>
+        <button type="button" data-session-rename="${escapeHtml(item.id)}" aria-label="Rename session">✎</button>
+        <button type="button" data-session-options="${escapeHtml(item.id)}" aria-label="Session options">•••</button>
       </div>
     </article>
   `).join('');
@@ -447,10 +447,10 @@ function highlightActiveSession() {
 
 async function bootstrap() {
 
-  setReady(false, 'Démarrage de PsyX…');
+  setReady(false, 'Starting PsyX…');
   try {
     const payload = await api('/api/psyx/bootstrap', { method: 'POST', body: '{}' });
-    if (payload?.persona?.active !== true) throw new Error('Le persona PsyX n’est pas actif');
+    if (payload?.persona?.active !== true) throw new Error('The PsyX persona is not active');
     setSetupCapabilities(payload);
     state.modeConfig = payload.modes || {};
     state.depthConfig = payload.depths || {};
@@ -460,8 +460,8 @@ async function bootstrap() {
     setFrontierCapabilities(payload.frontier);
     const lifecycle = payload.conversationLifecycle || {};
     $('lifecycleStatus').textContent = lifecycle.archive
-      ? 'L’archivage et la restauration des conversations sont disponibles.'
-      : 'Le stockage du cycle de vie des conversations est indisponible.';
+      ? 'Conversation archiving and restoring are available.'
+      : 'Conversation lifecycle storage is unavailable.';
     updateControlExplanation();
     await Promise.all([loadPsyXState(), loadRouting(), loadSessions(), loadVoiceStatus()]);
     await loadToolbox().catch(() => {});
@@ -469,12 +469,12 @@ async function bootstrap() {
 
     watchDream();
     renderSetup();
-    setReady(true, 'PsyX prêt');
-    sessionLabel.textContent = state.conversationId ? sessionLabel.textContent : 'Nouvelle conversation';
+    setReady(true, 'PsyX ready');
+    sessionLabel.textContent = state.conversationId ? sessionLabel.textContent : 'New conversation';
     if (window.matchMedia('(min-width: 900px)').matches) input.focus({ preventScroll: true });
   } catch (error) {
     {
-      setReady(false, 'PsyX indisponible');
+      setReady(false, 'PsyX unavailable');
       console.error('PsyX bootstrap failed', error);
     }
   }
@@ -503,7 +503,7 @@ async function streamChat(payload, onEvent, signal) {
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
 
-    const error = new Error(body.message || `La conversation a échoué (${response.status})`);
+    const error = new Error(body.message || `The conversation failed (${response.status})`);
     error.code = body.code;
     throw error;
   }
@@ -577,7 +577,7 @@ async function sendMessage(text, overrides = {}) {
       } else if (event === 'done') {
         finalResult = data;
       } else if (event === 'error') {
-        streamError = new Error(data.message || 'Erreur de diffusion');
+        streamError = new Error(data.message || 'Streaming error');
       }
     }, state.activeAbort.signal);
 
@@ -585,12 +585,12 @@ async function sendMessage(text, overrides = {}) {
 
     if (streamError) throw streamError;
     if (!finalResult) {
-      const interrupted = new Error('La connexion s’est terminée avant que PsyX confirme la fin de la réponse.');
+      const interrupted = new Error('The connection ended before PsyX confirmed the end of the reply.');
       interrupted.code = 'PSYX_STREAM_INCOMPLETE';
       throw interrupted;
     }
     const assistantContent = stream.text().trim() || String(finalResult?.response || finalResult?.message?.content || '').trim();
-    if (!assistantContent) throw new Error('Le modèle a renvoyé une réponse vide');
+    if (!assistantContent) throw new Error('The model returned an empty reply');
     if (!stream.text().trim()) stream.set(assistantContent);
 
     state.history.push(
@@ -605,7 +605,7 @@ async function sendMessage(text, overrides = {}) {
     if (finalResult?.conversationId) {
       state.conversationId = String(finalResult.conversationId);
       localStorage.setItem(STORAGE_KEY, state.conversationId);
-      sessionLabel.textContent = `Séance ${state.conversationId.slice(-8)}`;
+      sessionLabel.textContent = `Session ${state.conversationId.slice(-8)}`;
     }
     // Thinking is a local-route notion; the frontier model reasons on its own.
     const deep = (finalResult.control?.depth || effectiveDepth) === 'deep' && finalResult.routing?.location !== 'frontier';
@@ -619,13 +619,13 @@ async function sendMessage(text, overrides = {}) {
   } catch (error) {
     if (state.turnSequence !== turnSequence) return;
     if (error.name === 'AbortError') {
-      stream.set('Annulé.');
+      stream.set('Cancelled.');
     } else {
       stream.article.classList.add('error');
       const partial = stream.text().trim();
       stream.set(partial
-        ? `${partial}\n\n[Réponse interrompue. PsyX n’a pas confirmé la fin à ce navigateur; recharge la séance avant de réessayer.]`
-        : `Je n’ai pas pu terminer cette réponse. ${error.message}`);
+        ? `${partial}\n\n[Reply interrupted. PsyX did not confirm the end to this browser; reload the session before trying again.]`
+        : `I couldn’t finish this reply. ${error.message}`);
       await loadSessions().catch(() => {});
     }
     if (state.conversationId) {
@@ -659,7 +659,7 @@ function startNewSession(focus = true) {
   stopReviewWatch();
   review.last = null;
   renderReviewIndicator();
-  sessionLabel.textContent = 'Nouvelle conversation';
+  sessionLabel.textContent = 'New conversation';
   hideSafety();
   $('checkInPrompt').hidden = true;
   followUp.openingDone = false;
@@ -741,11 +741,11 @@ function openSessionOptions(conversationId) {
   const session = state.sessions.find((item) => String(item.id) === String(conversationId));
   if (!session) return;
   state.managedSessionId = String(conversationId);
-  $('sessionDataTitle').textContent = session.title || 'Conversation PsyX';
+  $('sessionDataTitle').textContent = session.title || 'PsyX conversation';
   const archived = session.lifecycle?.status === 'archived';
   $('sessionLifecycleCopy').textContent = archived
-    ? 'Restaurer ramène cette conversation dans les séances actives. La suppression définitive est irréversible.'
-    : 'Archiver retire cette conversation des séances actives sans la supprimer. Elle pourra être restaurée.';
+    ? 'Restoring brings this conversation back to active sessions. Permanent deletion is irreversible.'
+    : 'Archiving removes this conversation from active sessions without deleting it. It can be restored.';
   $('archiveSession').hidden = archived;
   $('restoreSession').hidden = !archived;
   $('sessionDeleteConfirmation').checked = false;
@@ -791,7 +791,7 @@ $('sessionsList').addEventListener('click', async (event) => {
   const rename = event.target.closest('[data-session-rename]');
   if (rename) {
     const session = state.sessions.find((item) => String(item.id) === rename.dataset.sessionRename);
-    const nextTitle = window.prompt('Renommer la séance', session?.title || '');
+    const nextTitle = window.prompt('Rename session', session?.title || '');
     if (!nextTitle?.trim()) return;
     await api(`/api/psyx/sessions/${encodeURIComponent(rename.dataset.sessionRename)}`, { method: 'PATCH', body: JSON.stringify({ title: nextTitle.trim() }) });
     await loadSessions();
@@ -816,12 +816,12 @@ $('settingsPsyx').addEventListener('click', () => {
 
 $('exportPsyx').addEventListener('click', async () => {
 
-  $('dataStatus').textContent = 'Préparation de l’export…';
+  $('dataStatus').textContent = 'Preparing the export…';
   try {
     const response = await fetch('/api/psyx/export', { credentials: 'same-origin' });
     const payload = await response.json().catch(() => ({}));
 
-    if (!response.ok) throw new Error(payload.message || `L’export a échoué (${response.status})`);
+    if (!response.ok) throw new Error(payload.message || `The export failed (${response.status})`);
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
@@ -831,7 +831,7 @@ $('exportPsyx').addEventListener('click', async () => {
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(url);
-    $('dataStatus').textContent = `Export téléchargé avec ${payload.transcriptData?.conversationCount ?? 0} conversation(s) PsyX.`;
+    $('dataStatus').textContent = `Export downloaded with ${payload.transcriptData?.conversationCount ?? 0} PsyX conversation(s).`;
   } catch (error) {
     $('dataStatus').textContent = error.message;
   }

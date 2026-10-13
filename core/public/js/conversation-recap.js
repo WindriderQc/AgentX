@@ -1,17 +1,17 @@
 /* Shared, ephemeral browser editor for Core's user-confirmed conversation recap. */
 (function (root) {
   'use strict';
-  function mount({ host, api, base, currentId, prepare = () => {}, onSaved = () => {}, onResume, title = 'Point de séance' }) {
+  function mount({ host, api, base, currentId, prepare = () => {}, onSaved = () => {}, onResume, title = 'Session recap' }) {
     const doc = host.ownerDocument;
     const dialog = doc.createElement('dialog'); dialog.className = 'conversation-recap-dialog';
     dialog.setAttribute('aria-label', title);
-    dialog.innerHTML = `<form><header><h2></h2><button type="button" data-close aria-label="Fermer">×</button></header>
-      <p>Garde ce qui t’est utile. Tu peux modifier la proposition avant de l’enregistrer.</p>
-      <label>Résumé<textarea name="summary" rows="4" maxlength="2000" required></textarea></label>
-      <label>Ce que je retiens <small>Facultatif</small><textarea name="takeaway" rows="2" maxlength="1000"></textarea></label>
-      <label>Prochaine étape <small>Facultatif</small><textarea name="nextStep" rows="2" maxlength="1000"></textarea></label>
+    dialog.innerHTML = `<form><header><h2></h2><button type="button" data-close aria-label="Close">×</button></header>
+      <p>Keep what is useful to you. You can edit the suggestion before saving it.</p>
+      <label>Summary<textarea name="summary" rows="4" maxlength="2000" required></textarea></label>
+      <label>What I take away <small>Optional</small><textarea name="takeaway" rows="2" maxlength="1000"></textarea></label>
+      <label>Next step <small>Optional</small><textarea name="nextStep" rows="2" maxlength="1000"></textarea></label>
       <p data-status role="status" aria-live="polite"></p>
-      <footer><button type="button" data-reload>Recharger</button><button type="button" data-draft>Proposer un résumé</button><button type="submit">Enregistrer le point</button></footer></form>`;
+      <footer><button type="button" data-reload>Reload</button><button type="button" data-draft>Suggest a summary</button><button type="submit">Save the recap</button></footer></form>`;
     dialog.querySelector('h2').textContent = title; doc.body.append(dialog);
     const form = dialog.querySelector('form'), status = dialog.querySelector('[data-status]');
     const input = name => form.elements.namedItem(name);
@@ -30,18 +30,18 @@
       host.replaceChildren();
       if (!data?.recap && !id) { host.hidden = true; return; }
       host.hidden = false;
-      const heading = doc.createElement('strong'); heading.textContent = data?.recap ? title : 'Avant de partir'; host.append(heading);
+      const heading = doc.createElement('strong'); heading.textContent = data?.recap ? title : 'Before you go'; host.append(heading);
       if (data?.recap) {
-        for (const [key, label] of [['summary', ''], ['takeaway', 'À retenir : '], ['nextStep', 'Prochaine étape : ']]) {
+        for (const [key, label] of [['summary', ''], ['takeaway', 'Takeaway: '], ['nextStep', 'Next step: ']]) {
           if (!data.recap[key]) continue;
           const p = doc.createElement('p'); p.textContent = label + data.recap[key]; host.append(p);
         }
-        if (data.recap.stale) { const note = doc.createElement('small'); note.textContent = 'La conversation a évolué depuis ce point.'; host.append(note); }
+        if (data.recap.stale) { const note = doc.createElement('small'); note.textContent = 'The conversation has moved on since this recap.'; host.append(note); }
       }
-      const button = doc.createElement('button'); button.type = 'button'; button.textContent = data?.recap ? 'Modifier le point' : 'Faire le point';
+      const button = doc.createElement('button'); button.type = 'button'; button.textContent = data?.recap ? 'Edit the recap' : 'Write a recap';
       button.onclick = () => void open(id || data.sessionId); host.append(button);
       if (!id && data?.sessionId && onResume) {
-        const resume = doc.createElement('button'); resume.type = 'button'; resume.textContent = 'Reprendre cet échange';
+        const resume = doc.createElement('button'); resume.type = 'button'; resume.textContent = 'Resume this conversation';
         resume.onclick = () => onResume(data.sessionId); host.append(resume);
       }
     }
@@ -55,7 +55,7 @@
         if (token !== viewEpoch || currentId() !== id) return;
         // Do not leave the previous conversation's content after a failed read.
         host.replaceChildren(); host.hidden = false;
-        const retry = doc.createElement('button'); retry.type = 'button'; retry.textContent = 'Recharger le point de séance';
+        const retry = doc.createElement('button'); retry.type = 'button'; retry.textContent = 'Reload the session recap';
         retry.onclick = () => void refresh(); host.append(retry);
       }
     }
@@ -63,13 +63,13 @@
       if (!id) return;
       const token = ++epoch;
       if (await prepare() === false || token !== epoch) return; editingId = id; snapshot = null;
-      writeFields(null); status.textContent = 'Chargement…'; setWorking(true, true);
+      writeFields(null); status.textContent = 'Loading…'; setWorking(true, true);
       if (!dialog.open) dialog.showModal();
       try {
         const data = await api(path(id));
         if (token !== epoch || !dialog.open) return;
-        snapshot = data; writeFields(data.recap); status.textContent = data.recap?.stale ? 'La conversation a évolué. Mets à jour ce que tu souhaites retenir.' : '';
-        if (data.canDraft === false) status.textContent += ' Proposition automatique désactivée dans Contexte et performance. Tu peux écrire ton point directement.';
+        snapshot = data; writeFields(data.recap); status.textContent = data.recap?.stale ? 'The conversation has moved on. Update what you want to keep.' : '';
+        if (data.canDraft === false) status.textContent += ' Automatic suggestions are off in Context and performance. You can write your recap directly.';
       } catch (error) { if (token === epoch) status.textContent = error.message; }
       finally { if (token === epoch) setWorking(false); }
     }
@@ -80,22 +80,22 @@
       if (working || !snapshot) return;
       const token = epoch, id = editingId;
       const before = ['summary', 'takeaway', 'nextStep'].map(key => input(key).value);
-      setWorking(true); status.textContent = 'Préparation du résumé…';
+      setWorking(true); status.textContent = 'Preparing the summary…';
       try {
         const data = await api(`${path(id)}/draft`, { method: 'POST', body: '{}' });
         if (token !== epoch || !dialog.open) return;
         snapshot = data;
         if (['summary', 'takeaway', 'nextStep'].some((key, i) => input(key).value !== before[i])) {
-          status.textContent = 'Ton texte a changé pendant la préparation. Il a été conservé ; tu peux enregistrer ton point.'; return;
+          status.textContent = 'Your text changed while the summary was being prepared. It was kept; you can save your recap.'; return;
         }
         writeFields(data.draft);
-        status.textContent = `Proposition à relire · ${data.coverage.includedMessages} messages sur ${data.coverage.availableMessages}. Rien n’est enregistré avant ta validation.`;
+        status.textContent = `Suggestion to review · ${data.coverage.includedMessages} of ${data.coverage.availableMessages} messages. Nothing is saved until you confirm.`;
       } catch (error) { if (token === epoch) status.textContent = error.message; }
       finally { if (token === epoch) setWorking(false); }
     };
     form.onsubmit = async event => {
       event.preventDefault(); if (working || !snapshot) return;
-      const token = epoch, id = editingId; setWorking(true, true); status.textContent = 'Enregistrement…';
+      const token = epoch, id = editingId; setWorking(true, true); status.textContent = 'Saving…';
       try {
         const content = Object.fromEntries(['summary', 'takeaway', 'nextStep'].map(key => [key, input(key).value]));
         const data = await api(path(id), { method: 'PUT', body: JSON.stringify({ ...content, revision: snapshot.revision, sourceHash: snapshot.source.hash }) });

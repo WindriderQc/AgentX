@@ -34,7 +34,7 @@ function nativeWorkRuntime({ works, conversations, agentClient, continuity, atta
       const turnContext = [selectedContext, requestDate && `[Core request date: ${requestDate}; time zone: ${timeZone}. Resolve relative dates against this request.]`,
         conversationContext].filter(Boolean).join('\n\n');
       assertContextSize(turnContext, LIMITS.context);
-      return { session: isolated, maxOutputTokens: 4096, text: turn.inputText, currentContent: prepared[0].content,
+      return { session: isolated, ...(row.mode !== 'native' && { maxOutputTokens: 4096 }), text: turn.inputText, currentContent: prepared[0].content,
         turnContext,
         channel: 'work', streaming: true,
         instructions: [agentInstructions(isolated, session.persona, PERSONAL_OPERATOR_SURFACE_CONTRACT, { id: 'standard' }),

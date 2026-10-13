@@ -16,9 +16,9 @@ test('the specialist validates reviewed text plans and preserves supplied exact 
   const textPlan = { version: 1, strategy: 'two-pass', reason: 'Exact editable lettering.', labels: [label] };
   const result = value => ({ ...expert, text: JSON.stringify({ ...plan, textPlan: value }) });
   assert.deepEqual(prepareImage({ textPolicy }, status, result(textPlan)).expert.plan.textPlan, textPlan);
-  assert.throws(() => prepareImage({ textPolicy }, status, expert), /Préparation/);
-  assert.throws(() => prepareImage({ textPolicy }, status, result({ ...textPlan, labels: [{ ...label, text: 'Ecole' }] })), /modifié ou omis/);
-  assert.throws(() => prepareImage({}, status, result(textPlan)), /désactivée/);
+  assert.throws(() => prepareImage({ textPolicy }, status, expert), /text preparation/);
+  assert.throws(() => prepareImage({ textPolicy }, status, result({ ...textPlan, labels: [{ ...label, text: 'Ecole' }] })), /changed or omitted/);
+  assert.throws(() => prepareImage({}, status, result(textPlan)), /turned off/);
 });
 const context = { agentId: 'main', runId: 'run', sessionKey: 'agent:main:household:direct:11111111-1111-1111-1111-111111111111' };
 

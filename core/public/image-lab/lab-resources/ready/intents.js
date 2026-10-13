@@ -2,17 +2,17 @@
 window.ImageLabIntents = (() => {
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   let draft;
-  const initialStatus = 'Les dimensions restent à qualifier ; une référence du labo n’est pas encore un parent de l’atelier courant.';
+  const initialStatus = 'The dimensions remain to be qualified; a lab reference is not yet a parent of the current workshop.';
   function render() {
-    return `<section class="ready-section"><span class="eyebrow">PRÉPARATION SANS GPU</span><h2>Préparer un plan depuis une recette.</h2><p>Choisis une scène, une retouche ou une finition archivée, puis précise ton brief. Le plan conserve la recette exacte et ses paramètres connus. Il ne lance aucun calcul.</p>
-      <form id="lab-intent"><div class="ready-controls"><label>Usage<select id="intent-catalogue" required><option value="">Choisir…</option><option value="scenes">Scènes</option><option value="edit">Retouches</option><option value="finish16">Finitions et natifs MAX</option></select></label>
-      <label>Recette<select id="intent-entry" required disabled><option value="">Choisir un usage</option></select></label>
-      <label>Largeur<input id="intent-width" type="number" min="256" max="8192" step="32" required></label><label>Hauteur<input id="intent-height" type="number" min="256" max="8192" step="32" required></label>
-      <label>Graine<input id="intent-seed" type="number" min="0" max="281474976710655" step="1" required></label></div>
-      <p id="intent-evidence"></p><label class="ready-brief">Brief exact<textarea id="intent-prompt" required maxlength="8000" rows="4"></textarea></label>
-      <label class="ready-brief">Éléments à conserver, si utile<textarea id="intent-approved" maxlength="2000" rows="2" placeholder="Ex. garder la position des personnages et la couleur du pot."></textarea></label>
+    return `<section class="ready-section"><span class="eyebrow">PREPARATION WITHOUT GPU</span><h2>Prepare a plan from a recipe.</h2><p>Choose an archived scene, edit or finish, then specify your brief. The plan keeps the exact recipe and its known parameters. It starts no computation.</p>
+      <form id="lab-intent"><div class="ready-controls"><label>Use<select id="intent-catalogue" required><option value="">Choose…</option><option value="scenes">Scenes</option><option value="edit">Edits</option><option value="finish16">MAX finishes and natives</option></select></label>
+      <label>Recipe<select id="intent-entry" required disabled><option value="">Choose a use</option></select></label>
+      <label>Width<input id="intent-width" type="number" min="256" max="8192" step="32" required></label><label>Height<input id="intent-height" type="number" min="256" max="8192" step="32" required></label>
+      <label>Seed<input id="intent-seed" type="number" min="0" max="281474976710655" step="1" required></label></div>
+      <p id="intent-evidence"></p><label class="ready-brief">Exact brief<textarea id="intent-prompt" required maxlength="8000" rows="4"></textarea></label>
+      <label class="ready-brief">Elements to keep, if useful<textarea id="intent-approved" maxlength="2000" rows="2" placeholder="E.g. keep the characters’ positions and the pot’s color."></textarea></label>
       <p id="intent-status" role="status">${initialStatus}</p>
-      <button id="intent-export" class="button" type="submit" disabled>Exporter le plan JSON</button></form></section>`;
+      <button id="intent-export" class="button" type="submit" disabled>Export the JSON plan</button></form></section>`;
   }
   async function bind() {
     const form = document.querySelector('#lab-intent');
@@ -33,33 +33,33 @@ window.ImageLabIntents = (() => {
         }
       }
       preserveOnReselect = false;
-      const label = { text_to_image: 'Création indépendante', reference_edit: 'Retouche avec référence', reference_finish: 'Finition du parent' }[value.operation];
-      field('evidence').textContent = `${label} · ${value.parameters.steps ?? 'étapes non documentées'}${value.parameters.steps !== null ? ' étapes' : ''}${value.parameters.denoise !== null ? ' · bruit ' + value.parameters.denoise : ''} · ${value.declaredParentSha256.length ? value.declaredParentSha256.length + ' référence(s) historique(s)' : 'aucun parent déclaré'}.`;
+      const label = { text_to_image: 'Independent creation', reference_edit: 'Edit with reference', reference_finish: 'Parent finish' }[value.operation];
+      field('evidence').textContent = `${label} · ${value.parameters.steps ?? 'steps not documented'}${value.parameters.steps !== null ? ' steps' : ''}${value.parameters.denoise !== null ? ' · denoise ' + value.parameters.denoise : ''} · ${value.declaredParentSha256.length ? value.declaredParentSha256.length + ' historical reference(s)' : 'no declared parent'}.`;
     };
     const load = async (restore) => {
       const generation = ++loading, id = field('catalogue').value;
       catalogue = undefined; field('entry').disabled = true; field('export').disabled = true;
       if (!pending) field('status').textContent = initialStatus;
-      field('entry').innerHTML = '<option value="">Chargement…</option>'; field('evidence').textContent = '';
-      if (!id) { field('entry').innerHTML = '<option value="">Choisir un usage</option>'; return; }
+      field('entry').innerHTML = '<option value="">Loading…</option>'; field('evidence').textContent = '';
+      if (!id) { field('entry').innerHTML = '<option value="">Choose a use</option>'; return; }
       try {
         const response = await fetch('/images/labo/api/recipes/' + id, { cache: 'no-store' }); const result = await response.json();
         if (generation !== loading || !form.isConnected) return;
-        if (!response.ok) throw new Error(result.message || 'Recettes indisponibles.');
+        if (!response.ok) throw new Error(result.message || 'Recipes unavailable.');
         catalogue = result.catalogue;
-        field('entry').innerHTML = '<option value="">Choisir…</option>' + catalogue.entries.map((value, index) => `<option value="${index}">${esc(value.title)} · ${esc(value.width ?? '?')} × ${esc(value.height ?? '?')}${value.role ? ' · ' + esc(value.role === 'refine' ? 'finition' : 'natif') : ''} · ${esc(value.id)}</option>`).join('');
+        field('entry').innerHTML = '<option value="">Choose…</option>' + catalogue.entries.map((value, index) => `<option value="${index}">${esc(value.title)} · ${esc(value.width ?? '?')} × ${esc(value.height ?? '?')}${value.role ? ' · ' + esc(value.role === 'refine' ? 'finish' : 'native') : ''} · ${esc(value.id)}</option>`).join('');
         field('entry').disabled = false;
         if (restore?.catalogue === id && restore.sha256 === catalogue.sha256) {
           field('entry').value = restore.entry; choose(true);
         } else if (restore?.catalogue === id) {
           preserveOnReselect = true;
-          field('status').textContent = 'Les recettes ont changé. Ton brief est conservé ; choisis la recette à nouveau.';
+          field('status').textContent = 'The recipes changed. Your brief is kept; choose the recipe again.';
         }
         remember();
       } catch (error) {
         if (generation === loading && form.isConnected) {
-          field('entry').innerHTML = '<option value="">Indisponible</option>';
-          field('status').textContent = 'Recettes indisponibles. Réessaie avec ↻.';
+          field('entry').innerHTML = '<option value="">Unavailable</option>';
+          field('status').textContent = 'Recipes unavailable. Try again with ↻.';
         }
       }
     };
@@ -69,7 +69,7 @@ window.ImageLabIntents = (() => {
     form.onsubmit = async event => {
       event.preventDefault(); const value = selected(); if (!value || pending) return;
       const requestedRevision = revision; pending = true;
-      field('export').disabled = true; field('status').textContent = 'Préparation du plan…';
+      field('export').disabled = true; field('status').textContent = 'Preparing the plan…';
       try {
         const response = await fetch('/images/labo/api/intents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
           labSelection: { catalogueId: catalogue.id, catalogueSha256: catalogue.sha256, kind: value.kind, entryId: value.id },
@@ -78,13 +78,13 @@ window.ImageLabIntents = (() => {
         }) });
         const intent = await response.json();
         if (!form.isConnected || requestedRevision !== revision) {
-          if (form.isConnected) field('status').textContent = 'Choix modifié. Exporte le nouveau plan.';
+          if (form.isConnected) field('status').textContent = 'Choice changed. Export the new plan.';
           return;
         }
-        if (!response.ok) throw new Error(intent.message || 'Préparation refusée.');
+        if (!response.ok) throw new Error(intent.message || 'Preparation refused.');
         const url = URL.createObjectURL(new Blob([JSON.stringify(intent, null, 2) + '\n'], { type: 'application/json' }));
         const a = document.createElement('a'); a.href = url; a.download = intent.id + '.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-        field('status').textContent = 'Plan exporté avec la recette choisie. Aucun job soumis.';
+        field('status').textContent = 'Plan exported with the chosen recipe. No job submitted.';
       } catch (error) { if (form.isConnected && requestedRevision === revision) field('status').textContent = error.message; }
       finally { pending = false; if (form.isConnected) field('export').disabled = !selected(); }
     };

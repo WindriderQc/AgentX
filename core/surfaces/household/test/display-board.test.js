@@ -55,7 +55,7 @@ test('a secret is masked until revealed and never rendered in Famille', () => {
   const card = privateBoard.children[1].children[0];
   assert.doesNotMatch(card.text(), /sk-live/);
   const value = card.find(node => node.dataset.masked === 'true');
-  const reveal = card.find(node => node.textContent === 'Afficher');
+  const reveal = card.find(node => node.textContent === 'Show');
   reveal.listeners.click();
   assert.equal(value.textContent, 'sk-live');
   reveal.listeners.click();
@@ -65,7 +65,7 @@ test('a secret is masked until revealed and never rendered in Famille', () => {
 test('a restored secret says it was not retained', () => {
   const container = new Element('section');
   create(container, { secrets: true }).restore([{ id: 'b1', kind: 'secret', title: 'Clé', body: '', redacted: true }]);
-  assert.match(container.text(), /non conservé/);
+  assert.match(container.text(), /not kept/);
 });
 
 test('links open http(s) targets and exact same-origin Core image operations', () => {
@@ -110,7 +110,7 @@ test('pictures go to their own zone, with provenance, and a missing one says so'
     screen.add({ id: 'b4', kind: 'image', body: 'licorne', status: image ? 'found' : 'missing', image });
     const latest = visual.children[1].children[0];
     assert.equal(latest.find(node => node.tagName === 'IMG'), null);
-    assert.match(latest.text(), /Aucune image trouvée pour « licorne »/);
+    assert.match(latest.text(), /No image found for “licorne”/);
   }
   screen.clear();
   assert.equal(text.hidden && visual.hidden, true);

@@ -66,6 +66,13 @@ product acceptance. Dependency edits require separate operator handling.
 
 The autonomous worker receives Core's remaining cumulative work, test, model
 duration and model-call budgets, plus the exact installed verification command.
+Before each model request, the relay adds a fresh runner budget advisory with
+the remaining durations, model calls and no-progress window. It preserves the
+worker's complete history and model options; the advisory is not saved back into
+the harness history and never grants authorization, credit or useful progress.
+The native Core admission and runner limits remain authoritative. A harness
+`max-tokens` termination records `model_output_limit` and blocks publication;
+it does not enlarge the model's output limit or the task's attempt ceiling.
 Model waiting and reasoning consume the model duration budget even when the
 work deadline is longer. The same native command supplies the worker's focused
 test loop and the runner's independent verification. Unknown profiles refuse
@@ -114,7 +121,7 @@ just to wait.
      "hosts": ["http://gpu.example.test:11434"],
      "estimatedMinutes": 120,
      "notBefore": "2030-01-01T10:00:00-05:00",
-     "startBefore": "2030-01-01T10:15:00-05:00",
+     "startBefore": "2030-01-01T12:00:00-05:00",
      "source": {"type": "coding", "ref": "coding-session-reference", "taskId": "0123"},
      "executor": {"mode": "operator", "receiptRef": "private-receipt-reference"}
    }
@@ -135,6 +142,19 @@ just to wait.
    scope is finished/stopped, independently verify native release and close the
    same queue request through its operator-finish protocol. The loop does not
    manufacture that operator release receipt.
+
+For Coding Team, Core re-validates the active reservation and its
+`startBefore` when it selects a worker, when the runner reads the worker
+manifest and on every model call; other heavy-work executors keep their own
+window protocol. A `startBefore` that covers only the initial dispatch can
+therefore cut off subsequent calls even while the reserved slot has not
+ended. Size the reviewed finite window to cover the intended model calls and
+corrections, not just the first attempt. A campaign reservation is a planned
+slot: it does not grant runtime or native admission or permission to
+dispatch. Native admission and the explicit operator begin remain separate
+requirements, and an expired window is refused; it is never silently
+extended or replayed. An early failed turn keeps its local source checkpoint
+and cumulative costs and does not deliver a validated PR.
 
 API base: `/api/pipeline/coding-autonomy`. `GET /` exposes the switch revision,
 active request and task projections. `POST /config` requires `confirm: true`,
@@ -329,6 +349,65 @@ runner errors, active admissions, publication and unresolved calls refuse this
 path. Original costs, failures, limits and the native attempt ceiling remain
 unchanged; explicit credits and a new no-progress window are journalled as an
 operator intervention.
+
+### Reviewed terminal continuation and native attempt limits
+
+Pipeline offers **Record reviewed continuation** for a stopped, unpublished
+failed checkpoint with authorization removed and autonomy paused. The operator
+reviews a new campaign, five additional budgets, the correction and the total
+native attempt limit. Its separate confirmation is
+`CONTINUE_TERMINAL_CHECKPOINT_WITH_REVIEWED_ATTEMPT_LIMIT`. The continuation API
+also requires `expectedNativeAttemptLimit`, `nativeAttemptLimit` and
+`expectedAutomationFingerprint`. Worker exit, output limit and failed tests
+can use this reviewed path only when the matching native terminal failure and
+every current model settlement are durably received. Operator stops refuse.
+
+The native ceiling is at most ten attempts; a grant authorizes at most three
+additional workers. Each credit retains the ordinary per-campaign cap, and the
+cumulative limits, including the original allocation and every earlier grant,
+are at most 57,600 work seconds, 19,200 test seconds, 21,600 model seconds,
+512 model calls and 14,400 CI seconds. An amendment changes only the native
+attempt ceiling, saves the complete original intent and basis, and atomically
+records the normalized fingerprint, current basis and grant. An existing plan
+refuses a changed ceiling until its binding is reconciled. Original attempt
+counts, scopes, limits, costs, failures and UNKNOWN receipts remain recorded.
+The older confirmations cannot extend the native ceiling or accept worker exit.
+A lost response still requires the same key and intent; the grant never launches
+a worker inline.
+The cumulative envelope also applies to older confirmations after a reviewed
+amendment. A known validation refusal after selection is fenced, but before a
+grant write is attempted, records a durably acknowledged abandonment that
+invalidates concurrent grant writes before releasing this exact slot. A lost
+abandonment acknowledgement retains the fence until the same intent is received
+again. Only a confirmed, unapplied abandonment allows review of a new intent;
+an uncertain grant write still requires reconciliation of its original key.
+
+### Finished deliveries and qualification archives
+
+Finished PRs remain observable while execution is paused or authorization is
+removed. A bounded, backed-off read records merge/closure and the newest checks
+on their exact remote commit, with the original worker head retained. It does
+not change attempt outcomes, costs, execution authorization or task status.
+Merge and failed CI can both be recorded. Human acceptance, installation and
+product acceptance remain separate receipts. A closed PR refuses new review
+corrections through the coding loop.
+The separate `ciObservationActive` status fact describes the budgeted campaign
+watch only: finished, unowned publication in `waiting_ci` or an authorized
+failure/resume-limit watch. Human review, conflicts, stopped/closed or owned
+executions report false. The panel explains exact-zero exhaustion for each
+budget and retains uncertainty disclosure for historical UNKNOWN receipts even
+after confirmed administrative recovery.
+
+An operator can **Archive qualification** with a private receipt reference,
+SHA-256, reason and outcome (`passed`, `abandoned` or `superseded`). The API
+`POST /api/pipeline/coding-autonomy/tasks/:id/disposition` requires confirmation
+`ARCHIVE_QUALIFICATION_WITH_ORIGINAL_RECEIPTS`, the exact latest `requestId` and
+`expectedRevision`. The worker must be finished with authorization removed and
+without an active claim. This is an operator annotation, not task delivery:
+the task status and its dependency barriers remain in force, including original
+UNKNOWN outcomes. An identical retry preserves the same annotation. Archived
+qualifications and closed tasks remain accessible through the history toggle;
+the live panel counts waiting work, blocked cards and review separately.
 
 `agentx-benchmark-artifact-tests/v1` is a native network-isolated verifier for
 `artifactComparison*`, paired statistics and paired regression tests. Its Jest

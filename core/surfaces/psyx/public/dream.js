@@ -6,13 +6,13 @@
 // app.js, whose shared state and helpers these functions use at call time.
 
 const PORTRAIT_TITLES = {
-  situation: 'Ta situation', loops: 'Les boucles qui reviennent', triggers: 'Ce qui te déclenche', relationships: 'Tes relations',
-  strengths: 'Tes forces', values: 'Ce qui compte pour toi', whatWorks: 'Ce qui marche pour toi', blindSpots: 'Angles morts possibles', health: 'Santé'
+  situation: 'Your situation', loops: 'Recurring loops', triggers: 'What triggers you', relationships: 'Your relationships',
+  strengths: 'Your strengths', values: 'What matters to you', whatWorks: 'What works for you', blindSpots: 'Possible blind spots', health: 'Health'
 };
-const DREAM_KIND_LABELS = { night: 'cette nuit', session: 'après ta séance', manual: 'à ta demande' };
-const DREAM_SOURCE_LABELS = { notes: 'notes de Nestor', tasks: 'tâches et rappels', mail: 'journal de courriel' };
-const INTAKE_LABELS = { currentSituation: 'ta situation actuelle', reasonsAndGoals: 'ce que tu cherches', familyOfOrigin: 'ta famille d’origine', relationships: 'tes relations',
-  children: 'tes enfants', work: 'ton travail', physicalHealth: 'ta santé physique', sleep: 'ton sommeil', substances: 'alcool et substances', supports: 'tes appuis', pastHelp: 'l’aide déjà reçue' };
+const DREAM_KIND_LABELS = { night: 'last night', session: 'after your session', manual: 'at your request' };
+const DREAM_SOURCE_LABELS = { notes: 'Nestor notes', tasks: 'tasks and reminders', mail: 'email log' };
+const INTAKE_LABELS = { currentSituation: 'your current situation', reasonsAndGoals: 'what you are looking for', familyOfOrigin: 'your family of origin', relationships: 'your relationships',
+  children: 'your children', work: 'your work', physicalHealth: 'your physical health', sleep: 'your sleep', substances: 'alcohol and substances', supports: 'your support network', pastHelp: 'help you have already received' };
 const DREAM_SEEN_KEY = 'psyx.dream.seen';
 const DREAM_POLL_MS = 60000;
 
@@ -38,9 +38,9 @@ function renderDreamChip() {
   chip.classList.toggle('has-proposals', !running && fresh);
   const findings = portrait?.findings?.length || 0;
   chip.textContent = running
-    ? 'PsyX approfondit ton portrait…'
-    : `PsyX a approfondi ton portrait ${DREAM_KIND_LABELS[portrait?.kind] || ''}${findings ? ` · ${findings} constat${findings === 1 ? '' : 's'}` : ''}`;
-  chip.title = 'Entre les séances, PsyX approfondit ce qu’il comprend de toi. Le portrait indique la couverture du texte analysé. Tu peux lire, retirer et annuler.';
+    ? 'PsyX is deepening your portrait…'
+    : `PsyX deepened your portrait ${DREAM_KIND_LABELS[portrait?.kind] || ''}${findings ? ` · ${findings} finding${findings === 1 ? '' : 's'}` : ''}`;
+  chip.title = 'Between sessions, PsyX deepens what it understands about you. The portrait shows how much text was analyzed. You can read, remove and undo.';
   $('tabUnderstanding').dataset.badge = fresh && !running ? '•' : '';
 }
 
@@ -50,13 +50,13 @@ function portraitList(title, items) {
 }
 
 function portraitEvidence(item) {
-  const labels = { conversation: 'tes mots en séance', profile: 'ton profil', memory: 'ta mémoire',
-    experiment: 'ton expérience enregistrée', checkIn: 'ton check-in', assessment: 'ton questionnaire calculé', ...DREAM_SOURCE_LABELS };
+  const labels = { conversation: 'your words in session', profile: 'your profile', memory: 'your memory',
+    experiment: 'your recorded experiment', checkIn: 'your check-in', assessment: 'your scored questionnaire', ...DREAM_SOURCE_LABELS };
   return (item.evidence || []).map(quote => {
     const ref = (item.evidenceRefs || []).find(candidate => candidate.quote === quote);
-    const source = ref ? `Citation retrouvée dans ${labels[ref.kind] || 'la source'}` : 'Ancienne citation : source non vérifiée';
+    const source = ref ? `Quote found in ${labels[ref.kind] || 'the source'}` : 'Older quote: source not verified';
     const open = ref?.kind === 'conversation' && /^[a-f0-9]{24}$/i.test(ref.conversationId || '') && Number.isSafeInteger(ref.messageIndex)
-      ? `<button type="button" data-evidence-session="${escapeHtml(ref.conversationId)}" data-evidence-index="${ref.messageIndex}" data-evidence-quote="${escapeHtml(quote)}">Lire le message source</button><p class="portrait-source" hidden></p>` : '';
+      ? `<button type="button" data-evidence-session="${escapeHtml(ref.conversationId)}" data-evidence-index="${ref.messageIndex}" data-evidence-quote="${escapeHtml(quote)}">Read the source message</button><p class="portrait-source" hidden></p>` : '';
     return `<blockquote>${escapeHtml(quote)}<small>${escapeHtml(source)}</small>${open}</blockquote>`;
   }).join('');
 }
@@ -69,8 +69,8 @@ function intakeSummary(intake = {}) {
   const missing = domains.filter(key => !intake[key] || intake[key] === 'unknown').map(key => INTAKE_LABELS[key]);
   // A portrait written before the intake existed says nothing about it.
   if (!known && !partial) return '';
-  return `<section class="state-section"><h4>Ce que PsyX connaît de ta vie</h4><p class="state-help">${known} domaine${known > 1 ? 's' : ''} sur ${domains.length} bien connu${known > 1 ? 's' : ''}${partial ? `, ${partial} en partie` : ''}.${
-    missing.length ? ` Encore à découvrir, une question à la fois : ${escapeHtml(missing.join(', '))}.` : ''}</p></section>`;
+  return `<section class="state-section"><h4>What PsyX knows about your life</h4><p class="state-help">${known} of ${domains.length} area${domains.length === 1 ? '' : 's'} well known${partial ? `, ${partial} partly` : ''}.${
+    missing.length ? ` Still to discover, one question at a time: ${escapeHtml(missing.join(', '))}.` : ''}</p></section>`;
 }
 
 function renderPortrait() {
@@ -78,45 +78,45 @@ function renderPortrait() {
   const log = (state.psyxState?.dreamLog || []).filter(entry => !entry.undone && (entry.added.length || entry.retired.length || entry.id === portrait?.id)).slice(-5).reverse();
   const running = dream.status?.status === 'running';
   $('dreamNow').disabled = running || !dream.status?.enabled;
-  $('dreamNow').textContent = running ? 'PsyX réfléchit…' : 'Approfondir maintenant';
+  $('dreamNow').textContent = running ? 'PsyX is reflecting…' : 'Reflect deeper now';
   if (!portrait?.sections?.length) {
-    $('portraitMeta').textContent = dream.status?.status === 'failed' ? 'La dernière réflexion n’a pas abouti. Elle sera reprise la nuit prochaine.' : '';
-    $('portraitView').innerHTML = `<p class="state-empty">${running ? 'PsyX écrit ton portrait…' : state.conversationFeatures?.dreamEnabled === false ? 'Rêverie désactivée dans Contexte et performance.' : state.conversationFeatures?.automaticDream === false ? 'Pas encore de portrait. Tu peux demander une réflexion avec Approfondir maintenant.' : 'Pas encore de portrait. PsyX l’écrit après tes séances et chaque nuit, à partir du contexte disponible.'}</p>`;
+    $('portraitMeta').textContent = dream.status?.status === 'failed' ? 'The last reflection did not complete. It will run again next night.' : '';
+    $('portraitView').innerHTML = `<p class="state-empty">${running ? 'PsyX is writing your portrait…' : state.conversationFeatures?.dreamEnabled === false ? 'Dreaming is turned off in Context and performance.' : state.conversationFeatures?.automaticDream === false ? 'No portrait yet. You can request a reflection with Reflect deeper now.' : 'No portrait yet. PsyX writes it after your sessions and every night, from the available context.'}</p>`;
   } else {
     const sources = (portrait.sources || []).map(key => DREAM_SOURCE_LABELS[key] || key);
-    $('portraitMeta').textContent = [dream.status?.status === 'failed' ? 'La dernière réflexion n’a pas abouti' : null, `Écrit le ${new Date(portrait.updatedAt).toLocaleString('fr-CA', { dateStyle: 'long', timeStyle: 'short' })}`,
+    $('portraitMeta').textContent = [dream.status?.status === 'failed' ? 'The last reflection did not complete' : null, `Written ${new Date(portrait.updatedAt).toLocaleString('en-CA', { dateStyle: 'long', timeStyle: 'short' })}`,
       dreamCoverageLabel(portrait.covers),
-      sources.length ? `avec ${sources.join(', ')}` : null,
-      portrait.location === 'frontier' ? 'réflexion infonuagique' : 'réflexion locale'].filter(Boolean).join(' · ');
+      sources.length ? `with ${sources.join(', ')}` : null,
+      portrait.location === 'frontier' ? 'cloud reflection' : 'local reflection'].filter(Boolean).join(' · ');
     $('portraitView').innerHTML = portrait.sections.map(section => `<section class="state-section"><h4>${escapeHtml(PORTRAIT_TITLES[section.key] || section.key)}</h4>${section.statements.map(item => `
       <article class="proposal-card portrait-statement">
-        <strong>${escapeHtml(item.text)}</strong>${Number.isFinite(item.confidence) ? `<small>confiance ${Math.round(item.confidence * 100)} %</small>` : ''}
+        <strong>${escapeHtml(item.text)}</strong>${Number.isFinite(item.confidence) ? `<small>confidence ${Math.round(item.confidence * 100)}%</small>` : ''}
         ${portraitEvidence(item)}
-        <div class="proposal-actions"><button type="button" data-portrait-reject="${escapeHtml(item.id)}">Ce n’est pas moi</button></div>
+        <div class="proposal-actions"><button type="button" data-portrait-reject="${escapeHtml(item.id)}">That’s not me</button></div>
       </article>`).join('')}</section>`).join('')
       + intakeSummary(portrait.intake)
-      + portraitList('Ce que PsyX voit d’une séance à l’autre', portrait.findings)
-      + portraitList('À explorer à la prochaine séance', portrait.agenda)
-      + portraitList('Ce que PsyX aimerait mieux comprendre', portrait.questions);
+      + portraitList('What PsyX sees from one session to the next', portrait.findings)
+      + portraitList('To explore in the next session', portrait.agenda)
+      + portraitList('What PsyX would like to understand better', portrait.questions);
   }
-  $('dreamLog').innerHTML = log.length ? `<section class="state-section"><h4>Ce que ces réflexions ont changé en mémoire</h4>${log.map(entry => `
+  $('dreamLog').innerHTML = log.length ? `<section class="state-section"><h4>What these reflections changed in memory</h4>${log.map(entry => `
     <article class="proposal-card">
-      <small>${escapeHtml(new Date(entry.at).toLocaleString('fr-CA', { dateStyle: 'medium', timeStyle: 'short' }))} · ${escapeHtml(DREAM_KIND_LABELS[entry.kind] || entry.kind)}</small>
-      ${entry.added.map(item => `<span><b>Ajouté :</b> ${escapeHtml(item.text)}</span>`).join('')}
-      ${entry.retired.map(item => `<span><b>Classé comme résolu :</b> ${escapeHtml(item.text)}${item.reason ? ` — ${escapeHtml(item.reason)}` : ''}</span>`).join('')}
-      ${entry.added.length || entry.retired.length ? '' : '<span>Portrait réécrit, mémoire inchangée.</span>'}
-      <div class="proposal-actions"><button type="button" data-dream-undo="${escapeHtml(entry.id)}">Annuler cette réflexion</button></div>
+      <small>${escapeHtml(new Date(entry.at).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' }))} · ${escapeHtml(DREAM_KIND_LABELS[entry.kind] || entry.kind)}</small>
+      ${entry.added.map(item => `<span><b>Added:</b> ${escapeHtml(item.text)}</span>`).join('')}
+      ${entry.retired.map(item => `<span><b>Marked as resolved:</b> ${escapeHtml(item.text)}${item.reason ? ` — ${escapeHtml(item.reason)}` : ''}</span>`).join('')}
+      ${entry.added.length || entry.retired.length ? '' : '<span>Portrait rewritten, memory unchanged.</span>'}
+      <div class="proposal-actions"><button type="button" data-dream-undo="${escapeHtml(entry.id)}">Undo this reflection</button></div>
     </article>`).join('')}</section>` : '';
   renderDreamChip();
 }
 
 function dreamCoverageLabel(covers = {}) {
-  if (covers.availableConversations == null) return 'Couverture du texte non mesurée pour ce portrait';
+  if (covers.availableConversations == null) return 'Text coverage not measured for this portrait';
   const partial = !covers.complete || covers.sourceCoverage?.some(source => !source.complete || (source.collection && source.collection.complete !== true));
   const missing = (covers.unavailableSources || []).map(key => DREAM_SOURCE_LABELS[key] || key);
   const collected = (covers.sourceCoverage || []).filter(source => source.collection).map(source =>
-    `${DREAM_SOURCE_LABELS[source.key] || source.key} : ${source.collection.collectedItems ?? '?'}/${source.collection.availableItems ?? '?'} recueillis${source.collection.complete === true ? '' : ' (collecte incomplète ou inconnue)'}`);
-  return `${covers.conversations}/${covers.availableConversations} séances consultées · ${covers.messages}/${covers.availableMessages} messages · ${partial ? 'couverture partielle' : 'texte des séances complet'}${collected.length ? ` · ${collected.join(' · ')}` : ''}${missing.length ? ` · sources indisponibles : ${missing.join(', ')}` : ''}`;
+    `${DREAM_SOURCE_LABELS[source.key] || source.key}: ${source.collection.collectedItems ?? '?'}/${source.collection.availableItems ?? '?'} collected${source.collection.complete === true ? '' : ' (collection incomplete or unknown)'}`);
+  return `${covers.conversations}/${covers.availableConversations} sessions read · ${covers.messages}/${covers.availableMessages} messages · ${partial ? 'partial coverage' : 'full session text'}${collected.length ? ` · ${collected.join(' · ')}` : ''}${missing.length ? ` · unavailable sources: ${missing.join(', ')}` : ''}`;
 }
 
 async function pollDream(epoch = dream.epoch) {
@@ -156,7 +156,7 @@ async function dreamAction(button, request) {
     if (result?.state) { state.psyxState = result.state; renderPsyXState(); }
   } catch (error) {
 
-    $('portraitMeta').textContent = error.status === 404 ? 'Déjà fait.' : error.message;
+    $('portraitMeta').textContent = error.status === 404 ? 'Already done.' : error.message;
     await loadPsyXState().catch(() => {});
   } finally { button.disabled = false; renderPortrait(); }
 }
@@ -187,7 +187,7 @@ function wireDream() {
             || !message.content.normalize('NFC').includes(open.dataset.evidenceQuote)) throw new Error('Source unavailable');
         preview.textContent = message.content;
       } catch (error) {
-        preview.textContent = 'Le message source n’est plus disponible ou a changé.';
+        preview.textContent = 'The source message is no longer available or has changed.';
       } finally { open.disabled = false; preview.hidden = false; }
       return;
     }

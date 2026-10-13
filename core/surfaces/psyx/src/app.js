@@ -234,7 +234,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
     ? dream.status(res.locals.psyxUserId) : { enabled: false, status: 'disabled' })));
   api.post('/dream/run', asyncRoute(async (_req, res) => {
     if (!(await readPreferences(res.locals.psyxUserId)).values.dreamEnabled) return res.status(409).json({ ok: false,
-      code: 'PSYX_DREAM_DISABLED', message: 'La rêverie est désactivée dans Contexte et performance.' });
+      code: 'PSYX_DREAM_DISABLED', message: 'Dreaming is turned off in Context and performance.' });
     return responseData(res, { scheduled: dream.request(res.locals.psyxUserId) }, 202);
   }));
   api.post('/dream/:id/undo', asyncRoute(async (req, res) => responseData(res, { state: (await stateRepository.undoDream(res.locals.psyxUserId, cleanText(req.params.id, 80))).state })));

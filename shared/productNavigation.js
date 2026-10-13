@@ -34,7 +34,7 @@ function buildProductNavigation({ service = 'core', activePage = '', publicUrls 
   const isChildActive = children => children.some(child => child.id && isActive(child.id));
   const activeSpace = navItems.find(group => isChildActive(group.children));
   return { navItems, spaces: navItems.filter(group => !group.secondary), activeSpace,
-    brandHref: coreBase + '/', brandTitle: 'Accueil AgentX', isActive, isChildActive };
+    brandHref: coreBase + '/', brandTitle: 'AgentX home', isActive, isChildActive };
 }
 
 module.exports = { buildProductNavigation };

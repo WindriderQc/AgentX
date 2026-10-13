@@ -2,11 +2,13 @@
 import http.client
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
+import json
 from pathlib import Path
 import socket
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 SPEC = importlib.util.spec_from_file_location("model_relay", Path(__file__).resolve().parents[1] / "model_relay.py")
 relay = importlib.util.module_from_spec(SPEC)
@@ -14,6 +16,63 @@ SPEC.loader.exec_module(relay)
 
 
 class RelayStopTest(unittest.TestCase):
+    def test_each_request_receives_fresh_guidance_without_growing_history_or_changing_options(self):
+        received = []
+        class Upstream(BaseHTTPRequestHandler):
+            def do_POST(self):
+                received.append(json.loads(self.rfile.read(int(self.headers['Content-Length']))))
+                self.send_response(200); self.end_headers(); self.wfile.write(b'{}')
+            def log_message(self, *_args):
+                pass
+        upstream = ThreadingHTTPServer(('127.0.0.1', 0), Upstream)
+        threading.Thread(target=upstream.serve_forever, daemon=True).start()
+        self.addCleanup(upstream.server_close); self.addCleanup(upstream.shutdown)
+        snapshots = iter(['Runner budget: 120 seconds', 'Runner budget: 60 seconds'])
+        original = {'model': 'fixture-model', 'messages': [{'role': 'system', 'content': 'Original instructions'},
+                    {'role': 'user', 'content': 'Synthetic task'}], 'stream': False, 'max_tokens': 1024,
+                    'options': {'num_ctx': 8192, 'think': True}, 'tools': [{'type': 'function', 'function': {'name': 'fixture'}}]}
+        body = json.dumps(original).encode()
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / 'model.sock')
+            server = relay.serve(path, f'http://127.0.0.1:{upstream.server_port}/v1', budget_guidance=lambda: next(snapshots))
+            self.addCleanup(server.server_close); self.addCleanup(server.shutdown)
+            for _ in range(2):
+                connection = http.client.HTTPConnection('worker')
+                connection.sock = socket.socket(socket.AF_UNIX); connection.sock.connect(path)
+                connection.request('POST', '/v1/chat/completions', body=body)
+                self.assertEqual(connection.getresponse().read(), b'{}'); connection.close()
+        self.assertEqual([value['messages'][-1]['content'] for value in received],
+                         ['Runner budget: 120 seconds', 'Runner budget: 60 seconds'])
+        for value in received:
+            self.assertEqual(value['messages'][:-1], original['messages'])
+            self.assertEqual(len(value['messages']), len(original['messages']) + 1)
+            self.assertEqual({k: v for k, v in value.items() if k != 'messages'},
+                             {k: v for k, v in original.items() if k != 'messages'})
+        self.assertEqual(json.loads(body), original)
+
+    def test_absent_guidance_and_malformed_requests_keep_original_bytes(self):
+        for body in [b'{}', b'[]', b'{', b'{"messages":[7]}', b'{ "messages": [] }']:
+            self.assertEqual(relay.with_budget_guidance(body, 'Synthetic advisory'), body)
+        body = b'{ "messages": [] }'
+        self.assertEqual(relay.with_budget_guidance(body, None), body)
+
+    def test_guidance_cannot_expand_a_request_beyond_the_native_size_limit(self):
+        body = b'{"messages":[{"role":"user","content":"Synthetic task"}]}'
+        observed = []
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / 'model.sock')
+            server = relay.serve(path, 'http://127.0.0.1:9/v1', observer=observed.append,
+                                 budget_guidance=lambda: 'Synthetic runner advisory')
+            self.addCleanup(server.server_close); self.addCleanup(server.shutdown)
+            connection = http.client.HTTPConnection('worker', timeout=2)
+            connection.sock = socket.socket(socket.AF_UNIX); connection.sock.connect(path)
+            self.addCleanup(connection.close)
+            with mock.patch.object(relay, 'MAX_REQUEST_BYTES', len(body)):
+                connection.request('POST', '/v1/chat/completions', body=body)
+                response = connection.getresponse()
+                self.assertEqual(response.status, 403); response.read()
+        self.assertEqual(observed, [])
+
     def test_shutdown_closes_only_its_inflight_upstream_connection(self):
         connected, closed = threading.Event(), threading.Event()
         class Upstream(BaseHTTPRequestHandler):

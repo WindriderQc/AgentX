@@ -1,25 +1,25 @@
 /* Family review: actions first, optional setup and history in disclosures. */
 window.HouseholdParents = { async load({ app, api, esc, setRuntime, toast }) {
-    const ageLabel = { little: 'Petite enfance', school: 'Âge scolaire', teen: 'Adolescence' };
-    const cadenceLabel = { once: 'Ponctuelle', daily: 'Chaque jour', weekly: 'Chaque semaine' };
-    app.innerHTML = `<section class="family-overview"><div><p class="eyebrow">Super Dad · Famille</p><h1>La maison, ensemble.</h1><p class="muted">Les tâches de la maison et les échanges des enfants.</p></div><div class="row wrap"><span id="parentSummary" class="pill">Chargement…</span><button id="familyPerformance" type="button" class="compact">Contexte et performance</button></div></section>
+    const ageLabel = { little: 'Early childhood', school: 'School age', teen: 'Teen' };
+    const cadenceLabel = { once: 'One-time', daily: 'Every day', weekly: 'Every week' };
+    app.innerHTML = `<section class="family-overview"><div><p class="eyebrow">Super Dad · Family</p><h1>The household, together.</h1><p class="muted">Household tasks and the kids’ conversations.</p></div><div class="row wrap"><span id="parentSummary" class="pill">Loading…</span><button id="familyPerformance" type="button" class="compact">Context and performance</button></div></section>
     <section class="parent-grid"><article class="card full" id="familyShopping"></article>
-      <article id="familyLaunchCard" class="card full family-launch"><h2>Un premier profil</h2><p class="muted">Choisis les tâches utiles pour commencer. Tu peux modifier ou décocher chaque proposition.</p>
-        <form id="familyLaunchForm" class="stack"><div class="parent-profile-form"><label><span>Prénom</span><input id="launchProfileName" maxlength="80" required placeholder="Prénom de l’enfant"></label><label><span>Avatar</span><input id="launchProfileAvatar" maxlength="8" value="⭐" aria-label="Avatar du premier profil"></label><label><span>Groupe d’âge</span><select id="launchProfileAge"><option value="little">Petite enfance</option><option value="school" selected>Âge scolaire</option><option value="teen">Adolescence</option></select></label></div>
-        <fieldset class="launch-routines"><legend>Pour commencer · 1 à 5 tâches</legend>${[
-          ['Remettre tes choses à leur place', 'daily', 2, 'Commence par ce que tu as utilisé en dernier.'],
-          ['Préparer tes choses pour demain', 'daily', 3, 'Sac, vêtements ou tout ce dont tu auras besoin.'],
-          ['Aider à ranger un espace commun', 'weekly', 4, 'Demande à un parent quel espace a besoin d’aide.']
-        ].map(([title, cadence, stars, note], i) => `<div class="launch-routine"><input type="checkbox" checked aria-label="Inclure la tâche ${i + 1}"><input data-launch-title maxlength="160" value="${esc(title)}" aria-label="Titre de la tâche ${i + 1}"><select data-launch-cadence aria-label="Fréquence de la tâche ${i + 1}">${Object.entries(cadenceLabel).map(([value, label]) => `<option value="${value}" ${value === cadence ? 'selected' : ''}>${label}</option>`).join('')}</select><select data-launch-stars aria-label="Étoiles de la tâche ${i + 1}">${[1,2,3,4,5].map(value => `<option ${value === stars ? 'selected' : ''}>${value}</option>`).join('')}</select><input class="launch-note" data-launch-note maxlength="1000" value="${esc(note)}" aria-label="Aide pour la tâche ${i + 1}"></div>`).join('')}</fieldset><div class="row wrap"><button id="familyLaunchButton" class="primary">Créer le profil et les tâches</button><a class="button" href="/kids">Voir l’espace Enfants</a></div></form>
+      <article id="familyLaunchCard" class="card full family-launch"><h2>A first profile</h2><p class="muted">Choose useful tasks to start with. You can edit or uncheck each suggestion.</p>
+        <form id="familyLaunchForm" class="stack"><div class="parent-profile-form"><label><span>First name</span><input id="launchProfileName" maxlength="80" required placeholder="Child’s first name"></label><label><span>Avatar</span><input id="launchProfileAvatar" maxlength="8" value="⭐" aria-label="First profile avatar"></label><label><span>Age group</span><select id="launchProfileAge"><option value="little">Early childhood</option><option value="school" selected>School age</option><option value="teen">Teen</option></select></label></div>
+        <fieldset class="launch-routines"><legend>To start · 1 to 5 tasks</legend>${[
+          ['Put your things back where they belong', 'daily', 2, 'Start with what you used last.'],
+          ['Get your things ready for tomorrow', 'daily', 3, 'Bag, clothes or anything you will need.'],
+          ['Help tidy a shared space', 'weekly', 4, 'Ask a parent which space needs help.']
+        ].map(([title, cadence, stars, note], i) => `<div class="launch-routine"><input type="checkbox" checked aria-label="Include task ${i + 1}"><input data-launch-title maxlength="160" value="${esc(title)}" aria-label="Task ${i + 1} title"><select data-launch-cadence aria-label="Task ${i + 1} frequency">${Object.entries(cadenceLabel).map(([value, label]) => `<option value="${value}" ${value === cadence ? 'selected' : ''}>${label}</option>`).join('')}</select><select data-launch-stars aria-label="Task ${i + 1} stars">${[1,2,3,4,5].map(value => `<option ${value === stars ? 'selected' : ''}>${value}</option>`).join('')}</select><input class="launch-note" data-launch-note maxlength="1000" value="${esc(note)}" aria-label="Help for task ${i + 1}"></div>`).join('')}</fieldset><div class="row wrap"><button id="familyLaunchButton" class="primary">Create the profile and tasks</button><a class="button" href="/kids">See the Kids space</a></div></form>
       </article>
-      <article class="card full family-tasks"><div class="row"><h2 class="grow">Tâches</h2><span id="parentPending" class="pill family-attention" hidden></span></div><div id="familyOrganizer"></div><div id="chores" class="stack"></div>
-        <details id="choreCreate" class="family-disclosure"><summary>Ajouter une tâche</summary><form id="choreForm" class="parent-chore-form"><label><span>Pour</span><select id="choreProfile" required></select></label><label class="wide-field"><span>Tâche</span><input id="choreTitle" maxlength="160" required placeholder="Préparer le sac d’école"></label><label><span>Date</span><input id="choreDue" type="date"></label><label><span>Fréquence</span><select id="choreCadence"><option value="once">Ponctuelle</option><option value="daily">Chaque jour</option><option value="weekly">Chaque semaine</option></select></label><label><span>Étoiles</span><select id="choreStars"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label><label class="wide-field"><span>Aide facultative</span><input id="choreNote" maxlength="1000" placeholder="Un petit indice pour réussir"></label><button class="primary">Ajouter la tâche</button></form></details><div id="choreSetupEmpty" class="empty" hidden>Crée un profil pour ajouter des tâches.</div>
+      <article class="card full family-tasks"><div class="row"><h2 class="grow">Tasks</h2><span id="parentPending" class="pill family-attention" hidden></span></div><div id="familyOrganizer"></div><div id="chores" class="stack"></div>
+        <details id="choreCreate" class="family-disclosure"><summary>Add a task</summary><form id="choreForm" class="parent-chore-form"><label><span>For</span><select id="choreProfile" required></select></label><label class="wide-field"><span>Task</span><input id="choreTitle" maxlength="160" required placeholder="Pack the school bag"></label><label><span>Date</span><input id="choreDue" type="date"></label><label><span>Frequency</span><select id="choreCadence"><option value="once">One-time</option><option value="daily">Every day</option><option value="weekly">Every week</option></select></label><label><span>Stars</span><select id="choreStars"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label><label class="wide-field"><span>Optional help</span><input id="choreNote" maxlength="1000" placeholder="A small hint to succeed"></label><button class="primary">Add the task</button></form></details><div id="choreSetupEmpty" class="empty" hidden>Create a profile to add tasks.</div>
       </article>
-      <article class="card full"><details class="family-disclosure" id="profileDetails"><summary>Profils des enfants <span id="profilesCount" class="pill">0</span></summary><div id="profiles" class="profile-list"></div><details id="profileCreate" class="family-disclosure"><summary>Ajouter un profil</summary><form id="profileForm" class="parent-profile-form"><label><span>Prénom</span><input id="profileName" maxlength="80" required placeholder="Prénom de l’enfant"></label><label><span>Avatar</span><input id="profileAvatar" maxlength="8" value="⭐" aria-label="Avatar du profil"></label><label><span>Groupe d’âge</span><select id="profileAge"><option value="little">Petite enfance</option><option value="school" selected>Âge scolaire</option><option value="teen">Adolescence</option></select></label><button class="primary">Créer le profil</button></form></details></details></article>
-      <article class="card full"><details class="family-disclosure" id="familyJournal"><summary>Échanges avec Nestor <span id="journalAlert" class="pill family-attention" hidden></span></summary><div class="row wrap journal-toolbar"><div class="row wrap journal-filters" role="group" aria-label="Afficher les échanges"><button type="button" class="compact journal-filter" data-journal-view="recent" aria-pressed="true">Récents</button><button type="button" class="compact journal-filter" data-journal-view="safety" aria-pressed="false">À consulter</button><button type="button" class="compact journal-filter" data-journal-view="all" aria-pressed="false">Tout afficher</button></div><span id="journalCount" class="pill">Chargement…</span><button id="refreshJournal" type="button">Actualiser</button></div><div id="journal" class="stack"></div></details></article>
+      <article class="card full"><details class="family-disclosure" id="profileDetails"><summary>Kids’ profiles <span id="profilesCount" class="pill">0</span></summary><div id="profiles" class="profile-list"></div><details id="profileCreate" class="family-disclosure"><summary>Add a profile</summary><form id="profileForm" class="parent-profile-form"><label><span>First name</span><input id="profileName" maxlength="80" required placeholder="Child’s first name"></label><label><span>Avatar</span><input id="profileAvatar" maxlength="8" value="⭐" aria-label="Profile avatar"></label><label><span>Age group</span><select id="profileAge"><option value="little">Early childhood</option><option value="school" selected>School age</option><option value="teen">Teen</option></select></label><button class="primary">Create profile</button></form></details></details></article>
+      <article class="card full"><details class="family-disclosure" id="familyJournal"><summary>Conversations with Nestor <span id="journalAlert" class="pill family-attention" hidden></span></summary><div class="row wrap journal-toolbar"><div class="row wrap journal-filters" role="group" aria-label="Show conversations"><button type="button" class="compact journal-filter" data-journal-view="recent" aria-pressed="true">Recent</button><button type="button" class="compact journal-filter" data-journal-view="safety" aria-pressed="false">To review</button><button type="button" class="compact journal-filter" data-journal-view="all" aria-pressed="false">Show all</button></div><span id="journalCount" class="pill">Loading…</span><button id="refreshJournal" type="button">Refresh</button></div><div id="journal" class="stack"></div></details></article>
     </section>`;
     const preferences = window.ConversationPreferences.mount({ button: document.getElementById('familyPerformance'), api,
-      endpoint: '/api/voice-personas/preferences?space=family', title: 'Famille · Contexte et performance' });
+      endpoint: '/api/voice-personas/preferences?space=family', title: 'Family · Context and performance' });
     window.addEventListener('pagehide', () => preferences.clear(), { once: true });
     document.getElementById('familyLaunchCard').hidden = true;
     document.getElementById('profileForm').closest('article').hidden = true;
@@ -35,6 +35,7 @@ window.HouseholdParents = { async load({ app, api, esc, setRuntime, toast }) {
     // rather than disappearing from the parent's view.
     const soundsById = new Map();
     const journalRecentLimit = 8;
+    let familyLoaded = false;
     async function refreshFamily() {
       const request = ++familyRequest;
       try {
@@ -45,29 +46,35 @@ window.HouseholdParents = { async load({ app, api, esc, setRuntime, toast }) {
         document.getElementById('familyLaunchCard').hidden = hasProfiles;
         if (!hasProfiles) document.getElementById('familyLaunchButton').disabled = false;
         document.getElementById('profileForm').closest('article').hidden = !hasProfiles;
-        document.getElementById('profiles').innerHTML = profiles.length ? profiles.map((profile) => `<div class="profile-chip"><span class="kid-avatar">${esc(profile.avatar)}</span><div class="grow"><strong>${esc(profile.displayName)}</strong><small>${esc(ageLabel[profile.ageBand] || profile.ageBand)}</small></div><button class="compact danger archive-profile" data-id="${esc(profile.id)}">Archiver</button></div>`).join('') : '<div class="empty">Aucun profil pour le moment.</div>';
+        document.getElementById('profiles').innerHTML = profiles.length ? profiles.map((profile) => `<div class="profile-chip"><span class="kid-avatar">${esc(profile.avatar)}</span><div class="grow"><strong>${esc(profile.displayName)}</strong><small>${esc(ageLabel[profile.ageBand] || profile.ageBand)}</small></div><button class="compact danger archive-profile" data-id="${esc(profile.id)}">Archive</button></div>`).join('') : '<div class="empty">No profile yet.</div>';
         const chosenProfile = document.getElementById('choreProfile').value;
         document.getElementById('choreProfile').innerHTML = profiles.map((profile) => `<option value="${esc(profile.id)}">${esc(profile.avatar)} ${esc(profile.displayName)}</option>`).join('');
         if (profiles.some(profile => profile.id === chosenProfile)) document.getElementById('choreProfile').value = chosenProfile;
         document.getElementById('choreForm').hidden = !profiles.length;
         document.getElementById('choreSetupEmpty').hidden = Boolean(profiles.length);
         organizer.update(profiles, choreData);
-        document.getElementById('parentSummary').textContent = choreData.chores.length ? `${choreData.chores.length} tâche${choreData.chores.length > 1 ? 's' : ''} active${choreData.chores.length > 1 ? 's' : ''}` : 'Tout est à jour';
+        document.getElementById('parentSummary').textContent = choreData.chores.length ? `${choreData.chores.length} active task${choreData.chores.length > 1 ? 's' : ''}` : 'All up to date';
         document.getElementById('profilesCount').textContent = profiles.length;
         const pending = choreData.chores.filter(chore => chore.status === 'review').length;
         document.getElementById('parentPending').hidden = !pending;
-        document.getElementById('parentPending').textContent = `${pending} à valider`;
+        document.getElementById('parentPending').textContent = `${pending} to approve`;
         document.querySelectorAll('.archive-profile').forEach((button) => button.addEventListener('click', async () => {
-          if (!window.confirm('Archiver ce profil ? Ses tâches restent dans l’historique.')) return;
+          if (!window.confirm('Archive this profile? Its tasks stay in the history.')) return;
           button.disabled = true;
           try { await api('/api/family/profiles/archive', { method: 'POST', body: JSON.stringify({ profileId: button.dataset.id }) }); await refreshFamily(); }
           catch (error) { toast(error.message); button.disabled = false; }
         }));
-        setRuntime(true, 'suivi familial prêt');
+        familyLoaded = true;
+        setRuntime(true, 'family tracking ready');
       } catch (error) {
         if (request !== familyRequest) return;
-        setRuntime(false, 'suivi familial indisponible');
-        document.querySelector('[data-family-coverage]').textContent = 'Actualisation impossible. Les tâches affichées peuvent avoir changé. Réessaie avec Actualiser.';
+        setRuntime(false, 'family tracking unavailable');
+        document.querySelector('[data-family-coverage]').textContent = 'Could not refresh. The tasks shown may have changed. Try again with Refresh.';
+        // A first load that fails would leave the page saying Loading… with its forms hidden: retry on its own.
+        if (!familyLoaded) {
+          document.getElementById('parentSummary').textContent = 'Family tracking unavailable · retrying…';
+          setTimeout(refreshFamily, 10000);
+        }
       }
     }
     function renderJournal() {
@@ -76,17 +83,17 @@ window.HouseholdParents = { async load({ app, api, esc, setRuntime, toast }) {
         ? journalRows
         : journalView === 'safety' ? safetyRows : journalRows.slice(0, journalRecentLimit);
       const count = journalView === 'recent'
-        ? `${visibleRows.length} sur ${journalRows.length} échanges`
-        : journalView === 'safety' ? `${visibleRows.length} à consulter` : `${visibleRows.length} échanges`;
+        ? `${visibleRows.length} of ${journalRows.length} conversations`
+        : journalView === 'safety' ? `${visibleRows.length} to review` : `${visibleRows.length} conversations`;
       document.getElementById('journalCount').textContent = count;
       const alert = document.getElementById('journalAlert');
-      alert.hidden = !safetyRows.length; alert.textContent = `${safetyRows.length} à consulter`;
+      alert.hidden = !safetyRows.length; alert.textContent = `${safetyRows.length} to review`;
       document.querySelectorAll('.journal-filter').forEach((button) => {
         button.setAttribute('aria-pressed', String(button.dataset.journalView === journalView));
       });
       document.getElementById('journal').innerHTML = visibleRows.length ? visibleRows.map((row) => {
         return window.JournalDisplay.row(row, { esc, sound: row.soundId ? soundsById.get(row.soundId) : null });
-      }).join('') : `<div class="empty">${journalRows.length ? 'Aucun échange à consulter dans cette période.' : 'Aucun échange pour le moment.'}</div>`;
+      }).join('') : `<div class="empty">${journalRows.length ? 'No conversation to review in this period.' : 'No conversation yet.'}</div>`;
     }
     async function refreshJournal() {
       try {
@@ -94,8 +101,13 @@ window.HouseholdParents = { async load({ app, api, esc, setRuntime, toast }) {
           const catalog = await api('/api/voice-personas/sounds').catch(() => ({ sounds: [] }));
           (catalog.sounds || []).forEach((sound) => soundsById.set(sound.id, sound));
         }
-        const data = await api('/api/voice-personas/audit/recent?childSafe=true&limit=80');
-        journalRows = Array.isArray(data.audit) ? data.audit : [];
+        // Flagged turns older than the recent window still belong in "to review".
+        const [data, flagged] = await Promise.all([api('/api/voice-personas/audit/recent?childSafe=true&limit=80'),
+          api('/api/voice-personas/alerts').catch(() => ({ alerts: { items: [] } }))]);
+        const recent = Array.isArray(data.audit) ? data.audit : [];
+        const seen = new Set(recent.map((row) => row.id));
+        const older = (flagged.alerts?.items || []).filter((row) => row.id && !seen.has(row.id));
+        journalRows = recent.concat(older).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
         renderJournal();
       } catch (error) { document.getElementById('journal').innerHTML = `<div class="empty">${esc(error.message)}</div>`; }
     }
@@ -111,7 +123,7 @@ window.HouseholdParents = { async load({ app, api, esc, setRuntime, toast }) {
           cadence: row.querySelector('[data-launch-cadence]').value,
           stars: Number(row.querySelector('[data-launch-stars]').value)
         }));
-      if (!routines.length) { toast('Choisis au moins une tâche pour commencer.'); return; }
+      if (!routines.length) { toast('Choose at least one task to start.'); return; }
       button.disabled = true;
       try {
         await api('/api/family/launch', {
@@ -125,7 +137,7 @@ window.HouseholdParents = { async load({ app, api, esc, setRuntime, toast }) {
             routines
           })
         });
-        toast('Le profil et ses tâches sont prêts.');
+        toast('The profile and its tasks are ready.');
         await refreshFamily();
       } catch (error) {
         toast(error.message);

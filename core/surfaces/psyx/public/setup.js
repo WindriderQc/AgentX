@@ -24,20 +24,20 @@ function renderSetup() {
   const privacy = setupCapabilities.privacy || {};
   const routes = state.routing?.taskConfigState || {};
   const routeReady = task => Boolean(routes[task]?.effective?.model || state.routing?.taskModels?.[task]?.model);
-  const microphoneLabels = { unknown: 'permission non vérifiée', prompt: 'permission à demander',
-    granted: 'permission accordée', denied: 'permission refusée', unavailable: 'microphone indisponible' };
+  const microphoneLabels = { unknown: 'permission not checked', prompt: 'permission to request',
+    granted: 'permission granted', denied: 'permission denied', unavailable: 'microphone unavailable' };
   const rows = [
-    ['Accès privé', privacy.accessMode === 'token' ? 'Jeton natif requis'
-      : 'LAN privé : aucun compte ni code exigé'],
-    ['Réponse normale', routeReady('analysis') ? 'Modèle configuré' : 'Modèle non confirmé'],
-    ['Réponse profonde', routeReady('deep_reasoning') ? 'Modèle configuré' : 'Modèle non confirmé'],
-    ['Réflexion automatique', setupCapabilities.review?.automatic ? 'Activée' : 'Désactivée'],
-    ['Voix locale', !setupCapabilities.voice?.enabled ? 'Facultative, non configurée'
-      : state.voice.reachable ? 'VoiX joignable' : 'Configurée, VoiX indisponible'],
-    ['Microphone de ce navigateur', !window.isSecureContext ? 'HTTPS ou localhost requis'
-      : !navigator.mediaDevices?.getUserMedia ? 'Capture non prise en charge' : microphoneLabels[setupMicrophone]],
-    ['Contenu hors LAN', typeof frontierSetupLabel === 'function' ? frontierSetupLabel()
-      : 'Désactivé : les réponses et revues restent sur les voies locales']
+    ['Private access', privacy.accessMode === 'token' ? 'Native token required'
+      : 'Private LAN: no account or code required'],
+    ['Normal reply', routeReady('analysis') ? 'Model configured' : 'Model not confirmed'],
+    ['Deep reply', routeReady('deep_reasoning') ? 'Model configured' : 'Model not confirmed'],
+    ['Automatic reflection', setupCapabilities.review?.automatic ? 'On' : 'Off'],
+    ['Local voice', !setupCapabilities.voice?.enabled ? 'Optional, not configured'
+      : state.voice.reachable ? 'VoiX reachable' : 'Configured, VoiX unavailable'],
+    ['This browser’s microphone', !window.isSecureContext ? 'HTTPS or localhost required'
+      : !navigator.mediaDevices?.getUserMedia ? 'Capture not supported' : microphoneLabels[setupMicrophone]],
+    ['Content leaving the LAN', typeof frontierSetupLabel === 'function' ? frontierSetupLabel()
+      : 'Off: replies and reviews stay on the local lanes']
   ];
   container.innerHTML = rows.map(([label, value]) => `<div class="state-item"><div><strong>${escapeHtml(label)}</strong><small>${escapeHtml(value)}</small></div></div>`).join('');
   $('testSetupMicrophone').disabled = !window.isSecureContext || !navigator.mediaDevices?.getUserMedia;
@@ -46,7 +46,7 @@ function renderSetup() {
 async function refreshSetup() {
 
   const generation = ++setupGeneration;
-  $('setupNotice').textContent = 'Vérification en cours…';
+  $('setupNotice').textContent = 'Checking…';
   try {
     const payload = await api('/api/psyx/status', { cache: 'no-store' });
     if (generation !== setupGeneration) return;
@@ -58,7 +58,7 @@ async function refreshSetup() {
     if (generation !== setupGeneration) return;
     setupMicrophone = permission?.state || 'unknown';
     renderSetup();
-    $('setupNotice').textContent = 'Configuration vérifiée. Aucun audio n’a été enregistré.';
+    $('setupNotice').textContent = 'Setup checked. No audio was recorded.';
   } catch (error) {
     if (generation === setupGeneration) $('setupNotice').textContent = error.message;
   }
@@ -74,11 +74,11 @@ function wireSetup() {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       if (generation !== setupGeneration) return;
       setupMicrophone = 'granted';
-      $('setupNotice').textContent = 'Microphone accessible. Le test est terminé; aucun audio n’est conservé.';
+      $('setupNotice').textContent = 'Microphone accessible. The test is done; no audio is kept.';
     } catch (error) {
       if (generation !== setupGeneration) return;
       setupMicrophone = error.name === 'NotAllowedError' ? 'denied' : 'unavailable';
-      $('setupNotice').textContent = 'Vérifie la permission du microphone et le périphérique dans ce navigateur.';
+      $('setupNotice').textContent = 'Check the microphone permission and the device in this browser.';
     } finally {
       stream?.getTracks().forEach(track => track.stop());
       if (generation === setupGeneration) renderSetup();

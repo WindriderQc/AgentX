@@ -11,7 +11,7 @@ async function recoverOperation(op, client, persist, archive) {
   const runtime = await RuntimeCoordination.findById('runtime').lean();
   const old = runtime?.workloads?.find(x => x.workloadId === op._id && x.principal === PRINCIPAL);
   if (!old && !op.dispatchStarted && !op.admission && !op.snapshot) return persist({ state: 'failed', runtimeRestored: true,
-    error: 'Demande interrompue avant la préparation GPU. Une nouvelle demande explicite est possible.' }, { workerSlot: 1, references: 1 });
+    error: 'Request interrupted before GPU preparation. A new explicit request is possible.' }, { workerSlot: 1, references: 1 });
   if (!old) {
     const proof = op.admission;
     const release = proof && await coordination.recoverRelease('workload', {
@@ -61,11 +61,11 @@ async function recoverOperation(op, client, persist, archive) {
       await persist({ runtimeRestored: true, output }, { workerSlot: 1, references: 1 });
       if (!artifact) {
         try { artifact = await archive(output); }
-        catch { return persist({ state: 'archive_failed', runtimeRestored: true, error: 'Reprise de l’archive nécessaire.' }, { workerSlot: 1 }); }
+        catch { return persist({ state: 'archive_failed', runtimeRestored: true, error: 'Archive retry required.' }, { workerSlot: 1 }); }
       }
     }
     return persist({ state: artifact ? 'completed' : 'failed', artifact: artifact || null,
-      runtimeRestored: true, error: artifact ? null : 'Génération initiale terminée sans image. Aucune relance automatique.' }, { workerSlot: 1, references: 1 });
+      runtimeRestored: true, error: artifact ? null : 'Initial generation finished without an image. No automatic retry.' }, { workerSlot: 1, references: 1 });
   } finally { clearInterval(timer); }
 }
 module.exports = { recoverOperation };

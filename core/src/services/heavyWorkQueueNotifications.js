@@ -5,7 +5,7 @@ const Alert = require('../../models/Alert');
 const { fail } = require('./heavyWorkQueueContract');
 const RULE = 'heavy_work_queue';
 const WC = { w: 1, j: true };
-const labels = { completed: 'terminé', failed: 'échoué', cancelled: 'annulé', uncertain: 'résultat incertain' };
+const labels = { completed: 'completed', failed: 'failed', cancelled: 'cancelled', uncertain: 'uncertain result' };
 
 // The existing Core alert feed is the inbox. Stable Mongo IDs retain delivery
 // and acknowledgment across restarts, archive moves and repeated observations.
@@ -18,8 +18,8 @@ async function publishJobs(jobs) {
       severity: job.state === 'completed' || job.state === 'cancelled' ? 'info' : 'warning',
       status: 'active', title: `${job.title} — ${labels[job.state]}`,
       message: job.state === 'uncertain'
-        ? 'Consulte le même reçu avant toute relance. La réservation reste retenue.'
-        : `Reçu de fin disponible. Autorité : ${job.releaseReceipt?.authority || 'queue'}.`,
+        ? 'Check the same receipt before any relaunch. The reservation stays held.'
+        : `Completion receipt available. Authority: ${job.releaseReceipt?.authority || 'queue'}.`,
       context: { component: 'heavy-work-queue', relatedEvents: [job.id], additionalData: {
         queueRequestId: job.id, state: job.state, source: job.source,
         path: '/cluster-schedule', operation: job.operation, receipt: job.releaseReceipt || null

@@ -14,42 +14,42 @@ const reference = row => ({ id: String(row._id), name: row.name, mimeType: row.m
 const bytes = data => Buffer.isBuffer(data) ? data : Buffer.from(data.buffer || data);
 function ids(value = [], maximum = MAX_PER_TURN) {
   if (!Array.isArray(value) || value.length > maximum || value.some(id => typeof id !== 'string' || !/^[a-f0-9]{24}$/.test(id))
-    || new Set(value).size !== value.length) throw fail(`Choisis au plus ${maximum} pièces jointes valides.`);
+    || new Set(value).size !== value.length) throw fail(`Choose at most ${maximum} valid attachments.`);
   return value;
 }
 async function decode({ name, dataUrl } = {}) {
-  if (typeof name !== 'string' || !name.trim() || name.length > 160 || /[\x00-\x1f\x7f\\/]/.test(name)) throw fail('Nom de fichier invalide.');
-  if (typeof dataUrl !== 'string' || dataUrl.length > content.maxDataUrlLength(MAX_BYTES)) throw fail('Chaque fichier doit faire au plus 2 Mo.', 413);
+  if (typeof name !== 'string' || !name.trim() || name.length > 160 || /[\x00-\x1f\x7f\\/]/.test(name)) throw fail('Invalid file name.');
+  if (typeof dataUrl !== 'string' || dataUrl.length > content.maxDataUrlLength(MAX_BYTES)) throw fail('Each file must be 2 MB or less.', 413);
   const parsed = content.parseDataUrl(dataUrl);
-  if (!parsed || !content.MIME_TYPES.has(parsed.mimeType)) throw fail('Formats acceptés : JPEG, PNG, texte, Markdown, CSV, JSON et PDF texte.');
+  if (!parsed || !content.MIME_TYPES.has(parsed.mimeType)) throw fail('Accepted formats: JPEG, PNG, text, Markdown, CSV, JSON and text PDF.');
   const { mimeType, data } = parsed;
-  if (data.length > MAX_BYTES) throw fail('Chaque fichier doit faire au plus 2 Mo.', 413);
-  if (!data.length || !parsed.canonical) throw fail('Contenu de fichier invalide.');
+  if (data.length > MAX_BYTES) throw fail('Each file must be 2 MB or less.', 413);
+  if (!data.length || !parsed.canonical) throw fail('Invalid file content.');
   const image = mimeType.startsWith('image/');
-  if (!content.imageSignatureMatches(mimeType, data)) throw fail('Le contenu ne correspond pas au format de l’image.');
+  if (!content.imageSignatureMatches(mimeType, data)) throw fail('The content does not match the image format.');
   let text;
   if (!image) {
     if (mimeType === 'application/pdf') {
-      if (!content.isPdf(data)) throw fail('PDF invalide.');
+      if (!content.isPdf(data)) throw fail('Invalid PDF.');
       const { PDFParse } = require('pdf-parse');
       const parser = new PDFParse({ data });
       try {
         const info = await parser.getInfo();
-        if (info.total > 20) throw fail('Choisis un PDF de 20 pages ou moins.');
+        if (info.total > 20) throw fail('Choose a PDF of 20 pages or fewer.');
         const result = await parser.getText();
         text = result.pages.some(page => page.text.trim()) ? result.text : '';
       } catch (error) {
         if (error.code === 'CONVERSATION_ATTACHMENT_INVALID') throw error;
-        throw fail('Ce PDF ne peut pas être lu. Utilise un PDF texte non protégé.');
+        throw fail('This PDF cannot be read. Use an unprotected text PDF.');
       } finally { await parser.destroy(); }
     } else {
       const decoded = content.decodeText(data);
-      if (decoded.error === 'utf8') throw fail('Le document doit être en UTF-8.');
-      if (decoded.error) throw fail('Ce fichier contient des données binaires.');
+      if (decoded.error === 'utf8') throw fail('The document must be UTF-8.');
+      if (decoded.error) throw fail('This file contains binary data.');
       text = decoded.text;
-      if (mimeType === 'application/json' && !content.isJson(text)) throw fail('JSON invalide.');
+      if (mimeType === 'application/json' && !content.isJson(text)) throw fail('Invalid JSON.');
     }
-    if (!text?.trim() || text.length > MAX_TEXT) throw fail('Le document doit contenir entre 1 et 24 000 caractères de texte. Aucun texte n’est tronqué.');
+    if (!text?.trim() || text.length > MAX_TEXT) throw fail('The document must contain 1 to 24,000 characters of text. No text is truncated.');
   }
   return { name: name.trim(), mimeType, kind: image ? 'image' : 'document', size: data.length, data, text,
     sha256: content.sha256(data) };
@@ -62,20 +62,20 @@ function forConversation({ surface, sessionId, packId, scopeId }) {
     const row = await Conversation.findOne({ surface, 'surfaceSession.sessionId': sessionId,
       'surfaceSession.packId': packId, 'surfaceSession.scopeId': scopeId,
       'surfaceSession.deletedAt': { $exists: false } }).select('_id surfaceSession.status').lean();
-    if (!row) throw fail('Conversation introuvable.', 404);
+    if (!row) throw fail('Conversation not found.', 404);
     return row;
   }
   async function load(values, maximum = MAX_PER_TURN) {
     const selected = ids(values, maximum);
     const conversation = await owner();
     const rows = await Attachment.find({ conversationId: conversation._id, _id: { $in: selected } }).lean();
-    if (rows.length !== selected.length) throw fail('Pièce jointe introuvable dans cette conversation.', 404);
+    if (rows.length !== selected.length) throw fail('Attachment not found in this conversation.', 404);
     return selected.map(id => rows.find(row => String(row._id) === id));
   }
   async function upload(input) {
     return require('./surfaceConversationService').withSessionWrite(surface, sessionId, async () => {
       const conversation = await owner();
-      if (conversation.surfaceSession.status !== 'active') throw fail('Cette conversation est fermée.', 409);
+      if (conversation.surfaceSession.status !== 'active') throw fail('This conversation is closed.', 409);
       const payload = await decode(input);
       const query = { conversationId: conversation._id, sha256: payload.sha256, name: payload.name, mimeType: payload.mimeType };
       let row;
@@ -87,9 +87,9 @@ function forConversation({ surface, sessionId, packId, scopeId }) {
   async function references(values) { return (await load(values)).map(reference); }
   // The model receives the attachment; the archive keeps the photo it came from.
   async function attachOriginal(id, { bytes, name } = {}, archive = require('./imageArchive').defaultArchive()) {
-    if (!archive.enabled) throw fail('L’archive des images n’est pas configurée.', 404);
+    if (!archive.enabled) throw fail('The image archive is not configured.', 404);
     const [row] = await load([id]);
-    if (row.kind !== 'image') throw fail('Seule une image a un original à archiver.');
+    if (row.kind !== 'image') throw fail('Only an image has an original to archive.');
     const receipt = await archive.store({ bytes, name: name || row.name, origin: 'uploaded',
       context: { surface, conversationId: String(row.conversationId), attachmentId: String(row._id), attachmentName: row.name } });
     const original = { sha256: receipt.sha256, mimeType: receipt.mimeType, size: receipt.size, path: receipt.path, archivedAt: receipt.archivedAt };
@@ -112,7 +112,7 @@ function forConversation({ surface, sessionId, packId, scopeId }) {
     const occurrences = messages.flatMap(message => (message.attachments || []).map(item => rows.find(row => String(row._id) === item.id)));
     if (occurrences.reduce((sum, row) => sum + row.size, 0) > MAX_CONTEXT_BYTES
       || occurrences.reduce((sum, row) => sum + (row.text?.length || 0), 0) > MAX_CONTEXT_TEXT) {
-      throw fail('Les pièces jointes dépassent la capacité de cet échange. Commence une nouvelle conversation avec les documents utiles.', 413);
+      throw fail('The attachments exceed this exchange’s capacity. Start a new conversation with the documents you need.', 413);
     }
     return messages.map(({ attachments = [], ...message }) => {
       const attached = attachments.map(item => rows.find(row => String(row._id) === item.id));

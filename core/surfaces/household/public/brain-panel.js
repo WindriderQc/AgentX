@@ -1,12 +1,12 @@
 'use strict';
 
-// "Pistes": what Nestor's background brain proposes after a turn (#169).
+// "Leads": what Nestor's background brain proposes after a turn (#169).
 // Follow-up questions become buttons the person can tap; revisions go to the
 // text zone; a short remark may be spoken at the next natural pause unless the
 // person asked for quiet, which an urgent remark still overrides.
 (function exposeBrainPanel(root) {
   const QUIET_CHOICES = Object.freeze([
-    ['', 'Permises'], ['15', 'Silence 15 min'], ['60', 'Silence 1 h'], ['conversation', 'Silence pour cette conversation']
+    ['', 'Allowed'], ['15', 'Quiet 15 min'], ['60', 'Quiet 1 h'], ['conversation', 'Quiet for this conversation']
   ]);
 
   function node(tag, className, text) {
@@ -31,11 +31,11 @@
   function create(container, { base, fetchImpl = (...args) => root.fetch(...args), onAsk = () => {}, onRevision = () => {}, onInterject = () => {} } = {}) {
     const list = node('div', 'brain-suggestions');
     const select = node('select', 'brain-quiet');
-    select.setAttribute('aria-label', 'Interventions vocales du cerveau');
+    select.setAttribute('aria-label', 'Brain voice remarks');
     QUIET_CHOICES.forEach(([value, label]) => { const option = node('option', '', label); option.value = value; select.append(option); });
-    const quietLabel = node('label', 'brain-quiet-label', 'Interventions vocales ');
+    const quietLabel = node('label', 'brain-quiet-label', 'Voice remarks ');
     quietLabel.append(select);
-    container.replaceChildren(node('h2', 'display-board-heading', 'Pistes'), list, quietLabel);
+    container.replaceChildren(node('h2', 'display-board-heading', 'Leads'), list, quietLabel);
     let quiet = { until: 0 }, pending = null, generation = 0;
     select.addEventListener('change', () => { quiet = quietState(select.value); });
 
@@ -66,8 +66,8 @@
           if (mine !== generation || !review) return null;
           render(review.suggestions || []);
           if (review.status === 'context_required') onRevision({ id: `brain-${traceId}-context`, kind: 'text',
-            title: 'Relecture indisponible', body: 'Cette conversation dépasse le contexte disponible pour sa relecture complète. Aucune revue partielle n’a été utilisée.' });
-          (review.revisions || []).forEach((revision, index) => onRevision({ id: `brain-${traceId}-${index}`, kind: 'text', title: `Révisé · ${revision.title}`, body: revision.body }));
+            title: 'Review unavailable', body: 'This conversation is longer than the context available for a complete review. No partial review was used.' });
+          (review.revisions || []).forEach((revision, index) => onRevision({ id: `brain-${traceId}-${index}`, kind: 'text', title: `Revised · ${revision.title}`, body: revision.body }));
           if (mayInterject(quiet, review.interjection)) onInterject(review.interjection);
           return review;
         } catch { return null; }

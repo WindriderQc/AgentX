@@ -72,8 +72,8 @@ test('the portrait labels incomplete collection even when all conversation and c
   const label = vm.runInContext(`dreamCoverageLabel({ conversations: 1, availableConversations: 1,
     messages: 2, availableMessages: 2, complete: true, sourceCoverage: [{ key: 'notes', complete: true,
     collection: { collectedItems: 300, availableItems: 450, complete: false } }] })`, context);
-  assert.ok(label.includes('couverture partielle'));
-  assert.ok(label.includes('300/450 recueillis'));
+  assert.ok(label.includes('partial coverage'));
+  assert.ok(label.includes('300/450 collected'));
 });
 
 test('the stored dream coverage follows the actual fallback lane and retains unavailable sources', async () => {

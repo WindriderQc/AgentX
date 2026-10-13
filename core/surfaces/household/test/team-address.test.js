@@ -26,6 +26,16 @@ test('only a turn that addresses a member by name, or asks it something, goes to
   assert.equal(to('Secrétaire, encore une question', 'secretary'), null);
 });
 
+test('native Main owns specialist requests while explicit member addresses keep their own speaker', () => {
+  const to = text => team.addressedMember(text, members, 'main', { nativeDelegation: true })?.agentId || null;
+  for (const text of ['Demande à la Secrétaire si ses outils de lecture sont disponibles, sans envoyer de message.',
+    'Bonjour Nestor, peux-tu demander à secrétaire si elle peut lire mes courriels?',
+    'Ask the secretary for my unread mail', 'Vérifie avec le comptable mes factures']) assert.equal(to(text), null, text);
+  assert.equal(to('Secrétaire, quels courriels attendent?'), 'secretary');
+  assert.equal(to('Hey secrétaire: mes courriels urgents?'), 'secretary');
+  assert.equal(to('Comptable! Combien ai-je dépensé?'), 'comptable');
+});
+
 test("a member's turn keeps its own native session and the conversation agent hears about it once", () => {
   const session = { sessionId: 's1', agentId: 'main', agentSessionKey: 'agent:main:household:direct:s1', voice: { selections: { fr: 'voxcpm|example' } },
     agentSessionKeys: { secretary: 'agent:secretary:household:direct:s1' }, persona: { id: 'nestor' } };
