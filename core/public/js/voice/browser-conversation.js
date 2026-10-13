@@ -561,7 +561,7 @@
       const lifetimeSignal = this.abort.signal;
       const excerptId = this.audio.reviewStatus?.().id;
       this.audio.recordTranscription?.(excerptId, 'pending', '', { turnId: turn.id, bytes: blob.size });
-      let transcribed = false;
+      let transcribed = false, captureOutcome = 'failed';
       const cancel = () => { turn.request.abort(); turn.speech.abort(); this.releaseCandidate(turn); };
       lifetimeSignal.addEventListener('abort', cancel, { once: true });
       try {
@@ -575,11 +575,11 @@
         let text = typeof result === 'string' ? result : String(result?.text || '');
         const stopControl = result?.control === 'stop' || isStopControl(text);
         if (!this.current(epoch)) return;
-        transcribed = true; turn.timeline?.mark('sttDone'); turn.timeline?.measure('sttServer', result?.sttMs);
+        transcribed = true; captureOutcome = stopControl ? 'stop' : text.trim() ? 'recognized' : 'empty'; turn.timeline?.mark('sttDone'); turn.timeline?.measure('sttServer', result?.sttMs);
         if (!overReply) this.io.transcriptionDone?.(turn.id, turn.timeline?.values());
         this.recognitionWarmAt = this.io.now ? this.io.now() : Date.now(); // it just ran
         this.audio.recordTranscription?.(excerptId, stopControl ? 'control' : text.trim() ? 'transcribed' : 'empty', text, typeof result === 'object' && result ? result : {});
-        if (previous?.candidate && !stopControl && isSpokenEcho(text, previous.spoken)) text = '';
+        if (previous?.candidate && !stopControl && isSpokenEcho(text, previous.spoken)) { text = ''; captureOutcome = 'echo'; }
         if (previous?.candidate && this.owns(previous)) {
           if (!text.trim() && !stopControl) { this.resumeCandidate(previous); return; }
           this.interrupt(previous, { stop: stopControl || isStopControl(text) });
@@ -599,6 +599,7 @@
         }
         if (this.selection.wakeWord && text.trim()) {
           const accepted = this.wake.accept(text, wakeFollowup);
+          captureOutcome = accepted.activated ? 'activation' : accepted.text ? 'recognized' : 'not_addressed';
           text = accepted.text;
           if (accepted.activated && !text) {
             this.activeTurn = null; this.turnPending = false;
@@ -626,7 +627,7 @@
         // Playback can already be queued while a stream is being cancelled.
         if (turn.interrupted) { turn.speech.abort(); await turn.interruption?.catch(() => {}); }
         lifetimeSignal.removeEventListener('abort', cancel);
-        if (!overReply) this.io.transcriptionEnded?.(turn.id);
+        if (!overReply) this.io.transcriptionEnded?.(turn.id, { outcome: this.abort?.signal.aborted ? 'cancelled' : captureOutcome });
         this.reportTimeline(turn); // a turn that ended before any reply audio
       }
     }

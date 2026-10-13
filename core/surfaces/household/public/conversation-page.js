@@ -471,7 +471,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     transcribe: (blob, lang, signal) => speechFallback.transcribe(blob, lang, signal),
     transcriptionStarted: turnId => workflow?.capture(conversation.session?.sessionId, turnId),
     transcriptionDone: (turnId, values) => workflow?.timings(turnId, values),
-    transcriptionEnded: turnId => workflow?.captureEnd(turnId),
+    transcriptionEnded: (turnId, receipt) => workflow?.captureEnd(turnId, receipt),
     // Recognition started during a pause uses the local transcriber only: the browser's own
     // recognizer hands its text over once, and an early failure must not switch engines.
     transcribeEarly: (blob, lang, signal) => (speechFallback.state().active ? null : transcribeLocal(blob, lang, signal)),

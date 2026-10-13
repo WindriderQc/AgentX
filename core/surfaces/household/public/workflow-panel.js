@@ -47,17 +47,18 @@
     function begin(session, id, channel = 'unknown') {
       follow(session); const row = turn(id);
       if (row) {
-        row.channel = channel; row.live = true;
+        row.channel = channel; row.live = true; row.captureOnly = false;
       }
     }
     function capture(session, id) {
-      begin(session, id, 'voice');
+      follow(session);
       const row = turn(id);
-      if (row) row.phase = 'transcribing';
+      if (row) Object.assign(row, { channel: 'voice', phase: 'transcribing', live: true, captureOnly: true });
     }
-    function captureEnd(id) {
+    function captureEnd(id, receipt = {}) {
       const row = turns.get(id);
-      if (row && row.phase === 'transcribing') { row.phase = 'capture_ended'; row.live = false; }
+      if (row?.captureOnly) { row.phase = 'capture_ended'; row.live = false;
+        row.captureOutcome = ['stop', 'activation', 'not_addressed', 'empty', 'echo', 'failed', 'cancelled', 'recognized'].includes(receipt.outcome) ? receipt.outcome : 'not_submitted'; }
     }
     function stream(id, event) {
       const row = turn(id);
@@ -92,7 +93,7 @@
         const id = item.clientTurnId || item.traceId;
         const row = turn(id);
         if (!row) continue;
-        row.channel = item.channel || row.channel;
+        row.captureOnly = false; row.channel = item.channel || row.channel;
         row.traceId = safe(item.traceId) || row.traceId;
         row.historyOrder = historyOrder++;
         row.live = false;
@@ -139,7 +140,7 @@
         if (!item?.id || !item.turnId || item.sessionId !== sessionId) continue;
         const prior = works.get(item.id);
         if (!prior || (Number(item.revision) || 0) > (Number(prior.revision) || 0)) { works.set(item.id, item); changed = true; }
-        const owner = turn(item.turnId);
+        const owner = turn(item.turnId, { captureOnly: false });
         if (owner && item.receivedAt && (!owner.startedAt || Date.parse(item.receivedAt) < Date.parse(owner.startedAt))) owner.startedAt = item.receivedAt;
       }
       for (const event of data.events || []) {
@@ -169,7 +170,8 @@
         return { ...event, turnId };
       });
       return { sessionId, gap, stale, events: chronology,
-        turns: rows.map(row => ({ ...row, reviews: row.reviews.map(advice => ({ ...advice,
+        captures: rows.filter(row => row.captureOnly),
+        turns: rows.filter(row => !row.captureOnly).map(row => ({ ...row, reviews: row.reviews.map(advice => ({ ...advice,
           includedIn: brainRefs.get(advice.key) || [] })),
         works: (worksByTurn.get(row.id) || []).map(item => ({ ...item,
           includedIn: workRefs.get(`${item.id}:${item.result?.version}`) || [] })),
@@ -179,7 +181,7 @@
   }
 
   function stageState(stage, row) {
-    const work = row.works.at(-1), voice = row.voiceTimings || {}, server = row.serverTimings || {};
+    const work = row.works?.at(-1), voice = row.voiceTimings || {}, server = row.serverTimings || {};
     if (stage === 'stt') return row.channel === 'text' ? ['No voice', 'Written message']
       : validMs(voice.sttDone) ? ['Done', `Recognition: ${duration(voice.sttDone)} after end of speech`]
         : row.phase === 'transcribing' && row.live ? ['In progress', 'Transcription started in the browser']
@@ -196,7 +198,7 @@
       return row.live && row.stream?.includes('accepted') ? ['Waiting', 'Request accepted, Guardian start not attested'] : ['Unknown', 'No Guardian receipt'];
     }
     if (stage === 'review') {
-      const advice = row.reviews.at(-1);
+      const advice = row.reviews?.at(-1);
       if (work && ['failed', 'cancelled', 'paused'].includes(work.state)) {
         const labels = { failed: 'Failed', cancelled: 'Cancelled', paused: 'Paused' };
         const reasons = { native_preparation_refused: 'agent preparation refused',
@@ -236,7 +238,10 @@
         `${agents.join(', ')}${work?.attempt?.runId ? ` · run ${work.attempt.runId}` : ''}`]
         : row.speaker ? ['Observed', row.speaker] : ['Unknown', 'No delegation attested'];
     }
-    if (stage === 'tts') return row.channel === 'text' ? ['No voice', 'Written answer']
+    if (stage === 'tts') return voice.interrupted || row.interrupted ? ['Interrupted', 'Playback interrupted; Main work has its own receipt']
+      : validMs(voice.firstSignalScheduled) ? ['Signal scheduled', `Nonzero audio frame scheduled: ${duration(voice.firstSignalScheduled)} · browser observation, not acoustic arrival`]
+        : validMs(voice.firstFrameScheduled) ? ['Frame scheduled', `Audio frame scheduled: ${duration(voice.firstFrameScheduled)} · silence may be included`]
+          : row.channel === 'text' && !validMs(voice.firstAudio) ? ['No voice', 'Written answer']
       : validMs(voice.firstAudio) ? [voice.interrupted || row.interrupted ? 'Interrupted' : 'Playback requested', `Playback attempt: ${duration(voice.firstAudio)} after end of speech · sound not attested`]
         : ['Unknown', 'No playback attempt kept'];
     return ['Unknown', 'No data'];
@@ -323,7 +328,7 @@
         const active = STAGES.filter(([key]) => isActive(stateFor(key)[0])).map(([, label]) => label);
         const waiting = STAGES.filter(([key]) => stateFor(key)[0] === 'Waiting').map(([, label]) => label);
         signal.textContent = current ? `Turn ${rows.indexOf(current) + 1} · ${active.length ? `In progress: ${active.join(', ')}`
-          : waiting.length ? `Waiting: ${waiting.join(', ')}` : 'activity not attested'}${view.stale ? ' · Core not refreshed' : ''}`
+          : waiting.length ? `Waiting: ${waiting.join(', ')}` : current.done ? 'Answer received' : 'activity not attested'}${view.stale ? ' · Core not refreshed' : ''}`
           : 'No turn in progress';
       }
       const compact = root.matchMedia?.('(max-width: 760px)')?.matches;
@@ -334,6 +339,14 @@
         node('strong', 'workflow-map-title', current ? `Turn ${rows.indexOf(current) + 1} · ${current.channel === 'voice' ? compact ? 'voice' : 'voice conversation' : current.channel === 'text' ? compact ? 'text' : 'text conversation' : 'unknown channel'}` : 'Waiting for a turn'));
       head.append(node('span', 'workflow-live-count', view.stale ? 'Core data not refreshed' : `${activeCount} component${activeCount > 1 ? 's' : ''} in progress`));
       overview.append(head);
+      const lastCapture = view.captures.at(-1);
+      const captureLabels = { stop: 'Stop recognized · no new request', activation: 'Activation recognized · conversation open',
+        not_addressed: 'Not addressed · no request', empty: 'No recognized words · no request', echo: 'Playback echo filtered · no request',
+        failed: 'Transcription failed · no request', cancelled: 'Capture cancelled · no request', recognized: 'Capture recognized · no Core request',
+        not_submitted: 'Capture ended · no Core request' };
+      if (lastCapture) overview.append(node('p', 'workflow-capture-status', lastCapture.live
+        ? 'Microphone · recognizing speech; no request submitted yet'
+        : `Microphone · ${captureLabels[lastCapture.captureOutcome] || 'No Core request'}`));
       const meters = node('div', 'workflow-meters'); meters.setAttribute('aria-label', 'Measured timings');
       const voice = current?.voiceTimings || {}, guardianMs = measuredSpan(current?.events, 'guardian_started', ['guardian_settled']);
       const reviewMs = measuredSpan(current?.events, 'dispatch_marked', ['result_published', 'native_result_published']);
@@ -407,6 +420,12 @@
         node('p', 'workflow-map-note', 'Links and steps are based on turn receipts. Included advice does not prove its influence.'));
       body.replaceChildren();
       if (!panel.open) { restoreFocus(); return; }
+      if (view.captures.length) {
+        const captures = node('details', 'workflow-captures'); captures.dataset.key = 'captures';
+        captures.open = expanded.has('captures'); captures.append(node('summary', '', `Microphone captures · ${view.captures.length} · not conversation turns`));
+        for (const capture of view.captures.slice(-24)) captures.append(node('p', '', `${capture.id} · ${capture.live ? 'Recognizing' : captureLabels[capture.captureOutcome] || 'No Core request'} · STT ${duration(capture.voiceTimings?.sttDone)}`));
+        body.append(captures);
+      }
       const intro = node('p', 'workflow-intro', 'Steps observed in this conversation. Several components can work at the same time.');
       body.append(intro);
       if (compact) body.append(resources, passages);
@@ -496,7 +515,7 @@
       follow: id => update(() => { if (!model.follow(id)) return false; selected = null; turnOffset = 0; eventOffset = 0; }),
       begin: (session, id, channel) => update(() => { model.begin(session, id, channel); selected = id; turnOffset = 0; eventOffset = 0; }),
       capture: (session, id) => update(() => { model.capture(session, id); selected = id; turnOffset = 0; eventOffset = 0; }),
-      captureEnd: id => update(() => model.captureEnd(id)),
+      captureEnd: (id, receipt) => update(() => model.captureEnd(id, receipt)),
       stream: (id, event) => update(() => model.stream(id, event)),
       timings: (id, value) => update(() => model.timings(id, value)),
       restore: (session, turns) => update(() => model.restore(session, turns)),
