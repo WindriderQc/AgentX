@@ -361,6 +361,13 @@ counts, scopes, limits, costs, failures and UNKNOWN receipts remain recorded.
 The older confirmations cannot extend the native ceiling or accept worker exit.
 A lost response still requires the same key and intent; the grant never launches
 a worker inline.
+The cumulative envelope also applies to older confirmations after a reviewed
+amendment. A known validation refusal after selection is fenced, but before a
+grant write is attempted, records a durably acknowledged abandonment that
+invalidates concurrent grant writes before releasing this exact slot. A lost
+abandonment acknowledgement retains the fence until the same intent is received
+again. Only a confirmed, unapplied abandonment allows review of a new intent;
+an uncertain grant write still requires reconciliation of its original key.
 
 ### Finished deliveries and qualification archives
 

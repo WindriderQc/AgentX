@@ -106,6 +106,20 @@ test('late PR observation cannot overwrite a concurrent stop or task decision', 
   await expect(delivery.refresh(before, control, service.save)).rejects.toThrow('changed');
   expect((await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy).toMatchObject({ state: 'stopped', authorized: false });
 });
+test.each(['merged', 'changed-head', 'ownership-race'])('fresh review observation refuses %s before another coding turn', async kind => {
+  await task(); await authorize(); await enable(); const first = await launch(); await complete(first);
+  const before = await Task.findOne({ pipelineId: '0001' }).lean();
+  control.observe.mockImplementationOnce(async () => {
+    if (kind === 'ownership-race') await Task.updateOne({ pipelineId: '0001' }, { $set: { status: 'in_progress', assignee: 'other-owner' } });
+    return { ...PR, state: kind === 'merged' ? 'closed' : 'open', merged: kind === 'merged',
+      head: kind === 'changed-head' ? 'f'.repeat(40) : HEAD, checks: [] };
+  });
+  await expect(service.recordReview('0001', { confirm: true, head: HEAD, text: 'Synthetic exact-head correction' })).rejects.toThrow();
+  const after = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(after.codingAutonomy).toEqual(before.codingAutonomy); expect(after.automationAttempts).toEqual(before.automationAttempts);
+  if (kind === 'ownership-race') expect(after.assignee).toBe('other-owner');
+  expect(control.launch).toHaveBeenCalledTimes(1);
+});
 test.each([
   ['waiting_ci', true, null, true], ['correction', true, 'failure', true], ['blocked', true, 'failure', true],
   ['ready_for_review', true, null, false], ['stopped', false, 'failure', false], ['closed', false, null, false],

@@ -25,6 +25,11 @@
   function confirmed() {
     if (!$('codingAutonomyConfirm').checked) throw new Error('Confirm the reviewed task scope and campaign first.');
   }
+  function protectDraft(form) {
+    const initial = [...form.querySelectorAll('input, textarea')].map(field => ({ field, value: field.value, checked: field.checked }));
+    const update = () => { form.dataset.dirty = initial.some(item => item.field.value !== item.value || item.field.checked !== item.checked) ? 'true' : 'false'; };
+    form.addEventListener('input', update); form.addEventListener('change', update);
+  }
   function renderStatus(suffix = '') {
     const current = snapshot.tasks.filter(t => !t.disposition && t.taskStatus !== 'done');
     const queued = current.filter(t => t.authorized && ['queued', 'correction'].includes(t.state)).length;
@@ -41,6 +46,7 @@
       label.append(field); form.append(label); fields[key] = field;
     };
     input('queueRequestId', 'New approved coding campaign', '', 'text');
+    input('key', 'Reviewed continuation identity', `coding-continuation:${run.requestId}${task.continuationAborts?.length ? `:review-${task.continuationAborts.length + 1}` : ''}`, 'text');
     input('nativeAttemptLimit', 'Reviewed total native attempt limit (maximum 10)', Math.max(task.nativeAttemptLimit, task.nativeAttemptCount + 1));
     fields.nativeAttemptLimit.max = 10;
     input('additionalRuns', 'Additional workers (maximum 3)', 1); fields.additionalRuns.max = 3;
@@ -51,7 +57,7 @@
     const send = element('button', 'Record reviewed continuation'); send.type = 'submit'; send.className = 'pipeline-btn'; form.append(send);
     form.addEventListener('submit', event => { event.preventDefault(); act(() => request(`${base}/tasks/${task.pipelineId}/runs/${run.requestId}/continuation`, {
       confirm: true, confirmation: 'CONTINUE_TERMINAL_CHECKPOINT_WITH_REVIEWED_ATTEMPT_LIMIT',
-      key: `coding-continuation:${run.requestId}`, expectedRevision: task.authorizationRevision,
+      key: fields.key.value, expectedRevision: task.authorizationRevision,
       expectedAutomationFingerprint: task.automationFingerprint, expectedNativeAttemptLimit: task.nativeAttemptLimit,
       nativeAttemptLimit: Number(fields.nativeAttemptLimit.value), additionalRuns: Number(fields.additionalRuns.value),
       head: run.head, queueRequestId: fields.queueRequestId.value, verificationProfile: task.verificationProfile,
@@ -73,12 +79,14 @@
         element('p', `Remaining: ${remaining(task.remaining.workSeconds)} work, ${remaining(task.remaining.testSeconds)} tests, ${remaining(task.remaining.modelSeconds)} model, ${task.remaining.modelCalls} calls, ${remaining(task.remaining.ciSeconds)} CI`),
         element('p', `Last useful progress: ${task.lastUsefulProgressAt || 'none recorded'} · manual interventions: ${task.manualInterventions.length}`));
       article.append(element('p', `Authorized files: ${task.scope.join(', ')} · campaign ${task.queueRequestId}`));
+      if (task.nativeAttemptLimit) article.append(element('p', `Native attempts: ${task.nativeAttemptCount}/${task.nativeAttemptLimit} · remaining worker corrections: ${task.remaining.maxResumes}`));
       const exhausted = [['workSeconds', 'work'], ['testSeconds', 'tests'], ['modelSeconds', 'model time'],
         ['modelCalls', 'model calls'], ['ciSeconds', 'CI']].filter(([key]) => task.remaining[key] === 0).map(([, title]) => title);
       if (exhausted.length) article.append(element('p', `Exhausted budgets: ${exhausted.join(', ')}. Review prior usage and the recorded outcome before approving further work; spent costs are retained.`));
       if (task.ciObservationActive) article.append(element('p', 'Core continues watching CI for the exact published commit, including while coding is paused or worker resumes are exhausted. No coding worker starts merely to wait.'));
       const run = task.runs.at(-1);
       if (task.disposition) article.append(element('p', `Archived qualification: ${task.disposition.outcome} · ${task.disposition.reason}. Original execution outcomes and dependency barriers remain in force.`));
+      if (task.continuationAborts?.length) article.append(element('p', 'A reviewed continuation was abandoned before its grant. No worker or credit was created; review the changed checkpoint or campaign proof before submitting a new intent.'));
       if (task.failureCodes?.length) article.append(element('p', `Recorded stop: ${task.failureCodes.join(', ')} · ${task.authorized ? 'execution authorized' : 'execution authorization removed; this card is not queued'}`));
       if (!snapshot.enabled && !snapshot.active && !task.authorized && task.state === 'stopped' && task.taskStatus === 'blocked'
         && !task.pr && !task.disposition && run?.finishedAt && !run.pendingInferenceCount && run.head
@@ -158,6 +166,7 @@
       const history = element('details', ''); history.append(element('summary', 'Execution history and intervention evidence'));
       for (const item of task.runs) history.append(element('p', `${item.requestId} · previous ${item.parentRequestId || 'none'} · ${item.result || 'pending'} · ${item.head || 'no checkpoint'} · ${item.usage ? JSON.stringify(item.usage) : 'usage unconfirmed'}`));
       for (const item of task.manualInterventions) history.append(element('p', `${item.kind} · ${item.head || item.requestId || ''} · ${item.at}`));
+      for (const form of article.querySelectorAll('form')) protectDraft(form);
       article.append(history); list.append(article);
     }
   }
@@ -165,6 +174,7 @@
   function editing() {
     const list = $('codingAutonomyTasks');
     return list.contains(document.activeElement)
+      || [...list.querySelectorAll('form')].some(form => form.dataset.dirty === 'true')
       || [...list.querySelectorAll('textarea')].some(field => field.value)
       || [...list.querySelectorAll('input[type="checkbox"]')].some(box => box.checked);
   }

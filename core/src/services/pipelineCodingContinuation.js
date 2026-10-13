@@ -46,6 +46,9 @@ function intent(input, requestId) {
 async function evidence(task, requestId, wanted, control) {
   policy.assertTask(task);
   const state = task.codingAutonomy, run = state?.runs.at(-1);
+  if (state?.continuationAborts?.some(item => item.key === wanted.key))
+    throw fail('This continuation was abandoned before its grant; review the changed proof before submitting a new intent');
+  if ((state?.continuationAborts || []).length >= 100) throw fail('Preserve the bounded continuation abandonment journal');
   const attempt = task.automationAttempts?.at(-1);
   if (state?.authorized !== false || state.state !== 'stopped' || state.disposition || task.status !== 'blocked'
     || (task.assignee && task.assignee !== 'coding-team') || task.automationLease || task.codingCapacity || state.basis !== policy.basis(task)
@@ -80,7 +83,8 @@ async function evidence(task, requestId, wanted, control) {
     || wanted.attemptLimit.originalFingerprint !== task.automation.fingerprint
     || (ceiling !== wanted.attemptLimit.before && task.planRevision != null)))
     throw fail('Review the current native attempt limit; an existing plan must be explicitly reconciled before amendment');
-  if (wanted.attemptLimit && CREDITS.some(key => policy.totalLimits(state)[key] + wanted.budget[key] > TOTAL_CEILINGS[key]))
+  if ((wanted.attemptLimit || state.budgetGrants?.some(grant => grant.attemptLimit))
+    && CREDITS.some(key => policy.totalLimits(state)[key] + wanted.budget[key] > TOTAL_CEILINGS[key]))
     throw fail('The cumulative task budget, including every previous grant, exceeds the reviewed continuation ceiling');
   if ((state.budgetGrants || []).length >= 100 || wanted.additionalRuns > ceiling - task.automationAttemptCount)
     throw fail('Additional workers must remain within the original reviewed native attempt ceiling');
@@ -130,6 +134,25 @@ async function release(pipelineId, requestId, wanted) {
   { $set: { active: null }, $inc: { revision: 1 } }, { writeConcern: WC });
   if (!result.acknowledged) throw fail('Continuation release acknowledgement lost; reconcile this same key');
 }
+async function abandon(task, requestId, wanted, error) {
+  const state = task.codingAutonomy;
+  const prior = state.continuationAborts?.find(item => item.key === wanted.key);
+  if (prior && !same(prior, wanted)) throw fail('The abandoned identity names a different continuation');
+  if ((state.continuationAborts || []).length >= 100 && !prior) throw fail('Preserve the bounded continuation abandonment journal');
+  // A durable abort marker both invalidates an already-read grant CAS and
+  // prevents a concurrent retry from preparing this same intent again.
+  const result = await Task.updateOne({ pipelineId: task.pipelineId, updatedAt: task.updatedAt,
+    'codingAutonomy.revision': state.revision, 'codingAutonomy.authorized': false, status: 'blocked',
+    automationLease: null, codingCapacity: null,
+    'codingAutonomy.budgetGrants': { $not: { $elemMatch: { key: wanted.key } } } },
+  { $set: { 'codingAutonomy.continuationAborts': [...(state.continuationAborts || []).filter(item => item.key !== wanted.key),
+    { ...(prior || { key: wanted.key, fingerprint: wanted.fingerprint, parentRequestId: requestId,
+      authority: 'operator-continuation', at: new Date().toISOString(), reason: error.code }),
+    reacknowledgedAt: new Date().toISOString() }] }, $inc: { 'codingAutonomy.revision': 1 } }, { writeConcern: WC });
+  if (!result.acknowledged || result.modifiedCount !== 1)
+    throw fail('Continuation abandonment acknowledgement uncertain; retain and reconcile this same fence');
+  await release(task.pipelineId, requestId, wanted);
+}
 async function continueRecovered(pipelineId, requestId, input, control) {
   const wanted = intent(input, requestId);
   let task = await Task.findOne({ pipelineId }).lean();
@@ -149,6 +172,12 @@ async function continueRecovered(pipelineId, requestId, input, control) {
   let config = await Settings.findById(ID).lean();
   const own = config?.active?.pipelineId === pipelineId && config.active.requestId === requestId
     && config.active.recovery?.kind === 'coding-continuation' && same(config.active.recovery, wanted);
+  const aborted = task.codingAutonomy?.continuationAborts?.find(item => item.key === wanted.key);
+  if (aborted) {
+    if (!same(aborted, wanted)) throw fail('This abandoned identity names a different continuation');
+    if (own && config.enabled === false) await abandon(task, requestId, wanted, fail('Continuation abandoned before grant'));
+    throw fail('The abandonment is received; no credit or worker was created. Review changed proof before a new intent');
+  }
   if (!config || config.enabled !== false || (config.active && !own)
     || task.codingAutonomy?.revision !== input.expectedRevision)
     throw fail('Pause autonomy, release its active slot and review the current task revision');
@@ -160,7 +189,12 @@ async function continueRecovered(pipelineId, requestId, input, control) {
     if (!locked.acknowledged || locked.modifiedCount !== 1) throw fail('Continuation fence uncertain; reconcile this same key');
   }
   task = await Task.findOne({ pipelineId }).lean();
-  await evidence(task, requestId, wanted, control);
+  try { await evidence(task, requestId, wanted, control); }
+  catch (error) {
+    if (error.code === 'CODING_CONTINUATION_UNVERIFIED' || [400, 409].includes(error.statusCode || error.status))
+      await abandon(task, requestId, wanted, error);
+    throw error;
+  }
   const state = task.codingAutonomy, at = new Date().toISOString();
   const { fingerprint: originalFingerprint, ...originalIntent } = task.automation;
   const automation = wanted.attemptLimit ? normalizePipelineAutomationIntent({ ...originalIntent,

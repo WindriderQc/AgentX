@@ -371,3 +371,59 @@ test('qualification archive preserves the blocked task, every original UNKNOWN a
   await expect(grant(grantBody({ expectedRevision: after.codingAutonomy.revision }))).rejects.toThrow('stopped');
   expect(control.launch).not.toHaveBeenCalled(); expect(control.stop).not.toHaveBeenCalled();
 });
+test('an older confirmation cannot bypass the cumulative envelope after a reviewed amendment', async () => {
+  await workerExit(); await grant(await reviewedBody({ nativeAttemptLimit: 10 }));
+  const current = await task();
+  const prior = current.codingAutonomy.budgetGrants[0];
+  // The next finished worker retains the earlier reviewed envelope. Even an
+  // old confirmation must consult all previous credits before any host effect.
+  prior.parentRequestId = '10000000-0000-4000-8000-000000000009';
+  prior.budget.modelSeconds = continuation.TOTAL_CEILINGS.modelSeconds - current.codingAutonomy.limits.modelSeconds;
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.authorized': false,
+    'codingAutonomy.state': 'stopped', 'codingAutonomy.budgetGrants': [prior],
+    'automationAttempts.0.evidence.failureCodes': ['no_useful_progress'] } });
+  const host = await control.status(); host.run.progress.stopReason = 'no_useful_progress'; control.status.mockResolvedValue(host);
+  const before = await task();
+  await expect(grant(nativeBody({ key: 'later-budget-grant', expectedRevision: before.codingAutonomy.revision }))).rejects.toThrow('cumulative');
+  expect(await task()).toEqual(before); expect(control.launch).not.toHaveBeenCalled();
+});
+test('a plan added after the activation fence abandons only the unapplied continuation and releases its slot', async () => {
+  await workerExit(); const input = await reviewedBody({ nativeAttemptLimit: 3 });
+  interceptWrite(Settings, update => update.$set?.active?.recovery?.kind === 'coding-continuation', async commit => {
+    const result = await commit();
+    await Task.updateOne({ pipelineId: '0001' }, { $set: { planRevision: 1 } });
+    return result;
+  });
+  const before = await task(); await expect(grant(input)).rejects.toThrow('plan');
+  const after = await task(); expect((await settings()).active).toBeNull();
+  expect(after.codingAutonomy.budgetGrants).toBeUndefined(); expect(after.automation).toEqual(before.automation);
+  expect(after.codingAutonomy.runs).toEqual(before.codingAutonomy.runs);
+  expect(after.codingAutonomy.continuationAborts[0]).toMatchObject({ key: input.key, parentRequestId: REQUEST });
+  await expect(grant({ ...input, expectedRevision: after.codingAutonomy.revision })).rejects.toThrow('abandonment');
+  expect(control.launch).not.toHaveBeenCalled();
+});
+test('an unreceived abandonment retains the exact selection fence and every original receipt', async () => {
+  await workerExit(); const input = await reviewedBody({ nativeAttemptLimit: 3 });
+  interceptWrite(Settings, update => update.$set?.active?.recovery?.kind === 'coding-continuation', async commit => {
+    const result = await commit(); await Task.updateOne({ pipelineId: '0001' }, { $set: { planRevision: 1 } }); return result;
+  });
+  interceptWrite(Task, update => update.$set?.['codingAutonomy.continuationAborts'],
+    async () => ({ acknowledged: false, modifiedCount: 0 }));
+  const before = await task(); await expect(grant(input)).rejects.toThrow('acknowledgement uncertain');
+  expect((await settings()).active.recovery.key).toBe(input.key);
+  expect((await task()).codingAutonomy.runs).toEqual(before.codingAutonomy.runs);
+  expect((await task()).codingAutonomy.budgetGrants).toBeUndefined();
+});
+test('lost applied abandonment acknowledgement is durably reconciled with the same intent before releasing its fence', async () => {
+  await workerExit(); const input = await reviewedBody({ nativeAttemptLimit: 3 });
+  interceptWrite(Settings, update => update.$set?.active?.recovery?.kind === 'coding-continuation', async commit => {
+    const result = await commit(); await Task.updateOne({ pipelineId: '0001' }, { $set: { planRevision: 1 } }); return result;
+  });
+  const spy = interceptWrite(Task, update => update.$set?.['codingAutonomy.continuationAborts'],
+    async commit => { await commit(); return { acknowledged: false, modifiedCount: 1 }; });
+  await expect(grant(input)).rejects.toThrow('acknowledgement uncertain'); spy.mockRestore();
+  expect((await settings()).active.recovery.key).toBe(input.key);
+  await expect(grant(input)).rejects.toThrow('abandonment is received');
+  expect((await settings()).active).toBeNull(); expect((await task()).codingAutonomy.budgetGrants).toBeUndefined();
+  expect((await task()).codingAutonomy.continuationAborts).toHaveLength(1); expect(control.launch).not.toHaveBeenCalled();
+});

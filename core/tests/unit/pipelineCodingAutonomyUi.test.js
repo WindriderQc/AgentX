@@ -5,21 +5,29 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../../public/js/pipeline-coding-autonomy.js'), 'utf8');
 const KEY = '11111111-2222-4333-8444-555555555555';
 class Element {
-  constructor(text = '') { this.textContent = text; this.children = []; this.events = {}; this.dataset = {}; }
+  constructor(text = '') { this.textContent = text; this.children = []; this.events = {}; this.dataset = {}; this.value = ''; this.checked = false; }
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren(...nodes) { this.children = nodes; }
   addEventListener(name, fn) { this.events[name] = fn; }
+  contains(node) { return descendants(this).includes(node); }
+  querySelectorAll(selector) {
+    return descendants(this).slice(1).filter(node => selector.split(',').some(part => {
+      const match = part.trim().match(/^([a-z]+)(?:\[type="([a-z]+)"\])?$/);
+      return match && node.tagName === match[1].toUpperCase() && (!match[2] || node.type === match[2]);
+    }));
+  }
 }
 const flush = async () => { await new Promise(resolve => setImmediate(resolve)); };
 function setup(state, options = {}) {
+  let interval;
   const nodes = { codingAutonomyConfirm: new Element() };
   const document = { getElementById: id => nodes[id] ||= new Element(),
-    createElement: () => new Element(), addEventListener: (_name, fn) => { document.start = fn; },
+    createElement: tag => { const node = new Element(); node.tagName = tag.toUpperCase(); return node; }, addEventListener: (_name, fn) => { document.start = fn; },
     querySelectorAll: () => switches };
   const switches = ['true', 'false'].map(value => { const e = new Element(); e.dataset.autonomySwitch = value; return e; });
   const calls = [];
   vm.runInNewContext(source, { document, window: { addEventListener() {} }, AbortController,
-    setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
+    setTimeout: () => 1, clearTimeout() {}, setInterval: fn => { interval = fn; return 1; }, clearInterval() {},
     fetch: async (url, requestOptions) => {
       calls.push({ url, options: requestOptions });
       if (url.startsWith('/api/cluster/schedule/work-queue/')) return { ok: true, json: async () => ({ data: options.job }) };
@@ -29,7 +37,7 @@ function setup(state, options = {}) {
       return { ok: true, json: async () => ({ data: state }) };
     } });
   document.start();
-  return { nodes, switches, calls };
+  return { nodes, switches, calls, document, tick: () => interval() };
 }
 function state(taskState = 'waiting_ci') {
   return { enabled: false, revision: 7, active: null, tasks: [{ pipelineId: '0001', title: 'Synthetic <script> task',
@@ -109,6 +117,19 @@ test('confirmed administrative recovery still describes historical UNKNOWN as un
   const text = descendants(nodes.codingAutonomyTasks).map(n => n.textContent).join('\n');
   expect(text).toContain('An unknown or pending model receipt is an uncertain outcome');
   expect(text).toContain('does not make it successful or authorize another worker');
+});
+test('archive draft survives background refresh after focus moves to global confirmation and clears when values are restored', async () => {
+  const snapshot = state('stopped'); snapshot.tasks[0].authorized = false;
+  const view = setup(snapshot); await flush();
+  const form = descendants(view.nodes.codingAutonomyTasks).find(node => node.events.submit && descendants(node).some(child => child.textContent === 'Archive qualification'));
+  const reference = descendants(form).find(node => node.textContent === 'Private qualification receipt reference').children[0];
+  reference.value = '/private/qualification.json'; form.events.input();
+  view.document.activeElement = view.nodes.codingAutonomyConfirm;
+  await view.tick(); await flush();
+  expect(descendants(view.nodes.codingAutonomyTasks)).toContain(form); expect(reference.value).toBe('/private/qualification.json');
+  expect(view.nodes.codingAutonomyStatus.textContent).toContain('once your edit is sent or cleared');
+  reference.value = ''; form.events.input(); await view.tick(); await flush();
+  expect(descendants(view.nodes.codingAutonomyTasks)).not.toContain(form);
 });
 test('switch requires explicit operator confirmation and uses the current durable revision', async () => {
   const { nodes, switches, calls } = setup(state()); await flush();
