@@ -5,6 +5,13 @@
   'use strict';
   let $, state, hasExactCountEvidence, formatDate, sortTasks, matchesContext, matchesFilters, formatStatus, escapeHtml, statusBadge, STATUS_ORDER, priorityChip, isStale, summaryCount, hasActiveFilters, contextDescription, unmetDependencies, riskChip, dueCell, activityCell, relativeTime, percentLabel, durationLabel, costLabel, energyLabel, nanoCurrencyLabel, costEvidencePresentation, localEnergyPresentation, readProjection;
 
+  const archivedQualification = task => task.codingAutonomy?.disposition?.kind === 'qualification';
+  const includesQualification = task => state.includeArchivedQualifications || !archivedQualification(task);
+  function archiveScope(tasks) {
+    const hidden = state.includeArchivedQualifications ? 0 : tasks.filter(archivedQualification).length;
+    return hidden ? ` ${hidden} archived qualification${hidden === 1 ? '' : 's'} hidden; include them to inspect original statuses. Their dependency barriers remain in force.` : '';
+  }
+
   function renderEvidence() {
     const el = $('pipelineCountEvidence');
     if (!el) return;
@@ -32,6 +39,7 @@
     return sortTasks(
       state.tasks.filter(matchesContext)
         .filter(matchesFilters)
+        .filter(includesQualification)
         .filter((task) => (state.filters.status ? true : task.status !== 'done'))
     );
   }
@@ -40,11 +48,11 @@
     const target = $('pipelineProgression');
     if (!target) return;
     const scoped = state.tasks.filter(matchesContext).filter(matchesFilters);
-    const tasks = sortTasks(scoped.filter((task) => state.filters.status || state.includeDone || task.status !== 'done'));
+    const tasks = sortTasks(scoped.filter(includesQualification).filter((task) => state.filters.status || state.includeDone || task.status !== 'done'));
     const done = scoped.filter((task) => task.status === 'done').length;
     const superseded = scoped.filter((task) => task.resolution?.kind === 'superseded').length;
     const scope = state.filters.epic ? `Group: ${state.filters.epic}` : 'All groups';
-    $('pipelineOverviewMeta').textContent = `${scope} · ${tasks.length} matching loaded tasks · ${done}/${scoped.length} closed${superseded ? ` (${superseded} superseded)` : ''}${state.filters.status ? ` · ${formatStatus(state.filters.status)}` : ''}. Counts above remain global.${state.evidence?.rows?.truncated ? ' Loaded sample is incomplete; see count scope above.' : ''}`;
+    $('pipelineOverviewMeta').textContent = `${scope} · ${tasks.length} matching loaded tasks · ${done}/${scoped.length} closed${superseded ? ` (${superseded} superseded)` : ''}${state.filters.status ? ` · ${formatStatus(state.filters.status)}` : ''}. Counts above remain global.${archiveScope(scoped)}${state.evidence?.rows?.truncated ? ' Loaded sample is incomplete; see count scope above.' : ''}`;
     $('pipelineIncludeDone').disabled = Boolean(state.filters.status);
     document.querySelectorAll('[data-pipeline-view]').forEach((button) => {
       const selected = button.dataset.pipelineView === state.view;
@@ -65,6 +73,7 @@
           <button type="button" class="pipeline-task-card" data-pipeline-task="${escapeHtml(entry.task.pipelineId)}">
             <span class="pipeline-card-top"><strong>${escapeHtml(entry.task.pipelineId)}</strong>${statusBadge(entry.task.status)}</span>
             <span class="pipeline-card-title">${escapeHtml(entry.task.title)}</span>
+            ${archivedQualification(entry.task) ? `<span class="pipeline-card-event">Archived qualification · ${escapeHtml(entry.task.codingAutonomy.disposition.outcome)}</span>` : ''}
             <span class="pipeline-card-event">${escapeHtml(entry.label)}${entry.attempt ? ` · attempt ${escapeHtml(entry.attempt)}` : ''}</span>
           </button></li>`).join('')}</ol>
         ${events.length > state.timelineLimit ? `<button type="button" class="pipeline-btn compact" data-more-events>Show more events (${events.length - state.timelineLimit} remaining)</button>` : ''}
@@ -84,6 +93,7 @@
           <span class="pipeline-card-meta">${escapeHtml(task.assignee || 'Unassigned')} · ${escapeHtml(task.service || 'No service')}</span>
           ${task.epic ? `<span class="pipeline-card-group">${escapeHtml(task.epic)}</span>` : ''}
           ${task.resolution?.kind === 'superseded' ? '<span class="pipeline-card-event">Closed by supersession</span>' : ''}
+          ${archivedQualification(task) ? `<span class="pipeline-card-event">Archived qualification · ${escapeHtml(task.codingAutonomy.disposition.outcome)}</span>` : ''}
           ${isStale(task) ? '<span class="pipeline-card-alert">Stale heartbeat</span>' : ''}
           ${task.dependsOn.length ? `<span class="pipeline-card-meta">Depends on ${escapeHtml(task.dependsOn.join(', '))}</span>` : ''}
           ${task.dueAt ? `<span class="pipeline-card-meta">Due ${escapeHtml(formatDate(task.dueAt))}</span>` : ''}
@@ -109,6 +119,7 @@
       meta.textContent = filtered
         ? `${tasks.length} matching loaded ${scope} · ${exactOpen} open overall across ${exactMatched} exact records`
         : `${exactOpen} open task${exactOpen === 1 ? '' : 's'} across ${exactMatched} exact all-time record${exactMatched === 1 ? '' : 's'} · ${state.tasks.length} rows loaded`;
+      meta.textContent += archiveScope(state.tasks.filter(matchesContext).filter(matchesFilters));
     }
 
     if (!tasks.length) {
@@ -139,6 +150,7 @@
             <div class="pipeline-title-meta">
               ${task.epic ? `<span class="pipeline-subtle">${escapeHtml(task.epic)}</span>` : ''}
               ${riskChip(task.risk)}
+              ${archivedQualification(task) ? `<span class="pipeline-subtle">Archived qualification · ${escapeHtml(task.codingAutonomy.disposition.outcome)}</span>` : ''}
               ${depsChip}
             </div>
           </td>

@@ -28,19 +28,20 @@
       && String(deliveryItem?.pullRequest?.state || '').toLowerCase() === 'closed';
 
     const actions = [];
+    const qualification = task.codingAutonomy?.disposition?.kind === 'qualification' ? task.codingAutonomy.disposition : null;
     const codingTask = !['personal', 'family', 'household', 'secretary'].includes(String(task.service).toLowerCase());
-    if (task.status === 'queued' && !task.assignee && codingTask) {
+    if (!qualification && task.status === 'queued' && !task.assignee && codingTask) {
       actions.push(`<form class="pipeline-drawer-action" data-drawer-action="give-to-team">
         <p>Describe the result in this ticket. The team prepares the work and returns any question here.</p>
         <button type="submit" class="pipeline-btn primary">Give to the team</button></form>`);
     }
-    if (task.status === 'blocked' && codingTask && (!task.assignee || task.automation?.mode === 'review_only')) {
+    if (!qualification && task.status === 'blocked' && codingTask && (!task.assignee || task.automation?.mode === 'review_only')) {
       actions.unshift(`<form class="pipeline-drawer-action" data-drawer-action="reply-resume">
         <label><span>Your answer or correction</span><textarea name="answer" rows="4" maxlength="3000" required placeholder="Answer the question or explain what should change."></textarea></label>
         <button type="submit" class="pipeline-btn primary">Reply and resume</button>
       </form>`);
     }
-    if (task.status === 'review') {
+    if (!qualification && task.status === 'review') {
       actions.push(`
         <form class="pipeline-drawer-action" data-drawer-action="confirm-done">
           <label>
@@ -51,7 +52,7 @@
         </form>
       `);
     }
-    if (task.status === 'review' || closedUnmergedDelivery) {
+    if (!qualification && (task.status === 'review' || closedUnmergedDelivery)) {
       const correctionDetail = closedUnmergedDelivery
         ? `PR #${deliveryItem.pullRequest.number} is closed without merge. Record the required replacement, release the accepted result, and return this exact task to the guarded queue.`
         : 'Record a precise reason, release the claim, and return this exact task to the guarded queue.';
@@ -70,7 +71,7 @@
         </form>
       `);
     }
-    if (['in_progress', 'blocked'].includes(task.status)) {
+    if (!qualification && ['in_progress', 'blocked'].includes(task.status)) {
       actions.push(`
         <details><summary>Release worker claim</summary><div class="pipeline-drawer-action">
           <p>Release the task back to the queue. The worker claim and heartbeat are cleared.</p>
@@ -78,7 +79,7 @@
         </div></details>
       `);
     }
-    if (task.status !== 'done') {
+    if (!qualification && task.status !== 'done') {
       // Supersede is a two-step human decision: preview the exact transition
       // and its checks first (no mutation), then confirm or cancel.
       actions.push(`
@@ -115,7 +116,8 @@
     const resolution = task.resolution && task.resolution.kind === 'superseded' ? task.resolution : null;
     body.innerHTML = `
       <div class="pipeline-drawer-status">${statusBadge(task.status)} ${priorityChip(task.priority)} ${riskChip(task.risk)}${resolution ? ` <span class="pipeline-chip pipeline-chip-superseded" title="${escapeHtml(resolution.reason || '')}"><i class="fas fa-code-branch" aria-hidden="true"></i> Superseded by <a href="/pipeline?task=${encodeURIComponent(resolution.supersededBy)}">#${escapeHtml(resolution.supersededBy)}</a></span>` : ''}</div>
-      ${feedback.length ? `<section class="pipeline-drawer-section"><h3>${task.status === 'blocked' ? 'Your team needs an answer' : 'Latest update'}</h3><p class="pipeline-drawer-spec">${escapeHtml(latestTeamUpdate(task))}</p></section>` : ''}
+      ${qualification ? `<section class="pipeline-drawer-section"><h3>Archived qualification · ${escapeHtml(qualification.outcome)}</h3><p>${escapeHtml(qualification.reason || 'Consult the original qualification receipt.')} Original execution outcomes and dependency barriers remain in force. This archive does not accept a product delivery or authorize another worker.</p></section>` : ''}
+      ${feedback.length ? `<section class="pipeline-drawer-section"><h3>${task.status === 'blocked' && !qualification ? 'Your team needs an answer' : 'Latest update'}</h3><p class="pipeline-drawer-spec">${escapeHtml(latestTeamUpdate(task))}</p></section>` : ''}
       ${task.spec ? `<section class="pipeline-drawer-section">${task.status === 'blocked' ? '<details><summary>Requested result</summary>' : '<h3>Requested result</h3>'}<pre class="pipeline-drawer-spec">${escapeHtml(task.spec)}</pre>${task.status === 'blocked' ? '</details>' : ''}</section>` : ''}
       <section class="pipeline-drawer-section"><h3>Next action</h3>
         <p class="pipeline-drawer-spec"><strong>${escapeHtml(review.label)}</strong><br>${escapeHtml(review.detail)}<br>${escapeHtml(review.action)}</p>

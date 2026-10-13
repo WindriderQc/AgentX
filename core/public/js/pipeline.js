@@ -54,6 +54,7 @@
     taskError: null,
     view: 'board',
     includeDone: true,
+    includeArchivedQualifications: false,
     expandedStages: new Set(),
     timelineLimit: 60,
     loading: false,
@@ -364,6 +365,8 @@
         dependsOn: Array.isArray(task.dependsOn) ? task.dependsOn : [],
         notBefore: task.notBefore || null,
         automation: task.automation && typeof task.automation === 'object' ? task.automation : null,
+        codingAutonomy: task.codingAutonomy?.disposition?.kind === 'qualification'
+          ? { disposition: { kind: 'qualification', outcome: task.codingAutonomy.disposition.outcome } } : null,
         automationAttemptCount: Number(task.automationAttemptCount) || 0,
         dueAt: task.dueAt || null,
         createdAt: task.createdAt || null,
@@ -1034,6 +1037,9 @@
 
     $('pipelineEpicFilter')?.addEventListener('change', (event) => { state.filters.epic = event.target.value; state.expandedStages.clear(); renderAll(); });
     $('pipelineIncludeDone')?.addEventListener('change', (event) => { state.includeDone = event.target.checked; renderProgression(); });
+    $('pipelineIncludeArchivedQualifications')?.addEventListener('change', (event) => {
+      state.includeArchivedQualifications = event.target.checked; renderProgression(); renderOpenWork();
+    });
     document.querySelectorAll('[data-pipeline-view]').forEach((button) => button.addEventListener('click', () => { state.view = button.dataset.pipelineView; renderProgression(); }));
     $('pipelineProgression')?.addEventListener('click', (event) => {
       const more = event.target.closest('[data-more-stage]');
