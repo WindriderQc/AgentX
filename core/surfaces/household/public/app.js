@@ -7,8 +7,7 @@
     session: null,
     packs: [],
     history: [],
-    recording: null,
-    chunks: [],
+    learningVoice: null,
     micMuted: false,
     outputMuted: false,
     activeAudio: null,
@@ -56,6 +55,7 @@
   document.getElementById('readingVoiceSave').onclick = () => {
     stopPlayback();
     readingLanguage = window.PersonaPresentation.profile({ language: document.getElementById('readingLanguage').value }).language;
+    state.learningVoice?.setLanguage(readingLanguage);
     readingVoices = window.PersonaPresentation.selections(Object.fromEntries(Object.entries(readingSelects).map(([language, select]) => [language, select.value])));
     try { localStorage.setItem(readingVoiceKey, JSON.stringify(readingVoices)); localStorage.setItem(readingLanguageKey, readingLanguage); document.getElementById('readingVoiceStatus').textContent = 'Language and voices saved on this browser.'; }
     catch { document.getElementById('readingVoiceStatus').textContent = 'Choices apply to this tab only. The browser refuses to save them.'; }
@@ -135,7 +135,7 @@
     asking = true;
     const button = document.querySelector(`#${formId} button.primary`);
     if (button) button.disabled = true;
-    try { await work(); } finally { asking = false; if (button) button.disabled = false; }
+    try { return await work(); } finally { asking = false; if (button) button.disabled = false; }
   }
 
   async function turn(packId, text, channel = 'text', options = {}) {
@@ -157,7 +157,7 @@
   }
 
   function voiceBar(prefix) {
-    return `<div class="voice-bar" aria-label="Voice privacy controls"><span id="${prefix}VoiceState" class="voice-state" data-state="checking" role="status" aria-live="polite">Push-to-talk · checking microphone…</span><div class="voice-toggles"><button id="${prefix}MicToggle" class="compact" type="button" aria-pressed="false">Mic on</button><button id="${prefix}SoundToggle" class="compact" type="button" aria-pressed="false">Sound on</button></div></div>`;
+    return `<div class="voice-bar" aria-label="Voice privacy controls"><span id="${prefix}VoiceState" class="voice-state" data-state="checking" role="status" aria-live="polite">Microphone off · enable voice to start</span><div class="voice-toggles"><button id="${prefix}MicToggle" class="compact" type="button" aria-pressed="false">Mic on</button><button id="${prefix}SoundToggle" class="compact" type="button" aria-pressed="false">Sound on</button></div></div>`;
   }
 
   function setVoiceStatus(prefix, status, label) {
@@ -169,6 +169,7 @@
 
   function stopPlayback() {
     state.speech?.cancel();
+    state.browserSpeech?.abort();
     if (state.activeAudio) {
       state.activeAudio.pause();
       state.activeAudio.removeAttribute('src');
@@ -289,170 +290,74 @@
   // (PersonaPresentation.speechChoices): the reading voice chosen on this
   // browser, then the conversation's personality voice (Nestor, with the
   // instance's voice for him), then that personality's catalog voice.
+  async function speechResponse(text, profile, signal, after = null, override = null) {
+    state.voiceLadder ||= window.AgentXSpeechLadder.createSpeechLadder({
+      async request({ text, language, choice }, signal) {
+        return fetch('/api/voix/synthesize/stream', {
+          method: 'POST', signal, credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, language, tts_provider: choice.provider,
+            voice: choice.voice || '', native_defaults: choice.native_defaults === true }),
+        });
+      }, deviceVoice: () => Boolean(window.speechSynthesis),
+      unavailable: 'Speech is unavailable. The complete answer stays on screen.',
+    });
+    const choices = override ? [override]
+      : window.PersonaPresentation.speechChoices(state.session?.persona, profile.language, { selections: readingVoices });
+    const response = await state.voiceLadder.speak({ text, language: profile.language, choices, after }, signal);
+    if (response.browserSpeech) toast('Local voice unavailable · using this browser’s voice');
+    return response;
+  }
+
   async function speak(text, languageHint = readingLanguage, override = null) {
     text = window.NestorSpeech.speechText(text);
     if (!text || state.outputMuted) return;
     const profile = window.NestorSpeech.speechProfile(text, languageHint);
     stopPlayback();
+    if (!override && state.learningVoice?.conversation.audio) {
+      if (await state.learningVoice.read({ text, language: profile.language }) === false) toast('Reading stopped or unavailable. The complete text stays on screen.');
+      return;
+    }
     try {
       if (!window.VoixAudio) throw new Error('Local speech player unavailable');
-      state.speech ||= new window.VoixAudio.Speech();
-      const choices = override ? [override]
-        : window.PersonaPresentation.speechChoices(state.session?.persona, profile.language, { selections: readingVoices });
-      await state.speech.speak(async (signal, segment) => {
-        for (const choice of choices) {
-          const response = await fetch('/api/voix/synthesize/stream', {
-            method: 'POST', signal, credentials: 'include', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: segment ?? text, language: profile.language, tts_provider: choice.provider,
-              voice: choice.voice || '', native_defaults: choice.native_defaults === true }),
-          });
-          if (response.ok) return response;
-        }
-        throw new Error('Local speech is unavailable. Select another local voice or use the explicit browser preview.');
-      }, { segments: window.NestorSpeech.splitSpeechText(text) });
+      state.speech ||= new window.VoixAudio.Speech({ retryUnplayed: true, playBrowser: window.AgentXVoice?.speakWithBrowser });
+      await state.speech.speak((signal, segment, after) => speechResponse(segment ?? text, profile, signal, after, override),
+        { segments: window.NestorSpeech.splitSpeechText(text) });
     } catch (error) { if (error.name !== 'AbortError') toast(error.message); }
   }
 
-  async function transcribe(blob) {
+  async function transcribe(blob, language = readingLanguage, signal) {
     const form = new FormData();
     form.append('file', blob, 'household.webm');
-    form.append('language', readingLanguage);
-    const response = await fetch('/api/voix/transcribe', { method: 'POST', credentials: 'include', body: form });
+    form.append('language', language);
+    const response = await fetch('/api/voix/transcribe', { method: 'POST', credentials: 'include', body: form, signal });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body.message || 'Transcription failed');
-    return body.data?.text || body.text || body.transcript || '';
+    const result = body.data || body;
+    return typeof result === 'object' ? result : { text: String(result || '') };
   }
 
-  // A forgotten press must not leave the mic open: a turn stops itself after this long.
-  const MAX_RECORDING_MS = 30000;
-
-  function bindRecorder(button, onText, prefix) {
-    if (!button) return;
-    const idleLabel = button.textContent;
-    const stopLabel = button.dataset.stopLabel || '■ Stop';
-    // The accessible name follows the visible one: Talk, then Stop while recording.
-    const idleAria = button.getAttribute('aria-label') || idleLabel;
-    const micToggle = document.getElementById(`${prefix}MicToggle`);
-    const soundToggle = document.getElementById(`${prefix}SoundToggle`);
-    const supported = window.isSecureContext && navigator.mediaDevices?.getUserMedia && window.MediaRecorder;
-
-    function ready() {
-      button.classList.remove('recording');
-      button.textContent = idleLabel;
-      button.setAttribute('aria-label', idleAria);
-      button.setAttribute('aria-pressed', 'false');
-      if (state.micMuted) {
-        button.disabled = true;
-        button.title = 'Microphone paused';
-        setVoiceStatus(prefix, 'muted', 'Mic off · no capture possible');
-      } else if (!window.isSecureContext) {
-        button.disabled = true;
-        button.title = 'Microphone requires trusted HTTPS';
-        setVoiceStatus(prefix, 'unavailable', 'Text ready · open the trusted HTTPS link to talk');
-      } else if (!supported) {
-        button.disabled = true;
-        button.title = 'Microphone capture is unavailable in this browser';
-        setVoiceStatus(prefix, 'unavailable', 'Mic unavailable · use the keyboard');
-      } else {
-        button.disabled = false;
-        button.title = 'Push to talk. Nothing listens until you press.';
-        setVoiceStatus(prefix, 'ready', 'Mic ready · press to talk · never listening continuously');
-      }
-    }
-
-    if (micToggle) {
-      micToggle.addEventListener('click', () => {
-        state.micMuted = !state.micMuted;
-        micToggle.setAttribute('aria-pressed', String(state.micMuted));
-        micToggle.textContent = state.micMuted ? 'Mic off' : 'Mic on';
-        if (state.micMuted && state.recording) {
-          state.recording.discard = true;
-          if (state.recording.recorder.state !== 'inactive') state.recording.recorder.stop();
-        }
-        ready();
-      });
-    }
-    if (soundToggle) {
-      soundToggle.addEventListener('click', () => {
-        state.outputMuted = !state.outputMuted;
-        soundToggle.setAttribute('aria-pressed', String(state.outputMuted));
-        soundToggle.textContent = state.outputMuted ? 'Sound off' : 'Sound on';
-        if (state.outputMuted) stopPlayback();
-      });
-    }
-    ready();
-
-    button.addEventListener('click', async () => {
-      if (state.recording) {
-        if (state.recording.button !== button) return;
-        setVoiceStatus(prefix, 'stopping', 'Capture done · preparing…');
-        if (state.recording.recorder.state !== 'inactive') state.recording.recorder.stop();
-        return;
-      }
-      if (state.micMuted || !supported) return;
-      try {
-        setVoiceStatus(prefix, 'permission', 'Allow the mic for this turn only…');
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        if (state.micMuted) {
-          stream.getTracks().forEach((track) => track.stop());
-          ready();
-          return;
-        }
-        state.chunks = [];
-        const recorder = new MediaRecorder(stream);
-        const recording = { recorder, stream, button, discard: false };
-        state.recording = recording;
-        const stopNow = () => { if (recorder.state !== 'inactive') recorder.stop(); };
-        // Leaving the page drops the capture; running out of time sends what was said.
-        const drop = () => { recording.discard = true; stopNow(); };
-        const onHidden = () => { if (document.hidden) drop(); };
-        const limit = setTimeout(() => { setVoiceStatus(prefix, 'stopping', 'Time is up · preparing what you said…'); stopNow(); }, MAX_RECORDING_MS);
-        document.addEventListener('visibilitychange', onHidden);
-        window.addEventListener('pagehide', drop);
-        recorder.addEventListener('dataavailable', (event) => { if (event.data.size) state.chunks.push(event.data); });
-        recorder.addEventListener('stop', async () => {
-          clearTimeout(limit);
-          document.removeEventListener('visibilitychange', onHidden);
-          window.removeEventListener('pagehide', drop);
-          stream.getTracks().forEach((track) => track.stop());
-          if (state.recording === recording) state.recording = null;
-          button.classList.remove('recording');
-          button.setAttribute('aria-pressed', 'false');
-          if (recording.discard || state.micMuted) {
-            state.chunks = [];
-            ready();
-            return;
-          }
-          button.disabled = true;
-          let failed = false;
-          try {
-            setVoiceStatus(prefix, 'transcribing', 'Transcribing locally…');
-            const text = await transcribe(new Blob(state.chunks, { type: recorder.mimeType || 'audio/webm' }));
-            if (!text) throw new Error('No words heard. Try again or use the keyboard.');
-            setVoiceStatus(prefix, 'thinking', 'Nestor is preparing an answer…');
-            await onText(text);
-          } catch (error) {
-            failed = true;
-            setVoiceStatus(prefix, 'error', error.message);
-            toast(error.message);
-          } finally {
-            state.chunks = [];
-            button.disabled = state.micMuted || !supported;
-            // After a failure the status keeps its message, but the button must say Talk again.
-            if (!failed || state.micMuted) ready(); else { button.textContent = idleLabel; button.setAttribute('aria-label', idleAria); }
-          }
-        });
-        recorder.start();
-        button.classList.add('recording');
-        button.textContent = stopLabel;
-        button.setAttribute('aria-label', 'Stop recording and send');
-        button.setAttribute('aria-pressed', 'true');
-        setVoiceStatus(prefix, 'listening', 'Mic on · press again to finish');
-      } catch (error) {
-        setVoiceStatus(prefix, 'error', 'Mic denied · use the keyboard or change the permission');
-        toast(error.message);
-      }
+  function bindLearningVoice(button, onText, prefix) {
+    if (!button || !window.HouseholdLearningVoice) return;
+    state.learningVoice = window.HouseholdLearningVoice.mount({ button,
+      micToggle: document.getElementById(`${prefix}MicToggle`), soundToggle: document.getElementById(`${prefix}SoundToggle`),
+      status: document.getElementById(`${prefix}VoiceState`),
+      language: () => readingLanguage, muted: () => state.outputMuted,
+      setMuted: value => { state.outputMuted = value; }, stopPlayback,
+      transcribe, turn: onText,
+      synthesize: (reply, signal) => speechResponse(reply.text, window.NestorSpeech.speechProfile(reply.text, reply.language), signal, reply.after),
     });
+  }
+
+  function showLearningReply(node, result) {
+    node.textContent = result.reply;
+    if (!result.data.display?.length) return;
+    if (!window.DisplayBoard) {
+      node.textContent = [result.reply, ...result.data.display.filter(block => !['secret', 'image', 'scene'].includes(block.kind)).map(block => block.body)].filter(Boolean).join('\n\n');
+      return;
+    }
+    const panel = document.createElement('section');
+    node.append(panel);
+    window.DisplayBoard.create(panel, { space: 'family' }).restore(result.data.display);
   }
 
   async function loadPanel() {
@@ -482,7 +387,7 @@
   }
 
   function kidsTemplate() {
-    return `<section class="kids-room"><div class="kids-shell"><a id="kidSoundDoor" class="kids-sound-door" href="/kids/sounds" hidden><span class="kids-sound-door-mark" aria-hidden="true">🔊</span><span><strong>Sound wall</strong><small id="kidSoundDoorCount">sounds to discover</small></span></a><header class="kids-header"><div><p class="eyebrow">Kids corner · reviewed by Dad · local AI · no tools</p><h1>One thing at a time.</h1><p class="lede">Ask a question, learn, practice or find a small safe step. No profile needed; Dad approves every checked task.</p></div><label class="kids-profile"><span>Who are you? (optional)</span><select id="kidProfile" aria-label="Family profile (optional)"><option value="">Guest</option></select></label></header><div id="kidsEmpty" class="kids-welcome" hidden><div><p class="card-kicker">Ready right away</p><h2>You can ask your questions.</h2><p>No name needed to talk to Nestor or use Reading. A profile is only for your household responsibilities.</p></div><div class="row wrap"><a class="button primary" href="/lecture">Open Reading</a><a class="button" href="/dad/family">Dad: add profiles and tasks</a></div></div><section id="kidsContent" class="kids-grid" hidden><article id="kidNextCard" class="next-chore"><p class="card-kicker">What do I do now?</p><div id="kidNext"></div></article><aside id="kidProgressCard" class="kids-progress"><p class="card-kicker">Today</p><div id="kidProgress"></div></aside><article class="kids-help"><div class="row"><div class="grow"><p class="card-kicker">Nestor helps you learn</p><h2>How can I help?</h2></div><a class="button compact" href="/lecture">Open Reading</a></div><div class="kid-ai-boundary" role="note"><strong>Nestor is an AI, not a person.</strong><span>It can be wrong. Don’t share private information. A parent can read this conversation. Check important things with a trusted adult.</span></div><div class="kid-mode-grid" aria-label="Choose how Nestor helps you"><button type="button" class="kid-mode active" data-kid-mode-choice="family" data-description="A short, clear answer and a way to check it." aria-pressed="true"><strong>Ask</strong><small>A clear answer</small></button><button type="button" class="kid-mode" data-kid-mode-choice="learn" data-description="Understand an idea with an example and a question to check." aria-pressed="false"><strong>Learn</strong><small>Explain + check</small></button><button type="button" class="kid-mode" data-kid-mode-choice="steps" data-description="Break a safe task into small steps, one at a time." aria-pressed="false"><strong>Steps</strong><small>Start small</small></button><button type="button" class="kid-mode" data-kid-mode-choice="practice" data-description="One question at a time, with gentle correction." aria-pressed="false"><strong>Practice</strong><small>One try at a time</small></button><button type="button" class="kid-mode" data-kid-mode-choice="mission" data-description="Help with a responsibility a parent already approved." aria-pressed="false"><strong>Home mission</strong><small>Approved tasks</small></button></div><p id="kidModeDescription" class="kid-mode-description">A short, clear answer and a way to check it.</p><div class="kid-starters" aria-label="Question ideas"><button type="button" data-kid-prompt-mode="learn" data-kid-prompt="Why do leaves change color? Help me understand.">Learn something</button><button type="button" data-kid-prompt-mode="steps" data-kid-prompt="Help me start a safe task, one small step at a time.">Start carefully</button><button type="button" data-kid-prompt-mode="practice" data-kid-prompt="Help me practice with one question at a time.">Practice</button><button type="button" data-kid-prompt-mode="mission" data-kid-prompt="Help me with a responsibility my parent already approved.">Home mission</button></div>${voiceBar('kid')}<div id="kidHelpReply" class="reader-reply small" role="status" aria-live="polite">Je peux t’aider à réfléchir et à apprendre. Je ne peux pas utiliser d’outils, contrôler la maison ou approuver une tâche.</div><form id="kidHelpForm" class="reader-controls"><button id="kidHelpMic" class="mic" type="button" data-stop-label="■ Stop" aria-label="Ask out loud">● Talk</button><input id="kidHelpInput" maxlength="300" autocomplete="off" placeholder="What do you want help with?" aria-label="Ask Nestor for help"><button class="primary">Ask</button></form></article></section></div></section>`;
+    return `<section class="kids-room"><div class="kids-shell"><a id="kidSoundDoor" class="kids-sound-door" href="/kids/sounds" hidden><span class="kids-sound-door-mark" aria-hidden="true">🔊</span><span><strong>Sound wall</strong><small id="kidSoundDoorCount">sounds to discover</small></span></a><header class="kids-header"><div><p class="eyebrow">Kids corner · reviewed by Dad · local AI · no tools</p><h1>One thing at a time.</h1><p class="lede">Ask a question, learn, practice or find a small safe step. No profile needed; Dad approves every checked task.</p></div><label class="kids-profile"><span>Who are you? (optional)</span><select id="kidProfile" aria-label="Family profile (optional)"><option value="">Guest</option></select></label></header><div id="kidsEmpty" class="kids-welcome" hidden><div><p class="card-kicker">Ready right away</p><h2>You can ask your questions.</h2><p>No name needed to talk to Nestor or use Reading. A profile is only for your household responsibilities.</p></div><div class="row wrap"><a class="button primary" href="/lecture">Open Reading</a><a class="button" href="/dad/family">Dad: add profiles and tasks</a></div></div><section id="kidsContent" class="kids-grid" hidden><article id="kidNextCard" class="next-chore"><p class="card-kicker">What do I do now?</p><div id="kidNext"></div></article><aside id="kidProgressCard" class="kids-progress"><p class="card-kicker">Today</p><div id="kidProgress"></div></aside><article class="kids-help"><div class="row"><div class="grow"><p class="card-kicker">Nestor helps you learn</p><h2>How can I help?</h2></div><a class="button compact" href="/lecture">Open Reading</a></div><div class="kid-ai-boundary" role="note"><strong>Nestor is an AI, not a person.</strong><span>It can be wrong. Don’t share private information. A parent can read this conversation. Check important things with a trusted adult.</span></div><div class="kid-mode-grid" aria-label="Choose how Nestor helps you"><button type="button" class="kid-mode active" data-kid-mode-choice="family" data-description="A short, clear answer and a way to check it." aria-pressed="true"><strong>Ask</strong><small>A clear answer</small></button><button type="button" class="kid-mode" data-kid-mode-choice="learn" data-description="Understand an idea with an example and a question to check." aria-pressed="false"><strong>Learn</strong><small>Explain + check</small></button><button type="button" class="kid-mode" data-kid-mode-choice="steps" data-description="Break a safe task into small steps, one at a time." aria-pressed="false"><strong>Steps</strong><small>Start small</small></button><button type="button" class="kid-mode" data-kid-mode-choice="practice" data-description="One question at a time, with gentle correction." aria-pressed="false"><strong>Practice</strong><small>One try at a time</small></button><button type="button" class="kid-mode" data-kid-mode-choice="mission" data-description="Help with a responsibility a parent already approved." aria-pressed="false"><strong>Home mission</strong><small>Approved tasks</small></button></div><p id="kidModeDescription" class="kid-mode-description">A short, clear answer and a way to check it.</p><div class="kid-starters" aria-label="Question ideas"><button type="button" data-kid-prompt-mode="learn" data-kid-prompt="Why do leaves change color? Help me understand.">Learn something</button><button type="button" data-kid-prompt-mode="steps" data-kid-prompt="Help me start a safe task, one small step at a time.">Start carefully</button><button type="button" data-kid-prompt-mode="practice" data-kid-prompt="Help me practice with one question at a time.">Practice</button><button type="button" data-kid-prompt-mode="mission" data-kid-prompt="Help me with a responsibility my parent already approved.">Home mission</button></div>${voiceBar('kid')}<div id="kidHelpReply" class="reader-reply small" role="status" aria-live="polite">Je peux t’aider à réfléchir et à apprendre. Je ne peux pas utiliser d’outils, contrôler la maison ou approuver une tâche.</div><form id="kidHelpForm" class="reader-controls"><button id="kidHelpMic" class="mic" type="button" aria-label="Enable voice">Enable voice</button><input id="kidHelpInput" maxlength="300" autocomplete="off" placeholder="What do you want help with?" aria-label="Ask Nestor for help"><button class="primary">Ask</button></form></article></section></div></section>`;
   }
 
   async function loadKids() {
@@ -493,6 +398,7 @@
     function selectKidMode(modeId) {
       const choice = document.querySelector(`[data-kid-mode-choice="${modeId}"]`);
       if (!choice) return;
+      if (asking) return;
       activeKidMode = modeId;
       state.session = null;
       state.history = [];
@@ -553,27 +459,30 @@
       setRuntime(false, 'profiles unavailable · safe chat ready');
     }
     profileSelect.addEventListener('change', refreshRoom);
-    function askForHelp(text, channel = 'text') { return oneAtATime('kidHelpForm', () => helpTurn(text, channel)); }
-    async function helpTurn(text, channel) {
+    function askForHelp(text, channel = 'text', signal) { return oneAtATime('kidHelpForm', () => helpTurn(text, channel, signal)); }
+    async function helpTurn(text, channel, signal) {
       const reply = document.getElementById('kidHelpReply');
       reply.textContent = 'Thinking…';
       const chore = activeKidMode === 'mission' ? currentRoom?.next?.title : '';
       try {
-        const result = await turn('kidx_nestor', `${chore ? `Responsabilité gérée par le parent dans Kids Room : « ${chore} ». ` : ''}${text}`, channel, { modeId: activeKidMode });
-        reply.textContent = result.reply;
+        const result = await turn('kidx_nestor', `${chore ? `Responsabilité gérée par le parent dans Kids Room : « ${chore} ». ` : ''}${text}`, channel, { modeId: activeKidMode, signal });
+        showLearningReply(reply, result);
         const language = replyLanguage(result);
-        await speak(result.reply, language);
         showSoundChip(reply, result.data.sound);
+        if (signal) return { text: result.reply, language, sound: result.data.sound };
+        await speak(result.reply, language);
         await playSound(result.data.sound);
-      } catch (error) { reply.textContent = `Try again? ${error.message}`; }
+      } catch (error) { if (error.name !== 'AbortError') reply.textContent = `Try again? ${error.message}`; if (signal) throw error; }
     }
     document.getElementById('kidHelpForm').addEventListener('submit', async (event) => {
       event.preventDefault();
       const input = document.getElementById('kidHelpInput');
       const text = input.value.trim();
       if (!text || asking) return;
+      const accepted = await state.learningVoice?.typed(text);
+      if (accepted === false) return;
       input.value = '';
-      await askForHelp(text);
+      if (accepted == null) await askForHelp(text);
     });
     document.querySelectorAll('[data-kid-mode-choice]').forEach((button) => button.addEventListener('click', () => selectKidMode(button.dataset.kidModeChoice)));
     document.querySelectorAll('[data-kid-prompt]').forEach((button) => button.addEventListener('click', () => {
@@ -582,7 +491,7 @@
       input.value = button.dataset.kidPrompt;
       input.focus();
     }));
-    bindRecorder(document.getElementById('kidHelpMic'), (text) => askForHelp(text, 'voice'), 'kid');
+    bindLearningVoice(document.getElementById('kidHelpMic'), (text, signal) => askForHelp(text, 'voice', signal), 'kid');
     // The door only appears once the pack is known to have clips, so an empty
     // library never advertises a room with nothing in it.
     try {
@@ -623,7 +532,7 @@
   }
 
   function readerTemplate() {
-    return `<section class="reader"><div class="reader-shell"><div class="reader-face" aria-hidden="true">☺</div><p class="eyebrow">KidX Reader · Nestor</p><h1>Which word do you want to understand?</h1>${voiceBar('reader')}<div id="readerReply" class="reader-reply" role="status" aria-live="polite">Press the mic or type your word.</div><p id="readerHeard" class="muted reader-heard" aria-live="polite"></p><form id="readerForm" class="reader-controls"><button id="readerMic" class="mic" type="button" data-stop-label="■ Done" aria-label="Record a word">● Talk</button><input id="readerInput" maxlength="180" autocomplete="off" placeholder="type your word or sentence…" aria-label="Word or phrase"><button class="primary">Ask</button></form><div class="row" style="justify-content:center;margin-top:1rem"><button id="readerReplay" type="button" disabled>Hear again</button><a class="button" href="/panel">Home</a></div></div></section>`;
+    return `<section class="reader"><div class="reader-shell"><div class="reader-face" aria-hidden="true">☺</div><p class="eyebrow">KidX Reader · Nestor</p><h1>Which word do you want to understand?</h1>${voiceBar('reader')}<div id="readerReply" class="reader-reply" role="status" aria-live="polite">Enable voice, say Hey/Eille/Oh/Ah Nestor, or type your word.</div><p id="readerHeard" class="muted reader-heard" aria-live="polite"></p><form id="readerForm" class="reader-controls"><button id="readerMic" class="mic" type="button" aria-label="Enable voice">Enable voice</button><input id="readerInput" maxlength="180" autocomplete="off" placeholder="type your word or sentence…" aria-label="Word or phrase"><button class="primary">Ask</button></form><div class="row" style="justify-content:center;margin-top:1rem"><button id="readerReplay" type="button" disabled>Hear again</button><a class="button" href="/panel">Home</a></div></div></section>`;
   }
 
   async function loadReader() {
@@ -631,27 +540,30 @@
     setRuntime(true, 'reader ready');
     let lastReply = '';
     let lastLanguage = readingLanguage;
-    function ask(text, channel = 'text') { return oneAtATime('readerForm', () => readerTurn(text, channel)); }
-    async function readerTurn(text, channel) {
+    function ask(text, channel = 'text', signal) { return oneAtATime('readerForm', () => readerTurn(text, channel, signal)); }
+    async function readerTurn(text, channel, signal) {
       const reply = document.getElementById('readerReply');
       const heard = document.getElementById('readerHeard');
       // Always show what reached Nestor so a parent can tell a hearing problem from a thinking problem.
       heard.textContent = channel === 'voice' ? `Heard: “${text}”` : `You typed: “${text}”`;
       reply.textContent = 'Thinking…';
       try {
-        const result = await turn('kidx_reader', text, channel);
-        lastReply = result.reply;
+        const result = await turn('kidx_reader', text, channel, { signal });
+        lastReply = result.data.display?.length
+          ? result.data.display.filter(block => !['secret', 'image', 'scene'].includes(block.kind)).map(block => block.body).join('\n\n') || result.reply
+          : result.reply;
         lastLanguage = result.language;
-        reply.textContent = lastReply;
+        showLearningReply(reply, result);
         document.getElementById('readerReplay').disabled = false;
-        await speak(lastReply, lastLanguage);
         showSoundChip(reply, result.data.sound);
+        if (signal) return { text: result.reply, language: lastLanguage, sound: result.data.sound };
+        await speak(result.reply, lastLanguage);
         await playSound(result.data.sound);
-      } catch (error) { reply.textContent = `Try again? ${error.message}`; }
+      } catch (error) { if (error.name !== 'AbortError') reply.textContent = `Try again? ${error.message}`; if (signal) throw error; }
     }
-    document.getElementById('readerForm').addEventListener('submit', async (event) => { event.preventDefault(); const input = document.getElementById('readerInput'); const text = input.value.trim(); if (!text || asking) return; input.value = ''; await ask(text); });
+    document.getElementById('readerForm').addEventListener('submit', async (event) => { event.preventDefault(); const input = document.getElementById('readerInput'); const text = input.value.trim(); if (!text || asking) return; const accepted = await state.learningVoice?.typed(text); if (accepted === false) return; input.value = ''; if (accepted == null) await ask(text); });
     document.getElementById('readerReplay').addEventListener('click', () => speak(lastReply, lastLanguage));
-    bindRecorder(document.getElementById('readerMic'), (text) => ask(text, 'voice'), 'reader');
+    bindLearningVoice(document.getElementById('readerMic'), (text, signal) => ask(text, 'voice', signal), 'reader');
   }
 
   async function loadParents() {
@@ -678,14 +590,16 @@
       document.getElementById('personaTranscript').innerHTML = '<div class="message system">Session ready.</div>';
       await refreshAudit();
     }
-    async function send(text, channel = 'text') {
+    async function send(text, channel = 'text', signal) {
       if (!state.session) await create();
       const transcript = document.getElementById('personaTranscript');
       transcript.insertAdjacentHTML('beforeend', `<div class="message user">${esc(text)}</div><div class="message assistant pending">Thinking…</div>`);
       const pending = transcript.querySelector('.pending:last-child');
-      try { const result = await turn(packSelect.value, text, channel, { scopeId: document.getElementById('scope').value, modeId: document.getElementById('mode').value }); pending.textContent = result.reply; }
-      catch (error) { pending.textContent = error.message; }
+      let result;
+      try { result = await turn(packSelect.value, text, channel, { scopeId: document.getElementById('scope').value, modeId: document.getElementById('mode').value, signal }); pending.textContent = result.reply; }
+      catch (error) { pending.textContent = error.message; if (signal) throw error; }
       await refreshAudit(); transcript.scrollTop = transcript.scrollHeight;
+      if (result) return { text: result.reply, language: result.language, sound: result.data.sound };
     }
     async function refreshAudit() {
       const query = new URLSearchParams({ packId: packSelect.value, scopeId: document.getElementById('scope').value, limit: '8' });
@@ -694,7 +608,7 @@
     }
     document.getElementById('newSession').addEventListener('click', create);
     document.getElementById('personaForm').addEventListener('submit', async (event) => { event.preventDefault(); const input = document.getElementById('personaInput'); const text = input.value.trim(); if (!text) return; input.value = ''; await send(text); });
-    bindRecorder(document.getElementById('personaMic'), (text) => send(text, 'voice'), 'persona');
+    bindLearningVoice(document.getElementById('personaMic'), (text, signal) => send(text, 'voice', signal), 'persona');
     document.getElementById('memoryForm').addEventListener('submit', async (event) => { event.preventDefault(); try { await api('/api/voice-personas/memory', { method: 'POST', body: JSON.stringify({ packId: packSelect.value, scopeId: document.getElementById('scope').value, topic: document.getElementById('memoryTopic').value, text: document.getElementById('memoryText').value }) }); document.getElementById('memoryText').value = ''; toast('Memory saved'); } catch (error) { toast(error.message); } });
     document.getElementById('memorySearch').addEventListener('submit', async (event) => { event.preventDefault(); try { const data = await api('/api/voice-personas/memory/search', { method: 'POST', body: JSON.stringify({ packId: packSelect.value, scopeId: document.getElementById('scope').value, query: document.getElementById('memoryQuery').value }) }); document.getElementById('memoryResults').innerHTML = data.memory.results.map((row) => `<div class="memory"><strong>${esc(row.topic)}</strong><div>${esc(row.text)}</div></div>`).join('') || '<div class="empty">No matches.</div>'; } catch (error) { toast(error.message); } });
     setRuntime(true, 'personas ready');
