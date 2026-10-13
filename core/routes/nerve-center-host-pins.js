@@ -8,6 +8,7 @@ const { requestPrincipal } = require('../src/helpers/requestCaller');
 const { runRuntimeMutation } = require('../src/services/runtimeMutationLeaseService');
 const { projectHostPreferenceForRead } = require('../src/services/hostPreferencePublicProjection');
 const pinContextApply = require('../src/services/pinContextApplyService');
+const { contextChangeRefusal } = require('../src/services/pinContextGuard');
 
 const PIN_REFUSALS = ['HOST_PIN_INVALID', 'HOST_PIN_CAPACITY', 'HOST_PIN_NOT_FOUND', 'HOST_PIN_CONFLICT',
   ...pinContextApply.CONTEXT_APPLY_REFUSALS];
@@ -80,6 +81,10 @@ module.exports = function createHostPinRouter(resolveHostPreferenceUrl) {
         const hostUrl = resolveHostPreferenceUrl(req, res);
         if (!hostUrl) return;
         if (!req.body?.model) return res.status(400).json({ status: 'error', message: 'model is required' });
+        if (method === 'updatePinnedModel' && req.body.contextSize !== undefined) {
+          const refusal = contextChangeRefusal((await hostPrefService.getPinStatus(hostUrl)).pinnedModels, [req.body]);
+          if (refusal) throw refusal;
+        }
         const data = await changePin(req, hostUrl, method);
         if (!data) return res.status(404).json({ status: 'error', message: 'Host preference not found' });
         res.json({ status: 'success', data: projectHostPreferenceForRead(data) });

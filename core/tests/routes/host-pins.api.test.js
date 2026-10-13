@@ -62,6 +62,15 @@ describe('individual host pin mutations', () => {
     expect(service.restorePinnedModels).toHaveBeenCalledTimes(1);
   });
 
+  it('refuses a context size change outside the guarded context apply', async () => {
+    const response = await http.request.patch(url).send({ model: 'gemma:latest', contextSize: 8192 });
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('HOST_PIN_CONTEXT_GUARDED');
+    expect(service.updatePinnedModel).not.toHaveBeenCalled();
+    const same = await http.request.patch(url).send({ model: 'gemma:latest', contextSize: 32768, keepAlive: 600 });
+    expect(same.status).toBe(200);
+  });
+
   it('changes only the named pin through PATCH', async () => {
     const response = await http.request.patch(url).send({ model: 'gemma:latest', keepAlive: 600 });
     expect(response.status).toBe(200);
