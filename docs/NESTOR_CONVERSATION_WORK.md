@@ -58,6 +58,9 @@ with `[[NESTOR_MAIN_REQUIRED]]` before a brief acknowledgment. Core removes that
 prefix from streamed speech and canonical prose, retains `awaiting_main`, and
 promotes the accepted work without changing its request or execution identity.
 This disposition changes presentation only; it grants no execution authority.
+If the model omits the prefix but supplies a short progress acknowledgment
+promising Main's result, Core still retains `awaiting_main`. Quoted story
+dialogue and completed answers do not match that presentation fallback.
 Other requests receive Main's exact completed native answer, including
 reasoning that needs no tools. An answered guardian turn's alternate review
 prose is kept for explicit Listen. Older turns without this disposition can

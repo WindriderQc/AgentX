@@ -383,10 +383,12 @@ test('the dedicated guardian uses a compact per-turn session, preserves Main his
   } finally { delete env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID; }
 });
 
-test('real voice HTTP strips a native semantic handoff from speech and canonical prose before queuing Main', async () => {
+test.each([
+  ['[[NESTOR_MAIN_REQUIRED]] Je consulte le document pour toi.', 'Je consulte le document pour toi.'],
+  ['Je demande la vérification à Main. Je te reviens avec le résultat.', 'Je demande la vérification à Main. Je te reviens avec le résultat.']
+])('real voice HTTP retains semantic handoff without leaking routing text: %s', async (raw, expected) => {
   env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID = 'nestor-guardian';
   try {
-    const raw = '[[NESTOR_MAIN_REQUIRED]] Je consulte le document pour toi.';
     const guardian = jest.fn(async body => {
       await body.onStarted(`agent:nestor-guardian:household:direct:${body.session.sessionId}`, 'resp_' + randomUUID());
       body.onDelta(raw.slice(0, 8)); body.onDelta(raw.slice(8, 24)); body.onDelta(raw.slice(24));
@@ -399,7 +401,7 @@ test('real voice HTTP strips a native semantic handoff from speech and canonical
     const row = await works.repo.get(hash(current.sessionId + '\n' + turnId));
     expect(row).toMatchObject({ classification: 'native_work', foreground: 'acknowledge', state: 'queued', guardian: { disposition: 'awaiting_main' } });
     const turn = await conversations.getTurn({ ...works.query(current.sessionId), traceId: turnId });
-    expect(turn.inputText).toBe(text); expect(turn.replyText).toBe('Je consulte le document pour toi.');
+    expect(turn.inputText).toBe(text); expect(turn.replyText).toBe(expected);
     await works.observer.tick();
     expect((await works.contextForNative(context(await works.repo.get(row._id)))).guardianDisposition).toBe('awaiting_main');
   } finally { delete env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID; }
@@ -440,6 +442,22 @@ test('a completed direct guardian reply stays manual even when Main unnecessaril
   await works.guardianSettled(row._id, 'completed', 'answered');
   await works.publishNative(row._id, proof(row.attempt, 'Unwanted alternate story.', ['web_fetch']));
   expect((await createWorkDelivery(works).projection(await works.repo.get(row._id))).result.automaticSpeech).toBe(false);
+});
+
+test('a retained unmarked handoff recovers its original reasoning result despite an older answered flag', async () => {
+  const row = await admitted('Confie ce calcul au cerveau principal : 317 multiplié par 29.');
+  const replyText = 'Je demande au cerveau principal de faire le calcul. Je te reviens avec le résultat.';
+  await conversations.settleTurn({ ...works.query(current.sessionId), traceId: row.turnId, replyText });
+  await works.guardianSettled(row._id, 'completed', 'answered');
+  expect((await works.contextForNative(context(row))).guardianDisposition).toBe('awaiting_main');
+  const native = proof(row.attempt, '317 × 29 = 9193.', ['conversation_work']);
+  await works.publishNative(row._id, native);
+  await works.repo.mutate(row._id, current => ({ fields: { delivery: { ...current.delivery, automaticSpeech: false } }, event: 'fixture_old_policy' }));
+  const saved = await works.repo.get(row._id);
+  expect(saved).toMatchObject({ classification: 'native_review', guardian: { disposition: 'answered' }, attempt: row.attempt });
+  expect((await createWorkDelivery(works).projection(saved)).result).toMatchObject({ text: native.answer.text, automaticSpeech: true });
+  await expect(works.contextForNative(context(saved))).rejects.toMatchObject({ statusCode: 404 });
+  expect(execute).not.toHaveBeenCalled();
 });
 
 test('a pipeline result requires an actual same-run snapshot read, rather than discovery or a personal task read', async () => {

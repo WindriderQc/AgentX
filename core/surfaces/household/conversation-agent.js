@@ -508,4 +508,4 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
   };
 }
 
-module.exports = { createAgentClient, agentInstructions, sessionKeyFor, agentIdFor, personalVoice, selectedContextBlock, turnDirectiveBlock, CURRENT_REQUEST_LABEL };
+module.exports = { createAgentClient, agentInstructions, sessionKeyFor, agentIdFor, personalVoice, selectedContextBlock, turnDirectiveBlock, CURRENT_REQUEST_LABEL, unfinishedToolPreamble };
