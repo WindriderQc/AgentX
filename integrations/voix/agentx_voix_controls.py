@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse, Response
 from starlette.datastructures import UploadFile
 from vosk import KaldiRecognizer, Model, SetLogLevel
 
-from app.service import app, audio_form, settings, _transcribe_bytes
+from app.service import app, audio_form, _transcribe_bytes, recognition_metadata
 from voice_control import VoiceControl, recognize
 
 model_dir = os.environ.get("VOIX_CONTROL_MODEL_DIR", "").strip()
@@ -42,10 +42,10 @@ async def transcriptions_with_controls(request: Request):
         # This structured control cannot become a user request or a spoken
         # acknowledgement. No general transcription has been started.
         return JSONResponse({"text": "", "control": command, "language": language,
-                             "model": "vosk-command", "sttMs": elapsed_ms})
+                             **recognition_metadata(model, "vosk-command"), "sttMs": elapsed_ms})
     text, _ = transcription
     if str(response_format or "json").strip().lower() == "text":
         return Response(content=text, media_type="text/plain; charset=utf-8")
     return JSONResponse({"text": text, "language": language, "detectedLanguage": getattr(text, "language", "") or None,
-                         "model": model or settings.whisper_model,
+                         **recognition_metadata(model),
                          "sttMs": elapsed_ms})

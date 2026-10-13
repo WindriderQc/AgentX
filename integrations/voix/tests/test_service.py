@@ -660,3 +660,24 @@ def test_transcription_reports_detected_language_for_one_voice_per_reply(monkeyp
     body = client.post("/v1/audio/transcriptions", files={"file": ("mic.wav", b"RIFFfake")}, data={"language": "fr-en"}).json()
     assert body["language"] == "fr-en"
     assert body["detectedLanguage"] == "en"
+
+
+@pytest.mark.parametrize("requested_model", [None, "requested-model-not-loaded"])
+def test_transcription_names_the_configured_model_instead_of_echoing_a_requested_model(monkeypatch, requested_model):
+    calls = []
+
+    def transcribe(raw, filename, language):
+        calls.append(language)
+        return "Bonjour.", 12.0
+
+    monkeypatch.setattr(service, "_transcribe_bytes", transcribe)
+    body = client.post(
+        "/v1/audio/transcriptions",
+        files={"file": ("mic.wav", b"RIFFfake")},
+        data={"language": "fr", **({"model": requested_model} if requested_model else {})},
+    ).json()
+    assert body["model"] == service.settings.whisper_model
+    assert body["effectiveModel"] == service.settings.whisper_model
+    assert body["requestedModel"] == requested_model
+    assert body["text"] == "Bonjour." and body["sttMs"] == 12
+    assert calls == ["fr"]

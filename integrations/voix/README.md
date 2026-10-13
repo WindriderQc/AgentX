@@ -49,6 +49,11 @@ probability threshold. Weaker phonemes remain accepted after speech starts, and
 for naming a website. Qualify noise and short/quiet speech together before
 changing the threshold on an instance.
 
+Transcription JSON identifies the recognizer that actually ran in `model` and
+`effectiveModel`. `requestedModel` retains an optional client hint; that hint
+does not load or select a different Whisper model. A standalone structured Stop
+names `vosk-command` and never starts Whisper.
+
 A synthesis request names its own `tts_provider`, `language` and `voice`; the
 applied choice comes back in `X-Voix-Provider`, `X-Voix-Voice` and
 `X-Voix-Language`. An unavailable cloned-voice worker answers `503` before any audio:

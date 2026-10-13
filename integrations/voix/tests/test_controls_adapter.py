@@ -97,3 +97,24 @@ def test_standalone_stop_still_works_when_general_gpu_recognition_is_unavailable
     request = client.post("/v1/audio/transcriptions/controls", files=upload)
     assert request.status_code == 503 and request.json()["code"] == "STT_GPU_UNAVAILABLE"
     assert "private" not in request.text
+
+
+@pytest.mark.parametrize("heard,effective", [("stop", "vosk-command"), ("[unk]", None)])
+def test_controls_name_the_recognizer_that_ran_instead_of_the_requested_model(adapter, monkeypatch, heard, effective):
+    decoded = []
+
+    def transcribe(*_args):
+        decoded.append(True)
+        return "Bonjour.", 5.0
+
+    adapter.control.model.heard = heard
+    monkeypatch.setattr(adapter, "_transcribe_bytes", transcribe)
+    body = TestClient(adapter.app).post(
+        "/v1/audio/transcriptions/controls",
+        files={"file": ("mic.wav", wav(), "audio/wav")},
+        data={"model": "requested-model-not-loaded", "language": "fr"},
+    ).json()
+    actual = effective or service.settings.whisper_model
+    assert body["model"] == actual and body["effectiveModel"] == actual
+    assert body["requestedModel"] == "requested-model-not-loaded"
+    assert decoded == ([] if heard == "stop" else [True])

@@ -174,6 +174,12 @@ async def post_config(request: Request) -> Response:
 
 # ======================= recognition =======================
 
+def recognition_metadata(requested_model: str, effective_model: str | None = None) -> dict:
+    """An API model hint does not select a different loaded recognizer."""
+    actual = effective_model or settings.whisper_model
+    return {"model": actual, "effectiveModel": actual, "requestedModel": requested_model or None}
+
+
 @app.post("/v1/audio/transcriptions")
 async def transcriptions(request: Request) -> Response:
     async with audio_form(request) as form:
@@ -201,7 +207,7 @@ async def transcriptions(request: Request) -> Response:
         "language": selected_language,
         # Whisper's own decision lets the caller keep one voice for the reply.
         "detectedLanguage": getattr(text, "language", "") or None,
-        "model": model or settings.whisper_model,
+        **recognition_metadata(model),
         "sttMs": round(ms),
     })
 
