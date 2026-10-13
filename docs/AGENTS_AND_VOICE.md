@@ -175,6 +175,13 @@ VoiX transport, synthesis validation, deadlines and stream forwarding. Household
 and PsyX compose these with their session adapters. Native devices retain their
 own capture and playback qualification.
 
+Speech health reports recognition routing availability separately from overall
+service degradation. GPU backoff with CPU fallback disabled reports
+`recognition.available: false`; it does not claim that CPU recognition is ready.
+PsyX keeps a responding degraded service reachable, displays its degraded state,
+and lets transcription use the shared transport's existing retry/backup policy.
+Reachability does not certify synthesis, loaded models or acoustic quality.
+
 The loop speaks clauses and prepares at most one ahead. Household can play a
 holding phrase while waiting for reply text; available text drops a phrase that
 has not started. `say_end` flushes the last clause before a Household turn's

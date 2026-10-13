@@ -104,7 +104,10 @@ function createVoiceClient(config, fetchImpl) {
       ]) : [null, null];
       return {
         enabled: true,
-        reachable: health.status === 'ok',
+        reachable: ['ok', 'degraded'].includes(health.status),
+        serviceState: ['ok', 'degraded'].includes(health.status) ? health.status : 'unknown',
+        recognitionAvailable: typeof health.recognition?.available === 'boolean' ? health.recognition.available
+          : health.recognition?.degraded && health.recognition?.cpu_fallback_enabled === false ? false : null,
         serviceVersion: String(health.version || ''),
         activeUpstream: observed.upstream,
         nativeAvailable: Boolean(settings && devicePayload),

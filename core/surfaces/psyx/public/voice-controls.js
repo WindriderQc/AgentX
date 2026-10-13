@@ -67,9 +67,12 @@ function renderVoiceStatus(status = null, error = null) {
   $('voiceStatusDot').classList.toggle('offline', !status?.reachable);
   $('voiceStatusText').textContent = !state.voice.enabled
     ? 'Voice is not enabled on this installation'
-    : status?.reachable ? (status.activeUpstream === 'fallback' ? 'Fallback local voice active' : 'Local VoiX is ready') : 'Local VoiX is unavailable';
+    : status?.reachable ? (status.serviceState === 'degraded' ? 'Local voice is degraded'
+      : status.activeUpstream === 'fallback' ? 'Fallback local voice active' : 'Local VoiX is ready') : 'Local VoiX is unavailable';
   $('voiceStatusDetail').textContent = status?.reachable
-    ? `Recognition ${status.config?.whisperModel || 'Whisper'} · default synthesis ${status.config?.ttsProvider || 'local'} · VoiX ${status.serviceVersion || ''}`
+    ? (status.recognitionAvailable === false ? 'Recognition is temporarily unavailable on this voice service. A recording may use the configured backup or return a retryable error. '
+      : status.serviceState === 'degraded' ? 'The voice service reports reduced availability. '
+      : '') + `Recognition ${status.config?.whisperModel || 'Whisper'} · default synthesis ${status.config?.ttsProvider || 'local'} · VoiX ${status.serviceVersion || ''}`
     : (error?.message || 'Audio stays off while the private voice service is unreachable.');
   for (const id of ['voiceLanguage', 'voiceTtsProvider', 'voiceInputDevice', 'voiceFindDevices', 'voiceTest']) {
     $(id).disabled = !status?.reachable;

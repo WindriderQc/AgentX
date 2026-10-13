@@ -49,6 +49,23 @@ test('PsyX has no path that writes the shared VoiX configuration', async () => {
   assert.deepEqual(requests.map((item) => `${item.method} ${item.path}`), ['POST /api/tts']);
 });
 
+for (const available of [true, false]) {
+  test(`a degraded speech service remains reachable and reports recognition availability (${available}) without leaking decoder errors`, async () => {
+    const client = createVoiceClient(VOICE_CONFIG, async url => {
+      if (url.endsWith('/health')) return Response.json({ status: 'degraded', recognition: {
+        available, degraded: true, cpu_fallback_enabled: available, failure_reason: 'private CUDA detail'
+      } });
+      return new Response('{}', { status: 404 });
+    });
+    const status = await client.status();
+    assert.equal(status.reachable, true);
+    assert.equal(status.serviceState, 'degraded');
+    assert.equal(status.recognitionAvailable, available);
+    assert.equal(status.nativeAvailable, false);
+    assert.doesNotMatch(JSON.stringify(status), /private CUDA/);
+  });
+}
+
 test('voice sanitizers omit internal service configuration', () => {
   assert.deepEqual(sanitizeConfig({ config: { brain: 'nestor', language: 'en', tts_provider: 'kokoro' }, static: { whisper_model: 'small' } }), {
     language: 'en', inputDevice: '', outputDevice: '', ttsProvider: 'kokoro', ttsVoice: '', ttsLanguageProfiles: [], whisperModel: 'small', running: false, applies: null

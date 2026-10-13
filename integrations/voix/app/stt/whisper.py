@@ -102,12 +102,17 @@ def _active_backend() -> tuple[str, str]:
 
 
 def backend_status() -> dict:
-    """Current recognition backend, including a CPU fallback; never loads a model."""
+    """Recognition routing state, not model readiness; never loads a model.
+
+    A disabled CPU fallback can leave a prospective CPU device in the legacy
+    field during GPU backoff. ``available`` distinguishes that refused route.
+    """
     with _state_lock:
         degraded = _prefer_cpu and settings.whisper_device != "cpu"
         return {
             "device": "cpu" if _prefer_cpu else settings.whisper_device,
             "compute_type": "int8" if _prefer_cpu else settings.whisper_compute_type,
+            "available": not degraded or settings.whisper_cpu_fallback,
             "degraded": degraded,
             "retry_after_seconds": math.ceil(max(0, _retry_at - time.monotonic())) if degraded else 0,
             "retrying": _retrying,

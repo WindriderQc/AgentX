@@ -67,6 +67,7 @@ def test_transient_cuda_failure_recovers_with_original_audio_and_settings(monkey
     assert transcribe()[0] == "Bonjour."
     status = whisper.backend_status()
     assert status["device"] == "cpu" and status["degraded"]
+    assert status["available"] is True
     assert status["failure_reason"] == "out_of_memory" and status["retry_after_seconds"] == 30
     assert transcribe()[0] == "Bonjour."
     assert [row[0] for row in seen] == ["cuda", "cpu", "cpu"]
@@ -80,7 +81,7 @@ def test_transient_cuda_failure_recovers_with_original_audio_and_settings(monkey
     else:
         assert all(np.array_equal(row[1], seen[0][1]) for row in seen)
     assert whisper.backend_status() == {
-        "device": "cuda", "compute_type": "int8_float16", "degraded": False,
+        "device": "cuda", "compute_type": "int8_float16", "available": True, "degraded": False,
         "retry_after_seconds": 0, "retrying": False, "consecutive_gpu_failures": 0,
         "failure_reason": None,
         "cpu_fallback_enabled": True,
@@ -135,6 +136,7 @@ def test_disabled_cpu_fallback_refuses_oom_and_backoff_without_loading_cpu(monke
             whisper.transcribe_path("sample.wav", language="fr")
         assert calls == ["cuda"], "backoff must not start a CPU decode or another GPU attempt"
     assert whisper.backend_status()["cpu_fallback_enabled"] is False
+    assert whisper.backend_status()["available"] is False
     with pytest.raises(whisper.RecognitionUnavailable): whisper.preload_model()
     assert whisper.warm() is None
     assert set(whisper._models) == set()
@@ -142,6 +144,7 @@ def test_disabled_cpu_fallback_refuses_oom_and_backoff_without_loading_cpu(monke
     assert whisper.transcribe_path("sample.wav", language="fr")[0] == "Bonjour."
     assert calls == ["cuda", "cuda"]
     assert whisper.backend_status()["degraded"] is False
+    assert whisper.backend_status()["available"] is True
 
 
 def test_disabled_cpu_fallback_also_applies_to_a_failed_preload(monkeypatch, runtime):
