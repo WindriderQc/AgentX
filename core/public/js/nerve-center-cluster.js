@@ -844,9 +844,13 @@
         });
     }
 
+    // Refresh, a pin change and its delayed reload can overlap: only the newest load renders.
+    let clusterLoad = 0;
+
     async function loadCluster() {
         const body = document.getElementById('sectionClusterBody');
         if (!body) return;
+        const load = ++clusterLoad;
 
         shared.renderSectionLoading(body, 'Loading cluster data...');
 
@@ -856,6 +860,7 @@
                 shared.fetchJson('/api/nerve-center/host-preferences'),
                 shared.fetchJson('/api/nerve-center/inference/gpu-status').catch(() => ({ data: [] }))
             ]);
+            if (load !== clusterLoad) return;
             const gpuByHost = new Map((gpuJson.data || []).map(row => [row.hostId, row]));
             const hostPrefs = hostPrefsJson.data || [];
             const prefByUrl = new Map(hostPrefs.map(p => [p.hostUrl, p]));
@@ -885,6 +890,7 @@
             // Occupancy over a window loads on its own and never holds the cards.
             void window.NerveCenterGpuOccupancy?.mount(body);
         } catch (err) {
+            if (load !== clusterLoad) return;
             console.error('[NerveCenter] loadCluster failed', err);
             shared.renderSectionError(body, `Failed to load cluster data: ${err.message}`);
         } finally {
