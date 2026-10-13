@@ -62,5 +62,51 @@ class NormalizeTicketIdsTest(unittest.TestCase):
         self.assertEqual(normalize_ticket_ids(values()), ("W-1", "W-2"))
 
 
+class NormalizeTicketIdsCaseInsensitiveTest(unittest.TestCase):
+    def test_default_keeps_uppercase_and_lowercase_distinct(self):
+        self.assertEqual(normalize_ticket_ids(["A", "a"]), ("A", "a"))
+
+    def test_case_insensitive_deduplicates_by_casefold(self):
+        self.assertEqual(
+            normalize_ticket_ids(["A", "a", "A"], case_insensitive=True),
+            ("A",),
+        )
+
+    def test_case_insensitive_preserves_first_occurrence_spelling_and_order(self):
+        self.assertEqual(
+            normalize_ticket_ids(
+                ["W-1", "w-1", " W-2 ", "w-2", "W-3"], case_insensitive=True
+            ),
+            ("W-1", "W-2", "W-3"),
+        )
+
+    def test_case_insensitive_collapses_german_sharp_s_and_ssd(self):
+        self.assertEqual(
+            normalize_ticket_ids(
+                ["Straße", "STRASSE", "strasse"], case_insensitive=True
+            ),
+            ("Straße",),
+        )
+
+    def test_case_insensitive_accepts_generator_input(self):
+        def values():
+            yield "  a "
+            yield "A"
+            yield "b"
+            yield " B "
+
+        self.assertEqual(
+            normalize_ticket_ids(values(), case_insensitive=True),
+            ("a", "b"),
+        )
+
+    def test_rejects_non_bool_case_insensitive_flag(self):
+        for flag in ("true", 0, 1, "A", ["A"], {"flag": True}):
+            with self.assertRaises(TypeError):
+                normalize_ticket_ids(["A"], case_insensitive=flag)
+        with self.assertRaises(TypeError):
+            normalize_ticket_ids(["A"], case_insensitive=None)
+
+
 if __name__ == "__main__":
     unittest.main()

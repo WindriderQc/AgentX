@@ -5,7 +5,7 @@ part of the product surface and must not be merged or deployed.
 """
 
 
-def normalize_ticket_ids(values):
+def normalize_ticket_ids(values, *, case_insensitive=False):
     """Return a tuple of normalized ticket id strings.
 
     Each entry must be a string: surrounding whitespace is stripped, empty or
@@ -14,7 +14,17 @@ def normalize_ticket_ids(values):
     to strings (no integers, no ``None``): a non-string entry raises
     ``TypeError``. An empty iterable returns ``()``. Entries are not parsed
     as integers and the result is never sorted.
+
+    ``case_insensitive`` is a keyword-only flag. With the default ``False``,
+    ids are compared exactly after trimming. When ``True``, duplicates are
+    detected using Unicode case folding (``str.casefold``) while the result
+    keeps the trimmed spelling and position of the first occurrence. The flag
+    must be a bool: any other type raises ``TypeError``.
     """
+    if not isinstance(case_insensitive, bool):
+        raise TypeError(
+            "case_insensitive must be a bool, got {!r}".format(type(case_insensitive).__name__)
+        )
     normalized = []
     seen = set()
     for value in values:
@@ -25,8 +35,9 @@ def normalize_ticket_ids(values):
         trimmed = value.strip()
         if not trimmed:
             continue
-        if trimmed in seen:
+        key = trimmed.casefold() if case_insensitive else trimmed
+        if key in seen:
             continue
-        seen.add(trimmed)
+        seen.add(key)
         normalized.append(trimmed)
     return tuple(normalized)
