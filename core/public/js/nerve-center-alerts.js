@@ -260,26 +260,40 @@
         };
     }
 
+    // Alert and rule actions report a failure instead of dropping it, and a
+    // control cannot fire twice while its request is in flight.
+    async function act(control, work) {
+        if (control && control.disabled) return;
+        if (control) control.disabled = true;
+        try {
+            await work();
+        } catch (err) {
+            window.AgentXUtils?.showToast?.(`Alert action failed: ${err.message}`, 'error');
+        } finally {
+            if (control) control.disabled = false;
+        }
+    }
+
     function attachAlertHandlers(body) {
         body.querySelectorAll('[data-ack]').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                await shared.fetchJson(`/api/alerts/${btn.dataset.ack}/acknowledge`, {
+            btn.addEventListener('click', () => act(btn, async () => {
+                await shared.fetchJson(`/api/alerts/${encodeURIComponent(btn.dataset.ack)}/acknowledge`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ acknowledgedBy: 'nerve-center' }),
                 });
                 loadAlerts();
-            });
+            }));
         });
         body.querySelectorAll('[data-resolve]').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                await shared.fetchJson(`/api/alerts/${btn.dataset.resolve}/resolve`, {
+            btn.addEventListener('click', () => act(btn, async () => {
+                await shared.fetchJson(`/api/alerts/${encodeURIComponent(btn.dataset.resolve)}/resolve`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ resolvedBy: 'nerve-center', method: 'manual' }),
                 });
                 loadAlerts();
-            });
+            }));
         });
     }
 
@@ -291,24 +305,29 @@
         // Seed defaults link
         const seedLink = document.getElementById('nc-seed-defaults');
         if (seedLink) {
-            seedLink.addEventListener('click', async (e) => {
+            seedLink.addEventListener('click', (e) => {
                 e.preventDefault();
-                await shared.fetchJson('/api/alerts/rules/seed-defaults', { method: 'POST' });
-                loadAlerts();
+                act(null, async () => {
+                    await shared.fetchJson('/api/alerts/rules/seed-defaults', { method: 'POST' });
+                    loadAlerts();
+                });
             });
         }
 
         // Bulk-resolve old alerts
-        document.getElementById('nc-bulk-resolve-btn')?.addEventListener('click', async () => {
+        const bulkButton = document.getElementById('nc-bulk-resolve-btn');
+        bulkButton?.addEventListener('click', () => {
             if (!confirm('Resolve all active alerts older than 7 days?')) return;
-            const result = await shared.fetchJson('/api/alerts/bulk-resolve', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ olderThanDays: 7 }),
+            act(bulkButton, async () => {
+                const result = await shared.fetchJson('/api/alerts/bulk-resolve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ olderThanDays: 7 }),
+                });
+                const count = result?.data?.resolved || 0;
+                window.AgentXUtils?.showToast?.(count > 0 ? `Resolved ${count} old alert(s).` : 'No alert older than 7 days.', 'info');
+                loadAlerts();
             });
-            const count = result?.data?.resolved || 0;
-            if (count > 0) alert(`Resolved ${count} old alert(s).`);
-            loadAlerts();
         });
 
         // Add rule button
@@ -336,34 +355,33 @@
         });
 
         // Save
-        document.getElementById('nc-rule-save')?.addEventListener('click', async () => {
+        const saveButton = document.getElementById('nc-rule-save');
+        saveButton?.addEventListener('click', () => act(saveButton, async () => {
             const values = getEditorValues();
-            if (!values.ruleId || !values.name) return;
-
-            try {
-                if (editingRuleId) {
-                    await shared.fetchJson(`/api/alerts/rules/${encodeURIComponent(editingRuleId)}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(values),
-                    });
-                } else {
-                    await shared.fetchJson('/api/alerts/rules', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(values),
-                    });
-                }
-                editor.style.display = 'none';
-                loadAlerts();
-            } catch (err) {
-                console.error('[Alerts] Failed to save rule:', err);
+            if (!values.ruleId || !values.name) {
+                document.getElementById(values.ruleId ? 'nc-rule-name' : 'nc-rule-id')?.focus();
+                throw new Error('a rule needs an ID and a name');
             }
-        });
+            if (editingRuleId) {
+                await shared.fetchJson(`/api/alerts/rules/${encodeURIComponent(editingRuleId)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(values),
+                });
+            } else {
+                await shared.fetchJson('/api/alerts/rules', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(values),
+                });
+            }
+            editor.style.display = 'none';
+            loadAlerts();
+        }));
 
         // Toggle enabled/disabled
         body.querySelectorAll('.nc-rule-toggle').forEach(btn => {
-            btn.addEventListener('click', async () => {
+            btn.addEventListener('click', () => act(btn, async () => {
                 const ruleId = btn.dataset.rule;
                 const nowEnabled = btn.dataset.enabled === 'true';
                 await shared.fetchJson(`/api/alerts/rules/${encodeURIComponent(ruleId)}`, {
@@ -372,7 +390,7 @@
                     body: JSON.stringify({ enabled: !nowEnabled }),
                 });
                 loadAlerts();
-            });
+            }));
         });
 
         // Edit
@@ -407,8 +425,10 @@
                     description: `Delete alert rule “${ruleId}”? Built-in rules remain protected, but a custom rule cannot be recovered.`
                 });
                 if (!headers) return;
-                await shared.fetchJson(`/api/alerts/rules/${encodeURIComponent(ruleId)}`, { method: 'DELETE', headers });
-                loadAlerts();
+                await act(btn, async () => {
+                    await shared.fetchJson(`/api/alerts/rules/${encodeURIComponent(ruleId)}`, { method: 'DELETE', headers });
+                    loadAlerts();
+                });
             });
         });
     }
