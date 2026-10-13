@@ -632,7 +632,7 @@
     }
 
     function showPinError(control, error) {
-        const panel = control.closest('.nc-pinned-panel');
+        const panel = control.closest('.nc-pinned-panel') || control.parentElement;
         if (!panel) return;
         let message = panel.querySelector('.nc-pin-error');
         if (!message) {
@@ -661,34 +661,38 @@
                     }
                 } catch (err) {
                     showPinError(select, err);
+                    window.NerveCenterCluster?.loadCluster();
                 }
             });
         });
 
         // Mutate one entry on the server. Sending a stale complete list here
         // could overwrite another operator's addition or the embedding pin.
-        document.querySelectorAll('.nc-pref-keepalive-select').forEach(select => {
-            select.addEventListener('change', async () => {
-                try {
-                    await shared.fetchJson(`/api/nerve-center/host-preferences/${encodeURIComponent(select.dataset.hostUrl)}/pin`, {
-                        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ model: select.dataset.model, keepAlive: Number(select.value) })
-                    });
-                    window.NerveCenterCluster?.loadCluster();
-                } catch (err) { showPinError(select, err); }
+        // A pin change reloads and verifies every pin in VRAM, which can take a while:
+        // the control waits for the answer, and a refused value goes back to the saved one.
+        function patchPinOnChange(selector, field) {
+            document.querySelectorAll(selector).forEach(select => {
+                let committed = select.value;
+                select.addEventListener('change', async () => {
+                    select.disabled = true;
+                    try {
+                        await shared.fetchJson(`/api/nerve-center/host-preferences/${encodeURIComponent(select.dataset.hostUrl)}/pin`, {
+                            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ model: select.dataset.model, [field]: Number(select.value) })
+                        });
+                        committed = select.value;
+                        window.NerveCenterCluster?.loadCluster();
+                    } catch (err) {
+                        select.value = committed;
+                        showPinError(select, err);
+                    } finally {
+                        select.disabled = false;
+                    }
+                });
             });
-        });
-        document.querySelectorAll('.nc-pin-threads-select').forEach(select => {
-            select.addEventListener('change', async () => {
-                try {
-                    await shared.fetchJson(`/api/nerve-center/host-preferences/${encodeURIComponent(select.dataset.hostUrl)}/pin`, {
-                        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ model: select.dataset.model, numThread: Number(select.value) })
-                    });
-                    window.NerveCenterCluster?.loadCluster();
-                } catch (err) { showPinError(select, err); }
-            });
-        });
+        }
+        patchPinOnChange('.nc-pref-keepalive-select', 'keepAlive');
+        patchPinOnChange('.nc-pin-threads-select', 'numThread');
         document.querySelectorAll('.nc-pref-add-default, .nc-pref-remove-default').forEach(button => {
             button.addEventListener('click', async () => {
                 const hostUrl = button.dataset.hostUrl;
@@ -793,7 +797,7 @@
                     });
                     window.NerveCenterCluster?.loadCluster();
                 } catch (err) {
-                    console.error('Failed to clear pin:', err);
+                    showPinError(button, err);
                 } finally {
                     button.disabled = false;
                 }
@@ -817,7 +821,7 @@
                     });
                     setTimeout(() => window.NerveCenterCluster?.loadCluster(), 2000);
                 } catch (err) {
-                    console.error('Failed to swap model:', err);
+                    showPinError(button, err);
                 } finally {
                     button.disabled = false;
                     button.innerHTML = origHtml;
@@ -827,6 +831,7 @@
 
         document.querySelectorAll('.nc-pin-autorestore').forEach(checkbox => {
             checkbox.addEventListener('change', async () => {
+                checkbox.disabled = true;
                 try {
                     await shared.fetchJson(`/api/nerve-center/host-preferences/${encodeURIComponent(checkbox.dataset.hostUrl)}/pin`, {
                         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -834,6 +839,7 @@
                     });
                     window.NerveCenterCluster?.loadCluster();
                 } catch (err) { checkbox.checked = !checkbox.checked; showPinError(checkbox, err); }
+                finally { checkbox.disabled = false; }
             });
         });
     }
