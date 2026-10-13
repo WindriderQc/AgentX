@@ -260,6 +260,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     return data.session;
   }
   async function streamedTurn(session, text, signal, onDelta = () => {}, { turnId, attachmentIds, onNotice, onSayEnd } = {}) {
+    const turnLanguage = language.value === 'en' ? 'en' : 'fr';
     turnId ||= crypto.randomUUID();
     personalNotes.show(null);
     activeBrowserTurn = turnId; activity('turn'); brain.cancel(); turnSpeaker = null;
@@ -267,7 +268,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     let response;
     try {
       response = await fetch(`${sessionBase}/${encodeURIComponent(session.sessionId)}/turns/text`, {
-        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, language: language.value, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
+        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, language: turnLanguage, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
       if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || 'Conversation unavailable'); }
     } catch (error) { workflow?.stream(turnId, { type: signal.aborted ? 'interrupted' : 'error' }); throw error; }
     work?.follow(session.sessionId);
@@ -276,7 +277,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       const body = await response.json();
       const saved = body.data;
       if (saved?.reply) return saved.reply;
-      return { text: 'Ta demande est enregistrée. Je vérifie son résultat sans la relancer.', language: 'fr' };
+      return { text: turnLanguage === 'en' ? 'Your request is saved. I’m checking its result without running it again.'
+        : 'Ta demande est enregistrée. Je vérifie son résultat sans la relancer.', language: turnLanguage };
     }
     const reader = response.body.getReader(), decoder = new TextDecoder();
     let pending = '', answer = '', result, noticed = false, workAccepted = false;
@@ -314,7 +316,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
           ? 'Loading your Open model… your message is waiting here.'
           : 'Waiting for the current model work on inference-host…';
         // In a voice turn Nestor says it once, before the answer (#62).
-        if (event.phase === 'waiting_host' && !noticed) { noticed = true; activity('host-busy'); onNotice?.('Un instant, je termine un test en cours sur mon ordinateur.'); }
+        if (event.phase === 'waiting_host' && !noticed) { noticed = true; activity('host-busy'); onNotice?.(turnLanguage === 'en'
+          ? 'One moment, I’m finishing a test on my computer.' : 'Un instant, je termine un test en cours sur mon ordinateur.'); }
       }
       if (event.type === 'delta' && !interruptedTurns.has(turnId)) {
         answer += event.delta;

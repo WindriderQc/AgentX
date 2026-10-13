@@ -25,6 +25,19 @@ test('canonical acceptance replies without invoking either brain and preserves p
   assert.deepEqual(deltas, [answer.text]); assert.equal(settled, true);
 });
 
+test('verified background acknowledgments honor the turn language instead of re-detecting the request', async () => {
+  for (const [text, speechLanguage, phrase] of [
+    ['Please summarize my recent mail.', 'fr', /Ta demande de consultation est enregistrée/],
+    ['Résume mes courriels récents.', 'en', /Your consultation request is saved/]
+  ]) {
+    const input = request(); input.text = text; input.speechLanguage = speechLanguage;
+    input.acceptance.requestSha256 = hash(text);
+    const execute = createConversationExecutor({ agentClient: () => assert.fail('Must not dispatch'), inference: { execute: () => assert.fail('Must not infer') } });
+    const result = await execute(input);
+    assert.match(result.text, phrase); assert.equal(result.tools.acceptedWork.execution, 'pending');
+  }
+});
+
 test('foreign, changed, invented and erased acceptance cannot redispatch a consultation', async () => {
   for (const patch of [{ sessionId: randomUUID() }, { requestSha256: hash('other text') },
     { id: hash('invented') }, { authority: 'browser' }, { accepted: false }, null]) {

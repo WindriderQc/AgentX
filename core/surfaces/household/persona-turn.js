@@ -362,7 +362,7 @@ function createPersonaTurnHandler({
           guardianStreaming: true, maxOutputTokens: 1024 } : {}), pack: isOpening ? { ...pack, maxTokens: 180 }
           : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText,
           history: features.historyContext === false ? [] : guardianSession ? dedicatedGuardian.history(history) : history, streaming, channel: req.body?.channel,
-          conversationFeatures: features,
+          conversationFeatures: features, ...(preferredSpeechLanguage ? { speechLanguage: preferredSpeechLanguage } : {}),
           ...(acceptedTaskWork ? { readAcceptedTaskWork: () => conversationWorks.taskAcceptance(entry.workId) } : {}),
           ...(acceptedNativeWork ? { readAcceptedNativeWork: () => conversationWorks.nativeAcceptance(entry.workId) } : {}),
           attachments: entry.attachments, attachmentStore,
