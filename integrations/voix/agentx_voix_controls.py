@@ -35,13 +35,12 @@ async def transcriptions_with_controls(request: Request):
     if not raw:
         return JSONResponse({"error": "empty audio"}, status_code=400)
     language = language or "auto"
-    # The command check and the general transcription run at once: a request
-    # waits for the longer of the two, not for their sum.
+    # Controls stay independent of Whisper's GPU availability and decode queue.
     command, transcription, elapsed_ms = await recognize(
         asyncio.get_running_loop(), lambda: control.classify(raw), lambda: _transcribe_bytes(raw, filename, language))
     if command:
         # This structured control cannot become a user request or a spoken
-        # acknowledgement: the transcription started beside it is dropped unread.
+        # acknowledgement. No general transcription has been started.
         return JSONResponse({"text": "", "control": command, "language": language,
                              "model": "vosk-command", "sttMs": elapsed_ms})
     text, _ = transcription

@@ -26,31 +26,19 @@ def is_stop_result(results):
     return bool(words) and all(word.get("conf", 0) >= 0.8 for word in words)
 
 
-def _unread(future):
-    # A dropped transcription is never read; its failure must not surface later.
-    if not future.cancelled():
-        future.exception()
-
-
 async def recognize(loop, classify, transcribe, clock=time.perf_counter):
-    """Check for a standalone command while general transcription already runs.
+    """Check the bounded CPU command detector before starting transcription.
 
-    Both run off the event loop at once, so an ordinary request waits for the
-    longer of the two instead of their sum. A command wins: the transcription
-    is dropped unread and can never become a user request. Returns
-    (command, transcription, elapsed_ms).
+    A standalone control never loads or queues the general speech model. Dropping
+    an executor future cannot stop its decoder: it would keep occupying the GPU
+    or the serial transcription lock after a Stop had already been answered.
+    Both calls stay off the event loop. Returns (command, transcription, elapsed_ms).
     """
     started = clock()
-    transcription = loop.run_in_executor(None, transcribe)
-    try:
-        command = await loop.run_in_executor(None, classify)
-    except BaseException:
-        transcription.add_done_callback(_unread)
-        raise
+    command = await loop.run_in_executor(None, classify)
     if command:
-        transcription.add_done_callback(_unread)
         return command, None, round((clock() - started) * 1000)
-    result = await transcription
+    result = await loop.run_in_executor(None, transcribe)
     return None, result, round((clock() - started) * 1000)
 
 

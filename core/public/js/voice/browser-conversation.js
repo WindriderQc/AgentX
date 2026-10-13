@@ -469,7 +469,8 @@
       if (turn.monitoring || !this.audio.canInterrupt || this.selection.interruption === false || !turn.local && !this.io.interrupt) return;
       turn.monitoring = true;
       this.audio.listen((blob, capture) => this.exchange(blob, turn.epoch, capture), () => {
-        this.warmRecognition();
+        // A Stop or speaker echo must not launch GPU work before the bounded
+        // control detector has heard the complete utterance.
         this.captureFollowup = true;
         // Standalone consumers can adopt the optional hold asset separately.
         if (this.state === 'speaking' && !this.audio.holdPlayback) { this.interrupt(turn); return; }
