@@ -74,6 +74,60 @@ describe('POST /api/inference/embed — dead-host failover', () => {
     jest.clearAllMocks();
     inferenceRouter._resetEmbedLivenessForTests();
     delete process.env.REQUIRE_PROFILED_MODELS;
+    delete process.env.AGENTX_EMBEDDING_HOST_CHAIN;
+  });
+
+  it('uses the configured chain instead of the routed host and other available hosts', async () => {
+    process.env.AGENTX_EMBEDDING_HOST_CHAIN = '["primary"]';
+    fetch.mockImplementation(async url => url.includes('/api/tags')
+      ? { ok: true, status: 200 }
+      : { ok: true, status: 200, text: async () => JSON.stringify({ embeddings: [[0.8]] }) });
+    const response = await request(app).post('/api/inference/embed')
+      .send({ model: 'nomic-embed-text:v1.5', prompt: 'probe' }).expect(200);
+    expect(response.headers['x-routed-host']).toBe('http://primary:11434');
+    expect(fetch.mock.calls.every(([url]) => url.startsWith('http://primary:11434/'))).toBe(true);
+    expect(recordInference).toHaveBeenCalledWith(expect.objectContaining({
+      routeDecision: expect.objectContaining({ primary: expect.objectContaining({ hostUrl: 'http://primary:11434' }) })
+    }));
+  });
+
+  it('does not load an excluded host when the configured chain is exhausted', async () => {
+    process.env.AGENTX_EMBEDDING_HOST_CHAIN = '["primary"]';
+    fetch.mockResolvedValue({ ok: false, status: 503 });
+    await request(app).post('/api/inference/embed')
+      .send({ model: 'nomic-embed-text:v1.5', prompt: 'probe' }).expect(502);
+    expect(fetch.mock.calls.every(([url]) => url.startsWith('http://primary:11434/'))).toBe(true);
+    expect(beginInferenceAdmission).not.toHaveBeenCalled();
+  });
+
+  it('deduplicates host aliases while preserving the configured fallback order', async () => {
+    process.env.AGENTX_EMBEDDING_HOST_CHAIN = '["primary","http://primary:11434/","secondary"]';
+    fetch.mockImplementation(async url => url.includes('/api/tags')
+      ? { ok: true, status: 200 }
+      : url.includes('primary')
+        ? { ok: false, status: 404, text: async () => '{"error":"model missing"}' }
+        : { ok: true, status: 200, text: async () => JSON.stringify({ embeddings: [[0.8]] }) });
+    const response = await request(app).post('/api/inference/embed')
+      .send({ model: 'nomic-embed-text:v1.5', prompt: 'probe' }).expect(200);
+    expect(response.headers['x-routed-host']).toBe('http://secondary:11434');
+    expect(fetch.mock.calls.filter(([url]) => url.endsWith('/api/embed')).map(([url]) => url))
+      .toEqual(['http://primary:11434/api/embed', 'http://secondary:11434/api/embed']);
+  });
+
+  it.each(['[]', '["http://unconfigured:11434"]', '[null]', 'primary'])('refuses an invalid chain %s before contacting models', async chain => {
+    process.env.AGENTX_EMBEDDING_HOST_CHAIN = chain;
+    await request(app).post('/api/inference/embed')
+      .send({ model: 'nomic-embed-text:v1.5', prompt: 'probe' }).expect(500);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(beginInferenceAdmission).not.toHaveBeenCalled();
+  });
+
+  it('keeps an explicit allowlisted host override restricted to that host', async () => {
+    process.env.AGENTX_EMBEDDING_HOST_CHAIN = '["primary"]';
+    fetch.mockResolvedValue({ ok: false, status: 503 });
+    await request(app).post('/api/inference/embed')
+      .send({ model: 'nomic-embed-text:v1.5', prompt: 'probe', ollamaHost: 'secondary' }).expect(502);
+    expect(fetch.mock.calls.every(([url]) => url.startsWith('http://secondary:11434/'))).toBe(true);
   });
 
   it('fails over to a healthy host when the routed host is a black hole', async () => {

@@ -40,7 +40,7 @@ const { telemetryContextFromRequest } = require('../src/helpers/llmTelemetryCont
 const { beginInferenceAdmission } = require('../src/services/inferenceAdmissionService');
 const { trustedNestorConsumer } = require('../src/services/nestorConsumerAttribution');
 const alertService = require('../src/services/alertService');
-const { EMBED_TIMEOUT_MS, prepareEmbeddingPayload, isEmbedHostLive, emitEmbedHostFailure, isModelMissingResponse, _resetEmbedLiveness } = require('../src/services/embeddingHostChain');
+const { EMBED_TIMEOUT_MS, embeddingHostCandidates, prepareEmbeddingPayload, isEmbedHostLive, emitEmbedHostFailure, isModelMissingResponse, _resetEmbedLiveness } = require('../src/services/embeddingHostChain');
 
 const ragStore = getRagServiceClient();
 
@@ -156,10 +156,14 @@ router.post('/inference/embed', async (req, res) => {
         ? normalizeHostUrl(embedHostCheck.host)
         : normalizeHostUrl(getTargetForModel(model));
 
-    if (!target) {
+    let candidates;
+    try {
+        candidates = embeddingHostCandidates(target, Boolean(embedHostCheck.host));
+        target = candidates[0];
+    } catch (error) {
         return res.status(500).json({
             status: 'error',
-            message: 'No Ollama host configured for embeddings'
+            message: error.message
         });
     }
     const routedTarget = target;
@@ -178,13 +182,6 @@ router.post('/inference/embed', async (req, res) => {
             });
         }
     }
-
-    // Fall through configured hosts unless the caller explicitly pinned one.
-    const candidates = embedHostCheck.host
-        ? [target]
-        : [target, ...getHostUrls()
-            .map(normalizeHostUrl)
-            .filter(url => url && hostUrlKey(url) !== hostUrlKey(target))];
 
     /**
      * RouteDecision v1 on the embed path. Embeddings are the
