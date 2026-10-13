@@ -183,6 +183,25 @@ test('the instance-qualified spoken Stop endpoint is shared with PsyX without cr
   assert.deepEqual(await client.transcribe(Buffer.from('RIFF'), { contentType: 'audio/wav', language: 'fr' }), { text: '', control: 'stop', language: 'fr' });
 });
 
+test('PsyX preserves bounded recognition evidence without exposing arbitrary upstream fields', async () => {
+  const client = createVoiceClient(VOICE_CONFIG, async () => new Response(JSON.stringify({
+    text: 'Bonjour', language: 'fr', detectedLanguage: 'en', sttMs: 451.4,
+    model: 'effective-recognizer', effectiveModel: 'effective-recognizer', requestedModel: 'client-hint',
+    private: 'not-a-transcription-field',
+  })));
+  const result = await client.transcribe(Buffer.from('RIFF'), { contentType: 'audio/wav', language: 'fr' });
+  assert.deepEqual(result, { text: 'Bonjour', language: 'fr', detectedLanguage: 'en', sttMs: 451,
+    model: 'effective-recognizer', effectiveModel: 'effective-recognizer', requestedModel: 'client-hint' });
+});
+
+test('invalid recognition metadata remains absent rather than becoming invented values', async () => {
+  const client = createVoiceClient(VOICE_CONFIG, async () => new Response(JSON.stringify({
+    text: 'Bonjour', detectedLanguage: { private: true }, sttMs: -1, model: ['not-a-model'],
+  })));
+  assert.deepEqual(await client.transcribe(Buffer.from('RIFF'), { contentType: 'audio/wav', language: 'fr' }),
+    { text: 'Bonjour', language: 'fr' });
+});
+
 test('browser voice remains ready on the shared backup without reading or borrowing native device state', async t => {
   const before = { base: process.env.VOIX_BASE_URL, fallback: process.env.VOIX_FALLBACK_URL };
   process.env.VOIX_BASE_URL = VOICE_CONFIG.voice.baseUrl;
