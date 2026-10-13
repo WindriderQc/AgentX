@@ -5,7 +5,8 @@ const { personalVoice } = require('./conversation-agent');
 const hash = value => createHash('sha256').update(value).digest('hex');
 
 async function nativeWorkAcknowledgment(request) {
-  const { session, text, channel, readAcceptedNativeWork } = request;
+  const { text, channel, readAcceptedNativeWork } = request;
+  const session = request.canonicalSession || request.session;
   if (request.backend !== 'openclaw' || !personalVoice(session, channel) || session.inference?.open || session.modeId === 'open'
       || request.model || typeof readAcceptedNativeWork !== 'function') return null;
   const work = await readAcceptedNativeWork();

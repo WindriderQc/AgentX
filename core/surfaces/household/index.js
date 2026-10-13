@@ -232,7 +232,8 @@ function register(api) {
   const personas = express.Router();
   personas.use(standardJsonParser);
   personas.get('/private/agents', async (_req, res) => {
-    try { return envelope(res, configuredOpenClaw(conversationEnv) ? await nestorClient({ operation: 'agents' }) : { agents: [] }); }
+    try { const catalog = configuredOpenClaw(conversationEnv) ? await nestorClient({ operation: 'agents' }) : { agents: [] };
+      return envelope(res, { ...catalog, agents: catalog.agents.filter(agent => !agent.internal) }); }
     catch { return fail(res, 503, 'OpenClaw agents are unavailable.', 'CONVERSATION_AGENTS_UNAVAILABLE'); }
   });
   personas.get('/catalog', async (_req, res) => {

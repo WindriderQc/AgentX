@@ -1,0 +1,48 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { create } = require('../public/conversation-work');
+class Element {
+  constructor() { this.children = []; this.dataset = {}; }
+  append(...nodes) { this.children.push(...nodes); }
+  replaceChildren(...nodes) { this.children = nodes; }
+  remove() {}
+  querySelector(selector) { return this.children.find(node => '.' + node.className === selector); }
+}
+function fixture(items) {
+  const host = new Element(), stages = [], spoken = [], conversation = { session: { sessionId: 'owner-session' }, state: 'listening',
+    interject: async ({ text }, { onScheduled }) => { spoken.push(text); onScheduled(); return true; } };
+  global.document = { createElement: () => new Element() };
+  const feed = create({ host, base: '/sessions', getConversation: () => conversation, api: async (url, options) => {
+    if (url.includes('/receipt')) { const receipt = JSON.parse(options.body); stages.push(receipt.stage); return { claimToken: 'owned-claim' }; }
+    return { items, cursor: 1, hasMore: false };
+  }, pollMs: 60000 });
+  return { host, feed, stages, spoken, conversation };
+}
+const item = (id, automaticSpeech, classification = 'native_work') => ({ id, sessionId: 'owner-session', state: 'completed', classification,
+  result: { text: id, version: 1, deliveryId: id, presentation: 'available', automaticSpeech } });
+const tick = () => new Promise(resolve => setImmediate(resolve));
+
+test('a review is displayed without a second voice; explicit Listen still reads its exact retained result', async () => {
+  const h = fixture([item('alternate-story', false, 'native_review')]);
+  try {
+    h.feed.follow('owner-session'); await tick(); await h.feed.naturalPause();
+    assert.deepEqual(h.spoken, []); assert.deepEqual(h.stages, ['displayed']);
+    h.host.children[0].children.find(node => node.type === 'button').onclick(); await tick();
+    assert.deepEqual(h.spoken, ['alternate-story']); assert.deepEqual(h.stages, ['displayed', 'replay', 'started', 'completed']);
+  } finally { h.feed.dispose(); delete global.document; }
+});
+
+test('a manual review cannot block the awaited work result, which is spoken once through the conversation queue', async () => {
+  const h = fixture([item('review', false, 'native_review'), item('verified-work', true)]);
+  try {
+    h.feed.follow('owner-session'); await tick(); await h.feed.naturalPause(); await h.feed.poll();
+    assert.deepEqual(h.spoken, ['verified-work']); assert.equal(h.stages.filter(stage => stage === 'claim').length, 1);
+  } finally { h.feed.dispose(); delete global.document; }
+});
+
+test('an older review projection without the new flag cannot automatically speak', async () => {
+  const h = fixture([item('older-review', undefined, 'native_review')]);
+  try { h.feed.follow('owner-session'); await tick(); await h.feed.naturalPause(); assert.deepEqual(h.spoken, []); }
+  finally { h.feed.dispose(); delete global.document; }
+});

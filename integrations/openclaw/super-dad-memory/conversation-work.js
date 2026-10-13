@@ -23,7 +23,8 @@ export function registerConversationWork(api, { fetchImpl = fetch } = {}) {
       || ['main', 'family'].includes(config.conversationWorkAgentId)) return;
   const nativeCalls = new Map();
   const call = createConversationWorkClient({ baseUrl: config.agentxUrl, token: config.conversationWorkToken, fetchImpl });
-  const guard = createGuardianWorkGuard(call);
+  const guard = createGuardianWorkGuard(call, config.conversationGuardianAgentId !== config.conversationWorkAgentId
+    ? config.conversationGuardianAgentId : undefined);
   api.on('before_tool_call', async (event, context) => {
     if (!household(context)) return;
     const id = event.toolCallId || context.toolCallId, runId = event.runId || context.runId;

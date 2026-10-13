@@ -56,7 +56,7 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
       if (accepted) return accepted;
       if (personalRecaps && request.session?.packId === 'personal_operator' && request.conversationFeatures?.recapContext !== false) {
         const { recapContext } = require('../../src/services/conversationRecapService');
-        const confirmed = (await personalRecaps.read(request.session.sessionId)).recap || (await personalRecaps.latest())?.recap;
+        const confirmed = (await personalRecaps.read((request.canonicalSession || request.session).sessionId)).recap || (await personalRecaps.latest())?.recap;
         const context = recapContext(confirmed);
         if (context) request = { ...request, turnContext: [request.turnContext, context].filter(Boolean).join('\n\n') };
       }

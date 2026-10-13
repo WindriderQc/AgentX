@@ -99,3 +99,29 @@ test('acceptance, verified read and publication have different native receipts w
 test('the feature is absent until the instance supplies the native worker and private binding', () => {
   registerConversationWork({ pluginConfig: { agentxUrl: 'http://core.test' }, on() { assert.fail('Inactive hook'); }, registerTool() { assert.fail('Inactive tool'); } });
 });
+
+test('the dedicated guardian cannot execute tools even if its Core binding response is unavailable', async () => {
+  const { createGuardianWorkGuard } = await import('../guardian-work.js');
+  let calls = 0;
+  const guard = createGuardianWorkGuard(async () => { calls++; throw new Error('Unavailable'); }, 'nestor-guardian');
+  assert.equal((await guard(native('nestor-guardian'))).block, true);
+  assert.equal(calls, 0);
+  assert.equal(await guard(native('secretary')), undefined);
+});
+
+test('the guardian is available internally but marked for omission from the visible speaker catalog', async () => {
+  const continuity = continuityOperations({ config: { agents: { entries: { main: {}, 'nestor-guardian': {}, worker: {} } } },
+    workAgentId: 'worker', guardianAgentId: 'nestor-guardian' });
+  const catalog = await continuity({ operation: 'agents' });
+  assert.equal(catalog.agents.find(agent => agent.id === 'nestor-guardian').internal, true);
+  assert.equal(catalog.agents.find(agent => agent.id === 'main').internal, undefined);
+  assert.equal(catalog.agents.some(agent => agent.id === 'worker'), false);
+});
+
+test('a mistaken guardian id cannot remove Main tools or hide Main from the speaker catalog', async () => {
+  const { createGuardianWorkGuard } = await import('../guardian-work.js');
+  const guard = createGuardianWorkGuard(async () => { throw Object.assign(new Error('Ordinary Main'), { statusCode: 404 }); }, 'main');
+  assert.equal(await guard(native('main')), undefined);
+  const continuity = continuityOperations({ config: { agents: { entries: { main: {}, family: {} } } }, guardianAgentId: 'main' });
+  assert.equal((await continuity({ operation: 'agents' })).agents.find(agent => agent.id === 'main').internal, undefined);
+});

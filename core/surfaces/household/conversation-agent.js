@@ -86,10 +86,16 @@ function agentInstructions(session, persona, surface, mode, { soundPlayback = fa
 }
 
 function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, readImageOperation, settleMs = 20000, delegateMs = 300000, progressMs = 2000, streamGraceMs = 3000, streamDrainMs = 30000, evidenceReadMs = 10000 } = {}) {
-  return async ({ session, text, applicationEvent, currentContent, turnContext, turnDirective, instructions, history = [], model, channel, browserReply, maxOutputTokens, readAcceptedTaskWork, signal, onDelta = () => {}, onStarted = async () => {}, onSettled = async () => {}, onActivity = () => {} }) => {
+  return async ({ session, text, applicationEvent, currentContent, turnContext, turnDirective, instructions, history = [], model, channel, browserReply, maxOutputTokens, guardianStreaming = false, readAcceptedTaskWork, signal, onDelta = () => {}, onStarted = async () => {}, onSettled = async () => {}, onActivity = () => {} }) => {
     if (!env.OPENCLAW_GATEWAY_URL || !env.OPENCLAW_GATEWAY_TOKEN) throw new Error('Nestor agent is unavailable: the OpenClaw Gateway is not configured.');
     signal?.throwIfAborted();
     const sessionKey = sessionKeyFor(session);
+    // Only the explicitly installed tool-free guardian may speak append-only
+    // deltas. Complete Main still waits for its exact final native projection.
+    const liveGuardian = guardianStreaming && channel === 'voice' && !browserReply
+      && agentIdFor(session) === env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID
+      && !['main', 'family'].includes(agentIdFor(session));
+    let spoken = '', pendingSpeech = '', spokenItem;
     // A per-run model changes neither the native agent nor its history/tools.
     // Explicit Open selection always wins; other surfaces keep native policy.
     const secretaryRequest = personalVoice(session, channel) && requestsSecretary(text);
@@ -131,7 +137,9 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
     const phase = name => { phases[name] ??= Date.now() - requestedAt; };
     const deliver = (text, imageDelivery) => {
       phase('answer');
-      onDelta(text);
+      if (spoken && !text.startsWith(spoken)) throw Object.assign(new Error('The guardian rewrote its spoken answer. No second answer was played.'),
+        { code: 'GUARDIAN_STREAM_REPLACED' });
+      if (text.length > spoken.length) onDelta(text.slice(spoken.length));
       return { text, sessionKey, runId,
         tools: { status: evidence?.run || imageDelivery ? 'observed' : 'unavailable', authority: `openclaw/${agentIdFor(session)}`, runId,
           receipts: evidence?.receipts || [], run: evidence?.run || null, performedBy: nativePerformedBy(evidence, agentIdFor(session), runId),
@@ -267,6 +275,25 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
           if (!/^resp_[a-f0-9-]{36}$/.test(runId || '')) throw new Error('Nestor returned an invalid run identity.');
           await onStarted(sessionKey, runId);
           watching = true; watcher = watch();
+        }
+        if (liveGuardian && row.type === 'response.output_item.added' && row.item?.type === 'function_call') {
+          throw Object.assign(new Error('The conversational guardian attempted non-conversational output.'), { code: 'GUARDIAN_STREAM_INVALID' });
+        }
+        if (liveGuardian && row.type === 'response.output_text.delta') {
+          if (!runId || terminal || row.response_id && row.response_id !== runId
+              || typeof row.delta !== 'string' || spokenItem && row.item_id && spokenItem !== row.item_id
+              || row.output_index !== undefined && row.output_index !== 0) throw new Error('Invalid guardian speech stream.');
+          signal?.throwIfAborted();
+          spokenItem ||= row.item_id;
+          pendingSpeech += row.delta;
+          if (!spoken) pendingSpeech = pendingSpeech.trimStart();
+          // Native final-answer projection trims surrounding whitespace. Keep
+          // a trailing separator until the next word so completion matches it.
+          const chunk = pendingSpeech.trimEnd();
+          if (chunk) {
+            pendingSpeech = pendingSpeech.slice(chunk.length); spoken += chunk;
+            phase('firstDelta'); onDelta(chunk);
+          }
         }
         // Native Responses merges assistant tool preambles into output_text.
         // Keep it out of display, history and speech; final text is read from

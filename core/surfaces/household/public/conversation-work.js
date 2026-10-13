@@ -76,7 +76,8 @@
           || conversation.state !== 'listening' || conversation.activeTurn || conversation.turnPending
           || conversation.selection?.wakeWord && !conversation.wake.active()) return;
       const item = [...items.values()].find(row => row.result && (requested.has(identity(row))
-        || !attempted.has(identity(row)) && ['available', 'displayed', 'deferred'].includes(row.result.presentation)));
+        || row.result.automaticSpeech !== false && row.classification !== 'native_review'
+          && !attempted.has(identity(row)) && ['available', 'displayed', 'deferred'].includes(row.result.presentation)));
       if (item) await present(item, requested.has(identity(item)));
     }
     async function poll() {

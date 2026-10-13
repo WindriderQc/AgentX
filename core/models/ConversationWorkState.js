@@ -13,7 +13,7 @@ const schema = new mongoose.Schema({
   tools: [mongoose.Schema.Types.Mixed], events: [mongoose.Schema.Types.Mixed],
   nativeAdmissions: [mongoose.Schema.Types.Mixed],
   sequence: Number, delivery: mongoose.Schema.Types.Mixed,
-  erased: Boolean, reason: String, classification: String
+  erased: Boolean, reason: String, classification: String, foreground: String
 }, { versionKey: false, collection: 'conversation_work_states', minimize: false,
   writeConcern: { w: 'majority', j: true } });
 schema.index({ owner: 1, sessionId: 1, sequence: 1 });

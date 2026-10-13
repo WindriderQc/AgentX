@@ -86,14 +86,16 @@ export function nativeTurnProgress(history, sessionKey, runId) {
     });
 }
 
-export function continuityOperations({ workspace, config, resolveWorkspace, modelFor, readHistory, workAgentId }) {
+export function continuityOperations({ workspace, config, resolveWorkspace, modelFor, readHistory, workAgentId, guardianAgentId }) {
+  if (['main', 'family', workAgentId].includes(guardianAgentId)) guardianAgentId = undefined;
   return async request => {
     if (!request || typeof request !== "object" || Array.isArray(request)) throw invalid("Expected an object");
     const operation = request.operation;
     let result;
     if (operation === 'agents') {
       if (!config) throw new Error('Native agent configuration unavailable');
-      result = { agents: agentCatalog(config, modelFor).filter(agent => agent.id !== workAgentId),
+      result = { agents: agentCatalog(config, modelFor).filter(agent => agent.id !== workAgentId)
+        .map(agent => agent.id === guardianAgentId ? { ...agent, internal: true } : agent),
         capabilities: { isolatedWork: true, nativeReadBudget: true, nativeConversation: true } };
     } else if (operation === 'work_attempt') {
       const match = householdKey.exec(request.sessionKey || '');
