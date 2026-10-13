@@ -549,29 +549,49 @@ test('native model receipts charge cumulative budgets even when runner usage und
     .rejects.toMatchObject({ code: 'CODING_MODEL_BUDGET' });
 });
 
-test('Core model deadline aborts an uncompleted call without claiming termination or releasing another owner', async () => {
+test.each([
+  [1000, 'CODING_MODEL_BUDGET'],
+  [400, 'CODING_INFERENCE_COMPLETION_PENDING'],
+])('an unknown call after %ims refuses exactly %s and preserves its native owner', async (elapsedMs, expectedCode) => {
   await task(); await authorize('0001', { modelSeconds: 1 }); await enable(); const active = await launch();
   const claimed = await claimEligibleTask('0001', 'coding-team', new Date(), { automated: true, dispatchRequestId: active.requestId });
   await Task.updateOne({ pipelineId: '0001' }, { $set: { codingCapacity: { model: 'synthetic-model', admissionId: 'fixture', host: 'http://127.0.0.1:9' } } });
   const headers = { 'x-agentx-coding-task': '0001', 'x-agentx-coding-request': active.requestId,
     'x-agentx-coding-lease': claimed.automationLease.leaseId, 'x-agentx-coding-call': '10000000-0000-4000-8000-000000000001' };
   const inference = require('../../src/services/pipelineCodingInferenceService');
-  const call = await inference.prepare(headers, 'synthetic-model', new AbortController().signal);
-  await new Promise(resolve => call.options.signal.addEventListener('abort', resolve, { once: true }));
-  expect(call.options.signal.reason.code).toBe('CODING_MODEL_BUDGET');
-  await call.finish('unknown'); const durable = await Task.findOne({ pipelineId: '0001' }).lean();
-  expect(durable.codingAutonomy.runs[0].pendingInferences).toHaveLength(1);
-  expect(durable.codingAutonomy.runs[0].modelReceipts[0].state).toBe('unknown');
-  expect(durable.automationLease.leaseId).toBe(claimed.automationLease.leaseId); expect(durable.codingCapacity.admissionId).toBe('fixture');
-  // Node can fire a timeout just before its wall-clock deadline. An unknown
-  // receipt still fences another call even when a fraction of the budget remains.
-  await expect(inference.prepare({ ...headers, 'x-agentx-coding-call': '10000000-0000-4000-8000-000000000002' }, 'synthetic-model'))
-    .rejects.toMatchObject({ code: expect.stringMatching(/^CODING_(?:MODEL_BUDGET|INFERENCE_COMPLETION_PENDING)$/) });
-  const refused = await Task.findOne({ pipelineId: '0001' }).lean();
-  expect(refused.codingAutonomy.runs[0].modelReceipts).toHaveLength(1);
-  expect(refused.codingAutonomy.runs[0].pendingInferences).toHaveLength(1);
-  expect(refused.automationLease.leaseId).toBe(claimed.automationLease.leaseId);
-  expect(refused.codingCapacity.admissionId).toBe('fixture');
+  const startedAt = Date.now();
+  // Mongo checks out connections via nextTick; keep its IO and microtasks real.
+  // Only the wall clock and timeout used for the model deadline need advancing.
+  jest.useFakeTimers({ now: startedAt, doNotFake: ['nextTick', 'queueMicrotask',
+    'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval', 'performance', 'hrtime'] });
+  try {
+    const call = await inference.prepare(headers, 'synthetic-model', new AbortController().signal);
+    expect(call.options.codingDeadlineAt).toBe(startedAt + 1000);
+    expect(call.options.signal.aborted).toBe(false);
+    jest.advanceTimersByTime(elapsedMs);
+    expect(call.options.signal.aborted).toBe(elapsedMs === 1000);
+    if (elapsedMs === 1000) expect(call.options.signal.reason.code).toBe('CODING_MODEL_BUDGET');
+
+    await call.finish('unknown'); const durable = await Task.findOne({ pipelineId: '0001' }).lean();
+    const run = durable.codingAutonomy.runs[0];
+    expect(run.pendingInferences).toEqual([headers['x-agentx-coding-call']]);
+    expect(run.modelReceipts).toHaveLength(1);
+    expect(run.modelReceipts[0]).toMatchObject({ callId: headers['x-agentx-coding-call'], state: 'unknown' });
+    expect(new Date(run.modelReceipts[0].finishedAt) - new Date(run.modelReceipts[0].startedAt)).toBe(elapsedMs);
+    expect(run.modelReceipts[0].settlement).toBeUndefined();
+    expect(durable.automationLease.leaseId).toBe(claimed.automationLease.leaseId);
+    expect(durable.codingCapacity.admissionId).toBe('fixture');
+
+    await expect(inference.prepare({ ...headers, 'x-agentx-coding-call': '10000000-0000-4000-8000-000000000002' }, 'synthetic-model'))
+      .rejects.toMatchObject({ code: expectedCode });
+    const refused = await Task.findOne({ pipelineId: '0001' }).lean();
+    expect(refused.codingAutonomy.runs[0].modelReceipts).toEqual(run.modelReceipts);
+    expect(refused.codingAutonomy.runs[0].pendingInferences).toEqual(run.pendingInferences);
+    expect(refused.automationLease.leaseId).toBe(claimed.automationLease.leaseId);
+    expect(refused.codingCapacity.admissionId).toBe('fixture');
+  } finally {
+    jest.useRealTimers();
+  }
 });
 test('changed remote head becomes an explicit manual intervention and worker correction', async () => {
   await task(); await authorize(); await enable(); const first = await launch(); await complete(first);
