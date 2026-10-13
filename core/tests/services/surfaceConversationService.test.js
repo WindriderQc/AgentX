@@ -35,6 +35,28 @@ describe('surface conversations in the canonical Core store', () => {
     await expect(conversations.recordTurn(turn(session, { scopeId: 'family' }))).rejects.toMatchObject({ statusCode: 404 });
   });
 
+  test('trusted context reads preserve every turn beyond UI limits in canonical order', async () => {
+    const messages = [], ids = [];
+    for (let index = 0; index < 501; index++) {
+      const { inputText, replyText, ...audit } = turn(session, { inputText: `Question ${index}`, replyText: `Answer ${index}`,
+        createdAt: new Date(2000000 - index), outcome: index === 500 ? 'pending' : 'completed' });
+      ids.push(audit.traceId);
+      messages.push({ role: 'user', content: inputText, turnId: audit.traceId },
+        { role: 'assistant', content: replyText, turnId: audit.traceId, turn: audit });
+    }
+    await Conversation.findOneAndUpdate({ _id: session.conversationId }, { $push: { messages: { $each: messages } },
+      $set: { 'surfaceSession.turnCount': 501 } }, { runValidators: true });
+    const query = { sessionId: session.sessionId, packId: session.packId, scopeId: session.scopeId };
+    expect(await conversations.listTurns(query, { limit: 1000 })).toHaveLength(500);
+    const all = await conversations.readTurns(query);
+    expect(all.map(row => row.traceId)).toEqual(ids);
+    expect(all[0].inputText).toBe('Question 0'); expect(all.at(-1).replyText).toBe('Answer 500');
+    await expect(conversations.readTurns({ ...query, scopeId: 'family' })).rejects.toMatchObject({ statusCode: 404 });
+    await expect(conversations.readTurns({})).rejects.toMatchObject({ statusCode: 400 });
+    await conversations.deleteSession(query);
+    await expect(conversations.readTurns(query)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
   test('the server-selected image workshop stores 32000 UTF-16 input units verbatim while retaining other turn limits', async () => {
     const atelier = forSurface('image-workshop');
     const atelierSession = await atelier.createSession({ sessionId: randomUUID(), packId: 'atelier',

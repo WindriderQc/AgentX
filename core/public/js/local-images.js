@@ -2,16 +2,16 @@
 (() => {
   const $ = id => document.getElementById(id);
   const ACTIVE = ['queued', 'accepted', 'reserving', 'generating', 'archiving', 'restoring'];
-  const statuses = { queued: 'Image en file. Elle démarrera lorsque son créneau sera libre.', accepted: 'Demande enregistrée.', reserving: 'Préparation du GPU et des services qui le partagent.',
-    generating: 'Génération en cours…', archiving: 'Archivage de l’original…', restoring: 'Restitution des ressources aux services habituels…',
-    completed: 'Image prête, original archivé et ressources restituées.', cancelled: 'Génération annulée.', failed: 'La génération a échoué.',
-    unknown: 'État incertain : récupère cette opération avant une nouvelle demande.', archive_failed: 'Image calculée ; son archivage doit être repris.' };
+  const statuses = { queued: 'Image queued. It will start when its slot is free.', accepted: 'Request recorded.', reserving: 'Preparing the GPU and the services that share it.',
+    generating: 'Generating…', archiving: 'Archiving the original…', restoring: 'Returning resources to their usual services…',
+    completed: 'Image ready, original archived and resources returned.', cancelled: 'Generation cancelled.', failed: 'Generation failed.',
+    unknown: 'Uncertain state: recover this operation before a new request.', archive_failed: 'Image computed; its archiving must be resumed.' };
   let config, workshop, operation, origin = 'generation', pollTimer, request, selectedReference = null;
   let draftEpoch = 0, referenceEpoch = 0, pendingSubmit = false, history = [], shownDetails = null, guideReference = null;
   const detailsCache = new Map();
   let exportEpoch = 0;
   let draftExpert = null;
-  const mp = pixels => `${new Intl.NumberFormat('fr-CA', { maximumFractionDigits: 2 }).format(pixels / 1e6)} MP`;
+  const mp = pixels => `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(pixels / 1e6)} MP`;
   const dimensions = (w, h) => `${w} × ${h} px · ${mp(w * h)}`;
   const duration = ms => { const seconds = Math.round(ms / 1000); return seconds >= 60 ? `${Math.floor(seconds / 60)} min ${seconds % 60} s` : `${seconds} s`; };
   const locked = () => pendingSubmit || ACTIVE.includes(operation?.state) || operation?.state === 'unknown';
@@ -29,13 +29,13 @@
   const protectedComposition = globalThis.ImageProtectedComposition?.init({ getContext: () => ({ operation, details: shownDetails, locked: locked() }) });
   const currentRecipe = () => workshop?.profiles.find(p => p.id === $('image-profile').value) || config?.profiles.find(p => p.id === $('image-profile').value);
   const genericSizes = [...$('image-size').options].map(option => [option.value, option.textContent]);
-  const shape = (w, h) => w === h ? 'Carré' : w > h ? 'Paysage' : 'Portrait';
+  const shape = (w, h) => w === h ? 'Square' : w > h ? 'Landscape' : 'Portrait';
   const referenceCount = () => (selectedReference ? 1 : 0) + $('image-references').files.length + (guideReference ? 1 : 0);
   const layoutGuide = globalThis.ImageLayoutGuide?.init({
     getContext: () => { const [width, height] = $('image-size').value.split(',').map(Number);
       return { locked: locked(), width, height, referenceCount: referenceCount(), guideAttached: !!guideReference }; },
     onReference: value => {
-      if (locked() || referenceCount() - (guideReference ? 1 : 0) >= 2) throw new Error('Deux références au maximum, esquisse et parent compris.');
+      if (locked() || referenceCount() - (guideReference ? 1 : 0) >= 2) throw new Error('Two references at most, including the sketch and the parent.');
       guideReference = value; ++referenceEpoch; ++draftEpoch; draftExpert = null; updateFormMode();
     },
     onRemoveReference: () => { if (locked()) return; guideReference = null; ++referenceEpoch; ++draftEpoch; draftExpert = null; updateFormMode(); }
@@ -48,7 +48,7 @@
       textPolicy?.setValue(saved.textPolicy, saved.constraints);
       draftExpert = null; ++draftEpoch;
       $('image-prompt').value = saved.prompt; $('image-draft-source').hidden = true;
-      $('image-status').textContent = 'Brief enregistré récupéré. Vérifie les réglages et rejoins les références si nécessaire.';
+      $('image-status').textContent = 'Saved brief recovered. Check the settings and reattach references if needed.';
       controls(); $('image-prompt').focus();
     },
     getContext: () => {
@@ -63,7 +63,7 @@
       if (policy) textPolicy?.setValue(policy);
       draftExpert = source;
       ++draftEpoch; $('image-prompt').value = prompt; $('image-draft-source').hidden = true;
-      $('image-status').textContent = 'Brief préparé avec imageX · Hermes. Vérifie les références et lance la création.';
+      $('image-status').textContent = 'Brief prepared with imageX · Hermes. Check the references and start the creation.';
       controls();
       $('image-prompt').focus();
     }
@@ -74,7 +74,7 @@
     apply: prompt => {
       draftExpert = null;
       ++draftEpoch; $('image-prompt').value = prompt; $('image-draft-source').hidden = true;
-      $('image-status').textContent = 'Canevas préparé. Remplace les passages entre crochets et vérifie les références avant de créer.';
+      $('image-status').textContent = 'Template prepared. Replace the bracketed passages and check the references before creating.';
       controls();
       $('image-prompt').focus();
     }
@@ -88,7 +88,7 @@
   async function api(route, body) {
     const r = await fetch(`/api/images${route}`, { method: body === undefined ? 'GET' : 'POST',
       ...(body !== undefined && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
-    const result = await r.json(); if (!r.ok || !result.ok) throw Object.assign(new Error(result.message || 'Service indisponible.'), { status: r.status }); return result;
+    const result = await r.json(); if (!r.ok || !result.ok) throw Object.assign(new Error(result.message || 'Service unavailable.'), { status: r.status }); return result;
   }
   function controls() {
     const block = locked();
@@ -105,12 +105,12 @@
     $('image-render-preview').hidden = !finalPrompt;
     $('image-render-prompt').textContent = finalPrompt;
     $('image-create').disabled = block || !config?.configured || !hasBrief || referenceCount() > 2 || !valid;
-    $('image-create-help').textContent = block ? 'Attends la fin de la demande en cours avant de lancer une autre image.'
-      : !config?.configured ? 'Le service de rendu local est indisponible.'
-      : !hasBrief ? 'Décris ton image dans le brief pour commencer.'
-      : referenceCount() > 2 ? 'Retire une référence : deux images au maximum.'
-      : !valid ? renderError || 'Prépare une version de 8 000 caractères maximum, contraintes comprises : affine le brief ou réduis-le ici.'
-      : 'Prêt à créer avec ce brief. Ce bouton lance le rendu local.';
+    $('image-create-help').textContent = block ? 'Wait for the current request to finish before starting another image.'
+      : !config?.configured ? 'The local render service is unavailable.'
+      : !hasBrief ? 'Describe your image in the brief to begin.'
+      : referenceCount() > 2 ? 'Remove a reference: two images at most.'
+      : !valid ? renderError || 'Prepare a version of at most 8,000 characters, constraints included: refine the brief or shorten it here.'
+      : 'Ready to create with this brief. This button starts the local render.';
     $('image-new').disabled = block || !config; $('image-use-reference').disabled = block; $('image-reuse-brief').disabled = block;
     for (const button of $('image-gallery').querySelectorAll('button')) button.disabled = block;
     starters?.refresh();
@@ -124,26 +124,26 @@
   }
   function updateFormMode() {
     const count = referenceCount();
-    $('image-compose-title').textContent = selectedReference ? 'Préparer une retouche' : count ? 'Création avec références' : 'Nouvelle création';
-    $('image-create-label').textContent = selectedReference ? 'Créer la retouche' : count ? 'Créer l’image avec références' : 'Créer une nouvelle image';
-    $('image-reference-help').textContent = count > 2 ? 'Deux références au maximum : retire une image avant l’envoi.'
-      : count ? `${count} référence${count > 1 ? 's' : ''} jointe${count > 1 ? 's' : ''}. Décris les changements et les éléments à préserver. La retouche peut aussi modifier des zones non demandées.`
-      : 'Sans référence jointe, le modèle crée une nouvelle composition.';
+    $('image-compose-title').textContent = selectedReference ? 'Prepare an edit' : count ? 'Creation with references' : 'New creation';
+    $('image-create-label').textContent = selectedReference ? 'Create the edit' : count ? 'Create the image with references' : 'Create a new image';
+    $('image-reference-help').textContent = count > 2 ? 'Two references at most: remove an image before sending.'
+      : count ? `${count} reference${count > 1 ? 's' : ''} attached. Describe the changes and the elements to preserve. The edit may also change areas you did not ask for.`
+      : 'Without an attached reference, the model creates a new composition.';
     const [w, h] = $('image-size').value.split(',').map(Number);
     $('image-format-help').textContent = count && currentRecipe()?.editingFraming === 'first-reference'
-      ? `Qwen reprend le cadrage de la première référence, avec une surface cible de ${mp(w * h)}. Les dimensions réelles seront indiquées au résultat.`
-      : `Format demandé : ${dimensions(w, h)}. Les dimensions réelles apparaissent sous l’image produite.`;
+      ? `Qwen keeps the framing of the first reference, with a target area of ${mp(w * h)}. The actual dimensions are shown with the result.`
+      : `Requested format: ${dimensions(w, h)}. The actual dimensions appear under the produced image.`;
     controls();
   }
   function renderRecipe() {
     const p = currentRecipe(); if (!p) return;
     $('image-recipe-summary').replaceChildren();
-    const heading = node('div', undefined, 'recipe-top'); heading.append(node('strong', p.label), node('span', p.steps ? `${p.steps} étapes` : 'Étapes non renseignées', 'recipe-pill'));
-    const summary = node('p', p.description || (p.steps <= 8 ? 'Recette à peu d’étapes pour explorer une idée ou préparer une retouche.' : 'Recette avec davantage d’étapes pour travailler une proposition. La cohérence des objets reste à examiner.'));
+    const heading = node('div', undefined, 'recipe-top'); heading.append(node('strong', p.label), node('span', p.steps ? `${p.steps} steps` : 'Steps not specified', 'recipe-pill'));
+    const summary = node('p', p.description || (p.steps <= 8 ? 'Few-step recipe to explore an idea or prepare an edit.' : 'Recipe with more steps to work on a proposal. Object consistency still needs review.'));
     const limits = node('div', undefined, 'recipe-limits');
-    limits.append(node('span', `Surface maximale : ${mp(p.maxPixels)}`), node('span', p.precision || 'Précision non renseignée'));
+    limits.append(node('span', `Maximum area: ${mp(p.maxPixels)}`), node('span', p.precision || 'Precision not specified'));
     $('image-recipe-summary').append(heading, summary, limits);
-    facts($('image-components'), [['Diffusion', p.diffusion], ['Encodeur', p.encoder], ['VAE', p.vae]]);
+    facts($('image-components'), [['Diffusion', p.diffusion], ['Encoder', p.encoder], ['VAE', p.vae]]);
     // A model with published sizes offers exactly those; the others keep the generic list.
     const previous = $('image-size').value, sizes = p.sizes?.length
       ? p.sizes.map(s => [`${s.width},${s.height}`, `${shape(s.width, s.height)} ${s.ratio} · ${s.width} × ${s.height} · ${mp(s.width * s.height)}`]) : genericSizes;
@@ -159,35 +159,35 @@
     protectedComposition?.refresh();
     if (!operation) return;
     const d = shownDetails, a = operation.artifact;
-    facts($('image-result-facts'), [['Modèle / recette', d?.recipe.label || operation.label || operation.profile],
-      ['Dimensions réelles', a ? dimensions(a.width, a.height) : null], ['Étapes', d?.recipe.steps],
-      ['Hôte enregistré', d?.worker?.label], ['GPU associé actuellement', d?.worker?.gpu],
-      ['Durée totale de l’opération', operation.timings?.totalMs != null ? duration(operation.timings.totalMs) : null]]);
+    facts($('image-result-facts'), [['Model / recipe', d?.recipe.label || operation.label || operation.profile],
+      ['Actual dimensions', a ? dimensions(a.width, a.height) : null], ['Steps', d?.recipe.steps],
+      ['Recorded host', d?.worker?.label], ['Currently associated GPU', d?.worker?.gpu],
+      ['Total operation time', operation.timings?.totalMs != null ? duration(operation.timings.totalMs) : null]]);
     $('image-result-facts').hidden = !a;
     if (!d) return;
-    $('image-saved-prompt').textContent = d.request.prompt || 'Brief non disponible.';
-    facts($('image-saved-recipe'), [['Format demandé', d.request.width && d.request.height ? dimensions(d.request.width, d.request.height) : null],
-      ['Recette enregistrée', d.recipe.declaredIdentity?.id], ['Version enregistrée', d.recipe.declaredIdentity?.version],
-      ['Graphe préparé (SHA-256)', d.execution?.graphSha256],
-      ['Graine', d.request.seed], ['Diffusion', d.recipe.diffusion], ['Encodeur', d.recipe.encoder], ['VAE', d.recipe.vae],
-      ['Précision', d.recipe.precision], ['Archive', d.archivePath]]);
+    $('image-saved-prompt').textContent = d.request.prompt || 'Brief not available.';
+    facts($('image-saved-recipe'), [['Requested format', d.request.width && d.request.height ? dimensions(d.request.width, d.request.height) : null],
+      ['Recorded recipe', d.recipe.declaredIdentity?.id], ['Recorded version', d.recipe.declaredIdentity?.version],
+      ['Prepared graph (SHA-256)', d.execution?.graphSha256],
+      ['Seed', d.request.seed], ['Diffusion', d.recipe.diffusion], ['Encoder', d.recipe.encoder], ['VAE', d.recipe.vae],
+      ['Precision', d.recipe.precision], ['Archive', d.archivePath]]);
     const parent = d.lineage?.parent;
     if (parent) {
-      const row = node('div'), value = node('dd'), link = node('a', 'Consulter l’original choisi'), preview = node('img');
+      const row = node('div'), value = node('dd'), link = node('a', 'View the chosen original'), preview = node('img');
       link.href = `/images?operation=${encodeURIComponent(parent.operationId)}`;
       preview.src = `/api/images/operations/${encodeURIComponent(parent.operationId)}/image`;
-      preview.alt = 'Original parent de cette retouche'; preview.loading = 'lazy'; preview.width = 96;
+      preview.alt = 'Parent original of this edit'; preview.loading = 'lazy'; preview.width = 96;
       value.append(link, preview, node('span', dimensions(parent.width, parent.height)));
-      row.append(node('dt', 'Image parent enregistrée'), value); $('image-saved-recipe').append(row);
+      row.append(node('dt', 'Recorded parent image'), value); $('image-saved-recipe').append(row);
     }
     $('image-result-details').hidden = false;
     if (d.expert) {
-      const row = node('div'), value = node('dd'), link = node('a', 'Brief préparé avec imageX · Hermes');
+      const row = node('div'), value = node('dd'), link = node('a', 'Brief prepared with imageX · Hermes');
       link.href = `/images?expertSession=${encodeURIComponent(d.expert.sessionId)}#imagex`;
-      value.append(link, node('span', d.expert.promptEdited ? ' · prompt ajusté après la proposition' : ' · prompt proposé par Hermes'));
+      value.append(link, node('span', d.expert.promptEdited ? ' · prompt adjusted after the proposal' : ' · prompt proposed by Hermes'));
       row.append(node('dt', 'Collaboration'), value); $('image-saved-recipe').append(row);
     }
-    $('image-result-note').textContent = 'La durée totale inclut la préparation, le calcul, l’archivage et la restitution ; ces temps ne sont pas détaillés séparément dans ce reçu. Le matériel affiché vient de la configuration actuelle associée à l’hôte enregistré.';
+    $('image-result-note').textContent = 'The total time includes preparation, computation, archiving and restoration; this receipt does not break these times down separately. The hardware shown comes from the current configuration associated with the recorded host.';
     $('image-result-note').hidden = false;
   }
   async function loadDetails(op) {
@@ -206,22 +206,22 @@
     const op = operation, epoch = ++exportEpoch;
     if (op?.state !== 'completed' || !op.runtimeRestored) return;
     $('image-export-prepare').disabled = true; $('image-export-links').replaceChildren();
-    $('image-export-status').textContent = 'Vérification des fichiers archivés…';
+    $('image-export-status').textContent = 'Checking the archived files…';
     try {
       const url = `/api/images/operations/${encodeURIComponent(op.id)}/export`;
       const response = await fetch(url, { method: 'GET' }), manifest = await response.json();
-      if (!response.ok) throw new Error(manifest.message || 'Cet export est indisponible.');
+      if (!response.ok) throw new Error(manifest.message || 'This export is unavailable.');
       if (epoch !== exportEpoch || operation?.id !== op.id) return;
       const list = node('ul'), add = (label, href, filename) => {
         const row = node('li'), link = node('a', label); link.href = href; link.download = filename; row.append(link); list.append(row);
       };
-      add('Manifeste de la recette', url, 'image-recipe.json');
+      add('Recipe manifest', url, 'image-recipe.json');
       for (const part of manifest.parts) {
-        if (!/^(graph\.json|output\.(png|jpg)|reference-[01]-(source\.(png|jpg)|worker\.png))$/.test(part.name)) throw new Error('Liste de fichiers invalide.');
+        if (!/^(graph\.json|output\.(png|jpg)|reference-[01]-(source\.(png|jpg)|worker\.png))$/.test(part.name)) throw new Error('Invalid file list.');
         add(part.name, `${url}/parts/${encodeURIComponent(part.name)}`, part.name);
       }
       $('image-export-links').replaceChildren(list);
-      $('image-export-status').textContent = 'Fichiers vérifiés. Télécharge le manifeste et les pièces que tu souhaites conserver.';
+      $('image-export-status').textContent = 'Files verified. Download the manifest and the parts you want to keep.';
     } catch (error) { if (epoch === exportEpoch) $('image-export-status').textContent = error.message; }
     finally { if (epoch === exportEpoch) $('image-export-prepare').disabled = false; }
   }
@@ -229,11 +229,11 @@
     operation = op; origin = source;
     const busy = ACTIVE.includes(op.state), ready = op.state === 'completed' && op.runtimeRestored === true && op.artifact;
     resetExport(ready);
-    $('image-result-title').textContent = busy ? 'Ton image prend forme' : source === 'library' ? 'Image de la bibliothèque' : 'Résultat de la demande';
-    $('image-result-origin').textContent = source === 'library' ? 'BIBLIOTHÈQUE' : source === 'continuation' ? 'DEPUIS LA CONVERSATION' : 'CETTE DEMANDE';
+    $('image-result-title').textContent = busy ? 'Your image is taking shape' : source === 'library' ? 'Library image' : 'Request result';
+    $('image-result-origin').textContent = source === 'library' ? 'LIBRARY' : source === 'continuation' ? 'FROM THE CONVERSATION' : 'THIS REQUEST';
     $('image-result-origin').hidden = false;
-    $('image-preview-help').textContent = source === 'library' ? 'Consultation d’une image conservée. Ton brief et tes références restent inchangés.' : 'Le résultat est disponible après archivage et restitution des ressources.';
-    if (source !== 'library' || busy || op.state === 'unknown') $('image-status').textContent = `${statuses[op.state] || op.state}${op.error ? ' ' + op.error : ''}${busy && op.cancelRequested ? ' · Annulation demandée…' : ''}`;
+    $('image-preview-help').textContent = source === 'library' ? 'Viewing a kept image. Your brief and references stay unchanged.' : 'The result is available after archiving and returning resources.';
+    if (source !== 'library' || busy || op.state === 'unknown') $('image-status').textContent = `${statuses[op.state] || op.state}${op.error ? ' ' + op.error : ''}${busy && op.cancelRequested ? ' · Cancellation requested…' : ''}`;
     // Archiving and restoring always finish; once asked, cancelling again does nothing.
     $('image-cancel').hidden = !busy || ['archiving', 'restoring'].includes(op.state); $('image-cancel').disabled = Boolean(op.cancelRequested);
     $('image-recover').hidden = !['unknown', 'archive_failed'].includes(op.state);
@@ -250,7 +250,7 @@
     clearTimeout(pollTimer);
     if (busy) pollTimer = setTimeout(poll, 1500);
     else { void loadHistory(); if (ready) void loadDetails(op).then(d => { if (operation?.id !== op.id) return; shownDetails = d; renderResultFacts(); }).catch(() => {
-      if (operation?.id !== op.id) return; $('image-result-note').textContent = 'La recette enregistrée ne peut pas être chargée pour le moment.'; $('image-result-note').hidden = false;
+      if (operation?.id !== op.id) return; $('image-result-note').textContent = 'The recorded recipe cannot be loaded right now.'; $('image-result-note').hidden = false;
     }); }
   }
   async function applyDraft(op) {
@@ -258,17 +258,17 @@
     try {
       const { draft } = await api(`/operations/${encodeURIComponent(op.id)}/draft`);
       if (epoch !== draftEpoch || operation?.id !== op.id) return;
-      if (!config.profiles.some(p => p.id === draft.profile)) throw new Error('Cette ancienne recette n’est plus disponible. Son brief reste consultable sous l’image.');
+      if (!config.profiles.some(p => p.id === draft.profile)) throw new Error('This older recipe is no longer available. Its brief remains viewable under the image.');
       constraints?.setValue(draft.constraints);
       textPolicy?.setValue(draft.textPolicy, draft.constraints);
       draftExpert = op.expert ? { sessionId: op.expert.sessionId, turnId: op.expert.turnId } : null;
       $('image-prompt').value = draft.visualPrompt ?? draft.prompt; $('image-seed').value = draft.seed ?? ''; $('image-profile').value = draft.profile; renderRecipe();
       const size = `${draft.width},${draft.height}`, p = currentRecipe();
       if (![...$('image-size').options].some(o => o.value === size) && [draft.width, draft.height].every(x => Number.isInteger(x) && x >= 256 && x <= (p.maxEdge || 2048) && x % 32 === 0) && draft.width * draft.height <= p.maxPixels) {
-        const option = node('option', `Format précédent · ${dimensions(draft.width, draft.height)}`); option.value = size; $('image-size').append(option);
+        const option = node('option', `Previous format · ${dimensions(draft.width, draft.height)}`); option.value = size; $('image-size').append(option);
       }
       if ([...$('image-size').options].some(o => o.value === size && !o.disabled)) $('image-size').value = size;
-      $('image-draft-source').textContent = `Brief et réglages repris depuis la création du ${new Date(op.createdAt).toLocaleDateString('fr-CA')}. L’image consultée devient une référence seulement avec le bouton « Joindre cette image ». Les références déjà jointes restent en place.`;
+      $('image-draft-source').textContent = `Brief and settings reused from the creation of ${new Date(op.createdAt).toLocaleDateString('en-US')}. The viewed image becomes a reference only with the "Attach this image" button. References already attached stay in place.`;
       $('image-draft-source').hidden = false; request = null; updateFormMode();
     } catch (error) { if (epoch === draftEpoch) $('image-status').textContent = error.message; }
   }
@@ -282,33 +282,33 @@
     catch (error) {
       if (operation?.id !== id) return;
       // A 4xx will not heal by retrying (unknown or removed request): stop and unlock the form.
-      if (error.status >= 400 && error.status < 500) { operation = null; controls(); $('image-status').textContent = `Cette demande n’est plus suivie : ${error.message}`; return; }
-      $('image-status').textContent = 'Connexion interrompue. Vérification de la demande enregistrée…'; pollTimer = setTimeout(poll, 5000);
+      if (error.status >= 400 && error.status < 500) { operation = null; controls(); $('image-status').textContent = `This request is no longer tracked: ${error.message}`; return; }
+      $('image-status').textContent = 'Connection interrupted. Checking the recorded request…'; pollTimer = setTimeout(poll, 5000);
     }
   }
   function renderHistory() {
     const query = $('image-search').value.trim().toLocaleLowerCase('fr-CA');
-    const visible = history.filter(op => [op.label, op.profile, op.artifact.width, op.artifact.height, new Date(op.createdAt).toLocaleDateString('fr-CA')].join(' ').toLocaleLowerCase('fr-CA').includes(query));
+    const visible = history.filter(op => [op.label, op.profile, op.artifact.width, op.artifact.height, new Date(op.createdAt).toLocaleDateString('en-US')].join(' ').toLocaleLowerCase('fr-CA').includes(query));
     $('image-gallery').replaceChildren();
-    $('image-gallery-count').textContent = `${visible.length} image${visible.length > 1 ? 's' : ''} affichée${visible.length > 1 ? 's' : ''} · les 30 dernières opérations sont consultées.`;
+    $('image-gallery-count').textContent = `${visible.length} image${visible.length > 1 ? 's' : ''} shown · the last 30 operations are checked.`;
     for (const op of visible) {
       const button = node('button'), img = node('img'), caption = node('div', undefined, 'gallery-caption');
       button.type = 'button'; button.dataset.operation = op.id; button.setAttribute('aria-pressed', String(operation?.id === op.id));
-      button.setAttribute('aria-label', `Consulter ${op.label || op.profile}, ${op.artifact.width} par ${op.artifact.height} pixels, ${new Date(op.createdAt).toLocaleDateString('fr-CA')}`);
-      img.src = op.artifact.url; img.alt = 'Création conservée'; img.loading = 'lazy';
+      button.setAttribute('aria-label', `View ${op.label || op.profile}, ${op.artifact.width} by ${op.artifact.height} pixels, ${new Date(op.createdAt).toLocaleDateString('en-US')}`);
+      img.src = op.artifact.url; img.alt = 'Kept creation'; img.loading = 'lazy';
       caption.append(node('strong', op.label || op.profile), node('span', dimensions(op.artifact.width, op.artifact.height)),
-        node('span', `${new Date(op.createdAt).toLocaleDateString('fr-CA')} · ${op.runtimeRestored && op.state === 'completed' ? 'Prête' : statuses[op.state] || op.state}`), node('span', 'Ouvrir l’aperçu ↗', 'gallery-open'));
+        node('span', `${new Date(op.createdAt).toLocaleDateString('en-US')} · ${op.runtimeRestored && op.state === 'completed' ? 'Ready' : statuses[op.state] || op.state}`), node('span', 'Open preview ↗', 'gallery-open'));
       button.append(img, caption); button.addEventListener('click', () => { void select(op); }); $('image-gallery').append(button);
     }
-    if (!visible.length) $('image-gallery').append(node('p', query ? 'Aucune création ne correspond à ce filtre.' : 'Tes créations archivées apparaîtront ici.', 'gallery-empty'));
+    if (!visible.length) $('image-gallery').append(node('p', query ? 'No creation matches this filter.' : 'Your archived creations will appear here.', 'gallery-empty'));
     controls();
   }
   async function loadHistory() {
     try { const result = await api('/operations'); history = result.operations.filter(x => x.artifact); renderHistory(); return result.operations; }
-    catch { $('image-gallery-count').textContent = 'La bibliothèque ne peut pas être chargée pour le moment.'; return []; }
+    catch { $('image-gallery-count').textContent = 'The library cannot be loaded right now.'; return []; }
   }
   async function fileBytes(file) {
-    if (!['image/png', 'image/jpeg'].includes(file.type)) throw new Error('Choisis une image PNG ou JPEG.');
+    if (!['image/png', 'image/jpeg'].includes(file.type)) throw new Error('Choose a PNG or JPEG image.');
     const url = URL.createObjectURL(file);
     try { const img = new Image(); img.src = url; await img.decode(); const ratio = Math.min(1, 1536 / Math.max(img.width, img.height));
       const canvas = document.createElement('canvas'); canvas.width = Math.round(img.width * ratio); canvas.height = Math.round(img.height * ratio);
@@ -335,8 +335,8 @@
     for (const id of ['image-draft-source', 'image-selected-reference', 'image-result-origin', 'image-output', 'image-download', 'image-use-reference', 'image-reuse-brief', 'image-result-details', 'image-result-facts', 'image-result-note', 'image-cancel', 'image-recover', 'image-stages', 'image-improve-help']) $(id).hidden = true;
     $('image-text-open').hidden = false;
     $('image-reference-previews').replaceChildren(); $('image-placeholder').hidden = false;
-    $('image-result-title').textContent = 'Ton prochain résultat'; $('image-preview-help').textContent = 'Une image sélectionnée dans la bibliothèque s’affiche ici.';
-    $('image-status').textContent = 'Nouveau brief. Choisis une recette et un format.'; renderRecipe(); renderHistory(); $('image-prompt').focus();
+    $('image-result-title').textContent = 'Your next result'; $('image-preview-help').textContent = 'An image selected in the library is shown here.';
+    $('image-status').textContent = 'New brief. Choose a recipe and a format.'; renderRecipe(); renderHistory(); $('image-prompt').focus();
   });
   $('image-references').addEventListener('change', () => {
     ++referenceEpoch; $('image-reference-previews').replaceChildren();
@@ -345,7 +345,7 @@
       const url = URL.createObjectURL(file); img.src = url; img.alt = file.name; img.onload = img.onerror = () => URL.revokeObjectURL(url);
       item.append(img, node('span', `Image ${i + (selectedReference ? 2 : 1)} · ${file.name}`)); $('image-reference-previews').append(item);
     });
-    if (files.length) { const remove = node('button', 'Retirer les fichiers joints', 'quiet-button'); remove.type = 'button'; remove.addEventListener('click', () => { $('image-references').value = ''; $('image-references').dispatchEvent(new Event('change')); }); $('image-reference-previews').append(remove); }
+    if (files.length) { const remove = node('button', 'Remove attached files', 'quiet-button'); remove.type = 'button'; remove.addEventListener('click', () => { $('image-references').value = ''; $('image-references').dispatchEvent(new Event('change')); }); $('image-reference-previews').append(remove); }
     updateFormMode();
   });
   $('image-text-open').addEventListener('click', () => { textEditor?.open(); });
@@ -353,11 +353,11 @@
     if (locked() || !operation) return;
     const selected = operation; ++referenceEpoch;
     try {
-      if ($('image-references').files.length + (guideReference ? 1 : 0) >= 2) throw new Error('Retire une référence pour ajouter cette création aux références.');
-      if (selected.state !== 'completed' || selected.runtimeRestored !== true || !selected.artifact?.sha256) throw new Error('L’original choisi doit être archivé et ses ressources restituées.');
+      if ($('image-references').files.length + (guideReference ? 1 : 0) >= 2) throw new Error('Remove a reference to add this creation to the references.');
+      if (selected.state !== 'completed' || selected.runtimeRestored !== true || !selected.artifact?.sha256) throw new Error('The chosen original must be archived and its resources returned.');
       selectedReference = { id: selected.id, sha256: selected.artifact.sha256 };
-      $('image-selected-reference').replaceChildren(); const thumb = node('img'), copy = node('div'), remove = node('button', 'Retirer', 'quiet-button');
-      thumb.src = selected.artifact.url; thumb.alt = 'Image 1 jointe comme référence'; copy.append(node('strong', 'Image 1 · original choisi'), node('p', 'L’original archivé sert de parent à cette retouche. Il reste conservé. Au-delà de 4 MP, choisis une autre référence.'));
+      $('image-selected-reference').replaceChildren(); const thumb = node('img'), copy = node('div'), remove = node('button', 'Remove', 'quiet-button');
+      thumb.src = selected.artifact.url; thumb.alt = 'Image 1 attached as a reference'; copy.append(node('strong', 'Image 1 · chosen original'), node('p', 'The archived original serves as the parent of this edit. It stays kept. Above 4 MP, choose another reference.'));
       remove.type = 'button'; remove.addEventListener('click', () => { ++referenceEpoch; selectedReference = null; $('image-selected-reference').hidden = true; $('image-references').dispatchEvent(new Event('change')); });
       $('image-selected-reference').append(thumb, copy, remove); $('image-selected-reference').hidden = false;
       $('image-references').dispatchEvent(new Event('change')); $('image-prompt').focus();
@@ -370,15 +370,15 @@
     pendingSubmit = true; controls(); ++draftEpoch;
     try {
       const files = [...$('image-references').files], ref = selectedReference;
-      if (files.length + (ref ? 1 : 0) + (guideReference ? 1 : 0) > 2) throw new Error('Deux références au maximum, y compris la création choisie et l’esquisse.');
+      if (files.length + (ref ? 1 : 0) + (guideReference ? 1 : 0) > 2) throw new Error('Two references at most, including the chosen creation and the sketch.');
       const [width, height] = $('image-size').value.split(',').map(Number);
       const payload = { prompt: $('image-prompt').value, profile: $('image-profile').value, width, height,
         ...(constraints?.getValue() && { constraints: constraints.getValue() }),
         ...(textPolicy?.getValue() && { textPolicy: textPolicy.getValue() }),
         ...(draftExpert && { expert: draftExpert }),
         ...($('image-seed').value !== '' && { seed: Number($('image-seed').value) }) };
-      if (payload.prompt.length > (globalThis.ImageBriefConstraints?.MAX_BRIEF || 32000)) throw new Error('Le brief dépasse 32 000 caractères. Réduis-le avant de continuer ; tout le texte collé reste conservé.');
-      if (payload.prompt.length > (globalThis.ImageBriefConstraints?.MAX_PROMPT || 8000)) throw new Error('Le brief saisi dépasse 8 000 caractères. Utilise « Affiner mon brief » avec Hermes, ou réduis le texte.');
+      if (payload.prompt.length > (globalThis.ImageBriefConstraints?.MAX_BRIEF || 32000)) throw new Error('The brief exceeds 32,000 characters. Shorten it before continuing; all pasted text is kept.');
+      if (payload.prompt.length > (globalThis.ImageBriefConstraints?.MAX_PROMPT || 8000)) throw new Error('The entered brief exceeds 8,000 characters. Use "Refine my brief" with Hermes, or shorten the text.');
       globalThis.ImageTextPolicy.compose(payload.prompt, payload.constraints, payload.textPolicy);
       const declared = workshop?.profiles.find(p => p.id === payload.profile)?.declaredIdentity;
       if (declared) { payload.recipeId = declared.id; payload.recipeVersion = declared.version; }
@@ -404,13 +404,13 @@
       config = await api('/status');
       try { workshop = await api('/workshop'); } catch { workshop = { profiles: [], worker: null }; }
       for (const p of config.profiles) { const recipe = workshop.profiles.find(item => item.id === p.id);
-        const option = node('option', `${p.label}${recipe?.steps ? ` · ${recipe.steps} étapes` : ''} · max ${mp(p.maxPixels)}`);
+        const option = node('option', `${p.label}${recipe?.steps ? ` · ${recipe.steps} steps` : ''} · max ${mp(p.maxPixels)}`);
         option.value = p.id; $('image-profile').append(option); }
       $('image-profile').value = config.defaultProfile;
-      $('image-host').textContent = workshop.worker?.label || 'Hôte non renseigné';
-      $('image-gpu').textContent = workshop.worker?.gpu ? `${workshop.worker.gpu}${workshop.worker.vramGiB ? ` · ${workshop.worker.vramGiB} Go VRAM` : ''} · matériel configuré` : 'Matériel non renseigné';
+      $('image-host').textContent = workshop.worker?.label || 'Host not specified';
+      $('image-gpu').textContent = workshop.worker?.gpu ? `${workshop.worker.gpu}${workshop.worker.vramGiB ? ` · ${workshop.worker.vramGiB} GB VRAM` : ''} · configured hardware` : 'Hardware not specified';
       if (config.profiles.length) renderRecipe(); controls();
-      $('image-status').textContent = config.configured ? 'Prêt. Une seule demande à la fois. La bibliothèque sert à consulter tes créations.' : 'Le service d’images locales n’est pas configuré.';
+      $('image-status').textContent = config.configured ? 'Ready. One request at a time. Use the library to view your creations.' : 'The local image service is not configured.';
       const ops = await loadHistory(), requestedId = new URLSearchParams(location.search).get('operation');
       if (requestedId) { const op = (await api(`/operations/${encodeURIComponent(requestedId)}`)).operation; show(op, 'continuation'); await applyDraft(op); }
       else { const current = ops.find(x => ACTIVE.includes(x.state) || x.state === 'unknown'); if (current) show(current, 'generation'); }

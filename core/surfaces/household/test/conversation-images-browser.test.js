@@ -35,11 +35,16 @@ test('a preparing drawing becomes an image only after verified completion; all p
   assert.equal(holder.find('img'), undefined);
   await until(() => holder.find('img'));
   assert.equal(holder.find('img').src, ready.artifact.url);
-  assert.match(holder.text(), /Ton image est prête/);
+  assert.match(holder.text(), /Your image is ready/);
   assert.equal(reads.length, 2);
   assert.ok(reads.every(read => read.url === pending.statusUrl && !read.options.method));
-  assert.equal(holder.find('a').href, '/images?operation=' + id);
+  // A family drawing never links to the adult workshop; a private one does.
+  assert.equal(holder.find('a').href, ready.artifact.url);
+  assert.doesNotMatch(holder.text(), /workshop/);
   holder._dispose();
+  const personal = create(block({ ...pending, statusUrl: pending.statusUrl.replace('/family/', '/private/') }), { space: 'personal', fetcher: async () => new Promise(() => {}) });
+  assert.equal(personal.find('a').href, '/images?operation=' + id);
+  personal._dispose();
 });
 test('completed without restoration, a forged artifact URL, or an unrelated operation never display an image', async () => {
   for (const operation of [{ ...ready, runtimeRestored: false }, { ...ready, artifact: { ...ready.artifact, url: 'https://external.test/private.png' } },
@@ -58,7 +63,7 @@ test('terminal failure does not loop or create another drawing, and removed card
   let reads = 0;
   const holder = create(block(pending), { space: 'family', delay: 5, fetcher: async () => { reads += 1; return response({ ...pending, state: 'unknown' }); } });
   await until(() => reads === 1); await new Promise(resolve => setTimeout(resolve, 20));
-  assert.equal(reads, 1); assert.match(holder.text(), /Aucune nouvelle image/); holder._dispose();
+  assert.equal(reads, 1); assert.match(holder.text(), /No new drawing is started/); holder._dispose();
   const disconnected = create(block(pending), { space: 'family', fetcher: async () => { assert.fail('A removed card must not poll'); } });
   disconnected.isConnected = false; await new Promise(resolve => setTimeout(resolve, 10)); disconnected._dispose();
 });

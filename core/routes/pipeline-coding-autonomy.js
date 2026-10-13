@@ -12,8 +12,11 @@ function route(handler) {
 router.get('/coding-autonomy', route(() => service.status()));
 router.post('/coding-autonomy/config', route(req => service.configure(req.body || {})));
 router.post('/coding-autonomy/tasks/:id/authorization', route(req => service.authorize(req.params.id, req.body || {})));
+router.post('/coding-autonomy/tasks/:id/disposition', route(async req => service.projection(
+  await require('../src/services/pipelineCodingDisposition').archive(req.params.id, req.body || {}))));
 router.post('/coding-autonomy/tasks/:id/review', route(req => service.recordReview(req.params.id, req.body || {})));
 router.post('/coding-autonomy/tasks/:id/runs/:requestId/stop', route(req => service.stop(req.params.id, req.params.requestId, req.body || {})));
 router.post('/coding-autonomy/tasks/:id/runs/:requestId/recover', route(req => service.recover(req.params.id, req.params.requestId, req.body || {})));
+router.post('/coding-autonomy/tasks/:id/runs/:requestId/continuation', route(req => service.continueRecovered(req.params.id, req.params.requestId, req.body || {})));
 router.get('/coding-autonomy/tasks/:id/runs/:requestId/manifest', route(req => service.workerManifest(req.params.id, req.params.requestId)));
 module.exports = router;

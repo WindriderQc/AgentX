@@ -1,10 +1,12 @@
 # Durable Nestor conversation work
 
 Core's optional `conversationWorks` capability lets personal voice dialogue
-continue while a separate native Nestor worker checks personal tasks or reviews
-a completed conversational turn. Conservative current public-information reads
-and explicit personal mailbox reads run in isolated background Main sessions,
-retaining Main's web tools and native Secretary delegation.
+continue while the complete native Nestor Main works in an isolated session.
+In `native` mode, every accepted work request uses Main, including personal tasks,
+reasoning, web, specialists and authorized actions. Capability keywords never
+select a restricted agent. Main retains its installed tools, memory, model,
+permissions and approval contracts. The live guardian continues ordinary
+conversation and support while Main works.
 Nestor remains the single visible identity.
 Core owns acceptance, complete requests, execution metadata, verified task reads,
 structured results and presentation receipts. OpenClaw owns the native agent/tool
@@ -12,22 +14,94 @@ loop. Polling the browser projection never starts inference.
 
 ## Contract
 
-Enable `PERSONAL_CONVERSATION_WORK_MODE=read` (or `observe` for review without
-business reads), `PERSONAL_CONVERSATION_WORK_AGENT_ID` and a private
+Enable `PERSONAL_CONVERSATION_WORK_MODE=native`,
+`PERSONAL_CONVERSATION_WORK_AGENT_ID` and a private
 `PERSONAL_CONVERSATION_WORK_TOKEN`. The default mode is `off`. The native plugin
 needs the same token in `conversationWorkToken`, and the dedicated agent ID in
 `conversationWorkAgentId`. Tokens stay in instance secret configuration, never
 model parameters or browser requests.
+
+Core accepts complete work requests before any model inference. An immediate
+canonical acknowledgment handles clear work requests. Ordinary dialogue receives
+a real guardian response even while another Main work is active; its request
+still reaches complete Main. Selectors only choose this foreground reply style,
+never the boss's capabilities. The native pre-tool hook fences all tools in the
+exact Core-bound guardian run, so the guardian cannot duplicate Main's work.
+Text, legacy and background Main runs retain their native tools.
+Main can disposition an adequate, completed canonical guardian reply as
+`no_work`, without duplicate
+speech. Other requests receive Main's exact completed native answer, including
+reasoning that needs no tools. Requested task, web and Secretary consultations
+retain their existing requirements for actual same-run tool evidence.
+
+The boss and guardian share Core's canonical conversation and work state.
+Main starts with the exact request, selected context, original local date and
+the complete canonical conversation before its first invocation, including older
+published Main answers and their retained evidence. Its host-bound
+`conversation_work context` can refresh current
+turns, guardian replies and pending or received work during execution. This route
+cannot select another conversation or run, acquire the legacy worker's task or
+publication permissions, or survive conversation erasure. Context is reference
+data, not an extra request or authorization. This does not implement the separate
+intent-amendment or native-approval bridge tracked in #664.
+The complete-context and capacity guarantees below apply to native Main and
+legacy workers alike, preserving each mode's execution permissions.
+
+The host-only `native_owner` probe resolves image operations to the original
+canonical owner session. Both `local_image` and `imagex` preserve the actual
+native run/call action identity; their model parameters cannot select an owner.
+An unavailable owner observation stops before specialist planning or submission.
+
+General native work admits at most sixteen parent tool calls and four web calls.
+After the web limit, non-web tools remain available within the total budget.
+Pure web consultations keep their existing stricter limit below. Specialist
+tools retain their native owners. The matching native adapter must advertise
+`nativeConversation`; an older adapter refuses new native work before inference.
+No tools, execution permissions or approval bypasses are granted by this mode.
+
+## Legacy migration modes
+
+`read` retains bounded task reads/review through the dedicated worker and isolated
+Main for conservative public-information and mailbox reads. `observe` retains
+review without business reads. Both use the same durable intake and delivery.
+The dedicated ID remains configured for already accepted legacy work; enabling
+`native` does not change those records, identities, tool scopes or unknown runs.
+Disabling new intake likewise retains accepted native work for reconciliation.
 
 The dedicated agent has its own workspace, no visible channel, no heartbeat,
 no subagents and no cloud/CPU fallback. Grant only `conversation_work` plus the
 native tool-discovery transport. Do not reuse Main, the family agent or an
 existing specialist. Preserve the installed guardian and worker model/context
 contracts; the worker request bounds output to 4,096 tokens without changing
-model residency or context. The worker gets selected Core context through the
-context tool, and explicitly marked excerpts of recent turns. The complete
+model residency or context. Core supplies the complete canonical conversation
+before the worker's first invocation, separately from selected personal memory.
+The context tool refreshes that complete conversation, including original input,
+guardian replies, shown text, attachment references and recorded tool evidence.
+It also includes every published background answer on its source turn, with
+the complete retained tool evidence and separate presentation receipts; a
+published answer is not proof that the owner saw or heard it. Earlier boss
+corrections are not limited by the guardian's selected-feedback window.
+Coverage names the first/last turn and turn count; neither UI pagination limits
+nor a recent-turn window define the boss's context. Isolated native Main
+consultations receive the same complete conversation. The complete
 current human request is always retained and returned. Inputs outside the
 4,000-character intake budget refuse instead of truncating.
+
+The combined selected-memory and conversation reference block must fit the
+existing 96,000-character work-context budget. Preparation refuses with
+`CONVERSATION_CONTEXT_REQUIRED` before native dispatch if it does not fit;
+it never substitutes a summary, clips messages or drops older turns. This is
+an application context bound, not a change to the installed model window.
+Personal background review also receives the complete conversation and recorded
+tool evidence. An oversized review is disclosed without inference or partial
+advice. The guardian retains the last completed feedback, with its source-turn
+identity and an explicit distinction from newer turns that could not be reviewed.
+Family review keeps its separate existing context policy and scope.
+
+The guardian remains available while the boss works and receives the latest
+completed feedback and durable work results on subsequent turns. Roles, context
+ownership and tool permissions belong to the product; changing a model or its
+reasoning effort does not change this contract or supply additional tools.
 
 Only Main's standard personal voice turns enter this capability. Text, Open,
 explicit specialist requests, LLMx and family conversation retain their existing

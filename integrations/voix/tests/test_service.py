@@ -58,7 +58,7 @@ def test_voice_catalog_is_served_without_loading_a_model(tmp_path, monkeypatch):
 
     monkeypatch.setattr(catalog, "get_kokoro_asset_paths",
                         lambda: (tmp_path / "missing.onnx", tmp_path / "missing.bin"))
-    monkeypatch.setattr(catalog, "worker_ready", lambda: (False, "VoxCPM2 worker is not configured"))
+    monkeypatch.setattr(catalog, "worker_ready", lambda: (False, "Pocket TTS worker is not configured"))
     body = client.get("/api/voices").json()
     assert body["schema"] == 1 and body["streamProtocol"] == "voix-pcm-v1"
     assert {row["id"] for row in body["providers"]} == {"kokoro", "windows_sapi", "voxcpm"}
@@ -301,7 +301,7 @@ def test_http_speech_removes_markdown_before_every_engine(monkeypatch, provider,
 
 
 def _voxcpm_worker(monkeypatch, *, up):
-    """A configured VoxCPM2 worker whose /health answer the test controls."""
+    """A configured Pocket TTS worker whose /health answer the test controls."""
     from dataclasses import replace
     import httpx
     from app.tts import catalog, provider
@@ -358,7 +358,7 @@ def test_unready_voxcpm_worker_answers_503_before_any_synthesis(monkeypatch, pat
     response = client.post(path, json=body)
     assert response.status_code == 503
     assert response.headers["content-type"] == "application/json"
-    assert response.json() == {"error": "VoxCPM2 worker is unavailable"}
+    assert response.json() == {"error": "Pocket TTS worker is unavailable"}
     assert spoken == [], "The service neither starts the stream nor substitutes another voice"
     assert len(probes) == 1
 

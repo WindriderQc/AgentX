@@ -1,7 +1,7 @@
 'use strict';
 
 // The pieces added to the IoT tab after its first five iterations: signal
-// gauge, model line, registry table, consumer status, the « Tout » period, the
+// gauge, model line, registry table, consumer status, the "All" period, the
 // median line with its min–max band, two-step commands, the device's events
 // and the "not back yet" note. Device names are synthetic.
 
@@ -83,14 +83,14 @@ const open = async (store = {}, storage) => { const page = browser(fakeData(stor
 const posts = page => page.requests.filter(call => call.method !== 'GET');
 const memory = (initial = {}) => { const saved = new Map(Object.entries(initial)); return { saved, getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) }; };
 
-test('the page loads the added scripts before the tab and keeps the write list at nine', () => {
+test('the page loads the added scripts before the tab and keeps the write list complete', () => {
   const html = fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8');
   for (const file of ['iot-fleet.js', 'iot-commands.js', 'iot-events.js']) {
     assert.ok(html.indexOf(`/assets/data-toolbox/${file}`) > 0 && html.indexOf(`/assets/data-toolbox/${file}`) < html.indexOf('/assets/data-toolbox/iot.js'), file);
   }
   assert.match(html, /iot-pieces\.css/);
-  assert.match(html, /This page can send nine kinds of change to Data/);
-  assert.equal((html.match(/data-write="/g) || []).length, 9);
+  assert.match(html, /This page can send fifteen kinds of change to Data/);
+  assert.equal((html.match(/data-write="/g) || []).length, 15);
   assert.doesNotMatch(html, /https?:\/\/(?!www\.w3\.org)/, 'no external address, no CDN');
   for (const file of fs.readdirSync(PUBLIC).filter(name => /^iot.*\.js$/.test(name))) {
     assert.doesNotMatch(fs.readFileSync(path.join(PUBLIC, file), 'utf8'), /\b(alert|confirm|prompt)\s*\(/, `${file} opens no native dialog`);
@@ -100,21 +100,21 @@ test('the page loads the added scripts before the tab and keeps the write list a
 test('the Wi-Fi gauge names the quality at each threshold and carries its reading as text', async () => {
   const page = await open();
   const word = dbm => page.iotSignalQuality(dbm).word;
-  assert.deepEqual([-30, -55, -55.5, -70, -70.5, -80, -80.5, -130].map(word), ['Excellent', 'Excellent', 'Bon', 'Bon', 'Moyen', 'Moyen', 'Faible', 'Faible']);
-  for (const unknown of [null, undefined, NaN, Infinity, '-60']) assert.equal(word(unknown), 'Inconnu');
+  assert.deepEqual([-30, -55, -55.5, -70, -70.5, -80, -80.5, -130].map(word), ['Excellent', 'Excellent', 'Good', 'Good', 'Fair', 'Fair', 'Weak', 'Weak']);
+  for (const unknown of [null, undefined, NaN, Infinity, '-60']) assert.equal(word(unknown), 'Unknown');
   const gauge = page.iotSignalGauge(-75);
-  assert.match(gauge, /<svg class="iot-gauge"[^>]*role="img" aria-label="Signal Wi-Fi -75 dBm : Moyen"/);
-  assert.match(gauge, /<title>Signal Wi-Fi -75 dBm : Moyen\. Excellent : −55 dBm ou mieux · Bon : de −70 à −56 dBm · Moyen : de −80 à −71 dBm · Faible : sous −80 dBm<\/title>/);
+  assert.match(gauge, /<svg class="iot-gauge"[^>]*role="img" aria-label="Wi-Fi signal -75 dBm: Fair"/);
+  assert.match(gauge, /<title>Wi-Fi signal -75 dBm: Fair\. Excellent: −55 dBm or better · Good: −70 to −56 dBm · Fair: −80 to −71 dBm · Weak: below −80 dBm<\/title>/);
   assert.equal((gauge.match(/<path d="M[^"]*A34 34/g) || []).length, 4, 'four bands');
   assert.equal((gauge.match(/opacity="1"/g) || []).length, 1, 'only the current band is lit');
   assert.doesNotMatch(page.iotSignalGauge(-250) + page.iotSignalGauge(40), /NaN|Infinity/);
   const empty = page.iotSignalGauge(null);
-  assert.match(empty, /aria-label="Signal Wi-Fi inconnu"/);
+  assert.match(empty, /aria-label="Wi-Fi signal unknown"/);
   assert.doesNotMatch(empty, /stroke-linecap="round"/, 'no needle without a reading');
   const cards = page.elements['#iotCards'].innerHTML;
-  assert.match(cards, /class="iot-measure iot-signal"[^>]*data-quality="moyen"[^>]*title="Excellent : −55 dBm ou mieux/);
-  assert.match(cards, /<strong>-75<small> dBm<\/small><\/strong><em[^>]*>Moyen<\/em>/);
-  assert.match(page.elements['#iotRegistry'].innerHTML, /Signal Wi-Fi — Excellent : −55 dBm ou mieux/, 'the thresholds are also written for touch screens');
+  assert.match(cards, /class="iot-measure iot-signal"[^>]*data-quality="moyen"[^>]*title="Excellent: −55 dBm or better/);
+  assert.match(cards, /<strong>-75<small> dBm<\/small><\/strong><em[^>]*>Fair<\/em>/);
+  assert.match(page.elements['#iotRegistry'].innerHTML, /Wi-Fi signal — Excellent: −55 dBm or better/, 'the thresholds are also written for touch screens');
 });
 
 test('a signal in another unit or without a value never gets an invented quality', async () => {
@@ -123,18 +123,18 @@ test('a signal in another unit or without a value never gets an invented quality
   const cards = page.elements['#iotCards'].innerHTML;
   assert.equal((cards.match(/class="iot-gauge"/g) || []).length, 1, 'a percentage is not drawn on a dBm arc');
   assert.match(cards, /data-quality="inconnu"/);
-  assert.match(cards, /<em[^>]*>Inconnu<\/em>/);
+  assert.match(cards, /<em[^>]*>Unknown<\/em>/);
 });
 
 test('cards show maker, model and versions only when the registry holds them, escaped', async () => {
   const page = await open({ devices: [device('SYN_1', { info: { manufacturer: HOSTILE, model: 'Node A', swVersion: '1.4.2', hwVersion: 'rev C' } }),
     device('SYN_2', { info: { manufacturer: null, model: '  ', swVersion: 7 } }), device('SYN_3', { info: null })] });
   const cards = page.elements['#iotCards'].innerHTML;
-  assert.match(cards, /class="iot-model"[^>]*>&lt;img src=x onerror=evil\(\)&gt;&quot;&#39; · Node A · micrologiciel 1\.4\.2 · matériel rev C<\/span>/);
+  assert.match(cards, /class="iot-model"[^>]*>&lt;img src=x onerror=evil\(\)&gt;&quot;&#39; · Node A · firmware 1\.4\.2 · hardware rev C<\/span>/);
   assert.equal((cards.match(/class="iot-model"/g) || []).length, 1, 'nothing is shown for a device without model information');
   assert.doesNotMatch(cards, /<img src=x/);
   assert.equal(page.iotModelLine({ info: { model: 'Node B' } }).includes('Node B'), true);
-  assert.doesNotMatch(page.iotModelLine({ info: { model: 'Node B' } }), /micrologiciel|matériel|·/);
+  assert.doesNotMatch(page.iotModelLine({ info: { model: 'Node B' } }), /firmware|hardware|·/);
 });
 
 test('the registry table lists every device with first message, last activity, age and availability', async () => {
@@ -144,59 +144,59 @@ test('the registry table lists every device with first message, last activity, a
     device('SYN_3', { status: 'unknown', availability: { state: 'unknown', since: null }, firstSeenAt: null, lastSeenAt: 'not a date' })] });
   page.iotState.filter = 'SYN_1';
   const table = page.iotRegistryHtml();
-  assert.match(table, /<h3>Enregistré \/ dernière activité<\/h3>/);
-  assert.match(table, /<th scope="col">Appareil<\/th><th scope="col">Identifiant<\/th><th scope="col">État<\/th><th scope="col">Enregistré<\/th><th scope="col">Dernière activité<\/th><th scope="col">Disponibilité<\/th>/);
+  assert.match(table, /<h3>Registered \/ last activity<\/h3>/);
+  assert.match(table, /<th scope="col">Device<\/th><th scope="col">Identifier<\/th><th scope="col">State<\/th><th scope="col">Registered<\/th><th scope="col">Last activity<\/th><th scope="col">Availability<\/th>/);
   assert.equal((table.match(/<tr/g) || []).length, 4, 'the search filter of the cards does not hide registry rows');
   assert.match(table, /<tr class="selected"><th scope="row">&lt;img src=x onerror=evil\(\)&gt;/);
   assert.doesNotMatch(table, /<img src=x/);
-  assert.match(table, /il y a 3 j/); assert.match(table, /il y a 1 min/);
-  assert.match(table, /En ligne depuis /); assert.match(table, /Silencieux depuis /);
-  assert.match(table, /<td><span class="muted">jamais<\/span><\/td><td><span class="muted">jamais<\/span><\/td><td><span class="muted">non annoncée<\/span><\/td>/);
-  assert.match(table, /role="region" aria-label="Appareils enregistrés et dernière activité"/);
-  assert.equal(page.iotAge(ago(47 * 3600000)), 'il y a 47 h');
+  assert.match(table, /3 d ago/); assert.match(table, /1 min ago/);
+  assert.match(table, /Online since /); assert.match(table, /Silent since /);
+  assert.match(table, /<td><span class="muted">never<\/span><\/td><td><span class="muted">never<\/span><\/td><td><span class="muted">not announced<\/span><\/td>/);
+  assert.match(table, /role="region" aria-label="Registered devices and last activity"/);
+  assert.equal(page.iotAge(ago(47 * 3600000)), '47 h ago');
   page.iotState.devices = []; assert.equal(page.iotRegistryHtml(), '');
 });
 
 test('the consumer card reports Data’s own counters, refusal reasons and retention without inventing any', async () => {
   const page = await open();
   const card = page.elements['#content'].innerHTML.match(/<section id="iotConsumer">.*?<\/section><section id="iotMissing">/s)[0];
-  assert.match(card, /Lien broker<\/dt><dd><span class="iot-connection connected">.*Connecté/s);
+  assert.match(card, /Broker link<\/dt><dd><span class="iot-connection connected">.*Connected/s);
   assert.match(card, /broker\.test:1883/);
-  assert.match(card, /Appareils suivis<\/dt><dd>2 <span class="muted">\/ 100<\/span><\/dd><small>1 en ligne · 1 hors ligne<\/small>/);
-  assert.match(card, /Mesures reçues<\/dt><dd>1[,.\s  ]?234<\/dd>/);
-  assert.match(card, /Mesures refusées<\/dt><dd>5<\/dd><small>valeur non numérique : 3 · &lt;img src=x onerror=evil\(\)&gt;&quot;&#39; : 2<\/small>/);
-  assert.match(card, /Dernière minute écrite/); assert.match(card, /77 tranches écrites/);
-  assert.match(card, /Dernier regroupement horaire/); assert.match(card, /heures closes jusqu’à/);
-  assert.match(card, /Rétention des minutes<\/dt><dd>90 jours<\/dd>/);
+  assert.match(card, /Tracked devices<\/dt><dd>2 <span class="muted">\/ 100<\/span><\/dd><small>1 online · 1 offline<\/small>/);
+  assert.match(card, /Readings received<\/dt><dd>1[,.\s  ]?234<\/dd>/);
+  assert.match(card, /Readings refused<\/dt><dd>5<\/dd><small>non-numeric value: 3 · &lt;img src=x onerror=evil\(\)&gt;&quot;&#39;: 2<\/small>/);
+  assert.match(card, /Last minute written/); assert.match(card, /77 buckets written/);
+  assert.match(card, /Last hourly rollup/); assert.match(card, /hours closed through/);
+  assert.match(card, /Minute retention<\/dt><dd>90 days<\/dd>/);
   assert.doesNotMatch(card, /<img src=x/);
   page.iotState.status = { consumer: { configured: false, connected: false }, buckets: { lastError: HOSTILE, pendingRetry: 4, dropped: 2 } };
   const bare = page.iotConsumerHtml();
-  assert.match(bare, /Non configuré/); assert.match(bare, /Appareils suivis<\/dt><dd>—<\/dd>/); assert.match(bare, /Mesures reçues<\/dt><dd>—<\/dd>/);
-  assert.match(bare, /4 en attente · 2 perdues · erreur : &lt;img/);
+  assert.match(bare, /Not configured/); assert.match(bare, /Tracked devices<\/dt><dd>—<\/dd>/); assert.match(bare, /Readings received<\/dt><dd>—<\/dd>/);
+  assert.match(bare, /4 pending · 2 lost · error: &lt;img/);
   page.iotState.status = null;
-  assert.match(page.iotConsumerHtml(), /Data n’a pas répondu sur son état/);
+  assert.match(page.iotConsumerHtml(), /Data did not report its state/);
   assert.equal(posts(page).length, 0);
 });
 
-test('« Tout » reads from the device’s first message with Data’s automatic resolution and shows the one used', async () => {
+test('"All" reads from the device’s first message with Data’s automatic resolution and shows the one used', async () => {
   const first = ago(200 * 24 * 3600000);
   const page = await open({ devices: [device('SYN_1', { firstSeenAt: first })] });
-  assert.match(page.elements['#iotControls'].innerHTML, /data-iot-period="all" aria-pressed="false" aria-label="Tout l’historique">Tout<\/button>/);
+  assert.match(page.elements['#iotControls'].innerHTML, /data-iot-period="all" aria-pressed="false" aria-label="Full history">All<\/button>/);
   page.iotState.resolution = 'minute'; page.iotState.period = 'all';
   await page.iotLoadSeries();
   const call = page.requests.filter(item => item.path.endsWith('/history')).at(-1);
   assert.equal(call.query.get('resolution'), 'auto', 'a minute resolution chosen earlier is not sent for the whole history');
   assert.equal(call.query.get('from'), first);
   assert.ok(Date.now() - Date.parse(call.query.get('to')) < 5000);
-  assert.equal(page.iotResolutionUsed(), 'Résolution utilisée : 1 jour (choisie par Data) · depuis les tranches horaires');
+  assert.equal(page.iotResolutionUsed(), 'Resolution used: 1 day (chosen by Data) · from hourly buckets');
   assert.match(page.elements['#iotControls'].innerHTML, /data-iot-period="all"/);
   page.iotState.keys = ['temperature']; page.iotState.series.measures.temperature.points = [bucket(Date.now() - 86400000, 4, 4, 3, 5)];
-  assert.match(page.iotCombinedHtml(), /<span id="iotResolutionUsed">Résolution utilisée : 1 jour \(choisie par Data\) · depuis les tranches horaires<\/span>/);
+  assert.match(page.iotCombinedHtml(), /<span id="iotResolutionUsed">Resolution used: 1 day \(chosen by Data\) · from hourly buckets<\/span>/);
   page.iotState.view = 'individual'; await page.iotLoadSeries();
-  assert.match(page.elements['#iotSeries'].innerHTML, /id="iotResolutionUsed">Résolution utilisée : 1 jour/);
+  assert.match(page.elements['#iotSeries'].innerHTML, /id="iotResolutionUsed">Resolution used: 1 day/);
   page.iotState.period = '24'; await page.iotLoadSeries();
   assert.equal(page.requests.filter(item => item.path.endsWith('/history')).at(-1).query.get('resolution'), 'minute');
-  assert.equal(page.iotResolutionUsed(), 'Résolution utilisée : 1 min · depuis les tranches d’une minute');
+  assert.equal(page.iotResolutionUsed(), 'Resolution used: 1 min · from one-minute buckets');
   const unknownStart = await open({ devices: [device('SYN_1', { firstSeenAt: null })] });
   unknownStart.iotState.period = 'all'; await unknownStart.iotLoadSeries();
   const fallback = unknownStart.requests.filter(item => item.path.endsWith('/history')).at(-1);
@@ -213,20 +213,20 @@ test('history lines follow the median by default, the mean on request, and fall 
   let metric = page.iotCombinedModel().metrics[0];
   assert.deepEqual(metric.points.map(point => point.value), [20, 21, 24, 25]);
   assert.equal(metric.banded, true); assert.equal(metric.min, 18); assert.equal(metric.max, 31, 'the band is inside the scale');
-  assert.match(page.iotReadingHint(), /^La ligne suit la médiane de chaque tranche de temps ; la bande ombrée va du minimum au maximum mesurés/);
-  assert.match(page.iotReadingHint(true), /axe affiché/); assert.doesNotMatch(page.iotReadingHint(false), /axe affiché/);
+  assert.match(page.iotReadingHint(), /^The line follows the median of each time bucket; the shaded band spans the minimum to the maximum measured/);
+  assert.match(page.iotReadingHint(true), /axis shown/); assert.doesNotMatch(page.iotReadingHint(false), /axis shown/);
   const html = page.iotCombinedHtml();
-  assert.match(html, /<option value="median" selected>Médiane<\/option><option value="mean">Moyenne<\/option>/);
-  assert.match(html, /id="iotCombinedRanges" checked>Bande min–max/);
-  assert.match(html, /<th scope="col">Médiane<\/th><th scope="col">Moyenne<\/th><th scope="col">Min<\/th><th scope="col">Max<\/th>/);
+  assert.match(html, /<option value="median" selected>Median<\/option><option value="mean">Mean<\/option>/);
+  assert.match(html, /id="iotCombinedRanges" checked>Min–max band/);
+  assert.match(html, /<th scope="col">Median<\/th><th scope="col">Mean<\/th><th scope="col">Min<\/th><th scope="col">Max<\/th>/);
   page.iotState.central = 'mean';
   metric = page.iotCombinedModel().metrics[0];
   assert.deepEqual(metric.points.map(point => point.value), [22, 23, 24, 25]);
-  assert.match(page.iotReadingHint(), /^La ligne suit la moyenne/);
+  assert.match(page.iotReadingHint(), /^The line follows the mean/);
   page.iotState.ranges = false;
   metric = page.iotCombinedModel().metrics[0];
   assert.equal(metric.banded, false); assert.equal(metric.min, 22); assert.equal(metric.max, 25);
-  assert.doesNotMatch(page.iotReadingHint(), /bande/);
+  assert.doesNotMatch(page.iotReadingHint(), /band/);
   page.iotState.ranges = true; page.iotState.period = 'live';
   page.iotState.series = { measures: { temperature: { points: [{ ts: AT, value: 5, min: 1, max: 9 }] } } };
   metric = page.iotCombinedModel().metrics[0];
@@ -262,13 +262,13 @@ test('individual charts draw the median with a shaded band, or the mean without 
   assert.equal((chart.match(/<polygon class="iot-band"/g) || []).length, 1);
   assert.equal((chart.match(/<line class="iot-range"/g) || []).length, 1, 'an isolated bucket keeps a vertical mark');
   assert.deepEqual([...chart.matchAll(/data-iot-point[^>]*data-value="([0-9.]+)"/g)].map(match => Number(match[1])), [1, 2, 3, 9]);
-  assert.match(chart, /Ligne : médiane/);
-  assert.match(chart, /<th scope="col">Médiane<\/th><th scope="col">Moyenne<\/th>/);
+  assert.match(chart, /Line: median/);
+  assert.match(chart, /<th scope="col">Median<\/th><th scope="col">Mean<\/th>/);
   assert.match(chart, /<td>1 V<\/td><td>1\.5<\/td><td>0<\/td><td>3<\/td>/);
   const mean = page.iotChart(points, { name: 'Battery', unit: 'V', bucketSeconds: 60, central: 'mean', band: false });
   assert.doesNotMatch(mean, /iot-band|class="iot-range"/);
   assert.deepEqual([...mean.matchAll(/data-iot-point[^>]*data-value="([0-9.]+)"/g)].map(match => Number(match[1])), [1.5, 2.5, 3.5, 9.5]);
-  assert.match(mean, /Ligne : moyenne/);
+  assert.match(mean, /Line: mean/);
   assert.doesNotMatch(chart + mean, /NaN|Infinity/);
 });
 
@@ -302,28 +302,28 @@ const form = fields => ({ id: 'iotCommand', fields, dataset: { device: 'SYN_1' }
 test('a command is armed first, shows exactly what will be published, and is sent once on confirmation', async () => {
   const page = await open({ devices: [device('SYN_1', { displayName: HOSTILE })] });
   const actions = page.elements['#iotActions'].innerHTML;
-  assert.match(actions, /<strong>Attention :<\/strong> les commandes atteignent l’appareil réel\. Un message publié ne confirme pas l’action du matériel\./);
-  assert.match(actions, /<button class="button" type="submit">Préparer l’envoi<\/button>/);
+  assert.match(actions, /<strong>Caution:<\/strong> commands reach the real device\. A published message does not confirm the hardware action\./);
+  assert.match(actions, /<button class="button" type="submit">Prepare send<\/button>/);
   assert.doesNotMatch(actions, /data-iot-command-confirm/);
   await page.iotSubmit(form({ command: 'io_off', gpio: '26' }));
   assert.equal(posts(page).length, 0, 'the first click sends nothing');
   const confirm = page.elements['#iotCommandConfirm'].innerHTML;
-  assert.match(confirm, /Voici exactement ce qui sera envoyé/);
-  assert.match(confirm, /<dt>Appareil<\/dt><dd>&lt;img src=x onerror=evil\(\)&gt;&quot;&#39; <span class="mono">SYN_1<\/span><\/dd>/);
-  assert.match(confirm, /<dt>Commande<\/dt><dd>GPIO OFF<\/dd>/); assert.match(confirm, /<dt>GPIO<\/dt><dd>26<\/dd>/);
-  assert.match(confirm, /<dt>Sujet MQTT<\/dt><dd class="mono">esp32\/SYN_1\/io\/off<\/dd>/); assert.match(confirm, /<dt>Contenu<\/dt><dd class="mono">26<\/dd>/);
-  assert.match(confirm, /data-iot-command-confirm>Confirmer l’envoi<\/button><button type="button" class="button" data-iot-command-cancel>Annuler/);
+  assert.match(confirm, /Exactly this will be sent/);
+  assert.match(confirm, /<dt>Device<\/dt><dd>&lt;img src=x onerror=evil\(\)&gt;&quot;&#39; <span class="mono">SYN_1<\/span><\/dd>/);
+  assert.match(confirm, /<dt>Command<\/dt><dd>GPIO OFF<\/dd>/); assert.match(confirm, /<dt>GPIO<\/dt><dd>26<\/dd>/);
+  assert.match(confirm, /<dt>MQTT topic<\/dt><dd class="mono">esp32\/SYN_1\/io\/off<\/dd>/); assert.match(confirm, /<dt>Payload<\/dt><dd class="mono">26<\/dd>/);
+  assert.match(confirm, /data-iot-command-confirm>Confirm send<\/button><button type="button" class="button" data-iot-command-cancel>Cancel/);
   assert.doesNotMatch(confirm, /<img src=x/);
   assert.match(page.iotCommandHtml(page.iotState.devices[0]), /<details class="card" open>/, 'a repaint keeps the armed panel open');
   assert.equal(page.elements['#iotCommandKind'].disabled, true, 'the armed message cannot be edited, only cancelled');
-  assert.equal(page.iotRefresher.hold(), 'une commande attend sa confirmation');
+  assert.equal(page.iotRefresher.hold(), 'a command is awaiting confirmation');
   page.click('[data-iot-command-confirm]'); page.click('[data-iot-command-confirm]');
   await settle();
   assert.deepEqual(posts(page).map(call => [call.method, call.path, JSON.parse(JSON.stringify(call.body))]), [['POST', '/iot/devices/SYN_1/commands', { command: 'io_off', gpio: 26 }]]);
   assert.equal(page.iotCommand.armed, null);
-  assert.match(page.elements['#iotCommandOutcome'].innerHTML, /data-outcome="sent"><strong>Publié<\/strong> — GPIO OFF publié sur esp32\/SYN_1\/io\/on à .*l’action du matériel n’est pas confirmée/);
+  assert.match(page.elements['#iotCommandOutcome'].innerHTML, /data-outcome="sent"><strong>Published<\/strong> — GPIO OFF published to esp32\/SYN_1\/io\/on at .*the hardware action is not confirmed/);
   await page.iotSubmit(form({ command: 'reboot' }));
-  assert.match(page.elements['#iotCommandConfirm'].innerHTML, /<dt>GPIO<\/dt><dd>aucun<\/dd>.*esp32\/SYN_1\/reboot.*\(vide\)/s);
+  assert.match(page.elements['#iotCommandConfirm'].innerHTML, /<dt>GPIO<\/dt><dd>none<\/dd>.*esp32\/SYN_1\/reboot.*\(empty\)/s);
   page.click('[data-iot-command-confirm]'); await settle();
   assert.deepEqual(JSON.parse(JSON.stringify(posts(page)[1].body)), { command: 'reboot' });
 });
@@ -333,14 +333,14 @@ test('cancelling, waiting too long, changing device or an invalid GPIO never sen
   await page.iotSubmit(form({ command: 'io_on', gpio: '5' }));
   page.click('[data-iot-command-cancel]');
   assert.equal(page.iotCommand.armed, null);
-  assert.match(page.elements['#iotCommandConfirm'].innerHTML, /Envoi annulé\. Rien n’a été envoyé\./);
+  assert.match(page.elements['#iotCommandConfirm'].innerHTML, /Send cancelled\. Nothing was sent\./);
   page.click('[data-iot-command-confirm]'); await page.iotCommandSend();
   await page.iotSubmit(form({ command: 'io_on', gpio: '5' }));
   const timer = page.timeouts.at(-1);
   assert.equal(timer.ms, 20000); assert.equal(timer.cleared, false);
   timer.callback();
   assert.equal(page.iotCommand.armed, null);
-  assert.match(page.elements['#iotCommandConfirm'].innerHTML, /aucune confirmation en 20 secondes\. Rien n’a été envoyé\./);
+  assert.match(page.elements['#iotCommandConfirm'].innerHTML, /no confirmation within 20 seconds\. Nothing was sent\./);
   await page.iotCommandSend();
   await page.iotSubmit(form({ command: 'io_on', gpio: '5' }));
   await page.iotSelect('SYN_2');
@@ -350,7 +350,7 @@ test('cancelling, waiting too long, changing device or an invalid GPIO never sen
   for (const gpio of ['', ' ', '49', '-1', '2.5', '1e1', 'abc', '007']) {
     await page.iotSubmit(form({ command: 'io_on', gpio }));
     assert.equal(page.iotCommand.armed, null, `gpio ${JSON.stringify(gpio)}`);
-    assert.match(page.elements['#iotCommandConfirm'].innerHTML, /le GPIO doit être un entier de 0 à 48/);
+    assert.match(page.elements['#iotCommandConfirm'].innerHTML, /the GPIO must be an integer from 0 to 48/);
   }
   await page.iotSubmit(form({ command: 'configIOs', gpio: '1' }));
   assert.equal(page.iotCommand.armed, null);
@@ -359,20 +359,20 @@ test('cancelling, waiting too long, changing device or an invalid GPIO never sen
 
 test('commands are disabled with the reason in words when the device or the broker link cannot take them', async () => {
   const cases = [
-    [{ devices: [device('SYN_1', { status: 'offline' })] }, 'l’appareil est hors ligne et ne recevrait pas le message'],
-    [{ devices: [device('SYN_1', { status: 'stale' })] }, 'l’appareil est silencieux depuis plus de 5 minutes'],
-    [{ status: status({ consumer: { configured: true, connected: false } }) }, 'Data n’est pas connecté au broker MQTT'],
-    [{ status: status({ consumer: { configured: false, connected: false } }) }, 'le broker MQTT n’est pas configuré sur Data'],
-    [{ status: null }, 'l’état du lien MQTT de Data est inconnu']
+    [{ devices: [device('SYN_1', { status: 'offline' })] }, 'the device is offline and would not receive the message'],
+    [{ devices: [device('SYN_1', { status: 'stale' })] }, 'the device has been silent for more than 5 minutes'],
+    [{ status: status({ consumer: { configured: true, connected: false } }) }, 'Data is not connected to the MQTT broker'],
+    [{ status: status({ consumer: { configured: false, connected: false } }) }, 'the MQTT broker is not configured on Data'],
+    [{ status: null }, 'the state of Data’s MQTT link is unknown']
   ];
   for (const [store, reason] of cases) {
     const page = await open(store);
     const actions = page.elements['#iotActions'].innerHTML;
-    assert.ok(actions.includes(`<p class="notice warning" id="iotCommandBlocked">Commandes désactivées : ${reason}.</p>`), reason);
-    assert.match(actions, /id="iotCommandKind" disabled>/); assert.match(actions, /id="iotGpio"[^>]* disabled>/); assert.match(actions, /type="submit" disabled>Préparer l’envoi/);
+    assert.ok(actions.includes(`<p class="notice warning" id="iotCommandBlocked">Commands disabled: ${reason}.</p>`), reason);
+    assert.match(actions, /id="iotCommandKind" disabled>/); assert.match(actions, /id="iotGpio"[^>]* disabled>/); assert.match(actions, /type="submit" disabled>Prepare send/);
     await page.iotSubmit(form({ command: 'reboot' }));
     assert.equal(page.iotCommand.armed, null);
-    assert.ok(page.elements['#iotCommandConfirm'].innerHTML.includes(`Commande non préparée : ${reason}.`));
+    assert.ok(page.elements['#iotCommandConfirm'].innerHTML.includes(`Command not prepared: ${reason}.`));
     await page.iotCommandSend();
     assert.equal(posts(page).length, 0);
   }
@@ -383,10 +383,10 @@ test('commands are disabled with the reason in words when the device or the brok
   armed.iotState.devices[0].status = 'offline';
   await armed.iotCommandSend();
   assert.equal(posts(armed).length, 0, 'a device that went offline while armed is not sent to');
-  assert.match(armed.elements['#iotCommandOutcome'].innerHTML, /data-outcome="not-sent"><strong>Non envoyé<\/strong> — l’appareil est hors ligne/);
+  assert.match(armed.elements['#iotCommandOutcome'].innerHTML, /data-outcome="not-sent"><strong>Not sent<\/strong> — the device is offline/);
 });
 
-test('the outcome tells a refusal (non envoyé) from an unconfirmed publication (peut-être envoyé)', async () => {
+test('the outcome tells a refusal (not sent) from an unconfirmed publication (maybe sent)', async () => {
   const failure = (code, message) => Object.assign(new Error(message), { status: code });
   const run = async command => {
     const page = await open({ command });
@@ -396,15 +396,15 @@ test('the outcome tells a refusal (non envoyé) from an unconfirmed publication 
     assert.equal(page.iotState.pending, false);
     return page.elements['#iotCommandOutcome'].innerHTML;
   };
-  assert.match(await run(() => failure(503, 'MQTT broker is not connected. Nothing was sent.')), /data-outcome="not-sent"><strong>Non envoyé<\/strong> — le lien avec le broker n’est pas disponible \(503\)\. MQTT broker is not connected/);
-  assert.match(await run(() => failure(404, 'Unknown device')), /data-outcome="not-sent"><strong>Non envoyé<\/strong> — commande refusée \(404\)\. Unknown device/);
-  assert.match(await run(() => failure(400, HOSTILE)), /data-outcome="not-sent">.*commande refusée \(400\)\. &lt;img src=x/);
-  assert.match(await run(() => failure(504, 'Publish not confirmed within 5 s')), /data-outcome="unknown"><strong>Peut-être envoyé<\/strong> — la publication n’a pas été confirmée à temps \(504\)\. Publish not confirmed within 5 s Vérifie l’appareil avant d’envoyer de nouveau ; aucun nouvel envoi automatique\./);
-  assert.match(await run(() => failure(502, 'Command outcome unknown')), /data-outcome="unknown"><strong>Peut-être envoyé<\/strong> — réponse 502 sans confirmation/);
-  assert.match(await run(() => ({ throwTransport: true })), /data-outcome="unknown"><strong>Peut-être envoyé<\/strong> — aucune réponse lisible reçue/);
+  assert.match(await run(() => failure(503, 'MQTT broker is not connected. Nothing was sent.')), /data-outcome="not-sent"><strong>Not sent<\/strong> — the broker link is not available \(503\)\. MQTT broker is not connected/);
+  assert.match(await run(() => failure(404, 'Unknown device')), /data-outcome="not-sent"><strong>Not sent<\/strong> — command refused \(404\)\. Unknown device/);
+  assert.match(await run(() => failure(400, HOSTILE)), /data-outcome="not-sent">.*command refused \(400\)\. &lt;img src=x/);
+  assert.match(await run(() => failure(504, 'Publish not confirmed within 5 s')), /data-outcome="unknown"><strong>Maybe sent<\/strong> — the publication was not confirmed in time \(504\)\. Publish not confirmed within 5 s Check the device before sending again; nothing is resent automatically\./);
+  assert.match(await run(() => failure(502, 'Command outcome unknown')), /data-outcome="unknown"><strong>Maybe sent<\/strong> — response 502 without confirmation/);
+  assert.match(await run(() => ({ throwTransport: true })), /data-outcome="unknown"><strong>Maybe sent<\/strong> — no readable response received/);
   assert.doesNotMatch(await run(() => failure(400, HOSTILE)), /<img src=x/);
   const page = await open();
-  assert.equal(page.iotCommandOutcome(200, { status: 'success', data: { topic: 'esp32/SYN_1/reboot', publishedAt: 'never' } }, { label: 'Redémarrer', topic: 'x' }).text.includes('une heure non précisée'), true);
+  assert.equal(page.iotCommandOutcome(200, { status: 'success', data: { topic: 'esp32/SYN_1/reboot', publishedAt: 'never' } }, { label: 'Reboot', topic: 'x' }).text.includes('an unspecified time'), true);
   assert.equal(page.iotCommandOutcome(200, { status: 'error', message: 'refused late' }, { label: 'x', topic: 'x' }).kind, 'unknown');
 });
 
@@ -433,19 +433,19 @@ test('the tab lists the selected device’s own IoT events and links to the filt
   const read = page.requests.find(call => call.path === '/events');
   assert.equal(read.method, 'GET'); assert.deepEqual(Object.fromEntries(read.query), { type: 'iot.', limit: '100' });
   const html = page.elements['#iotEvents'].innerHTML;
-  assert.match(html, /<h3>Événements de SYN_1<\/h3>/);
-  assert.match(html, /<a href="#activity" data-iot-activity>Ouvrir l’onglet Activity filtré sur l’IoT<\/a>/);
+  assert.match(html, /<h3>Events for SYN_1<\/h3>/);
+  assert.match(html, /<a href="#activity" data-iot-activity>Open the Activity tab filtered on IoT<\/a>/);
   assert.equal((html.match(/<li /g) || []).length, 8, 'the eight most recent of this device');
-  assert.match(html, /<strong>Commande envoyée<\/strong>\s*<span class="iot-event-detail">io_on GPIO 5 → esp32\/SYN_1\/io\/on<\/span>/);
-  assert.match(html, /data-severity="warning"><i aria-hidden="true"><\/i><strong>Commande échouée<\/strong>\s*<span class="iot-event-detail">reboot → esp32\/SYN_1\/reboot · &lt;img src=x/);
-  assert.match(html, /<strong>Silencieux<\/strong>\s*<span class="iot-event-detail">silencieux depuis 7 min/);
-  assert.match(html, /<strong>De retour<\/strong>\s*<span class="iot-event-detail">état précédent : hors ligne · appris d’un message retenu/);
-  assert.match(html, /<strong>Vu pour la première fois<\/strong>/); assert.match(html, /<strong>iot\.future_kind<\/strong>/);
-  assert.match(html, /8 affichés sur 9 pour cet appareil\. Lecture des 11 événements IoT les plus récents sur 240 ; Data garde 30 jours\./);
+  assert.match(html, /<strong>Command sent<\/strong>\s*<span class="iot-event-detail">io_on GPIO 5 → esp32\/SYN_1\/io\/on<\/span>/);
+  assert.match(html, /data-severity="warning"><i aria-hidden="true"><\/i><strong>Command failed<\/strong>\s*<span class="iot-event-detail">reboot → esp32\/SYN_1\/reboot · &lt;img src=x/);
+  assert.match(html, /<strong>Silent<\/strong>\s*<span class="iot-event-detail">silent for 7 min/);
+  assert.match(html, /<strong>Back<\/strong>\s*<span class="iot-event-detail">previous state: offline · learned from a retained message/);
+  assert.match(html, /<strong>First seen<\/strong>/); assert.match(html, /<strong>iot\.future_kind<\/strong>/);
+  assert.match(html, /8 of 9 shown for this device\. Read the 11 most recent IoT events of 240; Data keeps 30 days\./);
   assert.doesNotMatch(html, /<img src=x/);
   await page.iotSelect('SYN_2'); await settle();
   assert.equal((page.elements['#iotEvents'].innerHTML.match(/<li /g) || []).length, 1);
-  assert.match(page.elements['#iotEvents'].innerHTML, /<strong>Hors ligne<\/strong>/);
+  assert.match(page.elements['#iotEvents'].innerHTML, /<strong>Offline<\/strong>/);
   Object.assign(page.activityState, { family: 'storage', severity: 'error', page: 4 });
   page.click('[data-iot-activity]');
   assert.deepEqual([page.activityState.family, page.activityState.severity, page.activityState.page], ['iot', '', 1]);
@@ -454,25 +454,25 @@ test('the tab lists the selected device’s own IoT events and links to the filt
 
 test('an empty or unreadable journal says so and the rest of the tab stays usable', async () => {
   const quiet = await open({ events: [] });
-  assert.match(quiet.elements['#iotEvents'].innerHTML, /Aucun événement récent pour cet appareil\./);
-  assert.match(quiet.elements['#iotEvents'].innerHTML, /Le journal ne contient aucun événement IoT ; Data garde 30 jours\./);
+  assert.match(quiet.elements['#iotEvents'].innerHTML, /No recent events for this device\./);
+  assert.match(quiet.elements['#iotEvents'].innerHTML, /The log holds no IoT events; Data keeps 30 days\./);
   const one = await open({ events: [event('iot.device_first_seen', 'SYN_1')] });
-  assert.match(one.elements['#iotEvents'].innerHTML, /Le journal ne contient qu’un événement IoT/);
+  assert.match(one.elements['#iotEvents'].innerHTML, /The log holds only one IoT event/);
   const down = await open({ events: Object.assign(new Error(HOSTILE), { status: 502 }) });
-  assert.match(down.elements['#iotEvents'].innerHTML, /role="alert">Journal indisponible : &lt;img src=x/);
+  assert.match(down.elements['#iotEvents'].innerHTML, /role="alert">Log unavailable: &lt;img src=x/);
   assert.match(down.elements['#iotCards'].innerHTML, /SYN_1/);
-  assert.match(down.elements['#iotActions'].innerHTML, /Préparer l’envoi/);
+  assert.match(down.elements['#iotActions'].innerHTML, /Prepare send/);
 });
 
 test('the "not back yet" note is collapsed text with no control', async () => {
   const page = await open();
   const note = page.iotMissingHtml();
-  assert.match(note, /^<details class="card iot-missing"><summary>Pas encore revenu des anciennes pages<\/summary>/);
+  assert.match(note, /^<details class="card iot-missing"><summary>Not back yet from the former pages<\/summary>/);
   assert.doesNotMatch(note, /<details[^>]* open/);
-  assert.equal((note.match(/<li>/g) || []).length, 3);
-  assert.match(note, /Minuteries quotidiennes par sortie.*Timerz.*côté serveur.*côté appareil/s);
-  assert.match(note, /Profils de configuration des entrées\/sorties.*côté serveur/s);
-  assert.match(note, /Caméras.*côté serveur/s);
+  assert.equal((note.match(/<li>/g) || []).length, 1);
+  assert.doesNotMatch(note, /Daily timers per output/);
+  assert.doesNotMatch(note, /configuration profiles/);
+  assert.match(note, /Cameras.*server side/s);
   assert.doesNotMatch(note, /<button|<a |<input|<select|data-iot-/);
   assert.ok(page.elements['#content'].innerHTML.includes(note));
 });

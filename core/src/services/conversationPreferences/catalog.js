@@ -2,35 +2,35 @@
 
 const option = (key, group, title, description, cost, surfaces) => ({ key, group, title, description, cost, surfaces });
 const CATALOG = Object.freeze([
-  option('profileContext', 'context', 'Mon profil', 'Ajoute les informations et préférences que tu as renseignées.', 'Contexte supplémentaire', ['playground', 'psyx']),
-  option('historyContext', 'context', 'Historique de cet échange', 'Envoie les échanges précédents dans le contexte fourni par Core. Le transcript reste conservé.', 'Contexte supplémentaire', ['playground', 'psyx', 'nestor', 'family']),
-  option('memoryContext', 'context', 'Souvenirs sélectionnés', 'Consulte et ajoute les souvenirs utiles à la réponse.', 'Recherche et contexte', ['psyx', 'nestor', 'family']),
-  option('recapContext', 'context', 'Point confirmé', 'Ajoute le résumé de séance que tu as confirmé pour faciliter la reprise.', 'Lecture et contexte', ['psyx', 'nestor']),
-  option('previousSessionsContext', 'context', 'Résumés des séances précédentes', 'Ajoute les résumés automatiques des autres séances PsyX.', 'Contexte supplémentaire', ['psyx']),
-  option('portraitContext', 'context', 'Portrait', 'Ajoute le portrait construit entre les séances.', 'Contexte supplémentaire', ['psyx']),
-  option('experimentContext', 'context', 'Objectifs et essais', 'Ajoute tes objectifs, essais en cours et points de suivi.', 'Contexte supplémentaire', ['psyx']),
-  option('assessmentContext', 'context', 'Questionnaires', 'Ajoute les résultats et tendances des questionnaires renseignés.', 'Contexte supplémentaire', ['psyx']),
-  option('techniqueContext', 'context', 'Repères et techniques', 'Ajoute les fiches de techniques au contexte de réponse. La boîte à outils reste accessible.', 'Contexte supplémentaire', ['psyx']),
-  option('timeContext', 'context', 'Repères de temps', 'Ajoute la date et le temps écoulé depuis les échanges.', 'Contexte supplémentaire', ['psyx']),
-  option('knowledgeContext', 'context', 'Documents approuvés', 'Recherche les documents autorisés pour cet espace et ajoute les passages utiles.', 'Recherche documentaire', ['nestor', 'family']),
-  option('householdContext', 'context', 'Famille et routines', 'Ajoute les membres du foyer ou les routines familiales autorisées pour cet espace.', 'Lecture et contexte', ['nestor', 'family']),
-  option('reviewContext', 'context', 'Conseils de la revue', 'Ajoute les corrections proposées par la revue de Nestor au tour suivant.', 'Contexte supplémentaire', ['nestor', 'family']),
-  option('autoRecommendations', 'reply', 'Adaptation automatique', 'Laisse PsyX utiliser les recommandations de sa revue pour choisir le mode et la profondeur en Auto.', 'Peut choisir un calcul plus long', ['psyx']),
-  option('deepReasoning', 'reply', 'Réflexion approfondie', 'Autorise la profondeur « Profonde ». Désactivée, PsyX répond en profondeur normale.', 'Calcul supplémentaire', ['psyx']),
-  option('recapDraft', 'reply', 'Proposition de résumé', 'Autorise un appel local lorsque tu demandes un résumé. Écrire et enregistrer ton point reste possible.', 'Un appel modèle, sur demande', ['psyx', 'nestor']),
-  option('backgroundReview', 'background', 'Revue après réponse', 'Prépare des observations après les échanges. La désactivation empêche les nouveaux calculs et écarte les résultats encore en cours.', 'Appels modèle après les réponses', ['psyx', 'nestor', 'family']),
-  option('dreamEnabled', 'background', 'Rêverie disponible', 'Autorise la construction du portrait, automatiquement ou sur demande. Le portrait déjà enregistré est conservé.', 'Appels modèle de réflexion', ['psyx']),
-  option('automaticDream', 'background', 'Rêverie automatique', 'Réfléchit entre les séances et la nuit. Désactiver cette option garde la commande manuelle « Approfondir maintenant ».', 'Appels modèle en arrière-plan', ['psyx']),
-  option('dreamNotes', 'sources', 'Notes de Nestor', 'Autorise la rêverie à consulter les notes personnelles de Nestor.', 'Lecture et contexte de rêverie', ['psyx']),
-  option('dreamTasks', 'sources', 'Tâches et rappels', 'Autorise la rêverie à consulter les tâches personnelles ouvertes.', 'Lecture et contexte de rêverie', ['psyx']),
-  option('dreamMail', 'sources', 'Journal de courriels', 'Autorise la rêverie à consulter les résumés du journal de courriels.', 'Lecture et contexte de rêverie', ['psyx'])
+  option('profileContext', 'context', 'My profile', 'Adds the information and preferences you entered.', 'Extra context', ['playground', 'psyx']),
+  option('historyContext', 'context', 'Conversation history', 'Sends earlier messages in the context Core provides. The transcript is kept either way.', 'Extra context', ['playground', 'psyx', 'nestor', 'family']),
+  option('memoryContext', 'context', 'Selected memories', 'Looks up and adds memories that help the reply.', 'Search and context', ['psyx', 'nestor', 'family']),
+  option('recapContext', 'context', 'Confirmed recap', 'Adds the session recap you confirmed, to make picking up easier.', 'Read and context', ['psyx', 'nestor']),
+  option('previousSessionsContext', 'context', 'Previous session summaries', 'Adds the automatic summaries of your other PsyX sessions.', 'Extra context', ['psyx']),
+  option('portraitContext', 'context', 'Portrait', 'Adds the portrait built between sessions.', 'Extra context', ['psyx']),
+  option('experimentContext', 'context', 'Goals and experiments', 'Adds your goals, ongoing experiments and check-ins.', 'Extra context', ['psyx']),
+  option('assessmentContext', 'context', 'Questionnaires', 'Adds the results and trends of completed questionnaires.', 'Extra context', ['psyx']),
+  option('techniqueContext', 'context', 'Guides and techniques', 'Adds technique sheets to the reply context. The toolbox stays available.', 'Extra context', ['psyx']),
+  option('timeContext', 'context', 'Time cues', 'Adds the date and the time elapsed since earlier messages.', 'Extra context', ['psyx']),
+  option('knowledgeContext', 'context', 'Approved documents', 'Searches the documents allowed for this space and adds useful passages.', 'Document search', ['nestor', 'family']),
+  option('householdContext', 'context', 'Family and routines', 'Adds the household members or family routines allowed for this space.', 'Read and context', ['nestor', 'family']),
+  option('reviewContext', 'context', 'Review advice', 'Adds the corrections suggested by Nestor’s review to the next turn.', 'Extra context', ['nestor', 'family']),
+  option('autoRecommendations', 'reply', 'Automatic adaptation', 'Lets PsyX use its review recommendations to choose mode and depth in Auto.', 'May choose longer compute', ['psyx']),
+  option('deepReasoning', 'reply', 'Deep reasoning', 'Allows the Deep depth. When off, PsyX replies at normal depth.', 'Extra compute', ['psyx']),
+  option('recapDraft', 'reply', 'Recap draft', 'Allows a local call when you ask for a recap. You can still write and save your own recap.', 'One model call, on request', ['psyx', 'nestor']),
+  option('backgroundReview', 'background', 'Post-reply review', 'Prepares observations after messages. Turning it off stops new runs and discards results still in progress.', 'Model calls after replies', ['psyx', 'nestor', 'family']),
+  option('dreamEnabled', 'background', 'Dreaming available', 'Allows building the portrait, automatically or on request. The saved portrait is kept.', 'Reflection model calls', ['psyx']),
+  option('automaticDream', 'background', 'Automatic dreaming', 'Reflects between sessions and at night. Turning it off keeps the manual command available.', 'Background model calls', ['psyx']),
+  option('dreamNotes', 'sources', 'Nestor’s notes', 'Lets dreaming read Nestor’s personal notes.', 'Dreaming read and context', ['psyx']),
+  option('dreamTasks', 'sources', 'Tasks and reminders', 'Lets dreaming read open personal tasks.', 'Dreaming read and context', ['psyx']),
+  option('dreamMail', 'sources', 'Email log', 'Lets dreaming read the email log summaries.', 'Dreaming read and context', ['psyx'])
 ]);
 const NUMBERS = [
-  { ...option('reviewDelaySeconds', 'background', 'Délai avant la revue', 'Attend après la réponse avant de lancer la revue. Un délai plus long laisse davantage de place à la conversation.', 'Secondes · sans appel supplémentaire', ['psyx', 'nestor', 'family']), type: 'number', min: 0, max: 600, step: 'any' },
-  { ...option('dreamIdleMinutes', 'background', 'Repos avant la rêverie', 'Attend cette durée sans échange avant une rêverie automatique.', 'Minutes · rythme des calculs', ['psyx']), type: 'number', min: 1, max: 1440, step: 1 },
-  { ...option('dreamNightHour', 'background', 'Heure de la rêverie nocturne', 'Heure locale du foyer, de 0 à 23. La nouvelle heure vaut pour les prochaines nuits.', 'Heure · rythme des calculs', ['psyx']), type: 'number', min: 0, max: 23, step: 1 }
+  { ...option('reviewDelaySeconds', 'background', 'Delay before review', 'Waits after the reply before starting the review. A longer delay leaves more room for the conversation.', 'Seconds · no extra call', ['psyx', 'nestor', 'family']), type: 'number', min: 0, max: 600, step: 'any' },
+  { ...option('dreamIdleMinutes', 'background', 'Idle time before dreaming', 'Waits this long without messages before automatic dreaming.', 'Minutes · compute pace', ['psyx']), type: 'number', min: 1, max: 1440, step: 1 },
+  { ...option('dreamNightHour', 'background', 'Nightly dreaming hour', 'Household local hour, from 0 to 23. A new hour applies from the next night.', 'Hour · compute pace', ['psyx']), type: 'number', min: 0, max: 23, step: 1 }
 ];
-const GROUPS = { context: 'Contexte de la réponse', reply: 'Calcul de la réponse', background: 'Après les échanges', sources: 'Sources de la rêverie' };
+const GROUPS = { context: 'Reply context', reply: 'Reply compute', background: 'After messages', sources: 'Dreaming sources' };
 const SURFACES = ['playground', 'psyx', 'nestor', 'family'];
 function catalogFor(surface) { return [...CATALOG, ...NUMBERS].filter(item => item.surfaces.includes(surface)).map(({ surfaces, ...item }) => ({ ...item, groupTitle: GROUPS[item.group] })); }
 function defaultsFor(surface, env = process.env) {

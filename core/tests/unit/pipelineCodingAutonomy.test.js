@@ -72,6 +72,71 @@ beforeEach(async () => {
 });
 afterEach(() => service.configureControl(null));
 
+test.each(['merged', 'failed', 'changed-head'])('finished PR observation sees %s while paused without resuming, accepting or rewriting costs', async outcome => {
+  await task(); await authorize(); await enable(); const first = await launch(); await complete(first);
+  observations.set(first.requestId, { ...PR, state: 'open', mergeable: 'clean',
+    checks: policy.CHECKS.map(name => ({ name, head: HEAD, state: 'success' })) });
+  await service.tick();
+  await service.configure({ enabled: false, confirm: true, expectedRevision: (await service.settings()).revision });
+  await service.authorize('0001', { authorized: false, confirm: true,
+    expectedRevision: (await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy.revision });
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.deliveryNextObservationAt': new Date(0).toISOString() } });
+  const before = await Task.findOne({ pipelineId: '0001' }).lean();
+  const remoteHead = outcome === 'changed-head' ? 'f'.repeat(40) : HEAD;
+  observations.set(first.requestId, { ...PR, head: remoteHead, state: outcome === 'merged' ? 'closed' : 'open',
+    merged: outcome === 'merged', mergeable: 'unknown',
+    checks: policy.CHECKS.map(name => ({ name, head: remoteHead, state: name === 'tests (core)' ? 'failure' : 'success' })) });
+  await service.tick(); const after = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(after.status).toBe('review'); expect(after.codingAutonomy.state).toBe('stopped'); expect(after.codingAutonomy.authorized).toBe(false);
+  expect(after.codingAutonomy.delivery).toMatchObject({ merged: outcome === 'merged', ci: 'failure', headMatches: outcome !== 'changed-head', acceptance: 'not_recorded' });
+  expect(after.automationAttempts).toEqual(before.automationAttempts); expect(after.codingAutonomy.runs).toEqual(before.codingAutonomy.runs);
+  expect(after.codingAutonomy.spent).toEqual(before.codingAutonomy.spent); expect(after.codingAutonomy.pr).toEqual(before.codingAutonomy.pr);
+  expect(control.launch).toHaveBeenCalledTimes(1); expect(await selected()).toBeNull();
+  const reads = control.observe.mock.calls.length; await service.tick(); expect(control.observe).toHaveBeenCalledTimes(reads);
+});
+test('late PR observation cannot overwrite a concurrent stop or task decision', async () => {
+  const delivery = require('../../src/services/pipelineCodingDelivery');
+  await task(); await authorize(); await enable(); const first = await launch(); await complete(first);
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.state': 'ready_for_review' } });
+  const before = await Task.findOne({ pipelineId: '0001' }).lean();
+  control.observe.mockImplementationOnce(async () => {
+    await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.state': 'stopped', 'codingAutonomy.authorized': false }, $inc: { 'codingAutonomy.revision': 1 } });
+    return { ...PR, state: 'closed', merged: true, checks: [] };
+  });
+  await expect(delivery.refresh(before, control, service.save)).rejects.toThrow('changed');
+  expect((await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy).toMatchObject({ state: 'stopped', authorized: false });
+});
+test.each(['merged', 'changed-head', 'ownership-race'])('fresh review observation refuses %s before another coding turn', async kind => {
+  await task(); await authorize(); await enable(); const first = await launch(); await complete(first);
+  const before = await Task.findOne({ pipelineId: '0001' }).lean();
+  control.observe.mockImplementationOnce(async () => {
+    if (kind === 'ownership-race') await Task.updateOne({ pipelineId: '0001' }, { $set: { status: 'in_progress', assignee: 'other-owner' } });
+    return { ...PR, state: kind === 'merged' ? 'closed' : 'open', merged: kind === 'merged',
+      head: kind === 'changed-head' ? 'f'.repeat(40) : HEAD, checks: [] };
+  });
+  await expect(service.recordReview('0001', { confirm: true, head: HEAD, text: 'Synthetic exact-head correction' })).rejects.toThrow();
+  const after = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(after.codingAutonomy).toEqual(before.codingAutonomy); expect(after.automationAttempts).toEqual(before.automationAttempts);
+  if (kind === 'ownership-race') expect(after.assignee).toBe('other-owner');
+  expect(control.launch).toHaveBeenCalledTimes(1);
+});
+test.each([
+  ['waiting_ci', true, null, true], ['correction', true, 'failure', true], ['blocked', true, 'failure', true],
+  ['ready_for_review', true, null, false], ['stopped', false, 'failure', false], ['closed', false, null, false],
+  ['correction', true, 'human_review', false], ['correction', true, 'conflict', false],
+])('CI campaign watch projection follows native ownership and state %s/%s/%s', async (state, authorized, correction, expected) => {
+  await task(); await authorize(); await enable(); const first = await launch(); await complete(first);
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.state': state, 'codingAutonomy.authorized': authorized,
+    'codingAutonomy.reason': 'resume_limit', 'codingAutonomy.ciWatchStartedAt': new Date().toISOString(),
+    'codingAutonomy.correction': correction ? { kind: correction } : null } });
+  const record = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(service.projection(record).ciObservationActive).toBe(expected);
+  expect(service.projection({ ...record, automationLease: { expiresAt: new Date() } }).ciObservationActive).toBe(false);
+  expect(service.projection({ ...record, codingCapacity: { requestId: first.requestId } }).ciObservationActive).toBe(false);
+  const unfinished = structuredClone(record); delete unfinished.codingAutonomy.runs.at(-1).finishedAt;
+  expect(service.projection(unfinished).ciObservationActive).toBe(false);
+});
+
 test('routing and idea intake grant no autonomous execution; switch defaults off', async () => {
   await task(); await enable(); await service.tick(); expect(control.launch).not.toHaveBeenCalled(); expect(await selected()).toBeNull();
   await Settings.deleteMany({}); expect((await service.status()).enabled).toBe(false);
@@ -440,7 +505,7 @@ test.each(['stopped', 'closed', 'dispatching'])('CI rerun does not revive or rew
   observations.set(active.requestId, { ...PR, state: 'open', mergeable: 'clean',
     checks: policy.CHECKS.map(name => ({ name, head: HEAD, state: 'success' })) });
   await observeNow();
-  expect(control.observe).toHaveBeenCalledTimes(count);
+  expect(control.observe).toHaveBeenCalledTimes(count + (['stopped', 'closed'].includes(state) ? 1 : 0));
   expect((await service.status()).tasks[0].state).toBe(state);
   expect(control.launch).toHaveBeenCalledTimes(1);
 });
@@ -498,8 +563,15 @@ test('Core model deadline aborts an uncompleted call without claiming terminatio
   expect(durable.codingAutonomy.runs[0].pendingInferences).toHaveLength(1);
   expect(durable.codingAutonomy.runs[0].modelReceipts[0].state).toBe('unknown');
   expect(durable.automationLease.leaseId).toBe(claimed.automationLease.leaseId); expect(durable.codingCapacity.admissionId).toBe('fixture');
+  // Node can fire a timeout just before its wall-clock deadline. An unknown
+  // receipt still fences another call even when a fraction of the budget remains.
   await expect(inference.prepare({ ...headers, 'x-agentx-coding-call': '10000000-0000-4000-8000-000000000002' }, 'synthetic-model'))
-    .rejects.toMatchObject({ code: 'CODING_MODEL_BUDGET' });
+    .rejects.toMatchObject({ code: expect.stringMatching(/^CODING_(?:MODEL_BUDGET|INFERENCE_COMPLETION_PENDING)$/) });
+  const refused = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(refused.codingAutonomy.runs[0].modelReceipts).toHaveLength(1);
+  expect(refused.codingAutonomy.runs[0].pendingInferences).toHaveLength(1);
+  expect(refused.automationLease.leaseId).toBe(claimed.automationLease.leaseId);
+  expect(refused.codingCapacity.admissionId).toBe('fixture');
 });
 test('changed remote head becomes an explicit manual intervention and worker correction', async () => {
   await task(); await authorize(); await enable(); const first = await launch(); await complete(first);
@@ -593,4 +665,33 @@ test('a task taken by another worker after selection cancels only the unreceived
   expect(control.launch).not.toHaveBeenCalled(); expect((await selected()).pipelineId).toBe('0002');
   const original = await Task.findOne({ pipelineId: '0001' }).lean();
   expect(original.assignee).toBe('other-worker'); expect(original.codingAutonomy.reason).toBe('task_owned_elsewhere');
+});
+
+test.each(['tests_failed', 'hard_budget', 'operator_stop'])('only exact native unpublished test failure %s can select a bounded correction', async reason => {
+  await task(); await authorize();
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.correction': { kind: 'operator_continuation', text: 'Original reviewed guidance', by: 'operator' } } });
+  await enable(); const active = await launch();
+  const claimed = await claimEligibleTask(active.pipelineId, 'coding-team', new Date(), { automated: true, dispatchRequestId: active.requestId });
+  const startedAt = new Date(Date.now() - 2000).toISOString(), finishedAt = new Date().toISOString();
+  await Task.updateOne({ pipelineId: active.pipelineId }, { $set: { 'codingAutonomy.runs.0.modelReceipts': [{
+    callId: '40000000-0000-4000-8000-000000000001', state: 'completed', startedAt, finishedAt }] } });
+  const response = await request(app).post(`/api/pipeline/tasks/${active.pipelineId}/feedback`).send({
+    by: 'coding-team', assignee: 'coding-team', leaseId: claimed.automationLease.leaseId,
+    text: 'Independent verification failed (untrusted test output): synthetic assertion.', status: 'blocked',
+    attemptEvidence: { schema: 'agentx.pipeline-automation-evidence/v1', verification: { status: 'failed' },
+      changes: {}, usage: {}, failureCodes: [reason], source: 'coding-autonomous/v1',
+      workerReceiptFingerprint: 'b'.repeat(64), routing: { status: 'verified', provider: 'ollama', effectiveModel: 'synthetic-model',
+        requestCount: 1, sessionCallCount: 1, evidenceFingerprint: 'c'.repeat(64) } } });
+  expect(response.status).toBe(200);
+  receipts.set(active.requestId, { pipelineId: active.pipelineId, requestId: active.requestId, phase: 'finished',
+    progress: terminalProgress(active, { result: 'blocked', stopReason: reason, pr: null,
+      lastTest: { name: 'jest', outcome: 'failed' } }) });
+  await service.tick(); const after = await Task.findOne({ pipelineId: active.pipelineId }).lean();
+  expect(after.codingAutonomy.runs[0].finishedAt).toBeTruthy();
+  expect(after.codingAutonomy.spent.modelCalls).toBe(1);
+  if (reason === 'tests_failed') {
+    expect(after.codingAutonomy.runs).toHaveLength(2);
+    expect(after.codingAutonomy.runs[1].parentRequestId).toBe(active.requestId);
+    expect(after.codingAutonomy.correction).toEqual({ kind: 'local_tests', head: HEAD, text: 'Original reviewed guidance', by: 'operator' });
+  } else expect(after.codingAutonomy.runs).toHaveLength(1);
 });

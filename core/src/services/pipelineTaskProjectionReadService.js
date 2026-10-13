@@ -12,7 +12,8 @@ const SUMMARY_FIELD_LIST = [
   'automationAttempts.attempt automationAttempts.acquiredAt automationAttempts.completedAt automationAttempts.finalState',
   'automationAttempts.reviewedAt automationAttempts.reviewOutcome automationAttempts.evidence.schema',
   'automationAttempts.evidence.failureCodes automationAttempts.evidence.verification.status',
-  'automationAttempts.evidence.inference.state automationAttempts.evidence.inference.cause transitionSeq'
+  'automationAttempts.evidence.inference.state automationAttempts.evidence.inference.cause transitionSeq',
+  'codingAutonomy.authorized codingAutonomy.disposition.kind codingAutonomy.disposition.outcome'
 ].join(' ');
 // Summary reads carry only the most recent transitions; the store keeps more.
 const SUMMARY_FIELDS = {
@@ -34,6 +35,10 @@ function redactTaskLeaseIds(task) {
       const { admissionId, generation, workloadId, ...visible } = row.codingCapacity;
       return visible;
     })() } : {}),
+    ...(row.codingCapacityRecovery ? { codingCapacityRecovery: {
+      key: row.codingCapacityRecovery.key, requestId: row.codingCapacityRecovery.requestId,
+      state: row.codingCapacityRecovery.state
+    } } : {}),
     ...(row.automationLease ? { automationLease: withoutLeaseId(row.automationLease) } : {}),
     ...(Array.isArray(row.automationAttempts)
       ? { automationAttempts: row.automationAttempts.map(withoutLeaseId) } : {}),

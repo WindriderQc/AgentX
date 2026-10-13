@@ -49,7 +49,7 @@
   function sceneCaption(scene) {
     if (!scene) return '';
     if (scene.kind === 'add') return `${scene.a} + ${scene.b} = ${scene.a + scene.b}`;
-    return scene.kind === 'count' ? `On compte jusqu’à ${scene.to}` : '';
+    return scene.kind === 'count' ? `Counting to ${scene.to}` : '';
   }
 
   // The scene's three views: plein (Nestor fills the screen), montre (he stands in the corner
@@ -90,23 +90,23 @@
     const family = space === 'family';
     const dock = doc.createElement('aside');
     dock.className = 'avatar-dock';
-    dock.setAttribute('aria-label', family ? 'Nestor, visage' : 'Ton agent, visage');
+    dock.setAttribute('aria-label', family ? 'Nestor, face' : 'Your agent, face');
     dock.innerHTML = `<div class="avatar-dock-stage"><div class="avatar-dock-orb" aria-hidden="true"></div></div>
-      <div class="avatar-dock-bar" role="toolbar" aria-label="Taille du visage">
-        <button type="button" data-mode="scene" title="Plein écran interactif">⛶</button>
-        <button type="button" data-mode="bulle" title="Bulle">●</button>
-        <button type="button" data-mode="quart" title="Quart d’écran">◱</button>
-        <button type="button" data-mode="moitie" title="Moitié d’écran">◧</button>
-        <button type="button" data-mode="cache" title="Masquer le visage">×</button>
+      <div class="avatar-dock-bar" role="toolbar" aria-label="Face size">
+        <button type="button" data-mode="scene" title="Interactive full screen">⛶</button>
+        <button type="button" data-mode="bulle" title="Bubble">●</button>
+        <button type="button" data-mode="quart" title="Quarter screen">◱</button>
+        <button type="button" data-mode="moitie" title="Half screen">◧</button>
+        <button type="button" data-mode="cache" title="Hide the face">×</button>
       </div>
-      <button type="button" class="avatar-dock-reopen" title="Afficher le visage">${family ? 'Nestor' : 'Visage'}</button>`;
+      <button type="button" class="avatar-dock-reopen" title="Show the face">${family ? 'Nestor' : 'Face'}</button>`;
     // The scene's own controls stay reachable on a touchscreen, where nothing hovers.
     const sceneBar = doc.createElement('div');
     sceneBar.className = 'avatar-scene-bar';
     sceneBar.setAttribute('role', 'toolbar');
-    sceneBar.setAttribute('aria-label', family ? 'Nestor' : 'Ton agent');
+    sceneBar.setAttribute('aria-label', family ? 'Nestor' : 'Your agent');
     sceneBar.innerHTML = `<p class="avatar-scene-status" aria-hidden="true"></p>
-      <div class="avatar-scene-actions"><button type="button" data-scene="close" hidden>Fermer l’affichage</button><button type="button" data-scene="menu" aria-label="Afficher la conversation, le clavier et les réglages">Conversation</button></div>`;
+      <div class="avatar-scene-actions"><button type="button" data-scene="close" hidden>Close display</button><button type="button" data-scene="menu" aria-label="Show the conversation, keyboard and settings">Conversation</button></div>`;
     doc.body.append(dock, sceneBar);
     const sceneStatus = sceneBar.querySelector('.avatar-scene-status');
     const stage = dock.querySelector('.avatar-dock-stage');

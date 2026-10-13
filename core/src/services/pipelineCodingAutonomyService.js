@@ -69,7 +69,7 @@ async function authorize(id, input) {
       throw policy.fail('Authorization scope differs from the reviewed task intent');
     if (input.verificationProfile && input.verificationProfile !== task.automation.verificationProfile)
       throw policy.fail('Verification differs from the reviewed task intent');
-    if (!['agentx-dispatcher-tests/v1', 'agentx-core-runner-tests/v1'].includes(task.automation.verificationProfile))
+    if (!['agentx-dispatcher-tests/v1', 'agentx-core-runner-tests/v1', 'agentx-benchmark-artifact-tests/v1'].includes(task.automation.verificationProfile))
       throw policy.fail('Select an installed independent verification profile');
   }
   if (input.expectedRevision !== (task.codingAutonomy?.revision || 0)) throw policy.fail('Task authorization changed');
@@ -119,9 +119,17 @@ function projection(task) {
   const currentUsage = last && policy.usage(last, last.currentUsage);
   if (last && !last.finishedAt) for (const key of ['workSeconds', 'testSeconds', 'modelSeconds', 'modelCalls'])
     remaining[key] = Math.max(0, remaining[key] - (currentUsage[key] || 0));
-  if (state.state === 'waiting_ci' || failedCIWatch(state)) remaining.ciSeconds = Math.max(0, state.limits.ciSeconds - ciSpent(state).ciSeconds);
+  if (state.state === 'waiting_ci' || failedCIWatch(state)) remaining.ciSeconds = Math.max(0, policy.totalLimits(state).ciSeconds - ciSpent(state).ciSeconds);
   return { pipelineId: task.pipelineId, title: task.title, taskStatus: task.status,
-    scope: task.automation.scope, queueRequestId: state.queueRequestId, limits: state.limits,
+    nativeAttemptCount: task.automationAttemptCount || 0, nativeAttemptLimit: task.automation.budgets.maxAttempts,
+    automationFingerprint: task.automation.fingerprint,
+    failureCodes: task.automationAttempts?.at(-1)?.evidence?.failureCodes || [],
+    disposition: state.disposition || null, delivery: state.delivery || null,
+    continuationAborts: state.continuationAborts || [],
+    ciObservationActive: Boolean(state.pr && last?.finishedAt && !task.automationLease && !task.codingCapacity
+      && ['review', 'blocked'].includes(task.status) && (state.state === 'waiting_ci' || failedCIWatch(state))),
+    scope: task.automation.scope, verificationProfile: state.verificationProfile || task.automation.verificationProfile,
+    queueRequestId: state.queueRequestId, limits: state.limits, totalLimits: policy.totalLimits(state), budgetGrants: state.budgetGrants || [],
     authorizationRevision: state.revision, authorized: state.authorized, state: state.state, reason: state.reason,
     resumes: Math.max(0, state.runs.length - 1), remaining, pr: state.pr || null,
     lastUsefulProgressAt: state.lastUsefulProgressAt || null, manualInterventions: state.manualInterventions,
@@ -143,6 +151,10 @@ async function recover(id, requestId, input) {
   const result = await require('./pipelineCodingAutonomyRecovery').recover(id, requestId, input, control);
   return { ...projection(result.task), alreadyRecovered: result.alreadyRecovered };
 }
+async function continueRecovered(id, requestId, input) {
+  const task = await require('./pipelineCodingContinuation').continueRecovered(id, requestId, input, control);
+  return projection(task);
+}
 async function campaign(task, host) {
   const job = await require('./heavyWorkQueueService').get(task.codingAutonomy.queueRequestId);
   const now = new Date().toISOString();
@@ -160,9 +172,11 @@ async function workerManifest(id, requestId) {
   policy.assertTask(task);
   if (!state?.authorized || terminal.has(state.state) || run?.requestId !== requestId || !config.active
     || config.active.requestId !== requestId || state.basis !== policy.basis(task)) throw policy.fail('This execution no longer has task authority');
-  await campaign(task, task.codingCapacity?.host);
-  return { pipelineId: id, requestId, parentRequestId: run.parentRequestId, remaining: policy.remaining(task),
-    limits: state.limits, spent: policy.spent(state), lastUsefulWorkSeconds: state.lastUsefulWorkSeconds || 0,
+  const job = await campaign(task, task.codingCapacity?.host);
+  return { queueEndAt: job.reservation.end, pipelineId: id, requestId, parentRequestId: run.parentRequestId, remaining: policy.remaining(task),
+    limits: { ...state.limits, maxResumes: policy.totalLimits(state).maxResumes }, verificationProfile: state.verificationProfile || task.automation.verificationProfile, spent: policy.spent(state), lastUsefulWorkSeconds: state.lastUsefulWorkSeconds || 0,
+    progressWindowStartedAtWorkSeconds: state.progressWindowStartedAtWorkSeconds || 0,
+    continuationCheckpoint: (state.budgetGrants || []).find(grant => grant.parentRequestId === run.parentRequestId)?.head || null,
     seenStates: state.seenStates, seenTests: state.seenTests, pr: state.pr || null,
     scope: task.automation.scope, correction: state.correction || null, queueRequestId: state.queueRequestId };
 }
@@ -182,13 +196,22 @@ async function recordReview(id, input) {
   let task = await readTask(id);
   const state = task.codingAutonomy;
   if (input.confirm !== true || !state?.pr || input.head !== state.pr.head || task.status !== 'review'
+    || state.delivery?.state === 'closed' || state.delivery?.merged
+    || !state.runs.at(-1)?.finishedAt || task.automationLease || task.codingCapacity || !control
     || !['waiting_ci', 'ready_for_review'].includes(state.state) || !input.text?.trim() || input.text.length > 4000)
     throw policy.fail('Review feedback must name the current PR commit and a completed worker');
+  let observation;
+  try { observation = await control.observe({ pipelineId: id, requestId: state.runs.at(-1).requestId, pr: state.pr }); }
+  catch { throw policy.fail('The current PR cannot be verified; retain this review without starting a correction'); }
+  if (observation.state !== 'open' || observation.merged || observation.head !== state.pr.head)
+    throw policy.fail('The PR was closed or its head changed; reconcile its current delivery before requesting a correction');
+  const guard = { updatedAt: task.updatedAt, status: 'review', assignee: task.assignee ?? null,
+    automationLease: null, codingCapacity: null, 'codingAutonomy.pr.head': state.pr.head };
   const message = input.text.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
   // Human review is labelled data; it is never interpreted as runner commands.
   const correction = { kind: 'human_review', head: input.head, text: message, by: 'operator' };
   task = await save(task, { ...state, spent: ciSpent(state), correction, state: 'correction', reason: null,
-    manualInterventions: [...state.manualInterventions, { kind: 'review_feedback', at: new Date().toISOString(), head: input.head }] });
+    manualInterventions: [...state.manualInterventions, { kind: 'review_feedback', at: new Date().toISOString(), head: input.head }] }, {}, undefined, guard);
   return projection(task);
 }
 async function stop(id, requestId, input = {}) {
@@ -227,7 +250,7 @@ async function select(config) {
     catch { await block(task, 'scope_changed'); continue; }
     if (task.codingAutonomy.basis !== policy.basis(task)) { await block(task, 'task_changed'); continue; }
     if (task.codingAutonomy.state === 'correction') {
-      if (task.codingAutonomy.runs.length > task.codingAutonomy.limits.maxResumes) { await block(task, 'resume_limit'); continue; }
+      if (task.codingAutonomy.runs.length > policy.totalLimits(task.codingAutonomy).maxResumes) { await block(task, 'resume_limit'); continue; }
       if (!['review', 'blocked'].includes(task.status) || task.automationLease || task.codingCapacity) continue;
       const state = { ...task.codingAutonomy, spent: ciSpent(task.codingAutonomy), state: 'queued' };
       const exhausted = policy.exhausted({ ...task, codingAutonomy: state });
@@ -315,6 +338,22 @@ async function dispatch(task, config) {
     if (state.reason === 'operator_stop' || !state.authorized) Object.assign(next, { state: 'stopped', reason: state.reason || 'authorization_removed' });
     else if (receipt.stopReason === 'git_conflict_remaining' && task.status === 'blocked')
       Object.assign(next, { state: 'correction', reason: null, correction: { kind: 'git_conflict_remaining', head: receipt.checkpoint } });
+    else if (receipt.result === 'blocked' && receipt.stopReason === 'tests_failed' && task.status === 'blocked'
+      && !state.pr && !receipt.pr && receipt.lastTest?.outcome === 'failed'
+      && /^[a-f0-9]{40}$/.test(receipt.checkpoint || '') && run.modelReceipts?.length
+      && run.modelReceipts.every(call => call.state === 'completed')
+      && task.automationAttempts.filter(attempt => attempt.dispatchRequestId === run.requestId).length === 1
+      && task.automationAttempts.at(-1)?.dispatchRequestId === run.requestId
+      && task.automationAttempts.at(-1)?.attempt === run.expectedAttemptCount + 1
+      && task.automationAttemptCount === run.expectedAttemptCount + 1
+      && task.automationAttempts.at(-1)?.finalState === 'blocked'
+      && Number.isFinite(Date.parse(task.automationAttempts.at(-1)?.completedAt))
+      && /^[a-f0-9]{64}$/.test(task.automationAttempts.at(-1)?.resultRequestFingerprint || '')
+      && task.automationAttempts.at(-1)?.evidence?.source === 'coding-autonomous/v1'
+      && task.automationAttempts.at(-1)?.evidence?.verification?.status === 'failed'
+      && task.automationAttempts.at(-1)?.evidence?.failureCodes?.includes('tests_failed'))
+      Object.assign(next, { state: 'correction', reason: null, correction: { kind: 'local_tests', head: receipt.checkpoint,
+        ...(state.correction?.text && { text: state.correction.text, by: state.correction.by }) } });
     else if (receipt.result !== 'review' || task.status !== 'review' || !receipt.pr) Object.assign(next, { state: 'blocked', reason: next.reason || receipt.stopReason || 'publication_unverified' });
     else {
       if (state.pr && (state.pr.number !== receipt.pr.number || state.pr.branch !== receipt.pr.branch)) return block(task, 'pr_identity_changed');
@@ -349,7 +388,7 @@ async function observe(task) {
   if (Date.parse(state.nextObservationAt) > now) return;
   const cursor = watchingFailure ? { ciWatchStartedAt: ciWatchStart(state, now) } : {};
   const elapsed = ciElapsed(state, now);
-  if (elapsed + (state.spent.ciSeconds || 0) >= state.limits.ciSeconds) return block(task, 'ci_timeout', guard);
+  if (elapsed + (state.spent.ciSeconds || 0) >= policy.totalLimits(state).ciSeconds) return block(task, 'ci_timeout', guard);
   let observation;
   try { observation = await control.observe({ pipelineId: task.pipelineId, requestId: state.runs.at(-1).requestId, pr: state.pr }); }
   catch {
@@ -389,6 +428,9 @@ async function observe(task) {
     next.spent = { ...state.spent, ciSeconds: (state.spent.ciSeconds || 0) + elapsed };
     if (failedCIWatch(next)) next.ciWatchStartedAt = new Date(now).toISOString();
   } else if (watchingFailure && !failedCIWatch(next)) next.spent = ciSpent(state);
+  if (['ready_for_review', 'closed'].includes(next.state)) Object.assign(next, {
+    delivery: require('./pipelineCodingDelivery').project(observation, state.pr, now),
+    deliveryNextObservationAt: new Date(now + 60000).toISOString() });
   return save(task, next, {}, undefined, guard);
 }
 async function tick() {
@@ -421,9 +463,10 @@ async function tick() {
     ] })
       .sort({ 'codingAutonomy.nextObservationAt': 1, pipelineId: 1 }).limit(2).lean();
     for (const task of waiting) await observe(task);
+    await require('./pipelineCodingDelivery').sweep(control, save);
     config = await settings();
     if (config.enabled && !config.active) await select(config);
   } finally { ticking = false; }
 }
 module.exports = { configureControl, settings, configure, authorize, status, projection, workerManifest,
-  stop, recordReview, recover, tick, campaign, save, readTask, UUID };
+  stop, recordReview, recover, continueRecovered, tick, campaign, save, readTask, UUID };

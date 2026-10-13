@@ -50,13 +50,17 @@ const bridge = { configured: () => available, async invoke(envelope) {
     prompt: condensed, profile: envelope.request.profile, width: envelope.request.width, height: envelope.request.height, reason: 'Description condensée ; les contraintes sont conservées.', ...(textPlan && { textPlan }) } };
 } };
 const fixturePng = new PNG({ width: 1024, height: 1024 }); fixturePng.data.fill(180); const imageBytes = PNG.sync.write(fixturePng), imageSha = hash(imageBytes);
+const turbo = req('./src/services/images/workshopPresentation').recipeInfo('turbo', { family: 'qwen21', sampling: 'qwen21-turbo',
+  label: 'Synthetic Turbo', steps: 8, maxPixels: 4300800, recipe: { id: 'fixture-turbo', version: '1' } });
+const profiles = [{ id: 'quality', family: 'qwen21', label: 'Synthetic recipe', steps: 25, maxPixels: 4194304 },
+  { id: 'fast', family: 'klein', label: 'Synthetic Klein', steps: 4, maxPixels: 1048576 }, turbo];
 const operation = id => ({ id, state: 'completed', runtimeRestored: true, profile: 'quality', label: 'Synthetic recipe',
   createdAt: '2026-01-01T00:00:00Z', updatedAt: id === createdId ? new Date(Date.UTC(2026, 0, 1) + generation.length).toISOString() : '2026-01-01T00:00:00Z', artifact: { width: 1024, height: 1024, sha256: imageSha, url: `/api/images/operations/${id}/image` } });
-const imageService = { status: () => ({ configured: true, defaultProfile: 'quality', profiles: [{ id: 'quality', label: 'Synthetic recipe', maxPixels: 4194304 }] }),
+const imageService = { status: () => ({ configured: true, defaultProfile: 'quality', profiles }),
   list: async () => [operation(parentId)], get: async id => operation(id), image: async () => ({ bytes: imageBytes, mimeType: 'image/png' }),
   draft: async () => ({ ...copy(generation.at(-1)), visualPrompt: generation.at(-1)?.prompt }),
   async accept(body) { textContract.compose(body.prompt, body.constraints, body.textPolicy); generation.push(copy(body)); return operation(createdId); } };
-const workshop = { overview: async () => ({ worker: null, profiles: [{ id: 'quality', family: 'qwen21', label: 'Synthetic recipe', steps: 25, maxPixels: 4194304 }] }),
+const workshop = { overview: async () => ({ worker: null, profiles }),
   details: async id => ({ id, recipe: { id: 'quality', label: 'Synthetic recipe', family: 'qwen21', steps: 25 }, request: { prompt: 'Synthetic archived image', seed: 42, width: 1024, height: 1024 },
     ...(id === createdId && { request: { ...copy(generation.at(-1)), prompt: textContract.compose(generation.at(-1).prompt, generation.at(-1).constraints, generation.at(-1).textPolicy) } }),
     ...(id === createdId && generation.at(-1)?.parent && { lineage: { version: 1, parent: { ...generation.at(-1).parent, width: 1024, height: 1024 } } }), actualDimensions: { width: 1024, height: 1024 }, runtimeRestored: true }) };
@@ -93,8 +97,18 @@ async function open(page, id) { const selector = ['seed-settings', 'brief-plan-i
     page.on('console', message => { if (/Content Security Policy|violates.*policy|Refused to load/.test(message.text())) cspErrors.push(message.text()); });
     const renderBefore = generation.length, requestsBefore = requests.length;
     await page.goto(url);
-    await page.waitForFunction(() => document.getElementById('imagex-connection').textContent.includes('connecté'));
+    await page.waitForFunction(() => document.getElementById('imagex-connection').textContent.includes('connected'));
     await page.waitForFunction(() => !document.getElementById('image-new').disabled);
+    assert.equal(await page.locator('#image-profile option').count(), 3);
+    await page.locator('#image-profile').selectOption('turbo');
+    assert.match(await page.locator('#image-recipe-summary').textContent(), /8 étapes/);
+    assert.equal(await page.locator('#image-size option[value="2400,1792"]').count(), 1);
+    assert.equal(await page.locator('#image-size option').count(), 7);
+    await page.locator('#image-size').selectOption('2400,1792');
+    assert.equal(generation.length, renderBefore, 'Selecting Turbo and its format starts no render');
+    await page.locator('#image-profile').selectOption('quality');
+    await page.locator('#image-size').selectOption('1024,1024');
+    checks.push(`${device}: classic, Klein and Turbo are selectable; Turbo advertises eight steps and seven formats, without a generation.`);
     assert.equal(await page.locator('#imagex').evaluate(el => el.open), false);
     assert.equal(await page.locator('#image-create').isDisabled(), true);
     assert.equal(await page.locator('#image-text-editor').isVisible(), false);
@@ -125,7 +139,7 @@ async function open(page, id) { const selector = ['seed-settings', 'brief-plan-i
     await page.locator('#image-constraints > summary').click();
     assert.equal(await page.locator('#image-brief-counter').isVisible(), true);
     assert.equal(await page.locator('#image-create').isDisabled(), true); await enabled(page, 'imagex-plan');
-    assert.match(await page.locator('#image-brief-counter').textContent(), /9\s?958/);
+    assert.match(await page.locator('#image-brief-counter').textContent(), /9,?958/);
     assert.equal(await page.locator('#image-prompt').inputValue(), original);
     assert.equal(await page.locator('#image-prompt').evaluate(node => node.validationMessage), '');
     await page.locator('#image-form').evaluate(form => form.requestSubmit()); assert.equal(generation.length, renderBefore);
@@ -153,13 +167,13 @@ async function open(page, id) { const selector = ['seed-settings', 'brief-plan-i
     await paste(page, 'imagex-plan-instruction', 'Préserve le hibou et condense la description.');
     failNextPlan = true;
     await page.locator('#imagex-plan').click();
-    await page.waitForFunction(() => document.getElementById('imagex-notice').textContent.includes('la largeur'));
+    await page.waitForFunction(() => document.getElementById('imagex-notice').textContent.includes('chosen width'));
     await enabled(page, 'imagex-retry');
     assert.equal(await page.locator('#image-prompt').inputValue(), original);
     assert.equal(await page.locator('#imagex-proposal-panel').isVisible(), false);
     assert.equal(await page.locator('#imagex-recovery').isVisible(), true);
     assert.equal(await page.locator('#imagex-use-brief').isVisible(), false);
-    assert.equal((await page.locator('#imagex-notice').textContent()).includes('travaille'), false);
+    assert.equal((await page.locator('#imagex-notice').textContent()).includes('is working'), false);
     assert.equal(generation.length, renderBefore);
     // Reload has no textarea draft; the canonical failed request still provides recovery.
     const recovery = await context.newPage(); await recovery.goto(url);
@@ -216,7 +230,7 @@ async function open(page, id) { const selector = ['seed-settings', 'brief-plan-i
     assert.equal(await page.locator('#image-seed').inputValue(), '73');
     assert.equal(generation.length, renderBefore);
     await page.locator('#image-create').click();
-    await page.waitForFunction(() => document.getElementById('image-status').textContent.includes('Image prête'));
+    await page.waitForFunction(() => document.getElementById('image-status').textContent.includes('Image ready'));
     const rendered = generation.at(-1);
     assert.equal(generation.length, renderBefore + 1); assert.equal(rendered.prompt, condensed);
     assert.equal(rendered.seed, 73); assert.deepEqual(rendered.parent, { operationId: parentId, sha256: imageSha });
@@ -244,9 +258,9 @@ async function open(page, id) { const selector = ['seed-settings', 'brief-plan-i
     const completePrompt = await page.locator('#image-render-prompt').textContent();
     assert.equal(completePrompt.startsWith('v'.repeat(7987)), true);
     assert.equal(completePrompt.length > 8000, true);
-    assert.match(await page.locator('#image-brief-counter').textContent(), /rendu final : 8\s?\d{3}/);
-    assert.match(await page.locator('#image-brief-counter').textContent(), /Consignes ajoutées.*description disponible/);
-    assert.match(await page.locator('#image-create-help').textContent(), /dont.*consignes/);
+    assert.match(await page.locator('#image-brief-counter').textContent(), /final render: 8,?\d{3}/);
+    assert.match(await page.locator('#image-brief-counter').textContent(), /Added instructions.*room for the description/);
+    assert.match(await page.locator('#image-create-help').textContent(), /including.*instructions/);
     const beforeOverflow = generation.length;
     await page.locator('#image-form').evaluate(form => form.requestSubmit());
     assert.equal(generation.length, beforeOverflow);
@@ -257,7 +271,7 @@ async function open(page, id) { const selector = ['seed-settings', 'brief-plan-i
     await page.locator('#image-text-policy-labels textarea').nth(0).fill('École & façade 💡');
     await page.locator('#image-text-policy-labels textarea').nth(1).fill('cartouche central');
     await page.locator('#image-text-policy-advice').click(); await enabled(page, 'imagex-apply');
-    assert.match(await page.locator('#imagex-proposal-text-plan').textContent(), /Deux passes/);
+    assert.match(await page.locator('#imagex-proposal-text-plan').textContent(), /Two passes/);
     await page.locator('#image-text-strategy').selectOption('single-pass'); assert.equal(await page.locator('#imagex-apply').isDisabled(), true);
     await page.locator('#image-text-strategy').selectOption('auto'); await enabled(page, 'imagex-apply');
     await page.locator('#imagex-apply').click(); await enabled(page, 'image-create');
@@ -268,7 +282,7 @@ async function open(page, id) { const selector = ['seed-settings', 'brief-plan-i
     await open(page, 'image-text-editor');
     page.once('dialog', dialog => dialog.accept()); await page.locator('#image-text-planned').click();
     await page.waitForFunction(() => document.getElementById('image-text-content').value === 'École & façade 💡');
-    assert.match(await page.locator('#image-text-placement-hint').textContent(), /provisoire/);
+    assert.match(await page.locator('#image-text-placement-hint').textContent(), /provisional/);
     const plannedDownload = page.waitForEvent('download'); await page.locator('#image-text-json').click();
     const plannedFile = await plannedDownload;
     const project = JSON.parse(fs.readFileSync(await plannedFile.path(), 'utf8'));
@@ -309,24 +323,24 @@ async function open(page, id) { const selector = ['seed-settings', 'brief-plan-i
     const offlineContext = await browser.newContext({ viewport, permissions: ['clipboard-read', 'clipboard-write'] });
     const offline = await offlineContext.newPage(); offline.on('pageerror', error => errors.push(error.message));
     const offlineRequests = requests.length;
-    await offline.goto(url); await offline.waitForFunction(() => document.getElementById('imagex-connection').textContent.includes('indisponible'));
+    await offline.goto(url); await offline.waitForFunction(() => document.getElementById('imagex-connection').textContent.includes('unavailable'));
     await paste(offline, 'image-prompt', original);
     assert.equal(await offline.locator('#imagex-plan').isDisabled(), true);
     assert.equal(await offline.locator('#image-create').isDisabled(), true);
     assert.equal(await offline.locator('#image-prompt').inputValue(), original);
-    assert.match(await offline.locator('#imagex-planning-help').textContent(), /indisponible/);
+    assert.match(await offline.locator('#imagex-planning-help').textContent(), /unavailable/);
     assert.equal(await offline.locator('#imagex').evaluate(el => el.open), false);
     await offline.screenshot({ path: path.join(reportDir, `unavailable-${device}.png`), fullPage: true });
     await paste(offline, 'image-prompt', condensed); await enabled(offline, 'image-create');
-    assert.match(await offline.locator('#imagex-planning-help').textContent(), /créer directement/);
+    assert.match(await offline.locator('#imagex-planning-help').textContent(), /create directly/);
     await open(offline, 'image-layout-guide'); await offline.locator('#image-layout-new').click();
     await offline.locator('#image-layout-add').click(); await offline.locator('#image-layout-name').fill('Hibou central');
     await offline.locator('#image-layout-attach').click();
-    await offline.waitForFunction(() => document.getElementById('image-reference-help').textContent.includes('1 référence'));
+    await offline.waitForFunction(() => document.getElementById('image-reference-help').textContent.includes('1 reference'));
     assert.equal(requests.length, offlineRequests, 'Composition preparation starts no render or model');
-    assert.match(await offline.locator('#image-create-label').textContent(), /Créer/);
+    assert.match(await offline.locator('#image-create-label').textContent(), /Create/);
     await offline.locator('#image-create').click();
-    await offline.waitForFunction(() => document.getElementById('image-status').textContent.includes('Image prête'));
+    await offline.waitForFunction(() => document.getElementById('image-status').textContent.includes('Image ready'));
     assert.equal(requests.length, offlineRequests + 1);
     assert.equal(requests.at(-1).url, '/api/images/operations');
     assert.equal(generation.at(-1).expert, undefined); assert.equal(generation.at(-1).references.length, 1);

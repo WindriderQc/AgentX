@@ -12,20 +12,20 @@ function renderProfile() {
   if (profileDirty) return;
   $('profileAbout').value = profile.about || '';
   $('profileExpectations').value = profile.expectations || '';
-  $('profileStatus').textContent = profile.about || profile.expectations ? '' : 'Vide pour l’instant : PsyX ne sait de toi que ce que la mémoire a retenu.';
+  $('profileStatus').textContent = profile.about || profile.expectations ? '' : 'Empty for now: PsyX only knows what memory has kept about you.';
 }
 
 async function saveProfile() {
-  $('profileStatus').textContent = 'Enregistrement…';
+  $('profileStatus').textContent = 'Saving…';
   try {
     const result = await api('/api/psyx/state/profile', { method: 'PUT',
       body: JSON.stringify({ about: $('profileAbout').value, expectations: $('profileExpectations').value }) });
     profileDirty = false;
     state.psyxState = result.state;
     renderPsyXState();
-    $('profileStatus').textContent = 'Enregistré. PsyX le lit à chaque réponse.';
+    $('profileStatus').textContent = 'Saved. PsyX reads it for every reply.';
   } catch (error) {
-    $('profileStatus').textContent = 'Le profil n’a pas été enregistré.';
+    $('profileStatus').textContent = 'The profile was not saved.';
   }
 }
 

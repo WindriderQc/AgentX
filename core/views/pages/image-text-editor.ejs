@@ -1,41 +1,41 @@
 <details id="image-text-editor" class="image-text-editor" hidden>
-  <summary>Textes exacts et éditables</summary>
-  <p class="image-help">Ajoute des libellés sur un calque. L’original reste conservé. Le projet JSON contient l’image et les textes pour reprendre ton travail.</p>
+  <summary>Exact, editable text</summary>
+  <p class="image-help">Add labels on a layer. The original stays kept. The JSON project contains the image and the text so you can resume your work.</p>
   <div class="text-editor-actions">
-    <button id="image-text-prepare" type="button" class="quiet-button" disabled>Ajouter des textes à cette image</button>
-    <button id="image-text-planned" type="button" class="quiet-button" hidden>Deuxième passe : préparer les textes prévus</button>
-    <label class="quiet-button text-editor-import" for="image-text-file">Rouvrir un projet JSON<input id="image-text-file" type="file" accept=".json,application/json"></label>
+    <button id="image-text-prepare" type="button" class="quiet-button" disabled>Add text to this image</button>
+    <button id="image-text-planned" type="button" class="quiet-button" hidden>Second pass: prepare the planned text</button>
+    <label class="quiet-button text-editor-import" for="image-text-file">Reopen a JSON project<input id="image-text-file" type="file" accept=".json,application/json"></label>
   </div>
-  <p id="image-text-status" class="image-help" role="status" aria-live="polite">Choisis une image archivée ou rouvre un projet.</p>
+  <p id="image-text-status" class="image-help" role="status" aria-live="polite">Choose an archived image or reopen a project.</p>
   <p id="image-text-error" class="text-editor-error" role="alert" hidden></p>
   <div id="image-text-workspace" hidden>
     <p id="image-text-source" class="image-help"></p>
     <p id="image-text-placement-hint" class="image-help" hidden></p>
-    <div class="text-editor-preview"><canvas id="image-text-canvas" tabindex="0" aria-label="Aperçu des textes. Clique pour placer le libellé sélectionné ou utilise les flèches du clavier."></canvas></div>
-    <p class="image-help">Clique sur l’aperçu pour placer le libellé sélectionné. Les flèches du clavier le déplacent d’un pixel ; Maj + flèche, de dix pixels.</p>
-    <div class="text-editor-label-heading"><label for="image-text-label">Libellé à modifier</label><button id="image-text-add" type="button" class="quiet-button">Ajouter un libellé</button></div>
-    <select id="image-text-label" aria-label="Libellé à modifier"></select>
+    <div class="text-editor-preview"><canvas id="image-text-canvas" tabindex="0" aria-label="Text preview. Click to place the selected label or use the arrow keys."></canvas></div>
+    <p class="image-help">Click the preview to place the selected label. The arrow keys move it by one pixel; Shift + arrow, by ten pixels.</p>
+    <div class="text-editor-label-heading"><label for="image-text-label">Label to edit</label><button id="image-text-add" type="button" class="quiet-button">Add a label</button></div>
+    <select id="image-text-label" aria-label="Label to edit"></select>
     <fieldset id="image-text-fields" disabled>
-      <legend>Contenu et placement</legend>
-      <label for="image-text-content">Texte exact</label>
-      <textarea id="image-text-content" rows="3" maxlength="600" aria-describedby="image-text-count" placeholder="Nom, chiffre ou légende…"></textarea>
+      <legend>Content and placement</legend>
+      <label for="image-text-content">Exact text</label>
+      <textarea id="image-text-content" rows="3" maxlength="600" aria-describedby="image-text-count" placeholder="Name, number or caption…"></textarea>
       <p id="image-text-count" class="image-help"></p>
       <div class="text-editor-grid">
-        <label for="image-text-x">Position horizontale (%)<input id="image-text-x" type="number" min="0" max="100" step="0.01"></label>
-        <label for="image-text-y">Position verticale (%)<input id="image-text-y" type="number" min="0" max="100" step="0.01"></label>
-        <label for="image-text-size">Taille (pixels)<input id="image-text-size" type="number" min="1" max="1024" step="1"></label>
-        <label for="image-text-align">Alignement<select id="image-text-align"><option value="left">Gauche</option><option value="center">Centre</option><option value="right">Droite</option></select></label>
-        <label for="image-text-color">Couleur du texte<input id="image-text-color" type="color" value="#ffffff"></label>
-        <label for="image-text-background">Couleur du fond<input id="image-text-background" type="color" value="#162231"></label>
+        <label for="image-text-x">Horizontal position (%)<input id="image-text-x" type="number" min="0" max="100" step="0.01"></label>
+        <label for="image-text-y">Vertical position (%)<input id="image-text-y" type="number" min="0" max="100" step="0.01"></label>
+        <label for="image-text-size">Size (pixels)<input id="image-text-size" type="number" min="1" max="1024" step="1"></label>
+        <label for="image-text-align">Alignment<select id="image-text-align"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
+        <label for="image-text-color">Text color<input id="image-text-color" type="color" value="#ffffff"></label>
+        <label for="image-text-background">Background color<input id="image-text-background" type="color" value="#162231"></label>
       </div>
-      <label class="text-editor-checkbox" for="image-text-transparent"><input id="image-text-transparent" type="checkbox" checked>Fond transparent</label>
-      <button id="image-text-delete" type="button" class="quiet-button">Supprimer ce libellé</button>
+      <label class="text-editor-checkbox" for="image-text-transparent"><input id="image-text-transparent" type="checkbox" checked>Transparent background</label>
+      <button id="image-text-delete" type="button" class="quiet-button">Delete this label</button>
     </fieldset>
     <div class="text-editor-actions text-editor-exports">
-      <button id="image-text-png" type="button" class="quiet-button">Télécharger le PNG</button>
-      <button id="image-text-svg" type="button" class="quiet-button">Télécharger le SVG</button>
-      <button id="image-text-json" type="button" class="quiet-button">Enregistrer le projet JSON</button>
+      <button id="image-text-png" type="button" class="quiet-button">Download the PNG</button>
+      <button id="image-text-svg" type="button" class="quiet-button">Download the SVG</button>
+      <button id="image-text-json" type="button" class="quiet-button">Save the JSON project</button>
     </div>
-    <p class="image-help">Le PNG est aplati. Le SVG contient les textes éditables. Le JSON permet de rouvrir le projet dans cet atelier. Les exports contiennent l’image originale.</p>
+    <p class="image-help">The PNG is flattened. The SVG contains the editable text. The JSON lets you reopen the project in this workshop. The exports contain the original image.</p>
   </div>
 </details>

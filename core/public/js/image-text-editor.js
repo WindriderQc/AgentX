@@ -35,24 +35,26 @@
       return readyOperation() && policy?.enabled && policy.strategy === 'two-pass' ? policy.labels : [];
     }
     function error(message = '') { $('error').textContent = message; $('error').hidden = !message; }
-    function frenchError(err) {
+    // Errors raised by this editor already speak to the person; engine errors are rephrased.
+    function notice(message) { return Object.assign(new Error(message), { notice: true }); }
+    function friendlyError(err) {
       const message = err.message || '';
-      if (message.includes('SHA-256')) return 'L’empreinte de l’image originale ne correspond pas au projet.';
-      if (/Source (dimensions|width|height|exceeds)/.test(message)) return 'Les dimensions de l’image sont invalides ou dépassent les limites de l’éditeur.';
-      if (message.startsWith('Label text exceeds')) return `Le texte est limité à ${engine.MAX_TEXT_LENGTH} caractères.`;
-      if (message.startsWith('Label text contains')) return 'Ce texte contient un caractère incompatible avec le SVG.';
-      if (/^(L’|Le |Les |Cette |Ce )/.test(message)) return message;
-      return 'Le projet ou l’image qu’il contient n’est pas valide. Vérifie le fichier et les libellés.';
+      if (message.includes('SHA-256')) return 'The original image’s fingerprint does not match the project.';
+      if (/Source (dimensions|width|height|exceeds)/.test(message)) return 'The image dimensions are invalid or exceed the editor’s limits.';
+      if (message.startsWith('Label text exceeds')) return `The text is limited to ${engine.MAX_TEXT_LENGTH} characters.`;
+      if (message.startsWith('Label text contains')) return 'This text contains a character incompatible with SVG.';
+      if (err.notice) return message;
+      return 'The project or the image it contains is not valid. Check the file and the labels.';
     }
     function status(message) { $('status').textContent = message; }
     function describe() {
-      if (!project) return 'Choisis une image archivée ou rouvre un projet.';
+      if (!project) return 'Choose an archived image or reopen a project.';
       const op = context().operation;
       const same = op?.id === project.source.operationId &&
         op.artifact?.sha256?.toLowerCase() === project.source.sha256;
-      const origin = imported ? 'Projet rouvert, indépendant de la sélection.' : same ?
-        'Projet de l’image sélectionnée.' : 'Projet conservé ; la sélection de la bibliothèque a changé.';
-      return `${origin}${dirty ? ' Modifications à enregistrer en JSON.' : ''}`;
+      const origin = imported ? 'Reopened project, independent of the selection.' : same ?
+        'Project of the selected image.' : 'Project kept; the library selection changed.';
+      return `${origin}${dirty ? ' Changes to save as JSON.' : ''}`;
     }
     function controls() {
       panel.hidden = !readyOperation() && !project && !panel.open;
@@ -70,7 +72,7 @@
     function paint() {
       if (!project || !image) return;
       const canvas = $('canvas'), ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('L’aperçu ne peut pas être affiché dans ce navigateur.');
+      if (!ctx) throw notice('The preview cannot be shown in this browser.');
       if (canvas.width !== project.source.width) canvas.width = project.source.width;
       if (canvas.height !== project.source.height) canvas.height = project.source.height;
       engine.draw(ctx, project, image);
@@ -83,7 +85,7 @@
         ctx.stroke(); ctx.restore();
       }
     }
-    function shortText(label, index) { return `${index + 1} · ${label.text.replace(/\s+/g, ' ').slice(0, 55) || 'Texte vide'}`; }
+    function shortText(label, index) { return `${index + 1} · ${label.text.replace(/\s+/g, ' ').slice(0, 55) || 'Empty text'}`; }
     function renderList() {
       $('label').replaceChildren();
       project?.labels.forEach((label, index) => {
@@ -100,9 +102,9 @@
       if ($('placement-hint')) {
         const hint = plannedHints.get(label?.id);
         $('placement-hint').hidden = !hint;
-        $('placement-hint').textContent = hint ? `Placement souhaité : ${hint}. Clique sur l’image pour placer ce texte ; la position initiale est provisoire.` : '';
+        $('placement-hint').textContent = hint ? `Desired placement: ${hint}. Click the image to place this text; the initial position is provisional.` : '';
       }
-      $('count').textContent = `${Array.from($('content').value).length} / ${engine.MAX_TEXT_LENGTH} caractères`;
+      $('count').textContent = `${Array.from($('content').value).length} / ${engine.MAX_TEXT_LENGTH} characters`;
       $('x').value = label ? Math.round(label.x * 10000) / 100 : '';
       $('y').value = label ? Math.round(label.y * 10000) / 100 : '';
       $('size').value = label?.fontSize || '';
@@ -126,11 +128,11 @@
         paint(); controls();
       } catch (err) {
         Object.keys(changes).forEach(name => invalidFields.add(name)); dirty = true;
-        error(frenchError(err)); controls();
+        error(friendlyError(err)); controls();
       }
     }
     function replaceAllowed() {
-      return !dirty || root.confirm('Remplacer le projet actuel ? Les modifications non enregistrées en JSON seront perdues.');
+      return !dirty || root.confirm('Replace the current project? Changes not saved as JSON will be lost.');
     }
     function start(message) {
       request?.abort(); request = new AbortController();
@@ -139,12 +141,12 @@
     }
     function stale(token) { return destroyed || token !== epoch; }
     function finish(token) { if (!stale(token)) { busy = false; request = null; controls(); } }
-    function fail(err, token) { if (!stale(token) && err.name !== 'AbortError') error(frenchError(err)); }
+    function fail(err, token) { if (!stale(token) && err.name !== 'AbortError') error(friendlyError(err)); }
     function toDataUrl(blob) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
-        reader.onerror = () => reject(new Error('L’image ne peut pas être lue.'));
+        reader.onerror = () => reject(notice('The image cannot be read.'));
         reader.readAsDataURL(blob);
       });
     }
@@ -152,7 +154,7 @@
       return new Promise((resolve, reject) => {
         const result = new Image();
         result.onload = () => resolve(result);
-        result.onerror = () => reject(new Error('L’image du projet ne peut pas être décodée.'));
+        result.onerror = () => reject(notice('The project image cannot be decoded.'));
         result.src = dataUrl;
       });
     }
@@ -162,26 +164,26 @@
       const decoded = await decode(candidate.source.dataUrl);
       if (stale(token)) return;
       if (decoded.naturalWidth !== candidate.source.width || decoded.naturalHeight !== candidate.source.height) {
-        throw new Error('Les dimensions de l’image ne correspondent pas au projet.');
+        throw notice('The image dimensions do not match the project.');
       }
       project = candidate; image = decoded; dirty = false; imported = fromImport;
       selected = project.labels[0]?.id || null;
-      $('source').textContent = `Original : ${project.source.width} × ${project.source.height} pixels · opération ${project.source.operationId}`;
+      $('source').textContent = `Original: ${project.source.width} × ${project.source.height} pixels · operation ${project.source.operationId}`;
       panel.open = true; renderList(); renderFields(); paint();
     }
     async function prepare(labels = []) {
       const op = readyOperation();
       if (busy || !op || !replaceAllowed()) return;
-      const { token, signal } = start('Lecture et vérification de l’original archivé…');
+      const { token, signal } = start('Reading and checking the archived original…');
       try {
         const response = await fetchImpl(`/api/images/operations/${op.id}/image`, { signal, credentials: 'same-origin' });
-        if (!response.ok) throw new Error('L’original archivé ne peut pas être chargé.');
+        if (!response.ok) throw notice('The archived original cannot be loaded.');
         const advertised = Number(response.headers.get('content-length'));
         const maxBytes = Math.floor(engine.MAX_JSON_BYTES * .7);
-        if (advertised > maxBytes) throw new Error('Cette image est trop volumineuse pour le projet éditable.');
+        if (advertised > maxBytes) throw notice('This image is too large for the editable project.');
         const blob = await response.blob();
         if (stale(token)) return;
-        if (blob.size > maxBytes) throw new Error('Cette image est trop volumineuse pour le projet éditable.');
+        if (blob.size > maxBytes) throw notice('This image is too large for the editable project.');
         const dataUrl = await toDataUrl(blob);
         if (stale(token)) return;
         let candidate = engine.create({ operationId: op.id, sha256: op.artifact.sha256.toLowerCase(),
@@ -191,15 +193,15 @@
           fontSize: Math.max(12, Math.min(40, Math.round(op.artifact.width / 40))), color: '#ffffff', background: '#162231', align: 'left'
         })) });
         await install(candidate, token, false);
-        if (!stale(token)) { plannedHints = new Map(labels.map((label, index) => [`planned-${index}`, label.placement || 'à choisir sur le rendu'])); dirty = !!labels.length; renderFields(); }
+        if (!stale(token)) { plannedHints = new Map(labels.map((label, index) => [`planned-${index}`, label.placement || 'to choose on the render'])); dirty = !!labels.length; renderFields(); }
       } catch (err) { fail(err, token); } finally { finish(token); }
     }
     async function importFile() {
       const file = $('file').files?.[0]; $('file').value = '';
       if (busy || !file || !replaceAllowed()) return;
-      const { token } = start('Vérification du projet et de son image originale…');
+      const { token } = start('Checking the project and its original image…');
       try {
-        if (file.size > engine.MAX_JSON_BYTES) throw new Error('Le projet JSON dépasse la taille autorisée.');
+        if (file.size > engine.MAX_JSON_BYTES) throw notice('The JSON project exceeds the allowed size.');
         const json = await file.text();
         if (stale(token)) return;
         const candidate = engine.parse(json);
@@ -210,13 +212,13 @@
     function download(blob, extension) {
       const url = URL.createObjectURL(blob); urls.add(url);
       const link = document.createElement('a');
-      link.href = url; link.download = `agentx-textes-${project.source.operationId}.${extension}`;
+      link.href = url; link.download = `agentx-text-${project.source.operationId}.${extension}`;
       document.body.append(link); link.click(); link.remove();
       root.setTimeout(() => { URL.revokeObjectURL(url); urls.delete(url); }, 1000);
     }
     async function exportFile(format) {
       if (busy || !project || invalidFields.size) return;
-      const { token } = start('Préparation du téléchargement…');
+      const { token } = start('Preparing the download…');
       try {
         if (format === 'png') {
           const canvas = document.createElement('canvas');
@@ -224,7 +226,7 @@
           engine.draw(canvas.getContext('2d'), project, image);
           const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
           if (stale(token)) return;
-          if (!blob) throw new Error('Le PNG ne peut pas être exporté.');
+          if (!blob) throw notice('The PNG cannot be exported.');
           download(blob, 'png');
         } else if (format === 'svg') download(new Blob([engine.svg(project)], { type: 'image/svg+xml' }), 'svg');
         else {
@@ -235,7 +237,7 @@
     function add() {
       if (busy || !project || project.labels.length >= engine.MAX_LABELS) return;
       let index = 1; while (project.labels.some(label => label.id === `label-${index}`)) index++;
-      const label = { id: `label-${index}`, text: 'Nouveau libellé', x: .1, y: .1,
+      const label = { id: `label-${index}`, text: 'New label', x: .1, y: .1,
         fontSize: Math.min(engine.MAX_FONT_SIZE, Math.max(16, Math.round(project.source.width / 35))),
         color: '#ffffff', background: '#162231', align: 'left' };
       project = engine.validate({ ...project, labels: [...project.labels, label] });
@@ -257,7 +259,7 @@
     }
 
     if (!engine) {
-      error('L’éditeur de textes ne peut pas être chargé. Recharge la page.');
+      error('The text editor cannot be loaded. Reload the page.');
       return { refresh() {}, destroy() {} };
     }
     listen($('prepare'), 'click', () => prepare()); listen($('file'), 'change', importFile);
@@ -265,13 +267,13 @@
     listen($('add'), 'click', add); listen($('delete'), 'click', remove);
     listen($('label'), 'change', () => { selected = $('label').value; error(); renderFields(); paint(); });
     listen($('content'), 'input', () => {
-      $('count').textContent = `${Array.from($('content').value).length} / ${engine.MAX_TEXT_LENGTH} caractères`;
+      $('count').textContent = `${Array.from($('content').value).length} / ${engine.MAX_TEXT_LENGTH} characters`;
       changeLabel({ text: $('content').value });
     });
     for (const name of ['x', 'y', 'size']) listen($(name), 'input', () => {
       if (!$(name).value || !$(name).checkValidity()) {
         invalidFields.add(name === 'size' ? 'fontSize' : name); dirty = true;
-        error('Ce placement ou cette taille dépasse les limites indiquées.'); controls(); return;
+        error('This placement or size exceeds the stated limits.'); controls(); return;
       }
       changeLabel(name === 'size' ? { fontSize: Number($(name).value) } : { [name]: Number($(name).value) / 100 });
     });

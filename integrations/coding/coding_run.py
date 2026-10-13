@@ -270,7 +270,7 @@ def tail(path: Path, size: int = 6000) -> str:
         return stream.read().decode(errors="replace")
 
 
-def supervise(command: list[str], progress=None, home=None, workspace=None) -> subprocess.CompletedProcess:
+def supervise(command: list[str], progress=None, home=None, workspace=None, on_stop=None) -> subprocess.CompletedProcess:
     """Poll the child while retaining raw stdout/stderr outside the repository."""
     if progress and progress.path:
         output_root = progress.path.parent / f"{progress.request_id}.output"
@@ -285,11 +285,15 @@ def supervise(command: list[str], progress=None, home=None, workspace=None) -> s
         try:
             while process.poll() is None:
                 if progress and progress.tick(home, workspace):
+                    if on_stop:
+                        on_stop()
                     terminate(process)
                     break
                 time.sleep(2)
         finally:
             if process.poll() is None:
+                if on_stop:
+                    on_stop()
                 terminate(process)
     if progress and home and workspace:
         progress.observe(home, workspace)
@@ -313,19 +317,28 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
     (home / ".dsh").mkdir(exist_ok=True)
     (home / ".dsh/settings.yaml").write_text(SETTINGS.format(url=f"http://127.0.0.1:{RELAY_PORT}/v1", model=MODEL))
     if progress:
+        progress.model_worker_active = True
         progress.baseline(home, workspace)
         progress.set_stage("model_wait")
     relay = model_relay.serve(str(home / "model.sock"), MODEL_URL,
                              progress.model_events.put if progress else None,
-                             getattr(progress, "relay_headers", None))
+                             getattr(progress, "relay_headers", None),
+                             drain_on_disconnect=bool(progress and progress.cumulative_limits),
+                             budget_guidance=getattr(progress, "model_guidance", None))
     try:
         return supervise(sandbox(workspace, home, [
             "python3", "/opt/coding/model_relay.py", "inside", "/home/agent/model.sock", str(RELAY_PORT), "--",
             "/opt/dsh/node_modules/.bin/dsh", "--profile", "headless", "--patch", "/opt/coding/guard.patch.yml", "--", prompt,
-        ], network=False, timeout_seconds=timeout_seconds), progress, home, workspace)
+        ], network=False, timeout_seconds=timeout_seconds), progress, home, workspace, on_stop=relay.begin_drain)
     finally:
+        relay.begin_drain()
+        if progress and progress.cumulative_limits:
+            remaining = min(120, progress.model_remaining(), max(0, min(progress.hard_deadline, progress.queue_deadline) - progress.now()))
+            relay.drain(remaining, heartbeat=progress.tick)
         relay.shutdown()
         relay.server_close()
+        if progress:
+            progress.model_worker_active = False
 
 
 def git(workspace: Path, *args: str, env: dict | None = None) -> str:

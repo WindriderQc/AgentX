@@ -17,10 +17,11 @@ function workerInfo(workerUrl, config) {
     source: sameWorker ? 'current-worker-configuration' : 'recorded-worker-address' };
 }
 function recipeInfo(id, profile = {}) {
-  const precision = profile.weightDtype || (/int8/i.test(profile.diffusion || '') ? 'INT8 (fichier déclaré)' : null);
+  const precision = profile.weightDtype || (/int8/i.test(profile.diffusion || '') ? 'INT8 (declared file)' : null);
   let declaration;
   try { declaration = declaredRecipe(profile.recipe); } catch { /* Legacy profile metadata is not a recipe declaration. */ }
   return { id, label: profile.label || id, family: profile.family || null,
+    ...(profile.sampling && { sampling: profile.sampling }),
     ...(declaration && { declaredIdentity: declaration }),
     diffusion: profile.diffusion || null, encoder: profile.encoder || null, vae: profile.vae || null,
     precision, steps: profile.steps ?? null, maxPixels: profile.maxPixels ?? null,
@@ -36,7 +37,7 @@ function describe(config) {
 function overview() { return describe(loadConfig()); }
 async function details(id) {
   const op = await ImageOperation.findById(id).select('+request +workerUrl +execution').lean();
-  if (!op) throw Object.assign(new Error('Opération image inconnue.'), { statusCode: 404 });
+  if (!op) throw Object.assign(new Error('Unknown image operation.'), { statusCode: 404 });
   return { id: op._id, recipe: recipeInfo(op.profile.id, op.profile),
     ...(op.expert && { expert: op.expert }),
     ...(op.lineage && { lineage: op.lineage }),

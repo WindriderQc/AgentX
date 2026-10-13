@@ -14,10 +14,37 @@
    * @param {RequestInit} [options] - Standard fetch options.
    * @returns {Promise<object>} Parsed JSON body.
    */
+  // Service codes a person can act on, in plain words.
+  var CODE_MESSAGES = {
+    EMBEDDING_SERVICE_UNAVAILABLE: 'The embedding model is unavailable. Check the inference host, then try again.',
+    VECTOR_STORE_UNAVAILABLE: 'The vector store (Qdrant) is unavailable. Check that it is running, then try again.',
+    MONGODB_UNAVAILABLE: 'The database (MongoDB) is unavailable. Check that it is running, then try again.',
+    INGEST_ROOT_UNAVAILABLE: 'The ingest folder is unavailable. Check the configured NAS path.'
+  };
+  var DEFAULT_TIMEOUT_MS = 120000;
+
   async function apiFetch(path, options) {
     var url = path.startsWith('/') ? path : API_BASE + '/' + path;
-    var requestOptions = Object.assign({ cache: 'no-store' }, options || {});
-    var res = await fetch(url, requestOptions);
+    var opts = Object.assign({}, options || {});
+    var timeoutMs = opts.timeoutMs || DEFAULT_TIMEOUT_MS;
+    delete opts.timeoutMs;
+    // No request may spin forever: a slow answer becomes a timeout the page can report.
+    var controller = typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = controller ? setTimeout(function () { controller.abort(); }, timeoutMs) : null;
+    var requestOptions = Object.assign({ cache: 'no-store' }, opts, controller ? { signal: controller.signal } : {});
+    var res;
+    try {
+      res = await fetch(url, requestOptions);
+    } catch (error) {
+      if (controller && controller.signal.aborted) {
+        var timeout = new Error('The service did not answer within ' + Math.round(timeoutMs / 1000) + ' s.');
+        timeout.code = 'CLIENT_TIMEOUT';
+        throw timeout;
+      }
+      throw error;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
     var body;
     try {
       body = await res.json();
@@ -30,7 +57,8 @@
       throw new Error('The service returned an unreadable response. Try again.');
     }
     if (!res.ok || body.ok === false || body.status === 'error') {
-      var err = new Error(body.error || body.message || ('Request failed (' + res.status + ')'));
+      var raw = body.error || body.message || ('Request failed (' + res.status + ')');
+      var err = new Error(CODE_MESSAGES[raw] || CODE_MESSAGES[body.code] || raw);
       err.detail = body.detail;
       err.confirmation = body.confirmation;
       err.code = body.code;
@@ -144,6 +172,7 @@
       if (options.compress === true) body.compress = true;
     }
     return apiFetch('/rag/api/rag/search', {
+      timeoutMs: options && (options.rerank || options.compress) ? 300000 : DEFAULT_TIMEOUT_MS,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
@@ -157,6 +186,7 @@
    */
   async function ingestDocument(params) {
     return apiFetch('/rag/api/rag/ingest', {
+      timeoutMs: 600000,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params)

@@ -1,6 +1,6 @@
 <% const { navItems, brandHref, brandTitle, isActive, isChildActive } = buildProductNavigation(locals); %>
 <div id="nav-container" class="product-shell">
-  <nav class="top-nav" aria-label="Navigation principale">
+  <nav class="top-nav" aria-label="Main navigation">
     <a href="<%= brandHref %>" class="nav-brand" title="<%= brandTitle %>" aria-label="<%= brandTitle %>">
       <img class="product-mark" src="/favicon.svg?v=agentx-mark-1" width="44" height="44" alt="" aria-hidden="true"><span>AgentX</span>
     </a>
@@ -25,7 +25,7 @@
                    >
                   <i class="fas <%= child.icon %>" aria-hidden="true"></i><%= child.label %>
                   <% if (child.owner) { %><span class="nav-owner-tag"><%= child.owner %></span><% } %>
-                  <% if (child.external) { %><i class="fas fa-arrow-up-right-from-square nav-external" aria-label="Nouvel onglet"></i><% } %>
+                  <% if (child.external) { %><i class="fas fa-arrow-up-right-from-square nav-external" aria-label="Opens in a new tab"></i><% } %>
                 </a>
               <% } %>
             <% }); %>
@@ -35,9 +35,9 @@
     </div>
     <% if (locals.householdControls) { %>
       <details class="nav-tools" id="householdTools">
-        <summary aria-label="Accès et réglages"><i class="fas fa-ellipsis" aria-hidden="true"></i></summary>
+        <summary aria-label="Access and settings"><i class="fas fa-ellipsis" aria-hidden="true"></i></summary>
         <div class="nav-tools-panel">
-          <% if (locals.householdControls) { %><button type="button" id="readingVoiceSettings">Voix des lectures</button><span class="runtime-pill" id="runtimePill" role="status">Connexion…</span><% } %>
+          <% if (locals.householdControls) { %><button type="button" id="readingVoiceSettings">Reading voices</button><span class="runtime-pill" id="runtimePill" role="status">Connecting…</span><% } %>
         </div>
       </details>
     <% } %>

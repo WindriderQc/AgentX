@@ -9,7 +9,7 @@
 const IOT_COMMANDS = Object.freeze({
   io_on: { label: 'GPIO ON', suffix: 'io/on', gpio: true },
   io_off: { label: 'GPIO OFF', suffix: 'io/off', gpio: true },
-  reboot: { label: 'Redémarrer', suffix: 'reboot', gpio: false }
+  reboot: { label: 'Reboot', suffix: 'reboot', gpio: false }
 });
 const IOT_COMMAND_ARM_MS = 20000;
 const iotCommand = { armed: null, timer: null, outcome: null, note: '' };
@@ -17,13 +17,13 @@ const iotCommand = { armed: null, timer: null, outcome: null, note: '' };
 /** Why no command can be sent now, in words, or '' when one can. */
 function iotCommandBlock(device = iotDevice(), status = iotState.status) {
   const consumer = status?.consumer;
-  if (!consumer) return 'l’état du lien MQTT de Data est inconnu';
-  if (!consumer.configured) return 'le broker MQTT n’est pas configuré sur Data';
-  if (!consumer.connected) return 'Data n’est pas connecté au broker MQTT';
-  if (device?.status === 'offline') return 'l’appareil est hors ligne et ne recevrait pas le message';
+  if (!consumer) return 'the state of Data’s MQTT link is unknown';
+  if (!consumer.configured) return 'the MQTT broker is not configured on Data';
+  if (!consumer.connected) return 'Data is not connected to the MQTT broker';
+  if (device?.status === 'offline') return 'the device is offline and would not receive the message';
   if (device?.status === 'stale') {
     const minutes = Math.round(Number(status.settings?.staleAfterSeconds) / 60);
-    return `l’appareil est silencieux depuis plus de ${Number.isFinite(minutes) && minutes > 0 ? minutes : 5} minutes`;
+    return `the device has been silent for more than ${Number.isFinite(minutes) && minutes > 0 ? minutes : 5} minutes`;
   }
   return '';
 }
@@ -35,19 +35,20 @@ function iotCommandDisarm(note = '') {
 
 /** First step: freeze the message and show it. Returns the refusal, or '' when armed. */
 function iotCommandArm(id, fields) {
+  if (typeof iotConfigDisarm === 'function') { iotConfigDisarm(); iotPaint('#iotConfigConfirmation', ''); }
   iotCommandDisarm(); iotCommand.outcome = null;
   const device = iotDevice();
-  if (!device || device.id !== id) return 'Appareil modifié : commande non préparée.';
+  if (!device || device.id !== id) return 'Device changed: command not prepared.';
   const blocked = iotCommandBlock(device);
-  if (blocked) return `Commande non préparée : ${blocked}.`;
+  if (blocked) return `Command not prepared: ${blocked}.`;
   const kind = Object.hasOwn(IOT_COMMANDS, fields.command) ? IOT_COMMANDS[fields.command] : null;
-  if (!kind) return 'Commande inconnue.';
+  if (!kind) return 'Unknown command.';
   const text = String(fields.gpio ?? '').trim(); const gpio = Number(text);
-  if (kind.gpio && (!/^\d{1,2}$/.test(text) || gpio > 48)) return 'Commande non préparée : le GPIO doit être un entier de 0 à 48.';
+  if (kind.gpio && (!/^\d{1,2}$/.test(text) || gpio > 48)) return 'Command not prepared: the GPIO must be an integer from 0 to 48.';
   iotCommand.armed = { id, name: device.displayName || device.id, command: fields.command, label: kind.label,
     gpio: kind.gpio ? gpio : null, topic: `esp32/${id}/${kind.suffix}`, payload: kind.gpio ? String(gpio) : '' };
   iotCommand.timer = setTimeout(() => {
-    iotCommandDisarm('Envoi annulé : aucune confirmation en 20 secondes. Rien n’a été envoyé.'); iotPaintCommand();
+    iotCommandDisarm('Send cancelled: no confirmation within 20 seconds. Nothing was sent.'); iotPaintCommand();
   }, IOT_COMMAND_ARM_MS);
   return '';
 }
@@ -55,31 +56,31 @@ function iotCommandArm(id, fields) {
 function iotCommandConfirmHtml() {
   const armed = iotCommand.armed;
   if (!armed) return iotCommand.note ? `<p class="muted">${e(iotCommand.note)}</p>` : '';
-  return `<div class="iot-confirm" role="group" aria-label="Confirmation de la commande"><strong>Voici exactement ce qui sera envoyé :</strong><dl>
-    <div><dt>Appareil</dt><dd>${armed.name === armed.id ? '' : `${e(armed.name)} `}<span class="mono">${e(armed.id)}</span></dd></div>
-    <div><dt>Commande</dt><dd>${e(armed.label)}</dd></div>
-    <div><dt>GPIO</dt><dd>${armed.gpio === null ? 'aucun' : e(String(armed.gpio))}</dd></div>
-    <div><dt>Sujet MQTT</dt><dd class="mono">${e(armed.topic)}</dd></div>
-    <div><dt>Contenu</dt><dd class="mono">${armed.payload === '' ? '(vide)' : e(armed.payload)}</dd></div></dl>
-    <p class="muted">QoS 0, non retenu, jamais mis en file. Sans confirmation dans 20 secondes, rien n’est envoyé.</p>
-    <div class="iot-confirm-buttons"><button type="button" class="button iot-danger" data-iot-command-confirm${iotState.pending ? ' disabled' : ''}>Confirmer l’envoi</button><button type="button" class="button" data-iot-command-cancel${iotState.pending ? ' disabled' : ''}>Annuler</button></div></div>`;
+  return `<div class="iot-confirm" role="group" aria-label="Command confirmation"><strong>Exactly this will be sent:</strong><dl>
+    <div><dt>Device</dt><dd>${armed.name === armed.id ? '' : `${e(armed.name)} `}<span class="mono">${e(armed.id)}</span></dd></div>
+    <div><dt>Command</dt><dd>${e(armed.label)}</dd></div>
+    <div><dt>GPIO</dt><dd>${armed.gpio === null ? 'none' : e(String(armed.gpio))}</dd></div>
+    <div><dt>MQTT topic</dt><dd class="mono">${e(armed.topic)}</dd></div>
+    <div><dt>Payload</dt><dd class="mono">${armed.payload === '' ? '(empty)' : e(armed.payload)}</dd></div></dl>
+    <p class="muted">QoS 0, not retained, never queued. Without confirmation within 20 seconds, nothing is sent.</p>
+    <div class="iot-confirm-buttons"><button type="button" class="button iot-danger" data-iot-command-confirm${iotState.pending ? ' disabled' : ''}>Confirm send</button><button type="button" class="button" data-iot-command-cancel${iotState.pending ? ' disabled' : ''}>Cancel</button></div></div>`;
 }
 
 function iotCommandOutcomeHtml() {
   const outcome = iotCommand.outcome;
   if (!outcome) return '';
-  const lead = { sent: 'Publié', 'not-sent': 'Non envoyé', unknown: 'Peut-être envoyé', sending: 'Envoi en cours' }[outcome.kind];
+  const lead = { sent: 'Published', 'not-sent': 'Not sent', unknown: 'Maybe sent', sending: 'Sending' }[outcome.kind];
   return `<p class="iot-outcome" data-outcome="${outcome.kind}"><strong>${lead}</strong> — ${e(outcome.text)}</p>`;
 }
 
 function iotCommandHtml(device) {
   const blocked = iotCommandBlock(device);
   const off = blocked || iotState.pending || iotCommand.armed ? ' disabled' : '';
-  return `<details class="card"${iotCommand.armed || iotCommand.outcome?.kind === 'sending' ? ' open' : ''}><summary>Commandes de ${e(device.displayName || device.id)}</summary>
-    <p class="iot-caution"><strong>Attention :</strong> les commandes atteignent l’appareil réel. Un message publié ne confirme pas l’action du matériel.</p>
-    ${blocked ? `<p class="notice warning" id="iotCommandBlocked">Commandes désactivées : ${e(blocked)}.</p>` : ''}
-    <form id="iotCommand" data-device="${e(device.id)}"><label>Commande<select name="command" id="iotCommandKind"${off}>${Object.entries(IOT_COMMANDS).map(([value, kind]) => `<option value="${value}"${iotCommand.armed?.command === value ? ' selected' : ''}>${kind.label}</option>`).join('')}</select></label>
-    <label id="iotGpioLabel"${iotCommand.armed?.gpio === null ? ' hidden' : ''}>GPIO<input type="number" name="gpio" id="iotGpio" min="0" max="48" step="1" placeholder="Numéro GPIO"${iotCommand.armed ? ` value="${e(iotCommand.armed.payload)}"` : ''} required${off}></label><button class="button" type="submit"${off}>Préparer l’envoi</button></form>
+  return `<details class="card"${iotCommand.armed || iotCommand.outcome?.kind === 'sending' ? ' open' : ''}><summary>Commands for ${e(device.displayName || device.id)}</summary>
+    <p class="iot-caution"><strong>Caution:</strong> commands reach the real device. A published message does not confirm the hardware action.</p>
+    ${blocked ? `<p class="notice warning" id="iotCommandBlocked">Commands disabled: ${e(blocked)}.</p>` : ''}
+    <form id="iotCommand" data-device="${e(device.id)}"><label>Command<select name="command" id="iotCommandKind"${off}>${Object.entries(IOT_COMMANDS).map(([value, kind]) => `<option value="${value}"${iotCommand.armed?.command === value ? ' selected' : ''}>${kind.label}</option>`).join('')}</select></label>
+    <label id="iotGpioLabel"${iotCommand.armed?.gpio === null ? ' hidden' : ''}>GPIO<input type="number" name="gpio" id="iotGpio" min="0" max="48" step="1" placeholder="GPIO number"${iotCommand.armed ? ` value="${e(iotCommand.armed.payload)}"` : ''} required${off}></label><button class="button" type="submit"${off}>Prepare send</button></form>
     <div id="iotCommandConfirm" aria-live="polite">${iotCommandConfirmHtml()}</div><div id="iotCommandOutcome" role="status">${iotCommandOutcomeHtml()}</div></details>`;
 }
 
@@ -98,13 +99,13 @@ function iotCommandOutcome(status, body, armed) {
   const message = typeof body?.message === 'string' ? body.message.slice(0, 300) : '';
   if (status >= 200 && status < 300 && body && body.ok !== false && body.status !== 'error') {
     const data = body.data ?? body; const at = new Date(data.publishedAt);
-    return { kind: 'sent', text: `${armed.label} publié sur ${data.topic || armed.topic} à ${Number.isFinite(at.getTime()) ? at.toLocaleTimeString() : 'une heure non précisée'}. L’appareil ne répond rien : l’action du matériel n’est pas confirmée.` };
+    return { kind: 'sent', text: `${armed.label} published to ${data.topic || armed.topic} at ${Number.isFinite(at.getTime()) ? at.toLocaleTimeString() : 'an unspecified time'}. The device sends no reply: the hardware action is not confirmed.` };
   }
   // 4xx and 503 are refusals made before any publication. Everything else
   // (504, a lost reply, an unreadable answer) leaves the publication unknown.
-  if (status === 503) return { kind: 'not-sent', text: `le lien avec le broker n’est pas disponible (503). ${message}`.trim() };
-  if (status >= 400 && status < 500) return { kind: 'not-sent', text: `commande refusée (${status}). ${message}`.trim() };
-  return { kind: 'unknown', text: `${status === 504 ? 'la publication n’a pas été confirmée à temps (504)' : status ? `réponse ${status} sans confirmation` : 'aucune réponse lisible reçue'}. ${message} Vérifie l’appareil avant d’envoyer de nouveau ; aucun nouvel envoi automatique.`.replace(/\s+/g, ' ') };
+  if (status === 503) return { kind: 'not-sent', text: `the broker link is not available (503). ${message}`.trim() };
+  if (status >= 400 && status < 500) return { kind: 'not-sent', text: `command refused (${status}). ${message}`.trim() };
+  return { kind: 'unknown', text: `${status === 504 ? 'the publication was not confirmed in time (504)' : status ? `response ${status} without confirmation` : 'no readable response received'}. ${message} Check the device before sending again; nothing is resent automatically.`.replace(/\s+/g, ' ') };
 }
 
 /** Second step: send the armed message once. */
@@ -116,7 +117,7 @@ async function iotCommandSend() {
   if (blocked) { iotCommand.outcome = { kind: 'not-sent', text: `${blocked}.` }; iotPaintCommand(); return; }
   const seq = state.renderSeq;
   iotState.pending = true;
-  iotCommand.outcome = { kind: 'sending', text: `${armed.label} vers ${armed.topic}…` };
+  iotCommand.outcome = { kind: 'sending', text: `${armed.label} to ${armed.topic}…` };
   iotPaintCommand();
   let outcome;
   try {
@@ -135,5 +136,5 @@ async function iotCommandSend() {
 document.addEventListener('click', event => {
   if (state.tab !== 'iot') return;
   if (event.target.closest('[data-iot-command-confirm]')) iotCommandSend();
-  else if (event.target.closest('[data-iot-command-cancel]')) { iotCommandDisarm('Envoi annulé. Rien n’a été envoyé.'); iotPaintCommand(); }
+  else if (event.target.closest('[data-iot-command-cancel]')) { iotCommandDisarm('Send cancelled. Nothing was sent.'); iotPaintCommand(); }
 });

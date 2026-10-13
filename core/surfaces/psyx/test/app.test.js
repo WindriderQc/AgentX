@@ -385,8 +385,8 @@ test('memory corrections use authenticated ownership, stay protected, and serve 
     assert.equal(calls[0][1], 'patterns');
     for (const asset of ['formulation.js', 'setup.js']) assert.equal((await fetch(`${base}/psyx/assets/${asset}`)).status, 200);
     const html = await (await fetch(`${base}/psyx`)).text();
-    assert.match(html, /Comment psyX te comprend/);
-    assert.match(html, /Configuration de psyX/);
+    assert.match(html, /How PsyX understands you/);
+    assert.match(html, /PsyX setup/);
   });
 });
 

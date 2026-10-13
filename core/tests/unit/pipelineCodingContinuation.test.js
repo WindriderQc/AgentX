@@ -1,0 +1,440 @@
+'use strict';
+const express = require('express');
+const request = require('supertest');
+const Task = require('../../models/PipelineTask');
+const Settings = require('../../models/PipelineCodingAutonomy');
+const Runtime = require('../../models/RuntimeCoordination');
+const autonomy = require('../../src/services/pipelineCodingAutonomyService');
+const recovery = require('../../src/services/pipelineCodingAutonomyRecovery');
+const continuation = require('../../src/services/pipelineCodingContinuation');
+const policy = require('../../src/services/pipelineCodingAutonomyPolicy');
+const { claimEligibleTask } = require('../../src/services/pipelineTaskService');
+const { normalizePipelineAutomationIntent } = require('../../../shared/pipelineAutomationContract');
+jest.mock('../../src/services/heavyWorkQueueService', () => ({
+  get: jest.fn(), runtimeOverlaps: jest.requireActual('../../src/services/heavyWorkQueueService').runtimeOverlaps,
+}));
+const queue = require('../../src/services/heavyWorkQueueService');
+const REQUEST = '10000000-0000-4000-8000-000000000001';
+const CALL = '20000000-0000-4000-8000-000000000001';
+const OTHER_CALL = '20000000-0000-4000-8000-000000000002';
+const QUEUE = '30000000-0000-4000-8000-000000000001';
+const DISPATCH = '40000000-0000-4000-8000-000000000001';
+const HOST = 'http://coding.invalid:11434';
+const REF = '/private/synthetic-terminal.json';
+const SHA = 'a'.repeat(64);
+const app = express().use(express.json()).use('/api/pipeline', require('../../routes/pipeline-coding-autonomy'));
+let control;
+let job;
+
+const body = (extra = {}) => ({ confirm: true, confirmation: recovery.CONFIRMATION,
+  expectedRevision: 10, key: `coding-recovery:${REQUEST}`, callIds: [CALL], receiptRef: REF, receiptSha256: SHA, ...extra });
+const post = (input = body(), id = '0001', requestId = REQUEST) =>
+  request(app).post(`/api/pipeline/coding-autonomy/tasks/${id}/runs/${requestId}/recover`).send(input);
+const task = () => Task.findOne({ pipelineId: '0001' }).lean();
+const settings = () => Settings.findById('coding-autonomy').lean();
+const run = async () => (await task()).codingAutonomy.runs.at(-1);
+function interceptWrite(model, predicate, replacement) {
+  const original = model.updateOne;
+  return jest.spyOn(model, 'updateOne').mockImplementation(function (...args) {
+    return predicate(args[1]) ? replacement(() => original.apply(this, args), args) : original.apply(this, args);
+  });
+}
+const preparedWrite = update => update.$set?.codingAutonomy?.runs.at(-1)?.recovery?.state === 'prepared';
+const confirmedWrite = update => update.$set?.['codingAutonomy.runs.$[run].recovery.state'] === 'confirmed';
+
+beforeEach(async () => {
+  await Promise.all([Task.deleteMany({}), Settings.deleteMany({}), Runtime.deleteMany({})]);
+  const start = new Date(Date.now() - 95000).toISOString();
+  const end = new Date(Date.now() - 40000).toISOString();
+  const automation = normalizePipelineAutomationIntent({ schema: 'agentx.pipeline-automation/v1', mode: 'review_only',
+    policyRef: 'synthetic/v1', dataClassification: 'public', operations: ['update'], scope: ['synthetic.py'],
+    lockKeys: ['file:synthetic.py'], executionProfile: 'coding-sandbox/v1', verificationProfile: 'agentx-dispatcher-tests/v1',
+    budgets: { maxDurationMs: 7200000, maxAttempts: 2, maxCostNanodollars: 0 }, humanGates: ['review', 'merge', 'deploy'] });
+  await Task.create({ pipelineId: '0001', title: 'Synthetic stopped coding task', spec: 'Disposable CPU fixture',
+    service: 'agentx-coding', status: 'blocked', assignee: 'coding-team', risk: 'low', automation,
+    automationAttemptCount: 1, automationAttempts: [{ leaseId: 'synthetic-lease', dispatchRequestId: REQUEST,
+      assignee: 'coding-team', attempt: 1, acquiredAt: start, heartbeatAt: end, expiresAt: end, completedAt: end, finalState: 'blocked',
+      resultRequestFingerprint: 'b'.repeat(64), evidence: { schema: 'agentx.pipeline-automation-evidence/v1',
+        verification: { status: 'unknown' }, usage: { durationMs: 37000 } } }],
+    codingAutonomy: { schema: 'agentx.pipeline-coding-autonomy/v1', revision: 10, authorized: false,
+      state: 'blocked', reason: 'native_completion_unverified', basis: 'c'.repeat(64), queueRequestId: QUEUE,
+      limits: policy.limits(), spent: { workSeconds: 5, testSeconds: 2, modelSeconds: 1, modelCalls: 1, ciSeconds: 7 },
+      observations: [], seenDiagnostics: [], manualInterventions: [], runs: [{ requestId: REQUEST,
+        parentRequestId: null, startedAt: start, expectedAttemptCount: 0, pendingInferences: [CALL],
+        currentUsage: { workSeconds: 27, testSeconds: 0, modelCalls: 0, modelSeconds: 0 },
+        modelReceipts: [{ callId: CALL, state: 'unknown', startedAt: start, finishedAt: start }] }] } });
+  await Task.create({ pipelineId: '0002', title: 'Other owner task', spec: 'Preserve this task',
+    service: 'agentx-coding', status: 'in_progress', assignee: 'other-owner' });
+  await Settings.create({ _id: 'coding-autonomy', enabled: false, revision: 2,
+    active: { pipelineId: '0001', requestId: REQUEST, selectedAt: start } });
+  await Runtime.collection.insertOne({ _id: 'runtime', maintenance: null, workloads: [], inferences: [], releaseReceipts: [] });
+  job = { id: QUEUE, state: 'failed', source: { type: 'coding', ref: 'synthetic-session', taskId: '0001' },
+    hosts: [HOST], resourceIds: ['synthetic-gpu'], executor: { mode: 'operator', receiptRef: REF },
+    dispatchId: DISPATCH, operation: { id: DISPATCH, authority: 'operator-attestation' },
+    finishedAt: new Date(Date.now() - 30000).toISOString(), releaseReceipt: { authority: 'operator-attestation',
+      operationId: DISPATCH, confirmation: 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED',
+      receiptRef: REF, receiptSha256: SHA, actor: 'synthetic-operator' } };
+  queue.get.mockImplementation(async () => structuredClone(job));
+  control = { status: jest.fn(async () => ({ busy: false, run: { pipelineId: '0001', requestId: REQUEST,
+    phase: 'finished', progress: { pipelineId: '0001', requestId: REQUEST, phase: 'finished',
+      result: 'blocked', coreRecorded: true, usage: { workSeconds: 37, testSeconds: 3, modelSeconds: 2, modelCalls: 1 } } } })),
+    launch: jest.fn(), stop: jest.fn(), reconcile: jest.fn() };
+  autonomy.configureControl(control);
+});
+afterEach(() => { jest.restoreAllMocks(); autonomy.configureControl(null); });
+
+
+const NEXT_QUEUE = '30000000-0000-4000-8000-000000000002';
+const HEAD = 'f'.repeat(40);
+const grantBody = extra => ({ confirm: true, confirmation: continuation.CONFIRMATION,
+  key: 'synthetic-budget-grant', expectedRevision: 10, head: HEAD, queueRequestId: NEXT_QUEUE,
+  additionalRuns: 1, verificationProfile: 'agentx-dispatcher-tests/v1', text: 'Correct the reviewed defects.',
+  budget: { workSeconds: 3600, testSeconds: 300, modelSeconds: 1800, modelCalls: 20, ciSeconds: 600 }, ...extra });
+const grant = input => continuation.continueRecovered('0001', REQUEST, input || grantBody(), control);
+beforeEach(async () => {
+  const original = await task(); const state = original.codingAutonomy; const last = state.runs[0];
+  last.finishedAt = new Date().toISOString(); last.result = 'blocked';
+  last.usage = { workSeconds: 100, testSeconds: 3, modelSeconds: 2, modelCalls: 1 };
+  last.recovery = { campaignId: QUEUE, state: 'confirmed', authority: 'operator-reconciliation', releaseVerifiedAt: new Date().toISOString(),
+    historicalJournalFingerprint: policy.digest([last.modelReceipts, last.pendingInferences]),
+    nativeAttemptFingerprint: policy.digest(original.automationAttempts[0]) };
+  state.state = 'stopped'; state.basis = policy.basis(original);
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { codingAutonomy: state } });
+  await Settings.updateOne({ _id: 'coding-autonomy' }, { $set: { active: null } });
+  const previousJob = structuredClone(job);
+  queue.get.mockImplementation(async id => structuredClone(id === QUEUE ? previousJob : job));
+  job = { id: NEXT_QUEUE, state: 'dispatching', source: { type: 'coding', ref: 'synthetic-session', taskId: '0001' },
+    hosts: [HOST], resourceIds: [], executor: { mode: 'operator' }, reservation: {
+      start: new Date(Date.now() - 10000).toISOString(), end: new Date(Date.now() + 3600000).toISOString() } };
+  control.status.mockResolvedValue({ busy: false, run: { pipelineId: '0001', requestId: REQUEST, phase: 'finished',
+    progress: { pipelineId: '0001', requestId: REQUEST, phase: 'finished', coreRecorded: true, result: 'blocked', checkpoint: HEAD } } });
+});
+test('credits and one additional worker preserve all original runs, costs, scope and UNKNOWN', async () => {
+  const before = await task(), other = await Task.findOne({ pipelineId: '0002' }).lean();
+  const after = await grant();
+  expect(after.codingAutonomy.runs).toEqual(before.codingAutonomy.runs);
+  expect(after.codingAutonomy.spent).toEqual(before.codingAutonomy.spent);
+  expect(after.automation).toEqual(before.automation); expect(after.automationAttempts).toEqual(before.automationAttempts);
+  expect(after.codingAutonomy.budgetGrants).toHaveLength(1);
+  expect(policy.remaining(after).modelSeconds).toBe(policy.remaining(before).modelSeconds + 1800);
+  expect(policy.remaining(after).maxResumes).toBe(1);
+  expect(after.codingAutonomy).toMatchObject({ authorized: true, state: 'correction', verificationProfile: 'agentx-dispatcher-tests/v1' });
+  expect((await settings()).active).toBeNull(); expect(control.launch).not.toHaveBeenCalled();
+  expect(await Task.findOne({ pipelineId: '0002' }).lean()).toEqual(other);
+});
+test('same grant retry adds no credit or intervention and changed evidence refuses', async () => {
+  const first = await grant(); const retry = await grant();
+  expect(retry.codingAutonomy.budgetGrants).toHaveLength(1);
+  expect(policy.remaining(retry)).toEqual(policy.remaining(first));
+  expect(retry.codingAutonomy.manualInterventions).toEqual(first.codingAutonomy.manualInterventions);
+  await expect(grant(grantBody({ head: 'a'.repeat(40) }))).rejects.toThrow('different');
+});
+test('lost first acknowledgement retains activation fence until identical retry durably receives journal', async () => {
+  const spy = interceptWrite(Task, update => update.$set?.codingAutonomy?.budgetGrants?.length,
+    async commit => { await commit(); throw new Error('Synthetic lost acknowledgement'); });
+  await expect(grant()).rejects.toThrow('lost acknowledgement'); spy.mockRestore();
+  expect((await settings()).active.recovery.kind).toBe('coding-continuation');
+  await expect(autonomy.configure({ enabled: true, confirm: true, expectedRevision: (await settings()).revision })).rejects.toThrow('recovery');
+  await grant(); expect((await settings()).active).toBeNull();
+  expect((await task()).codingAutonomy.budgetGrants).toHaveLength(1);
+});
+test.each(['unrecovered', 'active-worker', 'checkpoint', 'campaign', 'scope', 'unknown-child'])('refuses %s before additional credit or inference', async kind => {
+  if (kind === 'unrecovered') await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.runs.0.recovery.state': 'prepared' } });
+  if (kind === 'active-worker') control.status.mockResolvedValue({ busy: true });
+  if (kind === 'checkpoint') control.status.mockResolvedValue({ busy: false, run: { phase: 'finished', progress: { checkpoint: 'a'.repeat(40) } } });
+  if (kind === 'campaign') job.source.taskId = '0002';
+  if (kind === 'scope') await Task.updateOne({ pipelineId: '0001' }, { $set: { spec: 'Changed task' } });
+  if (kind === 'unknown-child') await Runtime.collection.updateOne({ _id: 'runtime' }, { $set: { inferences: [{ requestId: REQUEST, host: HOST, state: 'UNKNOWN' }] } });
+  await expect(grant()).rejects.toThrow(); expect((await task()).codingAutonomy.budgetGrants).toBeUndefined();
+  expect(control.launch).not.toHaveBeenCalled();
+});
+test('new dispatch is a linked second run on the same card and consumes its own grant', async () => {
+  const oldRun = await run(); await grant();
+  await autonomy.configure({ enabled: true, confirm: true, expectedRevision: (await settings()).revision });
+  await autonomy.tick(); const fresh = await task();
+  expect(fresh.codingAutonomy.runs).toHaveLength(2);
+  expect(fresh.codingAutonomy.runs[0]).toEqual(oldRun);
+  expect(fresh.codingAutonomy.runs[1].parentRequestId).toBe(REQUEST);
+  const manifest = await autonomy.workerManifest('0001', fresh.codingAutonomy.runs[1].requestId);
+  expect(manifest.continuationCheckpoint).toBe(HEAD);
+  expect(manifest.verificationProfile).toBe('agentx-dispatcher-tests/v1');
+});
+
+const nativeBody = extra => grantBody({ confirmation: continuation.NATIVE_CONFIRMATION, ...extra });
+async function nativeTerminal() {
+  const original = await task(), last = original.codingAutonomy.runs.at(-1);
+  delete last.recovery;
+  Object.assign(last, { head: HEAD, pendingInferences: [] });
+  last.modelReceipts[0].state = 'completed';
+  last.modelReceipts[0].settlement = { state: 'completed', finishedAt: last.modelReceipts[0].finishedAt };
+  const attempt = original.automationAttempts.at(-1);
+  Object.assign(attempt.evidence, { source: 'coding-autonomous/v1', failureCodes: ['no_useful_progress'] });
+  await Task.updateOne({ pipelineId: '0001' }, { $set: {
+    codingAutonomy: original.codingAutonomy, automationAttempts: original.automationAttempts } });
+  const previous = await queue.get(QUEUE);
+  previous.releaseReceipt.confirmation = 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED';
+  queue.get.mockImplementation(async id => structuredClone(id === QUEUE ? previous : job));
+  control.status.mockResolvedValue({ busy: false, run: { pipelineId: '0001', requestId: REQUEST, phase: 'finished',
+    progress: { pipelineId: '0001', requestId: REQUEST, phase: 'finished', coreRecorded: true,
+      result: 'blocked', checkpoint: HEAD, stopReason: 'no_useful_progress' } } });
+  return previous;
+}
+test('a clean native no-progress stop receives a separately labelled grant without fabricated recovery', async () => {
+  await nativeTerminal(); const before = await task();
+  const after = await grant(nativeBody());
+  expect(after.codingAutonomy.runs).toEqual(before.codingAutonomy.runs);
+  expect(after.codingAutonomy.spent).toEqual(before.codingAutonomy.spent);
+  expect(after.automationAttempts).toEqual(before.automationAttempts);
+  expect(after.automation).toEqual(before.automation);
+  expect(after.codingAutonomy.budgetGrants[0]).toMatchObject({ checkpointAuthority: 'native-terminal', parentRequestId: REQUEST });
+  expect(after.codingAutonomy.runs[0].recovery).toBeUndefined();
+  expect((await settings()).active).toBeNull(); expect(control.launch).not.toHaveBeenCalled();
+  const retry = await grant(nativeBody());
+  expect(retry.codingAutonomy.budgetGrants).toHaveLength(1);
+  expect(policy.remaining(retry)).toEqual(policy.remaining(after));
+  await expect(grant(grantBody())).rejects.toThrow('different');
+});
+test.each(['pending', 'unknown', 'no-model', 'attempt-mismatch', 'unreceived-result', 'unreceived-settlement', 'settlement-time', 'duplicate-call',
+  'published', 'checkpoint', 'unclosed-campaign', 'unreceived-release', 'operator-stop', 'runner-error', 'native-hold'])
+('native continuation refuses %s without credit or dispatch', async kind => {
+  const previous = await nativeTerminal();
+  const change = {};
+  if (kind === 'pending') change['codingAutonomy.runs.0.pendingInferences'] = [CALL];
+  if (kind === 'unknown') change['codingAutonomy.runs.0.modelReceipts.0.state'] = 'unknown';
+  if (kind === 'no-model') change['codingAutonomy.runs.0.modelReceipts'] = [];
+  if (kind === 'attempt-mismatch') change['automationAttempts.0.attempt'] = 2;
+  if (kind === 'unreceived-result') change['automationAttempts.0.resultRequestFingerprint'] = null;
+  if (kind === 'unreceived-settlement') change['codingAutonomy.runs.0.modelReceipts.0.settlement.state'] = 'unknown';
+  if (kind === 'settlement-time') change['codingAutonomy.runs.0.modelReceipts.0.settlement.finishedAt'] = new Date().toISOString();
+  if (kind === 'duplicate-call') {
+    const calls = (await run()).modelReceipts;
+    change['codingAutonomy.runs.0.modelReceipts'] = [...calls, calls[0]];
+  }
+  if (kind === 'published') change['codingAutonomy.pr'] = { head: HEAD };
+  if (kind === 'checkpoint') change['codingAutonomy.runs.0.head'] = 'a'.repeat(40);
+  if (kind === 'unclosed-campaign') previous.state = 'dispatching';
+  if (kind === 'unreceived-release') delete previous.releaseReceipt.receiptSha256;
+  if (['operator-stop', 'runner-error'].includes(kind)) {
+    const reason = kind.replace('-', '_');
+    change['automationAttempts.0.evidence.failureCodes'] = [reason];
+    const host = await control.status(); host.run.progress.stopReason = reason; control.status.mockResolvedValue(host);
+  }
+  if (kind === 'native-hold') await Runtime.collection.updateOne({ _id: 'runtime' },
+    { $set: { inferences: [{ requestId: REQUEST, host: HOST, state: 'UNKNOWN' }] } });
+  if (Object.keys(change).length) await Task.updateOne({ pipelineId: '0001' }, { $set: change });
+  const before = await task();
+  await expect(grant(nativeBody())).rejects.toThrow();
+  expect(await task()).toEqual(before); expect((await settings()).active).toBeNull();
+  expect(control.launch).not.toHaveBeenCalled();
+});
+test('clean terminal authority cannot stand in for administrative recovery or raise the native attempt ceiling', async () => {
+  await expect(grant(nativeBody())).rejects.toThrow('completed');
+  await nativeTerminal();
+  await expect(grant()).rejects.toThrow('Administrative recovery');
+  await expect(grant(nativeBody({ additionalRuns: 2 }))).rejects.toThrow('ceiling');
+});
+test('a final native continuation preserves the earlier confirmed UNKNOWN and links the third worker', async () => {
+  await nativeTerminal(); const original = await task();
+  const olderId = '10000000-0000-4000-8000-000000000002';
+  const older = structuredClone(original.codingAutonomy.runs[0]);
+  const olderAttempt = structuredClone(original.automationAttempts[0]);
+  older.requestId = olderAttempt.dispatchRequestId = olderId;
+  older.pendingInferences = [OTHER_CALL];
+  older.modelReceipts = [{ callId: OTHER_CALL, state: 'unknown', startedAt: older.startedAt, finishedAt: older.finishedAt }];
+  older.recovery = { state: 'confirmed', authority: 'operator-reconciliation', releaseVerifiedAt: new Date().toISOString(),
+    historicalJournalFingerprint: policy.digest([older.modelReceipts, older.pendingInferences]),
+    nativeAttemptFingerprint: policy.digest(olderAttempt) };
+  original.codingAutonomy.runs[0].expectedAttemptCount = 1;
+  original.automationAttempts[0].attempt = 2;
+  original.codingAutonomy.runs.unshift(older); original.automationAttempts.unshift(olderAttempt);
+  const { fingerprint, ...automationIntent } = original.automation;
+  original.automation = normalizePipelineAutomationIntent({ ...automationIntent,
+    budgets: { ...original.automation.budgets, maxAttempts: 3 } });
+  original.codingAutonomy.basis = policy.basis(original);
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { codingAutonomy: original.codingAutonomy,
+    automation: original.automation, automationAttempts: original.automationAttempts, automationAttemptCount: 2 } });
+  const before = await task(); await grant(nativeBody());
+  const accepted = await task(); expect(accepted.codingAutonomy.runs).toEqual(before.codingAutonomy.runs);
+  expect(accepted.automationAttempts).toEqual(before.automationAttempts);
+  expect(policy.remaining(accepted).maxResumes).toBe(1);
+  await autonomy.configure({ enabled: true, confirm: true, expectedRevision: (await settings()).revision });
+  await autonomy.tick(); const next = await task();
+  expect(next.codingAutonomy.runs).toHaveLength(3);
+  expect(next.codingAutonomy.runs[0]).toEqual(older);
+  expect(next.codingAutonomy.runs[2].parentRequestId).toBe(REQUEST);
+  const manifest = await autonomy.workerManifest('0001', next.codingAutonomy.runs[2].requestId);
+  expect(manifest.continuationCheckpoint).toBe(HEAD);
+});
+test('an unconfirmed historical UNKNOWN cannot be bypassed by a later clean receipt', async () => {
+  await nativeTerminal(); const original = await task();
+  const older = structuredClone(original.codingAutonomy.runs[0]);
+  older.requestId = '10000000-0000-4000-8000-000000000002';
+  older.pendingInferences = [OTHER_CALL]; older.modelReceipts[0].state = 'unknown';
+  original.codingAutonomy.runs.unshift(older);
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { codingAutonomy: original.codingAutonomy } });
+  await expect(grant(nativeBody())).rejects.toThrow('Historical');
+});
+test('a second key cannot double-credit the same recovered execution', async () => {
+  await grant();
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.authorized': false, 'codingAutonomy.state': 'stopped' } });
+  await expect(grant(grantBody({ key: 'second', expectedRevision: (await task()).codingAutonomy.revision }))).rejects.toThrow('already received');
+});
+
+test('an unmapped same-host foreign inference still vetoes continuation', async () => {
+  await Runtime.collection.updateOne({ _id: 'runtime' }, { $set: { inferences: [{ requestId: 'foreign', host: HOST, state: 'UNKNOWN' }] } });
+  await expect(grant()).rejects.toThrow('authority remains held');
+  expect((await task()).codingAutonomy.budgetGrants).toBeUndefined();
+});
+test('a campaign from a different coding session cannot resume the original card', async () => {
+  job.source.ref = 'another-session';
+  await expect(grant()).rejects.toThrow('same task and coding session');
+});
+
+async function reviewedBody(extra = {}) {
+  const current = await task();
+  return grantBody({ confirmation: continuation.REVIEWED_CONFIRMATION,
+    expectedAutomationFingerprint: current.automation.fingerprint,
+    expectedNativeAttemptLimit: current.automation.budgets.maxAttempts,
+    nativeAttemptLimit: current.automation.budgets.maxAttempts, ...extra });
+}
+async function workerExit() {
+  await nativeTerminal();
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'automationAttempts.0.evidence.failureCodes': ['worker_exit'] } });
+  const host = await control.status(); host.run.progress.stopReason = 'worker_exit'; control.status.mockResolvedValue(host);
+}
+test('reviewed terminal continuation permits a real fourth native claim and retains the three original attempts', async () => {
+  await workerExit(); const current = await task();
+  const latest = current.automationAttempts[0], run = current.codingAutonomy.runs[0];
+  const attempts = [1, 2, 3].map(attempt => ({ ...latest, attempt, dispatchRequestId: attempt === 3 ? REQUEST : `10000000-0000-4000-8000-00000000000${attempt + 2}` }));
+  const runs = attempts.map(attempt => ({ ...run, requestId: attempt.dispatchRequestId, expectedAttemptCount: attempt.attempt - 1 }));
+  const { fingerprint, ...intent } = current.automation;
+  const automation = normalizePipelineAutomationIntent({ ...intent, budgets: { ...intent.budgets, maxAttempts: 3 } });
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { automation, automationAttempts: attempts, automationAttemptCount: 3,
+    codingAutonomy: { ...current.codingAutonomy, runs, basis: policy.basis({ ...current, automation }) } } });
+  const before = await task(); const input = await reviewedBody({ nativeAttemptLimit: 5, additionalRuns: 2 });
+  const after = await grant(input);
+  expect(after.automationAttempts).toEqual(before.automationAttempts);
+  expect(after.codingAutonomy.runs).toEqual(before.codingAutonomy.runs);
+  expect(after.codingAutonomy.spent).toEqual(before.codingAutonomy.spent);
+  expect(after.automation).toEqual(normalizePipelineAutomationIntent({ ...intent, budgets: { ...intent.budgets, maxAttempts: 5 } }));
+  expect(after.codingAutonomy.basis).toBe(policy.basis(after));
+  expect(after.codingAutonomy.budgetGrants[0]).toMatchObject({ originalAutomation: before.automation, originalBasis: before.codingAutonomy.basis });
+  await autonomy.configure({ enabled: true, confirm: true, expectedRevision: (await settings()).revision }); await autonomy.tick();
+  const selected = await task(), next = selected.codingAutonomy.runs.at(-1);
+  const claimed = await claimEligibleTask('0001', 'coding-team', new Date(), { automated: true, dispatchRequestId: next.requestId });
+  expect(claimed.automationAttemptCount).toBe(4); expect(claimed.toObject().automationAttempts.slice(0, 3)).toEqual(before.automationAttempts);
+  expect(next.parentRequestId).toBe(REQUEST);
+  expect((await autonomy.workerManifest('0001', next.requestId)).continuationCheckpoint).toBe(HEAD);
+});
+test('old authority cannot authorize worker exit or silently amend the native ceiling', async () => {
+  await workerExit(); await expect(grant(nativeBody())).rejects.toThrow('budget or no-progress');
+  await expect(grant(nativeBody({ nativeAttemptLimit: 3 }))).rejects.toThrow('Review');
+  const before = await task(); await grant(await reviewedBody());
+  expect((await task()).automation).toEqual(before.automation);
+});
+test.each(['ceiling', 'fingerprint', 'plan', 'cumulative', 'unknown', 'pending', 'operator-stop'])
+('reviewed extension refuses %s without dispatch or credit', async kind => {
+  await workerExit(); let input = await reviewedBody({ nativeAttemptLimit: 3 });
+  if (kind === 'ceiling') input.nativeAttemptLimit = 11;
+  if (kind === 'fingerprint') input.expectedAutomationFingerprint = 'e'.repeat(64);
+  if (kind === 'plan') await Task.updateOne({ pipelineId: '0001' }, { $set: { planRevision: 1 } });
+  if (kind === 'cumulative') await Task.updateOne({ pipelineId: '0001' }, { $set: {
+    'codingAutonomy.budgetGrants': [{ budget: { ...input.budget, modelSeconds: continuation.TOTAL_CEILINGS.modelSeconds } }] } });
+  if (kind === 'unknown') await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.runs.0.modelReceipts.0.state': 'unknown' } });
+  if (kind === 'pending') await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.runs.0.pendingInferences': [CALL] } });
+  if (kind === 'operator-stop') { const host = await control.status(); host.run.progress.stopReason = 'operator_stop'; control.status.mockResolvedValue(host); }
+  const before = await task(); await expect(grant(input)).rejects.toThrow();
+  expect(await task()).toEqual(before); expect(control.launch).not.toHaveBeenCalled();
+});
+test('lost amendment acknowledgement reconciles the same intent without increasing its ceiling or credit twice', async () => {
+  await workerExit(); const input = await reviewedBody({ nativeAttemptLimit: 3 });
+  const spy = interceptWrite(Task, update => update.$set?.automation,
+    async commit => { await commit(); throw new Error('Synthetic lost amendment reply'); });
+  await expect(grant(input)).rejects.toThrow('lost amendment'); spy.mockRestore();
+  const before = await task(); expect((await settings()).active).toBeTruthy();
+  const after = await grant(input);
+  expect(after.automation).toEqual(before.automation); expect(after.codingAutonomy.budgetGrants).toHaveLength(1);
+  expect(policy.remaining(after)).toEqual(policy.remaining(before)); expect((await settings()).active).toBeNull();
+});
+test('qualification archive preserves the blocked task, every original UNKNOWN and attempt, and grants no execution authority', async () => {
+  const disposition = require('../../src/services/pipelineCodingDisposition');
+  const before = await task(); const input = { confirm: true, confirmation: disposition.CONFIRMATION,
+    expectedRevision: 10, requestId: REQUEST, outcome: 'abandoned', reason: 'Disposable qualification concluded; original UNKNOWN retained.',
+    receiptRef: REF, receiptSha256: SHA };
+  const after = await disposition.archive('0001', input);
+  expect(after.status).toBe('blocked'); expect(after.automationAttempts).toEqual(before.automationAttempts);
+  expect(after.codingAutonomy.runs).toEqual(before.codingAutonomy.runs);
+  expect(after.codingAutonomy.spent).toEqual(before.codingAutonomy.spent); expect(after.codingAutonomy.authorized).toBe(false);
+  expect(after.codingAutonomy.disposition).toMatchObject({ kind: 'qualification', outcome: 'abandoned' });
+  const retry = await disposition.archive('0001', input); expect(retry.codingAutonomy.revision).toBe(after.codingAutonomy.revision);
+  await expect(disposition.archive('0001', { ...input, outcome: 'passed' })).rejects.toThrow('preserve');
+  await expect(grant(grantBody({ expectedRevision: after.codingAutonomy.revision }))).rejects.toThrow('stopped');
+  expect(control.launch).not.toHaveBeenCalled(); expect(control.stop).not.toHaveBeenCalled();
+});
+test('an older confirmation cannot bypass the cumulative envelope after a reviewed amendment', async () => {
+  await workerExit(); await grant(await reviewedBody({ nativeAttemptLimit: 10 }));
+  const current = await task();
+  const prior = current.codingAutonomy.budgetGrants[0];
+  // The next finished worker retains the earlier reviewed envelope. Even an
+  // old confirmation must consult all previous credits before any host effect.
+  prior.parentRequestId = '10000000-0000-4000-8000-000000000009';
+  prior.budget.modelSeconds = continuation.TOTAL_CEILINGS.modelSeconds - current.codingAutonomy.limits.modelSeconds;
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.authorized': false,
+    'codingAutonomy.state': 'stopped', 'codingAutonomy.budgetGrants': [prior],
+    'automationAttempts.0.evidence.failureCodes': ['no_useful_progress'] } });
+  const host = await control.status(); host.run.progress.stopReason = 'no_useful_progress'; control.status.mockResolvedValue(host);
+  const before = await task();
+  await expect(grant(nativeBody({ key: 'later-budget-grant', expectedRevision: before.codingAutonomy.revision }))).rejects.toThrow('cumulative');
+  expect(await task()).toEqual(before); expect(control.launch).not.toHaveBeenCalled();
+});
+test('a plan added after the activation fence abandons only the unapplied continuation and releases its slot', async () => {
+  await workerExit(); const input = await reviewedBody({ nativeAttemptLimit: 3 });
+  interceptWrite(Settings, update => update.$set?.active?.recovery?.kind === 'coding-continuation', async commit => {
+    const result = await commit();
+    await Task.updateOne({ pipelineId: '0001' }, { $set: { planRevision: 1 } });
+    return result;
+  });
+  const before = await task(); await expect(grant(input)).rejects.toThrow('plan');
+  const after = await task(); expect((await settings()).active).toBeNull();
+  expect(after.codingAutonomy.budgetGrants).toBeUndefined(); expect(after.automation).toEqual(before.automation);
+  expect(after.codingAutonomy.runs).toEqual(before.codingAutonomy.runs);
+  expect(after.codingAutonomy.continuationAborts[0]).toMatchObject({ key: input.key, parentRequestId: REQUEST });
+  await expect(grant({ ...input, expectedRevision: after.codingAutonomy.revision })).rejects.toThrow('abandonment');
+  expect(control.launch).not.toHaveBeenCalled();
+});
+test('an unreceived abandonment retains the exact selection fence and every original receipt', async () => {
+  await workerExit(); const input = await reviewedBody({ nativeAttemptLimit: 3 });
+  interceptWrite(Settings, update => update.$set?.active?.recovery?.kind === 'coding-continuation', async commit => {
+    const result = await commit(); await Task.updateOne({ pipelineId: '0001' }, { $set: { planRevision: 1 } }); return result;
+  });
+  const spy = interceptWrite(Task, update => update.$set?.['codingAutonomy.continuationAborts'],
+    async () => ({ acknowledged: false, modifiedCount: 0 }));
+  const before = await task(); await expect(grant(input)).rejects.toThrow('acknowledgement uncertain');
+  expect((await settings()).active.recovery.key).toBe(input.key);
+  expect((await task()).codingAutonomy.runs).toEqual(before.codingAutonomy.runs);
+  expect((await task()).codingAutonomy.budgetGrants).toBeUndefined();
+  spy.mockRestore(); await expect(grant(input)).rejects.toThrow('plan');
+  expect((await settings()).active).toBeNull(); expect((await task()).codingAutonomy.continuationAborts).toHaveLength(1);
+});
+test('lost applied abandonment acknowledgement is durably reconciled with the same intent before releasing its fence', async () => {
+  await workerExit(); const input = await reviewedBody({ nativeAttemptLimit: 3 });
+  interceptWrite(Settings, update => update.$set?.active?.recovery?.kind === 'coding-continuation', async commit => {
+    const result = await commit(); await Task.updateOne({ pipelineId: '0001' }, { $set: { planRevision: 1 } }); return result;
+  });
+  const spy = interceptWrite(Task, update => update.$set?.['codingAutonomy.continuationAborts'],
+    async commit => { await commit(); return { acknowledged: false, modifiedCount: 1 }; });
+  await expect(grant(input)).rejects.toThrow('acknowledgement uncertain'); spy.mockRestore();
+  expect((await settings()).active.recovery.key).toBe(input.key);
+  await expect(grant(input)).rejects.toThrow('abandonment is received');
+  expect((await settings()).active).toBeNull(); expect((await task()).codingAutonomy.budgetGrants).toBeUndefined();
+  expect((await task()).codingAutonomy.continuationAborts).toHaveLength(1); expect(control.launch).not.toHaveBeenCalled();
+});
+test('a reservation expiring under the fence receives an unapplied abandonment and no worker', async () => {
+  await workerExit(); const input = await reviewedBody({ nativeAttemptLimit: 3 });
+  interceptWrite(Settings, update => update.$set?.active?.recovery?.kind === 'coding-continuation', async commit => {
+    const result = await commit(); job.reservation.end = new Date(Date.now() - 1000).toISOString(); return result;
+  });
+  await expect(grant(input)).rejects.toThrow('campaign');
+  expect((await settings()).active).toBeNull(); expect((await task()).codingAutonomy.budgetGrants).toBeUndefined();
+  expect((await task()).codingAutonomy.continuationAborts).toHaveLength(1); expect(control.launch).not.toHaveBeenCalled();
+});

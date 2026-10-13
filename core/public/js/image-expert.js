@@ -2,7 +2,7 @@
 globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
   const $ = id => document.getElementById(id);
   if (!$('imagex')) return { refresh() {} };
-  const labels = { accepted: 'Enregistrée', running: 'Hermes travaille…', completed: 'Terminée', failed: 'Échec', interrupted: 'Interrompue', cancelled: 'Arrêtée' };
+  const labels = { accepted: 'Recorded', running: 'Hermes is working…', completed: 'Done', failed: 'Failed', interrupted: 'Interrupted', cancelled: 'Stopped' };
   let metadata, sessionId = '', turns = [], selectedTurn = '', proposalTurn = null, timer, pending = false, retry = null, fileEpoch = 0, fileUrl;
   const baselines = new Map();
   const constraints = globalThis.ImageBriefConstraints;
@@ -16,26 +16,26 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
   function errorText(turn) {
     if (/Image expert changed the requested (width|height|profile)/.test(turn.error || '')) {
       const field = /requested (width|height|profile)/.exec(turn.error)[1];
-      const name = { width: 'la largeur', height: 'la hauteur', profile: 'la recette' }[field];
+      const name = { width: 'width', height: 'height', profile: 'recipe' }[field];
       const format = `${turn.context.width} × ${turn.context.height}`;
-      return `Affinage refusé : Hermes a proposé de modifier ${name} choisie (${format}). AgentX a conservé tes réglages et ton brief.`;
+      return `Refinement refused: Hermes proposed changing the chosen ${name} (${format}). AgentX kept your settings and your brief.`;
     }
     return turn.error || labels[turn.state];
   }
   function turnNotice(turn) {
     if (!turn) return '';
-    if (terminal(turn)) return `${errorText(turn)} Aucune image n’a été lancée par cette consultation.`;
-    if (turn.proposal) return 'Proposition prête à vérifier près du brief. Appliquer prépare le texte ; Créer lance le rendu.';
-    if (turn.state === 'completed') return 'Le conseil imageX est disponible dans la discussion.';
-    return 'Demande conservée dans AgentX. Hermes travaille sur le texte.';
+    if (terminal(turn)) return `${errorText(turn)} No image was started by this consultation.`;
+    if (turn.proposal) return 'Proposal ready to review next to the brief. Apply prepares the text; Create starts the render.';
+    if (turn.state === 'completed') return 'The imageX advice is available in the discussion.';
+    return 'Request kept in AgentX. Hermes is working on the text.';
   }
   function inputError(context, message) {
     const limit = constraints?.MAX_BRIEF || 32000;
-    if (context.prompt.length > limit) return 'Le brief dépasse 32 000 caractères. Réduis-le avant de consulter Hermes ; ton texte reste conservé.';
-    if (message.length > limit) return 'Le message dépasse 32 000 caractères. Réduis-le avant l’envoi ; ton texte reste conservé.';
+    if (context.prompt.length > limit) return 'The brief exceeds 32,000 characters. Shorten it before consulting Hermes; your text is kept.';
+    if (message.length > limit) return 'The message exceeds 32,000 characters. Shorten it before sending; your text is kept.';
     try { constraints?.composeBrief(context.prompt, context.constraints); }
     catch (error) { return error.message; }
-    if (context.constraintsInvalid) return 'Corrige les contraintes du brief avant de consulter Hermes.';
+    if (context.constraintsInvalid) return 'Fix the brief constraints before consulting Hermes.';
     if (context.textPolicyError) return context.textPolicyError;
     return '';
   }
@@ -43,7 +43,7 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
     const response = await fetch(`/api/images/expert${route}`, { method: body === undefined ? 'GET' : 'POST',
       ...(body !== undefined && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
     const value = await response.json();
-    if (!response.ok || !value.ok) throw new Error(value.message || 'Le spécialiste est indisponible.');
+    if (!response.ok || !value.ok) throw new Error(value.message || 'The specialist is unavailable.');
     return value;
   }
   function tab(name) {
@@ -62,19 +62,19 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
   function renderReceipt() {
     const turn = turns.find(row => row.id === selectedTurn) || turns.at(-1);
     $('imagex-events').replaceChildren(); $('imagex-envelope').textContent = turn ? JSON.stringify(turn.envelope, null, 2) : '';
-    if (!turn) { $('imagex-receipt').textContent = 'Aucune consultation enregistrée.'; return; }
+    if (!turn) { $('imagex-receipt').textContent = 'No recorded consultation.'; return; }
     for (const event of turn.events || []) {
-      const time = new Date(event.at).toLocaleTimeString('fr-CA');
-      const action = event.type === 'accepted' ? 'AgentX a enregistré la demande'
-        : event.type === 'started' ? `Hermes démarré · modèle déclaré : ${event.reportedModel || 'non renseigné'}`
-          : event.type === 'tool_use' ? `Outil appelé · ${event.name}`
-            : `Outil terminé · ${event.name}${event.durationMs != null ? ` · ${event.durationMs} ms` : ''}${event.failed ? ' · erreur' : ''}`;
+      const time = new Date(event.at).toLocaleTimeString('en-US');
+      const action = event.type === 'accepted' ? 'AgentX recorded the request'
+        : event.type === 'started' ? `Hermes started · declared model: ${event.reportedModel || 'not specified'}`
+          : event.type === 'tool_use' ? `Tool called · ${event.name}`
+            : `Tool finished · ${event.name}${event.durationMs != null ? ` · ${event.durationMs} ms` : ''}${event.failed ? ' · error' : ''}`;
       $('imagex-events').append(node('li', `${time} · ${action}`));
     }
     $('imagex-events').append(node('li', labels[turn.state] || turn.state));
     $('imagex-receipt').textContent = [turn.durationMs != null ? `${Math.round(turn.durationMs / 1000)} s` : '',
-      turn.tokens?.total != null ? `${turn.tokens.total} tokens` : '', turn.reportedModel ? `Modèle déclaré : ${turn.reportedModel}` : '',
-      turn.error ? errorText(turn) : '', 'Le modèle déclaré au démarrage ne confirme pas un éventuel repli local.'].filter(Boolean).join(' · ');
+      turn.tokens?.total != null ? `${turn.tokens.total} tokens` : '', turn.reportedModel ? `Declared model: ${turn.reportedModel}` : '',
+      turn.error ? errorText(turn) : '', 'The model declared at start does not confirm a possible local fallback.'].filter(Boolean).join(' · ');
   }
   function showProposal(turn) {
     proposalTurn = turn; $('imagex-proposal-empty').hidden = !!turn; $('imagex-proposal-content').hidden = !turn;
@@ -86,14 +86,14 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
       $('imagex-proposal-constraints').textContent = constraints?.block(turn.proposal.constraints) || '';
       $('imagex-proposal-constraints').hidden = !turn.proposal.constraints;
       $('imagex-proposal-reason').textContent = turn.proposal.reason || '';
-      $('imagex-proposal-settings').textContent = `${turn.proposal.profile} · ${turn.proposal.width} × ${turn.proposal.height} · ${turn.context.referenceCount} référence(s)`;
+      $('imagex-proposal-settings').textContent = `${turn.proposal.profile} · ${turn.proposal.width} × ${turn.proposal.height} · ${turn.context.referenceCount} reference(s)`;
       const target = $('imagex-proposal-text-plan'), plan = turn.proposal.textPlan;
       target.hidden = !plan; target.replaceChildren();
       if (plan) {
-        target.append(node('strong', plan.strategy === 'two-pass' ? 'Deux passes : image puis calques de texte' : 'Une passe : textes dessinés par le modèle'), node('p', plan.reason));
+        target.append(node('strong', plan.strategy === 'two-pass' ? 'Two passes: image, then text layers' : 'One pass: text drawn by the model'), node('p', plan.reason));
         const list = node('ul');
         for (const label of plan.labels) list.append(node('li', `${label.text}${label.placement ? ' · ' + label.placement : ''}`));
-        target.append(list, node('p', 'Appliquer reprend ces libellés dans « Textes dans l’image ». Vérifie et ajuste les placements sur le résultat.', 'image-help'));
+        target.append(list, node('p', 'Apply copies these labels into "Text in the image". Check and adjust the placements on the result.', 'image-help'));
       }
     }
     refresh();
@@ -101,12 +101,12 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
   function renderTurns() {
     const previous = $('imagex-messages').scrollTop, nearBottom = $('imagex-messages').scrollHeight - previous - $('imagex-messages').clientHeight < 60;
     $('imagex-messages').replaceChildren();
-    if (!turns.length) $('imagex-messages').append(node('p', 'Pose une question sur le style, les recettes ou ta retouche. Prépare ton image dans le brief de l’Atelier.', 'imagex-welcome'));
+    if (!turns.length) $('imagex-messages').append(node('p', 'Ask a question about the style, the recipes or your edit. Prepare your image in the Workshop brief.', 'imagex-welcome'));
     for (const turn of turns) {
-      const user = node('article', undefined, 'imagex-message imagex-message-user'); user.append(node('header', 'Toi'), node('p', turn.input));
+      const user = node('article', undefined, 'imagex-message imagex-message-user'); user.append(node('header', 'You'), node('p', turn.input));
       const answer = node('article', undefined, 'imagex-message'); answer.append(node('header', `imageX · ${labels[turn.state] || turn.state}`),
-        node('p', terminal(turn) ? errorText(turn) : turn.text || (active()?.id === turn.id ? 'Je prépare ma réponse…' : '')));
-      if (turn.proposal) { const button = node('button', 'Vérifier cette proposition près du brief'); button.type = 'button'; button.addEventListener('click', () => { showProposal(turn); tab('proposal'); $('imagex-proposal-prompt').focus(); }); answer.append(button); }
+        node('p', terminal(turn) ? errorText(turn) : turn.text || (active()?.id === turn.id ? 'Preparing my answer…' : '')));
+      if (turn.proposal) { const button = node('button', 'Review this proposal next to the brief'); button.type = 'button'; button.addEventListener('click', () => { showProposal(turn); tab('proposal'); $('imagex-proposal-prompt').focus(); }); answer.append(button); }
       $('imagex-messages').append(user, answer);
     }
     if (nearBottom || pending) $('imagex-messages').scrollTop = $('imagex-messages').scrollHeight;
@@ -134,21 +134,21 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
       if (last) $('imagex-notice').textContent = turnNotice(last);
       if (last?.mode === 'plan' && terminal(last)) {
         if (!proposalTurn) $('imagex-proposal-panel').hidden = true;
-        $('imagex-proposal-empty').textContent = 'L’affinage n’a pas produit de proposition. Ton brief reste conservé ; tu peux réessayer.';
+        $('imagex-proposal-empty').textContent = 'The refinement produced no proposal. Your brief is kept; you can try again.';
       }
       renderTurns();
       clearTimeout(timer);
       if (active()) timer = setTimeout(() => { void loadTurns(); }, 1500);
     } catch (error) {
-      $('imagex-notice').textContent = `${error.message} La demande enregistrée sera vérifiée à la reconnexion.`;
+      $('imagex-notice').textContent = `${error.message} The recorded request will be checked on reconnection.`;
       clearTimeout(timer); if (active()) timer = setTimeout(() => { void loadTurns(); }, 4000);
     }
   }
   async function loadSessions() {
     const result = await api('/sessions'), select = $('imagex-session');
-    select.replaceChildren(node('option', 'Nouvelle discussion')); select.options[0].value = '';
+    select.replaceChildren(node('option', 'New discussion')); select.options[0].value = '';
     for (const session of result.sessions) {
-      const date = new Date(session.lastTurnAt || session.createdAt).toLocaleString('fr-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const date = new Date(session.lastTurnAt || session.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
       const option = node('option', `${session.label} · ${date}`); option.value = session.sessionId; select.append(option);
     }
     if (!sessionId) { try { sessionId = new URLSearchParams(location.search).get('expertSession') || localStorage.getItem('agentx-imagex-session') || ''; } catch {} }
@@ -159,11 +159,11 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
     if (busy() || !metadata?.available) return;
     const current = getContext(), error = inputError(current, message), baseline = signature();
     if (error) { $('imagex-notice').textContent = error; return; }
-    if (!current.ready || mode === 'plan' && !current.prompt.trim()) { $('imagex-notice').textContent = 'Écris ton brief et choisis une recette avant de demander une proposition.'; return; }
-    pending = true; refresh(); $('imagex-notice').textContent = 'Transmission à Hermes…';
+    if (!current.ready || mode === 'plan' && !current.prompt.trim()) { $('imagex-notice').textContent = 'Write your brief and choose a recipe before asking for a proposal.'; return; }
+    pending = true; refresh(); $('imagex-notice').textContent = 'Sending to Hermes…';
     if (mode === 'plan') {
       $('imagex-proposal-panel').hidden = false; $('imagex-proposal-panel').open = true;
-      $('imagex-proposal-empty').textContent = 'Hermes prépare une proposition. Ton brief reste en place ; aucune image n’est lancée.';
+      $('imagex-proposal-empty').textContent = 'Hermes is preparing a proposal. Your brief stays in place; no image is started.';
     }
     try {
       if (!sessionId) { sessionId = (await api('/sessions', {})).session.sessionId;
@@ -188,17 +188,17 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
     const error = inputError(context, instruction), chatError = inputError(context, message);
     const ready = !!metadata?.available && context.ready;
     const counter = $('imagex-message-counter');
-    if (counter) { counter.textContent = `Message : ${new Intl.NumberFormat('fr-CA').format(message.length)} / 32 000 caractères.${message.length > 32000 ? ' Réduis-le avant l’envoi ; tout le texte collé reste conservé.' : ''}`; counter.dataset.invalid = String(message.length > 32000); }
-    $('imagex-instruction-counter').textContent = `Consigne : ${new Intl.NumberFormat('fr-CA').format(instruction.length)} / 32 000 caractères.${instruction.length > 32000 ? ' Réduis-la avant l’affinage ; tout le texte reste conservé.' : ''}`;
+    if (counter) { counter.textContent = `Message: ${new Intl.NumberFormat('en-US').format(message.length)} / 32,000 characters.${message.length > 32000 ? ' Shorten it before sending; all pasted text is kept.' : ''}`; counter.dataset.invalid = String(message.length > 32000); }
+    $('imagex-instruction-counter').textContent = `Instruction: ${new Intl.NumberFormat('en-US').format(instruction.length)} / 32,000 characters.${instruction.length > 32000 ? ' Shorten it before refining; all text is kept.' : ''}`;
     let needsCondensing = false;
     try { textPolicy.compose(context.prompt, context.constraints, context.textPolicy); needsCondensing = context.prompt.length > (constraints?.MAX_PROMPT || 8000) && !error; } catch { needsCondensing = !error; }
     if ($('imagex-planning-help')) $('imagex-planning-help').textContent = error || (!metadata?.available
-      ? metadata ? 'Hermes est indisponible. Ton brief reste conservé ; réduis-le manuellement à 8 000 caractères, contraintes comprises, pour créer.' : 'Connexion à Hermes…'
-      : needsCondensing ? 'Ton brief long reste conservé. « Affiner mon brief » peut préparer une version de 8 000 caractères maximum, contraintes comprises.'
-        : 'Ton brief peut être créé directement. Affiner propose une autre version à vérifier ; aucune conversation n’est nécessaire.');
-    if (!error && !metadata?.available && !needsCondensing) $('imagex-planning-help').textContent = 'Hermes est indisponible pour les conseils. Si ton brief est prêt, tu peux créer directement.';
-    if (!context.prompt.trim() && !error) $('imagex-planning-help').textContent = 'Commence par décrire ton image dans le brief. Tu pourras ensuite l’affiner si nécessaire.';
-    if (context.ready && context.prompt.trim()) $('imagex-planning-help').textContent = `Format choisi : ${context.width} × ${context.height}. ${$('imagex-planning-help').textContent}`;
+      ? metadata ? 'Hermes is unavailable. Your brief is kept; shorten it manually to 8,000 characters, constraints included, to create.' : 'Connecting to Hermes…'
+      : needsCondensing ? 'Your long brief is kept. "Refine my brief" can prepare a version of at most 8,000 characters, constraints included.'
+        : 'Your brief can be created directly. Refine proposes another version to review; no conversation is needed.');
+    if (!error && !metadata?.available && !needsCondensing) $('imagex-planning-help').textContent = 'Hermes is unavailable for advice. If your brief is ready, you can create directly.';
+    if (!context.prompt.trim() && !error) $('imagex-planning-help').textContent = 'Start by describing your image in the brief. You can then refine it if needed.';
+    if (context.ready && context.prompt.trim()) $('imagex-planning-help').textContent = `Chosen format: ${context.width} × ${context.height}. ${$('imagex-planning-help').textContent}`;
     $('imagex-chat-notice').textContent = $('imagex-notice').textContent;
     const last = turns.at(-1), canRetry = terminal(last) && last.mode === 'plan';
     $('imagex-recovery').hidden = !canRetry;
@@ -211,16 +211,16 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
     try { canCreate = canCreate && textPolicy.compose(context.prompt, context.constraints, context.textPolicy).length <= 8000; } catch { canCreate = false; }
     $('imagex-use-brief').hidden = !canCreate;
     $('imagex-recovery-help').textContent = canRestore
-      ? 'Récupère le brief et ses contraintes enregistrés, puis vérifie la recette, le format et les références avant de réessayer.'
+      ? 'Recover the saved brief and its constraints, then check the recipe, the format and the references before trying again.'
       : context.prompt !== last?.context?.prompt
-      ? 'Le brief a changé depuis cette demande. Réessayer utilisera le texte et les réglages actuels.'
-      : canCreate ? 'Tu peux demander un nouvel affinage, ou vérifier ton brief actuel et créer directement.'
-        : 'Ton brief long est conservé. Réessaie l’affinage pour préparer une version de 8 000 caractères maximum, contraintes comprises.';
+      ? 'The brief changed since this request. Retrying will use the current text and settings.'
+      : canCreate ? 'You can ask for a new refinement, or check your current brief and create directly.'
+        : 'Your long brief is kept. Retry the refinement to prepare a version of at most 8,000 characters, constraints included.';
     $('imagex-send').disabled = working || !ready || !!chatError; $('imagex-plan').disabled = working || !ready || !!error || !context.prompt.trim();
     $('imagex-explore').disabled = working || !ready || !!inputError(context, ''); $('imagex-new').disabled = working; $('imagex-session').disabled = working;
     $('imagex-stop').hidden = !active(); $('imagex-stop').disabled = pending;
     $('imagex-tab-proposal').disabled = !proposalTurn;
-    if (context.worker) $('imagex-renderer').textContent = `${context.worker.label || 'Hôte local'} · ${context.worker.gpu || 'GPU configuré'}${context.worker.vramGiB ? ` · ${context.worker.vramGiB} Go` : ''}. AgentX réserve les ressources avant le calcul.`;
+    if (context.worker) $('imagex-renderer').textContent = `${context.worker.label || 'Local host'} · ${context.worker.gpu || 'Configured GPU'}${context.worker.vramGiB ? ` · ${context.worker.vramGiB} GB` : ''}. AgentX reserves the resources before the computation.`;
     const original = proposalTurn?.context;
     const changed = original && (context.prompt !== original.prompt || context.profile !== original.profile
       || context.width !== original.width || context.height !== original.height || context.referenceCount !== original.referenceCount
@@ -230,19 +230,19 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
     let invalidProposal = context.constraintsInvalid || $('imagex-proposal-prompt').value.length > (constraints?.MAX_PROMPT || 8000);
     try {
       const proposed = $('imagex-proposal-prompt').value, measurement = textPolicy.inspect(proposed, proposalTurn?.proposal.constraints, proposalTurn?.proposal.textPolicy);
-      const format = value => new Intl.NumberFormat('fr-CA').format(value);
-      $('imagex-proposal-counter').textContent = `Rendu final proposé : ${format(measurement.renderUnits)} / 8 000 caractères, dont ${format(measurement.overheadUnits)} de consignes. Description disponible : ${format(measurement.maxVisualUnits)} caractères.`;
+      const format = value => new Intl.NumberFormat('en-US').format(value);
+      $('imagex-proposal-counter').textContent = `Proposed final render: ${format(measurement.renderUnits)} / 8,000 characters, including ${format(measurement.overheadUnits)} of instructions. Room for the description: ${format(measurement.maxVisualUnits)} characters.`;
       textPolicy.compose(proposed, proposalTurn?.proposal.constraints, proposalTurn?.proposal.textPolicy);
     } catch (error) { invalidProposal = true; $('imagex-proposal-counter').textContent = error.message; }
     $('imagex-apply').disabled = !proposalTurn || working || context.locked || changed || invalidProposal || !$('imagex-proposal-prompt').value.trim();
-    $('imagex-apply-note').textContent = applied && applied.id === proposalTurn?.id && applied.signature === signature() ? 'Proposition appliquée. Le brief est prêt à être vérifié dans le formulaire de création.'
-      : working ? 'Hermes travaille. Attends sa réponse avant d’appliquer une proposition.'
-      : context.locked ? 'Attends la fin de la génération pour modifier le brief.'
-      : invalidProposal ? 'Corrige les contraintes ou réduis le brief : le texte transmis est limité à 8 000 caractères.'
-      : changed ? 'Le brief, les contraintes, les réglages ou les références ont changé. Demande une nouvelle proposition pour ce contexte.'
-        : proposalTurn?.proposal.textPlan ? 'Appliquer reprend la description, les textes exacts et la méthode proposée. Vérifie les libellés et leurs placements avant de créer.'
-        : proposalTurn?.proposal.constraints ? 'Appliquer remplace la description visuelle. Tes contraintes sont conservées ; leur respect dans l’image reste à vérifier.'
-        : 'Appliquer remplace le texte du brief. La graine, la recette et les références restent celles du formulaire.';
+    $('imagex-apply-note').textContent = applied && applied.id === proposalTurn?.id && applied.signature === signature() ? 'Proposal applied. The brief is ready to be checked in the creation form.'
+      : working ? 'Hermes is working. Wait for its answer before applying a proposal.'
+      : context.locked ? 'Wait for the generation to finish before changing the brief.'
+      : invalidProposal ? 'Fix the constraints or shorten the brief: the sent text is limited to 8,000 characters.'
+      : changed ? 'The brief, the constraints, the settings or the references changed. Ask for a new proposal for this context.'
+        : proposalTurn?.proposal.textPlan ? 'Apply copies the description, the exact text and the proposed method. Check the labels and their placements before creating.'
+        : proposalTurn?.proposal.constraints ? 'Apply replaces the visual description. Your constraints are kept; whether the image respects them still needs to be checked.'
+        : 'Apply replaces the brief text. The seed, the recipe and the references stay those of the form.';
   }
   $('imagex-tab-proposal').addEventListener('click', () => { tab('proposal'); if (proposalTurn) $('imagex-proposal-prompt').focus(); });
   for (const name of ['activity', 'files']) {
@@ -264,7 +264,7 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
     refresh(); if ($('imagex-restore-brief').hidden || $('imagex-restore-brief').disabled) return;
     try {
       restoreBrief(turns.at(-1).context);
-      $('imagex-notice').textContent = 'Brief et contraintes récupérés. Vérifie la recette, le format et les références ; aucune image n’est lancée.';
+      $('imagex-notice').textContent = 'Brief and constraints recovered. Check the recipe, the format and the references; no image is started.';
     } catch (error) { $('imagex-notice').textContent = error.message; }
     refresh();
   });
@@ -274,7 +274,7 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
     const args = [$('imagex-proposal-prompt').value.trim(), { sessionId, turnId: proposalTurn.id }];
     if (proposalTurn.proposal.textPolicy) args.push(proposalTurn.proposal.textPolicy);
     apply(...args); applied = { id: proposalTurn.id, signature: signature() };
-    $('imagex-notice').textContent = 'Proposition appliquée au brief. Vérifie les références puis lance la création.'; refresh();
+    $('imagex-notice').textContent = 'Proposal applied to the brief. Check the references, then start the creation.'; refresh();
     $('imagex-proposal-panel').open = false;
   });
   $('imagex-proposal-prompt').addEventListener('input', refresh);
@@ -293,7 +293,7 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
   });
   $('imagex-stop').addEventListener('click', async () => {
     const turn = active(); if (!turn) return;
-    try { await api(`/sessions/${sessionId}/turns/${turn.id}/cancel`, {}); $('imagex-notice').textContent = 'Arrêt demandé à Hermes.'; await loadTurns(); }
+    try { await api(`/sessions/${sessionId}/turns/${turn.id}/cancel`, {}); $('imagex-notice').textContent = 'Stop requested from Hermes.'; await loadTurns(); }
     catch (error) { $('imagex-notice').textContent = error.message; }
   });
   $('imagex-resource').addEventListener('change', async () => {
@@ -301,12 +301,12 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
     $('imagex-file-content').textContent = ''; $('imagex-file-download').hidden = true;
     if (fileUrl) { URL.revokeObjectURL(fileUrl); fileUrl = null; }
     if (!id) { $('imagex-file-facts').textContent = ''; return; }
-    $('imagex-file-facts').textContent = 'Lecture du profil Hermes…';
+    $('imagex-file-facts').textContent = 'Reading the Hermes profile…';
     try {
       const { resource } = await api(`/resources/${encodeURIComponent(id)}`); if (epoch !== fileEpoch) return;
-      if (!resource.available) throw new Error('Ce document n’est pas présent dans le profil.');
+      if (!resource.available) throw new Error('This document is not present in the profile.');
       $('imagex-file-content').textContent = resource.content;
-      $('imagex-file-facts').textContent = `${resource.path} · ${new Date(resource.updatedAt).toLocaleString('fr-CA')} · ${resource.bytes} octets · SHA-256 ${resource.sha256.slice(0, 16)}…`;
+      $('imagex-file-facts').textContent = `${resource.path} · ${new Date(resource.updatedAt).toLocaleString('en-US')} · ${resource.bytes} bytes · SHA-256 ${resource.sha256.slice(0, 16)}…`;
       fileUrl = URL.createObjectURL(new Blob([resource.content], { type: 'text/plain;charset=utf-8' }));
       $('imagex-file-download').href = fileUrl; $('imagex-file-download').download = resource.path.split('/').at(-1); $('imagex-file-download').hidden = false;
     } catch (error) { if (epoch === fileEpoch) $('imagex-file-facts').textContent = error.message; }
@@ -317,21 +317,21 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
   globalThis.addEventListener?.('hashchange', () => { if (location.hash === '#imagex') openAdvice(); });
   (async () => {
     try {
-      metadata = await api('/status'); $('imagex-connection').textContent = metadata.available ? 'Hermes connecté · spécialiste imageX' : 'Hermes indisponible';
+      metadata = await api('/status'); $('imagex-connection').textContent = metadata.available ? 'Hermes connected · imageX specialist' : 'Hermes unavailable';
       if (metadata.dashboardUrl) { $('imagex-official-dashboard').href = metadata.dashboardUrl; $('imagex-official-dashboard').hidden = false; }
-      const entries = [['Conseil', metadata.routing?.model || 'Modèle non renseigné'], ['Route', metadata.routing?.provider || 'Non renseignée'],
-        ['Tarification', metadata.routing?.freeOnly ? 'Modèles cloud gratuits configurés' : 'Selon le fournisseur configuré'],
-        ['Repli configuré', metadata.routing?.fallbackModels?.join(', ') || 'Non renseigné'], ['Vision', 'Conseil textuel · références rendues localement']];
+      const entries = [['Advice', metadata.routing?.model || 'Model not specified'], ['Route', metadata.routing?.provider || 'Not specified'],
+        ['Pricing', metadata.routing?.freeOnly ? 'Free cloud models configured' : 'Per the configured provider'],
+        ['Configured fallback', metadata.routing?.fallbackModels?.join(', ') || 'Not specified'], ['Vision', 'Text advice · references rendered locally']];
       $('imagex-routing').replaceChildren(...entries.map(([label, value]) => { const row = node('div'); row.append(node('dt', label), node('dd', value)); return row; }));
-      for (const file of metadata.resources || []) { const option = node('option', `${file.title}${file.available ? '' : ' · absent'}`); option.value = file.id; $('imagex-resource').append(option); }
-      if (!metadata.available) $('imagex-notice').textContent = metadata.message || 'Le conseil Hermes est indisponible. Tu peux composer et générer directement.';
+      for (const file of metadata.resources || []) { const option = node('option', `${file.title}${file.available ? '' : ' · missing'}`); option.value = file.id; $('imagex-resource').append(option); }
+      if (!metadata.available) $('imagex-notice').textContent = metadata.message || 'Hermes advice is unavailable. You can compose and generate directly.';
       await loadSessions();
-    } catch (error) { metadata = { ...metadata, available: false }; $('imagex-connection').textContent = 'Hermes indisponible'; $('imagex-notice').textContent = error.message; }
+    } catch (error) { metadata = { ...metadata, available: false }; $('imagex-connection').textContent = 'Hermes unavailable'; $('imagex-notice').textContent = error.message; }
     finally { refresh(); }
   })();
   return { refresh, planTexts() {
     $('imagex').open = true;
-    if (!metadata?.available) { $('imagex-notice').textContent = 'Hermes est indisponible. Tu peux choisir une ou deux passes et saisir les libellés dans l’Atelier.'; refresh(); return; }
+    if (!metadata?.available) { $('imagex-notice').textContent = 'Hermes is unavailable. You can choose one or two passes and enter the labels in the Workshop.'; refresh(); return; }
     void send('plan', 'Prépare les textes de cette image avec moi. Identifie les libellés principaux dans mon brief, conserve mes textes exacts et le mode choisi. Si le mode est automatique, recommande une ou deux passes selon la longueur, la densité et les placements ; explique les compromis. Prépare un textPlan et un brief de rendu de 8 000 caractères maximum.');
   } };
 } };

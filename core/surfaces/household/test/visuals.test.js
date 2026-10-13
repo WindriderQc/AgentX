@@ -100,7 +100,7 @@ test('a household photo is found by name under its root and served only from the
   await visuals.present(block, { family: true });
   assert.equal(block.status, 'found');
   assert.equal(block.image.url, '/api/voice-personas/family/visuals/file?source=photos&path=Vacances+2024%2Fcabane.jpg');
-  assert.equal(block.image.sourceLabel, 'Photos de la famille');
+  assert.equal(block.image.sourceLabel, 'Family photos');
   assert.equal(calls[0].route, '/api/v1/storage/files/browse');
   assert.equal(calls[0].query.get('root'), '/mnt/indexed/photos');
   assert.equal(calls[0].query.get('includeDirname'), 'true');
@@ -178,7 +178,7 @@ test('a generated picture cited by the harness is relayed from the gateway media
   await visuals.present(block, { family: false });
   assert.equal(block.status, 'found');
   assert.equal(block.ref, undefined, 'the harness path is not stored beside the display entry');
-  assert.equal(block.image.sourceLabel, 'Image générée');
+  assert.equal(block.image.sourceLabel, 'Generated image');
   assert.equal(block.image.url, '/api/voice-personas/private/visuals/generated?path=' + encodeURIComponent(ref).replace(/%20/g, '+'));
 
   const res = response();

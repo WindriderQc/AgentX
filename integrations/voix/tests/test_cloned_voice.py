@@ -10,7 +10,7 @@ import pytest
 
 from app.cancel import CancelToken
 from app.tts import provider, voxcpm
-from app.tts.voxcpm_server import LEAD_SILENCE, TAIL_SILENCE, Worker, handler_for, load_voices, reference_options, soften_ending
+from app.tts.cloned_voice_worker import LEAD_SILENCE, TAIL_SILENCE, Worker, handler_for, load_voices, soften_ending
 
 
 def test_voxcpm_keeps_semicolon_and_comma_context_without_changing_legacy_chunks():
@@ -138,22 +138,15 @@ def test_voxcpm_is_an_additional_selection_not_a_default_change(monkeypatch):
         assert provider.provider_name(choice) == choice
 
 
-def test_reference_transcript_switches_the_worker_to_continuation_cloning():
-    assert reference_options("/voices/a.wav") == {"reference_wav_path": "/voices/a.wav"}
-    assert reference_options("/voices/a.wav", "  ") == {"reference_wav_path": "/voices/a.wav"}
-    assert reference_options("/voices/a.wav", " Bon, une bonne tempête. ") == {
-        "reference_wav_path": "/voices/a.wav", "prompt_wav_path": "/voices/a.wav", "prompt_text": "Bon, une bonne tempête."}
-
-
-def test_voices_directory_names_each_reference_and_keeps_transcripts_optional(tmp_path):
+def test_voices_directory_names_each_reference_and_ignores_transcripts(tmp_path):
     for name in ("narrator", "helper", "bad id"):
         (tmp_path / f"{name}.wav").write_bytes(b"RIFF")
-    (tmp_path / "narrator.txt").write_text(" Une phrase exacte. ", encoding="utf-8")
+    (tmp_path / "narrator.txt").write_bytes(b"\xff\xfe")  # ignored, even when not valid UTF-8
     (tmp_path / "narrator.name").write_text("Narrator (clone)\n", encoding="utf-8")
     voices = load_voices(tmp_path)
     assert list(voices) == ["helper", "narrator"]
     assert voices["narrator"]["name"] == "Narrator (clone)"
-    assert voices["narrator"]["options"]["prompt_text"] == "Une phrase exacte."
+    assert voices["narrator"]["options"] == {"reference_wav_path": str(tmp_path / "narrator.wav")}
     assert voices["helper"] == {"name": "helper", "options": {"reference_wav_path": str(tmp_path / "helper.wav")}}
 
 

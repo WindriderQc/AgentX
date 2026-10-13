@@ -7,13 +7,13 @@ function createNativeBudget({ repo, conversations, session, query, policy, now }
   return async (context, input, callId) => {
     if (!context || Object.keys(context).some(k => !['agentId', 'sessionKey', 'runId'].includes(k))
         || context.agentId !== 'main' || !/^resp_[a-f0-9-]{36}$/.test(context.runId || '')) throw notFound();
-    const [row] = await repo.find({ classification: 'native_read', 'attempt.agentId': 'main',
+    const [row] = await repo.find({ classification: { $in: ['native_read', 'native_work', 'native_review'] }, 'attempt.agentId': 'main',
       'attempt.sessionKey': context.sessionKey }, 1);
-    if (!row || row.mode !== 'read' || row.attempt.runId && row.attempt.runId !== context.runId) throw notFound();
+    if (!row || !['read', 'native'].includes(row.mode) || row.attempt.runId && row.attempt.runId !== context.runId) throw notFound();
     await session(row.sessionId);
     const turn = await conversations.getTurn({ ...query(row.sessionId), traceId: row.turnId });
     if (!turn || hash(turn.inputText) !== row.requestSha256) throw notFound();
-    const limits = policy(turn.inputText);
+    const limits = policy(turn.inputText, row.mode);
     if (!limits) throw notFound();
     const denied = { authority: 'core.conversation-works', admitted: false, workId: row._id, limits };
     if (!['running', 'dispatching', 'uncertain'].includes(row.state)) return denied;
@@ -30,7 +30,8 @@ function createNativeBudget({ repo, conversations, session, query, policy, now }
         if (previous.tool !== input.tool) throw fail('CONVERSATION_WORK_TOOL_CONFLICT', 'The native tool identity changed.', 409);
         return null;
       }
-      if (calls.length >= limits.tools || calls.filter(c => ['web_search', 'web_fetch'].includes(c.tool)).length >= limits.web) return null;
+      if (calls.length >= limits.tools || (limits.stopAfterWeb !== false || ['web_search', 'web_fetch'].includes(input.tool))
+          && calls.filter(c => ['web_search', 'web_fetch'].includes(c.tool)).length >= limits.web) return null;
       return { fields: { attempt: { ...current.attempt, runId: context.runId },
         nativeAdmissions: [...calls, { id, tool: input.tool, at: now() }] }, event: 'native_tool_admitted' };
     });

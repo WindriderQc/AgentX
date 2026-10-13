@@ -56,9 +56,10 @@ const sessionField = key => ['_id', 'createdAt', 'updatedAt'].includes(key) ? ke
 const turnField = key => key === '_id' ? '_id' : key === 'replyText' ? 'content' : `turn.${key}`;
 const sessionView = row => row ? { ...row.surfaceSession, _id: row._id,
   conversationId: String(row._id), createdAt: row.createdAt, updatedAt: row.updatedAt } : null;
-function turnView(conversation, message) {
+function turnView(conversation, message, users) {
   if (!message?.turn) return null;
-  const user = conversation.messages.find(entry => entry.role === 'user' && entry.turnId === message.turnId);
+  const user = users ? users.get(message.turnId)
+    : conversation.messages.find(entry => entry.role === 'user' && entry.turnId === message.turnId);
   return { ...message.turn, _id: message._id, conversationId: String(conversation._id),
     inputText: user?.content || '', replyText: message.content || '', ...(user?.attachments?.length ? { attachments: user.attachments } : {}) };
 }
@@ -182,6 +183,16 @@ function forSurface(surface) {
     return rows.map(row => turnView(row, row.messages.find(message => message.turn))).filter(Boolean);
   }
 
+  // Trusted context consumers read one complete canonical transcript. UI list
+  // limits do not define an agent's context. The read hooks verify all pages.
+  async function readTurns(query) {
+    if (typeof query?.sessionId !== 'string' || !query.sessionId) throw failure('An exact conversation session is required');
+    const row = await Conversation.findOne(sessionQuery(query)).lean();
+    if (!row) throw failure('Conversation not found in this space', 404, 'CONVERSATION_NOT_FOUND');
+    const users = new Map(row.messages.filter(message => message.role === 'user').map(message => [message.turnId, message]));
+    return row.messages.filter(message => message.turn).map(message => turnView(row, message, users));
+  }
+
   async function getTurn(query, options = {}) {
     return (await listTurns(query, { ...options, limit: 1 }))[0] || null;
   }
@@ -233,7 +244,7 @@ function forSurface(surface) {
     const filter = exactSession(query);
     return withSessionWrite(surface, query.sessionId, async () => {
       const row = await Conversation.findOne(filter).lean();
-      if (!row) throw failure('Conversation introuvable.', 404);
+      if (!row) throw failure('Conversation not found.', 404);
       if (!row.surfaceSession.deletedAt) {
         // Replace rather than enumerate content fields: no transcript, native
         // session key, persona, preview, model, metadata or tool receipt survives.
@@ -257,10 +268,10 @@ function forSurface(surface) {
     const filter = exactSession(query);
     return withSessionWrite(surface, query.sessionId, async () => {
       const row = await Conversation.findOne({ ...filter, 'surfaceSession.deletedAt': { $exists: false } }).lean();
-      if (!row) throw failure('Conversation introuvable.', 404);
+      if (!row) throw failure('Conversation not found.', 404);
       const attachmentIds = [...new Set((row.messages || []).flatMap(message => (message.attachments || []).map(item => String(item.id))))];
       const attachmentFilter = { conversationId: row._id, _id: { $in: attachmentIds } };
-      if (await Attachment.countDocuments(attachmentFilter) !== attachmentIds.length) throw failure('Une pièce jointe de cette conversation est indisponible.', 409);
+      if (await Attachment.countDocuments(attachmentFilter) !== attachmentIds.length) throw failure('An attachment in this conversation is unavailable.', 409);
       const cursor = Attachment.find(attachmentFilter).sort({ _id: 1 }).lean().cursor({ batchSize: 1 });
       async function* chunks() {
         // Original bytes are streamed one attachment at a time, never accumulated
@@ -288,7 +299,7 @@ function forSurface(surface) {
   const intake = require('./conversations/surfaceTurnIntake').turnIntake({ recordTurn, getTurn, updateTurn,
     withWrite: (sessionId, action) => withSessionWrite(surface, sessionId, action) });
   return Object.freeze({ ...intake, createSession, ensureSession, getSession, listSessions, updateSession,
-    recordTurn, getTurn, listTurns, countTurns, updateTurn, updateTurns, deleteSession, exportSession });
+    recordTurn, getTurn, listTurns, readTurns, countTurns, updateTurn, updateTurns, deleteSession, exportSession });
 }
 
 module.exports = { forSurface, withSessionWrite, resumeDeletedSessionCleanup };

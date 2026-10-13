@@ -4,6 +4,9 @@ const { createHash, timingSafeEqual } = require('node:crypto');
 const OWNER = 'household:personal_operator:personal';
 const SCOPED = Object.freeze({ packId: 'personal_operator', scopeId: 'personal' });
 const EXCHANGE_SCOPE = 'work:' + OWNER;
+const MODES = ['observe', 'read', 'native'];
+const nativeWork = row => ['native_read', 'native_work', 'native_review'].includes(row?.classification);
+const NO_WORK = '[[NESTOR_NO_WORK]]';
 const ACTIVE = ['received', 'queued', 'paused', 'dispatching', 'running', 'result_ready', 'uncertain'];
 const LIMITS = Object.freeze({ request: 4000, result: 16000, context: 96000, tools: 16, events: 64, open: 64 });
 const hash = value => createHash('sha256').update(String(value)).digest('hex');
@@ -13,7 +16,7 @@ const sessionScope = session => session?.packId === SCOPED.packId && session?.sc
 const eligible = (session, channel, env) => sessionScope(session) && channel === 'voice'
   && (!session.agentId || session.agentId === 'main') && session.backend === 'openclaw'
   && session.modeId !== 'open' && !session.inference?.open && !session.llmx
-  && ['observe', 'read'].includes(env.PERSONAL_CONVERSATION_WORK_MODE)
+  && MODES.includes(env.PERSONAL_CONVERSATION_WORK_MODE)
   && /^[a-z][a-z0-9_-]{0,63}$/.test(env.PERSONAL_CONVERSATION_WORK_AGENT_ID || '')
   && !['main', 'family'].includes(env.PERSONAL_CONVERSATION_WORK_AGENT_ID)
   && String(env.PERSONAL_CONVERSATION_WORK_TOKEN || '').length >= 32;
@@ -33,4 +36,4 @@ function validateResult(input) {
   return { ...input, text: input.text.trim() };
 }
 module.exports = { OWNER, SCOPED, EXCHANGE_SCOPE, ACTIVE, LIMITS, hash, fail, notFound,
-  sessionScope, eligible, tokenMatches, simple, validateResult };
+  MODES, nativeWork, NO_WORK, sessionScope, eligible, tokenMatches, simple, validateResult };

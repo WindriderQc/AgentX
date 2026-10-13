@@ -602,7 +602,7 @@
   function getFilters() {
     var filters = {};
     var source = els.sourceFilter.value;
-    var tags = els.tagsFilter.value.trim();
+    var tags = els.tagsFilter.value.split(',').map(function (tag) { return tag.trim(); }).filter(Boolean).join(',');
     if (source) filters.source = source;
     if (tags) filters.tags = tags;
     return filters;

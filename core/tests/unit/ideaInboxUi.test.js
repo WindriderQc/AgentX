@@ -32,7 +32,7 @@ test('Pipeline promotion requires an explicit service and routes Coding Team wit
   const ui = inbox();
   await ui.promote('task');
   expect(ui.fetch.mock.calls.filter(([, options]) => options.method === 'POST')).toHaveLength(0);
-  expect(ui.status.textContent).toContain('Choisissez le service');
+  expect(ui.status.textContent).toContain('Choose the AgentX TODO service');
   ui.selection.value = 'agentx-coding';
   await ui.promote('task');
   const posts = ui.fetch.mock.calls.filter(([, options]) => options.method === 'POST');

@@ -38,13 +38,14 @@ const DIMENSIONS = { width: 2, height: 2 };
 let directory, writes, outsideFiles;
 
 async function fixture({ family = 'klein', references = [], parent = false, output = png(), declaration = true,
-  state = 'completed', runtimeRestored = true, request: requestOverrides = {}, weightDtype } = {}) {
+  state = 'completed', runtimeRestored = true, request: requestOverrides = {}, weightDtype, sampling } = {}) {
   const id = crypto.randomUUID(), archive = defaultArchive();
   const profile = { id: 'historical-quality', family, diffusion: 'historical-diffusion.safetensors', encoder: 'historical-encoder.safetensors',
     vae: 'historical-vae.safetensors', steps: family === 'klein' ? 4 : 20, maxPixels: 4194304,
     privateSecret: 'FAKE_PRIVATE_PROFILE_SECRET', presentation: { description: 'FAKE_PRIVATE_PROFILE_DESCRIPTION' },
     ...(declaration && { recipe: { id: 'historical.recipe', version: 'v1' } }),
     ...(weightDtype !== undefined && { weightDtype }) };
+  if (sampling) Object.assign(profile, { sampling, steps: 8 });
   const request = { prompt: 'SYNTHETIC_EXPORT_BRIEF_MARKER', width: 1024, height: 1024, seed: 42, ...requestOverrides };
   const artifact = { ...await archive.store({ bytes: output, origin: 'generated' }), ...DIMENSIONS };
   const entries = [], descriptors = [], workers = references.map(reference);
@@ -111,6 +112,7 @@ function publicMetadata(f, exported) {
   expect(exported.schemaVersion).toBe(1);
   expect(exported.operation).toEqual({ id: f.id, state: 'completed', runtimeRestored: true });
   expect(exported.recipe).toEqual({ id: f.profile.id, family: f.profile.family,
+    ...(f.profile.sampling && { sampling: f.profile.sampling }),
     ...(f.profile.recipe && { declaredIdentity: f.profile.recipe }) });
   expect(exported.request).toEqual(f.request);
   expect(exported.execution).toEqual({ builder: f.execution.builder, graphSha256: f.execution.graphSha256, parameters: f.execution.parameters });
@@ -163,6 +165,15 @@ afterEach(() => {
 test('completed historical Klein without references exports exact graph/output and a closed public manifest while current config is offline', async () => {
   const f = await fixture(); const before = await fingerprint(); forbidWrites();
   const exported = await manifest(f.id); publicMetadata(f, exported); await exactParts(f, exported);
+  expect(await fingerprint()).toEqual(before);
+});
+test.each([0, 1, 2])('historical Turbo exports its exact eight-step graph and %i references while config is offline', async count => {
+  const references = [jpg, png(64)].slice(0, count);
+  const f = await fixture({ family: 'qwen21', sampling: 'qwen21-turbo', references });
+  const before = await fingerprint(); forbidWrites();
+  const exported = await manifest(f.id); publicMetadata(f, exported); await exactParts(f, exported);
+  expect(exported.execution.builder.version).toBe(2);
+  expect(exported.recipe.sampling).toBe('qwen21-turbo');
   expect(await fingerprint()).toEqual(before);
 });
 test('a Qwen child exports two ordered parent/manual references from durable receipts without needing the parent Mongo operation', async () => {

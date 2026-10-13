@@ -46,6 +46,12 @@ function requireChairToken(req, res) {
   return true;
 }
 
+// The owner's session names the chair; a token caller may name itself.
+function chairName(req, res, supplied) {
+  if (res.locals?.adultUserId) return 'owner';
+  return String(supplied || '').trim().slice(0, 80) || 'web-chair';
+}
+
 router.post('/', express.json(), async (req, res) => {
   try {
     const {
@@ -259,7 +265,7 @@ router.post('/:id/interjections', express.json({ limit: '16kb' }), async (req, r
   try {
     const { doc, interjection } = await roundtableService.addInterjection(req.params.id, {
       text: req.body?.text,
-      author: req.body?.author || 'web-chair',
+      author: chairName(req, res, req.body?.author),
       source: req.body?.source === 'telegram' ? 'api' : (req.body?.source || 'api')
     });
     roundtableService.getEmitter(req.params.id)?.emit('chunk', {
@@ -282,7 +288,7 @@ router.post('/:id/decision', express.json({ limit: '16kb' }), async (req, res) =
   try {
     const doc = await roundtableService.setDecision(req.params.id, {
       decision: req.body?.decision,
-      actor: req.body?.actor || 'web-chair',
+      actor: chairName(req, res, req.body?.actor),
       note: req.body?.note || '',
       source: 'web-ui'
     });

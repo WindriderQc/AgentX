@@ -162,23 +162,26 @@ async function applyArtifact(run, candidate, deps) {
 }
 
 function taskSpecFor(run, candidate, statement, headline) {
+  const reviewedAt = candidate.review?.at ? new Date(candidate.review.at) : null;
+  const when = reviewedAt && Number.isFinite(reviewedAt.getTime()) ? reviewedAt.toISOString() : 'unknown';
+  const reworded = candidate.review?.editedStatement && candidate.review.editedStatement !== candidate.statement;
+  // Each section is one block; blocks are separated by a blank line so the
+  // headings render as headings.
   return [
     `# ${headline}`,
-    '',
-    `Proposed by Ecosystem Memory Review run ${run.runId}, candidate ${candidate.candidateId}.`,
-    `Approved by: ${candidate.review?.by || 'unknown'} at ${candidate.review?.at || 'unknown'}.`,
-    '',
-    '## Objective', statement,
-    '',
+    `Proposed by Ecosystem Memory Review run ${run.runId}, candidate ${candidate.candidateId}.\n`
+      + `Approved by: ${candidate.review?.by || 'unknown'} at ${when}.`,
+    `## Objective\n${statement}`,
+    // What the reviewer cut from the proposal is context the worker would
+    // otherwise never see.
+    reworded ? `## Original proposal\n${candidate.statement}` : '',
+    candidate.review?.note ? `## Reviewer note\n${candidate.review.note}` : '',
     candidate.rationale ? `## Rationale\n${candidate.rationale}` : '',
-    '',
-    '## Evidence (bounded references, originals stay on their hosts)',
-    ...evidenceSummaryLines(candidate),
-    '',
-    '## Constraints',
-    '- This task was generated from an approved memory-review candidate; verify the claim against runtime truth before acting.',
-    '- Do not modify protected governance files without Architect/human review.',
-  ].filter(Boolean).join('\n');
+    ['## Evidence (bounded references, originals stay on their hosts)', ...evidenceSummaryLines(candidate)].join('\n'),
+    ['## Constraints',
+      '- This task was generated from an approved memory-review candidate; verify the claim against runtime truth before acting.',
+      '- Do not modify protected governance files without Architect/human review.'].join('\n'),
+  ].filter(Boolean).join('\n\n');
 }
 
 async function applyPipelineTask(run, candidate, deps, { headline } = {}) {

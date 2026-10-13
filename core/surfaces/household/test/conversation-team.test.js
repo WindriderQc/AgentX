@@ -27,11 +27,11 @@ test('the active member is marked, the others are locked during a conversation, 
   const list = Team.members(personas, agents);
   Team.render(nav, { list, activeAgentId: 'secretary', locked: true, esc });
   assert.equal(nav.hidden, false);
-  assert.match(nav.innerHTML, /^<span class="team-label">Parler avec<\/span>/);
+  assert.match(nav.innerHTML, /^<span class="team-label">Talk with<\/span>/);
   assert.match(nav.innerHTML, /data-agent="secretary" data-persona="secretary" aria-pressed="true">Secrétaire</);
   assert.match(nav.innerHTML, /data-agent="main" data-persona="nestor" aria-pressed="false" disabled>Nestor</);
-  assert.match(Team.lockNotice({ locked: true, name: 'Secrétaire' }), /Conversation en cours avec Secrétaire\..*« Nouvelle conversation »/);
-  assert.match(Team.lockNotice({ busy: true }), /pendant que Nestor travaille/);
+  assert.match(Team.lockNotice({ locked: true, name: 'Secrétaire' }), /Conversation in progress with Secrétaire\..*“New conversation”/);
+  assert.match(Team.lockNotice({ busy: true }), /while Nestor is working/);
   assert.equal(Team.lockNotice({ locked: false }), '');
   Team.render(nav, { list: list.slice(0, 1), activeAgentId: 'main', locked: false, esc });
   assert.equal(nav.hidden, true);

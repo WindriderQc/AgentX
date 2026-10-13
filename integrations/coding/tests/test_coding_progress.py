@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 
 SPEC = importlib.util.spec_from_file_location("coding_progress", Path(__file__).resolve().parents[1] / "coding_progress.py")
@@ -89,6 +90,87 @@ class ProgressTest(unittest.TestCase):
         self.progress.write()
         self.assertNotIn("private", self.progress.path.read_text())
         self.assertNotIn("command", self.progress.path.read_text())
+
+    def test_native_jest_and_encoded_harness_results_charge_tests_without_masking_failure(self):
+        command = "/opt/node/bin/node benchmark/node_modules/jest/bin/jest.js --config /opt/coding/jest.benchmark.config.cjs --runInBand 2>&1 | tail -60"
+        self.clock[0] = 10
+        self.call(command=command)
+        self.assertEqual((self.progress.stage, self.progress.current_test), ("test", "jest"))
+        self.clock[0] = 13
+        content = json.dumps([{"type": "tool-result", "isError": False, "content": [
+            {"type": "text", "text": "FAIL synthetic.test.js\nTests: 7 failed, 38 passed\nPrivate fixture"}]}])
+        self.progress.event({"type": "tool/result", "data": {"message": {
+            "source": {"callId": "1"}, "content": content}}})
+        self.assertEqual(self.progress.last_test, {"name": "jest", "outcome": "failed"})
+        self.assertEqual(self.progress.usage()["testSeconds"], 3)
+        self.assertEqual(self.progress.last_useful, 13)
+        self.progress.write()
+        self.assertNotIn("Private fixture", self.progress.path.read_text())
+        self.assertNotIn("--config", self.progress.path.read_text())
+
+    def test_encoded_tool_error_cannot_be_reported_as_passing_from_successful_shell(self):
+        self.call()
+        content = json.dumps([{"type": "tool-result", "isError": True,
+                               "content": [{"type": "text", "text": "Synthetic execution error"}]}])
+        self.progress.event({"type": "tool/result", "data": {"message": {
+            "source": {"callId": "1"}, "content": content}}})
+        self.assertEqual(self.progress.last_test, {"name": "jest", "outcome": "failed"})
+
+    def test_native_jest_detection_and_json_decoder_do_not_promote_mentions_or_arbitrary_json(self):
+        for command in ["echo node benchmark/node_modules/jest/bin/jest.js",
+                        "node synthetic.js benchmark/node_modules/jest/bin/jest.js"]:
+            self.assertIsNone(module.test_kind(command))
+        content = json.dumps({"output": "Test Suites: 3 passed"})
+        self.assertEqual(module.message_text({"content": content}), content)
+        self.assertEqual(module.test_outcome(content, False, False), "unknown")
+        # JSON decoder depth varies across Python versions. Exercise its refusal
+        # deterministically; the real accepted/deep harness case is tested below.
+        with mock.patch.object(module.json, "loads", side_effect=RecursionError):
+            self.assertEqual(module.tool_message({"content": "synthetic"}), ("", False, False))
+
+    def test_deep_encoded_harness_is_unknown_without_stopping_session_scan(self):
+        content = [{"type": "text", "text": "OK"}]
+        for _ in range(350):
+            content = [{"type": "tool-result", "content": content}]
+        encoded = json.dumps(content)
+        self.assertIsInstance(json.loads(encoded), list)
+        log = self.root / ".dsh/progress-sessions/project/session/session.jsonl"
+        log.parent.mkdir(parents=True)
+        events = [
+            {"type": "tool/call", "data": {"callId": "1", "name": "bash", "arguments": {
+                "command": "node benchmark/node_modules/jest/bin/jest.js --runInBand"}}},
+            {"type": "tool/result", "data": {"message": {"source": {"callId": "1"}, "content": encoded}}},
+            {"type": "assistant/chunk", "data": {"chunk": "Synthetic private text"}},
+        ]
+        log.write_text("".join(json.dumps(event) + "\n" for event in events))
+        self.clock[0] = 10
+        self.progress.scan(self.root, self.workspace)
+        self.assertEqual(self.progress.last_test, {"name": "jest", "outcome": "unknown"})
+        self.assertEqual(self.progress.stage, "model_generation")
+        self.assertIsNone(self.progress.progress_at)
+
+    def test_invalid_text_and_blocks_cannot_receive_successful_exit_credit(self):
+        for index, content in enumerate([
+            [{"type": "text", "text": 7}], [{"type": "text", "text": {"output": "OK"}}],
+            [{"type": "text", "text": "OK"}, 7], [{"type": [], "text": "OK"}],
+            [{"type": "tool-result", "isError": "false", "content": "OK"}],
+        ]):
+            with self.subTest(content=content):
+                self.call(str(index))
+                self.progress.event({"type": "tool/result", "data": {"message": {
+                    "source": {"callId": str(index)}, "content": json.dumps(content)}}})
+                self.assertEqual(self.progress.last_test, {"name": "jest", "outcome": "unknown"})
+                self.assertIsNone(self.progress.progress_at)
+
+    def test_nested_harness_error_is_retained_and_text_remains_private(self):
+        self.call()
+        content = [{"type": "tool-result", "content": [{"type": "tool-result", "isError": True,
+                   "content": [{"type": "text", "text": "Synthetic private error"}]}]}]
+        self.progress.event({"type": "tool/result", "data": {"message": {
+            "source": {"callId": "1"}, "content": json.dumps(content)}}})
+        self.assertEqual(self.progress.last_test, {"name": "jest", "outcome": "failed"})
+        self.progress.write()
+        self.assertNotIn("Synthetic private error", self.progress.path.read_text())
 
     def test_incomplete_session_record_is_retried_and_old_history_is_not_replayed(self):
         log = self.root / ".dsh/progress-sessions/project/session/session.jsonl"
@@ -177,6 +259,72 @@ class ProgressTest(unittest.TestCase):
         self.call("2", "python3 -m unittest discover -v 2>&1 | tail -40")
         self.result("2", "Ran 31 tests in 2.9s\n\nOK")
         self.assertEqual(self.progress.last_test["outcome"], "passed")
+
+    def test_model_reserve_stops_worker_before_cumulative_hard_ceiling(self):
+        self.progress.model_worker_active = True
+        self.progress.carry({"remaining": {"workSeconds": 5000, "modelSeconds": 600, "modelCalls": 40, "testSeconds": 500},
+            "limits": {"noProgressSeconds": 2700}})
+        self.progress.set_stage("model_wait")
+        self.clock[0] = 479
+        self.assertIsNone(self.progress.tick())
+        self.clock[0] = 480
+        self.assertEqual(self.progress.tick(), "model_budget_reserve")
+        self.assertEqual(self.progress.model_remaining(), 120)
+        self.assertEqual(self.progress.usage()["modelSeconds"], 480)
+
+    def test_explicit_progress_window_changes_only_timer_without_adding_work_credit(self):
+        self.progress.carry({"remaining": {"workSeconds": 5000, "modelSeconds": 600, "modelCalls": 40, "testSeconds": 500},
+            "limits": {"noProgressSeconds": 2700}, "spent": {"workSeconds": 5000},
+            "lastUsefulWorkSeconds": 100, "progressWindowStartedAtWorkSeconds": 5000})
+        self.assertIsNone(self.progress.tick())
+        self.assertEqual(self.progress.prior_work, 5000)
+        self.assertEqual(self.progress.useful_work, 100)
+        self.assertEqual(json.loads(self.progress.path.read_text())["lastUsefulWorkSeconds"], 100)
+        self.assertEqual(self.progress.usage()["workSeconds"], 0)
+
+    def test_independent_verification_can_run_without_spending_model_reserve(self):
+        self.progress.carry({"remaining": {"workSeconds": 5000, "modelSeconds": 600, "modelCalls": 40, "testSeconds": 500},
+            "limits": {"noProgressSeconds": 2700}})
+        self.progress.stage_spent["modelSeconds"] = 500
+        self.progress.set_stage("test")
+        self.clock[0] = 10
+        self.assertIsNone(self.progress.tick())
+        self.assertEqual(self.progress.model_remaining(), 100)
+        self.assertEqual(self.progress.usage()["testSeconds"], 10)
+
+    def test_live_budget_guidance_tracks_time_without_granting_progress_or_changing_accounting(self):
+        self.assertIsNone(self.progress.model_guidance())
+        self.progress.carry({"remaining": {"workSeconds": 5000, "modelSeconds": 600, "modelCalls": 40, "testSeconds": 500},
+                             "limits": {"noProgressSeconds": 2700}})
+        self.progress.set_stage("model_wait")
+        self.clock[0] = 100
+        before = (self.progress.accounted_at, dict(self.progress.stage_spent), self.progress.last_useful)
+        text = self.progress.model_guidance()
+        remaining = json.loads(text[text.index("{"):text.index("}") + 1])
+        self.assertEqual(remaining, {"workSeconds": 4900, "modelSeconds": 500, "modelCalls": 40,
+                                     "testSeconds": 500, "noProgressSeconds": 2600})
+        self.assertEqual(before, (self.progress.accounted_at, self.progress.stage_spent, self.progress.last_useful))
+        self.assertIsNone(self.progress.progress_at)
+        self.clock[0] = 200
+        self.progress.set_stage("test")
+        self.clock[0] = 230
+        text = self.progress.model_guidance()
+        remaining = json.loads(text[text.index("{"):text.index("}") + 1])
+        self.assertEqual((remaining["modelSeconds"], remaining["testSeconds"]), (400, 470))
+        self.progress.stop_reason = "operator_stop"
+        self.assertIsNone(self.progress.model_guidance())
+
+    def test_native_harness_output_limit_is_explicit_without_replacing_an_operator_stop(self):
+        self.progress.event({"type": "turn/end", "data": {"reason": {"kind": "completed"}}})
+        self.assertIsNone(self.progress.stop_reason)
+        self.progress.event({"type": "turn/end", "data": {"reason": {"kind": "max-tokens"}}})
+        self.assertEqual(self.progress.stop_reason, "model_output_limit")
+        self.assertIsNone(self.progress.progress_at)
+        self.progress.finish("blocked")
+        self.assertEqual(module.safe_progress(json.loads(self.progress.path.read_text()), KEY, "0001")["stopReason"], "model_output_limit")
+        self.progress.stop_reason = "operator_stop"
+        self.progress.event({"type": "turn/end", "data": {"reason": {"kind": "max-tokens"}}})
+        self.assertEqual(self.progress.stop_reason, "operator_stop")
 
 
 if __name__ == "__main__":

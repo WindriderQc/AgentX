@@ -1,0 +1,45 @@
+/* Coding Team autonomy panel of the Pipeline page. Presentation only: the
+   markup and behaviour belong to pipeline-coding-autonomy.js. */
+#pipelineCodingAutonomy { margin: 18px 0; padding: 18px 20px; border: 1px solid rgba(94,114,158,.3); border-radius: 14px; background: rgba(17,23,37,.78); color: #dbe3f4; font-size: .88rem; line-height: 1.5; }
+#pipelineCodingAutonomy > h2 { margin: 0 0 6px; color: #fff; font-size: 1.15rem; }
+#pipelineCodingAutonomy > p { margin: 0 0 10px; max-width: 86ch; color: rgba(219,227,244,.78); }
+#codingAutonomyStatus { display: inline-block; margin: 2px 0 12px !important; padding: 5px 11px; border: 1px solid rgba(124,240,255,.35); border-radius: 99px; background: rgba(124,240,255,.08); color: #c9f6ff !important; font-weight: 600; }
+
+/* The confirmation reads as one line: box first, sentence beside it. */
+#pipelineCodingAutonomy > label { display: flex; align-items: center; gap: 9px; width: fit-content; max-width: 100%; margin: 0 0 12px; padding: 8px 12px; border: 1px solid rgba(255,189,102,.4); border-radius: 10px; background: rgba(99,66,32,.2); color: #ffe2b8; font-weight: 600; cursor: pointer; }
+#pipelineCodingAutonomy input[type="checkbox"] { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; accent-color: #ffb85c; }
+#pipelineCodingAutonomy > p:has(> .pipeline-btn) { display: flex; flex-wrap: wrap; gap: 8px; max-width: none; }
+
+#pipelineCodingAutonomy .pipeline-btn { min-height: 40px; padding: 8px 14px; border: 1px solid rgba(124,154,255,.45); border-radius: 9px; background: rgba(40,52,92,.55); color: #e8edff; font: inherit; font-weight: 600; cursor: pointer; }
+#pipelineCodingAutonomy .pipeline-btn:hover { background: rgba(58,74,128,.7); }
+#pipelineCodingAutonomy .pipeline-btn:focus-visible, #pipelineCodingAutonomy summary:focus-visible, #pipelineCodingAutonomy a:focus-visible { outline: 3px solid #7cf0ff; outline-offset: 3px; }
+#pipelineCodingAutonomy [data-autonomy-switch="true"] { border-color: rgba(74,222,128,.55); background: rgba(22,78,47,.5); color: #d6ffe4; }
+#pipelineCodingAutonomy [data-autonomy-switch="false"] { border-color: rgba(255,189,102,.55); background: rgba(99,66,32,.4); color: #ffe2b8; }
+
+#pipelineCodingAutonomy details { margin: 10px 0; border: 1px solid rgba(94,114,158,.26); border-radius: 10px; background: rgba(10,15,27,.45); }
+#pipelineCodingAutonomy summary { padding: 9px 13px; color: #cfd9f2; font-weight: 600; cursor: pointer; }
+#pipelineCodingAutonomy details[open] > summary { border-bottom: 1px solid rgba(94,114,158,.22); }
+#pipelineCodingAutonomy details > :not(summary) { margin: 10px 13px; }
+
+#pipelineCodingAutonomy form p { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 0 0 12px; }
+#pipelineCodingAutonomy form label { display: grid; flex: 1 1 220px; gap: 5px; color: #cbd5e1; font-size: .8rem; font-weight: 600; }
+#pipelineCodingAutonomy form label:has(input[type="checkbox"]) { display: flex; flex-direction: row-reverse; justify-content: flex-end; align-items: center; gap: 9px; }
+#pipelineCodingAutonomy input:not([type="checkbox"]), #pipelineCodingAutonomy select, #pipelineCodingAutonomy textarea { width: 100%; padding: 8px 10px; border: 1px solid rgba(94,114,158,.45); border-radius: 8px; background: rgba(8,12,22,.7); color: #eef2ff; font: inherit; font-weight: 400; }
+#pipelineCodingAutonomy textarea { min-height: 84px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem; }
+
+/* One card per authorized task. */
+#codingAutonomyTasks { display: grid; gap: 12px; margin-top: 14px; }
+#codingAutonomyTasks:empty { display: none; }
+#codingAutonomyTasks > article { padding: 14px 16px; border: 1px solid rgba(94,114,158,.3); border-left: 3px solid rgba(124,154,255,.7); border-radius: 12px; background: rgba(10,15,27,.5); }
+#codingAutonomyTasks h3 { margin: 0 0 8px; color: #fff; font-size: .98rem; }
+#codingAutonomyTasks article > p { margin: 0 0 6px; color: rgba(219,227,244,.8); overflow-wrap: anywhere; }
+#codingAutonomyTasks article > p:first-of-type { display: inline-block; margin-bottom: 9px; padding: 3px 10px; border-radius: 99px; background: rgba(124,154,255,.14); color: #d5ddff; font-size: .8rem; font-weight: 600; }
+#codingAutonomyTasks a { display: inline-block; margin: 4px 0 8px; color: #8fd3ff; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+#codingAutonomyTasks a:hover { color: #c3e9ff; }
+#codingAutonomyTasks article > .pipeline-btn, #codingAutonomyTasks form .pipeline-btn { margin: 6px 8px 4px 0; }
+#codingAutonomyTasks details p { margin: 6px 13px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .74rem; color: rgba(203,213,225,.75); overflow-wrap: anywhere; }
+
+@media (max-width: 640px) {
+  #pipelineCodingAutonomy { padding: 14px 13px; }
+  #pipelineCodingAutonomy > p:has(> .pipeline-btn) .pipeline-btn { flex: 1 1 100%; }
+}

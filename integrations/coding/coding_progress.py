@@ -19,12 +19,12 @@ import time
 REQUEST_ID = re.compile(r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$")
 STAGES = {"preparing", "dependencies", "model_wait", "model_generation", "tool", "test", "checkpoint", "publishing"}
 PHASES = {"preparing", "running", "delivering", "finished"}
-REASONS = {"hard_budget", "soft_budget_no_progress", "no_useful_progress", "model_call_limit",
+REASONS = {"model_budget_reserve", "hard_budget", "soft_budget_no_progress", "no_useful_progress", "model_call_limit",
            "operator_stop",
-           "worker_exit", "no_changes", "dependencies_failed", "dependencies_changed", "runner_error",
+           "worker_exit", "model_output_limit", "no_changes", "dependencies_failed", "dependencies_changed", "runner_error",
            "tests_failed", "generated_artifacts", "ineligible_task", "runtime_unavailable", "runtime_changed",
            "model_wait_inactive", "model_generation_inactive", "tool_inactive", "test_inactive"}
-REASONS.update({"github_token_missing", "git_reconciliation", "git_conflict_remaining", "verification_profile_unknown", "progress_history_limit", "model_termination_unverified", "authorization_removed", "queue_window_closed"})
+REASONS.update({"continuation_checkpoint_changed", "github_token_missing", "git_reconciliation", "git_conflict_remaining", "verification_profile_unknown", "progress_history_limit", "model_termination_unverified", "authorization_removed", "queue_window_closed"})
 RESULTS = {"blocked", "review", "local_only"}
 TEST_NAMES = {"pytest", "unittest", "jest", "npm_test", "node_test"}
 TEST_OUTCOMES = {"passed", "failed", "unknown"}
@@ -96,21 +96,59 @@ def test_kind(command: str) -> str | None:
             return "jest"
         if exe in {"npm", "pnpm", "yarn"} and any(re.fullmatch(r"test(?::[\w-]+)?", t) for t in tokens[1:3]):
             return "npm_test"
-        if exe == "node" and any(t.endswith("run-jest.js") for t in tokens[1:2]):
+        if exe == "node" and any(t.endswith("run-jest.js") or Path(t).parts[-3:] == ("jest", "bin", "jest.js") for t in tokens[1:2]):
             return "jest"
         if exe == "node" and "--test" in tokens:
             return "node_test"
     return None
 
 
+def tool_message(message: dict) -> tuple[str, bool, bool]:
+    """Extract bounded harness text and errors; malformed evidence stays unknown."""
+    if not isinstance(message, dict) or type(message.get("isError", False)) is not bool:
+        return "", False, False
+    stack = [(message.get("content", ""), 0)]
+    text, errored, visited, size = [], message.get("isError", False), 0, 0
+    while stack:
+        content, depth = stack.pop()
+        visited += 1
+        if depth > 64 or visited > 4096:
+            return "", False, False
+        if isinstance(content, str):
+            try:
+                decoded = json.loads(content)
+            except ValueError:
+                decoded = None
+            except RecursionError:
+                return "", False, False
+            # Only harness blocks are envelopes. Arbitrary JSON is plain output.
+            if isinstance(decoded, list) and any(isinstance(item, dict) and "type" in item for item in decoded):
+                content = decoded
+            else:
+                size += len(content)
+                if size > 4 * 1024 * 1024:
+                    return "", False, False
+                text.append(content)
+                continue
+        if not isinstance(content, list) or len(content) + visited + len(stack) > 4096:
+            return "", False, False
+        children = []
+        for item in content:
+            if not isinstance(item, dict) or type(item.get("isError", False)) is not bool:
+                return "", False, False
+            errored = errored or item.get("isError", False)
+            if item.get("type") == "tool-result" and "content" in item:
+                children.append((item["content"], depth + 1))
+            elif item.get("type") == "text" and isinstance(item.get("text"), str):
+                children.append((item["text"], depth + 1))
+            else:
+                return "", False, False
+        stack.extend(reversed(children))
+    return "\n".join(text), errored, True
+
+
 def message_text(message: dict) -> str:
-    content = message.get("content", "")
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return "\n".join(message_text(item) if item.get("type") == "tool-result" else item.get("text", "")
-                         for item in content if isinstance(item, dict))
-    return ""
+    return tool_message(message)[0]
 
 
 def test_outcome(content: str, errored: bool, reliable_exit: bool) -> str:
@@ -203,6 +241,8 @@ class Progress:
         self.accounted_at = self.started
         self.stage_spent = {"testSeconds": 0.0, "modelSeconds": 0.0}
         self.cumulative_limits = None
+        self.model_worker_active = False
+        self.queue_deadline = float("inf")
         self.core_recorded = False
         self.pr = self.manual_head = None
         self.prior_work = self.useful_work = 0
@@ -210,6 +250,8 @@ class Progress:
 
     def carry(self, manifest):
         self.cumulative_limits = manifest["remaining"]
+        if manifest.get("queueEndAt"):
+            self.queue_deadline = self.now() + max(0, datetime.fromisoformat(manifest["queueEndAt"].replace("Z", "+00:00")).timestamp() - datetime.now(timezone.utc).timestamp())
         self.hard_deadline = self.started + self.cumulative_limits["workSeconds"]
         self.soft_deadline = min(self.soft_deadline, self.hard_deadline)
         self.seen_states.update(manifest.get("seenStates", []))
@@ -217,7 +259,7 @@ class Progress:
         self.no_progress_limit = manifest["limits"]["noProgressSeconds"]
         self.prior_work = manifest.get("spent", {}).get("workSeconds", 0)
         self.useful_work = manifest.get("lastUsefulWorkSeconds", 0)
-        self.last_useful = self.started - max(0, self.prior_work - self.useful_work)
+        self.last_useful = self.started - max(0, self.prior_work - max(self.useful_work, manifest.get("progressWindowStartedAtWorkSeconds", 0)))
         self.write()
 
     def account(self):
@@ -234,8 +276,31 @@ class Progress:
         return {"workSeconds": max(0, int(self.now() - self.started)), "modelCalls": self.model_calls,
                 **{k: int(v) for k, v in self.stage_spent.items()}}
 
+    def model_remaining(self):
+        self.account()
+        return max(0, self.cumulative_limits["modelSeconds"] - self.stage_spent["modelSeconds"])
+
     def test_remaining(self):
         return max(0, (self.cumulative_limits or {"testSeconds": STAGE_LIMITS["test"]})["testSeconds"] - self.stage_spent["testSeconds"])
+
+    def model_guidance(self):
+        """Read an advisory snapshot without touching billing or progress timers."""
+        if not self.cumulative_limits or self.phase != "running" or self.stop_reason:
+            return None
+        current, stage = self.now(), self.stage
+        elapsed = max(0, current - self.accounted_at)
+        remaining = {"workSeconds": max(0, int(min(self.hard_deadline, self.queue_deadline) - current)),
+            "modelSeconds": max(0, int(self.cumulative_limits["modelSeconds"] - self.stage_spent["modelSeconds"]
+                                      - (elapsed if stage in {"model_wait", "model_generation"} else 0))),
+            "testSeconds": max(0, int(self.cumulative_limits["testSeconds"] - self.stage_spent["testSeconds"]
+                                     - (elapsed if stage == "test" else 0))),
+            "modelCalls": max(0, self.cumulative_limits["modelCalls"] - self.model_calls),
+            "noProgressSeconds": max(0, int(self.no_progress_limit - (current - self.last_useful)))}
+        return ("Runner-owned budget update before this request (seconds, except modelCalls): " +
+                json.dumps(remaining, sort_keys=True) +
+                ". This advisory grants no authorization or extra budget. Model time includes reasoning. "
+                "Reading and repeated diagnostics do not count as useful progress. "
+                "Make the next necessary source correction and run focused tests; finish before these limits.")
 
     def write(self):
         if not self.path:
@@ -280,12 +345,14 @@ class Progress:
             self.set_stage("model_wait")
         elif kind == "assistant/chunk":
             self.set_stage("model_generation")
+        elif kind == "turn/end" and isinstance(data.get("reason"), dict) and data["reason"].get("kind") == "max-tokens":
+            self.stop_reason = self.stop_reason or "model_output_limit"
         elif kind == "tool/call":
             args = data.get("arguments") or {}
             if isinstance(args, str):
                 try:
                     args = json.loads(args)
-                except ValueError:
+                except (ValueError, RecursionError):
                     args = {}
             name = test_kind(str(args.get("command", ""))) if isinstance(args, dict) and data.get("name") == "bash" else None
             call_id = data.get("callId")
@@ -304,11 +371,8 @@ class Progress:
             call_id = source.get("callId") if isinstance(source, dict) else None
             pending = self.pending_tests.pop((session, call_id), None)
             if pending:
-                content = message_text(message)
-                blocks = message.get("content", [])
-                errored = message.get("isError") or (isinstance(blocks, list) and any(
-                    isinstance(block, dict) and block.get("isError") for block in blocks))
-                outcome = test_outcome(content, bool(errored), pending[2])
+                content, errored, valid = tool_message(message)
+                outcome = test_outcome(content, errored, pending[2]) if valid else "unknown"
                 signature = hashlib.sha256(json.dumps([pending[1], outcome, self.source_signature]).encode()).hexdigest()
                 if outcome != "unknown" and signature not in self.seen_tests:
                     self.seen_tests.add(signature)
@@ -349,7 +413,7 @@ class Progress:
                     offset = stream.tell()
                     try:
                         self.event(json.loads(line), str(path))
-                    except (ValueError, UnicodeDecodeError):
+                    except (ValueError, UnicodeDecodeError, RecursionError):
                         continue
             self.offsets[path] = offset
 
@@ -388,6 +452,8 @@ class Progress:
             elif self.cumulative_limits and (self.stage_spent["modelSeconds"] >= self.cumulative_limits["modelSeconds"]
                                              or self.stage_spent["testSeconds"] >= self.cumulative_limits["testSeconds"]):
                 self.stop_reason = "hard_budget"
+            elif self.cumulative_limits and self.model_worker_active and self.model_remaining() <= min(120, self.cumulative_limits["modelSeconds"] // 4):
+                self.stop_reason = "model_budget_reserve"
             elif self.stage in STAGE_LIMITS and current - self.stage_since >= STAGE_LIMITS[self.stage]:
                 self.stop_reason = f"{self.stage}_inactive"
             elif self.stage != "test" and current - self.last_useful >= getattr(self, "no_progress_limit", 45 * 60):

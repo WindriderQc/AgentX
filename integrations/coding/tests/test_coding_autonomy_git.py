@@ -107,6 +107,65 @@ class GitReconciliationTest(unittest.TestCase):
         with self.assertRaises(g.GitRefusal):
             g.audit(r.git, self.work, 'origin/main', r.coding_progress.artifact, ['source.py'])
 
+    def test_successive_upstream_versions_are_inherited_without_expanding_scope(self):
+        self.commit(self.work, 'task.py', 'worker source\n')
+        self.commit(self.base, 'upstream.py', 'first upstream version\n')
+        r.git(self.base, 'push', 'origin', 'main')
+        self.prepare()
+        self.commit(self.base, 'upstream.py', 'second upstream version\n')
+        r.git(self.base, 'push', 'origin', 'main')
+        self.prepare()
+        self.assertEqual(g.audit(r.git, self.work, 'origin/main', r.coding_progress.artifact, ['task.py']), ['task.py'])
+
+    def test_outside_scope_conflict_resolution_is_not_inherited(self):
+        self.commit(self.work, 'source.py', 'worker conflict\n')
+        self.commit(self.base, 'source.py', 'upstream conflict\n')
+        r.git(self.base, 'push', 'origin', 'main')
+        self.assertEqual(self.prepare()['conflicts'], ['source.py'])
+        (self.work / 'source.py').write_text('new resolved version\n')
+        g.finish_merge(r.git, self.work, r.AUTHOR)
+        with self.assertRaisesRegex(g.GitRefusal, 'authorized file scope'):
+            g.audit(r.git, self.work, 'origin/main', r.coding_progress.artifact, ['task.py'])
+
+    def test_foreign_merge_parent_is_not_trusted_as_upstream(self):
+        r.git(self.work, 'checkout', '-b', 'foreign-fixture')
+        self.commit(self.work, 'outside.py', 'foreign parent content\n')
+        foreign = r.git(self.work, 'rev-parse', 'HEAD')
+        r.git(self.work, 'checkout', self.branch)
+        self.commit(self.work, 'task.py', 'worker source\n')
+        r.git(self.work, *r.AUTHOR, 'merge', '--no-edit', foreign)
+        with self.assertRaisesRegex(g.GitRefusal, 'authorized file scope'):
+            g.audit(r.git, self.work, 'origin/main', r.coding_progress.artifact, ['task.py'])
+
+    def test_secret_added_then_removed_is_still_inspected(self):
+        self.commit(self.work, 'source.py', 'ghp_' + 'x' * 30)
+        self.commit(self.work, 'source.py', 'base\n')
+        self.assertEqual(g.changes(r.git, self.work, 'origin/main'), [])
+        with self.assertRaisesRegex(g.GitRefusal, 'credentials'):
+            g.audit(r.git, self.work, 'origin/main', r.coding_progress.artifact, ['source.py'])
+
+    def test_mode_change_with_identical_blob_is_not_hidden_by_base(self):
+        (self.work / 'source.py').chmod(0o755)
+        r.git(self.work, 'add', 'source.py')
+        r.git(self.work, *r.AUTHOR, 'commit', '-m', 'Change executable mode')
+        (self.work / 'source.py').chmod(0o644)
+        r.git(self.work, 'add', 'source.py')
+        r.git(self.work, *r.AUTHOR, 'commit', '-m', 'Restore executable mode')
+        self.assertEqual(g.changes(r.git, self.work, 'origin/main'), [])
+        with self.assertRaisesRegex(g.GitRefusal, 'authorized file scope'):
+            g.audit(r.git, self.work, 'origin/main', r.coding_progress.artifact, ['task.py'])
+
+    def test_symlink_with_identical_blob_is_still_refused(self):
+        (self.work / 'source.py').unlink()
+        (self.work / 'source.py').symlink_to('base\n')
+        r.git(self.work, 'add', 'source.py')
+        r.git(self.work, *r.AUTHOR, 'commit', '-m', 'Replace source with symlink')
+        self.assertEqual(r.git(self.work, 'rev-parse', 'HEAD:source.py'), r.git(self.work, 'rev-parse', 'origin/main:source.py'))
+        (self.work / 'source.py').unlink()
+        self.commit(self.work, 'source.py', 'base\n')
+        with self.assertRaisesRegex(g.GitRefusal, 'link or submodule'):
+            g.audit(r.git, self.work, 'origin/main', r.coding_progress.artifact, ['source.py'])
+
     def test_scope_secrets_and_links_are_refused(self):
         self.commit(self.work, 'source.py', 'ghp_' + 'x' * 30)
         with self.assertRaises(g.GitRefusal):

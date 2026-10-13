@@ -80,10 +80,22 @@ test('the identity editor sends only the fields the owner changed', () => {
     { styleOf: 'main', name: 'butler_bold', label: 'Butler · Bold', personality: 'Bold.', voice: { provider: 'voxcpm', voices: { fr: 'synthetic' } }, visual: { style: 'orb', color: '#112233' } });
 });
 
-test('the new member guide prepares a runtime entry with the minimal tool profile', () => {
+test('the new member guide fills the entry template the instance supplies', () => {
   const window = {};
   new Function('window', 'document', require('node:fs').readFileSync(require('node:path').join(__dirname, '../../../public/js/agent-ops-team-guide.js'), 'utf8'))(window, {});
-  assert.deepEqual(window.AgentOpsTeamGuide.entry({ id: 'scout', name: 'Scout', model: 'provider/synthetic:27b' }), { scout: {
-    name: 'Scout', workspace: '~/.openclaw/workspace-scout', agentDir: '~/.openclaw/agents/scout/agent',
-    model: { primary: 'provider/synthetic:27b', fallbacks: [] }, identity: { name: 'Scout' }, tools: { profile: 'minimal' } } });
+  const template = { entry: { '{{id}}': { name: '{{name}}', workspace: '/runtime/workspace-{{id}}', model: { primary: '{{model}}', fallbacks: [] }, tools: ['minimal'] } } };
+  assert.deepEqual(window.AgentOpsTeamGuide.entry(template, { id: 'scout', name: 'Scout', model: 'provider/synthetic:27b' }), { scout: {
+    name: 'Scout', workspace: '/runtime/workspace-scout', model: { primary: 'provider/synthetic:27b', fallbacks: [] }, tools: ['minimal'] } });
+  // Without an instance template, Core prepares no runtime-specific entry.
+  assert.equal(window.AgentOpsTeamGuide.entry(null, { id: 'scout', name: 'Scout', model: 'm' }), null);
+});
+
+test('the projection relays a valid new member template and drops a malformed one', () => {
+  const { buildHandoffs, parseNewMemberTemplate } = require('../agent-ops/handoffs');
+  const text = JSON.stringify({ runtime: 'Runtime', entryPath: 'agents.list', entry: { '{{id}}': { name: '{{name}}' } }, notes: ['Start small.', 7] });
+  assert.deepEqual(parseNewMemberTemplate(text), { runtime: 'Runtime', entryPath: 'agents.list', entry: { '{{id}}': { name: '{{name}}' } }, notes: ['Start small.'] });
+  assert.equal(parseNewMemberTemplate('{"entry": []}'), null);
+  assert.equal(parseNewMemberTemplate('not json'), null);
+  assert.equal(buildHandoffs('ok', { ok: false }).newMember, null);
+  assert.equal(buildHandoffs('ok', { ok: true, value: text }).newMember.runtime, 'Runtime');
 });

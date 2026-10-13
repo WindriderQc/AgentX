@@ -433,8 +433,18 @@ describe('statement coverage', () => {
       await ingestDocument(await writeDoc(name, name), { readText, extract: extractWith(statement({ period })) });
     }
     expect((await query.coverage()).series).toEqual([
-      { series: 'Caisse Exemple ···0000', first: '2026-01', last: '2026-04', months: 2, missing: ['2026-02', '2026-03'] }
+      { series: 'Caisse Exemple ···0000', first: '2026-01', last: '2026-04', months: 2, missing: ['2026-02', '2026-03'],
+        gaps: [{ from: '2026-02-01', to: '2026-03-31' }] }
     ]);
+  });
+
+  test('finds a gap between statements that end and start mid-month', async () => {
+    for (const [name, period] of [['a.pdf', ['2026-01-15', '2026-02-14']], ['c.pdf', ['2026-03-15', '2026-04-14']]]) {
+      await ingestDocument(await writeDoc(name, name), { readText, extract: extractWith(statement({ period })) });
+    }
+    const [series] = (await query.coverage()).series;
+    expect(series.gaps).toEqual([{ from: '2026-02-15', to: '2026-03-14' }]);
+    expect(series.missing).toEqual(['2026-02', '2026-03']);
   });
 });
 
@@ -464,6 +474,20 @@ describe('category suggestions', () => {
     ]);
     expect(await FinanceRule.countDocuments()).toBe(0);
   });
+  test('bounds a long description to a valid pattern and proposes only the viewed ledger', async () => {
+    const long = statement();
+    long.accounts[0].transactions[0].description = 'PAIEMENT PREAUTORISE FOURNISSEUR DE SERVICES MUNICIPAUX ET SCOLAIRES REFERENCE 0042 COMPTE CLIENT';
+    await ingestDocument(await writeDoc('june-long.pdf'), { readText, extract: extractWith(long) });
+    const execute = async () => ({ ok: true, status: 200, body: { message: { content: JSON.stringify({ suggestions: [] }) } } });
+    const { suggestions } = await suggest({ limit: 5 }, { execute });
+    const pattern = suggestions.find((s) => s.description.startsWith('PAIEMENT PREAUTORISE')).pattern;
+    expect(pattern.length).toBeLessThanOrEqual(80);
+    expect(pattern).toBe('paiement preautorise fournisseur de services municipaux et scolaires reference');
+    await expect(categories.saveRules({ pattern, category: 'Services publics' })).resolves.toBeTruthy();
+    let called = false;
+    expect(await suggest({ limit: 5, ledger: 'corp' }, { execute: async () => { called = true; } })).toEqual({ suggestions: [] });
+    expect(called).toBe(false);
+  });
 });
 
 describe('financial plan and situation', () => {
@@ -478,6 +502,22 @@ describe('financial plan and situation', () => {
       { pattern: 'cafe du coin', category: 'Restaurants', tags: ['cafe'] },
       { pattern: 'avance au compte eop', category: 'Virements internes' }
     ]);
+  });
+
+  test('leaves a partial newest month out of the averages and an overpaid card out of the debt', async () => {
+    // Only this statement: it ends mid-June, so June is not complete yet.
+    await require('../../models/FinanceStatement').deleteMany({});
+    await require('../../models/FinanceTransaction').deleteMany({});
+    const partial = statement({ period: ['2026-06-01', '2026-06-15'] });
+    partial.accounts[1] = { code: 'MC 1', opening_cents: 1000, closing_cents: -5000,
+      transactions: [{ date: '2026-06-05', description: 'Paiement', amount_cents: -6000, balance_after_cents: -5000 }] };
+    await ingestDocument(await writeDoc('june-partial.pdf'), { readText, extract: extractWith(partial) });
+    await plan.savePlan({ debts: [{ name: 'Marge', accountCode: 'MC1', rateBp: 845, paymentCents: 0 }] });
+    const s = await plan.situation({ months: 1 });
+    expect(s.window.months).toEqual(['2026-05']);
+    expect(s.monthly).toEqual({ inCents: 0, outCents: 0, netCents: 0 });
+    expect(s.debts[0]).toMatchObject({ liveBalanceCents: 0, currentCents: 0 });
+    expect(s.totalDebtCents).toBe(0);
   });
 
   test('combines the plan with live ledger balances, budget actuals and net worth', async () => {
@@ -535,6 +575,17 @@ describe('simulations', () => {
     expect(extra.debts.find((d) => d.name === 'Carte').paidOffMonth < (base.debts.find((d) => d.name === 'Carte').paidOffMonth || '9999')).toBe(true);
     expect(extra.interestCents).toBeLessThan(base.interestCents);
     expect(sim.addMonths('2026-11', 3)).toBe('2027-02');
+  });
+
+  test('keeps rolling a paid-off debt payment into the others after its payoff month', () => {
+    const debts = [
+      { name: 'Small', balanceCents: 10000, rateBp: 0, paymentCents: 10000 },
+      { name: 'Large', balanceCents: 1000000, rateBp: 0, paymentCents: 10000 }
+    ];
+    const run = sim.runTrajectory(debts, { months: 4, start: '2026-01', extraMonthlyCents: 0, lumpSumCents: 0, lumpSumMonth: 0, annualBonusCents: 0 });
+    expect(run.debts.find((d) => d.name === 'Small').paidOffMonth).toBe('2026-02');
+    // Month 1: 10,000 + 10,000 paid; months 2-4: the full 20,000 goes to Large.
+    expect(run.points.map((p) => p.totalCents)).toEqual([1010000, 990000, 970000, 950000, 930000]);
   });
 
   test('projects cash from the budget, provisions and one-off events', async () => {

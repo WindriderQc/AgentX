@@ -1,7 +1,7 @@
 'use strict';
 
 // A personal turn that explicitly addresses another team member ("Secrétaire,
-// ...", "demande à la Secrétaire ...") goes to that member's own native agent,
+// ...") goes to that member's own native agent,
 // with its own session, model, tools and voice; the next turn returns to the
 // conversation's agent (#41, first step). Deterministic: no model has to chain
 // a delegation for the owner to reach the member he named.
@@ -23,8 +23,9 @@ function teamMembers(env = process.env) {
     .filter((member) => member.names.length);
 }
 
-// The member named at the start of the turn, or as the one to ask; never a passing mention.
-function addressedMember(text, members, currentAgentId) {
+// Native Main owns requests to consult a specialist. Direct addresses still
+// select that member; older modes keep their deterministic consultation path.
+function addressedMember(text, members, currentAgentId, { nativeDelegation = false } = {}) {
   const said = fold(text).trim();
   for (const member of members) {
     if (member.agentId === currentAgentId) continue;
@@ -32,7 +33,7 @@ function addressedMember(text, members, currentAgentId) {
       const n = escape(name);
       const lead = new RegExp(`^(?:(?:hey|eille|allo|bonjour|salut|ok|dis)\\s+)?(?:(?:la|le|ma|mon|my|the)\\s+)?${n}\\s*[,:!?.]`);
       const ask = new RegExp(`\\b(?:demande|demandes|demander|demandez|pose la question|verifie avec|ask|check with)\\s+(?:(?:a|au|aux|avec|to)\\s+)?(?:(?:la|le|ma|mon|my|the)\\s+)?${n}\\b`);
-      if (lead.test(said) || ask.test(said)) return member;
+      if (lead.test(said) || !nativeDelegation && ask.test(said)) return member;
     }
   }
   return null;

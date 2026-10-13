@@ -21,10 +21,10 @@ test('parallel turns keep one ordered Core chronology and independent component 
   const [a, b] = model.snapshot().turns;
   assert.deepEqual(a.events.map(item => item.sequence), [3, 5]);
   assert.deepEqual(b.events.map(item => item.sequence), [4]);
-  assert.equal(stageState('stt', a)[0], 'Terminé');
-  assert.equal(stageState('review', a)[0], 'En cours');
+  assert.equal(stageState('stt', a)[0], 'Done');
+  assert.equal(stageState('review', a)[0], 'In progress');
   assert.equal(stageState('agents', b)[1], 'main · run resp-b');
-  assert.equal(stageState('stt', b)[0], 'Sans voix');
+  assert.equal(stageState('stt', b)[0], 'No voice');
 });
 
 test('STT and Gardien remain observable while a review is deliberately delayed', () => {
@@ -33,43 +33,43 @@ test('STT and Gardien remain observable while a review is deliberately delayed',
   model.timings('turn-a', { sttDone: 450, requestSent: 500, firstDelta: 1600 });
   model.ingest('session-1', { items: [work('work-a', 'turn-a')], events: [] });
   const row = model.snapshot().turns[0];
-  assert.equal(stageState('stt', row)[0], 'Terminé');
-  assert.equal(stageState('guardian', row)[0], 'Actif');
-  assert.equal(stageState('review', row)[0], 'En attente');
-  assert.equal(stageState('tts', row)[0], 'Inconnu');
+  assert.equal(stageState('stt', row)[0], 'Done');
+  assert.equal(stageState('guardian', row)[0], 'Active');
+  assert.equal(stageState('review', row)[0], 'Waiting');
+  assert.equal(stageState('tts', row)[0], 'Unknown');
 });
 
 test('live transcription is visible before a model request without claiming Gardien activity', () => {
   const model = createModel();
   model.capture('session-1', 'turn-a');
   const pending = model.snapshot().turns[0];
-  assert.equal(stageState('stt', pending)[0], 'En cours');
-  assert.equal(stageState('guardian', pending)[0], 'Inconnu');
+  assert.equal(stageState('stt', pending)[0], 'In progress');
+  assert.equal(stageState('guardian', pending)[0], 'Unknown');
   model.timings('turn-a', { sttDone: 720 });
-  assert.equal(stageState('stt', model.snapshot().turns[0])[0], 'Terminé');
+  assert.equal(stageState('stt', model.snapshot().turns[0])[0], 'Done');
   model.captureEnd('turn-a');
-  assert.equal(stageState('guardian', model.snapshot().turns[0])[0], 'Inconnu');
+  assert.equal(stageState('guardian', model.snapshot().turns[0])[0], 'Unknown');
   model.begin('session-1', 'turn-b', 'voice');
   model.stream('turn-b', { type: 'accepted' });
-  assert.equal(stageState('guardian', model.snapshot().turns[1])[0], 'En attente');
+  assert.equal(stageState('guardian', model.snapshot().turns[1])[0], 'Waiting');
 });
 
 test('a waiting-host signal never masks terminal or stale Gardien evidence', () => {
   const model = createModel(); model.begin('session-1', 'turn-a', 'voice');
   model.stream('turn-a', { type: 'status', phase: 'waiting_host' });
-  assert.equal(stageState('guardian', model.snapshot().turns[0])[0], 'En attente');
+  assert.equal(stageState('guardian', model.snapshot().turns[0])[0], 'Waiting');
   model.stream('turn-a', { type: 'done', data: {} });
-  assert.equal(stageState('guardian', model.snapshot().turns[0])[0], 'Inconnu');
+  assert.equal(stageState('guardian', model.snapshot().turns[0])[0], 'Unknown');
   model.ingest('session-1', { items: [work('work-a', 'turn-a', 1,
     { guardianStatus: 'completed' })], events: [] });
-  assert.equal(stageState('guardian', model.snapshot().turns[0])[0], 'Terminé');
+  assert.equal(stageState('guardian', model.snapshot().turns[0])[0], 'Done');
   model.ingest('session-1', { items: [work('work-a', 'turn-a', 2,
     { guardianStatus: 'failed' })], events: [] });
-  assert.equal(stageState('guardian', model.snapshot().turns[0])[0], 'Échec');
+  assert.equal(stageState('guardian', model.snapshot().turns[0])[0], 'Failed');
   model.ingest('session-1', { items: [work('work-a', 'turn-a', 3,
     { guardianStatus: 'running' })], events: [] });
   model.pollFailure('session-1');
-  assert.equal(stageState('guardian', { ...model.snapshot().turns[0], telemetryStale: true })[0], 'Incertain');
+  assert.equal(stageState('guardian', { ...model.snapshot().turns[0], telemetryStale: true })[0], 'Uncertain');
 });
 
 test('failed, cancelled and paused review work reports its canonical state and safe reason', () => {
@@ -78,19 +78,19 @@ test('failed, cancelled and paused review work reports its canonical state and s
   model.ingest('session-1', { items: [work('work-a', 'turn-a', 3,
     { state: 'failed', reason: 'native_preparation_refused' })], events: [] });
   assert.deepEqual(stageState('review', model.snapshot().turns[0]),
-    ['Échec', 'Travail work-a · préparation de l’agent refusée']);
+    ['Failed', 'Work work-a · agent preparation refused']);
   model.ingest('session-1', { items: [work('work-a', 'turn-a', 2,
     { state: 'result_ready', result: { version: 1 } })], events: [] });
-  assert.equal(stageState('review', model.snapshot().turns[0])[0], 'Échec', 'an older result cannot erase the failure');
+  assert.equal(stageState('review', model.snapshot().turns[0])[0], 'Failed', 'an older result cannot erase the failure');
   model.ingest('session-1', { items: [work('work-a', 'turn-a', 4,
     { state: 'cancelled', reason: 'owner_cancelled_before_dispatch' })], events: [] });
-  assert.equal(stageState('review', model.snapshot().turns[0])[0], 'Annulé');
+  assert.equal(stageState('review', model.snapshot().turns[0])[0], 'Cancelled');
   model.ingest('session-1', { items: [work('work-a', 'turn-a', 5,
     { state: 'paused', reason: '' })], events: [] });
-  assert.deepEqual(stageState('review', model.snapshot().turns[0]), ['En pause', 'Travail work-a · motif non détaillé']);
+  assert.deepEqual(stageState('review', model.snapshot().turns[0]), ['Paused', 'Work work-a · reason not detailed']);
   model.ingest('session-1', { items: [work('work-a', 'turn-a', 6,
     { state: 'result_ready', reason: '', result: { version: 2 } })], events: [] });
-  assert.equal(stageState('review', model.snapshot().turns[0])[0], 'Disponible');
+  assert.equal(stageState('review', model.snapshot().turns[0])[0], 'Available');
 });
 
 test('a received or queued work does not claim review activity before a dispatch receipt', () => {
@@ -98,18 +98,27 @@ test('a received or queued work does not claim review activity before a dispatch
   for (const [revision, state] of [[1, 'received'], [2, 'queued'], [3, 'running']]) {
     model.ingest('session-1', { items: [work('work-a', 'turn-a', revision, { state })],
       events: [event(1, 'work-a', 'request_received', '2026-10-11T12:00:00Z')] });
-    assert.equal(stageState('review', model.snapshot().turns[0])[0], 'En attente');
+    assert.equal(stageState('review', model.snapshot().turns[0])[0], 'Waiting');
   }
   model.ingest('session-1', { items: [work('work-a', 'turn-a', 4, { state: 'dispatching' })],
     events: [event(2, 'work-a', 'dispatch_marked', '2026-10-11T12:00:02Z')] });
-  assert.equal(stageState('review', model.snapshot().turns[0])[0], 'En cours');
+  assert.equal(stageState('review', model.snapshot().turns[0])[0], 'In progress');
+});
+
+test('complete-context refusal discloses the unavailable review without claiming activity or advice', () => {
+  const model = createModel(); model.begin('session-1', 'turn-a', 'voice');
+  model.ingest('session-1', { items: [work('work-a', 'turn-a', 2,
+    { state: 'failed', reason: 'CONVERSATION_CONTEXT_REQUIRED', attempt: null })],
+    events: [event(1, 'work-a', 'preparation_refused', '2030-01-01T12:00:00Z')] });
+  assert.deepEqual(stageState('review', model.snapshot().turns[0]),
+    ['Failed', 'Work work-a · not enough context to review the whole conversation']);
 });
 
 test('a completed review with no useful addition remains visible as completed', () => {
   const model = createModel(); model.begin('session-1', 'turn-a', 'voice');
   model.ingest('session-1', { items: [work('work-a', 'turn-a', 4,
     { state: 'completed', resultDisposition: 'no_work', guardianStatus: 'completed' })], events: [] });
-  assert.deepEqual(stageState('review', model.snapshot().turns[0]), ['Terminé', 'Travail work-a · aucun complément utile']);
+  assert.deepEqual(stageState('review', model.snapshot().turns[0]), ['Done', 'Work work-a · nothing useful to add']);
 });
 
 test('late advice from a superseded turn stays marked replaced and inclusion is never inferred', () => {
@@ -162,7 +171,7 @@ test('only an exact request reference marks advice included, never applied', () 
   const [source, target] = model.snapshot().turns;
   assert.equal(source.reviews[0].includedIn[0].targetTurnId, 'turn-b');
   assert.equal(source.works[0].includedIn[0].targetTurnId, 'turn-b');
-  assert.equal(stageState('review', source)[0], 'Inclus');
+  assert.equal(stageState('review', source)[0], 'Included');
   assert.equal(target.adviceRefs.length, 2);
   assert.equal(source.reviews[0].included, false, 'the model does not infer influence or application');
 });
@@ -179,7 +188,7 @@ test('reconnect deduplicates events and ignores stale work revisions; history re
   const row = model.snapshot().turns[0];
   assert.equal(row.works[0].state, 'result_ready');
   assert.equal(row.events.length, 1);
-  assert.equal(stageState('tts', row)[0], 'Lecture demandée');
+  assert.equal(stageState('tts', row)[0], 'Playback requested');
   assert.equal(row.serverTimings.executed, 1200);
   model.ingest('session-1', { items: [], events: [], snapshotRequired: true });
   assert.equal(model.snapshot().gap, true);
@@ -191,11 +200,11 @@ test('HTTP and stream failures settle browser activity without claiming the guar
   model.stream('turn-a', { type: 'error' });
   const failed = model.snapshot().turns[0];
   assert.equal(failed.live, false);
-  assert.equal(stageState('guardian', failed)[0], 'Incertain');
+  assert.equal(stageState('guardian', failed)[0], 'Uncertain');
   model.begin('session-1', 'turn-b', 'voice');
   model.stream('turn-b', { type: 'deferred' });
   assert.equal(model.snapshot().turns[1].live, false);
-  assert.equal(stageState('guardian', model.snapshot().turns[1])[0], 'Inconnu');
+  assert.equal(stageState('guardian', model.snapshot().turns[1])[0], 'Unknown');
 });
 
 test('history order wins over receipt arrival, including an older work outside the history window', () => {
@@ -218,8 +227,8 @@ test('a failed work poll marks active Core observations stale until the next suc
   assert.equal(model.pollFailure('session-1'), true);
   assert.equal(model.snapshot().stale, true);
   const old = { ...model.snapshot().turns[0], telemetryStale: true };
-  assert.equal(stageState('guardian', old)[0], 'Incertain');
-  assert.equal(stageState('review', old)[0], 'Incertain');
+  assert.equal(stageState('guardian', old)[0], 'Uncertain');
+  assert.equal(stageState('review', old)[0], 'Uncertain');
   assert.equal(model.ingest('session-1', { items: [], events: [] }), true);
   assert.equal(model.snapshot().stale, false);
 });
@@ -245,8 +254,8 @@ test('barge-in and cancellation are distinct from completed audio', () => {
   model.ingest('session-1', { items: [work('work-a', 'turn-a', 2,
     { state: 'cancelled', guardianStatus: 'cancelled' })], events: [event(7, 'work-a', 'owner_cancel', '2026-10-11T12:00:00Z')] });
   const row = model.snapshot().turns[0];
-  assert.equal(stageState('tts', row)[0], 'Interrompu');
-  assert.equal(stageState('guardian', row)[0], 'Interrompu');
+  assert.equal(stageState('tts', row)[0], 'Interrupted');
+  assert.equal(stageState('guardian', row)[0], 'Interrupted');
   assert.equal(row.events[0].type, 'owner_cancel');
 });
 
@@ -256,7 +265,7 @@ test('server event durations match exact work identities despite interleaving', 
     event(2, 'work-b', 'guardian_settled', '2026-10-11T12:00:01Z'),
     event(3, 'work-a', 'guardian_settled', '2026-10-11T12:00:02Z')
   ]);
-  assert.deepEqual(observed, ['Gardien actif : 2.0 s (horloge Core)']);
+  assert.deepEqual(observed, ['Guardian active: 2.0 s (Core clock)']);
 });
 
 test('opening the map performs no command, fetch, generation or audio action', () => {
@@ -308,7 +317,7 @@ test('the visual fork and stage connectors appear only with matching turn/work e
       event(3, 'work-a', 'native_started', '2026-10-11T12:00:02Z')
     ] });
     assert.equal(find(host, 'workflow-lanes').dataset.split, 'true');
-    assert.equal(stageState('agents', panel.model.snapshot().turns[0])[0], 'Actif');
+    assert.equal(stageState('agents', panel.model.snapshot().turns[0])[0], 'Active');
     const flow = find(host, 'workflow-flow');
     const connected = [];
     const visit = item => {
@@ -341,7 +350,7 @@ test('an exact Brain advice connects its own turn to the background branch witho
     panel.review('turn-a', { adviceId: 'advice-a', version: 1, traceId: 'trace-a' });
     assert.equal(find(host, 'workflow-lane workflow-lane-background').dataset.connected, 'true');
     assert.equal(find(host, 'workflow-lanes').dataset.split, 'true');
-    assert.equal(stageState('review', panel.model.snapshot().turns[0])[0], 'Disponible');
+    assert.equal(stageState('review', panel.model.snapshot().turns[0])[0], 'Available');
   } finally { global.document = previousDocument; }
 });
 
@@ -372,11 +381,11 @@ test('a work revision retains keyboard focus on the selected stage or turn', () 
     panel.panel.open = true;
     panel.render();
     panel.begin('session-1', 'turn-a', 'voice');
-    assert.match(signal.textContent, /Tour 1 · activité non attestée/);
+    assert.match(signal.textContent, /Turn 1 · activity not attested/);
     const stage = host.querySelectorAll('[data-key]').find(item => item.dataset.key === 'stage:guardian');
     stage.querySelector('summary').focus();
     panel.ingest('session-1', { items: [work('work-a', 'turn-a')], events: [] });
-    assert.match(signal.textContent, /En cours : Gardien/);
+    assert.match(signal.textContent, /In progress: Guardian/);
     assert.equal(global.document.activeElement,
       host.querySelectorAll('[data-key]').find(item => item.dataset.key === 'stage:guardian').querySelector('summary'));
     const turn = host.querySelectorAll('[data-key]').find(item => item.dataset.key === 'turn:turn-a');
@@ -385,10 +394,10 @@ test('a work revision retains keyboard focus on the selected stage or turn', () 
     assert.equal(global.document.activeElement,
       host.querySelectorAll('[data-key]').find(item => item.dataset.key === 'turn:turn-a'));
     panel.begin('session-1', 'turn-b', 'voice');
-    assert.match(signal.textContent, /Tour 2 · activité non attestée/);
+    assert.match(signal.textContent, /Turn 2 · activity not attested/);
     const findTitle = root => root.className === 'workflow-map-title' ? root
       : root.children.map(findTitle).find(Boolean);
-    assert.match(findTitle(host).textContent, /Tour 2/, 'a new spoken turn becomes the monitored turn');
+    assert.match(findTitle(host).textContent, /Turn 2/, 'a new spoken turn becomes the monitored turn');
   } finally { global.document = previousDocument; }
 });
 
@@ -431,20 +440,20 @@ test('long conversations keep a bounded journal and retain all earlier turns and
       assert.ok(all(host, 'workflow-turn').length <= 24);
       assert.equal(all(host, 'workflow-event').length, 80);
     }
-    assert.equal(all(host, 'workflow-turn')[0].textContent, 'Tour 1', 'the first turn remains available');
+    assert.equal(all(host, 'workflow-turn')[0].textContent, 'Turn 1', 'the first turn remains available');
     assert.equal(control('turns-older'), undefined);
     for (let count = 0; count < 3; count++) {
       control('events-older').onclick();
       assert.ok(all(host, 'workflow-event').length <= 80);
     }
-    assert.equal(all(host, 'workflow-event')[0].children[2].textContent, 'Tour 1 · Travail work-1',
+    assert.equal(all(host, 'workflow-event')[0].children[2].textContent, 'Turn 1 · Work work-1',
       'the first event remains available');
     control('turns-newer').onclick();
     control('events-newer').onclick();
     assert.equal(all(host, 'workflow-turn').length, 24);
     assert.equal(all(host, 'workflow-event').length, 80);
     panel.begin('session-1', 'turn-301', 'text');
-    assert.equal(all(host, 'workflow-turn').at(-1).textContent, 'Tour 301',
+    assert.equal(all(host, 'workflow-turn').at(-1).textContent, 'Turn 301',
       'a new turn returns the journal to the live page');
     assert.equal(all(host, 'workflow-event').length, 80);
   } finally { global.document = previousDocument; }

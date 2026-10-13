@@ -56,12 +56,22 @@ function sameLabel(echoed, description) {
  * Returns { suggestions: [{ pattern, description, count, totalCents, category,
  * tags, confidence }] } without saving anything.
  */
-async function suggest({ limit } = {}, {
+// A rule pattern is at most 80 characters (cleanRule). Rules match by inclusion,
+// so the description's first words still match it: cut on a word boundary.
+function rulePattern(key) {
+  if (key.length <= 80) return key;
+  const cut = key.slice(0, 80);
+  const space = cut.lastIndexOf(' ');
+  return space >= 3 ? cut.slice(0, space) : cut;
+}
+
+async function suggest({ limit, ledger } = {}, {
   execute = require('../inferenceService').executeInference,
   model = process.env.FINANCE_EXTRACTION_MODEL || ''
 } = {}) {
   const max = Math.min(Math.max(Number.parseInt(limit, 10) || 15, 1), 25);
-  const pending = (await uncategorized({ limit: max })).descriptions;
+  // Only the ledger being viewed: the corporate page must not propose personal descriptions.
+  const pending = (await uncategorized({ limit: max, ledger })).descriptions;
   if (!pending.length) return { suggestions: [] };
   const result = await execute({
     callerDetail: 'finance-suggestions',
@@ -91,7 +101,7 @@ async function suggest({ limit } = {}, {
       const aligned = Boolean(item) && sameLabel(item.label, group.description);
       const category = CATEGORIES.includes(item?.category) ? item.category : null;
       return {
-        pattern: group.suggestedPattern || descriptionKey(group.description),
+        pattern: rulePattern(group.suggestedPattern || descriptionKey(group.description)),
         description: group.description,
         count: group.count,
         totalCents: group.totalCents,

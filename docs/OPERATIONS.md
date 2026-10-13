@@ -1811,6 +1811,24 @@ contradicts the note. With that model, 0.70 is the working value of
 question, with a note: there a true match scored 0.47 to 0.52 and an unrelated
 one up to 0.48, so that floor only trims context and cannot decide relevance.
 
+### Recall by meaning
+
+A note search (`memory_search`, the personal agent's memory operations, the
+automatic recall of a spoken turn) first returns the notes whose meaning is
+close to the request, then the notes that share its words. A request with no
+topic word still recalls nothing, and without an index or an embedding host
+the result is the word search alone. The embedding call has a 1.5 s budget.
+
+`MEMORY_NOTE_MEANING_MIN_SCORE` is the similarity from which a note counts as
+close (default 0.5; 1 switches recall by meaning off). Measured with
+`qllama/bge-m3:f16` on 24 owner questions against 16 notes (2026-10-12): the
+right note scored 0.47 to 0.67 and came first every time, the closest note to
+an off-topic request scored 0.47 at most. At 0.5, the explicit search found
+the right note for 13 of 14 questions (11 with words alone) and the automatic
+spoken recall for 12 of 14 (6 with words alone), with nothing recalled for the
+10 off-topic requests. The embedding added 33 ms at the median, 80 ms at most.
+Measure again after changing the embedding model.
+
 ## Completed coding task replay
 
 `core/scripts/completed-coding-replay.js` reads a private

@@ -18,9 +18,11 @@ function createBrowserSessionControls({
   personas, conversations, envelope, cleanText, fail, activePersonaTurns,
   validClientTurnId, nestorClient, memberWork = null
 }) {
-  function registerBrowserSessionControls(prefix, packId, scopeId, router = personas, consumer = null) {
+  // modeId narrows a space to the one mode its turn route accepts, so nothing it
+  // lists or resumes is refused on the first turn.
+  function registerBrowserSessionControls(prefix, packId, scopeId, router = personas, consumer = null, modeId = null) {
     const sessionScope = consumer === 'llmx' ? llmx.sessionScope(scopeId === 'family' ? 'family' : 'personal')
-      : { packId, ...(scopeId ? { scopeId } : {}) };
+      : { packId, ...(scopeId ? { scopeId } : {}), ...(modeId ? { modeId } : {}) };
     router.get(`${prefix}/sessions/recent`, async (req, res) => {
       try {
         const limit = Math.max(1, Math.min(Number(req.query.limit) || 3, 5));
@@ -157,8 +159,8 @@ function createBrowserSessionControls({
               return envelope(res, { interrupted: true, turnId: clientTurnId });
             }
           }
-          return fail(res, 503, 'La fin du tour précédent reste non confirmée. Son historique est conservé. Utilise Nouvelle conversation pour reprendre.'
-            + (consumer === 'llmx' ? ' Le monde 3D sera conservé.' : ''), 'VOICE_INTERRUPTION_FAILED');
+          return fail(res, 503, 'The end of the previous turn is still unconfirmed. Its history is kept. Use New conversation to continue.'
+            + (consumer === 'llmx' ? ' The 3D world will be kept.' : ''), 'VOICE_INTERRUPTION_FAILED');
         }
         return envelope(res, { interrupted: true, turnId: clientTurnId });
       } catch (error) {

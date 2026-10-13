@@ -379,3 +379,14 @@ test.each(['persistence_rejected', 'persistence_ack_lost', 'native_completion_fa
   expect(f.deps.fetch).toHaveBeenCalledTimes(1);
   expect(f.deps.scope.complete).toHaveBeenCalledTimes(1);
 });
+
+test('near-ceiling request is refused before a model journal, admission or inference dispatch', async () => {
+  const f = await fixture({ modelSeconds: 600 });
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.runs.0.currentUsage': { modelSeconds: 481 } } });
+  const response = await f.post();
+  expect(response.status).toBe(409); expect(response.body.code || response.body.error.code).toBe('CODING_MODEL_RESERVE');
+  expect(f.runtime.inference.execute).not.toHaveBeenCalled();
+  expect(f.deps.beginInferenceAdmission).not.toHaveBeenCalled(); expect(f.deps.fetch).not.toHaveBeenCalled();
+  const run = (await durable(f)).codingAutonomy.runs[0];
+  expect(run.modelReceipts || []).toEqual([]); expect(run.pendingInferences).toEqual([]);
+});

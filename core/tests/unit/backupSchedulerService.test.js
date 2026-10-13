@@ -17,7 +17,7 @@ function fakeBackupService(overrides = {}) {
   return {
     createBackup: jest.fn(async () => ({ name: 'agentx-new.tar.gz' })),
     createConfigBackup: jest.fn(async () => ({ name: 'config-new.tar.gz' })),
-    createQdrantBackup: jest.fn(async () => ({ name: 'qdrant.snapshot' })),
+    createQdrantBackup: jest.fn(async () => ({ name: 'qdrant.snapshot', localPath: '/backups/qdrant/qdrant.snapshot' })),
     listBackups: jest.fn(() => []),
     listConfigBackups: jest.fn(() => []),
     ...overrides
@@ -291,7 +291,7 @@ describe('backupSchedulerService retry discipline', () => {
       createQdrantBackup: jest.fn(async () => {
         qdrantAttempts += 1;
         if (qdrantAttempts === 1) throw new Error('rag unreachable');
-        return { name: 'qdrant.snapshot' };
+        return { name: 'qdrant.snapshot', localPath: '/backups/qdrant/qdrant.snapshot' };
       })
     });
     const first = createHarness({ store, service });
@@ -337,6 +337,17 @@ describe('backupSchedulerService retry discipline', () => {
     expect(status.nextRunReason).toBe('cron');
     expect(status.nextRunAt).toBe('2026-09-24T07:00:00.000Z');
     expect(status.consecutiveRetries).toBe(0);
+  });
+
+  test('a Qdrant snapshot without a persistent copy fails its layer', async () => {
+    const service = fakeBackupService({ createQdrantBackup: jest.fn(async () => ({ name: 'server-only.snapshot', localPath: null })) });
+    const harness = createHarness({ service });
+    await harness.start();
+    await harness.fireNext();
+
+    const status = harness.scheduler.getStatus();
+    expect(status.lastStatus).toBe('partial');
+    expect(status.lastFailures[0]).toMatchObject({ name: 'qdrant', code: 'QDRANT_NO_PERSISTENT_COPY', retryable: true });
   });
 
   test('a non-retryable failure (missing recovery auth) waits for the next occurrence', async () => {

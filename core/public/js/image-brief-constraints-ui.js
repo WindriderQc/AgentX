@@ -22,30 +22,30 @@ globalThis.AgentXImageConstraints = { mount({ getContext, onChange = () => {} })
     $('image-constraint-kind').disabled = context.locked;
     for (const button of $('image-constraint-list').querySelectorAll('button')) button.disabled = context.locked;
     for (const input of $('image-constraint-list').querySelectorAll('textarea')) input.disabled = context.locked;
-    const briefCounter = $('image-brief-counter'), format = value => new Intl.NumberFormat('fr-CA').format(value);
+    const briefCounter = $('image-brief-counter'), format = value => new Intl.NumberFormat('en-US').format(value);
     try {
       const prompt = context.prompt || '', value = getValue(), suffix = contract.block(value);
       const render = context.textPolicy ? globalThis.ImageTextPolicy.inspect(prompt, value, context.textPolicy) : null;
       const length = render ? render.renderUnits : contract.visual(prompt, value).length + (suffix ? suffix.length + 2 : 0);
       if (briefCounter) {
-        briefCounter.textContent = `Brief conservé : ${format(prompt.length)} / ${format(contract.MAX_BRIEF)} caractères · ${render?.needsPlan ? 'rendu final : méthode et textes à préparer.' : `rendu final : ${format(length)} / ${format(contract.MAX_PROMPT)}.`}`;
-        if (render && !render.needsPlan) briefCounter.textContent += ` Consignes ajoutées : ${format(render.overheadUnits)} ; description disponible : ${format(render.maxVisualUnits)} caractères.`;
+        briefCounter.textContent = `Brief kept: ${format(prompt.length)} / ${format(contract.MAX_BRIEF)} characters · ${render?.needsPlan ? 'final render: method and text to prepare.' : `final render: ${format(length)} / ${format(contract.MAX_PROMPT)}.`}`;
+        if (render && !render.needsPlan) briefCounter.textContent += ` Added instructions: ${format(render.overheadUnits)}; room for the description: ${format(render.maxVisualUnits)} characters.`;
         briefCounter.dataset.invalid = String(render?.needsPlan || prompt.length > contract.MAX_PROMPT || length > contract.MAX_PROMPT);
-        if (prompt.length > contract.MAX_BRIEF || (!context.textPolicy && length > contract.MAX_BRIEF)) briefCounter.textContent += ' Réduis le brief avant de consulter Hermes ; tout le texte collé reste conservé.';
-        else if (prompt.length > contract.MAX_PROMPT || length > contract.MAX_PROMPT) briefCounter.textContent += ' Création indisponible : le texte saisi ou le brief avec contraintes dépasse 8 000 caractères. Utilise « Affiner mon brief » avec Hermes, ou réduis le texte.';
+        if (prompt.length > contract.MAX_BRIEF || (!context.textPolicy && length > contract.MAX_BRIEF)) briefCounter.textContent += ' Shorten the brief before consulting Hermes; all pasted text is kept.';
+        else if (prompt.length > contract.MAX_PROMPT || length > contract.MAX_PROMPT) briefCounter.textContent += ' Creation unavailable: the entered text or the brief with constraints exceeds 8,000 characters. Use "Refine my brief" with Hermes, or shorten the text.';
       }
-      if (prompt.length > contract.MAX_PROMPT) throw new Error('Le brief saisi dépasse 8 000 caractères. Utilise « Affiner mon brief » avec Hermes, ou réduis le texte.');
+      if (prompt.length > contract.MAX_PROMPT) throw new Error('The entered brief exceeds 8,000 characters. Use "Refine my brief" with Hermes, or shorten the text.');
       const composed = context.textPolicy ? globalThis.ImageTextPolicy.compose(prompt, value, context.textPolicy) : contract.compose(prompt, value);
-      $('image-constraints-counter').textContent = `${items.length} contrainte(s) · brief transmis : ${composed.length} / ${contract.MAX_PROMPT} caractères`;
+      $('image-constraints-counter').textContent = `${items.length} constraint(s) · brief sent: ${composed.length} / ${contract.MAX_PROMPT} characters`;
       $('image-constraints-counter').dataset.invalid = 'false';
     } catch (error) {
       $('image-constraints-counter').textContent = error.message;
       $('image-constraints-counter').dataset.invalid = 'true';
       if (briefCounter && !isValid({ forPlanning: true })) {
         let reason = error.message;
-        if ((context.prompt || '').length > contract.MAX_BRIEF) reason = 'Le brief dépasse 32 000 caractères. Réduis-le avant de consulter Hermes ; tout le texte collé reste conservé.';
+        if ((context.prompt || '').length > contract.MAX_BRIEF) reason = 'The brief exceeds 32,000 characters. Shorten it before consulting Hermes; all pasted text is kept.';
         else { try { contract.composeBrief(context.prompt || '', getValue()); } catch (planningError) { reason = planningError.message; } }
-        briefCounter.textContent = `Brief conservé : ${format((context.prompt || '').length)} / ${format(contract.MAX_BRIEF)} caractères. ${reason}`;
+        briefCounter.textContent = `Brief kept: ${format((context.prompt || '').length)} / ${format(contract.MAX_BRIEF)} characters. ${reason}`;
         briefCounter.dataset.invalid = 'true';
       }
     }
@@ -53,9 +53,9 @@ globalThis.AgentXImageConstraints = { mount({ getContext, onChange = () => {} })
   function render() {
     $('image-constraint-list').replaceChildren();
     for (const item of items) {
-      const row = node('li'), label = node('label', contract.KINDS[item.kind]), input = node('textarea'), remove = node('button', 'Retirer');
+      const row = node('li'), label = node('label', contract.LABELS[item.kind]), input = node('textarea'), remove = node('button', 'Remove');
       input.id = `image-constraint-${item.id}`; input.value = item.text; input.rows = 2; input.maxLength = contract.MAX_TEXT * 2;
-      label.htmlFor = input.id; remove.type = 'button'; remove.setAttribute('aria-label', `Retirer la contrainte ${contract.KINDS[item.kind]}`);
+      label.htmlFor = input.id; remove.type = 'button'; remove.setAttribute('aria-label', `Remove the constraint ${contract.LABELS[item.kind]}`);
       input.addEventListener('input', () => { item.text = input.value; refresh(); onChange(); });
       remove.addEventListener('click', () => { if (getContext().locked) return; items = items.filter(value => value.id !== item.id); render(); onChange(); });
       row.append(label, input, remove); $('image-constraint-list').append(row);

@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Aperçu local · Cockpit Nestor</title>
+  <title>Local preview · Nestor cockpit</title>
   <link rel="stylesheet" href="/workflow-panel.css">
   <link rel="stylesheet" href="/avatar-dock.css">
   <link rel="stylesheet" href="/workflow-cockpit.css">
@@ -59,19 +59,19 @@
 </head>
 <body class="household-product">
   <main class="conversation-shell">
-    <header><div><p class="eyebrow">Super Dad · Personnel</p><h1>Avec Nestor.</h1><p class="subtitle">Une conversation, plusieurs composants observables.</p></div><span class="pill">Aperçu synthétique</span></header>
-    <section class="conversation-stage" aria-label="Conversation de démonstration">
+    <header><div><p class="eyebrow">Super Dad · Personal</p><h1>With Nestor.</h1><p class="subtitle">One conversation, several observable components.</p></div><span class="pill">Synthetic preview</span></header>
+    <section class="conversation-stage" aria-label="Demo conversation">
       <div class="conversation-cockpit">
-        <div class="conversation-live"><div class="conversation-presence" aria-hidden="true">N</div><p class="conversation-status">Nestor écoute · le travail de fond continue</p><div class="conversation-actions"><button type="button">Pause</button></div><p id="conversationWorkflowSignal" class="conversation-workflow-signal"></p></div>
+        <div class="conversation-live"><div class="conversation-presence" aria-hidden="true">N</div><p class="conversation-status">Nestor is listening · background work continues</p><div class="conversation-actions"><button type="button">Pause</button></div><p id="conversationWorkflowSignal" class="conversation-workflow-signal"></p></div>
         <div class="conversation-dialogue">
-          <section class="conversation-board conversation-visual" aria-label="Visuel présenté" hidden>Visuel synthétique du tour.</section>
-          <div class="conversation-transcript" role="log" aria-label="Échanges">
-            <p class="conversation-message user">Peux-tu regarder mes tâches du jour ?<small>Vous · tour 1</small></p>
-            <p class="conversation-message assistant">Oui, je m’en occupe. Je reste disponible si tu veux préciser.<small>Nestor · réponse directe</small></p>
+          <section class="conversation-board conversation-visual" aria-label="Shown visual" hidden>Synthetic turn visual.</section>
+          <div class="conversation-transcript" role="log" aria-label="Messages">
+            <p class="conversation-message user">Peux-tu regarder mes tâches du jour ?<small>You · turn 1</small></p>
+            <p class="conversation-message assistant">Oui, je m’en occupe. Je reste disponible si tu veux préciser.<small>Nestor · direct answer</small></p>
           </div>
-          <form class="conversation-text" onsubmit="event.preventDefault()"><textarea aria-label="Message" placeholder="Écris un message." required></textarea><button type="submit">Envoyer</button></form>
+          <form class="conversation-text" onsubmit="event.preventDefault()"><textarea aria-label="Message" placeholder="Write a message." required></textarea><button type="submit">Send</button></form>
         </div>
-        <section id="conversationWorkflow" aria-label="Parcours des composants de Nestor"></section>
+        <section id="conversationWorkflow" aria-label="Nestor component workflow"></section>
       </div>
     </section>
   </main>

@@ -66,7 +66,7 @@ function createPersonaTurnHandler({
     const sceneEnabled = isLlmX && !isOpening && llmx.sceneCapable(req.llmx.sceneContext);
     const userText = consult ? consult.question : isOpening ? '' : String(req.body?.text || '').trim();
     if (userText.length > 4000) {
-      return fail(res, 413, 'Le texte dépasse la limite de 4 000 caractères. Rien n’a été raccourci ni envoyé au modèle.', 'VOICE_PERSONA_TEXT_TOO_LARGE');
+      return fail(res, 413, 'The text exceeds the 4,000-character limit. Nothing was shortened or sent to the model.', 'VOICE_PERSONA_TEXT_TOO_LARGE');
     }
     if (!userText && !isOpening) return fail(res, 400, 'text is required', 'VOICE_PERSONA_TEXT_REQUIRED');
     if (!consult && activePersonaTurns.has(req.params.sessionId)) return fail(res, 409, 'Wait for this conversation to finish its reply.', 'VOICE_TURN_IN_PROGRESS');
@@ -129,9 +129,11 @@ function createPersonaTurnHandler({
       const requestedAttachments = runtimeServices.attachments.ids(req.body?.attachmentIds);
       const attachmentStore = !isLlmX && access === 'private' && session.packId === 'personal_operator' && session.scopeId === 'personal'
         ? personalAttachments(session.sessionId) : null;
-      if (requestedAttachments.length && !attachmentStore) return fail(res, 400, 'Les pièces jointes sont disponibles dans Nestor personnel.', 'ATTACHMENTS_PERSONAL_ONLY');
+      if (requestedAttachments.length && !attachmentStore) return fail(res, 400, 'Attachments are available in personal Nestor.', 'ATTACHMENTS_PERSONAL_ONLY');
       entry.attachments = requestedAttachments.length ? await attachmentStore.references(requestedAttachments) : [];
-      if (!consult && !isLlmX && !teamAddress.addressedMember(userText, teamAddress.teamMembers(conversationEnv), agentIdFor(session))
+      const nativeDelegation = conversationEnv.PERSONAL_CONVERSATION_WORK_MODE === 'native'
+        && Boolean(conversationWorks?.eligible(session, req.body?.channel));
+      if (!consult && !isLlmX && !teamAddress.addressedMember(userText, teamAddress.teamMembers(conversationEnv), agentIdFor(session), { nativeDelegation })
           && (conversationWorks?.eligible(session, req.body?.channel)
             || await conversationWorks?.retained?.(session, req.body?.turnId, req.body?.channel))) {
         clientTurnId ||= req.body.turnId; entry.clientTurnId = clientTurnId;
@@ -203,7 +205,7 @@ function createPersonaTurnHandler({
         const backend = conversationBackend(session.backend, conversationEnv);
         // #41: a turn that names another team member runs in that member's own session.
         const team = backend === 'openclaw' && !pack.childSafe && !isLlmX ? teamAddress.teamMembers(conversationEnv) : [];
-        member = consult ? consult.member : teamAddress.addressedMember(userText, team, agentIdFor(session));
+        member = consult ? consult.member : teamAddress.addressedMember(userText, team, agentIdFor(session), { nativeDelegation });
         // That member is still on an earlier question: the conversation's agent answers and says so.
         if (member && !consult && memberWork?.active(session.sessionId).some(job => job.agentId === member.agentId)) member = null;
         memberPersona = member ? await teamPersona(member.agentId, runtimeServices.personas) : null;
@@ -251,7 +253,7 @@ function createPersonaTurnHandler({
             if (features.memoryContext !== false) memories = (await notes.search(userText, voiceRecallOptions(userText, personalVoice(session, req.body?.channel), MEMORY_RECALL_LIMIT))).notes;
           } catch (error) {
             logger?.error?.('Core note recall failed', { error: error.message });
-            return fail(res, 503, 'Les souvenirs sont indisponibles. Réessaie avant de poursuivre.', 'MEMORY_NOTES_UNAVAILABLE');
+            return fail(res, 503, 'Memories are unavailable. Try again before continuing.', 'MEMORY_NOTES_UNAVAILABLE');
           }
           if (features.knowledgeContext !== false && (pack.childSafe || backend === 'agentx')) {
             knowledge = await nestorKnowledge.retrieve(knowledgeState, pack.id, userText, {
@@ -308,6 +310,9 @@ function createPersonaTurnHandler({
         const currentDirective = [turnDirective(context), acceptedTaskWork
           ? 'Core has already accepted this current personal task lookup. Its verified intake is ' + JSON.stringify(acceptedTaskWork)
             + '. Give a short acknowledgment and keep handling any other parts of the request with your existing capabilities. This lookup belongs to the separate worker: no second dispatch, task-list call or agent discovery is needed. Acceptance is not task data or task completion.'
+          : '', acceptedNativeWork?.mode === 'native'
+          ? 'Core owns this accepted Main work: ' + JSON.stringify(acceptedNativeWork)
+            + '. Respond conversationally while native Main handles the requested work. No tools or second dispatch from the guardian; acceptance is not completion.'
           : ''].filter(Boolean).join('\n\n');
         const nativeInstructions = nativeInstructionsFor({ turnSession, pack, selectedMode, channel: req.body?.channel,
           soundPlayback: !pack.childSafe && browserSoundPlayback && !preselected,
@@ -340,7 +345,7 @@ function createPersonaTurnHandler({
           warmup?.noteTurn(session);
           // A canonical acknowledgment invokes no native turn and can finish
           // while opening warm-up still owns the guardian's native session.
-          if (!acceptedNativeWork) await warmup?.settled(session.sessionId);
+          if (!acceptedNativeWork || acceptedNativeWork.foreground === 'guardian') await warmup?.settled(session.sessionId);
         }
 
         serverPhases.prepared = Date.now() - startedAt;

@@ -26,7 +26,7 @@
   );
 %>
 <body class="<%= locals.bodyClass || '' %>" data-agentx-profile="<%= locals.agentxProfile || 'full' %>" data-agentx-surface="<%= canonicalSurfaceId %>">
-  <a class="skip-link" id="skipToMainContent" href="#main-content"><%= locals.pageLanguage === 'fr' ? 'Aller au contenu' : 'Skip to main content' %></a>
+  <a class="skip-link" id="skipToMainContent" href="#main-content">Skip to main content</a>
   <% if (locals.showNav !== false) { %>
     <%- include('../partials/nav', { service: service, activePage: activePage }) %>
   <% } else { %>

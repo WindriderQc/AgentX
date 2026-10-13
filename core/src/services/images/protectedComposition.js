@@ -18,10 +18,10 @@ function closed(value, keys) {
 function request(value) {
   if (!closed(value, ['parentSha256', 'resultSha256', 'regions']) || typeof value.parentSha256 !== 'string' || !SHA.test(value.parentSha256)
     || typeof value.resultSha256 !== 'string' || !SHA.test(value.resultSha256) || !Array.isArray(value.regions)
-    || !value.regions.length || value.regions.length > MAX_REGIONS) throw fail('Choisis de 1 à 20 zones et des images archivées valides.');
+    || !value.regions.length || value.regions.length > MAX_REGIONS) throw fail('Choose 1 to 20 zones and valid archived images.');
   const regions = value.regions.map(region => {
     if (!closed(region, ['x', 'y', 'width', 'height']) || !Object.values(region).every(Number.isSafeInteger)
-      || region.x < 0 || region.y < 0 || region.width < 1 || region.height < 1) throw fail('Les zones doivent utiliser des coordonnées entières positives.');
+      || region.x < 0 || region.y < 0 || region.width < 1 || region.height < 1) throw fail('Zones must use positive integer coordinates.');
     return { x: region.x, y: region.y, width: region.width, height: region.height };
   });
   return { parentSha256: value.parentSha256, resultSha256: value.resultSha256, regions };
@@ -30,17 +30,17 @@ function request(value) {
 function compose(parentBytes, resultBytes, regions) {
   for (const bytes of [parentBytes, resultBytes]) {
     if (Buffer.isBuffer(bytes) && bytes.length >= 33 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-      && bytes[28] === 1) throw fail('Les PNG entrelacés ne sont pas pris en charge par la composition protégée.', 409);
+      && bytes[28] === 1) throw fail('Interlaced PNGs are not supported by the protected composition.', 409);
   }
   let parent, result;
   try { parent = decode(parentBytes, MAX_PIXELS); result = decode(resultBytes, MAX_PIXELS); }
-  catch { throw fail('Une image archivée ne peut pas être décodée dans les limites de composition.', 409); }
+  catch { throw fail('An archived image cannot be decoded within the composition limits.', 409); }
   if (parent.width !== result.width || parent.height !== result.height) {
-    throw fail('Le parent et le résultat doivent avoir exactement les mêmes dimensions. Aucun redimensionnement automatique.', 409);
+    throw fail('The parent and the result must have exactly the same dimensions. No automatic resizing.', 409);
   }
   const width = parent.width, height = parent.height;
   const checked = request({ parentSha256: hash(parentBytes), resultSha256: hash(resultBytes), regions }).regions;
-  if (checked.some(r => r.x + r.width > width || r.y + r.height > height)) throw fail('Une zone dépasse les dimensions du parent.');
+  if (checked.some(r => r.x + r.width > width || r.y + r.height > height)) throw fail('A zone exceeds the parent’s dimensions.');
   const mask = Buffer.alloc(width * height);
   const output = Buffer.from(parent.data);
   for (const region of checked) {
@@ -60,7 +60,7 @@ function compose(parentBytes, resultBytes, regions) {
     let end = start + 1;
     while (end < mask.length && !mask[end]) end += 1;
     const source = parent.data.subarray(start * 4, end * 4);
-    if (!source.equals(exported.data.subarray(start * 4, end * 4))) throw fail('La vérification des pixels protégés a échoué.', 503);
+    if (!source.equals(exported.data.subarray(start * 4, end * 4))) throw fail('The protected pixel check failed.', 503);
     outside.update(source); protectedPixels += end - start; start = end;
   }
   return { png, width, height, regions: checked, proof: {
@@ -77,30 +77,30 @@ function createService({ operations = ImageOperation, archive = defaultArchive }
   const identity = op => JSON.stringify([op?._id, op?.state, op?.runtimeRestored, op?.artifact, op?.lineage]);
   const ready = op => op?.state === 'completed' && op.runtimeRestored === true && op.artifact && SHA.test(op.artifact.sha256 || '');
   async function build(id, body) {
-    if (!UUID.test(id || '')) throw fail('Opération image inconnue.', 404);
+    if (!UUID.test(id || '')) throw fail('Unknown image operation.', 404);
     const input = request(body);
-    if (busy) throw fail('Une composition est déjà en préparation. Réessaie après sa fin.', 409);
+    if (busy) throw fail('A composition is already being prepared. Try again once it finishes.', 409);
     busy = true;
     try {
       const child = await read(id), link = child?.lineage?.parent;
       if (!ready(child) || !link || !UUID.test(link.operationId || '') || link.operationId === id) {
-        throw fail('Choisis une retouche terminée avec un parent archivé et les ressources restituées.', 409);
+        throw fail('Choose a finished edit with an archived parent and its resources returned.', 409);
       }
       const parent = await read(link.operationId);
       if (!ready(parent) || parent.artifact.sha256 !== link.sha256 || input.parentSha256 !== link.sha256
         || child.artifact.sha256 !== input.resultSha256 || parent.artifact.width !== link.width || parent.artifact.height !== link.height) {
-        throw fail('Les empreintes ou le parent enregistré ne correspondent plus à cette sélection.', 409);
+        throw fail('The fingerprints or the recorded parent no longer match this selection.', 409);
       }
       const parentIdentity = identity(parent), childIdentity = identity(child);
       // Canonical archive receipts only; callers cannot supply bytes, paths or URLs.
       const storage = archive();
       const p = await storage.read(parent.artifact), r = await storage.read(child.artifact);
-      if (hash(p.bytes) !== input.parentSha256 || hash(r.bytes) !== input.resultSha256) throw fail('Les images archivées ont une empreinte incohérente.', 503);
+      if (hash(p.bytes) !== input.parentSha256 || hash(r.bytes) !== input.resultSha256) throw fail('The archived images have an inconsistent fingerprint.', 503);
       const output = compose(p.bytes, r.bytes, input.regions);
       if (output.width !== link.width || output.height !== link.height
-        || output.width !== child.artifact.width || output.height !== child.artifact.height) throw fail('Les dimensions archivées sont incohérentes.', 503);
+        || output.width !== child.artifact.width || output.height !== child.artifact.height) throw fail('The archived dimensions are inconsistent.', 503);
       if (identity(await read(parent._id)) !== parentIdentity || identity(await read(child._id)) !== childIdentity) {
-        throw fail('La sélection archivée a changé pendant la préparation. Recharge les images.', 409);
+        throw fail('The archived selection changed during preparation. Reload the images.', 409);
       }
       return { receipt: { schema: SCHEMA, parent: { operationId: parent._id, sha256: input.parentSha256 },
         result: { operationId: child._id, sha256: input.resultSha256 }, width: output.width, height: output.height,

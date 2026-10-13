@@ -1,7 +1,7 @@
 """Selected TTS provider facade.
 
 Kokoro is the default engine. Windows SAPI is the low-latency engine of a
-Windows host, and VoxCPM2 an optional cloned voice served by a separate worker.
+Windows host, and Pocket TTS an optional cloned voice served by a separate worker.
 """
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ def provider_name(provider: str | None = None) -> str:
 
 
 def output_rate(provider: str | None = None) -> int:
-    return 48000 if _selected(provider) == "voxcpm" else settings.tts_output_rate
+    return 24000 if _selected(provider) == "voxcpm" else settings.tts_output_rate
 
 
 def preload(provider: str | None = None) -> None:
@@ -120,7 +120,7 @@ def request_overrides(
         if selected_voice != settings.voxcpm_voice:
             from app.tts import catalog  # catalog imports this module
             if selected_voice not in catalog.worker_voices():
-                raise ValueError("The requested VoxCPM2 reference is not configured")
+                raise ValueError("The requested Pocket TTS reference is not configured")
         return {"language": normalize_language(language), "voice": selected_voice}
     if selected == "windows_sapi":
         from app.tts import windows_sapi
@@ -138,7 +138,7 @@ def resolve(provider=None, *, language=None, voice=None) -> dict:
         profile = {"language": normalize_language(language), "voice": windows_sapi.resolve_voice(voice, language)}
     else:
         from app.tts import catalog  # catalog imports this module
-        # Every VoxCPM2 voice, the configured one included, needs a ready worker
+        # Every Pocket TTS voice, the configured one included, needs a ready worker
         # before audio starts; the service never substitutes another voice.
         ready, reason = catalog.worker_ready()
         if not ready:

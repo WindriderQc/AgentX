@@ -2,6 +2,20 @@ const { taskNextAction } = require('../../src/services/pipelineNextAction');
 const now = new Date('2026-09-27T12:00:00Z');
 const read = (task, options = {}) => taskNextAction({ pipelineId: '0950', service: 'core', ...task }, { now, ...options });
 
+test('a stopped coding failure explains its cause and that it is not queued', () => {
+  const next = read({ status: 'blocked', codingAutonomy: { authorized: false },
+    automationAttempts: [{ attempt: 1, evidence: { failureCodes: ['worker_exit'] } }] });
+  expect(next.label).toBe('Blocked · worker_exit'); expect(next.detail).toContain('not queued');
+  expect(next.authorization).toBe('not_granted');
+});
+test('qualification disposition is separate from task success and does not erase UNKNOWN', () => {
+  const task = { status: 'blocked', codingAutonomy: { disposition: { kind: 'qualification', outcome: 'abandoned' } },
+    automationAttempts: [{ attempt: 1, evidence: { failureCodes: ['inference_outcome_unknown'] } }] };
+  const before = JSON.stringify(task); const next = read(task);
+  expect(next).toMatchObject({ code: 'qualification_archived', attention: false, authorization: 'not_granted' });
+  expect(next.detail).toContain('dependency barriers remain'); expect(JSON.stringify(task)).toBe(before);
+});
+
 test.each([null, 'invalid', '2026-09-27T13:00:00Z', '2026-09-26T00:00:00Z'])(
   'missing/invalid/future/old heartbeat %s never proves worker death or authorizes replay', heartbeatAt => {
     const next = read({ status: 'in_progress', assignee: 'worker', heartbeatAt, updatedAt: now });

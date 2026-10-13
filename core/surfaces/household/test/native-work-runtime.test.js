@@ -4,7 +4,13 @@ const assert = require('node:assert/strict');
 const { nativeWorkRuntime } = require('../native-work-runtime');
 const { createAgentClient } = require('../conversation-agent');
 const { hash } = require('../../../src/services/conversationWorks/contract');
+const { readTurnContext } = require('../../../src/services/conversations/turnContext');
 const { PERSONAL_OPERATOR_SURFACE_CONTRACT } = require('../packs');
+
+function runtimeWithContext(options) {
+  return nativeWorkRuntime({ ...options, works: { ...options.works,
+    conversationContext: sessionId => readTurnContext(options.conversations, { sessionId }) } });
+}
 
 test('background native Main preserves the complete request, references prior turns and retains its native model in a distinct session', async () => {
   const originalId = '11111111-1111-4111-8111-111111111111', workSessionId = '33333333-3333-4333-8333-333333333333';
@@ -12,10 +18,11 @@ test('background native Main preserves the complete request, references prior tu
   const row = { sessionId: originalId, turnId: 'canonical-turn', requestSha256: hash(text), attempt: { sessionId: workSessionId, agentId: 'main' } };
   const session = { sessionId: originalId, packId: 'personal_operator', scopeId: 'personal', modeId: 'personal',
     agentSessionKey: `agent:main:household:direct:${originalId}`, persona: { identity: 'Synthetic Nestor identity.' } };
-  const runtime = nativeWorkRuntime({ works: { query: sessionId => ({ sessionId }) }, continuity: async () => ({ capabilities: { isolatedWork: true, nativeReadBudget: true } }), conversations: {
+  const runtime = runtimeWithContext({ works: { query: sessionId => ({ sessionId }) }, continuity: async () => ({ capabilities: { isolatedWork: true, nativeReadBudget: true } }), conversations: {
     getTurn: async () => ({ inputText: text, attachments: [] }),
-    listTurns: async () => [{ traceId: row.turnId, inputText: text },
-      { traceId: 'prior-turn', inputText: 'A prior restriction.', replyText: 'Preserved.', outcome: 'completed' }]
+    listTurns: () => assert.fail('A list window is not complete context'),
+    readTurns: async () => [{ traceId: 'prior-turn', inputText: 'A prior restriction.', replyText: 'Preserved.', outcome: 'completed' },
+      { traceId: row.turnId, inputText: text }]
   } });
   const prepared = await runtime.prepare({ row, session, selectedContext: 'Selected personal context.' });
   assert.equal(prepared.text, text); assert.equal(prepared.currentContent, text);
@@ -40,6 +47,7 @@ test('background native Main preserves the complete request, references prior tu
   assert.equal(privateOwnerContext({ agentId: 'main', sessionKey: sent.headers['x-openclaw-session-key'] }), true);
   assert.equal(sent.headers['x-openclaw-model'], undefined);
   assert.equal(JSON.parse(sent.body).model, 'openclaw/main');
+  assert.equal(JSON.parse(sent.body).max_output_tokens, 4096, 'Legacy read consultations keep their existing bound');
   assert.equal(result.metadata.model, 'native-main-model');
   assert.match(JSON.stringify(JSON.parse(sent.body).input), /Résume mes courriels récents/);
 });
@@ -48,9 +56,9 @@ test('a current web question retains the adult audience and original local date 
   const text = 'Does the synthetic team play tonight?';
   const row = { sessionId: 'original-session', turnId: 'current-turn', requestSha256: hash(text),
     receivedAt: new Date('2030-01-02T01:00:00Z'), attempt: { sessionId: 'isolated-session', agentId: 'main' } };
-  const runtime = nativeWorkRuntime({ works: { query: sessionId => ({ sessionId }) },
+  const runtime = runtimeWithContext({ works: { query: sessionId => ({ sessionId }) },
     continuity: async () => ({ capabilities: { isolatedWork: true, nativeReadBudget: true } }), conversations: {
-      getTurn: async () => ({ inputText: text, attachments: [] }), listTurns: async () => [] } });
+      getTurn: async () => ({ inputText: text, attachments: [] }), readTurns: async () => [] } });
   const previous = process.env.PLANNING_TIME_ZONE;
   process.env.PLANNING_TIME_ZONE = 'America/Toronto';
   try {
@@ -62,6 +70,38 @@ test('a current web question retains the adult audience and original local date 
     assert.doesNotMatch(prepared.turnDirective, /sessions_spawn|Secretary/);
     assert.equal(prepared.session.agentId, 'main');
   } finally { if (previous === undefined) delete process.env.PLANNING_TIME_ZONE; else process.env.PLANNING_TIME_ZONE = previous; }
+});
+
+for (const mode of ['read', 'native']) test(`${mode} Main receives all older restrictions, replies and evidence before first invocation`, async () => {
+  const text = 'Read the synthetic sources.';
+  const turns = Array.from({ length: 20 }, (_, index) => ({ traceId: `turn-${index}`, inputText: `Question ${index}`, replyText: `Reply ${index}` }));
+  turns[0].inputText += 'x'.repeat(3000) + ' LAST_RESTRICTION';
+  turns[0].replyText += 'y'.repeat(3000) + ' LAST_CORRECTION';
+  turns[0].toolEvidence = { status: 'observed', receipts: [{ tool: 'synthetic_read', result: 'EXACT_EVIDENCE' }] };
+  const runtime = runtimeWithContext({ works: { query: sessionId => ({ sessionId }) },
+    continuity: async () => ({ capabilities: { isolatedWork: true, nativeReadBudget: true, nativeConversation: true } }), conversations: {
+      getTurn: async () => ({ inputText: text, attachments: [] }), readTurns: async () => turns,
+      listTurns: () => assert.fail('Research must not select a tail') } });
+  const prepared = await runtime.prepare({ row: { mode, classification: mode === 'native' ? 'native_work' : 'native_read', sessionId: 'session', turnId: 'current', requestSha256: hash(text),
+    attempt: { sessionId: 'work-session', agentId: 'main' } }, session: {}, selectedContext: 'Selected memory only.' });
+  for (const turn of turns) { assert.ok(prepared.turnContext.includes(turn.inputText)); assert.ok(prepared.turnContext.includes(turn.replyText)); }
+  assert.match(prepared.turnContext, /EXACT_EVIDENCE/); assert.doesNotMatch(prepared.turnContext, /shortened context/);
+  assert.match(prepared.turnContext, /"complete":true,"turnCount":20/);
+  if (mode === 'native') {
+    assert.equal(prepared.maxOutputTokens, undefined, 'Complete Main retains its native reasoning and answer budget');
+    assert.match(prepared.instructions, /complete native Nestor Main/);
+    assert.match(prepared.instructions, /existing permissions and approval contracts/);
+    assert.doesNotMatch(prepared.instructions, /Never send, draft, modify/);
+  } else assert.equal(prepared.maxOutputTokens, 4096);
+});
+
+for (const mode of ['read', 'native']) test(`${mode} Main refuses an oversized complete conversation before invocation`, async () => {
+  const text = 'Read sources.';
+  const runtime = runtimeWithContext({ works: { query: sessionId => ({ sessionId }) },
+    continuity: async () => ({ capabilities: { isolatedWork: true, nativeConversation: true } }), conversations: {
+      getTurn: async () => ({ inputText: text }), readTurns: async () => [{ inputText: 'x'.repeat(100000) }] } });
+  await assert.rejects(runtime.prepare({ row: { mode, sessionId: 'session', requestSha256: hash(text), attempt: {} }, session: {} }),
+    error => error.code === 'CONVERSATION_CONTEXT_REQUIRED');
 });
 
 test('a mismatched installed native adapter refuses preparation before any model or tool request', async () => {
@@ -77,4 +117,10 @@ test('web dispatch requires the native budget hook before inference', async () =
     works: { query: sessionId => ({ sessionId }) }, conversations: {
       getTurn: async () => ({ inputText: text }), listTurns: () => assert.fail('Unbounded dispatch') } });
   await assert.rejects(runtime.prepare({ row: { sessionId: 'session', turnId: 'turn', requestSha256: hash(text) } }), /bounded web consultations/);
+});
+
+test('complete native conversation dispatch requires the matching adapter before invoking a model', async () => {
+  const runtime = nativeWorkRuntime({ continuity: async () => ({ capabilities: { isolatedWork: true, nativeReadBudget: true } }),
+    conversations: { getTurn: () => assert.fail('Old adapter must refuse before dispatch') } });
+  await assert.rejects(runtime.prepare({ row: { mode: 'native' } }), /complete native conversation work/);
 });

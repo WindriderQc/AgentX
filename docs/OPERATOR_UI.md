@@ -276,8 +276,8 @@ what is on screen, names the failure on the line and turns the header red.
 **Refresh** reads the whole tab at any time.
 
 **What the page can change.** The amber line under the header reads **No
-filesystem actions. This page can send nine kinds of change to Data.** Open
-**Show the list** for the nine; the Overview repeats the list in full under
+filesystem actions. This page can send 15 kinds of change to Data.** Open
+**Show the list** for the 15; the Overview repeats the list in full under
 **What this page can change**.
 
 **Phone width.** At 620 px and below the header shrinks to the title and the
@@ -698,9 +698,32 @@ and which resolution Data actually used.
   tracked, readings received and refused with their reasons, last minute
   bucket written, last hourly rollup and minute retention. A missing value is
   shown as missing.
+- **Profils et minuteries** affiche les versions enregistrées dans Data et,
+  séparément, la configuration déclarée par l’appareil avec son âge, ses sorties,
+  ses horaires, son fuseau et son prochain début de créneau. Un micrologiciel qui
+  ne publie pas ce retour compatible ne peut recevoir aucun nouvel envoi.
+  Crée ou modifie un profil dans le tableau des cinq champs historiques, puis
+  enregistre son affectation à l’appareil. Ces sauvegardes n’envoient rien.
+  **Préparer l’envoi du profil** montre les messages exacts; **Confirmer l’envoi**
+  les publie une seule fois. La case des prochains démarrages autorise
+  explicitement les réponses de Data aux futures demandes de cet appareil.
+  Modifier un profil conserve les versions déjà affectées.
+- **Minuteries quotidiennes par sortie** permet d’enregistrer le début, la fin
+  et l’activation pour une sortie disponible. Enregistrer n’envoie rien;
+  l’application prend la même confirmation en deux étapes que les profils.
+  Pour annuler une minuterie, décoche son activation, enregistre puis confirme
+  l’envoi de la désactivation. Le micrologiciel garde les horaires et les exécute
+  localement. Après redémarrage, une sortie minutée reste OFF jusqu’au prochain
+  début avec une heure valide. Un créneau peut passer minuit.
+- Un envoi de profil ou de minuterie garde son identité après une réponse perdue.
+  La page distingue publication, application déclarée et résultat incertain.
+  Aucun nouvel envoi ne remplace une tentative non vérifiée; actualise d’abord
+  la configuration, puis termine la tentative d’après un retour frais de
+  l’appareil lorsque la fenêtre d’envoi est passée. Aucune vérification ne
+  renvoie la commande. Annuler, changer d’appareil ou attendre 20 secondes
+  désarme une préparation. Les règles MQTT sont dans Data/README.
 - **Pas encore revenu des anciennes pages** is a collapsed note, with no
-  control, of what has no backend today: daily timers per output, input/output
-  configuration profiles pushed to a device, and cameras.
+  control, of what has no backend today: cameras with configurable image addresses.
 
 The page displays measures from `sensors/<device>/<measure>` and recognized
 numeric fields in legacy `esp32/alive/<device>` and `esp32/data/<device>` JSON.
@@ -711,5 +734,5 @@ sensor topics take precedence over data bundles, then heartbeat bundles,
 so duplicate representations do not inflate history. Live values prefer the
 same sources while fresh and clear the ring when switching source. Strings,
 configuration fields and device timestamps never become numeric telemetry.
-Configured-output discovery, configuration profiles and timers are separate
-from these three existing commands.
+Profiles and timers compose the same MQTT connection and are separate from
+these three manual commands.

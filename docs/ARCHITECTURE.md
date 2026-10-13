@@ -48,9 +48,10 @@ See [heavy work](HEAVY_WORK_QUEUE.md).
 
 Core's `conversationWorks` capability owns durable personal request intake,
 work revisions, native attempt/session identity, verified task-read references,
-results and ordered delivery events. Household composes its guardian and an
-isolated native worker, plus isolated native owner sessions for migrated specialist
-reads; OpenClaw owns their native loops. A dispatch fence
+results and ordered delivery events. Household composes its guardian and isolated
+native Main sessions for complete personal work, with host-bound refresh of the
+shared Core conversation. Accepted legacy reads retain their restricted worker
+or native Main owner; OpenClaw owns their native loops. A dispatch fence
 precedes the outbound worker request, and uncertain attempts require exact native
 reconciliation. Work payloads use the existing transcript owner's storage and
 erasure barrier. Browser presentation ownership prevents automatic duplicate
@@ -73,6 +74,11 @@ several personalities can share one agent and none widens its permissions. A
 personality may declare the agent it belongs to (`agentId` in the Household
 catalog), which gives Super Dad its team cards and a member's voice. A
 scheduled job runs on the agent that owns its capability, in isolated sessions.
+
+In native personal voice mode, asking Nestor to consult a specialist stays with
+Main and uses its installed delegation tools. Addressing that specialist directly
+still selects its own speaker. Complete Main uses its native output budget;
+the legacy background read profile retains its separate 4096-token bound.
 
 Chat and consumer routing are not yet fully converged on one path. Family and
 child memory and tools stay scoped even where the mechanism is shared.
@@ -311,6 +317,19 @@ OpenClaw memory, history and tools retain their own configuration authority.
 Surface records use a distinct internal user namespace and are not exposed by
 the default Playground history API. PsyX transcripts are namespaced away from
 ordinary chat.
+
+Personal Nestor's background review and isolated native work receive the full
+canonical conversation, independently of the guardian's history policy and
+selected personal memory. Core's trusted `readTurns` reads one scoped, verified
+transcript in canonical order without the list API's pagination cap. Complete
+context includes original requests, replies, displayed content, attachment
+references and recorded tool evidence. Core joins published background answers
+and their retained evidence to the source turns; separate presentation receipts
+distinguish available, displayed and spoken content. The existing work-context budget refuses
+oversized input explicitly instead of selecting a recent tail or shortening
+messages. The guardian consumes the latest completed advice/results with their
+source-turn identities while new work proceeds. Model selection changes the
+execution route, not these role or context contracts.
 
 Execution selection distinguishes local direct inference from OpenClaw, whose
 model and agent modes are separate. Provider credentials and the native cloud

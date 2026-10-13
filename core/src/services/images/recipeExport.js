@@ -6,8 +6,9 @@ const { declaredRecipe } = require('./recipeExecution');
 const constraints = require('../../../public/js/image-brief-constraints');
 const textPolicy = require('../../../public/js/image-text-policy');
 const { validateGraph, object, uuid, digest, sha } = require('./exportGraphV1');
+const { validateGraph: validateTurboGraph } = require('./exportGraphV2');
 const fail = (message, statusCode) => Object.assign(new Error(message), { statusCode });
-const invalid = () => fail('Les données archivées sont incohérentes ou indisponibles.', 503);
+const invalid = () => fail('The archived data is inconsistent or unavailable.', 503);
 const requireValid = value => { if (!value) throw invalid(); };
 const SELECT = '+execution +referenceStorage +request';
 const PART_NAME = /^(graph\.json|output\.(png|jpg)|reference-[01]-(source\.(png|jpg)|worker\.png))$/;
@@ -19,7 +20,7 @@ function references(op) {
   if (Object.hasOwn(op, 'referenceStorage') && op.referenceStorage !== undefined) requireValid(object(op.referenceStorage));
   if (!op.referenceStorage) {
     if (op.lineage?.references?.length) {
-      throw fail('Les références historiques complètes ne sont pas enregistrées pour cet export.', 409);
+      throw fail('The complete historical references are not recorded for this export.', 409);
     }
     requireValid(!op.lineage); return { entries: [], lineage: undefined };
   }
@@ -57,12 +58,12 @@ function descriptor(id, receipt, role, index) {
     url: `/api/images/operations/${id}/export/parts/${name}` };
 }
 
-async function verify(receipt, part) {
+async function verify(receipt, part, maxPixels = 4194304) {
   try {
     const loaded = await defaultArchive().read(receipt);
     requireValid(Buffer.isBuffer(loaded.bytes) && loaded.bytes.length === part.size
       && sha(loaded.bytes) === part.sha256 && loaded.mimeType === part.mimeType);
-    const image = decode(loaded.bytes, part.role === 'output' ? 4300800 : 4194304);
+    const image = decode(loaded.bytes, part.role === 'output' ? 4300800 : maxPixels);
     requireValid(image.width === part.width && image.height === part.height && image.mimeType === part.mimeType);
     if (part.role !== 'output') requireValid(Math.max(image.width, image.height) / Math.min(image.width, image.height) <= 8);
     return loaded.bytes;
@@ -71,12 +72,12 @@ async function verify(receipt, part) {
 
 async function bundle(id, requestedName) {
   if (!uuid(id) || requestedName !== undefined && (typeof requestedName !== 'string' || !PART_NAME.test(requestedName))) {
-    throw fail('Pièce ou opération image inconnue.', 404);
+    throw fail('Unknown image part or operation.', 404);
   }
   const op = await read(id);
-  if (!op) throw fail('Opération image inconnue.', 404);
-  if (op.state !== 'completed' || op.runtimeRestored !== true) throw fail('L’export exige une image terminée et ses ressources restituées.', 409);
-  if (!op.execution || !op.artifact) throw fail('Cette opération historique ne possède pas un export complet enregistré.', 409);
+  if (!op) throw fail('Unknown image operation.', 404);
+  if (op.state !== 'completed' || op.runtimeRestored !== true) throw fail('The export requires a finished image with its resources returned.', 409);
+  if (!op.execution || !op.artifact) throw fail('This historical operation has no complete recorded export.', 409);
   requireValid(op._id === id && typeof op.profile?.id === 'string' && /^[a-z0-9-]{1,50}$/.test(op.profile.id));
   let protectedItems, policy;
   try {
@@ -86,7 +87,7 @@ async function bundle(id, requestedName) {
       && textPolicy.compose(op.request.visualPrompt, protectedItems, policy) === op.request.prompt);
   } catch { throw invalid(); }
   const { entries, lineage } = references(op);
-  const graph = validateGraph(op, entries.length);
+  const graph = (op.execution.builder?.version === 2 ? validateTurboGraph : validateGraph)(op, entries.length);
   let declaration;
   if (op.profile.recipe !== undefined) {
     try { declaration = declaredRecipe(op.profile.recipe); } catch { throw invalid(); }
@@ -101,19 +102,21 @@ async function bundle(id, requestedName) {
   }
   pieces.push({ receipt: op.artifact, part: descriptor(id, op.artifact, 'output') });
   const parts = [graphPart, ...pieces.map(item => item.part)];
-  if (requestedName !== undefined && !parts.some(p => p.name === requestedName)) throw fail('Pièce image inconnue.', 404);
+  if (requestedName !== undefined && !parts.some(p => p.name === requestedName)) throw fail('Unknown image part.', 404);
   // Validate every advertised piece before publishing a manifest. Repeated part
   // requests independently re-read all receipts; no durable validation cache.
   let bytes = requestedName === 'graph.json' ? graph : undefined;
   for (const item of pieces) {
-    const verified = await verify(item.receipt, item.part);
+    const cap = lineage?.parent && item.part.index === 0 ? 4300800 : 4194304;
+    const verified = await verify(item.receipt, item.part, cap);
     if (item.part.name === requestedName) bytes = verified;
   }
   const latest = await read(id);
-  if (!latest || identity(latest) !== identity(op)) throw fail('L’opération a changé pendant son export. Recharge son état.', 409);
+  if (!latest || identity(latest) !== identity(op)) throw fail('The operation changed during its export. Reload its state.', 409);
   if (requestedName !== undefined) return { bytes, mimeType: parts.find(p => p.name === requestedName).mimeType, filename: requestedName };
   return { schemaVersion: 1, operation: { id, state: 'completed', runtimeRestored: true },
-    recipe: { id: op.profile.id, family: op.profile.family, ...(declaration && { declaredIdentity: declaration }) },
+    recipe: { id: op.profile.id, family: op.profile.family, ...(op.profile.sampling && { sampling: op.profile.sampling }),
+      ...(declaration && { declaredIdentity: declaration }) },
     request: { prompt: op.request.prompt, width: op.request.width, height: op.request.height, seed: op.request.seed,
       ...((protectedItems || policy) && { visualPrompt: op.request.visualPrompt }),
       ...(protectedItems && { constraints: protectedItems }), ...(policy && { textPolicy: policy }) },

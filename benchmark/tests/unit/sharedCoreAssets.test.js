@@ -117,11 +117,11 @@ describe('shared Core assets', () => {
   it('renders product-only navigation in the demo profile', async () => {
     const response = await api.get('/leaderboard').expect(200);
     expect(response.text).toContain('data-agentx-profile="demo"');
-    expect(response.text).toContain('Atelier');
+    expect(response.text).toContain('Workshop');
     expect(response.text).toContain('Ask your knowledge');
     expect(response.text).toContain('Compare models');
-    expect(response.text).not.toContain('Personnel');
-    expect(response.text).not.toContain('Famille');
+    expect(response.text).not.toContain('Personal');
+    expect(response.text).not.toContain('Family');
     expect(response.text).not.toContain('Nerve Center');
     expect(response.text).not.toContain('OpenClaw');
   });

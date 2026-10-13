@@ -206,7 +206,13 @@ function createBackupScheduler(options = {}) {
     const all = [
       ['mongo', () => service.createBackup()],
       ['config', () => service.createConfigBackup()],
-      ['qdrant', () => service.createQdrantBackup()]
+      // A snapshot that only exists inside the Qdrant server volume is not a
+      // recovery copy: without a persistent local copy the layer failed.
+      ['qdrant', async () => {
+        const result = await service.createQdrantBackup();
+        if (!result?.localPath) throw Object.assign(new Error('Qdrant snapshot has no persistent copy in recovery storage'), { code: 'QDRANT_NO_PERSISTENT_COPY' });
+        return result;
+      }]
     ];
     if (!Array.isArray(names) || names.length === 0) return all;
     return all.filter(([name]) => names.includes(name));

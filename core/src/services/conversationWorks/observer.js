@@ -72,11 +72,12 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
       const session = await works.session(row.sessionId);
       const selected = row.contextRef ? await works.repo.read(row, row.contextRef) : { selectedContext: '' };
       prepared = await prepare({ row, session, selectedContext: selected.selectedContext });
-    } catch {
+    } catch (error) {
       const refused = await gate().updateOne({ _id: OWNER, workId: row._id, processId, phase: 'preparing' },
         { $set: { phase: 'abandoned' } }, acknowledged);
       if (refused.matchedCount === 1) {
-        await works.repo.mutate(row._id, current => ({ fields: { state: 'failed', attempt: null, reason: 'native_preparation_refused' }, event: 'preparation_refused' }));
+        await works.repo.mutate(row._id, current => ({ fields: { state: 'failed', attempt: null,
+          reason: error?.code === 'CONVERSATION_CONTEXT_REQUIRED' ? error.code : 'native_preparation_refused' }, event: 'preparation_refused' }));
         await clear(row._id, processId);
       }
       return;

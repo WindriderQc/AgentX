@@ -52,10 +52,17 @@ function spent(state) {
   return { ...state.spent, ...Object.fromEntries(['modelCalls', 'modelSeconds'].map(key => [key,
     Math.max(state.spent?.[key] || 0, closed.reduce((total, item) => total + item[key], 0))])) };
 }
+function totalLimits(state) {
+  const value = { ...state.limits };
+  for (const grant of state.budgetGrants || []) for (const [key, amount] of Object.entries(grant.budget))
+    value[key] += amount;
+  if (state.resumeCeiling !== undefined) value.maxResumes = state.resumeCeiling;
+  return value;
+}
 function remaining(task) {
   const state = task.codingAutonomy;
   const consumed = spent(state);
-  return Object.fromEntries(Object.entries(state.limits).map(([key, value]) => [key,
+  return Object.fromEntries(Object.entries(totalLimits(state)).map(([key, value]) => [key,
     key === 'maxResumes' ? Math.max(0, value - Math.max(0, state.runs.length - 1)) : Math.max(0, value - (consumed[key] || 0))]));
 }
 function exhausted(task) {
@@ -79,4 +86,4 @@ function verdict(observation, expected) {
   if (current.some(c => ['failure', 'cancelled', 'timeout'].includes(c.state))) return 'failure';
   return current.every(c => c.state === 'success') ? 'success' : 'pending';
 }
-module.exports = { DEFAULT_LIMITS, CHECKS, fail, digest, basis, limits, assertTask, nativeModelMs, usage, spent, remaining, exhausted, compare, verdict };
+module.exports = { DEFAULT_LIMITS, CHECKS, fail, digest, basis, limits, totalLimits, assertTask, nativeModelMs, usage, spent, remaining, exhausted, compare, verdict };

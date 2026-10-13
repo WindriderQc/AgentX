@@ -59,8 +59,8 @@ async function expert({ prompt = 'x'.repeat(9958), constraints = manifest, avail
 test('planning retains a 9958-character brief with exact constraints and allows applying an 8000-budget proposal', async () => {
   const ui = await expert(), original = ui.current.prompt;
   expect(ui.get('imagex-plan').disabled).toBe(false);
-  expect(ui.get('imagex-planning-help').textContent).toContain('brief long reste conservé');
-  expect(ui.get('imagex-planning-help').textContent).toContain('Format choisi : 1024 × 576');
+  expect(ui.get('imagex-planning-help').textContent).toContain('long brief is kept');
+  expect(ui.get('imagex-planning-help').textContent).toContain('Chosen format: 1024 × 576');
   await ui.fire('imagex-plan');
   expect(ui.posts).toHaveLength(2);
   expect(ui.posts[1].body).toMatchObject({ mode: 'plan', context: { prompt: original, constraints: manifest, referenceCount: 1 } });
@@ -75,12 +75,12 @@ test.each([{ label: 'text', prompt: 'x'.repeat(32001) }, { label: 'whitespace', 
   expect(ui.get('imagex-plan').disabled).toBe(true);
   await ui.fire('imagex-plan');
   expect(ui.posts).toHaveLength(0); expect(ui.current.prompt).toBe(prompt);
-  expect(ui.get('imagex-notice').textContent).toContain('32 000');
+  expect(ui.get('imagex-notice').textContent).toContain('32,000');
 });
 test('a valid raw brief whose exact constraint block exceeds the planning budget is refused', async () => {
   const ui = await expert({ prompt: 'x'.repeat(31990) });
   await ui.fire('imagex-plan'); expect(ui.posts).toHaveLength(0);
-  expect(ui.get('imagex-notice').textContent).toContain('32 000');
+  expect(ui.get('imagex-notice').textContent).toContain('32,000');
 });
 test.each([{ label: 'text', message: 'x'.repeat(32001) }, { label: 'whitespace', message: ' '.repeat(32001) }])('an over-budget $label advice draft stays intact without blocking brief preparation', async ({ message }) => {
   const ui = await expert(); ui.get('imagex-message').value = message; await ui.fire('imagex-message', 'input');
@@ -135,7 +135,7 @@ test('a reference identity changed while creating a session invalidates the orig
 test('Hermes unavailability explains manual reduction while leaving the complete draft untouched', async () => {
   const ui = await expert({ available: false }), original = ui.current.prompt;
   expect(ui.get('imagex-plan').disabled).toBe(true);
-  expect(ui.get('imagex-planning-help').textContent).toContain('indisponible');
+  expect(ui.get('imagex-planning-help').textContent).toContain('unavailable');
   await ui.fire('imagex-plan'); expect(ui.posts).toHaveLength(0); expect(ui.current.prompt).toBe(original);
 });
 
@@ -161,7 +161,7 @@ test('an oversized planning instruction remains intact and refuses before sessio
 });
 test('a ready brief still explains direct creation when Hermes is unavailable', async () => {
   const ui = await expert({ available: false, prompt: 'An owl in a workshop' });
-  expect(ui.get('imagex-planning-help').textContent).toContain('créer directement');
+  expect(ui.get('imagex-planning-help').textContent).toContain('create directly');
   expect(ui.posts).toHaveLength(0);
 });
 
@@ -178,10 +178,10 @@ test.each([false, true])('a rejected format is explained beside the brief, never
   const ui = await expert({ turnError: 'Image expert changed the requested width', delayedFailure });
   const original = ui.current.prompt;
   await ui.fire('imagex-plan');
-  expect(ui.get('imagex-notice').textContent).toContain('la largeur');
+  expect(ui.get('imagex-notice').textContent).toContain('chosen width');
   expect(ui.get('imagex-notice').textContent).toContain('1024 × 576');
-  expect(ui.get('imagex-notice').textContent).toContain('Aucune image');
-  expect(ui.get('imagex-notice').textContent).not.toContain('travaille');
+  expect(ui.get('imagex-notice').textContent).toContain('No image');
+  expect(ui.get('imagex-notice').textContent).not.toContain('is working');
   expect(ui.get('imagex-chat-notice').textContent).toBe(ui.get('imagex-notice').textContent);
   expect(ui.get('imagex-proposal-panel').hidden).toBe(true);
   expect(ui.get('imagex-recovery').hidden).toBe(false);
@@ -194,7 +194,7 @@ test.each([false, true])('a rejected format is explained beside the brief, never
   expect(ui.posts[2].body.message).toBe(ui.posts[1].body.message);
   expect(ui.posts[2].body.clientTurnId).not.toBe(ui.posts[1].body.clientTurnId);
   expect(ui.get('imagex-recovery').hidden).toBe(true);
-  expect(ui.get('imagex-notice').textContent).toContain('Proposition prête');
+  expect(ui.get('imagex-notice').textContent).toContain('Proposal ready');
 });
 
 test('a failed refinement offers review of a renderable brief and retries the current edited context deliberately', async () => {
@@ -202,10 +202,10 @@ test('a failed refinement offers review of a renderable brief and retries the cu
     turnError: 'Hermes est indisponible.' });
   await ui.fire('imagex-plan');
   expect(ui.get('imagex-use-brief').hidden).toBe(false);
-  expect(ui.get('imagex-recovery-help').textContent).toContain('créer directement');
+  expect(ui.get('imagex-recovery-help').textContent).toContain('create directly');
   ui.current.prompt += ', with a routing machine'; ui.current.width = 2048;
   ui.controller.refresh();
-  expect(ui.get('imagex-recovery-help').textContent).toContain('a changé');
+  expect(ui.get('imagex-recovery-help').textContent).toContain('brief changed');
   await ui.fire('imagex-retry');
   expect(ui.posts[2].body.context).toMatchObject({ prompt: ui.current.prompt, width: 2048 });
   expect(ui.apply).not.toHaveBeenCalled();

@@ -38,6 +38,7 @@ function mount(router, { relay, fetchData }) {
   }
   router.patch('/iot/devices/:id', write(validatePatch, 'PATCH', ''));
   router.post('/iot/devices/:id/commands', write(validateCommand, 'POST', '/commands'));
+  require('./iot-controls-relay').mount(router, { relay, fetchData, devicePath });
 }
 
 module.exports = { mount, devicePath };

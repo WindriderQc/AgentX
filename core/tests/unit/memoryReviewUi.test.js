@@ -53,6 +53,9 @@ describe('Dreaming Review UI contract', () => {
     expect(controller).toContain('Not collected on this instance');
     expect(copy).toContain('Becomes one of the notes your agents read');
     expect(styles).toContain('.mr-next { position: sticky;');
+    // The page opens on the run whose accepted candidates still wait.
+    expect(controller.indexOf('state.runs.find(acceptedNotWritten)')).toBeLessThan(controller.indexOf("run.status === 'ready_for_review' || run.status === 'partially_reviewed')?.runId"));
+    expect(controller).toContain('accepted, not written${pending');
   });
 
   test('adds statement-free insight, navigation, and review accelerators', () => {

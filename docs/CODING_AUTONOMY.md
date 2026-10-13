@@ -64,6 +64,20 @@ shell command. The dispatcher profile runs the coding Python suites; the bounded
 Core profile runs `inferenceRuntimePolicy`. Neither replaces full PR CI or
 product acceptance. Dependency edits require separate operator handling.
 
+The autonomous worker receives Core's remaining cumulative work, test, model
+duration and model-call budgets, plus the exact installed verification command.
+Before each model request, the relay adds a fresh runner budget advisory with
+the remaining durations, model calls and no-progress window. It preserves the
+worker's complete history and model options; the advisory is not saved back into
+the harness history and never grants authorization, credit or useful progress.
+The native Core admission and runner limits remain authoritative. A harness
+`max-tokens` termination records `model_output_limit` and blocks publication;
+it does not enlarge the model's output limit or the task's attempt ceiling.
+Model waiting and reasoning consume the model duration budget even when the
+work deadline is longer. The same native command supplies the worker's focused
+test loop and the runner's independent verification. Unknown profiles refuse
+before model execution.
+
 Before publication the runner checks exact authorized paths, all unpublished
 commit blobs (including added-then-removed artifacts), credentials, private
 paths, generated content, links/submodules, source size rules, test results and
@@ -163,6 +177,11 @@ Default cumulative per-task limits:
 | CI waiting across all executions | 60 minutes |
 | No useful source/test progress | 45 minutes |
 
+Worker test observation recognizes the installed Node Jest entry point and
+correlates the harness's encoded tool-result envelope with its original call.
+Filtered output cannot hide a failing test or tool error. Only test names,
+outcomes and durations enter progress receipts; commands and output stay private.
+
 These limits can be reduced on authorization, never reset by a correction or
 reauthorization of a started campaign. Work and the reviewed native attempt
 duration must allow at least the native lease minimum of ten seconds.
@@ -192,6 +211,37 @@ lease or lost receipt proves none of them. Preserve checkpoints and reconcile
 through the native owner; do not delete admissions or quarantine.
 
 ## Reconcile a stopped execution
+
+An expired coding workload with a received blocked worker verdict retains its
+native fence. Before deploying Core, its owner can run
+`node scripts/recover-coding-capacity.js prepare <private-intent.json>` once in
+the reviewed Core image, using the instance's external environment/database
+and network. This command starts no server and invokes only Core's coding owner.
+The intent contains `pipelineId`, original `requestId`, a stable `key`,
+`confirm: true`, `workerTerminated: true` and confirmation
+`ORIGINAL_CODING_WORKER_TERMINATED_RECOVER_NATIVE_CAPACITY`. Independently verify
+the exact host unit stopped first; pause autonomy and withdraw authorization.
+The command checks the original host receipt and durable native verdict,
+journals the original persistent resident set, and adopts the existing recovery
+identity. Active children, foreign workloads, maintenance or changed topology
+refuse. It never substitutes a new workload or caller-provided principal.
+
+Keep that adopted fence while the instance operator recovers any UNKNOWN child
+through its native owner. A controlled restart must follow the queued campaign
+and installed host-unit procedure; preserve its exact restart timestamp and
+received receipt. Restart recovery records a durable, idempotent native release
+receipt, retaining the original UNKNOWN evidence. After restoration, run the
+same command with `recover-children` and the verified native `restartReceipt`
+in the private intent when recovering the original coding parent's children;
+Core derives their exact proofs from its prepared journal. Then run the
+same command with `complete` and the same private intent. It checks the complete
+persistent resident set, digests, contexts and aggregate GPU bytes before VERIFIED,
+RESTORED and atomic parent release. Unresolved children still refuse. On a lost
+answer, reconcile the same key and original receipt, never repeat a restart.
+For a deployment blocked by that original fence, a reviewed recovery candidate
+may be mounted read-only into the installed Core image for this one-shot command;
+record its exact source revision and hashes outside Git. This is operator
+reconciliation, not autonomous delivery or an installation of the candidate.
 
 Pause autonomy and withdraw the original task authorization. After independently
 verifying the original worker termination and native resource release, close its
@@ -257,3 +307,125 @@ identities. Keep live manifests, host inventories, raw logs and dated results
 outside Git. Any operator correction of worker source is labelled assisted and
 cannot count as an autonomous result. Live qualification is tracked in
 [issue #681](https://github.com/WindriderQc/AgentX/issues/681).
+
+### Explicit continuation after administrative recovery
+
+A recovered failure is still a failure. `authorization` cannot reset its spent
+budget or history. With autonomy paused and its active slot free, an operator can
+POST `/api/pipeline/coding-autonomy/tasks/:id/runs/:requestId/continuation` for the
+exact last administratively recovered execution. Confirm with
+`CONTINUE_RECOVERED_CHECKPOINT_WITH_ADDITIONAL_BUDGET`, a stable `key`, current
+`expectedRevision`, exact native `head`, a new active operator `queueRequestId`
+linked to the same task/coding session, reviewed `verificationProfile`, correction
+`text`, `additionalRuns` and explicit `budget` credits for `workSeconds`,
+`testSeconds`, `modelSeconds`, `modelCalls` and `ciSeconds`.
+
+Each grant is bounded by the normal per-campaign caps. The additional worker
+count replaces any unused resume allowance and remains within the original
+reviewed native attempt ceiling. The original limits, spent costs, attempts,
+UNKNOWN and pending receipts remain unchanged. A recorded operator intervention
+starts a new no-progress window without erasing the source/test history. The
+next request links to the recovered request on the same card and private branch;
+the runner refuses an absent, dirty or substituted checkpoint before model work.
+
+Activation is fenced until the grant write has been durably acknowledged. After
+a lost reply, reconcile the same key and fingerprint; never submit a replacement
+grant. Retrying adds no budget and creates no worker. This procedure records an
+operator continuation; it does not turn the earlier failure into autonomous
+success or authorize arbitrary scope changes.
+
+A clean unpublished native budget or no-progress stop uses the same endpoint
+with `CONTINUE_NATIVE_CHECKPOINT_WITH_ADDITIONAL_BUDGET`. This is a distinct
+authority: the exact latest worker must be finished and recorded in Core, its
+model journal must contain only uniquely identified completed calls with their
+durably acknowledged Core settlements, and its native attempt must retain the
+matching failure receipt. Core admits each journalled inference through the
+native capacity and lease. A late settlement can be observed after the failed
+worker's verdict without replacing or upgrading that verdict. First pause autonomy,
+withdraw this task's authorization and finish its original campaign as failed
+through the operator entrance. Then name a new active campaign and the exact
+clean checkpoint. No administrative recovery is invented. Operator stops,
+runner errors, active admissions, publication and unresolved calls refuse this
+path. Original costs, failures, limits and the native attempt ceiling remain
+unchanged; explicit credits and a new no-progress window are journalled as an
+operator intervention.
+
+### Reviewed terminal continuation and native attempt limits
+
+Pipeline offers **Record reviewed continuation** for a stopped, unpublished
+failed checkpoint with authorization removed and autonomy paused. The operator
+reviews a new campaign, five additional budgets, the correction and the total
+native attempt limit. Its separate confirmation is
+`CONTINUE_TERMINAL_CHECKPOINT_WITH_REVIEWED_ATTEMPT_LIMIT`. The continuation API
+also requires `expectedNativeAttemptLimit`, `nativeAttemptLimit` and
+`expectedAutomationFingerprint`. Worker exit, output limit and failed tests
+can use this reviewed path only when the matching native terminal failure and
+every current model settlement are durably received. Operator stops refuse.
+
+The native ceiling is at most ten attempts; a grant authorizes at most three
+additional workers. Each credit retains the ordinary per-campaign cap, and the
+cumulative limits, including the original allocation and every earlier grant,
+are at most 57,600 work seconds, 19,200 test seconds, 21,600 model seconds,
+512 model calls and 14,400 CI seconds. An amendment changes only the native
+attempt ceiling, saves the complete original intent and basis, and atomically
+records the normalized fingerprint, current basis and grant. An existing plan
+refuses a changed ceiling until its binding is reconciled. Original attempt
+counts, scopes, limits, costs, failures and UNKNOWN receipts remain recorded.
+The older confirmations cannot extend the native ceiling or accept worker exit.
+A lost response still requires the same key and intent; the grant never launches
+a worker inline.
+The cumulative envelope also applies to older confirmations after a reviewed
+amendment. A known validation refusal after selection is fenced, but before a
+grant write is attempted, records a durably acknowledged abandonment that
+invalidates concurrent grant writes before releasing this exact slot. A lost
+abandonment acknowledgement retains the fence until the same intent is received
+again. Only a confirmed, unapplied abandonment allows review of a new intent;
+an uncertain grant write still requires reconciliation of its original key.
+
+### Finished deliveries and qualification archives
+
+Finished PRs remain observable while execution is paused or authorization is
+removed. A bounded, backed-off read records merge/closure and the newest checks
+on their exact remote commit, with the original worker head retained. It does
+not change attempt outcomes, costs, execution authorization or task status.
+Merge and failed CI can both be recorded. Human acceptance, installation and
+product acceptance remain separate receipts. A closed PR refuses new review
+corrections through the coding loop.
+The separate `ciObservationActive` status fact describes the budgeted campaign
+watch only: finished, unowned publication in `waiting_ci` or an authorized
+failure/resume-limit watch. Human review, conflicts, stopped/closed or owned
+executions report false. The panel explains exact-zero exhaustion for each
+budget and retains uncertainty disclosure for historical UNKNOWN receipts even
+after confirmed administrative recovery.
+
+An operator can **Archive qualification** with a private receipt reference,
+SHA-256, reason and outcome (`passed`, `abandoned` or `superseded`). The API
+`POST /api/pipeline/coding-autonomy/tasks/:id/disposition` requires confirmation
+`ARCHIVE_QUALIFICATION_WITH_ORIGINAL_RECEIPTS`, the exact latest `requestId` and
+`expectedRevision`. The worker must be finished with authorization removed and
+without an active claim. This is an operator annotation, not task delivery:
+the task status and its dependency barriers remain in force, including original
+UNKNOWN outcomes. An identical retry preserves the same annotation. Archived
+qualifications and closed tasks remain accessible through the history toggle;
+the live panel counts waiting work, blocked cards and review separately.
+
+`agentx-benchmark-artifact-tests/v1` is a native network-isolated verifier for
+`artifactComparison*`, paired statistics and paired regression tests. Its Jest
+configuration comes from the installed runner, rather than the worker checkout.
+Loopback HTTP fixtures are permitted; production services and databases are not
+reachable. Independent review and full CI must still accept the published commit.
+
+The coding model route preserves up to 120 seconds (one quarter for shorter
+budgets) for completion. Core refuses fresh calls inside that reserve before
+journal/admission. The runner stops source work before the hard model ceiling and
+drains existing Core connections under heartbeat within the remaining work/model/queue
+budget, including after a worker disconnect. EOF alone does not prove successful
+inference: only the native Core receipt can permit publication and resource
+release. An unfinished or uncertain native call retains UNKNOWN and its fence.
+
+An unpublished worker checkpoint with an exact received native `tests_failed`
+verdict and completed model calls can receive a bounded local correction. Core
+retains the original operator review guidance, charges the failed run and links
+the next worker; the native feedback carries bounded test diagnostics as
+untrusted data. Operator stops, exhausted budgets, unknown runtime outcomes and
+published PR review remain subject to their existing gates.

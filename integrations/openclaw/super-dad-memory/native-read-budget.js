@@ -6,12 +6,16 @@ export function registerNativeReadBudget(api, { fetchImpl = fetch } = {}) {
   const call = createConversationWorkClient({ baseUrl: config.agentxUrl, token: config.conversationWorkToken, fetchImpl });
   const runs = new Map();
   api.on('before_tool_call', async (event, context) => {
+    // OpenClaw runs this hook again for the resolved tool, with its own native
+    // call identity. The dispatch wrapper performs no research: count and fence
+    // the actual tool execution once, including a tool that later fails.
+    if (event.toolName === 'tool_call') return;
     if (context?.agentId !== 'main' || !/^agent:main:household:direct:[a-f0-9-]{36}$/.test(context.sessionKey || '')) return;
     const runId = event.runId || context.runId, callId = event.toolCallId || context.toolCallId;
     if (!runId || !callId) return;
     const key = `${context.sessionKey}:${runId}`;
     if (runs.get(key) === 'ordinary') return;
-    const tool = event.toolName === 'tool_call' ? String(event.params?.id || '').split(':').at(-1) : event.toolName;
+    const tool = event.toolName;
     try {
       const result = await call('native_budget', { agentId: context.agentId, sessionKey: context.sessionKey, runId }, { tool }, callId);
       runs.set(key, 'bounded');

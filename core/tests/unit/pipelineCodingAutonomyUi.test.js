@@ -5,21 +5,29 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../../public/js/pipeline-coding-autonomy.js'), 'utf8');
 const KEY = '11111111-2222-4333-8444-555555555555';
 class Element {
-  constructor(text = '') { this.textContent = text; this.children = []; this.events = {}; this.dataset = {}; }
+  constructor(text = '') { this.textContent = text; this.children = []; this.events = {}; this.dataset = {}; this.value = ''; this.checked = false; }
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren(...nodes) { this.children = nodes; }
   addEventListener(name, fn) { this.events[name] = fn; }
+  contains(node) { return descendants(this).includes(node); }
+  querySelectorAll(selector) {
+    return descendants(this).slice(1).filter(node => selector.split(',').some(part => {
+      const match = part.trim().match(/^([a-z]+)(?:\[type="([a-z]+)"\])?$/);
+      return match && node.tagName === match[1].toUpperCase() && (!match[2] || node.type === match[2]);
+    }));
+  }
 }
 const flush = async () => { await new Promise(resolve => setImmediate(resolve)); };
 function setup(state, options = {}) {
+  let interval;
   const nodes = { codingAutonomyConfirm: new Element() };
   const document = { getElementById: id => nodes[id] ||= new Element(),
-    createElement: () => new Element(), addEventListener: (_name, fn) => { document.start = fn; },
+    createElement: tag => { const node = new Element(); node.tagName = tag.toUpperCase(); return node; }, addEventListener: (_name, fn) => { document.start = fn; },
     querySelectorAll: () => switches };
   const switches = ['true', 'false'].map(value => { const e = new Element(); e.dataset.autonomySwitch = value; return e; });
   const calls = [];
   vm.runInNewContext(source, { document, window: { addEventListener() {} }, AbortController,
-    setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
+    setTimeout: () => 1, clearTimeout() {}, setInterval: fn => { interval = fn; return 1; }, clearInterval() {},
     fetch: async (url, requestOptions) => {
       calls.push({ url, options: requestOptions });
       if (url.startsWith('/api/cluster/schedule/work-queue/')) return { ok: true, json: async () => ({ data: options.job }) };
@@ -29,7 +37,7 @@ function setup(state, options = {}) {
       return { ok: true, json: async () => ({ data: state }) };
     } });
   document.start();
-  return { nodes, switches, calls };
+  return { nodes, switches, calls, document, tick: () => interval() };
 }
 function state(taskState = 'waiting_ci') {
   return { enabled: false, revision: 7, active: null, tasks: [{ pipelineId: '0001', title: 'Synthetic <script> task',
@@ -47,6 +55,81 @@ test('operator sees separate PR, CI, native completion, scope and manual interve
   expect(text).toContain('source.py'); expect(text).toContain('manual interventions: 1');
   expect(text).toContain('PR published. CI not yet observed'); expect(text).toContain('product acceptance have no receipt');
   expect(text).toContain('Synthetic <script> task'); // textContent, never markup parsing.
+});
+test('idle status separates blocked cards from work awaiting execution and keeps archived qualifications accessible', async () => {
+  const snapshot = state('stopped'); Object.assign(snapshot.tasks[0], { taskStatus: 'blocked', authorized: false, disposition: { kind: 'qualification', outcome: 'abandoned' } });
+  const { nodes } = setup(snapshot); await flush();
+  expect(nodes.codingAutonomyStatus.textContent).toContain('0 authorized tasks waiting · 0 blocked');
+  expect(descendants(nodes.codingAutonomyTasks).some(n => n.textContent.includes('Synthetic <script> task'))).toBe(false);
+  descendants(nodes.codingAutonomyTasks).find(n => n.textContent.startsWith('Show archived')).events.click();
+  expect(descendants(nodes.codingAutonomyTasks).some(n => n.textContent.includes('Original execution outcomes'))).toBe(true);
+});
+test('merged PR and failed CI remain visible as separate facts without acceptance', async () => {
+  const snapshot = state('ready_for_review'); snapshot.tasks[0].delivery = { merged: true, state: 'closed',
+    headMatches: true, observedAt: 'synthetic-time', ci: 'failure', checks: [{ name: 'tests (core)', state: 'failure' }] };
+  const { nodes } = setup(snapshot); await flush(); const text = descendants(nodes.codingAutonomyTasks).map(n => n.textContent).join('\n');
+  expect(text).toContain('PR #42 · merged'); expect(text).toContain('CI failure on the published commit');
+  expect(text).toContain('Human acceptance remains a separate decision'); expect(text).not.toContain('Draft PR');
+});
+test('reviewed continuation sends the original checkpoint and intent with explicit cumulative credits', async () => {
+  const snapshot = state('stopped'), task = snapshot.tasks[0];
+  Object.assign(task, { authorized: false, taskStatus: 'blocked', pr: null, authorizationRevision: 12,
+    nativeAttemptCount: 3, nativeAttemptLimit: 3, automationFingerprint: 'b'.repeat(64), verificationProfile: 'agentx-core-runner-tests/v1' });
+  task.runs[0].head = 'a'.repeat(40);
+  const { nodes, calls } = setup(snapshot); await flush(); nodes.codingAutonomyConfirm.checked = true;
+  const form = descendants(nodes.codingAutonomyTasks).find(n => n.events.submit && descendants(n).some(child => child.textContent === 'Record reviewed continuation'));
+  expect(form).toBeDefined();
+  const field = title => descendants(form).find(n => n.textContent === title).children[0];
+  field('New approved coding campaign').value = KEY;
+  descendants(form).find(n => n.textContent.startsWith('Correction based')).children[0].value = 'Fix the exact preserved test failure.';
+  await form.events.submit({ preventDefault() {} }); await flush();
+  const mutation = calls.find(call => call.options.method === 'POST');
+  expect(mutation.url).toBe(`/api/pipeline/coding-autonomy/tasks/0001/runs/${KEY}/continuation`);
+  expect(JSON.parse(mutation.options.body)).toMatchObject({ expectedRevision: 12, expectedNativeAttemptLimit: 3,
+    nativeAttemptLimit: 4, expectedAutomationFingerprint: 'b'.repeat(64), head: 'a'.repeat(40), additionalRuns: 1,
+    budget: { workSeconds: 3600, testSeconds: 900, modelSeconds: 1800, modelCalls: 32, ciSeconds: 900 } });
+});
+test('a merged PR offers authorization withdrawal and refuses another review correction in the UI', async () => {
+  const snapshot = state('ready_for_review'); snapshot.tasks[0].delivery = { merged: true, state: 'closed',
+    headMatches: true, ci: 'success', observedAt: 'synthetic-time', checks: [] };
+  const { nodes } = setup(snapshot); await flush(); const text = descendants(nodes.codingAutonomyTasks).map(n => n.textContent);
+  expect(text).toContain('Remove task authorization'); expect(text).not.toContain('Send correction to the Coding Team');
+});
+test.each(['workSeconds', 'testSeconds', 'modelSeconds', 'modelCalls', 'ciSeconds'])('only an exact zero %s budget is described as exhausted', async key => {
+  const snapshot = state(); snapshot.tasks[0].remaining[key] = 0;
+  const { nodes } = setup(snapshot); await flush();
+  expect(descendants(nodes.codingAutonomyTasks).some(n => n.textContent.startsWith('Exhausted budgets:'))).toBe(true);
+  const positive = state(); for (const field of Object.keys(positive.tasks[0].remaining)) positive.tasks[0].remaining[field] = 1;
+  const live = setup(positive); await flush();
+  expect(descendants(live.nodes.codingAutonomyTasks).some(n => n.textContent.startsWith('Exhausted budgets:'))).toBe(false);
+});
+test.each([false, true])('CI watch disclosure follows the Core fact %s, independently of the enabled switch', async active => {
+  const snapshot = state('blocked'); snapshot.tasks[0].ciObservationActive = active;
+  const { nodes } = setup(snapshot); await flush();
+  expect(descendants(nodes.codingAutonomyTasks).some(n => n.textContent.startsWith('Core continues watching CI'))).toBe(active);
+});
+test('confirmed administrative recovery still describes historical UNKNOWN as uncertain', async () => {
+  const snapshot = state('stopped'); snapshot.tasks[0].authorized = false;
+  snapshot.tasks[0].runs[0] = { requestId: KEY, finishedAt: 'synthetic-time', pendingInferenceCount: 0,
+    historicalPendingInferenceCount: 1, recovery: { state: 'confirmed', authority: 'operator-reconciliation' },
+    modelReceipts: [{ state: 'unknown' }] };
+  const { nodes } = setup(snapshot); await flush();
+  const text = descendants(nodes.codingAutonomyTasks).map(n => n.textContent).join('\n');
+  expect(text).toContain('An unknown or pending model receipt is an uncertain outcome');
+  expect(text).toContain('does not make it successful or authorize another worker');
+});
+test('archive draft survives background refresh after focus moves to global confirmation and clears when values are restored', async () => {
+  const snapshot = state('stopped'); snapshot.tasks[0].authorized = false;
+  const view = setup(snapshot); await flush();
+  const form = descendants(view.nodes.codingAutonomyTasks).find(node => node.events.submit && descendants(node).some(child => child.textContent === 'Archive qualification'));
+  const reference = descendants(form).find(node => node.textContent === 'Private qualification receipt reference').children[0];
+  reference.value = '/private/qualification.json'; form.events.input();
+  view.document.activeElement = view.nodes.codingAutonomyConfirm;
+  await view.tick(); await flush();
+  expect(descendants(view.nodes.codingAutonomyTasks)).toContain(form); expect(reference.value).toBe('/private/qualification.json');
+  expect(view.nodes.codingAutonomyStatus.textContent).toContain('once your edit is sent or cleared');
+  reference.value = ''; form.events.input(); await view.tick(); await flush();
+  expect(descendants(view.nodes.codingAutonomyTasks)).not.toContain(form);
 });
 test('switch requires explicit operator confirmation and uses the current durable revision', async () => {
   const { nodes, switches, calls } = setup(state()); await flush();

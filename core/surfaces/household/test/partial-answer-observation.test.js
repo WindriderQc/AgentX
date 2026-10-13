@@ -212,7 +212,7 @@ test('caller cancellation and native SSE failure outrank a qualified partial fal
       yield created; await observed.promise;
       yield row({ type: 'response.failed', response: { id: runId, error: { message: 'Synthetic native error' } } });
     })() }; } });
-  await assert.rejects(failed({ session, text: 'Bonjour.', onDelta: text => deltas.push(text) }), /pas pu finir sa réponse/);
+  await assert.rejects(failed({ session, text: 'Bonjour.', onDelta: text => deltas.push(text) }), /could not finish its answer/);
   assert.deepEqual(deltas, []);
   assert.equal(requests, 1);
 });
@@ -221,7 +221,7 @@ test('GraphysX dialogue cannot deliver retained projection prose after a partial
   let reads = 0;
   const deltas = [];
   const stream = settlement(async () => ++reads === 1 ? first() : partial({ run: { runId, sessionKey } }));
-  await assert.rejects(stream.client({ session, text: 'Bonjour.', browserReply: { context: {} }, onDelta: text => deltas.push(text) }), /pas donné de réponse finale/);
+  await assert.rejects(stream.client({ session, text: 'Bonjour.', browserReply: { context: {} }, onDelta: text => deltas.push(text) }), /did not give a final answer/);
   assert.deepEqual(deltas, []);
   assert.equal(stream.requests(), 1);
 });

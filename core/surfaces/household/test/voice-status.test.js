@@ -19,7 +19,7 @@ test('the engines keep the time they last changed state', async () => {
   const down = await status();
   assert.deepEqual(down.voxcpm, { configured: true, ready: false, reason: 'VoxCPM2 worker is unavailable', since: '2026-10-03T03:02:00.000Z' });
   assert.equal(down.kokoro.since, '2026-10-03T03:00:00.000Z');
-  assert.equal(voiceLine(down, () => '23:02'), 'Voix de Nestor (Gazz) indisponible depuis 23:02 · voix de secours Kokoro');
+  assert.equal(voiceLine(down, () => '23:02'), 'Nestor voice (Gazz) unavailable since 23:02 · Kokoro backup voice');
   assert.equal(voiceLine(first), '');
 });
 

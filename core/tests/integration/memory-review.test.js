@@ -657,7 +657,34 @@ describe('apply gating and adapters', () => {
     expect(task).toBeTruthy();
     expect(task.source).toBe('memory-review');
     expect(task.spec).toContain('memory-review candidate');
+    // Sections are separated so headings render, and the approval is dated readably.
+    expect(task.spec).toMatch(/\n\n## Objective\nDurable fact for test-apply-task\.\n\n/);
+    expect(task.spec).toMatch(/Approved by: operator at \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\./);
+    expect(task.spec).not.toContain('## Original proposal');
     await PipelineTask.deleteOne({ pipelineId });
+  });
+
+  test('a reworded task keeps the original proposal and the reviewer note', async () => {
+    const statement = 'Durable fact for test-apply-reworded.';
+    const seeded = await seedRunWithObservation('test-apply-reworded', `remember this: ${statement}`);
+    await harness.request.post(`/api/memory-review/runs/${seeded.run.runId}/finalize`).expect(200);
+    await harness.request.post(`/api/memory-review/runs/${seeded.run.runId}/candidates`).send({
+      candidates: [candidate(statement, { type: 'task_or_followup', evidenceRefs: [seeded.observationId],
+        target: { kind: 'pipeline_task', runtime: null, topic: 'facts' } })],
+    }).expect(200);
+    const doc = await MemoryReviewRun.findOne({ runId: seeded.run.runId });
+    const candidateId = doc.candidates[0].candidateId;
+    await harness.request.post(`/api/memory-review/runs/${seeded.run.runId}/candidates/${candidateId}/review`)
+      .send({ action: 'edit_approve', by: 'operator', editedStatement: 'Shorter approved task.', note: 'the rest is context' }).expect(200);
+    await authorizeRun(seeded.run.runId);
+    await harness.request.post(`/api/memory-review/runs/${seeded.run.runId}/candidates/${candidateId}/apply`)
+      .send({ by: 'operator' }).expect(200);
+    const task = await PipelineTask.findOne({ sourceKey: `candidate:${candidateId}` }).lean();
+    expect(task.title).toBe('Shorter approved task.');
+    expect(task.spec).toContain('## Objective\nShorter approved task.');
+    expect(task.spec).toContain(`## Original proposal\n${statement}`);
+    expect(task.spec).toContain('## Reviewer note\nthe rest is context');
+    await PipelineTask.deleteOne({ _id: task._id });
   });
 
   test('runtime_local adapter is proposal-only and writes nothing external', async () => {
