@@ -116,6 +116,52 @@ class ProgressTest(unittest.TestCase):
             "source": {"callId": "1"}, "content": content}}})
         self.assertEqual(self.progress.last_test, {"name": "jest", "outcome": "failed"})
 
+    def test_output_filters_and_log_paths_cannot_credit_the_same_test_failure_again(self):
+        self.progress.carry({"remaining": {"workSeconds": 5000, "modelSeconds": 600,
+                                           "modelCalls": 40, "testSeconds": 100},
+                             "limits": {"noProgressSeconds": 60}})
+        invocation = ("cd /workspace && /opt/node/bin/node benchmark/node_modules/jest/bin/jest.js "
+                      "--config /opt/coding/jest.benchmark.config.cjs --runInBand")
+        suffixes = [" 2>&1 | tail -60", " 2>&1 | grep -E '^Tests:|Suites:' | head -100",
+                    " 2>&1 > /tmp/second.log; wc -l /tmp/second.log", " > '/tmp/third log' 2>&1"]
+        for index, suffix in enumerate(suffixes):
+            self.clock[0] = 10 + index * 15
+            self.call(str(index), invocation + suffix)
+            self.clock[0] += 3
+            self.result(str(index), "FAIL synthetic.test.js\nTests: 15 failed, 44 passed")
+            self.assertEqual(self.progress.last_useful, 13)
+        self.assertEqual(self.progress.usage()["testSeconds"], 12)
+        self.assertEqual(len(self.progress.seen_tests), 1)
+        self.clock[0] = 74
+        self.assertEqual(self.progress.tick(), "no_useful_progress")
+
+    def test_changed_selectors_and_source_keep_useful_test_progress(self):
+        for index, pattern in enumerate(["'a|b'", "'>'", "'<'"]):
+            self.clock[0] = 10 + index * 10
+            self.call(str(index), "node scripts/run-jest.js --testNamePattern " + pattern + " 2>&1 | tail -60")
+            self.result(str(index), "FAIL synthetic.test.js")
+            self.assertEqual(self.progress.last_useful, self.clock[0])
+        (self.workspace / "README.md").write_text("Source B")
+        self.progress.scan(self.root, self.workspace)
+        self.clock[0] = 40
+        self.call("changed-source", "node scripts/run-jest.js --testNamePattern '<' 2>&1 | head -20")
+        self.result("changed-source", "FAIL synthetic.test.js")
+        self.assertEqual(self.progress.last_useful, 40)
+
+    def test_test_arguments_after_redirection_and_execution_context_are_preserved(self):
+        pairs = [
+            ("node scripts/run-jest.js --seed 2 > /tmp/a", "node scripts/run-jest.js --seed 3 > /tmp/b"),
+            ("node scripts/run-jest.js > /tmp/a --testNamePattern one",
+             "node scripts/run-jest.js > /tmp/a --testNamePattern two"),
+            ("MODE=one node scripts/run-jest.js", "MODE=two node scripts/run-jest.js"),
+            ("cd one && node scripts/run-jest.js", "cd two && node scripts/run-jest.js"),
+            ("node scripts/run-jest.js < input-one", "node scripts/run-jest.js < input-two"),
+            ("node scripts/run-jest.js | node other-test.js", "node scripts/run-jest.js | tail -20"),
+        ]
+        for left, right in pairs:
+            with self.subTest(left=left):
+                self.assertNotEqual(module.test_identity(left), module.test_identity(right))
+
     def test_timed_native_jest_charges_budget_while_a_filtered_result_stays_unknown(self):
         command = ("cd /workspace && TEST_RUN_ID=synthetic timeout 240 /opt/node/bin/node "
                    "core/node_modules/jest/bin/jest.js --runInBand > /tmp/synthetic-test.log 2>&1; "

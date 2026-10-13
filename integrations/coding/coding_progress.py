@@ -147,6 +147,65 @@ def test_kind(command: str) -> str | None:
     return match[0] if match else None
 
 
+def test_identity(command: str) -> str:
+    """Ignore output presentation, retaining test arguments and execution context."""
+    # Do not guess at substitutions or unknown additional commands.
+    if "$(" in command or "`" in command:
+        return hashlib.sha256(command.encode()).hexdigest()
+    viewers = {"cat", "head", "tail", "grep", "sed", "awk", "wc", "tee"}
+    quote, escaped, redirect = None, False, None
+    end = len(command)
+    for index, char in enumerate(command):
+        if escaped:
+            escaped = False
+        elif char == "\\" and quote != "'":
+            escaped = True
+        elif quote:
+            if char == quote:
+                quote = None
+        elif char in {"'", '"'}:
+            quote = char
+        elif char == "|":
+            # || is another command, rather than an output display pipeline.
+            tail = command[index + 1:]
+            try:
+                display = shlex.split(tail)
+            except ValueError:
+                display = []
+            starts = [0] + [i + 1 for i, word in enumerate(display) if word == "|"]
+            if (command[index:index + 2] == "||" or not display or
+                    any(i >= len(display) or Path(display[i]).name not in viewers for i in starts) or
+                    ";" in tail or "&&" in tail or "||" in tail):
+                return hashlib.sha256(command.encode()).hexdigest()
+            end = index
+            break
+        elif char == ";":
+            tail = command[index + 1:]
+            try:
+                display = shlex.split(tail)
+            except ValueError:
+                display = []
+            if (redirect is None or not display or Path(display[0]).name not in viewers or
+                    any(char in tail for char in ";&|")):
+                return hashlib.sha256(command.encode()).hexdigest()
+            end = index
+            break
+        elif char == ">" and redirect is None:
+            descriptor = re.search(r"(?<!\S)\d+$", command[:index])
+            redirect = descriptor.start() if descriptor else index
+    stem = command[:end]
+    if redirect is not None:
+        target = r"(?:'[^']*'|\"[^\"$`]*\"|[^\s<>|;&()]+)"
+        suffix = rf"(?:\d*>>?&?\s*{target}\s*)+"
+        if re.fullmatch(suffix, stem[redirect:]):
+            stem = stem[:redirect]
+    try:
+        payload = json.dumps(shlex.split(stem), separators=(",", ":"))
+    except ValueError:
+        payload = command
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
 def tool_message(message: dict) -> tuple[str, bool, bool]:
     """Extract bounded harness text and errors; malformed evidence stays unknown."""
     if not isinstance(message, dict) or type(message.get("isError", False)) is not bool:
@@ -406,7 +465,7 @@ class Progress:
                 command = str(args.get("command", ""))
                 # Shell pipelines and fallbacks can mask the test's exit code.
                 reliable = not re.search(r"[|;]", command)
-                self.pending_tests[(session, call_id)] = (test[0], hashlib.sha256(command.encode()).hexdigest(), reliable, test[1])
+                self.pending_tests[(session, call_id)] = (test[0], test_identity(command), reliable, test[1])
             self.current_test = next(iter(self.pending_tests.values()))[0] if self.pending_tests else None
             self.set_stage("test" if self.current_test else "tool")
         elif kind == "tool/result":
