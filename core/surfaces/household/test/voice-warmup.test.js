@@ -109,6 +109,23 @@ test('the warm-up sends the instructions of the first spoken turn, in the same n
   assert.deepEqual(h.warnings, []);
 });
 
+test('the spoken handler uses the actual request to choose complete reading or a short list introduction', { timeout: 2000 }, async () => {
+  const source = Array.from({ length: 12 }, (_, index) => `- Élément ${index + 1}: explication complète.`).join('\n');
+  for (const [request, fullReading] of [['Lis-moi la liste entière.', true], ['Quels sont les éléments?', false]]) {
+    const h = harness();
+    const response = h.speak(request);
+    await tick(); await tick();
+    assert.equal(h.requests.length, 1, JSON.stringify(response.failure));
+    h.requests[0].answer(source);
+    await response.finished;
+    assert.equal(response.failure, undefined);
+    const spoken = response.events.filter(event => event.type === 'delta').map(event => event.delta).join('');
+    assert.equal(spoken.includes('Élément 12: explication complète.'), fullReading);
+    assert.equal(spoken.includes('La liste complète est à l’écran'), !fullReading);
+    assert.equal(h.turns[0].display[0].body, source);
+  }
+});
+
 test('the warm-up never runs once someone has spoken, twice at once, or outside the native agent', async () => {
   const spoken = harness({ sessionFields: { turnCount: 2 } });
   assert.deepEqual(spoken.warmup.start({ ...spoken.session }, 'Bonjour.'), { started: false, reason: 'already_started' });

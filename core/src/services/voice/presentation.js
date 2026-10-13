@@ -1,7 +1,7 @@
 'use strict';
 
 // Shared spoken-channel guidance; domains may add their own conversation limits.
-const SPOKEN_REPLY_INSTRUCTION = 'Keep the spoken part conversational and short, in plain text without headings, Markdown, tables or code. Put the complete long answer in the screen channel when one is available and introduce it briefly aloud. When explicitly asked to read aloud, speak the complete requested content; do not summarize or shorten the reading. Preserve all necessary crisis resources, safety instructions and emergency phone numbers even when the answer needs to be longer.';
+const SPOKEN_REPLY_INSTRUCTION = 'Keep the spoken part conversational and short, in plain text without headings, Markdown, tables or code. Briefly introduce long answers aloud; show their complete text on screen when available. For explicit reading requests, speak all requested content without summarizing. Preserve all necessary crisis resources, safety instructions and emergency phone numbers, even in longer replies.';
 
 // Presentation intent only. It grants no read/tool access and never chooses the business owner.
 function readingRequested(text) {
