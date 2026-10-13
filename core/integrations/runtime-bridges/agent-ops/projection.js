@@ -341,7 +341,7 @@ function pipelineTasks(result) {
     heartbeatAt: task?.heartbeatAt || null,
     epic: String(task?.epic || '').slice(0, 240),
     source: task?.source || null,
-    priority: Number.isFinite(Number(task?.priority)) ? Number(task.priority) : null,
+    priority: task?.priority != null && Number.isFinite(Number(task.priority)) ? Number(task.priority) : null,
     dependsOn: asArray(task?.dependsOn).slice(0, 20),
     notBefore: task?.notBefore || null,
     dueAt: task?.dueAt || null,

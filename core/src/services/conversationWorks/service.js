@@ -76,7 +76,10 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
         || current.guardian?.runId && (current.guardian.runId !== runId || current.guardian.sessionKey !== sessionKey)) throw notFound();
     return { fields: { guardian: { ...current.guardian, agentId, state: 'running', sessionKey, runId } }, event: 'guardian_started' };
   });
-  const guardianSettled = async (id, state) => {
+  const guardianSettled = async (id, state, disposition) => {
+    if (disposition !== undefined && !['answered', 'awaiting_main'].includes(disposition)) {
+      throw fail('CONVERSATION_WORK_GUARDIAN_DISPOSITION_INVALID', 'A native guardian disposition is required.');
+    }
     const row = await repo.mutate(id, current => {
       // Recovery can mark a long native consultation uncertain before its
       // original guardian returns. Its exact settlement still owns that intake.
@@ -84,7 +87,9 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
         && !current.attempt && !current.result;
       const nextState = nativeIntake ? state : current.state === 'received' && !['native_only', 'native_read', 'native_work'].includes(current.classification)
         ? state === 'cancelled' ? 'cancelled' : current.contextReady ? 'queued' : current.state : current.state;
-      return { fields: { guardian: { ...current.guardian, state }, state: nextState,
+      const awaiting = state === 'completed' && disposition === 'awaiting_main' && current.mode === 'native';
+      return { fields: { guardian: { ...current.guardian, state, ...(disposition && { disposition }) }, state: nextState,
+        ...(awaiting && current.classification === 'native_review' && { classification: 'native_work', foreground: 'acknowledge' }),
         ...(nativeIntake && { reason: '' }) }, event: 'guardian_settled' };
     });
     if (['completed', 'failed', 'cancelled'].includes(row.state)) await finalize(row);
@@ -137,6 +142,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     assertContextSize(selected.selectedContext + JSON.stringify(conversation), LIMITS.context);
     return { authority: 'core.conversation-works', id: row._id, turnId: row.turnId,
       request: turn.inputText, guardianReply: turn.replyText, guardianOutcome: turn.outcome,
+      guardianDisposition: row.guardian?.disposition || 'unknown',
       guardianEvidence: turn.toolEvidence ? { authority: turn.toolEvidence.authority, runId: turn.toolEvidence.runId,
         status: turn.toolEvidence.status, receipts: turn.toolEvidence.receipts || [] } : null, selectedContext: selected.selectedContext,
       attachments: turn.attachments || [], mode: row.mode, classification: row.classification,
@@ -259,9 +265,23 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     return { authority: 'core.conversation-works', delegated: true, id: row._id, state: row.state,
       execution: row.result ? 'completed' : ['failed', 'cancelled'].includes(row.state) ? row.state : 'pending' };
   }
-  async function automaticSpeech(row) {
+  async function automaticSpeech(row, evidence) {
+    if (row.mode === 'native' && (row.guardian?.disposition === 'awaiting_main'
+        || row.guardian?.state === 'failed')) return true;
+    if (row.classification === 'native_review' || row.foreground === 'guardian') {
+      if (row.guardian?.disposition === 'answered') return false;
+      // Older accepted turns have no semantic guardian disposition. Their
+      // original verified tool work can still return without redispatching it.
+      const turn = await conversations.getTurn({ ...query(row.sessionId), traceId: row.turnId });
+      if (!turn || hash(turn.inputText) !== row.requestSha256 || simple(turn.inputText)) return false;
+      if (!evidence) {
+        const receipt = row.tools?.find(tool => tool.tool === 'native.consultation' && tool.runId === row.attempt?.runId);
+        if (receipt) evidence = await repo.read(row, receipt.payloadRef);
+      }
+      return Boolean(evidence?.toolChecks?.runId === row.attempt?.runId
+        && evidence.toolChecks.completedTools?.some(tool => !['tool_search', 'conversation_work', 'memory_search', 'memory_get'].includes(tool)));
+    }
     if (row.delivery?.automaticSpeech !== undefined) return row.delivery.automaticSpeech;
-    if (row.classification === 'native_review' || row.foreground === 'guardian') return false;
     // Older native_work rows raced ordinary conversation before the guardian
     // finished. Keep their original result and owner, but require explicit
     // listening when this request had a conversational foreground response.

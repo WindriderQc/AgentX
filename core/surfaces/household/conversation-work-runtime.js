@@ -3,6 +3,7 @@
 const { requestsTaskCheck } = require('./tool-turn-guard');
 const { requestsSecretary, requestsSecretaryRead, requestsReadEffects } = require('./native-specialist-policy');
 const { requestsWebRead } = require('./native-web-policy');
+const { requestsPipelineRead } = require('./native-pipeline-policy');
 const { PERSONAL_OPERATOR_SURFACE_CONTRACT } = require('./packs');
 const { LIMITS, hash, MODES, nativeWork } = require('../../src/services/conversationWorks/contract');
 const { formatTurnContext, assertContextSize } = require('../../src/services/conversations/turnContext');
@@ -18,7 +19,7 @@ function registerWorkRuntime({ router, conversations, tasks, agentClient, contin
   }
   const works = capability.create({ conversations, tasks, env, classify: requestsTaskCheck,
     nativeOnly: requestsSecretary, nativeRead: text => requestsSecretaryRead(text) || requestsWebRead(text),
-    nativeForeground: text => requestsTaskCheck(text) || requestsSecretary(text) || requestsWebRead(text) || requestsReadEffects(text),
+    nativeForeground: text => requestsTaskCheck(text) || requestsPipelineRead(text) || requestsSecretary(text) || requestsWebRead(text) || requestsReadEffects(text),
     nativeBudget: (text, mode) => requestsWebRead(text) && !requestsSecretaryRead(text) && !requestsTaskCheck(text)
       ? { tools: 8, web: 4 } : mode === 'native' ? { tools: 16, web: 4, stopAfterWeb: false } : null });
   const native = require('./native-work-runtime').nativeWorkRuntime({ works, conversations, agentClient, continuity, attachmentStore });

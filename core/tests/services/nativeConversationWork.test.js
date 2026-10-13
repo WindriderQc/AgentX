@@ -47,6 +47,7 @@ afterEach(() => works.observer.stop());
 test.each([['Regarde mes tâches.', 'native_work'], ['Ajoute une tâche personnelle pour demain.', 'native_work'],
   ['Résume mes courriels récents.', 'native_work'], ['Demande à la secrétaire de rédiger un courriel.', 'native_work'],
   ['Does the team play tonight?', 'native_work'], ['Quelles sont mes tâches prioritaires ?', 'native_work'],
+  ['Quels éléments de mon pipeline sont prioritaires ?', 'native_work'],
   ['Compare the two options from our discussion.', 'native_review'],
   ['Une demande inconnue de tous les anciens sélecteurs.', 'native_review']])
 ('every accepted work request reaches complete native Main: %s', async (text, classification) => {
@@ -357,7 +358,7 @@ test('the dedicated guardian uses a compact per-turn session, preserves Main his
     current = await conversations.updateSession({ sessionId: current.sessionId }, { $set: { agentSessionKey: mainKey } });
     const guardian = jest.fn(async body => {
       expect(body.session.agentId).toBe('nestor-guardian'); expect(body.session.agentSessionKey).toBeNull();
-      expect(body.instructions.length).toBeLessThan(2500); expect(body.instructions).not.toContain('tool_search');
+      expect(body.instructions.length).toBeLessThan(3000); expect(body.instructions).not.toContain('tool_search');
       expect(body.guardianStreaming).toBe(true); expect(body.history.length).toBeLessThanOrEqual(6);
       const runId = 'resp_' + randomUUID(), key = `agent:nestor-guardian:household:direct:${body.session.sessionId}`;
       await body.onStarted(key, runId);
@@ -382,6 +383,28 @@ test('the dedicated guardian uses a compact per-turn session, preserves Main his
   } finally { delete env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID; }
 });
 
+test('real voice HTTP strips a native semantic handoff from speech and canonical prose before queuing Main', async () => {
+  env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID = 'nestor-guardian';
+  try {
+    const raw = '[[NESTOR_MAIN_REQUIRED]] Je consulte le document pour toi.';
+    const guardian = jest.fn(async body => {
+      await body.onStarted(`agent:nestor-guardian:household:direct:${body.session.sessionId}`, 'resp_' + randomUUID());
+      body.onDelta(raw.slice(0, 8)); body.onDelta(raw.slice(8, 24)); body.onDelta(raw.slice(24));
+      return { text: raw, metadata: { model: 'synthetic-guardian' }, tools: { status: 'observed', receipts: [] } };
+    });
+    const app = await personalHttp(createConversationExecutor({ env, inference: {}, agentClient: guardian }));
+    const turnId = randomUUID(), text = 'Quel est le montant du document dont on parlait ?';
+    const response = await request(app).post(`/sessions/${current.sessionId}/turns/text`).send({ text, turnId, channel: 'voice', stream: true });
+    expect(response.status).toBe(200); expect(response.text).not.toContain('NESTOR_MAIN_REQUIRED');
+    const row = await works.repo.get(hash(current.sessionId + '\n' + turnId));
+    expect(row).toMatchObject({ classification: 'native_work', foreground: 'acknowledge', state: 'queued', guardian: { disposition: 'awaiting_main' } });
+    const turn = await conversations.getTurn({ ...works.query(current.sessionId), traceId: turnId });
+    expect(turn.inputText).toBe(text); expect(turn.replyText).toBe('Je consulte le document pour toi.');
+    await works.observer.tick();
+    expect((await works.contextForNative(context(await works.repo.get(row._id)))).guardianDisposition).toBe('awaiting_main');
+  } finally { delete env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID; }
+});
+
 test('enabling the dedicated guardian preserves the owner of already accepted Main guardian runs', async () => {
   const accepted = await works.intake(input('Bonjour.'));
   env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID = 'nestor-guardian';
@@ -391,6 +414,58 @@ test('enabling the dedicated guardian preserves the owner of already accepted Ma
     expect(await works.guardianTool({ agentId: 'main', sessionKey: key, runId })).toMatchObject({ delegated: true });
     await expect(works.guardianStarted(accepted.row._id, key.replace('main', 'nestor-guardian'), runId, 'nestor-guardian')).rejects.toMatchObject({ statusCode: 404 });
   } finally { delete env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID; }
+});
+
+test('a semantic guardian handoff promotes a selector-missed request and delivers the original Main result once', async () => {
+  const row = await admitted('Quel est le montant dans le document dont on parlait ?');
+  expect(row.classification).toBe('native_review');
+  await conversations.settleTurn({ ...works.query(current.sessionId), traceId: row.turnId, replyText: 'Je consulte le document.' });
+  await works.guardianSettled(row._id, 'completed', 'awaiting_main');
+  const handed = await works.repo.get(row._id);
+  expect(handed).toMatchObject({ classification: 'native_work', foreground: 'acknowledge', guardian: { disposition: 'awaiting_main' }, attempt: row.attempt });
+  const runtime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
+  expect(await runtime.receive({ row: handed, evidence: proof(row.attempt, NO_WORK) })).toBeNull();
+  await works.publishNative(row._id, proof(row.attempt, 'The verified amount is 42.'));
+  const delivery = createWorkDelivery(works), result = (await delivery.projection(await works.repo.get(row._id))).result;
+  expect(result).toMatchObject({ automaticSpeech: true, text: 'The verified amount is 42.' });
+  const receipt = { stage: 'claim', resultVersion: 1, sequence: 1, deviceSession: randomUUID() };
+  expect(await delivery.receipt(current.sessionId, result.deliveryId, receipt)).toMatchObject({ state: 'claimed' });
+  await expect(delivery.receipt(current.sessionId, result.deliveryId, { ...receipt, sequence: 2, deviceSession: randomUUID() }))
+    .rejects.toMatchObject({ code: 'CONVERSATION_WORK_PRESENTATION_HELD' });
+});
+
+test('a completed direct guardian reply stays manual even when Main unnecessarily invokes another tool', async () => {
+  const row = await admitted('Raconte-moi une histoire.');
+  await conversations.settleTurn({ ...works.query(current.sessionId), traceId: row.turnId, replyText: 'Il était une fois.' });
+  await works.guardianSettled(row._id, 'completed', 'answered');
+  await works.publishNative(row._id, proof(row.attempt, 'Unwanted alternate story.', ['web_fetch']));
+  expect((await createWorkDelivery(works).projection(await works.repo.get(row._id))).result.automaticSpeech).toBe(false);
+});
+
+test('a pipeline result requires an actual same-run snapshot read, rather than discovery or a personal task read', async () => {
+  const row = await admitted('Quels éléments de mon pipeline sont prioritaires ?');
+  const runtime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
+  for (const tools of [[], ['tool_search'], ['list_personal_tasks']]) {
+    expect(await runtime.receive({ row, evidence: proof(row.attempt, 'Claimed priority.', tools) })).toBeNull();
+  }
+  expect(await runtime.receive({ row, evidence: proof(row.attempt, 'Verified pipeline priority.', ['agentx__ecosystem_snapshot']) }))
+    .toEqual({ published: true });
+  expect((await createWorkDelivery(works).projection(await works.repo.get(row._id))).result.automaticSpeech).toBe(true);
+});
+
+test('an already accepted review can deliver retained verified tool work without replacing its attempt or replaying speech', async () => {
+  const row = await admitted('Quelle information récente apparaît dans cette source ?');
+  // An older Core already cached manual playback solely from classification.
+  await works.publishNative(row._id, proof(row.attempt, 'Original verified tool answer.', ['ecosystem_snapshot']));
+  await works.repo.mutate(row._id, current => ({ fields: { delivery: { ...current.delivery, automaticSpeech: false } }, event: 'fixture_old_manual' }));
+  const delivery = createWorkDelivery(works), saved = await works.repo.get(row._id), result = (await delivery.projection(saved)).result;
+  expect(result.automaticSpeech).toBe(true); expect(saved.attempt).toEqual(row.attempt);
+  const receipt = { resultVersion: 1, deviceSession: randomUUID(), sequence: 1, stage: 'claim' };
+  const claim = await delivery.receipt(current.sessionId, result.deliveryId, receipt);
+  await delivery.receipt(current.sessionId, result.deliveryId, { ...receipt, sequence: 2, stage: 'started', claimToken: claim.claimToken });
+  await delivery.receipt(current.sessionId, result.deliveryId, { ...receipt, sequence: 3, stage: 'completed', claimToken: claim.claimToken });
+  await expect(delivery.receipt(current.sessionId, result.deliveryId, { ...receipt, sequence: 4 })).rejects.toMatchObject({ code: 'CONVERSATION_WORK_PRESENTATION_HELD' });
+  expect(execute).not.toHaveBeenCalled();
 });
 
 test('legacy native conversation results remain retained but require explicit listening; actual task results remain automatic', async () => {

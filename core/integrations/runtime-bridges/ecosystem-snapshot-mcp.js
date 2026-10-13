@@ -16,11 +16,11 @@ const FULL_SNAPSHOT_CAPS = Object.freeze({
 const ECOSYSTEM_SNAPSHOT_TOOL = Object.freeze({
   name: 'ecosystem_snapshot',
   title: 'Ecosystem Snapshot',
-  description: 'Return the bounded, sanitized, read-only AIOps programme projection used by Overseer.',
+  description: 'Read the sanitized canonical engineering Pipeline priorities or the full AIOps programme projection. Use mode pipeline for a compact task priority/status read.',
   inputSchema: Object.freeze({
     type: 'object',
     properties: {
-      mode: { type: 'string', enum: ['full'], default: 'full' },
+      mode: { type: 'string', enum: ['full', 'pipeline'], default: 'full' },
       maxChars: { type: 'integer', minimum: 5000, maximum: 60000, default: 60000 },
     },
     additionalProperties: false,
@@ -136,7 +136,7 @@ function programmeTask(task) {
     heartbeatAt: safeTimestamp(task?.heartbeatAt),
     epic: safeLabel(task?.epic || '', 160) || null,
     source: safeIdentifier(task?.source, 80),
-    priority: Number.isFinite(Number(task?.priority)) ? Number(task.priority) : null,
+    priority: task?.priority != null && Number.isFinite(Number(task.priority)) ? Number(task.priority) : null,
     dependsOn: capArray(task?.dependsOn, 20).map((id) => safeIdentifier(id, 80)).filter(Boolean),
     notBefore: safeTimestamp(task?.notBefore),
     dueAt: safeTimestamp(task?.dueAt),
@@ -518,7 +518,7 @@ function validateArguments(value) {
     throw new EcosystemSnapshotMcpError(`unsupported argument: ${unknown[0]}`, 'INVALID_ARGUMENTS');
   }
   const mode = value.mode === undefined ? 'full' : value.mode;
-  if (mode !== 'full') {
+  if (!['full', 'pipeline'].includes(mode)) {
     throw new EcosystemSnapshotMcpError(`unsupported ecosystem snapshot mode: ${mode}`, 'INVALID_ARGUMENTS');
   }
   const maxChars = value.maxChars === undefined ? 60000 : value.maxChars;
@@ -551,12 +551,27 @@ function errorPayload(error) {
 
 async function callEcosystemSnapshot(args, { projectionProvider }) {
   try {
-    const { maxChars } = validateArguments(args);
+    const { mode, maxChars } = validateArguments(args);
     if (typeof projectionProvider !== 'function') {
       throw new EcosystemSnapshotMcpError('Agent Ops projection provider is unavailable', 'ECOSYSTEM_SNAPSHOT_UNAVAILABLE');
     }
     const projection = validateProjection(await projectionProvider());
-    return resultPayload(fitSnapshotPayload(buildFullSnapshot(projection), projection, maxChars));
+    const full = buildFullSnapshot(projection);
+    if (mode === 'pipeline') {
+      const active = programmeTasks(projection.work.active).sort((a, b) =>
+        (a.priority ?? Infinity) - (b.priority ?? Infinity) || String(a.pipelineId).localeCompare(String(b.pipelineId)));
+      const pipeline = { ...full.pipeline, active: active.slice(0, 8).map(({ pipelineId, title, status, priority, dependsOn, notBefore }) =>
+        ({ pipelineId, title, status, priority, dependsOn, notBefore })), recent: [], priorityOrder: 'ascending-numeric',
+        priorityScope: 'visible-non-private-active-tasks', returnedCount: Math.min(active.length, 8), truncated: active.length > 8 };
+      const focused = { mode, schemaVersion: full.schemaVersion, generatedAt: full.generatedAt, readOnly: true,
+        authority: full.authority, pipelineSource: full.sources.pipeline, pipeline };
+      while (JSON.stringify(focused).length > maxChars && pipeline.active.length) {
+        pipeline.active.pop(); pipeline.returnedCount = pipeline.active.length; pipeline.truncated = true;
+      }
+      if (JSON.stringify(focused).length > maxChars) throw new EcosystemSnapshotMcpError('The pipeline summary exceeds maxChars', 'ECOSYSTEM_SNAPSHOT_MAX_CHARS_TOO_SMALL');
+      return resultPayload(focused);
+    }
+    return resultPayload(fitSnapshotPayload(full, projection, maxChars));
   } catch (error) {
     return errorPayload(error);
   }
