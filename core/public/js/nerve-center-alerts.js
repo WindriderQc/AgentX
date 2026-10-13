@@ -136,7 +136,8 @@
 
         if (!_poller) {
             _poller = new window.PollingController();
-            _poller.addTask('alerts', loadAlerts, 30000, { runOnStart: false });
+            // The refresh rebuilds the section, rule editor included: skip it while a rule is being written.
+            _poller.addTask('alerts', () => (ruleEditorOpen() ? undefined : loadAlerts()), 30000, { runOnStart: false });
             _poller.start();
         }
     }
@@ -176,6 +177,11 @@
         return `<table class="nc-table" id="nc-rules-table"><thead><tr>
             <th>Rule</th><th>Severity</th><th>Conditions</th><th>Status</th><th style="text-align:center;width:100px"></th>
         </tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    function ruleEditorOpen() {
+        const editor = document.getElementById('nc-rule-editor');
+        return Boolean(editor && editor.style.display !== 'none');
     }
 
     function buildRuleEditor() {
