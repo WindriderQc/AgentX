@@ -135,6 +135,10 @@
           buffer_gaps: gaps, peak_buffered_ms: Math.round(peakBufferedMs), basis: 'browser scheduling; not acoustic arrival' };
         this.onMetrics(metrics);
         return metrics;
+      } catch (error) {
+        // Scheduling evidence prevents automatic replay of a partially heard clause.
+        if (scheduled && error && typeof error === 'object') error.playbackStarted = true;
+        throw error;
       } finally {
         signal.removeEventListener('abort', abort); stopNodes();
         if (reader) { await reader.cancel().catch(() => {}); reader.releaseLock(); }
@@ -156,14 +160,27 @@
       try {
         await context.resume();
         if (controller.signal.aborted) throw abortError();
-        let result;
+        let result, failedSpeech = null, retried = false;
+        const play = response => response?.browserSpeech
+          ? (this.options.playBrowser || root.AgentXVoice?.speakWithBrowser)?.(response.browserSpeech, controller.signal, this.options.onScheduled)
+          : new Player(context, this.options).play(response, controller.signal, { requestStartedAt });
         for (const segment of segments) {
           if (controller.signal.aborted || this.current !== controller) throw abortError();
-          const response = await fetchAudio(controller.signal, segment);
+          let response = await fetchAudio(controller.signal, segment, failedSpeech);
           if (controller.signal.aborted || this.current !== controller) {
             await response.body?.cancel?.().catch(() => {}); throw abortError();
           }
-          result = await new Player(context, this.options).play(response, controller.signal, { requestStartedAt });
+          if (response?.browserSpeech && !(this.options.playBrowser || root.AgentXVoice?.speakWithBrowser)) throw new Error('Browser speech playback is unavailable');
+          try { result = await play(response); }
+          catch (error) {
+            if (!this.options.retryUnplayed || controller.signal.aborted || error.name === 'AbortError' || error.playbackStarted || response?.browserSpeech || retried) throw error;
+            failedSpeech = response; retried = true;
+            response = await fetchAudio(controller.signal, segment, failedSpeech);
+            if (controller.signal.aborted) { await response.body?.cancel?.().catch(() => {}); throw abortError(); }
+            if (response?.browserSpeech && !(this.options.playBrowser || root.AgentXVoice?.speakWithBrowser)) throw new Error('Browser speech playback is unavailable');
+            result = await play(response);
+          }
+          if (controller.signal.aborted || this.current !== controller) throw abortError();
         }
         return result;
       } finally {

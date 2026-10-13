@@ -18,6 +18,11 @@
         try { response = await request({ text, language, choice: choices[rung] }, signal); }
         catch (error) { if (signal.aborted) throw error; break; }
         if (response.ok) return issued(response, rung);
+        await response.body?.cancel?.().catch(() => {});
+        // Invalid requests and access refusals are terminal, not voice outages.
+        if ([400, 401, 403, 413].includes(response.status)) {
+          throw Object.assign(new Error(`Speech request was refused (${response.status}). The complete answer remains on screen.`), { status: response.status });
+        }
       }
       if (!signal.aborted && first <= choices.length && deviceVoice()) {
         return issued({ browserSpeech: { text, language } }, choices.length);

@@ -109,3 +109,27 @@ test('Household: a neural voice that stops mid-clause is replaced by the persona
   assert.equal(conversation.state, 'listening');
   conversation.stop();
 });
+
+test('access and invalid-request refusals never fall through to another voice or device', async () => {
+  for (const status of [400, 401, 403, 413]) {
+    let requested = 0;
+    const ladder = createSpeechLadder({ deviceVoice: () => true, request: async () => { requested++; return new Response('refused', { status }); } });
+    await assert.rejects(ladder.speak({ text: 'Synthetic text', language: 'en', choices }, live()), error => error.status === status);
+    assert.equal(requested, 1);
+  }
+});
+
+test('a conversation never automatically repeats a partially scheduled reply', async () => {
+  const requests = [];
+  let utterance;
+  const audio = { quiet() {}, close() {}, listen(callback) { utterance = callback; },
+    async play() { throw Object.assign(new Error('Partial stream failed'), { playbackStarted: true }); } };
+  const conversation = new Conversation({ holdingDelayMs: null, openAudio: async () => audio,
+    createSession: async () => ({ sessionId: 'synthetic' }), transcribe: async () => 'Bonjour', message() {},
+    turn: async () => ({ text: 'Complete retained result.', language: 'en' }),
+    synthesize: async reply => { requests.push(reply); return new Response('audio'); } });
+  await conversation.start({ language: 'en' }); await utterance(new Blob(['synthetic']));
+  assert.equal(requests.length, 1);
+  assert.equal(conversation.state, 'error');
+  conversation.stop();
+});
