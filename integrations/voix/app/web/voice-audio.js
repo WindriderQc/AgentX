@@ -146,7 +146,7 @@
   class Speech {
     constructor(options = {}) { this.options = options; this.current = null; }
     cancel() { this.current?.abort(); this.current = null; }
-    async speak(fetchAudio) {
+    async speak(fetchAudio, { segments = [null] } = {}) {
       this.cancel();
       const requestStartedAt = root.performance.now();
       const controller = new AbortController(); this.current = controller;
@@ -156,9 +156,16 @@
       try {
         await context.resume();
         if (controller.signal.aborted) throw abortError();
-        const response = await fetchAudio(controller.signal);
-        if (controller.signal.aborted || this.current !== controller) throw abortError();
-        return await new Player(context, this.options).play(response, controller.signal, { requestStartedAt });
+        let result;
+        for (const segment of segments) {
+          if (controller.signal.aborted || this.current !== controller) throw abortError();
+          const response = await fetchAudio(controller.signal, segment);
+          if (controller.signal.aborted || this.current !== controller) {
+            await response.body?.cancel?.().catch(() => {}); throw abortError();
+          }
+          result = await new Player(context, this.options).play(response, controller.signal, { requestStartedAt });
+        }
+        return result;
       } finally {
         if (this.current === controller) this.current = null;
         await context.close().catch(() => {});

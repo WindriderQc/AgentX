@@ -78,6 +78,17 @@ describe('surface conversations in the canonical Core store', () => {
     expect((await conversations.getSession({ sessionId: session.sessionId })).turnCount).toBe(0);
   });
 
+  test('Household retains a complete long reading and explicitly refuses beyond its response bound', async () => {
+    const household = forSurface('household');
+    const homeSession = await household.createSession({ sessionId: randomUUID(), packId: 'personal_operator',
+      modeId: 'personal', scopeId: 'personal', label: 'Synthetic reading' });
+    const replyText = 'Texte complet. '.repeat(2000) + 'DERNIERS MOTS';
+    const recorded = await household.recordTurn(turn(homeSession, { replyText }));
+    expect((await household.getTurn({ traceId: recorded.traceId })).replyText).toBe(replyText);
+    await expect(household.recordTurn(turn(homeSession, { replyText: 'a'.repeat(50001) })))
+      .rejects.toMatchObject({ statusCode: 400 });
+  });
+
   test('concurrent replay appends exactly one turn and increments the count once', async () => {
     const event = turn(session, { source: 'voix-native' });
     const results = await Promise.allSettled(Array.from({ length: 6 }, () => conversations.recordTurn(event)));

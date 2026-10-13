@@ -422,7 +422,7 @@ function createPersonaTurnHandler({
           evidence: toolEvidence, turnId: clientTurnId || entry.imageTurnId, signal: abort.signal, member: Boolean(member),
           onShow: block => event('show', { block }) });
         const parsed = sceneEnabled ? llmx.sceneReply(result.text, req.llmx.sceneContext) : { text: channels ? channels.end().say : result.text, sceneProposal: null };
-        replyText = plainReply(parsed.text, 5000);
+        replyText = plainReply(parsed.text);
         sceneProposal = parsed.sceneProposal;
         entry.naturalReply = replyText;
         if (isOpening && !abort.signal.aborted && (!/^Hello\b/.test(replyText) || replyText.length > 600)) {

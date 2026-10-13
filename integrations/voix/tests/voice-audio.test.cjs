@@ -125,3 +125,27 @@ test('a silent completed stream leaves the signal scheduling time absent', async
   assert.equal(signals, 0);
   assert.equal(metrics.first_signal_scheduled_ms, undefined);
 });
+
+
+test('a segmented reading completes each segment before requesting the next and Stop cancels the remainder', async t => {
+  const contexts = [], previous = globalThis.AudioContext;
+  globalThis.AudioContext = class extends Context { constructor() { super(); contexts.push(this); } };
+  t.after(() => { if (previous) globalThis.AudioContext = previous; else delete globalThis.AudioContext; });
+  const requested = [];
+  const audio = () => new Response([meta, frame(), done].map(event => JSON.stringify(event)).join('\n'),
+    { headers: { 'Content-Type': 'application/x-ndjson' } });
+  const speech = new Speech();
+  const reading = speech.speak(async (_signal, text) => { requested.push(text); return audio(); }, { segments: ['first', 'second'] });
+  await tick();
+  assert.deepEqual(requested, ['first']);
+  contexts[0].nodes[0].onended(); await tick();
+  assert.deepEqual(requested, ['first', 'second']);
+  contexts[0].nodes[1].onended(); await reading;
+  assert.equal(contexts[0].state, 'closed');
+  requested.length = 0;
+  const stopped = speech.speak(async (_signal, text) => { requested.push(text); return audio(); }, { segments: ['first', 'never'] });
+  const rejected = assert.rejects(stopped, { name: 'AbortError' });
+  await tick(); speech.cancel(); await rejected;
+  assert.deepEqual(requested, ['first']);
+  assert.equal(contexts[1].state, 'closed');
+});

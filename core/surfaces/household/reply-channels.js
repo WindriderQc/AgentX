@@ -26,7 +26,7 @@ const LINE = Object.freeze({
   table: /^\s*\|/
 });
 
-function plainReply(value, max = 5000) {
+function plainReply(value, max = Infinity) {
   return String(value || '').trim().slice(0, max)
     .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
     .replace(/^(?:#{1,6}|>)\s*/gm, '')
@@ -96,12 +96,11 @@ function createReplyChannels({ allowSecrets = false, language = 'fr', onSay = ()
     onSay(text);
   };
   const addBlock = (kind, title, body, extra = {}) => {
-    const content = String(body || '').replace(/^\n+|\s+$/g, '').slice(0, LIMITS.body);
+    const content = String(body || '').replace(/^\n+|\s+$/g, '');
     if (!content.trim()) return false;
     if (kind === 'secret' && !allowSecrets) return false;
     // A consult block is a request to Core (#41), never something to display or to store.
     if (kind === 'consult') { onConsult({ member: title, question: content }); return false; }
-    if (display.length >= LIMITS.blocks) return false;
     const block = { id: 'b' + (display.length + 1), kind, title, body: content, ...extra };
     display.push(block);
     onShow(block);
@@ -265,7 +264,7 @@ function contract({ family = false, imageSources = [] } = {}) {
   return [
     'Your reply reaches two places: everything outside a show block is spoken aloud; show blocks are displayed on the user\'s screen and never spoken.',
     `${SPOKEN_REPLY_INSTRUCTION} When details are on screen, say so naturally, for example "je te l'ai mis à l'écran".`,
-    'For a priority or task question, speak the one to three most useful items and their deadlines outside the show block. A screen pointer alone is not an answer.',
+    'Unless explicitly asked to read the complete text aloud, for a priority or task question speak the one to three most useful items and their deadlines outside the show block. A screen pointer alone is not an answer.',
     `Put anything meant to be read rather than heard inside <show kind="list|table|code|text|link${family ? '' : '|secret'}" title="short title">…</show>: lists longer than three items, steps, tables, code, commands, links, identifiers and long details. Markdown is allowed inside show blocks only.`,
     family
       ? 'Never show passwords, keys, account details or private information.'

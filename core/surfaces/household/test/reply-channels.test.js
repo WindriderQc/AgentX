@@ -167,3 +167,22 @@ test('removing a generated picture reference leaves single spaces, even across s
     assert.equal(result.display[0].source, 'generated');
   }
 });
+
+
+test('long display content and every block survive presentation and history', () => {
+  const body = 'Contenu complet. '.repeat(700) + 'FIN DU DOCUMENT';
+  const source = 'Voici le document à l’écran.\n' + Array.from({ length: 23 }, (_, index) => `<show kind="text" title="${index}">${body}</show>`).join('');
+  const result = run(chunks(source, 103));
+  assert.equal(result.display.length, 23);
+  assert.ok(result.display.every(block => block.body === body));
+  assert.equal(storedDisplay(result.display).at(-1).body, body);
+  assert.ok(historyText(result.say, result.display).includes(body));
+  assert.equal(result.say.trim(), 'Voici le document à l’écran.');
+});
+
+test('explicit reading prose remains complete beyond the former reply projection limit', () => {
+  const source = 'Texte à lire entièrement. '.repeat(400) + 'DERNIERS MOTS';
+  const result = run(chunks(source, 77));
+  assert.equal(result.say, source);
+  assert.equal(plainReply(result.say), source);
+});

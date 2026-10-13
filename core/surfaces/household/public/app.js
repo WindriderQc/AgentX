@@ -299,17 +299,17 @@
       state.speech ||= new window.VoixAudio.Speech();
       const choices = override ? [override]
         : window.PersonaPresentation.speechChoices(state.session?.persona, profile.language, { selections: readingVoices });
-      await state.speech.speak(async signal => {
+      await state.speech.speak(async (signal, segment) => {
         for (const choice of choices) {
           const response = await fetch('/api/voix/synthesize/stream', {
             method: 'POST', signal, credentials: 'include', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, language: profile.language, tts_provider: choice.provider,
+            body: JSON.stringify({ text: segment, language: profile.language, tts_provider: choice.provider,
               voice: choice.voice || '', native_defaults: choice.native_defaults === true }),
           });
           if (response.ok) return response;
         }
         throw new Error('Local speech is unavailable. Select another local voice or use the explicit browser preview.');
-      });
+      }, { segments: window.NestorSpeech.splitSpeechText(text) });
     } catch (error) { if (error.name !== 'AbortError') toast(error.message); }
   }
 

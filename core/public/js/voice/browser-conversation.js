@@ -428,14 +428,25 @@
       try {
         // The remark is one utterance: the chosen language, else its own words.
         const language = speechLanguage.turnSpeechLanguage(reply.text, reply.language, this.selection?.language);
-        const bytes = await this.io.synthesize({ ...reply, language }, this.abort.signal);
+        const segments = speechLanguage.splitSpeechText((this.io.speechText || speechLanguage.speechText)(reply.text));
+        if (!segments.length) return false;
+        const bytes = await this.io.synthesize({ ...reply, text: segments[0], language }, this.abort.signal);
         if (!idle()) { discardSpeech(bytes); return false; }
         turn = { epoch, id: root.crypto.randomUUID(), request: new AbortController(), speech: new AbortController(),
-          interrupted: false, local: true, replyStarted: true, spoken: reply.text };
+          interrupted: false, local: true, replyStarted: true, spoken: '' };
         this.activeTurn = turn;
         lifetimeSignal.addEventListener('abort', cancel, { once: true });
         this.audio.quiet(); this.monitor(turn); this.show('speaking');
-        await this.audio.play(bytes, turn.speech.signal, false, null, { onScheduled });
+        let scheduled = false;
+        for (let index = 0; index < segments.length; index++) {
+          const audio = index ? await this.io.synthesize({ ...reply, text: segments[index], language }, turn.speech.signal) : bytes;
+          if (!this.owns(turn)) { discardSpeech(audio); return false; }
+          turn.spoken = (turn.spoken + ' ' + segments[index]).slice(-800);
+          await this.audio.play(audio, turn.speech.signal, false, null, { onScheduled() {
+            if (!scheduled) { scheduled = true; onScheduled?.(); }
+          } });
+          if (!this.owns(turn)) return false;
+        }
         await this.audio.settle?.(turn.speech.signal);
         await this.awaitCandidate(turn);
         if (!this.owns(turn)) return false;
@@ -648,7 +659,7 @@
       let replyLanguageChosen = !!speechLanguage.explicitSpeechLanguage(this.selection.language);
       // `notice` marks words that are not the reply (a waiting notice): the
       // timeline's first audio is the reply's own first clause.
-      const speak = (text, notice = false) => {
+      const speakSegment = (text, notice = false) => {
         text = (this.io.speechText || speechLanguage.speechText)(text);
         if (!text.trim() || !this.owns(turn)) return false;
         // In automatic mode the reply's own words choose its voice once. A
@@ -719,6 +730,11 @@
       // The phrase never delays the answer: it is dropped when reply text arrives
       // before it plays, and it does not hold the synthesis of the first clause.
       let holdingSpeech = null;
+      const speak = (text, notice = false) => {
+        let scheduled = false;
+        for (const segment of speechLanguage.splitSpeechText((this.io.speechText || speechLanguage.speechText)(text))) scheduled = speakSegment(segment, notice) || scheduled;
+        return scheduled;
+      };
       const dropHolding = () => { if (holdingSpeech && !holdingSpeech.playing) holdingSpeech.abort.abort(); };
       turn.session = this.session; turn.timeline?.mark('requestSent');
       const response = this.io.turn(this.session, text, turn.request.signal, delta => {

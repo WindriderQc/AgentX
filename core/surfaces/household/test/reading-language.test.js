@@ -14,7 +14,7 @@ async function browser({ savedLanguage, turnResponse } = {}) {
   const element = id => {
     if (!nodes.has(id)) nodes.set(id, { value: '', textContent: '', innerHTML: '', disabled: false, dataset: {}, listeners: {},
       classList: { add() {}, remove() {}, toggle() {} }, setAttribute() {}, getAttribute() { return ''; },
-      addEventListener(type, callback) { this.listeners[type] = callback; }, close() {} });
+      querySelectorAll() { return []; }, addEventListener(type, callback) { this.listeners[type] = callback; }, close() {} });
     return nodes.get(id);
   };
   const fetch = async (url, options = {}) => {
@@ -31,7 +31,7 @@ async function browser({ savedLanguage, turnResponse } = {}) {
     document: { getElementById: element, querySelector: element,
       addEventListener(type, callback) { listeners[type] = callback; } },
     window: { PersonaPresentation: P, NestorSpeech: speech, HouseholdNavigation: { mount() {} },
-      VoixAudio: { Speech: class { cancel() {} async speak(request) { await request(new AbortController().signal); } } } },
+      VoixAudio: { Speech: class { cancel() {} async speak(request, { segments = [null] } = {}) { for (const segment of segments) await request(new AbortController().signal, segment); } } } },
     navigator: { language: 'en-CA' }, location: { pathname: '/lecture' },
     localStorage: { getItem: key => stored.get(key), setItem: (key, value) => stored.set(key, value) },
     fetch, FormData, AbortController, console, setTimeout, clearTimeout
@@ -67,4 +67,16 @@ test('changing a reading preference during inference affects the next turn, whil
   await h.ask();
   assert.deepEqual(h.requests.filter(request => request.url.endsWith('/turns/text')).map(request => request.body.language), ['fr', 'en']);
   assert.equal(h.requests.at(-1).body.language, 'en');
+});
+
+
+test('Lecture reads the entire long response in ordered bounded segments', async () => {
+  const full = ('Une phrase à lire. '.repeat(900)) + 'FIN COMPLETE';
+  const h = await browser({ turnResponse: () => Response.json({ data: { reply: { text: full } } }) });
+  await h.ask();
+  const speech = h.requests.filter(request => request.url.endsWith('/synthesize/stream'));
+  assert.ok(speech.length > 1);
+  assert.ok(speech.every(request => request.body.text.length <= 4000));
+  assert.equal(speech.map(request => request.body.text).join(''), full);
+  assert.equal(h.element('readerReply').textContent, full);
 });
