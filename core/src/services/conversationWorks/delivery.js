@@ -17,7 +17,7 @@ function createWorkDelivery(works) {
       nativeAdmissions: (row.nativeAdmissions || []).map(call => ({ id: call.id, tool: call.tool, at: call.at })),
       resultDisposition: row.result?.kind || null,
       controllable: row.classification !== 'native_only' && !row.attempt && ['received', 'queued', 'paused'].includes(row.state),
-      result: result && result.kind !== 'no_work' ? { ...result, version: row.result.version,
+      result: result && result.kind !== 'no_work' ? { ...result, automaticSpeech: await works.automaticSpeech(row), version: row.result.version,
         deliveryId: row.delivery.id, presentation: row.delivery.state } : null,
       // A context payload is never a browser projection.
       pending: (ACTIVE.includes(row.state) || ['pending', 'running', 'uncertain'].includes(row.guardian?.state)) && !row.result };
@@ -42,6 +42,7 @@ function createWorkDelivery(works) {
       || input.resultVersion !== row.result.version || !Number.isSafeInteger(input.sequence) || input.sequence < 1
       || !/^[a-zA-Z0-9-]{16,80}$/.test(input.deviceSession || '')) throw fail('CONVERSATION_WORK_PRESENTATION_INVALID', 'A versioned presentation receipt is required.');
     const { randomUUID } = require('node:crypto');
+    const automaticSpeech = await works.automaticSpeech(row);
     const saved = await works.repo.mutate(row._id, current => {
       const delivery = { ...current.delivery };
       const last = delivery.receipts.filter(item => item.deviceSession === input.deviceSession).at(-1);
@@ -50,6 +51,7 @@ function createWorkDelivery(works) {
         throw fail('CONVERSATION_WORK_PRESENTATION_CONFLICT', 'A receipt sequence was already used.', 409);
       }
       if (input.stage === 'claim' || input.stage === 'replay') {
+        if (input.stage === 'claim' && !automaticSpeech) throw fail('CONVERSATION_WORK_EXPLICIT_LISTEN_REQUIRED', 'This review is available for explicit listening.', 409);
         if (input.stage !== 'replay' && !['available', 'displayed', 'deferred'].includes(delivery.state)) throw fail('CONVERSATION_WORK_PRESENTATION_HELD', 'The result already has a presentation owner.', 409);
         delivery.state = 'claimed'; delivery.claimToken = randomUUID(); delivery.deviceSession = input.deviceSession;
       } else if (['started', 'completed', 'interrupted', 'deferred'].includes(input.stage)) {

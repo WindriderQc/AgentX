@@ -1,12 +1,15 @@
 // Only the exact Core-bound guardian loses execution of already delegated work.
 // Complete Main, text turns and legacy work keep their installed tool scopes.
-export function createGuardianWorkGuard(call) {
+export function createGuardianWorkGuard(call, guardianAgentId) {
+  if (!/^[a-z][a-z0-9_-]{0,63}$/.test(guardianAgentId || '') || ['main', 'family'].includes(guardianAgentId)) guardianAgentId = undefined;
   const runs = new Map();
   const remember = (key, value) => {
     runs.set(key, value);
     if (runs.size > 1000) runs.delete(runs.keys().next().value);
   };
   return async native => {
+    if (guardianAgentId && native.agentId === guardianAgentId) return { block: true,
+      blockReason: 'The dedicated conversational guardian has no tools. Core retains the complete request for native Main; continue the conversation from the supplied context.' };
     if (native.agentId !== 'main' || !/^resp_[a-f0-9-]{36}$/.test(native.runId || '')) return;
     const key = `${native.sessionKey}:${native.runId}`;
     if (runs.get(key) === 'ordinary') return;

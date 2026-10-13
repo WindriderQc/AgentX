@@ -195,3 +195,9 @@ test('the warm-up yields to another conversation of the same agent that is still
   warmup.noteTurn(conversation('alone'));
   assert.notEqual(warmup.start(conversation('alone'), 'Bonjour.').reason, 'other_conversation_live');
 });
+
+test('a dedicated per-turn guardian skips the old Main-session warm-up without loading a model', () => {
+  const h = harness({ env: { PERSONAL_CONVERSATION_WORK_MODE: 'native', PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID: 'nestor-guardian' } });
+  assert.deepEqual(h.warmup.start(h.session, 'Bonjour.'), { started: false, reason: 'dedicated_guardian' });
+  assert.equal(h.requests.length, 0);
+});

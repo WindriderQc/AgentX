@@ -5,7 +5,7 @@ const { hash, fail, notFound, LIMITS, nativeWork, NO_WORK } = require('./contrac
 
 // Trusted native adapter only: this is deliberately absent from the model and
 // browser routes. The original attempt owns its final transcript and receipts.
-function createNativeResultReceiver({ repo, session, now }) {
+function createNativeResultReceiver({ repo, session, now, automaticSpeech }) {
   return async function publishNative(id, evidence) {
     const row = await repo.get(id);
     if (!row || !nativeWork(row) || row.attempt?.agentId !== 'main') throw notFound();
@@ -22,6 +22,7 @@ function createNativeResultReceiver({ repo, session, now }) {
     const receiptId = hash(attempt.id + '\n' + attempt.runId + '\nnative_answer');
     const noWork = row.mode === 'native' && answer.text.trim() === NO_WORK;
     const result = { kind: noWork ? 'no_work' : 'answer', text: noWork ? '' : answer.text.trim(), receiptIds: [receiptId] };
+    const speak = await automaticSpeech(row);
     const fingerprint = hash(JSON.stringify(result));
     const saved = await repo.mutate(id, async (current, fence) => {
       if (current.attempt?.id !== attempt.id || current.attempt.runId !== attempt.runId) throw notFound();
@@ -34,7 +35,8 @@ function createNativeResultReceiver({ repo, session, now }) {
         id: receiptId, tool: 'native.consultation', status: 'observed', runId: attempt.runId, at: now(),
         payloadRef: await repo.payload(current, evidence, fence) }],
         result: { version: 1, kind: result.kind, fingerprint, payloadRef: await repo.payload(current, result, fence), publishedAt: now() },
-        delivery: { id: randomUUID(), resultVersion: 1, state: 'available', receipts: [] } }, event: 'native_result_published' };
+        delivery: { id: randomUUID(), resultVersion: 1, state: 'available',
+          automaticSpeech: speak, receipts: [] } }, event: 'native_result_published' };
     });
     return { authority: 'core.conversation-works', published: true, id: saved._id,
       resultVersion: saved.result.version, deliveryId: saved.delivery.id };

@@ -1201,3 +1201,55 @@ test('a stalled continuity read after native completion fails within its evidenc
   await assert.rejects(client({ session, text: 'Check', onSettled: () => settled++ }), /did not give a final answer/);
   assert.ok(Date.now() - started < 500); assert.equal(readAborted, true); assert.equal(settled, 1);
 });
+
+test('the dedicated tool-free guardian streams before completion and never repeats its verified prefix', async () => {
+  const guardEnv = { ...env, PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID: 'nestor-guardian' };
+  const voice = { ...session, agentId: 'nestor-guardian' }, deltas = [];
+  let release, started;
+  const first = new Promise(resolve => { started = resolve; });
+  const held = new Promise(resolve => { release = resolve; });
+  const client = createAgentClient({ env: guardEnv, settleMs: 0,
+    continuity: async () => ({ answer: answer('Il était une fois un renard.'), run: { model: 'voice-model' } }),
+    fetchImpl: async () => ({ ok: true, body: (async function* () {
+      yield created;
+      yield row({ type: 'response.output_text.delta', response_id: runId, item_id: 'msg-1', output_index: 0, delta: 'Il était une fois ' });
+      await held;
+      yield row({ type: 'response.output_text.delta', response_id: runId, item_id: 'msg-1', output_index: 0, delta: 'un renard.' });
+      yield completed;
+    })() }) });
+  const pending = client({ session: voice, text: 'Raconte une histoire.', channel: 'voice', guardianStreaming: true,
+    onDelta(delta) { deltas.push(delta); started(); } });
+  try { await first; assert.deepEqual(deltas, ['Il était une fois']); }
+  finally { release(); }
+  assert.equal((await pending).text, 'Il était une fois un renard.');
+  assert.equal(deltas.join(''), 'Il était une fois un renard.');
+});
+
+test('a rewritten guardian final answer fails without speaking a replacement', async () => {
+  const deltas = [];
+  const client = createAgentClient({ env: { ...env, PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID: 'nestor-guardian' }, settleMs: 0,
+    continuity: async () => ({ answer: answer('Different final answer.'), run: {} }),
+    fetchImpl: async () => ({ ok: true, body: [created, row({ type: 'response.output_text.delta', delta: 'First answer.' }), completed] }) });
+  await assert.rejects(client({ session: { ...session, agentId: 'nestor-guardian' }, text: 'Hello', channel: 'voice', guardianStreaming: true,
+    onDelta: delta => deltas.push(delta) }), { code: 'GUARDIAN_STREAM_REPLACED' });
+  assert.deepEqual(deltas, ['First answer.']);
+});
+
+test('Main cannot opt into guardian streaming and retains exact final-answer verification', async () => {
+  const deltas = [];
+  const client = createAgentClient({ env: { ...env, PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID: 'nestor-guardian' }, settleMs: 0,
+    continuity: async () => ({ answer: answer('Verified final result.'), run: {} }),
+    fetchImpl: async () => ({ ok: true, body: [created, row({ type: 'response.output_text.delta', delta: 'Let me check.' }), completed] }) });
+  await client({ session, text: 'Hello', channel: 'voice', guardianStreaming: true, onDelta: delta => deltas.push(delta) });
+  assert.deepEqual(deltas, ['Verified final result.']);
+});
+
+test('guardian cancellation stops live deltas and retains the original run without another dispatch', async () => {
+  const abort = new AbortController(), deltas = [], stream = heldNativeStream([created,
+    row({ type: 'response.output_text.delta', delta: 'Beginning.' })]);
+  const client = createAgentClient({ env: { ...env, PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID: 'nestor-guardian' }, settleMs: 0,
+    continuity: async () => ({ answer: { status: 'unavailable' } }), fetchImpl: stream.fetch });
+  await assert.rejects(client({ session: { ...session, agentId: 'nestor-guardian' }, text: 'Story', channel: 'voice', guardianStreaming: true,
+    signal: abort.signal, onDelta(delta) { deltas.push(delta); abort.abort(new Error('Stop')); } }), /stop is not confirmed/i);
+  assert.deepEqual(deltas, ['Beginning.']); assert.equal(stream.requests(), 1);
+});

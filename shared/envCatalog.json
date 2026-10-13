@@ -2510,6 +2510,14 @@
       "secret": false,
       "description": "Interval at which Core turns the current operational findings and active alerts into one short model-written report (task ops_watch), minimum 300000. Applies until the watch is set in the Nerve Center. Unset: off."
     },
+    "PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID": {
+      "services": ["core"],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Optional dedicated tool-free native guardian in personal native voice mode. Bind new accepted turns to this agent, with a fresh native session, short instructions and bounded recent context; complete Main remains the full work owner."
+    },
     "PERSONAL_CONVERSATION_WORK_AGENT_ID": {
       "services": [
         "core"

@@ -40,6 +40,7 @@ export default definePluginEntry({
     api.registerHttpRoute({ path: "/api/nestor/continuity", auth: "gateway", match: "exact",
       handler: continuityHttpHandler(continuityOperations({ workspace: workspaceFor(), config: api.config,
         workAgentId: api.pluginConfig?.conversationWorkAgentId,
+        guardianAgentId: api.pluginConfig?.conversationGuardianAgentId,
         resolveWorkspace, modelFor: id => resolveAgentEffectiveModelPrimary(api.config, id),
         // SDK read only: getSessionMessages invokes sessions.get; it never starts an agent.
         readHistory: async sessionKey => ({ sessionKey, ...await api.runtime.subagent.getSessionMessages({ sessionKey, limit: 100 }) }) })) });

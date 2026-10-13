@@ -1,7 +1,7 @@
 {
   "id": "super-dad-memory",
   "name": "Nestor Personal Harness",
-  "version": "2.4.1",
+  "version": "2.5.0",
   "description": "Native OpenClaw tools and receipts backed by canonical AgentX Core notes and tasks.",
   "activation": {
     "onStartup": true,
@@ -102,6 +102,11 @@
         "type": "string",
         "minLength": 32,
         "description": "Private Core native work binding token; never a tool argument."
+      },
+      "conversationGuardianAgentId": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+        "description": "Internal tool-free voice guardian; Main remains the complete native work owner."
       }
     },
     "additionalProperties": false,
@@ -116,6 +121,9 @@
     },
     "conversationWorkAgentId": {
       "label": "Internal native worker"
+    },
+    "conversationGuardianAgentId": {
+      "label": "Internal conversational guardian"
     }
   }
 }

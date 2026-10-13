@@ -11,7 +11,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
   nativeBudget = () => null, nativeForeground = () => true, exchangeStore = exchanges, now = () => new Date() } = {}) {
   const repo = repository;
   let wake = () => {};
-  const classification = (text, mode) => mode === 'native' ? simple(text) ? 'native_review' : 'native_work'
+  const classification = (text, mode) => mode === 'native' ? simple(text) || !nativeForeground(text) ? 'native_review' : 'native_work'
     : mode === 'read' && nativeRead(text) ? 'native_read'
     : classify(text) ? 'tasks_read' : nativeOnly(text) ? 'native_only' : 'unclassified';
   const query = sessionId => ({ sessionId, ...SCOPED });
@@ -53,7 +53,12 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       exchangeId: accepted.receipt._id, requestSha256: hash(text), mode: snapshot.mode,
       state: 'received', classification: classification(text, snapshot.mode),
       revision: 0, receivedAt: at, updatedAt: at, contextReady: false, tools: [], events: [], sequence: 0,
-      guardian: { state: accepted.duplicate ? taken.turn.outcome === 'pending' ? 'uncertain' : 'completed' : 'pending' }, erased: false });
+      ...(snapshot.mode === 'native' && { foreground: nativeForeground(text) && !simple(text) ? 'acknowledge' : 'guardian' }),
+      guardian: { agentId: !accepted.duplicate && snapshot.mode === 'native'
+        && /^[a-z][a-z0-9_-]{0,63}$/.test(env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID || '')
+        && !['main', 'family', env.PERSONAL_CONVERSATION_WORK_AGENT_ID].includes(env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID)
+        ? env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID : 'main',
+        state: accepted.duplicate ? taken.turn.outcome === 'pending' ? 'uncertain' : 'completed' : 'pending' }, erased: false });
     return { row, turn: taken.turn, duplicate: accepted.duplicate || taken.duplicate };
   }
   async function prepare(id, context) {
@@ -63,8 +68,12 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
         state: current.state === 'received' && ['tasks_read', 'native_read', 'native_work'].includes(current.classification) ? 'queued' : current.state }, event: 'context_ready' });
     wake(); return row;
   }
-  const guardianStarted = (id, sessionKey, runId) => repo.mutate(id, current => ({
-    fields: { guardian: { ...current.guardian, state: 'running', sessionKey, runId } }, event: 'guardian_started' }));
+  const guardianStarted = (id, sessionKey, runId, agentId = 'main') => repo.mutate(id, current => {
+    if (agentId !== (current.guardian?.agentId || 'main') || !sessionKey?.startsWith(`agent:${agentId}:household:direct:`)
+        || !/^resp_[a-f0-9-]{36}$/.test(runId || '')
+        || current.guardian?.runId && (current.guardian.runId !== runId || current.guardian.sessionKey !== sessionKey)) throw notFound();
+    return { fields: { guardian: { ...current.guardian, agentId, state: 'running', sessionKey, runId } }, event: 'guardian_started' };
+  });
   const guardianSettled = async (id, state) => {
     const row = await repo.mutate(id, current => {
       // Recovery can mark a long native consultation uncertain before its
@@ -87,7 +96,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       : { 'guardian.sessionKey': context.sessionKey, 'guardian.runId': context.runId }, 1);
     let row = rows[0];
     const identity = role !== 'guardian' ? row?.attempt : row?.guardian;
-    const expected = role !== 'guardian' ? row?.attempt?.agentId : 'main';
+    const expected = role !== 'guardian' ? row?.attempt?.agentId : row?.guardian?.agentId || 'main';
     if (!row || context.agentId !== expected || !identity || identity.sessionKey !== context.sessionKey
       || (identity.runId && identity.runId !== context.runId)) throw notFound();
     await session(row.sessionId);
@@ -233,20 +242,32 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
   }
   async function nativeAcceptance(id) {
     const row = await repo.get(id);
-    if (!row || !['read', 'native'].includes(row.mode) || !['native_read', 'native_work'].includes(row.classification)) return null;
+    if (!row || !['read', 'native'].includes(row.mode) || !nativeWork(row)) return null;
     await session(row.sessionId);
     const turn = await conversations.getTurn({ ...query(row.sessionId), traceId: row.turnId });
     if (!turn || hash(turn.inputText) !== row.requestSha256) throw notFound();
     return { authority: 'core.conversation-works', accepted: true, id: row._id,
       sessionId: row.sessionId, turnId: row.turnId, requestSha256: row.requestSha256,
       state: row.state, resultReady: Boolean(row.result), mode: row.mode,
-      foreground: row.mode === 'native' && !nativeForeground(turn.inputText) ? 'guardian' : 'acknowledge' };
+      foreground: row.foreground || (row.mode === 'native' && !nativeForeground(turn.inputText) ? 'guardian' : 'acknowledge') };
   }
   async function guardianTool(context) {
     const row = await binding(context, 'guardian');
     if (row.mode !== 'native') throw notFound();
     return { authority: 'core.conversation-works', delegated: true, id: row._id, state: row.state,
       execution: row.result ? 'completed' : ['failed', 'cancelled'].includes(row.state) ? row.state : 'pending' };
+  }
+  async function automaticSpeech(row) {
+    if (row.delivery?.automaticSpeech !== undefined) return row.delivery.automaticSpeech;
+    if (row.classification === 'native_review' || row.foreground === 'guardian') return false;
+    // Older native_work rows raced ordinary conversation before the guardian
+    // finished. Keep their original result and owner, but require explicit
+    // listening when this request had a conversational foreground response.
+    if (row.mode === 'native' && row.classification === 'native_work' && !row.foreground) {
+      const turn = await conversations.getTurn({ ...query(row.sessionId), traceId: row.turnId });
+      return Boolean(turn && hash(turn.inputText) === row.requestSha256 && nativeForeground(turn.inputText));
+    }
+    return true;
   }
   let recoveryCursor;
   async function recover() {
@@ -305,7 +326,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     nativeOwner: async context => { const row = await binding(context, 'boss');
       return { authority: 'core.conversation-works', id: row._id, sessionId: row.sessionId }; },
     admitNativeTool: require('./native-budget').createNativeBudget({ repo, conversations, session, query, policy: nativeBudget, now }),
-    publish, publishNative: require('./native-results').createNativeResultReceiver({ repo, session, now }),
+    publish, publishNative: require('./native-results').createNativeResultReceiver({ repo, session, now, automaticSpeech }), automaticSpeech,
     recover, finalize, handled, guardianContext, guardianContextWithRefs, taskAcceptance, nativeAcceptance, wake: () => wake(), session, query, eligible: (current, channel) => eligible(current, channel, env), wakeWith: fn => { wake = fn; } };
 }
 module.exports = { createConversationWorks };

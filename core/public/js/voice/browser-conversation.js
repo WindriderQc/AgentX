@@ -88,8 +88,8 @@
   // was transcribed and treated as the user interrupting. Words that the
   // current reply has just spoken are an echo, not a new request.
   const HOLDING = Object.freeze({
-    fr: ['Un instant…', 'Je regarde ça…', 'Laisse-moi réfléchir une seconde…'],
-    en: ['One moment…', 'Let me check…', 'Give me a second…']
+    fr: ['Un instant…'],
+    en: ['One moment…']
   });
   // Silence before a reply's first words after which Nestor says one holding phrase.
   const HOLDING_DELAY_MS = 3000;

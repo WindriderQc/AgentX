@@ -44,13 +44,19 @@ beforeEach(async () => {
 });
 afterEach(() => works.observer.stop());
 
-test.each(['Regarde mes tâches.', 'Ajoute une tâche personnelle pour demain.', 'Résume mes courriels récents.',
-  'Demande à la secrétaire de rédiger un courriel.', 'Does the team play tonight?',
-  'Compare the two options from our discussion.', 'Une demande inconnue de tous les anciens sélecteurs.'])
-('every accepted work request reaches complete native Main: %s', async text => {
+test.each([['Regarde mes tâches.', 'native_work'], ['Ajoute une tâche personnelle pour demain.', 'native_work'],
+  ['Résume mes courriels récents.', 'native_work'], ['Demande à la secrétaire de rédiger un courriel.', 'native_work'],
+  ['Does the team play tonight?', 'native_work'], ['Compare the two options from our discussion.', 'native_review'],
+  ['Une demande inconnue de tous les anciens sélecteurs.', 'native_review']])
+('every accepted work request reaches complete native Main: %s', async (text, classification) => {
   const accepted = await works.intake(input(text));
-  expect(accepted.row).toMatchObject({ mode: 'native', classification: 'native_work', state: 'received' });
+  expect(accepted.row).toMatchObject({ mode: 'native', classification, state: 'received' });
   await works.prepare(accepted.row._id, 'Shared owner context.');
+  if (classification === 'native_review') {
+    await works.observer.tick(); expect(execute).not.toHaveBeenCalled();
+    await conversations.settleTurn({ ...works.query(current.sessionId), traceId: accepted.row.turnId, replyText: 'Guardian answer.' });
+    await works.guardianSettled(accepted.row._id, 'completed');
+  }
   expect(await works.nativeAcceptance(accepted.row._id)).toMatchObject({ mode: 'native', state: 'queued' });
   await works.observer.tick();
   expect(execute).toHaveBeenCalledTimes(1);
@@ -68,7 +74,7 @@ test('a greeting keeps the live guardian and is then reviewed by complete Main w
   const accepted = await works.intake(input('Bonjour.'));
   expect(accepted.row.classification).toBe('native_review');
   await works.prepare(accepted.row._id, 'Shared context.');
-  expect(await works.nativeAcceptance(accepted.row._id)).toBeNull();
+  expect(await works.nativeAcceptance(accepted.row._id)).toMatchObject({ foreground: 'guardian' });
   await works.observer.tick(); expect(execute).not.toHaveBeenCalled();
   await conversations.settleTurn({ ...works.query(current.sessionId), traceId: accepted.row.turnId, replyText: 'Bonjour !' });
   await works.guardianSettled(accepted.row._id, 'completed');
@@ -100,7 +106,7 @@ test('shared native context refresh sees new turns and pending work, without for
   expect(after.conversation.turns).toEqual(expect.arrayContaining([expect.objectContaining({ inputText: 'Here is another detail to consider.', replyText: 'Detail received.' })]));
   expect(after.conversation.coverage.turnCount).toBe(16);
   expect(after.conversation.turns[0]).toMatchObject({ inputText: older[0].inputText, replyText: older[0].replyText });
-  expect(after.workContext).toContain(later.row._id);
+  expect(after.conversation.turns.at(-1).turnId).toBe(later.row.turnId);
   expect(after.nativeOwner).toBe('main'); expect(after).not.toHaveProperty('capabilities');
   for (const patch of [{ runId: 'resp_' + randomUUID() }, { agentId: 'family' }, { sessionKey: 'foreign' }, { workId: later.row._id }]) {
     await expect(works.contextForNative({ ...context(row), ...patch })).rejects.toMatchObject({ statusCode: 404 });
@@ -159,7 +165,7 @@ test('native generic tool budgets fence repeats and allow other work after the w
 });
 
 test('interrupting acknowledgment leaves the original native work accepted; disabling intake preserves its mode and identity', async () => {
-  const original = input('An arbitrary request.'), accepted = await works.intake(original);
+  const original = input('Regarde mes tâches.'), accepted = await works.intake(original);
   await works.prepare(accepted.row._id, 'Context.');
   await works.guardianSettled(accepted.row._id, 'cancelled');
   expect(await works.repo.get(accepted.row._id)).toMatchObject({ state: 'queued', classification: 'native_work' });
@@ -199,6 +205,8 @@ test('an already accepted legacy task read keeps its original worker after nativ
 test('a lost native response is reconciled by the original Main identity, never another dispatch', async () => {
   const accepted = await works.intake(input('Compare our two options.'));
   await works.prepare(accepted.row._id, 'Shared context.');
+  await conversations.settleTurn({ ...works.query(current.sessionId), traceId: accepted.row.turnId, replyText: 'Guardian comparison.' });
+  await works.guardianSettled(accepted.row._id, 'completed');
   const runId = 'resp_' + randomUUID();
   execute.mockImplementation(async () => { throw new Error('Lost dispatch response'); });
   continuity.mockImplementation(async req => req.operation === 'agents'
@@ -250,7 +258,7 @@ test('real voice HTTP acknowledges a clear work request immediately and keeps th
 });
 
 test('ordinary conversation gets a real guardian response while Main is busy, and still reaches Main with shared context', async () => {
-  const accepted = await works.intake(input('Compare these options.'));
+  const accepted = await works.intake(input('Regarde mes tâches.'));
   await works.prepare(accepted.row._id, 'Context.');
   let release, started;
   const held = new Promise(resolve => { release = resolve; }), dispatched = new Promise(resolve => { started = resolve; });
@@ -276,7 +284,7 @@ test('ordinary conversation gets a real guardian response while Main is busy, an
     expect(guardian).toHaveBeenCalledTimes(1); expect(warmup.settled).toHaveBeenCalledTimes(1);
     expect(execute).toHaveBeenCalledTimes(1);
     const followup = await works.repo.get(hash(current.sessionId + '\n' + turnId));
-    expect(followup).toMatchObject({ classification: 'native_work', mode: 'native', state: 'queued' });
+    expect(followup).toMatchObject({ classification: 'native_review', mode: 'native', state: 'queued' });
     const bound = { agentId: 'main', sessionKey: followup.guardian.sessionKey, runId: followup.guardian.runId };
     expect(await works.guardianTool(bound)).toMatchObject({ delegated: true, execution: 'pending' });
     const first = await works.repo.get(accepted.row._id);
@@ -323,3 +331,92 @@ async function personalHttp(executeConversation, warmup = null) {
   const app = express(); app.use(express.json()); app.post('/sessions/:sessionId/turns/text', (req, res) => handler(req, res, 'private'));
   return app;
 }
+
+test('a story is reviewed only after its actual guardian answer and Core rejects automatic playback of an alternate story', async () => {
+  const accepted = await works.intake(input('Raconte-moi une histoire.'));
+  await works.prepare(accepted.row._id, 'Selected context.');
+  await works.observer.tick(); expect(execute).not.toHaveBeenCalled();
+  await conversations.settleTurn({ ...works.query(current.sessionId), traceId: accepted.row.turnId, replyText: 'Il était une fois un renard.' });
+  await works.guardianSettled(accepted.row._id, 'completed');
+  await works.observer.tick();
+  const row = await works.repo.get(accepted.row._id);
+  expect((await works.contextForNative(context(row))).guardianReply).toBe('Il était une fois un renard.');
+  await works.publishNative(row._id, proof(row.attempt, 'An unwanted second story.'));
+  const delivery = createWorkDelivery(works), snapshot = await delivery.snapshot(current.sessionId), result = snapshot.items[0].result;
+  expect(result).toMatchObject({ text: 'An unwanted second story.', automaticSpeech: false });
+  const receipt = { stage: 'claim', resultVersion: result.version, sequence: 1, deviceSession: randomUUID() };
+  await expect(delivery.receipt(current.sessionId, result.deliveryId, receipt)).rejects.toMatchObject({ code: 'CONVERSATION_WORK_EXPLICIT_LISTEN_REQUIRED' });
+  expect(await delivery.receipt(current.sessionId, result.deliveryId, { ...receipt, stage: 'replay' })).toMatchObject({ state: 'claimed' });
+});
+
+test('the dedicated guardian uses a compact per-turn session, preserves Main history and shares its reply with complete Main', async () => {
+  env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID = 'nestor-guardian';
+  try {
+    const mainKey = `agent:main:household:direct:${current.sessionId}`;
+    current = await conversations.updateSession({ sessionId: current.sessionId }, { $set: { agentSessionKey: mainKey } });
+    const guardian = jest.fn(async body => {
+      expect(body.session.agentId).toBe('nestor-guardian'); expect(body.session.agentSessionKey).toBeNull();
+      expect(body.instructions.length).toBeLessThan(2500); expect(body.instructions).not.toContain('tool_search');
+      expect(body.guardianStreaming).toBe(true); expect(body.history.length).toBeLessThanOrEqual(6);
+      const runId = 'resp_' + randomUUID(), key = `agent:nestor-guardian:household:direct:${body.session.sessionId}`;
+      await body.onStarted(key, runId);
+      return { text: 'Il était une fois un renard.', sessionKey: key, runId, metadata: { model: 'voice-model' }, tools: { status: 'observed', receipts: [] } };
+    });
+    const app = await personalHttp(createConversationExecutor({ env, inference: {}, agentClient: guardian }));
+    const turnId = randomUUID();
+    const response = await request(app).post(`/sessions/${current.sessionId}/turns/text`).send({ text: 'Raconte-moi une histoire.', turnId, channel: 'voice', stream: true });
+    expect(response.status).toBe(200); expect(response.text).toContain('Il était une fois');
+    expect(guardian.mock.calls[0][0].session.sessionId).toBe(turnId);
+    expect((await conversations.getSession(works.query(current.sessionId))).agentSessionKey).toBe(mainKey);
+    const row = await works.repo.get(hash(current.sessionId + '\n' + turnId));
+    expect(row.guardian).toMatchObject({ agentId: 'nestor-guardian', state: 'completed' });
+    const bound = { agentId: 'nestor-guardian', sessionKey: row.guardian.sessionKey, runId: row.guardian.runId };
+    expect(await works.guardianTool(bound)).toMatchObject({ delegated: true });
+    await expect(works.guardianTool({ ...bound, agentId: 'main' })).rejects.toMatchObject({ statusCode: 404 });
+    await works.observer.tick();
+    const reviewed = await works.repo.get(row._id);
+    expect(reviewed.attempt.agentId).toBe('main');
+    expect((await works.contextForNative(context(reviewed))).guardianReply).toBe('Il était une fois un renard.');
+  } finally { delete env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID; }
+});
+
+test('enabling the dedicated guardian preserves the owner of already accepted Main guardian runs', async () => {
+  const accepted = await works.intake(input('Bonjour.'));
+  env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID = 'nestor-guardian';
+  try {
+    const key = `agent:main:household:direct:${current.sessionId}`, runId = 'resp_' + randomUUID();
+    await works.guardianStarted(accepted.row._id, key, runId);
+    expect(await works.guardianTool({ agentId: 'main', sessionKey: key, runId })).toMatchObject({ delegated: true });
+    await expect(works.guardianStarted(accepted.row._id, key.replace('main', 'nestor-guardian'), runId, 'nestor-guardian')).rejects.toMatchObject({ statusCode: 404 });
+  } finally { delete env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID; }
+});
+
+test('legacy native conversation results remain retained but require explicit listening; actual task results remain automatic', async () => {
+  for (const [text, automaticSpeech] of [['Raconte-moi une histoire.', false], ['Regarde mes tâches.', true]]) {
+    const row = await admitted(text);
+    await works.repo.mutate(row._id, () => ({ fields: { classification: 'native_work', foreground: null }, event: 'fixture_legacy' }));
+    await works.publishNative(row._id, proof(row.attempt, 'Retained exact legacy result.'));
+    const saved = await works.repo.get(row._id);
+    expect((await createWorkDelivery(works).projection(saved)).result).toMatchObject({ automaticSpeech, text: 'Retained exact legacy result.' });
+  }
+});
+
+test('the dedicated guardian keeps clear-work acknowledgment bound to the canonical conversation and Main result remains automatic', async () => {
+  env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID = 'nestor-guardian';
+  try {
+    const guardian = jest.fn(() => { throw new Error('An acknowledgment must not invoke a model'); });
+    const app = await personalHttp(createConversationExecutor({ env, inference: {}, agentClient: guardian }));
+    const turnId = randomUUID();
+    const response = await request(app).post(`/sessions/${current.sessionId}/turns/text`).send({ text: 'Regarde mes tâches.', turnId, channel: 'voice', stream: true });
+    expect(response.status).toBe(200); expect(response.text).toContain('Je m’en occupe'); expect(guardian).not.toHaveBeenCalled();
+    const row = await works.repo.get(hash(current.sessionId + '\n' + turnId));
+    expect(row.guardian.agentId).toBe('nestor-guardian'); expect(row.foreground).toBe('acknowledge');
+    await works.observer.tick();
+    const running = await works.repo.get(row._id);
+    expect(running.attempt.agentId).toBe('main');
+    // The fixture adapter returned no native observation; publication still
+    // requires the exact original run, never a synthetic replacement attempt.
+    await works.publishNative(row._id, proof(running.attempt, 'Actual task result.', ['list_personal_tasks']));
+    expect((await createWorkDelivery(works).projection(await works.repo.get(row._id))).result.automaticSpeech).toBe(true);
+  } finally { delete env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID; }
+});

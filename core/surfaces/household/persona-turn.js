@@ -22,6 +22,7 @@ const teamAddress = require('./team-address');
 const { serverTimingsOf } = require('./turn-phases');
 const { turnDirective } = require('./persona-prompt');
 const { interruptedRequestContext } = require('./persona-records');
+const dedicatedGuardian = require('./dedicated-guardian');
 
 // A team member's own personality: the active catalog persona naming that agent, so an
 // edit made on the Team page applies; the shared definition when the catalog is unreadable.
@@ -140,6 +141,7 @@ function createPersonaTurnHandler({
         const intake = await conversationWorks.intake({ session, turnId: clientTurnId, text: userText, attachments: entry.attachments });
         entry.workId = intake.row._id; entry.traceId = clientTurnId; entry.snapshot ||= {
           sessionId: session.sessionId, packId: pack.id, modeId: session.modeId, scopeId: session.scopeId };
+        entry.guardianAgentId = intake.row.guardian?.agentId;
         if (intake.duplicate) { entry.auditWritten = true; return envelope(res, { accepted: true, turnId: clientTurnId, workId: entry.workId,
           outcome: intake.turn.outcome, reply: intake.turn.outcome === 'completed' ? { text: intake.turn.replyText } : null,
           replayed: false }, 202); }
@@ -209,7 +211,8 @@ function createPersonaTurnHandler({
         // That member is still on an earlier question: the conversation's agent answers and says so.
         if (member && !consult && memberWork?.active(session.sessionId).some(job => job.agentId === member.agentId)) member = null;
         memberPersona = member ? await teamPersona(member.agentId, runtimeServices.personas) : null;
-        const turnSession = member ? teamAddress.memberSession(session, member, memberPersona) : session;
+        const guardianSession = !member && entry.workId ? dedicatedGuardian.route(session, clientTurnId, entry.guardianAgentId) : null;
+        const turnSession = member ? teamAddress.memberSession(session, member, memberPersona) : guardianSession || session;
         if (member) {
           speaker = { agentId: member.agentId, name: memberPersona?.name || member.agentId, personaId: memberPersona?.id || null };
           event('speaker', { speaker });
@@ -229,7 +232,7 @@ function createPersonaTurnHandler({
         }
         if (backend === 'openclaw') await requireNativeAgent(agentIdFor(turnSession));
         let history = [], interruptedContext = '';
-        const recoverInterrupted = backend === 'openclaw' && !member && personalVoice(turnSession, 'voice');
+        const recoverInterrupted = backend === 'openclaw' && !member && personalVoice(session, 'voice');
         if (features.historyContext !== false && (backend === 'agentx' || !turnSession.agentSessionKey || attachmentStore || recoverInterrupted)) {
           // Core inference reads a block window, so its history start (and the cached prefix) moves rarely.
           try {
@@ -314,7 +317,7 @@ function createPersonaTurnHandler({
           ? 'Core owns this accepted Main work: ' + JSON.stringify(acceptedNativeWork)
             + '. Respond conversationally while native Main handles the requested work. No tools or second dispatch from the guardian; acceptance is not completion.'
           : ''].filter(Boolean).join('\n\n');
-        const nativeInstructions = nativeInstructionsFor({ turnSession, pack, selectedMode, channel: req.body?.channel,
+        const nativeInstructions = guardianSession ? dedicatedGuardian.instructions(session.persona) : nativeInstructionsFor({ turnSession, pack, selectedMode, channel: req.body?.channel,
           soundPlayback: !pack.childSafe && browserSoundPlayback && !preselected,
           addressed: member ? (consult ? teamAddress.consultInstruction : teamAddress.memberInstruction)(speaker.name)
             : memberWork ? teamAddress.consultContract(team, agentIdFor(session)) : '',
@@ -349,25 +352,27 @@ function createPersonaTurnHandler({
         }
 
         serverPhases.prepared = Date.now() - startedAt;
-        const run = executeConversation({ backend, session: turnSession, pack: isOpening ? { ...pack, maxTokens: 180 }
-          : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText, history: features.historyContext === false ? [] : history, streaming, channel: req.body?.channel,
+        const run = executeConversation({ backend, session: turnSession, ...(guardianSession ? { canonicalSession: session,
+          guardianStreaming: true, maxOutputTokens: 1024 } : {}), pack: isOpening ? { ...pack, maxTokens: 180 }
+          : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText,
+          history: features.historyContext === false ? [] : guardianSession ? dedicatedGuardian.history(history) : history, streaming, channel: req.body?.channel,
           conversationFeatures: features,
           ...(acceptedTaskWork ? { readAcceptedTaskWork: () => conversationWorks.taskAcceptance(entry.workId) } : {}),
           ...(acceptedNativeWork ? { readAcceptedNativeWork: () => conversationWorks.nativeAcceptance(entry.workId) } : {}),
           attachments: entry.attachments, attachmentStore,
           ...(isOpening ? { applicationEvent: entry.applicationEvent } : {}),
-          instructions: nativeInstructions, agentxInstructions, ...(turnContext ? { turnContext } : {}),
+          instructions: nativeInstructions, agentxInstructions, ...(turnContext ? { turnContext: guardianSession ? dedicatedGuardian.context(turnContext) : turnContext } : {}),
           ...(currentDirective ? { turnDirective: currentDirective } : {}),
           ...(nativeBrowserReply ? { browserReply: { context: req.llmx.sceneContext, previousOutput: previousBrowserOutput } } : {}),
           ...(useOpen ? { model: 'ollama/' + holdState.model, openTarget: { hostUrl: holdState.host.url, numCtx: holdState.numCtx } } : {}),
           signal: abort.signal, onWaiting: () => event('status', { phase: 'waiting_host' }), onActivity: activity => event('status', { phase: 'activity', activity }),
           onStarted: async (key, runId) => {
-            if (entry.workId && runId) await conversationWorks.guardianStarted(entry.workId, key, runId);
+            if (entry.workId && runId) await conversationWorks.guardianStarted(entry.workId, key, runId, agentIdFor(turnSession));
             if (runId) entry.auditContext = { ...entry.auditContext,
               toolEvidence: { authority: `openclaw/${agentIdFor(turnSession)}`, sessionKey: key, runId } };
-            if (member) {
+            if (member || guardianSession) {
               // The member's own native session; the conversation agent's key is never replaced.
-              const keys = { ...(session.agentSessionKeys || {}), [member.agentId]: key };
+              const keys = { ...(session.agentSessionKeys || {}), [agentIdFor(turnSession)]: key };
               await conversations.updateSession({ sessionId: session.sessionId }, { $set: { agentSessionKeys: keys } });
               session.agentSessionKeys = keys;
             } else {

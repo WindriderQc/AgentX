@@ -21,6 +21,20 @@ needs the same token in `conversationWorkToken`, and the dedicated agent ID in
 `conversationWorkAgentId`. Tokens stay in instance secret configuration, never
 model parameters or browser requests.
 
+For a compact voice guardian, additionally set
+`PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID` and the matching plugin
+`conversationGuardianAgentId`. Install a separate native agent with its own
+small workspace, the existing voice model, `tools.deny: ["*"]`, no skills,
+heartbeat or subagents. Main's workspace, model, tools and permissions stay
+unchanged. The guardian remains an internal role, hidden from the speaker list.
+New intakes persist its identity; existing Main guardian runs retain their exact
+owner. Each guardian turn has a fresh native session containing up to six recent
+messages (2,000 characters each) and an 8,000-character selected-context excerpt.
+The exact current request is never clipped. Complete history, attachments and
+context remain canonical in Core and available to Main. Only this tool-free
+guardian streams spoken text before native completion; final evidence must
+match the spoken prefix, or the turn fails without playing a replacement.
+
 Core accepts complete work requests before any model inference. An immediate
 canonical acknowledgment handles clear work requests. Ordinary dialogue receives
 a real guardian response even while another Main work is active; its request
@@ -28,10 +42,16 @@ still reaches complete Main. Selectors only choose this foreground reply style,
 never the boss's capabilities. The native pre-tool hook fences all tools in the
 exact Core-bound guardian run, so the guardian cannot duplicate Main's work.
 Text, legacy and background Main runs retain their native tools.
-Main can disposition an adequate, completed canonical guardian reply as
+Ordinary dialogue starts its Main review only after the guardian settles, so
+Main reads the actual completed reply rather than racing to answer the same
+question. A review may complete remaining authorized work with Main's full
+capabilities. Main can disposition an adequate, completed canonical guardian reply as
 `no_work`, without duplicate
 speech. Other requests receive Main's exact completed native answer, including
-reasoning that needs no tools. Requested task, web and Secretary consultations
+reasoning that needs no tools. Review prose is kept on screen and can be heard
+using Listen; it never claims automatic speech. Core enforces this distinction,
+including for a stale browser. Foreground work results retain automatic delivery
+through the conversation's single speech queue. Requested task, web and Secretary consultations
 retain their existing requirements for actual same-run tool evidence.
 
 The boss and guardian share Core's canonical conversation and work state.
