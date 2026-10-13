@@ -87,6 +87,29 @@ test('a merged PR offers authorization withdrawal and refuses another review cor
   const { nodes } = setup(snapshot); await flush(); const text = descendants(nodes.codingAutonomyTasks).map(n => n.textContent);
   expect(text).toContain('Remove task authorization'); expect(text).not.toContain('Send correction to the Coding Team');
 });
+test.each(['workSeconds', 'testSeconds', 'modelSeconds', 'modelCalls', 'ciSeconds'])('only an exact zero %s budget is described as exhausted', async key => {
+  const snapshot = state(); snapshot.tasks[0].remaining[key] = 0;
+  const { nodes } = setup(snapshot); await flush();
+  expect(descendants(nodes.codingAutonomyTasks).some(n => n.textContent.startsWith('Exhausted budgets:'))).toBe(true);
+  const positive = state(); for (const field of Object.keys(positive.tasks[0].remaining)) positive.tasks[0].remaining[field] = 1;
+  const live = setup(positive); await flush();
+  expect(descendants(live.nodes.codingAutonomyTasks).some(n => n.textContent.startsWith('Exhausted budgets:'))).toBe(false);
+});
+test.each([false, true])('CI watch disclosure follows the Core fact %s, independently of the enabled switch', async active => {
+  const snapshot = state('blocked'); snapshot.tasks[0].ciObservationActive = active;
+  const { nodes } = setup(snapshot); await flush();
+  expect(descendants(nodes.codingAutonomyTasks).some(n => n.textContent.startsWith('Core continues watching CI'))).toBe(active);
+});
+test('confirmed administrative recovery still describes historical UNKNOWN as uncertain', async () => {
+  const snapshot = state('stopped'); snapshot.tasks[0].authorized = false;
+  snapshot.tasks[0].runs[0] = { requestId: KEY, finishedAt: 'synthetic-time', pendingInferenceCount: 0,
+    historicalPendingInferenceCount: 1, recovery: { state: 'confirmed', authority: 'operator-reconciliation' },
+    modelReceipts: [{ state: 'unknown' }] };
+  const { nodes } = setup(snapshot); await flush();
+  const text = descendants(nodes.codingAutonomyTasks).map(n => n.textContent).join('\n');
+  expect(text).toContain('An unknown or pending model receipt is an uncertain outcome');
+  expect(text).toContain('does not make it successful or authorize another worker');
+});
 test('switch requires explicit operator confirmation and uses the current durable revision', async () => {
   const { nodes, switches, calls } = setup(state()); await flush();
   switches[0].events.click(); await flush(); expect(calls).toHaveLength(1);

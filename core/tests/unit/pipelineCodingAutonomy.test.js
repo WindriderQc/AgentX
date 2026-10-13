@@ -106,6 +106,22 @@ test('late PR observation cannot overwrite a concurrent stop or task decision', 
   await expect(delivery.refresh(before, control, service.save)).rejects.toThrow('changed');
   expect((await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy).toMatchObject({ state: 'stopped', authorized: false });
 });
+test.each([
+  ['waiting_ci', true, null, true], ['correction', true, 'failure', true], ['blocked', true, 'failure', true],
+  ['ready_for_review', true, null, false], ['stopped', false, 'failure', false], ['closed', false, null, false],
+  ['correction', true, 'human_review', false], ['correction', true, 'conflict', false],
+])('CI campaign watch projection follows native ownership and state %s/%s/%s', async (state, authorized, correction, expected) => {
+  await task(); await authorize(); await enable(); const first = await launch(); await complete(first);
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.state': state, 'codingAutonomy.authorized': authorized,
+    'codingAutonomy.reason': 'resume_limit', 'codingAutonomy.ciWatchStartedAt': new Date().toISOString(),
+    'codingAutonomy.correction': correction ? { kind: correction } : null } });
+  const record = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(service.projection(record).ciObservationActive).toBe(expected);
+  expect(service.projection({ ...record, automationLease: { expiresAt: new Date() } }).ciObservationActive).toBe(false);
+  expect(service.projection({ ...record, codingCapacity: { requestId: first.requestId } }).ciObservationActive).toBe(false);
+  const unfinished = structuredClone(record); delete unfinished.codingAutonomy.runs.at(-1).finishedAt;
+  expect(service.projection(unfinished).ciObservationActive).toBe(false);
+});
 
 test('routing and idea intake grant no autonomous execution; switch defaults off', async () => {
   await task(); await enable(); await service.tick(); expect(control.launch).not.toHaveBeenCalled(); expect(await selected()).toBeNull();

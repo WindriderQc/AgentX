@@ -73,6 +73,10 @@
         element('p', `Remaining: ${remaining(task.remaining.workSeconds)} work, ${remaining(task.remaining.testSeconds)} tests, ${remaining(task.remaining.modelSeconds)} model, ${task.remaining.modelCalls} calls, ${remaining(task.remaining.ciSeconds)} CI`),
         element('p', `Last useful progress: ${task.lastUsefulProgressAt || 'none recorded'} · manual interventions: ${task.manualInterventions.length}`));
       article.append(element('p', `Authorized files: ${task.scope.join(', ')} · campaign ${task.queueRequestId}`));
+      const exhausted = [['workSeconds', 'work'], ['testSeconds', 'tests'], ['modelSeconds', 'model time'],
+        ['modelCalls', 'model calls'], ['ciSeconds', 'CI']].filter(([key]) => task.remaining[key] === 0).map(([, title]) => title);
+      if (exhausted.length) article.append(element('p', `Exhausted budgets: ${exhausted.join(', ')}. Review prior usage and the recorded outcome before approving further work; spent costs are retained.`));
+      if (task.ciObservationActive) article.append(element('p', 'Core continues watching CI for the exact published commit, including while coding is paused or worker resumes are exhausted. No coding worker starts merely to wait.'));
       const run = task.runs.at(-1);
       if (task.disposition) article.append(element('p', `Archived qualification: ${task.disposition.outcome} · ${task.disposition.reason}. Original execution outcomes and dependency barriers remain in force.`));
       if (task.failureCodes?.length) article.append(element('p', `Recorded stop: ${task.failureCodes.join(', ')} · ${task.authorized ? 'execution authorized' : 'execution authorization removed; this card is not queued'}`));
@@ -82,6 +86,8 @@
       const activeRecovery = snapshot.active?.pipelineId === task.pipelineId && snapshot.active.requestId === run?.requestId
         ? snapshot.active.recovery : null;
       if (run) article.append(element('p', `Execution ${run.requestId} · worker ${run.finishedAt ? 'finished' : 'termination not yet confirmed'} · unresolved model requests ${run.pendingInferenceCount}`));
+      if (task.runs.some(item => item.pendingInferenceCount || item.historicalPendingInferenceCount
+        || item.modelReceipts?.some(call => ['unknown', 'pending'].includes(call.state)))) article.append(element('p', 'An unknown or pending model receipt is an uncertain outcome. An absent worker or administrative recovery does not make it successful or authorize another worker. Original outcomes remain recorded.'));
       const recoveryHeld = run?.recovery && snapshot.active?.pipelineId === task.pipelineId && snapshot.active.requestId === run.requestId;
       if (run?.recovery) article.append(element('p', `Recovery ${run.recovery.state} · ${run.recovery.authority}${recoveryHeld ? ' · selection slot still held' : ''} · historical unresolved receipts retained: ${run.historicalPendingInferenceCount}. Original model outcomes are unchanged.`));
       if ((run?.pendingInferenceCount || recoveryHeld) && !snapshot.enabled && !task.authorized

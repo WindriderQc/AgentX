@@ -371,6 +371,12 @@ not change attempt outcomes, costs, execution authorization or task status.
 Merge and failed CI can both be recorded. Human acceptance, installation and
 product acceptance remain separate receipts. A closed PR refuses new review
 corrections through the coding loop.
+The separate `ciObservationActive` status fact describes the budgeted campaign
+watch only: finished, unowned publication in `waiting_ci` or an authorized
+failure/resume-limit watch. Human review, conflicts, stopped/closed or owned
+executions report false. The panel explains exact-zero exhaustion for each
+budget and retains uncertainty disclosure for historical UNKNOWN receipts even
+after confirmed administrative recovery.
 
 An operator can **Archive qualification** with a private receipt reference,
 SHA-256, reason and outcome (`passed`, `abandoned` or `superseded`). The API
