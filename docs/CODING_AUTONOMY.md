@@ -134,6 +134,9 @@ just to wait.
 4. Authorize the exact task and file scope with that campaign ID. Review budgets,
    then **Enable authorized scope**. Only authorized tasks are selected; the next
    eligible task starts without a separate per-launch confirmation.
+   The authorization form exposes all cumulative budgets and the no-progress
+   window, plus the installed coding, Core and Benchmark comparison verifiers.
+   Durations use minutes and model calls use a count; Core validates every limit.
 5. Follow the active request, stages, native unresolved calls, remaining budgets,
    PR SHA/check coverage and manual intervention history. Submit a review
    correction against the current PR commit when needed.

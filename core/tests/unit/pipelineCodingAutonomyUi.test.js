@@ -27,6 +27,10 @@ function setup(state, options = {}) {
   const switches = ['true', 'false'].map(value => { const e = new Element(); e.dataset.autonomySwitch = value; return e; });
   const calls = [];
   vm.runInNewContext(source, { document, window: { addEventListener() {} }, AbortController,
+    FormData: class {
+      constructor(form) { this.values = form.values || {}; }
+      get(name) { return this.values[name] ?? null; }
+    },
     setTimeout: () => 1, clearTimeout() {}, setInterval: fn => { interval = fn; return 1; }, clearInterval() {},
     fetch: async (url, requestOptions) => {
       calls.push({ url, options: requestOptions });
@@ -137,6 +141,54 @@ test('switch requires explicit operator confirmation and uses the current durabl
   nodes.codingAutonomyConfirm.checked = true; switches[0].events.click(); await flush();
   const mutation = calls.find(call => call.options.method === 'POST');
   expect(JSON.parse(mutation.options.body)).toEqual({ enabled: true, confirm: true, expectedRevision: 7 });
+});
+function authorizationValues(overrides) {
+  const template = fs.readFileSync(path.join(__dirname, '../../views/partials/pipeline-coding-autonomy.ejs'), 'utf8');
+  const html = require('ejs').render(template).match(/<form id="codingAutonomyAuthorize">([\s\S]*?)<\/form>/)[1];
+  const values = {};
+  for (const match of html.matchAll(/<(?:input|textarea|select)\b[^>]*\bname="([^"]+)"[^>]*>/g)) {
+    values[match[1]] = match[0].match(/\bvalue="([^"]*)"/)?.[1] || '';
+  }
+  for (const name of Object.keys(overrides)) expect(values).toHaveProperty(name);
+  expect(html).toContain(`<option value="${overrides.verificationProfile}">`);
+  return { ...values, ...overrides };
+}
+test('authorization submits reduced cumulative budgets and the installed Benchmark verifier from the rendered form', async () => {
+  const snapshot = state(); snapshot.tasks[0].authorizationRevision = 12;
+  const { nodes, calls } = setup(snapshot); await flush();
+  const form = nodes.codingAutonomyAuthorize;
+  form.values = authorizationValues({ pipelineId: '0001', queueRequestId: KEY,
+    scope: ' benchmark/src/services/benchmark/artifactComparison.js \n\nbenchmark/tests/unit/benchmark/artifactComparison.test.js',
+    verificationProfile: 'agentx-benchmark-artifact-tests/v1', maxResumes: '0', workMinutes: '20',
+    testMinutes: '5', modelMinutes: '10', modelCalls: '17', ciMinutes: '8', noProgressMinutes: '3' });
+  form.events.submit({ target: form, preventDefault() {} }); await flush();
+  expect(calls.some(call => call.options.method === 'POST')).toBe(false);
+  nodes.codingAutonomyConfirm.checked = true;
+  form.events.submit({ target: form, preventDefault() {} }); await flush();
+  const mutation = calls.find(call => call.options.method === 'POST');
+  expect(mutation.url).toBe('/api/pipeline/coding-autonomy/tasks/0001/authorization');
+  const body = JSON.parse(mutation.options.body);
+  expect(body).toMatchObject({ confirm: true, authorized: true, lowRisk: true, expectedRevision: 12,
+    queueRequestId: KEY, verificationProfile: 'agentx-benchmark-artifact-tests/v1',
+    scope: ['benchmark/src/services/benchmark/artifactComparison.js', 'benchmark/tests/unit/benchmark/artifactComparison.test.js'],
+    limits: { maxResumes: 0, workSeconds: 1200, testSeconds: 300, modelSeconds: 600,
+      modelCalls: 17, ciSeconds: 480, noProgressSeconds: 180 } });
+  expect(require('../../src/services/pipelineCodingAutonomyPolicy').limits(body.limits)).toEqual(body.limits);
+});
+test('rendered authorization defaults match Core caps and invalid reduced model credit is refused', async () => {
+  const { nodes, calls } = setup(state()); await flush(); nodes.codingAutonomyConfirm.checked = true;
+  const form = nodes.codingAutonomyAuthorize;
+  form.values = authorizationValues({ pipelineId: '0001', queueRequestId: KEY, scope: 'source.js',
+    verificationProfile: 'agentx-core-runner-tests/v1' });
+  form.events.submit({ target: form, preventDefault() {} }); await flush();
+  const policy = require('../../src/services/pipelineCodingAutonomyPolicy');
+  expect(JSON.parse(calls.find(call => call.options.method === 'POST').options.body).limits).toEqual(policy.DEFAULT_LIMITS);
+  form.values.modelMinutes = '0';
+  form.events.submit({ target: form, preventDefault() {} }); await flush();
+  const latest = calls.filter(call => call.options.method === 'POST').at(-1);
+  const limits = JSON.parse(latest.options.body).limits;
+  expect(limits.modelSeconds).toBe(0);
+  expect(() => policy.limits(limits)).toThrow(); // No default or extra model credit is substituted.
 });
 test('cancel waiting targets only the current task/request and explains that future corrections stop', async () => {
   const { nodes, calls } = setup(state()); await flush(); nodes.codingAutonomyConfirm.checked = true;
