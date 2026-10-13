@@ -110,6 +110,9 @@ specialist planning or an image submission.
 For a Core-bound background Main web consultation, the pre-tool hook asks Core
 to admit each native call using the host's session, run and call identities.
 Core retains the limits and admissions in the existing conversation work.
+The hook admits the resolved execution, including failed reads. OpenClaw's
+`tool_call` dispatch wrapper is not counted again, so one research call consumes
+one admission and the execution remains fenced by Core before it starts.
 After four web reads or eight total calls, further tools are blocked and Main
 must conclude from checked sources or describe the actual lookup limitation.
 General complete Main work has sixteen parent tool admissions and four web reads;
