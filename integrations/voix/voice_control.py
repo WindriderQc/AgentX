@@ -5,6 +5,11 @@ import re
 import time
 import unicodedata
 import wave
+from concurrent.futures import ThreadPoolExecutor
+
+# A general decode may hold its serial inference lock for a long time on CPU.
+# Controls need their own bounded executor, including when that pool is full.
+_CONTROL_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="voix-controls")
 
 GRAMMAR = json.dumps([
     "stop", "stop stop", "stop stop stop", "silence", "nestor silence",
@@ -35,7 +40,7 @@ async def recognize(loop, classify, transcribe, clock=time.perf_counter):
     Both calls stay off the event loop. Returns (command, transcription, elapsed_ms).
     """
     started = clock()
-    command = await loop.run_in_executor(None, classify)
+    command = await loop.run_in_executor(_CONTROL_EXECUTOR, classify)
     if command:
         return command, None, round((clock() - started) * 1000)
     result = await loop.run_in_executor(None, transcribe)

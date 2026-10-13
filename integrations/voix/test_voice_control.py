@@ -4,6 +4,7 @@ import json
 import threading
 import unittest
 import wave
+from concurrent.futures import ThreadPoolExecutor
 
 from voice_control import VoiceControl, is_stop_result, recognize
 
@@ -81,6 +82,25 @@ class RecognizeTest(unittest.TestCase):
         self.assertIsNone(transcription)
         self.assertFalse(decoded.is_set(), "a Stop cannot leave a decoder running or queued")
         self.assertGreaterEqual(elapsed_ms, 0)
+
+    def test_stop_can_run_when_the_general_executor_is_occupied(self):
+        entered, release = threading.Event(), threading.Event()
+        def busy_decoder():
+            entered.set()
+            release.wait(5)
+        async def scenario():
+            loop = asyncio.get_running_loop()
+            loop.set_default_executor(ThreadPoolExecutor(max_workers=1))
+            pending = loop.run_in_executor(None, busy_decoder)
+            while not entered.is_set(): await asyncio.sleep(0)
+            try:
+                answer = await asyncio.wait_for(recognize(loop, lambda: "stop", busy_decoder), 2)
+                self.assertEqual(answer[:2], ("stop", None))
+                self.assertFalse(release.is_set())
+            finally:
+                release.set()
+                await pending
+        asyncio.run(scenario())
 
     def test_cancellation_while_classifying_does_not_leave_a_decode_behind(self):
         started = threading.Event()
