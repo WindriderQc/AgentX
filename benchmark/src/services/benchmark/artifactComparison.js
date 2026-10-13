@@ -230,7 +230,8 @@ function compareArmRows(specA, rowsA, specB, rowsB, options = {}) {
         .map(([category, categoryPairs]) => ({ category, ...summarizePairs(categoryPairs, bootstrap) }))
         .sort((left, right) => left.category.localeCompare(right.category));
 
-    const scorer = assessComparability(armB.scorerVersions, armA.scorerVersions);
+    const scorer = assessComparability([...new Set(rowsB.map(row => row.scorer_version || null))],
+        [...new Set(rowsA.map(row => row.scorer_version || null))]);
     const sameArtifact = armA.digests.length === 1 && armB.digests.length === 1 && armA.digests[0] === armB.digests[0];
     const judgeIndependence = assessJudgeIndependence(armA, armB);
     // The contract reads every saved row, eligible or not: its judge and

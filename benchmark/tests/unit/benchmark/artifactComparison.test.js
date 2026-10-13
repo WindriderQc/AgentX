@@ -1,3 +1,4 @@
+const { buildJudgeQualificationContract } = require('../../../src/services/benchmark/judgeQualificationContract');
 const express = require('express');
 const { startTestHttpHarness } = require('../../helpers/testHttpServer');
 const {
@@ -20,12 +21,12 @@ function executionSettings(overrides = {}) {
     return {
         num_ctx: 8192, num_predict: 2048, temperature: 0.2, top_p: 0.9, top_k: 40,
         repeat_penalty: 1.05, seed: 42, seed_policy: 'fixed', sampling_profile: 'controlled',
-        ...overrides
+        api_mode: 'chat', think: false, think_mode: 'final_only', ...overrides
     };
 }
 function candidateContract(digest, host) {
     return {
-        model: null, host,
+        model: host === HOST_A ? Q8 : Q4, host,
         artifactDigest: digest,
         contractFingerprint: `contract-${digest.slice(0, 8)}`,
         mode: { name: 'final_only', think: false, sendThink: true, rankable: true },
@@ -41,24 +42,20 @@ function candidateContract(digest, host) {
         contract: { artifact: { digest, runtimeFingerprint: `runtime-${digest.slice(0, 8)}` } }
     };
 }
-function judgeConfig(judgeModel = 'gemma4-synthetic:e4b') {
-    return {
-        model: judgeModel,
-        num_ctx: 4096,
-        settings: {
-            numCtx: 4096, numPredict: 1024, timeoutMs: 60000, temperature: 0,
-            seed: 7, maxRetries: 2, votingCount: 1, think: false, responseCharBudget: null
-        },
-        executionContract: {
-            schema: 'agentx.benchmark-judge-execution/v1', num_ctx: 4096,
-            artifact: { model: judgeModel, host: 'http://synthetic-judge:11434' }
-        },
-        qualificationContract: {
-            schema: 'agentx.benchmark-judge-qualification-contract/v1',
-            artifact: { model: judgeModel, host: 'http://synthetic-judge:11434' }
-        }
-    };
+function judgeConfig(judgeModel = 'gemma4-synthetic:e4b', overrides = {}) {
+    const config = { model: judgeModel, host: 'http://synthetic-judge:11434', num_ctx: 4096,
+        num_predict: 1024, timeout: 60000, temperature: 0, seed: 7, max_retries: 2,
+        voting_count: 1, think: false, response_char_budget: 2048, ...overrides };
+    config.execution_contract = { schema: 'agentx.benchmark-judge-execution/v1', num_ctx: config.num_ctx,
+        artifact: { model: config.model, host: config.host, hostId: null,
+            digest: 'c'.repeat(64), runtimeFingerprint: 'd'.repeat(64) } };
+    return config;
 }
+function judgeEvidence(config = judgeConfig()) {
+    return { judge_model: config.model, judge_host: config.host, judge_execution_contract: config.execution_contract,
+        judge_qualification_contract: buildJudgeQualificationContract(config) };
+}
+
 function batchDoc({ batchId, cohort, digest, host, candidates, judges, executionConfig, batchContractFingerprint }) {
     return {
         _id: batchId,
@@ -66,6 +63,7 @@ function batchDoc({ batchId, cohort, digest, host, candidates, judges, execution
         quality_cohort_fingerprint: cohort,
         batch_contract_fingerprint: batchContractFingerprint || null,
         execution_config: executionConfig || {},
+        judge_config: (judges || [judgeConfig()])[0],
         inference_contract_campaign: {
             schemaVersion: 1,
             responseMode: 'final_only',
@@ -73,8 +71,7 @@ function batchDoc({ batchId, cohort, digest, host, candidates, judges, execution
                 sampling_profile: 'controlled', temperature: 0.2, top_p: 0.9, top_k: 40,
                 repeat_penalty: 1.05, seed: 42, seed_policy: 'fixed', api_mode: 'chat', repeats: 1
             },
-            candidates,
-            judges: judges || [judgeConfig()]
+            candidates
         }
     };
 }
@@ -89,7 +86,7 @@ function rows(model, { prompts = 20, repeats = 2, score, category = (index) => (
             out.push({
                 model, host, model_digest: digest,
                 prompt_id: `prompt-${index}`, prompt_fingerprint: `fp-${index}`, prompt_name: `Prompt ${index}`,
-                prompt_category: category(index), quality_score: score(index, repeat), judge_model: judge,
+                prompt_category: category(index), quality_score: score(index, repeat), ...judgeEvidence(judgeConfig(judge)),
                 evaluation_authority: typeof authority === 'function' ? authority(index) : authority,
                 quality_cohort_fingerprint: cohort, scorer_version: scorerVersion, repeat_index: repeat,
                 execution_settings: settings,
@@ -156,7 +153,10 @@ describe('compareArmRows', () => {
     });
 
     test('switches to the explicit frozen contract when the arms carry different saved cohorts', () => {
-        const result = compareArmRows(armA, rows(Q8, { score: difficulty }), armB, rows(Q4, { score: difficulty, cohort: 'cohort-2' }));
+        const result = compareArmRows(armA, rows(Q8, { score: difficulty, cohort: 'cohort-a' }),
+            armB, rows(Q4, { score: difficulty, cohort: 'cohort-b', host: HOST_B }), { batches: {
+                a: batchDoc({ batchId: BATCH_A, cohort: 'cohort-a', host: HOST_A, candidates: [candidateContract('digest-a', HOST_A)] }),
+                b: batchDoc({ batchId: BATCH_B, cohort: 'cohort-b', host: HOST_B, candidates: [candidateContract('digest-b', HOST_B)] }) } });
         expect(result.comparability).toMatchObject({ authoritative: true, sameCohort: false, evidence: 'frozen_contract' });
         expect(result.contract.compatible).toBe(true);
     });
@@ -181,15 +181,15 @@ describe('coverage', () => {
         // prompt-0 row 0 carries both flags at once.
         expect(result.coverage.a.reasons).toMatchObject({
             failed_or_infra_error: 1, needs_review: 2, excluded_from_leaderboard: 1,
-            missing_prompt_identity: 0, missing_or_non_finite_score: 0
+            missing_prompt_identity: 0, missing_or_non_finite_score: 1
         });
         // Denominator conservation: every loaded row is either included or excluded,
         // and no prompt disappears.
         expect(result.coverage.a.includedRows + result.coverage.a.excludedRows).toBe(result.coverage.a.originalRows);
         expect(result.coverage.a.includedPrompts + result.coverage.a.excludedPrompts).toBe(result.coverage.a.originalPrompts);
-        // The 4 excluded rows carry 4 flags in total here (no overlap), and
+        // The 4 excluded rows carry 5 flags because the failed row is also unscored, and
         // every per-reason count counts rows, never more than the excluded set.
-        expect(Object.values(result.coverage.a.reasons).reduce((sum, count) => sum + count, 0)).toBe(result.coverage.a.excludedRows);
+        expect(Object.values(result.coverage.a.reasons).reduce((sum, count) => sum + count, 0)).toBe(result.coverage.a.excludedRows + 1);
         expect(result.coverage.b.includedRows).toBe(12);
         // The statistics still describe only the eligible pairs.
         expect(result.a.prompts).toBe(5);
@@ -206,7 +206,7 @@ describe('coverage', () => {
         const result = compareArmRows(armA, a, armB, b);
         expect(result.coverage.a.includedRows).toBe(2); // the 0-score row and prompt-3
         expect(result.coverage.a.reasons).toMatchObject({
-            missing_or_non_finite_score: 1, needs_review: 1, failed_or_infra_error: 0
+            missing_or_non_finite_score: 2, pending_score: 1, needs_review: 1, failed_or_infra_error: 0
         });
         // The zero row paired and counts as 0 points, not as missing:
         // arm A mean over {0, difficulty(3)*10 = 51} while B keeps all four.
@@ -275,7 +275,8 @@ describe('compareArtifacts', () => {
     });
 
     test('establishes the frozen contract from saved batch and result metadata', async () => {
-        const Model = modelWithRows(rows(Q8, { score: difficulty, prompts: 4, repeats: 2 }), rows(Q4, { score: difficulty, prompts: 4, repeats: 2 }));
+        const Model = modelWithRows(rows(Q8, { score: difficulty, prompts: 4, repeats: 2, cohort: 'cohort-a' }),
+            rows(Q4, { score: difficulty, prompts: 4, repeats: 2, cohort: 'cohort-b', host: HOST_B }));
         const BatchModel = batchModelWithDocs(
             batchDoc({
                 batchId: BATCH_A, cohort: 'cohort-a', digest: 'digest-a', host: HOST_A,

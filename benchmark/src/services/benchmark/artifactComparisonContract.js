@@ -259,8 +259,8 @@ function completeJudgedRow(row) {
     const primaryScores = policy.judges.map(judge => scores.find(vote => identityOf(vote.judge_model, vote.judge_host) === identityOf(judge.model, judge.host)).quality_score);
     const divergence = Math.max(...primaryScores) - Math.min(...primaryScores);
     // Writer consensus uses a two-point spread and population standard deviation / 5.
-    if ((divergence > 2) !== used || !Number.isFinite(row.judge_divergence)
-        || Math.abs(row.judge_divergence - divergence) > 1e-8) return false;
+    if ((divergence > 2) !== used || (row.judge_divergence != null
+        && (!Number.isFinite(row.judge_divergence) || Math.abs(row.judge_divergence - divergence) > 1e-8))) return false;
     const values = scores.map(score => score.quality_score);
     const average = values.reduce((sum, value) => sum + value, 0) / values.length;
     const deviation = Math.sqrt(values.reduce((sum, value) => sum + (value - average) ** 2, 0) / values.length);
@@ -321,7 +321,8 @@ function collectArmEvidence({ spec, batch, rows }) {
         spec,
         batch,
         candidateSelectionVerified: !campaign || (candidates.length > 0
-            && (spec.host || distinct(candidates.map(candidate => hostOf(candidate.host))).length === 1)),
+            && (spec.host || distinct(candidates.map(candidate => hostOf(candidate.host))).length === 1)
+            && rows.every(row => candidates.some(candidate => hostOf(candidate.host) === hostOf(row.host)))),
         judges: judge.judges,
         rows,
         hasJudged: judged.length > 0,
@@ -466,6 +467,7 @@ function buildComparisonContract(armA, armB) {
     // contract is the evidence: under a shared cohort, different contender
     // artifacts are the point of the comparison, not a warning.
     const warnings = [];
+    if (confounds.has('artifact_digest')) warnings.push('The arms ran different artifact digests: retained as provenance, a confound, not a defect.');
     if (evidence === 'frozen_contract') {
         for (const [term, check] of Object.entries(checks)) {
             if (check.status === 'mismatch') {
@@ -477,7 +479,6 @@ function buildComparisonContract(armA, armB) {
                 warnings.push(`No saved judge ${term.replace('judge_', '')} evidence: judged scores cannot be verified as comparable.`);
             }
         }
-        if (confounds.has('artifact_digest')) warnings.push('The arms ran different artifact digests: retained as provenance, a confound, not a defect.');
         if (confounds.has('runtime_fingerprint')) warnings.push('The arms ran different host/runtime fingerprints: a non-authoritative confound.');
         if (confounds.has('effective_context')) warnings.push('The arms used different effective contexts: a non-authoritative confound.');
         if (confounds.has('token_budget')) warnings.push('The arms used different response token budgets: a non-authoritative confound.');

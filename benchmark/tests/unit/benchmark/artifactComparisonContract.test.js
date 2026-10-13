@@ -1,3 +1,4 @@
+const { buildJudgeQualificationContract } = require('../../../src/services/benchmark/judgeQualificationContract');
 const {
     buildComparisonContract,
     collectArmEvidence,
@@ -15,7 +16,7 @@ function executionSettings(overrides = {}) {
     return {
         num_ctx: 8192, num_predict: 2048, temperature: 0.2, top_p: 0.9, top_k: 40,
         repeat_penalty: 1.05, seed: 42, seed_policy: 'fixed', sampling_profile: 'controlled',
-        ...overrides
+        api_mode: 'chat', think: false, think_mode: 'final_only', ...overrides
     };
 }
 
@@ -40,23 +41,17 @@ function candidate(model, host, digest, overrides = {}) {
 }
 
 function judgeConfig(judgeModel = 'gemma4-synthetic:e4b', overrides = {}) {
-    return {
-        model: judgeModel,
-        num_ctx: 4096,
-        settings: {
-            numCtx: 4096, numPredict: 1024, timeoutMs: 60000, temperature: 0,
-            seed: 7, maxRetries: 2, votingCount: 1, think: false, responseCharBudget: null
-        },
-        executionContract: {
-            schema: 'agentx.benchmark-judge-execution/v1', num_ctx: 4096,
-            artifact: { model: judgeModel, host: 'http://synthetic-judge:11434' }
-        },
-        qualificationContract: {
-            schema: 'agentx.benchmark-judge-qualification-contract/v1',
-            artifact: { model: judgeModel, host: 'http://synthetic-judge:11434' }
-        },
-        ...overrides
-    };
+    const config = { model: judgeModel, host: 'http://synthetic-judge:11434', num_ctx: 4096,
+        num_predict: 1024, timeout: 60000, temperature: 0, seed: 7, max_retries: 2,
+        voting_count: 1, think: false, response_char_budget: 2048, ...overrides };
+    config.execution_contract = { schema: 'agentx.benchmark-judge-execution/v1', num_ctx: config.num_ctx,
+        artifact: { model: config.model, host: config.host, hostId: null,
+            digest: 'c'.repeat(64), runtimeFingerprint: 'd'.repeat(64) } };
+    return config;
+}
+function judgeEvidence(config = judgeConfig()) {
+    return { judge_model: config.model, judge_host: config.host, judge_execution_contract: config.execution_contract,
+        judge_qualification_contract: buildJudgeQualificationContract(config) };
 }
 
 function batchDoc({ batchId, cohort, model, host, digest, candidates, judges, executionConfig, batchContractFingerprint }) {
@@ -66,6 +61,7 @@ function batchDoc({ batchId, cohort, model, host, digest, candidates, judges, ex
         quality_cohort_fingerprint: cohort,
         batch_contract_fingerprint: batchContractFingerprint || null,
         execution_config: executionConfig || {},
+        judge_config: (judges || [judgeConfig()])[0],
         inference_contract_campaign: {
             schemaVersion: 1,
             responseMode: 'final_only',
@@ -73,8 +69,7 @@ function batchDoc({ batchId, cohort, model, host, digest, candidates, judges, ex
                 sampling_profile: 'controlled', temperature: 0.2, top_p: 0.9, top_k: 40,
                 repeat_penalty: 1.05, seed: 42, seed_policy: 'fixed', api_mode: 'chat', repeats: 1
             },
-            candidates: candidates || [candidate(model, host, digest)],
-            judges: judges || [judgeConfig()]
+            candidates: candidates || [candidate(model, host, digest)]
         }
     };
 }
@@ -85,7 +80,7 @@ function rows(model, host, digest, { count = 3, cohort = 'cohort-x', settings = 
         out.push({
             model, host, model_digest: digest,
             prompt_id: `prompt-${i}`, prompt_fingerprint: `fp-${i}`, prompt_name: `Prompt ${i}`,
-            prompt_category: i % 2 ? 'coding' : 'agent', quality_score: 7, judge_model: 'gemma4-synthetic:e4b',
+            prompt_category: i % 2 ? 'coding' : 'agent', quality_score: 7, ...judgeEvidence(),
             evaluation_authority: 'judge', quality_cohort_fingerprint: cohort,
             scorer_version: scorerVersion, repeat_index: 0,
             execution_settings: settings || executionSettings(),
@@ -98,15 +93,21 @@ function rows(model, host, digest, { count = 3, cohort = 'cohort-x', settings = 
 function makeArm({ spec, side, base = {} }) {
     const { model = spec.model, host = side === 'a' ? HOST_A : HOST_B, digest = side === 'a' ? DIGEST_A : DIGEST_B,
         cohort, judges, candidates, executionConfig, settings, scorerVersion, count, batch } = base;
-    return {
-        spec,
-        batch: batch !== undefined ? batch : batchDoc({
-            batchId: spec.batch_id, cohort: cohort || `cohort-${side}`, model, host, digest,
-            judges, candidates, executionConfig
-        }),
-        rows: rows(model, host, digest, { settings, scorerVersion, count, cohort: cohort || `cohort-${side}` })
-    };
+    const doc = batch !== undefined ? batch : batchDoc({ batchId: spec.batch_id,
+        cohort: cohort || `cohort-${side}`, model, host, digest, judges, candidates, executionConfig });
+    if (settings && batch === undefined) {
+        const execution = doc.inference_contract_campaign.candidates[0].execution;
+        execution.num_ctx = settings.num_ctx; execution.num_predict = settings.num_predict;
+        for (const key of Object.keys(execution.sampling)) {
+            if (key !== 'profile') execution.sampling[key] = settings[key];
+        }
+        Object.assign(doc.inference_contract_campaign.fixedSettings, settings);
+    }
+    const resultRows = rows(model, host, digest, { settings, scorerVersion, count, cohort: cohort || `cohort-${side}` });
+    if (doc?.judge_config) resultRows.forEach(row => Object.assign(row, judgeEvidence(doc.judge_config)));
+    return { spec, batch: doc, rows: resultRows };
 }
+
 const armA = (base = {}) => makeArm({ spec: SPEC_A, side: 'a', base });
 const armB = (base = {}) => makeArm({ spec: SPEC_B, side: 'b', base });
 
@@ -155,7 +156,7 @@ describe('buildComparisonContract', () => {
     test('an incompatible judge setting is not compatible', () => {
         const contract = buildComparisonContract(
             armA({ judges: [judgeConfig()] }),
-            armB({ judges: [judgeConfig(undefined, { settings: { numCtx: 8192, numPredict: 1024, timeoutMs: 60000, temperature: 0, seed: 7, maxRetries: 2, votingCount: 1, think: false, responseCharBudget: null } })] }));
+            armB({ judges: [judgeConfig(undefined, { num_ctx: 8192 })] }));
         expect(contract.compatible).toBe(false);
         expect(contract.checks.judge_settings.status).toBe('mismatch');
     });
@@ -183,8 +184,9 @@ describe('buildComparisonContract', () => {
         // No batch documents: the judge terms are absent on both arms, and the
         // arms carried judged rows — the judge cannot be verified as fair, so
         // the contract stays non-compatible rather than assuming it.
-        const bareA = { spec: SPEC_A, batch: null, rows: rows(SPEC_A.model, HOST_A, DIGEST_A) };
-        const bareB = { spec: SPEC_B, batch: null, rows: rows(SPEC_B.model, HOST_B, DIGEST_B) };
+        const withoutJudge = row => ({ ...row, judge_model: null, judge_host: null, judge_execution_contract: null, judge_qualification_contract: null });
+        const bareA = { spec: SPEC_A, batch: null, rows: rows(SPEC_A.model, HOST_A, DIGEST_A).map(withoutJudge) };
+        const bareB = { spec: SPEC_B, batch: null, rows: rows(SPEC_B.model, HOST_B, DIGEST_B, { cohort: 'cohort-y' }).map(withoutJudge) };
         const contract = buildComparisonContract(bareA, bareB);
         expect(contract.checks.judge_identity.status).toBe('absent');
         expect(contract.checks.judge_settings.status).toBe('absent');
@@ -198,8 +200,8 @@ describe('buildComparisonContract', () => {
     test('missing judge metadata on non-judged arms is harmless', () => {
         // Deterministic arms never used a judge: the absent judge terms cannot
         // contradict anything, so the contract is established.
-        const bareA = { spec: SPEC_A, batch: null, rows: rows(SPEC_A.model, HOST_A, DIGEST_A, {}).map((row) => ({ ...row, evaluation_authority: 'deterministic', judge_model: null })) };
-        const bareB = { spec: SPEC_B, batch: null, rows: rows(SPEC_B.model, HOST_B, DIGEST_B, {}).map((row) => ({ ...row, evaluation_authority: 'deterministic', judge_model: null })) };
+        const bareA = armA(), bareB = armB();
+        for (const arm of [bareA, bareB]) arm.rows.forEach(row => { row.evaluation_authority = 'deterministic'; row.judge_model = null; });
         const contract = buildComparisonContract(bareA, bareB);
         expect(contract.checks.judge_identity.status).toBe('absent');
         expect(contract.compatible).toBe(true);
@@ -209,7 +211,8 @@ describe('buildComparisonContract', () => {
 
     test('absent on one arm and present on the other is ambiguous, not compatible', () => {
         const withBatch = armA();
-        const withoutBatch = { spec: SPEC_B, batch: null, rows: rows(SPEC_B.model, HOST_B, DIGEST_B) };
+        const withoutBatch = { spec: SPEC_B, batch: null, rows: rows(SPEC_B.model, HOST_B, DIGEST_B).map(row => ({ ...row,
+            judge_model: null, judge_host: null, judge_execution_contract: null, judge_qualification_contract: null })) };
         const contract = buildComparisonContract(withBatch, withoutBatch);
         expect(contract.checks.judge_identity.status).toBe('ambiguous');
         expect(contract.compatible).toBe(false);

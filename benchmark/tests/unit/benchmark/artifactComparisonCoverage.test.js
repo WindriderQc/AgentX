@@ -54,7 +54,7 @@ describe('exclusionReason', () => {
         expect(exclusionReason(flagged)).toBe('failed_or_infra_error');
         expect(EXCLUSION_REASONS).toEqual([
             'failed_or_infra_error', 'needs_review', 'excluded_from_leaderboard',
-            'missing_prompt_identity', 'missing_or_non_finite_score'
+            'missing_prompt_identity', 'missing_or_non_finite_score', 'pending_score'
         ]);
     });
 });
@@ -109,7 +109,7 @@ describe('coverageForArm', () => {
         const total = Object.values(coverage.reasons).reduce((sum, count) => sum + count, 0);
         expect(total).toBeGreaterThan(coverage.excludedRows);
         expect(coverage.reasons).toMatchObject({
-            failed_or_infra_error: 1, needs_review: 2, excluded_from_leaderboard: 1, missing_or_non_finite_score: 0
+            failed_or_infra_error: 1, needs_review: 2, excluded_from_leaderboard: 1, missing_or_non_finite_score: 1
         });
     });
 });
