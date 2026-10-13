@@ -622,6 +622,7 @@
         if (!text.trim()) { this.activeTurn = null; this.turnPending = false; this.listen(epoch); return; }
         await this.respond(turn, text, epoch, result?.detectedLanguage);
       } catch (error) {
+        if (!turn.interrupted && turn.timeline?.marks.firstAudio !== undefined) turn.timeline.finish('failed');
         if (!turn.interrupted && this.current(epoch)) {
           if (!transcribed) this.audio.recordTranscription?.(excerptId, 'failed');
           if (!transcribed && previous?.candidate && this.owns(previous)) {
@@ -642,7 +643,7 @@
         this.reportTimeline(turn); // a turn that ended before any reply audio
       }
     }
-    // A surface that keeps voice timings receives each voice turn's timeline once:
+    // A surface receives the scheduling snapshot and subsequent changed terminal evidence:
     // when the reply's first clause starts playing, else when the turn ends.
     reportTimeline(turn) {
       void turn.timeline?.report(values => this.io.timings(turn.session, turn.id, values), () => turn.interrupted, turn.requestEnded);
@@ -789,7 +790,7 @@
       dropHolding();
       speak(streamed ? pending : reply.text);
       await playback;
-      if (speechError) throw speechError;
+      if (speechError) { turn.timeline?.finish('failed'); throw speechError; }
       if (!this.owns(turn)) return;
       if (reply.sound) {
         this.show('preparing');
@@ -801,6 +802,7 @@
       }
       await this.audio.settle?.(turn.speech.signal);
       if (!this.owns(turn)) return;
+      if (turn.timeline?.marks.firstAudio !== undefined) turn.timeline.finish('completed');
       if (this.selection.wakeWord) this.wake.extend();
       this.activeTurn = null;
       this.listen(epoch);

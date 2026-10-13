@@ -10,7 +10,7 @@
   const MEASURES = Object.freeze(['silenceMs', 'audioMs', 'sttServer']);
 
   class VoiceTimeline {
-    constructor(now = () => Date.now()) { this.now = now; this.origin = now(); this.marks = {}; this.measures = {}; this.sent = false; }
+    constructor(now = () => Date.now()) { this.now = now; this.origin = now(); this.marks = {}; this.measures = {}; this.sent = false; this.lastSent = null; this.queued = null; this.reporting = Promise.resolve(); this.playbackOutcome = null; }
     // Only the first occurrence of a mark counts.
     mark(name) {
       if (MARKS.includes(name) && this.marks[name] === undefined) this.marks[name] = Math.max(0, Math.round(this.now() - this.origin));
@@ -19,17 +19,29 @@
     measure(name, value) {
       if (MEASURES.includes(name) && typeof value === 'number' && Number.isFinite(value) && value >= 0) this.measures[name] = Math.round(value);
     }
-    values(interrupted = false) { return { ...this.marks, ...this.measures, interrupted: interrupted === true }; }
-    // Sent once per turn, and only for a turn that reached the model. A surface
-    // that keeps the turn's record answers { pending: true } while that record
-    // is not written yet: the timeline is sent once more when `ended` settles.
+    finish(outcome) { if (['completed', 'failed'].includes(outcome)) this.playbackOutcome = outcome; }
+    values(interrupted = false) { return { ...this.marks, ...this.measures, interrupted: interrupted === true,
+      ...(this.playbackOutcome && { playbackOutcome: this.playbackOutcome }) }; }
+    // Serialize changed snapshots: late completion/interruption must not be
+    // lost after first scheduling, and an earlier response cannot overwrite it.
     async report(send, interrupted = () => false, ended = Promise.resolve()) {
-      if (this.sent || typeof send !== 'function' || this.marks.requestSent === undefined) return;
-      this.sent = true;
-      try {
-        const receipt = await send(this.values(interrupted()));
-        if (receipt?.pending) { await ended; await send(this.values(interrupted())); }
-      } catch { /* a measurement never fails or delays a conversation */ }
+      if (typeof send !== 'function' || this.marks.requestSent === undefined) return;
+      const values = this.values(interrupted()), fingerprint = JSON.stringify(values);
+      if (this.queued === fingerprint) return this.reporting;
+      this.queued = fingerprint;
+      this.reporting = this.reporting.then(async () => {
+        const key = fingerprint;
+        if (key === this.lastSent) return;
+        this.sent = true;
+        try {
+          const receipt = await send(values); this.lastSent = key;
+          if (receipt?.pending) {
+            await ended;
+            const latest = this.values(interrupted()); await send(latest); this.lastSent = JSON.stringify(latest);
+          }
+        } catch { /* a measurement never fails or delays a conversation */ }
+      });
+      return this.reporting;
     }
   }
 

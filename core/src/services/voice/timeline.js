@@ -25,7 +25,8 @@ function normalizeVoiceTimings(input) {
     const value = input[measure];
     if (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= MAX_OFFSET_MS) timings[measure] = Math.round(value);
   }
-  return { ...timings, interrupted: input.interrupted === true };
+  return { ...timings, interrupted: input.interrupted === true,
+    ...(['completed', 'failed'].includes(input.playbackOutcome) && { playbackOutcome: input.playbackOutcome }) };
 }
 
 module.exports = { normalizeVoiceTimings, MARKS, MEASURES, MAX_OFFSET_MS };

@@ -492,3 +492,11 @@ test('voice tracking distinguishes frame, signal, interruption and typed playbac
   assert.equal(stageState('tts', { channel: 'voice', interrupted: true, works: [], reviews: [] })[0], 'Interrupted');
   assert.equal(stageState('tts', { ...row, channel: 'text', voiceTimings: { firstSignalScheduled: 1200 } })[0], 'Signal scheduled');
 });
+
+
+test('completed and failed playback receipts take precedence over earlier scheduling', () => {
+  const row = { channel: 'voice', works: [], reviews: [], voiceTimings: { firstSignalScheduled: 800, playbackOutcome: 'completed' } };
+  assert.equal(stageState('tts', row)[0], 'Done');
+  row.voiceTimings.playbackOutcome = 'failed'; assert.equal(stageState('tts', row)[0], 'Failed');
+  row.voiceTimings.interrupted = true; assert.equal(stageState('tts', row)[0], 'Interrupted');
+});

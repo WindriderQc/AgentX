@@ -239,6 +239,8 @@
         : row.speaker ? ['Observed', row.speaker] : ['Unknown', 'No delegation attested'];
     }
     if (stage === 'tts') return voice.interrupted || row.interrupted ? ['Interrupted', 'Playback interrupted; Main work has its own receipt']
+      : voice.playbackOutcome === 'failed' ? ['Failed', 'Browser playback did not complete; full text remains available']
+        : voice.playbackOutcome === 'completed' ? ['Done', 'Browser playback finished; acoustic arrival is not measured']
       : validMs(voice.firstSignalScheduled) ? ['Signal scheduled', `Nonzero audio frame scheduled: ${duration(voice.firstSignalScheduled)} · browser observation, not acoustic arrival`]
         : validMs(voice.firstFrameScheduled) ? ['Frame scheduled', `Audio frame scheduled: ${duration(voice.firstFrameScheduled)} · silence may be included`]
           : row.channel === 'text' && !validMs(voice.firstAudio) ? ['No voice', 'Written answer']
