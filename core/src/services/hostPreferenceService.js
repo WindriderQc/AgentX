@@ -576,7 +576,7 @@ async function swapModel(hostUrl, model, options = {}) {
   const matchingPin = entries.find(e => e.model === model);
   const opts = matchingPin
     ? { keepAlive: matchingPin.keepAlive ?? -1, contextSize: matchingPin.contextSize ?? 0, numThread: matchingPin.numThread || 0 }
-    : { keepAlive: 0, contextSize: 0 };
+    : { keepAlive: null, contextSize: 0 };
   const result = await warmDefaultModel(hostUrl, model, { ...opts, ...options });
   options.assertAuthorityActive?.();
   if (result.status === 'ok') {
