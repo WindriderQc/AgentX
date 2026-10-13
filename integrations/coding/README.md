@@ -133,7 +133,8 @@ Install DSH under `$HOME/dsh` (`AGENTX_DSH_ROOT` overrides). Runner settings
 live outside Git, by default in `~/.config/agentx/coding.env`
 (`AGENTX_CODING_ENV_FILE` overrides):
 
-- `AGENTX_CODING_MODEL`: required, a model Core serves.
+- `AGENTX_CODING_MODEL`: defaults to `auto`, following Core's `code_generation`
+  route; an explicit model Core serves keeps a dedicated selection.
 - `GH_TOKEN`: pushes the branch and opens the pull request. Unset: the commit
   stays on the local branch and the ticket says so.
 - `AGENTX_CODING_REPOSITORY`, `AGENTX_CODING_BASE_BRANCH`: default
