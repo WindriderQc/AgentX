@@ -198,6 +198,12 @@ remaining completion work. PsyX waits for its confirmed reply and keeps holding
 phrases off. One selected language applies throughout a turn, including notices
 and holding phrases. Nestor and Family browser conversations default to Quebec
 French (`fr`, browser locale `fr-CA`); English requires an explicit selection.
+Kids Room and Lecture share a browser-local language choice in Reading voices,
+sent to recognition, each reply request and playback. A pending reply keeps the
+language captured for that turn; replay retains the reply's selected language.
+PsyX sends its own browser voice preference with spoken chat requests; its
+spoken prompt uses Quebec French by default and English only when selected.
+Typed PsyX chat retains its existing latest-message language behavior.
 Saved automatic choices become French, while explicit English choices remain.
 The browser sends its current choice with each turn, including resumed sessions,
 and Core places that language directive outside the reference-data block. The

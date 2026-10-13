@@ -164,10 +164,10 @@ function mathReply(scene, language = 'fr') {
 }
 
 /** A pure math question: its picture and Nestor's immediate answer, or null. */
-function mathTurnFor(text) {
+function mathTurnFor(text, language) {
   const scene = mathSceneFor(text);
   if (!scene) return null;
-  return { scene, reply: mathReply(scene, questionLanguage(tokens(text))) };
+  return { scene, reply: mathReply(scene, ['fr', 'en'].includes(language) ? language : questionLanguage(tokens(text))) };
 }
 
 module.exports = { mathSceneFor, mathReply, mathTurnFor, LIMITS, SCHEMA };

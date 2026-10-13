@@ -13,7 +13,7 @@ const assessments = require('../../../src/domains/psyx/assessments');
 const { TECHNIQUES } = require('../../../src/domains/psyx/techniques');
 const { defaultsFor, selectPsyxState } = require('../../../src/services/conversationPreferences/catalog');
 
-const VERSION = '2.12.0';
+const VERSION = '2.12.1';
 const PROMPT_VERSION = domain.PROMPT_VERSION;
 const PUBLIC_ROOT = path.join(__dirname, '..', 'public');
 const asyncRoute = handler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -341,6 +341,8 @@ function createApp({ config, database, provider, voice = null, logger = console,
 
   const chatHandler = async (req, res) => {
     const userId = res.locals.psyxUserId;
+    const voiceTurn = req.body?.psyx?.source === 'voice', voiceLanguage = req.body?.psyx?.language || 'fr';
+    if (voiceTurn && !['fr', 'en'].includes(voiceLanguage)) return res.status(400).json({ ok: false, status: 'error', message: 'language must be fr or en' });
     const requested = domain.normalizeControl(req.body?.psyx || {});
     const action = requested.action ? domain.ACTION_CONFIG[requested.action] : null;
     // The JSON body limit and Core admission bound the request. Never cut the
@@ -375,7 +377,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
       const selected = domain.selectConversationContext(context || [], { ...domain.CONTEXT_BUDGETS[lane], availableMessages,
         ...(features.historyContext === false ? { maxMessages: 0 } : {}) });
       return {
-        system: domain.composeSystemContext(selectedState, control, { conversationId, safety, voice: req.body?.psyx?.source === 'voice', budget: lane, features,
+        system: domain.composeSystemContext(selectedState, control, { conversationId, safety, voice: voiceTurn, voiceLanguage, budget: lane, features,
           time: features.timeContext ? { now: new Date(), lastTurnAt: (context || []).at(-1)?.createdAt || null, lastSessionAt } : null }) + (recapContext ? `\n\n${recapContext}` : ''),
         messages: selected.messages, contextCoverage: selected.coverage
       };

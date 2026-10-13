@@ -172,8 +172,9 @@ function createPersonaTurnHandler({
         }
       }
       const workshop = workshopContext(req.body?.workshop, session);
+      const preferredSpeechLanguage = isLlmX ? null : (req.body?.language || session.voice?.language) === 'en' ? 'en' : 'fr';
       const safety = assessSafety(userText, { adult: !pack.childSafe });
-      const childBoundary = childBoundaryReply(pack, safety, userText), mathTurn = pack.childSafe && !isLlmX && !childBoundary && !safety.deterministicEscalation ? mathTurnFor(userText) : null;
+      const childBoundary = childBoundaryReply(pack, safety, userText), mathTurn = pack.childSafe && !isLlmX && !childBoundary && !safety.deterministicEscalation ? mathTurnFor(userText, preferredSpeechLanguage) : null;
       let replyText, sceneProposal = null, display = [];
       // Only browser child-safe turns offer clips, and never over a safety
       // escalation or boundary reply. Native VoiX owns its own playback and does
@@ -275,7 +276,7 @@ function createPersonaTurnHandler({
         const preselected = Boolean(sound);
         const context = { memories, savedNow, captured: family.captured, knowledgeContext: [members, knowledge.context, family.chores].filter(Boolean).join('\n\n'),
           modeId: session.modeId, sound, latestUserText: userText,
-          speechLanguage: isLlmX ? null : (req.body?.language || session.voice?.language) === 'en' ? 'en' : 'fr' };
+          speechLanguage: preferredSpeechLanguage };
         let lastProposal = null, previousBrowserOutput = null;
         const nativeBrowserReply = sceneEnabled && backend === 'openclaw';
         if (isLlmX && !isOpening) {

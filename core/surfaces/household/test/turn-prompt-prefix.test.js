@@ -90,6 +90,12 @@ const CASES = [
 ];
 
 for (const backend of ['agentx', 'openclaw']) {
+  test(`immediate ${backend} math replies honor the browser language without inference`, async () => {
+    const { sent, turn } = harness({ packId: 'kidx_nestor', backend });
+    assert.match((await turn('what is 4 plus 3', 'voice')).reply.text, /ça fait 7/);
+    assert.match((await turn('combien font 4 plus 3', 'voice', { language: 'en' })).reply.text, /makes 7/);
+    assert.equal(sent.length, 0);
+  });
   test(`the ${backend} browser turn defaults to Quebec French despite English words or a saved automatic choice`, async () => {
     const { state, sent, turn } = harness({ packId: 'personal_operator', backend });
     await turn('Please tell me what you know about the moon.', 'voice');

@@ -17,11 +17,15 @@
   };
   const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
   const readingVoiceKey = 'household.reading.voices.v1';
+  const readingLanguageKey = 'household.reading.language.v1';
+  let readingLanguage = 'fr';
   let readingVoices = {};
+  try { readingLanguage = window.PersonaPresentation.profile({ language: localStorage.getItem(readingLanguageKey) }).language; } catch { /* French default */ }
   try { readingVoices = window.PersonaPresentation.selections(JSON.parse(localStorage.getItem(readingVoiceKey) || '{}')); } catch { /* tab-only settings */ }
   const readingDialog = document.getElementById('readingVoiceDialog');
   const readingSelects = { fr: document.getElementById('readingVoiceFr'), en: document.getElementById('readingVoiceEn') };
   document.getElementById('readingVoiceSettings').onclick = async () => {
+    document.getElementById('readingLanguage').value = readingLanguage;
     readingDialog.showModal();
     document.getElementById('readingVoiceSave').disabled = true;
     document.getElementById('readingVoicePreview').disabled = true;
@@ -50,12 +54,17 @@
     } catch { status.textContent = 'The local catalog is unavailable. Saved choices are kept.'; }
   };
   document.getElementById('readingVoiceSave').onclick = () => {
+    stopPlayback();
+    readingLanguage = window.PersonaPresentation.profile({ language: document.getElementById('readingLanguage').value }).language;
     readingVoices = window.PersonaPresentation.selections(Object.fromEntries(Object.entries(readingSelects).map(([language, select]) => [language, select.value])));
-    try { localStorage.setItem(readingVoiceKey, JSON.stringify(readingVoices)); document.getElementById('readingVoiceStatus').textContent = 'Voices saved on this browser.'; }
+    try { localStorage.setItem(readingVoiceKey, JSON.stringify(readingVoices)); localStorage.setItem(readingLanguageKey, readingLanguage); document.getElementById('readingVoiceStatus').textContent = 'Language and voices saved on this browser.'; }
     catch { document.getElementById('readingVoiceStatus').textContent = 'Choices apply to this tab only. The browser refuses to save them.'; }
   };
-  document.getElementById('readingVoicePreview').onclick = () => speak('Bonjour. Voici la voix choisie pour les lectures en français.', 'fr',
-    window.VoixAudio.splitVoice(readingSelects.fr.value) || { provider: 'kokoro', voice: 'ff_siwis' });
+  document.getElementById('readingVoicePreview').onclick = () => {
+    const lang = window.PersonaPresentation.profile({ language: document.getElementById('readingLanguage').value }).language;
+    return speak(lang === 'en' ? 'Hello. This is the voice selected for English readings.' : 'Bonjour. Voici la voix choisie pour les lectures en français.', lang,
+      window.VoixAudio.splitVoice(readingSelects[lang].value) || { provider: 'kokoro', voice: lang === 'en' ? 'af_heart' : 'ff_siwis' });
+  };
   document.getElementById('readingVoiceStop').onclick = () => stopPlayback();
   document.getElementById('readingVoiceClose').onclick = () => readingDialog.close();
   readingDialog.addEventListener('close', () => stopPlayback());
@@ -110,7 +119,7 @@
       signal,
       // Kids Room and Lecture are Nestor too: the conversation carries his personality, so its
       // voice (including the instance's voice for him) is the one these pages read with.
-      body: JSON.stringify({ packId, scopeId, modeId, personaId: 'nestor' })
+      body: JSON.stringify({ packId, scopeId, modeId, personaId: 'nestor', language: readingLanguage })
     });
     signal?.throwIfAborted();
     state.session = data.session;
@@ -130,20 +139,21 @@
   }
 
   async function turn(packId, text, channel = 'text', options = {}) {
+    const language = readingLanguage;
     const privateLane = packId === 'personal_operator';
     const scopeId = options.scopeId || (privateLane ? 'personal' : 'family');
     const session = await ensureSession(packId, scopeId, options.modeId || '', options.signal);
     const data = await api(`/api/voice-personas/${privateLane ? 'private/' : ''}sessions/${encodeURIComponent(session.sessionId)}/turns/text`, {
       method: 'POST',
       signal: options.signal,
-      body: JSON.stringify({ text, channel })
+      body: JSON.stringify({ text, channel, language })
     });
     options.signal?.throwIfAborted();
     const reply = data.reply?.text || '';
     if (data.session) state.session = data.session;
     state.history.push({ role: 'user', content: text }, { role: 'assistant', content: reply });
     state.history = state.history.slice(-8);
-    return { reply, data };
+    return { reply, data, language };
   }
 
   function voiceBar(prefix) {
@@ -272,18 +282,14 @@
     window.speechSynthesis.speak(utterance);
   }
 
-  // The turn decides which voice reads its own reply; detecting from the
-  // question here is what made a French answer speak in an English voice.
-  function replyLanguage(result) {
-    return result?.data?.reply?.language
-      || window.NestorSpeech.detectSpeechLanguage(result?.reply || '');
-  }
+  // The browser's explicit choice controls the turn and its playback together.
+  function replyLanguage(result) { return result.language; }
 
   // Kids Room and Lecture speak through the voice ladder the conversations use
   // (PersonaPresentation.speechChoices): the reading voice chosen on this
   // browser, then the conversation's personality voice (Nestor, with the
   // instance's voice for him), then that personality's catalog voice.
-  async function speak(text, languageHint = '', override = null) {
+  async function speak(text, languageHint = readingLanguage, override = null) {
     text = window.NestorSpeech.speechText(text);
     if (!text || state.outputMuted) return;
     const profile = window.NestorSpeech.speechProfile(text, languageHint);
@@ -310,7 +316,7 @@
   async function transcribe(blob) {
     const form = new FormData();
     form.append('file', blob, 'household.webm');
-    form.append('language', 'fr');
+    form.append('language', readingLanguage);
     const response = await fetch('/api/voix/transcribe', { method: 'POST', credentials: 'include', body: form });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body.message || 'Transcription failed');
@@ -624,6 +630,7 @@
     app.innerHTML = readerTemplate();
     setRuntime(true, 'reader ready');
     let lastReply = '';
+    let lastLanguage = readingLanguage;
     function ask(text, channel = 'text') { return oneAtATime('readerForm', () => readerTurn(text, channel)); }
     async function readerTurn(text, channel) {
       const reply = document.getElementById('readerReply');
@@ -634,15 +641,16 @@
       try {
         const result = await turn('kidx_reader', text, channel);
         lastReply = result.reply;
+        lastLanguage = result.language;
         reply.textContent = lastReply;
         document.getElementById('readerReplay').disabled = false;
-        await speak(lastReply, 'fr');
+        await speak(lastReply, lastLanguage);
         showSoundChip(reply, result.data.sound);
         await playSound(result.data.sound);
       } catch (error) { reply.textContent = `Try again? ${error.message}`; }
     }
     document.getElementById('readerForm').addEventListener('submit', async (event) => { event.preventDefault(); const input = document.getElementById('readerInput'); const text = input.value.trim(); if (!text || asking) return; input.value = ''; await ask(text); });
-    document.getElementById('readerReplay').addEventListener('click', () => speak(lastReply, 'fr'));
+    document.getElementById('readerReplay').addEventListener('click', () => speak(lastReply, lastLanguage));
     bindRecorder(document.getElementById('readerMic'), (text) => ask(text, 'voice'), 'reader');
   }
 

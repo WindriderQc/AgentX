@@ -135,6 +135,23 @@ test('chat ignores browser transcript authority and persists only provider compl
   assert.equal(saved.assistantMessage, 'safe answer');
 });
 
+test('spoken chat defaults to Quebec French, honors explicit English and refuses invalid language before inference', async () => {
+  const systems = [];
+  const provider = { id: 'ollama', probe: async () => ({}), routing: async () => ({}),
+    async stream(request, sink) { systems.push(request.system); sink.onToken('Synthetic reply'); return { content: 'Synthetic reply', model: 'synthetic', routing: {} }; } };
+  await withServer(createApp({ config: config(), database: repositories(), provider, logger: { error() {} } }), async base => {
+    for (const [language, status] of [[undefined, 200], ['en', 200], ['auto', 400]]) {
+      const response = await fetch(`${base}/api/psyx/chat/stream`, { method: 'POST',
+        headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'Please help me understand this.', psyx: { source: 'voice', ...(language ? { language } : {}) } }) });
+      await response.text(); assert.equal(response.status, status);
+    }
+  });
+  assert.equal(systems.length, 2);
+  assert.match(systems[0], /Réponds en français québécois/);
+  assert.match(systems[1], /explicitly selected English/);
+});
+
 test('accepted long messages retain their tail for safety, inference and storage; replies stay whole', async () => {
   const message = `${'x'.repeat(12000)} Je veux mourir.`;
   const answer = `${'a'.repeat(50000)} Fin de la réponse.`;
