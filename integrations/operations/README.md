@@ -38,6 +38,15 @@ It starts PowerShell hidden from creation and waits for its exit code, preservin
 Task Scheduler's result and overlap policy. Starting PowerShell directly with
 `-WindowStyle Hidden` can briefly show a console and interrupt typing.
 
+Other interactive background tasks can use `run-hidden.vbs` with one private
+UTF-16 command file. That file contains the original quoted executable and argument
+string on one line, without a trailing newline. Set the task executable to
+`%SystemRoot%\System32\wscript.exe`, with arguments
+`//B //Nologo "<operations-dir>\run-hidden.vbs" "<private-command-file>"`.
+Preserve the task's working directory, user, triggers and settings. The launcher
+passes the configured command unchanged, starts it hidden and waits for its exit
+code. Missing or invalid configuration returns 2; a launch failure returns 1.
+
 The alert example is disabled and uses local logging. Preserve the live instance's
 rule IDs, delivery channels and cadence when copying its private configuration.
 Legacy `aiops-operator` authority and drift-event identity remain accepted to avoid
