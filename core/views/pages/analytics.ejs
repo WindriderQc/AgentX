@@ -890,6 +890,7 @@
                 }
                 return;
             }
+            function esc(v){ return String(v).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
             function fmtNum(n){ if(n==null) return '—'; return Number(n).toLocaleString(); }
             function fmtUsdOrUnpriced(v){ return Number.isFinite(v) ? fmtUsd(v) : 'unpriced'; }
                 function fmtUsd(n){ if(n==null) return '—'; return '$' + Number(n).toFixed(4); }
@@ -919,7 +920,7 @@
                 if (Array.isArray(local.byModel) && local.byModel.length){
                     lbody.innerHTML = local.byModel.slice(0, 20).map(function(r){
                         return '<tr>' +
-                            '<td style="padding:6px 8px;border-bottom:1px solid var(--panel-border);">' + (r.model||'—') + '</td>' +
+                            '<td style="padding:6px 8px;border-bottom:1px solid var(--panel-border);">' + esc(r.model||'—') + '</td>' +
                             '<td style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + fmtNum(r.calls) + '</td>' +
                             '<td style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + fmtNum(r.totalTokens) + '</td>' +
                             '<td style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + ((r.inferenceSeconds || 0) / 3600).toFixed(2) + 'h</td>' +
@@ -940,8 +941,8 @@
                     if (Array.isArray(provider.byModel) && provider.byModel.length){
                         mbody.innerHTML = provider.byModel.slice(0, 20).map(function(r){
                             return '<tr>' +
-                                '<td style="padding:6px 8px;border-bottom:1px solid var(--panel-border);">' + (r.model||'—') + '</td>' +
-                                '<td style="padding:6px 8px;border-bottom:1px solid var(--panel-border);">' + (r.provider||'—') + '</td>' +
+                                '<td style="padding:6px 8px;border-bottom:1px solid var(--panel-border);">' + esc(r.model||'—') + '</td>' +
+                                '<td style="padding:6px 8px;border-bottom:1px solid var(--panel-border);">' + esc(r.provider||'—') + '</td>' +
                                 '<td style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + fmtNum(r.sessions) + '</td>' +
                                 '<td style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + fmtNum(r.totalTokens) + '</td>' +
                                 '<td style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + fmtUsdOrUnpriced(r.estimatedSpendUsd) + '</td>' +

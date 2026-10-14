@@ -473,7 +473,7 @@ async function refreshCostBreakdown() {
         return `
           <div style="padding: 12px; background: rgba(255, 255, 255, 0.02); border-left: 3px solid ${color}; border-radius: 4px;">
             <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
-              <strong style="color: var(--text);">${item.label}</strong>
+              <strong style="color: var(--text);">${escapeHtml(item.label)}</strong>
               <span style="color: var(--accent); font-weight: 600;">$${(item.cost || 0).toFixed(2)}</span>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
