@@ -37,7 +37,7 @@ function nativeWorkRuntime({ works, conversations, agentClient, continuity, atta
       assertContextSize(turnContext, LIMITS.context);
       return { session: isolated, ...(row.mode !== 'native' && { maxOutputTokens: 4096 }), text: turn.inputText, currentContent: prepared[0].content,
         turnContext,
-        channel: 'work', streaming: true,
+        channel: 'work', streaming: true, ...(['fr', 'en'].includes(turn.speechLanguage) && { speechLanguage: turn.speechLanguage }),
         instructions: [agentInstructions(isolated, session.persona, PERSONAL_OPERATOR_SURFACE_CONTRACT, { id: 'standard' }),
           row.mode !== 'native' ? READ_ONLY : row.classification === 'native_review' ? REVIEW : NATIVE].join('\n\n'),
         turnDirective: [(row.mode === 'native' ? requestsSecretary : requestsSecretaryRead)(turn.inputText) ? SECRETARY_DIRECTIVE : '',

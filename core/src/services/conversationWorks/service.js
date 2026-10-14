@@ -31,7 +31,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     return receipt?.request?.body?.sessionId === current.sessionId && MODES.includes(receipt.request.body.mode)
       ? { mode: receipt.request.body.mode } : null;
   }
-  async function intake({ session: current, turnId, text, attachments = [], channel = 'voice' }) {
+  async function intake({ session: current, turnId, text, attachments = [], channel = 'voice', speechLanguage }) {
     const previousWork = await retained(current, turnId, channel);
     if (!eligible(current, channel, env) && !previousWork) return null;
     if (!/^[a-zA-Z0-9-]{16,80}$/.test(turnId || '') || typeof text !== 'string' || !text.trim() || text.length > LIMITS.request) {
@@ -42,7 +42,8 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       mode: previousWork?.mode || env.PERSONAL_CONVERSATION_WORK_MODE };
     const accepted = await exchangeStore.accept(EXCHANGE_SCOPE, { body: snapshot }, turnId, current.conversationId);
     const taken = await conversations.acceptTurn({ ...query(current.sessionId), modeId: current.modeId,
-      traceId: turnId, clientTurnId: turnId, channel, inputText: text, attachments });
+      traceId: turnId, clientTurnId: turnId, channel, inputText: text, attachments,
+      ...(['fr', 'en'].includes(speechLanguage) && { speechLanguage }) });
     const previous = await repo.get(id);
     if (previous) return { row: previous, turn: taken.turn, duplicate: true };
     if ((await repo.find({ state: { $in: ACTIVE } }, LIMITS.open + 1)).length >= LIMITS.open) {

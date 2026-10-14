@@ -21,7 +21,7 @@ function registerWorkRuntime({ router, conversations, tasks, agentClient, contin
   const works = capability.create({ conversations, tasks, env, classify: requestsTaskCheck,
     presentResult: async (result, row) => {
       const turn = await conversations.getTurn({ sessionId: row.sessionId, packId: 'personal_operator', scopeId: 'personal', traceId: row.turnId });
-      const language = turn?.replySpeech?.language || require('./persona-prompt').spokenReplyLanguage(result.text, turn?.inputText || '');
+      const language = turn?.speechLanguage || require('./persona-prompt').spokenReplyLanguage(result.text, turn?.inputText || '');
       return require('./work-result-presentation').workResultPresentation(result, { language });
     },
     guardianNeedsMain: awaitingMain,
@@ -48,6 +48,7 @@ function registerWorkRuntime({ router, conversations, tasks, agentClient, contin
       return { session: { ...session, sessionId: row.attempt.sessionId,
         agentId: row.attempt.agentId, agentSessionKey: null, inference: { open: false }, modeId: 'standard' },
         maxOutputTokens: 4096, text: turn.inputText, currentContent: prepared[0].content, turnContext, channel: 'work', streaming: true,
+        ...(['fr', 'en'].includes(turn.speechLanguage) && { speechLanguage: turn.speechLanguage }),
         instructions: [session.persona?.identity || '', PERSONAL_OPERATOR_SURFACE_CONTRACT, WORKER,
           'This reviewer’s limited tools do not describe Main’s capabilities. When the request needs an unavailable capability, publish no_work rather than claiming Nestor lacks it or asking the owner to do the lookup.'].filter(Boolean).join('\n\n'),
         };

@@ -270,6 +270,9 @@ a document's spoken summary and full screen content remain distinct. Explicit
 Listen uses the full reading view and the original turn’s language, even if the
 browser preference changes while Main works. These views do not rewrite the native result,
 change its version or authorize a new execution.
+The accepted canonical turn retains its selected French/English `speechLanguage`
+before either brain starts; duplicate intake cannot replace it. Older turns
+without that metadata fall back to the received answer's inferred language.
 
 The result card survives a paused microphone and reconnect. At a natural pause,
 one browser claims presentation. Speech starts only while Nestor is listening,
