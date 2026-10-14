@@ -177,6 +177,10 @@ tests mark the conversation step outside the test. The signal history plots
 observed microphone levels, while detailed receipts expand on demand. Playback
 scheduling, completion and interruption remain distinct. TTS text presets choose
 only that test’s language, without saving a conversation preference.
+Playback controls stay disabled at rest. Stop replay affects only the playing
+excerpt and retains it for another listen; resuming capture is explicit. Stop
+reading cancels the current TTS preparation or playback. In attached diagnostics,
+the voice control interrupts the conversation's speech while Main work continues.
 Nestor and PsyX open that same component on their current conversation; Reading
 opens it on its learning loop. Attached diagnostics keep that loop and its scope,
 so opening them does not request another microphone. Their resume action resumes

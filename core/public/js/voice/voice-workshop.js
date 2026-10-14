@@ -19,12 +19,15 @@
     const embedded = Boolean(conversation);
     host.innerHTML = V.template(scope, embedded);
     const find = selector => host.querySelector(selector), role = name => find(`[data-role="${name}"]`), field = name => find(`[data-field="${name}"]`);
-    const life = new AbortController(), state = { busy: false, destroyed: false, catalog: null, personas: supplied || [], lastResult: null, tab, speech: 'idle', speechRun: 0, receipt: null, sessionDetail: '' };
+    const life = new AbortController(), state = { busy: false, destroyed: false, catalog: null, personas: supplied || [], lastResult: null, tab, speech: 'idle', speechRun: 0, replaying: false, replayRun: 0, receipt: null, sessionDetail: '' };
     let prefs, standalone, interval;
     const visual = V.create(host);
     signal?.addEventListener('abort', () => life.abort(), { once:true });
     find('[data-action="close"]')?.addEventListener('click', onClose, { signal:life.signal });
     const notice = text => { role('notice').textContent = text || ''; };
+    const canStopSpeech = () => embedded
+      ? ['speaking','preparing'].includes(conversation.state) && Boolean(conversation.activeTurn) && !conversation.activeTurn.speech.signal.aborted
+      : ['preparing','scheduled'].includes(state.speech);
     const setRows = (node, rows) => { node.replaceChildren(); for (const [label, value] of rows) { const dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = label; dd.textContent = value ?? 'Non observé'; node.append(dt, dd); } };
     const capture = () => S.normalize(Object.fromEntries([...host.querySelectorAll('[data-capture]')].map(el => [el.dataset.capture, el.value === '' ? NaN : Number(el.value)])), true);
     const draft = () => ({ ...prefs, language: field('language').value, voice: field('voice').value,
@@ -92,6 +95,9 @@
       for (const action of ['replay','erase']) find(`[data-action="${action}"]`).disabled = state.busy || !reviewing || !info?.id;
       const compare = find('[data-action="compare"]'); if (compare) compare.disabled = state.busy || !reviewing || !info?.id;
       find('[data-action="start"]').disabled = state.busy || !['idle','paused','error','reviewing'].includes(phase);
+      find('[data-action="stopReplay"]').disabled = !state.replaying;
+      find('[data-action="stopSpeech"]').disabled = !canStopSpeech();
+      find('[data-action="speak"]').disabled = embedded || state.busy || !root.VoixAudio?.Speech;
     }
     const exclusive = async work => {
       if (state.busy || state.destroyed) return;
@@ -149,6 +155,12 @@
     const flowHome = flow?.parentNode ? { parent: flow.parentNode, next: flow.nextSibling } : null;
     if (flow) role('flow').append(flow);
     const current = () => conversation || standalone.conversation;
+    function stopReplay() {
+      if (!state.replaying) return;
+      ++state.replayRun; state.replaying = false;
+      current().reviewSpeech?.abort();
+      role('replayState').textContent = 'Réécoute arrêtée.';
+    }
     host.addEventListener('click', event => {
       const button = event.target.closest('button'); if (!button || button.disabled) return;
       if (button.dataset.tab || button.dataset.stepTab) { showTab(button.dataset.tab || button.dataset.stepTab); return refresh(); }
@@ -159,21 +171,31 @@
       }
       switch (button.dataset.action) {
         case 'close': return onClose();
-        case 'start': state.speech = 'idle'; return exclusive(() => embedded ? conversation.start(selection()) : standalone.start());
-        case 'pause': state.speechRun++; if (['preparing','scheduled'].includes(state.speech)) state.speech = 'stopped'; current().stop(true); standalone.pause(); state.lastResult = null; return refresh();
+        case 'start': state.speech = 'idle'; role('replayState').textContent = ''; return exclusive(() => embedded ? conversation.start(selection()) : standalone.start());
+        case 'pause': stopReplay(); role('replayState').textContent = ''; state.speechRun++; if (['preparing','scheduled'].includes(state.speech)) state.speech = 'stopped'; current().stop(true); standalone.pause(); state.lastResult = null; return refresh();
         case 'review': current().review('last'); return refresh();
         case 'recent': current().review('microphone'); return refresh();
-        case 'replay': return exclusive(() => current().replay());
-        case 'erase': current().forgetReview(); state.lastResult = null; field('expected').value = ''; role('comparison')?.replaceChildren(); return refresh();
-        case 'stop': state.speechRun++; if (['preparing','scheduled'].includes(state.speech)) state.speech = 'stopped'; current().reviewSpeech?.abort(); standalone.stopSpeech(); notice('Lecture interrompue.'); if (embedded && ['speaking','preparing'].includes(current().state)) void current().interrupt(undefined, { stop:true }); return refresh();
+        case 'replay': return exclusive(async () => {
+          const run = ++state.replayRun; state.replaying = true;
+          role('replayState').textContent = 'Réécoute en cours…'; refresh();
+          try { await current().replay(); }
+          finally { if (run === state.replayRun) { state.replaying = false; role('replayState').textContent = ''; } }
+        });
+        case 'erase': current().forgetReview(); role('replayState').textContent = ''; state.lastResult = null; field('expected').value = ''; role('comparison')?.replaceChildren(); return refresh();
+        case 'stopReplay': stopReplay(); return refresh();
+        case 'stopSpeech':
+          if (!canStopSpeech()) return refresh();
+          if (embedded) { void current().interrupt(undefined, { stop:true }); notice('Voix interrompue. Le travail en cours continue.'); }
+          else { state.speechRun++; state.speech = 'stopped'; standalone.stopSpeech(); }
+          return refresh();
         case 'defaults': for (const [k,v] of Object.entries(S.DEFAULTS)) find(`[data-capture="${k}"]`).value = v; return;
         case 'compare': return exclusive(async () => { const value = await standalone.compare(field('compareLanguage').value); V.comparison(role('comparison'),value); });
         case 'speak': return exclusive(async () => {
           const value = field('testVoice').value, split = value.indexOf('|'), run = ++state.speechRun;
-          state.speech = 'preparing'; state.receipt = null; role('speechReceipt').replaceChildren(); notice('Préparation de la lecture…'); refresh();
+          state.speech = 'preparing'; state.receipt = null; role('speechReceipt').replaceChildren(); notice(''); refresh();
           try {
             await standalone.speak(field('speechText').value, split >= 0 ? { provider:value.slice(0,split),voice:value.slice(split+1) } : null, field('testLanguage').value);
-            if (run === state.speechRun) { state.speech = 'done'; notice('Lecture terminée.'); }
+            if (run === state.speechRun) state.speech = 'done';
           } catch (error) { if (run === state.speechRun) state.speech = error.name === 'AbortError' ? 'stopped' : 'error'; throw error; }
         });
         case 'sharedVoice': return exclusive(async () => {
@@ -199,11 +221,11 @@
     field('language').addEventListener('change', () => { voiceOptions(field('voice'), field('language').value); field('testLanguage').value = field('language').value; voiceOptions(field('testVoice'), field('testLanguage').value); if (field('compareLanguage')) field('compareLanguage').value = field('language').value === 'fr' ? 'en' : 'fr'; }, { signal: life.signal });
     field('testLanguage').addEventListener('change', () => voiceOptions(field('testVoice'), field('testLanguage').value), { signal: life.signal });
     field('scope').addEventListener('change', () => { root.location.href = '/voice-lab?scope=' + field('scope').value; }, { signal: life.signal });
-    const pause = () => { state.speechRun++; state.speech = 'idle'; standalone.pause(); if (embedded && document.hidden) conversation.stop(true); field('expected').value = ''; state.lastResult = null; role('comparison')?.replaceChildren(); refresh(); };
+    const pause = () => { stopReplay(); role('replayState').textContent = ''; state.speechRun++; state.speech = 'idle'; standalone.pause(); if (embedded && document.hidden) conversation.stop(true); field('expected').value = ''; state.lastResult = null; role('comparison')?.replaceChildren(); refresh(); };
     document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); }, { signal: life.signal });
     root.addEventListener('pagehide', pause, { signal: life.signal });
     interval = setInterval(refresh, 200); showTab(tab); refresh();
-    return { destroy() { state.destroyed = true; state.speechRun++; life.abort(); clearInterval(interval); standalone.destroy(); field('expected').value = ''; state.lastResult = null; role('comparison')?.replaceChildren();
+    return { destroy() { stopReplay(); state.destroyed = true; state.speechRun++; life.abort(); clearInterval(interval); standalone.destroy(); field('expected').value = ''; state.lastResult = null; role('comparison')?.replaceChildren();
       if (flowHome?.parent.isConnected) flowHome.parent.insertBefore(flow, flowHome.next?.parentNode === flowHome.parent ? flowHome.next : null);
     }, refresh };
   }
