@@ -198,7 +198,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   **Run one task** hands a queued, unowned, non-private `agentx-coding` ticket
   to the local coding worker: a fresh clone on its own branch, a shell and the tests inside a
   sandbox without network (its one way out is the model route), then a draft
-  pull request. Pipeline shows the host heartbeat separately from useful source
+  pull request. **Follow and decide** has a coding-worker monitor with the exact
+  task and launch request, observation age and a dossier link. Its attempt is
+  shown only when the loaded dossier proves the request binding. The optional
+  native Studio sidebar bundle links to this same monitor. Pipeline shows the host heartbeat separately from useful source
   or test progress, remaining budgets, test outcomes and the stop checkpoint.
   A controlled stop preserves source changes locally without an automatic retry;
   an inactive host without a terminal receipt stays unknown and blocks new work.
