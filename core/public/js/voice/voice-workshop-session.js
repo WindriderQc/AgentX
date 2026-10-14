@@ -1,7 +1,7 @@
 /* Diagnostic adapters use the same capture, recognition and speech ladder as their surface. */
 (function (root) {
   'use strict';
-  function create({ scope, language, capture, preferences, persona, changed = () => {}, result = () => {}, timing = () => {}, receipt = () => {},
+  function create({ scope, language, capture, preferences, persona, changed = () => {}, result = () => {}, timing = () => {}, receipt = () => {}, scheduled = () => {},
     fetchImpl = root.fetch.bind(root), openAudio = root.AgentXVoice.openAudio }) {
     const psyx = scope === 'psyx';
     let latest = null, lastSpeech = null, stopped = false;
@@ -41,7 +41,7 @@
       deviceVoice: ({ language: requestedLanguage }) => psyx ? requestedLanguage === 'en' && root.speechSynthesis ? { localOnly: true } : false : Boolean(root.speechSynthesis),
       unavailable: 'Speech is unavailable for this choice. The complete text remains visible.'
     });
-    const speech = root.VoixAudio?.Speech ? new root.VoixAudio.Speech({ retryUnplayed: true, playBrowser: root.AgentXVoice.speakWithBrowser, onReceipt: receipt, onMetrics: timing }) : { cancel() {}, async speak() { throw new Error('The speech player is unavailable. Reload the workshop after restoring the voice service.'); } };
+    const speech = root.VoixAudio?.Speech ? new root.VoixAudio.Speech({ retryUnplayed: true, playBrowser: root.AgentXVoice.speakWithBrowser, onReceipt: receipt, onMetrics: timing, onScheduled: scheduled }) : { cancel() {}, async speak() { throw new Error('The speech player is unavailable. Reload the workshop after restoring the voice service.'); } };
     function clip() {
       const info = session.audio?.reviewStatus();
       return info?.id && info.expiresAt > Date.now() ? info : null;
