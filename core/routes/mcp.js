@@ -12,7 +12,7 @@ router.post(['/', '/memory'], async (req, res) => {
   }
 
   try {
-    const response = req.path === '/memory'
+    const response = req.path.replace(/\/$/, '').toLowerCase() === '/memory'
       ? await handleMcpMessage(req.body || {}, {}, { profile: 'memory' })
       : await handleMcpMessage(req.body || {});
     if (!response) return res.status(202).end();

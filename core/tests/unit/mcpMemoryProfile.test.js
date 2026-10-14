@@ -49,12 +49,14 @@ test.each(['/mcp', '/api/mcp'])('%s memory view stays narrow with real runtime a
   const app = express();
   app.use(['/mcp', '/api/mcp'], express.json(),
     ecosystemSnapshotMcpMiddleware({ projectionProvider }), secretaryMcpMiddleware({}), require('../../routes/mcp'));
-  const listed = await request(app).post(entry + '/memory').send({ jsonrpc: '2.0', id: 1, method: 'tools/list' }).expect(200);
-  expect(listed.body.result.tools.map(tool => tool.name).sort()).toEqual(['memory_remember', 'memory_search', 'rag_search']);
-  for (const name of ['ecosystem_snapshot', 'shopping_list']) {
-    const refused = await request(app).post(entry + '/memory')
-      .send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name, arguments: {} } }).expect(500);
-    expect(refused.body.error.message).toContain('unknown tool');
+  for (const path of ['/memory', '/MEMORY/']) {
+    const listed = await request(app).post(entry + path).send({ jsonrpc: '2.0', id: 1, method: 'tools/list' }).expect(200);
+    expect(listed.body.result.tools.map(tool => tool.name).sort()).toEqual(['memory_remember', 'memory_search', 'rag_search']);
+    for (const name of ['ecosystem_snapshot', 'shopping_list']) {
+      const refused = await request(app).post(entry + path)
+        .send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name, arguments: {} } }).expect(500);
+      expect(refused.body.error.message).toContain('unknown tool');
+    }
   }
   expect(projectionProvider).not.toHaveBeenCalled();
   const full = await request(app).post(entry).send({ jsonrpc: '2.0', id: 3, method: 'tools/list' }).expect(200);
