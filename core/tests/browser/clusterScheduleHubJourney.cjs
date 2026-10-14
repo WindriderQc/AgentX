@@ -9,6 +9,8 @@ const report=process.env.OPERATIONS_REPORT_DIR;
 if(!report||path.resolve(report).startsWith(tree+path.sep))throw Error('Set OPERATIONS_REPORT_DIR outside Git');
 fs.mkdirSync(report,{recursive:true});
 let server,browser;
+const heavyJobs=[['old-receipt','completed'],['pending-request','requested'],['running-request','running']].map(([id,state])=>({
+ id,title:id,state,kind:'diagnostic',priority:5,hosts:['native-host'],source:{type:'coding'},revision:1,createdAt:'2026-10-01T00:00:00Z'}));
 const ownerEntries=[
  {id:'cron',name:'Native report',taskType:'sync',metadata:{scheduler:'openclaw',requiresGpu:false}},
  {id:'host-job',name:'Archive copy',taskType:'backup',metadata:{scheduler:'agentx-operations',requiresGpu:false,gateType:'snapshot',sourceAuthority:'native-operations-supervisor'}},
@@ -29,7 +31,7 @@ const timeline=date=>ownerEntries.map(entry=>({...entry,slots:[{start:date+'T12:
    case '/api/cluster/schedule/live':data={hosts:[],evidence:{authority:'agentx.cluster-schedule-live-detail',scope:'loaded-model-and-vram-detail',observedAt:now,headlineAuthority:false}};break;
    case '/api/nerve-center/ecosystem':data={schemaVersion:2,authority:'agentx-product',readOnly:true,generatedAt:now,health:{configuredHosts:0,onlineHosts:0,offlineHosts:0,observedModels:0,status:'ok'}};break;
    case '/api/cluster/schedule/next':data={tasks:[]};break;
-   case '/api/cluster/schedule/work-queue':data={authority:'core.heavy-work-queue',jobs:[],archivedCount:0};break;
+   case '/api/cluster/schedule/work-queue':data={authority:'core.heavy-work-queue',jobs:heavyJobs,archivedCount:0};break;
    case '/api/cluster/schedule/conflicts':data={conflicts:[]};break;
    case '/api/cluster/schedule/claims':data={claims:[]};break;
    case '/api/cluster/schedule/heatmap':data={hosts:[],days:[],cells:[],timeZone:'America/Toronto'};break;
@@ -47,6 +49,10 @@ const timeline=date=>ownerEntries.map(entry=>({...entry,slots:[{start:date+'T12:
  await page.waitForSelector('.cs-label-name');assert.equal(await page.locator('.cs-label-name').count(),3);
  assert.equal(await page.locator('#automationCalendar').count(),0);assert.equal(await page.locator('a[href="/automations?view=resources"]').count(),0);
  assert.equal(await page.locator('#scheduleMeasurements').evaluate(element=>element.open),false);
+ assert.equal(await page.locator('#scheduleMeasurements #liveBar').count(),1);
+ await page.locator('[data-queue-id="pending-request"]').waitFor();assert.equal(await page.locator('[data-queue-id="old-receipt"]').count(),0);
+ await page.locator('[data-queue-action="finished"]').click();assert.equal(await page.locator('[data-queue-id="old-receipt"]').count(),1);
+ await page.locator('[data-queue-action="active"]').click();assert.equal(await page.locator('[data-queue-id="pending-request"]').count(),1);
  await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:report+'/calendar-desktop.png',fullPage:true});
  await page.locator('#scheduleOwner').selectOption('openclaw');await page.waitForFunction(()=>document.querySelectorAll('.cs-label-name').length===1);
  assert((await page.locator('#heatmapContainer').innerText()).includes('Native report'));
