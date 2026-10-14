@@ -81,14 +81,20 @@ history consumers keep their legacy contract.
 
 Table values become DOM text, never HTML, links, images, component imports or
 commands. The text suffix uses a code fence longer than any backtick run in the
-data, so existing Markdown rendering keeps hostile cells literal. Tables grant
+data. Consumers render combined block-bearing content as literal text; a fence
+does not isolate table values from raw HTML opened in surrounding narrative.
+Only validated enhancements parse narrative separately from cells. Tables grant
 no tools, actions, network requests, routing or business authority.
 
-Playground renders complete text first. If the optional renderer is unavailable,
+Playground renders complete literal text first whenever `answerBlocks` is
+present, including null or unsupported values. If the optional renderer is unavailable,
 or historical block data has an unsupported schema, malformed shape or incomplete
 fallback, that text remains visible. Enhanced tables retain narrative and
 uncertainty; keyboard users can focus horizontally scrollable tables and open
 **Text version**. Copy always uses the complete canonical `content`.
+Full public history reads preserve unknown, malformed or null stored envelopes
+without running write-time setters, so their literal-text and visibility markers
+survive canonical page hydration. New writes retain strict validation.
 
 ## Verification
 

@@ -278,11 +278,18 @@ export function renderMessage(message, state, elements) {
 
   const body = document.createElement('div');
   body.className = 'message-body';
-  renderBodyContent(body, content);
-  if (role === 'assistant' && message.answerBlocks) {
-    // Optional enhancement: a missing module keeps the complete text visible.
-    void import('./answer-blocks-render.js').then(module =>
-      module.enhanceAnswerBlocks(body, message, { renderProse: renderBodyContent })).catch(() => {});
+  const hasAnswerBlocks = message.answerBlocks !== undefined;
+  // A narrative's open raw-HTML context can defeat the appended code fence.
+  // Never parse combined prose/table data, including unknown or invalid blocks.
+  if (hasAnswerBlocks) {
+    body.textContent = content;
+    body.style.whiteSpace = 'pre-wrap';
+  } else renderBodyContent(body, content);
+  if (role === 'assistant' && hasAnswerBlocks) {
+    // Only a validated enhancement parses the narrative separately from cells.
+    void import('./answer-blocks-render.js').then(module => {
+      if (module.enhanceAnswerBlocks(body, message, { renderProse: renderBodyContent })) body.style.whiteSpace = '';
+    }).catch(() => {});
   }
 
   bubble.appendChild(meta);

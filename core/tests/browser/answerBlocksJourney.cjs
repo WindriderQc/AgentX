@@ -22,11 +22,15 @@ const canonical = contract.normalizeMessage({ role: 'assistant', content: 'These
         ['GenUI', 'Bounded', '``` </script> <svg onload="window.tableAttack=3">', 'No calls', 'Studio', 'Fixture', 'a | b', 'tail']] },
     { kind: 'table', title: 'Empty results', columns: ['Item'], rows: [] }
   ] } });
+const htmlContextTrap = contract.normalizeMessage({ role: 'assistant', content: '<pre>',
+  answerBlocks: { schema: contract.SCHEMA, blocks: [{ kind: 'table', title: 'Literal data across a narrative HTML boundary',
+    columns: ['Data'], rows: [['</pre><img src="/table-data-fetch"><a href="/table-action">click</a>']] }] } });
 const saved = { _id: '111111111111111111111111', model: 'fixture-model', messages: [
   { _id: '222222222222222222222222', role: 'user', content: 'Show the fixture observations.' },
   { _id: '333333333333333333333333', ...canonical },
   { _id: '444444444444444444444444', role: 'assistant', content: 'Unsupported historical block: retain every word.', answerBlocks: { schema: 'future/version', blocks: [] } },
-  { _id: '555555555555555555555555', role: 'assistant', content: 'Malformed historical table: retain every word.', answerBlocks: { schema: contract.SCHEMA, blocks: [{ kind: 'table', title: 'Invalid', columns: ['One'], rows: [['a', 'b']] }] } }
+  { _id: '555555555555555555555555', role: 'assistant', content: 'Malformed historical table: retain every word.', answerBlocks: { schema: contract.SCHEMA, blocks: [{ kind: 'table', title: 'Invalid', columns: ['One'], rows: [['a', 'b']] }] } },
+  { _id: '666666666666666666666666', ...htmlContextTrap }
 ] };
 const app = express();
 app.set('view engine', 'ejs'); app.set('views', root + '/core/views');
@@ -57,6 +61,8 @@ window.fixture = { state, load: () => loadConversation('111111111111111111111111
 window.fixture.loaded = await window.fixture.load();
 `));
 const api = [], external = [], errors = [];
+let tableDataFetches = 0;
+app.get('/table-data-fetch', (_request, response) => { tableDataFetches++; response.sendStatus(404); });
 app.get('/api/history/111111111111111111111111', (_request, response) => { api.push('GET history'); response.json({ status: 'success', data: saved }); });
 const readOnlyPageApis = ['/prompts/catalog', '/nerve-center/ecosystem', '/ollama-hosts'];
 app.get(readOnlyPageApis.map(value => '/api' + value), (request, response) => {
@@ -77,6 +83,10 @@ let browser, server;
       if (!route.request().url().startsWith(origin + '/')) { external.push(route.request().url()); return route.abort(); }
       return route.continue();
     });
+    await context.route('**/answer-blocks-render.js', async route => {
+      await new Promise(resolve => setTimeout(resolve, 150));
+      return route.continue();
+    });
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(`${name}: ${error.message}`));
     await page.addInitScript(() => { window.copiedText = []; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async text => { window.copiedText.push(text); } } }); });
@@ -92,6 +102,10 @@ let browser, server;
     assert.equal(await assistant.locator('tbody tr').first().locator('td').nth(2).textContent(), canonical.answerBlocks.blocks[0].rows[0][2]);
     assert.match(await assistant.locator('.answer-block-narrative').textContent(), /last estimate remains uncertain/);
     assert.equal(await assistant.locator('img,svg,script,iframe').count(), 0);
+    const trap = page.locator('.bubble[data-id="666666666666666666666666"]');
+    await trap.locator('.answer-blocks').waitFor();
+    assert.equal(await trap.locator('img,a,svg,script,iframe').count(), 0);
+    assert.equal(await trap.locator('td').textContent(), htmlContextTrap.answerBlocks.blocks[0].rows[0][0]);
     assert.equal(await page.evaluate(() => window.tableAttack), undefined);
     const summary = assistant.locator('.answer-block-text-version > summary');
     await summary.focus(); await page.keyboard.press('Enter');
@@ -112,7 +126,8 @@ let browser, server;
     assert.equal(overflow.documentWidth <= overflow.width, true);
     await page.evaluate(() => window.fixture.load());
     await assistant.locator('.answer-blocks').waitFor();
-    assert.equal(await page.locator('.answer-blocks').count(), 1);
+    await trap.locator('.answer-blocks').waitFor();
+    assert.equal(await page.locator('.answer-blocks').count(), 2);
     assert.equal(await page.evaluate(() => window.fixture.state.history[1].answerBlocks.blocks.length), 2);
     checks.push(`${name}: production layout, history restoration, safe table data, uncertainty, keyboard text version, complete Copy, malformed/unknown fallback, no page overflow, repeat reload.`);
     await context.close();
@@ -124,12 +139,16 @@ let browser, server;
     assert.equal(await missingPage.locator('.answer-blocks').count(), 0);
     assert.match(await missingPage.locator('.bubble[data-id="333333333333333333333333"] .message-body').textContent(), /last estimate remains uncertain/);
     assert.match(await missingPage.locator('.bubble[data-id="333333333333333333333333"] .message-body').textContent(), /Context/);
+    const trapFallback = missingPage.locator('.bubble[data-id="666666666666666666666666"] .message-body');
+    assert.equal(await trapFallback.textContent(), htmlContextTrap.content);
+    assert.equal(await trapFallback.locator('img,a,script').count(), 0);
     checks.push(`${name}: unavailable enhancement retains full textual answer.`);
     await missingContext.close();
   }
   assert.deepEqual(errors, []); assert.deepEqual(external, []);
+  assert.equal(tableDataFetches, 0, 'Table cells remain passive even while the enhancement loads or is unavailable.');
   assert.equal(api.every(value => value === 'GET history' || readOnlyPageApis.some(route => value === 'GET ' + route)), true);
-  const result = { checks, errors, externalFetches: external.length, api, modelCalls: 0, writes: 0,
+  const result = { checks, errors, externalFetches: external.length, tableDataFetches, api, modelCalls: 0, writes: 0,
     scope: 'Synthetic Core history reads through production Playground layout, loadConversation, appendMessage and renderer. No native instance data or inference.' };
   fs.writeFileSync(path.join(report, 'result.json'), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));

@@ -82,10 +82,7 @@ test('production history restoration carries the declared block with its origina
   expect(appendMessage.mock.calls[0][0]).toEqual(expect.objectContaining({ id: message._id, content: message.content, answerBlocks: message.answerBlocks }));
 });
 
-test('the optional stylesheet is imported before rules and the enhancement loader preserves missing-module fallback', () => {
+test('the optional stylesheet is imported before rules', () => {
   const css = fs.readFileSync(path.join(root, 'public/css/chat-inline.css'), 'utf8');
   expect(css.indexOf('@import url("answer-blocks.css")')).toBeLessThan(css.indexOf('.modal-overlay'));
-  const source = fs.readFileSync(path.join(root, 'public/js/chat/chat-message-render.js'), 'utf8');
-  expect(source.indexOf('renderBodyContent(body, content);')).toBeLessThan(source.indexOf("import('./answer-blocks-render.js')"));
-  expect(source).toContain('renderProse: renderBodyContent })).catch(() => {});');
 });

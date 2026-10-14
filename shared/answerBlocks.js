@@ -43,8 +43,9 @@ function normalizeEnvelope(value) {
   return { schema: SCHEMA, blocks };
 }
 
-// A fence longer than every run in the data keeps hostile Markdown/HTML literal
-// even in existing text-only Markdown renderers. Copy/context/export keep all text.
+// A fence longer than every run preserves standalone literal table text.
+// Render the combined message as text: a narrative's raw HTML can defeat a fence.
+// Copy/context/export keep all text; enhancements parse prose separately.
 function tableFallback(envelope) {
   return normalizeEnvelope(envelope).blocks.map(block => {
     const lines = [block.title, block.columns.join(' | '), ...block.rows.map(row => row.join(' | '))];

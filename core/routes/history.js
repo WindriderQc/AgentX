@@ -220,7 +220,7 @@ router.get('/logs', async (req, res) => {
         }));
 
         const conversation = await Conversation.findOne(query)
-            .sort({ updatedAt: -1 });
+            .sort({ updatedAt: -1 }).lean();
 
         if (!conversation || !blocks.blockHistoryReadable(conversation)) {
             return res.json({ status: 'success', data: { messages: [] } });
@@ -376,7 +376,9 @@ router.get('/conversations/:id', async (req, res) => {
         const userId = getUserId(res);
         const query = { _id: new mongoose.Types.ObjectId(req.params.id), userId };
 
-        const conversation = await Conversation.findOne(query);
+        // Preserve historical presentation envelopes on read. Typed setters
+        // remain strict for writes and may reject an unknown stored version.
+        const conversation = await Conversation.findOne(query).lean();
 
         if (!conversation || !blocks.blockHistoryReadable(conversation)) {
             return res.status(404).json({ status: 'error', message: 'Conversation not found' });
@@ -408,7 +410,7 @@ router.get('/:id', async (req, res) => {
             'lifecycle.status': { $ne: 'archived' }
         };
 
-        const conversation = await Conversation.findOne(query);
+        const conversation = await Conversation.findOne(query).lean();
 
         if (!conversation || !blocks.blockHistoryReadable(conversation)) {
             return res.status(404).json({ status: 'error', code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found' });

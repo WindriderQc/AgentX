@@ -4,10 +4,26 @@ const mongoose = require('mongoose');
 const Conversation = require('../../models/Conversation');
 const { startTestHttpHarness } = require('../helpers/testHttpServer');
 const { loadStoredTurns } = require('../../src/services/chat/conversationHistory');
+const { publishTranscript } = require('../../src/services/conversations/transcriptStore');
+const { acknowledged } = require('../../src/services/conversations/writeFence');
 const { SCHEMA, normalizeMessage } = require('../../../shared/answerBlocks');
 const OWNER = 'table-history-owner';
 const message = (content = 'These values remain uncertain.') => ({ role: 'assistant', content,
   answerBlocks: { schema: SCHEMA, blocks: [{ kind: 'table', title: 'Fixture results', columns: ['Name', 'Outcome'], rows: [['Example', 'Unknown']] }] } });
+const HISTORICAL_BLOCKS = [{ schema: 'future/version', blocks: [] },
+  { schema: SCHEMA, blocks: [{ kind: 'table', title: 'Malformed', columns: ['One'], rows: [['a', 'b']] }] }, null];
+async function historicalPage(answerBlocks, scope = {}) {
+  const row = await Conversation.create({ userId: OWNER, title: 'Historical fixture', messages: [], ...scope });
+  const input = message('<pre>');
+  input.answerBlocks.blocks[0].rows = [['</pre><img src="/table-data-fetch"><a href="/table-action">click</a>', 'Unknown']];
+  const rawMessage = { ...normalizeMessage(input), _id: new mongoose.Types.ObjectId(), timestamp: new Date(), answerBlocks };
+  // Model an older/newer writer without corrupting page integrity: publish raw
+  // historical data through the native immutable store and exact owner fence.
+  const result = await publishTranscript(row._id, [rawMessage], transcript => Conversation.collection.updateOne(
+    { _id: row._id, userId: OWNER, __v: row.__v }, { $set: { messages: [], transcript }, $inc: { __v: 1 } }, acknowledged));
+  expect(result.matchedCount).toBe(1);
+  return { row, rawMessage };
+}
 let harness;
 beforeAll(async () => {
   const app = express(); app.use(express.json({ limit: '4mb' }));
@@ -53,6 +69,39 @@ test('oversized full-message payload retains table data through payload hydratio
   await harness.request.delete(`/api/history/${id}`).expect(200);
   expect(await mongoose.connection.collection('conversation_payload_chunks').countDocuments({ owner: id })).toBe(0);
   expect(await mongoose.connection.collection('conversation_transcript_pages').countDocuments({ owner: id })).toBe(0);
+});
+
+test.each(HISTORICAL_BLOCKS)('paged public reads preserve unsupported block evidence and complete hostile fallback: %p', async answerBlocks => {
+  const { row, rawMessage } = await historicalPage(answerBlocks);
+  const before = await Conversation.collection.findOne({ _id: row._id });
+  expect(before.messages).toEqual([]);
+  expect(before.transcript.count).toBe(1);
+  expect(before.transcript.pages).toHaveLength(1);
+  for (const path of [`/api/history/${row.id}`, `/api/history/conversations/${row.id}`, '/api/history/logs']) {
+    const response = await harness.request.get(path).expect(200);
+    const reply = response.body.data.messages[0];
+    expect(Object.hasOwn(reply, 'answerBlocks')).toBe(true);
+    expect(reply.answerBlocks).toEqual(answerBlocks);
+    expect(reply.content).toBe(rawMessage.content);
+    expect(reply._id).toBe(String(rawMessage._id));
+    expect(reply.timestamp).toBe(rawMessage.timestamp.toISOString());
+  }
+  expect(await Conversation.collection.findOne({ _id: row._id })).toEqual(before);
+  // Read compatibility never relaxes the current write contract.
+  await harness.request.post('/api/history').send({ messages: [{ ...rawMessage, answerBlocks }] }).expect(400);
+  expect(await Conversation.countDocuments({})).toBe(1);
+});
+
+test.each(HISTORICAL_BLOCKS)('historical unknown/malformed/null blocks cannot make a hidden surface look like plaintext: %p', async answerBlocks => {
+  const { row } = await historicalPage(answerBlocks, { surface: 'psyx' });
+  await harness.request.get(`/api/history/${row.id}`).expect(404);
+  await harness.request.get(`/api/history/conversations/${row.id}`).expect(404);
+  const latest = await harness.request.get('/api/history/logs').expect(200);
+  expect(latest.body.data.messages).toEqual([]);
+  for (const path of ['/api/history', '/api/history/conversations']) {
+    const response = await harness.request.get(path).expect(200);
+    expect(response.body.data).toEqual([]);
+  }
 });
 
 test('legacy text import and accessible table append retain existing message identity and do not duplicate fallback', async () => {
