@@ -73,12 +73,22 @@ function tokenKind(core) {
   return '';
 }
 
+// Public model tags can be long without being credentials. Speak the known
+// family and size; the namespace and exact quantization stay on screen.
+function modelLabel(core) {
+  const match = /^(?:[a-z0-9_.-]+\/)?((?:gemma|qwen|llama|mistral|phi|deepseek)[a-z0-9_.-]*):(\d+(?:\.\d+)?[bm])(?:[-_.][a-z0-9_.-]+)?$/i.exec(core);
+  return match ? `${match[1].replace(/[-_]+/g, ' ')} ${match[2]}` : '';
+}
+
 // Recover a useful spoken answer when an unmarked long list slips through.
 // Remove noisy tokens before shortening, so even a partial key cannot be read.
 function listSummary(lines, lang) {
   const items = lines.slice(0, LIMITS.spokenListItems).map(row => {
     const text = plainReply(row.replace(/^\s*(?:[-*•+]|\d{1,2}[.)])\s+/, ''), LIMITS.body)
-      .split(/\s+/).filter(word => !tokenKind(word.replace(/^[(«“"']+|[.,;:!?)»”"']+$/g, ''))).join(' ');
+      .split(/\s+/).map(word => {
+        const core = word.replace(/^[(«“"']+|[.,;:!?)»”"']+$/g, '');
+        return modelLabel(core) || (!tokenKind(core) ? word : '');
+      }).filter(Boolean).join(' ');
     return text.length <= 160 ? text : text.slice(0, 160).replace(/\s+\S*$/, '') + '…';
   }).filter(Boolean);
   return items.length ? (lang === 'en' ? 'First items: ' : 'Les premiers éléments : ') + items.join('; ') + '. ' : '';
@@ -137,6 +147,8 @@ function createReplyChannels({ allowSecrets = false, language = 'fr', readAloud 
       if (resource) { addBlock('link', '', core); return word.replace(core, resource); }
       const kind = core ? tokenKind(core) : '';
       if (!kind) return word;
+      const model = kind === 'code' ? modelLabel(core) : '';
+      if (model) { addBlock(kind, '', core); return readAloud ? word : word.replace(core, model); }
       return word.replace(core, screenCue(addBlock(kind, '', core)));
     }).join('').replace(/[ \t]{2,}/g, ' '));
   };

@@ -60,10 +60,19 @@ test('Famille never displays or speaks a secret', () => {
   assert.doesNotMatch(result.streamed, /écran/, 'no cue points at a screen that shows nothing');
 });
 
-test('a long model or package identifier is code, not a secret', () => {
+test('recognized model tags speak their family and size while retaining the exact identifier', () => {
   const result = run(['Le modèle qwen2.5-coder:32b-instruct-q4_K_M répond.'], { allowSecrets: false });
   assert.deepEqual(result.display.map(block => block.kind), ['code']);
-  assert.equal(result.say, 'Le modèle (à l’écran) répond.');
+  assert.equal(result.say, 'Le modèle qwen2.5 coder 32b répond.');
+  const tag = 'example/gemma4:12b-it-qat';
+  const named = run(chunks(`Je fonctionne avec ${tag}.`, 5));
+  assert.equal(named.say, 'Je fonctionne avec gemma4 12b.');
+  assert.equal(named.display[0].body, tag);
+  assert.equal(run([tag], { readAloud: true }).say, tag);
+  assert.doesNotMatch(run([`<show kind="secret">${tag}</show>`]).say, /gemma|example/);
+  const list = run([[1, 2, 3, 4].map(index => `${index}. Modèle ${tag}`).join('\n')]);
+  assert.match(list.say, /gemma4 12b/);
+  assert.doesNotMatch(list.say, /example\//);
 });
 
 test('ordinary long words and numbers stay spoken', () => {
