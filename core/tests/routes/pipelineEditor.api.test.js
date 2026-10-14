@@ -17,6 +17,22 @@ async function create(input = {}) {
 }
 async function read(id) { return (await harness.request.get(`/api/pipeline/tasks/${id}`).expect(200)).body.data; }
 
+test('an empty UI classification creates an ungrouped, unassigned task with normal priority', async () => {
+  const id = await create({ title: 'Start with a title', source: 'pipeline-ui', service: '', epic: '', spec: '' });
+  expect((await read(id)).task).toMatchObject({
+    title: 'Start with a title', service: '', epic: '', spec: '', status: 'queued', assignee: null,
+    priority: 3, dependsOn: [], planningItemIds: [], dueAt: null, notBefore: null,
+    automationAttemptCount: 0, automationAttempts: [],
+  });
+});
+
+test.each([undefined, null])('absent API groups (%s) retain the inbox default, and named groups remain explicit', async (epic) => {
+  const inbox = await create({ source: 'mcp', epic });
+  expect((await read(inbox)).task.epic).toBe('MCP Inbox');
+  const grouped = await create({ service: 'custom-component', epic: 'Improve task entry' });
+  expect((await read(grouped)).task).toMatchObject({ service: 'custom-component', epic: 'Improve task entry' });
+});
+
 test('a preflight problem returns the exact queued ticket without consuming an attempt', async () => {
   const id = await create();
   const { task } = await read(id);

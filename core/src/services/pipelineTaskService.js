@@ -623,7 +623,7 @@ async function createTaskInMongo(input = {}) {
   try {
     await PipelineTask.create({
       pipelineId, title: req.title, spec, service: req.service || '',
-      status: 'queued', epic: input.epic || 'MCP Inbox', source, sourceKey,
+      status: 'queued', epic: input.epic ?? 'MCP Inbox', source, sourceKey,
       ...routingMetadata,
       ...initialTransition(pipelineId),
     });

@@ -18,6 +18,7 @@ body:has(#pipelineTaskEditor[open]) { overflow: hidden; }
 .pipeline-editor-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .pipeline-editor-actions .pipeline-btn { min-height: 40px; }
 .pipeline-editor-proposal { padding: 16px; margin-top: 16px; border: 1px solid var(--border-color, #475569); border-radius: 10px; background: var(--bg-primary, #0b1220); }
+.pipeline-editor-proposal p { margin: 0; overflow-wrap: anywhere; }
 .pipeline-editor pre { font: inherit; font-size: .9rem; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow-y: auto; }
 .pipeline-editor-footer { border-top: 1px solid var(--border-color, #334155); }
 .pipeline-editor-footer p { margin: 0; font-size: .85rem; flex: 1; }
