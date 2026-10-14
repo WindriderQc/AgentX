@@ -226,11 +226,12 @@
     </section>
     <%- include('../partials/pipeline-coding-autonomy') %>
     <div class="pipeline-follow-grid">
-    <section class="pipeline-panel" id="pipelineAttention">
+    <section class="pipeline-panel" id="pipelineAttention" aria-labelledby="pipelineAttentionTitle">
       <div class="pipeline-panel-header">
         <div>
-          <h2><i class="fas fa-triangle-exclamation"></i> Needs attention</h2>
-          <p id="pipelineAttentionMeta">--</p>
+          <h3 id="pipelineAttentionTitle"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> Needs attention</h3>
+          <p>Task blockers, reviews and overdue work. Uses the overview filters.</p>
+          <p id="pipelineAttentionSummary" class="pipeline-decision-total">Reading task decisions&hellip;</p>
         </div>
         <div id="pipelineAttentionScopes" class="pipeline-attention-scopes" role="group" aria-label="Attention queue">
           <button type="button" class="pipeline-btn compact active" data-attention-scope="engineering" aria-pressed="true">Engineering</button>
@@ -243,38 +244,42 @@
         <div class="pipeline-empty">Loading attention items&hellip;</div>
       </div>
       <nav id="pipelineAttentionPager" class="pipeline-attention-pager" aria-label="Attention pages" hidden></nav>
-      <details id="pipelineStallDiagnosis" class="pipeline-stall" open>
-        <summary>Why tasks are not advancing</summary>
-        <p class="pipeline-muted">Read-only diagnosis of active engineering tasks: owner, next step and missing evidence. An expired lease or an old heartbeat does not prove a worker stopped. Nothing here repairs a task.</p>
-        <p class="pipeline-stall-meta" data-stall-meta>Reading task diagnoses&hellip;</p>
-        <p class="pipeline-stall-sr" data-stall-live role="status" aria-live="polite"></p>
-        <div data-stall-list></div>
-        <button type="button" class="pipeline-btn compact" data-refresh-stall-list><i class="fas fa-rotate" aria-hidden="true"></i><span>Refresh diagnosis</span></button>
-      </details>
+      <details class="pipeline-decision-coverage"><summary>Task queue scope and counts</summary><p id="pipelineAttentionMeta">--</p><p>Engineering and personal/household work are separate queues. Delivery reviews below have their own scope and can include the same task.</p></details>
     </section>
 
   <section class="pipeline-panel pipeline-delivery" id="pipelineDeliveryInbox" aria-labelledby="pipelineDeliveryTitle">
     <div class="pipeline-panel-header pipeline-delivery-header">
       <div>
-        <span class="pipeline-delivery-eyebrow"><i class="fas fa-inbox" aria-hidden="true"></i> Follow and decide</span>
-        <h2 id="pipelineDeliveryTitle">Delivery decisions and progress</h2>
-        <p>Active deliveries and human decisions. Completed production deliveries are in History below.</p>
+        <span class="pipeline-delivery-eyebrow"><i class="fas fa-code-pull-request" aria-hidden="true"></i> Coding Team · recent deliveries</span>
+        <h3 id="pipelineDeliveryTitle" tabindex="-1">Reviews and delivery</h3>
+        <p>Review results, follow CI and decide when a verified PR can merge. Recent-task snapshot, independent of the overview filters.</p>
       </div>
-      <span class="pipeline-delivery-count" id="pipelineDeliveryHumanCount" aria-label="Pending human actions">--</span>
+      <span class="pipeline-delivery-count" id="pipelineDeliveryHumanCount" aria-label="Delivery decisions pending">--</span>
     </div>
     <div class="pipeline-delivery-state" id="pipelineDeliveryState" data-tone="loading" aria-live="polite">
       <i class="fas fa-spinner fa-spin" aria-hidden="true"></i>
       <span>Loading exact delivery evidence&hellip;</span>
     </div>
-    <div class="pipeline-delivery-list" id="pipelineDeliveryList" tabindex="0" role="region" aria-label="Active delivery evidence">
+    <div id="pipelineDeliveryViews" class="pipeline-delivery-views" role="group" aria-label="Filter deliveries"></div>
+    <div class="pipeline-delivery-list" id="pipelineDeliveryList" aria-label="Active delivery evidence">
       <div class="pipeline-empty">Reading accepted attempts, PRs, CI, and deployment proof&hellip;</div>
     </div>
+    <nav id="pipelineDeliveryPager" class="pipeline-delivery-pager" aria-label="Delivery pages" hidden></nav>
     <p class="pipeline-delivery-note" id="pipelineDeliveryMeta">
       Merge always requires one explicit operator click. Deployment remains a separate protected workflow after merge.
     </p>
+    <div class="pipeline-delivery-refresh"><button type="button" class="pipeline-btn compact" data-retry-delivery><i class="fas fa-rotate" aria-hidden="true"></i> Refresh deliveries</button><a href="#pipelineHistory">Completed deliveries in History <i class="fas fa-arrow-right" aria-hidden="true"></i></a></div>
   </section>
 
   </div>
+  <details id="pipelineStallDiagnosis" class="pipeline-panel pipeline-stall">
+    <summary><span>Why tasks are not advancing<small>Optional diagnosis · all active engineering tasks · independent of overview filters</small></span></summary>
+    <p class="pipeline-muted">Inspect the owner, next step and missing evidence for a stalled task. These diagnostic counts can overlap the decision lists above. An expired lease or an old heartbeat does not prove a worker stopped. Nothing here repairs a task.</p>
+    <p class="pipeline-stall-meta" data-stall-meta>Open to read task diagnoses&hellip;</p>
+    <p class="pipeline-stall-sr" data-stall-live role="status" aria-live="polite"></p>
+    <div data-stall-list></div>
+    <button type="button" class="pipeline-btn compact" data-refresh-stall-list><i class="fas fa-rotate" aria-hidden="true"></i><span>Refresh diagnosis</span></button>
+  </details>
   </section>
 
   <section class="pipeline-panel pipeline-team" id="pipelineHistory" aria-labelledby="pipelineTeamTitle">

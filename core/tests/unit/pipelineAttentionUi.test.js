@@ -35,6 +35,13 @@ describe('Pipeline attention queue', () => {
     expect(new Set(pages).size).toBe(25);
   });
 
+  test('the visible headline keeps exact and partial decision counts distinct', () => {
+    expect(attention.headline(payload({ total: 1 }))).toBe('1 task needs attention');
+    expect(attention.headline(payload({ total: 25 }))).toBe('25 tasks need attention');
+    expect(attention.headline(payload({ total: 0 }))).toBe('No tasks need attention in this view.');
+    expect(attention.headline(payload({ total: 40, complete: false }))).toBe('At least 40 tasks need attention · total unknown');
+  });
+
   test('reads a new window when paging beyond the loaded rows', () => {
     expect(attention.windowOffset(4)).toBe(0);
     expect(attention.windowOffset(5)).toBe(50);
