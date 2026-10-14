@@ -266,6 +266,95 @@
     const element = document.createElement(tag); if (className) element.className = className;
     if (value !== undefined) element.textContent = value; return element;
   }
+  const ICONS = {
+    stt: '<path d="M3 12h3l2-7 4 14 3-10 2 3h4"/>',
+    guardian: '<path d="m12 3 8 3v6c0 4-5 7-8 9-3-2-8-5-8-9V6z"/><path d="m8 12 3 3 5-6"/>',
+    review: '<path d="M9 4a4 4 0 0 0-4 4 4 4 0 0 0-1 7 4 4 0 0 0 5 5M15 4a4 4 0 0 1 4 4 4 4 0 0 1 1 7 4 4 0 0 1-5 5M12 3v18M5 8h3m-4 7h4m11-7h-3m4 7h-4"/>',
+    tools: '<path d="m14 7 3 3 4-4a6 6 0 0 1-7 8l-6 6a3 3 0 0 1-4-4l6-6a6 6 0 0 1 8-7z"/>',
+    agents: '<circle cx="12" cy="5" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="M12 7v5M5 16v-4h14v4"/>',
+    tts: '<path d="M4 10h4l5-5v14l-5-5H4zM17 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>'
+  };
+  function stageIcon(key) {
+    const icon = node('span', 'workflow-icon'); icon.setAttribute('aria-hidden', 'true');
+    // Icons are fixed source SVGs; observed text always goes through textContent.
+    icon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICONS[key]}</svg>`;
+    return icon;
+  }
+  const activeState = state => ['Active', 'In progress'].includes(state);
+  function stageTone(state) {
+    return activeState(state) ? 'active'
+      : ['Failed', 'Uncertain', 'Interrupted', 'Cancelled', 'Paused', 'Waiting', 'Unavailable'].includes(state) ? 'caution'
+        : ['Done', 'Available', 'Included'].includes(state) ? 'complete'
+          : ['Unknown', 'No voice'].includes(state) ? 'unknown' : 'observed';
+  }
+  function svgNode(tag, attributes = {}, value) {
+    const element = document.createElementNS ? document.createElementNS('http://www.w3.org/2000/svg', tag) : document.createElement(tag);
+    for (const [key, content] of Object.entries(attributes)) element.setAttribute(key, content);
+    if (value !== undefined) element.textContent = value;
+    return element;
+  }
+  function flowGraph(stateFor, connections, stale, compact, inspect) {
+    const figure = node('figure', 'workflow-graph'); figure.dataset.key = 'graph';
+    const svg = svgNode('svg', { viewBox: compact ? '0 0 350 358' : '0 0 740 248', role: 'group',
+      'aria-label': `Turn flow. ${STAGES.map(([key, label]) => `${label}: ${stateFor(key)[0]}`).join('. ')}. Solid paths have recorded handoffs; dotted paths await evidence.` });
+    const route = (name, path, connected, target) => {
+      const tone = connected ? !stale && activeState(stateFor(target)[0]) ? 'active' : 'recorded' : 'pending';
+      const group = svgNode('g', { class: 'workflow-route', 'data-key': `route:${name}`, 'data-stage': target,
+        'data-connected': String(!!connected), 'data-tone': tone });
+      group.append(svgNode('path', { d: path, class: 'workflow-route-base' }), svgNode('path', { d: path, class: 'workflow-route-packet' }));
+      svg.append(group);
+    };
+    route('recognition', compact ? 'M87 106V150' : 'M212 66H270', connections.recognition, 'guardian');
+    route('playback', compact ? 'M87 226V270' : 'M470 66H528', connections.playback, 'tts');
+    route('background', compact ? 'M166 188H175V68H184' : 'M370 104V119Q370 127 362 127H120Q112 127 112 135V162', connections.background, 'review');
+    if (connections.guardianTools) route('guardian-tools', compact ? 'M166 206H175V250H263V270' : 'M420 104V119Q420 127 428 127H620Q628 127 628 135V162', true, 'tools');
+    route('delegation', compact ? 'M263 106V150' : 'M212 200H270', connections.delegation, 'agents');
+    route('tools', compact ? 'M263 226V270' : 'M470 200H528', connections.tools, 'tools');
+    svg.append(svgNode('text', { x: compact ? 8 : 12, y: 15, class: 'workflow-graph-lane' }, compact ? '01 / DIRECT' : '01 / DIRECT ANSWER'),
+      svgNode('text', { x: compact ? 184 : 12, y: compact ? 15 : 149, class: 'workflow-graph-lane workflow-graph-lane-background' }, compact ? '02 / BACKGROUND' : '02 / BACKGROUND WORK'));
+    const positions = compact
+      ? [['stt', 8, 30], ['guardian', 8, 150], ['tts', 8, 270], ['review', 184, 30], ['agents', 184, 150], ['tools', 184, 270]]
+      : [['stt', 12, 28], ['guardian', 270, 28], ['tts', 528, 28], ['review', 12, 162], ['agents', 270, 162], ['tools', 528, 162]];
+    for (const [key, x, y] of positions) {
+      const [state] = stateFor(key), label = STAGES.find(stage => stage[0] === key)[1];
+      const group = svgNode('g', { transform: `translate(${x} ${y})`, class: 'workflow-graph-node',
+        'data-stage': key, 'data-key': `graph:${key}`, 'data-tone': stale && activeState(state) ? 'unknown' : stageTone(state),
+        role: 'button', tabindex: '0', 'aria-label': `${label}: ${state}. Inspect stage receipts.` });
+      group.addEventListener?.('click', () => inspect(key));
+      group.addEventListener?.('keydown', event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); inspect(key); } });
+      const icon = svgNode('g', { transform: compact ? 'translate(12 16)' : 'translate(15 16)', class: 'workflow-graph-icon', fill: 'none', stroke: 'currentColor',
+        'stroke-width': 1.7, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
+      icon.innerHTML = ICONS[key];
+      group.append(svgNode('rect', { width: compact ? 158 : 200, height: 76, rx: 12, class: 'workflow-graph-node-bg' }),
+        svgNode('circle', { cx: compact ? 24 : 27, cy: 28, r: 19, class: 'workflow-graph-halo' }), icon,
+        svgNode('text', { x: compact ? 47 : 56, y: 28, class: 'workflow-graph-label' }, label),
+        svgNode('circle', { cx: compact ? 49 : 61, cy: 49, r: 3, class: 'workflow-graph-led' }),
+        svgNode('text', { x: compact ? 58 : 72, y: 53, class: 'workflow-graph-state' }, compact && state === 'Playback requested' ? 'Requested' : state));
+      for (let bar = 0; bar < (compact ? 9 : 12); bar++) group.append(svgNode('rect', { x: 16 + bar * 14, y: 65, width: 8, height: 2,
+        rx: 1, class: 'workflow-graph-bar', style: `--bar-delay:${bar * -90}ms` }));
+      svg.append(group);
+    }
+    figure.append(svg, node('figcaption', 'workflow-graph-legend', 'Solid paths · recorded handoffs    /    Dotted paths · awaiting evidence    /    Select a stage to inspect'));
+    return figure;
+  }
+  function reconcileChildren(parent, fresh) {
+    if (!parent.childNodes) { parent.replaceChildren(...fresh.children); return; }
+    // Retain stage DOM and animation clocks across polling, timing and stream updates.
+    const key = element => element.nodeType === 1 ? element.getAttribute('data-key') : null;
+    const desired = [...fresh.childNodes];
+    for (let index = 0; index < desired.length; index++) {
+      const next = desired[index], identity = key(next);
+      let old = parent.childNodes[index];
+      if (identity && key(old || {}) !== identity) old = [...parent.childNodes].find(child => key(child) === identity);
+      if (!old || old.nodeName !== next.nodeName || key(old) !== identity) { parent.insertBefore(next, parent.childNodes[index] || null); continue; }
+      if (old !== parent.childNodes[index]) parent.insertBefore(old, parent.childNodes[index] || null);
+      if (old.nodeType !== 1) { if (old.textContent !== next.textContent) old.textContent = next.textContent; continue; }
+      for (const attribute of [...old.attributes]) if (!next.hasAttribute(attribute.name)) old.removeAttribute(attribute.name);
+      for (const attribute of [...next.attributes]) if (old.getAttribute(attribute.name) !== attribute.value) old.setAttribute(attribute.name, attribute.value);
+      reconcileChildren(old, next);
+    }
+    while (parent.childNodes.length > desired.length) parent.lastChild.remove();
+  }
   function intervals(events) {
     const starts = { guardian_started: 'guardian_settled', dispatch_marked: 'native_started',
       native_started: 'native_settled', presentation_claim: 'presentation_started' };
@@ -292,6 +381,7 @@
   }
   function create({ host, signal = null }) {
     const model = createModel();
+    const compactMedia = root.matchMedia?.('(max-width: 760px)');
     let selected = null, turnOffset = 0, eventOffset = 0;
     const overview = node('div', 'workflow-map'); overview.setAttribute('aria-label', 'Workflow components');
     const panel = node('details', 'workflow-panel');
@@ -307,30 +397,27 @@
           || (/(turns|events)-(older|newer)/.test(focusKey)
             ? controls.find(item => item.dataset.key === focusKey.replace(/(older|newer)$/, (_, direction) => direction === 'older' ? 'newer' : 'older'))
             : null);
-        (target?.matches('button') ? target : target?.querySelector('summary'))?.focus();
+        (target?.matches('button') || target?.getAttribute?.('role') === 'button' ? target : target?.querySelector('summary'))?.focus({ preventScroll: true });
       };
       const view = model.snapshot();
       const rows = view.turns, current = rows.find(row => row.id === selected) || rows.at(-1);
       if (current) selected = current.id;
       summary.textContent = `Log and receipts${rows.length ? ` · ${rows.length} turn${rows.length > 1 ? 's' : ''}` : ''}`;
       const expanded = new Set([...overview.querySelectorAll?.('details[open]') || [], ...body.querySelectorAll?.('details[open]') || []].map(item => item.dataset.key));
-      overview.replaceChildren();
+      const canvas = node('div');
       const chosen = { ...(current || { channel: 'unknown', works: [], reviews: [] }), telemetryStale: view.stale };
-      const symbols = { stt: '〰', guardian: '◆', review: '✦', tools: '⌘', agents: '↗', tts: '♫' };
       const stateFor = key => stageState(key, chosen);
-      const isActive = state => ['Active', 'In progress'].includes(state);
+      const isActive = activeState;
       const card = key => {
         const label = STAGES.find(stage => stage[0] === key)[1], [state, detail] = stateFor(key);
         const element = node('details', 'workflow-component'); element.dataset.key = `stage:${key}`;
         element.dataset.stage = key;
-        element.dataset.tone = isActive(state) ? 'active'
-          : ['Failed', 'Uncertain', 'Interrupted', 'Cancelled', 'Paused', 'Waiting', 'Unavailable'].includes(state) ? 'caution'
-            : ['Done', 'Available', 'Included'].includes(state) ? 'complete'
-              : ['Unknown', 'No voice'].includes(state) ? 'unknown' : 'observed';
+        element.dataset.tone = view.stale && isActive(state) ? 'unknown' : stageTone(state);
         element.open = expanded.has(element.dataset.key);
         const title = node('summary');
-        const icon = node('span', 'workflow-icon', symbols[key]); icon.setAttribute('aria-hidden', 'true');
-        const copy = node('span', 'workflow-copy'); copy.append(node('strong', 'workflow-label', label), node('small', 'workflow-caption', detail));
+        const icon = stageIcon(key);
+        const caption = node('small', 'workflow-caption', detail); caption.setAttribute('title', detail);
+        const copy = node('span', 'workflow-copy'); copy.append(node('strong', 'workflow-label', label), caption);
         const status = node('span', 'workflow-state'); const led = node('span', 'workflow-led');
         led.setAttribute('aria-hidden', 'true'); status.append(led, node('span', '', state));
         title.append(icon, copy, status);
@@ -338,7 +425,7 @@
         element.append(title, node('p', 'workflow-detail', detail), activity);
         return element;
       };
-      const activeCount = STAGES.filter(([key]) => isActive(stateFor(key)[0])).length;
+      const activeCount = view.stale ? 0 : STAGES.filter(([key]) => isActive(stateFor(key)[0])).length;
       if (signal) {
         const active = STAGES.filter(([key]) => isActive(stateFor(key)[0])).map(([, label]) => label);
         const waiting = STAGES.filter(([key]) => stateFor(key)[0] === 'Waiting').map(([, label]) => label);
@@ -346,41 +433,50 @@
           : waiting.length ? `Waiting: ${waiting.join(', ')}` : current.done ? 'Answer received' : 'activity not attested'}${view.stale ? ' · Core not refreshed' : ''}`
           : 'No turn in progress';
       }
-      const compact = root.matchMedia?.('(max-width: 760px)')?.matches;
+      const compact = !!compactMedia?.matches;
       const head = node('div', 'workflow-map-head');
+      head.dataset.key = 'head';
       head.dataset.live = String(activeCount > 0 && !view.stale);
       head.dataset.stale = String(view.stale);
       head.append(node('div', 'workflow-kicker', 'SIGNAL / NESTOR'),
         node('strong', 'workflow-map-title', current ? `Turn ${rows.indexOf(current) + 1} · ${current.channel === 'voice' ? compact ? 'voice' : 'voice conversation' : current.channel === 'text' ? compact ? 'text' : 'text conversation' : 'unknown channel'}` : 'Waiting for a turn'));
-      head.append(node('span', 'workflow-live-count', view.stale ? 'Core data not refreshed' : `${activeCount} component${activeCount > 1 ? 's' : ''} in progress`));
-      overview.append(head);
+      head.append(node('span', 'workflow-live-count', view.stale ? 'Core data not refreshed' : activeCount ? `${activeCount} component${activeCount > 1 ? 's' : ''} in progress` : 'No active stage'));
+      canvas.append(head);
       const lastCapture = view.captures.at(-1);
       const captureLabels = { stop: 'Stop recognized · no new request', activation: 'Activation recognized · conversation open',
         not_addressed: 'Not addressed · no request', empty: 'No recognized words · no request', echo: 'Playback echo filtered · no request',
         failed: 'Transcription failed · no request', cancelled: 'Capture cancelled · no request', recognized: 'Capture recognized · no Core request',
         not_submitted: 'Capture ended · no Core request' };
-      if (lastCapture) overview.append(node('p', 'workflow-capture-status', lastCapture.live
+      if (lastCapture) { const captureStatus = node('p', 'workflow-capture-status', lastCapture.live
         ? 'Microphone · recognizing speech; no request submitted yet'
-        : `Microphone · ${captureLabels[lastCapture.captureOutcome] || 'No Core request'}`));
+        : `Microphone · ${captureLabels[lastCapture.captureOutcome] || 'No Core request'}`);
+        captureStatus.dataset.live = String(!!lastCapture.live); captureStatus.dataset.key = 'capture-status'; canvas.append(captureStatus); }
       const meters = node('div', 'workflow-meters'); meters.setAttribute('aria-label', 'Measured timings');
+      meters.dataset.key = 'meters';
       const voice = current?.voiceTimings || {}, guardianMs = measuredSpan(current?.events, 'guardian_started', ['guardian_settled']);
       const reviewMs = measuredSpan(current?.events, 'dispatch_marked', ['result_published', 'native_result_published']);
-      const meter = (label, value, basis, active = false) => {
+      const longest = Math.max(1, ...[voice.sttDone, guardianMs, reviewMs, voice.firstAudio].filter(validMs));
+      const meter = (key, label, value, basis, active = false) => {
         const block = node('div', 'workflow-meter'); block.dataset.active = String(active && !validMs(value) && !view.stale);
+        block.dataset.key = `meter:${key}`;
+        block.dataset.stage = key; block.dataset.measured = String(validMs(value));
+        block.setAttribute('style', `--metric-fill:${validMs(value) ? Math.max(2, value / longest * 100) : 0}%`);
         block.append(node('span', 'workflow-meter-label', label),
           node('strong', 'workflow-meter-value', validMs(value) ? duration(value) : active ? 'In progress' : 'Unknown'),
           node('small', 'workflow-meter-basis', basis));
         const signal = node('span', 'workflow-meter-signal'); signal.setAttribute('aria-hidden', 'true'); block.append(signal);
         meters.append(block);
       };
-      meter('TRANSCRIPTION', voice.sttDone, 'Browser · end of speech', isActive(stateFor('stt')[0]));
-      meter('GUARDIAN', guardianMs, 'Core · start → end', isActive(stateFor('guardian')[0]));
-      meter('REVIEW', reviewMs, 'Core · handoff → advice', isActive(stateFor('review')[0]));
-      meter('PLAYBACK REQUESTED', voice.firstAudio, 'Browser · end of speech', isActive(stateFor('tts')[0]));
-      overview.append(meters);
+      meter('stt', 'TRANSCRIPTION', voice.sttDone, 'Browser · end of speech', isActive(stateFor('stt')[0]));
+      meter('guardian', 'GUARDIAN', guardianMs, 'Core · start → end', isActive(stateFor('guardian')[0]));
+      meter('review', 'REVIEW', reviewMs, 'Core · handoff → advice', isActive(stateFor('review')[0]));
+      meter('tts', 'PLAYBACK REQUESTED', voice.firstAudio, 'Browser · end of speech', isActive(stateFor('tts')[0]));
+      canvas.append(meters);
       const flow = node('div', 'workflow-flow'); flow.setAttribute('aria-label', 'Turn flow and background work');
+      flow.dataset.key = 'flow';
       const origin = node('div', 'workflow-origin');
-      origin.append(node('span', 'workflow-origin-mark', '◎'), node('span', 'workflow-origin-label', current ? `Your turn · ${current.id}` : 'Your next turn'));
+      origin.setAttribute('title', current?.id || 'No turn received');
+      origin.append(node('span', 'workflow-origin-mark', '◎'), node('span', 'workflow-origin-label', current ? `Your turn · ${String(rows.indexOf(current) + 1).padStart(2, '0')}` : 'Your next turn'));
       flow.append(origin);
       const lanes = node('div', 'workflow-lanes');
       const immediate = node('section', 'workflow-lane workflow-lane-immediate');
@@ -390,21 +486,41 @@
         node('p', 'workflow-lane-subtitle', 'Nestor stays available during background work.'));
       const link = connected => { const edge = node('div', 'workflow-edge'); edge.dataset.connected = String(!!connected); edge.setAttribute('aria-hidden', 'true'); return edge; };
       const has = type => current?.events?.some(event => event.type === type);
+      const connections = {
+        recognition: current?.channel === 'voice' && validMs(voice.requestSent) && has('guardian_started'),
+        playback: current?.done && validMs(voice.firstAudio),
+        delegation: current?.works?.some(work => work.attempt?.agentId && current.events.some(event => event.workId === work.id && event.type === 'native_started')),
+        tools: current?.works?.some(work => work.tools?.length), guardianTools: (current?.toolCount || 0) > 0
+      };
       immediate.append(card('stt'),
-        link(current?.channel === 'voice' && validMs(voice.requestSent) && has('guardian_started')),
+        link(connections.recognition),
         card('guardian'),
-        link(current?.done && validMs(voice.firstAudio)),
+        link(connections.playback),
         card('tts'));
       const background = node('section', 'workflow-lane workflow-lane-background');
       background.dataset.connected = String(!!current?.reviews?.length || !!current?.works?.some(work => work.turnId === current.id && current.events.some(event => event.workId === work.id && event.type === 'request_received')));
       background.append(node('h3', 'workflow-lane-title', '02  BACKGROUND REVIEW'),
         node('p', 'workflow-lane-subtitle', 'Advice can arrive after the answer.'));
       background.append(card('review'),
-        link(current?.works?.some(work => work.attempt?.agentId && current.events.some(event => event.workId === work.id && event.type === 'native_started'))),
+        link(connections.delegation),
         card('agents'));
       lanes.dataset.split = String(immediate.dataset.connected === 'true' && background.dataset.connected === 'true');
       flow.dataset.hasTurn = String(immediate.dataset.connected === 'true' || background.dataset.connected === 'true');
-      lanes.append(immediate, background); flow.append(lanes);
+      connections.background = lanes.dataset.split === 'true' && (has('dispatch_marked') || !!current?.reviews?.length);
+      const inspect = key => {
+        const inspector = host.querySelector('.workflow-inspector');
+        const stage = host.querySelector(`details[data-key="stage:${key}"]`);
+        if (inspector && stage) { inspector.open = true; stage.open = true; stage.querySelector('summary')?.focus({ preventScroll: true }); }
+      };
+      flow.append(flowGraph(stateFor, connections, view.stale, compact, inspect));
+      const milestone = node('div', 'workflow-milestone');
+      const lastStep = current?.events?.at(-1);
+      milestone.append(node('span', 'workflow-milestone-label', view.stale ? 'LAST KNOWN STEP' : 'LATEST STEP'),
+        node('span', '', lastStep ? `${time(lastStep.at)} · ${EVENT_LABELS[lastStep.type] || 'Recorded event'}` : 'No Core step recorded'));
+      flow.append(milestone);
+      const inspector = node('details', 'workflow-inspector'); inspector.dataset.key = 'inspector'; inspector.open = expanded.has('inspector');
+      inspector.append(node('summary', 'workflow-inspector-toggle', 'Inspect stages and resources'));
+      lanes.append(immediate, background); inspector.append(lanes); flow.append(inspector);
       const services = node('div', 'workflow-services');
       services.append(node('div', 'workflow-services-heading', 'SERVICES IN USE'));
       const tools = card('tools'); services.append(tools);
@@ -412,7 +528,7 @@
       const reviewTools = current?.works?.some(work => work.tools?.length);
       if (guardianTools || reviewTools) services.append(node('p', 'workflow-handoffs',
         [guardianTools ? 'Guardian → Tools · turn receipts' : '', reviewTools ? 'Review → Tools · work receipts' : ''].filter(Boolean).join('    ')));
-      flow.append(services);
+      inspector.append(services);
       const resources = node('section', 'workflow-resources'); resources.setAttribute('aria-label', 'Observed resources');
       resources.append(node('h3', '', 'OBSERVED RESOURCES'));
       const latestWork = current?.works?.at(-1), toolReceipts = (current?.toolCount || 0) + (latestWork?.tools?.length || 0);
@@ -431,8 +547,10 @@
           node('small', '', `${owner ? `Turn ${rows.indexOf(owner) + 1} · ` : ''}Work ${item.workId}`));
         passages.append(entry);
       }
-      overview.append(flow, ...(compact ? [] : [resources, passages]),
-        node('p', 'workflow-map-note', 'Links and steps are based on turn receipts. Included advice does not prove its influence.'));
+      inspector.append(resources, passages);
+      const note = node('p', 'workflow-map-note', 'Links and steps are based on turn receipts. Included advice does not prove its influence.'); note.dataset.key = 'map-note';
+      canvas.append(flow, note);
+      reconcileChildren(overview, canvas);
       body.replaceChildren();
       if (!panel.open) { restoreFocus(); return; }
       if (view.captures.length) {
@@ -532,6 +650,7 @@
     function update(action) { if (action() !== false) render(); }
     render();
     panel.addEventListener?.('toggle', render);
+    compactMedia?.addEventListener?.('change', render);
     return {
       model, panel, render,
       reset: () => update(() => { model.reset(); selected = null; turnOffset = 0; eventOffset = 0; }),
