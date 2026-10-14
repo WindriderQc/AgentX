@@ -60,7 +60,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       <form id="conversationText" class="conversation-text"><label class="sr-only" for="conversationMessage">Message</label><textarea id="conversationMessage" rows="2" placeholder="Write a message…" required maxlength="4000"></textarea><button class="button" type="submit">Send</button></form>
       ${family ? '' : '<details class="conversation-attachments"><summary>Attach an image or document</summary><label class="sr-only" for="conversationFiles">Attachments</label><input id="conversationFiles" type="file" multiple accept="image/png,image/jpeg,.txt,.md,.csv,.json,.pdf"><p class="muted">Up to 3 files · JPEG or PNG photos up to 50 MB (Nestor receives a reduced copy; the original is archived) · text or text PDF up to 2 MB (20 pages, 24,000 characters maximum). Add a message to send them.</p><div id="conversationDraftFiles" aria-live="polite"></div></details>'}
       <p id="conversationAgentContext" class="conversation-context muted"></p>
-    </div></div></section></div></section>`;
+    </div>${family ? '' : '<section id="conversationWorkflow" aria-label="Nestor component workflow"></section>'}</div></section></div></section>`;
   const el = id => document.getElementById(id);
   const composer = window.ConversationComposer.mount({ input: el('conversationMessage'), form: el('conversationText'), family });
   // Shown, never spoken (#167): secrets exist only in the private space.
@@ -86,7 +86,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const team = family ? [] : ConversationTeam.members(personas, agents);
   const picker = el('conversationPersona'), open = el('conversationOpen'), language = el('conversationLanguage');
   const transcript = el('conversationTranscript');
-  const diagnosticFlow = document.createElement('section'); diagnosticFlow.id = 'conversationWorkflow';
+  const diagnosticFlow = family ? null : el('conversationWorkflow');
   const fallbackSettings = document.createElement('div');
   const wake = { checked: family };
   const workflow = family ? null : NestorWorkflow.create({ host: diagnosticFlow, signal: el('conversationWorkflowSignal') });

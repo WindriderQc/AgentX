@@ -295,6 +295,7 @@
   }
   function flowGraph(stateFor, connections, stale, compact, inspect) {
     const figure = node('figure', 'workflow-graph'); figure.dataset.key = 'graph';
+    figure.dataset.compact = String(compact);
     const svg = svgNode('svg', { viewBox: compact ? '0 0 350 358' : '0 0 740 248', role: 'group',
       'aria-label': `Turn flow. ${STAGES.map(([key, label]) => `${label}: ${stateFor(key)[0]}`).join('. ')}. Solid paths have recorded handoffs; dotted paths await evidence.` });
     const route = (name, path, connected, target) => {
@@ -382,6 +383,7 @@
   function create({ host, signal = null }) {
     const model = createModel();
     const compactMedia = root.matchMedia?.('(max-width: 760px)');
+    let compactFlow = !!compactMedia?.matches || (host.getBoundingClientRect?.().width || Infinity) < 600;
     let selected = null, turnOffset = 0, eventOffset = 0;
     const overview = node('div', 'workflow-map'); overview.setAttribute('aria-label', 'Workflow components');
     const panel = node('details', 'workflow-panel');
@@ -433,7 +435,7 @@
           : waiting.length ? `Waiting: ${waiting.join(', ')}` : current.done ? 'Answer received' : 'activity not attested'}${view.stale ? ' · Core not refreshed' : ''}`
           : 'No turn in progress';
       }
-      const compact = !!compactMedia?.matches;
+      const compact = compactFlow;
       const head = node('div', 'workflow-map-head');
       head.dataset.key = 'head';
       head.dataset.live = String(activeCount > 0 && !view.stale);
@@ -561,7 +563,6 @@
       }
       const intro = node('p', 'workflow-intro', 'Steps observed in this conversation. Several components can work at the same time.');
       body.append(intro);
-      if (compact) body.append(resources, passages);
       if (!current) { body.append(node('p', 'workflow-empty', 'No turn recorded. Components will appear here.')); return; }
       const picker = node('div', 'workflow-turns'); picker.setAttribute('role', 'group'); picker.setAttribute('aria-label', 'Choose a turn');
       const turnEnd = rows.length - turnOffset, turnStart = Math.max(0, turnEnd - 24);
@@ -650,7 +651,14 @@
     function update(action) { if (action() !== false) render(); }
     render();
     panel.addEventListener?.('toggle', render);
-    compactMedia?.addEventListener?.('change', render);
+    const resizeFlow = () => {
+      const width = host.getBoundingClientRect?.().width || Infinity;
+      const next = !!compactMedia?.matches || width < 600;
+      if (next !== compactFlow) { compactFlow = next; render(); }
+    };
+    compactMedia?.addEventListener?.('change', resizeFlow);
+    const resizeObserver = root.ResizeObserver ? new root.ResizeObserver(resizeFlow) : null;
+    resizeObserver?.observe(host);
     return {
       model, panel, render,
       reset: () => update(() => { model.reset(); selected = null; turnOffset = 0; eventOffset = 0; }),
