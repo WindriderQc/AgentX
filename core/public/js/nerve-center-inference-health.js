@@ -368,6 +368,7 @@
         return parts.join(' · ') || 'no activity';
     }
 
+    let _refreshRunning = false;
     let _refreshTimer = null;
 
     async function loadInferenceHealth() {
@@ -395,11 +396,14 @@
         // Cheap auto-refresh: 30s ticker, guarded so collapsed sections don't
         // hammer the API. Idempotent — setInterval is kept in a single slot.
         if (!_refreshTimer) {
-            _refreshTimer = setInterval(() => {
+            // Also skipped while the tab is hidden, the section is not shown, or the
+            // previous refresh has not answered yet.
+            _refreshTimer = setInterval(async () => {
                 const section = document.getElementById('sectionInferenceHealth');
-                if (section && !section.classList.contains('collapsed')) {
-                    loadInferenceHealth();
-                }
+                if (!section || section.classList.contains('collapsed') || document.hidden
+                    || section.offsetParent === null || _refreshRunning) return;
+                _refreshRunning = true;
+                try { await loadInferenceHealth(); } finally { _refreshRunning = false; }
             }, 30_000);
         }
     }
