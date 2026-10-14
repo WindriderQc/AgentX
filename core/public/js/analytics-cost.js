@@ -411,12 +411,23 @@ async function refreshCostBreakdown() {
     const data = await loadCosts(days, 'model');
     if (!isCurrent()) return;
 
-    if (!data || !data.breakdown || data.breakdown.length === 0) {
+    const grid = document.getElementById('costBreakdownGrid');
+    const pricedSpend = (data?.breakdown || []).reduce((sum, item) => sum + (item.cost?.total || 0), 0);
+    if (!data || !data.breakdown || data.breakdown.length === 0 || pricedSpend <= 0) {
+      // Clear the previous period's chart and list; an all-local period has
+      // rows but nothing to split by spend.
       if (charts.costBreakdown) charts.costBreakdown.destroy();
+      charts.costBreakdown = null;
+      elements.costBreakdownStats.innerHTML = '';
+      if (grid) grid.style.display = 'none';
+      elements.costBreakdownEmpty.textContent = data?.breakdown?.length
+        ? 'No priced spend in this period. Local models have no per-token price.'
+        : 'No cost breakdown data available.';
       elements.costBreakdownEmpty.style.display = 'block';
       return;
     }
 
+    if (grid) grid.style.display = 'grid';
     elements.costBreakdownEmpty.style.display = 'none';
 
     // Generate colors
