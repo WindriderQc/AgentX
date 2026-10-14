@@ -153,7 +153,8 @@
       if (button.dataset.tab || button.dataset.stepTab) { showTab(button.dataset.tab || button.dataset.stepTab); return refresh(); }
       if (button.dataset.preset) {
         const presets = { natural:['fr','Salut ! On prend le temps de se parler. Comment se passe ta journée ?'], numbers:['fr','Un, deux, un, deux. Sept, dix-sept et soixante-dix. Rendez-vous le 7 septembre, à 14 h 30.'], english:['en','Hello! Let’s check the rhythm, the numbers, and the pauses. Seven, seventeen, seventy.'] };
-        const [lang,text] = presets[button.dataset.preset]; field('speechText').value = text; field('testLanguage').value = lang; voiceOptions(field('testVoice'),lang); return refresh();
+        const [lang,text] = presets[button.dataset.preset], selectedVoice = field('testLanguage').value === lang ? field('testVoice').value : '';
+        field('speechText').value = text; field('testLanguage').value = lang; voiceOptions(field('testVoice'),lang,selectedVoice); return refresh();
       }
       switch (button.dataset.action) {
         case 'close': return onClose();
