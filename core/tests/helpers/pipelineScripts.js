@@ -19,6 +19,7 @@ function readPipelineSource() {
 
 // Runs the parts in a vm context, as the page does before pipeline.js.
 function loadPipelineParts(context) {
+  vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../../shared/pipelineWorkerOutcome.js'), 'utf8'), context);
   for (const part of PIPELINE_PARTS) vm.runInNewContext(readPipelineScript(part), context);
   return context;
 }

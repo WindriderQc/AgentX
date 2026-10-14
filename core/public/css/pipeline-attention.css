@@ -1,4 +1,5 @@
 /* Paginated attention queue (public/js/pipeline-attention.js). */
+#pipelineAttention { scroll-margin-top: 80px; }
 #pipelineAttention .pipeline-panel-header { flex-wrap: wrap; gap: 10px; }
 .pipeline-attention-scopes { display: flex; flex-wrap: wrap; gap: 6px; }
 .pipeline-attention-scopes .pipeline-btn.active { border-color: #7dd3fc; color: #f8fafc; background: rgba(125, 211, 252, 0.14); }

@@ -74,8 +74,8 @@
       detail: `At least ${coverage.lowerBound} engineering tasks need action; the bounded scan has partial coverage.` };
     const total = coverage.total;
     if (total > 0) return { tone: 'attention', icon: 'fa-triangle-exclamation',
-      title: `${plural(total, 'engineering task')} need action`,
-      detail: 'Exact total for the current engineering filters. See Needs attention for the next step.' };
+      title: `${plural(total, 'engineering task')} need${total === 1 ? 's' : ''} action`,
+      detail: 'Open Needs attention to see what to do next.' };
     return { tone: 'ready', icon: 'fa-circle-check', title: 'Engineering queue clear',
       detail: 'No engineering task needs action for the current filters.' };
   }
@@ -178,7 +178,7 @@
 
     // The pressed scope and a pending list render before the read completes.
     setScope(scope) {
-      if (!SCOPES[scope] || scope === this.scope) return;
+      if (scope !== 'engineering' || scope === this.scope) return;
       this.scope = scope;
       this.pageIndex = 0;
       this.view = null;
@@ -215,7 +215,7 @@
         const payload = await this.fetchJson(`/api/pipeline/attention?${params}`);
         if (version !== this.version) return;
         const view = payload?.data?.attention;
-        if (!validPayload(view)) throw new Error('Attention evidence unavailable or in an unknown format.');
+        if (!validPayload(view) || view.scope !== 'engineering') throw new Error('Engineering attention evidence unavailable or in an unknown format.');
         const basis = this.basis();
         const diff = diffSignal(this.signals[basis], { basis, fingerprint: view.signal.fingerprint, keys: view.signal.keys });
         this.signals[basis] = { basis, fingerprint: view.signal.fingerprint, keys: view.signal.keys };
@@ -264,8 +264,7 @@
         const items = pageItems(view, this.pageIndex);
         metaText = describe(view, this.pageIndex);
         if (this.error) metaText = `Refresh failed · last observation retained · ${metaText}`;
-        const otherBasis = view.otherScope ? `${view.otherScope.scope}|${JSON.stringify(this.query)}` : '';
-        noteText = [coverageNote(view), scopeNote(view, this.counts[otherBasis])].filter(Boolean).join(' ');
+        noteText = coverageNote(view);
         listHtml = items.length ? items.map(item => itemMarkup(item, this.newKeys.has(item.key))).join('') : emptyMarkup(view, filtered);
         const last = lastPageIndex(view);
         if (last > 0 || this.pageIndex > 0) {
