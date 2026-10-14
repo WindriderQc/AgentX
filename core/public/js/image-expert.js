@@ -13,6 +13,8 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief, prepar
   const busy = () => pending || !!active();
   const signature = () => { const { references, ...context } = getContext(); return JSON.stringify(context); };
   const uncertainInspection = turn => turn?.inspection?.state === 'unknown';
+  const unresolvedInspection = () => turns.find(uncertainInspection);
+  const inspectionWarning = turn => `The inspection outcome is unknown. Check the original receipt; another inspection is not started.${turn?.inspection?.requestId ? ` Inspection request: ${turn.inspection.requestId}` : ''}`;
   const terminal = turn => ['failed', 'interrupted', 'cancelled', 'unknown'].includes(turn?.state);
   function errorText(turn) {
     if (/Image expert changed the requested (width|height|profile)/.test(turn.error || '')) {
@@ -172,6 +174,9 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief, prepar
   }
   async function send(mode, message, inspectReferences = false) {
     if (busy() || !metadata?.available) return;
+    if (inspectReferences && unresolvedInspection()) {
+      $('imagex-notice').textContent = inspectionWarning(unresolvedInspection()); refresh(); return;
+    }
     const current = getContext(), error = inputError(current, message), baseline = signature();
     if (error) { $('imagex-notice').textContent = error; return; }
     if (!current.ready || mode === 'plan' && !current.prompt.trim()) { $('imagex-notice').textContent = 'Write your brief and choose a recipe before asking for a proposal.'; return; }
@@ -229,9 +234,11 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief, prepar
     if (!context.prompt.trim() && !error) $('imagex-planning-help').textContent = 'Start by describing your image in the brief. You can then refine it if needed.';
     if (context.ready && context.prompt.trim()) $('imagex-planning-help').textContent = `Chosen format: ${context.width} × ${context.height}. ${$('imagex-planning-help').textContent}`;
     $('imagex-chat-notice').textContent = $('imagex-notice').textContent;
-    const last = turns.at(-1), canRetry = terminal(last) && !uncertainInspection(last) && last.mode === 'plan';
+    const last = turns.at(-1), unresolved = unresolvedInspection();
+    const canRetry = terminal(last) && !uncertainInspection(last) && last.mode === 'plan'
+      && !(last.context?.inspectReferences && unresolved);
     $('imagex-recovery').hidden = !canRetry;
-    $('imagex-retry').disabled = working || !ready || !!error || !context.prompt.trim();
+    $('imagex-retry').disabled = !canRetry || working || !ready || !!error || !context.prompt.trim();
     const canRestore = canRetry && !context.prompt.trim() && !!last.context?.prompt && !!restoreBrief;
     $('imagex-restore-brief').hidden = !canRestore;
     $('imagex-restore-brief').disabled = working || context.locked;
@@ -247,10 +254,10 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief, prepar
         : 'Your long brief is kept. Retry the refinement to prepare a version of at most 8,000 characters, constraints included.';
     $('imagex-send').disabled = working || !ready || !!chatError; $('imagex-plan').disabled = working || !ready || !!error || !context.prompt.trim();
     if ($('imagex-inspect-references')) $('imagex-inspect-references').disabled = working || !ready || !!error || !context.prompt.trim()
-      || context.locked || context.referenceCount < 1 || context.referenceCount > 2 || !prepareReferences || uncertainInspection(last)
+      || context.locked || context.referenceCount < 1 || context.referenceCount > 2 || !prepareReferences || !!unresolved
       || metadata?.referenceInspection?.available === false;
-    if ($('imagex-inspection-help')) $('imagex-inspection-help').textContent = uncertainInspection(last)
-      ? 'The inspection outcome is unknown. Check the original receipt; another inspection is not started.'
+    if ($('imagex-inspection-help')) $('imagex-inspection-help').textContent = unresolved
+      ? inspectionWarning(unresolved)
       : metadata?.referenceInspection?.available === false ? 'The installed specialist needs its reference-inspection update. Text-only advice remains available and your draft is kept.'
       : context.referenceCount > 2 ? 'Choose at most two references for inspection.'
       : !context.referenceCount ? 'Attach one or two references to inspect them before refining the brief.'

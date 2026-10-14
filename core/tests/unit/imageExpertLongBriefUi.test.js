@@ -306,6 +306,30 @@ test('inspection is unavailable with zero references while text-only advice rema
   await ui.fire('imagex-inspect-references'); expect(ui.posts).toHaveLength(0); expect(ui.prepare).not.toHaveBeenCalled();
   await ui.fire('imagex-plan'); expect(ui.posts[1].body.context.referenceCount).toBe(0);
 });
+test('intervening text-only advice and refinement never reopen an earlier unknown inspection', async () => {
+  const requestId = 'retained-native-request';
+  const savedTurn = { id: 'saved-unknown', state: 'unknown', mode: 'plan', input: 'Inspect selected references', events: [],
+    context: { prompt: 'A fixture scene', profile: 'quality', width: 1024, height: 576, referenceCount: 2,
+      inspectReferences: true, references: inspected }, inspection: { state: 'unknown', requestId, references: inspected } };
+  const ui = await expert({ prompt: savedTurn.context.prompt, constraints: undefined, savedTurn, referenceCount: 2, references: inspected });
+  expect(ui.get('imagex-inspect-references').disabled).toBe(true);
+  expect(ui.get('imagex-inspection-help').textContent).toContain(requestId);
+  ui.get('imagex-message').value = 'A text-only question'; await ui.fire('imagex-chat-form', 'submit');
+  expect(ui.posts).toHaveLength(1);
+  expect(ui.posts[0].body.context.inspectReferences).toBeUndefined();
+  expect(ui.turns[0].inspection).toEqual(savedTurn.inspection);
+  expect(ui.turns.at(-1).state).toBe('completed');
+  expect(ui.get('imagex-inspect-references').disabled).toBe(true);
+  expect(ui.get('imagex-inspection-help').textContent).toContain(requestId);
+  expect(ui.get('imagex-retry').disabled).toBe(true);
+  await ui.fire('imagex-inspect-references'); await ui.fire('imagex-retry');
+  expect(ui.posts).toHaveLength(1); expect(ui.prepare).not.toHaveBeenCalled();
+  await ui.fire('imagex-plan');
+  expect(ui.posts).toHaveLength(2);
+  expect(ui.posts[1].body.context.inspectReferences).toBeUndefined();
+  expect(ui.get('imagex-inspect-references').disabled).toBe(true);
+  expect(ui.get('imagex-inspection-help').textContent).toContain(requestId);
+});
 test('an older installed specialist disables inspection without disabling text-only advice or discarding the draft', async () => {
   const ui = await expert({ references: inspected, referenceCount: 2, inspectionAvailable: false }), original = ui.current.prompt;
   expect(ui.get('imagex-inspect-references').disabled).toBe(true);
