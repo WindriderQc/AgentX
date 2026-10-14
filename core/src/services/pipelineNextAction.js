@@ -3,6 +3,7 @@
 const { describePipelineFailures } = require('../../../shared/failureDiagnostics');
 const { taskEligibilityReasons } = require('./pipelineTaskEligibility');
 const workerTaskScope = require('../helpers/workerTaskScope');
+const workerOutcome = require('../../../shared/pipelineWorkerOutcome');
 const STALE_HEARTBEAT_MS = 60 * 60 * 1000;
 
 function timestamp(value) {
@@ -32,11 +33,17 @@ function taskNextAction(task, { now = new Date(), dependencyStatuses = new Map()
   if (task.status === 'done') return action('none', 'none', 'Closed task record',
     'Closure is recorded; it does not prove merge, deployment or device acceptance.', 'Consult the separate delivery receipts.');
   if (task.status === 'blocked') {
+    const outcome = workerOutcome.latest(task);
+    const explanation = workerOutcome.describe(outcome);
+    if (explanation && workerTaskScope.contains(task) && task.assignee === 'coding-team' && !task.codingAutonomy && !latest) return action('inspect_blocker', 'human', explanation.title,
+      `${explanation.detail} ${explanation.facts}.`,
+      explanation.requiresInspection ? explanation.suggestion : 'Open the task, review the instructions and choose the next step.',
+      { attention: true, rank: 0, icon: 'fa-hand', tone: 'blocked', workerOutcome: outcome });
     const diagnostics = describePipelineFailures(latest?.evidence);
     const known = diagnostics.find(item => item.recognizedCode);
     return action('inspect_blocker', 'human', known ? `Blocked · ${known.code}` : 'Blocked task needs inspection',
-      diagnostics.length ? `Recorded failure category: ${diagnostics[0].category}.${task.codingAutonomy?.authorized === false ? ' Autonomous execution authorization is removed; this card is not queued.' : ''}` : 'The blocking cause has no structured evidence.',
-      'Inspect the dossier and reconcile the recorded effects before deciding a correction or retry.',
+      diagnostics.length ? `Recorded failure category: ${diagnostics[0].category}.${task.codingAutonomy?.authorized === false ? ' Autonomous execution authorization is removed; this card is not queued.' : ''}` : 'Open the task to read the last team update and check its current state.',
+      diagnostics.length ? 'Inspect the dossier and reconcile the recorded effects before deciding a correction or retry.' : 'Read the last update, then choose the next step in the task.',
       { attention: true, rank: 0, icon: 'fa-hand', tone: 'blocked', diagnostics });
   }
   if (task.status === 'review') {

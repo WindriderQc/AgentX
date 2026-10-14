@@ -473,7 +473,7 @@ for (const [route, assetPath] of Object.entries(coreVendorAssets)) {
 
 registerLocalStyleVendorAssets(app, path.join(__dirname, '..', 'node_modules'));
 
-app.use(express.static(path.join(__dirname, '..', 'public'))); require('../../shared/benchmarkCategories').mountBrowserCategories(app);
+app.use(express.static(path.join(__dirname, '..', 'public'))); require('../../shared/benchmarkCategories').mountBrowserCategories(app); require('../../shared/pipelineWorkerOutcome').mountBrowser(app);
 
 // Browsers often request /favicon.ico implicitly. We serve a real icon to avoid noisy 404s.
 app.get('/favicon.ico', (_req, res) => {
@@ -667,7 +667,7 @@ app.get('/pipeline', (req, res) => {
       '<script src="/js/cockpit-help.js"></script>',
       '<script src="/js/pipeline-editor.js"></script><script src="/js/pipeline-deliverables.js"></script>',
       '<script src="/js/pipeline-eligibility.js"></script><script src="/js/pipeline-launch.js"></script><script src="/js/pipeline-attention.js"></script><script src="/js/pipeline-evidence-references.js"></script><script src="/js/pipeline-phase-durations.js"></script><script src="/js/pipeline-plan.js"></script><script src="/js/pipeline-stall-diagnosis.js"></script>',
-      '<script src="/js/pipeline-worker-monitor.js"></script><script src="/js/pipeline-delivery.js"></script><script src="/js/pipeline-board.js"></script><script src="/js/pipeline-attempt-dossier.js"></script><script src="/js/pipeline-drawer.js"></script><script src="/js/pipeline.js"></script>'
+      '<script src="/js/pipeline-worker-outcome.js"></script><script src="/js/pipeline-worker-monitor.js"></script><script src="/js/pipeline-delivery.js"></script><script src="/js/pipeline-board.js"></script><script src="/js/pipeline-attempt-dossier.js"></script><script src="/js/pipeline-drawer.js"></script><script src="/js/pipeline.js"></script>'
     ].join('\n')
   });
 });

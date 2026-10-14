@@ -28,7 +28,7 @@ function taskTimeline(task) {
 }
 
 function taskSummaryWithTimeline(task, options) {
-  const { automationAttempts, transitions, ...summary } = task;
+  const { automationAttempts, transitions, feedback, ...summary } = task;
   return {
     ...summary,
     timeline: taskTimeline(task),

@@ -420,9 +420,15 @@
     const iconEl = $('pipelineStateIcon');
     if (iconEl) iconEl.className = `fas ${icon}`;
     const titleEl = $('pipelineStateTitle');
-    if (titleEl) titleEl.textContent = title;
+    if (titleEl) {
+      titleEl.textContent = title;
+      if (['attention', 'blocked'].includes(tone)) titleEl.setAttribute?.('href', '#pipelineAttention');
+      else titleEl.removeAttribute?.('href');
+    }
     const detailEl = $('pipelineStateDetail');
     if (detailEl) detailEl.textContent = detail;
+    const actionEl = $('pipelineStateAction');
+    if (actionEl) actionEl.hidden = !['attention', 'blocked'].includes(tone);
     const updated = $('pipelineStateUpdated');
     if (updated) {
       updated.dateTime = new Date().toISOString();
@@ -618,6 +624,7 @@
       if (!task || state.drawer.pipelineId !== pipelineId) return;
       state.drawer.task = task;
       renderDrawer(task);
+      if (window.PipelineWorkerOutcome?.latest(task)) refreshDrawerWorker(task);
     } catch (error) {
       if (!state.drawer.open || state.drawer.pipelineId !== pipelineId) return;
       if (title) title.textContent = 'Task unavailable';
@@ -664,6 +671,8 @@
   }
 
   function latestTeamUpdate(task) {
+    const outcome = window.PipelineWorkerOutcome?.describe(window.PipelineWorkerOutcome.latest(task));
+    if (task.status === 'blocked' && outcome && !task.codingAutonomy) return `${outcome.detail} ${outcome.facts}. ${outcome.suggestion}`;
     const entries = Array.isArray(task.feedback) ? task.feedback : [];
     const latest = task.status === 'blocked'
       ? entries.slice().reverse().find(entry => ['coding-team', 'guarded-dispatch', task.assignee].includes(entry.by)) || entries.at(-1)
@@ -707,8 +716,25 @@
       if (task && state.drawer.pipelineId === pipelineId && !(preserveDraft && state.drawer.mutating)) {
         state.drawer.task = task;
         renderDrawer(task, { preserveDraft });
+        if (!preserveDraft && window.PipelineWorkerOutcome?.latest(task)) refreshDrawerWorker(task);
       }
     } catch { /* the list refresh below still reflects truth */ }
+  }
+
+  async function refreshDrawerWorker(task = state.drawer.task) {
+    const drawer = state.drawer;
+    const outcome = window.PipelineWorkerOutcome?.latest(task);
+    if (!outcome || task.pipelineId !== state.drawer.pipelineId) return;
+    state.drawer.workerError = null;
+    state.drawer.workerControl = null;
+    try {
+      const payload = await readProjection('drawer-worker', `/api/runtime-bridges/coding-dispatch/status?requestId=${encodeURIComponent(outcome.requestId)}`);
+      if (state.drawer !== drawer || window.PipelineWorkerOutcome?.latest(state.drawer.task)?.requestId !== outcome.requestId) return false;
+      if (!payload?.data) throw new Error('Worker status unavailable. Check again before resuming.');
+      state.drawer.workerControl = payload.data;
+    } catch (error) { if (state.drawer !== drawer) return false; state.drawer.workerControl = null; state.drawer.workerError = error.message; }
+    if (state.drawer === drawer) renderDrawer(state.drawer.task, { preserveDraft: true });
+    return state.drawer === drawer && !state.drawer.workerError && Boolean(state.drawer.workerControl);
   }
 
   /**
@@ -748,9 +774,17 @@
     const submitLabel = submit?.innerHTML;
     if (submit) submit.disabled = true;
     try {
-      if (action === 'give-to-team' || action === 'reply-resume') {
+      if (action === 'refresh-worker') {
+        await refreshDrawerWorker();
+        return;
+      } else if (action === 'give-to-team' || action === 'reply-resume') {
         if (submit) submit.textContent = 'Handing task to the team…';
         const answer = action === 'reply-resume' ? String(new FormData(form).get('answer') || '').trim() : '';
+        if (action === 'reply-resume' && state.drawer.task?.assignee === 'coding-team' && !state.drawer.task?.codingAutonomy
+          && state.drawer.task?.automation?.mode !== 'review_only') {
+          const observed = await refreshDrawerWorker();
+          if (!observed || state.drawer.pipelineId !== pipelineId || !window.PipelineWorkerOutcome?.canResume(state.drawer.task, state.drawer.workerControl)) throw new Error('The original worker has not been confirmed as finished. Check its status before resuming.');
+        }
         await giveTaskToTeam(pipelineId, answer);
       } else if (action === 'supersede-preview') {
         const data = new FormData(form);
@@ -1088,6 +1122,7 @@
       if (closer) { closeDrawer(); return; }
       const requeue = event.target.closest('button[data-drawer-action="requeue"]');
       if (requeue) { handleDrawerAction('requeue', null); return; }
+      if (event.target.closest('button[data-drawer-action="refresh-worker"]')) { handleDrawerAction('refresh-worker', null); return; }
       const cancelSupersede = event.target.closest('button[data-drawer-action="supersede-cancel"]');
       if (cancelSupersede) { handleDrawerAction('supersede-cancel', null); return; }
       const merge = event.target.closest('button[data-delivery-merge]');

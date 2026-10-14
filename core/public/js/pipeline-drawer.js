@@ -30,17 +30,26 @@
     const actions = [];
     const secondaryActions = [];
     const qualification = task.codingAutonomy?.disposition?.kind === 'qualification' ? task.codingAutonomy.disposition : null;
-    const codingTask = !['personal', 'family', 'household', 'secretary'].includes(String(task.service).toLowerCase());
-    const canReply = !qualification && task.status === 'blocked' && codingTask && (!task.assignee || task.automation?.mode === 'review_only');
+    const codingTask = !/^\s*(personal|family|household|secretary)\s*$/i.test(String(task.service || ''))
+      && !/^\s*(idea-drop\s*$|household-)/i.test(String(task.source || ''));
+    const outcomeApi = window.PipelineWorkerOutcome;
+    const workerControl = state.drawer.workerError ? null : state.drawer.workerControl || (state.launchController?.error ? null : state.launchController?.control);
+    const workerOutcome = !qualification && (outcomeApi?.latest(task) || outcomeApi?.native(task, workerControl));
+    const stopped = task.status === 'blocked' ? outcomeApi?.describe(workerOutcome) : null;
+    const resumeWorker = outcomeApi?.canResume(task, workerControl);
+    const canReply = !qualification && task.status === 'blocked' && codingTask && (!task.assignee || task.automation?.mode === 'review_only' || resumeWorker);
     if (!qualification && task.status === 'queued' && !task.assignee && codingTask) {
       actions.push(`<form class="pipeline-drawer-action" data-drawer-action="give-to-team">
         <button type="submit" class="pipeline-btn primary">Give to the team</button></form>`);
     }
     if (canReply) {
       actions.unshift(`<form class="pipeline-drawer-action" data-drawer-action="reply-resume">
-        <label><span>Your answer or correction</span><textarea name="answer" rows="4" maxlength="3000" required placeholder="Answer the question or explain what should change."></textarea></label>
-        <button type="submit" class="pipeline-btn primary">Reply and resume</button>
+        <label><span>Updated instructions or your answer</span><textarea name="answer" rows="4" maxlength="3000" required placeholder="Describe what the next pass must do and save."></textarea></label>
+        <button type="submit" class="pipeline-btn primary">Update instructions and resume</button>
       </form>`);
+    }
+    if (!qualification && task.status === 'blocked' && codingTask && task.assignee === 'coding-team' && !resumeWorker && workerOutcome) {
+      actions.unshift(`<div class="pipeline-drawer-action"><p>Check the original worker status before resuming this task.</p>${state.drawer.workerError ? `<p class="pipeline-error">${escapeHtml(state.drawer.workerError)}</p>` : ''}<button type="button" class="pipeline-btn compact" data-drawer-action="refresh-worker">Check worker status</button></div>`);
     }
     if (!qualification && task.status === 'review') {
       actions.push(`
@@ -150,6 +159,7 @@
       : resolution ? resolution.reason
       : resultChange && ['review', 'done'].includes(mode) ? resultChange
       : mode === 'review' && String(messageEntry?.text || '').startsWith('Dispatcher independent verification: PASS') ? 'The worker submitted the result for review.'
+      : stopped ? `${stopped.detail}\n\n${stopped.facts}`
       : messageEntry ? latestTeamUpdate(task)
       : mode === 'blocked' ? 'No blocking reason has been recorded.'
       : mode === 'in_progress' ? 'No progress update has been recorded yet.'
@@ -170,7 +180,7 @@
       <div class="pipeline-drawer-workspace" data-dossier-mode="${mode}">
         <div class="pipeline-drawer-content">
           <section class="pipeline-drawer-document${mode === 'blocked' ? ' needs-answer' : ''}" aria-labelledby="pipelineDrawerContentTitle">
-            <h3 id="pipelineDrawerContentTitle">${escapeHtml(headings[mode])}</h3>
+            <h3 id="pipelineDrawerContentTitle">${escapeHtml(stopped ? stopped.title : headings[mode])}</h3>
             ${messageEntry && !['queued', 'archive'].includes(mode) && !resolution && !resultChange ? `<p class="pipeline-drawer-byline">${escapeHtml(messageEntry.by || 'Recorded message')}${messageEntry.at ? ` · ${escapeHtml(formatDate(messageEntry.at))}` : ''}</p>` : ''}
             <div class="pipeline-drawer-copy">${escapeHtml(mainText || '')}</div>
             ${mode === 'in_progress' ? `<p class="pipeline-drawer-signal">${task.heartbeatAt ? `Worker signal ${escapeHtml(relativeTime(task.heartbeatAt) || formatDate(task.heartbeatAt))}.` : 'No worker signal recorded.'} Progress is confirmed by work updates or results.</p>` : ''}
@@ -181,8 +191,8 @@
           ${['in_progress', 'review', 'done'].includes(mode) ? window.PipelineDeliverables?.markup(task, { compact: true }) || '' : ''}
         </div>
         <section class="pipeline-drawer-section pipeline-drawer-next" aria-labelledby="pipelineDrawerNextTitle" data-attention="${review.actor === 'human' ? 'human' : 'follow-up'}">
-          <h3 id="pipelineDrawerNextTitle">${escapeHtml(closedUnmergedDelivery ? 'Correction needed' : nextStepTitles[review.code] || review.label)}</h3>
-          <p class="pipeline-drawer-copy">${escapeHtml(closedUnmergedDelivery ? 'The PR closed without a merge. Record the correction needed.' : nextStepCopy[review.code] || review.action)}</p>
+          <h3 id="pipelineDrawerNextTitle">${escapeHtml(stopped ? stopped.requiresInspection ? 'Check original execution' : resumeWorker ? 'Update instructions and resume' : 'Check worker status' : closedUnmergedDelivery ? 'Correction needed' : nextStepTitles[review.code] || review.label)}</h3>
+          <p class="pipeline-drawer-copy">${escapeHtml(stopped ? stopped.suggestion : closedUnmergedDelivery ? 'The PR closed without a merge. Record the correction needed.' : nextStepCopy[review.code] || review.action)}</p>
           ${state.drawer.actionError?.pipelineId === task.pipelineId ? `<p class="pipeline-error" role="alert" data-drawer-action-error>${escapeHtml(state.drawer.actionError.message)}</p>` : ''}
           ${actions.join('')}
         </section>

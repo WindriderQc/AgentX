@@ -58,9 +58,9 @@ Use **Needs attention** to find tasks requiring a decision.
 Its header shows the current decision count. **Task queue scope and counts**
 separates the known total, the rows loaded in the browser and the page shown;
 **Previous** and **Next** reach every item ten at a time, in Core's
-next-action order. **Engineering** is the default queue; **Personal & household** is a
-separate queue for personal, family, household and secretary work, never mixed
-into the engineering list. The board's service, lane, status, group and search
+next-action order. This section contains **Engineering tasks** only; personal
+and household work stays in the header's **My personal tasks** and **Family
+tracking** links. The board's service, lane, status, group and search
 filters narrow the queue before paging. When the bounded scan cannot see every
 open task, the header shows a lower bound and says the total is unknown. A
 refresh that observes the same state changes nothing on screen; only an
@@ -83,11 +83,23 @@ No delivery is excluded because of its title or a qualification-like label.
 
 The Pipeline state strip uses that engineering queue's current filtered count:
 an exact total when coverage is complete, a lower bound when it is partial,
-or "unknown" when the read failed or the private queue is selected. It does
+or "unknown" when the read failed. Its actionable title and **View tasks needing
+attention** link lead directly to that section. It does
 not treat the browser's loaded task rows as the full attention queue.
 Open a task dossier to see its next step and current ownership; its audit
 trail is under **Technical details and history**. Planning references link to the same dossier and display Core's same
 next-action projection.
+
+A manual Coding Team worker can report a bounded stop observation in feedback
+(`agentx.pipeline-worker-outcome/v1`): its request ID, exact claim sequence,
+reason, dates and usage. The dossier explains that reason and keeps the raw
+update in **Audit trail**, under collapsed **Technical details and history**. This
+observation never proves runtime release, grants a retry or replaces an
+automation attempt receipt. **Update instructions and resume** appears only
+after a fresh native read confirms that same worker finished and is idle;
+the action rechecks the original request before preparing the task. Uncertain
+termination still requires inspection. Preparation, admission and atomic claim
+retain their existing policies. Archived qualifications keep their barriers.
 
 **Why can this task start, or why is it waiting?** expands two read-only views:
 

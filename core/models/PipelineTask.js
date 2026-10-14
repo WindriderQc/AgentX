@@ -6,6 +6,7 @@ const FeedbackSchema = new mongoose.Schema({
   at: { type: Date, default: Date.now },
   by: String,
   text: String,
+  workerOutcome: { type: mongoose.Schema.Types.Mixed, default: undefined },
 }, { _id: false });
 
 // Why a task was closed without being delivered. Set once by the guarded

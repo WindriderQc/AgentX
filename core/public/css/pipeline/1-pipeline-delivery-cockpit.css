@@ -374,9 +374,11 @@
   min-width: 0;
 }
 
-.pipeline-state strong {
+.pipeline-state strong, .pipeline-state-title {
   color: #f8fafc;
+  font-weight: 700;
 }
+.pipeline-state-title[href]:hover { color: #7cf0ff; }
 
 .pipeline-state span {
   color: #94a3b8;
