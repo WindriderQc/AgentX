@@ -24,4 +24,33 @@ function route(session, sessionId, agentId) {
 const history = messages => messages.slice(-LIMITS.messages).map(message => ({ ...message,
   content: typeof message.content === 'string' ? excerpt(message.content, LIMITS.message) : message.content }));
 const context = text => excerpt(text, LIMITS.context);
-module.exports = { route, instructions, history, context, LIMITS };
+function selectedContext({ base = '', brain = { text: '', refs: [] }, work = { text: '', refs: [] }, tail = '' }) {
+  const complete = base + brain.text + work.text + tail;
+  if (complete.length <= LIMITS.context) return { text: complete.trim(),
+    refs: [brain, work].filter(source => source.text).flatMap(source => source.refs) };
+  const marker = '\n[Selected context shortened; complete content remains in Core for Main.]';
+  let remaining = LIMITS.context - marker.length;
+  // Keep the final safety note and room for the current turn's selected context.
+  const ending = tail.slice(-Math.min(tail.length, 1000, remaining));
+  remaining -= ending.length;
+  const minimumBase = Math.min(2000, remaining);
+  const workParts = Array.isArray(work.selectable) && work.selectable.length ? work.selectable : [{ text: work.text, refs: work.refs }];
+  const workHeader = work.selectable?.length ? work.selectionHeader || '' : '';
+  const selectedParts = new Set();
+  // Result receipts take precedence over pending statuses; preserve source order in the prompt.
+  const priority = [...workParts].sort((left, right) => Number(Boolean(right.refs?.length)) - Number(Boolean(left.refs?.length)));
+  for (const part of priority) {
+    const separator = selectedParts.size ? 1 : workHeader.length;
+    if (part.text && part.text.length + separator <= remaining - minimumBase) {
+      selectedParts.add(part); remaining -= part.text.length + separator;
+    }
+  }
+  const includedWork = workParts.filter(part => selectedParts.has(part));
+  const workText = includedWork.length ? workHeader + includedWork.map(part => part.text).join('\n') : '';
+  const includeBrain = Boolean(brain.text && brain.text.length <= remaining - minimumBase);
+  if (includeBrain) remaining -= brain.text.length;
+  return { text: (base.slice(0, remaining) + (includeBrain ? brain.text : '')
+    + workText + ending + marker).trim(),
+  refs: [...(includeBrain ? brain.refs : []), ...includedWork.flatMap(part => part.refs)] };
+}
+module.exports = { route, instructions, history, context, selectedContext, LIMITS };

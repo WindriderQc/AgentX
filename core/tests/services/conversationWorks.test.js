@@ -7,6 +7,7 @@ const { forSurface } = require('../../src/services/surfaceConversationService');
 const { createConversationWorks } = require('../../src/services/conversationWorks/service');
 const { createWorkObserver } = require('../../src/services/conversationWorks/observer');
 const { createWorkDelivery } = require('../../src/services/conversationWorks/delivery');
+const { selectedContext } = require('../../surfaces/household/dedicated-guardian');
 const { registerConversationWorkRoutes } = require('../../src/services/conversationWorks/routes');
 const { OWNER, EXCHANGE_SCOPE, hash } = require('../../src/services/conversationWorks/contract');
 const exchanges = require('../../src/services/conversations/exchangeReceipts');
@@ -667,6 +668,32 @@ test('worker results and pending states feed the guardian’s next selected cont
   expect(await works.guardianContext(foreign.sessionId)).toBe('');
   const family = await conversations.createSession({ sessionId: randomUUID(), packId: 'kidx_nestor', scopeId: 'family', modeId: 'family', status: 'active' });
   await expect(works.guardianContext(family.sessionId)).rejects.toMatchObject({ statusCode: 404 });
+});
+
+test('four long Main results retain individually selected Guardian advice and exact excerpt coverage', async () => {
+  const published = [];
+  for (let index = 0; index < 4; index++) {
+    const job = await startWork(`Regarde mes tâches pour le lot ${index}.`);
+    const read = await works.readTasks(job.context, { limit: 5 }, `read-${index}`);
+    const text = `RESULT_${index} ` + 'x'.repeat(index === 3 ? 3500 : 1900);
+    await works.publish(job.context, { kind: 'answer', text, receiptIds: [read.receipt.id] });
+    published.push({ id: job.row._id, text });
+  }
+  const advice = await works.guardianContextWithRefs(current.sessionId);
+  expect(advice.selectable).toHaveLength(4);
+  const selected = selectedContext({ base: 'Selected owner context. '.repeat(180), work: advice, tail: '\nSafety note.' });
+  expect(selected.text.length).toBeLessThanOrEqual(8000);
+  expect(selected.text).toContain('Safety note.');
+  expect(selected.refs.length).toBeGreaterThan(0);
+  expect(selected.refs.length).toBeLessThan(4);
+  for (const item of published) {
+    expect(selected.refs.some(ref => ref.workId === item.id)).toBe(selected.text.includes(item.id));
+  }
+  expect(selected.refs.find(ref => ref.workId === published[3].id).coverage).toEqual(['result_excerpt']);
+  expect(selected.text).toContain('shortened context; complete content retained in Core');
+  const complete = await works.conversationContext(current.sessionId);
+  for (const item of published) expect(complete.turns.find(turn => turn.workResults?.some(result => result.workId === item.id))
+    .workResults[0].text).toBe(item.text);
 });
 
 test('the next real voice request records exact included work advice without claiming influence', async () => {

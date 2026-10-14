@@ -122,8 +122,15 @@
       if (sourceSession !== sessionId || !value) return false;
       const row = turn(id);
       if (!row) return false;
+      if (value.status === 'context_required') {
+        const refusalId = safe(value.traceId || id);
+        if (row.reviewRefusal?.id === refusalId) return false;
+        row.reviewRefusal = { id: refusalId, reason: 'context_required' };
+        return true;
+      }
       const key = safe(value.adviceId || value.id || value.traceId || id) + ':' + String(value.version || 1);
       if (row.reviews.some(item => item.key === key)) return false;
+      row.reviewRefusal = null;
       const chronology = snapshot().turns.map(item => item.id);
       const replaced = chronology.indexOf(id) < chronology.length - 1;
       if (!replaced) for (const previous of turns.values()) previous.reviews.forEach(item => { item.replaced = true; });
@@ -207,9 +214,15 @@
         const code = typeof work.reason === 'string' && (Object.hasOwn(reasons, work.reason) || /^[a-z][a-z0-9_]{0,79}$/.test(work.reason)) ? work.reason : '';
         return [labels[work.state], `Work ${work.id} · ${reasons[code] || (code ? `Core reason: ${code}` : 'reason not detailed')}`];
       }
-      if (work?.result) return work.includedIn?.length ? ['Included', `Work ${work.id} · context of turn ${work.includedIn[0].targetTurnId}`]
-        : ['Available', `Work ${work.id} · version ${work.result.version}`];
+      if (work?.result) {
+        const included = work.includedIn?.[0];
+        if (included?.coverage?.includes('result_excerpt')) return ['Excerpt',
+          `Work ${work.id} · excerpt in context of turn ${included.targetTurnId}; full result retained in Core`];
+        return included ? ['Included', `Work ${work.id} · context of turn ${included.targetTurnId}`]
+          : ['Available', `Work ${work.id} · version ${work.result.version}`];
+      }
       if (work?.resultDisposition === 'no_work') return ['Done', `Work ${work.id} · nothing useful to add`];
+      if (row.reviewRefusal) return ['Unavailable', 'Complete background review lacked context; no partial advice used'];
       if (advice) return [advice.replaced ? 'Replaced' : advice.includedIn?.length ? 'Included' : 'Available',
         advice.includedIn?.length ? `Context of turn ${advice.includedIn[0].targetTurnId}` : `Advice for turn ${advice.turnId} · inclusion not attested`];
       if (work && ['received', 'queued', 'dispatching', 'running', 'uncertain'].includes(work.state)) {
@@ -311,7 +324,7 @@
         const element = node('details', 'workflow-component'); element.dataset.key = `stage:${key}`;
         element.dataset.stage = key;
         element.dataset.tone = isActive(state) ? 'active'
-          : ['Failed', 'Uncertain', 'Interrupted', 'Cancelled', 'Paused', 'Waiting'].includes(state) ? 'caution'
+          : ['Failed', 'Uncertain', 'Interrupted', 'Cancelled', 'Paused', 'Waiting', 'Unavailable'].includes(state) ? 'caution'
             : ['Done', 'Available', 'Included'].includes(state) ? 'complete'
               : ['Unknown', 'No voice'].includes(state) ? 'unknown' : 'observed';
         element.open = expanded.has(element.dataset.key);
@@ -504,6 +517,8 @@
       }
       for (const advice of current.reviews) body.append(node('p', 'workflow-advice',
         `Advice ${advice.key} · ${advice.replaced === true ? 'replaced' : advice.reconstructed ? 'current status unknown' : 'available'} · ${advice.includedIn?.length ? `included in the context of turn ${advice.includedIn.map(ref => ref.targetTurnId).join(', ')}` : 'inclusion not attested'} · influence not proven`));
+      if (current.reviewRefusal) body.append(node('p', 'workflow-advice',
+        `Review ${current.reviewRefusal.id}: unavailable; complete context required; no advice was produced`));
       for (const ref of current.adviceRefs || []) body.append(node('p', 'workflow-advice',
         `Context of this turn: ${ref.source === 'work' ? `work ${ref.workId}` : `advice ${ref.adviceId}`} · version ${ref.version} · coverage ${(ref.coverage || []).join(', ') || 'unknown'} · influence not proven`));
       restoreFocus();

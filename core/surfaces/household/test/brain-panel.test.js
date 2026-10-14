@@ -12,6 +12,7 @@ class Element {
 global.document = { createElement: tag => new Element(tag) };
 require('../public/brain-panel');
 const { create, quietState, mayInterject } = globalThis.NestorBrain;
+const { createModel, stageState } = require('../public/workflow-panel');
 
 const REVIEW = { traceId: 't1', suggestions: ['Et un insecte?', 'Combien de pattes a un crabe?'], corrections: [],
   revisions: [{ title: 'Pattes', body: 'Araignée : 8 pattes' }], interjection: { text: 'Petite correction.', urgent: false } };
@@ -73,4 +74,24 @@ test('a refused complete review is disclosed without presenting corrections or s
   assert.equal(h.revised.length, 1);
   assert.match(h.revised[0].body, /No partial review was used/);
   assert.deepEqual(h.spoken, []); assert.deepEqual(h.asked, []);
+});
+
+test('a refused review reaches the workflow as unavailable without replacing earlier advice', async () => {
+  const model = createModel();
+  model.begin('s', 'older', 'voice');
+  model.review('older', { adviceId: 'advice-1', version: 1 });
+  model.begin('s', 't1', 'voice');
+  const h = panel({ traceId: 't1', status: 'context_required', suggestions: ['Unverified'],
+    revisions: [{ title: 'Unverified', body: 'Unverified' }], interjection: { text: 'Unverified', urgent: true } });
+  const refusal = await h.brain.follow('s', 't1');
+  assert.equal(model.review('t1', refusal, 's'), true);
+  assert.equal(model.review('t1', refusal, 's'), false, 'replayed refusal is deduplicated');
+  const [older, current] = model.snapshot().turns;
+  assert.equal(older.reviews[0].replaced, false);
+  assert.deepEqual(current.reviews, []);
+  assert.equal(current.reviewRefusal.reason, 'context_required');
+  assert.equal(stageState('review', current)[0], 'Unavailable');
+  assert.equal(h.container.hidden, true);
+  assert.deepEqual(h.spoken, []);
+  assert.equal(h.revised.length, 1);
 });

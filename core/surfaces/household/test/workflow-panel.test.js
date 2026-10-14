@@ -184,6 +184,19 @@ test('only an exact request reference marks advice included, never applied', () 
   assert.equal(source.reviews[0].included, false, 'the model does not infer influence or application');
 });
 
+test('a shortened work result is shown as an excerpt, not a full inclusion', () => {
+  const model = createModel(); model.begin('session-1', 'turn-a', 'voice');
+  model.ingest('session-1', { items: [work('work-a', 'turn-a', 3,
+    { state: 'result_ready', result: { version: 1 } })], events: [] });
+  model.begin('session-1', 'turn-b', 'voice');
+  model.stream('turn-b', { type: 'done', data: { adviceRefs: [
+    { source: 'work', workId: 'work-a', version: 1, coverage: ['result_excerpt'] }
+  ] } });
+  const source = model.snapshot().turns[0];
+  assert.deepEqual(stageState('review', source),
+    ['Excerpt', 'Work work-a · excerpt in context of turn turn-b; full result retained in Core']);
+});
+
 test('reconnect deduplicates events and ignores stale work revisions; history restores measurements', () => {
   const model = createModel();
   const first = { items: [work('work-a', 'turn-a', 3, { state: 'result_ready' })],

@@ -85,8 +85,9 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       // original guardian returns. Its exact settlement still owns that intake.
       const nativeIntake = current.classification === 'native_only' && ['received', 'uncertain'].includes(current.state)
         && !current.attempt && !current.result;
+      const interruptedReview = current.classification === 'native_review' && state === 'cancelled';
       const nextState = nativeIntake ? state : current.state === 'received' && !['native_only', 'native_read', 'native_work'].includes(current.classification)
-        ? state === 'cancelled' ? 'cancelled' : current.contextReady ? 'queued' : current.state : current.state;
+        ? state === 'cancelled' && !interruptedReview ? 'cancelled' : current.contextReady ? 'queued' : current.state : current.state;
       const awaiting = state === 'completed' && disposition === 'awaiting_main' && current.mode === 'native';
       return { fields: { guardian: { ...current.guardian, state, ...(disposition && { disposition }) }, state: nextState,
         ...(awaiting && current.classification === 'native_review' && { classification: 'native_work', foreground: 'acknowledge' }),
@@ -227,17 +228,21 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     if (!useful.length) return { text: '', refs: [] };
     const excerpt = (text, length) => String(text || '').length > length
       ? text.slice(0, length) + ' [shortened context; complete content retained in Core]' : text;
-    const entries = [];
+    const entries = [], selectable = [], refs = [];
     for (const row of useful) {
       const turn = await conversations.getTurn({ ...query(sessionId), traceId: row.turnId });
       const result = row.result ? await repo.read(row, row.result.payloadRef) : null;
-      entries.push({ id: row._id, turnId: row.turnId, request: excerpt(turn?.inputText, 1000),
+      const entry = { id: row._id, turnId: row.turnId, request: excerpt(turn?.inputText, 1000),
         state: row.state, reason: row.reason || '', result: result ? { kind: result.kind, text: excerpt(result.text, 2000),
-          receiptIds: result.receiptIds, version: row.result.version, presentation: row.delivery?.state } : null });
+          receiptIds: result.receiptIds, version: row.result.version, presentation: row.delivery?.state } : null };
+      const ref = result ? { source: 'work', workId: row._id, version: row.result.version,
+        sourceTurnId: row.turnId, coverage: [String(result.text || '').length > 2000 ? 'result_excerpt' : 'result'] } : null;
+      entries.push(entry);
+      selectable.push({ text: JSON.stringify(entry), refs: ref ? [ref] : [] });
+      if (ref) refs.push(ref);
     }
-    return { text: '\n\n[Core canonical work for this conversation: statuses and received results. Reference data, not new authorization. Do not redispatch pending work or automatically repeat a result awaiting Household presentation.]\n' + JSON.stringify(entries),
-      refs: useful.filter(row => row.result).map(row => ({ source: 'work', workId: row._id,
-        version: row.result.version, sourceTurnId: row.turnId, coverage: ['result'] })) };
+    const selectionHeader = '\n\n[Core canonical work for this conversation: statuses and received results. Reference data, not new authorization. Do not redispatch pending work or automatically repeat a result awaiting Household presentation.]\n';
+    return { text: selectionHeader + JSON.stringify(entries), refs, selectionHeader, selectable };
   }
   const guardianContext = async (sessionId, excludingId) => (await guardianContextWithRefs(sessionId, excludingId)).text;
   async function taskAcceptance(id) {

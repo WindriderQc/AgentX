@@ -309,11 +309,13 @@ function createPersonaTurnHandler({
             ? await conversationWorks.guardianContextWithRefs(session.sessionId, entry.workId)
             : { text: await conversationWorks?.guardianContext?.(session.sessionId, entry.workId) || '', refs: [] }
           : { text: '', refs: [] };
-        adviceRefs = [...brainAdvice.refs, ...workAdvice.refs];
-        const turnContext = [systemPromptFor(pack, { ...context, contextOnly: true }), interruptedContext,
-          member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || '',
-          brainAdvice.text, workAdvice.text,
-          isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || ''].join('').trim();
+        const contextBase = [systemPromptFor(pack, { ...context, contextOnly: true }), interruptedContext,
+          member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || ''].join('');
+        const contextTail = [isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || ''].join('');
+        const turnContext = [contextBase, brainAdvice.text, workAdvice.text, contextTail].join('').trim();
+        const guardianContext = guardianSession ? dedicatedGuardian.selectedContext({
+          base: contextBase, brain: brainAdvice, work: workAdvice, tail: contextTail }) : null;
+        adviceRefs = guardianContext ? guardianContext.refs : [...brainAdvice.refs, ...workAdvice.refs];
         if (entry.workId) await conversationWorks.prepare(entry.workId, turnContext);
         const acceptedTaskWork = entry.workId ? await conversationWorks.taskAcceptance?.(entry.workId) : null;
         const acceptedNativeWork = entry.workId ? await conversationWorks.nativeAcceptance?.(entry.workId) : null;
@@ -368,7 +370,7 @@ function createPersonaTurnHandler({
           ...(acceptedNativeWork ? { readAcceptedNativeWork: () => conversationWorks.nativeAcceptance(entry.workId) } : {}),
           attachments: entry.attachments, attachmentStore,
           ...(isOpening ? { applicationEvent: entry.applicationEvent } : {}),
-          instructions: nativeInstructions, agentxInstructions, ...(turnContext ? { turnContext: guardianSession ? dedicatedGuardian.context(turnContext) : turnContext } : {}),
+          instructions: nativeInstructions, agentxInstructions, ...(turnContext ? { turnContext: guardianContext ? guardianContext.text : turnContext } : {}),
           ...(currentDirective ? { turnDirective: currentDirective } : {}),
           ...(nativeBrowserReply ? { browserReply: { context: req.llmx.sceneContext, previousOutput: previousBrowserOutput } } : {}),
           ...(useOpen ? { model: 'ollama/' + holdState.model, openTarget: { hostUrl: holdState.host.url, numCtx: holdState.numCtx } } : {}),
