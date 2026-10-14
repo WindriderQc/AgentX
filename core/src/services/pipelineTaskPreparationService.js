@@ -53,7 +53,9 @@ async function apply({ pipelineId, expectedUpdatedAt, automation, question, answ
     update.$set['automationAttempts.$[attempt].reviewedAt'] = at;
     options.arrayFilters = [{ 'attempt.attempt': latest.attempt }];
   }
-  const query = { pipelineId, updatedAt: task.updatedAt, status: task.status };
+  const query = { pipelineId, updatedAt: task.updatedAt, status: task.status, assignee: task.assignee ?? null,
+    'automationLease.leaseId': null,
+    $and: [workerTaskScope(), { service: task.service ?? null, source: task.source ?? null }] };
   preparationTransition(query, update, task, { question: Boolean(question), at });
   // The plan becomes a new, undecided revision bound to the scope written here.
   // It authorizes nothing: the operator's explicit launch still starts the work.

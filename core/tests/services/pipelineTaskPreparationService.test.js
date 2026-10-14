@@ -91,3 +91,22 @@ test.each([{ service: ' Family ' }, { source: 'household-reminder' }, { source: 
   expect(unchanged.service).toBe(task.service);
   expect(unchanged.feedback).toEqual([]);
 });
+test.each([{ service: 'personal' }, { source: 'household-inbox' }, { assignee: 'another-worker' },
+  { 'automationLease.leaseId': 'new-native-lease' }])('handoff revalidates concurrent lane and ownership changes atomically: %j', async changes => {
+  const task = await create({ service: '' });
+  const update = PipelineTask.findOneAndUpdate.bind(PipelineTask);
+  const spy = jest.spyOn(PipelineTask, 'findOneAndUpdate').mockImplementationOnce((query, patch, options) => ({
+    lean: async () => {
+      // Preserve the original timestamp to exercise the predicates independently
+      // of updatedAt, including writes within the same millisecond.
+      await PipelineTask.collection.updateOne({ pipelineId: task.pipelineId }, { $set: changes });
+      return update(query, patch, options).lean();
+    },
+  }));
+  try { await expect(apply(task, { handoff: true })).rejects.toMatchObject({ statusCode: 409 }); }
+  finally { spy.mockRestore(); }
+  const current = await PipelineTask.findOne({ pipelineId: task.pipelineId }).lean();
+  expect(current.updatedAt).toEqual(task.updatedAt);
+  expect(current.service).toBe(changes.service || task.service);
+  expect(current.feedback).toEqual([]);
+});
