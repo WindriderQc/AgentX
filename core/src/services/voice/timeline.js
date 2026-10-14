@@ -1,5 +1,7 @@
 'use strict';
 
+const { normalizeRecognition } = require('../../../public/js/voice/voice-timeline');
+
 // A voice turn's browser timeline: offsets in ms from the moment the end of the
 // person's speech was decided. A surface stores only these known marks, as
 // bounded whole numbers, on the turn it recorded.
@@ -25,7 +27,8 @@ function normalizeVoiceTimings(input) {
     const value = input[measure];
     if (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= MAX_OFFSET_MS) timings[measure] = Math.round(value);
   }
-  return { ...timings, interrupted: input.interrupted === true,
+  const recognition = normalizeRecognition(input.recognition);
+  return { ...timings, interrupted: input.interrupted === true, ...(recognition && { recognition }),
     ...(['completed', 'failed'].includes(input.playbackOutcome) && { playbackOutcome: input.playbackOutcome }) };
 }
 

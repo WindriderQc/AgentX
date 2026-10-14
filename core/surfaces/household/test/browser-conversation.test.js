@@ -62,6 +62,46 @@ test('live STT callbacks precede the model request and settle after recognition'
   h.conversation.stop();
 });
 
+for (const early of [false, true]) test(`the ${early ? 'early' : 'complete'} recognition receipt belongs to the submitted turn, without rewriting its words`, async () => {
+  const snapshots = [], texts = [], seen = [];
+  const recognitionId = '19b98eab-7a12-4a31-8d40-8802ec82da11';
+  const result = { text: 'Set.', recognitionId, recognition: { schema: 1, requestedLanguage: 'fr', queueMs: 0, decodeMs: 210 } };
+  const h = harness({ transcribe: async () => result, transcribeEarly: early ? async () => result : undefined,
+    timings: async (_session, turnId, values) => { snapshots.push({ turnId, values }); return {}; },
+    transcriptionDone: (turnId, values) => seen.push({ turnId, values }),
+    turn: async (_session, text, _signal, _delta, metadata) => { texts.push({ text, turnId: metadata.turnId }); return { text: 'Un test.' }; }
+  });
+  await h.conversation.start({ language: 'fr' });
+  if (early) { h.pause(42); await tick(); }
+  await h.say(early ? { earlyId: 42 } : {});
+  assert.equal(texts[0].text, 'Set.', 'homophones are never globally substituted');
+  assert.equal(snapshots.at(-1).turnId, texts[0].turnId);
+  const evidence = snapshots.at(-1).values.recognition;
+  assert.equal(evidence.recognitionId, recognitionId);
+  assert.equal(evidence.mode, early ? 'early' : 'complete');
+  assert.equal(evidence.submittedBytes, early ? new Blob(['so far']).size : new Blob(['sample']).size);
+  assert.equal(evidence.captureBytes, new Blob(['sample']).size);
+  assert.equal(evidence.decodeMs, 210);
+  assert.deepEqual(seen[0].values.recognition, evidence, 'the live workflow receives the same evidence');
+  assert.equal(evidence.text, undefined);
+  h.conversation.stop();
+});
+
+test('a superseded early recognition cannot become the next turn’s receipt', async () => {
+  const snapshots = [];
+  const oldId = '19b98eab-7a12-4a31-8d40-8802ec82da11', currentId = '29b98eab-7a12-4a31-8d40-8802ec82da22';
+  const h = harness({
+    transcribeEarly: async () => ({ text: 'old', recognitionId: oldId }),
+    transcribe: async () => ({ text: 'Bonjour', recognitionId: currentId }),
+    timings: async (_session, _turnId, values) => { snapshots.push(values); return {}; }
+  });
+  await h.conversation.start({ language: 'fr' }); h.pause(3); await tick(); h.resume(3);
+  await h.say({ earlyId: 3 });
+  assert.equal(snapshots.at(-1).recognition.recognitionId, currentId);
+  assert.equal(snapshots.at(-1).recognition.mode, 'complete');
+  h.conversation.stop();
+});
+
 for (const wakeWord of [false, true]) {
   for (const phrase of ['Stop, stop, stop.', 'Nestor silence', 'Arrête.', 'Silence Nestor.']) {
     test(`a spoken ${phrase} is silent without a pending reply, wake ${wakeWord}`, async () => {

@@ -1205,9 +1205,13 @@ describe('built-in Household surface on Core', () => {
     executeForTest.mockResolvedValueOnce({ ok: true, metadata: { model: 'synthetic' }, body: { response: 'Une girafe mange des feuilles.' } });
     await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Que mange une girafe ?', channel: 'voice', stream: true, turnId })
       .buffer(true).parse(ndjson).expect(200);
-    const timings = { sttDone: 640, requestSent: 655.4, firstDelta: 4200, firstAudio: 5100, interrupted: false, note: 'never stored' };
+    const recognition = { schema: 1, recognitionId: '19b98eab-7a12-4a31-8d40-8802ec82da11', mode: 'early',
+      submittedBytes: 64044, captureBytes: 96044, requestedLanguage: 'fr', decodedLanguage: 'fr',
+      languageSource: 'requested', queueMs: 0, decodeMs: 400, audioSeconds: 2, speechSeconds: 1.6 };
+    const timings = { sttDone: 640, requestSent: 655.4, firstDelta: 4200, firstAudio: 5100, interrupted: false, note: 'never stored',
+      recognition: { ...recognition, text: 'never stored', audio: 'never stored', model: '/private/model', confidence: 1 } };
     const stored = (await request(app).post(`${base}/${id}/voice-timings`).send({ turnId, timings }).expect(200)).body.data;
-    expect(stored.voiceTimings).toEqual({ sttDone: 640, requestSent: 655, firstDelta: 4200, firstAudio: 5100, interrupted: false });
+    expect(stored.voiceTimings).toEqual({ sttDone: 640, requestSent: 655, firstDelta: 4200, firstAudio: 5100, interrupted: false, recognition });
     // Another space, another turn and unbounded values never reach the record.
     expect((await request(app).post(`/api/voice-personas/private/sessions/${id}/voice-timings`).send({ turnId, timings }).expect(404)).body.code).toBe('VOICE_TIMINGS_TURN_NOT_RECORDED');
     expect((await request(app).post(`${base}/${id}/voice-timings`).send({ turnId: other, timings }).expect(404)).body.code).toBe('VOICE_TIMINGS_TURN_NOT_RECORDED');

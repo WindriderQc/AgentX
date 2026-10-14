@@ -350,6 +350,34 @@ test('the visual fork and stage connectors appear only with matching turn/work e
   } finally { global.document = previousDocument; }
 });
 
+test('reloading a turn restores its recognition identity and measured phases without inventing accuracy', () => {
+  const previousDocument = global.document;
+  class Element {
+    constructor() { this.children = []; this.dataset = {}; this.attributes = {}; }
+    append(...nodes) { this.children.push(...nodes); }
+    replaceChildren(...nodes) { this.children = nodes; }
+    setAttribute(key, value) { this.attributes[key] = value; }
+    querySelectorAll() { return []; }
+  }
+  global.document = { createElement: () => new Element() };
+  const text = root => [root.textContent || '', ...(root.children || []).map(text)].join(' ');
+  try {
+    const host = new Element(), panel = create({ host });
+    const recognitionId = '19b98eab-7a12-4a31-8d40-8802ec82da11';
+    panel.restore('session-1', [{ clientTurnId: 'turn-a', channel: 'voice', voiceTimings: { requestSent: 2, sttDone: 1,
+      recognition: { schema: 1, recognitionId, mode: 'early', requestedLanguage: 'fr', decodedLanguage: 'fr', languageSource: 'requested',
+        queueMs: 0, decodeMs: 400, audioSeconds: 2, speechSeconds: 1.6, submittedBytes: 64044, captureBytes: 96044 } } }]);
+    panel.panel.open = true; panel.render();
+    const rendered = text(host);
+    assert.match(rendered, new RegExp(recognitionId));
+    assert.match(rendered, /early\. Requested language: fr; decoded language: fr \(requested\)/);
+    assert.match(rendered, /Whisper lock wait: 0 ms; processing: 400 ms/);
+    assert.match(rendered, /Submitted bytes: 64044; complete capture bytes: 96044/);
+    assert.match(rendered, /do not establish word accuracy/);
+    assert.match(rendered, /No audio is stored here/);
+  } finally { global.document = previousDocument; }
+});
+
 test('an exact Brain advice connects its own turn to the background branch without a work', () => {
   const previousDocument = global.document;
   class Element {
