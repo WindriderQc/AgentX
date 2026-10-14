@@ -41,13 +41,13 @@ function surfacePage(app, file, { activePage, householdControls = false } = {}) 
 }
 
 function householdPage(app, file) {
-  const names = { '/voice-personas/debug': 'voice-personas-debug',
+  const names = { '/voice-lab': 'voice-lab', '/voice-lab/devices': 'voice-lab', '/voice-lab/personas': 'voice-lab', '/voice-personas/debug': 'voice-lab',
     '/device-check': 'device-check', '/lecture/parents': 'dad-family', '/lecture/parents.html': 'dad-family',
     '/voice': 'dad', '/voice.html': 'dad', '/voix': 'dad',
     '/voice-personas': 'dad-memories', '/voice-personas.html': 'dad-memories' };
   return (req, res, next) => {
     const pathname = req.path.replace(/\/+$/, '') || '/';
-    return surfacePage(app, file, { householdControls: true,
+    return surfacePage(app, file, { householdControls: !pathname.startsWith('/voice-lab'),
       activePage: names[pathname] || pathname.slice(1).replaceAll('/', '-') })(req, res, next);
   };
 }

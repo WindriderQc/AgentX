@@ -21,54 +21,6 @@
   let readingVoices = {};
   try { readingLanguage = window.PersonaPresentation.profile({ language: localStorage.getItem(readingLanguageKey) }).language; } catch { /* French default */ }
   try { readingVoices = window.PersonaPresentation.selections(JSON.parse(localStorage.getItem(readingVoiceKey) || '{}')); } catch { /* tab-only settings */ }
-  const readingDialog = document.getElementById('readingVoiceDialog');
-  const readingSelects = { fr: document.getElementById('readingVoiceFr'), en: document.getElementById('readingVoiceEn') };
-  document.getElementById('readingVoiceSettings').onclick = async () => {
-    document.getElementById('readingLanguage').value = readingLanguage;
-    readingDialog.showModal();
-    document.getElementById('readingVoiceSave').disabled = true;
-    document.getElementById('readingVoicePreview').disabled = true;
-    const status = document.getElementById('readingVoiceStatus'); status.textContent = 'Loading local voices…';
-    try {
-      const catalog = await api('/api/voix/catalog');
-      for (const [language, select] of Object.entries(readingSelects)) {
-        select.length = 1;
-        for (const provider of catalog.providers || []) {
-          const group = document.createElement('optgroup'); group.label = provider.name;
-          for (const voice of window.VoixAudio.choices(catalog, language, provider.id)) {
-            const option = new Option(`${voice.name} · ${voice.locale}${voice.available ? '' : ' · unavailable'}`, window.VoixAudio.voiceKey(voice));
-            option.disabled = !voice.available; group.append(option);
-          }
-          if (group.children.length) select.append(group);
-        }
-        const saved = readingVoices[language] || '';
-        if (saved && ![...select.options].some(option => option.value === saved)) {
-          const option = new Option(`Saved voice unavailable: ${saved.split('|')[1]}`, saved); option.disabled = true; select.append(option);
-        }
-        select.value = saved;
-      }
-      status.textContent = 'The preview plays through this browser’s speaker.';
-      document.getElementById('readingVoiceSave').disabled = false;
-      document.getElementById('readingVoicePreview').disabled = false;
-    } catch { status.textContent = 'The local catalog is unavailable. Saved choices are kept.'; }
-  };
-  document.getElementById('readingVoiceSave').onclick = () => {
-    stopPlayback();
-    readingLanguage = window.PersonaPresentation.profile({ language: document.getElementById('readingLanguage').value }).language;
-    state.learningVoice?.setLanguage(readingLanguage);
-    readingVoices = window.PersonaPresentation.selections(Object.fromEntries(Object.entries(readingSelects).map(([language, select]) => [language, select.value])));
-    try { localStorage.setItem(readingVoiceKey, JSON.stringify(readingVoices)); localStorage.setItem(readingLanguageKey, readingLanguage); document.getElementById('readingVoiceStatus').textContent = 'Language and voices saved on this browser.'; }
-    catch { document.getElementById('readingVoiceStatus').textContent = 'Choices apply to this tab only. The browser refuses to save them.'; }
-  };
-  document.getElementById('readingVoicePreview').onclick = () => {
-    const lang = window.PersonaPresentation.profile({ language: document.getElementById('readingLanguage').value }).language;
-    return speak(lang === 'en' ? 'Hello. This is the voice selected for English readings.' : 'Bonjour. Voici la voix choisie pour les lectures en français.', lang,
-      window.VoixAudio.splitVoice(readingSelects[lang].value) || { provider: 'kokoro', voice: lang === 'en' ? 'af_heart' : 'ff_siwis' });
-  };
-  document.getElementById('readingVoiceStop').onclick = () => stopPlayback();
-  document.getElementById('readingVoiceClose').onclick = () => readingDialog.close();
-  readingDialog.addEventListener('close', () => stopPlayback());
-
   function toast(message) {
     toastNode.textContent = message;
     toastNode.classList.add('show');
@@ -95,6 +47,7 @@
 
   function setRuntime(ok, label) {
     const node = document.getElementById('runtimePill');
+    if (!node) return;
     node.textContent = label;
     node.className = `runtime-pill ${ok === true ? 'ok' : ok === 'waiting' ? 'waiting' : 'down'}`;
   }
@@ -103,8 +56,25 @@
     const path = location.pathname;
     const family = path === '/panel' || path.startsWith('/kids') || path === '/lecture';
     const personal = path.startsWith('/dad') || path.startsWith('/voice-personas') || path.startsWith('/lecture/parents') || ['/voice', '/voice.html', '/voix'].includes(path);
-    document.getElementById('readingVoiceSettings').hidden = !(family || personal);
+    const workshop = document.getElementById('readingVoiceSettings');
+    if (!workshop) return;
+    workshop.hidden = !(path.startsWith('/kids') || path === '/lecture'); workshop.href = '/voice-lab?scope=' + (family ? 'reading' : 'personal');
   }
+
+  function syncReadingPreferences() {
+    try { readingLanguage = window.PersonaPresentation.profile({ language: localStorage.getItem(readingLanguageKey) }).language; } catch {}
+    try { readingVoices = window.PersonaPresentation.selections(JSON.parse(localStorage.getItem(readingVoiceKey) || '{}')); } catch {}
+    state.learningVoice?.setLanguage(readingLanguage);
+  }
+  window.addEventListener('storage', event => { if ([readingLanguageKey,readingVoiceKey].includes(event.key)) syncReadingPreferences(); });
+  window.addEventListener('pageshow', event => { if (event.persisted) syncReadingPreferences(); });
+  const readingWorkshopLink = document.getElementById('readingVoiceSettings');
+  if (readingWorkshopLink) readingWorkshopLink.onclick = async event => {
+    event.preventDefault();
+    await window.AgentXVoiceWorkshop.open({ scope: 'reading', conversation: state.learningVoice?.conversation || null,
+      selection: () => ({ language: readingLanguage, wakeWord: true, interruption: true }),
+      onSaved: () => { stopPlayback(); syncReadingPreferences(); } });
+  };
 
   function clock() {
     const node = document.getElementById('clock');
@@ -626,9 +596,13 @@
       if (location.pathname.startsWith('/kids')) return await loadKids();
       if (location.pathname === '/lecture') return await loadReader();
       if (location.pathname.startsWith('/lecture/parents')) return await loadParents();
-      if (location.pathname === '/voice-personas/debug') return await loadPersonas();
+      if (location.pathname === '/voice-lab/personas') { await loadPersonas(); app.insertAdjacentHTML('afterbegin', '<nav class="conversation-toolbar"><a href="/voice-lab">Atelier vocal</a><a href="/voice-lab/devices">Appareils</a></nav>'); return; }
       if (['/voice', '/voice.html', '/voix'].includes(location.pathname)) return await window.mountConversation({ app, api, esc });
-      if (location.pathname === '/device-check') return await window.HouseholdDeviceCheck.load({ app, esc, state, api, toast, transcribe, stopPlayback, setRuntime });
+      if (location.pathname === '/voice-lab') return await window.AgentXVoiceWorkshop.mount({ host: app, scope: new URLSearchParams(location.search).get('scope'), tab: new URLSearchParams(location.search).get('tab'), api });
+      if (location.pathname === '/voice-lab/devices') {
+        app.innerHTML = '<nav class="conversation-toolbar"><a href="/voice-lab">Atelier vocal</a><a href="/voice-lab/personas">Personnalités</a></nav><div id="voiceDeviceChecks"></div>';
+        return await window.HouseholdDeviceCheck.load({ app: document.getElementById('voiceDeviceChecks'), esc, state, api, toast, transcribe, stopPlayback, setRuntime });
+      }
       app.innerHTML = '<div class="empty">Page not found.</div>';
     } catch (error) {
       console.error('Household page initialization failed', error); setRuntime(false, 'unavailable');

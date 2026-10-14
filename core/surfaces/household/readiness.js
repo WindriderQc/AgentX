@@ -51,10 +51,10 @@ function householdActivation(input = {}, now = new Date()) {
     ),
     item(
       'wake-word',
-      'Native wake gate',
+      'Browser wake and continuous voice',
       'ready',
-      'Local VoiX VAD and Whisper now reject non-addressed room speech before any visible text, memory, AgentX, or TTS. Surface integration remains outside Phase 0.',
-      '/voice'
+      'Hands-free browser conversations are available. Local transcription precedes wake detection; physical acoustic acceptance remains separate.',
+      '/voice-lab?scope=family&tab=conversation'
     )
   ];
   if (sourceUnavailable) {

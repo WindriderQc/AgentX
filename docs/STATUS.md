@@ -125,7 +125,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   synthesis without starting a backup request. VoiX bounds recognition before
   upload parsing and executor submission, with separate admission for CPU Stop;
   abandoned native work keeps its place until it actually ends. See
-  [agents and voice](AGENTS_AND_VOICE.md).
+  [agents and voice](AGENTS_AND_VOICE.md). Workshop → Voice workshop centralizes
+  explicit STT/TTS tests, bounded replay, advanced listening preferences and device
+  acceptance. Conversation pages keep daily controls and open the same diagnostic
+  component on their current loop. Test results and physical acceptance remain
+  distinct.
 - **Personalities.** Household versions personalities separately from modes and
   binds them to agents on the server. An adult-authorized session can switch its
   personality between turns while keeping its agent and permissions. Turns

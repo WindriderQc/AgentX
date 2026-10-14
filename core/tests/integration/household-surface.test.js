@@ -39,6 +39,32 @@ const { ageInYears, instanceToday } = require('../../src/domains/household/famil
 const KNOWN_UNKNOWN = 'dis simplement ce que tu ne sais pas; ne devine jamais un âge exact';
 
 describe('built-in Household surface on Core', () => {
+  test('voice workshop is served from Workshop and old diagnostic bookmarks keep their destination', async () => {
+    const page = await request(app).get('/voice-lab').expect(200);
+    expect(page.text).toContain('/js/voice/voice-workshop.js');
+    expect(page.text).toContain('Voice workshop');
+    await request(app).get('/voice-lab/devices').expect(200);
+    await request(app).get('/voice-lab/personas').expect(200);
+    await request(app).get('/device-check').expect(302).expect('Location', '/voice-lab/devices');
+    await request(app).get('/voice-personas/debug').expect(302).expect('Location', '/voice-lab/personas');
+  });
+  test('workshop service settings are read-only and exclude private speech configuration through HTTP', async () => {
+    const original = process.env.VOIX_BASE_URL;
+    process.env.VOIX_BASE_URL = 'http://speech.example.test';
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(Response.json({ static: {
+      whisper_model: 'synthetic-model', whisper_device: 'cpu', whisper_vad_threshold: 0.85,
+      whisper_hotwords: 'PRIVATE_FIXTURE', whisper_initial_prompt: 'PRIVATE_FIXTURE', model_path: '/PRIVATE_FIXTURE'
+    } }));
+    try {
+      const response = await request(app).get('/api/voix/settings').expect(200);
+      expect(response.body.data).toMatchObject({ editable: false, model: 'synthetic-model', device: 'cpu', vadThreshold: 0.85 });
+      expect(JSON.stringify(response.body)).not.toContain('PRIVATE_FIXTURE');
+      const calls = fetchMock.mock.calls.length;
+      await request(app).post('/api/voix/settings').send({ model: 'replacement' }).expect(404);
+      expect(fetchMock.mock.calls.length).toBe(calls);
+    } finally { fetchMock.mockRestore(); if (original === undefined) delete process.env.VOIX_BASE_URL; else process.env.VOIX_BASE_URL = original; }
+  });
+
   test('the family edit route persists a revision-bound routine and rejects stale or private-lane edits', async () => {
     const started = await request(app).post('/api/family/launch').send({ profile: { profileId: 'edit-child', displayName: 'Synthetic edit child' }, routines: [{ title: 'Original routine' }] }).expect(201);
     const original = started.body.data.routines[0];

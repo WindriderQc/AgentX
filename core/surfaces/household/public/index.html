@@ -17,20 +17,12 @@
   <link rel="stylesheet" href="/assets/household/dad-day.css?v=day-quality-2">
   <link rel="stylesheet" href="/assets/household/personal-task-review.css?v=day-quality-2">
   <link rel="stylesheet" href="/assets/household/workflow-cockpit.css?v=cockpit-1">
+  <link rel="stylesheet" href="/css/voice-workshop.css?v=1">
 </head>
 <body class="household-product">
   <a class="skip" href="#app">Skip to content</a>
   <!-- product-navigation -->
   <main id="app" tabindex="-1"></main>
-  <dialog id="readingVoiceDialog" aria-labelledby="readingVoiceTitle">
-    <h2 id="readingVoiceTitle">Reading voices</h2>
-    <label>Language for Kids Room and Lecture<select id="readingLanguage"><option value="fr">Français québécois</option><option value="en">English</option></select></label>
-    <p>For readings and spoken replies in Kids Room and Lecture on this browser. French is the default; select English explicitly.</p>
-    <label>French<select id="readingVoiceFr"><option value="">Default voice</option></select></label>
-    <label>English<select id="readingVoiceEn"><option value="">Default voice</option></select></label>
-    <p id="readingVoiceStatus" role="status"></p>
-    <div class="actions"><button type="button" id="readingVoicePreview">Preview selected language</button><button type="button" id="readingVoiceStop">Stop</button><button type="button" id="readingVoiceSave">Save</button><button type="button" id="readingVoiceClose">Close</button></div>
-  </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="/js/voice/speech-language.js?v=voice-surfaces-2" defer></script>
   <script src="/js/voice/spoken-presentation.js?v=voice-flow-3" defer></script>
@@ -39,7 +31,11 @@
   <script src="/js/voice/playback-hold.js?v=voice-noise-1" defer></script>
   <script src="/js/voice/voice-timeline.js?v=stt-journal-1" defer></script>
   <script src="/js/voice/voice-health.js?v=voice-health-1" defer></script>
-  <script src="/js/voice/browser-conversation.js?v=stt-journal-1" defer></script>
+  <script src="/js/voice/voice-settings.js?v=voice-workshop-1" defer></script>
+  <script src="/psyx/assets/voice-preferences.js?v=voice-workshop-1" defer></script>
+  <script src="/js/voice/voice-workshop-session.js?v=voice-workshop-1" defer></script>
+  <script src="/js/voice/voice-workshop.js?v=voice-workshop-1" defer></script>
+  <script src="/js/voice/browser-conversation.js?v=voice-workshop-1" defer></script>
   <script src="/js/voice/speech-ladder.js?v=voice-surfaces-2" defer></script>
   <script src="/assets/household/open-hold.js?v=1.56.4" defer></script>
   <script src="/assets/household/personal-notes.js?v=core-notes-1" defer></script>
@@ -58,7 +54,7 @@
   <script src="/assets/household/conversation-composer.js?v=everyday-1" defer></script>
   <script src="/assets/household/conversation-work.js?v=voice-flow-4" defer></script>
   <script src="/assets/household/workflow-panel.js?v=stt-journal-1" defer></script>
-  <script src="/assets/household/conversation-page.js?v=stt-evidence-1" defer></script>
+  <script src="/assets/household/conversation-page.js?v=voice-workshop-1" defer></script>
   <script src="/assets/household/secretary-rules.js?v=rules-1" defer></script>
   <script src="/assets/household/desk-cards.js?v=day-quality-2" defer></script>
   <script src="/assets/household/family-conversations.js?v=family-review-1" defer></script>
@@ -73,6 +69,6 @@
   <script src="/assets/household/parent-page.js?v=everyday-1" defer></script>
   <script src="/assets/household/device-check-page.js?v=device-check-1" defer></script>
   <script src="/assets/household/learning-voice.js?v=voice-surfaces-2" defer></script>
-  <script src="/assets/household/app.js?v=voice-surfaces-2" defer></script>
+  <script src="/assets/household/app.js?v=voice-workshop-1" defer></script>
 </body>
 </html>

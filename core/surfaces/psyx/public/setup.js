@@ -66,22 +66,4 @@ async function refreshSetup() {
 
 function wireSetup() {
   $('refreshSetup').addEventListener('click', refreshSetup);
-  $('testSetupMicrophone').addEventListener('click', async () => {
-
-    const generation = ++setupGeneration;
-    let stream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (generation !== setupGeneration) return;
-      setupMicrophone = 'granted';
-      $('setupNotice').textContent = 'Microphone accessible. The test is done; no audio is kept.';
-    } catch (error) {
-      if (generation !== setupGeneration) return;
-      setupMicrophone = error.name === 'NotAllowedError' ? 'denied' : 'unavailable';
-      $('setupNotice').textContent = 'Check the microphone permission and the device in this browser.';
-    } finally {
-      stream?.getTracks().forEach(track => track.stop());
-      if (generation === setupGeneration) renderSetup();
-    }
-  });
 }

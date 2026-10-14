@@ -39,11 +39,7 @@
           <p class="agent-ops-editor-note">This changes how the member presents. Its model, tools, memory and channels belong to the agent and are not edited here.${origin}</p>
           ${owner ? `<label>Identifier<input name="name" maxlength="120" required pattern="[a-z][a-z0-9_-]*" title="Lowercase letters, digits, _ and -" value="${esc(row.name)}"></label>` : ''}
           <label>Name shown<input name="label" maxlength="80" required value="${esc(layout.label || row.name)}"></label>
-          <div class="agent-ops-editor-row">
-            <label>Voice engine<select name="provider">${options(PROVIDERS, voice.provider || 'kokoro')}</select></label>
-            <label>French voice<input name="voiceFr" maxlength="120" value="${esc(voice.voices?.fr || '')}"></label>
-            <label>English voice<input name="voiceEn" maxlength="120" value="${esc(voice.voices?.en || '')}"></label>
-          </div>
+          <p class="agent-ops-editor-note">Voice choices and previews live in the <a href="/voice-lab?tab=settings&persona=${encodeURIComponent(row.name || '')}">Voice workshop</a>.</p>
           <div class="agent-ops-editor-row">
             <label>Avatar<select name="style">${options(STYLES, visual.style || '')}</select></label>
             <label>Colour<input name="color" type="color" value="${esc(/^#[a-f0-9]{6}$/i.test(visual.color || '') ? visual.color : '#52cfc5')}"></label>
@@ -68,7 +64,7 @@
       const body = {};
       if (fields.label !== (layout.label || row.name)) body.label = fields.label;
       if (fields.personality !== row.systemPrompt) body.personality = fields.personality;
-      if (fields.provider !== (voice.provider || 'kokoro') || fields.voiceFr !== (voice.voices?.fr || '') || fields.voiceEn !== (voice.voices?.en || '')) {
+      if (typeof fields.provider === 'string' && (fields.provider !== (voice.provider || 'kokoro') || fields.voiceFr !== (voice.voices?.fr || '') || fields.voiceEn !== (voice.voices?.en || ''))) {
         body.voice = { provider: fields.provider, voices: { ...(fields.voiceFr ? { fr: fields.voiceFr } : {}), ...(fields.voiceEn ? { en: fields.voiceEn } : {}) } };
       }
       if (fields.style !== (visual.style || '') || (fields.style && fields.color.toLowerCase() !== (visual.color || '').toLowerCase())) {
@@ -139,7 +135,7 @@
       dialog.addEventListener('submit', (event) => {
         event.preventDefault();
         const data = new FormData(event.target);
-        const fields = Object.fromEntries(['name', 'label', 'personality', 'provider', 'voiceFr', 'voiceEn', 'style', 'color']
+        const fields = Object.fromEntries(['name', 'label', 'personality', 'style', 'color']
           .map((name) => [name, String(data.get(name) || '').trim()]));
         if (draft) return finish(() => call('POST', '/api/prompts/catalog', creation(draft, fields)));
         const body = changes(current, fields);

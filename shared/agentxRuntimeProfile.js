@@ -61,6 +61,7 @@ const DEMO_DISABLED_PREFIXES = Object.freeze([
   '/pipeline',
   '/planning',
   '/psyx',
+  '/voice-lab',
   '/voice',
   '/voice-personas'
 ]);

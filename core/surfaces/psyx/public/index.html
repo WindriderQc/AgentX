@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/psyx/assets/hardening.css?v=2.12.3">
   <link rel="stylesheet" href="/psyx/assets/voice-session.css?v=2.12.3">
   <link rel="stylesheet" href="/psyx/assets/review.css?v=2.12.3">
+  <link rel="stylesheet" href="/css/voice-workshop.css?v=1">
 </head>
 <body>
   <!-- product-navigation -->
@@ -30,10 +31,11 @@
         <button id="sessionsToggle" class="icon-btn adaptive-toggle" type="button" aria-controls="sessionsPanel" aria-expanded="false">Sessions</button>
         <button id="insightsToggle" class="icon-btn adaptive-toggle" type="button" aria-controls="insightsPanel" aria-expanded="false">Memory</button>
         <button id="voiceSessionOpen" class="primary-small" type="button">Voice session</button>
+        <button id="voiceSettings" class="icon-btn" type="button">Atelier vocal</button>
+        <label class="voice-daily-language">Language<select id="voiceLanguage"><option value="fr">Français québécois</option><option value="en">English</option></select></label>
         <details id="psyxSettings" class="settings-menu">
           <summary class="icon-btn">Settings</summary>
           <div class="settings-options">
-            <button id="voiceSettings" class="icon-btn" type="button">Voice and language</button>
             <button id="performancePsyx" class="icon-btn" type="button">Context and performance</button>
             <button id="settingsPsyx" class="icon-btn" type="button">Personal data</button>
           </div>
@@ -142,6 +144,7 @@
           </div>
         </form>
 
+        <div class="voice-daily-controls"><label><input id="voiceSpokenReplies" type="checkbox"> Spoken replies</label><p id="voiceStatusText" role="status"></p><p id="voiceActionStatus" role="status"></p></div>
         <footer>
           <span id="sessionLabel">New conversation</span>
           <span id="routeLabel">Normal · routing pending</span>
@@ -207,7 +210,7 @@
             <p class="state-help">Voice is optional. Microphone permissions belong to this browser.</p>
             <div id="setupChecklist" class="state-items" role="status" aria-live="polite"></div>
             <button id="refreshSetup" type="button">Check again</button>
-            <button id="testSetupMicrophone" type="button">Test microphone access</button>
+            <a id="testSetupMicrophone" href="/voice-lab?scope=psyx">Microphone tests in the Voice workshop</a>
             <p id="setupNotice" class="state-help" role="status" aria-live="polite"></p>
           </section>
           <section id="viewBrain" class="state-view" role="tabpanel" aria-labelledby="tabBrain" data-view="brain" hidden>
@@ -248,31 +251,6 @@
     </div>
   </dialog>
 
-  <dialog id="voiceDialog" class="modal">
-    <form method="dialog" class="modal-card voice-card">
-      <div class="modal-header"><div><div class="panel-kicker">Local and private voice</div><h2>PsyX voice</h2></div><button value="cancel" class="icon-btn" type="submit" aria-label="Close voice settings">×</button></div>
-      <div id="voiceSecureNotice" class="voice-notice" role="status"></div>
-      <section class="voice-status-card">
-        <span id="voiceStatusDot" class="status-dot"></span>
-        <div><strong id="voiceStatusText">Checking local voice…</strong><small id="voiceStatusDetail">Audio is processed by your private VoiX service.</small></div>
-        <button id="voiceRefresh" class="ghost-button compact" type="button">Refresh</button>
-      </section>
-      <label class="voice-toggle"><input id="voiceSpokenReplies" type="checkbox"> <span><strong>Spoken replies</strong><small>Read PsyX replies aloud with local speech synthesis.</small></span></label>
-      <label class="voice-toggle"><input id="voiceAutoSend" type="checkbox"> <span><strong>Send after transcription</strong><small>Otherwise, the text stays in the input box for review.</small></span></label>
-      <div class="voice-grid">
-        <label>Spoken language<select id="voiceLanguage"><option value="fr">French</option><option value="en">English</option></select></label>
-        <label>Local speech engine<select id="voiceTtsProvider"><option value="kokoro">Kokoro</option><option value="windows_sapi">Windows SAPI</option><option value="voxcpm">VoxCPM2 · Voice A</option></select></label>
-      </div>
-      <label>Voice<select id="voiceTtsVoice"><option value="">Default voice for the language</option></select></label>
-      <details><summary>Custom voice or Kokoro blend</summary><label>Voice name<input id="voiceTtsCustom" type="text" maxlength="120" autocomplete="off" spellcheck="false"></label></details>
-      <p id="voicePreferenceSummary" class="voice-preference-summary" role="status"></p>
-      <label>Browser microphone<select id="voiceInputDevice"><option value="">System default microphone</option></select></label>
-      <div class="voice-actions"><button id="voiceFindDevices" class="ghost-button" type="button">Allow / refresh microphones</button><button id="voiceTest" class="ghost-button" type="button">Test voice</button><button id="voiceStop" class="ghost-button" type="button">Stop voice</button></div>
-      <p class="state-help">Recordings and synthesized audio pass through memory only: they never go into conversations, PsyX memory, exports or the browser. Only your preferences are kept in this browser; they apply only to its requests and never change the shared VoiX settings.</p>
-      <div id="voiceActionStatus" class="privacy-status" role="status" aria-live="polite"></div>
-      <div class="modal-actions"><button value="cancel" class="primary-button" type="submit">Done</button></div>
-    </form>
-  </dialog>
 
 
   <dialog id="dataDialog" class="modal">
@@ -330,10 +308,14 @@
   <script src="/js/voice/speech-language.js?v=2.12.3" defer></script>
   <script src="/js/voice/spoken-presentation.js?v=voice-flow-3" defer></script>
   <script src="/js/voice/playback-hold.js?v=2.12.3" defer></script>
-  <script src="/js/voice/browser-conversation.js?v=stt-journal-1" defer></script>
-  <script src="/psyx/assets/voice-session.js?v=2.12.3" defer></script>
+  <script src="/assets/household/persona-presentation.js?v=voice-workshop-1" defer></script>
+  <script src="/js/voice/voice-settings.js?v=voice-workshop-1" defer></script>
+  <script src="/js/voice/voice-workshop-session.js?v=voice-workshop-1" defer></script>
+  <script src="/js/voice/voice-workshop.js?v=voice-workshop-1" defer></script>
+  <script src="/js/voice/browser-conversation.js?v=voice-workshop-1" defer></script>
+  <script src="/psyx/assets/voice-session.js?v=2.12.4" defer></script>
   <script src="/psyx/assets/voice-preferences.js?v=2.12.3" defer></script>
-  <script src="/psyx/assets/voice-controls.js?v=2.12.3" defer></script>
+  <script src="/psyx/assets/voice-controls.js?v=voice-workshop-1" defer></script>
   <script src="/psyx/assets/state-panel.js?v=2.12.3" defer></script>
   <script src="/psyx/assets/review.js?v=2.12.3" defer></script>
   <link rel="stylesheet" href="/css/conversation-preferences.css?v=1">
@@ -348,7 +330,7 @@
   <script src="/psyx/assets/dream.js?v=2.12.3" defer></script>
   <script src="/psyx/assets/toolbox.js?v=2.12.3" defer></script>
   <script src="/psyx/assets/formulation.js?v=2.12.3" defer></script>
-  <script src="/psyx/assets/setup.js?v=2.12.3" defer></script>
-  <script src="/psyx/assets/app.js?v=2.12.3" defer></script>
+  <script src="/psyx/assets/setup.js?v=voice-workshop-1" defer></script>
+  <script src="/psyx/assets/app.js?v=2.12.4" defer></script>
 </body>
 </html>

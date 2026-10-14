@@ -745,6 +745,13 @@ owner's explicit changes to the Core plan. `finance_alerts` can mark alerts
 reported in an authorized delivery workflow. These bounded Core writes grant
 no financial transaction, workbook edit or general filesystem permission.
 
+Full profile serves the Voice workshop at `/voice-lab` in Workshop. It owns the
+advanced voice test/configuration UI; Nestor, Reading and PsyX retain their daily
+controls and contextual access. Its STT-only mode never dispatches Main or writes
+a conversation. The service settings view is read-only. Browser capture settings
+apply to new microphone openings and keep their scope; saving does not edit the
+speech host environment or restart a model. See [workshop boundaries](AGENTS_AND_VOICE.md#voice-workshop).
+
 Full profile serves `/dad`, `/panel`, `/kids/sounds` and `/lecture`. The normal
 Core inference configuration is sufficient for text conversation. OpenClaw needs
 explicit `OPENCLAW_GATEWAY_URL` and `OPENCLAW_GATEWAY_TOKEN` in the instance;
@@ -789,7 +796,7 @@ canonical transcript contains the submitted user text only. See
 `HOUSEHOLD_PERSONA_VOICES` optionally gives personas an instance voice without
 editing the shared catalog: a JSON object maps a persona id, or `"*"` for every
 persona, to `provider|voice` (`kokoro`, `windows_sapi` or `voxcpm`), for example
-a VoxCPM2 voice cloned on the voice host. A voice saved through Agent Ops › Team
+a VoxCPM2 voice cloned on the voice host. A personality voice saved through Workshop › Voice workshop
 outranks this map; an explicit browser voice selection wins over both. Catalog
 snapshots carry the effective voice, and server replies resolve the instance map
 again for each reply. Invalid map entries keep the catalog voice. See

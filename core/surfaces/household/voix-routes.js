@@ -21,6 +21,10 @@ function registerVoixRoutes(app, {
     catch (error) { return fail(res, error.status || 503, error.message, error.code || 'VOIX_UNAVAILABLE'); }
   });
   // Stateless routes below may be answered by VOIX_FALLBACK_URL; see voix-upstream.
+  voix.get('/settings', async (_req, res) => {
+    try { return envelope(res, require('../../src/services/voice/settings').serviceSettings(await upstreamJson('/config'))); }
+    catch (error) { return fail(res, 503, 'Speech settings are unavailable', 'VOIX_UNAVAILABLE'); }
+  });
   voix.get('/upstream', async (_req, res) => envelope(res, await voixUpstream.status()));
   voix.get('/catalog', async (_req, res) => {
     try {
