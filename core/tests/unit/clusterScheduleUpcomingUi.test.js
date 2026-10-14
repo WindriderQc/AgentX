@@ -529,3 +529,15 @@ describe('Cluster Schedule evidence presentation', () => {
       .toBeLessThan(routeBlock.indexOf('/js/cluster-schedule.js'));
   });
 });
+
+
+test('conditional checks do not invent a missed transfer when their native next check is still in the future', () => {
+  const projection = require('../../public/js/cluster-schedule-upcoming');
+  const now = Date.parse('2026-10-14T12:00:00Z');
+  const entry = {id: 'archive', name: 'Archive', lastRun: '2026-10-13T12:00:00Z', scheduleType: 'interval', intervalMs: 900000,
+    slots: [{start: '2026-10-14T11:00:00Z', end: '2026-10-14T11:01:00Z'}],
+    metadata: {gateType: 'snapshot', sourceAuthority: 'native-operations-supervisor', state: 'completed', nextRunAtMs: now + 900000}};
+  expect(projection.findOverdueEntries([entry], {now})).toEqual([]);
+  expect(projection.getCadenceLabel(entry)).toContain('Vérif.');
+  expect(projection.findOverdueEntries([{...entry, metadata: {...entry.metadata, state: 'unknown'}}], {now})).toHaveLength(1);
+});

@@ -146,7 +146,6 @@
     $('inventoryCount').textContent = snapshot.inventory.observedAt ? count(snapshot.inventory.rows.length) : '—';
     if (snapshot.inventory.unavailable.length) notice('L’inventaire Windows est ancien : le poste est indisponible. Les derniers résultats reçus restent affichés.', false, 'inventory');
     renderJobs(); renderHistory(); renderInventory();
-    if (state.tab === 'calendar') window.AutomationsHub.calendar();
   }
   function renderJobs() {
     if (!state.snapshot?.available) return;
@@ -220,7 +219,6 @@
     const url = new URL(location.href);
     if (name === 'jobs') url.searchParams.delete('view'); else url.searchParams.set('view', name);
     history.replaceState(null, '', url.pathname + url.search);
-    if (name === 'calendar') window.AutomationsHub.calendar();
     for (const tab of root.querySelectorAll('[data-tab]')) {
       const selected = tab.dataset.tab === name;
       tab.setAttribute('aria-selected', String(selected)); tab.tabIndex = selected ? 0 : -1; tab.classList.toggle('active', selected);
@@ -275,7 +273,7 @@
   root.querySelectorAll('[data-tab]').forEach(tab => {
     tab.addEventListener('click', () => setTab(tab.dataset.tab));
     tab.addEventListener('keydown', event => {
-      const names = ['jobs', 'calendar', 'history', 'inventory']; const index = names.indexOf(state.tab);
+      const names = ['jobs', 'history', 'inventory']; const index = names.indexOf(state.tab);
       if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {event.preventDefault(); setTab(event.key === 'Home' ? names[0] : event.key === 'End' ? names[names.length - 1] : names[(index + (event.key === 'ArrowRight' ? 1 : names.length - 1)) % names.length], true);}
     });
   });
@@ -305,6 +303,6 @@
   const query = params.get('q');
   if (query) {state.search = query; state.jobsFilter = 'all'; $('operationsSearch').value = query; $('jobsFilter').value = 'all';}
   const requested = params.get('view');
-  setTab(['calendar', 'history', 'inventory'].includes(requested) ? requested : 'jobs');
+  setTab(['history', 'inventory'].includes(requested) ? requested : 'jobs');
   load();
 })();

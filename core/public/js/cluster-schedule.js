@@ -371,7 +371,7 @@ async function loadTimeline() {
       visibleTimelineEntries = visibleScheduled;
       renderedTimelineMode = 'task';
 
-      renderServicesStrip(visibleServices);
+      renderServicesStrip(filterTimelineEntries(visibleServices));
       renderGroupedHeatmap(container, visibleScheduled);
       renderLegend(visibleScheduled);
     }
@@ -399,8 +399,23 @@ function splitTimeline(timeline) {
   return { persistent, scheduled };
 }
 
+let timelineSearch = '';
+let timelineOwner = 'all';
+function scheduleOwner(entry) {
+  if (entry.metadata?.scheduler === 'openclaw') return 'openclaw';
+  if (entry.metadata?.scheduler === 'agentx-operations') return 'operations';
+  if (entry.source === 'ollama-persistent') return 'infrastructure';
+  return 'core';
+}
+function setCalendarCatalogueFilter(search, owner) {
+  timelineSearch = String(search || '').toLocaleLowerCase();
+  timelineOwner = owner || 'all';
+  loadTimeline();
+}
 function filterTimelineEntries(entries) {
   return (entries || []).filter(entry => {
+    if (timelineOwner !== 'all' && scheduleOwner(entry) !== timelineOwner) return false;
+    if (timelineSearch && !`${entry.name} ${entry.agent || ''} ${entry.host || ''} ${entry.metadata?.executionHost || ''}`.toLocaleLowerCase().includes(timelineSearch)) return false;
     if (!showNoGpuTasks && isNoGpuTaskEntry(entry)) return false;
     if (!showHighFreqLightJobs && isHighFrequencyLightJob(entry)) return false;
     return true;
@@ -481,7 +496,7 @@ function renderGroupedHeatmap(container, timeline) {
       const isInfra = isNoGpuTaskEntry(entry);
       const infraClass = isInfra ? ' cs-hm-label-infra' : '';
       const hostMeta = getHostMeta(entry.host);
-      const hostLabel = hostMeta ? hostMeta.label : '';
+      const hostLabel = !entry.host && entry.metadata?.scheduler ? (entry.metadata.executionHost || 'Runtime natif') : hostMeta ? hostMeta.label : '';
 
       const cadence = getCadenceLabel(entry);
       html += `<div class="cs-hm-label${hiddenClass}${infraClass}" title="${esc(entry.name)}${isInfra ? ' [no GPU — infra task]' : ''}${hostLabel ? ' · ' + hostLabel : ''}${cadence ? ' · ' + cadence : ''}">
