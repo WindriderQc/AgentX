@@ -39,3 +39,6 @@ body.automations-surface{background:#0a0e18;background-image:none}
 
 .oj-calendar-shell .cs-hm-slot{min-width:5px;min-height:28px}
 .oj-calendar-shell .cs-plan-note{font-size:11px;line-height:1.6;color:var(--oj-muted);margin:0 0 16px}
+.oj-calendar-shell .cs-queue-button[aria-pressed=true]{background:#173b35;border-color:#3b7667;color:var(--oj-accent)}
+.cs-measurements .cs-live-evidence{margin:0;padding:12px 16px}
+.oj-calendar-shell .cs-measurements .cs-live-bar{margin:0;padding:0 16px 16px}

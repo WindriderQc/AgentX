@@ -33,14 +33,6 @@
             </div>
         </div>
 
-        <!-- Live Host Cards: separate loaded-model/VRAM detail evidence. -->
-        <p id="liveEvidence" class="cs-live-evidence" aria-live="polite">
-            Lecture des hôtes en cours…
-        </p>
-        <div id="liveBar" class="cs-live-bar" aria-describedby="liveEvidence">
-            <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Chargement des hôtes…</div>
-        </div>
-
         <!-- Services continus Strip -->
         <div id="servicesStrip" class="cs-services-strip" style="display:none">
             <div class="cs-services-header">
@@ -79,6 +71,10 @@
 <p class="cs-plan-note">Les marqueurs courts indiquent un départ prévu. Les durées sont estimées ; la consommation observée est dans « Utilisation mesurée ».</p>
                 <!-- Measured use supplements the same calendar. -->
                 <details class="cs-measurements" id="scheduleMeasurements"><summary><i class="fas fa-chart-line" aria-hidden="true"></i> Utilisation mesurée et comparaison avec le prévu</summary>
+                <p id="liveEvidence" class="cs-live-evidence" aria-live="polite">Lecture des hôtes en cours…</p>
+                <div id="liveBar" class="cs-live-bar" aria-describedby="liveEvidence">
+                    <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Chargement des hôtes…</div>
+                </div>
                 <div class="cs-actual-section">
                     <div class="cs-actual-header">
                         <div class="cs-actual-tabs">
