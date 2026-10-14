@@ -18,7 +18,21 @@ import { COMPARISON_STATES, parseSignal, rankingSignal } from '/dist/signal-evid
 /*                          Cost Tracking Logic                               */
 /* -------------------------------------------------------------------------- */
 
-async function loadCosts(days, groupBy = null, breakdown = null) {
+// The stats tiles, efficiency table and breakdown chart all read the same
+// per-model aggregation; panels refreshed together share one request.
+const inflightCosts = new Map();
+
+function loadCosts(days, groupBy = null, breakdown = null) {
+  const key = `${days}|${groupBy || breakdown || 'model'}`;
+  if (!inflightCosts.has(key)) {
+    const request = requestCosts(days, groupBy || breakdown || 'model')
+      .finally(() => inflightCosts.delete(key));
+    inflightCosts.set(key, request);
+  }
+  return inflightCosts.get(key);
+}
+
+async function requestCosts(days, groupBy = null, breakdown = null) {
   const query = buildRangeQuery(days);
   const params = new URLSearchParams(query);
 

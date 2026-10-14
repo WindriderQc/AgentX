@@ -114,7 +114,8 @@
 
   function refreshAll() {
     setStatus('unknown', 'Refreshing activity…', 'Reading recent inference, conversations and knowledge signals', 'fa-circle-notch fa-spin');
-    ['infRefreshBtn', 'refreshBtn', 'refreshRagBtn'].forEach(function (id) {
+    // refreshBtn already reloads the RAG metrics.
+    ['infRefreshBtn', 'refreshBtn'].forEach(function (id) {
       document.getElementById(id)?.click();
     });
     window.setTimeout(refreshSummary, 900);
