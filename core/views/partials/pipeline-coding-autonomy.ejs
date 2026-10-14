@@ -1,40 +1,48 @@
 <link rel="stylesheet" href="/css/pipeline-coding-autonomy.css">
 <section class="pipeline-panel" id="pipelineCodingAutonomy" aria-labelledby="codingAutonomyTitle">
-  <h2 id="codingAutonomyTitle">Coding Team autonomy</h2>
-  <p>Authorize exact engineering tasks through human review. The loop updates each task's draft PR, observes CI and asks the Coding Team to correct it. Human review, merge, installation and real product acceptance are separate decisions.</p>
+  <div class="pipeline-panel-header"><div><span class="pipeline-run-label">Automatic corrections · live tracking</span><h3 id="codingAutonomyTitle">Coding Team autonomy</h3><p>Approved tasks only. The team updates draft PRs, watches CI and corrects within your budgets.</p></div><button type="button" class="pipeline-btn compact" id="codingAutonomyRefresh">Refresh</button></div>
+  <div class="pipeline-autonomy-body">
   <p id="codingAutonomyStatus" role="status" aria-live="polite">Reading Core's autonomy state…</p>
-  <label><input type="checkbox" id="codingAutonomyConfirm"> I approve this bounded task scope and the selected campaign</label>
-  <p>
-    <button type="button" class="pipeline-btn" data-autonomy-switch="true">Enable authorized scope</button>
-    <button type="button" class="pipeline-btn" data-autonomy-switch="false">Pause new work and corrections</button>
-    <button type="button" class="pipeline-btn" id="codingAutonomyRefresh">Refresh</button>
-  </p>
-  <details>
-    <summary>Authorize an engineering task</summary>
+  <label class="pipeline-autonomy-confirm"><input type="checkbox" id="codingAutonomyConfirm"> I approve this bounded task scope and the selected campaign</label>
+  <div class="pipeline-autonomy-actions">
+    <button type="button" class="pipeline-btn compact" data-autonomy-switch="true">Enable authorized scope</button>
+    <button type="button" class="pipeline-btn compact" data-autonomy-switch="false">Pause new work and corrections</button>
+  </div>
+  <p class="pipeline-subtle">Pausing prevents new workers and corrections. Stop a running worker from its task card. Human review, merge, installation and product acceptance are separate decisions.</p>
+  <details id="codingAutonomySetup">
+    <summary>Set up a campaign and authorize a task</summary>
+    <p>Only low-risk public engineering work routed to agentx-coding is eligible. Review the files and budgets before approving. Ideas and private/family tasks stay outside this control.</p>
     <form id="codingAutonomyCampaign">
+      <fieldset><legend>1. Open the reserved campaign window</legend>
+      <p class="pipeline-subtle">Reserve and review a coding campaign in <a href="/cluster-schedule">Cluster Schedule</a>, then enter its ID here. Work requires an active permitted window.</p>
       <p><label>Reserved coding campaign ID <input name="queueRequestId" required></label>
-        <button type="submit" class="pipeline-btn">Begin the approved campaign window</button></p>
+        <button type="submit" class="pipeline-btn compact">Begin the approved campaign window</button></p></fieldset>
     </form>
     <form id="codingAutonomyAuthorize">
-      <p><label>Task ID <input name="pipelineId" pattern="[0-9]{4}" maxlength="4" required></label></p>
+      <fieldset><legend>2. Review the exact task and files</legend>
+      <p><label>Task ID <input name="pipelineId" pattern="[0-9]{4}" maxlength="4" placeholder="Four-digit task ID" required></label></p>
       <p><label>Approved heavy-work campaign ID <input name="queueRequestId" required></label></p>
       <p><label>Exact permitted files, one per line <textarea name="scope" rows="4" required></textarea></label></p>
       <p><label>Independent verification <select name="verificationProfile">
         <option value="agentx-dispatcher-tests/v1">Coding integration tests</option>
         <option value="agentx-core-runner-tests/v1">Bounded Core coding tests</option>
         <option value="agentx-benchmark-artifact-tests/v1">Benchmark artifact comparison tests</option>
-      </select></label></p>
+      </select></label></p></fieldset>
+      <fieldset><legend>3. Set cumulative work limits</legend>
+      <p class="pipeline-subtle">These are total budgets for this authorization, including corrections.</p>
       <p><label>Maximum corrections <input name="maxResumes" type="number" min="0" max="2" value="2" required></label>
         <label>Total work minutes <input name="workMinutes" type="number" min="1" max="240" value="240" required></label>
         <label>Total test minutes <input name="testMinutes" type="number" min="1" max="80" value="80" required></label>
         <label>Total model minutes <input name="modelMinutes" type="number" min="1" max="90" value="90" required></label>
         <label>Total model calls <input name="modelCalls" type="number" min="1" max="128" value="128" required></label>
         <label>Total CI waiting minutes <input name="ciMinutes" type="number" min="1" max="60" value="60" required></label>
-        <label>Minutes without useful progress <input name="noProgressMinutes" type="number" min="1" max="45" value="45" required></label></p>
-      <p>Only low-risk public engineering work routed to agentx-coding is eligible. This authorization does not start an idea or a private/family task. The reserved queue campaign needs an explicit operator start above and an active permitted window; <a href="/cluster-schedule">Cluster Schedule</a> shows it.</p>
-      <button type="submit" class="pipeline-btn">Authorize this task and file scope</button>
+        <label>Minutes without useful progress <input name="noProgressMinutes" type="number" min="1" max="45" value="45" required></label></p></fieldset>
+      <button type="submit" class="pipeline-btn compact">Authorize this task and file scope</button>
     </form>
   </details>
-  <div id="codingAutonomyTasks" aria-live="polite"></div>
+  <h4 class="pipeline-autonomy-tasks-title">Current Coding Team tasks</h4>
+  <div id="codingAutonomyTasks"></div>
+  <a class="pipeline-autonomy-history-link" href="#pipelineHistory">Archived tasks and qualifications <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+  </div>
 </section>
 <script src="/js/pipeline-coding-autonomy.js" defer></script>

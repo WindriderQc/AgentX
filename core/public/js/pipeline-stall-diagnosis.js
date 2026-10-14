@@ -120,14 +120,18 @@
   // ---- Page panel ----------------------------------------------------------
   let listRequest = null;
   let listTimer = null;
+  const listMarkup = new WeakMap();
   function row(diagnosis, fresh) {
     const [label, icon, tone] = CATEGORY[diagnosis.category];
     return `<li class="pipeline-stall-item tone-${tone}">
       <button type="button" class="pipeline-stall-open" data-pipeline-task="${esc(diagnosis.pipelineId)}" aria-label="Open task ${esc(diagnosis.pipelineId)} dossier: ${esc(label)}">
-        <i class="fas ${icon}" aria-hidden="true"></i><span><strong>#${esc(diagnosis.pipelineId)} · ${esc(label)}</strong> ${esc(diagnosis.summary)}</span></button>
-      <p><span class="pipeline-stall-owner">${esc(OWNER[diagnosis.owner] || human(diagnosis.owner))}</span> ${esc(diagnosis.action)}</p>
-      ${diagnosis.missingEvidence.length ? `<p class="pipeline-muted">Missing: ${diagnosis.missingEvidence.map(item => esc(item.label || human(item.code))).join('; ')}</p>` : ''}
-      ${escalationLine(diagnosis, fresh)}
+        <i class="fas ${icon}" aria-hidden="true"></i><span><strong>Task #${esc(diagnosis.pipelineId)}</strong><span class="pipeline-stall-category">${esc(label)}</span></span><i class="fas fa-arrow-right" aria-hidden="true"></i></button>
+      <p class="pipeline-stall-next">${esc(diagnosis.action)}</p>
+      <details data-stall-evidence="${esc(diagnosis.pipelineId)}:${esc(diagnosis.code)}"><summary>Reason and missing evidence</summary>
+        <p>${esc(diagnosis.summary)}</p><p>Next step owned by: ${esc(OWNER[diagnosis.owner] || human(diagnosis.owner))}</p>
+        ${diagnosis.missingEvidence.length ? `<p class="pipeline-muted">Missing: ${diagnosis.missingEvidence.map(item => esc(item.label || human(item.code))).join('; ')}</p>` : ''}
+        ${escalationLine(diagnosis, fresh)}
+      </details>
     </li>`;
   }
   async function refreshList() {
@@ -147,8 +151,12 @@
       const newKeys = items.filter(item => firstSighting(item.escalation?.key)).map(item => item.escalation.key);
       const counts = Object.entries(value.counts).filter(([, count]) => count > 0).map(([category, count]) => `${count} ${CATEGORY[category]?.[0].toLowerCase() || human(category)}`);
       meta.innerHTML = `${esc(counts.join(' · ') || 'No active task')}${value.truncated || value.scope?.scanTruncated ? ' · list truncated' : ''} · ${stamp(value)}`;
-      list.innerHTML = items.length ? `<ul>${items.map(item => row(item, newKeys.includes(item.escalation?.key))).join('')}</ul>`
+      const expanded = new Set([...list.querySelectorAll('[data-stall-evidence][open]')].map(el => el.dataset.stallEvidence));
+      const html = items.length ? `<ul>${items.map(item => row(item, newKeys.includes(item.escalation?.key))).join('')}</ul>`
         : '<p class="pipeline-empty"><i class="fas fa-circle-check" aria-hidden="true"></i> No active task waits on a decision, a dependency or a recovery.</p>';
+      list.querySelector('.pipeline-stall-error')?.remove();
+      if (listMarkup.get(list) !== html) { list.innerHTML = html; listMarkup.set(list, html); }
+      list.querySelectorAll('[data-stall-evidence]').forEach(el => { el.open = expanded.has(el.dataset.stallEvidence); });
       if (newKeys.length) live.textContent = `${newKeys.length} new escalation${newKeys.length === 1 ? '' : 's'} to inspect.`;
       if (items.length !== value.items.length) list.insertAdjacentHTML('afterbegin', '<p class="pipeline-stall-error">Some diagnoses have an unknown shape and are not shown.</p>');
     } catch (error) {
