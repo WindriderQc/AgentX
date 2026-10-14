@@ -55,7 +55,7 @@
         if (currentGeneration !== generation || currentSession !== sessionId) { await receipt(item, 'deferred', claim.claimToken); return; }
         const language = item.result.language || getConversation().selection?.language || 'fr';
         const text = replay ? item.result.readingText ?? item.result.text : item.result.spokenText ?? item.result.text;
-        const spoken = await getConversation().interject({ text, language }, { readAloud: replay, onScheduled() {
+        const spoken = await getConversation().interject({ text, language }, { readAloud: replay, preserveLanguage: true, onScheduled() {
           scheduled = true; startedReceipt = receipt(item, 'started', claim.claimToken); startedReceipt.catch(() => {});
         } });
         if (startedReceipt) await startedReceipt;

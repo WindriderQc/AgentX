@@ -418,7 +418,7 @@
     // The background brain may add one short remark at a natural pause (#169):
     // only while listening (awake, if the wake word is on) with no turn in flight.
     // Background results use the same speech confirmation as an ordinary reply.
-    async interject(reply, { onScheduled, readAloud = false } = {}) {
+    async interject(reply, { onScheduled, readAloud = false, preserveLanguage = false } = {}) {
       const epoch = this.epoch;
       const idle = () => this.current(epoch) && this.state === 'listening' && !this.activeTurn && !this.turnPending
         && (!this.selection?.wakeWord || this.wake.active());
@@ -427,8 +427,10 @@
       let turn;
       const cancel = () => { turn?.speech.abort(); this.releaseCandidate(turn); };
       try {
-        // The remark is one utterance: the chosen language, else its own words.
-        const language = speechLanguage.turnSpeechLanguage(reply.text, reply.language, this.selection?.language);
+        // Saved work belongs to its accepted turn; newer browser preferences
+        // apply to new turns, not the retained result or its explicit replay.
+        const language = preserveLanguage && speechLanguage.normalizeSpeechLanguage(reply.language)
+          || speechLanguage.turnSpeechLanguage(reply.text, reply.language, this.selection?.language);
         const segments = speechLanguage.splitSpeechText((this.io.speechText || speechLanguage.speechText)(reply.text, { readAloud }));
         if (!segments.length) return false;
         turn = { epoch, id: root.crypto.randomUUID(), request: new AbortController(), speech: new AbortController(),

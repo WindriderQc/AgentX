@@ -273,6 +273,8 @@ change its version or authorize a new execution.
 The accepted canonical turn retains its selected French/English `speechLanguage`
 before either brain starts; duplicate intake cannot replace it. Older turns
 without that metadata fall back to the received answer's inferred language.
+The work presenter explicitly preserves this result language through the shared
+player, including every replay segment; later browser preferences apply to new turns.
 
 The result card survives a paused microphone and reconnect. At a natural pause,
 one browser claims presentation. Speech starts only while Nestor is listening,
