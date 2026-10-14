@@ -564,30 +564,10 @@ class Archive:
         return [load(file) for file in sorted((self.root / "threads").glob("*/manifest.json"))]
 
     def review_pages(self, manifest):
-        """Stable source pages; a new reply never discards prior reading receipts.
-
-        Raw headers and complete quoted bodies remain in original.json/packet.txt.
-        Only transport headers are omitted from the model's reading view.
-        """
-        payload = load(self.root / "threads" / manifest["threadId"] / "original.json")
-        originals = {m["id"]: m for m in payload.get("thread", payload)["messages"]}
-        for message in sorted(manifest["messages"], key=lambda m: int(m.get("internalDate") or 0), reverse=True):
-            h = {k.lower(): v for k, v in message["headers"].items()
-                 if k.lower() in ("from", "to", "cc", "bcc", "date", "subject")}
-            units = [("body", message_text(originals[message["id"]]), None)]
-            for attachment in message["attachments"]:
-                text = (self.root / attachment["textPath"]).read_text(encoding="utf-8", errors="replace") if attachment.get("textPath") else ""
-                units.append(("attachment", json.dumps(attachment, ensure_ascii=False) + "\n" + text, attachment))
-            for kind, text, attachment in units:
-                for offset in range(0, max(1, len(text)), REVIEW_PAGE_CHARS):
-                    content = text[offset:offset + REVIEW_PAGE_CHARS]
-                    key = sha(json.dumps([manifest["threadId"], message["id"], kind,
-                                          attachment.get("sha256") if attachment else None, offset, content]).encode())
-                    yield {"pageId": key, "threadId": manifest["threadId"], "messageId": message["id"],
-                           "evidenceHash": manifest["evidenceHash"], "gmailUrl": manifest["gmailUrl"],
-                           "headers": h, "kind": kind, "offset": offset, "totalChars": len(text),
-                           "moreOfThisSource": offset + REVIEW_PAGE_CHARS < len(text), "attachment": attachment,
-                           "externalUntrustedContent": content}
+        """Stable raw pages with quote attribution computed before pagination."""
+        from evidence_attribution import review_pages
+        yield from review_pages(self, manifest, load=load, message_text=message_text,
+                                sha=sha, json=json, page_chars=REVIEW_PAGE_CHARS)
 
     def native_status(self):
         manifests = self.manifests()
@@ -619,7 +599,12 @@ class Archive:
         if issued and not catching_up and not (self.root / "page-reviews" / (issued["pageId"] + ".json")).exists():
             current = load(self.root / "threads" / issued["threadId"] / "manifest.json", {})
             if current.get("evidenceHash") == issued["evidenceHash"]:
-                # Retry precisely the same page after an interrupted model run.
+                # Enrich an old issued page without replacing its identity or text.
+                if "sourceContext" not in issued:
+                    fresh = next((p for p in self.review_pages(current) if p["pageId"] == issued["pageId"]), None)
+                    if fresh and fresh["externalUntrustedContent"] == issued["externalUntrustedContent"]:
+                        issued["sourceContext"] = fresh["sourceContext"]
+                        save(state_file, state)
                 return {"outcome": "ready", "page": issued, "resumed": True}
             # A reply or OCR text changed the evidence; unread pages are reissued by content below.
         started = time.monotonic()
