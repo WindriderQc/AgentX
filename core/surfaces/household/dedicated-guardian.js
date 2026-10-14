@@ -34,14 +34,23 @@ function selectedContext({ base = '', brain = { text: '', refs: [] }, work = { t
   const ending = tail.slice(-Math.min(tail.length, 1000, remaining));
   remaining -= ending.length;
   const minimumBase = Math.min(2000, remaining);
-  const selected = new Set();
-  for (const source of [work, brain]) {
-    if (source.text && source.text.length <= remaining - minimumBase) {
-      selected.add(source); remaining -= source.text.length;
+  const workParts = Array.isArray(work.selectable) && work.selectable.length ? work.selectable : [{ text: work.text, refs: work.refs }];
+  const workHeader = work.selectable?.length ? work.selectionHeader || '' : '';
+  const selectedParts = new Set();
+  // Result receipts take precedence over pending statuses; preserve source order in the prompt.
+  const priority = [...workParts].sort((left, right) => Number(Boolean(right.refs?.length)) - Number(Boolean(left.refs?.length)));
+  for (const part of priority) {
+    const separator = selectedParts.size ? 1 : workHeader.length;
+    if (part.text && part.text.length + separator <= remaining - minimumBase) {
+      selectedParts.add(part); remaining -= part.text.length + separator;
     }
   }
-  return { text: (base.slice(0, remaining) + (selected.has(brain) ? brain.text : '')
-    + (selected.has(work) ? work.text : '') + ending + marker).trim(),
-  refs: [brain, work].filter(source => selected.has(source)).flatMap(source => source.refs) };
+  const includedWork = workParts.filter(part => selectedParts.has(part));
+  const workText = includedWork.length ? workHeader + includedWork.map(part => part.text).join('\n') : '';
+  const includeBrain = Boolean(brain.text && brain.text.length <= remaining - minimumBase);
+  if (includeBrain) remaining -= brain.text.length;
+  return { text: (base.slice(0, remaining) + (includeBrain ? brain.text : '')
+    + workText + ending + marker).trim(),
+  refs: [...(includeBrain ? brain.refs : []), ...includedWork.flatMap(part => part.refs)] };
 }
 module.exports = { route, instructions, history, context, selectedContext, LIMITS };

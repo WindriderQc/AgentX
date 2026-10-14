@@ -214,8 +214,13 @@
         const code = typeof work.reason === 'string' && (Object.hasOwn(reasons, work.reason) || /^[a-z][a-z0-9_]{0,79}$/.test(work.reason)) ? work.reason : '';
         return [labels[work.state], `Work ${work.id} · ${reasons[code] || (code ? `Core reason: ${code}` : 'reason not detailed')}`];
       }
-      if (work?.result) return work.includedIn?.length ? ['Included', `Work ${work.id} · context of turn ${work.includedIn[0].targetTurnId}`]
-        : ['Available', `Work ${work.id} · version ${work.result.version}`];
+      if (work?.result) {
+        const included = work.includedIn?.[0];
+        if (included?.coverage?.includes('result_excerpt')) return ['Excerpt',
+          `Work ${work.id} · excerpt in context of turn ${included.targetTurnId}; full result retained in Core`];
+        return included ? ['Included', `Work ${work.id} · context of turn ${included.targetTurnId}`]
+          : ['Available', `Work ${work.id} · version ${work.result.version}`];
+      }
       if (work?.resultDisposition === 'no_work') return ['Done', `Work ${work.id} · nothing useful to add`];
       if (row.reviewRefusal) return ['Unavailable', 'Complete background review lacked context; no partial advice used'];
       if (advice) return [advice.replaced ? 'Replaced' : advice.includedIn?.length ? 'Included' : 'Available',

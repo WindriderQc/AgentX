@@ -8,6 +8,7 @@ const capability = require('../../src/services/conversationWorks/capability');
 const { registerWorkRuntime } = require('../../surfaces/household/conversation-work-runtime');
 const { createConversationExecutor } = require('../../surfaces/household/conversation-executor');
 const { createWorkDelivery } = require('../../src/services/conversationWorks/delivery');
+const { createWorkControl } = require('../../src/services/conversationWorks/control');
 const { OWNER, EXCHANGE_SCOPE, hash, NO_WORK } = require('../../src/services/conversationWorks/contract');
 const Model = require('../../models/ConversationWorkState');
 const conversations = forSurface('household');
@@ -90,8 +91,9 @@ test('a greeting keeps the live guardian and is then reviewed by complete Main w
   expect(snapshot.items[0]).toMatchObject({ resultDisposition: 'no_work', result: null, pending: false });
 });
 
-test('an interrupted guardian leaves its native review queued for one Main attempt', async () => {
-  const accepted = await works.intake(input('Bonjour.'));
+test.each(['Bonjour.', 'Une demande inconnue de tous les anciens sélecteurs.'])(
+  'an interrupted guardian leaves its native review queued for one Main attempt: %s', async text => {
+  const accepted = await works.intake(input(text));
   await works.prepare(accepted.row._id, 'Shared context.');
   await conversations.settleTurn({ ...works.query(current.sessionId), traceId: accepted.row.turnId,
     replyText: '', outcome: 'cancelled', interrupted: true });
@@ -103,6 +105,20 @@ test('an interrupted guardian leaves its native review queued for one Main attem
   expect((await works.contextForNative(context(row))).guardianOutcome).toBe('cancelled');
   await works.observer.tick();
   expect(execute).toHaveBeenCalledTimes(1);
+});
+
+test.each(['pause', 'cancel'])('a late Guardian interruption does not undo an owner %s', async action => {
+  const accepted = await works.intake(input('Une demande inconnue de tous les anciens sélecteurs.'));
+  await works.prepare(accepted.row._id, 'Shared context.');
+  const beforeControl = await works.repo.get(accepted.row._id);
+  const controlled = await createWorkControl(works)(current.sessionId, accepted.row._id,
+    { action, revision: beforeControl.revision });
+  await conversations.settleTurn({ ...works.query(current.sessionId), traceId: accepted.row.turnId,
+    replyText: '', outcome: 'cancelled', interrupted: true });
+  const settled = await works.guardianSettled(accepted.row._id, 'cancelled');
+  expect(settled.state).toBe(controlled.state);
+  await works.observer.tick();
+  expect(execute).not.toHaveBeenCalled();
 });
 
 test('shared native context refresh sees new turns and pending work, without foreign selectors or worker privileges', async () => {
