@@ -40,6 +40,16 @@ class AttributionTests(unittest.TestCase):
         context = page_context([], 0, 30, kind='attachment', newer_messages=0)
         self.assertEqual(context['segments'][0]['attribution'], 'unknown')
 
+    def test_outlook_quoted_date_remains_visible_far_beyond_the_header(self):
+        body = 'New reply.\n-----Original Message-----\nFrom: Person A\nSent: July 1, 2026\nTo: Person B\nSubject: Supplies\n\n' + 'Old request. ' * 900
+        context = page_context(body_segments(body, {'from': 'Person B', 'date': 'October 9'}), 4000, 1000, kind='body', newer_messages=0)
+        self.assertEqual(len(context['segments']), 1)
+        quoted = context['segments'][0]
+        self.assertIn('Person A', quoted['quotedHeader'])
+        self.assertIn('July 1, 2026', quoted['quotedHeader'])
+        self.assertNotIn('October 9', quoted['quotedHeader'])
+        self.assertIsNone(quoted['date'])
+
     def test_partial_headers_are_unresolved_and_repeated_quotes_never_change_dates(self):
         header = 'On July 16, 2026, Person A\n'
         body = 'New reply.\n' + header + 'Bring the backpack Monday.\n' + header + 'Bring the backpack Monday.'

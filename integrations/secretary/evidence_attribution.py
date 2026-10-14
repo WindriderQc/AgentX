@@ -32,6 +32,23 @@ PARTIAL_REPLY = re.compile(
     r"(?im)^[ \t>]*(?:Le|On)\s+(?:[a-zÀ-ÿ.]+[ ,]+)?"
     r"(?:\d{1,2}\s+[a-zÀ-ÿ.]+|[a-zÀ-ÿ.]+\s+\d{1,2})[^\n]{0,250}\b\d{4}\b[^\n]*$"
 )
+FORWARD_FIELD = re.compile(r"^[ \t>]*(?:From|De|Sent|Envoyé|Date|To|À|Cc|Subject|Objet)\s*:", re.I)
+
+
+def forward_header(text, match):
+    """Retain the dated Outlook header with the author on continuation pages."""
+    end = match.end()
+    for line in text[match.end():].splitlines(keepends=True)[:8]:
+        if not line.strip():
+            # The match ends before its newline. Skip that one line terminator.
+            if end == match.end():
+                end += len(line)
+                continue
+            break
+        if not FORWARD_FIELD.match(line) or len(line) > 400:
+            break
+        end += len(line)
+    return text[match.start():end].strip()
 
 
 def body_segments(text, headers):
@@ -52,7 +69,7 @@ def body_segments(text, headers):
         if not any(m.start() <= match.start() < m.end() for m in gmail_headers):
             boundaries.setdefault(match.start(), {
                 "relation": "quoted", "attribution": "unverified-quoted-header",
-                "quotedHeader": match.group(0).strip(), "author": None, "date": None,
+                "quotedHeader": forward_header(text, match), "author": None, "date": None,
             })
     for match in PARTIAL_REPLY.finditer(text):
         if not any(m.start() <= match.start() < m.end() for m in gmail_headers):
