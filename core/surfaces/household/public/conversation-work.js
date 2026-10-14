@@ -6,7 +6,7 @@
     cancelled: 'Work stopped', result_ready: 'Result available', completed: 'Result available' };
   function create({ host, base, api, getConversation, maySpeak = () => true, onSnapshot = () => {}, onPollError = () => {}, pollMs = 2000 }) {
     const deviceSession = root.crypto.randomUUID(), items = new Map(), cards = new Map(), attempted = new Set(), requested = new Set();
-    let sessionId, cursor = 0, sequence = 0, timer, polling = false, presenting = false, disposed = false, generation = 0;
+    let sessionId, cursor = 0, sequence = 0, timer, pollController, presenting = false, disposed = false, generation = 0;
     const url = () => `${base}/${encodeURIComponent(sessionId)}`;
     const receipt = (item, stage, claimToken) => api(`${base}/${encodeURIComponent(item.sessionId)}/work-deliveries/${encodeURIComponent(item.result.deliveryId)}/receipt`, {
       method: 'POST', keepalive: true, signal: AbortSignal.timeout(10000), body: JSON.stringify({ stage, resultVersion: item.result.version,
@@ -83,12 +83,14 @@
       if (item) await present(item, requested.has(identity(item)));
     }
     async function poll() {
-      if (disposed || polling || !sessionId) return;
-      const currentGeneration = generation; polling = true;
+      if (disposed || pollController || !sessionId) return;
+      const currentGeneration = generation, controller = new AbortController();
+      pollController = controller;
+      const timeout = setTimeout(() => controller.abort(), 10000);
       try {
         let more;
         do {
-          const data = await api(`${url()}/work?cursor=${cursor}`);
+          const data = await api(`${url()}/work?cursor=${cursor}`, { signal: controller.signal });
           if (currentGeneration !== generation) return;
           for (const item of data.items) {
             const previous = items.get(item.id); items.set(item.id, item); render(item);
@@ -101,17 +103,22 @@
           cursor = data.cursor; more = data.hasMore;
         } while (more && !disposed);
       } catch { if (currentGeneration === generation) onPollError(sessionId); }
-      finally { polling = false; }
+      finally {
+        clearTimeout(timeout);
+        if (pollController === controller) pollController = null;
+      }
       // Playback can take minutes. Core polling remains independent of it.
       void naturalPause();
     }
     function follow(id) {
       if (disposed || !id || id === sessionId) return;
+      pollController?.abort(); pollController = null;
       ++generation; sessionId = id; cursor = 0; items.clear(); cards.clear(); attempted.clear(); requested.clear();
       host.replaceChildren(); host.hidden = true; clearInterval(timer);
       timer = setInterval(() => { void poll(); }, pollMs); timer.unref?.(); void poll();
     }
     function reset() {
+      pollController?.abort(); pollController = null;
       ++generation; sessionId = null; clearInterval(timer); items.clear(); cards.clear(); host.replaceChildren(); host.hidden = true;
     }
     function dispose() { disposed = true; reset(); }
