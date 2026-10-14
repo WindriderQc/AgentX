@@ -13,6 +13,7 @@ const { requestedRecipe, assertRecipe, buildExecution } = require('./recipeExecu
 const { qualified, MAX_OUTPUT_PIXELS } = require('./sizes');
 const logger = require('../../../config/logger');
 const expertProvenance = require('./expertProvenance');
+const { selectors: referenceSelectors } = require('./expertReferences');
 const constraints = require('../../../public/js/image-brief-constraints');
 const textPolicy = require('../../../public/js/image-text-policy');
 const { assertSupportedRequest } = require('./labIntent');
@@ -76,6 +77,7 @@ function validate(body, config) {
   const recipe = requestedRecipe(body);
   const expert = expertProvenance.validate(body.expert);
   const parent = validateParent(body.parent);
+  const referenceSelection = body.referenceSelection === undefined ? undefined : referenceSelectors(body.referenceSelection);
   if (body.references !== undefined && !Array.isArray(body.references)) throw fail('Invalid image references.');
   if ((body.references || []).length + (parent ? 1 : 0) > 2) throw fail('Two references at most, including the parent.');
   const originals = (body.references || []).map(item => {
@@ -95,8 +97,8 @@ function validate(body, config) {
     ...(protectedItems && { constraints: protectedItems }), ...(policy && { textPolicy: policy }) };
   // Omitted seed remains omitted in the identity: a replay returns the original random seed.
   const requestHash = hash(JSON.stringify({ ...request, seed: body.seed ?? null, profile: id, references: originals.map(hash),
-    ...(parent && { parent: { ...parent, transform: TRANSFORM } }), ...(recipe && { recipe }), ...(expert && { expert }) }));
-  return { profile: { ...profile, id }, request, requestHash, originals, parent, recipe, expert };
+    ...(parent && { parent: { ...parent, transform: TRANSFORM } }), ...(recipe && { recipe }), ...(expert && { expert }), ...(referenceSelection && { referenceSelection }) }));
+  return { profile: { ...profile, id }, request, requestHash, originals, parent, recipe, expert, referenceSelection };
 }
 async function accept(body, { conversation, signal } = {}) {
   assertSupportedRequest(body);
@@ -115,7 +117,7 @@ async function accept(body, { conversation, signal } = {}) {
     return publicOperation(prior);
   }
   assertRecipe(input.recipe, input.profile);
-  const expert = await expertProvenance.resolve(input.expert, input.request, input.profile.id);
+  const expert = await expertProvenance.resolve(input.expert, input.request, input.profile.id, { selection: input.referenceSelection, originals: input.originals, parent: input.parent });
   signal?.throwIfAborted();
   const prepared = await prepareReferences(input.originals, input.parent, conversation, image);
   const referenceStorage = await retainReferences(prepared);

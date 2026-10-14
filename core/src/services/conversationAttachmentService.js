@@ -1,6 +1,7 @@
 'use strict';
 const Conversation = require('../../models/Conversation');
 const Attachment = require('../../models/ConversationAttachment');
+const { createHash } = require('node:crypto');
 const content = require('../helpers/fileContentChecks');
 
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -93,12 +94,25 @@ function forConversation({ surface, sessionId, packId, scopeId }) {
     const receipt = await archive.store({ bytes, name: name || row.name, origin: 'uploaded',
       context: { surface, conversationId: String(row.conversationId), attachmentId: String(row._id), attachmentName: row.name } });
     const original = { sha256: receipt.sha256, mimeType: receipt.mimeType, size: receipt.size, path: receipt.path, archivedAt: receipt.archivedAt };
-    await Attachment.updateOne({ _id: row._id }, { $set: { original } });
+    // The immutable working copy can acquire one original across Core writers.
+    // Same-byte retries remain idempotent; another original cannot replace it.
+    const updated = await Attachment.updateOne({ _id: row._id, conversationId: row.conversationId,
+      $or: [{ original: { $exists: false } }, { 'original.sha256': receipt.sha256 }] }, { $set: { original } });
+    if (!updated.matchedCount) throw fail('This working copy already has another archived original or was removed.', 409);
     return reference({ ...row, original });
   }
   async function download(id) {
     const [row] = await load([id]);
     return { ...reference(row), data: bytes(row.data) };
+  }
+  async function downloadVerified(id, { verifyOriginal = false } = {}, archive = require('./imageArchive').defaultArchive()) {
+    const [row] = await load([id]);
+    const data = bytes(row.data);
+    if (data.length !== row.size || createHash('sha256').update(data).digest('hex') !== row.sha256) {
+      throw fail('The integrity of the attachment cannot be confirmed.', 503);
+    }
+    if (verifyOriginal && row.original) await archive.read(row.original);
+    return { ...reference(row), sha256: row.sha256, data };
   }
   async function prepare(messages, backend) {
     if (!['agentx', 'openclaw'].includes(backend)) throw fail('Unknown attachment transport');
@@ -130,7 +144,7 @@ function forConversation({ surface, sessionId, packId, scopeId }) {
       return { ...message, content, ...(images.length ? { images: images.map(row => row.base64) } : {}) };
     });
   }
-  return Object.freeze({ upload, references, download, prepare, attachOriginal });
+  return Object.freeze({ upload, references, download, downloadVerified, prepare, attachOriginal });
 }
 
 module.exports = { forConversation, ids, MAX_BYTES, MAX_PER_TURN };

@@ -15,21 +15,24 @@ class Element {
   focus() {}
 }
 const settle = async () => { for (let count = 0; count < 80; count++) await Promise.resolve(); };
-async function expert({ prompt = 'x'.repeat(9958), constraints = manifest, available = true, sessionPending, turnError, delayedFailure = false } = {}) {
+async function expert({ prompt = 'x'.repeat(9958), constraints = manifest, available = true, sessionPending, turnError, delayedFailure = false,
+  prepareReferences, references, inspection, savedTurn, referenceCount = 1, inspectionAvailable } = {}) {
   const elements = new Map(), get = id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
-  const current = { ready: true, locked: false, prompt, profile: 'quality', width: 1024, height: 576, referenceCount: 1, referenceEpoch: 1, seed: '73', constraints };
+  const current = { ready: true, locked: false, prompt, profile: 'quality', width: 1024, height: 576, referenceCount, referenceEpoch: 1, seed: '73', constraints, references };
   const getContext = () => {
     let constraintsInvalid = false;
     try { if (current.prompt.length > contract.MAX_BRIEF) throw Error(); contract.composeBrief(current.prompt, current.constraints); } catch { constraintsInvalid = true; }
     return { ...current, constraintsInvalid };
   };
   const posts = [], sessions = [], turns = [], apply = jest.fn((text, receipt) => { current.prompt = text; current.receipt = receipt; });
+  if (savedTurn) { sessions.push({ sessionId, label: 'Saved fixture', createdAt: '2026-01-01T00:00:00Z' }); turns.push(savedTurn); }
   let next = 0;
   const fetch = jest.fn(async (url, options) => {
     const body = options.method === 'POST' ? JSON.parse(options.body) : null;
     if (body) posts.push({ url, body });
     let data;
-    if (url.endsWith('/status')) data = { available, resources: [], routing: {} };
+    if (url.endsWith('/status')) data = { available, resources: [], routing: {},
+      ...(inspectionAvailable !== undefined && { referenceInspection: { supported: true, available: inspectionAvailable } }) };
     else if (url.endsWith('/sessions') && body) {
       if (sessionPending) await sessionPending;
       const session = { sessionId, label: 'Fixture', createdAt: '2026-01-01T00:00:00Z' }; sessions.push(session); data = { session };
@@ -40,6 +43,7 @@ async function expert({ prompt = 'x'.repeat(9958), constraints = manifest, avail
         proposal: { visualPrompt, prompt: contract.compose(visualPrompt, body.context.constraints), constraints: body.context.constraints,
           profile: body.context.profile, width: body.context.width, height: body.context.height } };
       if (turnError && !turns.length) { turn.state = 'failed'; turn.error = turnError; delete turn.proposal; }
+      if (inspection) turn.inspection = { ...inspection, references: body.context.references || [] };
       turns.push(turn); data = { turn: delayedFailure && turn.state === 'failed' ? { ...turn, state: 'accepted', error: undefined } : turn };
     } else if (url.endsWith('/turns')) data = { turns };
     else throw new Error(`Unexpected fixture endpoint: ${url}`);
@@ -47,13 +51,15 @@ async function expert({ prompt = 'x'.repeat(9958), constraints = manifest, avail
   });
   const context = vm.createContext({ document: { getElementById: get, createElement: tag => new Element(tag) }, fetch,
     ImageBriefConstraints: contract, ImageTextPolicy: require('../../public/js/image-text-policy'), Intl, Date, URLSearchParams, location: { search: '' },
-    localStorage: { getItem() {}, setItem() {}, removeItem() {} }, crypto: { randomUUID: () => `turn-${++next}` },
+    localStorage: { getItem: () => savedTurn ? sessionId : '', setItem() {}, removeItem() {} }, crypto: { randomUUID: () => `turn-${++next}` },
     setTimeout: jest.fn(), clearTimeout() {} });
   vm.runInContext(source, context);
   const restoreBrief = jest.fn(saved => { current.prompt = saved.prompt; current.constraints = saved.constraints; });
-  const controller = context.AgentXImageExpert.mount({ getContext, apply, restoreBrief }); await settle();
+  const prepare = prepareReferences || jest.fn(async () => current.references || []);
+  const controller = context.AgentXImageExpert.mount({ getContext, apply, restoreBrief, prepareReferences: prepare,
+    matchReferences: selected => JSON.stringify(selected) === JSON.stringify(current.references) }); await settle();
   const fire = async (id, type = 'click') => { await get(id).dispatchEvent({ type, preventDefault() {} }); await settle(); };
-  return { get, fire, current, getContext, controller, posts, turns, apply, restoreBrief };
+  return { get, fire, current, getContext, controller, posts, turns, apply, restoreBrief, prepare };
 }
 
 test('planning retains a 9958-character brief with exact constraints and allows applying an 8000-budget proposal', async () => {
@@ -237,4 +243,73 @@ test('a padded over-budget draft cannot be offered as directly renderable after 
   const ui = await expert({ prompt: ' '.repeat(20) + 'x'.repeat(7990), constraints: { version: 1, items: [] }, turnError: 'Provider unavailable' });
   await ui.fire('imagex-plan');
   expect(ui.get('imagex-use-brief').hidden).toBe(true);
+});
+
+const inspected = [
+  { position: 0, kind: 'parent', operationId: 'parent-one', sha256: 'a'.repeat(64), mimeType: 'image/png', byteLength: 12, width: 2, height: 2 },
+  { position: 1, kind: 'upload', attachmentId: 'attachment-one', sha256: 'b'.repeat(64), mimeType: 'image/jpeg', byteLength: 14, width: 2, height: 2 }
+];
+test('explicit reference inspection sends only ordered descriptors and preserves manual Apply/Create', async () => {
+  const ui = await expert({ references: inspected, referenceCount: 2, inspection: { state: 'completed', requestId: 'native-request', nativeReceipt: { runId: 'observed-run' } } });
+  const original = ui.current.prompt; ui.get('imagex-message').value = 'An unsent question';
+  await ui.fire('imagex-inspect-references');
+  expect(ui.prepare).toHaveBeenCalledTimes(1);
+  expect(ui.posts[1].body.context).toMatchObject({ references: inspected, inspectReferences: true, referenceCount: 2 });
+  expect(JSON.stringify(ui.posts[1].body)).not.toContain('base64');
+  expect(ui.current.prompt).toBe(original); expect(ui.get('imagex-message').value).toBe('An unsent question');
+  expect(ui.apply).not.toHaveBeenCalled(); expect(ui.get('imagex-apply').disabled).toBe(false);
+  expect(ui.get('imagex-inspection-receipt').textContent).toContain('Native run: observed-run');
+  expect(ui.get('imagex-inspection-receipt').textContent).toContain('Image 2 · upload');
+});
+test('ordinary refinement remains text-only even when canonical selected references are available', async () => {
+  const ui = await expert({ references: inspected, referenceCount: 2 }); await ui.fire('imagex-plan');
+  expect(ui.prepare).not.toHaveBeenCalled(); expect(ui.posts[1].body.context.inspectReferences).toBeUndefined();
+  expect(ui.posts[1].body.context.references).toBeUndefined();
+  expect(ui.get('imagex-inspection-receipt').textContent).toContain('selected pixels were not inspected');
+});
+test('inspection preparation refusal preserves the complete draft and starts no consultation', async () => {
+  const prepareReferences = jest.fn().mockRejectedValue(new Error('Original reference unavailable'));
+  const ui = await expert({ prepareReferences }), original = ui.current.prompt;
+  ui.get('imagex-plan-instruction').value = 'Keep the lettering'; await ui.fire('imagex-inspect-references');
+  expect(ui.posts).toHaveLength(1); expect(ui.current.prompt).toBe(original);
+  expect(ui.get('imagex-plan-instruction').value).toBe('Keep the lettering'); expect(ui.apply).not.toHaveBeenCalled();
+  expect(ui.get('imagex-notice').textContent).toContain('Original reference unavailable');
+});
+test('equal-count selection drift during asynchronous preparation refuses before a turn is accepted', async () => {
+  let release; const prepareReferences = jest.fn(() => new Promise(resolve => { release = resolve; }));
+  const ui = await expert({ prepareReferences, references: inspected, referenceCount: 2 });
+  await ui.fire('imagex-inspect-references'); ui.current.referenceEpoch++; release(inspected); await settle();
+  expect(ui.posts).toHaveLength(1); expect(ui.apply).not.toHaveBeenCalled();
+  expect(ui.get('imagex-notice').textContent).toContain('references changed');
+});
+test.each(['replace', 'reorder'])('a persisted inspected proposal refuses equal-count %s after reload', async change => {
+  const originalContext = { prompt: 'A workshop', profile: 'quality', width: 1024, height: 576, referenceCount: 2, constraints: manifest,
+    inspectReferences: true, references: inspected };
+  const savedTurn = { id: 'saved-turn', state: 'completed', mode: 'plan', input: 'Inspect', context: originalContext, events: [], envelope: {},
+    inspection: { state: 'completed', references: inspected }, proposal: { visualPrompt: 'A prepared workshop', constraints: manifest,
+      profile: 'quality', width: 1024, height: 576 } };
+  const selected = change === 'reorder' ? [...inspected].reverse() : [inspected[0], { ...inspected[1], attachmentId: 'attachment-two', sha256: 'c'.repeat(64) }];
+  const ui = await expert({ prompt: originalContext.prompt, referenceCount: 2, references: selected, savedTurn });
+  expect(ui.get('imagex-apply').disabled).toBe(true); await ui.fire('imagex-apply'); expect(ui.apply).not.toHaveBeenCalled();
+  expect(ui.posts).toHaveLength(0); expect(ui.get('imagex-apply-note').textContent).toContain('references changed');
+});
+test('an unknown inspection reports its original state and offers no replacement inspection or retry', async () => {
+  const ui = await expert({ references: inspected, referenceCount: 2, turnError: 'Native result unknown', inspection: { state: 'unknown', requestId: 'original-request' } });
+  await ui.fire('imagex-inspect-references');
+  expect(ui.get('imagex-notice').textContent).toContain('outcome is unknown');
+  expect(ui.get('imagex-inspection-receipt').textContent).toContain('No replacement was launched');
+  expect(ui.get('imagex-recovery').hidden).toBe(true); expect(ui.get('imagex-inspect-references').disabled).toBe(true);
+  await ui.fire('imagex-inspect-references'); expect(ui.posts).toHaveLength(2); expect(ui.apply).not.toHaveBeenCalled();
+});
+test('inspection is unavailable with zero references while text-only advice remains available', async () => {
+  const ui = await expert({ referenceCount: 0 }); expect(ui.get('imagex-inspect-references').disabled).toBe(true);
+  await ui.fire('imagex-inspect-references'); expect(ui.posts).toHaveLength(0); expect(ui.prepare).not.toHaveBeenCalled();
+  await ui.fire('imagex-plan'); expect(ui.posts[1].body.context.referenceCount).toBe(0);
+});
+test('an older installed specialist disables inspection without disabling text-only advice or discarding the draft', async () => {
+  const ui = await expert({ references: inspected, referenceCount: 2, inspectionAvailable: false }), original = ui.current.prompt;
+  expect(ui.get('imagex-inspect-references').disabled).toBe(true);
+  expect(ui.get('imagex-inspection-help').textContent).toContain('needs its reference-inspection update');
+  await ui.fire('imagex-inspect-references'); expect(ui.posts).toHaveLength(0); expect(ui.prepare).not.toHaveBeenCalled();
+  await ui.fire('imagex-plan'); expect(ui.posts[1].body.context.inspectReferences).toBeUndefined(); expect(ui.current.prompt).toBe(original);
 });

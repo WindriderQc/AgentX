@@ -67,14 +67,46 @@ with an archived image; JSON text projects can also reopen before a result exist
 Parent comparison and protected composition appear when the selected result has
 a verified archived parent. The composition sketch stays with creation references.
 Core retains the canonical `image-workshop` conversation and keeps gateway
-credentials server-side. The panel sends text and current recipe evidence;
-reference images remain on the local rendering path. Apply a proposal explicitly
+credentials server-side. Advice sends text and current recipe evidence. The
+explicit **Inspect selected references** action also resolves the displayed
+ordered set through Core, then requests one advisory analysis through the existing
+native OpenClaw Main vision path before Hermes advice. Main keeps its installed
+model, context and native tools. Hermes receives the verified analysis text and
+source hashes, never the image bytes. Image text remains untrusted evidence.
+
+The set contains at most two images, ordered parent, uploaded working copies,
+then composition sketch. Uploads use one cached browser JPEG working copy for
+both inspection and rendering; Core retains the original separately and records
+both digests and the working-copy transformation. Working copies are scoped
+conversation attachments, at most 2 MiB each; selected parents must belong to the
+human Atelier library, be completed/restored and pass the verified archive read.
+Inspection refuses more than 3 MiB in aggregate without resizing, dropping a
+reference or shortening the draft. Text-only advice remains an explicit choice.
+
+Core records the inspection request identity and native session key before
+analysis dispatch. The accepted turn and an absent-session-fence condition commit
+atomically; dispatch and clearing match the exact saved owner, request and stage,
+so concurrent Core acceptances and late responses cannot replace that fence. Completed native receipts attest execution, not perfect visual
+accuracy or a rendering-quality comparison. Cancellation alone proves no native
+termination or resource release. Lost responses and restarted in-flight analyses
+remain unknown and fenced against another inspection in that conversation until
+the native owner reconciles the saved identity. Retries with the same turn ID
+observe the saved turn and never dispatch again. A new explicit text-only
+consultation may proceed without clearing that fence. The console shows the
+ordered input hashes, state and available native receipt, excluding raw pixels,
+archive paths and tool payloads.
+
+The proposal binds those ordered identities and actual input hashes across
+reloads; replacing or reordering references, including equal-count replacements,
+blocks application and associated generation before worker readiness. Render
+receipts and exports retain the verified inspection provenance.
+ Apply a proposal explicitly
 before creating an image. A changed draft context blocks stale application.
 Completed proposals can be attached to an image request by session/turn identity;
 Core resolves that identity from its conversation store before any worker action.
 Details and recipe exports retain this collaboration receipt and record prompt
-or setting changes. Restarted consultations are interrupted without inference
-replay. The manual creation path remains usable without Hermes. Installation and
+or setting changes. Restarted text consultations are interrupted without inference
+replay; native inspections retain their separate unknown-state fence. The manual creation path remains usable without Hermes. Installation and
 protocol details are in [the Hermes adapter](../integrations/hermes/README.md).
 
 **Contraintes à conserver dans le brief** records explicit exact text, required

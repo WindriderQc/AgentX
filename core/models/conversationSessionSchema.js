@@ -20,6 +20,8 @@ module.exports = new Schema({
     agentSessionKeys: { type: Object, default: undefined },
     // The last direct exchange with a member, given once to the conversation's agent.
     teamExchange: { type: Object, default: undefined },
+    // Durable Atelier native-analysis dispatch fence; unknown work requires native-owner reconciliation.
+    imageInspection: { type: Object, default: undefined },
     llmx: { type: Object, default: null },
     // Historical Household proposal evidence. Retained on import/export only;
     // the current runtime does not execute or resume this retired action field.

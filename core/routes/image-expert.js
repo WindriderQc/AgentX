@@ -3,13 +3,25 @@ const express = require('express');
 const { createService } = require('../src/services/images/expertService');
 function createRouter(service = createService()) {
   const router = express.Router();
-  router.use(express.json({ limit: '512kb' }));
+
   const wrap = handler => async (req, res) => {
     res.set('Cache-Control', 'private, no-store');
     try { await handler(req, res); }
     catch (error) { res.status(error.statusCode || 503).json({ ok: false,
       message: error.statusCode ? error.message : 'The imageX specialist is unavailable.' }); }
   };
+  router.post('/sessions/:id/references/:attachmentId/original',
+    express.raw({ type: 'image/*', limit: '50mb' }), wrap(async (req, res) => res.json({ ok: true,
+      original: await service.originalReference(req.params.id, req.params.attachmentId, req.body, decodeURIComponent(req.get('X-Attachment-Name') || '')) })));
+  router.post('/sessions/:id/references', express.json({ limit: '4mb' }), wrap(async (req, res) => res.status(201).json({ ok: true,
+    reference: await service.uploadReference(req.params.id, req.body) })));
+  router.get('/sessions/:id/references/:attachmentId', wrap(async (req, res) => {
+    const row = await service.downloadReference(req.params.id, req.params.attachmentId);
+    res.set('Content-Type', row.mimeType).set('X-Content-Type-Options', 'nosniff').send(row.data);
+  }));
+  router.use(express.json({ limit: '512kb' }));
+  router.post('/sessions/:id/references/resolve', wrap(async (req, res) => res.json({ ok: true,
+    ...await service.resolveReferences(req.params.id, req.body?.references) })));
   router.get('/status', wrap(async (_req, res) => res.json({ ok: true, ...await service.status() })));
   router.get('/resources/:id', wrap(async (req, res) => res.json({ ok: true, resource: await service.resource(req.params.id) })));
   router.get('/sessions', wrap(async (_req, res) => res.json({ ok: true, sessions: await service.sessions() })));

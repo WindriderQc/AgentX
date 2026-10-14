@@ -1,8 +1,8 @@
 'use strict';
-globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
+globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief, prepareReferences, matchReferences }) {
   const $ = id => document.getElementById(id);
   if (!$('imagex')) return { refresh() {} };
-  const labels = { accepted: 'Recorded', running: 'Hermes is working…', completed: 'Done', failed: 'Failed', interrupted: 'Interrupted', cancelled: 'Stopped' };
+  const labels = { accepted: 'Recorded', running: 'Consultation in progress…', completed: 'Done', failed: 'Failed', interrupted: 'Interrupted', cancelled: 'Stopped', unknown: 'Outcome unknown' };
   let metadata, sessionId = '', turns = [], selectedTurn = '', proposalTurn = null, timer, pending = false, retry = null, fileEpoch = 0, fileUrl;
   const baselines = new Map();
   const constraints = globalThis.ImageBriefConstraints;
@@ -11,8 +11,9 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
   const node = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
   const active = () => turns.find(turn => ['accepted', 'running'].includes(turn.state));
   const busy = () => pending || !!active();
-  const signature = () => JSON.stringify(getContext());
-  const terminal = turn => ['failed', 'interrupted', 'cancelled'].includes(turn?.state);
+  const signature = () => { const { references, ...context } = getContext(); return JSON.stringify(context); };
+  const uncertainInspection = turn => turn?.inspection?.state === 'unknown';
+  const terminal = turn => ['failed', 'interrupted', 'cancelled', 'unknown'].includes(turn?.state);
   function errorText(turn) {
     if (/Image expert changed the requested (width|height|profile)/.test(turn.error || '')) {
       const field = /requested (width|height|profile)/.exec(turn.error)[1];
@@ -24,10 +25,13 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
   }
   function turnNotice(turn) {
     if (!turn) return '';
+    if (uncertainInspection(turn)) return 'Reference inspection outcome is unknown. The original request is kept; no replacement inspection or image was started. Check its recorded receipt.';
     if (terminal(turn)) return `${errorText(turn)} No image was started by this consultation.`;
     if (turn.proposal) return 'Proposal ready to review next to the brief. Apply prepares the text; Create starts the render.';
     if (turn.state === 'completed') return 'The imageX advice is available in the discussion.';
-    return 'Request kept in AgentX. Hermes is working on the text.';
+    return turn.inspection && ['prepared', 'running'].includes(turn.inspection.state)
+      ? 'Request kept in AgentX. The selected references are being inspected before Hermes advice.'
+      : 'Request kept in AgentX. Hermes is working on the text; selected pixels were not inspected.';
   }
   function inputError(context, message) {
     const limit = constraints?.MAX_BRIEF || 32000;
@@ -62,7 +66,7 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
   function renderReceipt() {
     const turn = turns.find(row => row.id === selectedTurn) || turns.at(-1);
     $('imagex-events').replaceChildren(); $('imagex-envelope').textContent = turn ? JSON.stringify(turn.envelope, null, 2) : '';
-    if (!turn) { $('imagex-receipt').textContent = 'No recorded consultation.'; return; }
+    if (!turn) { $('imagex-receipt').textContent = 'No recorded consultation.'; if ($('imagex-inspection-receipt')) $('imagex-inspection-receipt').textContent = ''; return; }
     for (const event of turn.events || []) {
       const time = new Date(event.at).toLocaleTimeString('en-US');
       const action = event.type === 'accepted' ? 'AgentX recorded the request'
@@ -75,6 +79,17 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
     $('imagex-receipt').textContent = [turn.durationMs != null ? `${Math.round(turn.durationMs / 1000)} s` : '',
       turn.tokens?.total != null ? `${turn.tokens.total} tokens` : '', turn.reportedModel ? `Declared model: ${turn.reportedModel}` : '',
       turn.error ? errorText(turn) : '', 'The model declared at start does not confirm a possible local fallback.'].filter(Boolean).join(' · ');
+    const inspection = turn.inspection, receipt = $('imagex-inspection-receipt');
+    if (receipt) {
+      const states = { 'not-requested': 'Text-only advice: selected pixels were not inspected.', prepared: 'Selected references verified; inspection not yet completed.',
+        running: 'Reference inspection in progress.', completed: 'Reference inspection completed through Main; Hermes receives its advisory analysis.',
+        unknown: 'Reference inspection outcome unknown. No replacement was launched.', failed: 'Reference inspection failed. No successful visual advice is claimed.',
+        cancelled: 'Reference inspection cancellation requested. Native termination and release require their own receipt.' };
+      const selected = (inspection?.references || []).map(value => `Image ${value.position + 1} · ${value.kind} · SHA-256 ${value.sha256}`);
+      const native = inspection?.nativeReceipt;
+      receipt.textContent = [states[inspection?.state || 'not-requested'] || 'Reference inspection state unavailable.', ...selected,
+        inspection?.requestId ? `Inspection request: ${inspection.requestId}` : '', native?.runId ? `Native run: ${native.runId}` : '', inspection?.error || ''].filter(Boolean).join(' · ');
+    }
   }
   function showProposal(turn) {
     proposalTurn = turn; $('imagex-proposal-empty').hidden = !!turn; $('imagex-proposal-content').hidden = !turn;
@@ -155,11 +170,17 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
     if (!result.sessions.some(row => row.sessionId === sessionId)) sessionId = '';
     select.value = sessionId; if (sessionId) await loadTurns();
   }
-  async function send(mode, message) {
+  async function send(mode, message, inspectReferences = false) {
     if (busy() || !metadata?.available) return;
     const current = getContext(), error = inputError(current, message), baseline = signature();
     if (error) { $('imagex-notice').textContent = error; return; }
     if (!current.ready || mode === 'plan' && !current.prompt.trim()) { $('imagex-notice').textContent = 'Write your brief and choose a recipe before asking for a proposal.'; return; }
+    if (inspectReferences && metadata.referenceInspection?.available === false) {
+      $('imagex-notice').textContent = 'The installed specialist needs its reference-inspection update. Your draft is kept; text-only advice remains available.'; return;
+    }
+    if (inspectReferences && (!prepareReferences || current.referenceCount < 1 || current.referenceCount > 2 || current.locked)) {
+      $('imagex-notice').textContent = 'Choose one or two references and finish the current render before inspecting them.'; return;
+    }
     pending = true; refresh(); $('imagex-notice').textContent = 'Sending to Hermes…';
     if (mode === 'plan') {
       $('imagex-proposal-panel').hidden = false; $('imagex-proposal-panel').open = true;
@@ -168,7 +189,15 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
     try {
       if (!sessionId) { sessionId = (await api('/sessions', {})).session.sessionId;
         try { localStorage.setItem('agentx-imagex-session', sessionId); } catch {} }
+      let selected;
+      if (inspectReferences) {
+        if (baseline !== signature()) throw new Error('The brief, settings or references changed while the consultation was being prepared. Check them and send again; your draft is kept.');
+        $('imagex-notice').textContent = 'Verifying the selected references…';
+        selected = await prepareReferences(sessionId);
+        if (baseline !== signature()) throw new Error('The brief, settings or references changed while the consultation was being prepared. Check them and send again; your draft is kept.');
+      }
       const context = { prompt: current.prompt, profile: current.profile, width: current.width, height: current.height, referenceCount: current.referenceCount,
+        ...(inspectReferences && { inspectReferences: true, references: selected }),
         ...(current.constraints && { constraints: current.constraints }), ...(current.textPolicy && { textPolicy: current.textPolicy }) };
       const payload = { mode, message, context }, key = JSON.stringify({ sessionId, ...payload });
       if (!retry || retry.key !== key) retry = { key, body: { ...payload, clientTurnId: crypto.randomUUID() } };
@@ -200,7 +229,7 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
     if (!context.prompt.trim() && !error) $('imagex-planning-help').textContent = 'Start by describing your image in the brief. You can then refine it if needed.';
     if (context.ready && context.prompt.trim()) $('imagex-planning-help').textContent = `Chosen format: ${context.width} × ${context.height}. ${$('imagex-planning-help').textContent}`;
     $('imagex-chat-notice').textContent = $('imagex-notice').textContent;
-    const last = turns.at(-1), canRetry = terminal(last) && last.mode === 'plan';
+    const last = turns.at(-1), canRetry = terminal(last) && !uncertainInspection(last) && last.mode === 'plan';
     $('imagex-recovery').hidden = !canRetry;
     $('imagex-retry').disabled = working || !ready || !!error || !context.prompt.trim();
     const canRestore = canRetry && !context.prompt.trim() && !!last.context?.prompt && !!restoreBrief;
@@ -217,6 +246,15 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
       : canCreate ? 'You can ask for a new refinement, or check your current brief and create directly.'
         : 'Your long brief is kept. Retry the refinement to prepare a version of at most 8,000 characters, constraints included.';
     $('imagex-send').disabled = working || !ready || !!chatError; $('imagex-plan').disabled = working || !ready || !!error || !context.prompt.trim();
+    if ($('imagex-inspect-references')) $('imagex-inspect-references').disabled = working || !ready || !!error || !context.prompt.trim()
+      || context.locked || context.referenceCount < 1 || context.referenceCount > 2 || !prepareReferences || uncertainInspection(last)
+      || metadata?.referenceInspection?.available === false;
+    if ($('imagex-inspection-help')) $('imagex-inspection-help').textContent = uncertainInspection(last)
+      ? 'The inspection outcome is unknown. Check the original receipt; another inspection is not started.'
+      : metadata?.referenceInspection?.available === false ? 'The installed specialist needs its reference-inspection update. Text-only advice remains available and your draft is kept.'
+      : context.referenceCount > 2 ? 'Choose at most two references for inspection.'
+      : !context.referenceCount ? 'Attach one or two references to inspect them before refining the brief.'
+      : 'Inspect exactly these selected images, then review Hermes’s proposal. Send and Refine remain text-only; Apply and Create are separate actions.';
     $('imagex-explore').disabled = working || !ready || !!inputError(context, ''); $('imagex-new').disabled = working; $('imagex-session').disabled = working;
     $('imagex-stop').hidden = !active(); $('imagex-stop').disabled = pending;
     $('imagex-tab-proposal').disabled = !proposalTurn;
@@ -226,6 +264,7 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
       || context.width !== original.width || context.height !== original.height || context.referenceCount !== original.referenceCount
       || JSON.stringify(context.constraints) !== JSON.stringify(original.constraints)
       || JSON.stringify(context.textPolicy) !== JSON.stringify(original.textPolicy)
+      || original.inspectReferences === true && (!matchReferences || !matchReferences(original.references))
       || baselines.has(proposalTurn.id) && baselines.get(proposalTurn.id) !== signature());
     let invalidProposal = context.constraintsInvalid || $('imagex-proposal-prompt').value.length > (constraints?.MAX_PROMPT || 8000);
     try {
@@ -255,10 +294,14 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
   }
   $('imagex-chat-form').addEventListener('submit', event => { event.preventDefault(); const message = $('imagex-message').value; if (message.trim()) void send('consult', message); });
   $('imagex-plan').addEventListener('click', () => { const message = $('imagex-plan-instruction').value; void send('plan', message || 'Affine ce brief pour la recette et le format choisis. Préserve mon intention et explique tes changements.'); });
+  $('imagex-inspect-references')?.addEventListener('click', () => {
+    refresh(); if ($('imagex-inspect-references').disabled) return;
+    void send('plan', $('imagex-plan-instruction').value || 'Inspecte les références sélectionnées et affine ce brief pour la recette et le format choisis. Préserve mon intention et distingue les observations de tes incertitudes.', true);
+  });
   $('imagex-retry').addEventListener('click', () => {
     refresh(); if ($('imagex-retry').disabled) return;
     const message = $('imagex-plan-instruction').value || turns.at(-1)?.input || 'Affine ce brief en conservant la recette et le format choisis.';
-    void send('plan', message);
+    void send('plan', message, turns.at(-1)?.context?.inspectReferences === true);
   });
   $('imagex-restore-brief').addEventListener('click', () => {
     refresh(); if ($('imagex-restore-brief').hidden || $('imagex-restore-brief').disabled) return;
@@ -293,7 +336,7 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
   });
   $('imagex-stop').addEventListener('click', async () => {
     const turn = active(); if (!turn) return;
-    try { await api(`/sessions/${sessionId}/turns/${turn.id}/cancel`, {}); $('imagex-notice').textContent = 'Stop requested from Hermes.'; await loadTurns(); }
+    try { await api(`/sessions/${sessionId}/turns/${turn.id}/cancel`, {}); $('imagex-notice').textContent = 'Consultation stop requested. This acknowledgment does not confirm native termination or release.'; await loadTurns(); }
     catch (error) { $('imagex-notice').textContent = error.message; }
   });
   $('imagex-resource').addEventListener('change', async () => {
@@ -321,7 +364,9 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
       if (metadata.dashboardUrl) { $('imagex-official-dashboard').href = metadata.dashboardUrl; $('imagex-official-dashboard').hidden = false; }
       const entries = [['Advice', metadata.routing?.model || 'Model not specified'], ['Route', metadata.routing?.provider || 'Not specified'],
         ['Pricing', metadata.routing?.freeOnly ? 'Free cloud models configured' : 'Per the configured provider'],
-        ['Configured fallback', metadata.routing?.fallbackModels?.join(', ') || 'Not specified'], ['Vision', 'Text advice · references rendered locally']];
+        ['Configured fallback', metadata.routing?.fallbackModels?.join(', ') || 'Not specified'], ['Vision', metadata.referenceInspection?.available === false
+          ? 'Reference inspection unavailable in the installed specialist. Text-only advice remains available.'
+          : 'Optional selected-reference inspection through Main; each consultation records its outcome.']];
       $('imagex-routing').replaceChildren(...entries.map(([label, value]) => { const row = node('div'); row.append(node('dt', label), node('dd', value)); return row; }));
       for (const file of metadata.resources || []) { const option = node('option', `${file.title}${file.available ? '' : ' · missing'}`); option.value = file.id; $('imagex-resource').append(option); }
       if (!metadata.available) $('imagex-notice').textContent = metadata.message || 'Hermes advice is unavailable. You can compose and generate directly.';

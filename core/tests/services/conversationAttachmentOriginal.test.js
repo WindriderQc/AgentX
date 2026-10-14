@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { randomUUID } = require('node:crypto');
+const { randomUUID, createHash } = require('node:crypto');
 const Attachment = require('../../models/ConversationAttachment');
 const conversations = require('../../src/services/surfaceConversationService').forSurface('household');
 const attachments = require('../../src/services/conversationAttachmentService');
@@ -41,4 +41,30 @@ describe('original of a reduced photo attachment', () => {
     await expect(store.attachOriginal(image.id, { bytes: original }, createImageArchive({ dir: '' })))
       .rejects.toMatchObject({ statusCode: 404 });
   });
+  test.each([false, true])('concurrent native writers preserve one original binding (same bytes: %s)', async sameBytes => {
+    const sent = await store.upload({ name: 'photo.png', dataUrl: `data:image/png;base64,${png}` });
+    const second = attachments.forConversation({ surface: 'household', ...session });
+    const nativeArchive = createImageArchive({ dir });
+    let ready = 0, release;
+    const gate = new Promise(resolve => { release = resolve; });
+    const archive = { ...nativeArchive, store: async input => {
+      const receipt = await nativeArchive.store(input);
+      if (++ready === 2) release();
+      await gate; return receipt;
+    } };
+    const other = sameBytes ? original : Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), Buffer.alloc(4096, 9)]);
+    const results = await Promise.allSettled([store.attachOriginal(sent.id, { bytes: original }, archive),
+      second.attachOriginal(sent.id, { bytes: other }, archive)]);
+    const successes = results.filter(result => result.status === 'fulfilled');
+    expect(successes).toHaveLength(sameBytes ? 2 : 1);
+    if (!sameBytes) expect(results.find(result => result.status === 'rejected').reason.statusCode).toBe(409);
+    const row = await Attachment.findById(sent.id).lean();
+    expect(row.original.sha256).toBe(successes[0].value.original.sha256);
+    const loaded = await nativeArchive.read(row.original);
+    expect(createHash('sha256').update(loaded.bytes).digest('hex')).toBe(row.original.sha256);
+    expect(Buffer.from(row.data.buffer || row.data).toString('base64')).toBe(png);
+    const repeated = await second.attachOriginal(sent.id, { bytes: loaded.bytes }, nativeArchive);
+    expect(repeated.original.sha256).toBe(row.original.sha256);
+  });
+
 });
