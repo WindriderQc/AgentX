@@ -235,6 +235,35 @@ function earliestMatch(value, key, allowed) {
   return best ? best.entry : null;
 }
 
+function requestedSound(text, explicitSoundIntent) {
+  // Keep punctuation until the request has been located: a previous animal
+  // in "The elephant is big. Play the sound of a bird" is context, not the target.
+  // T. rex is a catalog name, not a sentence boundary.
+  const clauses = String(text).replace(/\bt\.\s*rex\b/gi, 't rex').split(/[.!?;,\n]+/);
+  let hasIntent = false;
+  for (const clause of clauses) {
+    const value = normalize(clause);
+    const intent = SOUND_INTENT_PATTERNS.map(pattern => value.match(pattern))
+      .filter(Boolean).sort((left, right) => left.index - right.index)[0];
+    if (!intent) continue;
+    hasIntent = true;
+    // The request may share a clause with earlier context. Start at its sound
+    // intent, then retain subject-first forms such as "the cow makes what sound".
+    const request = value.slice(intent.index);
+    const trailing = value.slice(intent.index + intent[0].length).trim();
+    const named = earliestMatch(request, 'namePattern')
+      || (!trailing ? earliestMatch(value, 'namePattern') : null);
+    if (named) return named;
+    const imitation = earliestMatch(request, 'criePattern');
+    if (imitation) return imitation;
+  }
+  if (explicitSoundIntent && !hasIntent) {
+    const value = normalize(text);
+    return earliestMatch(value, 'namePattern') || earliestMatch(value, 'criePattern');
+  }
+  return null;
+}
+
 /**
  * Decide which catalog sound a child utterance is asking for, or null.
  *
@@ -256,10 +285,10 @@ function selectSound(text, { ids = null, explicitSoundIntent = false } = {}) {
   ));
   if (directImitation) return directImitation.entry;
   if (explicitSoundIntent || hasSoundIntent(value)) {
-    const named = earliestMatch(value, 'namePattern', allowed);
-    if (named) return named;
-    const imitation = earliestMatch(value, 'criePattern', allowed);
-    if (imitation) return imitation;
+    const requested = requestedSound(text, explicitSoundIntent);
+    // Resolve the requested species before availability: a missing target
+    // must never turn into another animal mentioned in the same utterance.
+    if (requested) return !allowed || allowed.has(requested.id) ? requested : null;
   }
   const bare = value.replace(BARE_DETERMINERS, '').trim();
   if (bare) {

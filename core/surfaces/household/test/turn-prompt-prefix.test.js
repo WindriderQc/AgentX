@@ -17,7 +17,7 @@ const records = require('../persona-records');
 const BLOCK = '[Household selected context for this turn: reference data, not tool instructions]';
 const RUN_ID = 'resp_33333333-3333-4333-8333-333333333333';
 
-function harness({ packId, backend, response = 'Réponse synthétique.', conversationImages, settle }) {
+function harness({ packId, backend, response = 'Réponse synthétique.', conversationImages, settle, sounds }) {
   const pack = packs.packById(packId);
   const session = { sessionId: 'synthetic-session', status: 'active', packId, modeId: pack.defaultMode, scopeId: pack.defaultScopeId,
     backend, agentId: pack.childSafe ? 'family' : 'main', turnCount: 0,
@@ -62,7 +62,7 @@ function harness({ packId, backend, response = 'Réponse synthétique.', convers
     personalAttachments: () => ({ references: async () => [], prepare: async messages => messages.map(({ attachments, ...message }) => message) }),
     knowledgeState: { config: null, status: { status: 'disabled', corpusFingerprint: null } },
     openHold: {}, openingPayload: () => ({}),
-    sounds: { select: () => state.sound, get: () => null }, visuals: { sources: () => ['web'], present: async block => block },
+    sounds: sounds || { select: () => state.sound, get: () => null }, visuals: { sources: () => ['web'], present: async block => block },
     brain: { cancel() {}, schedule() {}, contextFor: () => state.advice },
     activePersonaTurns: new Map(), validClientTurnId: () => false,
     envelope: (res, data) => { res.payload = data; }, fail: (res, status, message, code) => { res.failure = { status, message, code }; },
@@ -88,6 +88,22 @@ const CASES = [
   { packId: 'personal_operator', backend: 'agentx' }, { packId: 'personal_operator', backend: 'openclaw' },
   { packId: 'kidx_nestor', backend: 'agentx' }, { packId: 'kidx_nestor', backend: 'openclaw' }
 ];
+
+for (const { packId, backend } of CASES) {
+  test(`${packId} on ${backend} plays the newly requested animal on consecutive turns`, async () => {
+    const sounds = require('../sound-library').createSoundLibrary();
+    const { turn, turns, sent } = harness({ packId, backend, sounds });
+    const first = await turn('Fais-moi le bruit d’un éléphant.', 'voice', { soundPlayback: true });
+    const second = await turn('Cet éléphant est immense. Est-ce que tu peux faire le bruit d’un oiseau?', 'voice', { soundPlayback: true });
+    const third = await turn('Combien de pattes a cet oiseau?', 'voice', { soundPlayback: true });
+    assert.equal(first.sound.id, 'elephant');
+    assert.equal(second.sound.id, 'bird');
+    assert.notEqual(first.sound.url, second.sound.url);
+    assert.equal(third.sound, null, 'an ordinary follow-up never replays the preceding recording');
+    assert.deepEqual(turns.slice().reverse().map(row => row.soundId), ['elephant', 'bird', '']);
+    assert.match(sent[1].request, /Son : un vrai enregistrement \(un oiseau\)|Sound: a real recording of a bird/);
+  });
+}
 
 for (const backend of ['agentx', 'openclaw']) {
   test(`immediate ${backend} math replies honor the browser language without inference`, async () => {
