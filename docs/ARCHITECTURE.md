@@ -174,8 +174,20 @@ shared execution status. Legacy mail imports and misplaced platform/assistant
 work project as pending proposals without rewriting their records. Only accepted
 actions enter personal focus and briefings. Human review checks the displayed
 revision, records the original wording, and explicitly chooses the deadline;
-dismissal retains the source and can be reversed. The MCP tools cannot accept a
-proposal. Desk counts use the complete snapshot before paging display lists.
+dismissal retains the source and can be reversed. The human action editor also
+checks the displayed revision, retains original wording in feedback, and leaves
+source notes untouched. Its read projection includes the deadline's household
+calendar date so the editor preserves an unchanged exact datetime. The MCP tools
+cannot accept a proposal or call this editor. Desk counts use the complete
+snapshot before paging display lists.
+
+Secretary evidence pages retain their raw content and stable page identities.
+`sourceContext` describes authored, quoted and attachment spans in original-body
+Unicode code-point offsets, computed before the 4,000-character windows. Quoted
+headers remain unverified source text; unknown authorship is explicit, and
+container headers never stand in for quoted authors. This is a conservative
+reading aid, not a semantic currentness or duplicate-resolution authority.
+Historical receipts are not invalidated or replayed when metadata is added.
 
 `GET /api/pipeline/tasks/:id/eligibility?automation=true` explains the current
 engineering-task admission snapshot with the same dependency, time and automation

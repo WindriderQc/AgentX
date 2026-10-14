@@ -71,6 +71,7 @@ function publicTask(task, now = new Date(), timeZone) {
     priority: Math.max(1, Math.min(Number(task?.priority) || 3, 5)),
     note: boundedText(task?.spec || task?.note, 2000),
     dueAt: dueAt ? dueAt.toISOString() : null,
+    dueDate: dueKey,
     relevantUntil: relevantUntil ? relevantUntil.toISOString() : null,
     personalReview: review,
     category: needsReview || review.state === 'dismissed' ? review.reason || 'email' : 'action',

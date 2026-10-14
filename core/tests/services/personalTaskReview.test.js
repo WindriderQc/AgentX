@@ -71,6 +71,19 @@ describe('personal actions require review of extracted mail', () => {
     expect(latest.needsReview).toBe(true);
   });
 
+  test('human action edits preserve source and exact dates, reject stale revisions and cannot accept proposals', async () => {
+    const action = await personal.create({ title: 'Call the office', note: 'Owner context', dueAt: '2030-01-10T10:45:00-05:00' });
+    const edited = await personal.edit({ ref: action.id, revision: action.revision, title: 'Book the office appointment', dueAt: action.dueAt, priority: 2 });
+    expect(edited).toMatchObject({ title: 'Book the office appointment', dueAt: action.dueAt, dueDate: '2030-01-10', note: 'Owner context', priority: 2 });
+    await expect(personal.edit({ ref: action.id, revision: action.revision, title: 'Stale edit', dueAt: null, priority: 3 })).rejects.toMatchObject({ code: 'SECRETARY_EDIT_CONFLICT' });
+    const cleared = await personal.edit({ ref: action.id, revision: edited.revision, title: edited.title, dueAt: null, priority: 2 });
+    expect(cleared.dueAt).toBeNull();
+    const proposal = await personal.create({ title: 'A correspondent asks for an appointment', origin: 'email', note: sourceNote });
+    await expect(personal.edit({ ref: proposal.id, revision: proposal.revision, title: 'Call the office', dueAt: null, priority: 3 })).rejects.toMatchObject({ code: 'SECRETARY_REVIEW_REQUIRED' });
+    expect(SECRETARY_TOOLS.some(tool => /edit_personal|review_personal/.test(tool.name))).toBe(false);
+    expect((await PipelineTask.findOne({ pipelineId: action.id }).lean()).feedback[0].text).toContain('Call the office');
+  });
+
   test('dismiss is reversible and never claims completion or deletes the task or its source', async () => {
     const proposed = await personal.create({ title: 'An old request', note: sourceNote });
     const dismissed = await personal.review({ ref: proposed.id, revision: proposed.revision, decision: 'dismiss' });

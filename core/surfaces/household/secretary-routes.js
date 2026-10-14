@@ -116,6 +116,13 @@ function registerSecretaryRoutes(app, {
     }
   });
   // Human page only. Never advertised or relayed as a model tool.
+  secretary.post('/tasks/edit', async (req, res) => {
+    try {
+      return envelope(res, { task: await personalTasks.edit(req.body || {}) });
+    } catch (error) {
+      return fail(res, error.status || 500, error.message, error.code || 'SECRETARY_EDIT_FAILED', error.details);
+    }
+  });
   secretary.post('/tasks/review', async (req, res) => {
     try {
       return envelope(res, { task: await personalTasks.review(req.body || {}) });
