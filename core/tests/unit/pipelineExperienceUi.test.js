@@ -28,7 +28,7 @@ describe('Pipeline open-work experience', () => {
 
   test('labels exact MongoDB count evidence separately from loaded rows', () => {
     expect(view).toContain('id="pipelineCountEvidence"');
-    expect(script).toContain("readProjection('tasks', '/api/pipeline/tasks?limit=1000&view=summary&includeDone=true')");
+    expect(script).toContain("readProjection('tasks', '/api/pipeline/tasks?limit=1000&view=summary&includeDone=true&scope=engineering')");
     expect(script).toContain("evidence?.authority !== 'core.pipeline'");
     expect(script).toMatch(/exact full-scope totals/);
   });

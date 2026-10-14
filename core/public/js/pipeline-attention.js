@@ -10,7 +10,7 @@
   const SCHEMA = 'agentx.pipeline-attention/v1';
   const PAGE_SIZE = 10;
   const WINDOW_SIZE = 50;
-  const SCOPES = { engineering: 'Engineering', private: 'Private lanes' };
+  const SCOPES = { engineering: 'Engineering', private: 'Personal & household' };
 
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;

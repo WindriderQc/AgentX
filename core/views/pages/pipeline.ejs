@@ -1,12 +1,14 @@
 <main class="pipeline-page">
   <header class="pipeline-hero">
     <div class="pipeline-hero-copy">
-      <div class="pipeline-eyebrow"><i class="fas fa-list-check"></i> Delivery cockpit</div>
-      <h1>Work in progress</h1>
+      <div class="pipeline-eyebrow"><i class="fas fa-code"></i> Engineering workspace</div>
+      <h1>Coding &amp; delivery pipeline</h1>
       <p>
-        Plan related tasks, follow their progress, and decide what moves next.
-        Keep the work, human reviews and production evidence in view.
+        Follow technical work by the Coding Team and human operators,
+        from preparation through review and production delivery.
       </p>
+      <p>Personal tasks stay in My day; family tasks stay in Family tracking.
+        They are excluded from this overview, its counts and its closed-task history.</p>
       <div class="pipeline-hero-actions">
         <button id="pipelineNewTask" class="pipeline-btn primary" type="button"><i class="fas fa-plus" aria-hidden="true"></i><span>New task</span></button>
         <button id="pipelineRefreshBtn" class="pipeline-btn" type="button">
@@ -19,6 +21,8 @@
         <a class="pipeline-btn" href="/agent-ops">
           <i class="fas fa-circle-nodes"></i><span>Agent Ops</span>
         </a>
+        <a class="pipeline-btn" href="/dad/day"><i class="fas fa-calendar-day" aria-hidden="true"></i><span>My personal tasks</span></a>
+        <a class="pipeline-btn" href="/dad/family"><i class="fas fa-house" aria-hidden="true"></i><span>Family tracking</span></a>
         <button class="cockpit-help-button" type="button" data-cockpit-guide-open="pipelineGuide">
           <i class="fas fa-circle-question"></i><span>Page guide</span>
         </button>
@@ -59,7 +63,7 @@
     <time id="pipelineStateUpdated"></time>
   </section>
 
-  <section class="pipeline-metrics" aria-label="All-time task counts by status — select one to filter the progression below">
+  <section class="pipeline-metrics" aria-label="All-time engineering task counts by status — select one to filter the progression below">
     <button class="pipeline-metric metric-queued" type="button" data-status-filter="queued" aria-pressed="false">
       <span><i class="fas fa-inbox" aria-hidden="true"></i> Queued</span>
       <strong id="pipelineCountQueued">--</strong>
@@ -208,7 +212,7 @@
         </div>
         <div id="pipelineAttentionScopes" class="pipeline-attention-scopes" role="group" aria-label="Attention queue">
           <button type="button" class="pipeline-btn compact active" data-attention-scope="engineering" aria-pressed="true">Engineering</button>
-          <button type="button" class="pipeline-btn compact" data-attention-scope="private" aria-pressed="false">Private lanes</button>
+          <button type="button" class="pipeline-btn compact" data-attention-scope="private" aria-pressed="false" title="Separate attention queue; these items stay outside the engineering overview and counts">Personal &amp; household</button>
         </div>
       </div>
       <p id="pipelineAttentionNotes" class="pipeline-attention-notes" hidden></p>
@@ -310,7 +314,7 @@
     <section class="pipeline-panel">
       <div class="pipeline-panel-header">
         <div>
-          <h2><i class="fas fa-flag-checkered"></i> Recently done</h2>
+          <h2><i class="fas fa-flag-checkered"></i> Recently closed engineering tasks</h2>
           <p id="pipelineDoneMeta">--</p>
         </div>
       </div>
@@ -328,9 +332,9 @@
     cockpitGuide: {
       id: 'pipelineGuide',
       title: 'Read the queue, then act with the audited contract',
-      summary: 'Pipeline is the human view of the product-owned task queue and its privacy-safe autonomous-attempt scorecard. Agents and external boards consume the same bounded HTTP API — nothing here bypasses it.',
+      summary: 'Pipeline follows engineering work by the Coding Team and human operators. Personal and family work stays in its own space; an explicitly selected attention queue remains available here for those lanes.',
       sections: [
-        { title: 'Read the counts', body: 'The five status cards are global truth. Select one to focus the board, timeline and detailed queue below on that stage; select it again to release the filter. Other filters remain visible beside the board.' },
+        { title: 'Read the counts', body: 'The five status cards count engineering tasks only. Select one to focus the board, timeline, detailed queue and closed-task history on that stage; select it again to release the filter. Personal, family, household and secretary tasks do not contribute to these totals.' },
         { title: 'Follow a task group', body: 'Choose a group / epic beside the board to follow related tasks through completion. The board shows current statuses, including done. Timeline uses only recorded creation, update, attempt and decision events; unrecorded transitions and completion dates remain unknown. It does not infer deployment from done.' },
         { title: 'Measure the coding team', body: 'History and performance measures attempts started in its displayed 7, 30 or 90 day period across all tasks, independently of board filters and Run one task. Accepted attempts, task completion, merge and production proof are distinct. Coverage is always visible and missing metrics stay unknown rather than becoming zero.' },
         { title: 'Find the work', body: 'Search matches id, title, owner, epic, and source. Service and lane/source filters narrow the loaded rows; urgency sort surfaces blocked and overdue work first.' },

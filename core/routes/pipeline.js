@@ -79,6 +79,9 @@ function truthy(value) {
 }
 
 function buildTaskListQuery(params = {}) {
+  if (params.scope && !['all', 'engineering'].includes(params.scope)) {
+    throw Object.assign(new Error('scope must be all or engineering'), { status: 400, code: 'INVALID_TASK_SCOPE' });
+  }
   const q = {};
   if (params.status) {
     q.status = params.status;
@@ -88,6 +91,9 @@ function buildTaskListQuery(params = {}) {
   if (params.assignee) q.assignee = params.assignee;
   if (params.service) q.service = params.service;
   if (params.source) q.source = params.source;
+  // Scope before both pagination and aggregation; private rows must not
+  // consume the engineering window or contribute to its status counts.
+  if (params.scope === 'engineering') q.$and = [workerTaskScope()];
   return q;
 }
 
@@ -105,7 +111,7 @@ async function aggregateTaskCounts(query) {
   return { byStatus, matchedCount, openCount, doneCount: byStatus.done };
 }
 
-function taskListEvidence(query, limit, returnedCount, summary, observedAt) {
+function taskListEvidence(query, limit, returnedCount, summary, observedAt, taskScope) {
   const filteredStatuses = typeof query.status === 'string'
     ? [query.status]
     : (Array.isArray(query.status?.$in) ? query.status.$in : STATUSES);
@@ -121,6 +127,7 @@ function taskListEvidence(query, limit, returnedCount, summary, observedAt) {
       collection: PipelineTask.collection?.collectionName || 'pipelinetasks'
     },
     scope: {
+      taskScope,
       statuses: filteredStatuses,
       includesDone: filteredStatuses.includes('done'),
       filters,
@@ -163,10 +170,10 @@ router.get('/tasks', async (req, res) => {
       query.lean(),
       aggregateTaskCounts(q)
     ]);
-    const evidence = taskListEvidence(q, limit, tasks.length, summary, observedAt);
+    const evidence = taskListEvidence(q, limit, tasks.length, summary, observedAt, req.query.scope || 'all');
     const rows = await projectTaskRows(tasks, { summary: req.query.view === 'summary', now: new Date(observedAt) });
     return envelope.success(res, { count: rows.length, tasks: rows, summary, evidence });
-  } catch (err) { return envelope.error(res, 500, err.message); }
+  } catch (err) { return envelope.error(res, err.status || 500, err.message, err.code); }
 });
 
 // Privacy-safe team performance over persisted autonomous attempts. Missing
