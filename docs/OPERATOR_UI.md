@@ -18,6 +18,19 @@ belong in **My day** (`/dad/day`) and family tasks in **Family tracking**
 the page reads `/api/pipeline/tasks?scope=engineering` so counts and pagination
 use the same scope. API clients omitting `scope` retain the all-lane listing.
 
+**New task** opens a guided French form. A title is required; expected result,
+classification and planning are optional. **Classer et planifier** explains the
+difference between a service (the component concerned) and an epic (a common
+name for related tasks), with the effect of each empty field. Service suggestions
+list current components with explanations; archived aiOps/AgentX-Ecosystem
+labels remain readable and editable in existing tasks. Custom service names
+remain supported. Entering a personal/household service explains that the task
+will leave the engineering view. The creation preview reflects priority,
+classification, earliest start, dependencies and deadline. Saving creates a
+queued, unassigned task and does not dispatch an agent. An explicitly empty
+group stays empty; API/MCP clients omitting the group keep their inbox default.
+The optional AI writing proposal still requires applying it and saving the form.
+
 Use **Needs attention** to find tasks requiring a decision.
 Its header separates the known total, the rows loaded in the browser and the
 page shown; **Previous** and **Next** reach every item ten at a time, in Core's
