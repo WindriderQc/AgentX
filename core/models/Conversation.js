@@ -4,6 +4,7 @@ const MessageSchema = new mongoose.Schema({
   role: { type: String, required: true }, // 'user', 'assistant', 'system'
   // A cancelled/failed surface attempt can retain evidence without reply text.
   content: { type: String, required: function() { return !this.turn; } },
+  answerBlocks: require('./answerBlocksSchema'),
   turnId: { type: String, default: undefined },
   attachments: { type: [require('./attachmentReferenceSchema')], default: undefined },
   turn: { type: require('./conversationAuditSchema'), default: undefined },

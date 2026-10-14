@@ -120,6 +120,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   owner filters, phrases and conversation-wide exclusions. Atomic root writes
   retain session counters, message identities and conditional review predicates;
   stale writers and missing content refuse explicitly.
+  Optional [answer tables](ANSWER_BLOCKS.md) persist through the existing history
+  route and restore in Playground with a complete text version. The passive
+  table contract does not yet include an automatic model-output adapter.
   Ordinary Ollama calls preserve complete input and disable context shifting;
   an unqualified runtime refuses before inference. Benchmark/Profiler keep
   their intentional probes under validated workload ownership.

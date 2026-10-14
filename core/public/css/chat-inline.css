@@ -1,4 +1,5 @@
 /* Chat page inline styles (extracted from index.html) */
+@import url("answer-blocks.css");
 
 /* Modal Overlay (for Chat Onboarding Wizard) */
 .modal-overlay {

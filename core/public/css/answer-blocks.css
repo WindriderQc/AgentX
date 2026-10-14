@@ -1,0 +1,10 @@
+.answer-blocks { min-width: 0; }
+.answer-block-table-wrap { max-width: 100%; overflow-x: auto; margin: 1rem 0; border: 1px solid var(--chat-border, #334155); border-radius: 6px; }
+.answer-block-table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+.answer-block-table caption { text-align: left; font-weight: 600; padding: .75rem; color: inherit; }
+.answer-block-table th, .answer-block-table td { text-align: left; vertical-align: top; padding: .65rem .75rem; border-top: 1px solid var(--chat-border, #334155); min-width: 6rem; max-width: 24rem; overflow-wrap: anywhere; }
+.answer-block-table th { font-weight: 600; }
+.answer-block-table-wrap:focus-visible, .answer-block-text-version summary:focus-visible { outline: 2px solid var(--accent, #67e8f9); outline-offset: 2px; }
+.answer-block-text-version { margin-top: 1rem; }
+.answer-block-text-version summary { cursor: pointer; width: fit-content; }
+.answer-block-fallback { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }

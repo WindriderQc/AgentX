@@ -8,6 +8,7 @@ const { withPlaygroundHistoryFilter } = require('../src/services/conversationSur
 const logger = require('../config/logger');
 const { requireTypedConfirmation } = require('../src/helpers/typedConfirmation');
 const exchanges = require('../src/services/conversations/exchangeReceipts');
+const blocks = require('../src/services/conversations/historyAnswerBlocks');
 const {
     TurnOutcomeError,
     persistTurnOutcome
@@ -64,20 +65,27 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ status: 'error', message: 'messages array is required' });
         }
 
-        const stamped = messages.map(m => ({
-            role: m.role,
-            content: m.content,
-            timestamp: new Date()
-        }));
+        const blockWrite = blocks.blockWriteRequested(messages);
+        // Validate the whole batch before a content write. Normal save/create
+        // retains canonical transcript pages, versions and owner/erasure fences.
+        const stamped = blocks.stampMessages(messages);
+        if (blockWrite && conversationId !== undefined && !mongoose.isObjectIdOrHexString(conversationId)) {
+            return res.status(400).json({ status: 'error', code: 'CONVERSATION_ID_INVALID', message: 'Invalid conversation ID format' });
+        }
 
         let conv;
         if (conversationId && mongoose.Types.ObjectId.isValid(conversationId)) {
-            conv = await Conversation.findOne({
+            // The transcript fence also evaluates this predicate against raw
+            // BSON roots, so retain the cast ID in the saved write scope.
+            const scope = blockWrite ? blocks.visibleBlockScope(userId, new mongoose.Types.ObjectId(conversationId)) : {
                 _id: conversationId,
                 userId,
                 'lifecycle.status': { $ne: 'archived' }
-            });
+            };
+            conv = await Conversation.findOne(scope);
             if (conv) {
+                if (!blocks.blockHistoryReadable(conv)) return res.status(404).json({ status: 'error', code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found' });
+                if (blockWrite) conv.$where = scope;
                 conv.messages.push(...stamped);
                 conv.updatedAt = new Date();
                 await conv.save();
@@ -85,7 +93,9 @@ router.post('/', async (req, res) => {
         }
 
         if (!conv) {
+            if (blockWrite && conversationId !== undefined) return res.status(404).json({ status: 'error', code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found' });
             const title = messages[0]?.content?.slice(0, 60) || 'Agent X Chat';
+            if (blockWrite) blocks.assertVisibleCreation({ title, source, clientRef, messages: stamped });
             conv = await Conversation.create({
                 userId,
                 model: model || 'unknown',
@@ -98,6 +108,9 @@ router.post('/', async (req, res) => {
 
         res.json({ status: 'success', data: { conversationId: publicId(conv._id) } });
     } catch (err) {
+        if (err.statusCode === 400) return res.status(400).json({ status: 'error', code: err.code, message: err.message });
+        if (err.code === 'CONVERSATION_WRITE_CONFLICT') return res.status(409).json({ status: 'error', code: err.code, message: 'The conversation changed before this append. Reopen it before saving.' });
+        if (err.name === 'DocumentNotFoundError') return res.status(404).json({ status: 'error', code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found' });
         logger.error('Failed to save conversation:', err);
         res.status(500).json({ status: 'error', message: err.message });
     }
@@ -158,10 +171,10 @@ router.delete('/receipts/:receiptId', async (req, res) => {
 router.get('/', async (req, res) => {
     try {
         const userId = getUserId(res);
-        const query = withPlaygroundHistoryFilter({
+        const query = blocks.withBlockHistoryFilter(withPlaygroundHistoryFilter({
             userId,
             'lifecycle.status': { $ne: 'archived' }
-        });
+        }));
 
         // The visibility filter runs in the query so the limit counts only
         // visible rows; only the last message is loaded for the preview.
@@ -201,15 +214,15 @@ router.get('/', async (req, res) => {
 router.get('/logs', async (req, res) => {
     try {
         const userId = getUserId(res);
-        const query = withPlaygroundHistoryFilter({
+        const query = blocks.withBlockHistoryFilter(withPlaygroundHistoryFilter({
             userId,
             'lifecycle.status': { $ne: 'archived' }
-        });
+        }));
 
         const conversation = await Conversation.findOne(query)
             .sort({ updatedAt: -1 });
 
-        if (!conversation) {
+        if (!conversation || !blocks.blockHistoryReadable(conversation)) {
             return res.json({ status: 'success', data: { messages: [] } });
         }
 
@@ -323,10 +336,10 @@ router.get('/tags', async (req, res) => {
 router.get('/conversations', async (req, res) => {
     try {
         const userId = getUserId(res);
-        const query = withPlaygroundHistoryFilter({
+        const query = blocks.withBlockHistoryFilter(withPlaygroundHistoryFilter({
             userId,
             'lifecycle.status': { $ne: 'archived' }
-        });
+        }));
 
         const conversations = await Conversation.aggregate([
             { $match: query },
@@ -365,7 +378,7 @@ router.get('/conversations/:id', async (req, res) => {
 
         const conversation = await Conversation.findOne(query);
 
-        if (!conversation) {
+        if (!conversation || !blocks.blockHistoryReadable(conversation)) {
             return res.status(404).json({ status: 'error', message: 'Conversation not found' });
         }
 
@@ -397,7 +410,7 @@ router.get('/:id', async (req, res) => {
 
         const conversation = await Conversation.findOne(query);
 
-        if (!conversation) {
+        if (!conversation || !blocks.blockHistoryReadable(conversation)) {
             return res.status(404).json({ status: 'error', code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found' });
         }
 

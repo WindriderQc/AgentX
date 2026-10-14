@@ -234,6 +234,13 @@ export function showModal(title, bodyHTML) {
   if (!dialog.open) dialog.showModal();
 }
 
+function renderBodyContent(body, content) {
+  if (typeof marked !== 'undefined') {
+    try { body.innerHTML = sanitizeHTML(marked.parse(content)); }
+    catch { body.textContent = content; }
+  } else body.textContent = content;
+}
+
 export function renderMessage(message, state, elements) {
   const role = message.role;
   const content = message.content;
@@ -271,15 +278,11 @@ export function renderMessage(message, state, elements) {
 
   const body = document.createElement('div');
   body.className = 'message-body';
-  if (typeof marked !== 'undefined') {
-    try {
-      body.innerHTML = sanitizeHTML(marked.parse(content));
-    } catch (err) {
-      console.error('Markdown rendering failed:', err);
-      body.textContent = content;
-    }
-  } else {
-    body.textContent = content;
+  renderBodyContent(body, content);
+  if (role === 'assistant' && message.answerBlocks) {
+    // Optional enhancement: a missing module keeps the complete text visible.
+    void import('./answer-blocks-render.js').then(module =>
+      module.enhanceAnswerBlocks(body, message, { renderProse: renderBodyContent })).catch(() => {});
   }
 
   bubble.appendChild(meta);

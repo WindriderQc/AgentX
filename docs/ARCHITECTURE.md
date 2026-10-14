@@ -250,6 +250,12 @@ behind an atomic reference in `Conversation`. Model reads hydrate the complete
 messages; embedded legacy histories move to pages on their next content write.
 Message IDs, feedback, attachments and audit evidence retain their contracts.
 
+Optional assistant [answer tables](ANSWER_BLOCKS.md) are declared canonical
+message data with a bounded, passive envelope and complete literal-text fallback
+in `content`. The existing authorized history route validates them before any
+write; Playground restores accessible tables without adding actions or inference
+authority. There is no automatic model-output adapter.
+
 A `conversationId` is a continuation handle for the Playground chat endpoints
 (`POST /api/chat` and `POST /api/chat/stream`). Core stores every accepted turn
 under that id, and on a later call it rehydrates the stored user/assistant turns
