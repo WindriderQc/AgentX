@@ -331,9 +331,12 @@ const TOOL_HANDLERS = {
   ...COVERAGE_TOOL_HANDLERS,
 };
 
-async function callTool(params, deps = {}) {
+const MEMORY_TOOL_NAMES = new Set(['memory_search', 'memory_remember', 'rag_search']);
+const MEMORY_PROFILE_TOOLS = TOOLS.filter(tool => MEMORY_TOOL_NAMES.has(tool.name));
+
+async function callTool(params, deps = {}, tools = TOOLS) {
   const name = params?.name;
-  if (typeof name !== 'string' || !TOOL_HANDLERS[name]) {
+  if (typeof name !== 'string' || !tools.some(tool => tool.name === name)) {
     throw new McpToolError(`unknown tool: ${name || ''}`, { code: 'UNKNOWN_TOOL' });
   }
   try {
@@ -344,12 +347,14 @@ async function callTool(params, deps = {}) {
   }
 }
 
-async function handleMcpMessage(message, deps = {}) {
+async function handleMcpMessage(message, deps = {}, { profile = 'default' } = {}) {
   if (!message || typeof message !== 'object' || Array.isArray(message) || message.jsonrpc !== '2.0') {
     return jsonRpcError(null, -32600, 'Invalid Request');
   }
   const { id, method, params } = message;
   const isNotification = id === undefined || id === null;
+  const tools = profile === 'memory' ? MEMORY_PROFILE_TOOLS : profile === 'default' ? TOOLS : null;
+  if (!tools) return isNotification ? null : jsonRpcError(id, -32602, 'Unknown MCP profile');
 
   if (method === 'notifications/initialized') return null;
   if (method === 'ping') return isNotification ? null : jsonRpcResult(id, {});
@@ -359,16 +364,18 @@ async function handleMcpMessage(message, deps = {}) {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: { tools: { listChanged: false } },
       serverInfo: SERVER_INFO,
-      instructions: 'Agent X exposes a narrow product bus for health, RAG, routing recommendations, local task creation, vault inbox notes, and owner memory notes.',
+      instructions: profile === 'memory'
+        ? 'Search owner memory for relevant durable facts and preferences. When the owner asks you to remember something, save one fact with memory_remember; use its id to correct an existing note. Keep project logs and coding decisions in project files or session history. Use rag_search for documents. Never claim a memory was saved without a successful tool result.'
+        : 'Agent X exposes a narrow product bus for health, RAG, routing recommendations, local task creation, vault inbox notes, and owner memory notes.',
     });
   }
   if (method === 'tools/list') {
     if (isNotification) return null;
-    return jsonRpcResult(id, { tools: TOOLS });
+    return jsonRpcResult(id, { tools });
   }
   if (method === 'tools/call') {
     if (isNotification) return null;
-    return jsonRpcResult(id, await callTool(params || {}, deps));
+    return jsonRpcResult(id, await callTool(params || {}, deps, tools));
   }
 
   return isNotification ? null : jsonRpcError(id, -32601, `Method not found: ${method || ''}`);

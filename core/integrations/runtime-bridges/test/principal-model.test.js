@@ -27,6 +27,19 @@ test('Studio launch overlays preserve preferences, principal context and optiona
   assert.deepEqual(source, { 'ui-onboarding': { welcomeNoticeVersion: 'original' } });
 });
 
+test('optional Studio memory composes native history and the bounded Core memory entry', () => {
+  const plain = studioPatch({}, 'http://core-host:3180', 196608);
+  assert.equal(JSON.stringify(plain).includes('session-query'), false);
+  const memory = studioPatch({}, 'http://core-host:3180', 196608, undefined, true);
+  assert.deepEqual(memory.find(row => row.id === 'session-query-sqlite').config,
+    { path: ':memory:', openAt: 'first-search' });
+  const plugins = memory.at(-1).insert;
+  assert.equal(plugins[0].name, '@deepseek-ai/dsh-tool-session-query');
+  assert.equal(plugins[0].config.maxSearchResults, 10);
+  assert.equal(plugins[1].config.url, 'http://core-host:3180/mcp/memory');
+  assert.equal(plugins[1].config.failOnStartupError, true);
+});
+
 test('Studio settings keep native preferences and use the existing Core gateway', () => {
   const original = { 'agent-default-model': { provider: 'old', model: 'standard' },
     theme: 'dark', 'llm-pi-ai': { providers: { old: { baseURL: 'http://direct-model-host' } }, setting: true } };

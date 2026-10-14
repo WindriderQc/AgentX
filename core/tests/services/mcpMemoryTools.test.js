@@ -3,6 +3,8 @@
 const MemoryNote = require('../../models/MemoryNote');
 const { handleMcpMessage } = require('../../src/services/mcpSkillBus');
 const { forSpace } = require('../../src/services/memoryNoteService');
+const express = require('express');
+const request = require('supertest');
 
 const call = (name, args) => handleMcpMessage({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } })
   .then(response => response.result);
@@ -33,6 +35,21 @@ describe('Core MCP owner memory tools with real Mongo', () => {
     const saved = (await call('memory_remember', { text: 'Synthetic library day is Monday' })).structuredContent;
     const fixed = (await call('memory_remember', { id: saved.id, text: 'Synthetic library day is Tuesday' })).structuredContent;
     expect(fixed).toMatchObject({ id: saved.id, created: false, changed: true });
+    expect(await MemoryNote.countDocuments()).toBe(1);
+  });
+
+  test('memory-only HTTP entry shares canonical notes and refuses other product tools', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/mcp', require('../../routes/mcp'));
+    const rpc = params => request(app).post('/mcp/memory')
+      .send({ jsonrpc: '2.0', id: 1, method: 'tools/call', params });
+    const saved = await rpc({ name: 'memory_remember', arguments: { text: 'Synthetic shared MCP preference' } }).expect(200);
+    const id = saved.body.result.structuredContent.id;
+    expect(id).toMatch(/^[a-f0-9]{24}$/);
+    expect((await call('memory_search', { query: 'shared MCP preference' })).structuredContent.notes)
+      .toEqual([expect.objectContaining({ id })]);
+    await rpc({ name: 'create_todo', arguments: { title: 'Forbidden synthetic task' }, profile: 'default' }).expect(500);
     expect(await MemoryNote.countDocuments()).toBe(1);
   });
 
