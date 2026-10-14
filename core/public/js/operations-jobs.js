@@ -53,9 +53,12 @@
     if (['running', 'accepted'].includes(run.state)) return 'La demande est reçue. Le résultat sera ajouté à l’historique.';
     const metrics = run.metrics || {};
     const parts = [];
-    if ('files' in metrics) parts.push(`${count(metrics.files)} fichier${metrics.files === 1 ? '' : 's'}`);
-    if ('bytes' in metrics) parts.push(bytes(metrics.bytes));
-    if ('accepted' in metrics) parts.push(`${count(metrics.accepted)} élément${metrics.accepted === 1 ? '' : 's'} accepté${metrics.accepted === 1 ? '' : 's'}`);
+    if ('sessions' in metrics) parts.push(`${count(metrics.sessions)} session${metrics.sessions === 1 ? '' : 's'}`);
+    if ('files' in metrics && (metrics.files > 0 || !metrics.unchanged)) parts.push(`${count(metrics.files)} fichier${metrics.files === 1 ? '' : 's'}`);
+    if (metrics.bytes > 0) parts.push(bytes(metrics.bytes));
+    if (metrics.unchanged > 0) parts.push(`${count(metrics.unchanged)} déjà à jour`);
+    if (metrics.accepted === true) parts.push('Transmission acceptée');
+    else if (typeof metrics.accepted === 'number') parts.push(`${count(metrics.accepted)} élément${metrics.accepted === 1 ? '' : 's'} accepté${metrics.accepted === 1 ? '' : 's'}`);
     if (metrics.verified) parts.push('empreintes vérifiées');
     if (!parts.length) parts.push('Exécution terminée');
     return parts.join(' · ');
