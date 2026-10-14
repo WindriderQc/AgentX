@@ -646,13 +646,20 @@
 
   const { inferenceSummary, renderAttemptDossier } = window.PipelineAttemptDossier.create({ escapeHtml: (...args) => escapeHtml(...args), formatDate: (...args) => formatDate(...args), costEvidencePresentation: (...args) => costEvidencePresentation(...args), localEnergyPresentation: (...args) => localEnergyPresentation(...args), formatStatus: (...args) => formatStatus(...args), attemptOutcome: (...args) => attemptOutcome(...args), metaRow: (...args) => metaRow(...args), durationLabel: (...args) => durationLabel(...args) });
 
+  function drawerDisclosureKey(el, index) {
+    // Panel identities and the summary's text node stay stable when counts or
+    // optional evidence sections change during a background refresh.
+    return el.id || Object.entries(el.dataset || {}).map(([name, value]) => `${name}:${value}`).join('|')
+      || el.querySelector?.('summary')?.firstChild?.textContent?.trim() || `detail-${index}`;
+  }
+
   function preserveDrawerDraft(body) {
     const fields = Array.from(body.querySelectorAll('input[name], textarea[name], select[name]'));
     return {
       scrollTop: body.scrollTop,
       fields: fields.map(el => ({ key: `${el.closest('form')?.dataset.drawerAction}:${el.name}`, value: el.value,
         checked: el.checked, focused: el === document.activeElement, start: el.selectionStart, end: el.selectionEnd })),
-      details: Array.from(body.querySelectorAll('details')).map(el => el.open)
+      details: Array.from(body.querySelectorAll('details')).map((el, index) => ({ key: drawerDisclosureKey(el, index), open: el.open }))
     };
   }
 
@@ -671,6 +678,11 @@
   }
 
   function restoreDrawerDraft(body, draft) {
+    // Reveal saved disclosures before restoring focus to a field inside one.
+    Array.from(body.querySelectorAll('details')).forEach((el, index) => {
+      const saved = draft.details.find(item => item.key === drawerDisclosureKey(el, index));
+      if (saved) el.open = saved.open;
+    });
     for (const el of body.querySelectorAll('input[name], textarea[name], select[name]')) {
       const saved = draft.fields.find(item => item.key === `${el.closest('form')?.dataset.drawerAction}:${el.name}`);
       if (!saved) continue;
@@ -681,7 +693,6 @@
         if (typeof saved.start === 'number' && typeof el.setSelectionRange === 'function') el.setSelectionRange(saved.start, saved.end);
       }
     }
-    Array.from(body.querySelectorAll('details')).forEach((el, index) => { el.open = draft.details[index] || false; });
     body.scrollTop = draft.scrollTop;
   }
 

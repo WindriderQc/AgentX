@@ -121,3 +121,36 @@ test('renders nothing without a matching reference projection', () => {
   expect(api.markup({ pipelineId: '0308', evidenceReferences: twoAttempts().evidenceReferences })).toBe('');
   expect(api.markup(task([]), { deliveryItems: [] })).toBe('');
 });
+
+test('the main result link requires the current attempt and the same proven PR binding as technical inspection', () => {
+  const { api } = load();
+  const delivery = { pipelineId: '0307', attempt: 2, stage: 'review_ready', receipt: { fingerprint: RECEIPT_TWO },
+    receiptBinding: BOUND, pullRequest: { number: 42, url: 'https://github.com/example/AgentX/pull/42' } };
+  const record = task([{ attempt: 1, evidence: { workerReceiptFingerprint: RECEIPT_ONE } },
+    { attempt: 2, evidence: { workerReceiptFingerprint: RECEIPT_TWO } }], 'review');
+  expect(api.resultLink(record, [delivery])).toContain('Open PR #42');
+  for (const changed of [
+    { attempt: 1, receipt: { fingerprint: RECEIPT_ONE } },
+    { receipt: { fingerprint: RECEIPT_ONE } },
+    { receiptBinding: { ...BOUND, exactHead: false } },
+    { stage: 'receipt_mismatch' },
+    { pullRequest: { number: 42, url: 'javascript:alert(1)' } },
+    { pipelineId: '0308' },
+  ]) expect(api.resultLink(record, [{ ...delivery, ...changed }])).toBe('');
+  expect(api.resultLink(record, [delivery, delivery])).toBe('');
+  expect(api.resultLink(record, undefined)).toBe('');
+});
+
+test('showing an attempt reopens its collapsed dossier before scrolling and focusing', () => {
+  const outer = { open: false, parentElement: { closest: () => null } };
+  const details = { open: false, parentElement: { closest: () => outer } };
+  const target = { closest: () => details,
+    scrollIntoView: jest.fn(() => { expect(details.open).toBe(true); expect(outer.open).toBe(true); }),
+    focus: jest.fn() };
+  const root = { querySelector: selector => selector === '#pipeline-attempt-2' ? target : null };
+  // The browser script runs in a VM, so provide CSS there rather than to Node.
+  const context = { window: { location: { search: '' } }, CSS: { escape: String }, document: { addEventListener() {} }, URLSearchParams };
+  vm.runInNewContext(source, context);
+  expect(context.window.PipelineEvidenceReferences.showAttempt(root, 2, 'dossier')).toBe(true);
+  expect(target.focus).toHaveBeenCalledWith({ preventScroll: true });
+});

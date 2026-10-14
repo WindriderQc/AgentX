@@ -35,25 +35,35 @@
   // The PR is linked only when the delivery observation names this exact task
   // and attempt, and Core's delivery gate proved the exact PR, exact head and
   // sealed receipt binding (kept after merge). Product PRs carry no binding.
-  function pullRequestRow(row, pipelineId, delivery) {
-    if (!delivery) return unknown('Pull request', 'Unknown — delivery status is not loaded');
-    if (delivery.ambiguous) return unknown('Pull request', 'Unknown — several delivery observations name this task; no link is made', 'conflict');
-    if (delivery.pipelineId !== pipelineId) return unknown('Pull request', 'Unknown — no delivery observation for this task');
-    if (Number(delivery.attempt) !== row.attempt) return unknown('Pull request', `Not this attempt — the delivery observation concerns attempt ${Number(delivery.attempt) || 'unknown'}`);
-    if (delivery.stage === 'receipt_mismatch') return unknown('Pull request', 'Mismatch — the PR is not bound to this attempt’s sealed receipt; no link is made', 'conflict');
+  function pullRequestRow(row, pipelineId, delivery, linkOnly = false) {
+    const unavailable = (text, tone) => linkOnly ? '' : unknown('Pull request', text, tone);
+    if (!delivery) return unavailable('Unknown — delivery status is not loaded');
+    if (delivery.ambiguous) return unavailable('Unknown — several delivery observations name this task; no link is made', 'conflict');
+    if (delivery.pipelineId !== pipelineId) return unavailable('Unknown — no delivery observation for this task');
+    if (Number(delivery.attempt) !== row.attempt) return unavailable(`Not this attempt — the delivery observation concerns attempt ${Number(delivery.attempt) || 'unknown'}`);
+    if (delivery.stage === 'receipt_mismatch') return unavailable('Mismatch — the PR is not bound to this attempt’s sealed receipt; no link is made', 'conflict');
     const pr = delivery.pullRequest;
-    if (!pr) return unknown('Pull request', 'None recorded for this attempt');
+    if (!pr) return unavailable('None recorded for this attempt');
     const fingerprint = String(delivery.receipt?.fingerprint || '');
     if (row.receipt.status !== 'recorded' || fingerprint !== row.receipt.fingerprint) {
-      return unknown('Pull request', 'Unknown — the delivery receipt does not match this attempt’s receipt; no link is made', 'conflict');
+      return unavailable('Unknown — the delivery receipt does not match this attempt’s receipt; no link is made', 'conflict');
     }
     const binding = delivery.receiptBinding;
     if (!binding || binding.exactPullRequest !== true || binding.exactHead !== true || binding.sealedReceipt !== true) {
-      return unknown('Pull request', `PR #${Number(pr.number) || '?'} — receipt binding not proven; no link is made`, 'conflict');
+      return unavailable(`PR #${Number(pr.number) || '?'} — receipt binding not proven; no link is made`, 'conflict');
     }
     const match = String(pr.url || '').match(PR_URL_RE);
-    if (!match || Number(match[1]) !== Number(pr.number)) return unknown('Pull request', `PR #${Number(pr.number) || '?'} — link unverified; no link is made`, 'conflict');
+    if (!match || Number(match[1]) !== Number(pr.number)) return unavailable(`PR #${Number(pr.number) || '?'} — link unverified; no link is made`, 'conflict');
+    if (linkOnly) return `<a class="pipeline-btn compact" href="${esc(pr.url)}" target="_blank" rel="noopener noreferrer">Open PR #${esc(pr.number)}</a>`;
     return `<div class="pipeline-evidence-row"><dt>Pull request</dt><dd><a href="${esc(pr.url)}" target="_blank" rel="noopener noreferrer">PR #${esc(pr.number)}</a>${pr.headSha ? ` <code>${esc(String(pr.headSha).slice(0, 12))}</code>` : ''}${copyButton(pr.url, 'pull request link')}</dd></div>`;
+  }
+
+  function resultLink(task, deliveryItems) {
+    const refs = task?.evidenceReferences;
+    if (refs?.schema !== SCHEMA || refs.pipelineId !== task.pipelineId || !Array.isArray(refs.attempts) || !Array.isArray(deliveryItems)) return '';
+    const current = refs.attempts.filter(row => row.current);
+    const deliveries = deliveryItems.filter(item => item?.pipelineId === task.pipelineId);
+    return current.length === 1 && deliveries.length === 1 ? pullRequestRow(current[0], task.pipelineId, deliveries[0], true) : '';
   }
 
   function requestRow(row, launchRun) {
@@ -146,6 +156,9 @@
     const dossier = root.querySelector(`#pipeline-attempt-${CSS.escape(String(attempt))}`);
     const target = focusTarget === 'dossier' && dossier ? dossier : root.querySelector(`#pipeline-evidence-attempt-${CSS.escape(String(attempt))}`);
     if (!target) return false;
+    for (let disclosure = target.closest?.('details'); disclosure; disclosure = disclosure.parentElement?.closest('details')) {
+      disclosure.open = true;
+    }
     target.scrollIntoView({ block: 'start', behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     target.focus({ preventScroll: true });
     return true;
@@ -185,5 +198,5 @@
     });
   }
 
-  window.PipelineEvidenceReferences = { markup, launchMarkup, showAttempt };
+  window.PipelineEvidenceReferences = { markup, launchMarkup, showAttempt, resultLink };
 })();
