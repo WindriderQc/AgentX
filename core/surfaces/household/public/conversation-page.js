@@ -14,6 +14,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     <header class="conversation-heading"><p class="eyebrow">${family ? 'Nestor · Family' : 'Super Dad · Personal'}</p><h1>With Nestor.</h1><p id="conversationListeningHint">${family ? "Say “Hey/Eille/Oh/Ah Nestor”, then speak naturally." : "Open conversation: speak freely while the mic is on."}</p></header>
     <nav class="conversation-toolbar" aria-label="Conversation actions">
       <button id="conversationNew" class="button" type="button">New conversation</button>
+      <button id="conversationWorkshop" class="button" type="button">Atelier vocal</button>
+      <label>Language<select id="conversationLanguage"><option value="fr">Français québécois</option><option value="en">English</option></select></label>
       <button id="conversationHistoryToggle" class="button" type="button" aria-expanded="false" aria-controls="conversationHistory">Recent</button>
     </nav>
     ${family ? '' : '<nav id="conversationTeam" class="conversation-team" aria-label="Team" hidden></nav>'}
@@ -36,24 +38,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       </details>
       <label class="conversation-toggle"><input id="conversationOpen" type="checkbox"> Alternate model (Open) <span class="muted">Change this conversation’s model</span></label><p id="conversationOpenStatus" class="muted" role="status" hidden></p>
       <details id="conversationOpenDetails" hidden><summary>Alternate model details</summary><p id="conversationOpenContext" class="muted"></p></details>
-      <details><summary>Voice and language</summary><label for="conversationLanguage">Language</label><select id="conversationLanguage"><option value="fr">Français québécois</option><option value="en">English</option></select>
-      <p id="voiceDescription" class="muted"></p>
-      <button id="conversationPreview" class="button" type="button">Preview voice</button><p id="conversationPreviewStatus" class="muted" role="status"></p>
-      <p id="conversationSpeechReceipt" class="muted" hidden></p>
-      ${family ? '' : '<p class="muted">A member’s voice, look and personality are set on its profile: <a href="/agent-ops#agents">Team</a>.</p>'}
-      <p id="conversationPreferencesStatus" class="muted"></p></details>
+      <p id="conversationPreferencesStatus" class="muted" role="status"></p>
       <details id="conversationNotes" hidden></details>
-      <details><summary>Listening</summary><label class="conversation-toggle"><input id="conversationInterruption" type="checkbox" checked> Interrupt Nestor by speaking</label><p id="conversationInterruptionStatus" class="muted">Uses the browser’s echo cancellation. A headset can help in a noisy room.</p>
-      <label class="conversation-toggle"><input id="conversationWake" type="checkbox" ${family ? "checked" : ""}> Activate with “Hey/Eille/Oh/Ah Nestor”</label><p class="muted">After activation, the conversation continues until Pause. “Dors Nestor” or “Bonne nuit Nestor” also returns it to standby. Saying “Nestor” alone does not activate it. In an open conversation, it answers speech while the mic is on. Speech is transcribed on the local network before the name is detected; only sentences addressed to Nestor enter the conversation.</p><div id="conversationBrowserSttSettings" hidden></div>${family ? '' : '<a href="/device-check" class="conversation-native">Check the mic and speaker</a>'}</details>
-      <details id="conversationAudio" class="conversation-audio"><summary>Audio and transcription</summary>
-        <p id="conversationDevice" class="muted">This device’s microphone and speakers</p>
-        <p class="muted">Replay up to 20 seconds from this microphone, or the end of your last utterance. A clip stays in this tab for at most 2 minutes. Pause, New conversation or leaving the page erases it.</p>
-        <div class="conversation-audio-actions"><button id="conversationInspectMic" class="button" type="button" disabled>Replay recent mic audio</button><button id="conversationInspectPhrase" class="button" type="button" disabled>Replay end of last utterance</button></div>
-        <p id="conversationAudioStatus" class="muted">Turn on Nestor to replay the mic.</p>
-        <div id="conversationAudioExcerpt" hidden><p id="conversationAudioCapture" class="muted"></p><p id="conversationAudioTranscript" class="conversation-audio-transcript"></p>
-          <div class="conversation-audio-actions"><button id="conversationReplay" class="button" type="button">Replay</button><button id="conversationReplayStop" class="button" type="button">Stop</button><button id="conversationAudioErase" class="button" type="button">Erase clip</button></div>
-        </div>
-      </details>
     </details><section class="conversation-stage" aria-label="Conversation"><div class="conversation-cockpit${family ? ' conversation-cockpit-family' : ''}">
       <div class="conversation-live"><div id="conversationPresence" class="conversation-presence" data-state="idle" aria-hidden="true"><span id="conversationInitial">N</span></div>
       <p id="conversationStatus" class="conversation-status" role="status" aria-live="polite">Getting Nestor ready…</p><p id="conversationVoiceNotice" class="muted" role="status" hidden></p>
@@ -74,7 +60,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       <form id="conversationText" class="conversation-text"><label class="sr-only" for="conversationMessage">Message</label><textarea id="conversationMessage" rows="2" placeholder="Write a message…" required maxlength="4000"></textarea><button class="button" type="submit">Send</button></form>
       ${family ? '' : '<details class="conversation-attachments"><summary>Attach an image or document</summary><label class="sr-only" for="conversationFiles">Attachments</label><input id="conversationFiles" type="file" multiple accept="image/png,image/jpeg,.txt,.md,.csv,.json,.pdf"><p class="muted">Up to 3 files · JPEG or PNG photos up to 50 MB (Nestor receives a reduced copy; the original is archived) · text or text PDF up to 2 MB (20 pages, 24,000 characters maximum). Add a message to send them.</p><div id="conversationDraftFiles" aria-live="polite"></div></details>'}
       <p id="conversationAgentContext" class="conversation-context muted"></p>
-    </div>${family ? '' : '<section id="conversationWorkflow" aria-label="Nestor component workflow"></section>'}</div></section></div></section>`;
+    </div></div></section></div></section>`;
   const el = id => document.getElementById(id);
   const composer = window.ConversationComposer.mount({ input: el('conversationMessage'), form: el('conversationText'), family });
   // Shown, never spoken (#167): secrets exist only in the private space.
@@ -100,7 +86,10 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const team = family ? [] : ConversationTeam.members(personas, agents);
   const picker = el('conversationPersona'), open = el('conversationOpen'), language = el('conversationLanguage');
   const transcript = el('conversationTranscript');
-  const workflow = family ? null : NestorWorkflow.create({ host: el('conversationWorkflow'), signal: el('conversationWorkflowSignal') });
+  const diagnosticFlow = document.createElement('section'); diagnosticFlow.id = 'conversationWorkflow';
+  const fallbackSettings = document.createElement('div');
+  const wake = { checked: family };
+  const workflow = family ? null : NestorWorkflow.create({ host: diagnosticFlow, signal: el('conversationWorkflowSignal') });
   // The background brain (#169): tapping a suggestion asks it; a remark is spoken at a pause
   // when the voice conversation is listening, otherwise shown in the transcript.
   const brain = window.NestorBrain.create(el('conversationBrain'), { base: sessionBase,
@@ -121,7 +110,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const personalNotes = family ? { show() {} } : mountPersonalNotes({ host: el('conversationNotes'), evidence: el('conversationPersonalContext'), api, esc });
   const selected = () => personas.find(p => p.id === picker.value) || personas[0];
   const blockedOpenMessage = 'The alternate model is unavailable. The inference host must be restored to continue.';
-  const interruption = el('conversationInterruption');
+  const interruption = { checked: true };
+  let lastPlaybackMetrics = {}, latestVoiceTimings = {};
+  const stopPreview = () => { previewAbort?.abort(); previewAbort = null; };
   let enteringSpace = autoStart;
   let textBusy = false, partial = null, previewAbort = null, activeBrowserTurn = null, degradedReply = false;
   let draftFiles = [];
@@ -183,9 +174,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   let storage;
   try { storage = window.localStorage; } catch { /* preferences remain usable in memory */ }
   let preferences = P.read(storage, catalog);
-  try { const savedListening = storage?.getItem(listeningKey); el('conversationWake').checked = (['wake', 'open'].includes(savedListening) ? savedListening : defaultListening) === 'wake'; } catch {}
-  const describeListening = () => { el('conversationListeningHint').textContent = el('conversationWake').checked ? 'Say “Hey/Eille/Oh/Ah Nestor”, then speak naturally.' : 'Open conversation: speak freely while the mic is on.'; };
-  el('conversationWake').onchange = () => { conversation.setWakeWord(el('conversationWake').checked); try { storage?.setItem(listeningKey, el('conversationWake').checked ? 'wake' : 'open'); } catch {} describeListening(); };
+  try { const savedListening = storage?.getItem(listeningKey); wake.checked = (['wake', 'open'].includes(savedListening) ? savedListening : defaultListening) === 'wake'; } catch {}
+  const describeListening = () => { el('conversationListeningHint').textContent = wake.checked ? 'Say “Hey/Eille/Oh/Ah Nestor”, then speak naturally.' : 'Open conversation: speak freely while the mic is on.'; };
+  wake.onchange = () => { conversation.setWakeWord(wake.checked); try { storage?.setItem(listeningKey, wake.checked ? 'wake' : 'open'); } catch {} describeListening(); };
   describeListening();
   picker.value = family ? 'nestor' : preferences.personaId;
   if (!family) {
@@ -196,11 +187,10 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   interruption.checked = preferences.interruption;
   // Voice and appearance come from the member's persona (Agent Ops, Team); this page only picks who and in which style.
   const chosenVoice = () => P.chosenVoice(selected(), '', preferences.lastVoice);
-  const stopPreview = () => { previewAbort?.abort(); previewAbort = null; };
   const savePreferences = () => {
     if (!family) { preferences.personaId = picker.value; preferences.agentId = agentPicker.value; }
     preferences.interruption = interruption.checked;
-    preferences.profiles[picker.value] = P.profile({ language: language.value });
+    preferences.profiles[picker.value] = P.profile({ ...preferences.profiles[picker.value], language: language.value });
     const saved = P.save(storage, preferences);
     el('conversationPreferencesStatus').textContent = saved
       ? 'The member, style and language are saved on this browser.'
@@ -209,8 +199,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   async function releaseOpen() {
     return openHold.release();
   }
-  const selection = () => ({ wakeWord: el('conversationWake').checked, backend: backendPicker.value, agentId: family ? 'family' : selectedAgent().id, personaId: selected().id, personaVersion: selected().version,
-    inference: { open: !family && open.checked }, voice: { presentation: chosenVoice(), selections: {} }, language: language.value,
+  const selection = () => ({ wakeWord: wake.checked, backend: backendPicker.value, agentId: family ? 'family' : selectedAgent().id, personaId: selected().id, personaVersion: selected().version,
+    inference: { open: !family && open.checked }, voice: { presentation: chosenVoice(), selections: preferences.profiles[picker.value]?.selections || {} }, language: language.value,
     visual: null, interruption: interruption.checked });
   // The team member answering this turn when it addressed one directly (#41); null for the conversation's agent.
   let turnSpeaker = null;
@@ -449,8 +439,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   }
   const conversation = new NestorConversation.Conversation({
     readyToSpeak: () => avatar?.ready,
-    openAudio: (signal, onError, options) => NestorConversation.openAudio(signal, onError, { ...options, observeSpeech: true,
-      onPlaybackMetrics: metrics => { voiceHealth.segment(metrics); renderVoiceNotice(); el('voiceDescription').title = `Last segment: ${metrics.first_scheduled_ms} ms to schedule; ${metrics.buffer_gaps} buffer gaps (${metrics.buffer_gap_ms} ms). Browser timing, not acoustic measurement.`; } }).then(audio => speechFallback.wrapAudio(audio)), createSession, message, turn: streamedTurn,
+    openAudio: (signal, onError, options) => NestorConversation.openAudio(signal, onError, { ...options, captureScope: family ? 'family' : 'personal', observeSpeech: true,
+      onPlaybackMetrics: metrics => { lastPlaybackMetrics = metrics; voiceHealth.segment(metrics); renderVoiceNotice(); } }).then(audio => speechFallback.wrapAudio(audio)), createSession, message, turn: streamedTurn,
     async interrupt(session, turnId, signal, { stop = false } = {}) {
       let result;
       do {
@@ -470,7 +460,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     },
     transcribe: (blob, lang, signal) => speechFallback.transcribe(blob, lang, signal),
     transcriptionStarted: turnId => workflow?.capture(conversation.session?.sessionId, turnId),
-    transcriptionDone: (turnId, values) => workflow?.timings(turnId, values),
+    transcriptionDone: (turnId, values) => { latestVoiceTimings = values || {}; workflow?.timings(turnId, values); },
     transcriptionEnded: (turnId, receipt) => workflow?.captureEnd(turnId, receipt),
     // Recognition started during a pause uses the local transcriber only: the browser's own
     // recognizer hands its text over once, and an early failure must not switch engines.
@@ -478,7 +468,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     // The person starts speaking: wake speech recognition while they talk (best effort).
     warm: () => fetch('/api/voix/warm', { method: 'POST' }),
     // The voice loop's timeline of a spoken turn, kept by Core on that recorded turn.
-    timings: (session, turnId, timings) => { voiceHealth.turn(turnId, timings); workflow?.timings(turnId, timings); renderVoiceNotice(); return api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/voice-timings`,
+    timings: (session, turnId, timings) => { latestVoiceTimings = timings; voiceHealth.turn(turnId, timings); workflow?.timings(turnId, timings); renderVoiceNotice(); return api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/voice-timings`,
       { method: 'POST', keepalive: true, body: JSON.stringify({ turnId, timings }) }); },
     async synthesize(reply, signal) {
       // The voice loop chose one language for the whole turn; a clause is never re-scored.
@@ -528,18 +518,11 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       node.disabled = active || !!conversation.session || textBusy || (node === agentPicker && (family || !agentCatalog || backendPicker.value !== 'openclaw'));
       node.title = node.disabled && lockReason ? lockReason : '';
     });
-    el('conversationWake').disabled = textBusy || !['idle', 'paused', 'error', 'listening'].includes(state);
+    wake.disabled = textBusy || !['idle', 'paused', 'error', 'listening'].includes(state);
     // Waiting voice (open listening or wake standby) accepts a typed message as its next turn.
     const typing = active && !conversation.canType();
     el('conversationText').querySelector('button').disabled = typing || reviewing || textBusy;
     if (!family) { el('conversationFiles').disabled = typing || reviewing || textBusy; renderDraftFiles(); }
-    el('conversationPreview').disabled = active || reviewing || textBusy;
-    if (conversation.audio) el('conversationInterruptionStatus').textContent = !interruption.checked
-      ? 'Spoken interruption is off. Listening resumes after each reply.'
-      : conversation.audio.canInterrupt ? 'You can speak to interrupt. Echo cancellation is enabled.'
-        : 'This browser did not enable echo cancellation. Listening resumes after each reply.';
-    if (conversation.audio) el('conversationDevice').textContent = conversation.audio.deviceLabel || 'Microphone on this device';
-    if (reviewing) el('conversationAudio').open = true;
     renderAudioReview();
     window.dispatchEvent(new CustomEvent('persona-presence', { detail: { personaId: conversation.session?.persona?.id || selected().id,
       personaVersion: conversation.session?.persona?.version || selected().version, state, visual: conversation.session?.visual || conversation.session?.persona?.visual || selected().visual || null,
@@ -548,49 +531,28 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         asleep: () => !!conversation.selection?.wakeWord && ['listening', 'hearing'].includes(conversation.state) && !conversation.wake.active() } } }));
   });
   renderSpeechFallback = NestorSpeechFallback.mountSpeechFallbackPanel(speechFallback, { notice: el('conversationBrowserSttNotice'),
-    settings: el('conversationBrowserSttSettings'), indicator: el('conversationBrowserSttIndicator') },
+    settings: fallbackSettings, indicator: el('conversationBrowserSttIndicator') },
   { onConsent: () => { if (conversation.state === 'reviewing') void conversation.start(selection()); } });
+  let workshop = null;
   function renderAudioReview() {
     if (conversation.state === 'listening' && conversation.selection?.wakeWord) el('conversationStatus').textContent = conversation.wake.active() ? 'Listening · conversation continues until Pause.' : 'Standby · say “Hey/Eille/Oh/Ah Nestor”.';
-    const info = conversation.audio?.reviewStatus();
-    const reviewing = conversation.state === 'reviewing';
-    const canReview = ['listening', 'hearing', 'reviewing'].includes(conversation.state) && !conversation.activeTurn && !conversation.turnPending;
-    el('conversationInspectMic').disabled = !canReview || !info?.recentSeconds;
-    el('conversationInspectPhrase').disabled = !canReview || !info?.id || info.stt === 'not-sent';
-    el('conversationAudioStatus').textContent = reviewing ? (info?.id
-      ? 'Listening is paused. This clip plays on this device without being sent for transcription.'
-      : 'No clip kept. Resume the conversation to capture a new one.')
-      : !conversation.audio ? 'Turn on Nestor to replay the mic.'
-        : canReview ? 'Replay pauses the mic. Resume when you are ready.' : 'Replay will be available after this answer.';
-    el('conversationAudioExcerpt').hidden = !reviewing || !info?.id;
-    if (!reviewing || !info?.id) {
-      el('conversationAudioCapture').textContent = ''; el('conversationAudioTranscript').textContent = ''; return;
-    }
-    const enabled = value => value === undefined ? 'unknown' : value ? 'on' : 'off';
-    const remaining = Math.max(0, Math.ceil((info.expiresAt - Date.now()) / 1000));
-    el('conversationAudioCapture').textContent = info.seconds.toFixed(1) + ' s · ' + new Date(info.capturedAt).toLocaleTimeString() + ' · erases in ' + remaining + ' s. '
-      + 'Captured before our echo rejection; browser processing applies. ' + (info.sampleRate / 1000) + ' kHz · echo cancellation ' + enabled(info.echoCancellation)
-      + ' · noise suppression ' + enabled(info.noiseSuppression) + ' · automatic gain ' + enabled(info.autoGainControl) + '. '
-      + Math.round(info.rejectedMs) + ' ms discarded by the echo filter.';
-    el('conversationAudioTranscript').textContent = info.stt === 'transcribed' ? 'STT: ' + info.text
-      : ({ control: 'Silence command recognized locally. No answer started.', 'not-sent': 'No transcription sent: silence or discarded sound.', empty: 'No speech recognized.', failed: 'Transcription failed. No answer was started.', pending: 'Transcribing.' })[info.stt] || '';
-    if (info.attempt?.model) el('conversationAudioTranscript').textContent += '\nTranscription model: ' + info.attempt.model;
-    if (info.attempt?.language) el('conversationAudioTranscript').textContent += ' · requested language: ' + info.attempt.language;
-    if (info.attempt?.detectedLanguage) el('conversationAudioTranscript').textContent += ' · decoded language: ' + info.attempt.detectedLanguage;
-    if (info.attempt?.sttMs !== undefined) el('conversationAudioTranscript').textContent += ' · ' + info.attempt.sttMs + ' ms';
-    const recognition = info.attempt?.recognition;
-    if (recognition) {
-      const details = [];
-      if (recognition.queueMs !== undefined) details.push('wait ' + Math.round(recognition.queueMs) + ' ms');
-      if (recognition.decodeMs !== undefined) details.push('decode ' + Math.round(recognition.decodeMs) + ' ms');
-      if (recognition.audioSeconds !== undefined) details.push('uploaded ' + recognition.audioSeconds.toFixed(2) + ' s');
-      if (recognition.speechSeconds !== undefined) details.push('after speech filter ' + recognition.speechSeconds.toFixed(2) + ' s');
-      if (recognition.languageSource) details.push('language ' + recognition.languageSource);
-      el('conversationAudioTranscript').textContent += '\n' + details.join(' · ');
-    }
-    if (info.attempt?.recognitionMode) el('conversationAudioTranscript').textContent += '\nRecognition: ' + info.attempt.recognitionMode;
-    if (info.attempt?.recognitionId) el('conversationAudioTranscript').textContent += ' · ' + info.attempt.recognitionId;
+    workshop?.refresh();
   }
+  function syncVoicePreferences() {
+    preferences = P.read(storage, catalog); interruption.checked = preferences.interruption;
+    language.value = P.profile(preferences.profiles[picker.value]).language;
+    try { const saved = storage?.getItem(listeningKey); wake.checked = (['wake','open'].includes(saved) ? saved : defaultListening) === 'wake'; } catch {}
+    conversation.setLanguage(language.value); conversation.setInterruption(interruption.checked); conversation.setWakeWord(wake.checked);
+    if (conversation.selection) conversation.selection.voice = selection().voice;
+    describeListening(); describe();
+  }
+  window.addEventListener('storage', event => { if (event.key === 'household.conversation.preferences.v2' || event.key === listeningKey) syncVoicePreferences(); });
+  window.addEventListener('pageshow', event => { if (event.persisted) syncVoicePreferences(); });
+  el('conversationWorkshop').onclick = async () => {
+    workshop = await window.AgentXVoiceWorkshop.open({ scope: family ? 'family' : 'personal', conversation, selection,
+      personas: catalog, measurements: () => ({ ...latestVoiceTimings, ...lastPlaybackMetrics }), extraSettings: fallbackSettings, flow: family ? null : diagnosticFlow,
+      onSaved: () => { conversation.stop(true); syncVoicePreferences(); } });
+  };
   function showTools(evidence) {
     const receipts = evidence?.receipts || [];
     const box = el('conversationTools'); box.hidden = !receipts.length && !['unavailable', 'not_supported'].includes(evidence?.status);
@@ -602,15 +564,6 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
           : receipt.observed ? ' · call observed, result not verified' : ' · result unavailable')).join(' · ');
     el('conversationToolsReceipt').textContent = JSON.stringify(evidence, null, 2);
   }
-  el('conversationInspectMic').onclick = () => { conversation.review('microphone'); renderAudioReview(); };
-  el('conversationInspectPhrase').onclick = () => { conversation.review('last'); renderAudioReview(); };
-  el('conversationReplay').onclick = () => conversation.replay();
-  el('conversationReplayStop').onclick = () => conversation.reviewSpeech?.abort();
-  el('conversationAudioErase').onclick = () => { conversation.forgetReview(); renderAudioReview(); };
-  let audioReviewClock = setInterval(renderAudioReview, 1000);
-  window.addEventListener('pageshow', event => {
-    if (event.persisted) { clearInterval(audioReviewClock); audioReviewClock = setInterval(renderAudioReview, 1000); renderAudioReview(); }
-  });
   // The team member this conversation is (or will be) with, and why settings are locked.
   function renderTeam(busy = false) {
     if (family) return '';
@@ -661,48 +614,21 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     el('conversationPresence').dataset.style = visual?.style || 'initials';
     el('conversationPresence').style.setProperty('--presence-color', P.visual(visual)?.color || '#52cfc5');
     el('personaDescription').textContent = p.description || p.name;
-    const speech = P.speechFor(p, language.value === 'en' ? 'en' : 'fr', selection().voice);
-    el('voiceDescription').textContent = `${p.name.split(' ·')[0]}’s voice: ${speech.provider} · ${speech.voice}.`;
   }
   const restoreProfile = () => {
     const profile = P.profile(preferences.profiles[picker.value]);
     language.value = profile.language;
   };
-  backendPicker.onchange = () => { stopPreview(); describe(); };
-  agentPicker.onchange = () => { stopPreview(); savePreferences(); describe(); };
-  picker.onchange = () => { stopPreview(); restoreProfile(); savePreferences(); describe(); };
-  for (const field of [language, interruption]) field.onchange = () => { stopPreview(); savePreferences(); describe(); };
+  backendPicker.onchange = () => { describe(); };
+  agentPicker.onchange = () => { savePreferences(); describe(); };
+  picker.onchange = () => { restoreProfile(); savePreferences(); describe(); };
+  for (const field of [language]) field.onchange = () => { savePreferences(); describe(); };
   language.addEventListener('change', () => conversation.setLanguage(language.value));
-  interruption.addEventListener('change', () => conversation.setInterruption(interruption.checked));
-  el('conversationPreview').onclick = async () => {
-    if (previewAbort) { stopPreview(); return; }
-    const abort = new AbortController(); previewAbort = abort;
-    const timeout = setTimeout(() => abort.abort(), 30000);
-    el('conversationPreview').textContent = 'Stop voice';
-    el('conversationPreviewStatus').textContent = 'Preparing the voice…';
-    const lang = language.value === 'en' ? 'en' : 'fr';
-    const persona = conversation.session?.persona || selected();
-    const name = persona.id === 'native_personality' ? selectedAgent().name : persona.name.split(' ·')[0];
-    const text = lang === 'fr' ? 'Bonjour, je suis ' + name + '. Voici ma voix pour notre prochaine conversation.'
-      : 'Hello, I am ' + name + '. This is my voice for our next conversation.';
-    try {
-      preferences.lastVoice = chosenVoice(); savePreferences();
-      await P.preview(signal => synthesize(text, lang, persona, selection().voice, signal, 'Preview'), abort.signal);
-      if (!abort.signal.aborted) el('conversationPreviewStatus').textContent = 'Preview finished.';
-    } catch (error) { if (!abort.signal.aborted) el('conversationPreviewStatus').textContent = error.message; }
-    finally {
-      clearTimeout(timeout);
-      if (!previewAbort || previewAbort === abort) {
-        previewAbort = null; el('conversationPreview').textContent = 'Preview voice';
-        if (abort.signal.aborted) el('conversationPreviewStatus').textContent = 'Preview stopped.';
-      }
-    }
-  };
   restoreProfile(); describe();
   open.onchange = () => { if (open.checked) void openHold.start(); else void releaseOpen(); };
   // What a press on Activer Nestor or Reprendre starts; opening a saved conversation starts it too.
   const startVoice = options => {
-    stopPreview(); preferences.lastVoice = chosenVoice(); savePreferences();
+    preferences.lastVoice = chosenVoice(); savePreferences();
     if (open.checked) void openHold.start();
     return conversation.start(selection(), options);
   };
@@ -712,7 +638,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   };
   el('conversationNew').onclick = () => {
     recap?.clear();
-    el('conversationResume').hidden = true; setHistoryOpen(false); stopPreview(); conversation.stop(); work?.reset(); workflow?.reset(); void releaseOpen(); partial = null;
+    el('conversationResume').hidden = true; setHistoryOpen(false); conversation.stop(); work?.reset(); workflow?.reset(); void releaseOpen(); partial = null;
     transcript.innerHTML = '<p class="empty">Our conversation will appear here.</p>'; clearBoard(); brain.reset();
     personalNotes.show(null);
     showTools(null); void recap?.refresh();
@@ -730,7 +656,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     if (textBusy || !['idle', 'paused', 'error'].includes(conversation.state)) return;
     const input = el('conversationMessage'), text = input.value.trim(); if (!text) return;
     let shown = false;
-    stopPreview(); textBusy = true; conversation.abort = new AbortController(); const epoch = ++conversation.epoch;
+    textBusy = true; conversation.abort = new AbortController(); const epoch = ++conversation.epoch;
     conversation.show('thinking');
     try {
       if (open.checked) await openHold.start();
@@ -759,7 +685,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   };
   async function typedDuringVoice() {
     const input = el('conversationMessage'), text = input.value.trim(); if (!text) return;
-    stopPreview(); textBusy = true; conversation.show(conversation.state);
+    textBusy = true; conversation.show(conversation.state);
     let attachments = null, failure = '';
     try { attachments = await uploadDraftFiles(conversation.session, conversation.abort.signal); }
     catch (error) { failure = error.message; }
@@ -771,8 +697,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     composer.sync();
   }
   // A hidden page stops listening; a typed turn already sent is left to finish.
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { stopPreview(); if (!textBusy) { conversation.stop(true); void releaseOpen(); } } });
-  window.addEventListener('pagehide', () => { work?.dispose(); clearInterval(audioReviewClock); stopPreview(); conversation.stop(); void openHold.release({ watch: false }); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { if (!textBusy) { conversation.stop(true); void releaseOpen(); } } });
+  window.addEventListener('pagehide', () => { work?.dispose(); stopPreview(); conversation.stop(); void openHold.release({ watch: false }); });
   el('runtimePill').textContent = 'ready';
   conversation.show('idle');
   const performance = family ? null : ConversationPreferences.mount({ button: el('conversationPerformance'), api, endpoint: '/api/voice-personas/preferences',
@@ -783,7 +709,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   window.addEventListener('pagehide', () => performance?.clear());
   const recap = family ? null : ConversationRecap.mount({ host: el('conversationRecap'), api, base: sessionBase,
     currentId: () => conversation.session?.sessionId || null, title: 'Conversation recap',
-    prepare: async () => { if (textBusy || conversation.state === 'thinking') return false; stopPreview(); conversation.stop(true); await releaseOpen(); },
+    prepare: async () => { if (textBusy || conversation.state === 'thinking') return false; conversation.stop(true); await releaseOpen(); },
     onResume: async id => { const data = await api(`${sessionBase}/${encodeURIComponent(id)}/history`); return resumeSession(data.session, el('conversationHistoryToggle')); }
   });
   void recap?.refresh();
@@ -803,7 +729,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   // Opens a saved conversation from Core: the same on every device (#120).
   async function resumeSession(session, button) {
     recap?.clear();
-    el('conversationResume').hidden = true; stopPreview(); conversation.stop();
+    el('conversationResume').hidden = true; conversation.stop();
     void releaseOpen();
     const epoch = conversation.epoch;
     button.disabled = true;

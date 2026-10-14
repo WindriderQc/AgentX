@@ -28,6 +28,7 @@ const ALIASES = {
   core: {
     '/ecosystem': '/', '/portal': '/',
     '/dad/nestor': '/dad', '/voice': '/dad', '/voix': '/dad', '/voice.html': '/dad',
+    '/device-check': '/voice-lab/devices', '/voice-personas/debug': '/voice-lab/personas',
     '/voice-personas': '/dad/memories', '/voice-personas.html': '/dad/memories',
     '/lecture/parents': '/dad/family', '/lecture/parents.html': '/dad/family',
     '/unlock': '/dad', '/access/code': '/dad', '/access/face': '/dad'
@@ -36,7 +37,8 @@ const ALIASES = {
 // Pages entered from another page rather than a menu: [file holding the link, the link].
 const CONTEXTUAL = {
   core: {
-    '/images/guide': ['core/views/pages/images.ejs', 'href="/images/guide"']
+    '/images/guide': ['core/views/pages/images.ejs', 'href="/images/guide"'],
+    '/voice-lab/devices': ['core/public/js/voice/voice-workshop.js', 'href="/voice-lab/devices"']
   },
   benchmark: {
     '/setup': ['benchmark/public/js/benchmark-v2/experience.js', "'/benchmark/setup'"]

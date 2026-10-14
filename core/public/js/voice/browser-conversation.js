@@ -191,7 +191,7 @@
   // and multipart headers. Reaching it is an explicit error, never a partial turn.
   const MAX_CAPTURE_BYTES = 32 * 1024 * 1024 - 64 * 1024;
   class Endpoint {
-    constructor(rate, minimumVoiceMs = MINIMUM_VOICE_MS, endSilenceMs = TURN_END_SILENCE_MS) { this.rate = rate; this.minimumVoiceMs = minimumVoiceMs; this.endSilenceMs = endSilenceMs; this.maxSamples = MAX_CAPTURE_BYTES / 2; this.reset(); }
+    constructor(rate, minimumVoiceMs = MINIMUM_VOICE_MS, endSilenceMs = TURN_END_SILENCE_MS, threshold = .015) { this.threshold = threshold; this.rate = rate; this.minimumVoiceMs = minimumVoiceMs; this.endSilenceMs = endSilenceMs; this.maxSamples = MAX_CAPTURE_BYTES / 2; this.reset(); }
     reset() {
       this.frames = []; this.preRoll = []; this.preSamples = 0;
       this.voiceSamples = 0; this.silenceSamples = 0; this.total = 0;
@@ -207,7 +207,7 @@
     push(samples) {
       const energy = Math.sqrt(samples.reduce((sum, n) => sum + n * n, 0) / samples.length);
       this.level = energy;
-      const voiced = energy >= 0.015;
+      const voiced = energy >= this.threshold;
       if (!this.speaking) {
         this.preRoll.push(samples); this.preSamples += samples.length;
         while (this.preSamples > this.rate * 0.35 && this.preRoll.length > 1) {
@@ -943,6 +943,8 @@
     if (!root.isSecureContext || !Context || !root.navigator.mediaDevices?.getUserMedia) {
       throw new Error('Open AgentX over trusted HTTPS in a browser with microphone support.');
     }
+    const settingsApi = root.AgentXVoiceSettings || (typeof module !== 'undefined' && module.exports ? require('./voice-settings') : null);
+    const inputDeviceId = typeof options.inputDeviceId === 'string' ? options.inputDeviceId : settingsApi?.inputDevice(options.captureScope) || '';
     const context = new Context();
     const playbackHold = PlaybackHold ? new PlaybackHold(context) : null;
     // Replay retains twenty seconds; the submitted utterance is independent
@@ -982,7 +984,7 @@
     signal.addEventListener('abort', close, { once: true });
     try {
       if (!options.automatic) await context.resume();
-      stream = await root.navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, ...(options.inputDeviceId ? { deviceId: { exact: options.inputDeviceId } } : {}) } });
+      stream = await root.navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, ...(inputDeviceId ? { deviceId: { exact: inputDeviceId } } : {}) } });
       if (closed || signal.aborted) { stream.getTracks().forEach((track) => track.stop()); throw new Error('Microphone start cancelled.'); }
       if (options.automatic) {
         let resumeTimer;
@@ -1011,7 +1013,9 @@
       context.onstatechange = () => {
         if (!closed && context.state !== 'running') onError(new Error('Audio paused by the browser. Press Start to resume.'));
       };
-      const endpoint = new Endpoint(context.sampleRate), echo = new EchoGuard(context.sampleRate);
+      const capture = settingsApi?.normalize(options.capture || settingsApi.capture(options.captureScope))
+        || { threshold: .015, minimumVoiceMs: MINIMUM_VOICE_MS, endSilenceMs: TURN_END_SILENCE_MS, interruptionSilenceMs: INTERRUPTION_END_SILENCE_MS };
+      const endpoint = new Endpoint(context.sampleRate, capture.minimumVoiceMs, capture.endSilenceMs, capture.threshold), echo = new EchoGuard(context.sampleRate);
       const quiet = () => {
         ++captureEpoch; endpoint.reset(); node.port.onmessage = null;
         history.breakCapture();
@@ -1056,7 +1060,7 @@
       };
       const freeze = (kind, maxSamples = context.sampleRate * 20) => history.freeze(kind, () => replayAbort?.abort(), maxSamples);
       return {
-        close, quiet, canInterrupt: [true, 'all'].includes(stream.getAudioTracks()[0]?.getSettings?.().echoCancellation), deviceLabel: stream.getAudioTracks()[0]?.label || 'This device microphone',
+        close, quiet, captureSettings: { ...capture }, canInterrupt: [true, 'all'].includes(stream.getAudioTracks()[0]?.getSettings?.().echoCancellation), deviceLabel: stream.getAudioTracks()[0]?.label || 'This device microphone',
         reviewStatus() {
           const last = history.last();
           return { id: last?.id, recentSeconds: Math.min(20, history.length / context.sampleRate), seconds: (last?.samples.length || 0) / context.sampleRate,
@@ -1065,6 +1069,7 @@
             sampleRate: context.sampleRate, echoCancellation: settings.echoCancellation,
             noiseSuppression: settings.noiseSuppression, autoGainControl: settings.autoGainControl };
         },
+        reviewBlob() { const clip = history.last(); return clip ? wav(clip.samples, context.sampleRate) : null; },
         freezeReview(kind) { return kind === 'last' ? !!history.last() : !!freeze('microphone'); },
         clearReview() { replayAbort?.abort(); history.clear(); },
         recordTranscription(id, status, text, metadata) { history.transcription(id, status, text, metadata); },
@@ -1082,9 +1087,9 @@
         listen(onUtterance, onSpeech, { interruptible = false, onEarly = null, onEarlyCancel = null, onProbe = null } = {}) {
           if (closed) return;
           history.breakCapture();
-          endpoint.reset(); echo.reset(); endpoint.minimumVoiceMs = MINIMUM_VOICE_MS;
-          endpoint.endSilenceMs = interruptible ? INTERRUPTION_END_SILENCE_MS : TURN_END_SILENCE_MS;
-          endpoint.earlySilenceMs = !interruptible && onEarly ? EARLY_RECOGNITION_SILENCE_MS : 0;
+          endpoint.reset(); echo.reset(); endpoint.minimumVoiceMs = capture.minimumVoiceMs;
+          endpoint.endSilenceMs = interruptible ? capture.interruptionSilenceMs : capture.endSilenceMs;
+          endpoint.earlySilenceMs = !interruptible && onEarly && EARLY_RECOGNITION_SILENCE_MS < capture.endSilenceMs ? EARLY_RECOGNITION_SILENCE_MS : 0;
           endpoint.probeMs = interruptible && onProbe ? INTERRUPTION_PROBE_MS : 0;
           const expected = ++captureEpoch;
           node.port.onmessage = ({ data }) => {
