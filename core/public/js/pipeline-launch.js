@@ -16,6 +16,7 @@
       this.control = null;
       this.error = null;
       this.pending = this.restore();
+      this.lastSubmission = null;
       this.submitting = false;
       this.checking = false;
       this.version = 0;
@@ -152,6 +153,7 @@
       this.error = null;
       this.changed();
       const request = { ...this.pending };
+      this.lastSubmission = Object.freeze({ ...request });
       // Read-only reconciliation begins immediately, independently of the POST.
       // It never creates another request, including after a lost HTTP response.
       clearTimeout(this.timer);

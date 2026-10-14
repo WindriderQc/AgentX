@@ -731,6 +731,8 @@
     const pipelineId = state.drawer.pipelineId;
     if (!pipelineId || state.drawer.mutating) return;
     state.drawer.mutating = true;
+    state.drawer.actionError = null;
+    drawerEls().body?.querySelector('[data-drawer-action-error]')?.remove();
     const submit = form?.querySelector('button[type="submit"]');
     const submitLabel = submit?.innerHTML;
     if (submit) submit.disabled = true;
@@ -817,7 +819,10 @@
       await refreshDrawerTask();
       await loadTasks({ silent: true });
     } catch (error) {
-      toast('error', error.message || String(error));
+      const message = error.message || String(error);
+      state.drawer.actionError = { pipelineId, message };
+      if (state.drawer.pipelineId === pipelineId && state.drawer.task) renderDrawer(state.drawer.task, { preserveDraft: true });
+      toast('error', message);
     } finally {
       state.drawer.mutating = false;
       if (submit?.isConnected) { submit.disabled = false; submit.innerHTML = submitLabel; }
@@ -834,7 +839,14 @@
       return;
     }
     await state.launchController.refresh();
-    if (!await state.launchController.launch(pipelineId)) throw new Error('The task is prepared. The worker is busy or admission changed; use Run one task when available.');
+    const launching = state.launchController.launch(pipelineId);
+    const submission = state.launchController.lastSubmission;
+    if (!await launching) throw new Error(state.launchController.error || 'The task is routed to the Coding Team, but the worker is busy or admission changed. Check why this task is waiting, then try again when available.');
+    if (state.launchController.error) throw new Error(state.launchController.error);
+    const run = state.launchController.control?.run;
+    if (!submission || run?.requestId !== submission.requestId || run?.pipelineId !== pipelineId) throw new Error('The new launch has not been confirmed. Checking the saved request; nothing was resubmitted.');
+    if (run?.pipelineId === pipelineId && run.phase === 'rejected') throw new Error(run.message || 'The worker refused this task. Check why it is waiting.');
+    if (run?.pipelineId !== pipelineId || !['accepted', 'waiting', 'running', 'finished'].includes(run.phase)) throw new Error(run?.message || 'The launch has not been confirmed. Checking the saved request; nothing was resubmitted.');
     toast('success', `Task ${pipelineId} handed to the team.`);
   }
 

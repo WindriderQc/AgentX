@@ -121,6 +121,7 @@
       ${task.spec ? `<section class="pipeline-drawer-section">${task.status === 'blocked' ? '<details><summary>Requested result</summary>' : '<h3>Requested result</h3>'}<pre class="pipeline-drawer-spec">${escapeHtml(task.spec)}</pre>${task.status === 'blocked' ? '</details>' : ''}</section>` : ''}
       <section class="pipeline-drawer-section"><h3>Next action</h3>
         <p class="pipeline-drawer-spec"><strong>${escapeHtml(review.label)}</strong><br>${escapeHtml(review.detail)}<br>${escapeHtml(review.action)}</p>
+      ${state.drawer.actionError?.pipelineId === task.pipelineId ? `<p class="pipeline-error" role="alert" data-drawer-action-error>${escapeHtml(state.drawer.actionError.message)}</p>` : ''}
       ${actions.join('')}</section>${window.PipelineEligibility?.markup(task) || ''}${window.PipelineStallDiagnosis?.markup(task) || ''}
       <div class="pipeline-drawer-action-row">
         <button type="button" class="pipeline-btn compact" data-copy-task-link="${escapeHtml(task.pipelineId)}" title="Copy the direct link to this task dossier"><i class="fas fa-link" aria-hidden="true"></i><span>Copy task link</span></button>

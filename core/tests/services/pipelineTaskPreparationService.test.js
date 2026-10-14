@@ -72,3 +72,22 @@ test('a ticket the coding worker left blocked returns to the queue with the answ
   await PipelineTask.deleteMany({});
   await expect(apply(await create({ status: 'blocked', assignee: 'someone-else' }), { answer: 'Mine.' })).rejects.toThrow('Another worker owns this task.');
 });
+test('explicit handoff routes a new UI ticket without changing its specification or granting autonomy', async () => {
+  const task = await create({ service: '' });
+  const prepared = await apply(task, { handoff: true });
+  expect(prepared).toMatchObject({ pipelineId: task.pipelineId, service: 'agentx-coding', status: 'queued', assignee: null, automationAttemptCount: 0 });
+  expect(prepared.spec).toBe(task.spec);
+  expect(prepared.automation).toBeUndefined();
+  expect(prepared.codingAutonomy).toBeUndefined();
+  expect(prepared.automationAttempts).toEqual([]);
+  expect(prepared.feedback.at(-1)).toMatchObject({ by: 'operator', text: 'Task handed to the Coding Team for one worker execution.' });
+  const repeated = await apply(prepared, { handoff: true });
+  expect(repeated.feedback).toEqual(prepared.feedback);
+});
+test.each([{ service: ' Family ' }, { source: 'household-reminder' }, { source: 'idea-drop' }])('handoff cannot reroute a private task: %j', async changes => {
+  const task = await create(changes);
+  await expect(apply(task, { handoff: true })).rejects.toMatchObject({ statusCode: 409 });
+  const unchanged = (await preparation.read(task.pipelineId)).task;
+  expect(unchanged.service).toBe(task.service);
+  expect(unchanged.feedback).toEqual([]);
+});
