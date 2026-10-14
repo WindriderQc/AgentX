@@ -989,6 +989,16 @@
       "secret": false,
       "description": "DSH Studio isolation, bubblewrap or host. Unset: bubblewrap."
     },
+    "DSH_STUDIO_LAUNCH_FILE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Absolute Core path to the private native DSH launch record, mounted read-only from the Studio launcher. Unset: legacy origin launch. A missing or invalid configured record refuses launch with HTTP 503."
+    },
     "DSH_STUDIO_MODEL": {
       "services": [
         "core"
@@ -2511,7 +2521,9 @@
       "description": "Interval at which Core turns the current operational findings and active alerts into one short model-written report (task ops_watch), minimum 300000. Applies until the watch is set in the Nerve Center. Unset: off."
     },
     "PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID": {
-      "services": ["core"],
+      "services": [
+        "core"
+      ],
       "forwarded": true,
       "default": null,
       "category": "household",
