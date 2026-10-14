@@ -24,4 +24,24 @@ function route(session, sessionId, agentId) {
 const history = messages => messages.slice(-LIMITS.messages).map(message => ({ ...message,
   content: typeof message.content === 'string' ? excerpt(message.content, LIMITS.message) : message.content }));
 const context = text => excerpt(text, LIMITS.context);
-module.exports = { route, instructions, history, context, LIMITS };
+function selectedContext({ base = '', brain = { text: '', refs: [] }, work = { text: '', refs: [] }, tail = '' }) {
+  const complete = base + brain.text + work.text + tail;
+  if (complete.length <= LIMITS.context) return { text: complete.trim(),
+    refs: [brain, work].filter(source => source.text).flatMap(source => source.refs) };
+  const marker = '\n[Selected context shortened; complete content remains in Core for Main.]';
+  let remaining = LIMITS.context - marker.length;
+  // Keep the final safety note and room for the current turn's selected context.
+  const ending = tail.slice(-Math.min(tail.length, 1000, remaining));
+  remaining -= ending.length;
+  const minimumBase = Math.min(2000, remaining);
+  const selected = new Set();
+  for (const source of [work, brain]) {
+    if (source.text && source.text.length <= remaining - minimumBase) {
+      selected.add(source); remaining -= source.text.length;
+    }
+  }
+  return { text: (base.slice(0, remaining) + (selected.has(brain) ? brain.text : '')
+    + (selected.has(work) ? work.text : '') + ending + marker).trim(),
+  refs: [brain, work].filter(source => selected.has(source)).flatMap(source => source.refs) };
+}
+module.exports = { route, instructions, history, context, selectedContext, LIMITS };

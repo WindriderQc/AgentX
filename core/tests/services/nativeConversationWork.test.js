@@ -90,6 +90,21 @@ test('a greeting keeps the live guardian and is then reviewed by complete Main w
   expect(snapshot.items[0]).toMatchObject({ resultDisposition: 'no_work', result: null, pending: false });
 });
 
+test('an interrupted guardian leaves its native review queued for one Main attempt', async () => {
+  const accepted = await works.intake(input('Bonjour.'));
+  await works.prepare(accepted.row._id, 'Shared context.');
+  await conversations.settleTurn({ ...works.query(current.sessionId), traceId: accepted.row.turnId,
+    replyText: '', outcome: 'cancelled', interrupted: true });
+  const settled = await works.guardianSettled(accepted.row._id, 'cancelled');
+  expect(settled).toMatchObject({ state: 'queued', classification: 'native_review', guardian: { state: 'cancelled' } });
+  await works.observer.tick();
+  expect(execute).toHaveBeenCalledTimes(1);
+  const row = await works.repo.get(accepted.row._id);
+  expect((await works.contextForNative(context(row))).guardianOutcome).toBe('cancelled');
+  await works.observer.tick();
+  expect(execute).toHaveBeenCalledTimes(1);
+});
+
 test('shared native context refresh sees new turns and pending work, without foreign selectors or worker privileges', async () => {
   const older = [];
   for (let index = 0; index < 14; index++) older.push(await conversations.recordTurn({ ...works.query(current.sessionId),
@@ -307,7 +322,7 @@ test.each(['Help me compare these two options.', 'Bonjour.'])
     .toMatchObject({ resultDisposition: 'no_work', result: null, pending: false });
 });
 
-async function personalHttp(executeConversation, warmup = null) {
+async function personalHttp(executeConversation, warmup = null, reviewContext = null) {
   const packs = require('../../surfaces/household/packs'), prompt = require('../../surfaces/household/persona-prompt');
   const records = require('../../surfaces/household/persona-records'), pack = packs.packById('personal_operator');
   current = await conversations.updateSession({ sessionId: current.sessionId }, { $set: { modeId: pack.defaultMode,
@@ -319,7 +334,8 @@ async function personalHttp(executeConversation, warmup = null) {
     personalAttachments: () => ({ prepare: async messages => messages.map(({ attachments, ...message }) => message) }),
     knowledgeState: { config: null, status: { status: 'disabled', corpusFingerprint: null } },
     openHold: {}, openingPayload: () => ({}), sounds: { select: () => null, get: () => null }, visuals: { sources: () => [] },
-    brain: { cancel() {}, schedule() { throw new Error('Legacy review must not duplicate this accepted work'); }, contextFor: () => '' },
+    brain: { cancel() {}, schedule() { throw new Error('Legacy review must not duplicate this accepted work'); }, contextFor: () => '',
+      ...(reviewContext && { contextWithRefs: () => reviewContext }) },
     activePersonaTurns: new Map(), validClientTurnId: id => /^[a-zA-Z0-9-]{16,80}$/.test(id),
     envelope: (res, data, status = 200) => res.status(status).json({ ok: true, data }),
     fail: (res, status, message, code) => res.status(status).json({ message, code }),
@@ -380,6 +396,30 @@ test('the dedicated guardian uses a compact per-turn session, preserves Main his
     const reviewed = await works.repo.get(row._id);
     expect(reviewed.attempt.agentId).toBe('main');
     expect((await works.contextForNative(context(reviewed))).guardianReply).toBe('Il était une fois un renard.');
+  } finally { delete env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID; }
+});
+
+test('a capped Guardian turn records only advice actually sent in its context', async () => {
+  env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID = 'nestor-guardian';
+  try {
+    const brainRef = { source: 'brain', adviceId: 'large-advice', version: 1, sourceTurnId: 'earlier', coverage: ['corrections'] };
+    const workRef = { source: 'work', workId: 'verified-work', version: 2, sourceTurnId: 'earlier', coverage: ['result'] };
+    works.guardianContextWithRefs = async () => ({ text: '\nVerified work status.', refs: [workRef] });
+    const guardian = jest.fn(async body => {
+      expect(body.turnContext).toContain('Verified work status.');
+      expect(body.turnContext).not.toContain('OVERSIZED_ADVICE');
+      return { text: 'Bonjour !', metadata: { model: 'synthetic-guardian' }, tools: { status: 'observed', receipts: [] } };
+    });
+    const app = await personalHttp(createConversationExecutor({ env, inference: {}, agentClient: guardian }), null,
+      { text: 'OVERSIZED_ADVICE'.repeat(600), refs: [brainRef] });
+    const turnId = randomUUID();
+    const response = await request(app).post(`/sessions/${current.sessionId}/turns/text`)
+      .send({ text: 'Bonjour.', turnId, channel: 'voice', stream: true });
+    expect(response.status).toBe(200);
+    const done = response.text.trim().split('\n').map(line => JSON.parse(line)).find(item => item.type === 'done');
+    expect(done.data.adviceRefs).toEqual([workRef]);
+    expect((await conversations.getTurn({ sessionId: current.sessionId, traceId: turnId })).adviceRefs).toEqual([workRef]);
+    expect(guardian).toHaveBeenCalledTimes(1);
   } finally { delete env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID; }
 });
 

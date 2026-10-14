@@ -64,9 +64,13 @@
           const body = response.ok ? await response.json() : null;
           const review = body?.data?.review;
           if (mine !== generation || !review) return null;
+          if (review.status === 'context_required') {
+            render([]);
+            onRevision({ id: `brain-${traceId}-context`, kind: 'text',
+              title: 'Review unavailable', body: 'This conversation is longer than the context available for a complete review. No partial review was used.' });
+            return review;
+          }
           render(review.suggestions || []);
-          if (review.status === 'context_required') onRevision({ id: `brain-${traceId}-context`, kind: 'text',
-            title: 'Review unavailable', body: 'This conversation is longer than the context available for a complete review. No partial review was used.' });
           (review.revisions || []).forEach((revision, index) => onRevision({ id: `brain-${traceId}-${index}`, kind: 'text', title: `Revised · ${revision.title}`, body: revision.body }));
           if (mayInterject(quiet, review.interjection)) onInterject(review.interjection);
           return review;

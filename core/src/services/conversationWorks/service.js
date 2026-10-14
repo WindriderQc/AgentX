@@ -85,8 +85,9 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       // original guardian returns. Its exact settlement still owns that intake.
       const nativeIntake = current.classification === 'native_only' && ['received', 'uncertain'].includes(current.state)
         && !current.attempt && !current.result;
+      const interruptedReview = current.classification === 'native_review' && state === 'cancelled';
       const nextState = nativeIntake ? state : current.state === 'received' && !['native_only', 'native_read', 'native_work'].includes(current.classification)
-        ? state === 'cancelled' ? 'cancelled' : current.contextReady ? 'queued' : current.state : current.state;
+        ? state === 'cancelled' && !interruptedReview ? 'cancelled' : current.contextReady ? 'queued' : current.state : current.state;
       const awaiting = state === 'completed' && disposition === 'awaiting_main' && current.mode === 'native';
       return { fields: { guardian: { ...current.guardian, state, ...(disposition && { disposition }) }, state: nextState,
         ...(awaiting && current.classification === 'native_review' && { classification: 'native_work', foreground: 'acknowledge' }),
