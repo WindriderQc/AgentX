@@ -5,7 +5,13 @@ description: "Operate an AgentX instance's health, inference hosts, model routin
 
 # AgentX platform operator
 
-AgentX is a local-first AI platform (product: github.com/WindriderQc/AgentX). This skill is served by the instance it describes: `references/instance.md` holds that instance's addresses, machines and schedules, and `references/served.md` says which revision produced this copy and when. Read both first. When `instance.md` is missing, ask for the Core address instead of guessing one.
+AgentX is a local-first AI platform (product: github.com/WindriderQc/AgentX).
+Instance-served copies include `references/instance.md` for private addresses,
+machines and schedules, and `references/served.md` for the producing revision
+and date. Read these before live operations. If a needed Core address is absent,
+ask for it instead of guessing. A generic source checkout may omit both files:
+repository-only investigation and brief preparation can proceed from its source
+without a Core address. Its checkout revision does not prove deployment.
 
 | Service | Role |
 |---|---|

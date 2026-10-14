@@ -61,11 +61,15 @@ to imply that its earlier authorization covers new work.
 
 ## Follow the worker in Pipeline
 
-Open `<core>/pipeline#pipelineFollow` for the worker controls and
+Open `<core>/pipeline#pipelineWorkerMonitor` for the worker monitor and
 `<core>/pipeline?task=0338` for a task dossier. An observed attempt links as
 `<core>/pipeline?task=0338&attempt=2`. Use the instance Core origin for these
 links, including navigation from Studio. Do not bypass Studio's signed launch
 entry or open another worker to obtain visibility.
+
+The optional **AgentX Coding Team** Studio sidebar bundle opens this same
+Pipeline monitor. Its product procedure is
+`integrations/dsh/coding-team/README.md`; the link starts no worker or model call.
 
 Read the exact task, request and attempt shown. The dossier exposes its next
 action, ownership, feedback, plans and recorded evidence references. Worker
@@ -135,5 +139,10 @@ Install/update this operator skill through native project skill discovery
 the served bundle from `GET /api/operator-skill/download` after the product
 revision changes; preserve its private `references/instance.md` and generated
 `references/served.md`. Updating skill files does not require rewriting DSH's
-native settings, provider overlay, history or plugin profile. Check that the
-intended workspace discovers the new copy before reporting it active.
+native settings, provider overlay, history or plugin profile.
+
+Distinguish files installed, the intended workspace/profile discovering the
+revision in its native skill inventory, and the current session loading that
+revision. Report only the stage supported by evidence. Inventory discovery
+alone does not establish adoption by an already running session; if adoption
+has not been observed, say so.
