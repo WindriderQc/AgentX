@@ -224,10 +224,38 @@ saved through Team outranks `HOUSEHOLD_PERSONA_VOICES`; that instance map otherw
 overrides the catalog default. Duplicate choices are skipped.
 A rejected synthesis response advances to the next voice; a request exception
 can go straight to the device fallback where permitted.
-A later synthesis/playback failure permits one clause retry, at most once per
-turn, starting below the failed voice. Interruption cancels upstream work and
-does not initiate fallback. PsyX retries its chosen voice on its protected route
-and has no device voice fallback. Exhausting a ladder can leave text unspoken.
+A failure before audio is scheduled permits one clause retry, at most once per
+turn, starting below the failed voice. A partially scheduled clause is terminal;
+it is never repeated automatically. Explicit replay remains available. Invalid
+requests and access refusals do not advance to another voice. Interruption cancels
+playback and does not initiate fallback. PsyX keeps its protected chosen-voice
+route and does not retry that same failed voice. Explicitly chosen English may
+fall back to a device voice only when Chrome reports `localService === true` and
+an English language. Remote and unspecified system voices are excluded. Voice
+discovery waits briefly and remains cancellable; absent local English is shown
+as unavailable while the complete answer remains visible. French keeps its
+protected service route. This device fallback never bypasses an access refusal.
+Exhausting a ladder can leave text unspoken while the complete result stays visible.
+
+Kids Room and Lecture use the same hands-free conversation loop. Enable voice
+once to grant microphone access, then address Nestor with Hey/Eille/Oh/Ah before
+its name. Bare Nestor does not activate it; after activation short replies continue
+until Pause. Pause or leaving the page closes capture. Stop interrupts speech,
+including speech still being prepared. An already sent learning request may
+settle and show its complete answer; a new request waits for that same request.
+Packs, learning modes and family scopes remain owned by the page and Core.
+Typed turns while listening use the same loop and do not schedule a second playback.
+Screen blocks and complete replay text are retained on learning pages.
+
+Ordinary answers up to about three sentences and 600 characters are spoken
+completely. Beyond either threshold, a brief opening points to the complete text
+on screen. Core holds short unmarked prose until it can decide its presentation;
+long streamed prose updates one screen block without discarding its final words.
+The same limit applies to complete browser replies and automatic work delivery.
+Explicit reading requests and Listen replay remain complete, using ordered
+synthesis segments. Their speech cleanup retains table cells and fenced code
+content while removing its display markup. Safety resources and instructions bypass this limit; a
+completed short introduction is a presented result, not proof of complete reading.
 
 The shared speech cleanup removes display markup while preserving prose and
 emergency phone numbers; stored text stays unchanged. This contract needs

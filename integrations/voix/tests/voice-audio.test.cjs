@@ -149,3 +149,51 @@ test('a segmented reading completes each segment before requesting the next and 
   assert.deepEqual(requested, ['first']);
   assert.equal(contexts[1].state, 'closed');
 });
+
+test('a failed stream with scheduled audio is terminal and never requests a backup', async t => {
+  const previous = globalThis.AudioContext;
+  globalThis.AudioContext = class extends Context {};
+  t.after(() => { if (previous) globalThis.AudioContext = previous; else delete globalThis.AudioContext; });
+  const requests = [];
+  const speech = new Speech({ retryUnplayed: true });
+  const response = () => new Response([meta, frame()].map(event => JSON.stringify(event)).join('\n'),
+    { headers: { 'Content-Type': 'application/x-ndjson' } });
+  await assert.rejects(speech.speak(async (_signal, segment, after) => {
+    requests.push({ segment, after }); return response();
+  }, { segments: ['first', 'never'] }), error => error.playbackStarted === true);
+  assert.deepEqual(requests, [{ segment: 'first', after: null }]);
+});
+
+test('an unplayed stream may use one backup and the remaining segments retain that rung', async t => {
+  const previous = globalThis.AudioContext;
+  globalThis.AudioContext = class extends Context {};
+  t.after(() => { if (previous) globalThis.AudioContext = previous; else delete globalThis.AudioContext; });
+  const refused = new Response('', { headers: { 'Content-Type': 'application/x-ndjson' } });
+  const requests = [], spoken = [];
+  const speech = new Speech({ retryUnplayed: true, playBrowser: async value => { spoken.push(value.text); } });
+  await speech.speak(async (_signal, segment, after) => {
+    requests.push({ segment, after });
+    return after ? { browserSpeech: { text: segment, language: 'en' } } : refused;
+  }, { segments: ['first', 'last'] });
+  assert.deepEqual(requests.map(x => x.segment), ['first', 'first', 'last']);
+  assert.equal(requests[1].after, refused); assert.equal(requests[2].after, refused);
+  assert.deepEqual(spoken, ['first', 'last']);
+});
+
+test('Stop during browser fallback prevents every remaining reading segment', async t => {
+  const previous = globalThis.AudioContext;
+  globalThis.AudioContext = class extends Context {};
+  t.after(() => { if (previous) globalThis.AudioContext = previous; else delete globalThis.AudioContext; });
+  let speech, started;
+  const ready = new Promise(resolve => { started = resolve; });
+  const requests = [];
+  speech = new Speech({ playBrowser: async (_value, signal) => {
+    started(); await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+  } });
+  const reading = speech.speak(async (_signal, text) => {
+    requests.push(text); return { browserSpeech: { text, language: 'en' } };
+  }, { segments: ['first', 'never'] });
+  const stopped = assert.rejects(reading, { name: 'AbortError' });
+  await ready; speech.cancel(); await stopped;
+  assert.deepEqual(requests, ['first']);
+});

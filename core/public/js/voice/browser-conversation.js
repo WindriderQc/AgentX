@@ -2,6 +2,7 @@
 (function (root) {
   'use strict';
   const speechLanguage = typeof module !== 'undefined' && module.exports ? require('./speech-language') : root.NestorSpeech;
+  const spokenPresentation = typeof module !== 'undefined' && module.exports ? require('./spoken-presentation') : root.AgentXSpokenPresentation;
   const PlaybackHold = (typeof module !== 'undefined' && module.exports ? require('./playback-hold') : root.NestorPlaybackHold)?.PlaybackHold;
   const VoiceTimeline = (typeof module !== 'undefined' && module.exports ? require('./voice-timeline') : root.AgentXVoiceTimeline)?.VoiceTimeline;
   // Capture while this script is evaluating; currentScript is null once the user opens the microphone.
@@ -417,7 +418,7 @@
     // The background brain may add one short remark at a natural pause (#169):
     // only while listening (awake, if the wake word is on) with no turn in flight.
     // Background results use the same speech confirmation as an ordinary reply.
-    async interject(reply, { onScheduled } = {}) {
+    async interject(reply, { onScheduled, readAloud = false } = {}) {
       const epoch = this.epoch;
       const idle = () => this.current(epoch) && this.state === 'listening' && !this.activeTurn && !this.turnPending
         && (!this.selection?.wakeWord || this.wake.active());
@@ -428,23 +429,30 @@
       try {
         // The remark is one utterance: the chosen language, else its own words.
         const language = speechLanguage.turnSpeechLanguage(reply.text, reply.language, this.selection?.language);
-        const segments = speechLanguage.splitSpeechText((this.io.speechText || speechLanguage.speechText)(reply.text));
+        const segments = speechLanguage.splitSpeechText((this.io.speechText || speechLanguage.speechText)(reply.text, { readAloud }));
         if (!segments.length) return false;
-        const bytes = await this.io.synthesize({ ...reply, text: segments[0], language }, this.abort.signal);
-        if (!idle()) { discardSpeech(bytes); return false; }
         turn = { epoch, id: root.crypto.randomUUID(), request: new AbortController(), speech: new AbortController(),
-          interrupted: false, local: true, replyStarted: true, spoken: '' };
+          interrupted: false, local: true, replyStarted: false, spoken: '' };
         this.activeTurn = turn;
         lifetimeSignal.addEventListener('abort', cancel, { once: true });
-        this.audio.quiet(); this.monitor(turn); this.show('speaking');
-        let scheduled = false;
-        for (let index = 0; index < segments.length; index++) {
-          const audio = index ? await this.io.synthesize({ ...reply, text: segments[index], language }, turn.speech.signal) : bytes;
+        this.audio.quiet(); this.monitor(turn); this.show('preparing');
+        let scheduled = false, failedSpeech = null;
+        for (const segment of segments) {
+          const synthesize = () => this.io.synthesize({ ...reply, text: segment, language,
+            ...(failedSpeech && { after: failedSpeech }) }, turn.speech.signal);
+          let audio = await synthesize();
           if (!this.owns(turn)) { discardSpeech(audio); return false; }
-          turn.spoken = (turn.spoken + ' ' + segments[index]).slice(-800);
-          await this.audio.play(audio, turn.speech.signal, false, null, { onScheduled() {
-            if (!scheduled) { scheduled = true; onScheduled?.(); }
-          } });
+          turn.spoken = (turn.spoken + ' ' + segment).slice(-800);
+          this.show('speaking'); turn.replyStarted = true;
+          const callbacks = { onScheduled() { if (!scheduled) { scheduled = true; onScheduled?.(); } } };
+          try { await this.audio.play(audio, turn.speech.signal, false, null, callbacks); }
+          catch (error) {
+            if (error.playbackStarted || failedSpeech || turn.speech.signal.aborted || !this.owns(turn)) throw error;
+            failedSpeech = audio; this.show('preparing'); audio = await synthesize();
+            if (!this.owns(turn)) { discardSpeech(audio); return false; }
+            this.show('speaking');
+            await this.audio.play(audio, turn.speech.signal, false, null, callbacks);
+          }
           if (!this.owns(turn)) return false;
         }
         await this.audio.settle?.(turn.speech.signal);
@@ -657,11 +665,12 @@
       let pending = '', streamed = false, firstChunk = true, speechError = null, playback = Promise.resolve();
       let synthesis = Promise.resolve(), prefetchSlot = Promise.resolve();
       let spokenLanguage = speechLanguage.turnSpeechLanguage(text, detectedLanguage, this.selection.language);
+      const readAloud = spokenPresentation.readingRequested(text);
       let replyLanguageChosen = !!speechLanguage.explicitSpeechLanguage(this.selection.language);
       // `notice` marks words that are not the reply (a waiting notice): the
       // timeline's first audio is the reply's own first clause.
       const speakSegment = (text, notice = false) => {
-        text = (this.io.speechText || speechLanguage.speechText)(text);
+        text = (this.io.speechText || speechLanguage.speechText)(text, { readAloud });
         if (!text.trim() || !this.owns(turn)) return false;
         // In automatic mode the reply's own words choose its voice once. A
         // mistaken STT language must not read a French answer in English.
@@ -712,7 +721,7 @@
           catch (error) {
             // An accepted stream can still fail while it plays (its engine stopped).
             // Say that one clause again with the next voice; never twice in a turn.
-            if (turn.voiceFailure || turn.speech.signal.aborted || !this.owns(turn)) throw error;
+            if (error.playbackStarted || turn.voiceFailure || turn.speech.signal.aborted || !this.owns(turn)) throw error;
             turn.voiceFailure = { speech: bytes };
             this.show('preparing');
             bytes = await synthesize();
@@ -733,7 +742,7 @@
       let holdingSpeech = null;
       const speak = (text, notice = false) => {
         let scheduled = false;
-        for (const segment of speechLanguage.splitSpeechText((this.io.speechText || speechLanguage.speechText)(text))) scheduled = speakSegment(segment, notice) || scheduled;
+        for (const segment of speechLanguage.splitSpeechText((this.io.speechText || speechLanguage.speechText)(text, { readAloud }))) scheduled = speakSegment(segment, notice) || scheduled;
         return scheduled;
       };
       const dropHolding = () => { if (holdingSpeech && !holdingSpeech.playing) holdingSpeech.abort.abort(); };
@@ -788,7 +797,8 @@
       // An unstreamed reply names its own language; a chosen preference still wins.
       if (!streamed && reply.language && !speechLanguage.explicitSpeechLanguage(this.selection.language)) spokenLanguage = reply.language;
       dropHolding();
-      speak(streamed ? pending : reply.text);
+      speak(streamed ? pending : spokenPresentation.ordinarySpeech(reply.text, { language: spokenLanguage,
+        readAloud, preserveSafety: reply.preserveSafety === true }));
       await playback;
       if (speechError) { turn.timeline?.finish('failed'); throw speechError; }
       if (!this.owns(turn)) return;
@@ -867,8 +877,8 @@
   }
 
   // Last rung of the voice ladder: the device's own speech synthesis, cancelled like PCM playback.
-  async function browserSpeechVoice(synth, profile, signal) {
-    const pick = () => speechLanguage.pickBrowserVoice(synth.getVoices(), profile);
+  async function browserSpeechVoice(synth, profile, signal, localOnly) {
+    const pick = () => speechLanguage.pickBrowserVoice(synth.getVoices(), profile, { localOnly });
     const existing = pick();
     if (existing || profile.language !== 'en' || signal.aborted) return existing;
     // Chrome can populate voices asynchronously. Never silently use a French voice for English.
@@ -883,27 +893,29 @@
     });
   }
 
-  function speakWithBrowser({ text, language }, signal, onScheduled) {
+  function speakWithBrowser({ text, language, localOnly = false }, signal, onScheduled) {
     const synth = root.speechSynthesis;
     if (!synth || signal.aborted) return Promise.resolve();
     const profile = speechLanguage.PROFILES?.[language === 'en' ? 'en' : 'fr'];
     const start = voice => {
       if (signal.aborted) return Promise.resolve();
-      if (language === 'en' && !voice) throw new Error('No English speech voice is available on this device. The complete answer remains on screen.');
+      if ((language === 'en' || localOnly) && !voice) throw new Error(`No ${localOnly ? 'local ' : ''}${language === 'en' ? 'English' : 'French'} speech voice is available on this device. The complete answer remains on screen.`);
       return new Promise((resolve, reject) => {
+        let started = false;
         const utterance = new root.SpeechSynthesisUtterance(text);
         utterance.lang = profile?.locale || (language === 'en' ? 'en-CA' : 'fr-CA');
         if (voice) utterance.voice = voice;
         const done = () => { signal.removeEventListener('abort', stop); resolve(); };
         const stop = () => { synth.cancel(); done(); };
-        utterance.onstart = () => onScheduled?.();
-        utterance.onend = done; utterance.onerror = () => { signal.removeEventListener('abort', stop); reject(new Error('Browser speech could not complete.')); };
+        utterance.onstart = () => { started = true; onScheduled?.(); };
+        utterance.onend = done; utterance.onerror = () => { signal.removeEventListener('abort', stop);
+          reject(Object.assign(new Error('Browser speech could not complete.'), { playbackStarted: started })); };
         signal.addEventListener('abort', stop, { once: true });
         synth.speak(utterance);
       });
     };
-    const voice = speechLanguage.pickBrowserVoice(synth.getVoices(), profile);
-    return voice || language !== 'en' ? start(voice) : browserSpeechVoice(synth, profile, signal).then(start);
+    const voice = speechLanguage.pickBrowserVoice(synth.getVoices(), profile, { localOnly });
+    return voice || language !== 'en' ? start(voice) : browserSpeechVoice(synth, profile, signal, localOnly).then(start);
   }
 
   async function openAudio(signal, onError = () => {}, options = {}) {

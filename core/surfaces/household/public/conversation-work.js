@@ -1,6 +1,7 @@
 /* Core's durable work projection. Polling never starts inference. */
 (function (root) {
   'use strict';
+  const presentation = typeof module === 'object' && module.exports ? require('../../../public/js/voice/spoken-presentation') : root.AgentXSpokenPresentation;
   const labels = { received: 'Request saved', queued: 'Handling it in the background', dispatching: 'Being picked up',
     paused: 'Request paused', running: 'Working on your request', uncertain: 'Receipt awaiting verification', failed: 'The work did not succeed',
     cancelled: 'Work stopped', result_ready: 'Result available', completed: 'Result available' };
@@ -22,7 +23,7 @@
         cards.set(item.id, card); host.append(card);
       }
       const heading = document.createElement('p'); heading.className = 'conversation-work-status';
-      heading.textContent = item.result ? (item.result.presentation === 'completed' ? 'Nestor · result read' : 'Nestor · result available') : item.pending && item.state === 'completed' ? 'Request saved · answer to verify' : labels[item.state] || 'Request saved';
+      heading.textContent = item.result ? (item.result.presentation === 'completed' ? 'Nestor · result presented' : 'Nestor · result available') : item.pending && item.state === 'completed' ? 'Request saved · answer to verify' : labels[item.state] || 'Request saved';
       card.replaceChildren(heading);
       if (item.result) {
         const text = document.createElement('p'); text.className = 'conversation-work-answer'; text.textContent = item.result.text;
@@ -53,7 +54,9 @@
       try {
         claim = await receipt(item, replay ? 'replay' : 'claim');
         if (currentGeneration !== generation || currentSession !== sessionId) { await receipt(item, 'deferred', claim.claimToken); return; }
-        const spoken = await getConversation().interject({ text: item.result.text }, { onScheduled() {
+        const language = getConversation().selection?.language || 'fr';
+        const text = presentation.ordinarySpeech(item.result.text, { language, readAloud: replay });
+        const spoken = await getConversation().interject({ text, language }, { readAloud: replay, onScheduled() {
           scheduled = true; startedReceipt = receipt(item, 'started', claim.claimToken); startedReceipt.catch(() => {});
         } });
         if (startedReceipt) await startedReceipt;

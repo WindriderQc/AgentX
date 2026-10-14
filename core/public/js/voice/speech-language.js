@@ -107,9 +107,9 @@
 
   // Presentation-only cleanup at the speech boundary. Never rewrite the stored
   // reply, translate technical identifiers, or remove ordinary words (e.g. chouette).
-  function speechText(text) {
-    return withoutMediaReferences(text)
-      .replace(/(```|~~~)[\s\S]*?(?:\1|$)/g, '')
+  function speechText(text, { readAloud = false } = {}) {
+    const source = withoutMediaReferences(text);
+    return (readAloud ? source.replace(/^[ \t]*(?:```|~~~)[^\n]*$/gm, '') : source.replace(/(```|~~~)[\s\S]*?(?:\1|$)/g, ''))
       .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
       .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
       .replace(/https?:\/\/\S+/g, url => {
@@ -123,7 +123,7 @@
         // Tables are visual/technical material by default. Keep help contacts
         // audible without exposing unrelated cells from another table row.
         const contact = /\b(?:911|9[ -]?8[ -]?8|8[ -]?1[ -]?1|1[ -]?866[ -]?(?:APPELLE|277[ -]?3553))\b|\b(?:suicide|988)\.ca\b/i;
-        return cells.some(cell => contact.test(cell)) ? cells.join('. ') : '';
+        return (readAloud || cells.some(cell => contact.test(cell))) && !cells.every(cell => /^:?-{3,}:?$/.test(cell)) ? cells.join('. ') : '';
       })
       .replace(/[0-9#*]\uFE0F?\u20E3/gu, '')
       .replace(/[\p{Extended_Pictographic}\p{Regional_Indicator}\p{Emoji_Modifier}\u200D\uFE0E\uFE0F\u{E0020}-\u{E007F}]/gu, '')
@@ -169,9 +169,10 @@
     return chunks;
   }
 
-  function pickBrowserVoice(voices, profile) {
+  function pickBrowserVoice(voices, profile, { localOnly = false } = {}) {
     const expected = normalizeSpeechLanguage(profile?.language);
-    const matches = Array.from(voices || []).filter((voice) => normalizeSpeechLanguage(voice.lang) === expected);
+    const matches = Array.from(voices || []).filter((voice) => normalizeSpeechLanguage(voice.lang) === expected
+      && (!localOnly || voice.localService === true));
     if (!matches.length) return null;
     const exactLocale = matches.find((voice) => String(voice.lang || '').toLowerCase() === profile.locale.toLowerCase());
     return exactLocale || matches.find((voice) => voice.localService) || matches[0];

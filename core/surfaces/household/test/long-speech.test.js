@@ -61,3 +61,16 @@ test('Stop during a long reading prevents all remaining synthesis segments', asy
   assert.equal(conversation.session.sessionId, 'session');
   conversation.stop();
 });
+
+test('explicit replays retain table cells and fenced code instead of applying ordinary visual-only cleanup', async () => {
+  const submitted = [], conversation = new Conversation({ message() {}, synthesize: async reply => { submitted.push(reply.text); return 'audio'; } });
+  conversation.epoch = 1; conversation.abort = new AbortController(); conversation.session = { sessionId: 'synthetic' };
+  conversation.selection = { language: 'fr' }; conversation.state = 'listening';
+  conversation.audio = { quiet() {}, listen() {}, close() {}, async play() {} };
+  const text = 'Voici le tableau.\n| Premier | Deuxième |\n|---|---|\n| Troisième | Quatrième |\n```js\ncalculer();\n```\nDerniers mots.';
+  try {
+    assert.equal(await conversation.interject({ text }, { readAloud: true }), true);
+    for (const phrase of ['Premier', 'Deuxième', 'Troisième', 'Quatrième', 'calculer();', 'Derniers mots.']) assert.ok(submitted.join('').includes(phrase));
+    assert.ok(!submitted.join('').includes('---'));
+  } finally { conversation.stop(); }
+});

@@ -50,6 +50,6 @@ test('Kids Room and Lecture create Nestor conversations and speak through the sh
   assert.doesNotMatch(app, /voice: profile\.nativeVoice/);
   // Both pages go through the same speak(); the ladder's script loads before the page script.
   assert.match(app, /await speak\(result\.reply, language\);/);
-  assert.match(app, /await speak\(lastReply, lastLanguage\);/);
+  assert.match(app, /await speak\(result\.reply, lastLanguage\);/);
   assert.ok(html.indexOf('persona-presentation.js') > 0 && html.indexOf('persona-presentation.js') < html.indexOf('/app.js'));
 });

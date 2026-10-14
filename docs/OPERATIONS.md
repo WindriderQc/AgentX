@@ -795,12 +795,19 @@ On the Household browser conversation page (Super Dad or Famille), replies use
 `core/public/js/voice/speech-ladder.js`: the selected voice, the personality's
 presentation voice, its declared catalog fallback when present, then the
 browser's own speech where permitted. Duplicate choices are skipped, and a
-rejected synthesis request advances to the next rung. A failure after the stream
-starts permits one clause retry below the failed voice, at most once per turn.
-Interruption never starts that retry. The reply can remain unspoken if every
+rejected synthesis request advances to the next rung. A failure before audio is
+scheduled permits one clause retry below the failed voice, at most once per turn.
+A partially scheduled clause is terminal and requires explicit replay. Invalid
+requests and access refusals do not advance the ladder. Interruption never starts
+that retry. The reply can remain unspoken if every
 voice fails. Server replies
 do not use browser `speechSynthesis`. PsyX uses its
-protected chosen-voice route without a device voice fallback. See
+protected chosen-voice route. Explicit English can fall back only to a system
+voice Chrome declares local and English; no matching local voice leaves speech
+unavailable and the complete text visible. French stays on its protected route.
+Ordinary replies beyond three sentences or 600 characters use a brief spoken
+introduction and complete screen text. Explicit reading and Listen replay keep
+all requested content; safety resources bypass that presentation threshold. See
 [shared speech behavior](AGENTS_AND_VOICE.md#shared-speech-behavior).
 
 `HOUSEHOLD_TEAM_MEMBERS` optionally lets the owner address a team member
