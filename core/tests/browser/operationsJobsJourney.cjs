@@ -72,8 +72,8 @@ let server, browser;
   const automations = createAutomationsService({operations: service,
     readCron: async () => {if (cronOffline) throw Error('Native owner offline'); return buildOpenClawCronEvidence({jobs: cronJobs});},
     readBackup: () => ({enabled: true, anchor: 'cron', cron: '0 3 * * *', timezone: 'America/Toronto', lastStatus: 'success', lastStartedAt: startedAt}),
-    readMirrors: async () => [...Array.from({length: 13}, (_, index) => ({sourceId: `retired-${index}`, name: `Retired job ${index}`, metadata: {mirrorState: 'absent-from-openclaw'}})),
-      {sourceId: 'native-0', name: 'Duplicate projection', metadata: {mirrorState: 'absent-from-openclaw'}}]});
+    readMirrors: async () => [...Array.from({length: 13}, (_, index) => ({sourceId: `oc-Retired job ${index}`, name: `Retired job ${index}`, metadata: {scheduler: 'openclaw', originalJobId: `retired-${index}`, mirrorState: 'absent-from-openclaw'}})),
+      {sourceId: 'oc-Native promotion', name: 'Duplicate projection', metadata: {scheduler: 'openclaw', originalJobId: 'native-0', mirrorState: 'absent-from-openclaw'}}]});
   mount(app, {service, automations});
   app.get('/api/health', (_r, res) => res.json({status: 'ok'}));
   server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));

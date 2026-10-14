@@ -13,8 +13,8 @@ function fixture(extra = {}) {
     readCron: async () => buildOpenClawCronEvidence({jobs: rawJobs}, {includeDisabledCron: true}),
     readBackup: () => ({enabled: true, anchor: 'cron', cron: '0 3 * * *', timezone: 'America/Toronto'}),
     readMirrors: async () => [
-      {sourceId: 'one', name: 'Duplicate mirror', metadata: {mirrorState: 'absent-from-openclaw'}},
-      {sourceId: 'retired', name: 'Retired', enabled: false, metadata: {mirrorState: 'absent-from-openclaw'}}
+      {sourceId: 'oc-One name', name: 'Duplicate mirror', metadata: {scheduler: 'openclaw', originalJobId: 'one', mirrorState: 'absent-from-openclaw'}},
+      {sourceId: 'oc-Retired old name', name: 'Retired', enabled: false, metadata: {scheduler: 'openclaw', originalJobId: 'retired', mirrorState: 'absent-from-openclaw'}}
     ], ...extra});
 }
 test('deduplicates by native identity, preserves different jobs with the same name and separates retired mirrors', async () => {

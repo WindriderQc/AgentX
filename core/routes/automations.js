@@ -30,4 +30,4 @@ function mount(app, operations, service = createAutomationsService({operations})
   });
   return service;
 }
-module.exports = {mount, createRouter};
+module.exports = {mount, createRouter, resourceScripts};

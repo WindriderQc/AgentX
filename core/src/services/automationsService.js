@@ -48,7 +48,7 @@ function backupJob(schedule) {
 }
 
 function createAutomationsService({operations, readCron = () => collectOpenClawCronEvidence({includeDisabledCron: true}),
-  readMirrors = () => getAllEntries({source: 'openclaw'}),
+  readMirrors = () => getAllEntries({source: 'agentx-system'}),
   readBackup = () => require('./backupSchedulerService').getStatus(), now = () => Date.now()} = {}) {
   let cachedOperations = null, cachedOffset = null;
   let cachedCron = null, cronReadAt = 0, cronFlight = null;
@@ -82,9 +82,11 @@ function createAutomationsService({operations, readCron = () => collectOpenClawC
     }
     if (results[2].status === 'fulfilled') jobs.push(backupJob(results[2].value));
     for (const mirror of results[3].status === 'fulfilled' ? results[3].value : []) {
-      if (!id(mirror.sourceId) || seen.has(mirror.sourceId) || mirror.metadata?.mirrorState !== 'absent-from-openclaw') continue;
-      seen.add(mirror.sourceId);
-      jobs.push({id: `openclaw:${mirror.sourceId}`, nativeId: mirror.sourceId, owner: 'openclaw', ownerLabel: 'OpenClaw',
+      const nativeId = mirror.metadata?.originalJobId;
+      const archiveId = id(nativeId) ? nativeId : `archive:${text(mirror.sourceId, 180)}`;
+      if (mirror.metadata?.scheduler !== 'openclaw' || seen.has(archiveId) || mirror.metadata?.mirrorState !== 'absent-from-openclaw') continue;
+      seen.add(archiveId);
+      jobs.push({id: `openclaw:${archiveId}`, nativeId: id(nativeId) ? nativeId : null, owner: 'openclaw', ownerLabel: 'OpenClaw',
         name: text(mirror.name, 120), description: 'Ancienne projection conservée pour référence. Absente du catalogue natif au dernier rapprochement.',
         enabled: false, state: 'archived', archived: true, kind: 'archive', schedule: {}, source: {}});
     }

@@ -255,7 +255,7 @@ describe('shared navigation public URL contract', () => {
 
   test('home preserves the full workspace and configured service links', async () => {
     const html = await ejs.renderFile(portalPath, { buildProductNavigation, publicUrls });
-    for (const route of ['/playground', '/models', '/analytics', '/performance', '/prompts', '/council', '/nerve-center', '/agent-ops', '/cluster-schedule', '/memory-review', '/pipeline', '/planning', '/backup']) {
+    for (const route of ['/playground', '/models', '/analytics', '/performance', '/prompts', '/council', '/nerve-center', '/agent-ops', '/automations', '/memory-review', '/pipeline', '/planning', '/backup']) {
       expect(html).toContain(`href="${route}"`);
     }
     expect(hrefFor(html, 'Leaderboard')).toBe('https://core.example/benchmark/leaderboard');
