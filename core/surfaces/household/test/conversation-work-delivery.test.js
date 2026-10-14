@@ -11,7 +11,7 @@ class Element {
 }
 function fixture(items) {
   const host = new Element(), stages = [], spoken = [], languages = [], conversation = { session: { sessionId: 'owner-session' }, state: 'listening',
-    interject: async ({ text, language }, { onScheduled }) => { spoken.push(text); languages.push(language); onScheduled(); return true; } };
+    interject: async ({ text, language }, { onScheduled, preserveLanguage }) => { assert.equal(preserveLanguage, true); spoken.push(text); languages.push(language); onScheduled(); return true; } };
   global.document = { createElement: () => new Element() };
   const feed = create({ host, base: '/sessions', getConversation: () => conversation, api: async (url, options) => {
     if (url.includes('/receipt')) { const receipt = JSON.parse(options.body); stages.push(receipt.stage); return { claimToken: 'owned-claim' }; }

@@ -703,6 +703,25 @@ test('a chosen language is the voice of the whole turn, whatever was recognized 
   }
 });
 
+test('a retained work keeps its accepted language after the browser preference changes', async () => {
+  for (const [accepted, current, text] of [
+    ['fr', 'en', 'Voici le résultat conservé. '],
+    ['en', 'fr', 'Here is the retained result. ']
+  ]) {
+    const spoken = [];
+    const h = harness({ async synthesize(reply) { spoken.push(reply); return new ArrayBuffer(4); },
+      turn: () => assert.fail('presenting a saved result cannot start a turn') });
+    await h.conversation.start({ wakeWord: false, language: accepted });
+    h.conversation.selection.language = current;
+    assert.equal(await h.conversation.interject({ text: text.repeat(250), language: accepted },
+      { readAloud: true, preserveLanguage: true }), true);
+    assert.ok(spoken.length > 1, 'exercise every segment of a complete reading');
+    assert.deepEqual([...new Set(spoken.map(reply => reply.language))], [accepted]);
+    assert.equal(h.conversation.selection.language, current, 'the next request keeps the new preference');
+    h.conversation.stop();
+  }
+});
+
 test('a remark from the brain is spoken in the chosen language, else in its own words’ language', async () => {
   for (const [selection, remark, expected] of [
     ['en', { text: 'Petite correction : une araignée a huit pattes.' }, 'en'],
