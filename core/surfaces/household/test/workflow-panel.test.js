@@ -325,10 +325,13 @@ test('the visual fork and stage connectors appear only with matching turn/work e
     for (const child of root.children || []) { const found = find(child, className); if (found) return found; }
     return null;
   };
+  const graphItem = (root, key) => root.attributes?.['data-key'] === key ? root
+    : (root.children || []).map(child => graphItem(child, key)).find(Boolean);
   try {
     const host = new Element(), panel = create({ host });
     panel.begin('session-1', 'turn-a', 'voice');
     assert.equal(find(host, 'workflow-lanes').dataset.split, 'false');
+    assert.equal(graphItem(host, 'route:background').attributes['data-connected'], 'false');
     panel.timings('turn-a', { requestSent: 650, sttDone: 600 });
     panel.ingest('session-1', { items: [work('work-a', 'turn-a', 2, {
       attempt: { id: 'attempt-a', agentId: 'worker-a', runId: 'resp-a' }
@@ -339,6 +342,10 @@ test('the visual fork and stage connectors appear only with matching turn/work e
     ] });
     assert.equal(find(host, 'workflow-lanes').dataset.split, 'true');
     assert.equal(stageState('agents', panel.model.snapshot().turns[0])[0], 'Active');
+    assert.equal(graphItem(host, 'route:recognition').attributes['data-connected'], 'true');
+    assert.equal(graphItem(host, 'route:delegation').attributes['data-tone'], 'active');
+    assert.equal(graphItem(host, 'route:background').attributes['data-connected'], 'false', 'intake alone does not prove a background handoff');
+    assert.equal(graphItem(host, 'route:playback').attributes['data-connected'], 'false', 'a native run is not a playback receipt');
     const flow = find(host, 'workflow-flow');
     const connected = [];
     const visit = item => {
@@ -347,6 +354,9 @@ test('the visual fork and stage connectors appear only with matching turn/work e
     };
     visit(flow);
     assert.deepEqual(connected, ['true', 'false', 'true']);
+    panel.pollFailure('session-1');
+    assert.equal(graphItem(host, 'route:delegation').attributes['data-tone'], 'recorded', 'stale telemetry keeps the receipt and stops moving packets');
+    assert.equal(graphItem(host, 'graph:agents').attributes['data-tone'], 'caution');
   } finally { global.document = previousDocument; }
 });
 

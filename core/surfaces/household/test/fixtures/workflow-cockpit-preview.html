@@ -11,12 +11,14 @@
     :root { color-scheme: dark; font: 15px/1.5 system-ui, sans-serif; background: #07131d; color: #e9f5f8; }
     * { box-sizing: border-box; }
     body { margin: 0; padding: 1.3rem 1rem 4rem; }
-    main { max-width: 1360px; margin: auto; }
-    .conversation-shell { max-width: 1360px; }
+    main { max-width: 1760px; margin: auto; }
+    .conversation-shell { max-width: 1760px; }
     header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: .7rem; }
     .eyebrow { margin: 0; color: #8fcbd4; text-transform: uppercase; letter-spacing: .14em; font-size: .72rem; }
     h1 { font-weight: 500; font-size: clamp(1.7rem, 3.5vw, 2.6rem); margin: .1rem 0; }
     .subtitle { color: #a6bec8; margin: .2rem 0 0; }
+    .demo-controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+    .demo-controls button { padding: 8px 12px; min-height: 44px; border: 1px solid #465676; border-radius: 8px; background: #182239; color: #bcd0ec; font: inherit; font-size: .72rem; cursor: pointer; }
     .pill { color: #77dfe3; border: 1px solid #365966; border-radius: 999px; padding: .35rem .7rem; font-size: .72rem; }
     .conversation-stage { border: 1px solid #36515d; border-radius: 20px; padding: 1rem; background: linear-gradient(145deg, #112631, #0d1a23 70%); }
     .conversation-live { display: grid; grid-template-columns: 40px 1fr auto; align-items: center; gap: 12px; }
@@ -38,28 +40,47 @@
   <script defer>
     window.addEventListener('DOMContentLoaded', () => {
       const panel = NestorWorkflow.create({ host: document.getElementById('conversationWorkflow'), signal: document.getElementById('conversationWorkflowSignal') });
-      panel.begin('synthetic-session', 'tour-01', 'voice');
-      panel.timings('tour-01', { sttDone: 680, sttServer: 420, requestSent: 710, firstDelta: 1980, firstAudio: 2560 });
-      panel.stream('tour-01', { type: 'tools', evidence: { receipts: [{ id: 'recu-gardien-01', tool: 'personal_tasks', status: 'verified' }] } });
-      panel.stream('tour-01', { type: 'done', data: { traceId: 'trace-synthetic-01', serverTimings: { prepared: 240, executed: 2830 } } });
-      panel.ingest('synthetic-session', { items: [{ id: 'travail-01', turnId: 'tour-01', sessionId: 'synthetic-session', revision: 4,
-        guardianStatus: 'completed', guardianRunId: 'resp-synthetic-01', classification: 'unclassified', state: 'running',
-        attempt: { id: 'tentative-01', agentId: 'nestor-worker', runId: 'resp-synthetic-02' },
-        tools: [{ id: 'recu-01', tool: 'personal_tasks', runId: 'resp-synthetic-02', status: 'verified' }], nativeAdmissions: [] }],
-        events: [
-          { sequence: 1, workId: 'travail-01', type: 'request_received', at: '2026-10-11T16:00:00Z' },
-          { sequence: 2, workId: 'travail-01', type: 'guardian_started', at: '2026-10-11T16:00:01Z' },
-          { sequence: 3, workId: 'travail-01', type: 'context_ready', at: '2026-10-11T16:00:02Z' },
-          { sequence: 4, workId: 'travail-01', type: 'guardian_settled', at: '2026-10-11T16:00:04Z' },
-          { sequence: 5, workId: 'travail-01', type: 'dispatch_marked', at: '2026-10-11T16:00:05Z' },
-          { sequence: 6, workId: 'travail-01', type: 'native_started', at: '2026-10-11T16:00:07Z' }
-        ] });
+      window.workflowPreview = panel;
+      const event = (sequence, type, second) => ({ sequence, workId: 'work-demo', type, at: `2026-10-14T16:00:${String(second).padStart(2, '0')}Z` });
+      const events = [event(1, 'request_received', 0), event(2, 'guardian_started', 1), event(3, 'guardian_settled', 4),
+        event(4, 'dispatch_marked', 5), event(5, 'native_started', 7), event(6, 'native_settled', 16), event(7, 'result_published', 17)];
+      const work = { id: 'work-demo', turnId: 'turn-demo', sessionId: 'synthetic-session', guardianRunId: 'resp-demo-guardian',
+        attempt: { id: 'attempt-demo', agentId: 'nestor-worker', runId: 'resp-demo-review' }, nativeAdmissions: [] };
+      let timers = [];
+      const stop = () => { timers.forEach(clearTimeout); timers = []; };
+      function show(step) {
+        panel.reset(); panel.begin('synthetic-session', 'turn-demo', 'voice');
+        if (step === 0) panel.stream('turn-demo', { type: 'status', phase: 'transcribing' });
+        if (step >= 1) {
+          panel.timings('turn-demo', { sttDone: 680, sttServer: 420, requestSent: 710 });
+          panel.ingest('synthetic-session', { items: [{ ...work, revision: 1, guardianStatus: 'running', state: 'received' }], events: events.slice(0, 2) });
+        }
+        if (step >= 2) {
+          panel.stream('turn-demo', { type: 'done', data: { traceId: 'trace-demo' } });
+          panel.timings('turn-demo', { sttDone: 680, requestSent: 710, firstAudio: 2560 });
+          panel.ingest('synthetic-session', { items: [{ ...work, revision: 2, guardianStatus: 'completed', state: 'queued' }], events: events.slice(0, 3) });
+        }
+        if (step >= 3) panel.ingest('synthetic-session', { items: [{ ...work, revision: 3, guardianStatus: 'completed', state: 'running',
+          tools: [{ id: 'receipt-demo', tool: 'personal_tasks', status: 'verified' }] }], events: events.slice(0, 5) });
+        if (step === 4) {
+          panel.timings('turn-demo', { sttDone: 680, requestSent: 710, firstAudio: 2560, playbackOutcome: 'completed' });
+          panel.ingest('synthetic-session', { items: [{ ...work, revision: 4, guardianStatus: 'completed', state: 'result_ready',
+            result: { version: 1, text: 'Synthetic task review available.' }, tools: [{ id: 'receipt-demo', tool: 'personal_tasks', status: 'verified' }] }], events });
+        }
+        if (step === 5) panel.pollFailure('synthetic-session');
+      }
+      window.workflowPreviewStep = show;
+      document.getElementById('replayDemo').onclick = () => { stop(); show(0); [1, 2, 3, 4].forEach((step, i) => timers.push(setTimeout(() => show(step), (i + 1) * 3500))); };
+      document.getElementById('settleDemo').onclick = () => { stop(); show(4); };
+      document.getElementById('staleDemo').onclick = () => { stop(); show(5); };
+      show(3);
     });
   </script>
 </head>
 <body class="household-product">
   <main class="conversation-shell">
     <header><div><p class="eyebrow">Super Dad · Personal</p><h1>With Nestor.</h1><p class="subtitle">One conversation, several observable components.</p></div><span class="pill">Synthetic preview</span></header>
+    <div class="demo-controls" aria-label="Synthetic flow states"><button id="replayDemo" type="button">Replay flow</button><button id="settleDemo" type="button">Complete all stages</button><button id="staleDemo" type="button">Simulate lost telemetry</button></div>
     <section class="conversation-stage" aria-label="Demo conversation">
       <div class="conversation-cockpit">
         <div class="conversation-live"><div class="conversation-presence" aria-hidden="true">N</div><p class="conversation-status">Nestor is listening · background work continues</p><div class="conversation-actions"><button type="button">Pause</button></div><p id="conversationWorkflowSignal" class="conversation-workflow-signal"></p></div>
