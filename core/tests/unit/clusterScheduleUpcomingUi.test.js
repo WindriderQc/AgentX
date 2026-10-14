@@ -522,11 +522,8 @@ describe('Cluster Schedule evidence presentation', () => {
   });
 
   test('loads the upcoming projection before the dashboard controller', () => {
-    const app = read('src/app.js');
-    const routeBlock = app.slice(
-      app.indexOf("app.get('/cluster-schedule'"),
-      app.indexOf("app.get('/memory-review'")
-    );
+    const app = require('../../routes/automations').resourceScripts;
+    const routeBlock = app;
 
     expect(routeBlock.indexOf('/js/cluster-schedule-upcoming.js'))
       .toBeLessThan(routeBlock.indexOf('/js/cluster-schedule.js'));

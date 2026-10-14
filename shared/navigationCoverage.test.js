@@ -26,6 +26,7 @@ const HOUSEHOLD_PUBLIC = 'core/surfaces/household/public';
 // A second address for a page that has its own entry: old bookmarks keep working.
 const ALIASES = {
   core: {
+    '/cluster-schedule': '/automations', '/operations-jobs': '/automations',
     '/ecosystem': '/', '/portal': '/',
     '/dad/nestor': '/dad', '/voice': '/dad', '/voix': '/dad', '/voice.html': '/dad',
     '/device-check': '/voice-lab/devices', '/voice-personas/debug': '/voice-lab/personas',

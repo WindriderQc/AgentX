@@ -9,12 +9,17 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 ## On main
 
-- **Operational jobs.** Core exposes native server-owned host jobs at
-  `/operations-jobs`: cadence, pause/resume, explicit execution, durable receipts
-  and Windows inventory. Named collectors and verified transfers retain local
-  data, source dependencies and unknown-outcome fences. The capability defaults
-  unconfigured; native installation and cutover are per-instance acceptance. See
-  [operational jobs](OPERATIONS_JOBS.md).
+- **Automations.** `/automations` is the shared catalogue and calendar for native
+  AgentX host jobs, Core backups and OpenClaw cron jobs, including native core
+  functions. Identity comes from the owning scheduler; Cluster Schedule mirrors
+  are excluded from executable counts. Retired mirrors have a separate archive.
+  Each source reports freshness independently; unavailable sources retain bounded
+  cached evidence and disable controls. Cadence, pause/resume, explicit execution,
+  durable receipts and Windows inventory remain available for host jobs. OpenClaw
+  and backup controls continue in their native owning screens. The Resources view
+  preserves GPU capacity, usage, placement and Core's heavy-work queue. Old schedule
+  and host-job URLs redirect to this hub. Agent Ops keeps agent evidence and
+  documentation-only obligations. See [operational jobs](OPERATIONS_JOBS.md).
 
 - **Household daily use.** The parent view filters tasks by child, review, date
   and text, shows recorded deadlines for the next seven days, and edits open
@@ -30,7 +35,7 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 - **Heavy work.** Core stores one-off requests from operator/coding sessions,
   resource-aware planned windows, dispatch identities and executor receipts.
-  Cluster Schedule edits slots and shows estimated versus actual status. The
+  The Automations Resources view edits slots and shows estimated versus actual status. The
   operator CLI explicitly launches existing Benchmark plans and Profiler host
   queues, and tracks custom coding checks through explicit operator receipts.
   Accepted images queue before GPU work and start once within a bounded window.

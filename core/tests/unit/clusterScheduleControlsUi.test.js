@@ -8,7 +8,7 @@ const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 test('the schedule controls work without CSP-blocked inline handlers', () => {
   const view = read('views/pages/cluster-schedule.ejs');
   const dashboard = read('public/js/cluster-schedule.js');
-  const app = read('src/app.js');
+  const app = require('../../routes/automations').resourceScripts;
   expect(view).not.toMatch(/\bon(?:click|change)=/i);
   expect(dashboard).not.toMatch(/\bon(?:click|change)=/i);
   expect(app).toContain('/js/cluster-schedule-controls.js');

@@ -1,0 +1,16 @@
+<header class="oj-header">
+  <div><p class="oj-eyebrow"><span class="oj-signal"></span> SYSTÈME / AGENTX</p>
+    <h1>Automatisations<span class="oj-title-dot">.</span></h1>
+    <p class="oj-intro">Un seul catalogue. Chaque départ reste piloté par son propriétaire.</p>
+  </div>
+  <div class="oj-header-actions"><a href="/agent-ops" class="oj-button oj-button-quiet"><i class="fas fa-users-gear" aria-hidden="true"></i> Agents</a>
+    <% if (!resources) { %><button id="operationsRefresh" class="oj-button"><i class="fas fa-rotate" aria-hidden="true"></i> Actualiser</button><% } %>
+  </div>
+</header>
+<% if (resources) { %>
+<nav class="oj-hub-navigation" aria-label="Vues des automatisations">
+  <a href="/automations">Traitements</a><a href="/automations?view=calendar">Calendrier</a>
+  <a href="/automations?view=history">Historique</a><a href="/automations?view=inventory">Windows</a>
+  <a href="/automations?view=resources" aria-current="page">Ressources</a>
+</nav>
+<% } %>

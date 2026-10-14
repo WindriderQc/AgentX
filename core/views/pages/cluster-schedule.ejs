@@ -1,18 +1,19 @@
     <div class="bg-grid"></div>
 
     <!-- Main Content -->
-    <div class="cs-container">
+    <div class="cs-container oj-shell oj-resource-shell">
+        <%- include('../partials/automations-header', {resources: true}) %>
 
         <!-- Page Header -->
         <div class="cs-page-header">
             <div class="cs-header-row">
                 <div>
-                    <div class="cs-eyebrow">AgentX &bull; GPU Orchestration</div>
-                    <h1><i class="fas fa-calendar-alt"></i> Cluster Schedule</h1>
-                    <p>Loaded models, scheduled jobs, measured GPU usage, placement claims and the heavy-job queue.</p>
+                    <div class="cs-eyebrow">RESSOURCES / CAPACITÉ</div>
+                    <h2>Ressources et travaux lourds</h2>
+                    <p>Capacité des hôtes, réservations GPU, utilisation mesurée et file de travaux lourds.</p>
                 </div>
                 <div class="cs-header-controls">
-                    <a href="/operations-jobs" class="cs-btn"><i class="fas fa-gears"></i> Automations</a>
+
                     <div id="headerStatus" class="cs-header-status"></div>
                     <div class="cs-date-nav">
                         <button id="prevDateBtn" class="cs-btn cs-btn-icon" title="Previous day" aria-label="Previous day"><i class="fas fa-chevron-left"></i></button>

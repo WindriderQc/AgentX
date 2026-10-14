@@ -14,7 +14,7 @@
     HOST_UNAVAILABLE: 'Le poste est indisponible. La demande est conservée pour son retour.', NATIVE_OUTCOME_UNKNOWN: 'La réponse du serveur est indisponible. La même demande reste enregistrée : actualisez pour vérifier son résultat.',
     INVALID_TIMEZONE: 'Ce fuseau horaire n’est pas reconnu.', INVALID_TIME: 'Choisissez une heure valide.', SOURCE_UNAVAILABLE: 'La source est indisponible. Aucun nouveau départ n’a été lancé.',
     WAITING_BACKUP: 'Une sauvegarde Core terminée est nécessaire avant la copie.', WAITING_SNAPSHOT: 'Un snapshot d’archives est nécessaire avant la copie.'};
-  const state = {snapshot: null, tab: 'jobs', search: '', jobsFilter: 'all', inventoryFilter: 'all', historyOffset: 0, noticeKind: null, busy: new Set(), connected: false, lastLaunch: {}, pending: readPending(), loading: false};
+  const state = {snapshot: null, tab: 'jobs', search: '', jobsFilter: 'active', jobsOwner: 'all', inventoryFilter: 'all', historyOffset: 0, noticeKind: null, busy: new Set(), connected: false, lastLaunch: {}, pending: readPending(), loading: false};
   let poll = null;
   let editing = null;
   let editRevision = null;
@@ -70,11 +70,11 @@
     el.hidden = !message;
     el.classList.toggle('oj-success', success);
   }
-  async function api(path = '', options = {}) {
+  async function api(path = '', options = {}, base = API) {
     const controller = new AbortController();
     const deadline = setTimeout(() => controller.abort(), 35000);
     try {
-      const response = await fetch(API + path, {headers: {'Content-Type': 'application/json'}, ...options, signal: controller.signal});
+      const response = await fetch(base + path, {headers: {'Content-Type': 'application/json'}, ...options, signal: controller.signal});
       const body = await response.json();
       if (!response.ok || body.status !== 'success') {
         const error = new Error(errors[body.error?.code] || 'Le traitement n’a pas pu être confirmé. Actualisez son état.');
@@ -90,7 +90,7 @@
     state.loading = true;
     $('operationsRefresh').disabled = true;
     try {
-      state.snapshot = await api(`?offset=${state.historyOffset}${refresh ? '&refresh=1' : ''}`);
+      state.snapshot = await api(`?offset=${state.historyOffset}${refresh ? '&refresh=1' : ''}`, {}, '/api/automations');
       state.connected = state.snapshot.available;
       for (const [id, requestId] of Object.entries(state.pending)) {
         if (state.snapshot.jobs.some(job => job.id === id && job.lastRun?.requestId === requestId) || state.snapshot.history.some(run => run.requestId === requestId)) delete state.pending[id];
@@ -129,20 +129,24 @@
     const legacy = snapshot.inventory.rows.filter(row => row.category === 'migrated' && row.enabled).length;
     const stamp = snapshot.supervisor.lastTickAt;
     const fresh = stamp && Date.now() - Date.parse(stamp) < 180000;
-    $('operationsSupervisor').textContent = `Piloté par ${snapshot.supervisor.label}`;
-    $('operationsHeartbeat').textContent = stamp ? `Dernier passage ${when(stamp)} · horaires du serveur, données sur leur machine` : 'Le premier passage du superviseur reste à recevoir.';
-    $('operationsConnection').innerHTML = `<span class="oj-badge oj-badge-${fresh ? 'good' : 'warning'}"><i class="fas fa-circle" aria-hidden="true"></i> ${fresh ? 'À jour' : 'À vérifier'}</span>`;
+    const sources = snapshot.sources || [];
+    const available = sources.filter(source => source.available).length;
+    $('operationsSupervisor').textContent = 'AgentX · Core · OpenClaw';
+    $('operationsHeartbeat').textContent = `${available} sources accessibles sur ${sources.length} · relevé ${when(snapshot.observedAt)}`;
+    $('operationsConnection').innerHTML = `<span class="oj-badge oj-badge-${available === sources.length && (!snapshot.operationsAvailable || fresh) ? 'good' : 'warning'}">${available === sources.length && (!snapshot.operationsAvailable || fresh) ? 'À jour' : 'Lecture partielle'}</span>`;
+    window.AutomationsHub.update(snapshot, state.search);
     $('metricActive').textContent = count(jobs.filter(job => job.enabled).length);
     $('metricRunning').textContent = count(jobs.filter(job => ['accepted', 'running'].includes(job.state)).length);
     $('metricAttention').textContent = count(jobs.filter(isAttention).length);
     $('metricAttention').parentElement.classList.toggle('oj-needs-attention', jobs.some(isAttention));
     $('metricLegacy').textContent = snapshot.inventory.observedAt ? count(legacy) : '—';
     $('metricLegacy').parentElement.classList.toggle('oj-needs-attention', legacy > 0);
-    $('jobsCount').textContent = count(jobs.length);
+    $('jobsCount').textContent = count(jobs.filter(job => !job.archived).length);
     $('historyCount').textContent = count(snapshot.historyTotal);
     $('inventoryCount').textContent = snapshot.inventory.observedAt ? count(snapshot.inventory.rows.length) : '—';
     if (snapshot.inventory.unavailable.length) notice('L’inventaire Windows est ancien : le poste est indisponible. Les derniers résultats reçus restent affichés.', false, 'inventory');
     renderJobs(); renderHistory(); renderInventory();
+    if (state.tab === 'calendar') window.AutomationsHub.calendar();
   }
   function renderJobs() {
     if (!state.snapshot?.available) return;
@@ -150,16 +154,19 @@
     const focusAction = prior?.dataset.action;
     const focusJob = prior?.dataset.job;
     const query = state.search.toLocaleLowerCase();
-    const jobs = state.snapshot.jobs.filter(job => (!query || `${job.name} ${job.description} ${job.hostLabel}`.toLocaleLowerCase().includes(query)) &&
-      (state.jobsFilter === 'all' || (state.jobsFilter === 'active' && job.enabled) || (state.jobsFilter === 'paused' && !job.enabled) || (state.jobsFilter === 'attention' && isAttention(job))));
+    const jobs = state.snapshot.jobs.filter(job => (!query || `${job.name} ${job.description} ${job.hostLabel} ${job.agentId || ''} ${job.ownerLabel}`.toLocaleLowerCase().includes(query)) &&
+      (state.jobsOwner === 'all' || state.jobsOwner === job.owner) &&
+      (state.jobsFilter === 'archived' ? job.archived : !job.archived) &&
+      (state.jobsFilter === 'archived' || state.jobsFilter === 'all' || (state.jobsFilter === 'active' && job.enabled) || (state.jobsFilter === 'paused' && !job.enabled) || (state.jobsFilter === 'attention' && isAttention(job))));
     $('operationsJobs').innerHTML = jobs.length ? jobs.map(job => {
+      if (job.owner !== 'operations') return window.AutomationsHub.card(job);
       const busy = state.busy.has(job.id) || activeStates.has(job.state);
-      const disabled = !state.connected || state.busy.has(job.id);
+      const disabled = !state.connected || !state.snapshot.operationsAvailable || state.busy.has(job.id);
       const nextLabel = job.gateType ? 'PROCHAINE VÉRIFICATION' : 'PROCHAIN DÉPART';
       const next = job.enabled ? when(job.nextRunAt) : 'Départs automatiques en pause';
       const run = job.lastRun;
-      return `<article class="oj-job" style="--job-color:${colors[job.kind] || '#83b3ff'}">
-        <div class="oj-job-top"><div class="oj-job-identity"><div class="oj-job-icon"><i class="fas ${icons[job.kind] || 'fa-gears'}" aria-hidden="true"></i></div><div><h3>${esc(job.name)}</h3><span class="oj-kind">${esc(categories[job.kind] || 'Traitement')}</span></div></div>${badge(!job.enabled && !activeStates.has(job.state) ? 'paused' : job.state)}</div>
+      return `<article class="oj-job" data-job-id="${esc(job.id)}" style="--job-color:${colors[job.kind] || '#83b3ff'}">
+        <div class="oj-job-top"><div class="oj-job-identity"><div class="oj-job-icon"><i class="fas ${icons[job.kind] || 'fa-gears'}" aria-hidden="true"></i></div><div><h3>${esc(job.name)}</h3><span class="oj-kind">AgentX · ${esc(categories[job.kind] || 'Traitement')}</span></div></div>${badge(!job.enabled && !activeStates.has(job.state) ? 'paused' : job.state)}</div>
         <p class="oj-job-description">${esc(job.description)}</p>
         <div class="oj-route"><span class="oj-route-node"><i class="fas fa-server" aria-hidden="true"></i>${esc(job.supervisorLabel)}</span><i class="fas fa-arrow-right oj-route-arrow" aria-label="déclenche sur"></i><span class="oj-route-node"><i class="fas fa-desktop" aria-hidden="true"></i>${esc(job.hostLabel)}</span></div>
         <div class="oj-job-details"><div><span class="oj-detail-label">DÉCLENCHEMENT</span><strong class="oj-detail-value">${esc(dependency(job))}</strong><span class="oj-detail-caption">${esc(job.gateType ? `Vérification : ${cadence(job).toLocaleLowerCase()}` : job.schedule.timezone)}</span></div><div><span class="oj-detail-label">${nextLabel}</span><strong class="oj-detail-value">${esc(next)}</strong><span class="oj-detail-caption">${esc(run ? `Dernier départ : ${when(run.startedAt || run.createdAt)}` : 'Première exécution à valider')}</span></div></div>
@@ -170,6 +177,8 @@
         <button class="oj-button oj-button-quiet oj-settings-button" data-action="settings" data-job="${job.id}" aria-label="Régler la fréquence de ${esc(job.name)}" ${disabled ? 'disabled' : ''}><i class="fas fa-sliders" aria-hidden="true"></i></button></div></article>`;
     }).join('') : empty('Aucun traitement dans cette vue', 'Essayez un autre filtre ou une autre recherche.');
     $('operationsJobs').setAttribute('aria-busy', 'false');
+    window.AutomationsHub.decorate();
+    $('jobsResultCount').textContent = `${count(jobs.length)} traitements affichés · ${count(state.snapshot.jobs.filter(job => job.archived).length)} anciennes projections en archives`;
     if (focusAction && focusJob) $('operationsJobs').querySelector(`[data-action="${focusAction}"][data-job="${focusJob}"]`)?.focus({preventScroll: true});
   }
   function renderHistory() {
@@ -208,6 +217,10 @@
   }
   function setTab(name, focus = false) {
     state.tab = name;
+    const url = new URL(location.href);
+    if (name === 'jobs') url.searchParams.delete('view'); else url.searchParams.set('view', name);
+    history.replaceState(null, '', url.pathname + url.search);
+    if (name === 'calendar') window.AutomationsHub.calendar();
     for (const tab of root.querySelectorAll('[data-tab]')) {
       const selected = tab.dataset.tab === name;
       tab.setAttribute('aria-selected', String(selected)); tab.tabIndex = selected ? 0 : -1; tab.classList.toggle('active', selected);
@@ -232,7 +245,7 @@
   function settingsType() {const daily = $('operationsSettingsForm').elements.type.value === 'daily'; $('settingsInterval').hidden = daily; $('settingsDaily').hidden = !daily;}
   async function act(action, identifier) {
     const job = state.snapshot.jobs.find(item => item.id === identifier);
-    if (!job || !state.connected) return;
+    if (!job || job.owner !== 'operations' || !state.connected || !state.snapshot.operationsAvailable) return;
     if (action === 'settings') {openSettings(job); return;}
     if (action === 'run') {
       if (state.lastLaunch[identifier] && Date.now() - state.lastLaunch[identifier] < 1500) return;
@@ -262,11 +275,12 @@
   root.querySelectorAll('[data-tab]').forEach(tab => {
     tab.addEventListener('click', () => setTab(tab.dataset.tab));
     tab.addEventListener('keydown', event => {
-      const names = ['jobs', 'history', 'inventory']; const index = names.indexOf(state.tab);
-      if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {event.preventDefault(); setTab(event.key === 'Home' ? names[0] : event.key === 'End' ? names[2] : names[(index + (event.key === 'ArrowRight' ? 1 : 2)) % 3], true);}
+      const names = ['jobs', 'calendar', 'history', 'inventory']; const index = names.indexOf(state.tab);
+      if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {event.preventDefault(); setTab(event.key === 'Home' ? names[0] : event.key === 'End' ? names[names.length - 1] : names[(index + (event.key === 'ArrowRight' ? 1 : names.length - 1)) % names.length], true);}
     });
   });
-  $('operationsSearch').addEventListener('input', event => {state.search = event.target.value; renderJobs(); renderHistory(); renderInventory();});
+  $('operationsSearch').addEventListener('input', event => {state.search = event.target.value; window.AutomationsHub.update(state.snapshot, state.search); renderJobs(); renderHistory(); renderInventory();});
+  $('jobsOwner').addEventListener('change', event => {state.jobsOwner = event.target.value; renderJobs();});
   $('jobsFilter').addEventListener('change', event => {state.jobsFilter = event.target.value; renderJobs();});
   $('inventoryFilter').addEventListener('change', event => {state.inventoryFilter = event.target.value; renderInventory();});
   $('operationsRefresh').addEventListener('click', () => load(true));
@@ -287,5 +301,10 @@
     finally {submit.disabled = false;}
   });
   document.addEventListener('visibilitychange', () => {clearTimeout(poll); if (!document.hidden) load(true);});
+  const params = new URLSearchParams(location.search);
+  const query = params.get('q');
+  if (query) {state.search = query; state.jobsFilter = 'all'; $('operationsSearch').value = query; $('jobsFilter').value = 'all';}
+  const requested = params.get('view');
+  setTab(['calendar', 'history', 'inventory'].includes(requested) ? requested : 'jobs');
   load();
 })();

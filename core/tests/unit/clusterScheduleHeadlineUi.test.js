@@ -154,12 +154,9 @@ describe('Cluster Schedule canonical headline evidence', () => {
   });
 
   test('loads the projection before the controller and fetches the canonical snapshot', () => {
-    const app = read('src/app.js');
+    const app = require('../../routes/automations').resourceScripts;
     const controller = read('public/js/cluster-schedule.js');
-    const routeBlock = app.slice(
-      app.indexOf("app.get('/cluster-schedule'"),
-      app.indexOf("app.get('/memory-review'")
-    );
+    const routeBlock = app;
 
     expect(routeBlock.indexOf('/js/cluster-schedule-headline.js'))
       .toBeLessThan(routeBlock.indexOf('/js/cluster-schedule.js'));
