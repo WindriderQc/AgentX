@@ -49,6 +49,26 @@ probability threshold. Weaker phonemes remain accepted after speech starts, and
 for naming a website. Qualify noise and short/quiet speech together before
 changing the threshold on an instance.
 
+Recognition responses optionally include `recognition` evidence: requested versus
+decoded language, whether language was requested/detected/constrained, audio and
+post-VAD duration, queue/decode milliseconds, actual device/compute type, segment
+count and available decoder statistics. These statistics are diagnostics, not
+calibrated word confidence; missing values stay absent. No words are rejected
+or rewritten using them. The browser's existing ephemeral audio review keeps
+requested and decoded language separate and distinguishes an early recognition
+clip from the complete capture. It clears this evidence with the clip.
+The response's `recognitionId` correlates this attempt with content-free service
+lifecycle logs. Server completion does not prove that a client received the
+response, a model turn ran, or speech played on a device.
+
+A disconnected upload cancels its inference wait and is checked before lazy
+segment decoding. `WHISPER_QUEUE_TIMEOUT_SECONDS` bounds the serial lock wait
+(default 120 seconds, matching the existing browser proxy budget); expiration
+returns `503 STT_BUSY`. A native kernel already running finishes normally before
+its slot releases. This does not bound the number of HTTP uploads/executor jobs
+or establish end-to-end inference cancellation. Standalone Stop retains its
+independent CPU path.
+
 Transcription JSON identifies the recognizer that actually ran in `model` and
 `effectiveModel`. `requestedModel` retains an optional client hint; that hint
 does not load or select a different Whisper model. A standalone structured Stop

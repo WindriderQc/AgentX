@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -69,8 +70,13 @@ class Settings:
     # One active synthesis engine; old client choices migrate without running another engine.
     tts_pocket_only: bool = False
     tts_voice_aliases: dict[str, str] = field(default_factory=dict)
+    # Matches the browser proxy's existing default request budget. This bounds
+    # waiting only; it does not interrupt an already running native decoder.
+    whisper_queue_timeout_seconds: float = 120.0
 
     def validate(self) -> None:
+        if not math.isfinite(self.whisper_queue_timeout_seconds) or self.whisper_queue_timeout_seconds <= 0:
+            raise ValueError("WHISPER_QUEUE_TIMEOUT_SECONDS must be finite and positive")
         if not 0 < self.whisper_vad_threshold < 1:
             raise ValueError("WHISPER_VAD_THRESHOLD must be between 0 and 1")
         if self.tts_provider not in TTS_PROVIDERS:
@@ -97,6 +103,7 @@ def load_settings() -> Settings:
         whisper_model=os.getenv("WHISPER_MODEL", "large-v3-turbo"),
         whisper_device=os.getenv("WHISPER_DEVICE", "cuda"),
         whisper_compute_type=os.getenv("WHISPER_COMPUTE_TYPE", "float16"),
+        whisper_queue_timeout_seconds=_get_float("WHISPER_QUEUE_TIMEOUT_SECONDS", 120.0),
         whisper_cpu_fallback=_get_bool("WHISPER_CPU_FALLBACK", True),
         whisper_vad_threshold=_get_float("WHISPER_VAD_THRESHOLD", 0.85),
         # Product names only. An instance adds its own names (people, places)

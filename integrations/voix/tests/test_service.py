@@ -16,7 +16,7 @@ client = TestClient(app)
 
 
 def test_unavailable_gpu_returns_a_retryable_private_safe_transcription_error(monkeypatch):
-    def unavailable(*_args):
+    def unavailable(*_args, **_kwargs):
         raise service.RecognitionUnavailable("private path and arbitrary decoder detail")
     monkeypatch.setattr(service, "_transcribe_bytes", unavailable)
     response = client.post("/v1/audio/transcriptions", files={"file": ("mic.wav", b"audio")})
@@ -255,7 +255,7 @@ def test_uploaded_audio_larger_than_spool_threshold_stays_in_memory(monkeypatch)
     monkeypatch.setattr(tempfile, "NamedTemporaryFile", forbidden)
     raw = b"audio" * (300 * 1024)
 
-    def decode(audio, language=None):
+    def decode(audio, language=None, **kwargs):
         assert audio.read() == raw
         assert language == "en"
         return "Private upload", 3.0
@@ -499,7 +499,7 @@ def test_tts_uses_runtime_selected_provider(monkeypatch):
 def test_transcription_text_format_and_request_language(monkeypatch, requested, expected):
     seen = {}
 
-    def fake_transcribe(raw, filename, language):
+    def fake_transcribe(raw, filename, language, **kwargs):
         seen["language"] = language
         return "bonjour texte", 12.0
 
@@ -657,17 +657,37 @@ def test_invalid_request_provider_cannot_change_machine_defaults():
 def test_transcription_reports_detected_language_for_one_voice_per_reply(monkeypatch):
     from app.stt.whisper import _transcript
 
-    monkeypatch.setattr(service, "_transcribe_bytes", lambda raw, filename, language: (_transcript("Hello there", "en"), 9.0))
+    monkeypatch.setattr(service, "_transcribe_bytes", lambda raw, filename, language, **kwargs: (_transcript("Hello there", "en"), 9.0))
     body = client.post("/v1/audio/transcriptions", files={"file": ("mic.wav", b"RIFFfake")}, data={"language": "fr-en"}).json()
     assert body["language"] == "fr-en"
     assert body["detectedLanguage"] == "en"
+
+
+def test_transcription_returns_numerical_evidence_without_replacing_words(monkeypatch):
+    from app.stt.whisper import _transcript
+    evidence = {"schema": 1, "requestedLanguage": "fr", "languageSource": "requested",
+                "queueMs": 20, "decodeMs": 45, "speechSeconds": 0.3, "audioSeconds": 1.1}
+    monkeypatch.setattr(service, "_transcribe_bytes", lambda *_args, **_kwargs: (_transcript("7", "fr", evidence), 65))
+    body = client.post("/v1/audio/transcriptions", files={"file": ("mic.wav", b"audio")}, data={"language": "fr"}).json()
+    assert body["text"] == "7" and body["recognition"] == evidence and body["sttMs"] == 65
+    import uuid
+    assert str(uuid.UUID(body["recognitionId"])) == body["recognitionId"]
+
+
+def test_expired_decode_wait_reports_a_retryable_error_without_decoder_details(monkeypatch):
+    def busy(*_args, **_kwargs):
+        raise service.RecognitionBusy("private fixture path")
+    monkeypatch.setattr(service, "_transcribe_bytes", busy)
+    response = client.post("/v1/audio/transcriptions", files={"file": ("mic.wav", b"audio")})
+    assert response.status_code == 503 and response.json()["code"] == "STT_BUSY"
+    assert response.headers["retry-after"] == "1" and "private" not in response.text
 
 
 @pytest.mark.parametrize("requested_model", [None, "requested-model-not-loaded"])
 def test_transcription_names_the_configured_model_instead_of_echoing_a_requested_model(monkeypatch, requested_model):
     calls = []
 
-    def transcribe(raw, filename, language):
+    def transcribe(raw, filename, language, **kwargs):
         calls.append(language)
         return "Bonjour.", 12.0
 

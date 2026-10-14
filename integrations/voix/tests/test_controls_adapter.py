@@ -69,7 +69,7 @@ def test_adapter_adds_its_two_routes_to_the_speech_service(adapter):
 
 def test_a_spoken_stop_answers_as_a_control_and_ordinary_speech_as_text(adapter, monkeypatch):
     decoded = []
-    def transcribe(raw, filename, language):
+    def transcribe(raw, filename, language, **kwargs):
         decoded.append((raw, language))
         return ("bonjour", 5.0)
     monkeypatch.setattr(adapter, "_transcribe_bytes", transcribe)
@@ -86,7 +86,7 @@ def test_a_spoken_stop_answers_as_a_control_and_ordinary_speech_as_text(adapter,
 
 
 def test_standalone_stop_still_works_when_general_gpu_recognition_is_unavailable(adapter, monkeypatch):
-    def unavailable(*_args):
+    def unavailable(*_args, **_kwargs):
         raise service.RecognitionUnavailable("private decoder detail")
     monkeypatch.setattr(adapter, "_transcribe_bytes", unavailable)
     client = TestClient(adapter.app)
@@ -99,11 +99,24 @@ def test_standalone_stop_still_works_when_general_gpu_recognition_is_unavailable
     assert "private" not in request.text
 
 
+def test_control_adapter_keeps_general_recognition_evidence_but_never_borrows_it_for_stop(adapter, monkeypatch):
+    from app.stt.whisper import _transcript
+    evidence = {"schema": 1, "queueMs": 10, "decodeMs": 20, "languageSource": "requested"}
+    monkeypatch.setattr(adapter, "_transcribe_bytes", lambda *_args, **_kwargs: (_transcript("Oui", "fr", evidence), 30))
+    client = TestClient(adapter.app)
+    upload = {"file": ("mic.wav", wav(), "audio/wav")}
+    adapter.control.model.heard = "[unk]"
+    assert client.post("/v1/audio/transcriptions/controls", files=upload).json()["recognition"] == evidence
+    adapter.control.model.heard = "stop"
+    stopped = client.post("/v1/audio/transcriptions/controls", files=upload).json()
+    assert stopped["control"] == "stop" and "recognition" not in stopped
+
+
 @pytest.mark.parametrize("heard,effective", [("stop", "vosk-command"), ("[unk]", None)])
 def test_controls_name_the_recognizer_that_ran_instead_of_the_requested_model(adapter, monkeypatch, heard, effective):
     decoded = []
 
-    def transcribe(*_args):
+    def transcribe(*_args, **_kwargs):
         decoded.append(True)
         return "Bonjour.", 5.0
 
