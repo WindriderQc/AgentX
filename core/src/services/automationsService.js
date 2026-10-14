@@ -2,7 +2,6 @@
 
 const { collectOpenClawCronEvidence } = require('../../integrations/runtime-bridges/openclaw/runtimeEvidence');
 const { getAllEntries } = require('./clusterScheduleService');
-const { calendarForJobs } = require('./automationsCalendar');
 
 const iso = value => {
   if (value == null || value === '') return null;
@@ -95,11 +94,6 @@ function createAutomationsService({operations, readCron = () => collectOpenClawC
       inventory: {rows: [], unavailable: [], ...native.inventory}, supervisor: native.supervisor || {},
       observedAt: new Date(now()).toISOString(), archiveAvailable: results[3].status === 'fulfilled'};
   }
-  return {status, async calendar(options) {
-    const snapshot = await status();
-    const calendar = calendarForJobs(snapshot.jobs, options);
-    calendar.sources = snapshot.sources;
-    return calendar;
-  }};
+  return {status};
 }
 module.exports = {createAutomationsService, openClawJob, backupJob, runState};

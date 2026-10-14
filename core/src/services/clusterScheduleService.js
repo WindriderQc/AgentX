@@ -11,6 +11,7 @@ const ClusterScheduleClaim = require('../../models/ClusterScheduleClaim');
 const { randomUUID } = require('crypto');
 const { defaultPlanningTimeZone, zonedDayBounds } = require('./planningDateService');
 const { detectVramOverflows } = require('./clusterScheduleConflicts');
+const { withNativeEntries } = require('./clusterScheduleNativeEntries');
 
 function normalizeRoutedModelName(modelName) {
   return String(modelName || '').trim().toLowerCase().replace(/:latest$/i, '');
@@ -33,7 +34,7 @@ async function getAllEntries(filters = {}) {
   if (filters.taskType) query.taskType = filters.taskType;
   if (filters.source) query.source = filters.source;
   if (filters.enabled !== undefined) query.enabled = filters.enabled;
-  return ClusterScheduleEntry.find(query).sort({ priority: 1, name: 1 }).lean();
+  return withNativeEntries(await ClusterScheduleEntry.find(query).sort({ priority: 1, name: 1 }).lean(), filters);
 }
 
 /**
@@ -44,7 +45,7 @@ async function getAllEntries(filters = {}) {
  * @returns {Promise<Array>} - Array of { entry, slots: [{ start, end }] }
  */
 async function getTimeline(dateStr, timezone = defaultPlanningTimeZone()) {
-  const entries = await ClusterScheduleEntry.find({ enabled: true }).lean();
+  const entries = withNativeEntries(await ClusterScheduleEntry.find({ enabled: true }).lean(), {enabled: true});
   const { start: dayStart, end: dayEnd } = zonedDayBounds(dateStr, timezone);
   const timeline = [];
 
@@ -150,10 +151,10 @@ function resolveSlots(entry, dayStart, dayEnd, timezone) {
  * @returns {Promise<Array>}
  */
 async function getNextTasks(count = 5) {
-  const entries = await ClusterScheduleEntry.find({
+  const entries = withNativeEntries(await ClusterScheduleEntry.find({
     enabled: true,
     'schedule.type': { $in: ['cron', 'interval'] }
-  }).lean();
+  }).lean(), {enabled: true});
 
   const now = new Date();
   const upcoming = [];

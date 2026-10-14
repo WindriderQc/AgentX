@@ -4,27 +4,11 @@
 .oj-source-pill>span:not(.oj-source-dot),.oj-source-pill small{color:var(--oj-muted)}
 .oj-source-dot{width:7px;height:7px;border-radius:50%;background:var(--oj-amber);flex-shrink:0}
 .oj-source-dot.online{background:var(--oj-accent)}
-.oj-job-filters,.oj-calendar-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.oj-resource-link{display:inline-flex;align-items:center;gap:7px;text-decoration:none;font-size:13px;min-height:44px}
+.oj-job-filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .oj-hub-navigation{display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--oj-line);margin-bottom:28px;padding-bottom:10px}
 .oj-hub-navigation a{padding:12px 16px;color:var(--oj-muted);text-decoration:none;border-radius:9px;font-size:13px}
 .oj-hub-navigation a:hover,.oj-hub-navigation a[aria-current]{background:var(--oj-raised);color:var(--oj-accent)}
 .oj-native-job .oj-job-actions{margin-top:auto;min-height:41px}
-.oj-calendar-date{padding:10px 12px;background:var(--oj-card);color:var(--oj-text);border:1px solid var(--oj-line);border-radius:9px;color-scheme:dark;min-height:42px}
-.oj-calendar{display:grid;gap:12px}
-.oj-calendar-row{display:grid;grid-template-columns:104px 1fr auto;align-items:start;gap:22px;padding:22px;border:1px solid var(--oj-line);border-radius:12px;background:var(--oj-card)}
-.oj-calendar-time{font-family:'IBM Plex Mono',monospace;font-size:19px;font-weight:500;color:var(--oj-accent);padding-top:2px}
-.oj-calendar-time small{display:block;font-size:11px;color:var(--oj-muted);margin-top:8px}
-.oj-calendar-copy{min-width:0}
-.oj-calendar-copy h3{margin:0 0 8px;font-size:15px;font-weight:600;overflow-wrap:anywhere}
-.oj-calendar-copy>span{font-size:12px;color:var(--oj-muted)}
-.oj-calendar-copy details{margin-top:14px;font-size:12px}
-.oj-calendar-copy summary{color:var(--oj-blue);cursor:pointer;padding:5px 0}
-.oj-calendar-slots{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;max-height:240px;overflow-y:auto}
-.oj-calendar-slots time{background:var(--oj-raised);padding:5px 8px;border-radius:5px;color:var(--oj-muted);font-family:'IBM Plex Mono',monospace;font-size:11px}
-.oj-calendar-warning{color:var(--oj-amber);font-size:12px}
-.oj-resource-shell .cs-page-header h2{font-size:22px;margin:0 0 10px}
-.oj-resource-shell #servicesStrip{display:none!important}
 .oj-tabs{flex-wrap:wrap}
 .oj-density{display:flex;gap:3px;padding:3px;background:var(--oj-card);border:1px solid var(--oj-line);border-radius:9px}
 .oj-density button{padding:8px 10px;min-height:34px;border:0;background:transparent}

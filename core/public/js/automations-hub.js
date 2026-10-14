@@ -4,12 +4,10 @@
   if (!$('operationsApp')) return;
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char]));
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  const localDate = date => new Intl.DateTimeFormat('en-CA', {timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit'}).format(date);
   const when = value => value ? new Intl.DateTimeFormat('fr-CA', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: timezone}).format(new Date(value)) : 'Non communiqué';
-  const clock = value => new Intl.DateTimeFormat('fr-CA', {hour: '2-digit', minute: '2-digit', timeZone: timezone}).format(new Date(value));
   const kinds = {command: ['fa-terminal', 'Commande'], agent: ['fa-user-gear', 'Agent'], 'native-core': ['fa-gears', 'Fonction native'], backup: ['fa-box-archive', 'Sauvegarde'], archive: ['fa-clock-rotate-left', 'Archive']};
   const states = {completed: ['good', 'Réussie'], failed: ['error', 'En erreur'], running: ['live', 'En cours'], unknown: ['warning', 'À vérifier'], attention: ['error', 'À surveiller'], paused: ['neutral', 'En pause'], archived: ['neutral', 'Archivée'], never: ['neutral', 'À valider'], skipped: ['neutral', 'Ignorée'], cancelled: ['neutral', 'Annulée']};
-  let snapshot = null, search = '', calendarData = null, loading = false, requestedDate = null;
+  let snapshot = null;
   const expanded = new Set();
   let compact = true;
   try {compact = localStorage.getItem('agentx.automations.density') !== 'detailed';} catch {}
@@ -45,13 +43,12 @@
       <div class="oj-job-actions">${ownerAction}</div></article>`;
   }
   function update(value, query = '') {
-    snapshot = value; search = query.toLocaleLowerCase();
+    snapshot = value;
     if (!snapshot) return;
     $('automationSources').innerHTML = snapshot.sources.map(source => {
       const jobs = snapshot.jobs.filter(job => job.owner === source.id && !job.archived);
       return `<button class="oj-source-pill" data-source-owner="${esc(source.id)}" title="${esc(source.observedAt ? `Relevé ${when(source.observedAt)}` : 'Aucun relevé disponible')}"><span class="oj-source-dot ${source.available ? 'online' : 'offline'}"></span><strong>${esc(source.label)}</strong><span>${jobs.filter(job => job.enabled).length} actifs / ${jobs.length}</span>${source.available ? '' : `<small>${source.stale ? 'Ancien relevé' : 'Indisponible'}</small>`}</button>`;
     }).join('');
-    if (calendarData) renderCalendar();
   }
   function decorate() {
     $('operationsJobs').classList.toggle('oj-jobs-compact', compact);
@@ -73,52 +70,6 @@
       card.querySelector('[data-job-expand]').setAttribute('aria-expanded', String(!compact || expanded.has(id)));
     });
   }
-  function renderCalendar() {
-    if (!snapshot || !calendarData) return;
-    const names = new Map(snapshot.jobs.map(job => [job.id, job]));
-    const rows = calendarData.rows.filter(row => {
-      const job = names.get(row.jobId);
-      return job && (!search || `${job.name} ${job.description} ${job.ownerLabel} ${job.agentId || ''}`.toLocaleLowerCase().includes(search));
-    }).sort((a, b) => (a.occurrences[0] || 'z').localeCompare(b.occurrences[0] || 'z'));
-    const total = rows.reduce((sum, row) => sum + row.occurrences.length, 0);
-    const stale = (calendarData.sources || []).filter(source => !source.available).map(source => source.label);
-    $('calendarContext').textContent = `${timezone} · ${rows.length} traitements · ${total} départs ou vérifications prévus${stale.length ? ` · relevés à vérifier : ${stale.join(', ')}` : ''}`;
-    $('automationCalendar').innerHTML = rows.length ? rows.map(row => {
-      const job = names.get(row.jobId), starts = row.occurrences;
-      const frequent = starts.length > 6;
-      return `<article class="oj-calendar-row"><div class="oj-calendar-time">${starts.length ? esc(clock(starts[0])) : '—'}${frequent ? `<small>→ ${esc(clock(starts[starts.length - 1]))}</small>` : ''}</div>
-        <div class="oj-calendar-copy"><h3>${esc(job.name)}</h3><span>${esc(job.ownerLabel)}${job.agentId ? ` · ${esc(job.agentId)}` : ''} · ${esc(cadence(job))}</span>${row.error ? '<p class="oj-calendar-warning">Horaire incomplet : consulter le propriétaire pour les départs exacts.</p>' : ''}
-        ${frequent ? `<details><summary>${starts.length}${row.truncated ? '+' : ''} ${row.conditional ? 'vérifications' : 'départs'} · voir les heures</summary><div class="oj-calendar-slots">${starts.map(at => `<time datetime="${esc(at)}">${esc(clock(at))}</time>`).join('')}</div></details>` : `<div class="oj-calendar-slots">${starts.map(at => `<time datetime="${esc(at)}">${esc(clock(at))}</time>`).join('')}</div>`}</div>
-        <span class="oj-badge oj-badge-${row.conditional ? 'neutral' : 'live'}">${row.conditional ? 'Selon la source' : 'Planifié'}</span></article>`;
-    }).join('') : '<div class="oj-empty"><i class="fas fa-calendar-check" aria-hidden="true"></i><h3>Aucun départ prévu dans cette vue</h3><p>Changez de jour ou de recherche.</p></div>';
-    $('automationCalendar').setAttribute('aria-busy', 'false');
-  }
-  async function calendar() {
-    if (loading || !snapshot) return;
-    loading = true;
-    const date = $('calendarDate').value;
-    requestedDate = date;
-    $('automationCalendar').setAttribute('aria-busy', 'true');
-    const controller = new AbortController(), deadline = setTimeout(() => controller.abort(), 35000);
-    try {
-      const response = await fetch(`/api/automations/calendar?date=${encodeURIComponent(date)}&timezone=${encodeURIComponent(timezone)}`, {signal: controller.signal});
-      const body = await response.json();
-      if (!response.ok || body.status !== 'success') throw Error('Unavailable');
-      if ($('calendarDate').value === date) {calendarData = body.data; renderCalendar();}
-    } catch {
-      $('automationCalendar').innerHTML = '<div class="oj-empty"><h3>Calendrier indisponible</h3><p>Actualisez pour recevoir les horaires. Aucun départ n’est supposé confirmé.</p></div>';
-      $('automationCalendar').setAttribute('aria-busy', 'false');
-    } finally {clearTimeout(deadline); loading = false; if ($('calendarDate').value !== requestedDate) calendar();}
-  }
-  $('calendarDate').value = localDate(new Date());
-  $('calendarDate').addEventListener('change', () => {if ($('calendarDate').value) calendar();});
-  function shift(days) {
-    const date = new Date(`${$('calendarDate').value || localDate(new Date())}T12:00:00Z`); date.setUTCDate(date.getUTCDate() + days);
-    $('calendarDate').value = date.toISOString().slice(0, 10); calendar();
-  }
-  $('calendarPrevious').addEventListener('click', () => shift(-1));
-  $('calendarNext').addEventListener('click', () => shift(1));
-  $('calendarToday').addEventListener('click', () => {$('calendarDate').value = localDate(new Date()); calendar();});
   $('automationSources').addEventListener('click', event => {
     const button = event.target.closest('[data-source-owner]');
     if (button) {$('jobsOwner').value = button.dataset.sourceOwner; $('jobsOwner').dispatchEvent(new Event('change')); $('jobsTab').click();}
@@ -133,5 +84,5 @@
   for (const [id, value] of [['densityCompact', true], ['densityDetailed', false]]) $(id).addEventListener('click', () => {
     compact = value; try {localStorage.setItem('agentx.automations.density', compact ? 'compact' : 'detailed');} catch {} decorate();
   });
-  window.AutomationsHub = {card, update, calendar, decorate};
+  window.AutomationsHub = {card, update, decorate};
 })();

@@ -1,7 +1,6 @@
 'use strict';
 const {createAutomationsService, openClawJob} = require('../../src/services/automationsService');
 const {buildOpenClawCronEvidence} = require('../../integrations/runtime-bridges/openclaw/runtimeEvidence');
-const {calendarForJobs} = require('../../src/services/automationsCalendar');
 const stamp = '2026-10-14T12:00:00.000Z';
 const native = {available: true, revision: 4, jobs: [{id: 'usage', name: 'Usage', enabled: true, schedule: {type: 'interval', minutes: 15}, nextRunAt: stamp}], history: [], historyTotal: 0, inventory: {rows: [], unavailable: []}};
 const rawJobs = [
@@ -49,24 +48,4 @@ test('coalesces concurrent native reads and rejects an invalid page before conta
   await Promise.all([service.status(), service.status()]);
   expect(readCron).toHaveBeenCalledTimes(1);
   await expect(service.status({offset: -1})).rejects.toMatchObject({status: 400});
-});
-test('calendar uses native anchors, excludes pauses and archives, and labels source-gated checks', () => {
-  const jobs = [native.jobs[0], {...native.jobs[0], id: 'copy', gateType: 'core-backup'},
-    {...native.jobs[0], id: 'paused', enabled: false}, {...native.jobs[0], id: 'archived', archived: true}];
-  const data = calendarForJobs(jobs, {date: '2026-10-14', timezone: 'America/Toronto'});
-  expect(data.rows.map(row => row.jobId)).toEqual(['usage', 'copy']);
-  expect(data.rows[0].occurrences).toHaveLength(96);
-  expect(data.rows[0].occurrences[0]).toBe('2026-10-14T04:00:00.000Z');
-  expect(data.rows[1].conditional).toBe(true);
-  const unanchored = calendarForJobs([{...native.jobs[0], nextRunAt: null}], {date: '2026-10-14', timezone: 'UTC'});
-  expect(unanchored.rows[0]).toMatchObject({error: 'SCHEDULE_UNRESOLVED', occurrences: []});
-});
-test('calendar handles DST and local cron time without inventing an execution duration', () => {
-  const job = openClawJob({...rawJobs[0], coreJob: true, schedule: rawJobs[0].schedule});
-  const data = calendarForJobs([job], {date: '2026-11-01', timezone: 'America/Toronto'});
-  expect(Date.parse(data.end) - Date.parse(data.start)).toBe(25 * 3600000);
-  expect(data.rows[0].occurrences).toEqual(['2026-11-01T09:15:00.000Z']);
-  expect(data.rows[0]).not.toHaveProperty('duration');
-  expect(() => calendarForJobs([job], {date: 'no', timezone: 'UTC'})).toThrow();
-  expect(() => calendarForJobs([job], {date: '2026-10-14', timezone: 'Mars/City'})).toThrow();
 });

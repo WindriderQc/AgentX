@@ -16,9 +16,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   Each source reports freshness independently; unavailable sources retain bounded
   cached evidence and disable controls. Cadence, pause/resume, explicit execution,
   durable receipts and Windows inventory remain available for host jobs. OpenClaw
-  and backup controls continue in their native owning screens. The Resources view
-  preserves GPU capacity, usage, placement and Core's heavy-work queue. Old schedule
-  and host-job URLs redirect to this hub. Agent Ops keeps agent evidence and
+  and backup controls continue in their native owning screens. Its Calendar view reuses Cluster Schedule for tasks, hosts, continuous services,
+  GPU capacity, measured use, placement and Core's heavy-work queue; there is no
+  parallel agenda. Old schedule and host-job URLs redirect to this hub. Agent Ops keeps agent evidence and
   documentation-only obligations. See [operational jobs](OPERATIONS_JOBS.md).
 
 - **Household daily use.** The parent view filters tasks by child, review, date
@@ -35,7 +35,7 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 - **Heavy work.** Core stores one-off requests from operator/coding sessions,
   resource-aware planned windows, dispatch identities and executor receipts.
-  The Automations Resources view edits slots and shows estimated versus actual status. The
+  The Automations Calendar view edits slots and shows estimated versus actual status. The
   operator CLI explicitly launches existing Benchmark plans and Profiler host
   queues, and tracks custom coding checks through explicit operator receipts.
   Accepted images queue before GPU work and start once within a bounded window.

@@ -37,8 +37,9 @@ runbooks and assets ([ADR 0001](adr/0001-one-repository.md)).
 
 Native operational jobs use one server supervisor for recurrence and effect
 receipts. Core provides bounded status and controls through its existing SSH
-bridge. The Automations catalogue and calendar read each native scheduler directly;
-Cluster Schedule retains resource projections rather than another execution owner. Local collectors and
+bridge. The Automations catalogue reads each native scheduler directly; its Calendar
+view reuses Cluster Schedule and the existing resource projections.
+Calendar recurrence is a read-only projection of its native owner. Local collectors and
 verified off-host transfers execute beside their data. A lost launch/result
 retains its identity and blocks replacement. See [operational jobs](OPERATIONS_JOBS.md).
 

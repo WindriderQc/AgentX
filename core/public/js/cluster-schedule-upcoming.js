@@ -59,7 +59,7 @@
 
   function getCadenceLabel(entry, formatTime = defaultFormatTime) {
     if (entry?.scheduleType === 'continuous' || entry?.slots?.some(slot => slot.continuous)) return '24/7';
-    if (entry?.scheduleType === 'interval') return formatCadenceInterval(entry.intervalMs);
+    if (entry?.scheduleType === 'interval') return `${entry?.metadata?.gateType ? 'Vérif. ' : ''}${formatCadenceInterval(entry.intervalMs)}`;
 
     const starts = [...new Set((entry?.slots || []).map(slot => toMillis(slot.start)))]
       .filter(Number.isFinite).sort((a, b) => a - b);
@@ -175,6 +175,11 @@
     const graceMs = Number.isFinite(options.graceMs) ? options.graceMs : 10 * 60 * 1000;
     const overdue = [];
     for (const entry of (entries || [])) {
+      // A source-gated check need not create a new transfer receipt each tick.
+      const metadata = entry?.metadata || {};
+      if (metadata.gateType && metadata.sourceAuthority === 'native-operations-supervisor'
+        && Number(metadata.nextRunAtMs) > now
+        && !['failed', 'unknown', 'attention', 'waiting-host'].includes(metadata.state)) continue;
       const lastRunMs = entry?.lastRun ? toMillis(entry.lastRun) : null;
       if (lastRunMs === null) continue;
       const expectedMs = (entry.slots || [])

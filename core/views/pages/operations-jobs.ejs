@@ -19,11 +19,10 @@
   <div class="oj-navigation">
     <div class="oj-tabs" role="tablist" aria-label="Vues des automatisations">
       <button id="jobsTab" role="tab" aria-selected="true" aria-controls="jobsPanel" data-tab="jobs" class="oj-tab active">Traitements <span id="jobsCount">—</span></button>
-      <button id="calendarTab" role="tab" aria-selected="false" aria-controls="calendarPanel" data-tab="calendar" class="oj-tab" tabindex="-1">Calendrier</button>
+      <a id="calendarTab" href="/automations?view=calendar" class="oj-tab">Calendrier</a>
       <button id="historyTab" role="tab" aria-selected="false" aria-controls="historyPanel" data-tab="history" class="oj-tab" tabindex="-1">Historique <span id="historyCount">—</span></button>
       <button id="inventoryTab" role="tab" aria-selected="false" aria-controls="inventoryPanel" data-tab="inventory" class="oj-tab" tabindex="-1">Windows <span id="inventoryCount">—</span></button>
     </div>
-    <a href="/automations?view=resources" class="oj-tab oj-resource-link">Ressources <i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i></a>
     <label class="oj-search"><i class="fas fa-search" aria-hidden="true"></i><span class="oj-sr-only">Rechercher un traitement ou une tâche</span><input id="operationsSearch" type="search" placeholder="Rechercher…" autocomplete="off"></label>
   </div>
 
@@ -33,15 +32,6 @@
     </div>
     <p id="jobsResultCount" class="oj-subtle" aria-live="polite"></p>
     <div id="operationsJobs" class="oj-jobs" aria-busy="true"><div class="oj-empty"><i class="fas fa-circle-notch fa-spin" aria-hidden="true"></i><h3>Lecture des traitements</h3><p>Chargement des horaires et des derniers reçus.</p></div></div>
-  </section>
-
-  <section id="calendarPanel" role="tabpanel" aria-labelledby="calendarTab" hidden>
-    <div class="oj-section-toolbar"><div><h2>Votre journée, en un regard</h2><p>Départs prévus et vérifications conditionnelles. Les jobs en pause sont exclus.</p></div>
-      <div class="oj-calendar-controls"><button id="calendarPrevious" class="oj-button" aria-label="Jour précédent"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
-      <label class="oj-sr-only" for="calendarDate">Jour à afficher</label><input id="calendarDate" type="date" class="oj-calendar-date">
-      <button id="calendarNext" class="oj-button" aria-label="Jour suivant"><i class="fas fa-chevron-right" aria-hidden="true"></i></button><button id="calendarToday" class="oj-button oj-button-quiet">Aujourd’hui</button></div>
-    </div><p id="calendarContext" class="oj-subtle" aria-live="polite"></p><div id="automationCalendar" class="oj-calendar" aria-busy="true"></div>
-    <p class="oj-footnote">Les horaires sont prévisionnels. Le calendrier respecte le fuseau et l’ancre de chaque job. Les ressources et la file de travaux lourds sont dans <a href="/automations?view=resources">Ressources</a>.</p>
   </section>
 
   <section id="historyPanel" role="tabpanel" aria-labelledby="historyTab" hidden>

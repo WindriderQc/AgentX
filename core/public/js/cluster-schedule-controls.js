@@ -2,6 +2,12 @@
 (function bindClusterScheduleControls() {
   document.addEventListener('DOMContentLoaded', () => {
     const on = (id, event, handler) => document.getElementById(id).addEventListener(event, handler);
+    const search = document.getElementById('scheduleSearch'), owner = document.getElementById('scheduleOwner');
+    if (search && owner) {
+      let pendingSearch;
+      search.addEventListener('input', () => {clearTimeout(pendingSearch); pendingSearch = setTimeout(() => setCalendarCatalogueFilter(search.value, owner.value), 200);});
+      owner.addEventListener('change', () => {clearTimeout(pendingSearch); setCalendarCatalogueFilter(search.value, owner.value);});
+    }
     on('prevDateBtn', 'click', () => shiftDate(-1));
     on('nextDateBtn', 'click', () => shiftDate(1));
     on('todayBtn', 'click', goToday);

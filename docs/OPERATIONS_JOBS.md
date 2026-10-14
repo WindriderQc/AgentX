@@ -4,7 +4,7 @@
 server-owned host jobs, Core backups and the official OpenClaw cron inventory.
 Native OpenClaw core functions remain distinct from agent turns and commands.
 The shared System navigation has one entry. `/operations-jobs` redirects here;
-`/cluster-schedule` redirects to the Resources view, retaining placement, measured
+`/cluster-schedule` redirects to the Calendar view, retaining placement, measured
 usage and the heavy-work queue. Agent Ops retains agent dossiers, responsibilities,
 attention and documented obligations without duplicating the native job catalogue.
 
@@ -16,14 +16,17 @@ run, delete or reschedule OpenClaw jobs. Their existing Control UI owns these
 changes; Core's Backup screen owns its policy. Host-job actions retain the bounded
 `/api/operations/jobs` entrance and native revision/request fences.
 
-`GET /api/automations/calendar` projects the same active native jobs for a chosen
-calendar day and time zone. Cron uses the job's zone; intervals retain the native
-anchor. Missing anchors/zones are reported, never guessed. Conditional checks
-are labelled separately from unconditional starts. Frequent runs are grouped;
-GPU/resource claims and queued one-off work remain in Resources. The History tab
-contains complete supervisor receipts; Core and OpenClaw history stay in their
-owning screens. Windows inventory and local execution retain their source
-boundaries. This full-profile capability adds no Nestor or family grants.
+The Calendar view reuses the existing Cluster Schedule page and its
+`/api/cluster/schedule` timeline, host, queue, placement and utilization APIs.
+There is one calendar controller and recurrence resolver. Task/host switches,
+search and owner filters share that view. Measured utilization is an expandable
+section of the same page. The former Resources URL redirects here; there is no
+parallel agenda or second calendar API. Core backup recurrence is a read-only
+virtual entry from its native scheduler, without another persisted schedule.
+The History tab contains complete supervisor receipts; Core and OpenClaw history
+stay in their owning screens. Windows inventory and local execution retain
+their source boundaries. This full-profile capability adds no Nestor or family
+grants.
 
 The native server supervisor owns one configuration, occurrence state and dispatch
 receipts outside Git. Core calls its named entrance over SSH; cadence and pause
