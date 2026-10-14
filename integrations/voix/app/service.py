@@ -26,6 +26,7 @@ from app.config import TTS_PROVIDERS, settings
 from app.runtime import RuntimeConfig, static_settings
 from app.stt.whisper import RecognitionUnavailable
 from app.stt.requests import RecognitionBusy, RecognitionCancelled, cancellation
+from app.stt.admission import recognition_lane
 from app.tts import preferences as speech_preferences
 from app.tts import provider as tts
 
@@ -196,6 +197,11 @@ def recognition_metadata(requested_model: str, effective_model: str | None = Non
 
 @app.post("/v1/audio/transcriptions")
 async def transcriptions(request: Request) -> Response:
+    with recognition_lane.admit() as admission:
+        return await _transcriptions(request, admission)
+
+
+async def _transcriptions(request: Request, admission) -> Response:
     async with audio_form(request) as form:
         file = form.get("file")
         if not isinstance(file, UploadFile):
@@ -210,10 +216,10 @@ async def transcriptions(request: Request) -> Response:
     # detection, not the service default. Household sends fr-en for its
     # bilingual selector.
     selected_language = language or "auto"
-    loop = asyncio.get_running_loop()
     async with cancellation(request) as cancel:
-        text, ms = await loop.run_in_executor(None, partial(
-            _transcribe_bytes, raw, filename, selected_language, cancel=cancel))
+        text, ms = await recognition_lane.run(partial(
+            _transcribe_bytes, raw, filename, selected_language, cancel=cancel),
+            cancel=cancel, admission=admission, queue_timeout=settings.whisper_queue_timeout_seconds)
     # Operational timing has no transcript, filename or audio content.
     _LOG.info("Audio upload transcribed: recognition_id=%s bytes=%d stt_ms=%d", cancel.request_id, len(raw), round(ms))
     if str(response_format or "json").strip().lower() == "text":
@@ -233,7 +239,7 @@ async def transcriptions(request: Request) -> Response:
 async def preload_stt() -> dict:
     from app.stt import whisper as stt
 
-    info = await asyncio.get_running_loop().run_in_executor(None, stt.preload_model)
+    info = await recognition_lane.run(stt.preload_model, queue_timeout=settings.whisper_queue_timeout_seconds)
     return {"ok": True, **info}
 
 
@@ -242,7 +248,7 @@ async def warm_stt() -> dict:
     """Run the recognition model once for a caller that knows an utterance is coming."""
     from app.stt import whisper as stt
 
-    warm_ms = await asyncio.get_running_loop().run_in_executor(None, stt.warm)
+    warm_ms = await recognition_lane.run(stt.warm, queue_timeout=settings.whisper_queue_timeout_seconds)
     if warm_ms is None:
         return {"warmed": False}
     # Operational timing only: the run decodes silence and its text is discarded.

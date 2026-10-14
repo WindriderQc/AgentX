@@ -99,6 +99,32 @@ def test_standalone_stop_still_works_when_general_gpu_recognition_is_unavailable
     assert "private" not in request.text
 
 
+def test_stop_keeps_its_own_admission_when_normal_recognition_is_full(adapter, monkeypatch):
+    from contextlib import ExitStack
+    from app.stt.admission import recognition_lane
+    monkeypatch.setattr(adapter, '_transcribe_bytes', lambda *_args, **_kwargs: pytest.fail('full recognition lane started a decoder'))
+    client = TestClient(adapter.app)
+    with ExitStack() as stack:
+        for _ in range(recognition_lane.capacity):
+            stack.enter_context(recognition_lane.admit())
+        stopped = client.post('/v1/audio/transcriptions/controls', files={'file': ('mic.wav', wav(), 'audio/wav')})
+        assert stopped.status_code == 200 and stopped.json()['control'] == 'stop'
+        adapter.control.model.heard = '[unk]'
+        ordinary = client.post('/v1/audio/transcriptions/controls', files={'file': ('mic.wav', wav(), 'audio/wav')})
+        assert ordinary.status_code == 503 and ordinary.json()['code'] == 'STT_BUSY'
+
+
+def test_full_control_admission_refuses_before_parsing_audio(adapter, monkeypatch):
+    from contextlib import ExitStack
+    from app.stt.admission import control_lane
+    monkeypatch.setattr(adapter, 'audio_form', lambda *_: pytest.fail('busy control lane parsed an upload'))
+    with ExitStack() as stack:
+        for _ in range(control_lane.capacity):
+            stack.enter_context(control_lane.admit())
+        response = TestClient(adapter.app).post('/v1/audio/transcriptions/controls', files={'file': ('mic.wav', wav(), 'audio/wav')})
+        assert response.status_code == 503 and response.json()['code'] == 'STT_BUSY'
+
+
 def test_control_adapter_keeps_general_recognition_evidence_but_never_borrows_it_for_stop(adapter, monkeypatch):
     from app.stt.whisper import _transcript
     evidence = {"schema": 1, "queueMs": 10, "decodeMs": 20, "languageSource": "requested"}

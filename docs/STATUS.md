@@ -122,7 +122,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   Timed holding phrases are off by default. Conversation and explanations stay
   fully spoken; documents use a useful spoken summary and complete screen text.
   Voice choices are request-scoped; Stop or disconnect cancels upstream speech
-  synthesis without starting a backup request. See [agents and voice](AGENTS_AND_VOICE.md).
+  synthesis without starting a backup request. VoiX bounds recognition before
+  upload parsing and executor submission, with separate admission for CPU Stop;
+  abandoned native work keeps its place until it actually ends. See
+  [agents and voice](AGENTS_AND_VOICE.md).
 - **Personalities.** Household versions personalities separately from modes and
   binds them to agents on the server. An adult-authorized session can switch its
   personality between turns while keeping its agent and permissions. Turns
