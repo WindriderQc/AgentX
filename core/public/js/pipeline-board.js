@@ -29,7 +29,8 @@
       ? `rows show ${returned} of ${matched}`
       : `rows show all ${returned} matched records`;
     const observed = formatDate(evidence.observedAt);
-    el.textContent = `MongoDB task authority · exact full-scope totals (${statusScope}) · all-time, no date filter · ${rowWindow} · sampled ${observed}`;
+    const taskScope = evidence.scope?.taskScope === 'engineering' ? 'Engineering tasks' : 'All task lanes';
+    el.textContent = `${taskScope} · MongoDB task authority · exact full-scope totals (${statusScope}) · all-time, no date filter · ${rowWindow} · sampled ${observed}`;
     el.classList.remove('pipeline-evidence-warning');
   }
 
@@ -184,12 +185,15 @@
     const meta = $('pipelineDoneMeta');
     if (!list) return;
     const done = state.tasks
+      .filter(matchesContext)
+      .filter(matchesFilters)
+      .filter(includesQualification)
       .filter((task) => task.status === 'done')
       .sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0))
       .slice(0, 8);
-    if (meta) meta.textContent = done.length ? `Latest ${done.length} closed records by update time · all loaded tasks` : 'No closed tasks loaded';
+    if (meta) meta.textContent = done.length ? `Latest ${done.length} matching engineering closures by update time · uses the overview filters. Closure does not prove deployment.` : 'No closed engineering tasks match this view.';
     if (!done.length) {
-      list.innerHTML = '<div class="pipeline-empty">No closed tasks in the loaded window yet.</div>';
+      list.innerHTML = '<div class="pipeline-empty">No closed engineering tasks match the current filters in the loaded window.</div>';
       return;
     }
     list.innerHTML = done.map((task) => `

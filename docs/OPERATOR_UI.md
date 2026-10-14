@@ -7,10 +7,21 @@ runtime restoration, a deployment receipt or device acceptance.
 
 ## Pipeline and Planning
 
-Open `/pipeline` and use **Needs attention** to find tasks requiring a decision.
+Open `/pipeline` to follow engineering work by the Coding Team and human
+operators. The overview, status counts, board, timeline and **Recently closed
+engineering tasks** exclude personal, family, household, secretary and
+unpromoted idea lanes. The closed-task history follows the overview filters
+and the archived-qualification switch; it orders by record update time,
+which does not prove a completion date or production delivery. Personal tasks
+belong in **My day** (`/dad/day`) and family tasks in **Family tracking**
+(`/dad/family`), both linked in the header. Core keeps their shared task store;
+the page reads `/api/pipeline/tasks?scope=engineering` so counts and pagination
+use the same scope. API clients omitting `scope` retain the all-lane listing.
+
+Use **Needs attention** to find tasks requiring a decision.
 Its header separates the known total, the rows loaded in the browser and the
 page shown; **Previous** and **Next** reach every item ten at a time, in Core's
-next-action order. **Engineering** is the default queue; **Private lanes** is a
+next-action order. **Engineering** is the default queue; **Personal & household** is a
 separate queue for personal, family, household and secretary work, never mixed
 into the engineering list. The board's service, lane, status, group and search
 filters narrow the queue before paging. When the bounded scan cannot see every

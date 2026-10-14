@@ -890,7 +890,7 @@
       loadDispatchControlStatus();
     }
     try {
-      const payload = await readProjection('tasks', '/api/pipeline/tasks?limit=1000&view=summary&includeDone=true');
+      const payload = await readProjection('tasks', '/api/pipeline/tasks?limit=1000&view=summary&includeDone=true&scope=engineering');
       if (!payload) return;
       const normalized = normalizePayload(payload);
       state.tasks = normalized.tasks;
@@ -1038,7 +1038,7 @@
     $('pipelineEpicFilter')?.addEventListener('change', (event) => { state.filters.epic = event.target.value; state.expandedStages.clear(); renderAll(); });
     $('pipelineIncludeDone')?.addEventListener('change', (event) => { state.includeDone = event.target.checked; renderProgression(); });
     $('pipelineIncludeArchivedQualifications')?.addEventListener('change', (event) => {
-      state.includeArchivedQualifications = event.target.checked; renderProgression(); renderOpenWork();
+      state.includeArchivedQualifications = event.target.checked; renderProgression(); renderOpenWork(); renderRecentlyDone();
     });
     document.querySelectorAll('[data-pipeline-view]').forEach((button) => button.addEventListener('click', () => { state.view = button.dataset.pipelineView; renderProgression(); }));
     $('pipelineProgression')?.addEventListener('click', (event) => {

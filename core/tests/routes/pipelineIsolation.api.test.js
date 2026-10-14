@@ -42,10 +42,51 @@ test.each([
   expect(human.body.data.task.spec).toBe('Private fixture');
   const list = await harness.request.get('/api/pipeline/tasks').expect(200);
   expect(list.body.data.tasks.map(task => task.pipelineId)).toContain('0900');
+  const engineering = await harness.request.get('/api/pipeline/tasks?scope=engineering').expect(200);
+  expect(engineering.body.data.tasks.map(task => task.pipelineId)).toEqual(['0901']);
+  expect(engineering.body.data.summary).toMatchObject({ matchedCount: 1, openCount: 1 });
+  expect(engineering.body.data.evidence.scope.taskScope).toBe('engineering');
 
   await harness.request.post('/api/pipeline/tasks/0901/claim').send({ assignee: 'worker-a' }).expect(200);
   const worker = await harness.request.get('/api/pipeline/tasks/0901/worker?agent=worker-a').expect(200);
   expect(worker.body.data.task.assignee).toBe('worker-a');
+});
+
+test('engineering history applies its scope before pagination, counts and explicit service filters', async () => {
+  await PipelineTask.create([
+    { pipelineId: '0001', title: 'Synthetic personal action', service: 'personal', status: 'done' },
+    { pipelineId: '0002', title: 'Synthetic family routine', service: 'family', status: 'queued' },
+    { pipelineId: '0003', title: 'Synthetic household source', service: 'core', source: 'household-parent', status: 'done' },
+    { pipelineId: '0004', title: 'Synthetic idea', source: 'idea-drop', status: 'done' },
+    { pipelineId: '0901', title: 'Human engineering change', service: 'core', status: 'done' },
+    { pipelineId: '0902', title: 'Coding Team change', service: 'agentx-coding', status: 'done' },
+    { pipelineId: '0903', title: 'Engineering backlog', service: 'core', status: 'queued' },
+  ]);
+  const snapshot = await PipelineTask.find({}).sort({ pipelineId: 1 }).lean();
+  const response = await harness.request.get('/api/pipeline/tasks?scope=engineering&includeDone=true&view=summary&limit=2').expect(200);
+  const data = response.body.data;
+  expect(data.tasks.map(task => task.pipelineId)).toEqual(['0901', '0902']);
+  expect(data.summary).toEqual({ byStatus: { queued: 1, in_progress: 0, review: 0, blocked: 0, done: 2 }, matchedCount: 3, openCount: 1, doneCount: 2 });
+  expect(data.evidence).toMatchObject({ scope: { taskScope: 'engineering', includesDone: true }, rows: { returnedCount: 2, matchedCount: 3, truncated: true } });
+  const filtered = await harness.request.get('/api/pipeline/tasks?scope=engineering&status=done&service=core').expect(200);
+  expect(filtered.body.data.tasks.map(task => task.pipelineId)).toEqual(['0901']);
+  expect(filtered.body.data.evidence.scope.filters).toEqual({ service: 'core' });
+  const personal = await harness.request.get('/api/pipeline/tasks?scope=engineering&includeDone=true&service=personal').expect(200);
+  expect(personal.body.data.summary.matchedCount).toBe(0);
+  expect(personal.body.data.tasks).toEqual([]);
+  const all = await harness.request.get('/api/pipeline/tasks?includeDone=true').expect(200);
+  expect(all.body.data.summary.matchedCount).toBe(7);
+  expect(all.body.data.evidence.scope.taskScope).toBe('all');
+  expect(await PipelineTask.find({}).sort({ pipelineId: 1 }).lean()).toEqual(snapshot);
+});
+
+test('invalid task scopes refuse before reading the task store', async () => {
+  const find = jest.spyOn(PipelineTask, 'find');
+  try {
+    const response = await harness.request.get('/api/pipeline/tasks?scope=unsupported').expect(400);
+    expect(response.body.code).toBe('INVALID_TASK_SCOPE');
+    expect(find).not.toHaveBeenCalled();
+  } finally { find.mockRestore(); }
 });
 
 test('an existing worker assignment does not disclose a private task', async () => {
