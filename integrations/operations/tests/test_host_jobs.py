@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -175,6 +176,29 @@ class OperationsTests(unittest.TestCase):
         self.assertIn("-CompletedBefore", command)
         self.assertIn("2026-01-01T03:00:38Z", command)
         self.assertIn("-ApplyRetention", command)
+
+    def test_handlers_drop_stale_openssh_descriptors_but_preserve_their_environment(self):
+        from unittest.mock import patch
+        from host_jobs.handlers import prepare
+        job = {"kind": "codex-usage", "options": {"node": "node", "script": "usage.js", "endpoint": "https://example.invalid"}}
+        with patch.dict(os.environ, {"native_POSIX_FD_STATE": "stale-handles", "SSL_CERT_FILE": "owner-ca.pem"}):
+            _, _, environment, _ = prepare(job, self.request())
+        self.assertNotIn("native_POSIX_FD_STATE", environment)
+        self.assertEqual(environment["SSL_CERT_FILE"], "owner-ca.pem")
+
+    def test_usage_metrics_read_the_native_pretty_printed_summary_without_private_fields(self):
+        from host_jobs.handlers import metrics
+        output = json.dumps({"ok": True, "summary": {"sessions": 3, "tokens": 100, "hostId": "private-host"}}, indent=2)
+        self.assertEqual(metrics({"kind": "codex-usage"}, None, output), {"sessions": 3, "accepted": True})
+
+    def test_worker_state_survives_a_versioned_runtime_upgrade(self):
+        import base64
+        from host_jobs.transport import windows_command
+        host = {"root": "C:/runtime/new", "stateRoot": "C:/state/stable", "python": "python"}
+        command = windows_command(host, "status", request_id=self.request())
+        script = base64.b64decode(command.split()[-1]).decode("utf-16le")
+        self.assertIn(r"C:\runtime\new\host_job_worker.py", script)
+        self.assertIn(r"C:\state\stable", script)
 
     def test_worker_replays_and_keeps_nonzero_child_exit_code(self):
         script = self.root / "child.py"

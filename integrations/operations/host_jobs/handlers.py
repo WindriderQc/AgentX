@@ -9,7 +9,10 @@ from .store import JobError, load
 
 def prepare(job, request_id, source_at=None):
     options = job.get("options", {})
-    environment = os.environ.copy()
+    # Win32 OpenSSH exports its own descriptor table to the remote shell.
+    # It no longer describes a handler's redirected handles; inheriting it into
+    # another ssh/scp process can indefinitely block its standard streams.
+    environment = {key: value for key, value in os.environ.items() if not key.endswith("_POSIX_FD_STATE")}
     environment["AGENTX_OPERATION_REQUEST_ID"] = request_id
     kind = job["kind"]
     cwd, receipt = None, None
@@ -64,10 +67,15 @@ def metrics(job, receipt, stdout):
         result = {key: value.get(key, 0) for key in ("files", "bytes", "unchanged")}
         result["verified"] = value.get("status") == "delivered"
     elif job["kind"] == "codex-usage":
-        for line in reversed(stdout.splitlines()):
+        for candidate in [stdout, *reversed(stdout.splitlines())]:
             try:
-                body = json.loads(line)
-                result = {key: body[key] for key in ("sessions", "filesScanned", "accepted") if isinstance(body.get(key), (int, bool))}
+                body = json.loads(candidate)
+                if not isinstance(body, dict):
+                    continue
+                summary = body.get("summary", body)
+                result = {key: summary[key] for key in ("sessions", "filesScanned", "accepted") if isinstance(summary.get(key), (int, bool))}
+                if body.get("ok") is True and not body.get("dryRun"):
+                    result["accepted"] = True
                 break
             except (ValueError, TypeError):
                 continue

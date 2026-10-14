@@ -17,7 +17,8 @@ def ps_quote(value):
 def windows_command(host, verb, identifier=None, request_id=None, source_at=None):
     root = host["root"]
     worker = str(PureWindowsPath(root) / "host_job_worker.py")
-    arguments = [host["python"], worker, "--root", str(PureWindowsPath(root) / "state"), verb]
+    state_root = host.get("stateRoot") or str(PureWindowsPath(root) / "state")
+    arguments = [host["python"], worker, "--root", str(PureWindowsPath(state_root)), verb]
     if identifier:
         arguments += ["--job", exact_id(identifier)]
     if request_id:
