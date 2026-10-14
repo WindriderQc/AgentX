@@ -99,7 +99,7 @@
                             <div class="value" id="infErrorRate">—</div>
                             <div class="sub"><span id="infErrors">—</span> errors · <span id="infCancellations">—</span> canceled · inspect</div>
                         </a>
-                        <div class="stat-card" data-tooltip="Total wall-clock time the fleet spent generating. This is the real cost of local inference — GPU hours, not dollars.">
+                        <div class="stat-card" data-tooltip="Sum of call durations across all calls, local and cloud, including failed ones. Concurrent calls add up, so this is busy time, not GPU hours. Tok/s divides completion tokens by that same time.">
                             <div class="label">Inference Time</div>
                             <div class="value" id="infHours">—</div>
                             <div class="sub"><span id="infTokPerSec">—</span> tok/s fleet average</div>
@@ -117,7 +117,7 @@
                             <div class="value" id="infAvgLatency">—</div>
                             <div class="sub">per call, all models</div>
                         </div>
-                        <div class="stat-card" data-tooltip="Local models run on owned hardware and have no per-token price. Their cost is compute, reported here in GPU hours.">
+                        <div class="stat-card" data-tooltip="Local models run on owned hardware and have no per-token price. Their cost is compute, reported here as summed call time.">
                             <div class="label">Local Compute</div>
                             <div class="value" id="infLocalHours">—</div>
                             <div class="sub"><span id="infLocalCalls">—</span> calls, no $ price</div>
@@ -255,10 +255,10 @@
                 <div class="value" id="totalMessages">—</div>
                 <div class="sub">Messages observed in this window</div>
             </div>
-            <div class="stat-card" data-tooltip="Number and percentage of conversations that received positive feedback (thumbs up). Sample size matters for confidence.">
+            <div class="stat-card" data-tooltip="Thumbs-up message votes and their share of all message votes in this period. Sample size matters for confidence.">
                 <div class="label">Positive Feedback</div>
                 <div class="value"><span id="positiveFeedback">—</span> <small id="positiveRate" style="font-size: 14px; color: var(--muted);"></small></div>
-                <div class="sub"><span id="feedbackSampleSize">—</span> total feedback</div>
+                <div class="sub"><span id="feedbackSampleSize">—</span> message votes</div>
             </div>
             <div class="stat-card" data-tooltip="Share of conversations that used RAG (Retrieval-Augmented Generation). Shown with its sample size; fewer than 5 conversations is flagged as a low sample, and no conversation means Not observed rather than 0%.">
                 <div class="label">RAG Adoption</div>
@@ -861,7 +861,7 @@
                                         <tr>
                                             <th style="padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--panel-border);">Model</th>
                                             <th style="padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--panel-border);">Provider</th>
-                                            <th style="padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Sessions</th>
+                                            <th style="padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Calls</th>
                                             <th style="padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Tokens</th>
                                             <th style="padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Cost</th>
                                         </tr>

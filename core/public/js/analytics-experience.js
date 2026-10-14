@@ -93,7 +93,7 @@
       : formatCount(conversations) + ' conversation' + (conversations === 1 ? '' : 's') + ' · ' + formatCount(messages || 0) + ' messages';
     document.getElementById('analytics-knowledge-detail').textContent = documents == null
       ? (ragUsage ? ragUsage + ' · ' + windowLabel : 'Knowledge usage is not observed yet')
-      : formatCount(documents) + ' source' + (documents === 1 ? '' : 's') + ' · ' + (ragUsage || 'usage not observed') + ' · ' + windowLabel;
+      : formatCount(documents) + ' document' + (documents === 1 ? '' : 's') + ' indexed · ' + (ragUsage || 'usage not observed') + ' · ' + windowLabel;
   }
 
   function syncCockpitAccessibility() {
