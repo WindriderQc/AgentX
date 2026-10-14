@@ -99,7 +99,8 @@ function escapeHtml(value) {
 
 async function fetchSummary(windowKey) {
   const res = await fetch(`/api/analytics/inference/summary?window=${encodeURIComponent(windowKey)}`, {
-    headers: { Accept: 'application/json' }
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(30000)
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const body = await res.json();
@@ -298,7 +299,8 @@ async function renderCodex(windowKey) {
   }
   try {
     const res = await fetch(`/api/analytics/federated?window=${encodeURIComponent(windowKey)}`, {
-      headers: { Accept: 'application/json' }
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(30000)
     });
     if (!res.ok) return;
     const body = await res.json();
@@ -361,7 +363,8 @@ async function applyChatLaneCollapse(windowKey) {
   let conversations = null;
   try {
     const res = await fetch(`/api/analytics/usage?from=${from.toISOString()}&to=${to.toISOString()}`, {
-      headers: { Accept: 'application/json' }
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(30000)
     });
     if (res.ok) {
       const body = await res.json();

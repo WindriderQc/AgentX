@@ -383,7 +383,7 @@
             async function loadEffectiveness(){
                 var signal = document.getElementById('effectivenessSignal');
                 try {
-                    var response = await fetch('/api/analytics/effectiveness?window=' + encodeURIComponent(effectivenessWindow()));
+                    var response = await fetch('/api/analytics/effectiveness?window=' + encodeURIComponent(effectivenessWindow()), { signal: AbortSignal.timeout(30000) });
                     var data = await response.json();
                     if (!response.ok || !data.ok) throw new Error(data.message || 'Effectiveness API unavailable');
                     var summary = data.summary || {};
@@ -898,7 +898,7 @@
                 const win = document.getElementById('federatedWindowSelect').value;
                 let payload;
                 try {
-                    const r = await fetch('/api/analytics/federated?window=' + encodeURIComponent(win));
+                    const r = await fetch('/api/analytics/federated?window=' + encodeURIComponent(win), { signal: AbortSignal.timeout(30000) });
                     payload = await r.json();
                 } catch(err){
                     console.error('Federated fetch failed', err);

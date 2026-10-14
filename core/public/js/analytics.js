@@ -160,10 +160,14 @@ function periodRange(days) {
   return { from, to };
 }
 
+// Analytics aggregations scan the message history; a hung query must not
+// leave panels on "Loading…" or the Refresh button disabled forever.
+const ANALYTICS_TIMEOUT_MS = 30000;
+
 async function fetchJSON(url, method = 'GET') {
   const headers = { 'Content-Type': 'application/json' };
 
-  const res = await fetch(url, { method, credentials: 'include', headers });
+  const res = await fetch(url, { method, credentials: 'include', headers, signal: AbortSignal.timeout(ANALYTICS_TIMEOUT_MS) });
   if (res.status === 401) {
     throw new Error('Unauthorized');
   }
