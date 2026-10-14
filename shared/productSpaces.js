@@ -52,6 +52,7 @@ function productSpaces(link) {
       item('nerve-center', 'Nerve Center', '/nerve-center', 'fa-brain'),
       item('agent-ops', 'Agent Ops', '/agent-ops', 'fa-users-gear'),
       item('cluster-schedule', 'Schedule', '/cluster-schedule', 'fa-calendar-alt'),
+      item('operations-jobs', 'Automations', '/operations-jobs', 'fa-gears'),
       item('analytics', 'AI activity', '/analytics', 'fa-chart-line'),
       item('performance', 'Server performance', '/performance', 'fa-tachometer-alt'),
       item('backup', 'Backup', '/backup', 'fa-box-archive'),

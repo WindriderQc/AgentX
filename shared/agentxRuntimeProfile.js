@@ -48,6 +48,7 @@ const DEMO_DISABLED_PREFIXES = Object.freeze([
   '/agent-ops',
   '/backup',
   '/cluster-schedule',
+  '/operations-jobs',
   '/dad',
   '/data-toolbox',
   '/device-check',

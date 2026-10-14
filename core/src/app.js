@@ -353,13 +353,8 @@ app.use('/api/ollama-hosts', ollamaHostsRoutes);
 const ollamaWatchdogRoutes = require('../routes/ollama-watchdog');
 app.use('/api/ollama-watchdog', ollamaWatchdogRoutes);
 
-// Operations Center routes (unified health, workflows, activity)
-const operationsRoutes = require('../routes/operations');
-app.use('/api/operations', operationsRoutes);
-
-// Operations: backup / restore (mongo, config tarballs, qdrant)
-const operationsBackupRoutes = require('../routes/operations-backup');
-app.use('/api/operations', operationsBackupRoutes);
+// Core operations and the native operations supervisor.
+require('../routes/operations-mount').mount(app);
 
 // Council: bounded, user-invoked multi-model deliberation. The API keeps its
 // historical /api/roundtable contract so saved clients and transcripts remain
