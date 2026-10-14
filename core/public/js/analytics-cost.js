@@ -84,12 +84,13 @@ async function refreshCostStats() {
       elements.costPerConvMessages.textContent = avgMsgs;
     }
 
-    elements.costPer1kTokens.textContent = `$${(summary.costPer1kTokens || 0).toFixed(4)}`;
+    elements.costPer1kTokens.textContent = totalCost > 0 ? `$${(summary.costPer1kTokens || 0).toFixed(4)}` : '—';
     if (elements.costTotalTokens) {
       elements.costTotalTokens.textContent = formatNumber(totalTokens);
     }
 
-    elements.tokensPerDollar.textContent = Math.round(tokensPerDollar || 0).toLocaleString('en-US');
+    // No spend means no ratio, not zero tokens per dollar.
+    elements.tokensPerDollar.textContent = totalCost > 0 ? Math.round(tokensPerDollar).toLocaleString('en-US') : '—';
   } catch (err) {
     console.error('Cost stats refresh error:', err);
   }

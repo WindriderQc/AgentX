@@ -445,10 +445,10 @@
                         number(waste.reworkedOutcomes) + ' reworked outcomes, and ' + number(waste.unattributedTokens) +
                         ' inference tokens not linked to an outcome (' + pct(waste.unattributedTokenPct) + ').';
                     document.getElementById('effectivenessCoverage').textContent =
-                        coverage.explicitOutcomes + ' explicit outcome reports + ' + coverage.pipelineDerivedOutcomes +
-                        ' operator-verified pipeline outcomes. Samples — first pass: ' + coverage.firstPassSampleSize +
-                        ', rework: ' + coverage.reworkSampleSize + ', cost: ' + coverage.costSampleSize +
-                        ', human intervention: ' + coverage.humanInterventionSampleSize + '. ' + coverage.usageAttribution;
+                        number(coverage.explicitOutcomes) + ' explicit outcome reports + ' + number(coverage.pipelineDerivedOutcomes) +
+                        ' operator-verified pipeline outcomes. Samples — first pass: ' + number(coverage.firstPassSampleSize) +
+                        ', rework: ' + number(coverage.reworkSampleSize) + ', cost: ' + number(coverage.costSampleSize) +
+                        ', human intervention: ' + number(coverage.humanInterventionSampleSize) + '. ' + (coverage.usageAttribution || '');
                 } catch (error) {
                     if (seq !== effectivenessSeq) return;
                     signal.innerHTML = '<strong>Effectiveness unavailable</strong> — ' + esc(error.message);

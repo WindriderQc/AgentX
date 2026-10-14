@@ -115,15 +115,17 @@ function renderTiles(d) {
   setText('infCallsPerDay', compact(t.callsPerDay));
   setText('infTokensOut', compact(t.tokensOut));
   setText('infTokensIn', compact(t.tokensIn));
-  setText('infErrorRate', `${(t.errorRate ?? 0).toFixed(2)}%`);
+  // With no calls there is no rate, speed or latency to report.
+  const observed = Number(t.calls) > 0;
+  setText('infErrorRate', observed ? `${(t.errorRate ?? 0).toFixed(2)}%` : '—');
   setText('infErrors', compact(t.errors));
   setText('infCancellations', compact(t.cancellations));
   setText('infHours', `${(t.inferenceHours ?? 0).toFixed(1)}h`);
-  setText('infTokPerSec', (t.tokensOutPerSecond ?? 0).toFixed(1));
+  setText('infTokPerSec', observed ? (t.tokensOutPerSecond ?? 0).toFixed(1) : '—');
 
-  setText('infFallbackRate', `${(t.fallbackRate ?? 0).toFixed(2)}%`);
+  setText('infFallbackRate', observed ? `${(t.fallbackRate ?? 0).toFixed(2)}%` : '—');
   setText('infFallbacks', compact(t.fallbackCalls));
-  setText('infAvgLatency', ms(t.avgLatencyMs));
+  setText('infAvgLatency', observed ? ms(t.avgLatencyMs) : '—');
   const classifier = classifierSignals(d);
   renderSignal('infAvgClassification', classifier.avg, 'infAvgClassificationNote');
   setText('infClassifiedCalls', compact(t.classifiedCalls ?? 0));
@@ -199,10 +201,10 @@ function renderModelTable(d) {
     return `<tr>
       <td style="${cell}text-align:left;">${model}${m.isCloud ? ' <span style="font-size:11px;color:var(--muted);">cloud</span>' : ''}</td>
       <td style="${cell}text-align:right;">${compact(m.calls)}</td>
-      <td style="${cell}text-align:right;color:${errColor};">${m.errorRate.toFixed(1)}% err<br><span style="color:var(--muted);">${(m.cancellationRate || 0).toFixed(1)}% cancel</span></td>
+      <td style="${cell}text-align:right;color:${errColor};">${(m.errorRate || 0).toFixed(1)}% err<br><span style="color:var(--muted);">${(m.cancellationRate || 0).toFixed(1)}% cancel</span></td>
       <td style="${cell}text-align:right;">${compact(m.tokensOut)}</td>
       <td style="${cell}text-align:right;">${ms(m.avgLatencyMs)}</td>
-      <td style="${cell}text-align:right;">${m.tokensOutPerSecond.toFixed(1)}</td>
+      <td style="${cell}text-align:right;">${Number.isFinite(m.tokensOutPerSecond) ? m.tokensOutPerSecond.toFixed(1) : '—'}</td>
       <td style="${cell}text-align:right;">${cost}</td>
     </tr>`;
   }).join('');
