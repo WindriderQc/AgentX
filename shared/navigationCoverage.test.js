@@ -38,7 +38,7 @@ const ALIASES = {
 const CONTEXTUAL = {
   core: {
     '/images/guide': ['core/views/pages/images.ejs', 'href="/images/guide"'],
-    '/voice-lab/devices': ['core/public/js/voice/voice-workshop.js', 'href="/voice-lab/devices"']
+    '/voice-lab/devices': ['core/public/js/voice/voice-workshop-view.js', 'href="/voice-lab/devices"']
   },
   benchmark: {
     '/setup': ['benchmark/public/js/benchmark-v2/experience.js', "'/benchmark/setup'"]
