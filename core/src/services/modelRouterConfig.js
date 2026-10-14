@@ -246,8 +246,8 @@ function isKnownTaskType(taskType) {
     return Object.prototype.hasOwnProperty.call(DEFAULT_TASK_MODELS, taskType);
 }
 
-function isKnownHost(host) {
-    return Object.prototype.hasOwnProperty.call(HOSTS, host);
+function isKnownHost(host) { // a host key whose URL is configured; '' means not set up
+    return Object.prototype.hasOwnProperty.call(HOSTS, host) && Boolean(HOSTS[host]);
 }
 
 function rebuildTaskModels() {

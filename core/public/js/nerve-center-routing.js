@@ -100,6 +100,7 @@
                     </td>
                     <td class="nc-td-md nc-task-host">
                         <select class="nc-inline-select nc-task-host-select" data-task="${shared.escapeHtml(task)}" aria-label="Host for ${shared.escapeHtml(task)}" style="min-width:120px;">
+                            ${hostKeys.includes(entry.host) ? '' : `<option value="" selected disabled>${shared.escapeHtml(String(entry.host || 'none').toUpperCase())} · not configured</option>`}
                             ${hostKeys.map(hostKey => (
                                 `<option value="${shared.escapeHtml(hostKey)}" ${hostKey === entry.host ? 'selected' : ''}>${shared.escapeHtml(hostKey.toUpperCase())}</option>`
                             )).join('')}
