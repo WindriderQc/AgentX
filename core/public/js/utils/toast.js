@@ -24,7 +24,7 @@ const Toast = (() => {
       position: fixed;
       top: 20px;
       right: 20px;
-      z-index: 12000; /* Keep feedback above drawers and confirmation overlays (11000). */
+      z-index: 11500; /* Above drawers (11000), below the focused navigation skip link (12000). */
       display: flex;
       flex-direction: column;
       gap: 10px;
