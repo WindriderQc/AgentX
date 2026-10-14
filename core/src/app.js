@@ -635,30 +635,7 @@ app.get('/models', (req, res) => {
   });
 });
 
-app.get('/cluster-schedule', (req, res) => {
-  res.render('layouts/main', {
-    pageView: '../pages/cluster-schedule',
-    title: 'AgentX \u2022 Cluster Schedule',
-    service: 'core',
-    activePage: 'cluster-schedule',
-    headCss: [
-      '<link rel="stylesheet" href="/styles.css">',
-      '<link rel="stylesheet" href="/css/cluster-schedule-layout.css">',
-      '<link rel="stylesheet" href="/css/cluster-schedule-components.css">'
-    ].join('\n'),
-    footerJs: [
-      '<script src="/js/cluster-schedule-date.js"></script>',
-      '<script src="/js/cluster-schedule-upcoming.js"></script>',
-      '<script src="/js/cluster-schedule-headline.js"></script>',
-      '<script src="/js/cluster-schedule.js"></script>',
-        '<script src="/js/cluster-schedule-attention.js"></script>',
-        '<script src="/js/cluster-schedule-actual.js"></script>',
-        '<script src="/js/cluster-schedule-services.js"></script>',
-        '<script src="/js/cluster-schedule-queue.js"></script>',
-        '<script src="/js/cluster-schedule-controls.js"></script>'
-    ].join('\n')
-  });
-});
+app.get('/cluster-schedule', (req, res) => res.redirect(302, '/automations?view=resources'));
 
 app.get('/memory-review', (req, res) => {
   res.render('layouts/main', {

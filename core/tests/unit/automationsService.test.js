@@ -1,0 +1,72 @@
+'use strict';
+const {createAutomationsService, openClawJob} = require('../../src/services/automationsService');
+const {buildOpenClawCronEvidence} = require('../../integrations/runtime-bridges/openclaw/runtimeEvidence');
+const {calendarForJobs} = require('../../src/services/automationsCalendar');
+const stamp = '2026-10-14T12:00:00.000Z';
+const native = {available: true, revision: 4, jobs: [{id: 'usage', name: 'Usage', enabled: true, schedule: {type: 'interval', minutes: 15}, nextRunAt: stamp}], history: [], historyTotal: 0, inventory: {rows: [], unavailable: []}};
+const rawJobs = [
+  {id: 'one', name: 'Promotion', enabled: true, agentId: null, schedule: {kind: 'cron', expr: '15 4 * * *', tz: 'America/Toronto'}, payload: {kind: 'agentTurn', message: '__openclaw_memory_core_short_term_promotion_dream__'}, lastRunError: 'private diagnostic', state: {lastRunStatus: 'error', nextRunAtMs: Date.parse(stamp)}},
+  {id: 'two', name: 'Promotion', enabled: false, schedule: {kind: 'every', everyMs: 900000}, payload: {kind: 'command', argv: ['secret-command'], env: {TOKEN: 'secret-value'}}}
+];
+function fixture(extra = {}) {
+  return createAutomationsService({operations: {status: jest.fn(async () => native)},
+    readCron: async () => buildOpenClawCronEvidence({jobs: rawJobs}, {includeDisabledCron: true}),
+    readBackup: () => ({enabled: true, anchor: 'cron', cron: '0 3 * * *', timezone: 'America/Toronto'}),
+    readMirrors: async () => [
+      {sourceId: 'one', name: 'Duplicate mirror', metadata: {mirrorState: 'absent-from-openclaw'}},
+      {sourceId: 'retired', name: 'Retired', enabled: false, metadata: {mirrorState: 'absent-from-openclaw'}}
+    ], ...extra});
+}
+test('deduplicates by native identity, preserves different jobs with the same name and separates retired mirrors', async () => {
+  const data = await fixture().status();
+  expect(data.jobs.map(job => job.id)).toEqual(['usage', 'openclaw:one', 'openclaw:two', 'core:backup', 'openclaw:retired']);
+  expect(data.jobs.filter(job => job.enabled)).toHaveLength(3);
+  expect(data.jobs.at(-1)).toMatchObject({archived: true, enabled: false, state: 'archived'});
+  expect(data.jobs[1]).toMatchObject({kind: 'native-core', state: 'failed'});
+  expect(data.jobs[2]).toMatchObject({kind: 'command', state: 'paused'});
+  expect(JSON.stringify(data)).not.toMatch(/secret-command|secret-value|private diagnostic|payload|argv/);
+});
+test('one unavailable owner does not hide the other sources or convert cached jobs into fresh evidence', async () => {
+  let offline = false;
+  const service = fixture({readCron: async () => {if (offline) throw Error('private host'); return buildOpenClawCronEvidence({jobs: rawJobs});}});
+  await service.status(); offline = true;
+  const data = await service.status({refresh: true});
+  expect(data.available).toBe(true);
+  expect(data.sources[1]).toMatchObject({available: false, stale: true});
+  expect(data.jobs.some(job => job.id === 'openclaw:one')).toBe(true);
+  expect(JSON.stringify(data)).not.toContain('private host');
+});
+test('a lost supervisor read retains its jobs and revision while disabling its controls', async () => {
+  let offline = false;
+  const service = fixture({operations: {status: async () => {if (offline) throw Error('offline'); return native;}}});
+  await service.status(); offline = true;
+  expect(await service.status()).toMatchObject({operationsAvailable: false, revision: 4,
+    jobs: expect.arrayContaining([expect.objectContaining({id: 'usage'})])});
+});
+test('coalesces concurrent native reads and rejects an invalid page before contacting owners', async () => {
+  const readCron = jest.fn(async () => buildOpenClawCronEvidence({jobs: rawJobs}));
+  const service = fixture({readCron});
+  await Promise.all([service.status(), service.status()]);
+  expect(readCron).toHaveBeenCalledTimes(1);
+  await expect(service.status({offset: -1})).rejects.toMatchObject({status: 400});
+});
+test('calendar uses native anchors, excludes pauses and archives, and labels source-gated checks', () => {
+  const jobs = [native.jobs[0], {...native.jobs[0], id: 'copy', gateType: 'core-backup'},
+    {...native.jobs[0], id: 'paused', enabled: false}, {...native.jobs[0], id: 'archived', archived: true}];
+  const data = calendarForJobs(jobs, {date: '2026-10-14', timezone: 'America/Toronto'});
+  expect(data.rows.map(row => row.jobId)).toEqual(['usage', 'copy']);
+  expect(data.rows[0].occurrences).toHaveLength(96);
+  expect(data.rows[0].occurrences[0]).toBe('2026-10-14T04:00:00.000Z');
+  expect(data.rows[1].conditional).toBe(true);
+  const unanchored = calendarForJobs([{...native.jobs[0], nextRunAt: null}], {date: '2026-10-14', timezone: 'UTC'});
+  expect(unanchored.rows[0]).toMatchObject({error: 'SCHEDULE_UNRESOLVED', occurrences: []});
+});
+test('calendar handles DST and local cron time without inventing an execution duration', () => {
+  const job = openClawJob({...rawJobs[0], coreJob: true, schedule: rawJobs[0].schedule});
+  const data = calendarForJobs([job], {date: '2026-11-01', timezone: 'America/Toronto'});
+  expect(Date.parse(data.end) - Date.parse(data.start)).toBe(25 * 3600000);
+  expect(data.rows[0].occurrences).toEqual(['2026-11-01T09:15:00.000Z']);
+  expect(data.rows[0]).not.toHaveProperty('duration');
+  expect(() => calendarForJobs([job], {date: 'no', timezone: 'UTC'})).toThrow();
+  expect(() => calendarForJobs([job], {date: '2026-10-14', timezone: 'Mars/City'})).toThrow();
+});

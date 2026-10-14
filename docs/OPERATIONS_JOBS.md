@@ -1,9 +1,29 @@
 # Native operational jobs
 
-`/operations-jobs` is Core's operations screen. It shows server-owned recurrence,
-workstation execution, source dependencies, durable history and the current
-Windows task inventory. The shared System navigation and Cluster Schedule link
-there. This capability belongs to the full profile and is unconfigured by default.
+`/automations` is Core's shared operations hub. Its catalogue and calendar combine
+server-owned host jobs, Core backups and the official OpenClaw cron inventory.
+Native OpenClaw core functions remain distinct from agent turns and commands.
+The shared System navigation has one entry. `/operations-jobs` redirects here;
+`/cluster-schedule` redirects to the Resources view, retaining placement, measured
+usage and the heavy-work queue. Agent Ops retains agent dossiers, responsibilities,
+attention and documented obligations without duplicating the native job catalogue.
+
+`GET /api/automations` reads each owner independently. Job identity is the owner
+plus its native ID, never its name. Native jobs appear once; obsolete OpenClaw
+mirrors are disabled archive references. Cached evidence is labelled per source
+and unavailable owners have no active controls. The catalogue does not install,
+run, delete or reschedule OpenClaw jobs. Their existing Control UI owns these
+changes; Core's Backup screen owns its policy. Host-job actions retain the bounded
+`/api/operations/jobs` entrance and native revision/request fences.
+
+`GET /api/automations/calendar` projects the same active native jobs for a chosen
+calendar day and time zone. Cron uses the job's zone; intervals retain the native
+anchor. Missing anchors/zones are reported, never guessed. Conditional checks
+are labelled separately from unconditional starts. Frequent runs are grouped;
+GPU/resource claims and queued one-off work remain in Resources. The History tab
+contains complete supervisor receipts; Core and OpenClaw history stay in their
+owning screens. Windows inventory and local execution retain their source
+boundaries. This full-profile capability adds no Nestor or family grants.
 
 The native server supervisor owns one configuration, occurrence state and dispatch
 receipts outside Git. Core calls its named entrance over SSH; cadence and pause

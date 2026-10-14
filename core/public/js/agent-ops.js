@@ -216,7 +216,7 @@
       prompts: '/nerve-center',
       alerts: '/nerve-center',
       pipeline: '/pipeline',
-      schedules: '/cluster-schedule',
+      schedules: '/automations?view=calendar',
       openclaw: openclawControlUrl('/overview'),
       rag: ragBase || '/nerve-center',
       hermes: hermesBase || '/nerve-center',
@@ -334,15 +334,15 @@
     byId('agentOpsMetricObservedDetail').textContent = agentCoverage.runtimeUnobserved
       ? `${agentCoverage.runtimeUnobserved} runtime gap${agentCoverage.runtimeUnobserved === 1 ? '' : 's'}`
       : 'Registry and runtime aligned';
-    byId('agentOpsMetricAutomations').textContent = number(summary.automations);
-    byId('agentOpsMetricAutomationsDetail').textContent = `${number(summary.observedAutomations)} observed · ${number(automationCoverage.documentedOnly)} docs only`;
+    byId('agentOpsMetricAutomations').textContent = number(asArray(data.automations).filter(item => item.confidence === 'live').length);
+    byId('agentOpsMetricAutomationsDetail').textContent = 'Open unified Automations';
     byId('agentOpsMetricWork').textContent = number(summary.openWork);
     byId('agentOpsMetricWorkDetail').textContent = `${number(summary.blockedWork)} blocked`;
     byId('agentOpsMetricAttention').textContent = attention;
     byId('agentOpsMetricAttentionDetail').textContent = attention ? 'Visibility or runtime attention' : 'No known gaps';
 
     byId('agentOpsTabAgentCount').textContent = asArray(data.agents).length;
-    byId('agentOpsTabAutomationCount').textContent = asArray(data.automations).length;
+    byId('agentOpsTabAutomationCount').textContent = asArray(data.automations).filter(item => item.confidence !== 'live').length;
     byId('agentOpsTabWorkCount').textContent = number(summary.openWork);
   }
 
@@ -513,7 +513,7 @@
   }
 
   function renderAutomations(data) {
-    const all = asArray(data.automations);
+    const all = asArray(data.automations).filter(item => item.confidence !== 'live');
     const automations = all.filter((item) => matchesPreset(item, 'automation') && matchesQuery(item, [
       'name', 'ownerId', 'owner', 'cadence', 'health', 'confidence', 'purpose', 'trigger', 'source', 'lastStatus'
     ]));
@@ -543,7 +543,7 @@
             ${badge(humanize(item.confidence), item.confidence, 'fa-signal')}
           </span>
           <button type="button" data-automation-inspect="${esc(item.id)}"><i class="fas fa-circle-info"></i>Inspect</button>
-          <a ${item.confidence === 'live' ? nativeControlAttributes('/cron') : 'href="/cluster-schedule"'}>
+          <a ${item.confidence === 'live' ? nativeControlAttributes('/cron') : 'href="/automations?view=calendar"'}>
             ${item.confidence === 'live' ? 'Open live cron' : 'Open schedule'} <i class="fas fa-arrow-right"></i>
           </a>
         </div>
@@ -670,7 +670,7 @@
       </section>
       <footer class="agent-ops-drawer-actions">
         ${runtimeLink ? `<a class="agent-ops-button primary" ${nativeControlAttributes(nativeAgentPath(agent))} title="Open OpenClaw already focused on ${esc(agent.id)}"><i class="fas fa-arrow-up-right"></i>Open native agent UI</a>` : ''}
-        <a class="agent-ops-button" href="/cluster-schedule"><i class="fas fa-calendar-days"></i>Open schedule</a>
+        <a class="agent-ops-button" href="/automations?view=calendar"><i class="fas fa-calendar-days"></i>Open schedule</a>
         <a class="agent-ops-button" href="${esc(pipelineContextHref({ assignee: agent.id, alias: agent.registryId }))}" title="Filter Pipeline to work assigned to ${esc(agent.name)} across registry and runtime identities"><i class="fas fa-list-check"></i>Open owned work</a>
         <a class="agent-ops-button" href="${esc(nerveContextHref({ focus: 'health', source: agent.runtime, agent: agent.id }))}" title="Carry this agent context into Nerve Center"><i class="fas fa-brain"></i>Trace evidence</a>
       </footer>`;
@@ -732,7 +732,7 @@
       <footer class="agent-ops-drawer-actions">
         <a class="agent-ops-button primary" ${runtime.id === 'openclaw' && !explicitRuntimeLink ? nativeControlAttributes('/overview') : `href="${esc(runtimeLink)}"`}><i class="fas fa-arrow-up-right"></i>${runtime.id === 'openclaw' ? 'Open official Control UI' : 'Open runtime'}</a>
         <a class="agent-ops-button" href="${esc(nerveContextHref({ focus: 'cluster', source: runtime.id }))}" title="Carry this runtime context into Nerve Center"><i class="fas fa-brain"></i>Trace topology</a>
-        <a class="agent-ops-button" href="/cluster-schedule"><i class="fas fa-calendar-days"></i>Open schedule</a>
+        <a class="agent-ops-button" href="/automations?view=calendar"><i class="fas fa-calendar-days"></i>Open schedule</a>
       </footer>`;
 
     showDrawer({
@@ -750,7 +750,7 @@
     const item = asArray(state.data.automations).find((automation) => automation.id === automationId);
     if (!item) return;
     const owner = asArray(state.data.agents).find((agent) => agentKey(agent.registryId || agent.id) === agentKey(item.ownerId));
-    const liveLink = item.confidence === 'live' ? openclawControlUrl('/cron') : '/cluster-schedule';
+    const liveLink = item.confidence === 'live' ? openclawControlUrl('/cron') : '/automations?view=calendar';
     const recentHistory = asArray(item.history);
     const body = `
       <section class="agent-ops-drawer-lead">
@@ -937,6 +937,7 @@
   byId('agentOpsUnavailableRetry')?.addEventListener('click', load);
   root.addEventListener('click', (event) => {
     if (advanced && advanced.handleClick(event)) return;
+    if (event.target.closest('[data-automation-hub]')) {window.location.assign('/automations'); return;}
     const metric = event.target.closest('[data-metric-tab]');
     if (metric) {
       openPreset(metric.dataset.metricTab, metric.dataset.metricPreset);

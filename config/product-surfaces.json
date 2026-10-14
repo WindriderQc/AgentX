@@ -27,7 +27,7 @@
     { "id": "core-council", "service": "core", "path": "/council", "profiles": ["demo", "full"], "journey": "compare", "critical": false },
     { "id": "core-nerve-center", "service": "core", "path": "/nerve-center", "profiles": ["full"], "journey": "operate", "critical": true, "performanceBudget": "visualization" },
     { "id": "core-agent-ops", "service": "core", "path": "/agent-ops", "profiles": ["full"], "journey": "operate", "critical": false },
-    { "id": "core-cluster-schedule", "service": "core", "path": "/cluster-schedule", "profiles": ["full"], "journey": "operate", "critical": false },
+    { "id": "core-automations", "service": "core", "path": "/automations", "profiles": ["full"], "journey": "operate", "critical": false },
     { "id": "core-memory-review", "service": "core", "path": "/memory-review", "profiles": ["full"], "journey": "govern", "critical": false },
     { "id": "core-pipeline", "service": "core", "path": "/pipeline", "profiles": ["full"], "journey": "operate", "critical": false },
     { "id": "core-planning", "service": "core", "path": "/planning", "profiles": ["full"], "journey": "operate", "critical": false },

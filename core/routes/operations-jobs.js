@@ -17,11 +17,8 @@ function createRouter(service) {
 function mount(app, options = {}) {
   const service = options.service || createOperationsService();
   app.use('/api/operations/jobs', createRouter(service));
-  app.get('/operations-jobs', (req, res) => res.render('layouts/main', {
-    pageView: '../pages/operations-jobs', pageLanguage: 'fr', title: 'AgentX · Automatisations', service: 'core', activePage: 'operations-jobs',
-    headCss: '<link rel="stylesheet" href="/css/operations-jobs.css">',
-    footerJs: '<script src="/js/operations-jobs.js" defer></script>'
-  }));
+  require('./automations').mount(app, service, options.automations);
+  app.get('/operations-jobs', (req, res) => res.redirect(302, '/automations'));
   service.startObserver();
   return service;
 }
