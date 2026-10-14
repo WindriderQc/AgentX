@@ -2,7 +2,7 @@
 .household-product #app:has(#conversationWorkflow) { max-width: 1840px; }
 .household-product .conversation-shell:has(#conversationWorkflow),
 .household-product .conversation-shell:has(#conversationWorkflow) .conversation-layout { max-width: 1760px; }
-.household-product .conversation-stage { padding: 18px; }
+.household-product .conversation-stage { padding: 18px; container-type: inline-size; }
 .conversation-cockpit { display: grid; grid-template-columns: minmax(300px, .85fr) minmax(0, 1.65fr); gap: 18px; align-items: start; }
 .conversation-cockpit-family { display: block; }
 .conversation-cockpit .conversation-live { grid-column: 1 / -1; position: sticky; top: 10px; z-index: 20; min-width: 0;
@@ -55,6 +55,8 @@
   background-image: radial-gradient(#34435975 .6px, transparent .6px), linear-gradient(135deg, #101a2b, #0b1320);
   background-size: 14px 14px, auto; }
 #conversationWorkflow .workflow-graph > svg { display: block; width: 100%; height: auto; overflow: visible; }
+#conversationWorkflow .workflow-graph[data-compact="true"] .workflow-graph-label { font-size: 13px; }
+#conversationWorkflow .workflow-graph[data-compact="true"] .workflow-graph-lane { font-size: 9px; letter-spacing: .8px; }
 #conversationWorkflow .workflow-graph-lane { fill: #7995ac; font: 600 10px system-ui, sans-serif; letter-spacing: 1.6px; }
 #conversationWorkflow .workflow-graph-lane-background { fill: #b49aff; }
 #conversationWorkflow .workflow-graph-node-bg { fill: #111e30; stroke: rgba(var(--stage-rgb), .5); stroke-width: 1; }
@@ -128,6 +130,12 @@
 @keyframes workflow-breathe { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
 @keyframes workflow-halo { 0%, 100% { stroke-opacity: .3; } 50% { stroke-opacity: 1; } }
 @keyframes workflow-meter-travel { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(230%); } }
+@container (max-width: 1000px) {
+  .conversation-cockpit { grid-template-columns: minmax(0, 1fr); }
+  .conversation-cockpit .conversation-live { grid-column: 1; }
+  .conversation-dialogue { grid-row: 3; position: static; }
+  #conversationWorkflow { grid-row: 2; }
+}
 @media (max-width: 1100px) {
   .conversation-cockpit { grid-template-columns: minmax(0, 1fr); }
   .conversation-cockpit .conversation-live { grid-column: 1; }
