@@ -1,6 +1,8 @@
 'use strict';
 
 const crypto = require('crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const { cleanBaseUrl } = require('../common');
 
 const COOKIE_NAME = 'agentx_dsh_access';
@@ -57,7 +59,23 @@ function validateDshStudioEnvironment() {
   if (String(process.env.DSH_STUDIO_ACCESS_SECRET || '').length < 32) {
     throw new Error('DSH_STUDIO_ACCESS_SECRET must contain at least 32 characters when DSH Studio is configured');
   }
+  if (process.env.DSH_STUDIO_LAUNCH_FILE && !path.isAbsolute(process.env.DSH_STUDIO_LAUNCH_FILE)) {
+    throw new Error('DSH_STUDIO_LAUNCH_FILE must be absolute');
+  }
   return config;
+}
+
+function nativeLaunchUrl(publicUrl) {
+  const file = process.env.DSH_STUDIO_LAUNCH_FILE;
+  if (!file) return publicUrl;
+  if (fs.statSync(file).size > 4096) throw new Error('Invalid native launch record');
+  const record = JSON.parse(fs.readFileSync(file, 'utf8'));
+  if (record.contract !== 'agentx.dsh-studio-launch/v1' || !/^[A-Za-z0-9_-]{43}$/.test(record.token || '')) {
+    throw new Error('Invalid native launch record');
+  }
+  const url = new URL(publicUrl);
+  url.searchParams.set('token', record.token);
+  return url.href;
 }
 
 function tokenSignature(unsigned, secret = process.env.DSH_STUDIO_ACCESS_SECRET || '') {
@@ -127,6 +145,12 @@ function registerDshStudioOperations({ express }) {
         status: 'error', code: 'DSH_STUDIO_NOT_CONFIGURED', message: 'DSH Studio is not configured.'
       });
     }
+    let launchUrl;
+    try { launchUrl = nativeLaunchUrl(config.publicUrl); }
+    catch {
+      res.set('Cache-Control', 'no-store');
+      return res.status(503).json({ status: 'error', code: 'DSH_STUDIO_LAUNCH_UNAVAILABLE', message: 'DSH Studio is starting or unavailable. Retry from AgentX.' });
+    }
     const token = issueAccessToken();
     res.set({
       'Set-Cookie': accessCookie(token, config.sessionTtlSeconds),
@@ -137,13 +161,13 @@ function registerDshStudioOperations({ express }) {
     if (req.get('Sec-Fetch-Site') === 'cross-site') {
       // Commit a same-site document before navigating to Studio. An external
       // 302 chain withholds the Strict cookie, including one just minted here.
-      const destination = new URL(config.publicUrl).origin.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+      const destination = launchUrl.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
       return res.type('html').send(`<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="0;url=${destination}"><title>Opening DSH Studio</title>
 <body><p>Opening DSH Studio… <a href="${destination}">Continue to Studio</a></p></body></html>`);
     }
-    return res.redirect(302, config.publicUrl);
+    return res.redirect(302, launchUrl);
   });
 
   // Caddy calls this exact endpoint through forward_auth. The route accepts

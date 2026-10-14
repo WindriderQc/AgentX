@@ -8,7 +8,7 @@ STATE="$BASE/.agentx"
 RUNS="$STATE/runs"
 RECEIPTS="$STATE/receipts"
 LOCK="${AGENTX_MODEL_LIFECYCLE_LOCK_FILE:-$HOME/.local/state/agentx/model-lifecycle/local-inference.lock}"
-DSH_ROOT="$HOME/dsh"
+DSH_ROOT="${AGENTX_DSH_ROOT:-$HOME/dsh}"
 DSH="$DSH_ROOT/node_modules/.bin/dsh"
 SETTINGS="$HOME/.dsh/settings.yaml"
 INTEGRATION_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -111,7 +111,7 @@ receipt="$RECEIPTS/$run_id.json"
 receipt_tmp="$receipt.tmp"
 claim_receipt="$RECEIPTS/$run_id.claim.json"
 install -d -m 0700 -- "$private_home/.dsh"
-install -m 0600 -- "$SETTINGS" "$private_home/.dsh/settings.yaml"
+"$node_bin" "$INTEGRATION_ROOT/dsh-settings-patch.cjs" "$SETTINGS" "$private_home/.dsh/agentx.patch.json" "$DSH_ROOT"
 : >"$stdout_file"
 : >"$stderr_file"
 
@@ -171,7 +171,8 @@ set +e
     --ro-bind "$SKILL_ROOT" /opt/skill \
     --bind "$workspace_real" /workspace \
     --chdir /workspace \
-    /opt/dsh/node_modules/.bin/dsh --profile headless --patch /opt/skill/guard.patch.yml -- "$task" \
+    /opt/dsh/node_modules/.bin/dsh --profile headless \
+      --patch /home/agent/.dsh/agentx.patch.json --patch /opt/skill/guard.patch.yml -- "$task" \
     >"$stdout_file" 2>"$stderr_file"
 exit_code=$?
 set -e

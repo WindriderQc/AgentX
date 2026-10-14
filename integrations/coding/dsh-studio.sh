@@ -17,6 +17,12 @@ integration_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 core_url="${AGENTX_CORE_URL:-http://127.0.0.1:3180}"
 settings_helper="${integration_root}/dsh-studio-settings.cjs"
 node_bin="${AGENTX_NODE_BIN:-/usr/local/bin/node}"
+browser_bin="${DSH_STUDIO_BROWSER_EXECUTABLE:-}"
+launch=()
+if [[ -n "${DSH_STUDIO_LAUNCH_FILE:-}" ]]; then
+  [[ "$DSH_STUDIO_LAUNCH_FILE" == /* ]] || fail 'Native launch file must be absolute'
+  launch=("$node_bin" "$integration_root/dsh-studio-launch.cjs")
+fi
 
 [[ "$isolation" == 'bubblewrap' || "$isolation" == 'host' ]] || fail 'DSH_STUDIO_ISOLATION must be bubblewrap or host'
 [[ "$port" =~ ^[0-9]+$ ]] && (( port >= 1024 && port <= 65535 )) || fail 'DSH_STUDIO_PORT must be between 1024 and 65535'
@@ -27,6 +33,10 @@ node_bin="${AGENTX_NODE_BIN:-/usr/local/bin/node}"
 [[ ! -L "$workspace_root" && ! -L "$state_root" ]] || fail 'DSH Studio roots must not be symbolic links'
 [[ "$node_bin" == /* && -x "$node_bin" ]] || fail "Node runtime is unavailable at ${node_bin}"
 [[ -r "$settings_helper" ]] || fail 'DSH Studio settings helper is unavailable'
+if [[ -n "$browser_bin" ]]; then
+  [[ "$browser_bin" == /* && -x "$browser_bin" ]] || fail 'Chromium executable is unavailable'
+  browser_bin="$(realpath -e -- "$browser_bin")"
+fi
 
 if [[ "${1:-}" == '--check' ]]; then
   [[ $# -eq 1 ]] || fail '--check accepts no additional arguments'
@@ -45,16 +55,27 @@ workspace_root="$(realpath -e -- "$workspace_root")"
 state_root="$(realpath -e -- "$state_root")"
 studio_home="${state_root}/home"
 install -d -m 0700 -- "$studio_home/.dsh"
-"$node_bin" "$settings_helper" "$settings" "$studio_home/.dsh/settings.yaml" "$core_url"
+# Let upstream import ordinary preferences once; only AgentX's routing stays in
+# the managed overlay. Its imported marker prevents recreating legacy settings.
+if [[ ! -e "$studio_home/.dsh/settings.yaml" && ! -e "$studio_home/.dsh/settings.yaml.imported" ]]; then
+  install -m 0600 -- "$settings" "$studio_home/.dsh/settings.yaml"
+fi
+browser_mount=()
+if [[ -n "$browser_bin" && "$isolation" == 'bubblewrap' ]]; then
+  browser_mount=(--ro-bind "$(dirname -- "$browser_bin")" /opt/agentx-chromium)
+  browser_bin="/opt/agentx-chromium/$(basename -- "$browser_bin")"
+fi
+DSH_STUDIO_BROWSER_EXECUTABLE="$browser_bin" "$node_bin" "$settings_helper" "$settings" "$studio_home/.dsh/agentx.patch.json" "$core_url"
 
 export DSH_PERMISSION_MODE=workspace-write
 export DSH_TELEMETRY_MODE=DISABLED
 export AGENTX_CORE_API_KEY=local-no-auth
+export PATH="$(dirname -- "$node_bin"):${dsh_root}/node_modules/.bin:${PATH}"
 
 if [[ "$isolation" == 'host' ]]; then
   export DSH_HOME="${studio_home}/.dsh"
   cd -- "$workspace_root"
-  exec "$dsh_bin" web --host 127.0.0.1 --port "$port" --no-open --trusted-host "$trusted_host"
+  exec "${launch[@]}" "$dsh_bin" web --patch "$DSH_HOME/agentx.patch.json" --host 127.0.0.1 --port "$port" --no-open --trusted-host "$trusted_host"
 fi
 
 [[ -x /usr/bin/bwrap ]] || fail 'Bubblewrap is unavailable'
@@ -62,7 +83,7 @@ node_bin="$(realpath -e -- "$node_bin")"
 node_root="$(cd -- "$(dirname -- "$node_bin")/.." && pwd -P)"
 private_home="$studio_home"
 
-exec /usr/bin/bwrap \
+exec "${launch[@]}" /usr/bin/bwrap \
   --unshare-all \
   --share-net \
   --die-with-parent \
@@ -71,7 +92,7 @@ exec /usr/bin/bwrap \
   --setenv HOME /home/agent \
   --setenv USER agent \
   --setenv LOGNAME agent \
-  --setenv PATH /opt/node/bin:/usr/bin:/bin \
+  --setenv PATH /opt/node/bin:/opt/dsh/node_modules/.bin:/usr/bin:/bin \
   --setenv LANG C.UTF-8 \
   --setenv DSH_HOME /home/agent/.dsh \
   --setenv DSH_PERMISSION_MODE workspace-write \
@@ -93,9 +114,11 @@ exec /usr/bin/bwrap \
   --bind "$private_home" /home/agent \
   --ro-bind "$node_root" /opt/node \
   --ro-bind "$dsh_root" /opt/dsh \
+  "${browser_mount[@]}" \
   --bind "$workspace_root" /workspaces \
   --chdir /workspaces \
   /opt/dsh/node_modules/.bin/dsh web \
+    --patch /home/agent/.dsh/agentx.patch.json \
     --host 127.0.0.1 \
     --port "$port" \
     --no-open \

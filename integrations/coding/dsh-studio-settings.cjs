@@ -2,6 +2,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
+const { settingsPatch } = require('./dsh-settings-patch.cjs');
 
 function studioSettings(settings, coreUrl, contextSize) {
   const origin = new URL(coreUrl);
@@ -21,6 +22,17 @@ function studioSettings(settings, coreUrl, contextSize) {
   };
 }
 
+function studioPatch(settings, coreUrl, contextSize, browserExecutable) {
+  const managed = studioSettings(settings, coreUrl, contextSize);
+  const patch = settingsPatch(Object.fromEntries(['llm-pi-ai', 'agent-default-model'].map(id => [id, managed[id]])));
+  if (browserExecutable) patch.push({ insert: [
+    { id: 'agentx-browser-use', name: '@deepseek-ai/dsh-browser-use' },
+    { id: 'agentx-browser-playwright', name: '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp',
+      config: { mode: 'launch', headless: true, executablePath: browserExecutable } },
+  ] });
+  return patch;
+}
+
 async function main() {
   const [source, destination, coreUrl] = process.argv.slice(2);
   const dshRoot = process.env.DSH_STUDIO_DSH_ROOT || path.join(process.env.HOME, 'dsh');
@@ -29,7 +41,8 @@ async function main() {
   const reply = await response.json();
   if (!response.ok || !reply.data?.available) throw new Error('Core principal model is unavailable');
   const settings = yaml.load(fs.readFileSync(source, 'utf8')) || {};
-  fs.writeFileSync(destination, yaml.dump(studioSettings(settings, coreUrl, reply.data.contextSize)), { mode: 0o600 });
+  const patch = studioPatch(settings, coreUrl, reply.data.contextSize, process.env.DSH_STUDIO_BROWSER_EXECUTABLE);
+  fs.writeFileSync(destination, JSON.stringify(patch, null, 2) + '\n', { mode: 0o600 });
 }
 if (require.main === module) main().catch(error => { process.stderr.write(`${error.message}\n`); process.exitCode = 1; });
-module.exports = { studioSettings };
+module.exports = { studioSettings, settingsPatch, studioPatch };

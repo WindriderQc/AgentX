@@ -129,7 +129,7 @@ verification gate for its draft pull request.
 
 ## Settings
 
-Install DSH under `$HOME/dsh` (`AGENTX_DSH_ROOT` overrides). Runner settings
+Install DSH 0.2.0-rc.2 under `$HOME/dsh` (`AGENTX_DSH_ROOT` overrides). Runner settings
 live outside Git, by default in `~/.config/agentx/coding.env`
 (`AGENTX_CODING_ENV_FILE` overrides):
 
