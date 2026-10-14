@@ -8,7 +8,7 @@
 
 import {
   elements, charts,
-  buildRangeQuery, checkAuth, fetchJSON,
+  beginRequest, buildRangeQuery, checkAuth, fetchJSON,
   formatNumber, refreshProduct
 } from './analytics.js';
 import { COMPARISON_STATES, parseSignal, rankingSignal } from '/dist/signal-evidence.js';
@@ -37,10 +37,12 @@ async function loadCosts(days, groupBy = null, breakdown = null) {
 }
 
 async function refreshCostStats() {
+  const isCurrent = beginRequest('costStats');
   const days = elements.periodSelect.value;
 
   try {
     const data = await loadCosts(days);
+    if (!isCurrent()) return;
 
     if (!data) {
       elements.totalCost.textContent = '—';
@@ -80,11 +82,13 @@ async function refreshCostStats() {
 }
 
 async function refreshCostTrend() {
+  const isCurrent = beginRequest('costTrend');
   const days = elements.periodSelect.value;
   const groupBy = elements.costTrendGroupSelect.value;
 
   try {
     const data = await loadCosts(days, groupBy);
+    if (!isCurrent()) return;
 
     const breakdown = data?.breakdown || [];
     if (!data || breakdown.length === 0) {
@@ -312,10 +316,12 @@ function efficiencyBadge(row, ranking) {
 }
 
 async function refreshEfficiencyTable() {
+  const isCurrent = beginRequest('efficiency');
   const days = elements.periodSelect.value;
 
   try {
     const data = await loadCosts(days, 'model');
+    if (!isCurrent()) return;
     const breakdown = data?.breakdown || [];
 
     if (!data || breakdown.length === 0) {
@@ -384,10 +390,12 @@ async function refreshEfficiencyTable() {
 }
 
 async function refreshCostBreakdown() {
+  const isCurrent = beginRequest('costBreakdown');
   const days = elements.periodSelect.value;
 
   try {
     const data = await loadCosts(days, 'model');
+    if (!isCurrent()) return;
 
     if (!data || !data.breakdown || data.breakdown.length === 0) {
       if (charts.costBreakdown) charts.costBreakdown.destroy();

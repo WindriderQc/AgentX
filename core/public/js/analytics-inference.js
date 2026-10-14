@@ -304,6 +304,7 @@ async function renderCodex(windowKey) {
     });
     if (!res.ok) return;
     const body = await res.json();
+    if (!isCurrentWindow(windowKey)) return;
     const c = body?.codexSubscription;
     if (!c || !c.available) { section.style.display = 'none'; return; }
 
@@ -374,6 +375,7 @@ async function applyChatLaneCollapse(windowKey) {
   } catch (err) {
     console.error('Chat-lane probe failed:', err);
   }
+  if (!isCurrentWindow(windowKey)) return;
 
   // Unknown (probe failed) is not the same as zero — leave the widgets alone.
   if (conversations === null || conversations > 0) {
@@ -403,15 +405,22 @@ async function applyChatLaneCollapse(windowKey) {
   }
 }
 
+// A response for a window the user already left must not repaint the panel.
+function isCurrentWindow(windowKey) {
+  return ($('infWindow')?.value || '7d') === windowKey;
+}
+
 async function load() {
   const windowKey = $('infWindow')?.value || '7d';
   try {
     const data = await fetchSummary(windowKey);
+    if (!isCurrentWindow(windowKey)) return;
     renderTiles(data);
     renderModelTable(data);
     renderDimensionBreakdowns(data);
     renderDailyChart(data);
   } catch (err) {
+    if (!isCurrentWindow(windowKey)) return;
     console.error('Inference analytics failed:', err);
     setText('infScope', `Could not load inference analytics: ${err.message}`);
   }

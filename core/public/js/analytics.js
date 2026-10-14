@@ -199,6 +199,15 @@ async function fetchJSON(url, method = 'GET') {
   return res.json();
 }
 
+// Each panel keeps only its newest response: a slow 30-day query that lands
+// after a fast 7-day one must not repaint the panel under the wrong period.
+const requestSeq = {};
+function beginRequest(key) {
+  const id = (requestSeq[key] || 0) + 1;
+  requestSeq[key] = id;
+  return () => requestSeq[key] === id;
+}
+
 async function checkAuth() {
   return true;
 }
@@ -459,12 +468,14 @@ async function refreshProduct() {
   const usageGroup = elements.usageGroupSelect.value;
   const feedbackGroup = elements.feedbackGroupSelect.value;
 
+  const isCurrent = beginRequest('product');
   try {
     const [usageResult, feedbackResult, ragResult] = await Promise.allSettled([
       loadUsage(days, usageGroup),
       loadFeedback(days, feedbackGroup),
       loadRag(days),
     ]);
+    if (!isCurrent()) return;
 
     const usage = usageResult.status === 'fulfilled' ? usageResult.value : null;
     const feedback = feedbackResult.status === 'fulfilled' ? feedbackResult.value : null;
@@ -494,4 +505,4 @@ async function refreshProduct() {
 }
 
 
-export { elements, charts, buildRangeQuery, checkAuth, fetchJSON, formatNumber, refreshProduct };
+export { elements, charts, beginRequest, buildRangeQuery, checkAuth, fetchJSON, formatNumber, refreshProduct };

@@ -380,11 +380,14 @@
                 var days = document.getElementById('periodSelect')?.value || '7';
                 return ['7','14','30'].includes(days) ? days + 'd' : '7d';
             }
+            var effectivenessSeq = 0;
             async function loadEffectiveness(){
                 var signal = document.getElementById('effectivenessSignal');
+                var seq = ++effectivenessSeq;
                 try {
                     var response = await fetch('/api/analytics/effectiveness?window=' + encodeURIComponent(effectivenessWindow()), { signal: AbortSignal.timeout(30000) });
                     var data = await response.json();
+                    if (seq !== effectivenessSeq) return;
                     if (!response.ok || !data.ok) throw new Error(data.message || 'Effectiveness API unavailable');
                     var summary = data.summary || {};
                     var waste = data.waste || {};
@@ -446,6 +449,7 @@
                         ', rework: ' + coverage.reworkSampleSize + ', cost: ' + coverage.costSampleSize +
                         ', human intervention: ' + coverage.humanInterventionSampleSize + '. ' + coverage.usageAttribution;
                 } catch (error) {
+                    if (seq !== effectivenessSeq) return;
                     signal.innerHTML = '<strong>Effectiveness unavailable</strong> — ' + error.message;
                     document.getElementById('effectivenessRuntimeBody').innerHTML = '<tr><td colspan="7" style="padding:12px;text-align:center;color:var(--muted);">Unable to load effectiveness telemetry.</td></tr>';
                 }
@@ -894,8 +898,10 @@
             function fmtNum(n){ if(n==null) return '—'; return Number(n).toLocaleString(); }
             function fmtUsdOrUnpriced(v){ return Number.isFinite(v) ? fmtUsd(v) : 'unpriced'; }
                 function fmtUsd(n){ if(n==null) return '—'; return '$' + Number(n).toFixed(4); }
+            let federatedSeq = 0;
             async function loadFederated(){
                 const win = document.getElementById('federatedWindowSelect').value;
+                const seq = ++federatedSeq;
                 let payload;
                 try {
                     const r = await fetch('/api/analytics/federated?window=' + encodeURIComponent(win), { signal: AbortSignal.timeout(30000) });
@@ -904,6 +910,7 @@
                     console.error('Federated fetch failed', err);
                     return;
                 }
+                if (seq !== federatedSeq) return;
                 const banner = document.getElementById('federatedMcBanner');
                 if (payload.provider_status !== 'ok') { banner.style.display = 'block'; }
                 else { banner.style.display = 'none'; }
