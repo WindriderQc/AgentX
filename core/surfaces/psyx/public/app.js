@@ -59,7 +59,6 @@ const cancelGeneration = $('cancelGeneration');
 const dataDialog = $('dataDialog');
 const resetMemoryDialog = $('resetMemoryDialog');
 const sessionDataDialog = $('sessionDataDialog');
-const voiceDialog = $('voiceDialog');
 const voiceRecord = $('voiceRecord');
 
 try {

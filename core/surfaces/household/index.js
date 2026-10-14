@@ -229,10 +229,12 @@ function register(api) {
     app.get(`/assets/household/${name}.js`, (_req, res) => res.sendFile(path.join(__dirname, '../../public/js/voice', `${name}.js`)));
   }
   app.use('/assets/household', express.static(publicRoot, { fallthrough: false, maxAge: '5m' }));
+  app.get('/device-check', (_req, res) => res.redirect(302, '/voice-lab/devices'));
+  app.get('/voice-personas/debug', (_req, res) => res.redirect(302, '/voice-lab/personas'));
   app.get('/dad/nestor', (_req, res) => res.redirect(302, '/voice'));
   app.get([
-    '/panel', '/dad', '/dad/day', '/dad/memories', '/dad/family', '/voice-personas/debug', '/kids', '/kids/sounds', '/lecture', '/lecture/parents', '/lecture/parents.html',
-    '/voice', '/voice.html', '/voix', '/voice-personas', '/voice-personas.html', '/device-check'
+    '/panel', '/dad', '/dad/day', '/dad/memories', '/dad/family', '/voice-lab', '/voice-lab/devices', '/voice-lab/personas', '/kids', '/kids/sounds', '/lecture', '/lecture/parents', '/lecture/parents.html',
+    '/voice', '/voice.html', '/voix', '/voice-personas', '/voice-personas.html'
   ], require('../../src/ui/productShell').householdPage(app, path.join(publicRoot, 'index.html')));
   app.get('/api/household/avatar/llmx-face.js', createScriptRelay({ resolveUrl: avatarModuleUrl, fetchWithTimeout,
     unavailable: (res, error) => fail(res, error.status || 503, error.message, error.code || 'AVATAR_UNAVAILABLE') }));

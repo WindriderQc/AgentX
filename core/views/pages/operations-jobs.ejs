@@ -1,0 +1,71 @@
+<main class="oj-shell" id="operationsApp" lang="fr">
+  <header class="oj-header">
+    <div>
+      <p class="oj-eyebrow"><span class="oj-signal"></span> SYSTÈME / AGENTX</p>
+      <h1>Automatisations<span class="oj-title-dot">.</span></h1>
+      <p class="oj-intro">Les bons traitements, au bon moment. Un seul endroit pour les piloter.</p>
+    </div>
+    <div class="oj-header-actions">
+      <a href="/cluster-schedule" class="oj-button oj-button-quiet"><i class="fas fa-calendar-alt" aria-hidden="true"></i> Calendrier</a>
+      <button id="operationsRefresh" class="oj-button"><i class="fas fa-rotate" aria-hidden="true"></i> Actualiser</button>
+    </div>
+  </header>
+
+  <section class="oj-supervisor" aria-label="Supervision des traitements">
+    <div class="oj-supervisor-icon"><i class="fas fa-server" aria-hidden="true"></i></div>
+    <div class="oj-supervisor-copy"><strong id="operationsSupervisor">Connexion au superviseur…</strong><span id="operationsHeartbeat">Les horaires et les résultats sont lus auprès du serveur.</span></div>
+    <span id="operationsConnection" class="oj-badge oj-badge-neutral">Chargement</span>
+  </section>
+  <div id="operationsNotice" class="oj-notice" role="status" aria-live="polite" hidden></div>
+
+  <section id="operationsMetrics" class="oj-metrics" aria-label="Vue d’ensemble">
+    <div class="oj-metric"><span>Traitements actifs</span><strong id="metricActive">—</strong><small>planifiés sur le serveur</small></div>
+    <div class="oj-metric"><span>En cours</span><strong id="metricRunning">—</strong><small>exécutions reçues</small></div>
+    <div class="oj-metric"><span>À surveiller</span><strong id="metricAttention">—</strong><small>erreurs ou résultats à vérifier</small></div>
+    <div class="oj-metric"><span>Horaires Windows restants</span><strong id="metricLegacy">—</strong><small>parmi les traitements migrés</small></div>
+  </section>
+
+  <div class="oj-navigation">
+    <div class="oj-tabs" role="tablist" aria-label="Vues des automatisations">
+      <button id="jobsTab" role="tab" aria-selected="true" aria-controls="jobsPanel" data-tab="jobs" class="oj-tab active">Traitements <span id="jobsCount">—</span></button>
+      <button id="historyTab" role="tab" aria-selected="false" aria-controls="historyPanel" data-tab="history" class="oj-tab" tabindex="-1">Historique <span id="historyCount">—</span></button>
+      <button id="inventoryTab" role="tab" aria-selected="false" aria-controls="inventoryPanel" data-tab="inventory" class="oj-tab" tabindex="-1">Windows <span id="inventoryCount">—</span></button>
+    </div>
+    <label class="oj-search"><i class="fas fa-search" aria-hidden="true"></i><span class="oj-sr-only">Rechercher un traitement ou une tâche</span><input id="operationsSearch" type="search" placeholder="Rechercher…" autocomplete="off"></label>
+  </div>
+
+  <section id="jobsPanel" role="tabpanel" aria-labelledby="jobsTab">
+    <div class="oj-section-toolbar"><div><h2>Ce qui tourne pour vous</h2><p>Les données restent sur leur machine. Le serveur décide des départs.</p></div>
+      <label class="oj-filter"><span class="oj-sr-only">Filtrer les traitements</span><select id="jobsFilter"><option value="all">Tous les traitements</option><option value="active">Actifs</option><option value="attention">À surveiller</option><option value="paused">En pause</option></select></label>
+    </div>
+    <div id="operationsJobs" class="oj-jobs" aria-busy="true"><div class="oj-empty"><i class="fas fa-circle-notch fa-spin" aria-hidden="true"></i><h3>Lecture des traitements</h3><p>Chargement des horaires et des derniers reçus.</p></div></div>
+  </section>
+
+  <section id="historyPanel" role="tabpanel" aria-labelledby="historyTab" hidden>
+    <div class="oj-section-toolbar"><div><h2>Chaque départ laisse une trace</h2><p>Déclenchement, durée et résultat de chaque exécution.</p></div><span id="historyPageLabel" class="oj-subtle"></span></div>
+    <div class="oj-table-scroll"><table class="oj-table"><thead><tr><th>Traitement</th><th>Résultat</th><th>Départ</th><th>Quand</th><th>Durée</th><th>Vérification</th></tr></thead><tbody id="operationsHistory"></tbody></table></div>
+    <div class="oj-pagination"><button class="oj-button oj-button-quiet" id="historyPrevious">Précédent</button><button class="oj-button oj-button-quiet" id="historyNext">Suivant</button></div>
+  </section>
+
+  <section id="inventoryPanel" role="tabpanel" aria-labelledby="inventoryTab" hidden>
+    <div class="oj-section-toolbar"><div><h2>Ce qui reste sur Windows</h2><p id="inventoryAge">L’inventaire distingue les traitements migrés et les tâches des logiciels.</p></div>
+      <label class="oj-filter"><span class="oj-sr-only">Filtrer les tâches Windows</span><select id="inventoryFilter"><option value="all">Toutes les tâches</option><option value="migrated">Migrées vers le serveur</option><option value="legacy">Anciennes / réserve</option><option value="review">À examiner</option><option value="provider">Logiciels</option><option value="system">Windows / Office</option></select></label>
+    </div>
+    <div class="oj-table-scroll"><table class="oj-table oj-inventory-table"><thead><tr><th>Tâche Windows</th><th>État</th><th>Fréquence</th><th>Dernier code</th><th>Évaluation</th></tr></thead><tbody id="operationsInventory"></tbody></table></div>
+    <p class="oj-footnote">Les tâches des logiciels et de Windows sont inventoriées. Leurs réglages restent gérés par leurs propriétaires.</p>
+  </section>
+
+  <dialog class="oj-dialog" id="operationsSettings" aria-labelledby="settingsTitle">
+    <form id="operationsSettingsForm">
+      <div class="oj-dialog-header"><div><p class="oj-eyebrow">FRÉQUENCE</p><h2 id="settingsTitle">Régler un traitement</h2></div><button type="button" class="oj-icon-button" id="settingsClose" aria-label="Fermer"><i class="fas fa-xmark" aria-hidden="true"></i></button></div>
+      <p id="settingsDependency" class="oj-dependency-note"></p>
+      <label class="oj-field">Rythme<select name="type"><option value="interval">À intervalle régulier</option><option value="daily">Chaque jour</option></select></label>
+      <label class="oj-field" id="settingsInterval">Intervalle<select name="minutes"><option value="5">5 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 heure</option><option value="120">2 heures</option><option value="240">4 heures</option><option value="720">12 heures</option><option value="1440">24 heures</option></select></label>
+      <label class="oj-field" id="settingsDaily" hidden>Heure locale<input name="at" type="time" value="03:45"></label>
+      <label class="oj-field">Fuseau horaire<input name="timezone" required autocomplete="off" placeholder="America/Toronto"></label>
+      <p class="oj-footnote">Le nouvel horaire s’applique aux prochains départs. Les données et les exécutions déjà acceptées sont conservées.</p>
+      <p id="settingsError" class="oj-form-error" role="alert"></p>
+      <div class="oj-dialog-actions"><button type="button" id="settingsCancel" class="oj-button oj-button-quiet">Annuler</button><button type="submit" class="oj-button oj-button-primary">Enregistrer</button></div>
+    </form>
+  </dialog>
+</main>

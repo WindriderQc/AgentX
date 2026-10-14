@@ -18,7 +18,8 @@ async function browser({ savedLanguage, turnResponse, handsFree = false } = {}) 
       querySelectorAll() { return []; }, addEventListener(type, callback) { this.listeners[type] = callback; }, close() {} });
     return nodes.get(id);
   };
-  const heard = [], played = [];
+  const heard = [], played = []; let workshop;
+
   let utterance, onset;
   const audio = { canInterrupt: true, quiet() {}, close() {}, listen(callback, speech) { utterance = callback; onset = speech; }, async play(response) { played.push(response); } };
   const fetch = async (url, options = {}) => {
@@ -35,7 +36,7 @@ async function browser({ savedLanguage, turnResponse, handsFree = false } = {}) 
   const context = {
     document: { getElementById: element, querySelector: element,
       addEventListener(type, callback) { listeners[type] = callback; } },
-    window: { PersonaPresentation: P, NestorSpeech: speech, AgentXSpeechLadder: ladder, HouseholdNavigation: { mount() {} },
+    window: { AgentXVoiceWorkshop: { open(options) { workshop = options; } }, AgentXVoiceSettings: { read: () => ({ language: stored.get('household.reading.language.v1') === 'en' ? 'en' : 'fr' }) }, PersonaPresentation: P, NestorSpeech: speech, AgentXSpeechLadder: ladder, HouseholdNavigation: { mount() {} },
       VoixAudio: { Speech: class { cancel() {} async speak(request, { segments = [null] } = {}) { for (const segment of segments) await request(new AbortController().signal, segment); } } } },
     navigator: { language: 'en-CA' }, location: { pathname: '/lecture' },
     localStorage: { getItem: key => stored.get(key), setItem: (key, value) => stored.set(key, value) },
@@ -53,7 +54,7 @@ async function browser({ savedLanguage, turnResponse, handsFree = false } = {}) 
     pauseVoice: () => element('readerMic').listeners.click(),
     say: text => { heard.push(text); onset?.(); return utterance(new Blob(['synthetic'])); },
     ask: async () => { element('readerInput').value = 'Please read this word'; await element('readerForm').listeners.submit({ preventDefault() {} }); },
-    choose: language => { element('readingLanguage').value = language; element('readingVoiceSave').onclick(); } };
+    choose: language => { element('readingVoiceSettings').onclick({ preventDefault() {} }); stored.set('household.reading.language.v1',language); workshop.onSaved(); } };
 }
 
 for (const [savedLanguage, expected] of [[undefined, 'fr'], ['auto', 'fr'], ['en', 'en']]) {

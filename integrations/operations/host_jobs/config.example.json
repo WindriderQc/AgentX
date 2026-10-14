@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "revision": 1,
+  "label": "Operations server",
+  "hosts": {
+    "workstation": {
+      "label": "Workstation",
+      "sshTarget": "operator@workstation",
+      "python": "C:\\Python\\python.exe",
+      "root": "C:\\AgentX\\operations"
+    }
+  },
+  "jobs": [
+    {
+      "id": "usage-counters",
+      "name": "Usage counters",
+      "description": "Collect local counters and send them to Core.",
+      "kind": "codex-usage",
+      "hostId": "workstation",
+      "enabled": false,
+      "schedule": {"type": "interval", "minutes": 15, "timezone": "UTC"},
+      "timeoutSeconds": 240,
+      "legacyTask": "Existing usage task"
+    }
+  ],
+  "legacy": []
+}

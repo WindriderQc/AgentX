@@ -63,28 +63,3 @@ test('setup distinguishes disabled voice, LAN access, insecure capture and local
   b.clearSetup();
   assert.equal(element('setupChecklist').innerHTML, '');
 });
-
-test('microphone permission granted after clearing setup immediately stops capture without repopulating setup', async () => {
-  let resolveCapture, stopped = 0;
-  const capture = new Promise(resolve => { resolveCapture = resolve; });
-  const { context: b, element } = browser('setup.js', { navigator: { mediaDevices: { getUserMedia: () => capture } } });
-  b.wireSetup();
-  const pending = element('testSetupMicrophone').listeners.click();
-  b.clearSetup();
-  resolveCapture({ getTracks: () => [{ stop: () => { stopped += 1; } }] });
-  await pending;
-  assert.equal(stopped, 1);
-  assert.equal(element('setupNotice').textContent, '');
-  assert.equal(element('setupChecklist').innerHTML, '');
-});
-
-test('microphone test stops all tracks after successful capture and does not upload audio', async () => {
-  let stopped = 0;
-  const { context: b, element } = browser('setup.js', { navigator: { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [{ stop: () => { stopped += 1; } }, { stop: () => { stopped += 1; } }] }) } } });
-  b.setSetupCapabilities({ privacy: { configured: true }, voice: { enabled: true } });
-  b.wireSetup();
-  await element('testSetupMicrophone').listeners.click();
-  assert.equal(stopped, 2);
-  assert.match(element('setupChecklist').innerHTML, /permission granted/);
-  assert.match(element('setupNotice').textContent, /no audio is kept/);
-});

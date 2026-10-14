@@ -11,7 +11,7 @@
     ? require('../../../public/js/voice/speech-language') : root.NestorSpeech;
 
   function create({ turn, transcribe, synthesize, wakeWord = true, language = () => 'fr', muted = () => false,
-    changed = () => {}, openAudio = (signal, failed, options) => shared.openAudio(signal, failed, { ...options, observeSpeech: true }) }) {
+    changed = () => {}, openAudio = (signal, failed, options) => shared.openAudio(signal, failed, { ...options, captureScope: 'reading', observeSpeech: true }) }) {
     let pending = null;
     const conversation = new shared.Conversation({
       holdingDelayMs: null,

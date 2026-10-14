@@ -28,6 +28,7 @@ function productSpaces(link) {
         item('playground', 'Chat', '/playground', 'fa-comments'),
         item('images', 'Images', '/images', 'fa-image'),
         item('models', 'Models', '/models', 'fa-cubes'),
+        item('voice-lab', 'Voice workshop', '/voice-lab', 'fa-microphone-lines'),
         { section: 'Knowledge' },
         item('rag-upload', 'Add knowledge', '/upload', 'fa-upload', 'rag'),
         item('rag-search', 'Ask your knowledge', '/search', 'fa-magnifying-glass', 'rag'),
@@ -52,6 +53,7 @@ function productSpaces(link) {
       item('nerve-center', 'Nerve Center', '/nerve-center', 'fa-brain'),
       item('agent-ops', 'Agent Ops', '/agent-ops', 'fa-users-gear'),
       item('cluster-schedule', 'Schedule', '/cluster-schedule', 'fa-calendar-alt'),
+      item('operations-jobs', 'Automations', '/operations-jobs', 'fa-gears'),
       item('analytics', 'AI activity', '/analytics', 'fa-chart-line'),
       item('performance', 'Server performance', '/performance', 'fa-tachometer-alt'),
       item('backup', 'Backup', '/backup', 'fa-box-archive'),
@@ -63,9 +65,7 @@ function productSpaces(link) {
       { section: 'Evaluation' },
       item('benchmark', 'Compare models', '/', 'fa-trophy', 'benchmark'),
       item('leaderboard', 'Leaderboard', '/leaderboard', 'fa-medal', 'benchmark'),
-      { section: 'Devices & voice' },
-      item('device-check', 'Check a device', '/device-check', 'fa-mobile-screen'),
-      item('voice-personas-debug', 'Voice personas', '/voice-personas/debug', 'fa-user-gear'),
+
       { label: 'Keyboard Shortcuts', icon: 'fa-keyboard', id: 'keyboard-shortcuts', action: 'show-shortcuts' }
     ] }
   ];

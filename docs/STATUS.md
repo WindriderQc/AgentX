@@ -9,6 +9,13 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 ## On main
 
+- **Operational jobs.** Core exposes native server-owned host jobs at
+  `/operations-jobs`: cadence, pause/resume, explicit execution, durable receipts
+  and Windows inventory. Named collectors and verified transfers retain local
+  data, source dependencies and unknown-outcome fences. The capability defaults
+  unconfigured; native installation and cutover are per-instance acceptance. See
+  [operational jobs](OPERATIONS_JOBS.md).
+
 - **Household daily use.** The parent view filters tasks by child, review, date
   and text, shows recorded deadlines for the next seven days, and edits open
   routines against their stored revision. Date-only deadlines use the household
@@ -125,7 +132,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   synthesis without starting a backup request. VoiX bounds recognition before
   upload parsing and executor submission, with separate admission for CPU Stop;
   abandoned native work keeps its place until it actually ends. See
-  [agents and voice](AGENTS_AND_VOICE.md).
+  [agents and voice](AGENTS_AND_VOICE.md). Workshop → Voice workshop centralizes
+  explicit STT/TTS tests, bounded replay, advanced listening preferences and device
+  acceptance. Conversation pages keep daily controls and open the same diagnostic
+  component on their current loop. Test results and physical acceptance remain
+  distinct.
 - **Personalities.** Household versions personalities separately from modes and
   binds them to agents on the server. An adult-authorized session can switch its
   personality between turns while keeping its agent and permissions. Turns

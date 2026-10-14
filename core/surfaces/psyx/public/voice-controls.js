@@ -10,26 +10,8 @@ function saveVoicePreferences() {
 }
 
 function syncVoicePreferenceControls() {
-  const prefs = state.voice.prefs;
-  $('voiceSpokenReplies').checked = prefs.spokenReplies;
-  $('voiceAutoSend').checked = prefs.autoSend;
-  $('voiceLanguage').value = prefs.language;
-  $('voiceTtsProvider').value = prefs.ttsProvider;
-  const choices = window.VoixAudio?.choices(state.voice.catalog, prefs.language, prefs.ttsProvider) || [];
-  const select = $('voiceTtsVoice'); select.replaceChildren(new Option('Default voice for the language', ''));
-  for (const voice of choices) {
-    const option = new Option(`${voice.name} · ${voice.locale}${voice.available ? '' : ' · unavailable'}`, voice.id);
-    option.disabled = !voice.available; option.title = voice.reason || ''; select.add(option);
-  }
-  if (prefs.ttsVoice && !choices.some(v => v.id === prefs.ttsVoice)) select.add(new Option(`Saved / custom: ${prefs.ttsVoice}`, prefs.ttsVoice));
-  select.value = prefs.ttsVoice; select.disabled = !state.voice.reachable;
-  $('voiceTtsCustom').value = prefs.ttsVoice; $('voiceTtsCustom').disabled = !state.voice.reachable;
-  for (const option of $('voiceTtsProvider').options) {
-    const provider = state.voice.catalog?.providers?.find(p => p.id === option.value);
-    option.disabled = provider ? !provider.available : false;
-    option.title = provider?.reason || '';
-  }
-  $('voicePreferenceSummary').textContent = `This browser speaks with ${voicePreferences.describePreferences(prefs, state.voice.status)}. Applied to each request; the shared VoiX settings do not change.`;
+  $('voiceSpokenReplies').checked = state.voice.prefs.spokenReplies;
+  $('voiceLanguage').value = state.voice.prefs.language;
 }
 
 function updateVoicePreference(field, value) {
@@ -61,24 +43,9 @@ function updateVoiceButton() {
 }
 
 function renderVoiceStatus(status = null, error = null) {
-  const secure = voiceSecureContextAvailable();
-  $('voiceSecureNotice').textContent = secure ? '' : 'The microphone is blocked at this address. Open PsyX through its trusted HTTPS address.';
-  $('voiceStatusDot').classList.toggle('online', Boolean(status?.reachable));
-  $('voiceStatusDot').classList.toggle('offline', !status?.reachable);
-  $('voiceStatusText').textContent = !state.voice.enabled
-    ? 'Voice is not enabled on this installation'
-    : status?.reachable ? (status.serviceState === 'degraded' ? 'Local voice is degraded'
-      : status.activeUpstream === 'fallback' ? 'Fallback local voice active' : 'Local VoiX is ready') : 'Local VoiX is unavailable';
-  $('voiceStatusDetail').textContent = status?.reachable
-    ? (status.recognitionAvailable === false ? 'Recognition is temporarily unavailable on this voice service. A recording may use the configured backup or return a retryable error. '
-      : status.serviceState === 'degraded' ? 'The voice service reports reduced availability. '
-      : '') + `Recognition ${status.config?.whisperModel || 'Whisper'} · default synthesis ${status.config?.ttsProvider || 'local'} · VoiX ${status.serviceVersion || ''}`
-    : (error?.message || 'Audio stays off while the private voice service is unreachable.');
-  for (const id of ['voiceLanguage', 'voiceTtsProvider', 'voiceInputDevice', 'voiceFindDevices', 'voiceTest']) {
-    $(id).disabled = !status?.reachable;
-  }
-  syncVoicePreferenceControls();
-  updateVoiceButton();
+  $('voiceStatusText').textContent = !state.voice.enabled ? 'Voice is not enabled on this installation'
+    : status?.reachable ? 'Local voice ready' : error?.message || 'Local voice unavailable';
+  syncVoicePreferenceControls(); updateVoiceButton();
 }
 
 async function loadVoiceStatus() {
@@ -103,19 +70,6 @@ async function loadVoiceStatus() {
   }
 }
 
-async function refreshMicrophones({ requestPermission = false } = {}) {
-  if (!voiceSecureContextAvailable()) throw new Error('Use the trusted PsyX HTTPS address to allow the microphone.');
-  if (requestPermission) {
-    const permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    permissionStream.getTracks().forEach((track) => track.stop());
-  }
-  const devices = (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === 'audioinput');
-  const selected = state.voice.prefs.inputDeviceId;
-  $('voiceInputDevice').innerHTML = '<option value="">System default microphone</option>' + devices.map((device, index) =>
-    `<option value="${escapeHtml(device.deviceId)}">${escapeHtml(device.label || `Microphone ${index + 1}`)}</option>`
-  ).join('');
-  $('voiceInputDevice').value = devices.some((device) => device.deviceId === selected) ? selected : '';
-}
 
 async function transcribeRecording(blob) {
   const captureSequence = state.voice.captureSequence;
@@ -231,45 +185,26 @@ async function speakText(text, { readAloud = true, preserveSafety = false } = {}
   } catch (error) { if (error.name !== 'AbortError') showVoiceError(error); }
 }
 
+function syncSavedVoicePreferences() {
+  try { state.voice.prefs = voicePreferences.readPreferences(localStorage); } catch {}
+  psyxVoiceSession?.setLanguage(state.voice.prefs.language); syncVoicePreferenceControls();
+}
 function wireVoiceControls() {
+  window.addEventListener('storage', event => { if (event.key === voicePreferences.STORAGE_KEY) syncSavedVoicePreferences(); });
+  window.addEventListener('pageshow', event => { if (event.persisted) syncSavedVoicePreferences(); });
   $('voiceSettings').addEventListener('click', async () => {
-    syncVoicePreferenceControls();
-    $('voiceActionStatus').textContent = '';
-    voiceDialog.showModal();
-    await loadVoiceStatus();
-    await refreshMicrophones().catch(() => {});
-  });
-  $('voiceRefresh').addEventListener('click', loadVoiceStatus);
-  $('voiceFindDevices').addEventListener('click', async () => {
-    $('voiceActionStatus').textContent = 'Requesting microphone access…';
-    try {
-      await refreshMicrophones({ requestPermission: true });
-      $('voiceActionStatus').textContent = 'Microphones refreshed.';
-    } catch (error) { showVoiceError(error); }
+    psyxVoiceSession ||= createPsyXVoiceSession();
+    await window.AgentXVoiceWorkshop.open({ scope: 'psyx', conversation: psyxVoiceSession,
+      selection: () => ({ language: state.voice.prefs.language, wakeWord: false, interruption: false }),
+      onSaved: () => { stopVoiceSession(); syncSavedVoicePreferences(); } });
   });
   $('voiceSpokenReplies').addEventListener('change', () => {
-    state.voice.prefs.spokenReplies = $('voiceSpokenReplies').checked;
-    saveVoicePreferences();
-  });
-  $('voiceAutoSend').addEventListener('change', () => {
-    state.voice.prefs.autoSend = $('voiceAutoSend').checked;
-    saveVoicePreferences();
-  });
-  $('voiceInputDevice').addEventListener('change', () => {
-    state.voice.prefs.inputDeviceId = $('voiceInputDevice').value;
-    saveVoicePreferences();
+    state.voice.prefs.spokenReplies = $('voiceSpokenReplies').checked; saveVoicePreferences();
   });
   $('voiceLanguage').addEventListener('change', () => updateVoicePreference('language', $('voiceLanguage').value));
-  $('voiceTtsProvider').addEventListener('change', () => updateVoicePreference('ttsProvider', $('voiceTtsProvider').value));
-  $('voiceTtsVoice').addEventListener('change', () => updateVoicePreference('ttsVoice', $('voiceTtsVoice').value.trim()));
-  $('voiceTest').addEventListener('click', () => speakText(voicePreferences.testSentence(state.voice.prefs)));
-  $('voiceStop').addEventListener('click', () => { cancelVoiceCapture(); stopVoiceSession(); state.voice.speech?.cancel(); $('voiceActionStatus').textContent = 'Voice stopped.'; });
-  $('voiceTtsCustom').addEventListener('change', () => updateVoicePreference('ttsVoice', $('voiceTtsCustom').value.trim()));
-  voiceDialog.addEventListener('close', cancelVoiceCapture);
   document.addEventListener('visibilitychange', () => { if (document.hidden) cancelVoiceCapture(); });
   window.addEventListener('pagehide', cancelVoiceCapture);
-  wireVoiceSession();
-  voiceRecord.addEventListener('click', toggleVoiceRecording);
+  wireVoiceSession(); voiceRecord.addEventListener('click', toggleVoiceRecording);
 }
 
 // Capture cancellation is a microphone lifecycle guard, independent of human access.

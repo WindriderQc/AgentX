@@ -4,6 +4,10 @@ Operations capabilities for an AgentX instance. Use the existing systemd timers 
 not install a scheduler or start background work. Keep instance settings, receipts,
 credentials and backup generations outside the checkout.
 
+The optional [native operations supervisor](../../docs/OPERATIONS_JOBS.md)
+centralizes these schedules on a server and exposes safe controls through Core.
+It installs no jobs until an operator configures its native runtime.
+
 | Helper | External settings | Behavior |
 |---|---|---|
 | `codex-usage-sync.js` / `sync-codex-usage-to-prod.ps1` | Endpoint, sessions root | Sends sanitized counters only; `--dry-run` sends nothing |
@@ -15,6 +19,8 @@ credentials and backup generations outside the checkout.
 | `backup-critical-runtime-state.sh` | `BACKUP_ROOT`, `CRITICAL_BACKUP_VOLUMES`, optional `CRITICAL_BACKUP_MYSQL_CONTAINER` | Archives selected Docker volumes and optional transactional SQL, with SHA-256 evidence |
 | `restore-drill-critical-runtime-state.sh` | Exact archive path | Restores into disposable volumes/MySQL and removes only those disposable resources |
 | `offhost-backup-replication.ps1` | Required `SourceHost`, `SourceRoot`, private `DestinationRoot` | Copies Mongo, configuration, Qdrant and native-state archives; verifies hashes; retention is opt-in |
+| `host_jobs_control.py` / `host_job_worker.py` | External native configuration and state roots | Server recurrence, bounded workstation adapters, replay-safe receipts and inventory |
+| `bundle_delivery.py` | Published source, private staging and local destination | Verified non-destructive delivery into a local workspace |
 | `archive_mirror.py` | Required `--source-host`, `--source-root`, private `--destination`; optional `--latest-zfs-snapshot`, `--remote-receipt` | Append-only pull of a private archive directory (for example the Secretary evidence archive); copies new and changed files, verifies each by SHA-256, keeps replaced versions, never deletes |
 
 Core defaults to loopback port 3180; Data defaults to 3183. Linux helpers on the

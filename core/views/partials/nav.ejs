@@ -37,7 +37,7 @@
       <details class="nav-tools" id="householdTools">
         <summary aria-label="Access and settings"><i class="fas fa-ellipsis" aria-hidden="true"></i></summary>
         <div class="nav-tools-panel">
-          <% if (locals.householdControls) { %><button type="button" id="readingVoiceSettings">Reading voices</button><span class="runtime-pill" id="runtimePill" role="status">Connecting…</span><% } %>
+          <% if (locals.householdControls) { %><a id="readingVoiceSettings" href="/voice-lab?scope=reading">Voice workshop</a><span class="runtime-pill" id="runtimePill" role="status">Connecting…</span><% } %>
         </div>
       </details>
     <% } %>

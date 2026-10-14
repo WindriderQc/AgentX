@@ -98,7 +98,7 @@ function createPsyXVoiceSession() {
     holdingDelayMs: null,
     speechText: spokenVoiceText,
     openAudio: (signal, failed, options) => window.AgentXVoice.openAudio(signal, failed,
-      { ...options, inputDeviceId: state.voice.prefs.inputDeviceId }),
+      { ...options, captureScope: 'psyx', inputDeviceId: state.voice.prefs.inputDeviceId }),
     // The browser loop keeps only an ephemeral handle; Core creates a canonical
     // PsyX conversation on the first completed turn, just as for typed messages.
     createSession: async () => ({ surface: 'psyx' }),
@@ -117,7 +117,7 @@ function createPsyXVoiceSession() {
       const payload = await response.json();
       const transcript = payload.data || payload;
       const metadata = {};
-      for (const key of ['model', 'effectiveModel', 'requestedModel', 'detectedLanguage', 'sttMs']) {
+      for (const key of ['model', 'effectiveModel', 'requestedModel', 'detectedLanguage', 'sttMs', 'recognitionId', 'recognition']) {
         if (transcript[key] !== undefined) metadata[key] = transcript[key];
       }
       return { text: transcript.text || '', language: transcript.language || language,

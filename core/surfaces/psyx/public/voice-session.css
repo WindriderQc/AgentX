@@ -8,3 +8,8 @@
 .voice-session-actions { display:flex; flex-wrap:wrap; justify-content:center; gap:1rem; margin-top:2rem; }
 #voiceSessionSafety { text-align:left; }
 #voiceSessionSafety .safety-banner { display:block; }
+
+.voice-daily-language { display:grid; gap:4px; font-size:.8rem; }
+.voice-daily-language select { max-width:200px; padding:7px; color:inherit; background:var(--surface); border:1px solid var(--border); border-radius:8px; }
+.voice-daily-controls { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:0 12px; font-size:.8rem; }
+.voice-daily-controls p { margin:4px 0; }

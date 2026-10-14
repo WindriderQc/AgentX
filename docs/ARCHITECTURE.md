@@ -35,6 +35,12 @@ runbooks and assets ([ADR 0001](adr/0001-one-repository.md)).
 
 ## Ownership
 
+Native operational jobs use one server supervisor for recurrence and effect
+receipts. Core provides bounded status and controls through its existing SSH
+bridge; Cluster Schedule mirrors the native authority. Local collectors and
+verified off-host transfers execute beside their data. A lost launch/result
+retains its identity and blocks replacement. See [operational jobs](OPERATIONS_JOBS.md).
+
 Core's heavy-work queue owns one-off operator/coding requests and their planned
 host/device windows separately from task commitments. Cluster Schedule projects
 them beside recurring work. Named operator executors preserve native Benchmark,
@@ -416,6 +422,15 @@ stream forwarding. Both surfaces use these capabilities. Engine error events
 are rejected before audio headers are committed, and a disconnected caller
 cancels its upstream request without starting a backup request.
 
+The Voice workshop (`/voice-lab`) composes that same loop for explicit STT-only
+tests, without a business turn adapter, and the same speech ladder for previews.
+Its attached diagnostic view observes the existing surface conversation and
+replays its bounded RAM excerpt without opening another microphone. Browser
+capture settings keep per-surface storage; presentation, PsyX and personality
+voices retain their existing owners. A read-only settings projection exposes no
+prompts, lexicon, model paths or shared-config write route. Device acceptance
+moves under the workshop while keeping its historical receipt contract.
+
 The shared loop speaks a reply clause by clause while it is generated and
 prepares at most one clause ahead of the sound. Timed holding phrases are off
 by default: ordinary latency does not announce work or a handoff to Main.
@@ -664,7 +679,7 @@ pages and APIs retain the parental gateway guard.
   cannot start during resolution or snapshot replacement. The write updates
   only the personality snapshot; later turns apply and record that snapshot.
   `HOUSEHOLD_PERSONA_VOICES` applies when the snapshot is selected and is resolved
-  again for each server reply; a voice saved through Team takes precedence over
+  again for each server reply; a personality voice saved in the workshop takes precedence over
   that map. Changing or removing an instance override affects
   later speech; the frozen catalog voice supplies the default, and explicit
   session voice choices take precedence.
