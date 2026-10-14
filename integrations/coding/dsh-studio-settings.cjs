@@ -54,7 +54,9 @@ async function main() {
   const settings = yaml.load(fs.readFileSync(source, 'utf8')) || {};
   const memory = process.env.DSH_STUDIO_MEMORY_ENABLED || 'false';
   if (!['true', 'false'].includes(memory)) throw new Error('DSH_STUDIO_MEMORY_ENABLED must be true or false');
-  if (memory === 'true') require.resolve('@deepseek-ai/dsh-tool-session-query', { paths: [dshRoot] });
+  if (memory === 'true') require.resolve('@deepseek-ai/dsh-tool-session-query', {
+    paths: [path.join(path.dirname(destination), 'profiles/web')],
+  });
   const patch = studioPatch(settings, coreUrl, reply.data.contextSize, process.env.DSH_STUDIO_BROWSER_EXECUTABLE, memory === 'true');
   fs.writeFileSync(destination, JSON.stringify(patch, null, 2) + '\n', { mode: 0o600 });
 }

@@ -83,8 +83,10 @@ No extra memory service, scheduler or agent-team layer is needed.
 ## Optional prior-session recall and shared memory
 
 Set `DSH_STUDIO_MEMORY_ENABLED=true` in the existing Studio service environment
-and install `@deepseek-ai/dsh-tool-session-query@0.2.0-rc.2` alongside the pinned
-DSH runtime. The default is `false`; other launch overlays stay unchanged.
+and install `@deepseek-ai/dsh-tool-session-query@0.2.0-rc.2` in its private
+`$DSH_HOME/profiles/web` profile, retaining its existing dependencies and shared
+runtime peers as for browser tools above. The default is `false`; other launch
+overlays stay unchanged.
 The managed overlay enables upstream's SQLite full-text search on first use
 with an in-memory derived index. Original session logs remain authoritative and
 are reindexed after restart. Five native read-only tools search, trace and read
