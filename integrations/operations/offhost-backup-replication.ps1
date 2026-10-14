@@ -4,7 +4,8 @@ param(
     [string]$DestinationRoot = "$env:USERPROFILE\.agentx\off-host-backups\agentx",
     [ValidateRange(1, 3650)]
     [int]$RetentionDays = 30,
-    [switch]$ApplyRetention
+    [switch]$ApplyRetention,
+    [string]$CompletedBefore
 )
 
 $ErrorActionPreference = 'Stop'
@@ -106,6 +107,14 @@ function Invoke-Remote([string]$Command) {
 }
 
 function Get-LatestRelativePath([string]$RemoteFind) {
+    # A central dispatch freezes the last acknowledged complete backup boundary.
+    # Exclude newer files from a subsequently failed or still-running cycle.
+    if ($CompletedBefore) {
+        $stamp = [DateTimeOffset]::Parse($CompletedBefore, [Globalization.CultureInfo]::InvariantCulture)
+        $epoch = $stamp.ToUnixTimeMilliseconds() / 1000.0
+        $cutoff = $epoch.ToString('F3', [Globalization.CultureInfo]::InvariantCulture)
+        $RemoteFind = $RemoteFind.Replace(' | sort -nr', " | awk '" + '$1 <= ' + $cutoff + "' | sort -nr")
+    }
     $line = (Invoke-Remote $RemoteFind | Select-Object -First 1)
     if (-not $line) { throw 'No matching source backup was found' }
     $parts = $line -split '\s+', 2

@@ -9,6 +9,13 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 ## On main
 
+- **Operational jobs.** Core exposes native server-owned host jobs at
+  `/operations-jobs`: cadence, pause/resume, explicit execution, durable receipts
+  and Windows inventory. Named collectors and verified transfers retain local
+  data, source dependencies and unknown-outcome fences. The capability defaults
+  unconfigured; native installation and cutover are per-instance acceptance. See
+  [operational jobs](OPERATIONS_JOBS.md).
+
 - **Household daily use.** The parent view filters tasks by child, review, date
   and text, shows recorded deadlines for the next seven days, and edits open
   routines against their stored revision. Date-only deadlines use the household

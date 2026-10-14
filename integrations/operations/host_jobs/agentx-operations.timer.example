@@ -1,0 +1,11 @@
+[Unit]
+Description=AgentX operations recurrence and receipt reconciliation
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=5s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

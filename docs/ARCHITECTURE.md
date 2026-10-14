@@ -35,6 +35,12 @@ runbooks and assets ([ADR 0001](adr/0001-one-repository.md)).
 
 ## Ownership
 
+Native operational jobs use one server supervisor for recurrence and effect
+receipts. Core provides bounded status and controls through its existing SSH
+bridge; Cluster Schedule mirrors the native authority. Local collectors and
+verified off-host transfers execute beside their data. A lost launch/result
+retains its identity and blocks replacement. See [operational jobs](OPERATIONS_JOBS.md).
+
 Core's heavy-work queue owns one-off operator/coding requests and their planned
 host/device windows separately from task commitments. Cluster Schedule projects
 them beside recurring work. Named operator executors preserve native Benchmark,
