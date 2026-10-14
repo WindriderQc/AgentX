@@ -103,6 +103,7 @@
   }
 
   function openTo(targetId) {
+    if (targetId === 'chatLaneHeading') document.dispatchEvent(new CustomEvent('analytics:show-chat-lane'));
     cockpit.open = true;
     syncCockpitAccessibility();
     requestAnimationFrame(function () {

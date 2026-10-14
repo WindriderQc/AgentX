@@ -348,7 +348,7 @@ async function renderCodex(windowKey) {
  * with an opt-in to show them anyway. They come back automatically the moment
  * someone uses the chat UI.
  */
-const WINDOW_DAYS = { '24h': 1, '7d': 7, '30d': 30, '90d': 90 };
+let chatLaneForced = false;
 
 function setChatLaneVisible(visible) {
   document.querySelectorAll('.chat-lane').forEach((el) => {
@@ -356,12 +356,27 @@ function setChatLaneVisible(visible) {
   });
 }
 
-async function applyChatLaneCollapse(windowKey) {
+function showChatLane() {
+  chatLaneForced = true;
   const note = $('chatLaneEmptyNote');
   const heading = $('chatLaneHeading');
-  if (!note) return;
+  setChatLaneVisible(true);
+  if (heading) heading.style.display = '';
+  if (note) note.style.display = 'none';
+}
 
-  const days = WINDOW_DAYS[windowKey] || 7;
+// The chat-lane widgets follow the chat Period selector, so the probe reads
+// the same period they do rather than the inference window.
+function chatPeriodDays() {
+  return Number($('periodSelect')?.value) || 7;
+}
+
+async function applyChatLaneCollapse() {
+  const note = $('chatLaneEmptyNote');
+  const heading = $('chatLaneHeading');
+  if (!note || chatLaneForced) return;
+
+  const days = chatPeriodDays();
   const to = new Date();
   const from = new Date(to.getTime() - days * 86400000);
 
@@ -379,7 +394,7 @@ async function applyChatLaneCollapse(windowKey) {
   } catch (err) {
     console.error('Chat-lane probe failed:', err);
   }
-  if (!isCurrentWindow(windowKey)) return;
+  if (chatPeriodDays() !== days || chatLaneForced) return;
 
   // Unknown (probe failed) is not the same as zero — leave the widgets alone.
   if (conversations === null || conversations > 0) {
@@ -402,9 +417,7 @@ async function applyChatLaneCollapse(windowKey) {
   if (link) {
     link.addEventListener('click', (e) => {
       e.preventDefault();
-      setChatLaneVisible(true);
-      if (heading) heading.style.display = '';
-      note.style.display = 'none';
+      showChatLane();
     });
   }
 }
@@ -432,13 +445,17 @@ async function load() {
     setText('infScope', `Could not load inference analytics: ${err.message}`);
   }
   renderCodex(windowKey);
-  applyChatLaneCollapse(windowKey);
 }
 
 function init() {
   $('infRefreshBtn')?.addEventListener('click', load);
   $('infWindow')?.addEventListener('change', load);
+  $('periodSelect')?.addEventListener('change', applyChatLaneCollapse);
+  $('refreshBtn')?.addEventListener('click', applyChatLaneCollapse);
+  // The summary's "Conversation activity" shortcut must reveal a collapsed lane.
+  document.addEventListener('analytics:show-chat-lane', showChatLane);
   load();
+  applyChatLaneCollapse();
 }
 
 if (document.readyState === 'loading') {
