@@ -1,0 +1,12 @@
+.pipeline-worker-monitor { grid-column: 1 / -1; scroll-margin-top: 24px; }
+.pipeline-worker-monitor .pipeline-panel-header { align-items: flex-start; flex-wrap: wrap; }
+.pipeline-worker-evidence, .pipeline-worker-note, .pipeline-worker-actions { margin-left: 18px; margin-right: 18px; }
+.pipeline-worker-evidence dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 20px; margin: 16px 0; }
+.pipeline-worker-evidence dl > div { min-width: 0; padding: 10px 12px; border: 1px solid var(--border-color, #334155); border-radius: 8px; }
+.pipeline-worker-evidence dt { color: var(--text-muted, #94a3b8); font-size: .78rem; margin-bottom: 6px; }
+.pipeline-worker-evidence dd { margin: 0; font-size: .85rem; overflow-wrap: anywhere; line-height: 1.5; }
+.pipeline-worker-note { color: var(--text-muted, #94a3b8); font-size: .85rem; line-height: 1.5; }
+.pipeline-worker-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+.pipeline-worker-actions [hidden] { display: none; }
+@media (max-width: 900px) { .pipeline-worker-evidence dl { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .pipeline-worker-evidence dl { grid-template-columns: minmax(0, 1fr); } }

@@ -204,6 +204,7 @@
   </section>
 
   <div class="pipeline-follow-grid" id="pipelineFollow">
+    <%- include('../partials/pipeline-worker-monitor') %>
     <section class="pipeline-panel" id="pipelineAttention">
       <div class="pipeline-panel-header">
         <div>
@@ -345,7 +346,7 @@
         { title: 'Record a human decision', body: 'A task in review can be accepted or returned for correction from its dossier — but only by an identity different from the worker. Current Coding Team attempts show their receipt; legacy dossiers without one are labeled explicitly and must be reconciled from their existing evidence.' },
         { title: 'Merge explicitly', body: 'Only a sealed exact PR with its accepted task, head SHA, required CI jobs, and GitHub mergeability revalidated can show the protected merge button. A click confirms that exact identity; there is no auto-merge.' },
         { title: 'Unstick what is stuck', body: 'Re-queue releases a task back to the queue (clearing its worker and heartbeat), and notes land in the same audit trail agents read.' },
-        { title: 'Trust the heartbeat', body: 'In-progress work should heartbeat regularly. A silent hour marks it stale in Activity and raises it under Needs attention.' }
+        { title: 'Observe the worker', body: 'Follow and decide shows the bounded worker’s task and launch request, observation age, heartbeat, useful progress, budgets, tests and checkpoint from the existing launch control. The dossier records an attempt only when its request binding is proven. An old heartbeat does not prove termination. Stop targets this exact request; acknowledgement and native resource release remain separate evidence.' }
       ],
       note: { title: 'One bounded contract', body: 'This page reads and writes /api/pipeline/tasks and reads its aggregate /api/pipeline/performance projection — the same audited Mongo authority used by workers, human reviewers, and separately deployed boards. There is no privileged side channel.' },
       links: [

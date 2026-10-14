@@ -1,0 +1,17 @@
+<section class="pipeline-panel pipeline-worker-monitor" id="pipelineWorkerMonitor" aria-labelledby="pipelineWorkerMonitorTitle">
+  <div class="pipeline-panel-header">
+    <div>
+      <span class="pipeline-delivery-eyebrow"><i class="fas fa-eye" aria-hidden="true"></i> Follow and decide</span>
+      <h2 id="pipelineWorkerMonitorTitle">Coding worker</h2>
+      <p>Observe the existing bounded worker and its exact request. Board filters do not change this observation.</p>
+    </div>
+    <button id="pipelineWorkerMonitorRefresh" class="pipeline-btn compact" type="button"><i class="fas fa-rotate" aria-hidden="true"></i><span>Refresh worker observation</span></button>
+  </div>
+  <p id="pipelineWorkerMonitorState" class="pipeline-delivery-state" data-tone="loading" role="status" aria-live="polite">Reading the worker host&hellip;</p>
+  <div id="pipelineWorkerMonitorEvidence" class="pipeline-worker-evidence"><p class="pipeline-muted">Request identity and progress are not yet observed.</p></div>
+  <p id="pipelineWorkerMonitorNote" class="pipeline-worker-note">Heartbeat, useful progress, stop acknowledgement and native resource release are separate evidence.</p>
+  <div class="pipeline-worker-actions">
+    <a id="pipelineWorkerMonitorDossier" class="pipeline-btn compact" hidden>Open task dossier</a>
+    <button id="pipelineTeamLaunchStop" class="pipeline-btn compact" type="button" hidden disabled>Stop this exact worker</button>
+  </div>
+</section>

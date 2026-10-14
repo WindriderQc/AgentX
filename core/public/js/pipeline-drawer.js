@@ -155,6 +155,7 @@
       </section>
     `;
     if (draft) restoreDrawerDraft(body, draft);
+    window.PipelineWorkerMonitor?.render({ $: id => document.getElementById(id), controller: state.launchController, task });
     const unsentAnswer = draft?.fields.find(field => field.key === 'reply-resume:answer' && field.value.trim());
     if (unsentAnswer && !body.querySelector('form[data-drawer-action="reply-resume"]')) {
       const saved = document.createElement('section');

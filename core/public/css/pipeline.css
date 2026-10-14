@@ -2,3 +2,4 @@
    order so the cascade is unchanged; pages link only this file. */
 @import url("pipeline/1-pipeline-delivery-cockpit.css");
 @import url("pipeline/2-chips.css");
+@import url("pipeline-worker-monitor.css");
