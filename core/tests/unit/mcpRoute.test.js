@@ -65,6 +65,14 @@ describe('mcp route', () => {
     expect(res.body.result.structuredContent).toEqual(expect.objectContaining({ count: 1 }));
   });
 
+  test('memory entry binds discovery and execution to its server-selected profile', async () => {
+    const body = { jsonrpc: '2.0', id: 9, method: 'tools/call',
+      params: { name: 'memory_search', arguments: { query: 'synthetic preference' }, profile: 'default' } };
+    await request(makeApp()).post('/mcp/memory').send(body).expect(200);
+    expect(handleMcpMessage).toHaveBeenCalledWith(body, {}, { profile: 'memory' });
+    await request(makeApp()).get('/mcp/memory').expect(405);
+  });
+
   test('serves remote LAN callers without any token', async () => {
     const res = await request(makeApp({ ip: '198.51.100.20' }))
       .post('/mcp')

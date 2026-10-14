@@ -80,6 +80,32 @@ browser plugins are enabled only for the human-operated Studio. Reuse compatible
 project skills through DSH's existing `.agents/skills` or `.dsh/skills` discovery.
 No extra memory service, scheduler or agent-team layer is needed.
 
+## Optional prior-session recall and shared memory
+
+Set `DSH_STUDIO_MEMORY_ENABLED=true` in the existing Studio service environment
+and install `@deepseek-ai/dsh-tool-session-query@0.2.0-rc.2` in its private
+`$DSH_HOME/profiles/web` profile, retaining its existing dependencies and shared
+runtime peers as for browser tools above. The default is `false`; other launch
+overlays stay unchanged.
+The managed overlay enables upstream's SQLite full-text search on first use
+with an in-memory derived index. Original session logs remain authoritative and
+are reindexed after restart. Five native read-only tools search, trace and read
+history; cross-session access requires the exact same workspace path. Search
+returns at most ten hits and asks the model to narrow broader queries.
+
+The same opt-in connects DSH's native MCP client to Core's `/mcp/memory` entry.
+That view of the existing bus exposes and executes only `memory_search`,
+`memory_remember` and `rag_search`. It reuses owner notes, their correction ids
+and document retrieval. The default `/mcp` bus keeps its complete product view.
+This profile narrows the tool surface; it is not a new authentication boundary.
+An unavailable memory entry fails plugin activation rather than silently
+creating a second note store. Project decisions and logs belong in project
+files and session history; durable personal facts belong in the shared notes.
+
+These are human Studio capabilities. Automatic Coding Team workers retain their
+existing network boundary and task-local evidence. Disabling the Studio setting
+and restarting removes the optional tools without deleting notes or histories.
+
 ## Qualification
 
 Source/unit tests do not prove installation. Before live qualification, enroll

@@ -645,6 +645,12 @@ source of new notes. They never read or write family notes. Infrastructure
 knowledge belongs in the docs or a vault note, not in owner memory; RAG
 documents are searched with `rag_search`.
 
+`/mcp/memory` is a narrower view of that same bus for memory consumers. It lists
+and executes only `memory_search`, `memory_remember` and `rag_search`; guessed
+calls to the other product tools refuse. It preserves the same private-LAN
+access and owner scope, not a separate authentication mechanism. DSH Studio can
+opt in through [its existing launch overlay](DSH_RESUMPTION.md#optional-prior-session-recall-and-shared-memory).
+
 Nestor answers questions about the house's storage, files and GPUs from the
 optional Data service, through Core. Three read-only tools join
 `network_devices`, each with a French `summary` sentence the agent relays:
