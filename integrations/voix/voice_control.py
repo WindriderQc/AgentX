@@ -12,9 +12,14 @@ from concurrent.futures import ThreadPoolExecutor
 _CONTROL_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="voix-controls")
 
 COMMANDS = ("stop", "stop talking", "silence", "arrête", "arrête de parler", "arrête toi", "tais toi")
+# A closed command vocabulary can confidently force a normal short reply into
+# Stop: French "sept" is one observed example. Let these routine alternatives
+# compete acoustically. They are never controls or returned transcripts; the
+# ordinary decoder still owns every non-command utterance.
+SHORT_REPLIES = ("sept", "oui", "non", "merci", "bonjour")
 GRAMMAR = json.dumps([
     phrase for command in COMMANDS for phrase in (command, "nestor " + command, command + " nestor")
-] + ["stop stop", "stop stop stop", "[unk]"], ensure_ascii=False)
+] + ["stop stop", "stop stop stop", *SHORT_REPLIES, "[unk]"], ensure_ascii=False)
 
 
 def is_stop_result(results):
