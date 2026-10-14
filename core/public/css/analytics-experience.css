@@ -184,6 +184,14 @@
   .analytics-experience-actions { grid-template-columns: 1fr; }
 }
 
+/* Two panels side by side that stack once a column would drop below 260px. */
+.analytics-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+}
+
+.analytics-split > * { min-width: 0; }
+
 @media (max-width: 600px) {
   .analytics-experience { padding: 22px 12px 34px; gap: 13px; }
   .analytics-experience-hero { padding: 24px 18px; border-radius: 17px; }
