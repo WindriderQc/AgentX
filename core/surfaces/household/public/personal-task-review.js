@@ -27,7 +27,9 @@
       const group = groups.find(group => group.key === selectedKey);
       if (!group) { detail.innerHTML = '<div class="finding-empty"><span aria-hidden="true">↗</span><h3>Choisissez un échange</h3><p>Retrouvez le contexte et choisissez ce qui mérite une action.</p></div>'; return; }
       const task = group.tasks.find(task => task.id === selectedId) || group.tasks[0]; selectedId = task.id;
-      const draft = drafts.get(task.id) || { title: view.displayTitle(task), dueAt: '' }, source = view.mailSource(task.sourceUrl);
+      // A finding can describe a resolved or historical exchange. Require the
+      // owner to name their action rather than confirming that wording by habit.
+      const draft = drafts.get(task.id) || { title: '', dueAt: '' }, source = view.mailSource(task.sourceUrl);
       const related = tasks.filter(other => source && view.mailSource(other.sourceUrl)?.key === source.key).length;
       const technical = task.category !== 'email';
       detail.innerHTML = `<div class="finding-detail-top"><button type="button" class="finding-back" data-review-back>← Les échanges</button><span class="finding-kind">${esc(reasons[task.category] || 'Relevé enregistré')}</span><small>#${esc(task.id)}</small></div>
