@@ -1,4 +1,5 @@
 'use strict';
+jest.mock('../../src/services/clusterScheduleService', () => ({syncEntries: jest.fn(async () => ({}))}));
 const {createOperationsService, projectSnapshot} = require('../../src/services/operationsJobsService');
 const id = '12345678-1234-4234-8234-123456789012';
 const snapshot = () => ({contract: 'agentx.operations/v1', revision: 1, available: true, observedAt: '2026-01-01T00:00:00Z',
@@ -23,6 +24,14 @@ test('status strips private paths/options and mirrors only the projected snapsho
   expect(runner.mock.calls[0][1]).toContain("python3 '/opt/agentx/control.py' --root '/private/state' status");
   await service.status();
   expect(runner).toHaveBeenCalledTimes(1);
+});
+test('the cluster timeline retains the native recurrence anchor after a manual run', async () => {
+  const native = snapshot();
+  native.jobs[0].nextRunAt = '2026-01-01T00:16:27Z';
+  native.jobs[0].lastRun = {requestId: id, jobId: 'usage', state: 'completed', startedAt: '2026-01-01T00:05:00Z'};
+  await createOperationsService({env, runner: runnerFor(native)}).status();
+  const entries = require('../../src/services/clusterScheduleService').syncEntries.mock.calls.at(-1)[0];
+  expect(entries[0].metadata.nextRunAtMs).toBe(Date.parse(native.jobs[0].nextRunAt));
 });
 test('a run retains its exact identity and revision through the named native entrance', async () => {
   const runner = runnerFor({requestId: id, jobId: 'usage', state: 'accepted'});

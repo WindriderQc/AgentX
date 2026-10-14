@@ -91,7 +91,8 @@ async function mirrorSnapshot(snapshot) {
     enabled: job.enabled, lastRun: job.lastRun?.startedAt || null,
     estimatedDurationMs: job.lastRun?.durationMs || null, vramMb: 0,
     metadata: {scheduler: 'agentx-operations', sourceAuthority: 'native-operations-supervisor', controlUrl: '/operations-jobs',
-      executionHost: job.hostLabel, state: job.state, gateType: job.gateType, requiresGpu: false} }));
+      executionHost: job.hostLabel, state: job.state, gateType: job.gateType, requiresGpu: false,
+      nextRunAtMs: job.nextRunAt ? Date.parse(job.nextRunAt) : null} }));
   await cluster.syncEntries(entries);
 }
 function createOperationsService(options = {}) {
