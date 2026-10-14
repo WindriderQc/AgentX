@@ -333,6 +333,18 @@ apply to instrumented OpenClaw/Hermes calls; they are not universal direct-lane
 traces. Household persists timing by the browser's turn id within its session;
 PsyX has no timing store/adapter and does not collect that timeline.
 
+When the recognizer reports it, Household also keeps `voiceTimings.recognition`
+on that same canonical turn: the native request ID, requested/decoded languages
+and their source, upload/VAD durations (including VAD padding), lock wait and
+processing durations, numerical decoder diagnostics, early/complete mode and
+submitted/full-capture byte counts. Log and receipts restores these after reload.
+Core accepts only bounded scalar fields; audio, prompts, additional transcript
+copies, model paths and arbitrary upstream data are excluded. The existing
+ephemeral audio replay keeps its own lifetime. These browser-reported diagnostics
+correlate a turn with speech-service lifecycle logs; they do not authenticate the
+recognizer or establish word accuracy. Missing evidence stays absent, including
+on older services and browser recognition fallback.
+
 For a performance comparison, keep model, routed task, context/options, voice,
 device and admission conditions comparable. Separate consecutive warm turns
 from cold starts, pauses and competing callers. Report sample counts, missing

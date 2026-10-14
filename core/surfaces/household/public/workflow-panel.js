@@ -469,6 +469,12 @@
         `Browser, from end of speech: STT ${duration(voice.sttDone)}, request ${duration(voice.requestSent)}, first text ${duration(voice.firstDelta)}, playback start requested ${duration(voice.firstAudio)}. This does not attest that sound was heard. Reported STT processing: ${duration(voice.sttServer)}.`),
         node('p', '', `Server, from start of request: context ready at ${duration(server.prepared)}, answer received at ${duration(server.executed)}.`),
         node('small', '', 'Different clock origins: these durations are not added together. A missing value stays unknown.'));
+      const recognition = voice.recognition;
+      if (recognition) {
+        timing.append(node('p', '', `Recognition request: ${recognition.recognitionId || 'not reported'} · ${recognition.mode || 'capture mode not reported'}. Requested language: ${recognition.requestedLanguage || 'not reported'}; decoded language: ${recognition.decodedLanguage || 'not reported'} (${recognition.languageSource || 'source not reported'}).`),
+          node('p', '', `Whisper lock wait: ${duration(recognition.queueMs)}; processing: ${duration(recognition.decodeMs)}. Uploaded audio: ${Number.isFinite(recognition.audioSeconds) ? recognition.audioSeconds.toFixed(2) + ' s' : 'not reported'}; after speech filter (including padding): ${Number.isFinite(recognition.speechSeconds) ? recognition.speechSeconds.toFixed(2) + ' s' : 'not reported'}. Submitted bytes: ${recognition.submittedBytes ?? 'not reported'}; complete capture bytes: ${recognition.captureBytes ?? 'not reported'}.`),
+          node('small', '', 'Browser-reported recognition diagnostics; they do not establish word accuracy. No audio is stored here.'));
+      }
       for (const value of intervals(current.events)) timing.append(node('p', '', value));
       body.append(timing);
       const heading = node('h3', '', 'Shared work timeline'); body.append(heading);

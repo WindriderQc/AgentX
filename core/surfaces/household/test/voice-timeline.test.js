@@ -192,6 +192,51 @@ test('Core keeps only known marks as bounded whole numbers', () => {
   }
 });
 
+test('Core retains bounded recognition evidence without retaining upstream text, audio or arbitrary data', () => {
+  const recognitionId = '19b98eab-7a12-4a31-8d40-8802ec82da11';
+  const value = normalizeVoiceTimings({ requestSent: 2, recognition: {
+    schema: 1, recognitionId, mode: 'early', submittedBytes: 64044, captureBytes: 96044,
+    requestedLanguage: 'fr', decodedLanguage: 'fr', languageSource: 'requested',
+    audioSeconds: 2, speechSeconds: 1.6, queueMs: 0, decodeMs: 120, segments: 1,
+    device: 'cuda', computeType: 'int8_float16', normalizationChanged: false,
+    text: 'not telemetry', rawText: 'not telemetry either', audio: 'not retained',
+    model: '/private/model', confidence: 1, prompt: 'not retained',
+    avgLogProbability: -0.6, maxNoSpeechProbability: 0.02, maxCompressionRatio: 1.1
+  } });
+  assert.deepEqual(value.recognition, {
+    schema: 1, recognitionId, mode: 'early', submittedBytes: 64044, captureBytes: 96044,
+    requestedLanguage: 'fr', decodedLanguage: 'fr', languageSource: 'requested',
+    audioSeconds: 2, speechSeconds: 1.6, queueMs: 0, decodeMs: 120, segments: 1,
+    device: 'cuda', computeType: 'int8_float16', normalizationChanged: false,
+    avgLogProbability: -0.6, maxNoSpeechProbability: 0.02, maxCompressionRatio: 1.1
+  });
+  const rejected = normalizeVoiceTimings({ requestSent: 2, recognition: {
+    schema: 1, recognitionId: '<script>', mode: 'guessed', submittedBytes: -1, captureBytes: Infinity,
+    requestedLanguage: 'private text', decodedLanguage: 'fr-CA', languageSource: 'guessed',
+    queueMs: '3', decodeMs: -1, segments: 0.5, avgLogProbability: 1,
+    maxNoSpeechProbability: 2, maxCompressionRatio: NaN, device: 'custom',
+    computeType: 'custom', normalizationChanged: 'true'
+  } });
+  assert.equal(rejected.recognition, undefined, 'a schema number alone is not evidence');
+  for (const recognition of [null, [], 'text', { schema: 2, text: 'unknown' }, { schema: 1 }]) {
+    assert.equal(normalizeVoiceTimings({ requestSent: 2, recognition }).recognition, undefined);
+  }
+});
+
+test('recognition evidence remains correlated while Core waits for the canonical turn', async () => {
+  const ended = deferred(), snapshots = [], timeline = new VoiceTimeline(() => 0);
+  const recognitionId = '19b98eab-7a12-4a31-8d40-8802ec82da11';
+  timeline.transcription({ text: 'Bonjour', recognitionId, recognition: { schema: 1, queueMs: 0, decodeMs: 200 } },
+    { mode: 'complete', submittedBytes: 2044, captureBytes: 2044 });
+  timeline.mark('requestSent');
+  const reporting = timeline.report(async values => { snapshots.push(values); return snapshots.length === 1 ? { pending: true } : {}; }, () => false, ended.promise);
+  await tick(); ended.resolve(); await reporting;
+  assert.equal(snapshots.length, 2);
+  assert.equal(snapshots[0].recognition.recognitionId, recognitionId);
+  assert.deepEqual(snapshots[1].recognition, snapshots[0].recognition);
+  assert.deepEqual(normalizeVoiceTimings(snapshots[1]), snapshots[1]);
+});
+
 // The voice-timings route over synthetic turns: one recorded, one still in flight.
 function controls() {
   const routes = {}, updates = [];
@@ -219,6 +264,19 @@ test('timings are stored on the recorded voice turn of that session and space, b
   assert.deepEqual(stored.data, { turnId: h.recorded, voiceTimings: { sttDone: 640, requestSent: 650, firstAudio: 5100, interrupted: false } });
   assert.deepEqual(h.updates[0], { filter: { sessionId: 'session-1', clientTurnId: h.recorded, packId: 'kidx_nestor', scopeId: 'family', channel: 'voice' },
     update: { $set: { voiceTimings: { sttDone: 640, requestSent: 650, firstAudio: 5100, interrupted: false } } } });
+});
+
+test('recognition identity follows the same session and turn filter as the voice timeline', async () => {
+  const h = controls(), recognitionId = '19b98eab-7a12-4a31-8d40-8802ec82da11';
+  const stored = await h.post({ turnId: h.recorded, timings: { sttDone: 2, recognition: {
+    schema: 1, recognitionId, mode: 'early', decodeMs: 400, text: 'never copied'
+  } } });
+  assert.equal(stored.status, 200);
+  assert.deepEqual(stored.data.voiceTimings.recognition, { schema: 1, recognitionId, decodeMs: 400, mode: 'early' });
+  assert.equal(h.updates[0].filter.clientTurnId, h.recorded);
+  assert.equal(h.updates[0].filter.sessionId, 'session-1');
+  assert.equal(h.updates[0].filter.scopeId, 'family');
+  assert.equal(h.updates[0].update.$set.voiceTimings.recognition.text, undefined);
 });
 
 test('a turn still in flight answers pending; an unknown turn and invalid timings are refused', async () => {

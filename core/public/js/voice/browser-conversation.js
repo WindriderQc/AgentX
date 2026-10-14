@@ -611,6 +611,8 @@
         const stopControl = result?.control === 'stop' || isStopControl(text);
         if (!this.current(epoch)) return;
         transcribed = true; captureOutcome = stopControl ? 'stop' : text.trim() ? 'recognized' : 'empty'; turn.timeline?.mark('sttDone'); turn.timeline?.measure('sttServer', result?.sttMs);
+        turn.timeline?.transcription(result, { mode: offered ? 'early' : 'complete',
+          submittedBytes: offered ? early.bytes : blob.size, captureBytes: blob.size });
         if (!overReply) this.io.transcriptionDone?.(turn.id, turn.timeline?.values());
         this.recognitionWarmAt = this.io.now ? this.io.now() : Date.now(); // it just ran
         this.audio.recordTranscription?.(excerptId, stopControl ? 'control' : text.trim() ? 'transcribed' : 'empty', text,
