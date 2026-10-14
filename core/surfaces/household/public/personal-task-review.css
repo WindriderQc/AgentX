@@ -1,0 +1,17 @@
+.dad-proposals .dad-proposal-dismissed {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin: .8rem 0;
+}
+.dad-proposals input[type="checkbox"] { width: auto; margin: 0; }
+.dad-proposals [data-review-category][aria-pressed="true"] {
+  background: var(--cyan);
+  color: var(--bg);
+  border-color: var(--cyan);
+}
+.dad-proposal-body { min-width: 0; flex: 1; }
+.dad-proposal-title, .dad-proposal-source { overflow-wrap: anywhere; }
+.dad-proposal-source { white-space: pre-wrap; }
+.dad-proposal-edit label { display: block; margin: .6rem 0; }
+.dad-proposal-edit textarea { width: 100%; resize: vertical; }

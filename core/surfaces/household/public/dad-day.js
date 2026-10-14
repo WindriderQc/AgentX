@@ -173,6 +173,7 @@ It excludes live tasks, schedules, secrets, exact locations, medical information
     clock(); const clockTimer = setInterval(clock, 30000);
     window.addEventListener('pagehide', () => clearInterval(clockTimer), { once: true });
     let latestDesk = null;
+    const proposals = window.HouseholdPersonalTaskReview.mount({ app, api, esc, onReviewed: () => refreshDad() });
 
     const dueLabel = (task) => task.overdue ? 'overdue' : task.dueToday ? 'today' : task.dueAt ? new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric' }).format(new Date(task.dueAt)) : 'undated';
     const originLabel = { chat: 'chat', email: 'email', manual: 'manual' };
@@ -265,6 +266,7 @@ It excludes live tasks, schedules, secrets, exact locations, medical information
         const healthIssue = data.operations.status !== 'clear' || ['attention', 'unavailable'].includes(data.memoryReview.status) || utilization.status !== 'clear';
         setPill('dadHealthPill', healthIssue ? 'to check' : 'ok', healthIssue ? 'waiting' : 'ok');
         byId('dadSpeak').disabled = false;
+        await proposals.refresh();
       } catch (error) { setRuntime(false, 'day unavailable'); toast(error.message); }
     }
 

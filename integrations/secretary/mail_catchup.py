@@ -72,6 +72,15 @@ Write in French. Return only the JSON object required by the schema.
 - summary: 60 to 120 French words about what THIS page adds; a partial fragment is fine.
 - actions: distinct actions (who must do what, by when). owner is the person who must act;
   due is the printed date or "unknown". Never invent clock times or dates.
+  Track the author and addressee of each message separately from quoted/forwarded authors.
+  A sender's request is not the owner's agreement; a statement, criticism, suggestion,
+  condition or another person's promise is not automatically an action for the owner.
+  Missing proof of a reply or resolution does not prove a task remains open.
+  Check later replies and previousFindings; do not recreate the same request from quotes.
+  If this fragment lacks the chronology or actor needed, keep the finding uncertain.
+  Use short, neutral action wording; keep claims attributed rather than presenting them as facts.
+  Your own reading, attachment checks, offsets and analysis are review work, not owner tasks.
+  CI/build/deployment/security notifications are platform matters, never personal errands.
 - memories: durable dated facts or decisions about the owner's life, attributed to their author.
 - deliverables: documents or items promised, sent or missing (missing referenced invoices included).
 - status of each finding: "current" only when the page itself shows it still needs attention now;

@@ -41,7 +41,10 @@ function defaultBriefingTimeZone() {
 
 function composePersonalBriefing(tasks = [], now = new Date(), options = {}) {
   const timeZone = options.timeZone || defaultBriefingTimeZone();
-  const open = tasks.filter((task) => task && !['done', 'cancelled'].includes(task.status) && task.lane !== 'done');
+  const findings = tasks.filter(task => task?.needsReview && !['done', 'cancelled'].includes(task.status));
+  const categories = Object.fromEntries(['email', 'platform', 'assistant'].map(category => [category, findings.filter(task => task.category === category).length]));
+  const open = tasks.filter((task) => task && !['done', 'cancelled'].includes(task.status)
+    && !['done', 'dismissed', 'review'].includes(task.lane) && !task.needsReview);
   const byDue = (left, right) => new Date(left.dueAt) - new Date(right.dueAt) || left.priority - right.priority;
   const overdue = open.filter((task) => task.overdue).sort(byDue);
   const dueToday = open.filter((task) => task.dueToday && !task.overdue).sort(byDue);
@@ -68,6 +71,7 @@ function composePersonalBriefing(tasks = [], now = new Date(), options = {}) {
   const hidden = urgent.length - shown.length;
   // Order is priority: when six lines overflow, the last ones drop first.
   const optional = [
+    findings.length ? `À classer : ${categories.email} demandes à clarifier · ${categories.platform} suivis techniques · ${categories.assistant} étapes de lecture du secrétaire.` : null,
     recheck.length ? `À confirmer : ${recheck.length} ${plural(recheck.length, 'vieille échéance', 'vieilles échéances')}${example(recheck)}. Encore ${plural(recheck.length, 'utile')} ?` : null,
     upcoming ? `À préparer : ${clipTitle(upcoming.title)} (${dayLabel(new Date(upcoming.dueAt), timeZone)}).` : null,
     hidden > 0 ? `+${hidden} ${plural(hidden, 'autre')} en retard ou pour aujourd'hui.` : null,
@@ -89,6 +93,9 @@ function composePersonalBriefing(tasks = [], now = new Date(), options = {}) {
     } : null,
     counts: {
       open: open.length,
+      total: open.length + findings.length,
+      review: findings.length,
+      categories,
       overdue: overdue.length,
       dueToday: dueToday.length,
       recheck: recheck.length,

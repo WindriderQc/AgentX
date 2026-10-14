@@ -162,6 +162,14 @@ Internal task ownership is distinct from human identity. Human APIs use the
 private LAN without an account or code. Check-in and explicit household review
 remain separate operations; receipts cannot attest that a parent acted.
 
+Personal mail extractions use `PipelineTask.personalReview`, separate from the
+shared execution status. Legacy mail imports and misplaced platform/assistant
+work project as pending proposals without rewriting their records. Only accepted
+actions enter personal focus and briefings. Human review checks the displayed
+revision, records the original wording, and explicitly chooses the deadline;
+dismissal retains the source and can be reversed. The MCP tools cannot accept a
+proposal. Desk counts use the complete snapshot before paging display lists.
+
 `GET /api/pipeline/tasks/:id/eligibility?automation=true` explains the current
 engineering-task admission snapshot with the same dependency, time and automation
 predicates used by selection and claim. It grants no permission, acquires no slot

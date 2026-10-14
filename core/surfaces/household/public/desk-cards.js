@@ -39,7 +39,7 @@
     };
     async function load() {
       try {
-        const data = await api('/api/secretary/tasks?limit=100');
+        const data = await api('/api/secretary/tasks?scope=triage&limit=100');
         const tasks = (data.tasks || []).filter((task) => ['recheck', 'expired'].includes(task.lane));
         host.querySelector('[data-triage-count]').textContent = String(tasks.length);
         host.hidden = tasks.length === 0 && !host.dataset.touched;
@@ -67,6 +67,7 @@
         await load();
       } catch (error) { button.disabled = false; status(error.message); }
     });
+    window.addEventListener('household-personal-tasks-changed', load);
     load();
   }
 

@@ -37,6 +37,16 @@ shipped. Configure the existing native job after reviewing its current state,
 with backup copies outside Git. Existing synthetic Python tests run through
 `node scripts/test-native-tools.cjs`; this does not contact Gmail/OpenClaw.
 
+Native source review follows [personal action review](personal-action-review.md).
+My day keeps all findings in categories: owner actions, requests to clarify,
+technical follow-ups and Secretary reading. Mail-derived personal tasks remain
+proposals until accepted as owner actions. Existing
+imports without an acceptance record are projected for review without a bulk
+rewrite; platform alerts and assistant reading steps also leave the daily focus.
+Review preserves the source note and records the decision and original title.
+Dismissal is reversible and never records the proposal as completed. The human
+capture and idea-promotion paths retain their explicit acceptance.
+
 ## One-time mailbox catch-up
 
 `mailbox_backfill.py` copies every discovered but uncollected thread into the

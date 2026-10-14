@@ -203,6 +203,14 @@ const PipelineTaskSchema = new mongoose.Schema({
   // Personal tasks only: the day of the activity the task serves. Once it has
   // passed the task is pointless, even when its own dueAt was never met.
   relevantUntil: { type: Date, default: undefined },
+  personalReview: {
+    type: new mongoose.Schema({
+      state: { type: String, enum: ['pending', 'accepted', 'dismissed'], required: true },
+      reason: { type: String, enum: ['email', 'platform', 'assistant'], default: undefined },
+      reviewedAt: { type: Date, default: null },
+    }, { _id: false }),
+    default: undefined,
+  },
   // Household routines use the same canonical task lifecycle and ID sequence.
   // Domain fields are optional so engineering/personal tasks stay unchanged.
   profileId: { type: String, index: true },
