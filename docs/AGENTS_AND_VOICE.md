@@ -175,8 +175,10 @@ previews, replay, measurements and advanced listening preferences into one place
 Its studio view follows capture, recognition, conversation and playback; STT-only
 tests mark the conversation step outside the test. The signal history plots
 observed microphone levels, while detailed receipts expand on demand. Playback
-scheduling, completion and interruption remain distinct. TTS text presets choose
-only that test’s language, without saving a conversation preference.
+scheduling, completion and interruption remain distinct. TTS example text follows
+the selected test language, including natural speech and number presets. The
+English shortcut selects English for that test without saving a conversation
+preference.
 Playback controls stay disabled at rest. Stop replay affects only the playing
 excerpt and retains it for another listen; resuming capture is explicit. Stop
 reading cancels the current TTS preparation or playback. In attached diagnostics,

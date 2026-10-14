@@ -4,6 +4,12 @@
   
   const V = root.AgentXVoiceWorkshopView;
   const { names, paths, tabs } = V;
+  const examples = {
+    initial: { fr:'Bonjour ! Prenons le temps de vérifier les mots, les nombres et les pauses.', en:'Hello! Let’s take the time to check the words, the numbers, and the pauses.' },
+    natural: { fr:'Salut ! On prend le temps de se parler. Comment se passe ta journée ?', en:'Hi! Let’s take some time to chat. How is your day going?' },
+    numbers: { fr:'Un, deux, un, deux. Sept, dix-sept et soixante-dix. Rendez-vous le 7 septembre, à 14 h 30.', en:'One, two, one, two. Seven, seventeen, and seventy. Let’s meet on September 7 at 2:30 p.m.' },
+    english: { fr:'Bonjour ! Vérifions le rythme, les nombres et les pauses. Sept, dix-sept, soixante-dix.', en:'Hello! Let’s check the rhythm, the numbers, and the pauses. Seven, seventeen, seventy.' },
+  };
   const number = (x, suffix = '') => Number.isFinite(x) ? Math.round(x).toLocaleString('fr-CA') + suffix : 'Non mesuré';
   async function request(url, options = {}) {
     const response = await root.fetch(url, { credentials: 'same-origin', ...options });
@@ -43,6 +49,10 @@
       if (selected && ![...select.options].some(o => o.value === selected)) { const option = new Option('Voix enregistrée · disponibilité non confirmée', selected); select.add(option); }
       select.value = selected;
     }
+    function updateExample(language) {
+      const example = Object.values(examples).find(texts => Object.values(texts).includes(field('speechText').value));
+      if (example) field('speechText').value = example[language];
+    }
     function renderPrefs() {
       prefs = S.read(scope, state.personas);
       if (scope === 'psyx') try {
@@ -57,6 +67,7 @@
         prefs.personaId = selectedId; prefs.language = profile?.language || 'fr'; prefs.voice = profile?.selections?.[prefs.language] || '';
       }
       field('language').value = prefs.language; field('testLanguage').value = prefs.language;
+      updateExample(prefs.language);
       if (field('compareLanguage')) field('compareLanguage').value = prefs.language === 'fr' ? 'en' : 'fr';
       voiceOptions(field('voice'), prefs.language, prefs.voice); voiceOptions(field('testVoice'), prefs.language, prefs.voice);
       for (const key of ['wakeWord','interruption','spokenReplies','autoSend']) field(key).checked = prefs[key];
@@ -165,8 +176,8 @@
       const button = event.target.closest('button'); if (!button || button.disabled) return;
       if (button.dataset.tab || button.dataset.stepTab) { showTab(button.dataset.tab || button.dataset.stepTab); return refresh(); }
       if (button.dataset.preset) {
-        const presets = { natural:['fr','Salut ! On prend le temps de se parler. Comment se passe ta journée ?'], numbers:['fr','Un, deux, un, deux. Sept, dix-sept et soixante-dix. Rendez-vous le 7 septembre, à 14 h 30.'], english:['en','Hello! Let’s check the rhythm, the numbers, and the pauses. Seven, seventeen, seventy.'] };
-        const [lang,text] = presets[button.dataset.preset], selectedVoice = field('testLanguage').value === lang ? field('testVoice').value : '';
+        const lang = button.dataset.preset === 'english' ? 'en' : field('testLanguage').value;
+        const text = examples[button.dataset.preset][lang], selectedVoice = field('testLanguage').value === lang ? field('testVoice').value : '';
         field('speechText').value = text; field('testLanguage').value = lang; voiceOptions(field('testVoice'),lang,selectedVoice); return refresh();
       }
       switch (button.dataset.action) {
@@ -218,8 +229,8 @@
       role('saved').textContent = 'Enregistré sur ce navigateur. Les paramètres de capture seront lus à la prochaine ouverture du micro.';
       prefs = S.read(scope, state.personas); onSaved(prefs);
     }); }, { signal: life.signal });
-    field('language').addEventListener('change', () => { voiceOptions(field('voice'), field('language').value); field('testLanguage').value = field('language').value; voiceOptions(field('testVoice'), field('testLanguage').value); if (field('compareLanguage')) field('compareLanguage').value = field('language').value === 'fr' ? 'en' : 'fr'; }, { signal: life.signal });
-    field('testLanguage').addEventListener('change', () => voiceOptions(field('testVoice'), field('testLanguage').value), { signal: life.signal });
+    field('language').addEventListener('change', () => { voiceOptions(field('voice'), field('language').value); field('testLanguage').value = field('language').value; updateExample(field('testLanguage').value); voiceOptions(field('testVoice'), field('testLanguage').value); if (field('compareLanguage')) field('compareLanguage').value = field('language').value === 'fr' ? 'en' : 'fr'; refresh(); }, { signal: life.signal });
+    field('testLanguage').addEventListener('change', () => { updateExample(field('testLanguage').value); voiceOptions(field('testVoice'), field('testLanguage').value); refresh(); }, { signal: life.signal });
     field('scope').addEventListener('change', () => { root.location.href = '/voice-lab?scope=' + field('scope').value; }, { signal: life.signal });
     const pause = () => { stopReplay(); role('replayState').textContent = ''; state.speechRun++; state.speech = 'idle'; standalone.pause(); if (embedded && document.hidden) conversation.stop(true); field('expected').value = ''; state.lastResult = null; role('comparison')?.replaceChildren(); refresh(); };
     document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); }, { signal: life.signal });
