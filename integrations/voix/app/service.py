@@ -25,6 +25,7 @@ from app.audio_upload import audio_form
 from app.config import TTS_PROVIDERS, settings
 from app.runtime import RuntimeConfig, static_settings
 from app.stt.whisper import RecognitionUnavailable
+from app.stt.requests import RecognitionBusy, RecognitionCancelled, cancellation
 from app.tts import preferences as speech_preferences
 from app.tts import provider as tts
 
@@ -61,6 +62,17 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="VoiX", version=VERSION, lifespan=lifespan)
+
+
+@app.exception_handler(RecognitionBusy)
+async def recognition_busy(_request: Request, _error: RecognitionBusy) -> JSONResponse:
+    return JSONResponse({"error": "Speech recognition is busy. Try again shortly.",
+                         "code": "STT_BUSY"}, status_code=503, headers={"Retry-After": "1"})
+
+
+@app.exception_handler(RecognitionCancelled)
+async def recognition_cancelled(_request: Request, _error: RecognitionCancelled) -> Response:
+    return Response(status_code=499)
 
 
 @app.exception_handler(RecognitionUnavailable)
@@ -174,10 +186,12 @@ async def post_config(request: Request) -> Response:
 
 # ======================= recognition =======================
 
-def recognition_metadata(requested_model: str, effective_model: str | None = None) -> dict:
+def recognition_metadata(requested_model: str, effective_model: str | None = None, *, text=None) -> dict:
     """An API model hint does not select a different loaded recognizer."""
     actual = effective_model or settings.whisper_model
-    return {"model": actual, "effectiveModel": actual, "requestedModel": requested_model or None}
+    evidence = getattr(text, "evidence", None)
+    return {"model": actual, "effectiveModel": actual, "requestedModel": requested_model or None,
+            **({"recognition": evidence} if evidence else {})}
 
 
 @app.post("/v1/audio/transcriptions")
@@ -197,17 +211,20 @@ async def transcriptions(request: Request) -> Response:
     # bilingual selector.
     selected_language = language or "auto"
     loop = asyncio.get_running_loop()
-    text, ms = await loop.run_in_executor(None, _transcribe_bytes, raw, filename, selected_language)
+    async with cancellation(request) as cancel:
+        text, ms = await loop.run_in_executor(None, partial(
+            _transcribe_bytes, raw, filename, selected_language, cancel=cancel))
     # Operational timing has no transcript, filename or audio content.
-    _LOG.info("Audio upload transcribed: bytes=%d stt_ms=%d", len(raw), round(ms))
+    _LOG.info("Audio upload transcribed: recognition_id=%s bytes=%d stt_ms=%d", cancel.request_id, len(raw), round(ms))
     if str(response_format or "json").strip().lower() == "text":
         return Response(content=text, media_type="text/plain; charset=utf-8")
     return JSONResponse({
         "text": text,
+        "recognitionId": cancel.request_id,
         "language": selected_language,
         # Whisper's own decision lets the caller keep one voice for the reply.
         "detectedLanguage": getattr(text, "language", "") or None,
-        **recognition_metadata(model),
+        **recognition_metadata(model, text=text),
         "sttMs": round(ms),
     })
 
@@ -374,9 +391,9 @@ def _audio_response(samples: np.ndarray, sample_rate: int, response_format: str 
     return Response(content=buffer.getvalue(), media_type=media_type)
 
 
-def _transcribe_bytes(raw: bytes, filename: str | None, language: str | None) -> tuple[str, float]:
+def _transcribe_bytes(raw: bytes, filename: str | None, language: str | None, *, cancel=None) -> tuple[str, float]:
     """Decode and transcribe an upload in memory; it never reaches the disk."""
     from app.stt import whisper as stt
 
     with io.BytesIO(raw) as audio:
-        return stt.transcribe_path(audio, language=language)
+        return stt.transcribe_path(audio, language=language, **({"cancel": cancel} if cancel is not None else {}))

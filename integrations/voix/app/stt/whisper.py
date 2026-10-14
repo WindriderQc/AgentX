@@ -17,6 +17,8 @@ from typing import BinaryIO
 import numpy as np
 
 from app.config import settings
+from app.stt.diagnostics import recognition_evidence
+from app.stt.requests import check_cancelled, inference_slot
 from app.stt.vocabulary import normalize_transcript
 
 
@@ -189,14 +191,17 @@ class Transcript(str):
     language = ""
 
 
-def _transcript(text: str, language: str | None) -> Transcript:
+def _transcript(text: str, language: str | None, evidence=None) -> Transcript:
     value = Transcript(text)
     value.language = str(language or "")
+    value.evidence = evidence or {}
     return value
 
 
-def _run(model, audio: np.ndarray | str | BinaryIO, language: str, *, vad_filter: bool = False) -> Transcript:
+def _run(model, audio: np.ndarray | str | BinaryIO, language: str, *, vad_filter: bool = False, cancel=None) -> Transcript:
     global _last_run_at
+    check_cancelled(cancel)
+    requested_language, constrained = language, False
     bilingual = language == "fr-en"
     language = None if language == "auto" or bilingual else language
     initial_position = audio.tell() if hasattr(audio, "tell") else None
@@ -221,7 +226,7 @@ def _run(model, audio: np.ndarray | str | BinaryIO, language: str, *, vad_filter
         )
     segments, info = model.transcribe(audio, **options)
     if vad_filter and getattr(info, "duration_after_vad", None) == 0:
-        return _transcript("", None)
+        return _transcript("", None, recognition_evidence(info, [], requested_language))
     if bilingual and info.language not in {"fr", "en"}:
         # faster-whisper detects language eagerly but decodes segments lazily.
         # Choose between the two languages advertised by the caller before any
@@ -231,18 +236,29 @@ def _run(model, audio: np.ndarray | str | BinaryIO, language: str, *, vad_filter
         if not candidates:
             raise RuntimeError("French/English speech detection is unavailable.")
         selected = max(candidates, key=lambda item: item[1])[0]
+        constrained = True
         options.update(language=selected, initial_prompt=(
             settings.whisper_initial_prompt if selected == "fr" else settings.whisper_hotwords
         ) or None)
         if initial_position is not None:
             audio.seek(initial_position)
         segments, info = model.transcribe(audio, **options)
-    text = " ".join(seg.text.strip() for seg in segments).strip()
+    decoded, iterator = [], iter(segments)
+    while True:
+        check_cancelled(cancel)
+        try:
+            decoded.append(next(iterator))
+        except StopIteration:
+            break
+    check_cancelled(cancel)
+    text = " ".join(seg.text.strip() for seg in decoded).strip()
+    normalized = normalize_transcript(text)
     _last_run_at = time.monotonic()
-    return _transcript(normalize_transcript(text), getattr(info, "language", ""))
+    return _transcript(normalized, getattr(info, "language", ""), recognition_evidence(
+        info, decoded, requested_language, constrained=constrained, changed=normalized != text))
 
 
-def _transcribe_locked(audio, language: str, *, vad_filter: bool = False, cpu_fallback: bool = True):
+def _transcribe_locked(audio, language: str, *, vad_filter: bool = False, cpu_fallback: bool = True, cancel=None):
     global _retrying
     device, compute = _next_backend()
     _require_backend(device)
@@ -251,7 +267,7 @@ def _transcribe_locked(audio, language: str, *, vad_filter: bool = False, cpu_fa
         _retrying = _prefer_cpu and device != "cpu"
     try:
         try:
-            text = _run(_get_model(device, compute), audio, language, vad_filter=vad_filter)
+            text = _run(_get_model(device, compute), audio, language, vad_filter=vad_filter, cancel=cancel)
         except Exception as exc:
             if device == "cpu" or not _is_cuda_runtime_error(exc):
                 raise
@@ -262,7 +278,10 @@ def _transcribe_locked(audio, language: str, *, vad_filter: bool = False, cpu_fa
                 raise
             if initial_position is not None:
                 audio.seek(initial_position)
-            return _run(_get_model("cpu", "int8"), audio, language, vad_filter=vad_filter)
+            text = _run(_get_model("cpu", "int8"), audio, language, vad_filter=vad_filter, cancel=cancel)
+            text.evidence.update(device="cpu", computeType="int8")
+            return text
+        text.evidence.update(device=device, computeType=compute)
         _gpu_recovered(device)
         return text
     finally:
@@ -270,12 +289,14 @@ def _transcribe_locked(audio, language: str, *, vad_filter: bool = False, cpu_fa
             _retrying = False
 
 
-def transcribe(audio: np.ndarray, *, language: str | None = None) -> tuple[str, float]:
+def transcribe(audio: np.ndarray, *, language: str | None = None, cancel=None) -> tuple[str, float]:
     """Transcribe a float32 mono array @ 16 kHz. Returns (text, elapsed_ms)."""
     audio = np.asarray(audio, dtype=np.float32).reshape(-1)
     started = time.perf_counter()
-    with _inference_lock:
-        text = _transcribe_locked(audio, language or settings.voix_language)
+    with inference_slot(_inference_lock, cancel, settings.whisper_queue_timeout_seconds) as queue_ms:
+        decode_started = time.perf_counter()
+        text = _transcribe_locked(audio, language or settings.voix_language, cancel=cancel)
+        text.evidence.update(queueMs=round(queue_ms), decodeMs=round((time.perf_counter() - decode_started) * 1000))
     return text, (time.perf_counter() - started) * 1000.0
 
 
@@ -308,7 +329,7 @@ def warm(*, max_age_s: float = 20.0) -> float | None:
         _inference_lock.release()
 
 
-def transcribe_path(path: str | Path | BinaryIO, *, language: str | None = None) -> tuple[str, float]:
+def transcribe_path(path: str | Path | BinaryIO, *, language: str | None = None, cancel=None) -> tuple[str, float]:
     """Transcribe a path or seekable memory stream (decoded through PyAV).
     Uploaded audio has not passed any speech detection. Use faster-whisper's
     bundled VAD so silence/noise returns empty text instead of invented
@@ -316,6 +337,8 @@ def transcribe_path(path: str | Path | BinaryIO, *, language: str | None = None)
     """
     started = time.perf_counter()
     audio = path if hasattr(path, "read") else str(path)
-    with _inference_lock:
-        text = _transcribe_locked(audio, language or settings.voix_language, vad_filter=True)
+    with inference_slot(_inference_lock, cancel, settings.whisper_queue_timeout_seconds) as queue_ms:
+        decode_started = time.perf_counter()
+        text = _transcribe_locked(audio, language or settings.voix_language, vad_filter=True, cancel=cancel)
+        text.evidence.update(queueMs=round(queue_ms), decodeMs=round((time.perf_counter() - decode_started) * 1000))
     return text, (time.perf_counter() - started) * 1000.0

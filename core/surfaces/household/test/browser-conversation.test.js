@@ -418,6 +418,24 @@ test('a spoken hesitation does not end the turn; one second of silence does', ()
   assert.ok(endpoint.push(new Float32Array(100)).length > 0, 'one second of silence ends the turn');
 });
 
+test('ordinary listening retains a 120 ms short reply while isolated 60 ms clicks stay out', () => {
+  const reply = new Endpoint(1000);
+  reply.push(new Float32Array(20).fill(0.005)); // weaker initial consonant
+  for (let i = 0; i < 6; i++) reply.push(new Float32Array(20).fill(0.05));
+  assert.equal(reply.speaking, true);
+  let clip;
+  for (let i = 0; i < 50; i++) clip = reply.push(new Float32Array(20));
+  assert.equal(clip.length, 1140);
+  assert.ok(clip[0] > 0, 'the short reply retains its lead-in');
+
+  const noise = new Endpoint(1000);
+  for (let click = 0; click < 10; click++) {
+    for (let i = 0; i < 3; i++) assert.equal(noise.push(new Float32Array(20).fill(0.3)), null);
+    for (let i = 0; i < 10; i++) assert.equal(noise.push(new Float32Array(20).fill(0.005)), null);
+  }
+  assert.equal(noise.speaking, false);
+});
+
 test('a half-second pause offers what was said so far, and says whether it ended the turn', () => {
   const endpoint = new Endpoint(1000);
   endpoint.earlySilenceMs = 500;
@@ -1649,6 +1667,58 @@ test('recognition started during the pause that ends the turn is the turn\'s tra
   await turn;
   assert.deepEqual(heard, ['Quel temps fait-il ?']);
   assert.equal(whole, 0, 'the whole clip is not transcribed a second time');
+  h.conversation.stop();
+});
+
+test('changing the chosen STT language discards an earlier decode in the previous language', async () => {
+  let signal;
+  const heard = [], languages = [];
+  const h = harness({
+    transcribeEarly: (_blob, _language, abort) => { signal = abort; return Promise.resolve({ text: 'Ancien texte' }); },
+    transcribe: async (_blob, language) => { languages.push(language); return { text: 'Hello there', detectedLanguage: 'en' }; },
+    turn: async (_session, text) => { heard.push(text); return { text: 'Hello', language: 'en' }; }
+  });
+  await h.conversation.start({ language: 'fr' });
+  h.pause(1);
+  h.conversation.setLanguage('en');
+  assert.equal(signal.aborted, true);
+  await h.say({ earlyId: 1 });
+  assert.deepEqual(languages, ['en']);
+  assert.deepEqual(heard, ['Hello there']);
+  h.conversation.stop();
+});
+
+test('early recognition evidence names the submitted clip separately from the complete capture', async () => {
+  const records = [];
+  const h = harness({ transcribeEarly: async () => ({ text: 'Bonjour', language: 'fr', detectedLanguage: 'fr' }) });
+  h.audio.reviewStatus = () => ({ id: 'excerpt' });
+  h.audio.recordTranscription = (...args) => records.push(args);
+  await h.conversation.start({ language: 'fr' });
+  h.conversation.recognizeEarly(new Blob(['x']), h.conversation.epoch, { id: 3 });
+  await h.say({ earlyId: 3 });
+  const last = records.at(-1)[3];
+  assert.equal(last.bytes, 1);
+  assert.equal(last.captureBytes, 6);
+  assert.equal(last.recognitionMode, 'early');
+  assert.equal(last.detectedLanguage, 'fr');
+  h.conversation.stop();
+});
+
+test('a language change after capture applies to the next turn without relabeling in-flight recognition', async () => {
+  const early = deferred(), voices = [], languages = [];
+  const h = harness({ transcribeEarly: () => early.promise,
+    transcribe: async (_blob, language) => { languages.push(language); return { text: 'Hello', detectedLanguage: 'en' }; },
+    turn: async (_session, text) => ({ text, language: text === 'Bonjour' ? 'fr' : 'en' }),
+    synthesize: async request => { voices.push(request.language); return new ArrayBuffer(10); } });
+  await h.conversation.start({ language: 'fr' });
+  h.pause(1);
+  const first = h.say({ earlyId: 1 });
+  h.conversation.setLanguage('en');
+  early.resolve({ text: 'Bonjour', detectedLanguage: 'fr' });
+  await first;
+  await h.say();
+  assert.deepEqual(voices, ['fr', 'en']);
+  assert.deepEqual(languages, ['en']);
   h.conversation.stop();
 });
 
