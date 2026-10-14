@@ -24,6 +24,14 @@ requires an explicit API acceptance receipt. Remove obsolete access-code argumen
 from existing tasks/wrappers. Redirects are rejected. Trust the instance CA through
 normal Node configuration; never disable TLS verification.
 
+For a Windows usage task running in the signed-in user's session, set its executable
+to `%SystemRoot%\System32\wscript.exe` and its arguments to
+`//B //Nologo "<operations-dir>\sync-codex-usage-hidden.vbs" -Endpoint "<endpoint>" -LookbackDays 7`.
+Keep the VBS launcher beside `sync-codex-usage-to-prod.ps1` and `codex-usage-sync.js`.
+It starts PowerShell hidden from creation and waits for its exit code, preserving
+Task Scheduler's result and overlap policy. Starting PowerShell directly with
+`-WindowStyle Hidden` can briefly show a console and interrupt typing.
+
 The alert example is disabled and uses local logging. Preserve the live instance's
 rule IDs, delivery channels and cadence when copying its private configuration.
 Legacy `aiops-operator` authority and drift-event identity remain accepted to avoid

@@ -8,7 +8,8 @@ $ErrorActionPreference = 'Stop'
 $syncScript = Join-Path $PSScriptRoot 'codex-usage-sync.js'
 $node = (Get-Command node -ErrorAction Stop).Source
 
-# Keep this hidden PowerShell parent in Task Scheduler to avoid console focus.
+# For interactive scheduled tasks, use wscript.exe and the adjacent hidden launcher.
+# -WindowStyle Hidden alone can flash a console before PowerShell hides it.
 # Node sends only sanitized counters and verifies the API acceptance receipt.
 $syncArgs = @($syncScript, '--endpoint', $Endpoint, '--lookback-days', $LookbackDays)
 & $node @syncArgs
