@@ -1,0 +1,80 @@
+/* A calm daily workspace. All selectors stay within the day page. */
+.dad-day-page { --soft: #a5b8c6; --day-border: #263b49; }
+.dad-day-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: 6px 0 24px; }
+.dad-day-header h1 { font-size: clamp(32px, 4vw, 48px); font-weight: 550; letter-spacing: -.045em; line-height: 1.2; }
+.dad-day-header h1 > span { color: var(--cyan); }
+.dad-day-header .card-kicker { color: var(--soft); font-weight: 600; letter-spacing: .1em; }
+.dad-day-dateline { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; color: var(--soft); font-size: 13px; }
+.dad-day-dateline strong { color: #d4e2eb; font-weight: 450; }
+.dad-day-dateline small { flex-basis: 100%; font-size: 11px; color: #93aaba; }
+.dad-day-page .dad-bar-actions button, .dad-day-page .dad-bar-actions a { min-height: 44px; background: #12232e; border-color: var(--day-border); }
+.dad-day-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin: 0 0 24px; }
+.dad-day-metrics > a { position: relative; display: flex; flex-direction: column; gap: 7px; padding: 18px 20px; border: 1px solid var(--day-border); border-radius: 14px; text-decoration: none; background: #10212c; }
+.dad-day-metrics a:hover { border-color: #61818f; }
+.dad-day-metrics span { font-size: 13px; color: #c7d7e1; }
+.dad-day-metrics strong { font-size: 32px; line-height: 1.1; font-weight: 550; font-variant-numeric: tabular-nums; }
+.dad-day-metrics small { color: var(--soft); font-size: 11px; }
+.dad-day-metrics small b { font-weight: 500; }
+.dad-day-metrics .dad-metric-review { background: #242721; border-color: #494937; }
+.dad-metric-review strong { color: #f1d4a0; }
+.dad-day-page .card { box-shadow: none; background: #0f202b; border-color: var(--day-border); border-radius: 14px; padding: 22px; }
+.dad-day-page .card h2 { font-size: 18px; font-weight: 550; letter-spacing: -.02em; margin-bottom: 12px; }
+.dad-day-page .card-kicker { font-size: 10px; font-weight: 600; margin-bottom: 5px; }
+.dad-day-page .dad-focus { min-height: 224px; }
+.dad-focus-empty { display: flex; align-items: center; gap: 22px; padding: 26px 10px 14px; }
+.dad-focus-empty > span { display: grid; place-items: center; width: 60px; height: 60px; flex-shrink: 0; background: #233b3c; color: #b5e3d7; border-radius: 50%; font-size: 28px; }
+.dad-focus-empty strong { font-size: 15px; font-weight: 500; }
+.dad-focus-empty p { color: var(--soft); font-size: 13px; max-width: 42ch; margin: 6px 0 12px; }
+.dad-focus-empty a { color: #9ee5da; font-size: 12px; text-decoration: none; }
+.dad-day-page .dad-inbox { padding-bottom: 14px; }
+.dad-day-page .dad-task { padding: 14px 0; border: 0; border-bottom: 1px solid var(--day-border); border-radius: 0; background: transparent; gap: 12px; }
+.dad-day-page .dad-task:last-of-type { border-bottom: 0; }
+.dad-day-page .dad-task-main { grid-template-columns: minmax(0,1fr); }
+.dad-day-page .dad-task-main strong { font-size: 14px; font-weight: 500; }
+.dad-day-page .dad-task-main small { font-size: 11px; margin-top: 4px; }
+.dad-day-page .dad-task-actions { gap: 8px; }
+.dad-day-page .dad-task-actions > button { min-height: 40px; background: transparent; }
+.dad-task-schedule { position: relative; }
+.dad-task-schedule > summary { min-height: 40px; display: flex; align-items: center; cursor: pointer; padding: 6px 12px; font-size: 12px; border: 1px solid var(--day-border); border-radius: 10px; }
+.dad-task-schedule > summary::after { content: '⌄'; margin-left: 10px; color: var(--soft); }
+.dad-task-schedule > div { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; display: grid; min-width: 160px; gap: 4px; padding: 6px; border: 1px solid #4a6675; border-radius: 10px; background: #162b38; box-shadow: var(--shadow); }
+.dad-task-schedule button { min-height: 40px; border: 0; background: transparent; text-align: left; font-size: 12px; }
+.dad-day-page .dad-select { width: 16px; height: 16px; }
+.dad-day-page .dad-bulk { font-size: 11px; margin: 0; opacity: .85; }
+.dad-day-page .dad-bulk button { font-size: 11px; background: transparent; }
+.dad-day-page .dad-secondary { padding: 4px 18px; background: #0c1a24; }
+.dad-day-page .dad-secondary > summary { min-height: 54px; display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: #c5d5df; font-weight: 500; }
+.dad-day-page .dad-secondary > summary::before { content: '+'; color: var(--soft); font-size: 18px; }
+.dad-day-page .dad-secondary[open] > summary::before { content: '−'; }
+.dad-day-page .dad-secondary[open] { padding-bottom: 20px; }
+.dad-day-page .dad-secondary > summary .pill { margin-left: auto; }
+.dad-day-page .dad-decide { margin-top: 10px; }
+.dad-day-page .dad-secondary .dad-decide-list { flex: 1; }
+.dad-day-page .dad-secondary .dad-decide-chip { max-width: none; }
+.dad-day-page .dad-secondary .dad-decide-chip small { white-space: normal; }
+.dad-day-page .dad-capture input, .dad-day-page .dad-capture select { min-height: 44px; font-size: 13px; }
+.dad-day-page .dad-capture button.primary { font-size: 13px; font-weight: 650; min-height: 44px; background: #a3e4d4; border-color: #a3e4d4; }
+.dad-day-page .dad-side .dad-shopping { background: #0c1a24; }
+@media (max-width: 760px) {
+  .dad-day-header { align-items: start; gap: 12px; }
+  .dad-day-header .dad-bar-actions { gap: 4px; }
+  .dad-day-header .dad-icon-button span { display: none; }
+  .dad-day-header .dad-bar-actions a, .dad-day-header .dad-bar-actions button { padding: 8px; width: 40px; }
+  .dad-day-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin-bottom: 18px; }
+  .dad-day-metrics > a { padding: 14px; min-height: 116px; }
+  .dad-day-metrics strong { font-size: 28px; }
+  .dad-day-metrics small { font-size: 10px; }
+  .dad-day-page .card { padding: 18px; }
+  .dad-day-page .dad-task-main { flex-basis: 100%; }
+  .dad-day-page .dad-task-actions { margin-left: auto; justify-content: end; }
+  .dad-day-page .dad-focus { min-height: auto; }
+  .dad-focus-empty { padding: 12px 0; align-items: start; gap: 14px; }
+  .dad-focus-empty > span { width: 42px; height: 42px; font-size: 22px; }
+  .dad-day-page .dad-secondary { padding: 2px 14px; }
+}
+.dad-main { grid-column: span 8; display: grid; grid-template-columns: minmax(0,1fr); align-content: start; gap: 16px; }
+.dad-main > .card { grid-column: auto; }
+.dad-main .dad-focus { min-height: 184px; }
+.dad-side #dad-mail-actions .dad-mail-columns { grid-template-columns: minmax(0,1fr); }
+.dad-side #dad-mail-actions summary { flex-wrap: wrap; }
+@media (max-width: 900px) { .dad-main { grid-column: 1/-1; } }

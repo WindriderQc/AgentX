@@ -42,6 +42,8 @@
         const data = await api('/api/secretary/tasks?scope=triage&limit=100');
         const tasks = (data.tasks || []).filter((task) => ['recheck', 'expired'].includes(task.lane));
         host.querySelector('[data-triage-count]').textContent = String(tasks.length);
+        const foldedCount = host.closest?.('details')?.querySelector('[data-day-triage-count]');
+        if (foldedCount) foldedCount.textContent = String(tasks.length);
         host.hidden = tasks.length === 0 && !host.dataset.touched;
         list.innerHTML = tasks.length ? tasks.map(row).join('')
           : '<div class="dad-clear"><span>✓</span><strong>Nothing to sort.</strong><small>No old due date or past activity.</small></div>';
@@ -93,6 +95,8 @@
       try {
         const ideas = ((await api('/api/family/ideas')).ideas || []).filter((idea) => idea.status === 'inbox' || idea.status === 'triaged');
         host.querySelector('[data-ideas-count]').textContent = String(ideas.length);
+        const foldedCount = host.closest?.('details')?.querySelector('[data-day-ideas-count]');
+        if (foldedCount) foldedCount.textContent = String(ideas.length);
         host.hidden = ideas.length === 0 && !host.dataset.touched;
         list.innerHTML = ideas.length ? ideas.map(row).join('')
           : '<div class="dad-clear"><span>✓</span><strong>Nothing to sort.</strong><small>No idea or reminder waiting.</small></div>';
