@@ -1,0 +1,3 @@
+- insert:
+    - id: agentx-coding-team-ui
+      name: '@agentx/dsh-coding-team'
