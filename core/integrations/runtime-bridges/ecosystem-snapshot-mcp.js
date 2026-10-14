@@ -610,6 +610,7 @@ function mergeTools(body, { enabled = true } = {}) {
 
 function ecosystemSnapshotMcpMiddleware({ projectionProvider }) {
   return async (req, res, next) => {
+    if (req.path && req.path !== '/') return next();
     const message = req.body;
     if (req.method !== 'POST' || !message || message.jsonrpc !== '2.0') return next();
     if (message.method === 'tools/list') {

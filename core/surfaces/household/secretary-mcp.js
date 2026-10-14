@@ -329,6 +329,7 @@ function mergeTools(body) {
 function secretaryMcpMiddleware(deps) {
   const privateNames = new Set(SECRETARY_TOOLS.map((tool) => tool.name));
   return async (req, res, next) => {
+    if (req.path && req.path !== '/') return next();
     const message = req.body;
     if (req.method !== 'POST' || !message || message.jsonrpc !== '2.0') return next();
     if (message.method === 'tools/list') {
