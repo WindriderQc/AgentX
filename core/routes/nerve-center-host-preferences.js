@@ -22,6 +22,7 @@ const runtimeCoordinationService = require('../src/services/runtimeCoordinationS
 const runtimeDrainIntent = require('../src/services/runtimeDrainIntent');
 const { runRuntimeMutation } = require('../src/services/runtimeMutationLeaseService');
 const { projectHostPreferenceForRead } = require('../src/services/hostPreferencePublicProjection');
+const { contextChangeRefusal } = require('../src/services/pinContextGuard');
 
 
 
@@ -626,6 +627,10 @@ router.put('/host-preferences/:hostUrl(*)', async (req, res) => {
       if (updates[key] !== undefined) filtered[key] = updates[key];
     }
 
+    if (filtered.pinnedModels) {
+      const refusal = contextChangeRefusal((await hostPrefService.getPinStatus(hostUrl)).pinnedModels, filtered.pinnedModels);
+      if (refusal) throw refusal;
+    }
     const data = await runRuntimeMutation({
       principal: requestPrincipal(req),
       scope: 'host-preference:update'

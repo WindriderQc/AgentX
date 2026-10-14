@@ -170,7 +170,15 @@
             const json = await shared.fetchJson(API);
             render(body, json.data, reportOnly);
         } catch (err) {
-            shared.renderSectionError(body, `Failed to load the operations watch: ${err.message}`);
+            // While a check runs, a failed poll only reports in the report area and
+            // tries again: replacing the section would erase the settings being typed.
+            const holder = reportOnly && body.querySelector('.nc-ops-watch-report');
+            const notice = holder && holder.querySelector('.nc-ops-watch-error');
+            if (!notice) return shared.renderSectionError(body, `Failed to load the operations watch: ${err.message}`);
+            notice.textContent = `The report could not be refreshed (${err.message}); trying again.`;
+            notice.hidden = false;
+            clearTimeout(pollTimer);
+            pollTimer = setTimeout(() => loadOpsWatch({ reportOnly: true }), POLL_MS);
         } finally {
             shared.finishSectionLoad(body);
         }

@@ -71,14 +71,18 @@
 
   async function load(container) {
     container.setAttribute('aria-busy', 'true');
+    const requested = selected;
     try {
-      const json = await shared.fetchJson(`/api/nerve-center/inference/gpu-occupancy?window=${encodeURIComponent(selected)}`);
+      const json = await shared.fetchJson(`/api/nerve-center/inference/gpu-occupancy?window=${encodeURIComponent(requested)}`);
+      // A slower answer for a window no longer chosen must not show under the new label.
+      if (requested !== selected) return;
       container.innerHTML = render(json.data);
       container.querySelector('.nc-gpu-occ-window')?.addEventListener('change', (event) => {
         selected = WINDOWS.includes(event.target.value) ? event.target.value : '24h';
         load(container);
       });
     } catch (err) {
+      if (requested !== selected) return;
       container.innerHTML = `<p class="nc-muted">GPU occupancy unavailable: ${shared.escapeHtml(err.message)}</p>`;
     } finally {
       container.removeAttribute('aria-busy');

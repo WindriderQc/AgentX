@@ -135,13 +135,14 @@ function buildWarmPayload(model, { keepAlive = -1, contextSize = 0, numThread = 
     // forever); a positive-only guard let embedding pins expire on Ollama's
     // 5-minute default and loop on autoRestore.
     const payload = { model, prompt: 'warmup' };
-    if (keepAlive !== undefined && keepAlive !== '') {
+    if (keepAlive !== undefined && keepAlive !== null && keepAlive !== '') {
       payload.keep_alive = Number(keepAlive) > 0 ? `${Math.round(Number(keepAlive))}s` : keepAlive;
     }
     if (positiveInteger(numThread)) payload.options = { num_thread: positiveInteger(numThread) };
     return payload;
   }
-  const payload = withContextRefusal({ model, prompt: 'warmup', stream: false, keep_alive: keepAlive, options: { num_predict: 1 } });
+  // keepAlive null sends none, so Ollama applies its own default; 0 would unload right after the warm-up.
+  const payload = withContextRefusal({ model, prompt: 'warmup', stream: false, ...(keepAlive === null ? {} : { keep_alive: keepAlive }), options: { num_predict: 1 } });
   if (contextSize > 0) payload.options.num_ctx = contextSize;
   if (positiveInteger(numThread)) payload.options.num_thread = positiveInteger(numThread);
   return payload;

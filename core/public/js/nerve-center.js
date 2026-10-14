@@ -28,8 +28,21 @@ const NerveCenter = (() => {
     let _ecosystemSnapshotInFlight = null;
     let _ecosystemSnapshotGeneration = 0;
 
+    // A hung request must end: polls give up after 15 s so the next one can run;
+    // writes (pin restores verify VRAM) get 10 minutes before the page stops waiting.
+    const READ_TIMEOUT_MS = 15000;
+    const WRITE_TIMEOUT_MS = 600000;
+
     function fetchJson(url, options) {
-        return fetch(url, { cache: 'no-store', ...(options || {}) }).then(async response => {
+        const opts = options || {};
+        const write = opts.method && opts.method.toUpperCase() !== 'GET';
+        const limit = typeof AbortSignal !== 'undefined' && AbortSignal.timeout
+            ? AbortSignal.timeout(write ? WRITE_TIMEOUT_MS : READ_TIMEOUT_MS) : null;
+        const signal = limit && opts.signal && AbortSignal.any ? AbortSignal.any([opts.signal, limit]) : (opts.signal || limit);
+        return fetch(url, { cache: 'no-store', ...opts, ...(signal ? { signal } : {}) }).catch(error => {
+            if (limit && limit.aborted) throw new Error(write ? 'The server did not confirm in time; refresh to see the current state.' : 'The request timed out.');
+            throw error;
+        }).then(async response => {
             const json = await response.json().catch(() => ({}));
             if (!response.ok) {
                 throw new Error(json.message || `Request failed (${response.status})`);

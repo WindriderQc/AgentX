@@ -54,7 +54,7 @@ describe('Nerve Center individual pin controls', () => {
     vm.runInNewContext(source, { window, document, console, URL, Map, Set, CSS: { escape: value => value } });
     await window.NerveCenterCluster.loadCluster();
     window.NerveCenterCluster.loadCluster = jest.fn();
-    return { body, listeners, fetchJson };
+    return { body, listeners, fetchJson, control };
   }
 
   it('shows both residents and independent keep-alive and auto-restore options', async () => {
@@ -176,6 +176,17 @@ describe('Nerve Center individual pin controls', () => {
     const [, options] = fetchJson.mock.calls.find(([, options]) => options);
     expect(options.method).toBe('PATCH');
     expect(JSON.parse(options.body)).toEqual({ model: embedding.model, keepAlive: 600 });
+  });
+
+  it('puts a refused keep-alive back and frees the control', async () => {
+    const { listeners, fetchJson, control } = await controlHarness('.nc-pref-keepalive-select', { model: embedding.model, value: '600' });
+    fetchJson.mockImplementation(async (_url, options) => { if (options) throw new Error('Pins were not verified together in VRAM'); });
+    control.closest = () => null;
+    control.parentElement = null;
+    control.value = '0';
+    await listeners.change();
+    expect(control.value).toBe('600');
+    expect(control.disabled).toBe(false);
   });
 
   it('removes only the requested pin', async () => {

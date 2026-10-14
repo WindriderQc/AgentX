@@ -72,6 +72,12 @@ describe('pin CPU threads', () => {
     expect(buildWarmPayload('qllama/bge-m3:f16', { keepAlive: -1 })).toEqual({ model: 'qllama/bge-m3:f16', prompt: 'warmup', keep_alive: -1 });
   });
 
+  test('an unpinned warm-up leaves keep-alive to Ollama instead of unloading at once', () => {
+    expect(buildWarmPayload(MODEL, { keepAlive: null })).not.toHaveProperty('keep_alive');
+    expect(buildWarmPayload('qllama/bge-m3:f16', { keepAlive: null })).not.toHaveProperty('keep_alive');
+    expect(buildWarmPayload(MODEL, { keepAlive: 0 }).keep_alive).toBe(0);
+  });
+
   test('inference reuses the pin thread count so the runner is not reloaded', () => {
     expect(resolvePinnedRuntimeOptions(pref, MODEL, {}).options).toEqual({ num_thread: 6 });
     expect(resolvePinnedRuntimeOptions(pref, MODEL, { num_thread: 2 }).options).toEqual({ num_thread: 2 });
