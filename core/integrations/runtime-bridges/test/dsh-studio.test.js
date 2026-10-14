@@ -4,6 +4,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const test = require('node:test');
+const os = require('node:os');
 const {
   COOKIE_NAME,
   accessTokenValid,
@@ -22,6 +23,7 @@ const KEYS = [
   'DSH_STUDIO_SESSION_TTL_SECONDS',
   'DSH_STUDIO_ISOLATION',
   'DSH_STUDIO_MODEL',
+  'DSH_STUDIO_LAUNCH_FILE',
 ];
 
 function withEnvironment(values, run) {
@@ -185,6 +187,39 @@ test('external navigation commits the launcher before Studio and keeps the token
     router.routes.find(route => route.path === '/access-check').handlers.at(-1)(request({ cookie }), checked);
     assert.equal(checked.statusCode, 204);
   });
+});
+
+test('native launch exchange stays on the configured origin and missing records refuse without granting access', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-launch-'));
+  const file = path.join(directory, 'launch.json');
+  try {
+    withEnvironment({ CORE_PUBLIC_URL: 'https://agentx.example', DSH_STUDIO_PUBLIC_URL: 'https://agentx.example:18791',
+      DSH_STUDIO_ACCESS_SECRET: 'z'.repeat(48), DSH_STUDIO_LAUNCH_FILE: file }, () => {
+      const router = registerDshStudioOperations({ express: fakeExpress() });
+      const launch = router.routes.find(route => route.path === '/control-launch').handlers.at(-1);
+      const unavailable = response();
+      launch(request(), unavailable);
+      assert.equal(unavailable.statusCode, 503);
+      assert.equal(unavailable.headers['Set-Cookie'], undefined);
+      assert.equal(JSON.stringify(unavailable.body).includes(file), false);
+      fs.writeFileSync(file, JSON.stringify({ contract: 'agentx.dsh-studio-launch/v1', token: 'n'.repeat(43), url: 'https://untrusted.example' }));
+      const ready = response();
+      launch(request(), ready);
+      assert.equal(ready.headers.Location, `https://agentx.example:18791/?token=${'n'.repeat(43)}`);
+      assert.match(ready.headers['Set-Cookie'], /SameSite=Strict/);
+      const external = response();
+      launch(request({ 'Sec-Fetch-Site': 'cross-site' }), external);
+      assert.equal(external.statusCode, 200);
+      assert.match(external.body, /https:\/\/agentx\.example:18791\/\?token=n{43}/);
+      const status = response();
+      router.routes.find(route => route.path === '/status').handlers.at(-1)(request(), status);
+      assert.equal(JSON.stringify(status.body).includes('n'.repeat(43)), false);
+      fs.writeFileSync(file, JSON.stringify({ contract: 'agentx.dsh-studio-launch/v1', token: 'invalid&url=elsewhere' }));
+      const invalid = response();
+      launch(request(), invalid);
+      assert.equal(invalid.statusCode, 503);
+    });
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 });
 
 test('Studio stays loopback-only and the OpenClaw worker sandbox stays mandatory', () => {

@@ -30,6 +30,13 @@ Configure `AGENTX_CORE_URL`, `DSH_STUDIO_DSH_ROOT`, `DSH_STUDIO_SETTINGS_FILE`,
 `DSH_STUDIO_TRUSTED_HOST` in the host's existing service environment. Preserve
 `DSH_STUDIO_ISOLATION` (`bubblewrap` or an explicitly configured `host` boundary)
 and `AGENTX_NODE_BIN`. The installed DSH dependency supplies the YAML parser.
+DSH 0.2 also authenticates its own Web requests. Set `DSH_STUDIO_LAUNCH_FILE`
+in the launcher to a private file, and in Core to that file's read-only mount
+path. The launcher publishes upstream's process launch token with mode 0600,
+redacts it from service output and removes its own record on exit. Core's
+existing launcher grants its signed cookie, then opens DSH's native token
+exchange; upstream issues its own cookie and removes the token from the URL.
+Missing or malformed records refuse with 503. Never put this file in Git.
 
 The web process holds no model lock or host-wide Benchmark claim. Core owns
 admission and verified completion for each streamed generation, including tool

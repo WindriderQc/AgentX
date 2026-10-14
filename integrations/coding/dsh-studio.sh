@@ -18,6 +18,11 @@ core_url="${AGENTX_CORE_URL:-http://127.0.0.1:3180}"
 settings_helper="${integration_root}/dsh-studio-settings.cjs"
 node_bin="${AGENTX_NODE_BIN:-/usr/local/bin/node}"
 browser_bin="${DSH_STUDIO_BROWSER_EXECUTABLE:-}"
+launch=()
+if [[ -n "${DSH_STUDIO_LAUNCH_FILE:-}" ]]; then
+  [[ "$DSH_STUDIO_LAUNCH_FILE" == /* ]] || fail 'Native launch file must be absolute'
+  launch=("$node_bin" "$integration_root/dsh-studio-launch.cjs")
+fi
 
 [[ "$isolation" == 'bubblewrap' || "$isolation" == 'host' ]] || fail 'DSH_STUDIO_ISOLATION must be bubblewrap or host'
 [[ "$port" =~ ^[0-9]+$ ]] && (( port >= 1024 && port <= 65535 )) || fail 'DSH_STUDIO_PORT must be between 1024 and 65535'
@@ -70,7 +75,7 @@ export PATH="$(dirname -- "$node_bin"):${dsh_root}/node_modules/.bin:${PATH}"
 if [[ "$isolation" == 'host' ]]; then
   export DSH_HOME="${studio_home}/.dsh"
   cd -- "$workspace_root"
-  exec "$dsh_bin" web --patch "$DSH_HOME/agentx.patch.json" --host 127.0.0.1 --port "$port" --no-open --trusted-host "$trusted_host"
+  exec "${launch[@]}" "$dsh_bin" web --patch "$DSH_HOME/agentx.patch.json" --host 127.0.0.1 --port "$port" --no-open --trusted-host "$trusted_host"
 fi
 
 [[ -x /usr/bin/bwrap ]] || fail 'Bubblewrap is unavailable'
@@ -78,7 +83,7 @@ node_bin="$(realpath -e -- "$node_bin")"
 node_root="$(cd -- "$(dirname -- "$node_bin")/.." && pwd -P)"
 private_home="$studio_home"
 
-exec /usr/bin/bwrap \
+exec "${launch[@]}" /usr/bin/bwrap \
   --unshare-all \
   --share-net \
   --die-with-parent \
