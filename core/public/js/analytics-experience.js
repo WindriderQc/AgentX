@@ -15,10 +15,11 @@
   function parseCompactNumber(value) {
     var match = String(value || '')
       .trim()
-      .match(/-?[\d,.]+\s*[kmb]?/i);
+      .match(/-?\d{1,3}(?:[,\s\u00a0\u202f]\d{3})+(?:\.\d+)?(?:\s*[kmb](?![a-z]))?|-?\d+(?:\.\d+)?(?:\s*[kmb](?![a-z]))?/i);
     if (!match) return null;
 
-    var compact = match[0].replace(/,/g, '').replace(/\s+/g, '');
+    // Accept locale group separators (1 234, 1,234) as well as compact units.
+    var compact = match[0].replace(/[,\s\u00a0\u202f]/g, '');
     var suffix = compact.slice(-1).toLowerCase();
     var multiplier = { k: 1e3, m: 1e6, b: 1e9 }[suffix] || 1;
     var numericText = multiplier === 1 ? compact : compact.slice(0, -1);

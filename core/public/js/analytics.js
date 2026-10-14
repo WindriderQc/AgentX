@@ -78,7 +78,9 @@ const charts = {
 
 function formatNumber(num) {
   if (num === null || num === undefined) return '–';
-  return num.toLocaleString();
+  // The page is English; a browser locale would print 1 234 and the hero
+  // summary reads these tiles back as numbers.
+  return num.toLocaleString('en-US');
 }
 
 function formatPercent(value) {

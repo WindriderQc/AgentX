@@ -73,7 +73,7 @@ async function refreshCostStats() {
       elements.costTotalTokens.textContent = formatNumber(totalTokens);
     }
 
-    elements.tokensPerDollar.textContent = Math.round(tokensPerDollar || 0).toLocaleString();
+    elements.tokensPerDollar.textContent = Math.round(tokensPerDollar || 0).toLocaleString('en-US');
   } catch (err) {
     console.error('Cost stats refresh error:', err);
   }
@@ -364,7 +364,7 @@ async function refreshEfficiencyTable() {
             ${priced ? `$${(row.cost?.per1kTokens || 0).toFixed(4)}` : '—'}
           </td>
           <td style="padding: 8px; text-align: right; color: ${priced ? '#4ade80' : 'var(--muted)'};">
-            <strong>${priced ? Math.round((row.tokens?.total || 0) / row.cost.total).toLocaleString() : '—'}</strong>
+            <strong>${priced ? Math.round((row.tokens?.total || 0) / row.cost.total).toLocaleString('en-US') : '—'}</strong>
           </td>
           <td style="padding: 8px; text-align: right; color: var(--text);">
             ${priced ? `$${(row.cost?.avgPerConversation || 0).toFixed(3)}` : '—'}

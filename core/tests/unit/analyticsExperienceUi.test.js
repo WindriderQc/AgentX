@@ -29,6 +29,9 @@ describe('analytics experience number parsing', () => {
     ['12,345', 12345],
     ['18 failed', 18],
     ['-1.2k', -1200],
+    ['1\u202f234', 1234],
+    ['1\u00a0234 messages', 1234],
+    ['12 345', 12345],
   ])('expands %s into its observed count', (value, expected) => {
     expect(parseCompactNumber(value)).toBe(expected);
   });
