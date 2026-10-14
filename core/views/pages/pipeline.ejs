@@ -210,10 +210,9 @@
     <div class="pipeline-section-heading"><div><h2 id="pipelineFollowTitle">Follow and decide</h2><p>Live execution, Coding Team controls and decisions that need your attention.</p></div></div>
     <section class="pipeline-panel pipeline-execution" id="pipelineExecution" aria-labelledby="pipelineExecutionTitle" tabindex="-1">
       <div class="pipeline-panel-header"><div><span class="pipeline-run-label">Manual run · live tracking</span><h3 id="pipelineExecutionTitle">Execution monitor</h3><p>Updates automatically while a request is active.</p></div><a class="pipeline-btn compact" href="#pipelinePrepare">Back to launch</a></div>
-      <div class="pipeline-execution-body">
-        <p id="pipelineTeamLaunchState" data-tone="loading" role="status">Checking the current execution&hellip;</p>
-        <div id="pipelineTeamLaunchProgress" class="pipeline-execution-facts"></div>
-        <button id="pipelineTeamLaunchDossier" class="pipeline-btn compact" type="button" hidden>Open task dossier</button>
+      <div class="pipeline-execution-body pipeline-worker-monitor" id="pipelineWorkerMonitor">
+        <p id="pipelineTeamLaunchState" data-tone="loading" role="status" aria-live="polite">Checking the current execution&hellip;</p>
+        <%- include('../partials/pipeline-worker-monitor') %>
         <details class="pipeline-execution-details"><summary>Request and worker details</summary>
           <p id="pipelineTeamLaunchDetail" class="pipeline-team-launch-detail">The host checks task status, ownership, coding service and private lane before launch.</p>
           <div id="pipelineTeamLaunchResult" class="pipeline-launch-result" hidden></div>

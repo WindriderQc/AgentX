@@ -80,6 +80,32 @@ browser plugins are enabled only for the human-operated Studio. Reuse compatible
 project skills through DSH's existing `.agents/skills` or `.dsh/skills` discovery.
 No extra memory service, scheduler or agent-team layer is needed.
 
+## Optional worker navigation and presentation plugins
+
+The optional [AgentX Coding Team bundle](../integrations/dsh/coding-team/README.md)
+adds a native Studio sidebar link to `/pipeline#pipelineWorkerMonitor`. Supply
+the instance's HTTPS Core origin when packaging outside Git. The link starts
+no worker or model call. Pipeline's **Follow and decide** view observes the
+existing worker controller: exact task/request identity, recorded attempt when
+the dossier proves its binding, observation age, heartbeat, useful progress,
+budgets, tests and checkpoint. Its Stop action uses the original request;
+acknowledgement, termination and native resource release remain separate.
+
+Optional third-party presentation bundles belong only in Studio's Web profile.
+Stage exact versions in a disposable native profile before activation, preserve
+the original manifest, bundles and lockfile, and retain native authentication.
+For `dsh-context`, empty `promptPrefix` and `promptSuffix` avoid adding global
+prompt text. For `@changfenhuang/dsh-genui`, `renderUiTool: false` and
+`fenceFeedback: false` disable the rendering tool and fence steering; the plugin
+still registers validation and formatting guidance. Account for that overhead
+when qualifying it. These bundles do not change the worker profile, Core tasks
+or shared memory authority.
+
+Refresh the managed operator skill from `/api/operator-skill/download` after
+the serving revision changes. Preserve private instance references and record
+file installation, native workspace discovery and current-session adoption
+separately. See [coding work guidance](../skills/agentx/references/coding-work.md).
+
 ## Optional prior-session recall and shared memory
 
 Set `DSH_STUDIO_MEMORY_ENABLED=true` in the existing Studio service environment

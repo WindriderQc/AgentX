@@ -213,13 +213,13 @@
   }
 
   function renderDispatchControl() {
-    const stateEl = $('pipelineTeamLaunchState');
+    window.PipelineWorkerMonitor?.render({ $, controller: state.launchController, task: state.drawer?.task });
     const detail = $('pipelineTeamLaunchDetail');
     const select = $('pipelineTeamLaunchTask');
     const confirm = $('pipelineTeamLaunchConfirm');
     const button = $('pipelineTeamLaunchButton');
     const controller = state.launchController;
-    if (!stateEl || !detail || !select || !confirm || !button) return;
+    if (!detail || !select || !confirm || !button) return;
     const control = controller?.control;
     const candidates = control?.candidates || [];
     const pending = controller?.pending;
@@ -254,70 +254,14 @@
     button.innerHTML = controller?.submitting
       ? '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i><span>Submitting request</span>'
       : '<i class="fas fa-play" aria-hidden="true"></i><span>Run one task</span>';
-    const run = pending && control?.run?.requestId !== pending.requestId ? null : control?.run;
-    const status = { tone: 'loading', text: '' };
-    if (controller?.error) {
-      status.tone = 'unavailable';
-      status.text = controller.error;
-    } else if (!control) {
-      status.tone = 'loading';
-      status.text = 'Checking current host admission and request status…';
-    } else if (!control.available) {
-      status.tone = 'unavailable';
-      status.text = 'The one-shot host is unavailable.';
-    } else if (pending || control.busy) {
-      status.tone = 'loading';
-      status.text = run ? `Request ${run.pipelineId || pending?.pipelineId || ''} · ${formatStatus(run.phase)}` : `Submitting request for ${pending?.pipelineId || 'one task'}…`;
-    } else {
-      status.tone = 'ready';
-      const observed = Number.isFinite(Date.parse(control.observedAt)) ? formatDate(control.observedAt) : 'unknown';
-      status.text = run && ['finished', 'stopped', 'rejected'].includes(run.phase)
-        ? `Task ${run.pipelineId} · ${formatStatus(run.phase)}${run.task?.status ? ` · task status: ${formatStatus(run.task.status)}` : ''}. Review the recorded result below.`
-        : 'No manual run is active.';
-      detail.textContent = `Host observed ${observed} · one local coding worker`;
-    }
+    const run = pending && (control?.run?.requestId !== pending.requestId || (control?.run?.pipelineId && control.run.pipelineId !== pending.pipelineId)) ? null : control?.run;
     const summary = control?.summary;
     const admission = $('pipelineTeamAdmissionDetail');
     const admissionText = summary
       ? `${summary.eligibleTasks} of ${summary.queuedTasks} queued tasks eligible for this worker · ${summary.privateQueuedTasks} personal/household tasks outside its scope. Only unassigned, non-private agentx-coding tasks can start. Board filters do not change this list.`
       : 'The host checks task status, ownership, coding service and private lane before launch.';
     if (admission) admission.textContent = admissionText;
-    if (!run && !pending) detail.textContent = admissionText;
-    if (control?.inference && !controller?.error && control.available && (pending || control.busy)) {
-      status.text = `Task ${control.inference.pipelineId} · ${inferenceSummary(control.inference)}`;
-      detail.textContent = `Task attempt ${control.inference.attempt} · ${control.inference.requestCount} model call(s). Inference retries keep this attempt and never replay worker tools.`;
-    }
-    const progress = run?.progress;
-    const progressEl = $('pipelineTeamLaunchProgress');
-    if (progressEl) progressEl.innerHTML = '';
-    if (progress && (pending || control.busy || run.phase === 'unknown') && !controller?.error && control.available) {
-      const stages = { preparing: 'Preparing workspace', dependencies: 'Installing dependencies', model_wait: 'Waiting for model capacity or response',
-        model_generation: 'Model generating', tool: 'Worker tool running', test: 'Tests running', checkpoint: 'Saving checkpoint', publishing: 'Publishing draft PR' };
-      const results = { blocked: 'Blocked', review: 'Draft PR ready for review', local_only: 'Local work awaits publication' };
-      const seconds = value => Number.isSafeInteger(value) && value >= 0 ? `${Math.ceil(value / 60)} min` : 'unknown';
-      const time = value => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? formatDate(value) : 'unknown';
-      const testNames = { pytest: 'pytest', unittest: 'unittest', jest: 'Jest', npm_test: 'npm test', node_test: 'Node tests' };
-      const outcomes = { passed: 'passed', failed: 'failed', unknown: 'unknown' };
-      const test = progress.lastTest;
-      status.tone = progress.result === 'blocked' || run.phase === 'unknown' ? 'attention' : control.busy ? 'loading' : 'ready';
-      status.text = `Task ${run.pipelineId} · ${run.phase === 'unknown' ? 'Host outcome unknown' : results[progress.result] || stages[progress.stage] || 'Progress unknown'}`;
-      detail.textContent = `Host heartbeat: ${time(progress.heartbeatAt)} · Last useful progress: ${time(progress.progressAt)} · Soft budget: ${seconds(progress.softRemainingSeconds)} · Hard budget: ${seconds(progress.hardRemainingSeconds)}`
-        + (testNames[progress.currentTest] ? ` · Running: ${testNames[progress.currentTest]}` : '')
-        + (test && testNames[test.name] ? ` · Last test: ${testNames[test.name]} ${outcomes[test.outcome] || 'unknown'}` : '')
-        + (typeof progress.stopReason === 'string' && /^[a-z_]{1,40}$/.test(progress.stopReason) ? ` · Stop: ${progress.stopReason.replaceAll('_', ' ')}` : '')
-        + (typeof progress.checkpoint === 'string' && /^[a-f0-9]{40}$/.test(progress.checkpoint) ? ` · Local checkpoint: ${progress.checkpoint.slice(0, 12)}` : '');
-      if (progressEl) {
-        const facts = [['Host heartbeat', time(progress.heartbeatAt)], ['Last useful progress', time(progress.progressAt)],
-          ['Soft budget remaining', seconds(progress.softRemainingSeconds)], ['Hard budget remaining', seconds(progress.hardRemainingSeconds)]];
-        if (testNames[progress.currentTest]) facts.push(['Running test', testNames[progress.currentTest]]);
-        if (test && testNames[test.name]) facts.push(['Last test', `${testNames[test.name]} ${outcomes[test.outcome] || 'unknown'}`]);
-        progressEl.innerHTML = `<dl>${facts.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl>`;
-      }
-    }
-    stateEl.dataset.tone = status.tone;
-    if (stateEl.textContent !== status.text) stateEl.textContent = status.text;
-    const dossier = $('pipelineTeamLaunchDossier');
-    if (dossier) { dossier.hidden = !run?.pipelineId; dossier.dataset.pipelineTask = run?.pipelineId || ''; }
+    detail.textContent = admissionText;
     const result = $('pipelineTeamLaunchResult');
     if (result) {
       result.hidden = !run && !pending;
@@ -339,18 +283,6 @@
       retry.after(cancel);
     }
     if (cancel) { cancel.hidden = run?.phase !== 'waiting'; cancel.disabled = !controller?.canCancel(); }
-    let stop = $('pipelineTeamLaunchStop');
-    if (!stop && retry) {
-      stop = document.createElement('button');
-      stop.id = 'pipelineTeamLaunchStop'; stop.type = 'button'; stop.className = 'pipeline-btn compact';
-      stop.addEventListener('click', () => state.launchController?.stop());
-      retry.after(stop);
-    }
-    if (stop) {
-      stop.hidden = !run?.canStop && run?.phase !== 'stopping';
-      stop.textContent = run?.phase === 'stopping' ? 'Stopping worker…' : `Stop worker #${run?.pipelineId || ''}`;
-      stop.disabled = !controller?.canStop();
-    }
     const reasons = $('pipelineTeamEligibilityReasons');
     if (reasons) reasons.innerHTML = !control || controller?.error
       ? '<p>Admission conditions are unavailable. Refresh execution to check again.</p>'

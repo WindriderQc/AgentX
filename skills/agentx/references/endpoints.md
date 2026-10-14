@@ -30,6 +30,24 @@ Base: the Core entry given in `references/instance.md`.
 **Benchmark** (under `/benchmark`): `/benchmark/health` · `/benchmark/api/benchmark/batches/active` · `/benchmark/api/profiler/hosts`
 **RAG** (under `/rag`): `/rag/health`
 
+## Pipeline reads verified in source
+
+These paths are defined in the product's Pipeline and optional runtime-bridge
+routes; they are separate from the dated live observations above. Read the served
+revision and instance capability configuration before relying on the optional
+bridge. No live model call is needed to inspect them.
+
+- `GET /api/pipeline/tasks?scope=engineering`: scoped counts, rows and coverage.
+- `GET /api/pipeline/tasks/:id`: human dossier and its task-content `editToken`.
+- `GET /api/pipeline/tasks/:id/worker?agent=<worker>`: bounded worker task and
+  privacy-filtered Planning references; it does not claim or start the task.
+- `GET /api/pipeline/tasks/:id/eligibility` and `/diagnosis`: read-only start
+  conditions and next-step diagnosis.
+- `GET /api/runtime-bridges/coding-dispatch/status?requestId=<uuid>`: optional
+  native observation of the original local worker request.
+
+Brief and evidence guidance: [coding-work.md](coding-work.md).
+
 ## Routes that exist and need a body
 
 These answer 400 to an empty body, so the route is there; their payloads were not exercised.
