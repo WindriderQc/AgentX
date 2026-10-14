@@ -115,11 +115,11 @@ test('a reply made only of screen content still says something', () => {
   assert.equal(result.say, 'I put it on screen.');
 });
 
-test('ordinary prose waits for its presentation decision; a short answer is spoken completely', () => {
+test('ordinary prose streams before completion and keeps the complete answer', () => {
   const said = [];
   const channels = createReplyChannels({ onSay: text => said.push(text) });
   channels.push('Bonjour mon ami, comment');
-  assert.equal(said.join(''), '');
+  assert.equal(said.join(''), 'Bonjour mon ami,');
   channels.push(' vas-tu?');
   channels.end();
   assert.equal(said.join(''), 'Bonjour mon ami, comment vas-tu?');
@@ -200,25 +200,22 @@ test('an explicit reading request reads every list item instead of the ordinary 
   assert.ok(run(chunks(source, 21)).say.includes('La liste complète est à l’écran'));
 });
 
-test('unmarked long prose is complete in one screen block and history across model delta boundaries', () => {
+test('conversation and explanations stay completely spoken across stream boundaries', () => {
   const source = 'Voici les explications. '.repeat(400) + 'DERNIERS MOTS';
   for (const size of [1, 7, 77, source.length]) {
     const result = run(chunks(source, size));
-    assert.match(result.say, /texte complet est à l’écran/);
-    assert.ok(result.say.length < 200);
-    assert.equal(result.display.length, 1);
-    assert.equal(result.display[0].body, source);
-    assert.equal(new Set(result.shown.map(block => block.key)).size, 1);
-    assert.equal(storedDisplay(result.display)[0].body, source);
+    assert.equal(result.say, source);
+    assert.equal(result.streamed.trim(), source);
+    assert.deepEqual(result.display, []);
     assert.ok(historyText(result.say, result.display).includes(source));
   }
 });
 
-test('long prose screen fallback cannot persist a secret stripped from the spoken channel', () => {
+test('complete prose still strips secrets from both speech and retained history', () => {
   const secret = 'sk-' + 'a1'.repeat(40);
   const result = run(['Explications ordinaires. '.repeat(40) + secret + ' FIN'], { allowSecrets: true });
   assert.ok(result.display.some(block => block.kind === 'secret' && block.body === secret));
-  assert.doesNotMatch(result.display.find(block => block.kind === 'text').body, /sk-/);
+  assert.doesNotMatch(result.say, /sk-/);
   assert.doesNotMatch(historyText(result.say, storedDisplay(result.display)), /sk-/);
 });
 

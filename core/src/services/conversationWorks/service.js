@@ -8,7 +8,8 @@ const { createRepository } = require('./repository');
 const { readTurnContext, assertContextSize } = require('../conversations/turnContext');
 
 function createConversationWorks({ conversations, tasks, env = process.env, repository = createRepository(), classify = () => false, nativeOnly = () => false, nativeRead = () => false,
-  nativeBudget = () => null, nativeForeground = () => true, guardianNeedsMain = () => false, exchangeStore = exchanges, now = () => new Date() } = {}) {
+  nativeBudget = () => null, nativeForeground = () => true, guardianNeedsMain = () => false,
+  presentResult = null, exchangeStore = exchanges, now = () => new Date() } = {}) {
   const repo = repository;
   let wake = () => {};
   const classification = (text, mode) => mode === 'native' ? simple(text) || !nativeForeground(text) ? 'native_review' : 'native_work'
@@ -349,7 +350,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     nativeOwner: async context => { const row = await binding(context, 'boss');
       return { authority: 'core.conversation-works', id: row._id, sessionId: row.sessionId }; },
     admitNativeTool: require('./native-budget').createNativeBudget({ repo, conversations, session, query, policy: nativeBudget, now }),
-    publish, publishNative: require('./native-results').createNativeResultReceiver({ repo, session, now, automaticSpeech }), automaticSpeech,
+    publish, publishNative: require('./native-results').createNativeResultReceiver({ repo, session, now, automaticSpeech }), automaticSpeech, presentResult,
     recover, finalize, handled, guardianContext, guardianContextWithRefs, taskAcceptance, nativeAcceptance, wake: () => wake(), session, query, eligible: (current, channel) => eligible(current, channel, env), wakeWith: fn => { wake = fn; } };
 }
 module.exports = { createConversationWorks };

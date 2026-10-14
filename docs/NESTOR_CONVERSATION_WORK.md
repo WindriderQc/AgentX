@@ -264,6 +264,12 @@ receipt and is never inferred from timing or a reply.
 
 The guardian’s next selected context includes canonical statuses and received
 results from the same conversation, so it can follow up on the worker’s work.
+A trusted surface derives `spokenText`, `readingText` and `displayText` from the
+retained result when projecting it. Conversation and explanations stay complete;
+a document's spoken summary and full screen content remain distinct. Explicit
+Listen uses the full reading view. These views do not rewrite the native result,
+change its version or authorize a new execution.
+
 The result card survives a paused microphone and reconnect. At a natural pause,
 one browser claims presentation. Speech starts only while Nestor is listening,
 awake and free of another turn. Display does not establish speech; the first

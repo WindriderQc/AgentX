@@ -56,17 +56,36 @@ test('Core can authorize an outstanding verified result on an older review and i
   } finally { h.feed.dispose(); delete global.document; }
 });
 
-test('automatic long work results are introduced, while Listen reads the complete retained result', async () => {
+test('automatic long explanations and explicit Listen both speak the complete retained result', async () => {
   const row = item('long-result', true), full = 'Première explication. '.repeat(100) + 'FIN';
   row.result.text = full;
   const h = fixture([row]);
   try {
     h.feed.follow('owner-session'); await tick(); await h.feed.naturalPause();
-    assert.match(h.spoken[0], /texte complet est à l’écran/);
+    assert.equal(h.spoken[0], full);
     assert.equal(h.host.children[0].children[1].textContent, full);
     assert.match(h.host.children[0].children[0].textContent, /presented/);
     h.host.children[0].children.find(node => node.type === 'button').onclick(); await tick();
     assert.equal(h.spoken[1], full);
     assert.deepEqual(h.stages, ['displayed', 'claim', 'started', 'completed', 'replay', 'started', 'completed']);
+  } finally { h.feed.dispose(); delete global.document; }
+});
+
+
+test('a document result speaks its projected summary, displays everything and reads every word on Listen', async () => {
+  const row = item('document-result', true);
+  row.result.text = 'Authoritative native answer with presentation markers.';
+  row.result.spokenText = 'Le document recommande deux étapes : préparer, puis vérifier.';
+  row.result.displayText = row.result.spokenText + '\n\n' + 'Document complet. '.repeat(100) + 'FIN';
+  row.result.readingText = row.result.displayText;
+  const h = fixture([row]);
+  try {
+    h.feed.follow('owner-session'); await tick(); await h.feed.naturalPause();
+    assert.deepEqual(h.spoken, [row.result.spokenText]);
+    assert.equal(h.host.children[0].children[1].textContent, row.result.displayText);
+    h.host.children[0].children.find(node => node.type === 'button').onclick(); await tick();
+    assert.equal(h.spoken[1], row.result.readingText);
+    assert.equal(h.stages.filter(stage => stage === 'claim').length, 1);
+    assert.equal(h.stages.filter(stage => stage === 'replay').length, 1);
   } finally { h.feed.dispose(); delete global.document; }
 });

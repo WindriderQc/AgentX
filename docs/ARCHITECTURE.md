@@ -417,11 +417,11 @@ are rejected before audio headers are committed, and a disconnected caller
 cancels its upstream request without starting a backup request.
 
 The shared loop speaks a reply clause by clause while it is generated and
-prepares at most one clause ahead of the sound. A surface may have it say one
-short holding phrase when no reply text has arrived after a few seconds
-(Household does; PsyX keeps it off). The phrase never delays an available
-answer: it is dropped when reply text arrives before it plays, and a phrase
-already playing ends while the first clause is prepared to follow it.
+prepares at most one clause ahead of the sound. Timed holding phrases are off
+by default: ordinary latency does not announce work or a handoff to Main.
+An adapter can opt in with `holdingDelayMs`; an explicitly requested phrase is
+dropped when reply text arrives before it plays. Actual work states and host
+admission notices remain separate, evidence-backed events.
 
 A turn is spoken in one language. A French or English preference the person
 chose wins; in automatic mode the language recognized in their speech decides,

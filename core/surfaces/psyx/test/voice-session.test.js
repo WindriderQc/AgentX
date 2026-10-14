@@ -280,7 +280,7 @@ test('typed PsyX speech shares the presentation policy and local-only English pl
   h.context.showVoiceError = error => errors.push(error.message);
   const full = 'Here is the explanation. '.repeat(200) + 'FINAL WORDS';
   await h.context.speakText(full, { readAloud: false });
-  assert.ok(spoken[0].length < 200); assert.match(spoken[0], /complete text is on screen/);
+  assert.equal(spoken.join(''), full, 'an ordinary explanation remains complete on local-only English playback');
   spoken.length = 0;
   await h.context.speakText(full);
   assert.equal(spoken.join(''), full);

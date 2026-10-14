@@ -8,11 +8,10 @@ const { SPOKEN_REPLY_INSTRUCTION } = require('../../src/services/voice/presentat
 // diverts what a model still left in its spoken text but nobody should hear
 // read aloud: code, tables, lists longer than three items, links, paths and
 // key-like tokens. Speech (browser TTS and native VoiX) only ever receives the
-// spoken channel. Long ordinary prose is introduced briefly and stored on screen;
-// explicit readings and safety resources bypass that presentation limit.
+// spoken channel. Conversational prose stays spoken in full; documents use explicit screen
+// blocks with a useful spoken summary. Explicit readings include every block.
 
 const path = require('node:path');
-const { randomUUID } = require('node:crypto');
 const spokenPresentation = require('../../public/js/voice/spoken-presentation');
 
 const KINDS = Object.freeze(['text', 'list', 'table', 'code', 'link', 'secret', 'image']);
@@ -115,16 +114,15 @@ function createReplyChannels({ allowSecrets = false, language = 'fr', readAloud 
     return true;
   };
   const screenCue = shown => (shown ? ON_SCREEN[lang] : '');
-  let proseBlock;
-  const presentation = spokenPresentation.create({ language: lang, readAloud, onSay: emit, onShow: body => {
-    if (!proseBlock) {
-      proseBlock = { id: 'b' + (display.length + 1), kind: 'text', title: '', body: '', key: 'prose:' + randomUUID() };
-      display.push(proseBlock);
+  const say = emit;
+  const showBlock = (body) => {
+    const { kind, title, source } = showAttributes;
+    addBlock(kind, title, body, source === undefined ? {} : { source });
+    if (readAloud && !['secret', 'consult', 'image'].includes(kind)) {
+      feedSpoken('\n'); closeGroup();
+      speakProse((kind === 'table' ? spokenTable(body.split('\n')) : body) + '\n');
     }
-    proseBlock.body = body.trim();
-    onShow({ ...proseBlock });
-  } });
-  const say = text => presentation.push(text);
+  };
 
   // Clean tokens before presentation so private values never enter the prose block.
   const speakProse = text => {
@@ -217,11 +215,11 @@ function createReplyChannels({ allowSecrets = false, language = 'fr', readAloud 
         const close = CLOSE.exec(pending);
         if (!close) {
           if (!ended) return;
-          addBlock(showAttributes.kind, showAttributes.title, pending, showAttributes.source === undefined ? {} : { source: showAttributes.source });
+          showBlock(pending);
           pending = '';
           return;
         }
-        addBlock(showAttributes.kind, showAttributes.title, pending.slice(0, close.index), showAttributes.source === undefined ? {} : { source: showAttributes.source });
+        showBlock(pending.slice(0, close.index));
         pending = pending.slice(close.index + close[0].length);
         inShow = false;
         continue;
@@ -261,7 +259,6 @@ function createReplyChannels({ allowSecrets = false, language = 'fr', readAloud 
         process();
         feedSpoken('');
         closeGroup();
-        presentation.end();
         if (!spoken.trim() && display.length) emit(ONLY_SHOWN[lang]);
       }
       return { say: spoken.replace(/\n{3,}/g, '\n\n').trim(), display: display.slice() };
@@ -292,10 +289,10 @@ function historyText(replyText, display = []) {
 
 function contract({ family = false, imageSources = [] } = {}) {
   return [
-    'Your reply reaches two places: short prose outside a show block is spoken aloud; long ordinary prose is introduced briefly and displayed completely. Show blocks are displayed on the user\'s screen and never spoken.',
-    `${SPOKEN_REPLY_INSTRUCTION} When details are on screen, say so naturally, for example "je te l'ai mis à l'écran".`,
+    'Your reply reaches two places: prose outside a show block is spoken aloud completely. Show blocks hold documents and visual details on the user\'s screen.',
+    `${SPOKEN_REPLY_INSTRUCTION} When a document is on screen, first speak its useful summary; do not replace the answer with "je te l'ai mis à l'écran".`,
     'Unless explicitly asked to read the complete text aloud, for a priority or task question speak the one to three most useful items and their deadlines outside the show block. A screen pointer alone is not an answer.',
-    `Except for explicitly requested readings, put anything meant to be read rather than heard inside <show kind="list|table|code|text|link${family ? '' : '|secret'}" title="short title">…</show>: lists longer than three items, steps, tables, code, commands, links, identifiers and long details. Markdown is allowed inside show blocks only.`,
+    `Except for explicitly requested readings, put anything meant to be read rather than heard inside <show kind="list|table|code|text|link${family ? '' : '|secret'}" title="short title">…</show>: long documents, lists longer than three items, steps, tables, code, commands, links and exact technical identifiers. Conversation, jokes, stories and explanations stay outside show blocks regardless of length. Markdown is allowed inside show blocks only.`,
     family
       ? 'Never show passwords, keys, account details or private information.'
       : 'Use kind="secret" for passwords, keys and tokens: it is displayed masked, is not retained and is never spoken.',
