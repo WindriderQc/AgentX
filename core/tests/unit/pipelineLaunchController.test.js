@@ -78,6 +78,8 @@ describe('Pipeline launch reconciliation', () => {
     const post = deferred();
     request.mockImplementation((url, options) => options.method === 'POST' ? post.promise : Promise.resolve(snapshot(run('accepted'), true)));
     const first = controller.launch('0700');
+    expect(controller.lastSubmission).toEqual(selection);
+    expect(Object.isFrozen(controller.lastSubmission)).toBe(true);
     expect(await controller.launch('0700')).toBe(false);
     expect(posts()).toHaveLength(1);
     post.resolve({ data: { run: run('accepted') } });
@@ -166,6 +168,7 @@ describe('Pipeline launch reconciliation', () => {
     expect(controller.pending).toBeNull();
     post.resolve({ data: { run: run('accepted') } });
     await launch;
+    expect(controller.lastSubmission).toEqual(selection);
     expect(controller.pending).toBeNull();
     expect(controller.control.run.phase).toBe('finished');
     request.mockResolvedValue(snapshot(run('finished', 'queued'), false, 1));

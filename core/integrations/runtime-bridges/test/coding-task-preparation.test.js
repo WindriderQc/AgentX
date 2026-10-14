@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { CodingTaskPreparation } = require('../coding-task-preparation');
 
 function fixture(overrides = {}) {
-  const task = { pipelineId: '0700', title: 'Show the team question', status: 'queued', updatedAt: '2026-09-12T10:00:00Z', ...overrides };
+  const task = { pipelineId: '0700', title: 'Show the team question', service: 'agentx-coding', status: 'queued', updatedAt: '2026-09-12T10:00:00Z', ...overrides };
   const writes = [];
   const preparation = new CodingTaskPreparation({ pipeline: { read: async () => ({ task }), apply: async value => { writes.push(value); } } });
   return { preparation, writes };
@@ -17,7 +17,22 @@ test('a queued task is ready for the worker without a plan or a declared scope',
 test('the operator answer is recorded and a blocked task returns to the queue', async () => {
   const f = fixture({ status: 'blocked' });
   assert.deepEqual(await f.preparation.prepare({ pipelineId: '0700', answer: 'Use compact layout.' }), { ready: true });
-  assert.deepEqual(f.writes, [{ pipelineId: '0700', expectedUpdatedAt: '2026-09-12T10:00:00.000Z', answer: 'Use compact layout.' }]);
+  assert.deepEqual(f.writes, [{ pipelineId: '0700', expectedUpdatedAt: '2026-09-12T10:00:00.000Z', answer: 'Use compact layout.', handoff: true }]);
+});
+test('an ordinary UI ticket without a coding route records the explicit handoff before declaring ready', async () => {
+  for (const service of ['', 'core']) {
+    const f = fixture({ service });
+    assert.deepEqual(await f.preparation.prepare({ pipelineId: '0700' }), { ready: true });
+    assert.deepEqual(f.writes, [{ pipelineId: '0700', expectedUpdatedAt: '2026-09-12T10:00:00.000Z', answer: '', handoff: true }]);
+  }
+});
+test('private source lanes, personal services and an existing owner are refused without a write', async () => {
+  for (const changes of [{ service: ' Family ' }, { source: 'household-reminder' }, { source: 'idea-drop' },
+    { assignee: 'another-worker' }, { automationLease: { leaseId: 'held' } }]) {
+    const f = fixture(changes);
+    await assert.rejects(f.preparation.prepare({ pipelineId: '0700' }));
+    assert.equal(f.writes.length, 0);
+  }
 });
 test('a running or reviewed task and an inexact id are refused', async () => {
   await assert.rejects(fixture({ status: 'review' }).preparation.prepare({ pipelineId: '0700' }), /already running or awaiting review/);

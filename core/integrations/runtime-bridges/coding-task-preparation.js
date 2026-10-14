@@ -1,10 +1,12 @@
 'use strict';
 
+const workerTaskScope = require('../../src/helpers/workerTaskScope');
+
 function failure(message, statusCode = 409) { return Object.assign(new Error(message), { statusCode }); }
 
 // Handing a task to the coding worker needs no plan or declared file scope:
 // the worker reads the ticket and its discussion, then works on its own branch.
-// Preparation only records the operator's answer and puts the ticket back in the queue.
+// Preparation records the explicit coding handoff and any operator answer.
 class CodingTaskPreparation {
   constructor({ pipeline }) { this.pipeline = pipeline; }
   async prepare(input) {
@@ -13,10 +15,11 @@ class CodingTaskPreparation {
     const answer = String(input.answer || '').trim();
     if (answer.length > 3000) throw failure('Keep the answer within 3000 characters.', 400);
     const { task } = await this.pipeline.read(pipelineId);
-    if (answer || task.status === 'blocked') {
-      await this.pipeline.apply({ pipelineId, expectedUpdatedAt: new Date(task.updatedAt).toISOString(), answer });
-    } else if (task.status !== 'queued') {
-      throw failure('The task is already running or awaiting review.');
+    if (!workerTaskScope.contains(task)) throw failure('This task belongs to its personal or household workflow.');
+    if (!['queued', 'blocked'].includes(task.status) || task.automationLease?.leaseId) throw failure('The task is already running or awaiting review.');
+    if (task.assignee && !(task.status === 'blocked' && (task.automation?.mode === 'review_only' || task.assignee === 'coding-team'))) throw failure('Another worker owns this task.');
+    if (answer || task.status === 'blocked' || task.service !== 'agentx-coding') {
+      await this.pipeline.apply({ pipelineId, expectedUpdatedAt: new Date(task.updatedAt).toISOString(), answer, handoff: true });
     }
     return { ready: true };
   }
