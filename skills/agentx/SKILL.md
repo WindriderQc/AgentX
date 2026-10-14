@@ -1,6 +1,6 @@
 ---
 name: agentx
-description: "Operate an AgentX instance: Core, Benchmark, RAG and Data. Use for its health, inference hosts, model registry, routing, benchmark or leaderboard, RAG search, pipeline tasks, the nightly memory review, or its agents."
+description: "Operate an AgentX instance's health, inference hosts, model routing, Benchmark, RAG, Pipeline coding tasks and memory review. Use its Core APIs and native operator tools; keep instance details in its supplied reference sheet."
 ---
 
 # AgentX platform operator
@@ -38,7 +38,7 @@ Canonical envelope `{ ok: true, data }` or `{ ok: false, error }`. Older routes 
 - **Hosts and models**: `GET /api/models/cluster-summary` (what is loaded and pinned on each host), `/api/models/all`, `/api/models/registry` (filters: category, tag, vendor, status), `/api/ollama-hosts`.
 - **Routing**: `GET /api/router/config` (which model and host serve each task type).
 - **Usage**: `GET /api/analytics/inference/summary?window=7d|30d`, `/api/analytics/usage`, `/api/analytics/costs`. These counts include trials and benchmark batches.
-- **Pipeline**: `GET /api/pipeline/tasks`, `/api/pipeline/tasks/next`.
+- **Pipeline**: `GET /api/pipeline/tasks?scope=engineering`, `/api/pipeline/tasks/:id` (human dossier), `/api/pipeline/tasks/next`. A worker uses `/api/pipeline/tasks/:id/worker?agent=<worker>` for its bounded task read.
 - **RAG**: `GET /api/rag/status`; `POST /api/rag/search` with `{ query, topK?, filters? }`.
 
 The longer list is in `references/endpoints.md`.
@@ -46,22 +46,34 @@ The longer list is in `references/endpoints.md`.
 ## Writes
 
 - **Chat**: `POST /api/chat` with `{ model, message, ... }`. `model` is optional when `taskType` or `autoRoute: true` is given. Leave the host to the router.
-- **Pipeline**: `POST /api/pipeline/tasks` with `{ title, objective, service }`; `POST /api/pipeline/tasks/:id/feedback` with `{ by, text, status? }`; `POST /api/pipeline/tasks/:id/status`. Routes use the 4-digit `pipelineId` ("0338"), not the Mongo `_id`. There is no `GET /tasks/:id`: filter the list.
-- A task is worked by the local coding worker only when the owner starts it from the Pipeline page. Nothing merges or deploys by itself.
+- **Pipeline**: `POST /api/pipeline/tasks` with `{ title, spec, service }` for a supplied Markdown brief, or `{ title, objective, sourceFiles?, constraints?, acceptanceCriteria?, service }` for Core's rendered brief. Routes use the 4-digit `pipelineId` ("0338"), not the Mongo `_id`. For briefs, edits, worker observation and result evidence, read [references/coding-work.md](references/coding-work.md).
+- Saving or approving a plan starts no worker. The manual path launches from Pipeline; the separately authorized correction loop defaults off. Worker delivery ends at a draft PR and human review. Merging and deployment remain separate actions.
 
 ## Heavy work during coding and testing
 
-Before live model tests, Benchmark/Profiler work, image renders or long shared
-compute, submit a linked request to `/api/cluster/schedule/work-queue`. Use
-`integrations/operations/heavy-work-queue.cjs` with the instance Core origin.
-The owner plans a slot and explicitly launches a supported saved executor.
-Planning grants neither runtime admission nor new tool permissions. On a lost
-response inspect the same request, never create a replacement launch while its
-outcome is uncertain. QUEUE.md becomes an archive after confirmed migration;
-until then, follow its existing instance procedure. Ordinary isolated unit
-tests/source checks/builds stay direct. See `docs/HEAVY_WORK_QUEUE.md`.
+Before live model tests, model load/unload, Benchmark/Profiler work, image
+renders or long shared compute, discover the installed queue from the instance
+sheet and Core. After confirmed migration submit to
+`/api/cluster/schedule/work-queue` through the instance's operator entrance or
+`integrations/operations/heavy-work-queue.cjs`. Link the coding session and task
+or issue; name required hosts, estimated duration and permitted start window.
+Until migration is confirmed, record the request using the instance's existing
+QUEUE.md procedure; afterwards that file is an archive/export.
 
-Ask the owner before any write that changes models, routing, pins or host state.
+A planned slot is a prerequisite, not campaign approval or runtime admission.
+The authorized operator explicitly launches a saved supported executor; native
+claims, Benchmark admission and maintenance ownership still apply. A preflight
+that invokes a model also needs the queue. Retain one execution request identity
+and its native result/release receipts. On a lost reply inspect that same request
+before another effect. Restore through its native owner; never delete claims or
+clear quarantine. Ordinary isolated CPU unit tests, disposable test databases,
+source checks and builds stay direct. Read `docs/HEAVY_WORK_QUEUE.md` in the
+product checkout for executor and recovery details; queue receipts stay outside
+public Git.
+
+Changes to models, routing, pins or host state require the owner's explicit
+authorization. Use authorization already given for the same scope; otherwise ask
+before the change.
 
 ## Where knowledge lives
 
