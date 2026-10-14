@@ -678,7 +678,7 @@ async function refreshRagMetrics() {
                 <div style="color: var(--danger); padding: 20px; text-align: center;">
                     <i class="fas fa-exclamation-triangle"></i><br>
                     <strong>Failed to load RAG metrics</strong><br>
-                    <small style="color: var(--muted);">${error.message}</small>
+                    <small style="color: var(--muted);">${escapeHtml(error.message)}</small>
                 </div>
             `;
             elements.ragEmpty.style.display = 'block';
