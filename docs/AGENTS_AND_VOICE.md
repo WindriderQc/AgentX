@@ -178,7 +178,9 @@ observed microphone levels, while detailed receipts expand on demand. Playback
 scheduling, completion and interruption remain distinct. TTS example text follows
 the selected test language, including natural speech and number presets. The
 English shortcut selects English for that test without saving a conversation
-preference.
+preference. Custom text is a separate in-memory draft per language while the
+workshop is open. Selecting a preset replaces only that language’s draft; no
+translation, storage or synthesis request runs on a language change.
 Playback controls stay disabled at rest. Stop replay affects only the playing
 excerpt and retains it for another listen; resuming capture is explicit. Stop
 reading cancels the current TTS preparation or playback. In attached diagnostics,

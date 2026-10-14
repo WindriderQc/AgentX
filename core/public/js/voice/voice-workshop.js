@@ -26,7 +26,8 @@
     host.innerHTML = V.template(scope, embedded);
     const find = selector => host.querySelector(selector), role = name => find(`[data-role="${name}"]`), field = name => find(`[data-field="${name}"]`);
     const life = new AbortController(), state = { busy: false, destroyed: false, catalog: null, personas: supplied || [], lastResult: null, tab, speech: 'idle', speechRun: 0, replaying: false, replayRun: 0, receipt: null, sessionDetail: '' };
-    let prefs, standalone, interval;
+    let prefs, standalone, interval, textLanguage = 'fr', exampleName = 'initial';
+    const textDrafts = new Map();
     const visual = V.create(host);
     signal?.addEventListener('abort', () => life.abort(), { once:true });
     find('[data-action="close"]')?.addEventListener('click', onClose, { signal:life.signal });
@@ -49,9 +50,15 @@
       if (selected && ![...select.options].some(o => o.value === selected)) { const option = new Option('Voix enregistrée · disponibilité non confirmée', selected); select.add(option); }
       select.value = selected;
     }
-    function updateExample(language) {
-      const example = Object.values(examples).find(texts => Object.values(texts).includes(field('speechText').value));
-      if (example) field('speechText').value = example[language];
+    function updateExample(language, preset = null) {
+      const text = field('speechText').value;
+      const example = Object.entries(examples).find(([,texts]) => texts[textLanguage] === text);
+      if (example) { exampleName = example[0]; textDrafts.delete(textLanguage); }
+      else textDrafts.set(textLanguage, text);
+      if (preset) { exampleName = preset; textDrafts.delete(language); }
+      field('speechText').value = textDrafts.has(language) ? textDrafts.get(language) : examples[exampleName][language];
+      field('speechText').lang = language === 'fr' ? 'fr-CA' : 'en';
+      textLanguage = language;
     }
     function renderPrefs() {
       prefs = S.read(scope, state.personas);
@@ -177,8 +184,8 @@
       if (button.dataset.tab || button.dataset.stepTab) { showTab(button.dataset.tab || button.dataset.stepTab); return refresh(); }
       if (button.dataset.preset) {
         const lang = button.dataset.preset === 'english' ? 'en' : field('testLanguage').value;
-        const text = examples[button.dataset.preset][lang], selectedVoice = field('testLanguage').value === lang ? field('testVoice').value : '';
-        field('speechText').value = text; field('testLanguage').value = lang; voiceOptions(field('testVoice'),lang,selectedVoice); return refresh();
+        const selectedVoice = field('testLanguage').value === lang ? field('testVoice').value : '';
+        updateExample(lang, button.dataset.preset); field('testLanguage').value = lang; voiceOptions(field('testVoice'),lang,selectedVoice); return refresh();
       }
       switch (button.dataset.action) {
         case 'close': return onClose();
@@ -236,7 +243,7 @@
     document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); }, { signal: life.signal });
     root.addEventListener('pagehide', pause, { signal: life.signal });
     interval = setInterval(refresh, 200); showTab(tab); refresh();
-    return { destroy() { stopReplay(); state.destroyed = true; state.speechRun++; life.abort(); clearInterval(interval); standalone.destroy(); field('expected').value = ''; state.lastResult = null; role('comparison')?.replaceChildren();
+    return { destroy() { stopReplay(); state.destroyed = true; state.speechRun++; life.abort(); clearInterval(interval); standalone.destroy(); textDrafts.clear(); field('speechText').value = ''; field('expected').value = ''; state.lastResult = null; role('comparison')?.replaceChildren();
       if (flowHome?.parent.isConnected) flowHome.parent.insertBefore(flow, flowHome.next?.parentNode === flowHome.parent ? flowHome.next : null);
     }, refresh };
   }
