@@ -119,8 +119,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   clauses ahead and permits one bounded retry after a speech stream failure.
   Household flushes its final clause before turn completion and persists browser
   voice timings; PsyX keeps its protected speech route without a timing store.
-  Voice choices are request-scoped; Stop or disconnect cancels upstream work
-  without starting a backup request. See [agents and voice](AGENTS_AND_VOICE.md).
+  Timed holding phrases are off by default. Conversation and explanations stay
+  fully spoken; documents use a useful spoken summary and complete screen text.
+  Voice choices are request-scoped; Stop or disconnect cancels upstream speech
+  synthesis without starting a backup request. See [agents and voice](AGENTS_AND_VOICE.md).
 - **Personalities.** Household versions personalities separately from modes and
   binds them to agents on the server. An adult-authorized session can switch its
   personality between turns while keeping its agent and permissions. Turns

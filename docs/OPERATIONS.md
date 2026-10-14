@@ -805,9 +805,10 @@ do not use browser `speechSynthesis`. PsyX uses its
 protected chosen-voice route. Explicit English can fall back only to a system
 voice Chrome declares local and English; no matching local voice leaves speech
 unavailable and the complete text visible. French stays on its protected route.
-Ordinary replies beyond three sentences or 600 characters use a brief spoken
-introduction and complete screen text. Explicit reading and Listen replay keep
-all requested content; safety resources bypass that presentation threshold. See
+Conversation, jokes, stories and explanations are spoken completely, without
+a sentence or character cutoff. Long documents and lists have a useful spoken
+summary plus their complete screen content. Explicit reading and Listen replay
+keep all requested content, including document blocks; secrets remain excluded. See
 [shared speech behavior](AGENTS_AND_VOICE.md#shared-speech-behavior).
 
 `HOUSEHOLD_TEAM_MEMBERS` optionally lets the owner address a team member
@@ -891,9 +892,9 @@ turn before another starts, and anything else resumes the remaining audio. A
 click, a keyboard or a door never pauses a reply. A reply that has not started
 yet waits for a candidate to be recognized, a moment, so it does not begin over
 a person who is speaking.
-When no reply text has arrived 3 s after a voice turn starts, Nestor says one short
-holding phrase (« Un instant… ») and shows that it is still thinking; hearing that
-phrase back is echo, not an interruption. Cancelling an OpenClaw turn before it
+A slow ordinary answer stays in the visual thinking state, without a timed
+spoken acknowledgment. Specific admitted-work notices can still be spoken.
+An adapter that explicitly configures a holding phrase keeps its echo rejection. Cancelling an OpenClaw turn before it
 streamed content, a tool call or reasoning settles at once; after that, Core waits
 for the run's native end and otherwise pauses the conversation with a French notice.
 A native stream has 3 s to close after its matching completion row or after

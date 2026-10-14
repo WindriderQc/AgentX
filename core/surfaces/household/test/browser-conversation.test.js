@@ -1423,9 +1423,29 @@ test('the brief bilingual holding notice remains distinguishable from a valid sh
   }
 });
 
-test('the holding phrase waits a few seconds by default', () => {
+test('an explicitly requested holding phrase can use the shared delay', () => {
   const { HOLDING_DELAY_MS } = require('../public/browser-conversation');
   assert.ok(HOLDING_DELAY_MS >= 2000 && HOLDING_DELAY_MS <= 5000);
+});
+
+test('ordinary conversation does not invent a spoken work acknowledgment after three seconds', async t => {
+  const { HOLDING_DELAY_MS } = require('../public/browser-conversation');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const slow = deferred(), spoken = [];
+  const h = harness({ holdingDelayMs: undefined, turn: () => slow.promise,
+    async synthesize(reply) { spoken.push(reply.text); return new ArrayBuffer(4); } });
+  try {
+    await h.conversation.start({ language: 'fr' });
+    const exchange = h.say(); await tick();
+    t.mock.timers.tick(HOLDING_DELAY_MS + 100); await tick();
+    assert.deepEqual(spoken, []);
+    assert.equal(h.conversation.state, 'thinking');
+    const joke = 'Pourquoi le livre a froid? Parce qu’il a perdu sa couverture!';
+    slow.resolve({ text: joke, language: 'fr' }); await exchange;
+    assert.deepEqual(spoken, [joke]);
+    assert.equal(h.messages.filter(row => row.role === 'assistant').length, 1);
+    assert.equal(h.conversation.state, 'listening');
+  } finally { h.conversation.stop(); t.mock.timers.reset(); }
 });
 
 test('reply text that arrives before the holding phrase plays drops it, so the answer is not delayed', async () => {
@@ -1806,7 +1826,7 @@ test('private English device playback refuses remote voices and selects a local 
   } finally { globalThis.speechSynthesis = previous.synth; globalThis.SpeechSynthesisUtterance = previous.utterance; }
 });
 
-test('an ordinary unstreamed long answer is introduced and displayed whole; explicit reading is complete', async () => {
+test('long conversational explanations and explicit readings are spoken completely', async () => {
   const full = 'Une explication détaillée. '.repeat(100) + 'FIN';
   for (const request of ['Explique-moi cela', 'Lis-moi la réponse complète']) {
     const spoken = [];
@@ -1815,8 +1835,7 @@ test('an ordinary unstreamed long answer is introduced and displayed whole; expl
     try {
       await h.conversation.start({ language: 'fr' }); await h.say();
       assert.equal(h.messages.find(message => message.role === 'assistant').text, full);
-      if (request.startsWith('Lis')) assert.equal(spoken.join(''), full);
-      else { assert.match(spoken.join(''), /texte complet est à l’écran/); assert.ok(spoken.join('').length < 200); }
+      assert.equal(spoken.join(''), full);
     } finally { h.conversation.stop(); }
   }
 });

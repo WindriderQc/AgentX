@@ -8,7 +8,8 @@ const { createRepository } = require('./repository');
 const { readTurnContext, assertContextSize } = require('../conversations/turnContext');
 
 function createConversationWorks({ conversations, tasks, env = process.env, repository = createRepository(), classify = () => false, nativeOnly = () => false, nativeRead = () => false,
-  nativeBudget = () => null, nativeForeground = () => true, guardianNeedsMain = () => false, exchangeStore = exchanges, now = () => new Date() } = {}) {
+  nativeBudget = () => null, nativeForeground = () => true, guardianNeedsMain = () => false,
+  presentResult = null, exchangeStore = exchanges, now = () => new Date() } = {}) {
   const repo = repository;
   let wake = () => {};
   const classification = (text, mode) => mode === 'native' ? simple(text) || !nativeForeground(text) ? 'native_review' : 'native_work'
@@ -30,7 +31,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     return receipt?.request?.body?.sessionId === current.sessionId && MODES.includes(receipt.request.body.mode)
       ? { mode: receipt.request.body.mode } : null;
   }
-  async function intake({ session: current, turnId, text, attachments = [], channel = 'voice' }) {
+  async function intake({ session: current, turnId, text, attachments = [], channel = 'voice', speechLanguage }) {
     const previousWork = await retained(current, turnId, channel);
     if (!eligible(current, channel, env) && !previousWork) return null;
     if (!/^[a-zA-Z0-9-]{16,80}$/.test(turnId || '') || typeof text !== 'string' || !text.trim() || text.length > LIMITS.request) {
@@ -41,7 +42,8 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       mode: previousWork?.mode || env.PERSONAL_CONVERSATION_WORK_MODE };
     const accepted = await exchangeStore.accept(EXCHANGE_SCOPE, { body: snapshot }, turnId, current.conversationId);
     const taken = await conversations.acceptTurn({ ...query(current.sessionId), modeId: current.modeId,
-      traceId: turnId, clientTurnId: turnId, channel, inputText: text, attachments });
+      traceId: turnId, clientTurnId: turnId, channel, inputText: text, attachments,
+      ...(['fr', 'en'].includes(speechLanguage) && { speechLanguage }) });
     const previous = await repo.get(id);
     if (previous) return { row: previous, turn: taken.turn, duplicate: true };
     if ((await repo.find({ state: { $in: ACTIVE } }, LIMITS.open + 1)).length >= LIMITS.open) {
@@ -354,7 +356,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     nativeOwner: async context => { const row = await binding(context, 'boss');
       return { authority: 'core.conversation-works', id: row._id, sessionId: row.sessionId }; },
     admitNativeTool: require('./native-budget').createNativeBudget({ repo, conversations, session, query, policy: nativeBudget, now }),
-    publish, publishNative: require('./native-results').createNativeResultReceiver({ repo, session, now, automaticSpeech }), automaticSpeech,
+    publish, publishNative: require('./native-results').createNativeResultReceiver({ repo, session, now, automaticSpeech }), automaticSpeech, presentResult,
     recover, finalize, handled, guardianContext, guardianContextWithRefs, taskAcceptance, nativeAcceptance, wake: () => wake(), session, query, eligible: (current, channel) => eligible(current, channel, env), wakeWith: fn => { wake = fn; } };
 }
 module.exports = { createConversationWorks };

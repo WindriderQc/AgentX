@@ -199,11 +199,11 @@ defaults to wake mode, Personal to open listening. Nonempty recognized responses
 including single digits, thanks and goodbye, are not discarded by a lexical noise
 blacklist. Acoustic noise/echo handling and recognition quality remain distinct.
 
-The loop speaks clauses and prepares at most one ahead. Household can play a
-holding phrase while waiting for reply text; available text drops a phrase that
-has not started. `say_end` flushes the last clause before a Household turn's
-remaining completion work. PsyX waits for its confirmed reply and keeps holding
-phrases off. One selected language applies throughout a turn, including notices
+The loop speaks clauses and prepares at most one ahead. Timed holding phrases
+are off by default, including Household and PsyX: elapsed time is not evidence
+of delegated work. An adapter may opt in with `holdingDelayMs`; available text
+drops a phrase that has not started. `say_end` flushes the last clause before a
+Household turn's remaining completion work. PsyX waits for its confirmed reply. One selected language applies throughout a turn, including notices
 and holding phrases. Nestor and Family browser conversations default to Quebec
 French (`fr`, browser locale `fr-CA`); English requires an explicit selection.
 Kids Room and Lecture share a browser-local language choice in Reading voices,
@@ -247,15 +247,15 @@ Packs, learning modes and family scopes remain owned by the page and Core.
 Typed turns while listening use the same loop and do not schedule a second playback.
 Screen blocks and complete replay text are retained on learning pages.
 
-Ordinary answers up to about three sentences and 600 characters are spoken
-completely. Beyond either threshold, a brief opening points to the complete text
-on screen. Core holds short unmarked prose until it can decide its presentation;
-long streamed prose updates one screen block without discarding its final words.
-The same limit applies to complete browser replies and automatic work delivery.
-Explicit reading requests and Listen replay remain complete, using ordered
-synthesis segments. Their speech cleanup retains table cells and fenced code
-content while removing its display markup. Safety resources and instructions bypass this limit; a
-completed short introduction is a presented result, not proof of complete reading.
+Conversation, jokes, stories and explanations stay fully spoken regardless of
+length. Prose streams without waiting for a presentation threshold. A requested
+long document or list uses a self-contained spoken summary and complete screen
+blocks; a screen pointer alone is not an answer. Native Main results use the same
+channels through derived speech, display and full-reading views, leaving the
+canonical answer and delivery identity unchanged. Explicit reading and Listen
+replay include all requested content in ordered synthesis segments, including
+text blocks, table cells and fenced code. Secrets remain excluded from speech.
+A completed summary is a presented result, not proof of complete reading.
 
 The shared speech cleanup removes display markup while preserving prose and
 emergency phone numbers; stored text stays unchanged. This contract needs

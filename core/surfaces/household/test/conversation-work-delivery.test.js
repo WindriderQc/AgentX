@@ -10,14 +10,14 @@ class Element {
   querySelector(selector) { return this.children.find(node => '.' + node.className === selector); }
 }
 function fixture(items) {
-  const host = new Element(), stages = [], spoken = [], conversation = { session: { sessionId: 'owner-session' }, state: 'listening',
-    interject: async ({ text }, { onScheduled }) => { spoken.push(text); onScheduled(); return true; } };
+  const host = new Element(), stages = [], spoken = [], languages = [], conversation = { session: { sessionId: 'owner-session' }, state: 'listening',
+    interject: async ({ text, language }, { onScheduled }) => { spoken.push(text); languages.push(language); onScheduled(); return true; } };
   global.document = { createElement: () => new Element() };
   const feed = create({ host, base: '/sessions', getConversation: () => conversation, api: async (url, options) => {
     if (url.includes('/receipt')) { const receipt = JSON.parse(options.body); stages.push(receipt.stage); return { claimToken: 'owned-claim' }; }
     return { items, cursor: 1, hasMore: false };
   }, pollMs: 60000 });
-  return { host, feed, stages, spoken, conversation };
+  return { host, feed, stages, spoken, languages, conversation };
 }
 const item = (id, automaticSpeech, classification = 'native_work') => ({ id, sessionId: 'owner-session', state: 'completed', classification,
   result: { text: id, version: 1, deliveryId: id, presentation: 'available', automaticSpeech } });
@@ -56,17 +56,39 @@ test('Core can authorize an outstanding verified result on an older review and i
   } finally { h.feed.dispose(); delete global.document; }
 });
 
-test('automatic long work results are introduced, while Listen reads the complete retained result', async () => {
+test('automatic long explanations and explicit Listen both speak the complete retained result', async () => {
   const row = item('long-result', true), full = 'Première explication. '.repeat(100) + 'FIN';
   row.result.text = full;
   const h = fixture([row]);
   try {
     h.feed.follow('owner-session'); await tick(); await h.feed.naturalPause();
-    assert.match(h.spoken[0], /texte complet est à l’écran/);
+    assert.equal(h.spoken[0], full);
     assert.equal(h.host.children[0].children[1].textContent, full);
     assert.match(h.host.children[0].children[0].textContent, /presented/);
     h.host.children[0].children.find(node => node.type === 'button').onclick(); await tick();
     assert.equal(h.spoken[1], full);
     assert.deepEqual(h.stages, ['displayed', 'claim', 'started', 'completed', 'replay', 'started', 'completed']);
+  } finally { h.feed.dispose(); delete global.document; }
+});
+
+
+test('a document result speaks its projected summary, displays everything and reads every word on Listen', async () => {
+  const row = item('document-result', true);
+  row.result.text = 'Authoritative native answer with presentation markers.';
+  row.result.spokenText = 'Le document recommande deux étapes : préparer, puis vérifier.';
+  row.result.displayText = row.result.spokenText + '\n\n' + 'Document complet. '.repeat(100) + 'FIN';
+  row.result.readingText = row.result.displayText;
+  row.result.language = 'fr';
+  const h = fixture([row]);
+  h.conversation.selection = { language: 'en' };
+  try {
+    h.feed.follow('owner-session'); await tick(); await h.feed.naturalPause();
+    assert.deepEqual(h.spoken, [row.result.spokenText]);
+    assert.equal(h.host.children[0].children[1].textContent, row.result.displayText);
+    h.host.children[0].children.find(node => node.type === 'button').onclick(); await tick();
+    assert.equal(h.spoken[1], row.result.readingText);
+    assert.deepEqual(h.languages, ['fr', 'fr'], 'a later language choice cannot change the original result or its replay');
+    assert.equal(h.stages.filter(stage => stage === 'claim').length, 1);
+    assert.equal(h.stages.filter(stage => stage === 'replay').length, 1);
   } finally { h.feed.dispose(); delete global.document; }
 });

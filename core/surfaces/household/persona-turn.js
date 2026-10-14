@@ -131,6 +131,7 @@ function createPersonaTurnHandler({
       if (clientTurnId) {
         entry.snapshot = { sessionId: session.sessionId, packId: pack.id, modeId: session.modeId, scopeId: session.scopeId };
       }
+      const preferredSpeechLanguage = isLlmX ? null : (req.body?.language || session.voice?.language) === 'en' ? 'en' : 'fr';
       const requestedAttachments = runtimeServices.attachments.ids(req.body?.attachmentIds);
       const attachmentStore = !isLlmX && access === 'private' && session.packId === 'personal_operator' && session.scopeId === 'personal'
         ? personalAttachments(session.sessionId) : null;
@@ -142,7 +143,7 @@ function createPersonaTurnHandler({
           && (conversationWorks?.eligible(session, req.body?.channel)
             || await conversationWorks?.retained?.(session, req.body?.turnId, req.body?.channel))) {
         clientTurnId ||= req.body.turnId; entry.clientTurnId = clientTurnId;
-        const intake = await conversationWorks.intake({ session, turnId: clientTurnId, text: userText, attachments: entry.attachments });
+        const intake = await conversationWorks.intake({ session, turnId: clientTurnId, text: userText, attachments: entry.attachments, speechLanguage: preferredSpeechLanguage });
         entry.workId = intake.row._id; entry.traceId = clientTurnId; entry.snapshot ||= {
           sessionId: session.sessionId, packId: pack.id, modeId: session.modeId, scopeId: session.scopeId };
         entry.guardianAgentId = intake.row.guardian?.agentId;
@@ -173,7 +174,6 @@ function createPersonaTurnHandler({
         }
       }
       const workshop = workshopContext(req.body?.workshop, session);
-      const preferredSpeechLanguage = isLlmX ? null : (req.body?.language || session.voice?.language) === 'en' ? 'en' : 'fr';
       const safety = assessSafety(userText, { adult: !pack.childSafe });
       const childBoundary = childBoundaryReply(pack, safety, userText), mathTurn = pack.childSafe && !isLlmX && !childBoundary && !safety.deterministicEscalation ? mathTurnFor(userText, preferredSpeechLanguage) : null;
       let replyText, sceneProposal = null, display = [];

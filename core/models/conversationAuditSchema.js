@@ -10,6 +10,7 @@ module.exports = new Schema({
     modeId: String,
     scopeId: { type: String },
     channel: { type: String, enum: ['text', 'voice'], default: 'text' },
+    speechLanguage: { type: String, enum: ['fr', 'en'], default: undefined },
     textRetention: { type: String, enum: ['full', 'preview-only'], default: 'full' },
     clientTurnId: String,
     origin: { type: String, default: 'human' },

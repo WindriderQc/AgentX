@@ -734,8 +734,8 @@
         prefetchSlot = previousPlayback;
         return true;
       };
-      // A long silent wait made people speak again and cancel the turn; say once that
-      // Nestor is working when no reply text has arrived after a few seconds.
+      // Adapters can explicitly request a timed holding phrase. Ordinary
+      // conversation waits visually; elapsed time alone is not a work status.
       // Its words join turn.spoken, so hearing them back is echo, not an interruption.
       // The phrase never delays the answer: it is dropped when reply text arrives
       // before it plays, and it does not hold the synthesis of the first clause.
@@ -760,7 +760,7 @@
         // now rather than when the turn completes (its closing work can be slow).
         onSayEnd: () => { if (this.owns(turn) && streamed) { speak(pending); pending = ''; } },
         ...(attachments.length && { attachmentIds: attachments.map(item => item.id) }) });
-      const holdingDelay = this.io.holdingDelayMs === undefined ? HOLDING_DELAY_MS : this.io.holdingDelayMs;
+      const holdingDelay = this.io.holdingDelayMs ?? null;
       const holding = holdingDelay === null ? null : setTimeout(() => {
         if (streamed || !this.owns(turn) || turn.interrupted) return;
         const phrase = (this.io.speechText || speechLanguage.speechText)(holdingPhrase(spokenLanguage, this.holdingIndex = (this.holdingIndex || 0) + 1));

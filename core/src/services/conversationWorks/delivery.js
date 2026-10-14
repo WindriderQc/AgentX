@@ -5,6 +5,9 @@ const { ACTIVE, LIMITS, fail, notFound } = require('./contract');
 function createWorkDelivery(works) {
   async function projection(row) {
     const result = row.result ? await works.repo.read(row, row.result.payloadRef) : null;
+    // A trusted surface can derive speech/display views without changing the
+    // retained native answer, result identity or delivery ownership.
+    const presented = result && result.kind !== 'no_work' && works.presentResult ? await works.presentResult(result, row) : null;
     return { id: row._id, turnId: row.turnId, sessionId: row.sessionId, state: row.state,
       revision: row.revision, receivedAt: row.receivedAt, updatedAt: row.updatedAt,
       classification: row.classification, guardianStatus: row.guardian?.state || 'unknown', sequence: row.sequence, reason: row.reason || '',
@@ -17,7 +20,9 @@ function createWorkDelivery(works) {
       nativeAdmissions: (row.nativeAdmissions || []).map(call => ({ id: call.id, tool: call.tool, at: call.at })),
       resultDisposition: row.result?.kind || null,
       controllable: row.classification !== 'native_only' && !row.attempt && ['received', 'queued', 'paused'].includes(row.state),
-      result: result && result.kind !== 'no_work' ? { ...result, automaticSpeech: await works.automaticSpeech(row), version: row.result.version,
+      result: result && result.kind !== 'no_work' ? { ...result,
+        ...(presented && { language: presented.language, spokenText: presented.spokenText, readingText: presented.readingText, displayText: presented.displayText }),
+        automaticSpeech: await works.automaticSpeech(row), version: row.result.version,
         deliveryId: row.delivery.id, presentation: row.delivery.state } : null,
       // A context payload is never a browser projection.
       pending: (ACTIVE.includes(row.state) || ['pending', 'running', 'uncertain'].includes(row.guardian?.state)) && !row.result };
