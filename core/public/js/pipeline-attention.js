@@ -93,6 +93,12 @@
     return parts.join(' · ');
   }
 
+  function headline(view) {
+    const count = view.coverage.total ?? view.coverage.lowerBound;
+    if (view.coverage.complete && count === 0) return 'No tasks need attention in this view.';
+    return `${view.coverage.complete ? '' : 'At least '}${plural(count, 'task')} ${count === 1 ? 'needs' : 'need'} attention${view.coverage.complete ? '' : ' · total unknown'}`;
+  }
+
   function coverageNote(view) {
     const coverage = view.coverage;
     if (coverage.complete) return '';
@@ -114,8 +120,8 @@
     return `<button type="button" class="pipeline-attention-item tone-${esc(item.tone)}${isNew ? ' is-new' : ''}" data-pipeline-task="${esc(item.pipelineId)}">
         <i class="fas ${esc(item.icon)}" aria-hidden="true"></i>
         <span class="pipeline-attention-copy">
-          <strong>${isNew ? '<span class="pipeline-attention-new">New</span> ' : ''}${esc(item.pipelineId)} ${esc(item.label)}</strong>
-          <span>${esc(item.title)} · ${esc(item.detail)}</span>
+          <strong>${isNew ? '<span class="pipeline-attention-new">New</span> ' : ''}#${esc(item.pipelineId)} · ${esc(item.title)}</strong>
+          <span>${esc(item.label)} · ${esc(item.detail)}</span>
           <em>${esc(item.action)}</em>
         </span>
         <i class="fas fa-arrow-right pipeline-attention-arrow" aria-hidden="true"></i>
@@ -275,6 +281,8 @@
       this.rendered = signature;
       const focused = pager?.contains(document.activeElement) ? document.activeElement.dataset.attentionPage : null;
       if (meta) meta.textContent = metaText;
+      if (this.el.summary) this.el.summary.textContent = this.error ? 'Current task decision count unavailable. See the observation details below.'
+        : this.view ? headline(this.view) : `Reading ${SCOPES[this.scope].toLowerCase()} decisions…`;
       if (notes) { notes.textContent = noteText; notes.hidden = !noteText; }
       if (list) list.innerHTML = listHtml;
       if (pager) { pager.innerHTML = pagerHtml; pager.hidden = !pagerHtml; }
@@ -307,5 +315,5 @@
     }
   }
 
-  return { Controller, bannerState, buildQuery, diffSignal, describe, scopeNote, pageItems, lastPageIndex, windowOffset, validPayload, PAGE_SIZE, WINDOW_SIZE };
+  return { Controller, bannerState, buildQuery, diffSignal, describe, headline, scopeNote, pageItems, lastPageIndex, windowOffset, validPayload, PAGE_SIZE, WINDOW_SIZE };
 });

@@ -146,6 +146,7 @@
       timing: values => setRows(role('timings'), Object.entries(values).filter(([k,v]) => typeof v === 'number' && (/Ms$|_ms$/.test(k) || ['sttDone','sttServer','audioMs','silenceMs'].includes(k))).filter(([k]) => !['requestSent','firstDelta','firstAudio','firstFrameScheduled','firstSignalScheduled'].includes(k)).map(([k,v]) => [k, number(v, ' ms')])),
       receipt: value => { if (state.destroyed || !['preparing','scheduled'].includes(state.speech)) return; state.receipt = { ...state.receipt, ...value }; setRows(role('speechReceipt'), Object.entries(state.receipt).filter(([,v]) => ['string','number','boolean'].includes(typeof v)).map(([k,v]) => [k, String(v)])); refresh(); } });
     if (extraSettings) role('extraSettings').append(extraSettings);
+    const flowHome = flow?.parentNode ? { parent: flow.parentNode, next: flow.nextSibling } : null;
     if (flow) role('flow').append(flow);
     const current = () => conversation || standalone.conversation;
     host.addEventListener('click', event => {
@@ -202,7 +203,9 @@
     document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); }, { signal: life.signal });
     root.addEventListener('pagehide', pause, { signal: life.signal });
     interval = setInterval(refresh, 200); showTab(tab); refresh();
-    return { destroy() { state.destroyed = true; state.speechRun++; life.abort(); clearInterval(interval); standalone.destroy(); field('expected').value = ''; state.lastResult = null; role('comparison')?.replaceChildren(); }, refresh };
+    return { destroy() { state.destroyed = true; state.speechRun++; life.abort(); clearInterval(interval); standalone.destroy(); field('expected').value = ''; state.lastResult = null; role('comparison')?.replaceChildren();
+      if (flowHome?.parent.isConnected) flowHome.parent.insertBefore(flow, flowHome.next?.parentNode === flowHome.parent ? flowHome.next : null);
+    }, refresh };
   }
   async function open(options) {
     const dialog = document.createElement('dialog'); dialog.className = 'voice-workshop-dialog'; dialog.setAttribute('aria-label', 'Atelier vocal');

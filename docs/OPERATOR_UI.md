@@ -31,9 +31,25 @@ queued, unassigned task and does not dispatch an agent. An explicitly empty
 group stays empty; API/MCP clients omitting the group keep their inbox default.
 The optional AI writing proposal still requires applying it and saving the form.
 
+**Prepare and launch** separates the manual one-task form from the optional
+Coding Team correction loop. Review a selected task before confirming a local
+run. The task queue uses the overview filters; launch candidates use the host's
+admission rules, explained under **Which tasks can run here?** Queue totals and
+coverage expand separately from the rows.
+
+**Follow and decide** holds the **Execution monitor**: current manual request,
+heartbeat, useful progress, remaining budgets, tests and exact stop/retry controls.
+A launch moves focus to this monitor; request references and worker details
+expand separately. **Coding Team autonomy** shows current tasks and loop controls;
+its campaign, file-scope and cumulative-budget forms expand under setup.
+Qualification archives and closed Coding Team cards live in **History and
+performance**. These placements keep execution updates out of the launch form
+and retain the existing confirmation and admission requirements.
+
 Use **Needs attention** to find tasks requiring a decision.
-Its header separates the known total, the rows loaded in the browser and the
-page shown; **Previous** and **Next** reach every item ten at a time, in Core's
+Its header shows the current decision count. **Task queue scope and counts**
+separates the known total, the rows loaded in the browser and the page shown;
+**Previous** and **Next** reach every item ten at a time, in Core's
 next-action order. **Engineering** is the default queue; **Personal & household** is a
 separate queue for personal, family, household and secretary work, never mixed
 into the engineering list. The board's service, lane, status, group and search
@@ -42,6 +58,21 @@ open task, the header shows a lower bound and says the total is unknown. A
 refresh that observes the same state changes nothing on screen; only an
 actionable item that was not in the previous observation is announced and
 marked **New**.
+
+**Reviews and delivery** reads the delivery snapshot independently of the
+overview filters. The server projects the 50 most recently updated tasks in
+`review_only` automation mode; its counts are not all-time totals.
+Its counts can overlap **Needs attention**; they are not added
+to the task-decision count. **All active**, **Needs a decision** and **Follow
+progress** select records using the received human-action flag. Pages show five
+deliveries at a time, with their recorded next step and task-dossier action.
+Change, tests, risks, exact commit and delivery gates expand under evidence;
+expanded evidence survives refresh and page changes. A result awaiting review
+says **Review result**, even when its receipt recommends merge. Only the exact
+verified merge gate offers **Merge PR** and its existing explicit confirmation.
+Failed or pending reads disable merge and retain any previous observation.
+No delivery is excluded because of its title or a qualification-like label.
+
 The Pipeline state strip uses that engineering queue's current filtered count:
 an exact total when coverage is complete, a lower bound when it is partial,
 or "unknown" when the read failed or the private queue is selected. It does
@@ -70,7 +101,8 @@ Core refuses late results from that lease, yet expiry proves no stop either.
 Inspect ownership and recorded effects before releasing or re-queuing it. Human review,
 merge, deployment and device acceptance remain separate decisions and receipts.
 
-**Why tasks are not advancing**, under **Needs attention**, lists active engineering tasks (private lanes excluded)
+**Why tasks are not advancing**, below the decision lists and collapsed by
+default, lists active engineering tasks (private lanes excluded)
 that wait on a recovery, an unknown state, a human decision or a dependency.
 Each row names the category, the owner of the next step, the action and the
 missing evidence; selecting it opens the dossier. In the dossier, **Why is this
@@ -79,6 +111,9 @@ ambiguous case shows **New escalation** the first time this browser session sees
 its key and **Escalated earlier — not repeated** on later refreshes. The panels
 offer no repair: corrections use the existing guarded task actions. Failed or
 malformed reads keep the last observation and say so.
+This diagnostic reads when opened and uses its own engineering scope,
+independently of overview filters. Its counts can overlap both decision lists.
+Lists use the page scroll; evidence expands within a row.
 
 **Evidence references** in a coding dossier lists, per attempt, copyable
 references: task, attempt (`task-0307/attempt-2`), launch request id, lease

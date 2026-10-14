@@ -140,7 +140,12 @@
             shared.finishSectionLoad(body);
         }
 
-        if (!refreshTimer) refreshTimer = setInterval(loadRag, 60000);
+        // Each refresh asks the RAG service to re-probe: only while the tab is
+        // visible and the section is shown.
+        if (!refreshTimer) refreshTimer = setInterval(() => {
+            const shown = document.getElementById('nc-rag-body');
+            if (!document.hidden && shown && shown.offsetParent !== null) loadRag();
+        }, 60000);
     }
 
     window.NerveCenterRag = { loadRag };
