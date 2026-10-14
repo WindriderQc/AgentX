@@ -1,17 +1,99 @@
-.dad-proposals .dad-proposal-dismissed {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  margin: .8rem 0;
+/* Source browser: compact exchanges beside a readable, single-item review. */
+.dad-day-page .dad-proposals { padding: 0; overflow: hidden; background: #10212c; }
+.finding-heading { display: flex; align-items: start; justify-content: space-between; gap: 20px; padding: 24px 24px 18px; }
+.finding-heading h2 { margin: 0 0 8px !important; font-size: 22px !important; }
+.finding-heading p:last-child { max-width: 65ch; margin: 0; color: #a7bcc9; font-size: 13px; }
+.finding-heading .card-kicker { color: #e1c58f; }
+.finding-total { min-width: 44px; padding: 6px 12px; border-radius: 10px; color: #efdab5; background: #30352d; font-size: 18px; font-variant-numeric: tabular-nums; text-align: center; }
+.finding-tabs { display: flex; gap: 22px; padding: 0 24px; border-bottom: 1px solid #2b404e; }
+.finding-tabs button { display: flex; align-items: center; gap: 8px; padding: 12px 0; min-height: 48px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: #a9bdca; font-size: 13px; }
+.finding-tabs button:hover { transform: none; color: #edf8ff; }
+.finding-tabs button[aria-pressed=true] { color: #c0f4e6; border-color: #a3e4d4; }
+.finding-tabs button span { border-radius: 6px; padding: 1px 6px; background: #1d323e; font-size: 11px; font-variant-numeric: tabular-nums; }
+.finding-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 16px 24px; }
+.finding-search { position: relative; flex: 1; min-width: 210px; }
+.finding-search svg { position: absolute; left: 12px; top: 14px; color: #a8becb; }
+.finding-search input { min-height: 46px; padding-left: 40px; font-size: 13px; background: #0a1a24; border-color: #304a58; }
+.finding-tools > select { min-height: 46px; width: 185px; font-size: 12px; background: #10212c; }
+.finding-dismissed { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #b5c8d4; white-space: nowrap; }
+.finding-dismissed input { width: 16px; height: 16px; margin: 0; accent-color: #a3e4d4; }
+.finding-status { padding: 0 24px; margin: 0; font-size: 13px; color: #b6e9d8; overflow-wrap: anywhere; }
+.finding-status:not(:empty) { padding-bottom: 14px; }
+.finding-workspace { display: grid; grid-template-columns: minmax(250px,.8fr) minmax(0,1.4fr); min-height: 590px; border-top: 1px solid #2b404e; }
+.finding-browser { min-width: 0; display: flex; flex-direction: column; background: #0c1c27; border-right: 1px solid #2b404e; }
+.finding-results { padding: 14px 20px; font-size: 11px; letter-spacing: .025em; color: #adc1ce; border-bottom: 1px solid #223945; }
+.finding-list { max-height: 560px; overflow-y: auto; padding: 6px; scrollbar-color: #3c5766 transparent; }
+.finding-thread { width: 100%; display: grid; gap: 8px; text-align: left; border: 1px solid transparent; border-radius: 8px; padding: 14px; background: transparent; }
+.finding-thread:hover { transform: none; background: #152b37; border-color: transparent; }
+.finding-thread[aria-pressed=true] { background: #1a343e; border-color: #355b60; box-shadow: inset 3px 0 #a3e4d4; }
+.finding-thread-top, .finding-thread-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.finding-thread-top small, .finding-thread-foot small { font-size: 10px; color: #a9bdca; }
+.finding-thread-count { font-size: 10px; color: #c8e4e7; padding: 1px 6px; border: 1px solid #385560; border-radius: 5px; }
+.finding-thread strong { font-weight: 500; font-size: 13px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.finding-thread-foot .finding-thread-date { color: #e4c994; }
+.finding-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto; padding: 12px 20px; border-top: 1px solid #223945; }
+.finding-pagination span { font-size: 11px; color: #adc1ce; }
+.finding-pagination button { min-width: 40px; min-height: 40px; padding: 4px 8px; background: transparent; }
+.finding-detail { min-width: 0; padding: 24px 28px; max-height: 664px; overflow-y: auto; scrollbar-color: #3c5766 transparent; scroll-margin-top: 80px; }
+.finding-detail-top { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
+.finding-detail-top > small { margin-left: auto; color: #92a9b9; font-size: 10px; }
+.finding-kind { color: #c5dfdf; font-size: 11px; }
+.finding-back { display: none; }
+.finding-item-picker { display: block; font-size: 11px; color: #a9bdca; margin-bottom: 20px; }
+.finding-item-picker select { display: block; margin-top: 8px; max-width: 100%; min-height: 44px; font-size: 12px; text-overflow: ellipsis; }
+.finding-title { margin: 0 0 14px; font-size: 21px; line-height: 1.5; font-weight: 500; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.finding-qualification { display: flex; flex-direction: column; align-items: start; gap: 6px; font-size: 11px; color: #ead4a8; margin-bottom: 24px; }
+.finding-qualification > span:first-child { padding-left: 12px; position: relative; }
+.finding-qualification > span:first-child::before { content: ''; position: absolute; left: 0; top: 6px; width: 5px; height: 5px; border-radius: 50%; background: #d3b77f; }
+.finding-date { color: #a8bbc7; }
+.finding-context { padding: 18px; border: 1px solid #2c4755; border-radius: 10px; background: #0b1b25; }
+.finding-context h4 { margin: 0; font-size: 12px; font-weight: 500; color: #c5e0e0; }
+.finding-context h4 small { display: block; color: #9aafbd; font-size: 10px; margin-top: 3px; font-weight: 400; }
+.finding-context p { margin: 12px 0; font-size: 13px; line-height: 1.7; color: #b9ccd8; overflow-wrap: anywhere; }
+.finding-source-link { display: flex; justify-content: space-between; align-items: center; min-height: 40px; color: #b4eadc; font-size: 12px; text-decoration: none; }
+.finding-original { margin: 12px 0; color: #a6bbc9; font-size: 11px; }
+.finding-original > summary { cursor: pointer; padding: 10px 0; min-height: 40px; }
+.finding-original p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.7; }
+.finding-original small { font-size: 11px; }
+.finding-edit { margin: 18px 0 12px; border: 1px solid #36584f; border-radius: 10px; background: #172c2e; }
+.finding-edit > summary { display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 14px 16px; min-height: 48px; font-size: 13px; color: #b6eedf; }
+.finding-edit form { display: grid; gap: 14px; padding: 0 16px 16px; }
+.finding-edit form p { font-size: 12px; color: #b5cbd1; margin: 0; }
+.finding-edit label { display: block; font-size: 12px; }
+.finding-edit label small { color: #b5cbd1; font-size: 11px; margin-left: 5px; }
+.finding-edit textarea, .finding-edit input { display: block; margin-top: 6px; font-size: 13px; }
+.finding-edit input[type=date] { max-width: 240px; }
+.finding-edit button.primary { justify-self: start; font-size: 12px; min-height: 44px; font-weight: 650; background: #a3e4d4; border-color: #a3e4d4; }
+.finding-resolution { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 16px; }
+.finding-resolution h4, .finding-resolution p { flex-basis: 100%; font-size: 13px; margin: 0; font-weight: 400; color: #a9bdca; }
+.finding-resolution button { padding: 8px 12px; min-height: 40px; font-size: 12px; background: transparent; }
+.finding-resolution small { font-size: 11px; color: #9fb4c3; }
+.finding-related { margin-top: 4px; padding: 8px 0; min-height: 40px; background: transparent; border: 0; font-size: 11px; color: #b4eadc; }
+.finding-empty, .finding-no-results { padding: 32px 20px; color: #a9bdca; font-size: 13px; }
+.finding-empty { display: grid; place-items: center; text-align: center; min-height: 420px; align-content: center; }
+.finding-empty > span { color: #9edbcc; font-size: 30px; }
+.finding-empty h3 { margin: 16px 0 6px; font-size: 17px; color: #dcecf5; font-weight: 500; }
+.finding-empty p { max-width: 35ch; }
+@media (max-width: 760px) {
+  .finding-heading { padding: 20px 18px 16px; gap: 12px; }
+  .finding-heading h2 { font-size: 20px !important; }
+  .finding-heading p:last-child { font-size: 12px; }
+  .finding-tabs { padding: 0 18px; gap: 18px; overflow-x: auto; }
+  .finding-tabs button { flex-shrink: 0; font-size: 12px; }
+  .finding-tools { padding: 14px 18px; gap: 10px; }
+  .finding-search { flex-basis: 100%; }
+  .finding-tools > select { width: auto; flex: 1; min-width: 0; }
+  .finding-status { padding-inline: 18px; }
+  .finding-workspace { grid-template-columns: minmax(0,1fr); min-height: 0; }
+  .finding-browser { border: 0; }
+  .finding-list { max-height: 430px; }
+  .finding-detail { display: none; max-height: none; padding: 20px 18px; }
+  .finding-detail-open .finding-detail { display: block; }
+  .finding-detail-open .finding-browser { display: none; }
+  .finding-back { display: inline-block; min-height: 44px; border: 0; padding: 8px 0; background: transparent; color: #b4eadc; font-size: 12px; }
+  .finding-detail-top { flex-wrap: wrap; margin-bottom: 12px; }
+  .finding-back { flex-basis: 100%; text-align: left; }
+  .finding-title { font-size: 19px; }
+  .finding-edit input[type=date] { max-width: 100%; }
 }
-.dad-proposals input[type="checkbox"] { width: auto; margin: 0; }
-.dad-proposals [data-review-category][aria-pressed="true"] {
-  background: var(--cyan);
-  color: var(--bg);
-  border-color: var(--cyan);
-}
-.dad-proposal-body { min-width: 0; flex: 1; }
-.dad-proposal-title, .dad-proposal-source { overflow-wrap: anywhere; }
-.dad-proposal-source { white-space: pre-wrap; }
-.dad-proposal-edit label { display: block; margin: .6rem 0; }
-.dad-proposal-edit textarea { width: 100%; resize: vertical; }
+.finding-thread-preview { color: #b4c9d4; font-size: 11px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }

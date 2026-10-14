@@ -129,43 +129,47 @@ It excludes live tasks, schedules, secrets, exact locations, medical information
   }
 
   function template(esc, knowledgeStarter) {
-    return `<section class="dad-bar" aria-label="My day">
-        <div class="dad-bar-day"><span class="dad-bar-icon">${icon(ICONS.day)}</span><div><strong id="dadDate"></strong><small><time id="clock">--:--</time></small></div></div>
-        <nav class="dad-counts" aria-label="My tasks">
-          <a href="#dad-focus"><strong id="dadToday">—</strong><span>today</span></a>
-          <a href="#dad-focus"><strong id="dadWeek">—</strong><span>next 7 days</span></a>
-          <a href="#dad-focus" id="dadOverdueLink"><strong id="dadOverdue">—</strong><span>overdue</span></a>
-          <a href="#dad-inbox"><strong id="dadInboxCount">—</strong><span>undated</span></a>
-        </nav>
-        <div class="dad-bar-actions">
+    return `<div class="dad-day-page"><header class="dad-day-header"><div><p class="card-kicker">Your personal space</p><h1>My day<span>.</span></h1><p class="dad-day-dateline"><strong id="dadDate"></strong><span>·</span><time id="clock">--:--</time><small id="dadUpdated">Reading your list…</small></p></div><div class="dad-bar-actions">
           <a class="button compact dad-icon-button" href="/dad" title="Open a conversation">${icon(ICONS.chat)}<span>Conversation</span></a>
           <button id="dadRefresh" class="compact dad-icon-button" type="button" title="Refresh">${icon(ICONS.refresh)}<span>Refresh</span></button>
           <button id="dadSpeak" class="compact dad-icon-button" type="button" title="Listen to my day" disabled>${icon(ICONS.speak)}<span>Listen</span></button>
-        </div>
-      </section>
-      <section class="dad-decide" aria-labelledby="dadDecideTitle"><h2 id="dadDecideTitle" class="card-kicker">To decide</h2><div id="dadDecisions" class="dad-decide-list" aria-live="polite"><span class="dad-decide-empty">Loading…</span></div></section>
+        </div></header>
+        <nav class="dad-day-metrics" aria-label="My day overview">
+          <a href="#dad-focus"><span>Today</span><strong id="dadToday">—</strong><small><b id="dadWeek">—</b> in the next 7 days · <b id="dadOverdue">—</b> overdue</small><span id="dadOverdueLink" hidden></span></a>
+          <a href="#dad-inbox"><span>My actions</span><strong id="dadActionCount">—</strong><small><b id="dadInboxCount">—</b> without a date</small></a>
+          <a class="dad-metric-review" href="#dad-proposals" data-finding-category="email"><span>To clarify</span><strong id="dadReviewCount">—</strong><small>Requests extracted from email</small></a>
+          <a href="#dad-proposals" data-finding-category="background"><span>Background</span><strong id="dadBackgroundCount">—</strong><small>Technical & Secretary follow-ups</small></a>
+        </nav>
       <section class="dad-grid">
-        <article class="card dad-focus" id="dad-focus"><div class="row"><div class="grow"><p class="card-kicker">Today and next 7 days</p><h2>Focus</h2></div><span id="dadFocusCount" class="pill">…</span></div><div id="dadFocus" class="stack"></div></article>
+        <article class="card dad-focus" id="dad-focus"><div class="row"><div class="grow"><p class="card-kicker">Today and next 7 days</p><h2>Your next steps</h2></div><span id="dadFocusCount" class="pill">…</span></div><div id="dadFocus" class="stack"></div></article>
         <div class="dad-side">
-          <article class="card dad-capture"><p class="card-kicker">Capture</p><h2>Note a task</h2><form id="dadCaptureForm" class="stack"><input id="dadCaptureTitle" maxlength="200" required placeholder="What needs doing?" aria-label="Personal task"><div class="row"><input id="dadCaptureDue" type="date" aria-label="Due date"><select id="dadCapturePriority" aria-label="Priority"><option value="3">Normal</option><option value="2">High</option><option value="4">Low</option></select></div><button class="primary">Add to my list</button></form><p class="muted dad-quiet">A personal task. Platform work stays in Pipeline.</p></article>
+          <article class="card dad-capture"><p class="card-kicker">Keep it simple</p><h2>Add an action</h2><form id="dadCaptureForm" class="stack"><input id="dadCaptureTitle" maxlength="200" required placeholder="What needs doing?" aria-label="Personal task"><div class="row"><input id="dadCaptureDue" type="date" aria-label="Due date (optional)"><select id="dadCapturePriority" aria-label="Priority"><option value="3">Normal</option><option value="2">High</option><option value="4">Low</option></select></div><button class="primary">Add to my list</button></form><p class="muted dad-quiet">A date is optional. Start with what you want to do.</p></article>
         </div>
-        <article class="card full dad-mail-actions" id="dad-mail-actions"><div class="row"><div class="grow"><p class="card-kicker">Email · to handle</p><h2>Urgent and awaiting replies</h2></div><span id="dadMailActionCount" class="pill">loading…</span></div><div class="dad-mail-columns"><section><h3>Urgent</h3><div id="dadMailUrgent" class="stack dad-mail-list"><div class="empty">Reading Gmail…</div></div></section><section><h3>To reply</h3><div id="dadMailReply" class="stack dad-mail-list"><div class="empty">Reading Gmail…</div></div></section></div><p class="muted dad-quiet">Sorted by the Secretary. “Handled” only removes this label in Gmail: nothing is sent, archived or deleted.</p></article>
-        <article class="card full dad-inbox" id="dad-inbox"><div class="row"><div class="grow"><p class="card-kicker">To schedule</p><h2>Give a date, or finish</h2><p class="muted">Nothing moves on its own: each button updates the task, and nothing else.</p></div><span id="dadStaleCount" class="pill">…</span></div><div id="dadInbox" class="stack"></div><p id="dadInboxShown" class="muted dad-quiet"></p></article>
+        <details class="card full dad-mail-actions dad-secondary" id="dad-mail-actions"><summary>Email to handle <span id="dadMailActionCount" class="pill">loading…</span></summary><div class="dad-mail-columns"><section><h3>Urgent</h3><div id="dadMailUrgent" class="stack dad-mail-list"><div class="empty">Reading Gmail…</div></div></section><section><h3>To reply</h3><div id="dadMailReply" class="stack dad-mail-list"><div class="empty">Reading Gmail…</div></div></section></div><p class="muted dad-quiet">Sorted by the Secretary. “Handled” only removes this label in Gmail: nothing is sent, archived or deleted.</p></details>
+        <article class="card full dad-inbox" id="dad-inbox"><div class="row"><div class="grow"><p class="card-kicker">Your list</p><h2>Actions without a date</h2></div><span id="dadStaleCount" class="pill">…</span></div><div id="dadInbox" class="stack"></div><p id="dadInboxShown" class="muted dad-quiet"></p></article>
+        <details class="card full dad-secondary" id="dad-ideas-panel"><summary>Ideas & reminders <span data-day-ideas-count class="pill">…</span></summary><article id="dad-ideas" data-dad-ideas hidden></article></details>
+        <details class="card full dad-secondary" id="dad-triage-panel"><summary>Old deadlines to review <span data-day-triage-count class="pill">…</span></summary><article id="dad-triage" data-dad-triage></article></details>
         <details class="card full dad-secondary" id="dad-mail"><summary>Automatic email triage <span id="dadMailPill" class="pill">…</span></summary><p id="dadMailSummary" class="muted">Checking triage…</p><div id="dadMailJobs" class="stack"></div><div class="row wrap dad-reminder-actions"><a class="button compact" href="/api/openclaw/control-launch/cron">Open automations</a></div><details class="dad-secondary dad-rules" data-secretary-rules></details></details>
+        <details class="card full dad-secondary" id="dad-decisions"><summary>Settings & service attention</summary><section class="dad-decide" aria-labelledby="dadDecideTitle"><h2 id="dadDecideTitle" class="card-kicker">To review</h2><div id="dadDecisions" class="dad-decide-list" aria-live="polite"><span class="dad-decide-empty">Loading…</span></div></section></details>
         <details class="card full dad-secondary" id="dad-health"><summary>System health <span id="dadHealthPill" class="pill">…</span></summary><div class="dad-evidence-grid"><section><strong>Memory review</strong><div id="dadMemoryStates" class="stack"></div><p id="dadMemory" class="muted">Checking…</p><a href="/memory-review">Open the review</a></section><section><strong>LLM usage</strong><div id="dadUtilization" class="stack"></div><a href="/analytics">Open Analytics</a></section><section><strong>System exceptions</strong><p id="dadOps" class="muted">Checking…</p><a href="/agent-ops">Open Agent Ops</a></section></div></details>
         <details class="card full dad-secondary"><summary>Reminders & household organization</summary><div class="grid"><article class="card dad-reminder"><div class="row"><div class="grow"><p class="card-kicker">Personal reminder · consent first</p><h2>Morning reminder</h2></div><span id="dadReminderState" class="pill">…</span></div><p id="dadReminderSummary" class="muted">Checking…</p><p id="dadReminderConsent" class="muted dad-quiet">No message is sent until Dad turns it on.</p><div class="row wrap dad-reminder-actions"><button id="dadReminderPreviewToggle" class="compact" type="button" aria-expanded="false" aria-controls="dadReminderPreview" disabled>Preview reminder</button><a class="button compact" href="/api/openclaw/control-launch/cron">Review the daily reminder</a></div><div id="dadReminderPreview" class="reminder-preview" hidden><div class="reminder-preview-heading"><span class="pill ok">preview only</span><strong>Nothing ran. Nothing was sent.</strong></div><pre id="dadReminderMessage" lang="fr"></pre><div id="dadReminderContract" class="reminder-contract"></div><p id="dadReminderPreviewNote" class="muted dad-quiet"></p></div></article>
           <article class="card dad-family"><div class="row"><div class="grow"><p class="card-kicker">Household rhythm · parent</p><h2>Kids space setup</h2></div><span id="dadFamilyState" class="pill">…</span></div><p id="dadFamilySummary" class="muted">Checking profiles and routines…</p><div id="dadFamilyCounts" class="service"></div><a class="button compact" href="/dad/family">Open family tracking</a></article>
           <article class="card full dad-activation"><div class="row"><div class="grow"><p class="card-kicker">Setup · Dad</p><h2>Finish setup without giving up consent</h2><p class="muted">Every remaining step is visible here. Opening a step changes nothing: its screen asks separately before any write, delivery or physical check.</p></div><span id="dadActivationState" class="pill">…</span></div><div id="dadActivationItems" class="stack"><div class="empty">Checking steps…</div></div></article>
         </div></details>
         <details class="card full dad-secondary" id="knowledge"><summary>Family & Reading knowledge</summary><p>To review before Nestor learns it. Different from the personal notebook: this corpus is limited to approved Family and Reading guidance.</p><span id="dadKnowledgeState" class="pill">…</span><p id="dadKnowledgeSummary"></p><div id="dadKnowledgeMetrics"></div><p id="dadKnowledgeFingerprint" class="muted"></p><p>This space is read-only. It cannot read document contents, prepare a file, ingest a corpus or turn on search.</p><details><summary>Start from a blank guide</summary><p>This draft only contains templates. Ask Nestor to help you review it before adding family knowledge.</p><textarea id="dadKnowledgeStarterText" rows="10" readonly>${esc(knowledgeStarter)}</textarea><button id="dadKnowledgeStarterCopy" type="button">Copy the blank guide</button></details></details>
-      </section>`;
+      </section></div>`;
   }
 
   async function load(ctx) {
     const { app, api, esc, toast, setRuntime, speak, clock } = ctx;
     app.innerHTML = template(esc, familyKnowledgeStarter());
-    const shopping = document.createElement('article'); shopping.className = 'card full dad-shopping';
-    app.querySelector('.dad-grid').append(shopping);
+    const grid = app.querySelector('.dad-grid');
+    const main = document.createElement('div'); main.className = 'dad-main';
+    grid.prepend(main);
+    main.append(app.querySelector('#dad-focus'), app.querySelector('#dad-inbox'));
+    const shopping = document.createElement('article'); shopping.className = 'card dad-shopping';
+    shopping.dataset.shoppingList = 'dad'; shopping.dataset.mounted = 'true';
+    app.querySelector('.dad-side').append(shopping, app.querySelector('#dad-mail-actions'));
     window.HouseholdShopping.mount({ host: shopping, api, esc, canBuy: true });
     const byId = (id) => document.getElementById(id);
     const setPill = (id, text, tone = '') => { const node = byId(id); node.textContent = text; node.className = `pill ${tone}`; };
@@ -177,7 +181,7 @@ It excludes live tasks, schedules, secrets, exact locations, medical information
 
     const dueLabel = (task) => task.overdue ? 'overdue' : task.dueToday ? 'today' : task.dueAt ? new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric' }).format(new Date(task.dueAt)) : 'undated';
     const originLabel = { chat: 'chat', email: 'email', manual: 'manual' };
-    const taskRow = (task, triage = false) => `<div class="dad-task ${task.overdue ? 'overdue' : task.dueToday ? 'due-today' : task.stale ? 'stale' : ''}"${triage ? ` data-task-ref="${esc(task.id)}" data-task-age="${esc(task.ageDays ?? '')}"` : ''}><div class="dad-task-main"><span class="dad-task-id">#${esc(task.id)}</span><div><strong>${esc(task.title)}</strong><small>${esc(dueLabel(task))}${task.ageDays !== null && task.unscheduled ? ` · ${esc(task.ageDays)} d undated` : ''} · P${esc(task.priority)} · <span class="dad-origin" title="${esc(task.source || '')}">${esc(originLabel[task.origin] || 'manual')}</span></small></div></div><div class="row wrap dad-task-actions">${triage ? `<button class="compact" data-ref="${esc(task.id)}" data-schedule="0">Today</button><button class="compact" data-ref="${esc(task.id)}" data-schedule="1">Tomorrow</button><button class="compact" data-ref="${esc(task.id)}" data-schedule="7">Next week</button>${task.priority > 1 ? `<button class="compact" data-ref="${esc(task.id)}" data-priority="1">High priority</button>` : ''}` : `<button class="compact" data-ref="${esc(task.id)}" data-schedule="1">Move to tomorrow</button>`}<button class="compact dad-done" data-ref="${esc(task.id)}" data-action="done">Done</button></div></div>`;
+    const taskRow = (task, triage = false) => `<div class="dad-task ${task.overdue ? 'overdue' : task.dueToday ? 'due-today' : ''}"${triage ? ` data-task-ref="${esc(task.id)}" data-task-age="${esc(task.ageDays ?? '')}"` : ''}><div class="dad-task-main"><div><strong>${esc(task.title)}</strong><small>${esc(dueLabel(task))}${task.priority <= 2 ? ' · High priority' : ''} · ${esc(originLabel[task.origin] || 'manual')}</small></div></div><div class="row wrap dad-task-actions"><details class="dad-task-schedule"><summary>Schedule</summary><div><button type="button" data-ref="${esc(task.id)}" data-schedule="0">Today</button><button type="button" data-ref="${esc(task.id)}" data-schedule="1">Tomorrow</button><button type="button" data-ref="${esc(task.id)}" data-schedule="7">Next week</button>${task.priority > 1 ? `<button type="button" data-ref="${esc(task.id)}" data-priority="1">High priority</button>` : ''}</div></details><button class="compact dad-done" data-ref="${esc(task.id)}" data-action="done">Done</button></div></div>`;
     const jobStatus = (job) => !job.enabled ? 'stopped' : job.late ? 'late' : ({ ok: 'ok', success: 'ok', error: 'error', unknown: 'unknown' }[job.lastStatus] || job.lastStatus);
     const jobRow = (job, label) => job ? `<div class="service"><div><strong>${esc(label)}</strong><small>${job.lastRunAt ? `last run ${esc(new Date(job.lastRunAt).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' }))}${job.ageHours !== null && job.ageHours !== undefined ? ` · ${esc(job.ageHours)} h ago` : ''}` : 'no run receipt'}</small></div><span class="pill ${job.healthy ? 'ok' : 'down'}">${esc(jobStatus(job))}</span></div>` : `<div class="service"><div><strong>${esc(label)}</strong><small>evidence missing</small></div><span class="pill down">unknown</span></div>`;
     const backlogRow = (mail) => {
@@ -228,16 +232,20 @@ It excludes live tasks, schedules, secrets, exact locations, medical information
           ? decisions.map(decisionChip).join('') + mailChip
           : '<span class="dad-decide-empty ok">✓ Nothing to decide right now.</span>';
         byId('dadToday').textContent = data.metrics.today;
+        byId('dadActionCount').textContent = data.metrics.actionable;
+        byId('dadReviewCount').textContent = data.metrics.categories?.email || 0;
+        byId('dadBackgroundCount').textContent = (data.metrics.categories?.platform || 0) + (data.metrics.categories?.assistant || 0);
+        byId('dadUpdated').textContent = `Updated ${new Date().toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' })}`;
         byId('dadWeek').textContent = data.upcoming.length;
         byId('dadOverdue').textContent = data.metrics.overdue;
         byId('dadOverdueLink').classList.toggle('alert', data.metrics.overdue > 0);
         byId('dadInboxCount').textContent = data.metrics.inbox;
         setPill('dadFocusCount', plural(data.focus.length, 'task', 'tasks'));
-        byId('dadFocus').innerHTML = data.focus.length ? data.focus.map((task) => taskRow(task)).join('') : '<div class="dad-clear"><span>✓</span><strong>Nothing planned for the next seven days.</strong><small>Give a date to a “To schedule” task.</small></div>';
+        byId('dadFocus').innerHTML = data.focus.length ? data.focus.map((task) => taskRow(task)).join('') : '<div class="dad-focus-empty"><span aria-hidden="true">☀</span><div><strong>No dated action for the next seven days.</strong><p>Choose a next step from your list, or add something on your mind.</p><a href="#dad-inbox">See my actions ↓</a></div></div>';
         clamp(byId('dadFocus'), matchMedia('(max-width: 560px)').matches ? 3 : 5);
-        setPill('dadStaleCount', `${data.metrics.stale} waiting a long time`, data.metrics.stale ? 'down' : 'ok');
-        byId('dadInbox').innerHTML = data.inbox.length ? data.inbox.map((task) => taskRow(task, true)).join('') : '<div class="dad-clear"><span>✓</span><strong>Everything is scheduled.</strong><small>Every open task has a date.</small></div>';
-        clamp(byId('dadInbox'), 3);
+        setPill('dadStaleCount', plural(data.metrics.inbox, 'action', 'actions'));
+        byId('dadInbox').innerHTML = data.inbox.length ? data.inbox.map((task) => taskRow(task, true)).join('') : '<p class="muted">No undated actions. Requests to clarify are available below.</p>';
+        clamp(byId('dadInbox'), 5);
         selectable(byId('dadInbox'), { close: (ref) => api('/api/secretary/tasks/complete', { method: 'POST', body: JSON.stringify({ ref, note: 'Fermée en lot depuis Ma journée.', by: 'household-dad-desk' }) }), done: () => refreshDad() });
         byId('dadInboxShown').textContent = data.metrics.inbox > data.inbox.length ? `${data.metrics.inbox} undated tasks: the list keeps ${data.inbox.length} at a time; the next ones appear once these have a date.` : '';
         setPill('dadMailPill', mailState[0], mailState[1]);
@@ -309,7 +317,9 @@ It excludes live tasks, schedules, secrets, exact locations, medical information
       if (link && reveal(link.getAttribute('href'))) { event.preventDefault(); history.replaceState(null, '', link.getAttribute('href')); }
     });
 
-    const noonAfter = (days) => { const due = new Date(); due.setHours(12, 0, 0, 0); due.setDate(due.getDate() + days); return due.toISOString(); };
+    // Date-only choices use Core's end-of-household-day contract, so choosing
+    // Today in the afternoon does not create an already-overdue noon deadline.
+    const dayAfter = (days) => { const due = new Date(); due.setDate(due.getDate() + days); return `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')}`; };
     async function updateTask(ref, body) {
       await api('/api/secretary/tasks/update', { method: 'POST', body: JSON.stringify({ ref, by: 'household-dad-desk', ...body }) });
       await refreshDad();
@@ -335,7 +345,7 @@ It excludes live tasks, schedules, secrets, exact locations, medical information
           if (button.dataset.confirmed !== 'true') { button.dataset.confirmed = 'true'; button.textContent = 'Confirm'; button.disabled = false; return; }
           await api('/api/secretary/tasks/complete', { method: 'POST', body: JSON.stringify({ ref: button.dataset.ref, by: 'household-dad-desk' }) });
           await refreshDad();
-        } else if (button.dataset.schedule !== undefined) await updateTask(button.dataset.ref, { dueAt: noonAfter(Number(button.dataset.schedule)) });
+        } else if (button.dataset.schedule !== undefined) await updateTask(button.dataset.ref, { dueAt: dayAfter(Number(button.dataset.schedule)) });
         else if (button.dataset.priority) await updateTask(button.dataset.ref, { priority: Number(button.dataset.priority) });
       } catch (error) { button.disabled = false; toast(error.message); }
     });
