@@ -157,11 +157,19 @@
       const last = this.last();
       if (last?.id !== id) return;
       last.stt = status; last.text = String(text).slice(0, 5000);
-      for (const key of ['model', 'language', 'turnId', 'control']) {
+      for (const key of ['model', 'effectiveModel', 'language', 'detectedLanguage', 'turnId', 'control', 'recognitionMode', 'recognitionId']) {
         if (typeof metadata[key] === 'string') last.attempt[key] = metadata[key].slice(0, 160);
       }
-      for (const key of ['sttMs', 'bytes']) {
+      for (const key of ['sttMs', 'bytes', 'captureBytes']) {
         if (typeof metadata[key] === 'number' && Number.isFinite(metadata[key]) && metadata[key] >= 0) last.attempt[key] = metadata[key];
+      }
+      if (metadata.recognition?.schema === 1) {
+        const evidence = metadata.recognition, safe = {};
+        for (const key of ['queueMs', 'decodeMs', 'audioSeconds', 'speechSeconds']) {
+          if (typeof evidence[key] === 'number' && Number.isFinite(evidence[key]) && evidence[key] >= 0) safe[key] = evidence[key];
+        }
+        if (['requested', 'detected', 'constrained'].includes(evidence.languageSource)) safe.languageSource = evidence.languageSource;
+        last.attempt.recognition = safe;
       }
     }
   }
@@ -171,6 +179,9 @@
   // A turn ends after one second of silence, so a spoken hesitation ("euh…")
   // does not cut the sentence; a barge-in over Nestor still ends quickly.
   const TURN_END_SILENCE_MS = 1000, INTERRUPTION_END_SILENCE_MS = 250;
+  // A short reply must reach the same local speech decoder as an interruption.
+  // Keep isolated clicks below 100 ms out; the server VAD still judges speech.
+  const MINIMUM_VOICE_MS = 100;
   // Recognition starts halfway through that second, on what was said so far. If the
   // silence holds, its text is ready when the turn ends; if the person goes on, it is dropped.
   const EARLY_RECOGNITION_SILENCE_MS = 500;
@@ -180,7 +191,7 @@
   // and multipart headers. Reaching it is an explicit error, never a partial turn.
   const MAX_CAPTURE_BYTES = 32 * 1024 * 1024 - 64 * 1024;
   class Endpoint {
-    constructor(rate, minimumVoiceMs = 160, endSilenceMs = TURN_END_SILENCE_MS) { this.rate = rate; this.minimumVoiceMs = minimumVoiceMs; this.endSilenceMs = endSilenceMs; this.maxSamples = MAX_CAPTURE_BYTES / 2; this.reset(); }
+    constructor(rate, minimumVoiceMs = MINIMUM_VOICE_MS, endSilenceMs = TURN_END_SILENCE_MS) { this.rate = rate; this.minimumVoiceMs = minimumVoiceMs; this.endSilenceMs = endSilenceMs; this.maxSamples = MAX_CAPTURE_BYTES / 2; this.reset(); }
     reset() {
       this.frames = []; this.preRoll = []; this.preSamples = 0;
       this.voiceSamples = 0; this.silenceSamples = 0; this.total = 0;
@@ -350,6 +361,7 @@
     // conversation runs, and take effect at the next sentence.
     setLanguage(language) {
       if (!['auto', 'fr', 'en'].includes(language)) return false;
+      if (this.selection?.language !== language) this.dropEarly();
       if (this.selection) this.selection = { ...this.selection, language };
       return true;
     }
@@ -557,7 +569,7 @@
       let request;
       try { request = this.io.transcribeEarly(blob, this.selection.language, abort.signal); } catch { request = null; }
       if (!request) { this.abort.signal.removeEventListener('abort', cancel); return; }
-      this.early = { id, abort, result: Promise.resolve(request).then(value => ({ value }), () => null)
+      this.early = { id, abort, bytes: blob.size, result: Promise.resolve(request).then(value => ({ value }), () => null)
         .finally(() => this.abort.signal.removeEventListener('abort', cancel)) };
     }
     dropEarly(id) {
@@ -571,6 +583,7 @@
       if (!this.current(epoch) || !(overReply || ['listening', 'hearing'].includes(this.state))) return;
       this.cancelWakeAck();
       const wakeFollowup = this.captureFollowup;
+      const recognitionLanguage = this.selection.language;
       this.audio.quiet();
       if (!overReply) this.show('transcribing');
       const turn = { epoch, id: root.crypto.randomUUID(), request: new AbortController(), speech: new AbortController(), interrupted: false };
@@ -592,14 +605,17 @@
         const early = this.early && capture.earlyId != null && this.early.id === capture.earlyId ? this.early : null;
         if (!early) this.dropEarly();
         this.early = null;
-        const result = (early && (await early.result)?.value) || await this.io.transcribe(blob, this.selection.language, this.abort.signal);
+        const offered = early && (await early.result)?.value;
+        const result = offered || await this.io.transcribe(blob, recognitionLanguage, this.abort.signal);
         let text = typeof result === 'string' ? result : String(result?.text || '');
         const stopControl = result?.control === 'stop' || isStopControl(text);
         if (!this.current(epoch)) return;
         transcribed = true; captureOutcome = stopControl ? 'stop' : text.trim() ? 'recognized' : 'empty'; turn.timeline?.mark('sttDone'); turn.timeline?.measure('sttServer', result?.sttMs);
         if (!overReply) this.io.transcriptionDone?.(turn.id, turn.timeline?.values());
         this.recognitionWarmAt = this.io.now ? this.io.now() : Date.now(); // it just ran
-        this.audio.recordTranscription?.(excerptId, stopControl ? 'control' : text.trim() ? 'transcribed' : 'empty', text, typeof result === 'object' && result ? result : {});
+        this.audio.recordTranscription?.(excerptId, stopControl ? 'control' : text.trim() ? 'transcribed' : 'empty', text,
+          { ...(typeof result === 'object' && result ? result : {}), bytes: offered ? early.bytes : blob.size,
+            captureBytes: blob.size, recognitionMode: offered ? 'early' : 'complete' });
         if (previous?.candidate && !stopControl && isSpokenEcho(text, previous.spoken)) { text = ''; captureOutcome = 'echo'; }
         if (previous?.candidate && this.owns(previous)) {
           if (!text.trim() && !stopControl) { this.resumeCandidate(previous); return; }
@@ -630,7 +646,7 @@
           }
         }
         if (!text.trim()) { this.activeTurn = null; this.turnPending = false; this.listen(epoch); return; }
-        await this.respond(turn, text, epoch, result?.detectedLanguage);
+        await this.respond(turn, text, epoch, result?.detectedLanguage, { preferredLanguage: recognitionLanguage });
       } catch (error) {
         if (!turn.interrupted && turn.timeline?.marks.firstAudio !== undefined) turn.timeline.finish('failed');
         if (!turn.interrupted && this.current(epoch)) {
@@ -660,15 +676,15 @@
     }
     // One model turn, spoken or typed: stream the reply, speak it clause by
     // clause, play a structured recording, then listen again.
-    async respond(turn, text, epoch, detectedLanguage, { attachments = [] } = {}) {
+    async respond(turn, text, epoch, detectedLanguage, { attachments = [], preferredLanguage = this.selection.language } = {}) {
       this.activeTurn = turn;
       this.io.message('user', text, false, null, attachments);
       this.show('thinking'); this.turnPending = true;
       let pending = '', streamed = false, firstChunk = true, speechError = null, playback = Promise.resolve();
       let synthesis = Promise.resolve(), prefetchSlot = Promise.resolve();
-      let spokenLanguage = speechLanguage.turnSpeechLanguage(text, detectedLanguage, this.selection.language);
+      let spokenLanguage = speechLanguage.turnSpeechLanguage(text, detectedLanguage, preferredLanguage);
       const readAloud = spokenPresentation.readingRequested(text);
-      let replyLanguageChosen = !!speechLanguage.explicitSpeechLanguage(this.selection.language);
+      let replyLanguageChosen = !!speechLanguage.explicitSpeechLanguage(preferredLanguage);
       // `notice` marks words that are not the reply (a waiting notice): the
       // timeline's first audio is the reply's own first clause.
       const speakSegment = (text, notice = false) => {
@@ -1064,7 +1080,7 @@
         listen(onUtterance, onSpeech, { interruptible = false, onEarly = null, onEarlyCancel = null, onProbe = null } = {}) {
           if (closed) return;
           history.breakCapture();
-          endpoint.reset(); echo.reset(); endpoint.minimumVoiceMs = interruptible ? 100 : 160;
+          endpoint.reset(); echo.reset(); endpoint.minimumVoiceMs = MINIMUM_VOICE_MS;
           endpoint.endSilenceMs = interruptible ? INTERRUPTION_END_SILENCE_MS : TURN_END_SILENCE_MS;
           endpoint.earlySilenceMs = !interruptible && onEarly ? EARLY_RECOGNITION_SILENCE_MS : 0;
           endpoint.probeMs = interruptible && onProbe ? INTERRUPTION_PROBE_MS : 0;

@@ -575,8 +575,21 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     el('conversationAudioTranscript').textContent = info.stt === 'transcribed' ? 'STT: ' + info.text
       : ({ control: 'Silence command recognized locally. No answer started.', 'not-sent': 'No transcription sent: silence or discarded sound.', empty: 'No speech recognized.', failed: 'Transcription failed. No answer was started.', pending: 'Transcribing.' })[info.stt] || '';
     if (info.attempt?.model) el('conversationAudioTranscript').textContent += '\nTranscription model: ' + info.attempt.model;
-    if (info.attempt?.language) el('conversationAudioTranscript').textContent += ' · detected language: ' + info.attempt.language;
+    if (info.attempt?.language) el('conversationAudioTranscript').textContent += ' · requested language: ' + info.attempt.language;
+    if (info.attempt?.detectedLanguage) el('conversationAudioTranscript').textContent += ' · decoded language: ' + info.attempt.detectedLanguage;
     if (info.attempt?.sttMs !== undefined) el('conversationAudioTranscript').textContent += ' · ' + info.attempt.sttMs + ' ms';
+    const recognition = info.attempt?.recognition;
+    if (recognition) {
+      const details = [];
+      if (recognition.queueMs !== undefined) details.push('wait ' + Math.round(recognition.queueMs) + ' ms');
+      if (recognition.decodeMs !== undefined) details.push('decode ' + Math.round(recognition.decodeMs) + ' ms');
+      if (recognition.audioSeconds !== undefined) details.push('uploaded ' + recognition.audioSeconds.toFixed(2) + ' s');
+      if (recognition.speechSeconds !== undefined) details.push('after speech filter ' + recognition.speechSeconds.toFixed(2) + ' s');
+      if (recognition.languageSource) details.push('language ' + recognition.languageSource);
+      el('conversationAudioTranscript').textContent += '\n' + details.join(' · ');
+    }
+    if (info.attempt?.recognitionMode) el('conversationAudioTranscript').textContent += '\nRecognition: ' + info.attempt.recognitionMode;
+    if (info.attempt?.recognitionId) el('conversationAudioTranscript').textContent += ' · ' + info.attempt.recognitionId;
   }
   function showTools(evidence) {
     const receipts = evidence?.receipts || [];
