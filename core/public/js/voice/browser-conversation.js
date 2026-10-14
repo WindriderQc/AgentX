@@ -944,7 +944,7 @@
       throw new Error('Open AgentX over trusted HTTPS in a browser with microphone support.');
     }
     const settingsApi = root.AgentXVoiceSettings || (typeof module !== 'undefined' && module.exports ? require('./voice-settings') : null);
-    const inputDeviceId = options.inputDeviceId || settingsApi?.inputDevice(options.captureScope) || '';
+    const inputDeviceId = typeof options.inputDeviceId === 'string' ? options.inputDeviceId : settingsApi?.inputDevice(options.captureScope) || '';
     const context = new Context();
     const playbackHold = PlaybackHold ? new PlaybackHold(context) : null;
     // Replay retains twenty seconds; the submitted utterance is independent

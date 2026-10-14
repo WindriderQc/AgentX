@@ -35,6 +35,8 @@ test('reading and PsyX edits use their own keys without changing shared speech c
   assert.equal(PsyX.readPreferences(h.storage).ttsVoice,'helper');
   h.api.save('psyx',{ language:'en', voice:'voxcpm|analyst', inputDeviceId:'psyx-mic', spokenReplies:true,autoSend:false },h.api.DEFAULTS,personas,h.storage);
   assert.equal(PsyX.readPreferences(h.storage).ttsVoice,'analyst'); assert.equal(PsyX.readPreferences(h.storage).inputDeviceId,'psyx-mic');
+  assert.equal(h.api.inputDevice('psyx',h.storage),'psyx-mic');
+  assert.equal(JSON.parse(h.storage.getItem('agentx.voice.capture.v1.psyx')).inputDeviceId,undefined,'PsyX keeps a single microphone preference owner');
   assert.equal(h.storage.getItem('household.reading.language.v1'),'en');
   assert.ok([...h.values.keys()].every(k => /^(household\.|psyx\.|agentx\.voice\.capture\.)/.test(k)));
 });

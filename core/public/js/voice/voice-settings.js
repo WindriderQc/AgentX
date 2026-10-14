@@ -22,12 +22,12 @@
     }
     return result;
   }
-  function inputDevice(context, store = storage()) { const value = json(store, 'agentx.voice.capture.v1.' + scope(context)).inputDeviceId; return typeof value === 'string' && value.length <= 256 ? value : ''; }
+  function inputDevice(context, store = storage()) { const value = json(store, scope(context) === 'psyx' ? 'psyx.voice.preferences.v1' : 'agentx.voice.capture.v1.' + scope(context)).inputDeviceId; return typeof value === 'string' && value.length <= 256 ? value : ''; }
   function capture(context, store = storage()) { return normalize(json(store, 'agentx.voice.capture.v1.' + scope(context))); }
   function writeCapture(context, value, store = storage()) {
     const selected = normalize(value, true);
     if (value.inputDeviceId !== undefined && (typeof value.inputDeviceId !== 'string' || value.inputDeviceId.length > 256)) throw new Error('Invalid microphone identifier');
-    selected.inputDeviceId = value.inputDeviceId ?? inputDevice(context, store);
+    if (scope(context) !== 'psyx') selected.inputDeviceId = value.inputDeviceId ?? inputDevice(context, store);
     if (!store) throw new Error('This browser cannot save preferences.');
     store.setItem('agentx.voice.capture.v1.' + scope(context), JSON.stringify(selected));
     return selected;
