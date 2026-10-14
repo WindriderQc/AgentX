@@ -1,6 +1,4 @@
-.pipeline-worker-monitor { grid-column: 1 / -1; scroll-margin-top: 24px; }
-.pipeline-worker-monitor .pipeline-panel-header { align-items: flex-start; flex-wrap: wrap; }
-.pipeline-worker-evidence, .pipeline-worker-note, .pipeline-worker-actions { margin-left: 18px; margin-right: 18px; }
+.pipeline-worker-monitor { scroll-margin-top: 110px; }
 .pipeline-worker-evidence dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 20px; margin: 16px 0; }
 .pipeline-worker-evidence dl > div { min-width: 0; padding: 10px 12px; border: 1px solid var(--border-color, #334155); border-radius: 8px; }
 .pipeline-worker-evidence dt { color: var(--text-muted, #94a3b8); font-size: .78rem; margin-bottom: 6px; }

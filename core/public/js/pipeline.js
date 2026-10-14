@@ -411,7 +411,7 @@
     }
   }
 
-  const { loadDeliveryStatus, mergeDeliveryItem, renderDispatchControl, loadDispatchControlStatus, launchOneTask } = window.PipelineDelivery.create({ escapeHtml: (...args) => escapeHtml(...args), $, state, formatDate: (...args) => formatDate(...args), DELIVERY_STAGE_META, readProjection: (...args) => readProjection(...args), fetchJson: (...args) => fetchJson(...args), toast: (...args) => toast(...args), loadTasks: (...args) => loadTasks(...args), formatStatus: (...args) => formatStatus(...args), inferenceSummary: (...args) => inferenceSummary(...args) });
+  const { loadDeliveryStatus, mergeDeliveryItem, renderDispatchControl, loadDispatchControlStatus, launchOneTask, bindDeliveryNavigation } = window.PipelineDelivery.create({ escapeHtml: (...args) => escapeHtml(...args), $, state, formatDate: (...args) => formatDate(...args), DELIVERY_STAGE_META, readProjection: (...args) => readProjection(...args), fetchJson: (...args) => fetchJson(...args), toast: (...args) => toast(...args), loadTasks: (...args) => loadTasks(...args), formatStatus: (...args) => formatStatus(...args), inferenceSummary: (...args) => inferenceSummary(...args) });
 
   function setPageState(tone, icon, title, detail) {
     const stateEl = $('pipelineState');
@@ -956,12 +956,13 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
+    bindDeliveryNavigation();
     let storage;
     try { storage = window.localStorage; } catch { /* Host receipts support reload recovery without storage. */ }
     state.attention = window.PipelineAttention && new window.PipelineAttention.Controller({
       fetchJson: url => readProjection('attention', url), filters: { filters: state.filters, context: state.context },
       onChange: summarizeState,
-      elements: Object.fromEntries(['list', 'meta', 'pager', 'scopes', 'notes', 'live'].map(key => [key, $(`pipelineAttention${key[0].toUpperCase()}${key.slice(1)}`)])),
+      elements: Object.fromEntries(['list', 'meta', 'pager', 'scopes', 'notes', 'live', 'summary'].map(key => [key, $(`pipelineAttention${key[0].toUpperCase()}${key.slice(1)}`)])),
     });
     state.launchController = new window.PipelineLaunchController({
       request: fetchJson, storage, onChange: renderDispatchControl,

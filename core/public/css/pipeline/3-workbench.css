@@ -1,0 +1,73 @@
+/* Preparation keeps launch decisions compact. Live observations have their
+   own section, leaving the task queue stable while a worker is running. */
+.pipeline-run-options { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 16px; padding: 20px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.pipeline-run-options > * { min-width: 0; }
+.pipeline-run-label { display: block; color: #9fb0c7; font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.pipeline-team-launch, .pipeline-run-alternative { padding: 18px; border: 1px solid rgba(148,163,184,.2); border-radius: 12px; background: rgba(15,23,42,.45); }
+.pipeline-team-launch { display: flex; flex-direction: column; gap: 14px; }
+.pipeline-team-launch-copy { display: block; }
+.pipeline-run-options h3 { margin: 6px 0 8px; color: #f1f5f9; font-size: 1.05rem; }
+.pipeline-team-launch-copy p, .pipeline-run-alternative p { margin: 0; color: #aab8ca; font-size: .84rem; line-height: 1.5; }
+.pipeline-launch-availability { margin: 0; padding: 9px 12px; border-radius: 8px; background: rgba(148,163,184,.08); color: #cbd5e1; font-size: .82rem; line-height: 1.5; }
+.pipeline-launch-availability[data-tone="ready"] { color: #a7f3d0; }
+.pipeline-launch-availability[data-tone="unavailable"] { color: #fecaca; }
+.pipeline-team-launch-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.pipeline-team-launch-task { grid-column: 1 / -1; font-size: .8rem; font-weight: 600; letter-spacing: 0; text-transform: none; color: #cbd5e1; }
+.pipeline-team-launch-task select { min-height: 44px; }
+#pipelineTeamLaunchSelection { grid-column: 1 / -1; justify-self: start; }
+.pipeline-team-launch-confirm { font-size: .83rem; line-height: 1.45; min-height: 44px; }
+.pipeline-team-launch-confirm input { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; accent-color: #67e8f9; }
+.pipeline-run-options .pipeline-btn { min-height: 44px; }
+.pipeline-run-options .pipeline-btn:disabled { opacity: .45; box-shadow: none; cursor: not-allowed; }
+.pipeline-launch-footer { display: flex; flex-wrap: wrap; gap: 5px 16px; align-items: center; font-size: .8rem; line-height: 1.5; }
+.pipeline-launch-footer a, .pipeline-queue-heading a, .pipeline-autonomy-history-link { color: #a5f3fc; text-decoration: underline; text-underline-offset: 3px; }
+.pipeline-launch-footer span { color: #9fb0c7; }
+.pipeline-team-launch .pipeline-launch-eligibility { margin: 0; padding-top: 12px; border-top: 1px solid rgba(148,163,184,.15); line-height: 1.5; }
+.pipeline-launch-eligibility p { color: #aab8ca; }
+.pipeline-run-alternative { display: flex; flex-direction: column; gap: 12px; }
+.pipeline-run-alternative h3 { margin: 0; }
+.pipeline-run-alternative .pipeline-btn { align-self: start; white-space: normal; text-align: left; }
+.pipeline-run-alternative .pipeline-subtle { margin-top: auto; line-height: 1.5; }
+.pipeline-queue-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 20px 10px; }
+.pipeline-queue-heading h3 { margin: 0 0 5px; color: #f1f5f9; font-size: 1rem; }
+.pipeline-queue-heading p { margin: 0; color: #9fb0c7; font-size: .82rem; line-height: 1.5; }
+.pipeline-queue-heading a { font-size: .82rem; }
+.pipeline-queue-coverage { padding: 0 20px 16px; font-size: .78rem; color: #9fb0c7; }
+.pipeline-queue-coverage summary { width: fit-content; cursor: pointer; }
+.pipeline-queue-coverage .pipeline-work-scope { text-align: left; padding: 10px 0 0; }
+.pipeline-follow { margin-top: 28px; }
+.pipeline-section-heading { margin: 0 0 16px; }
+.pipeline-section-heading h2 { margin: 0 0 6px; color: #f1f5f9; font-size: 1.25rem; }
+.pipeline-section-heading p { margin: 0; color: #9fb0c7; font-size: .87rem; line-height: 1.5; }
+.pipeline-execution .pipeline-panel-header h3 { margin: 6px 0; color: #f1f5f9; font-size: 1.05rem; }
+.pipeline-execution-body { padding: 18px 20px; }
+#pipelineTeamLaunchState { margin: 0 0 14px; color: #e2e8f0; font-size: .95rem; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+#pipelineTeamLaunchState[data-tone="unavailable"], #pipelineTeamLaunchState[data-tone="attention"] { color: #fde68a; }
+.pipeline-execution-facts dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 16px; }
+.pipeline-execution-facts dl > div { padding: 12px; border: 1px solid rgba(148,163,184,.16); border-radius: 9px; background: rgba(148,163,184,.04); }
+.pipeline-execution-facts dt { color: #9fb0c7; font-size: .75rem; margin-bottom: 6px; }
+.pipeline-execution-facts dd { margin: 0; color: #e2e8f0; font-size: .87rem; overflow-wrap: anywhere; }
+.pipeline-execution-details { margin: 14px 0; color: #9fb0c7; font-size: .82rem; }
+.pipeline-execution-details summary { cursor: pointer; }
+.pipeline-execution-details p { margin-top: 12px; color: #aab8ca; }
+.pipeline-execution-body .pipeline-launch-result { margin-bottom: 0; }
+.pipeline-execution, #pipelineCodingAutonomy { scroll-margin-top: 85px; }
+#pipelineTeamLaunchStop { border-color: rgba(248,113,113,.45); color: #fecaca; }
+.pipeline-autonomy-archive { padding: 18px 20px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.pipeline-autonomy-archive h3 { margin: 0 0 6px; color: #e2e8f0; font-size: 1rem; }
+.pipeline-autonomy-archive > p { margin: 0 0 12px; color: #9fb0c7; font-size: .82rem; line-height: 1.5; }
+.pipeline-run-options :is(a,button,input,select,summary):focus-visible, .pipeline-follow :is(a,button,input,select,textarea,summary):focus-visible, .pipeline-autonomy-archive button:focus-visible { outline: 2px solid #67e8f9; outline-offset: 3px; }
+@media (max-width: 1000px) {
+  .pipeline-run-options { grid-template-columns: 1fr; }
+  .pipeline-run-alternative .pipeline-subtle { margin-top: 0; }
+  .pipeline-execution-facts dl { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+@media (max-width: 600px) {
+  .pipeline-run-options, .pipeline-execution-body, .pipeline-autonomy-archive { padding: 14px; }
+  .pipeline-team-launch, .pipeline-run-alternative { padding: 14px; }
+  .pipeline-team-launch-form { grid-template-columns: 1fr; }
+  .pipeline-team-launch-form .pipeline-btn { width: 100%; }
+  .pipeline-queue-heading { padding: 16px 14px 10px; }
+  .pipeline-queue-coverage { padding: 0 14px 14px; }
+  .pipeline-launch-footer { align-items: start; flex-direction: column; }
+}

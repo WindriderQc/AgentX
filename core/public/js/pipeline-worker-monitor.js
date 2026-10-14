@@ -17,6 +17,8 @@
   const RESULT = { blocked: 'Blocked', review: 'Draft PR ready for review', local_only: 'Local work awaits publication' };
   const TEST = { pytest: 'pytest', unittest: 'unittest', jest: 'Jest', npm_test: 'npm test', node_test: 'Node tests' };
   const OUTCOME = { passed: 'passed', failed: 'failed', unknown: 'unknown' };
+  const INFERENCE = { waiting: 'Waiting to retry inference', streaming: 'Receiving model response', completed: 'Model call completed',
+    exhausted: 'Inference retry limit reached', failed: 'Inference failed', cancelled: 'Inference cancelled', recovery_required: 'Explicit recovery required' };
   const REASONS = new Set(['model_budget_reserve', 'hard_budget', 'soft_budget_no_progress', 'no_useful_progress', 'model_call_limit',
     'operator_stop', 'worker_exit', 'model_output_limit', 'no_changes', 'dependencies_failed', 'dependencies_changed', 'runner_error',
     'tests_failed', 'generated_artifacts', 'ineligible_task', 'runtime_unavailable', 'runtime_changed', 'model_wait_inactive',
@@ -70,6 +72,14 @@
         + row('Launch request', requestId ? `<code>${requestId}</code>` : 'Unknown')
         + row('Recorded attempt', attempt ? `${attempt.attempt}${attempt.current ? ' · current in dossier' : ' · historical in dossier'}` : 'Unknown · open the dossier for the request binding');
     }
+    const inference = control?.inference;
+    if (inference && identity) {
+      const bound = run && attempt?.current === true && inference.pipelineId === run.pipelineId && inference.attempt === attempt.attempt;
+      details += row('Native model observation', bound
+        ? esc(`${own(INFERENCE, inference.state) || 'State unknown'} · ${integer(inference.requestCount) ? inference.requestCount : 'Unknown'} observed call(s)`
+          + (Number.isSafeInteger(inference.attempts) && inference.attempts >= 1 && inference.attempts <= 6 ? ` · call try ${inference.attempts}/6` : ''))
+        : 'Unknown · no current dossier binding for this launch request');
+    }
     if (progress) {
       const budget = value => integer(value) ? `${Math.ceil(value / 60)} min remaining` : 'Unknown';
       const runningTest = own(TEST, progress.currentTest);
@@ -100,7 +110,7 @@
     const root = $('pipelineWorkerMonitor');
     if (!root) return;
     const view = observation(controller, task, now);
-    const status = $('pipelineWorkerMonitorState');
+    const status = $('pipelineTeamLaunchState');
     if (status.textContent !== view.title) status.textContent = view.title;
     status.dataset.tone = view.tone;
     const evidence = $('pipelineWorkerMonitorEvidence');
@@ -118,9 +128,8 @@
     stop.hidden = !view.showStop; stop.disabled = !view.canStop;
     stop.textContent = view.run?.phase === 'stopping' ? 'Stop requested · awaiting checkpoint' : `Stop worker #${view.taskId || ''}`;
     stop.onclick = () => controller?.stop();
-    const refresh = $('pipelineWorkerMonitorRefresh');
-    refresh.disabled = Boolean(controller?.checking);
-    refresh.onclick = () => controller?.refresh();
+    const refresh = $('pipelineTeamLaunchRefresh');
+    if (refresh) refresh.disabled = Boolean(controller?.checking);
   }
 
   return { observation, render };

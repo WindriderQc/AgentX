@@ -13,17 +13,35 @@ function fixture(progress = {}, phase = 'running', extra = {}) {
     expectedAttemptCount: 8, progress: { requestId: ID, pipelineId: '0001', ...progress } };
   const control = { available: true, busy: !['finished', 'rejected', 'stopped'].includes(phase), candidates: [],
     observedAt: '2026-10-08T12:01:45Z', run, ...extra };
-  const controller = { control, pending: phase === 'finished' ? null : { requestId: ID, pipelineId: '0001' },
+  const controller = { control, pending: ['finished', 'stopped', 'rejected'].includes(phase) ? null : { requestId: ID, pipelineId: '0001' },
     canStop: jest.fn(() => control.run?.canStop === true), stop: jest.fn(), refresh: jest.fn() };
   return { controller, now: NOW };
 }
 
+function monitorElements() {
+  const ids = ['pipelineWorkerMonitor', 'pipelineTeamLaunchState', 'pipelineWorkerMonitorEvidence', 'pipelineWorkerMonitorNote',
+    'pipelineWorkerMonitorDossier', 'pipelineTeamLaunchRefresh', 'pipelineTeamLaunchStop'];
+  return Object.fromEntries(ids.map(id => [id, { dataset: {}, textContent: '', innerHTML: '', removeAttribute(name) { delete this[name]; } }]));
+}
+
 function renderMonitor(f) {
-  const ids = ['pipelineWorkerMonitor', 'pipelineWorkerMonitorState', 'pipelineWorkerMonitorEvidence', 'pipelineWorkerMonitorNote',
-    'pipelineWorkerMonitorDossier', 'pipelineWorkerMonitorRefresh', 'pipelineTeamLaunchStop'];
-  const elements = Object.fromEntries(ids.map(id => [id, { dataset: {}, textContent: '', innerHTML: '', removeAttribute(name) { delete this[name]; } }]));
+  const elements = monitorElements();
   Monitor.render({ $: id => elements[id], ...f });
   return elements;
+}
+
+function setup(progress, phase = 'running', extra = {}) {
+  const f = fixture(progress, phase, extra);
+  const elements = { ...monitorElements(), ...Object.fromEntries(['Detail', 'Task', 'Confirm', 'Button', 'Result', 'Availability'].map(name =>
+    [`pipelineTeamLaunch${name}`, { dataset: {}, value: '', textContent: '', innerHTML: '', checked: false }])) };
+  elements.pipelineTeamAdmissionDetail = { textContent: '' };
+  const window = { PipelineWorkerMonitor: Monitor };
+  vm.runInNewContext(readPipelineScript('pipeline-delivery.js'), { window, URL });
+  const api = window.PipelineDelivery.create({ $: id => elements[id], state: { launchController: f.controller },
+    escapeHtml: value => String(value).replaceAll('<', '&lt;').replaceAll('>', '&gt;'), formatDate: value => value, formatStatus: value => value
+  });
+  api.renderDispatchControl();
+  return { elements, controller: f.controller, draw: api.renderDispatchControl };
 }
 
 test('a running receipt separates observed age, host liveness, useful work, budgets, tests and checkpoint', () => {
@@ -60,16 +78,34 @@ test('attempt identity requires the dossier request binding and never adds one t
 test('completed receipts are historical and unknown host outcomes remain unresolved', () => {
   const progress = { stage: 'checkpoint', result: 'blocked', stopReason: 'soft_budget_no_progress' };
   const done = renderMonitor(fixture(progress, 'finished'));
-  expect(done.pipelineWorkerMonitorState.textContent).toBe('Last worker receipt');
+  expect(done.pipelineTeamLaunchState.textContent).toBe('Last worker receipt');
   expect(done.pipelineWorkerMonitorEvidence.innerHTML).toContain('historical receipt');
   expect(done.pipelineTeamLaunchStop.hidden).toBe(true);
   const unknown = renderMonitor(fixture(progress, 'unknown'));
-  expect(unknown.pipelineWorkerMonitorState.textContent).toBe('Host outcome unknown');
+  expect(unknown.pipelineTeamLaunchState.textContent).toBe('Host outcome unknown');
   expect(unknown.pipelineWorkerMonitorNote.textContent).toContain('Reconcile this original request');
   expect(unknown.pipelineWorkerMonitorEvidence.innerHTML).toContain('soft budget no progress');
 });
 
-test('Stop and refresh invoke the existing controller and stop acknowledgement never asserts release', () => {
+test('native retry observations require the exact current dossier attempt and never expose raw causes', () => {
+  const f = fixture({}, 'running', { inference: { pipelineId: '0001', attempt: 7, state: 'waiting', requestCount: 3, attempts: 2, cause: 'privateFixture' } });
+  expect(renderMonitor(f).pipelineWorkerMonitorEvidence.innerHTML).toContain('no current dossier binding');
+  f.task = { pipelineId: '0001', evidenceReferences: { schema: 'agentx.pipeline-evidence-references/v1', pipelineId: '0001',
+    attempts: [{ attempt: 7, current: true, request: { status: 'recorded', requestId: ID } }] } };
+  const evidence = renderMonitor(f).pipelineWorkerMonitorEvidence.innerHTML;
+  expect(evidence).toContain('Waiting to retry inference · 3 observed call(s) · call try 2/6');
+  expect(evidence).not.toContain('privateFixture');
+  f.controller.control.inference.attempt = 8;
+  expect(renderMonitor(f).pipelineWorkerMonitorEvidence.innerHTML).not.toContain('Waiting to retry inference');
+  f.controller.control.inference.attempt = 7;
+  f.task.evidenceReferences.attempts[0].request.requestId = OTHER;
+  expect(renderMonitor(f).pipelineWorkerMonitorEvidence.innerHTML).not.toContain('Waiting to retry inference');
+  f.task.evidenceReferences.attempts[0].request.requestId = ID;
+  f.task.evidenceReferences.attempts[0].current = false;
+  expect(renderMonitor(f).pipelineWorkerMonitorEvidence.innerHTML).not.toContain('Waiting to retry inference');
+});
+
+test('Stop invokes the existing controller and stop acknowledgement never asserts release', () => {
   const f = fixture();
   const active = renderMonitor(f).pipelineTeamLaunchStop;
   expect(active.hidden).toBe(false);
@@ -81,8 +117,8 @@ test('Stop and refresh invoke the existing controller and stop acknowledgement n
   expect(stopping.pipelineTeamLaunchStop.hidden).toBe(false);
   expect(stopping.pipelineTeamLaunchStop.disabled).toBe(true);
   expect(stopping.pipelineWorkerMonitorNote.textContent).toContain('Worker termination and native model/resource release remain unproven');
-  renderMonitor(f).pipelineWorkerMonitorRefresh.onclick();
-  expect(f.controller.refresh).toHaveBeenCalledTimes(1);
+  expect(renderMonitor(f).pipelineTeamLaunchRefresh.onclick).toBeUndefined();
+  expect(f.controller.refresh).not.toHaveBeenCalled();
 });
 
 test('a different host request cannot replace the retained browser request or expose a stop button', () => {
@@ -93,7 +129,7 @@ test('a different host request cannot replace the retained browser request or ex
   expect(elements.pipelineWorkerMonitorEvidence.innerHTML).not.toContain(OTHER);
   expect(elements.pipelineWorkerMonitorEvidence.innerHTML).not.toContain('aaaaaaaaaaaa');
   expect(elements.pipelineTeamLaunchStop.hidden).toBe(true);
-  expect(elements.pipelineWorkerMonitorState.textContent).toContain('Checking the original request');
+  expect(elements.pipelineTeamLaunchState.textContent).toContain('Checking the original request');
 });
 
 test('a failed refresh retains the last evidence while disabling the native stop action', () => {
@@ -101,7 +137,7 @@ test('a failed refresh retains the last evidence while disabling the native stop
   f.controller.error = 'Host response lost';
   f.controller.canStop.mockReturnValue(false);
   const elements = renderMonitor(f);
-  expect(elements.pipelineWorkerMonitorState.textContent).toContain('last observation retained');
+  expect(elements.pipelineTeamLaunchState.textContent).toContain('last observation retained');
   expect(elements.pipelineWorkerMonitorEvidence.innerHTML).toContain(ID);
   expect(elements.pipelineTeamLaunchStop.disabled).toBe(true);
   const future = fixture({ heartbeatAt: '2026-10-08T12:03:00Z' });
@@ -133,30 +169,56 @@ test('unmatched progress and raw labels, commands, paths, transcripts and markup
 });
 
 test('a completed earlier task cannot replace current admission or disable a new candidate', () => {
-  const elements = Object.fromEntries(['State', 'Detail', 'Task', 'Confirm', 'Button', 'Result'].map(name =>
-    [`pipelineTeamLaunch${name}`, { dataset: {}, value: '', textContent: '', innerHTML: '' }]));
-  const window = {};
-  vm.runInNewContext(readPipelineScript('pipeline-delivery.js'), { window, URL });
-  const f = fixture({ stage: 'publishing', result: 'review' }, 'finished', {
+  const { elements } = setup({ stage: 'publishing', result: 'review' }, 'finished', {
     observedAt: '2026-10-09T12:00:00Z', candidates: [{ pipelineId: '0002', title: 'Next synthetic task' }],
     summary: { queuedTasks: 2, eligibleTasks: 1, privateQueuedTasks: 1 }
   });
-  window.PipelineDelivery.create({ $: id => elements[id], state: { launchController: f.controller },
-    escapeHtml: value => String(value).replaceAll('<', '&lt;').replaceAll('>', '&gt;'), formatDate: value => value, formatStatus: value => value
-  }).renderDispatchControl();
-  expect(elements.pipelineTeamLaunchState.textContent).toBe('Host observed 2026-10-09T12:00:00Z · one local coding worker');
-  expect(elements.pipelineTeamLaunchDetail.textContent).toContain('1 of 2 queued tasks eligible');
+  expect(elements.pipelineTeamLaunchState.textContent).toBe('Last worker receipt');
+  expect(elements.pipelineTeamLaunchAvailability.textContent).toContain('1 eligible task');
+  expect(elements.pipelineTeamAdmissionDetail.textContent).toContain('1 of 2 queued tasks eligible');
   expect(elements.pipelineTeamLaunchTask.disabled).toBe(false);
   expect(elements.pipelineTeamLaunchTask.innerHTML).toContain('0002');
   expect(elements.pipelineTeamLaunchResult.innerHTML).toContain('0001');
+});
+
+test('a status refresh preserves consent for the same candidate and changed identity clears it', () => {
+  const { elements, controller, draw } = setup(null, 'finished', { candidates: [{ pipelineId: '0002', title: 'Synthetic task', expectedAttemptCount: 0 }] });
+  elements.pipelineTeamLaunchTask.value = '0002'; draw();
+  elements.pipelineTeamLaunchConfirm.checked = true;
+  controller.checking = true; draw();
+  expect(elements.pipelineTeamLaunchConfirm.checked).toBe(true);
+  expect(elements.pipelineTeamLaunchButton.disabled).toBe(true);
+  controller.checking = false; draw();
+  expect(elements.pipelineTeamLaunchTask.value).toBe('0002');
+  expect(elements.pipelineTeamLaunchButton.disabled).toBe(false);
+  controller.control.candidates[0].title = 'Changed scope'; draw();
+  expect(elements.pipelineTeamLaunchConfirm.checked).toBe(false);
+  elements.pipelineTeamLaunchConfirm.checked = true;
+  controller.control.candidates[0].expectedAttemptCount = 1; draw();
+  expect(elements.pipelineTeamLaunchConfirm.checked).toBe(false);
+  controller.control.candidates = []; draw();
+  expect(elements.pipelineTeamLaunchConfirm.checked).toBe(false);
+  expect(elements.pipelineTeamLaunchButton.disabled).toBe(true);
+});
+
+test('live progress and worker identifiers stay out of the launch availability message', () => {
+  const { elements } = setup({ stage: 'test', heartbeatAt: '2026-10-08T12:01:00Z', softRemainingSeconds: 120 });
+  expect(elements.pipelineTeamLaunchAvailability.textContent).toBe('A run is already active. Follow it in the execution monitor.');
+  expect(elements.pipelineWorkerMonitorEvidence.innerHTML).toContain('<dt>Host heartbeat</dt>');
+  expect(elements.pipelineWorkerMonitorEvidence.innerHTML).toContain('<dd>2 min remaining</dd>');
+  expect(elements.pipelineTeamLaunchDetail.textContent).not.toContain('Host heartbeat');
 });
 
 test('Follow and decide contains one monitor and the original Stop control, separate from preparation', () => {
   const view = fs.readFileSync(path.resolve(__dirname, '../../views/pages/pipeline.ejs'), 'utf8');
   const partial = fs.readFileSync(path.resolve(__dirname, '../../views/partials/pipeline-worker-monitor.ejs'), 'utf8');
   expect(view.indexOf("include('../partials/pipeline-worker-monitor')")).toBeGreaterThan(view.indexOf('id="pipelineFollow"'));
-  expect(partial).toContain('id="pipelineWorkerMonitor"');
+  expect(view).toContain('id="pipelineWorkerMonitor"');
+  expect(view).toContain('id="pipelineExecution"');
+  expect(view).not.toContain('id="pipelineTeamLaunchProgress"');
+  expect(view).not.toContain('id="pipelineTeamLaunchDossier"');
   expect(partial.match(/id="pipelineTeamLaunchStop"/g)).toHaveLength(1);
-  expect(partial).toContain('aria-live="polite"');
+  expect(partial).not.toContain('<section');
+  expect(view).toContain('aria-live="polite"');
   expect(readPipelineScript('pipeline-delivery.js')).not.toContain('stop.addEventListener');
 });
