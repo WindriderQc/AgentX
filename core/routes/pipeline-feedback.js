@@ -10,6 +10,8 @@ const { redactTaskLeaseIds } = require('../src/services/pipelineTaskProjectionRe
 const { attemptLogReference } = require('../src/services/pipelineEvidenceReferences');
 const { workerResultFingerprint, recordedWorkerResult } = require('../src/services/pipelineWorkerResultReplay');
 const logger = require('../config/logger');
+const workerOutcome = require('../../shared/pipelineWorkerOutcome');
+const workerScope = require('../src/helpers/workerTaskScope');
 const FEEDBACK_STATUS = { done: 'review', blocked: 'blocked', partial: 'in_progress' };
 const feedbackTextFromBody = (body = {}) => String(body.text ?? body.summary ?? '').trim().slice(0, 5000);
 router.post('/tasks/:id/feedback', async (req, res) => {
@@ -103,6 +105,35 @@ router.post('/tasks/:id/feedback', async (req, res) => {
 
     const query = { pipelineId: req.params.id };
     const options = { new: true };
+    if (b.workerOutcome != null) {
+      if (!workerScope.contains(current) || lease || current.codingAutonomy || Number(current.automationAttemptCount) > 0
+        || current.assignee !== 'coding-team' || !['in_progress', 'blocked'].includes(current.status)
+        || (b.status != null && b.status !== 'blocked')) {
+        return envelope.error(res, 409, 'Worker observations cannot replace an attempt or change another claim.', 'WORKER_OUTCOME_CONFLICT');
+      }
+      try {
+        entry.workerOutcome = workerOutcome.normalize(b.workerOutcome, current.pipelineId);
+        if ((entry.workerOutcome.source === 'worker_report' && entry.by !== 'coding-team')
+          || (entry.workerOutcome.source === 'operator_observation' && entry.by !== 'operator')) throw new Error('Worker outcome source does not match the reporter.');
+        if (entry.workerOutcome.source === 'operator_observation' && (current.status !== 'blocked' || b.status != null)) throw new Error('Operator observations explain an already blocked task without changing its status.');
+        if (entry.workerOutcome.source === 'worker_report' && b.status !== 'blocked') throw new Error('Worker reports require a blocked verdict.');
+        const latestClaim = (current.transitions || []).slice().reverse().find(item => item.kind === 'claimed');
+        if (!latestClaim || latestClaim.seq !== entry.workerOutcome.claimSeq || (new Date(latestClaim.at).getTime() > Date.parse(entry.workerOutcome.startedAt) + 120000
+          || new Date(latestClaim.at).getTime() > Date.parse(entry.workerOutcome.finishedAt))) throw new Error('This observation predates the current worker claim.');
+      } catch (error) { return envelope.error(res, 400, error.message, 'INVALID_WORKER_OUTCOME'); }
+      const recorded = (current.feedback || []).find(item => item.workerOutcome?.requestId === entry.workerOutcome.requestId);
+      if (recorded) {
+        if (recorded.by !== entry.by || recorded.text !== entry.text || JSON.stringify(workerOutcome.normalize(recorded.workerOutcome, current.pipelineId)) !== JSON.stringify(entry.workerOutcome)) {
+          return envelope.error(res, 409, 'A different observation is already recorded for this worker request.', 'WORKER_OUTCOME_CONFLICT');
+        }
+        return envelope.success(res, { task: redactTaskLeaseIds(current), alreadyRecorded: true });
+      }
+      Object.assign(query, { status: current.status, assignee: current.assignee, updatedAt: current.updatedAt,
+        transitionSeq: current.transitionSeq,
+        $and: [workerScope(), { service: current.service ?? null, source: current.source ?? null }],
+        'automationLease.leaseId': null, codingAutonomy: current.codingAutonomy ?? null,
+        automationAttemptCount: { $in: [0, null] } });
+    }
     if (b.status === 'deferred' && b.expectedQueuedUpdatedAt == null) {
       return envelope.error(res, 400, 'Capacity deferral requires the observed queued task version', 'INVALID_PREFLIGHT_FEEDBACK');
     }
@@ -130,6 +161,7 @@ router.post('/tasks/:id/feedback', async (req, res) => {
 
     const transition = feedbackTransition(query, update, current, { entry, lease, requested: b.status, evidence: normalizedEvidence });
     const task = await PipelineTask.findOneAndUpdate(query, update, options);
+    if (!task && b.workerOutcome != null) return envelope.error(res, 409, 'The task changed while recording this observation.', 'WORKER_OUTCOME_CONFLICT');
     if (!task && b.expectedQueuedUpdatedAt != null) {
       return envelope.error(res, 409, 'Task changed before preflight feedback was recorded', 'TASK_PREFLIGHT_CHANGED');
     }

@@ -55,6 +55,7 @@ describe('Pipeline attention queue', () => {
   });
 
   test('the Pipeline banner distinguishes exact, partial and unavailable engineering counts', () => {
+    expect(attention.bannerState({ complete: true, total: 1 }).title).toBe('1 engineering task needs action');
     expect(attention.bannerState({ complete: true, total: 25 }).title).toBe('25 engineering tasks need action');
     expect(attention.bannerState({ complete: true, total: 0 }).title).toBe('Engineering queue clear');
     const partial = attention.bannerState({ complete: false, total: null, lowerBound: 40 });
@@ -92,6 +93,21 @@ describe('Pipeline attention queue', () => {
     expect(attention.diffSignal(base, { ...base, fingerprint: 'c', keys: [...base.keys, '0003:inspect_worker'] }))
       .toEqual({ changed: true, newKeys: ['0003:inspect_worker'], announce: true });
     expect(attention.diffSignal(base, { ...base, basis: 'private|{}', fingerprint: 'd' }).announce).toBe(false);
+  });
+
+  test('engineering attention cannot switch to or render personal data', async () => {
+    const elements = { notes: { textContent: '' }, list: { innerHTML: '', addEventListener() {}, setAttribute() {} } };
+    const fetchJson = jest.fn().mockResolvedValue({ data: { attention: { ...payload(), scope: 'private' } } });
+    const controller = new attention.Controller({ elements, filters: {}, fetchJson });
+    controller.setScope('private'); expect(controller.scope).toBe('engineering'); expect(fetchJson).not.toHaveBeenCalled();
+    await controller.refresh(); expect(controller.error).toBeTruthy(); expect(controller.view).toBeNull();
+    expect(elements.list.innerHTML).not.toContain('0001');
+    fetchJson.mockResolvedValue({ data: { attention: { ...payload(), scope: 'engineering' } } });
+    await controller.refresh(); expect(controller.error).toBeNull();
+    expect(elements.notes.textContent).not.toMatch(/private|household/i);
+    expect(view).not.toContain('data-attention-scope="private"');
+    expect(view).toContain('href="#pipelineAttention"');
+    expect(view).toContain('href="/dad/day"'); expect(view).toContain('href="/dad/family"');
   });
 
   test('maps board filters and Agent Ops focus into one query', () => {

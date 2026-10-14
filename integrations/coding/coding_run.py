@@ -85,6 +85,12 @@ focused tests before expanding your investigation. New source or test progress
 can extend the soft budget; the hard ceiling never moves. If you cannot finish,
 explain the remaining work and stop with a useful source checkpoint.
 
+For a review or documentation report, save the requested report in /workspace
+early, after the first verified findings. Extend and correct that deliverable as
+you inspect the remaining material. State what you checked and what remains;
+do not claim complete coverage before checking it. Follow the repository's rules
+for private information and public documents.
+
 You have no network. The dependencies of core, benchmark, rag and data are already
 installed, and the test database is ready. Do not try to download anything. If the
 task needs a new package, add it to the right package.json, explain why in your
@@ -357,10 +363,21 @@ def git(workspace: Path, *args: str, env: dict | None = None) -> str:
                           capture_output=True, env=isolated).stdout.strip()
 
 
-def feedback(task_id: str, text: str, status: str | None = None) -> None:
+def feedback(task_id: str, text: str, status: str | None = None, *, progress=None, reason=None) -> None:
     body = {"by": WORKER, "assignee": WORKER, "text": text}
     if status:
         body["status"] = status
+    known_reasons = {"no_useful_progress", "no_changes", "model_output_limit", "model_call_limit",
+                     "soft_budget_no_progress", "hard_budget", "worker_exit", "model_termination_unverified",
+                     "runner_error", "operator_stop", "dependencies_failed", "dependencies_changed",
+                     "runtime_unavailable", "runtime_changed", "tests_failed", "generated_artifacts"}
+    stop_reason = (progress.stop_reason or reason) if progress else None
+    claim_seq = getattr(progress, "task_claim_seq", None)
+    if status == "blocked" and progress and progress.request_id and claim_seq and stop_reason in known_reasons:
+        body["workerOutcome"] = {"schema": "agentx.pipeline-worker-outcome/v1", "requestId": progress.request_id,
+            "pipelineId": task_id, "claimSeq": claim_seq, "result": "blocked", "reason": stop_reason, "source": "worker_report",
+            "startedAt": progress.started_at, "finishedAt": coding_progress.utc_now(),
+            "usage": {key: progress.usage()[key] for key in ("workSeconds", "modelCalls")}}
     try:
         request(f"{CORE}/api/pipeline/tasks/{task_id}/feedback", body)
     except (OSError, RuntimeError) as error:
@@ -437,7 +454,7 @@ def main() -> int:
             return 2
         progress.finish("blocked", "runner_error", progress.checkpoint)
         feedback(args.task_id, f"Coding runner failed ({type(error).__name__}). Inspect the local workspace and host unit; "
-                               "no automatic retry was started.", "blocked")
+                               "no automatic retry was started.", "blocked", progress=progress)
         print(f"coding runner failed: {type(error).__name__}", file=sys.stderr)
         return 1
     finally:
@@ -474,6 +491,8 @@ def execute(args, progress) -> int:
     # The claim makes the task visibly in progress and refuses a second worker.
     request(f"{CORE}/api/pipeline/tasks/{args.task_id}/claim", {"assignee": WORKER})
     task = request(f"{CORE}/api/pipeline/tasks/{args.task_id}/worker?agent={WORKER}")["data"]["task"]
+    claim = next((entry for entry in reversed(task.get("transitions") or []) if entry.get("kind") == "claimed"), {})
+    progress.task_claim_seq = claim.get("seq")
     name = f"task-{args.task_id}"
     branch = f"agentx/coding-task-{args.task_id}"
     workspace = WORKSPACES / name
@@ -487,7 +506,7 @@ def execute(args, progress) -> int:
         if clone.returncode or progress.check_stop():
             feedback(args.task_id, "Repository preparation stopped before dependencies or model dispatch. "
                                    f"Any partial clone remains in {workspace}; inspect it before handing the task back. "
-                                   "No automatic retry or publication was started.", "blocked")
+                                   "No automatic retry or publication was started.", "blocked", progress=progress, reason="runner_error")
             progress.finish("blocked", progress.stop_reason or "runner_error")
             return 1
         git(workspace, "checkout", "--quiet", "-b", branch)
@@ -498,12 +517,13 @@ def execute(args, progress) -> int:
         installed = dependency_state(workspace)
     except subprocess.CalledProcessError as error:
         feedback(args.task_id, "Dependencies could not be installed before the worker started.\n\n"
-                               f"{(error.stderr or error.stdout or '')[-3000:]}", "blocked")
+                               f"{(error.stderr or error.stdout or '')[-3000:]}", "blocked", progress=progress, reason="dependencies_failed")
         progress.finish("blocked", progress.stop_reason or "dependencies_failed")
         return 1
     except (coding_runtime.RuntimeUnavailable, coding_runtime.RuntimeChanged) as error:
         feedback(args.task_id, "The selected Node/npm runtime could not be validated for dependency preparation. "
-                               "Inspect the operator runtime selection; no fallback or worker was started.", "blocked")
+                               "Inspect the operator runtime selection; no fallback or worker was started.", "blocked",
+                 progress=progress, reason="runtime_changed" if isinstance(error, coding_runtime.RuntimeChanged) else "runtime_unavailable")
         reason = "runtime_changed" if isinstance(error, coding_runtime.RuntimeChanged) else "runtime_unavailable"
         progress.finish("blocked", reason)
         return 1
@@ -536,7 +556,8 @@ def execute(args, progress) -> int:
     progress.checkpoint = git(workspace, "rev-parse", "HEAD")
     progress.write()
     if git(workspace, "rev-parse", "HEAD") == git(workspace, "rev-parse", f"origin/{BASE_BRANCH}"):
-        feedback(args.task_id, f"Coding worker changed nothing (exit {run.returncode}).\n\n{summary[-4000:]}", "blocked")
+        feedback(args.task_id, f"Coding worker changed nothing (exit {run.returncode}).\n\n{summary[-4000:]}", "blocked",
+                 progress=progress, reason="no_changes")
         progress.finish("blocked", progress.stop_reason or "no_changes", progress.checkpoint)
         print(summary)
         return 1
@@ -546,31 +567,31 @@ def execute(args, progress) -> int:
         feedback(args.task_id, "The coding worker changed package files and needs them installed before it can "
                                "finish. Review the change on local branch "
                                f"{branch} in {workspace}; hand the task back to the team to approve the "
-                               f"installation and let it continue.\n\n{summary[-4000:]}", "blocked")
+                               f"installation and let it continue.\n\n{summary[-4000:]}", "blocked", progress=progress, reason="dependencies_changed")
         progress.finish("blocked", "dependencies_changed", progress.checkpoint)
         print(summary)
         return 1
     if run.returncode != 0 or progress.stop_reason:
         # Unfinished work stays on the local branch for the next run; it is not offered for review.
         feedback(args.task_id, f"Coding worker stopped before finishing (exit {run.returncode}). Its partial work is "
-                               f"committed on local branch {branch} in {workspace}.\n\n{summary[-4000:]}", "blocked")
+                               f"committed on local branch {branch} in {workspace}.\n\n{summary[-4000:]}", "blocked", progress=progress, reason="worker_exit")
         progress.finish("blocked", progress.stop_reason or "worker_exit", progress.checkpoint)
         print(summary)
         return 1
     if progress.last_test and progress.last_test["outcome"] != "passed":
         feedback(args.task_id, "The last observed test did not pass. The checkpoint stays local; "
-                               "correct the failure and rerun the tests before publishing.", "blocked")
+                               "correct the failure and rerun the tests before publishing.", "blocked", progress=progress, reason="tests_failed")
         progress.finish("blocked", "tests_failed", progress.checkpoint)
         return 1
     introduced = git(workspace, "diff", "--name-only", f"origin/{BASE_BRANCH}", "HEAD").splitlines()
     if any(coding_progress.artifact(name) for name in introduced):
         feedback(args.task_id, "The branch contains generated runtime artifacts from a previous checkpoint. "
-                               "Preserve that checkpoint privately and transfer the source patch to a clean branch.", "blocked")
+                               "Preserve that checkpoint privately and transfer the source patch to a clean branch.", "blocked", progress=progress, reason="generated_artifacts")
         progress.finish("blocked", "generated_artifacts", progress.checkpoint)
         return 1
     token = os.environ.get("GH_TOKEN", "").strip()
     if progress.check_stop() or (token and not begin_publication(progress)):
-        feedback(args.task_id, "Operator stop recorded. The checkpoint stays local; no publication was started.", "blocked")
+        feedback(args.task_id, "Operator stop recorded. The checkpoint stays local; no publication was started.", "blocked", progress=progress, reason="operator_stop")
         progress.finish("blocked", checkpoint=progress.checkpoint)
         return 1
     if token:

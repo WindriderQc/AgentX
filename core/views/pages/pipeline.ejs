@@ -57,8 +57,9 @@
   <section class="pipeline-state" id="pipelineState" data-tone="loading" aria-live="polite">
     <div>
       <i class="fas fa-spinner fa-spin" id="pipelineStateIcon" aria-hidden="true"></i>
-      <strong id="pipelineStateTitle">Loading the pipeline&hellip;</strong>
+      <a id="pipelineStateTitle" class="pipeline-state-title">Loading the pipeline&hellip;</a>
       <span id="pipelineStateDetail">Reading the product-owned task queue.</span>
+      <a id="pipelineStateAction" class="pipeline-btn compact" href="#pipelineAttention" hidden>View tasks needing attention <i class="fas fa-arrow-down" aria-hidden="true"></i></a>
     </div>
     <time id="pipelineStateUpdated"></time>
   </section>
@@ -225,7 +226,7 @@
     </section>
     <%- include('../partials/pipeline-coding-autonomy') %>
     <div class="pipeline-follow-grid">
-    <section class="pipeline-panel" id="pipelineAttention" aria-labelledby="pipelineAttentionTitle">
+    <section class="pipeline-panel" id="pipelineAttention" tabindex="-1" aria-labelledby="pipelineAttentionTitle">
       <div class="pipeline-panel-header">
         <div>
           <h3 id="pipelineAttentionTitle"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> Needs attention</h3>
@@ -233,8 +234,7 @@
           <p id="pipelineAttentionSummary" class="pipeline-decision-total">Reading task decisions&hellip;</p>
         </div>
         <div id="pipelineAttentionScopes" class="pipeline-attention-scopes" role="group" aria-label="Attention queue">
-          <button type="button" class="pipeline-btn compact active" data-attention-scope="engineering" aria-pressed="true">Engineering</button>
-          <button type="button" class="pipeline-btn compact" data-attention-scope="private" aria-pressed="false" title="Separate attention queue; these items stay outside the engineering overview and counts">Personal &amp; household</button>
+          <span class="pipeline-chip">Engineering tasks</span>
         </div>
       </div>
       <p id="pipelineAttentionNotes" class="pipeline-attention-notes" hidden></p>
@@ -243,7 +243,7 @@
         <div class="pipeline-empty">Loading attention items&hellip;</div>
       </div>
       <nav id="pipelineAttentionPager" class="pipeline-attention-pager" aria-label="Attention pages" hidden></nav>
-      <details class="pipeline-decision-coverage"><summary>Task queue scope and counts</summary><p id="pipelineAttentionMeta">--</p><p>Engineering and personal/household work are separate queues. Delivery reviews below have their own scope and can include the same task.</p></details>
+      <details class="pipeline-decision-coverage"><summary>Task queue scope and counts</summary><p id="pipelineAttentionMeta">--</p><p>This queue contains engineering tasks. Delivery reviews below have their own scope and can include the same task.</p></details>
     </section>
 
   <section class="pipeline-panel pipeline-delivery" id="pipelineDeliveryInbox" aria-labelledby="pipelineDeliveryTitle">

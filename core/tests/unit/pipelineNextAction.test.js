@@ -51,7 +51,7 @@ test('verification failure remains separate from worker failure and never author
   expect(next.diagnostics[0]).toMatchObject({ category: 'verification', nextAction: 'inspect_verification_report' });
   expect(next.authorization).toBe('not_granted');
   expect(JSON.stringify(next)).not.toContain('synthetic-secret');
-  expect(read({ status: 'blocked' }).detail).toContain('no structured evidence');
+  expect(read({ status: 'blocked' }).detail).toContain('last team update');
 });
 test('dependency and not-before decisions use the claim predicates without dependency content', () => {
   const task = { status: 'queued', dependsOn: ['0951'] };
