@@ -10,14 +10,14 @@ class Element {
   querySelector(selector) { return this.children.find(node => '.' + node.className === selector); }
 }
 function fixture(items) {
-  const host = new Element(), stages = [], spoken = [], conversation = { session: { sessionId: 'owner-session' }, state: 'listening',
-    interject: async ({ text }, { onScheduled }) => { spoken.push(text); onScheduled(); return true; } };
+  const host = new Element(), stages = [], spoken = [], languages = [], conversation = { session: { sessionId: 'owner-session' }, state: 'listening',
+    interject: async ({ text, language }, { onScheduled }) => { spoken.push(text); languages.push(language); onScheduled(); return true; } };
   global.document = { createElement: () => new Element() };
   const feed = create({ host, base: '/sessions', getConversation: () => conversation, api: async (url, options) => {
     if (url.includes('/receipt')) { const receipt = JSON.parse(options.body); stages.push(receipt.stage); return { claimToken: 'owned-claim' }; }
     return { items, cursor: 1, hasMore: false };
   }, pollMs: 60000 });
-  return { host, feed, stages, spoken, conversation };
+  return { host, feed, stages, spoken, languages, conversation };
 }
 const item = (id, automaticSpeech, classification = 'native_work') => ({ id, sessionId: 'owner-session', state: 'completed', classification,
   result: { text: id, version: 1, deliveryId: id, presentation: 'available', automaticSpeech } });
@@ -78,13 +78,16 @@ test('a document result speaks its projected summary, displays everything and re
   row.result.spokenText = 'Le document recommande deux étapes : préparer, puis vérifier.';
   row.result.displayText = row.result.spokenText + '\n\n' + 'Document complet. '.repeat(100) + 'FIN';
   row.result.readingText = row.result.displayText;
+  row.result.language = 'fr';
   const h = fixture([row]);
+  h.conversation.selection = { language: 'en' };
   try {
     h.feed.follow('owner-session'); await tick(); await h.feed.naturalPause();
     assert.deepEqual(h.spoken, [row.result.spokenText]);
     assert.equal(h.host.children[0].children[1].textContent, row.result.displayText);
     h.host.children[0].children.find(node => node.type === 'button').onclick(); await tick();
     assert.equal(h.spoken[1], row.result.readingText);
+    assert.deepEqual(h.languages, ['fr', 'fr'], 'a later language choice cannot change the original result or its replay');
     assert.equal(h.stages.filter(stage => stage === 'claim').length, 1);
     assert.equal(h.stages.filter(stage => stage === 'replay').length, 1);
   } finally { h.feed.dispose(); delete global.document; }

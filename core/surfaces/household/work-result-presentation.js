@@ -11,6 +11,7 @@ function workResultPresentation(result, { language = 'fr' } = {}) {
   const reading = createReplyChannels({ allowSecrets: false, readAloud: true, language });
   reading.push(result.text);
   return {
+    language,
     spokenText: ordinary.say,
     readingText: reading.end().say,
     displayText: [ordinary.say, ...ordinary.display.filter(block => !['image', 'secret'].includes(block.kind))

@@ -267,7 +267,8 @@ results from the same conversation, so it can follow up on the worker’s work.
 A trusted surface derives `spokenText`, `readingText` and `displayText` from the
 retained result when projecting it. Conversation and explanations stay complete;
 a document's spoken summary and full screen content remain distinct. Explicit
-Listen uses the full reading view. These views do not rewrite the native result,
+Listen uses the full reading view and the original turn’s language, even if the
+browser preference changes while Main works. These views do not rewrite the native result,
 change its version or authorize a new execution.
 
 The result card survives a paused microphone and reconnect. At a natural pause,

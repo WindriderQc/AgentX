@@ -44,6 +44,7 @@ test('long ordinary explanations remain complete and a document reading never in
 test('English list fallback speaks its useful items in English and keeps every item available', () => {
   const source = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo'].map((word, index) => `${index + 1}. ${word}`).join('\n');
   const view = workResultPresentation({ text: source }, { language: 'en' });
+  assert.equal(view.language, 'en');
   assert.match(view.spokenText, /Alpha/);
   assert.doesNotMatch(view.spokenText, /écran|premiers/);
   assert.ok(view.displayText.includes('Echo'));
