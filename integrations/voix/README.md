@@ -57,17 +57,35 @@ calibrated word confidence; missing values stay absent. No words are rejected
 or rewritten using them. The browser's existing ephemeral audio review keeps
 requested and decoded language separate and distinguishes an early recognition
 clip from the complete capture. It clears this evidence with the clip.
+Household can also retain a bounded scalar copy on the same canonical turn;
+that journal does not retain the audio or another copy of the transcript.
 The response's `recognitionId` correlates this attempt with content-free service
 lifecycle logs. Server completion does not prove that a client received the
 response, a model turn ran, or speech played on a device.
 
-A disconnected upload cancels its inference wait and is checked before lazy
-segment decoding. `WHISPER_QUEUE_TIMEOUT_SECONDS` bounds the serial lock wait
-(default 120 seconds, matching the existing browser proxy budget); expiration
-returns `503 STT_BUSY`. A native kernel already running finishes normally before
-its slot releases. This does not bound the number of HTTP uploads/executor jobs
-or establish end-to-end inference cancellation. Standalone Stop retains its
-independent CPU path.
+Recognition has two independent, process-local admission lanes. Each admits at
+most **four** requests, starting before multipart parsing, and uses at most
+**two** executor threads. Normal transcription, preload and warm share one lane;
+the optional controls adapter uses the other for its CPU detector, then transfers
+non-commands to normal recognition. A full normal lane cannot occupy Stop's
+lane or the default synthesis executor. A full lane returns `503 STT_BUSY` with
+`Retry-After: 1` before reading another upload or submitting another job.
+
+A disconnected request cancels queued work and is checked before lazy segment
+decoding. For uploaded recognition, `WHISPER_QUEUE_TIMEOUT_SECONDS` bounds
+executor and inference-lock waiting through one shared deadline (default 120 seconds, matching the existing
+browser proxy budget); expiration returns `503 STT_BUSY`. A native kernel already
+running finishes normally. Its permit stays occupied until both the real worker
+and its HTTP waiter have ended; cancelling an asyncio task does not free a
+running thread. Lifecycle logs distinguish executor queue/start/finish by request
+ID, without audio, words or filenames. `recognition.queueMs` still measures only
+the Whisper lock wait, not the entire executor/transport wait.
+Preload also has bounded admission and executor waiting; its model initialization
+is not forcibly interrupted.
+
+These limits cover VoiX recognition uploads and jobs, not all upstream Core HTTP
+buffers, synthesis requests, compressed-audio expansion or a per-device quota.
+No acoustic threshold, language, lexicon or model is changed by admission.
 
 Transcription JSON identifies the recognizer that actually ran in `model` and
 `effectiveModel`. `requestedModel` retains an optional client hint; that hint

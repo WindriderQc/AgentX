@@ -5,11 +5,10 @@ import re
 import time
 import unicodedata
 import wave
-from concurrent.futures import ThreadPoolExecutor
+from app.stt.admission import control_lane, recognition_lane
 
 # A general decode may hold its serial inference lock for a long time on CPU.
 # Controls need their own bounded executor, including when that pool is full.
-_CONTROL_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="voix-controls")
 
 COMMANDS = ("stop", "stop talking", "silence", "arrête", "arrête de parler", "arrête toi", "tais toi")
 # A closed command vocabulary can confidently force a normal short reply into
@@ -38,7 +37,7 @@ def is_stop_result(results):
     return bool(words) and all(word.get("conf", 0) >= 0.8 for word in words)
 
 
-async def recognize(loop, classify, transcribe, clock=time.perf_counter):
+async def recognize(loop, classify, transcribe, clock=time.perf_counter, *, cancel=None, admission=None, queue_timeout=120.0):
     """Check the bounded CPU command detector before starting transcription.
 
     A standalone control never loads or queues the general speech model. Dropping
@@ -47,10 +46,10 @@ async def recognize(loop, classify, transcribe, clock=time.perf_counter):
     Both calls stay off the event loop. Returns (command, transcription, elapsed_ms).
     """
     started = clock()
-    command = await loop.run_in_executor(_CONTROL_EXECUTOR, classify)
+    command = await control_lane.run(classify, cancel=cancel, admission=admission, queue_timeout=queue_timeout)
     if command:
         return command, None, round((clock() - started) * 1000)
-    result = await loop.run_in_executor(None, transcribe)
+    result = await recognition_lane.run(transcribe, cancel=cancel, queue_timeout=queue_timeout)
     return None, result, round((clock() - started) * 1000)
 
 

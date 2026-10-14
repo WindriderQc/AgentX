@@ -70,7 +70,7 @@ def check_cancelled(token):
 def inference_slot(lock, token, timeout_seconds, *, clock=time.monotonic):
     """Never let a disconnected or expired waiter enter the model afterwards."""
     started = clock()
-    deadline = started + timeout_seconds
+    deadline = min(started + timeout_seconds, getattr(token, "queue_deadline", math.inf))
     while True:
         check_cancelled(token)
         remaining = deadline - clock()

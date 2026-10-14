@@ -7,7 +7,8 @@ from fastapi.responses import JSONResponse, Response
 from starlette.datastructures import UploadFile
 from vosk import KaldiRecognizer, Model, SetLogLevel
 
-from app.service import app, audio_form, _transcribe_bytes, recognition_metadata
+from app.service import app, audio_form, _transcribe_bytes, recognition_metadata, settings
+from app.stt.admission import control_lane
 from voice_control import VoiceControl, recognize
 from app.stt.requests import cancellation
 
@@ -25,6 +26,11 @@ async def status():
 
 @app.post("/v1/audio/transcriptions/controls")
 async def transcriptions_with_controls(request: Request):
+    with control_lane.admit() as admission:
+        return await _transcriptions_with_controls(request, admission)
+
+
+async def _transcriptions_with_controls(request: Request, admission):
     async with audio_form(request) as form:
         file = form.get("file")
         if not isinstance(file, UploadFile):
@@ -40,7 +46,8 @@ async def transcriptions_with_controls(request: Request):
     async with cancellation(request) as cancel:
         command, transcription, elapsed_ms = await recognize(
             asyncio.get_running_loop(), lambda: control.classify(raw),
-            lambda: _transcribe_bytes(raw, filename, language, cancel=cancel))
+            lambda: _transcribe_bytes(raw, filename, language, cancel=cancel),
+            cancel=cancel, admission=admission, queue_timeout=settings.whisper_queue_timeout_seconds)
     if command:
         # This structured control cannot become a user request or a spoken
         # acknowledgement. No general transcription has been started.
