@@ -847,12 +847,13 @@
     // Refresh, a pin change and its delayed reload can overlap: only the newest load renders.
     let clusterLoad = 0;
 
-    async function loadCluster() {
+    async function loadCluster({ quiet = false } = {}) {
         const body = document.getElementById('sectionClusterBody');
         if (!body) return;
         const load = ++clusterLoad;
 
-        shared.renderSectionLoading(body, 'Loading cluster data...');
+        if (!quiet) shared.renderSectionLoading(body, 'Loading cluster data...');
+        startClusterRefresh();
 
         try {
             const [ollamaJson, hostPrefsJson, gpuJson] = await Promise.all([
@@ -896,6 +897,21 @@
         } finally {
             shared.finishSectionLoad(body);
         }
+    }
+
+    // Host cards, VRAM and loaded models refresh every minute while the page is
+    // visible, without the loading placeholder. A refresh never replaces the cards
+    // while someone works in them (focus inside, or host details open).
+    const CLUSTER_REFRESH_MS = 60000;
+    let clusterRefresh = null;
+    function startClusterRefresh() {
+        if (clusterRefresh || typeof setInterval !== 'function') return;
+        clusterRefresh = setInterval(() => {
+            const body = document.getElementById('sectionClusterBody');
+            if (!body || document.hidden || body.offsetParent === null) return;
+            if (body.contains(document.activeElement) || body.querySelector('details[open]')) return;
+            loadCluster({ quiet: true });
+        }, CLUSTER_REFRESH_MS);
     }
 
     window.NerveCenterCluster = { loadCluster };
