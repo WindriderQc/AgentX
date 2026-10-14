@@ -634,6 +634,8 @@ function createTrustedRuntimeServices(overrides = {}) {
       family: Object.freeze(require('../services/familyTaskService')),
       personal: Object.freeze({
         list: personalTasks.listPersonalTasks,
+        snapshot: personalTasks.personalTaskSnapshot,
+        review: personalTasks.reviewPersonalTask,
         create: personalTasks.createPersonalTask,
         update: personalTasks.updatePersonalTask,
         complete: personalTasks.completePersonalTask,

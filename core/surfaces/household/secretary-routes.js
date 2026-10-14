@@ -39,7 +39,7 @@ function registerSecretaryRoutes(app, {
           { unavailable: true },
           8000
         ),
-        personalTasks.list({ limit: 100 }).then(result => result.tasks)
+        personalTasks.snapshot()
       ]);
       return envelope(res, dadBriefing(report, tasks));
     } catch (error) {
@@ -55,7 +55,7 @@ function registerSecretaryRoutes(app, {
           { unavailable: true },
           8000
         ),
-        personalTasks.list({ limit: 100 }).then(result => result.tasks),
+        personalTasks.snapshot(),
         bridgeProjection(
           'getOpenClawCronProjection',
           (body) => body,
@@ -101,7 +101,7 @@ function registerSecretaryRoutes(app, {
   });
   secretary.post('/tasks', async (req, res) => {
     try {
-      const task = await personalTasks.create(req.body || {});
+      const task = await personalTasks.create({ ...req.body, source: 'household-dad-desk' }, { ownerCapture: true });
       return envelope(res, { task }, 201);
     } catch (error) {
       return fail(res, error.status || 500, error.message, error.code || 'SECRETARY_CREATE_FAILED', error.details);
@@ -113,6 +113,14 @@ function registerSecretaryRoutes(app, {
       return envelope(res, { task });
     } catch (error) {
       return fail(res, error.status || 500, error.message, error.code || 'SECRETARY_UPDATE_FAILED', error.details);
+    }
+  });
+  // Human page only. Never advertised or relayed as a model tool.
+  secretary.post('/tasks/review', async (req, res) => {
+    try {
+      return envelope(res, { task: await personalTasks.review(req.body || {}) });
+    } catch (error) {
+      return fail(res, error.status || 500, error.message, error.code || 'SECRETARY_REVIEW_FAILED', error.details);
     }
   });
   secretary.post('/tasks/complete', async (req, res) => {

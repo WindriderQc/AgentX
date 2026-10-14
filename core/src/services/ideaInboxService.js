@@ -107,7 +107,7 @@ async function promoteToExecution(id, input = {}, deps = {}) {
   } else {
     const createPersonal = deps.createPersonalTask || require('./personalTaskService').createPersonalTask;
     task = await createPersonal({ title, note: summary, dueAt: input.dueAt, priority: input.priority,
-      source: 'planning-idea', origin: 'manual' });
+      source: 'planning-idea', origin: 'manual' }, { ownerCapture: true });
   }
   const pipelineId = String(task.pipelineId || task.id);
   const updated = await PlanningItem.findOneAndUpdate(

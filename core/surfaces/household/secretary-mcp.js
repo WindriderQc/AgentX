@@ -27,7 +27,7 @@ const SECRETARY_TOOLS = Object.freeze([
   Object.freeze({
     name: 'add_personal_task',
     title: 'Add Personal Task',
-    description: 'Add one real-life errand, reminder, purchase, call, appointment, or household task to Dad\'s canonical personal pipeline. Use create_todo for specified platform or code work; software deployments, CI, hosting and service alerts are never personal tasks. An idea to keep, or anything you are unsure how to file, goes to add_idea instead. Skip a task whose activity has already happened (an old email about a past event).',
+    description: 'Add one real-life action explicitly requested by Dad. Mail-derived actions are proposals awaiting human review, never confirmed commitments; relay needsReview honestly. Identify who actually must act, distinguish the latest message from quoted history, check replies and existing tasks. Another person\'s request or statement does not establish Dad\'s agreement; missing resolution is not evidence an action is still open. Use a short neutral verb and object in the title, with attribution and source details in note. Never invent a deadline. CI, deployments, security notifications and platform work belong in Pipeline; your own reading and analysis stay in the evidence dossier. Skip past activities and duplicates. Use add_idea for uncertain suggestions.',
     inputSchema: objectSchema({
       title: { type: 'string', minLength: 1, maxLength: 200 },
       note: { type: 'string', maxLength: 2000 },
@@ -53,10 +53,13 @@ const SECRETARY_TOOLS = Object.freeze([
   Object.freeze({
     name: 'list_personal_tasks',
     title: 'List Personal Tasks',
-    description: 'List Dad\'s personal tasks from the canonical pipeline, most urgent first. Sort before the requested limit; totalCount, overdueCount and dueTodayCount cover all matching tasks, while count covers this page and hasMore marks omissions. Call this before answering what is due, next, or on the list. Name days exactly as dueLocal, relevantUntilLocal and todayLocal give them; never compute a weekday yourself.',
+    description: 'Read all personal actions and extracted findings from Core, grouped by category: action (owner action), email (request to clarify), platform (technical follow-up), assistant (the Secretary\'s own reading). needsReview means the extraction is uncertain, not a confirmed commitment or overdue work. scope active selects owner actions; scope review selects extractions. categoryCounts covers the full snapshot, totalCount covers the selected scope/category, count covers this page, and nextOffset pages through hasMore results. Check existing findings before capturing another mail action. Attribute requests and uncertainty in your answer. Name days exactly as dueLocal, relevantUntilLocal and todayLocal give them.',
     inputSchema: objectSchema({
       includeDone: { type: 'boolean', default: false },
       includeNotes: { type: 'boolean', default: false },
+      scope: { type: 'string', enum: ['all', 'active', 'review'], default: 'all' },
+      category: { type: 'string', enum: ['action', 'email', 'platform', 'assistant'] },
+      offset: { type: 'integer', minimum: 0, default: 0 },
       limit: { type: 'integer', minimum: 1, maximum: 100, default: 25 }
     }),
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },

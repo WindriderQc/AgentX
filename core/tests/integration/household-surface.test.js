@@ -611,6 +611,23 @@ describe('built-in Household surface on Core', () => {
     await request(app).post('/api/family/shopping/add').send({ items: [] }).expect(400);
   });
 
+  test('mail capture stays a proposal over MCP until revision-bound human review accepts its wording and date', async () => {
+    await PipelineTask.deleteMany({});
+    const call = (name, args) => request(app).post('/mcp').send({ jsonrpc: '2.0', id: 84, method: 'tools/call', params: { name, arguments: args } });
+    const captured = await call('add_personal_task', { title: 'A correspondent requested a call', origin: 'email', dueAt: '2030-01-02', note: 'Source: https://mail.google.com/mail/#all/synthetic' }).expect(200);
+    const proposed = captured.body.result.structuredContent;
+    expect(proposed).toMatchObject({ needsReview: true, lane: 'review' });
+    expect((await call('list_personal_tasks', {})).body.result.structuredContent).toMatchObject({ count: 1, reviewCount: 1, categoryCounts: { email: 1 } });
+    expect((await call('list_personal_tasks', { scope: 'active' })).body.result.structuredContent).toMatchObject({ count: 0, reviewCount: 1 });
+    expect((await call('list_personal_tasks', { scope: 'review' })).body.result.structuredContent.tasks).toMatchObject([{ id: proposed.id }]);
+    await request(app).post('/api/secretary/tasks/review').send({ ref: proposed.id, revision: proposed.revision, decision: 'accept', title: 'Arrange a call' }).expect(400);
+    const accepted = await request(app).post('/api/secretary/tasks/review').send({ ref: proposed.id, revision: proposed.revision, decision: 'accept', title: 'Arrange a call', dueAt: null }).expect(200);
+    expect(accepted.body.data.task).toMatchObject({ title: 'Arrange a call', dueAt: null, needsReview: false });
+    await request(app).post('/api/secretary/tasks/review').send({ ref: proposed.id, revision: proposed.revision, decision: 'dismiss' }).expect(409);
+    expect((await call('list_personal_tasks', {})).body.result.structuredContent.tasks).toMatchObject([{ id: proposed.id, title: 'Arrange a call' }]);
+    await request(app).post('/api/family/chores/update').send({ ref: proposed.id, expectedRevision: 0, title: 'Forbidden' }).expect(404);
+  });
+
   test('HTTP and MCP share personal tasks, while family approval uses the same canonical store', async () => {
     const created = await request(app).post('/api/secretary/tasks').send({ title: 'Synthetic personal task' }).expect(201);
     const task = created.body.data.task;

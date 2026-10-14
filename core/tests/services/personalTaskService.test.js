@@ -70,7 +70,9 @@ describe('personal tasks in the canonical Core store', () => {
     const task = await personal.create({ title: 'Mail follow-up', source: 'nestor-secretary', origin: 'email' });
     expect(task.origin).toBe('email');
     expect((await PipelineTask.findOne({ pipelineId: task.id }).lean()).origin).toBe('email');
-    expect((await personal.list()).tasks[0]).toMatchObject({ origin: 'email', source: 'nestor-secretary' });
+    expect(await personal.list()).toMatchObject({ count: 1, reviewCount: 1 });
+    expect(await personal.list({ scope: 'active' })).toMatchObject({ count: 0, reviewCount: 1 });
+    expect((await personal.list({ scope: 'review' })).tasks[0]).toMatchObject({ origin: 'email', source: 'nestor-secretary', needsReview: true });
     await expect(personal.create({ title: 'Invalid', origin: 'unknown' })).rejects.toMatchObject({ code: 'SECRETARY_BAD_ORIGIN' });
   });
 

@@ -6,6 +6,7 @@ const { TASK_ORIGINS, taskOrigin, publicTask, sortedPersonalTasks } = require('.
 const { composePersonalBriefing } = require('./personalBriefing');
 const { initialTransition } = require('./pipelineTaskTransitions');
 const { commitLaneTask } = require('./pipelineLaneTaskMutationService');
+const { personalReview, reviewReason } = require('./personalTaskReview');
 
 const OPEN_TASK_STATUSES = Object.freeze(['queued', 'in_progress', 'review', 'blocked']);
 
@@ -76,20 +77,35 @@ function parsePriority(value, { fallback = 3, strict = false } = {}) {
   return Math.max(1, Math.min(Math.floor(priority), 5));
 }
 
-async function listPersonalTasks(input = {}, now = new Date()) {
+async function personalTaskSnapshot(input = {}, now = new Date()) {
   const query = { service: 'personal' };
   if (input.includeDone !== true && String(input.includeDone || '') !== 'true') query.status = { $in: OPEN_TASK_STATUSES };
-  const limit = Math.max(1, Math.min(Math.floor(Number(input.limit)) || 25, 100));
   // Classify before paging: old imported reminders must not hide a newly
   // captured deadline. Project only the fields needed by the public view.
-  const tasks = await PipelineTask.find(query).select('pipelineId title status priority spec dueAt relevantUntil origin source createdAt updatedAt').lean();
-  const attention = { today: 0, overdue: 1, upcoming: 2, inbox: 3, recheck: 4, expired: 5, done: 6 };
-  const all = sortedPersonalTasks(tasks, now).sort((a, b) => attention[a.lane] - attention[b.lane]);
-  const items = all.slice(0, limit);
+  const tasks = await PipelineTask.find(query).select('pipelineId title status priority spec dueAt relevantUntil origin source createdAt updatedAt personalReview __v').lean();
+  const attention = { today: 0, overdue: 1, upcoming: 2, inbox: 3, recheck: 4, expired: 5, review: 6, done: 7, dismissed: 8 };
+  return sortedPersonalTasks(tasks, now).filter(task => input.includeDone === true || String(input.includeDone) === 'true' || input.scope === 'dismissed' || task.lane !== 'dismissed')
+    .sort((a, b) => attention[a.lane] - attention[b.lane]);
+}
+
+async function listPersonalTasks(input = {}, now = new Date()) {
+  const snapshot = await personalTaskSnapshot(input, now);
+  const review = snapshot.filter(task => task.needsReview);
+  const categoryRows = snapshot.filter(task => input.scope === 'dismissed' ? task.lane === 'dismissed' : !['done', 'dismissed'].includes(task.lane));
+  const all = snapshot.filter(task => input.scope === 'review' ? task.needsReview : input.scope === 'dismissed' ? task.lane === 'dismissed'
+    : input.scope === 'triage' ? ['expired', 'recheck'].includes(task.lane) : input.scope === 'active' ? !task.needsReview : true)
+    .filter(task => !input.category || task.category === input.category);
+  const limit = Math.max(1, Math.min(Math.floor(Number(input.limit)) || 25, 100));
+  const offset = Math.max(0, Math.floor(Number(input.offset)) || 0);
+  const items = all.slice(offset, offset + limit);
   return {
     count: items.length,
     totalCount: all.length,
-    hasMore: all.length > items.length,
+    hasMore: all.length > offset + items.length,
+    nextOffset: all.length > offset + items.length ? offset + items.length : null,
+    reviewCount: review.length,
+    findingCount: input.scope === 'dismissed' ? categoryRows.length : review.length,
+    categoryCounts: Object.fromEntries(['action', 'email', 'platform', 'assistant'].map(category => [category, categoryRows.filter(task => task.category === category).length])),
     overdueCount: all.filter((item) => item.overdue).length,
     dueTodayCount: all.filter((item) => item.dueToday).length,
     tasks: items
@@ -98,15 +114,17 @@ async function listPersonalTasks(input = {}, now = new Date()) {
 
 // Reads every open task: the brief must not depend on a listing page size.
 async function personalBriefing(now = new Date()) {
-  const tasks = await PipelineTask.find({ service: 'personal', status: { $in: OPEN_TASK_STATUSES } }).limit(1000).lean();
-  return { source: 'AgentX personal tasks', ...composePersonalBriefing(sortedPersonalTasks(tasks, now), now) };
+  return { source: 'AgentX personal tasks', ...composePersonalBriefing(await personalTaskSnapshot({}, now), now) };
 }
 
-async function createPersonalTask(input = {}) {
-  const title = boundedText(input.title, 200);
+async function createPersonalTask(input = {}, { ownerCapture = false } = {}) {
+  const title = String(input.title || '').replace(/\s+/g, ' ').trim();
   if (!title) throw new PersonalTaskError('title is required', { code: 'SECRETARY_TITLE_REQUIRED' });
+  if (title.length > 200) throw new PersonalTaskError('Use a short action title (at most 200 characters); keep context in note.', { code: 'SECRETARY_TITLE_TOO_LONG' });
   const origin = boundedText(input.origin, 16).toLowerCase();
   if (origin && !TASK_ORIGINS.includes(origin)) throw new PersonalTaskError('origin must be chat, email or manual', { code: 'SECRETARY_BAD_ORIGIN' });
+  const reason = reviewReason({ title, origin, note: input.note });
+  const ownerAccepted = ownerCapture && reason === 'email';
   const pipelineId = String(await Counter.next('pipelineTask')).padStart(4, '0');
   const task = await PipelineTask.create({
     pipelineId,
@@ -120,6 +138,11 @@ async function createPersonalTask(input = {}) {
     relevantUntil: parseRelevantUntil(input.relevantUntil) || undefined,
     source: boundedText(input.source || 'household-secretary', 120),
     origin: origin || taskOrigin({ source: input.source, spec: input.note }),
+    // Inputs cannot self-declare a human review. The review endpoint owns it.
+    ...(reason ? {
+      personalReview: { state: ownerAccepted ? 'accepted' : 'pending', reason,
+        reviewedAt: ownerAccepted ? new Date() : null }
+    } : {}),
     ...initialTransition(pipelineId, { channel: 'personal_surface', declaredActor: input.by || null })
   });
   return publicTask(task);
@@ -180,6 +203,9 @@ async function updatePersonalTask(input = {}) {
 async function completePersonalTask(input = {}) {
   const task = await resolvePersonalTask(input.ref);
   if (task.status === 'done') return { alreadyDone: true, task: publicTask(task) };
+  if (personalReview(task).state !== 'accepted') {
+    throw new PersonalTaskError('Review this proposal in My day before completing it.', { status: 409, code: 'SECRETARY_REVIEW_REQUIRED' });
+  }
   const by = boundedText(input.by || 'household-secretary', 120);
   const updated = await commitLaneTask(task, {
     fields: { status: 'done', assignee: null, heartbeatAt: null },
@@ -187,6 +213,38 @@ async function completePersonalTask(input = {}) {
     kind: 'personal_completed', channel: 'personal_surface', declaredActor: by,
   });
   return { alreadyDone: false, task: publicTask(updated) };
+}
+
+async function reviewPersonalTask(input = {}) {
+  if (!/^\d{1,4}$/.test(String(input.ref || ''))) {
+    throw new PersonalTaskError('ref must be a numeric personal task id', { code: 'SECRETARY_REF_REQUIRED' });
+  }
+  if (!['accept', 'dismiss', 'restore'].includes(input.decision)) {
+    throw new PersonalTaskError('decision must be accept, dismiss or restore', { code: 'SECRETARY_BAD_REVIEW' });
+  }
+  const task = await resolvePersonalTask(input.ref, { openOnly: true });
+  if (personalReview(task).state !== (input.decision === 'restore' ? 'dismissed' : 'pending') || !Number.isInteger(input.revision) || input.revision !== (task.__v ?? 0)) {
+    throw new PersonalTaskError('This proposal changed. Reload it before reviewing.', { status: 409, code: 'SECRETARY_REVIEW_CONFLICT' });
+  }
+  const state = { accept: 'accepted', dismiss: 'dismissed', restore: 'pending' }[input.decision];
+  const fields = { personalReview: { ...personalReview(task), state, reviewedAt: new Date() } };
+  if (input.decision === 'accept') {
+    const title = String(input.title || '').replace(/\s+/g, ' ').trim();
+    if (!title || title.length > 200 || !Object.hasOwn(input, 'dueAt')) {
+      throw new PersonalTaskError('Review a short action title and choose a due date or null.', { code: 'SECRETARY_REVIEW_ACTION_REQUIRED' });
+    }
+    const reason = reviewReason({ title });
+    if (reason === 'platform' || reason === 'assistant') {
+      throw new PersonalTaskError('Platform work belongs in Pipeline; assistant reading stays in the source dossier.', { code: 'SECRETARY_NOT_PERSONAL_ACTION' });
+    }
+    fields.title = title;
+    // Explicit choice: never silently keep an extractor's inferred deadline.
+    fields.dueAt = parseDueAt(input.dueAt);
+    fields.relevantUntil = parseRelevantUntil(input.relevantUntil);
+  }
+  const updated = await commitLaneTask(task, { fields, channel: 'personal_surface',
+    feedback: { by: 'household-dad-desk', text: `Personal proposal ${state}; original title: ${task.title}` } });
+  return publicTask(updated);
 }
 
 module.exports = {
@@ -197,7 +255,9 @@ module.exports = {
   listPersonalTasks,
   parseDueAt,
   personalBriefing,
+  personalTaskSnapshot,
   parsePriority,
   resolvePersonalTask,
+  reviewPersonalTask,
   updatePersonalTask
 };

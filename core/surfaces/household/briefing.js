@@ -72,7 +72,9 @@ function familyDesk(familyBody = {}) {
 
 function dadDesk(reportBody = {}, taskItems = [], cronBody = {}, now = new Date(), familyBody = {}, activationBody = {}, budgetBody = {}, mailBacklogBody = {}, mailCatchupBody = null) {
   const briefing = dadBriefing(reportBody, taskItems, now);
-  const tasks = sortedPersonalTasks(taskItems, now).filter((task) => !['done', 'cancelled'].includes(task.status));
+  const open = sortedPersonalTasks(taskItems, now).filter((task) => !['done', 'cancelled'].includes(task.status) && task.lane !== 'dismissed');
+  const review = open.filter(task => task.needsReview);
+  const tasks = open.filter(task => !task.needsReview);
   const inbox = tasks.filter((task) => task.unscheduled);
   const stale = inbox.filter((task) => task.stale);
   const weekEnd = new Date(now);
@@ -178,6 +180,7 @@ function dadDesk(reportBody = {}, taskItems = [], cronBody = {}, now = new Date(
         ? `Gmail triage and its watchdog are running${triage.cadenceMinutes ? ` · catch-up every ${triage.cadenceMinutes} min` : ''}.`
         : 'Gmail triage or its watchdog needs checking.';
   const decisions = [
+    ...(review.length ? [{ id: 'personal-review', audience: 'dad', severity: 'info', title: `${review.length} requests and follow-ups by category`, detail: 'Email requests, technical follow-ups and Secretary reading remain available with their sources.', href: '#dad-proposals' }] : []),
     ...(stale.length ? [{ id: 'schedule-stale', audience: 'dad', severity: 'warning', title: `${stale.length} ${stale.length === 1 ? 'task has' : 'tasks have'} been waiting for a date for a long time`, detail: 'Give it a date, finish it, or leave it undated on purpose.', href: '#dad-inbox' }] : []),
     ...(tasks.some((task) => task.expired) ? [{ id: 'expired', audience: 'dad', severity: 'info', title: `${tasks.filter((task) => task.expired).length} ${tasks.filter((task) => task.expired).length === 1 ? 'task whose activity has passed' : 'tasks whose activity has passed'}`, detail: 'The activity it served has passed: close it.', href: '#dad-triage' }] : []),
     ...(tasks.some((task) => task.recheck) ? [{ id: 'recheck', audience: 'dad', severity: 'info', title: `${tasks.filter((task) => task.recheck).length} ${tasks.filter((task) => task.recheck).length === 1 ? 'old due date' : 'old due dates'} to confirm`, detail: 'Captured late or overdue for weeks: close it, or give it the date of its activity.', href: '#dad-triage' }] : []),
@@ -201,7 +204,10 @@ function dadDesk(reportBody = {}, taskItems = [], cronBody = {}, now = new Date(
     inbox: inbox.slice(0, 12),
     upcoming: upcoming.slice(0, 8),
     metrics: {
-      open: tasks.length,
+      open: open.length,
+      actionable: tasks.length,
+      review: review.length,
+      categories: Object.fromEntries(['action', 'email', 'platform', 'assistant'].map(category => [category, open.filter(task => task.category === category).length])),
       today: tasks.filter((task) => task.dueToday).length,
       overdue: tasks.filter((task) => task.overdue).length,
       inbox: inbox.length,
@@ -261,7 +267,7 @@ function dadBriefing(reportBody = {}, taskItems = [], now = new Date()) {
   const reportUnavailable = reportBody.unavailable === true || Boolean(reportBody.error);
   const alerts = report.alerts || {};
   const memoryReview = report.memoryReview || {};
-  const tasks = sortedPersonalTasks(taskItems, now);
+  const tasks = sortedPersonalTasks(taskItems, now).filter(task => !task.needsReview && !['done', 'dismissed'].includes(task.lane));
   const overdue = tasks.filter((task) => task.overdue);
   const dueToday = tasks.filter((task) => task.dueToday);
   const priorities = [...overdue, ...dueToday, ...tasks.filter((task) => !task.overdue && !task.dueToday)]
