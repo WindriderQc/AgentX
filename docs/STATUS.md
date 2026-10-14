@@ -27,11 +27,15 @@ Instance configuration, data and deployment receipts remain outside Git.
   day. Nestor, its day page and the family conversation share the Core shopping
   list; purchases are checked on parent pages. Local space navigation,
   conversation starters and a character count support desktop and mobile use.
-  My day shows owner actions, mail requests to clarify, technical follow-ups and
-  Secretary reading in distinct categories with complete counts and sources.
-  Human acceptance chooses the personal action wording and deadline;
-  dismissed proposals keep their sources and can be restored. Focus and spoken
-  briefings use accepted actions, with counts taken before display pagination.
+  My day opens on owner actions, with complete search, date filters and a
+  revision-checked title/date editor. Separate views group mail findings by
+  exchange and retain technical follow-ups and Secretary reading. Human
+  acceptance chooses the personal action wording and deadline; dismissed
+  proposals keep their sources and can be restored. Focus and spoken briefings
+  use accepted actions, with counts taken before display pagination. Secretary
+  source pages carry conservative quote-boundary context across continuation
+  windows; container headers do not attribute quotations or attachments.
+  Existing source text, page identities and reading receipts remain valid.
 
 - **Heavy work.** Core stores one-off requests from operator/coding sessions,
   resource-aware planned windows, dispatch identities and executor receipts.

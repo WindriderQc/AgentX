@@ -215,6 +215,31 @@ async function completePersonalTask(input = {}) {
   return { alreadyDone: false, task: publicTask(updated) };
 }
 
+// Human action editor. The model update contract remains date/priority only.
+async function editPersonalAction(input = {}) {
+  if (!/^\d{1,4}$/.test(String(input.ref || ''))) {
+    throw new PersonalTaskError('Identifiant de tâche requis.', { code: 'SECRETARY_REF_REQUIRED' });
+  }
+  const task = await resolvePersonalTask(input.ref, { openOnly: true });
+  if (!Number.isInteger(input.revision) || input.revision !== (task.__v ?? 0)) {
+    throw new PersonalTaskError('Cette action a changé. Actualisez la liste avant de réessayer.', { status: 409, code: 'SECRETARY_EDIT_CONFLICT' });
+  }
+  if (personalReview(task).state !== 'accepted') {
+    throw new PersonalTaskError('Validez cette proposition dans les courriels.', { status: 409, code: 'SECRETARY_REVIEW_REQUIRED' });
+  }
+  const title = String(input.title || '').replace(/\s+/g, ' ').trim();
+  if (!title || title.length > 200 || !Object.hasOwn(input, 'dueAt')) {
+    throw new PersonalTaskError('Indiquez une action courte et une date, ou laissez la date vide.', { code: 'SECRETARY_REVIEW_ACTION_REQUIRED' });
+  }
+  if (['platform', 'assistant'].includes(reviewReason({ title }))) {
+    throw new PersonalTaskError('Ce suivi appartient au dossier technique ou au Secrétariat.', { code: 'SECRETARY_NOT_PERSONAL_ACTION' });
+  }
+  const updated = await commitLaneTask(task, { channel: 'personal_surface',
+    fields: { title, dueAt: parseDueAt(input.dueAt), priority: parsePriority(input.priority, { strict: true }) },
+    feedback: { by: 'household-dad-desk', text: `Personal action edited; previous wording: ${task.title}; previous deadline: ${task.dueAt?.toISOString() || 'none'}; previous priority: ${task.priority}.` } });
+  return publicTask(updated);
+}
+
 async function reviewPersonalTask(input = {}) {
   if (!/^\d{1,4}$/.test(String(input.ref || ''))) {
     throw new PersonalTaskError('ref must be a numeric personal task id', { code: 'SECRETARY_REF_REQUIRED' });
@@ -252,6 +277,7 @@ module.exports = {
   PersonalTaskError,
   completePersonalTask,
   createPersonalTask,
+  editPersonalAction,
   listPersonalTasks,
   parseDueAt,
   personalBriefing,

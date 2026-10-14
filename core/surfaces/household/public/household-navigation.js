@@ -8,8 +8,10 @@
     const destinations = parent ? personal : family;
     const nav = document.createElement('nav'); nav.className = 'household-wayfinding';
     nav.setAttribute('aria-label', parent ? 'Personal space' : 'Family space');
+    const dayLabels = { 'My day': 'Ma journée', Memories: 'Souvenirs', 'Family tracking': 'Famille' };
+    if (path === '/dad/day') nav.setAttribute('aria-label', 'Mon espace personnel');
     for (const [href, label] of destinations) {
-      const link = document.createElement('a'); link.href = href; link.textContent = label;
+      const link = document.createElement('a'); link.href = href; link.textContent = path === '/dad/day' ? dayLabels[label] || label : label;
       if (path === href) link.setAttribute('aria-current', 'page');
       nav.append(link);
     }

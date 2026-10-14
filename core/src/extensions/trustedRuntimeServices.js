@@ -636,6 +636,7 @@ function createTrustedRuntimeServices(overrides = {}) {
         list: personalTasks.listPersonalTasks,
         snapshot: personalTasks.personalTaskSnapshot,
         review: personalTasks.reviewPersonalTask,
+        edit: personalTasks.editPersonalAction,
         create: personalTasks.createPersonalTask,
         update: personalTasks.updatePersonalTask,
         complete: personalTasks.completePersonalTask,

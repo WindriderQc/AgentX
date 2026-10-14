@@ -97,3 +97,9 @@
   .finding-edit input[type=date] { max-width: 100%; }
 }
 .finding-thread-preview { color: #b4c9d4; font-size: 11px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.finding-heading .finding-total { font-size: 11px; padding: 4px 0; color: #b5c9cc; background: transparent; white-space: nowrap; }
+.finding-total::after { content: ' relevés conservés'; }
+@media (max-width: 760px) {
+  .finding-heading { flex-wrap: wrap; gap: 6px; }
+  .finding-heading .finding-total { min-width: 0; }
+}
