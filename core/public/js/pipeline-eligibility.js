@@ -61,7 +61,14 @@
     const shell = document.getElementById('pipelineDrawerShell');
     if (event.key !== 'Tab' || !shell || shell.hidden || document.getElementById('pipelineTaskEditor')?.open) return;
     const focusable = [...shell.querySelector('.pipeline-drawer').querySelectorAll('button, a[href], input, select, textarea, summary, [tabindex="0"]')]
-      .filter(node => !node.disabled && node.getClientRects().length > 0);
+      .filter(node => {
+        if (node.disabled || node.getClientRects().length === 0) return false;
+        // Closed details can retain layout rectangles for their hidden fields.
+        for (let disclosure = node.closest?.('details'); disclosure; disclosure = disclosure.parentElement?.closest('details')) {
+          if (!disclosure.open && !disclosure.querySelector(':scope > summary')?.contains(node)) return false;
+        }
+        return true;
+      });
     const first = focusable[0], last = focusable[focusable.length - 1];
     if (first && (event.shiftKey && document.activeElement === first || !event.shiftKey && document.activeElement === last)) {
       event.preventDefault(); (event.shiftKey ? last : first).focus();

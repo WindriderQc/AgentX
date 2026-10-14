@@ -31,6 +31,14 @@ queued, unassigned task and does not dispatch an agent. An explicitly empty
 group stays empty; API/MCP clients omitting the group keep their inbox default.
 The optional AI writing proposal still requires applying it and saving the form.
 
+Opening a task shows its request before launch, its latest recorded update
+while work is in progress, its recorded blocker when blocked, and its result
+when awaiting review or closed. Result files have direct download controls;
+a PR link appears only for the current attempt with a proven receipt binding.
+The **Original request** remains available after launch. **Technical details
+and history** holds status explanations, diagnosis, plans, verification,
+file integrity evidence and task management actions.
+
 Use **Needs attention** to find tasks requiring a decision.
 Its header separates the known total, the rows loaded in the browser and the
 page shown; **Previous** and **Next** reach every item ten at a time, in Core's
@@ -46,8 +54,8 @@ The Pipeline state strip uses that engineering queue's current filtered count:
 an exact total when coverage is complete, a lower bound when it is partial,
 or "unknown" when the read failed or the private queue is selected. It does
 not treat the browser's loaded task rows as the full attention queue.
-Open a task dossier to read its **Next action**, current ownership and audit
-trail. Planning references link to the same dossier and display Core's same
+Open a task dossier to see its next step and current ownership; its audit
+trail is under **Technical details and history**. Planning references link to the same dossier and display Core's same
 next-action projection.
 
 **Why can this task start, or why is it waiting?** expands two read-only views:
@@ -106,7 +114,9 @@ A newer revision says the earlier decision does not carry over. When the task
 request or scope changed after a decision, the dossier shows it as no longer
 current. A task without a plan shows no plan section.
 
-**Deliverables** in a task dossier lists the files registered for that task:
+**Files from this task** provides direct downloads during execution and review
+and on closed tasks. **Deliverables**, under **Technical details and history**,
+lists the files registered for that task with their inspection evidence:
 name, type, size, attempt or operator upload, SHA-256, storage, availability,
 external delivery and scope. A listed file reads "digest not checked yet" until
 **Verify SHA-256** recomputes it on the server. **Download** fetches the file in

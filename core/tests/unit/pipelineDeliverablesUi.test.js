@@ -77,3 +77,22 @@ test('empty and error states are explicit and the error offers a retry', async (
   expect(html).toContain('data-retry-deliverables="0309"');
   expect(failing.api.markup({ pipelineId: '../x' })).toBe('');
 });
+
+test('the main result list offers only valid files and keeps inspection metadata in the technical panel', async () => {
+  const records = [row('0'.repeat(23) + '1', 'available', { name: 'review.md' }), row('0'.repeat(23) + '2', 'corrupt'),
+    row('0'.repeat(23) + '3', 'missing'), row('0'.repeat(23) + '4', 'unknown'), row('invalid', 'available')];
+  const { api, flush } = load(ok({ deliverables: records }));
+  api.markup({ pipelineId: '0307' }, { compact: true });
+  await flush();
+  const main = api.markup({ pipelineId: '0307' }, { compact: true });
+  expect(main).toContain('review.md');
+  expect(main.match(/data-download-deliverable=/g)).toHaveLength(1);
+  expect(main).not.toContain('SHA-256');
+  expect(main).not.toContain('External delivery');
+  expect(main).toContain('File altered');
+  expect(main).toContain('File missing');
+  expect(main).toContain('Availability unknown');
+  const technical = api.markup({ pipelineId: '0307' });
+  expect(technical).toContain('SHA-256');
+  expect(technical).toContain('External delivery');
+});
