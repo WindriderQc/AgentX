@@ -40,7 +40,20 @@ def utc_now() -> str:
 
 def artifact(path: str) -> bool:
     parts = Path(path).parts
-    return bool(set(parts) & ARTIFACT_DIRS or (parts and parts[-1] in {"session.jsonl", "session.jsonl.zstd"}))
+    return bool(set(parts) & ARTIFACT_DIRS or (parts and re.fullmatch(r"session(?:\.v[1-9]\d*)?\.jsonl(?:\.zstd)?", parts[-1])))
+
+
+def session_logs(home: Path):
+    """Read only the highest committed plaintext generation of each session."""
+    selected = {}
+    for path in (home / ".dsh/progress-sessions").glob("**/session*.jsonl"):
+        match = re.fullmatch(r"session(?:\.v([1-9]\d*))?\.jsonl", path.name)
+        if not match or path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(home.resolve()):
+            continue
+        version = int(match[1] or 0)
+        if path.parent not in selected or version > selected[path.parent][0]:
+            selected[path.parent] = (version, path)
+    return [path for _, path in selected.values()]
 
 
 def git(workspace: Path, *args: str) -> str:
@@ -457,7 +470,7 @@ class Progress:
         kind, data = entry.get("type"), entry["data"]
         if kind in {"step/start", "request/header"}:
             self.set_stage("model_wait")
-        elif kind == "assistant/chunk":
+        elif kind in {"assistant/chunk", "assistant/message"}:
             self.set_stage("model_generation")
         elif kind == "turn/end" and isinstance(data.get("reason"), dict) and data["reason"].get("kind") == "max-tokens":
             self.stop_reason = self.stop_reason or "model_output_limit"
@@ -482,7 +495,9 @@ class Progress:
             if not isinstance(message, dict):
                 return
             source = message.get("source") or {}
-            call_id = source.get("callId") if isinstance(source, dict) else None
+            call_id = message.get("toolCallId") or (source.get("callId") if isinstance(source, dict) else None)
+            if not isinstance(call_id, str) or (isinstance(source, dict) and source.get("callId", call_id) != call_id):
+                return
             pending = self.pending_tests.pop((session, call_id), None)
             if pending:
                 content, errored, valid = tool_message(message)
@@ -496,9 +511,8 @@ class Progress:
             self.set_stage("test" if self.current_test else "model_wait")
 
     def baseline(self, home: Path, workspace: Path):
-        for path in (home / ".dsh/progress-sessions").glob("**/session.jsonl"):
-            if path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(home.resolve()):
-                self.offsets[path] = path.stat().st_size
+        for path in session_logs(home):
+            self.offsets[path] = path.stat().st_size
         self.source_signature = source_state(workspace)
         self.seen_states.add(self.source_signature)
 
@@ -507,9 +521,7 @@ class Progress:
         if self.source_signature not in self.seen_states:
             self.seen_states.add(self.source_signature)
             self.useful()
-        for path in (home / ".dsh/progress-sessions").glob("**/session.jsonl"):
-            if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(home.resolve()):
-                continue
+        for path in session_logs(home):
             offset = self.offsets.get(path, 0)
             with path.open("rb") as stream:
                 stream.seek(offset)

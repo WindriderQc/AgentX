@@ -129,19 +129,21 @@ def request(url: str, body: dict | None = None, token: str = "", method: str | N
         raise failure from error
 
 
-SETTINGS = """llm-pi-ai:
-  providers:
-    agentx-core:
-      displayName: AgentX Core
-      apiKeyEnv: AGENTX_CORE_API_KEY
-      api: openai-completions
-      baseURL: {url}
-      models:
-        - id: {model}
-agent-default-model:
-  provider: agentx-core
-  model: {model}
-"""
+def worker_patch(model: str, context_size: int | None = None) -> list[dict]:
+    if context_size is not None and (type(context_size) is not int or context_size <= 0):
+        raise RuntimeError("Coding context is unavailable")
+    model_config = {"id": model, "maxTokens": 32768}
+    if context_size is not None:
+        model_config["contextWindow"] = context_size
+    return [
+        {"id": "llm-pi-ai", "config": {"providers": {"agentx-core": {
+            "displayName": "AgentX Core", "apiKeyEnv": "AGENTX_CORE_API_KEY",
+            "api": "openai-completions", "baseURL": f"http://127.0.0.1:{RELAY_PORT}/v1",
+            "compat": {"supportsDeveloperRole": False, "maxTokensField": "max_tokens", "thinkingFormat": "deepseek"},
+            "models": [model_config],
+        }}}},
+        {"id": "agent-default-model", "config": {"provider": "agentx-core", "model": model}},
+    ]
 
 
 def sandbox(workspace: Path, home: Path, command: list[str], *, network: bool, timeout_seconds: int) -> list[str]:
@@ -315,7 +317,13 @@ def terminate(process):
 def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None, model=None) -> subprocess.CompletedProcess:
     home = worker_home(workspace)
     (home / ".dsh").mkdir(exist_ok=True)
-    (home / ".dsh/settings.yaml").write_text(SETTINGS.format(url=f"http://127.0.0.1:{RELAY_PORT}/v1", model=model or MODEL))
+    selected_model = model or MODEL
+    context_size = getattr(progress, "model_context_size", None)
+    if context_size is None:
+        lanes = request(f"{CORE}/api/nerve-center/agent-runtime-config/export").get("data", {}).get("lanes", {})
+        context_size = next((lane.get("contextSize") for lane in lanes.values()
+                             if lane.get("model") == selected_model), None)
+    (home / ".dsh/agentx.patch.json").write_text(json.dumps(worker_patch(selected_model, context_size)))
     if progress:
         progress.model_worker_active = True
         progress.baseline(home, workspace)
@@ -328,7 +336,8 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
     try:
         return supervise(sandbox(workspace, home, [
             "python3", "/opt/coding/model_relay.py", "inside", "/home/agent/model.sock", str(RELAY_PORT), "--",
-            "/opt/dsh/node_modules/.bin/dsh", "--profile", "headless", "--patch", "/opt/coding/guard.patch.yml", "--", prompt,
+            "/opt/dsh/node_modules/.bin/dsh", "--profile", "headless", "--patch", "/home/agent/.dsh/agentx.patch.json",
+            "--patch", "/opt/coding/guard.patch.yml", "--", prompt,
         ], network=False, timeout_seconds=timeout_seconds), progress, home, workspace, on_stop=relay.begin_drain)
     finally:
         relay.begin_drain()

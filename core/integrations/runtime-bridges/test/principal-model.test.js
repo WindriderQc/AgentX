@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { resolvePrincipalAlias } = require('../principal-model');
-const { studioSettings } = require('../../../../integrations/coding/dsh-studio-settings.cjs');
+const { studioSettings, studioPatch, settingsPatch } = require('../../../../integrations/coding/dsh-studio-settings.cjs');
 
 test('a following consumer resolves the current concrete model and preserves the full context', () => {
   for (const model of ['standard', 'abliterated']) {
@@ -12,6 +12,19 @@ test('a following consumer resolves the current concrete model and preserves the
   }
   assert.equal(resolvePrincipalAlias({ tasks: {} }, 'explicit-standard'), null);
   assert.throws(() => resolvePrincipalAlias({ tasks: {} }, 'agentx-primary'), { code: 'PRINCIPAL_MODEL_UNAVAILABLE' });
+});
+
+test('Studio launch overlays preserve preferences, principal context and optional browser configuration', () => {
+  const source = { 'ui-onboarding': { welcomeNoticeVersion: 'original' } };
+  const plain = studioPatch(source, 'http://core-host:3180', 196608);
+  assert.deepEqual(settingsPatch(source), [{ id: 'ui-settings-general', config: source['ui-onboarding'] }]);
+  assert.equal(plain.some(row => row.id === 'ui-settings-general'), false);
+  assert.equal(plain.find(row => row.id === 'llm-pi-ai').config.providers['agentx-core'].models[0].contextWindow, 196608);
+  assert.equal(plain.some(row => row.insert), false);
+  const browser = studioPatch(source, 'http://core-host:3180', 196608, '/opt/chromium/chrome').at(-1).insert;
+  assert.equal(browser[1].config.executablePath, '/opt/chromium/chrome');
+  assert.equal(browser[1].config.headless, true);
+  assert.deepEqual(source, { 'ui-onboarding': { welcomeNoticeVersion: 'original' } });
 });
 
 test('Studio settings keep native preferences and use the existing Core gateway', () => {

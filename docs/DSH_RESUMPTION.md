@@ -17,10 +17,11 @@ database or model scheduler.
 
 ## Native Studio
 
-Install DSH separately and retain its version, original native settings,
+The supported runtime is DSH **0.2.0-rc.2**. Install it separately and retain its version, original native settings,
 histories, workspace and isolation configuration outside Git. The launcher
-`integrations/coding/dsh-studio.sh` prepares only its private Studio settings
-copy. It retains native preferences, selects the Core provider and declares the
+`integrations/coding/dsh-studio.sh` prepares a private launch overlay. Upstream
+imports ordinary legacy preferences once into its native profile; the managed
+overlay selects the Core provider on every start and declares the
 principal context. Open's temporary per-chat hold inherits the same context.
 Changing a pin's context requires restarting Studio to refresh its descriptor.
 
@@ -40,13 +41,37 @@ as AgentX; a different port is supported. Keep the existing secret and signed
 launch cookie. The private LAN reverse proxy protects Studio with Core's
 `/api/dsh/access-check`. Launch through `/api/dsh/control-launch` (the AgentX
 Studio entry) to obtain the cookie; a direct URL without that cookie refuses.
-No upstream DSH fork or version upgrade is required.
+No upstream DSH fork is required. Keep the old runtime and a stopped snapshot
+of Studio state before upgrading: new session generations preserve their source,
+but older runtimes cannot read subsequent changes written by a newer format.
 
 For native Main, add `agentx-primary` to the existing Core-routed provider's
 catalog with the principal context and select it for Main only. Preserve its
 tools, permissions, histories and other agents' concrete models. The same
 alias works through the Ollama and OpenAI adapters. Configure Coding Team's
 `AGENTX_CODING_MODEL=auto` to follow its existing Core coding route on new work.
+Set `AGENTX_DSH_ROOT` to the reviewed runtime directory for both coding wrappers.
+Coding Team uses a JSON launch overlay and the concrete capacity claim's context;
+its observer selects the highest plaintext session generation, including V4.
+
+## Optional browser tools and project skills
+
+Studio can mount the upstream experimental Playwright provider by setting
+`DSH_STUDIO_BROWSER_EXECUTABLE` to an installed Chromium executable. Install
+`@deepseek-ai/dsh-browser-use@0.2.0-rc.2` and
+`@deepseek-ai/dsh-experimental-browser-use-playwright-mcp@0.2.0-rc.2` in its
+private `$DSH_HOME/profiles/web` profile. Keep DSH service peers supplied by the
+runtime, rather than installing duplicate copies: use `auto-install-peers=false`
+in the profile's `.npmrc` with pnpm, or `--legacy-peer-deps` with npm. Retain the
+profile's bundle declarations and installation lockfile. Chromium and the
+package manager must be installed before launch; no model installs them.
+
+The launcher uses a separate headless browser per live Studio Session and mounts
+its executable read-only under Bubblewrap. Browser state is not conversation
+memory. Keep the Coding Team's network isolation and single-worker guard;
+browser plugins are enabled only for the human-operated Studio. Reuse compatible
+project skills through DSH's existing `.agents/skills` or `.dsh/skills` discovery.
+No extra memory service, scheduler or agent-team layer is needed.
 
 ## Qualification
 

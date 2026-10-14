@@ -191,8 +191,8 @@ test('Studio stays loopback-only and the OpenClaw worker sandbox stays mandatory
   const studio = fs.readFileSync(path.join(repoRoot, 'integrations/coding/dsh-studio.sh'), 'utf8');
   const worker = fs.readFileSync(path.join(repoRoot, 'integrations/coding/dsh-headless.sh'), 'utf8');
 
-  assert.match(studio, /web --host 127\.0\.0\.1/);
-  assert.doesNotMatch(studio, /web --host 0\.0\.0\.0/);
+  assert.match(studio, /web .*--host 127\.0\.0\.1/);
+  assert.doesNotMatch(studio, /--host 0\.0\.0\.0/);
   assert.match(worker, /\/usr\/bin\/bwrap/);
   assert.doesNotMatch(worker, /DSH_STUDIO_ISOLATION|DSH_CODING_AGENT_ISOLATION/);
 });

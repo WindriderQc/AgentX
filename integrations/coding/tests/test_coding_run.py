@@ -15,6 +15,20 @@ SPEC.loader.exec_module(runner)
 
 
 class CodingRunTest(unittest.TestCase):
+    def test_worker_patch_preserves_frozen_model_context_and_json_values(self):
+        model = 'selected-model\nwith-literal-characters'
+        patch = runner.worker_patch(model, 196608)
+        decoded = json.loads(json.dumps(patch))
+        provider = decoded[0]['config']['providers']['agentx-core']
+        self.assertEqual(provider['models'][0]['id'], model)
+        self.assertEqual(provider['models'][0]['contextWindow'], 196608)
+        self.assertEqual(provider['baseURL'], f'http://127.0.0.1:{runner.RELAY_PORT}/v1')
+        self.assertEqual(decoded[1]['config']['model'], model)
+        self.assertNotIn('contextWindow', runner.worker_patch('dedicated-model')[0]['config']['providers']['agentx-core']['models'][0])
+        for invalid in (0, -1, True):
+            with self.assertRaises(RuntimeError):
+                runner.worker_patch('model', invalid)
+
     def setUp(self):
         root = tempfile.TemporaryDirectory()
         self.addCleanup(root.cleanup)

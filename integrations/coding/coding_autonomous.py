@@ -152,6 +152,7 @@ def execute(r, args, progress):
             reason = 'coding_model_mismatch'
             raise RuntimeError('The configured worker model differs from its native capacity')
         r.MODEL = capacity_model
+        progress.model_context_size = task['codingCapacity'].get('numCtx')
         run = r.run_worker(workspace, prompt, max(1, int(progress.hard_deadline - progress.now())), progress, model=r.MODEL)
         summary = (run.stdout or run.stderr or '(no summary)')[-4000:]
         progress.phase = 'delivering'

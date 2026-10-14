@@ -91,6 +91,42 @@ class ProgressTest(unittest.TestCase):
         self.assertNotIn("private", self.progress.path.read_text())
         self.assertNotIn("command", self.progress.path.read_text())
 
+    def test_v4_session_generation_and_first_class_tool_results_are_observed(self):
+        directory = self.root / '.dsh/progress-sessions/project/session'
+        directory.mkdir(parents=True)
+        stale = {'type': 'tool/call', 'data': {'callId': 'stale', 'name': 'bash',
+                                             'arguments': {'command': 'node --test stale.test.js'}}}
+        (directory / 'session.jsonl').write_text(json.dumps(stale) + '\n')
+        events = [
+            {'type': 'tool/call', 'data': {'callId': 'current', 'name': 'bash',
+                'arguments': {'command': 'node --test current.test.js'}}},
+            {'type': 'tool/result', 'data': {'message': {'role': 'tool', 'toolCallId': 'current',
+                'source': {'kind': 'tool', 'callId': 'current'}, 'isError': False,
+                'content': [{'type': 'text', 'text': '# pass 3\n# fail 0'}]}}},
+        ]
+        log = directory / 'session.v4.jsonl'
+        log.write_text(''.join(json.dumps(event) + '\n' for event in events))
+        self.clock[0] = 10
+        self.progress.scan(self.root, self.workspace)
+        self.assertEqual(self.progress.last_test, {'name': 'node_test', 'outcome': 'passed'})
+        self.assertFalse(self.progress.pending_tests)
+        self.assertEqual(self.progress.last_useful, 10)
+        self.clock[0] = 20
+        self.progress.baseline(self.root, self.workspace)
+        self.progress.scan(self.root, self.workspace)
+        self.assertEqual(self.progress.last_useful, 10)
+        self.assertTrue(module.artifact('nested/session.v4.jsonl'))
+        self.assertTrue(module.artifact('nested/session.v4.jsonl.zstd'))
+        self.assertFalse(module.artifact('nested/session-source.jsonl'))
+
+    def test_v4_invalid_call_identity_cannot_credit_a_test(self):
+        self.call('expected')
+        for call_id, source in [('expected', {'callId': 'different'}), (['expected'], {})]:
+            self.progress.event({'type': 'tool/result', 'data': {'message': {
+                'toolCallId': call_id, 'source': source, 'content': [{'type': 'text', 'text': 'OK'}]}}})
+        self.assertEqual(self.progress.last_test, None)
+        self.assertTrue(self.progress.pending_tests)
+
     def test_native_jest_and_encoded_harness_results_charge_tests_without_masking_failure(self):
         command = "/opt/node/bin/node benchmark/node_modules/jest/bin/jest.js --config /opt/coding/jest.benchmark.config.cjs --runInBand 2>&1 | tail -60"
         self.clock[0] = 10
