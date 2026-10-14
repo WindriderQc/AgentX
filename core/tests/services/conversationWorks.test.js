@@ -80,6 +80,19 @@ test('worker context returns the complete conversation and refreshes old correct
   expect(data.recentTurns).toBeUndefined();
 });
 
+test('the original speech language survives duplicate intake and a new service instance', async () => {
+  const original = input('A short conversational request.');
+  await works.intake({ ...original, speechLanguage: 'en' });
+  await works.intake({ ...original, speechLanguage: 'fr' });
+  const restarted = createConversationWorks({ conversations, tasks, env, classify: () => false });
+  const row = await restarted.repo.get(hash(current.sessionId + '\n' + original.turnId));
+  const saved = await conversations.getTurn({ ...restarted.query(current.sessionId), traceId: row.turnId });
+  expect(saved.speechLanguage).toBe('en');
+  expect(saved.inputText).toBe(original.text);
+  expect(saved.outcome).toBe('pending');
+  expect((await conversations.getSession({ sessionId: current.sessionId })).turnCount).toBe(1);
+});
+
 test('oversized worker context explicitly refuses instead of returning only recent turns', async () => {
   for (let index = 0; index < 7; index++) await conversations.recordTurn({ sessionId: current.sessionId,
     packId: 'personal_operator', scopeId: 'personal', traceId: randomUUID(), inputText: 'x'.repeat(15000), replyText: 'Reply' });

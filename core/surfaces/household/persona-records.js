@@ -97,6 +97,7 @@ function publicAudit(doc) {
     modeId: doc?.modeId,
     scopeId: doc?.scopeId,
     channel: doc?.channel,
+    ...(doc?.speechLanguage ? { speechLanguage: doc.speechLanguage } : {}),
     textRetention: doc?.textRetention || 'full',
     clientTurnId: doc?.clientTurnId || '',
     origin: doc?.origin || 'human',
