@@ -142,46 +142,49 @@
   </section>
 
   <section class="pipeline-panel pipeline-workbench" id="pipelinePrepare" aria-labelledby="pipelinePrepareTitle">
-    <div class="pipeline-panel-header"><div><h2 id="pipelinePrepareTitle"><i class="fas fa-list-check"></i> Prepare and launch</h2><p>Detailed work queue · uses the overview filters. Open a dossier to edit scope, dependencies or feedback.</p></div><button class="pipeline-btn compact" type="button" data-pipeline-new-task><i class="fas fa-plus"></i> New task</button></div>
+    <div class="pipeline-panel-header"><div><h2 id="pipelinePrepareTitle"><i class="fas fa-list-check" aria-hidden="true"></i> Prepare and launch</h2><p>Open a task to review its scope, then choose how to run it.</p></div><button class="pipeline-btn compact" type="button" data-pipeline-new-task><i class="fas fa-plus" aria-hidden="true"></i> New task</button></div>
+    <div class="pipeline-run-options">
     <div class="pipeline-team-launch" aria-labelledby="pipelineTeamLaunchTitle">
       <div class="pipeline-team-launch-copy">
-        <div>
-          <strong id="pipelineTeamLaunchTitle"><i class="fas fa-play" aria-hidden="true"></i> Run one task</strong>
-          <span id="pipelineTeamLaunchState" data-tone="loading" aria-live="polite">Checking the operator one-shot control&hellip;</span>
-        </div>
+        <span class="pipeline-run-label">Manual launch</span>
+        <h3 id="pipelineTeamLaunchTitle">Run one task</h3>
         <p>Starts one bounded local worker. It stops at review or blocked; scheduling, merge, and deploy stay off.</p>
       </div>
+      <p id="pipelineTeamLaunchAvailability" class="pipeline-launch-availability" data-tone="loading" role="status">Checking launch availability&hellip;</p>
       <form id="pipelineTeamLaunchForm" class="pipeline-team-launch-form">
         <label class="pipeline-team-launch-task">
-          <span>Queued candidate</span>
-          <select id="pipelineTeamLaunchTask" aria-label="Choose one queued coding candidate" disabled>
+          <span>Task to run</span>
+          <select id="pipelineTeamLaunchTask" aria-label="Choose one queued coding candidate" aria-describedby="pipelineTeamAdmissionDetail" disabled>
             <option value="">No candidate loaded</option>
           </select>
         </label>
+        <button id="pipelineTeamLaunchSelection" class="pipeline-btn compact" type="button" hidden>Review selected task</button>
         <label class="pipeline-team-launch-confirm">
           <input id="pipelineTeamLaunchConfirm" type="checkbox" disabled>
-          <span>I confirm this one local run</span>
+          <span>I have reviewed this task and approve one local run.</span>
         </label>
         <button id="pipelineTeamLaunchButton" class="pipeline-btn primary compact" type="submit" disabled>
           <i class="fas fa-play" aria-hidden="true"></i><span>Run one task</span>
         </button>
       </form>
-      <p id="pipelineTeamLaunchDetail" class="pipeline-team-launch-detail" aria-live="polite">
-        The host checks task status, ownership, coding service and private lane before launch.
-      </p>
-      <div id="pipelineTeamLaunchResult" class="pipeline-launch-result" aria-live="polite" hidden></div>
-      <div class="pipeline-launch-recovery">
-        <button id="pipelineTeamLaunchRefresh" class="pipeline-btn compact" type="button">Refresh launch status</button>
-        <button id="pipelineTeamLaunchRetry" class="pipeline-btn compact" type="button" hidden>Retry the same request</button>
-      </div>
+      <div class="pipeline-launch-footer"><a href="#pipelineExecution">View live execution <i class="fas fa-arrow-right" aria-hidden="true"></i></a><span>Progress and stop controls are in Follow and decide.</span></div>
       <details id="pipelineTeamEligibility" class="pipeline-launch-eligibility">
-        <summary>Why other tasks are unavailable</summary>
+        <summary>Which tasks can run here?</summary>
+        <p id="pipelineTeamAdmissionDetail">The host checks task status, ownership, coding service and private lane before launch.</p>
         <div id="pipelineTeamEligibilityReasons">Reading the host admission rules…</div>
       </details>
     </div>
-
-    <%- include('../partials/pipeline-coding-autonomy') %>
-    <p class="pipeline-toolbar-meta pipeline-work-scope" id="pipelineOpenMeta" aria-live="polite">Loading task status&hellip;</p>
+    <aside class="pipeline-run-alternative" aria-labelledby="pipelineAutonomyOptionTitle">
+      <span class="pipeline-run-label">Optional automation</span>
+      <h3 id="pipelineAutonomyOptionTitle">Run with automatic corrections</h3>
+      <p>The Coding Team works within approved files and budgets, observes CI and can correct the draft PR.</p>
+      <p>Requires a reviewed task and a reserved campaign window.</p>
+      <a class="pipeline-btn compact" href="#pipelineCodingAutonomy">Manage Coding Team autonomy <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+      <span class="pipeline-subtle">Human review, merge and deployment remain separate decisions.</span>
+    </aside>
+    </div>
+    <div class="pipeline-queue-heading"><div><h3>Task queue</h3><p>Uses the filters in Work at a glance. Select a row to edit scope, dependencies or feedback.</p></div><a href="#pipelineOverview">Change filters</a></div>
+    <details class="pipeline-queue-coverage"><summary>Queue totals and coverage</summary><p class="pipeline-toolbar-meta pipeline-work-scope" id="pipelineOpenMeta" aria-live="polite">Loading task status&hellip;</p></details>
     <div class="pipeline-table-wrap">
       <table class="pipeline-table">
         <thead>
@@ -203,7 +206,26 @@
     </div>
   </section>
 
-  <div class="pipeline-follow-grid" id="pipelineFollow">
+  <section class="pipeline-follow" id="pipelineFollow" aria-labelledby="pipelineFollowTitle">
+    <div class="pipeline-section-heading"><div><h2 id="pipelineFollowTitle">Follow and decide</h2><p>Live execution, Coding Team controls and decisions that need your attention.</p></div></div>
+    <section class="pipeline-panel pipeline-execution" id="pipelineExecution" aria-labelledby="pipelineExecutionTitle" tabindex="-1">
+      <div class="pipeline-panel-header"><div><span class="pipeline-run-label">Manual run · live tracking</span><h3 id="pipelineExecutionTitle">Execution monitor</h3><p>Updates automatically while a request is active.</p></div><a class="pipeline-btn compact" href="#pipelinePrepare">Back to launch</a></div>
+      <div class="pipeline-execution-body">
+        <p id="pipelineTeamLaunchState" data-tone="loading" role="status">Checking the current execution&hellip;</p>
+        <div id="pipelineTeamLaunchProgress" class="pipeline-execution-facts"></div>
+        <button id="pipelineTeamLaunchDossier" class="pipeline-btn compact" type="button" hidden>Open task dossier</button>
+        <details class="pipeline-execution-details"><summary>Request and worker details</summary>
+          <p id="pipelineTeamLaunchDetail" class="pipeline-team-launch-detail">The host checks task status, ownership, coding service and private lane before launch.</p>
+          <div id="pipelineTeamLaunchResult" class="pipeline-launch-result" hidden></div>
+        </details>
+        <div class="pipeline-launch-recovery">
+          <button id="pipelineTeamLaunchRefresh" class="pipeline-btn compact" type="button">Refresh execution</button>
+          <button id="pipelineTeamLaunchRetry" class="pipeline-btn compact" type="button" hidden>Retry the same request</button>
+        </div>
+      </div>
+    </section>
+    <%- include('../partials/pipeline-coding-autonomy') %>
+    <div class="pipeline-follow-grid">
     <section class="pipeline-panel" id="pipelineAttention">
       <div class="pipeline-panel-header">
         <div>
@@ -253,6 +275,7 @@
   </section>
 
   </div>
+  </section>
 
   <section class="pipeline-panel pipeline-team" id="pipelineHistory" aria-labelledby="pipelineTeamTitle">
     <div class="pipeline-panel-header pipeline-team-header">
@@ -273,6 +296,7 @@
       <i class="fas fa-spinner fa-spin" aria-hidden="true"></i>
       <span>Loading autonomous attempt evidence&hellip;</span>
     </div>
+    <div class="pipeline-autonomy-archive"><h3>Archived Coding Team tasks</h3><p>Closed tasks and qualification records. Original outcomes and dependency barriers remain in force.</p><div id="codingAutonomyArchiveControls"></div><div id="codingAutonomyArchiveTasks" hidden></div></div>
     <div class="pipeline-team-metrics" aria-label="Coding Team scorecard">
       <article><span>Accepted</span><strong id="pipelineTeamAccepted">--</strong><small id="pipelineTeamAcceptedDetail">Human-accepted attempts; merge and deployment are separate</small></article>
       <article><span>First pass</span><strong id="pipelineTeamFirstPass">--</strong><small id="pipelineTeamFirstPassDetail">Share of accepted attempts</small></article>

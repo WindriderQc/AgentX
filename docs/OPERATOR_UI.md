@@ -31,6 +31,21 @@ queued, unassigned task and does not dispatch an agent. An explicitly empty
 group stays empty; API/MCP clients omitting the group keep their inbox default.
 The optional AI writing proposal still requires applying it and saving the form.
 
+**Prepare and launch** separates the manual one-task form from the optional
+Coding Team correction loop. Review a selected task before confirming a local
+run. The task queue uses the overview filters; launch candidates use the host's
+admission rules, explained under **Which tasks can run here?** Queue totals and
+coverage expand separately from the rows.
+
+**Follow and decide** holds the **Execution monitor**: current manual request,
+heartbeat, useful progress, remaining budgets, tests and exact stop/retry controls.
+A launch moves focus to this monitor; request references and worker details
+expand separately. **Coding Team autonomy** shows current tasks and loop controls;
+its campaign, file-scope and cumulative-budget forms expand under setup.
+Qualification archives and closed Coding Team cards live in **History and
+performance**. These placements keep execution updates out of the launch form
+and retain the existing confirmation and admission requirements.
+
 Use **Needs attention** to find tasks requiring a decision.
 Its header separates the known total, the rows loaded in the browser and the
 page shown; **Previous** and **Next** reach every item ten at a time, in Core's

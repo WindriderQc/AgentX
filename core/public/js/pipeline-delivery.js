@@ -201,45 +201,73 @@
     const candidates = control?.candidates || [];
     const pending = controller?.pending;
     const selected = pending ? '' : select.value;
-    select.innerHTML = '<option value="">' + (candidates.length ? 'Choose a task…' : 'No task is currently eligible') + '</option>'
+    const options = '<option value="">' + (candidates.length ? 'Choose a task…' : 'No task is currently eligible') + '</option>'
       + candidates.map(task => `<option value="${escapeHtml(task.pipelineId)}">${escapeHtml(task.pipelineId)} · ${escapeHtml(task.title)}</option>`).join('');
-    if (candidates.some(task => task.pipelineId === selected)) select.value = selected;
+    if (select.dataset.options !== options) { select.innerHTML = options; select.dataset.options = options; }
+    const candidate = candidates.find(task => task.pipelineId === selected);
+    select.value = candidate ? selected : '';
+    const identity = candidate ? JSON.stringify([candidate.pipelineId, candidate.expectedAttemptCount, candidate.title]) : '';
+    if (select.dataset.candidate !== identity) confirm.checked = false;
+    select.dataset.candidate = identity;
     const ready = control?.available === true && !control.busy && !pending && !controller?.submitting && !controller?.checking && !controller?.error;
     select.disabled = !ready || !candidates.length;
     confirm.disabled = !ready || !select.value;
-    if (confirm.disabled) confirm.checked = false;
+    // A status read temporarily disables launch, but does not erase consent for
+    // the same selection. A busy host, changed candidate or error clears it.
+    if (!select.value || control?.busy || pending || controller?.submitting || controller?.error || !control?.available) confirm.checked = false;
     button.disabled = !ready || !select.value || !confirm.checked;
+    const availability = $('pipelineTeamLaunchAvailability');
+    if (availability) {
+      availability.dataset.tone = controller?.error || control?.available === false ? 'unavailable' : ready ? 'ready' : 'loading';
+      availability.textContent = controller?.error ? 'Availability could not be verified. Check the execution monitor.'
+        : !control ? 'Checking launch availability…'
+          : !control.available ? 'The launch host is unavailable.'
+            : pending || control.busy ? 'A run is already active. Follow it in the execution monitor.'
+              : candidates.length ? `${candidates.length} eligible task${candidates.length === 1 ? '' : 's'} · choose one to run`
+                : 'No eligible task. Check task scope and admission conditions below.';
+    }
+    const selection = $('pipelineTeamLaunchSelection');
+    if (selection) { selection.hidden = !select.value; selection.dataset.pipelineTask = select.value; }
     button.innerHTML = controller?.submitting
       ? '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i><span>Submitting request</span>'
       : '<i class="fas fa-play" aria-hidden="true"></i><span>Run one task</span>';
     const run = pending && control?.run?.requestId !== pending.requestId ? null : control?.run;
+    const status = { tone: 'loading', text: '' };
     if (controller?.error) {
-      stateEl.dataset.tone = 'unavailable';
-      stateEl.textContent = controller.error;
-    } else if (!control || controller.checking) {
-      stateEl.dataset.tone = 'loading';
-      stateEl.textContent = 'Checking current host admission and request status…';
+      status.tone = 'unavailable';
+      status.text = controller.error;
+    } else if (!control) {
+      status.tone = 'loading';
+      status.text = 'Checking current host admission and request status…';
     } else if (!control.available) {
-      stateEl.dataset.tone = 'unavailable';
-      stateEl.textContent = 'The one-shot host is unavailable.';
+      status.tone = 'unavailable';
+      status.text = 'The one-shot host is unavailable.';
     } else if (pending || control.busy) {
-      stateEl.dataset.tone = 'loading';
-      stateEl.textContent = run ? `Request ${run.pipelineId || pending?.pipelineId || ''} · ${formatStatus(run.phase)}` : `Submitting request for ${pending?.pipelineId || 'one task'}…`;
+      status.tone = 'loading';
+      status.text = run ? `Request ${run.pipelineId || pending?.pipelineId || ''} · ${formatStatus(run.phase)}` : `Submitting request for ${pending?.pipelineId || 'one task'}…`;
     } else {
-      stateEl.dataset.tone = 'ready';
+      status.tone = 'ready';
       const observed = Number.isFinite(Date.parse(control.observedAt)) ? formatDate(control.observedAt) : 'unknown';
-      stateEl.textContent = `Host observed ${observed} · one local coding worker`;
+      status.text = run && ['finished', 'stopped', 'rejected'].includes(run.phase)
+        ? `Task ${run.pipelineId} · ${formatStatus(run.phase)}${run.task?.status ? ` · task status: ${formatStatus(run.task.status)}` : ''}. Review the recorded result below.`
+        : 'No manual run is active.';
+      detail.textContent = `Host observed ${observed} · one local coding worker`;
     }
     const summary = control?.summary;
-    detail.textContent = summary
+    const admission = $('pipelineTeamAdmissionDetail');
+    const admissionText = summary
       ? `${summary.eligibleTasks} of ${summary.queuedTasks} queued tasks eligible for this worker · ${summary.privateQueuedTasks} personal/household tasks outside its scope. Only unassigned, non-private agentx-coding tasks can start. Board filters do not change this list.`
       : 'The host checks task status, ownership, coding service and private lane before launch.';
-    if (control?.inference && !controller?.error && !controller?.checking && control.available) {
-      stateEl.textContent = `Task ${control.inference.pipelineId} · ${inferenceSummary(control.inference)}`;
+    if (admission) admission.textContent = admissionText;
+    if (!run && !pending) detail.textContent = admissionText;
+    if (control?.inference && !controller?.error && control.available && (pending || control.busy)) {
+      status.text = `Task ${control.inference.pipelineId} · ${inferenceSummary(control.inference)}`;
       detail.textContent = `Task attempt ${control.inference.attempt} · ${control.inference.requestCount} model call(s). Inference retries keep this attempt and never replay worker tools.`;
     }
     const progress = run?.progress;
-    if (progress && (pending || control.busy || run.phase === 'unknown') && !controller?.error && !controller?.checking && control.available) {
+    const progressEl = $('pipelineTeamLaunchProgress');
+    if (progressEl) progressEl.innerHTML = '';
+    if (progress && (pending || control.busy || run.phase === 'unknown') && !controller?.error && control.available) {
       const stages = { preparing: 'Preparing workspace', dependencies: 'Installing dependencies', model_wait: 'Waiting for model capacity or response',
         model_generation: 'Model generating', tool: 'Worker tool running', test: 'Tests running', checkpoint: 'Saving checkpoint', publishing: 'Publishing draft PR' };
       const results = { blocked: 'Blocked', review: 'Draft PR ready for review', local_only: 'Local work awaits publication' };
@@ -248,14 +276,25 @@
       const testNames = { pytest: 'pytest', unittest: 'unittest', jest: 'Jest', npm_test: 'npm test', node_test: 'Node tests' };
       const outcomes = { passed: 'passed', failed: 'failed', unknown: 'unknown' };
       const test = progress.lastTest;
-      stateEl.dataset.tone = progress.result === 'blocked' || run.phase === 'unknown' ? 'attention' : control.busy ? 'loading' : 'ready';
-      stateEl.textContent = `Task ${run.pipelineId} · ${run.phase === 'unknown' ? 'Host outcome unknown' : results[progress.result] || stages[progress.stage] || 'Progress unknown'}`;
+      status.tone = progress.result === 'blocked' || run.phase === 'unknown' ? 'attention' : control.busy ? 'loading' : 'ready';
+      status.text = `Task ${run.pipelineId} · ${run.phase === 'unknown' ? 'Host outcome unknown' : results[progress.result] || stages[progress.stage] || 'Progress unknown'}`;
       detail.textContent = `Host heartbeat: ${time(progress.heartbeatAt)} · Last useful progress: ${time(progress.progressAt)} · Soft budget: ${seconds(progress.softRemainingSeconds)} · Hard budget: ${seconds(progress.hardRemainingSeconds)}`
         + (testNames[progress.currentTest] ? ` · Running: ${testNames[progress.currentTest]}` : '')
         + (test && testNames[test.name] ? ` · Last test: ${testNames[test.name]} ${outcomes[test.outcome] || 'unknown'}` : '')
         + (typeof progress.stopReason === 'string' && /^[a-z_]{1,40}$/.test(progress.stopReason) ? ` · Stop: ${progress.stopReason.replaceAll('_', ' ')}` : '')
         + (typeof progress.checkpoint === 'string' && /^[a-f0-9]{40}$/.test(progress.checkpoint) ? ` · Local checkpoint: ${progress.checkpoint.slice(0, 12)}` : '');
+      if (progressEl) {
+        const facts = [['Host heartbeat', time(progress.heartbeatAt)], ['Last useful progress', time(progress.progressAt)],
+          ['Soft budget remaining', seconds(progress.softRemainingSeconds)], ['Hard budget remaining', seconds(progress.hardRemainingSeconds)]];
+        if (testNames[progress.currentTest]) facts.push(['Running test', testNames[progress.currentTest]]);
+        if (test && testNames[test.name]) facts.push(['Last test', `${testNames[test.name]} ${outcomes[test.outcome] || 'unknown'}`]);
+        progressEl.innerHTML = `<dl>${facts.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl>`;
+      }
     }
+    stateEl.dataset.tone = status.tone;
+    if (stateEl.textContent !== status.text) stateEl.textContent = status.text;
+    const dossier = $('pipelineTeamLaunchDossier');
+    if (dossier) { dossier.hidden = !run?.pipelineId; dossier.dataset.pipelineTask = run?.pipelineId || ''; }
     const result = $('pipelineTeamLaunchResult');
     if (result) {
       result.hidden = !run && !pending;
@@ -290,7 +329,9 @@
       stop.disabled = !controller?.canStop();
     }
     const reasons = $('pipelineTeamEligibilityReasons');
-    if (reasons) reasons.innerHTML = (control?.excluded || []).map(task => `<div class="pipeline-launch-exclusion"><button type="button" class="pipeline-btn compact" data-pipeline-task="${escapeHtml(task.pipelineId)}">${escapeHtml(task.pipelineId)} · ${escapeHtml(task.title)}</button><p>${(task.reasons || []).map(reason => escapeHtml(reason.detail || reason.code)).join(' · ')}</p></div>`).join('') || '<p>No additional non-private queue exclusions in the current observation.</p>';
+    if (reasons) reasons.innerHTML = !control || controller?.error
+      ? '<p>Admission conditions are unavailable. Refresh execution to check again.</p>'
+      : (control.excluded || []).map(task => `<div class="pipeline-launch-exclusion"><button type="button" class="pipeline-btn compact" data-pipeline-task="${escapeHtml(task.pipelineId)}">${escapeHtml(task.pipelineId)} · ${escapeHtml(task.title)}</button><p>${(task.reasons || []).map(reason => escapeHtml(reason.detail || reason.code)).join(' · ')}</p></div>`).join('') || '<p>No additional non-private queue exclusions in the current observation.</p>';
   }
 
   async function loadDispatchControlStatus() {
@@ -300,7 +341,11 @@
   async function launchOneTask() {
     const pipelineId = String($('pipelineTeamLaunchTask')?.value || '');
     if ($('pipelineTeamLaunchConfirm')?.checked !== true || !state.launchController?.canLaunch(pipelineId)) return;
-    await state.launchController.launch(pipelineId);
+    const launch = state.launchController.launch(pipelineId);
+    const monitor = $('pipelineExecution');
+    monitor?.scrollIntoView({ block: 'start', behavior: 'auto' });
+    monitor?.focus({ preventScroll: true });
+    await launch;
   }
 
   // ---------------------------------------------------------------------------

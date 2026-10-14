@@ -23,12 +23,21 @@
     return extra ? `${minutes} min ${extra} sec` : `${minutes} min`;
   }
   function confirmed() {
-    if (!$('codingAutonomyConfirm').checked) throw new Error('Confirm the reviewed task scope and campaign first.');
+    const confirmation = $('codingAutonomyConfirm');
+    if (!confirmation.checked) {
+      confirmation.scrollIntoView?.({ block: 'center' });
+      confirmation.focus?.({ preventScroll: true });
+      throw new Error('Confirm the reviewed task scope and campaign first.');
+    }
   }
   function protectDraft(form) {
     const initial = [...form.querySelectorAll('input, textarea')].map(field => ({ field, value: field.value, checked: field.checked }));
     const update = () => { form.dataset.dirty = initial.some(item => item.field.value !== item.value || item.field.checked !== item.checked) ? 'true' : 'false'; };
     form.addEventListener('input', update); form.addEventListener('change', update);
+  }
+  function appendActionForm(article, form, title) {
+    const details = element('details', '');
+    details.append(element('summary', title), form); article.append(details);
   }
   function renderStatus(suffix = '') {
     const current = snapshot.tasks.filter(t => !t.disposition && t.taskStatus !== 'done');
@@ -68,10 +77,24 @@
   function render() {
     renderStatus();
     const list = $('codingAutonomyTasks');
+    const archiveList = $('codingAutonomyArchiveTasks');
     list.replaceChildren();
+    archiveList.replaceChildren();
+    archiveList.hidden = !showArchived;
     const archived = snapshot.tasks.filter(t => t.disposition || t.taskStatus === 'done').length;
     const toggle = element('button', `${showArchived ? 'Hide' : 'Show'} archived qualifications and closed tasks (${archived})`);
-    toggle.type = 'button'; toggle.addEventListener('click', () => { showArchived = !showArchived; render(); }); list.append(toggle);
+    toggle.type = 'button'; toggle.className = 'pipeline-btn compact';
+    toggle.setAttribute('aria-expanded', String(showArchived));
+    toggle.setAttribute('aria-controls', 'codingAutonomyArchiveTasks');
+    toggle.addEventListener('click', () => {
+      if (editing()) { renderStatus(' · send or clear your task edit before changing the archive view'); return; }
+      showArchived = !showArchived; render();
+    });
+    $('codingAutonomyArchiveControls').replaceChildren(toggle);
+    if (!snapshot.tasks.some(t => !t.disposition && t.taskStatus !== 'done')) {
+      const empty = element('p', 'No current Coding Team tasks. Set up a campaign above to authorize work.');
+      empty.className = 'pipeline-autonomy-empty'; list.append(empty);
+    }
     for (const task of snapshot.tasks) {
       if (!showArchived && (task.disposition || task.taskStatus === 'done')) continue;
       const article = element('article', '');
@@ -90,7 +113,7 @@
       if (task.failureCodes?.length) article.append(element('p', `Recorded stop: ${task.failureCodes.join(', ')} · ${task.authorized ? 'execution authorized' : 'execution authorization removed; this card is not queued'}`));
       if (!snapshot.enabled && !snapshot.active && !task.authorized && task.state === 'stopped' && task.taskStatus === 'blocked'
         && !task.pr && !task.disposition && run?.finishedAt && !run.pendingInferenceCount && run.head
-        && task.nativeAttemptLimit && task.verificationProfile) article.append(continuationForm(task, run));
+        && task.nativeAttemptLimit && task.verificationProfile) appendActionForm(article, continuationForm(task, run), 'Review a continuation from the saved checkpoint');
       const activeRecovery = snapshot.active?.pipelineId === task.pipelineId && snapshot.active.requestId === run?.requestId
         ? snapshot.active.recovery : null;
       if (run) article.append(element('p', `Execution ${run.requestId} · worker ${run.finishedAt ? 'finished' : 'termination not yet confirmed'} · unresolved model requests ${run.pendingInferenceCount}`));
@@ -118,7 +141,7 @@
               receiptSha256: received?.receiptSha256 });
           });
         });
-        article.append(form);
+        appendActionForm(article, form, 'Reconcile the original execution');
       }
       if (task.pr) {
         const delivery = task.delivery;
@@ -145,7 +168,7 @@
         const send = element('button', 'Send correction to the Coding Team'); send.type = 'submit'; send.className = 'pipeline-btn';
         form.append(label, send);
         form.addEventListener('submit', event => { event.preventDefault(); act(() => request(`${base}/tasks/${task.pipelineId}/review`, { confirm: true, head: task.pr.head, text: text.value })); });
-        article.append(form);
+        appendActionForm(article, form, 'Request a correction for this commit');
       }
       if (run?.finishedAt && !task.authorized && !task.disposition && ['stopped', 'closed'].includes(task.state)
         && snapshot.active?.pipelineId !== task.pipelineId) {
@@ -161,22 +184,22 @@
         form.addEventListener('submit', event => { event.preventDefault(); act(() => request(`${base}/tasks/${task.pipelineId}/disposition`, {
           confirm: true, confirmation: 'ARCHIVE_QUALIFICATION_WITH_ORIGINAL_RECEIPTS', expectedRevision: task.authorizationRevision,
           requestId: run.requestId, ...Object.fromEntries(Object.entries(fields).map(([key, field]) => [key, field.value])) })); });
-        article.append(form);
+        appendActionForm(article, form, 'Archive this qualification');
       }
       const history = element('details', ''); history.append(element('summary', 'Execution history and intervention evidence'));
       for (const item of task.runs) history.append(element('p', `${item.requestId} · previous ${item.parentRequestId || 'none'} · ${item.result || 'pending'} · ${item.head || 'no checkpoint'} · ${item.usage ? JSON.stringify(item.usage) : 'usage unconfirmed'}`));
       for (const item of task.manualInterventions) history.append(element('p', `${item.kind} · ${item.head || item.requestId || ''} · ${item.at}`));
       for (const form of article.querySelectorAll('form')) protectDraft(form);
-      article.append(history); list.append(article);
+      article.append(history);
+      (task.disposition || task.taskStatus === 'done' ? archiveList : list).append(article);
     }
   }
   // Something typed or ticked in a task card that a rebuild would erase.
   function editing() {
-    const list = $('codingAutonomyTasks');
-    return list.contains(document.activeElement)
+    return [$('codingAutonomyTasks'), $('codingAutonomyArchiveTasks')].some(list => list.contains(document.activeElement)
       || [...list.querySelectorAll('form')].some(form => form.dataset.dirty === 'true')
       || [...list.querySelectorAll('textarea')].some(field => field.value)
-      || [...list.querySelectorAll('input[type="checkbox"]')].some(box => box.checked);
+      || [...list.querySelectorAll('input[type="checkbox"]')].some(box => box.checked));
   }
   async function refresh({ background = false } = {}) {
     if (busy || (background && document.hidden)) return;
