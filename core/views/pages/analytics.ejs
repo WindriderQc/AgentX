@@ -900,15 +900,29 @@
             function fmtUsdOrUnpriced(v){ return Number.isFinite(v) ? fmtUsd(v) : 'unpriced'; }
                 function fmtUsd(n){ if(n==null) return '—'; return '$' + Number(n).toFixed(4); }
             let federatedSeq = 0;
+            function errorRow(cols, text){
+                return '<tr><td colspan="' + cols + '" style="padding:12px;text-align:center;color:var(--danger);">' + text + '</td></tr>';
+            }
+            function showFederatedError(){
+                ['fedLocalConvs', 'fedLocalMsgs', 'fedLocalTokens', 'fedLocalCost', 'fedMcSessions', 'fedMcTokens', 'fedMcSpend', 'fedMcAsOf'].forEach(function(id){
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = '—';
+                });
+                document.getElementById('fedLocalTableBody').innerHTML = errorRow(4, 'Could not load local inference. Try Refresh.');
+                document.getElementById('fedMcTableBody').innerHTML = errorRow(5, 'Could not load provider telemetry. Try Refresh.');
+            }
             async function loadFederated(){
                 const win = document.getElementById('federatedWindowSelect').value;
                 const seq = ++federatedSeq;
                 let payload;
                 try {
                     const r = await fetch('/api/analytics/federated?window=' + encodeURIComponent(win), { signal: AbortSignal.timeout(30000) });
+                    if (!r.ok) throw new Error('Request failed: ' + r.status);
                     payload = await r.json();
                 } catch(err){
+                    if (seq !== federatedSeq) return;
                     console.error('Federated fetch failed', err);
+                    showFederatedError();
                     return;
                 }
                 if (seq !== federatedSeq) return;
@@ -916,8 +930,15 @@
                 if (payload.provider_status !== 'ok') { banner.style.display = 'block'; }
                 else { banner.style.display = 'none'; }
 
-                // Local
+                // Local: a failed aggregation is unknown, not zero inference.
+                if (!payload.local && payload.local_error) {
+                    ['fedLocalConvs', 'fedLocalMsgs', 'fedLocalTokens', 'fedLocalCost'].forEach(function(id){
+                        document.getElementById(id).textContent = '—';
+                    });
+                    document.getElementById('fedLocalTableBody').innerHTML = errorRow(4, 'Local inference telemetry unavailable.');
+                }
                 const local = payload.local || { totals: {}, byModel: [] };
+                if (payload.local || !payload.local_error) {
                 const lt = local.totals || {};
                 document.getElementById('fedLocalConvs').textContent = fmtNum(lt.calls);
                 document.getElementById('fedLocalMsgs').textContent = fmtNum(lt.models);
@@ -936,6 +957,7 @@
                     }).join('');
                 } else {
                     lbody.innerHTML = '<tr><td colspan="4" style="padding:12px;text-align:center;color:var(--muted);">No local inference in this window.</td></tr>';
+                }
                 }
 
                 // Providers routed through AgentX

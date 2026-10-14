@@ -484,10 +484,16 @@ async function refreshProduct() {
     updateProductSummary(usage || {}, feedback || {}, rag || {});
 
     const usageHasData = !!(usage && usage.breakdown && usage.breakdown.length > 0);
+    elements.usageEmpty.textContent = usageResult.status === 'rejected'
+      ? 'Could not load usage. Try Refresh.'
+      : 'No usage data for this period.';
     toggleEmptyState(document.getElementById('usageChart'), elements.usageEmpty, usageHasData);
     if (usageHasData) renderUsageChart(usage, usageGroup);
 
     const feedbackHasData = !!(feedback && feedback.breakdown && feedback.breakdown.length > 0);
+    elements.feedbackEmpty.textContent = feedbackResult.status === 'rejected'
+      ? 'Could not load feedback. Try Refresh.'
+      : 'No feedback captured in this window.';
     toggleEmptyState(document.getElementById('feedbackChart'), elements.feedbackEmpty, feedbackHasData);
     if (feedbackHasData) renderFeedbackChart(feedback, feedbackGroup);
 

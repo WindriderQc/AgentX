@@ -75,7 +75,9 @@
     var documents = number('ragTotalDocs');
     var windowLabel = document.querySelector('#infWindow option:checked')?.textContent.toLowerCase() || 'recent window';
 
-    if (calls == null || errors == null) {
+    if ((calls == null || errors == null) && /^Could not load/.test(text('infScope'))) {
+      setStatus('attention', 'Inference summary unavailable', 'The recent inference summary could not be loaded. Try Refresh.', 'fa-triangle-exclamation');
+    } else if (calls == null || errors == null) {
       setStatus('unknown', 'Activity is still being observed', 'Refresh if the recent inference summary does not appear.', 'fa-circle-question');
     } else if (errors > 0) {
       setStatus('attention', 'Inference needs review', formatCount(errors) + ' operational error' + (errors === 1 ? '' : 's') + ' · ' + errorRate + ' error rate · ' + formatCount(cancellations || 0) + ' canceled · ' + windowLabel, 'fa-circle-info');
@@ -133,7 +135,7 @@
       button.addEventListener('click', function () { openTo(button.dataset.analyticsTarget); });
     });
     document.getElementById('analytics-experience-refresh').addEventListener('click', refreshAll);
-    ['infCalls', 'infErrors', 'infCancellations', 'infErrorRate', 'totalConversations', 'totalMessages', 'ragUsage', 'ragTotalDocs'].forEach(function (id) {
+    ['infScope', 'infCalls', 'infErrors', 'infCancellations', 'infErrorRate', 'totalConversations', 'totalMessages', 'ragUsage', 'ragTotalDocs'].forEach(function (id) {
       var element = document.getElementById(id);
       if (element) new MutationObserver(refreshSummary).observe(element, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['data-signal-state', 'data-signal-sample'] });
     });

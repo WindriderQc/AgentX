@@ -302,7 +302,9 @@ async function renderCodex(windowKey) {
       headers: { Accept: 'application/json' },
       signal: AbortSignal.timeout(30000)
     });
-    if (!res.ok) return;
+    if (!isCurrentWindow(windowKey)) return;
+    // Never leave the previous window's subscription figures on screen.
+    if (!res.ok) { section.style.display = 'none'; return; }
     const body = await res.json();
     if (!isCurrentWindow(windowKey)) return;
     const c = body?.codexSubscription;
@@ -422,6 +424,9 @@ async function load() {
   } catch (err) {
     if (!isCurrentWindow(windowKey)) return;
     console.error('Inference analytics failed:', err);
+    // Clear the previous window's figures so nothing reads as current.
+    ['infCalls', 'infCallsPerDay', 'infTokensOut', 'infTokensIn', 'infErrorRate', 'infErrors', 'infCancellations',
+      'infHours', 'infTokPerSec', 'infFallbackRate', 'infFallbacks', 'infAvgLatency', 'infLocalHours', 'infLocalCalls', 'infCloudSpend'].forEach((id) => setText(id, '—'));
     setText('infScope', `Could not load inference analytics: ${err.message}`);
   }
   renderCodex(windowKey);
