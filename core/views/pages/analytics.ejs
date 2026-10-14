@@ -54,7 +54,7 @@
                     <option value="14">Last 14 days</option>
                     <option value="30">Last 30 days</option>
                 </select>
-                <button id="refreshBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
+                <button type="button" id="refreshBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
             </div>
         </header>
 
@@ -75,7 +75,7 @@
                             <option value="30d">Last 30 days</option>
                             <option value="90d">Last 90 days</option>
                         </select>
-                        <button id="infRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
+                        <button type="button" id="infRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
                     </div>
@@ -165,7 +165,7 @@
                 </div>
                 <div class="section-body">
                     <div class="chart-container">
-                        <canvas id="infDailyChart"></canvas>
+                        <canvas id="infDailyChart" role="img" aria-label="Daily inference calls chart"></canvas>
                     </div>
                     <div class="chart-empty" id="infDailyEmpty" style="display: none;">No inference recorded in this window.</div>
                 </div>
@@ -301,7 +301,7 @@
                             Verified outcomes per unit of tokens, inference time, cost, and human intervention.
                         </div>
                     </div>
-                    <button id="effectivenessRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
+                    <button type="button" id="effectivenessRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
                         <i class="fas fa-sync-alt"></i> Refresh
                     </button>
                 </div>
@@ -476,7 +476,7 @@
                 </div>
                 <div class="section-body">
                     <div class="chart-container">
-                        <canvas id="usageChart"></canvas>
+                        <canvas id="usageChart" role="img" aria-label="Usage chart"></canvas>
                     </div>
                     <div class="chart-empty" id="usageEmpty">No usage data for this period.</div>
                 </div>
@@ -489,7 +489,7 @@
                 <div class="section-body">
                     <div class="rag-grid">
                         <div class="rag-donut-wrap">
-                            <canvas id="ragDonut"></canvas>
+                            <canvas id="ragDonut" role="img" aria-label="RAG adoption chart"></canvas>
                             <div class="donut-center" id="ragDonutLabel">—</div>
                         </div>
                         <div class="rag-stats">
@@ -531,7 +531,7 @@
                 </div>
                 <div class="section-body">
                     <div class="chart-container">
-                        <canvas id="feedbackChart"></canvas>
+                        <canvas id="feedbackChart" role="img" aria-label="Feedback chart"></canvas>
                     </div>
                     <div class="chart-empty" id="feedbackEmpty">No feedback captured in this window.</div>
                 </div>
@@ -551,7 +551,7 @@
                 </div>
                 <div class="section-body">
                     <div class="chart-container">
-                        <canvas id="costTrendChart"></canvas>
+                        <canvas id="costTrendChart" role="img" aria-label="Cost trend chart"></canvas>
                     </div>
                     <div class="chart-empty" id="costTrendEmpty" style="display: none;">No cost data for this period.</div>
                 </div>
@@ -564,7 +564,7 @@
                 <div class="section-header">
                     <h2><i class="fas fa-table"></i> Cost Efficiency by Model</h2>
                     <div style="display: flex; gap: 8px;">
-                        <button id="efficiencyRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
+                        <button type="button" id="efficiencyRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
                     </div>
@@ -635,7 +635,7 @@
                     <div id="costBreakdownGrid" class="analytics-split" style="gap: 20px; align-items: start;">
                         <div style="position: relative;">
                             <div class="chart-container" style="position: relative; height: 300px;">
-                                <canvas id="costBreakdownChart"></canvas>
+                                <canvas id="costBreakdownChart" role="img" aria-label="Cost breakdown chart"></canvas>
                             </div>
                         </div>
                         <div id="costBreakdownStats" style="display: flex; flex-direction: column; gap: 8px;">
@@ -655,10 +655,10 @@
                 <div class="section-header">
                     <h2><i class="fas fa-cubes"></i> RAG Vector Store Metrics</h2>
                     <div style="display: flex; gap: 8px;">
-                        <button id="toggleRagHelp" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
+                        <button type="button" id="toggleRagHelp" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
                             <i class="fas fa-question-circle"></i> Help
                         </button>
-                        <button id="refreshRagBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
+                        <button type="button" id="refreshRagBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
                     </div>
@@ -691,7 +691,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <button type="button" id="closeRagHelp" aria-label="Close RAG help" style="background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 0; width: 24px; height: 24px;">x</button>
+                            <button type="button" id="closeRagHelp" aria-label="Close RAG help" style="background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 0; width: 24px; height: 24px;"><span aria-hidden="true">&times;</span></button>
                         </div>
                     </div>
 
@@ -797,7 +797,7 @@
                             <option value="30d">Last 30d</option>
                             <option value="all">All time</option>
                         </select>
-                        <button id="federatedRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
+                        <button type="button" id="federatedRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
                     </div>
