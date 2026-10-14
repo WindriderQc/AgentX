@@ -85,9 +85,9 @@
                     </td>
                     <td class="nc-td-md">${statusHtml}</td>
                     <td style="padding:8px 10px;text-align:center;">
-                        <button class="nc-btn nc-inf-task-edit" data-task="${shared.escapeHtml(task)}" style="font-size:10px;padding:3px 10px;">
-                            <i class="fas fa-pen"></i> Edit
-                        </button>
+                        <a class="nc-btn" href="#sectionRouting" data-scroll="routing" style="font-size:10px;padding:3px 10px;" aria-label="Edit ${shared.escapeHtml(task)} routing in the Routing table">
+                            <i class="fas fa-pen" aria-hidden="true"></i> Edit
+                        </a>
                     </td>
                 </tr>`;
         }).join('');
@@ -105,84 +105,6 @@
                 </thead>
                 <tbody>${rows}</tbody>
             </table>`;
-    }
-
-    function attachTaskEditHandlers(config) {
-        const hosts = config.hosts || {};
-        const hostKeys = shared.sortHostKeys(Object.keys(hosts).filter(k => hosts[k]));
-        const knownModels = getKnownModels(config);
-
-        document.querySelectorAll('.nc-inf-task-edit').forEach(button => {
-            button.addEventListener('click', () => {
-                const task = button.dataset.task;
-                const row = button.closest('tr');
-                if (!row || row.dataset.editing === 'true') return;
-                row.dataset.editing = 'true';
-
-                const current = config.taskModels?.[task] || { model: '', host: '' };
-                const modelCell = row.querySelector('.nc-inf-task-model');
-                const hostCell = row.querySelector('.nc-inf-task-host');
-                const actionCell = button.parentElement;
-
-                let modelOptions = knownModels.map(m =>
-                    `<option value="${shared.escapeHtml(m)}" ${m === current.model ? 'selected' : ''}>${shared.escapeHtml(shared.shortModel(m))}</option>`
-                ).join('');
-                if (current.model && !knownModels.includes(current.model)) {
-                    modelOptions = `<option value="${shared.escapeHtml(current.model)}" selected>${shared.escapeHtml(shared.shortModel(current.model))}</option>${modelOptions}`;
-                }
-
-                modelCell.innerHTML = `<select class="nc-inline-select" data-field="model" aria-label="Model for ${shared.escapeHtml(task)}">${modelOptions}</select>`;
-                hostCell.innerHTML = `
-                    <select class="nc-inline-select" data-field="host" aria-label="Host for ${shared.escapeHtml(task)}">
-                        ${hostKeys.map(k => {
-                            const meta = hosts[k];
-                            const label = typeof meta === 'object'
-                                ? `${meta.name || k} · ${String(meta.role || k).toUpperCase()}${meta.ip ? ` · ${meta.ip}` : ''}`
-                                : k.toUpperCase();
-                            return `<option value="${k}" ${k === current.host ? 'selected' : ''}>${shared.escapeHtml(label)}</option>`;
-                        }).join('')}
-                    </select>`;
-                actionCell.innerHTML = `
-                    <button class="nc-btn nc-inf-task-save" data-task="${shared.escapeHtml(task)}" style="font-size:10px;padding:3px 8px;margin-right:4px;">
-                        <i class="fas fa-check"></i>
-                    </button>
-                    <button class="nc-btn nc-inf-task-cancel" style="font-size:10px;padding:3px 8px;border-color:rgba(248,113,113,0.3);color:#f87171;background:rgba(248,113,113,0.08);">
-                        <i class="fas fa-times"></i>
-                    </button>`;
-
-                actionCell.querySelector('.nc-inf-task-save').addEventListener('click', async () => {
-                    const newModel = modelCell.querySelector('select').value;
-                    const newHost = hostCell.querySelector('select').value;
-                    try {
-                        const data = await shared.fetchJson(`/api/nerve-center/inference/routing-config/${encodeURIComponent(task)}`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ model: newModel, host: newHost })
-                        });
-                        if (data.status === 'success') {
-                            Toast.success(`Updated ${formatTaskLabel(task, config.taskMetadata?.[task] || {})} routing`);
-                            await loadInference();
-                        } else {
-                            Toast.error(data.message || 'Update failed');
-                        }
-                    } catch (err) {
-                        Toast.error(`Failed to save: ${err.message}`);
-                    }
-                });
-
-                actionCell.querySelector('.nc-inf-task-cancel').addEventListener('click', () => {
-                    loadInference();
-                });
-            });
-        });
-    }
-
-    function getKnownModels(config) {
-        const known = new Set();
-        Object.values(config.taskModels || {}).forEach(entry => {
-            if (entry?.model) known.add(entry.model);
-        });
-        return [...known].sort();
     }
 
     // ── Panel 2: Inference Activity Feed ───────────────────────────────
@@ -604,7 +526,6 @@
                 </div>`;
 
             shared.attachCollapsibleHandlers(body);
-            attachTaskEditHandlers(config);
             scheduleActivityRefresh();
             renderTrends();
             scheduleTrendsRefresh();
