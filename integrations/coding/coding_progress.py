@@ -40,7 +40,7 @@ REASONS.update({"continuation_checkpoint_changed", "github_token_missing", "git_
 RESULTS = {"blocked", "review", "local_only"}
 TEST_NAMES = {"pytest", "unittest", "jest", "npm_test", "node_test"}
 TEST_OUTCOMES = {"passed", "failed", "unknown"}
-ARTIFACT_DIRS = {".git", "node_modules", ".lab", ".npmcache", ".npm-cache", ".cache", ".dsh",
+ARTIFACT_DIRS = {".git", ".review-work", "node_modules", ".lab", ".npmcache", ".npm-cache", ".cache", ".dsh",
                  "coverage", "dist", "build", "test-results", "__pycache__", ".pytest_cache"}
 STAGE_LIMITS = {"model_wait": 22 * 60, "model_generation": 30 * 60, "tool": 15 * 60, "test": 40 * 60}
 
@@ -448,7 +448,15 @@ class Progress:
                     "Sources remain read-only. Finish with a saved honest report before exhaustion. " +
                     ("Few calls remain: save your current report and end now." if remaining["modelCalls"] <= 8 else ""))
         if not self.cumulative_limits:
-            return None
+            current = self.now()
+            remaining = {'workSeconds': max(0, int(min(self.hard_deadline, self.queue_deadline) - current)),
+                         'softSeconds': max(0, int(self.soft_deadline - current)),
+                         'modelCalls': max(0, self.call_limit() - self.model_calls)}
+            return ('Runner-owned code budget estimate before this request (seconds, except modelCalls): ' +
+                    json.dumps(remaining, sort_keys=True) +
+                    '. The observed count can lag; this request consumes a call. Time does not replenish model calls. '
+                    'Make the smallest source correction, run focused tests, and leave a useful checkpoint before exhaustion. ' +
+                    ('Few calls remain: finish the current work and end now.' if remaining['modelCalls'] <= 8 else ''))
         current, stage = self.now(), self.stage
         elapsed = max(0, current - self.accounted_at)
         remaining = {"workSeconds": max(0, int(min(self.hard_deadline, self.queue_deadline) - current)),
@@ -478,7 +486,7 @@ class Progress:
         value.update(preflight=getattr(self, "preflight", False), coreRecorded=self.core_recorded, usage=self.usage(), pr=self.pr, manualHead=self.manual_head,
                      seenStates=sorted(self.seen_states), seenTests=sorted(self.seen_tests),
                      lastUsefulWorkSeconds=int(self.useful_work))
-        if getattr(self, "report_mode", False):
+        if not self.cumulative_limits:
             value['modelCallLimit'] = self.call_limit()
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(mode="w", dir=self.path.parent, prefix=".progress-", delete=False) as output:

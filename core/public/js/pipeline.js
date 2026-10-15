@@ -469,23 +469,8 @@
       && matched === Number(evidence.rows?.matchedCount);
   }
 
-  function summaryCount(key, fallback) {
-    if (!hasExactCountEvidence()) return fallback;
-    const value = Number(state.summary?.[key]);
-    return Number.isFinite(value) && value >= 0 ? value : fallback;
-  }
-
-  function statusCounts() {
-    const loaded = countByStatus(state.tasks);
-    if (!hasExactCountEvidence()) return loaded;
-    const summary = state.summary?.byStatus;
-    const counts = {};
-    STATUS_ORDER.forEach((status) => {
-      const value = Number(summary[status]);
-      counts[status] = Number.isFinite(value) && value >= 0 ? value : loaded[status];
-    });
-    return counts;
-  }
+  function summaryCount(key, fallback) { return scopedCounts()[key] ?? fallback; }
+  function statusCounts() { return scopedCounts().counts; }
 
   function renderCounts() {
     const counts = statusCounts();
@@ -498,7 +483,7 @@
     };
     Object.entries(map).forEach(([status, id]) => {
       const el = $(id);
-      if (el) el.textContent = String(counts[status] || 0);
+      if (el) el.textContent = scopedCounts().exact ? String(counts[status] || 0) : 'Unknown';
     });
   }
 
@@ -584,7 +569,7 @@
     );
   }
 
-  const { renderEvidence, renderProgression, renderOpenWork, reviewContext, renderAttention, renderRecentlyDone, attemptOutcome, loadTeamPerformance } = window.PipelineBoard.create({ $, state, hasExactCountEvidence: (...args) => hasExactCountEvidence(...args), formatDate: (...args) => formatDate(...args), sortTasks: (...args) => sortTasks(...args), matchesContext: (...args) => matchesContext(...args), matchesFilters: (...args) => matchesFilters(...args), formatStatus: (...args) => formatStatus(...args), escapeHtml: (...args) => escapeHtml(...args), statusBadge: (...args) => statusBadge(...args), STATUS_ORDER, priorityChip: (...args) => priorityChip(...args), isStale: (...args) => isStale(...args), summaryCount: (...args) => summaryCount(...args), hasActiveFilters: (...args) => hasActiveFilters(...args), contextDescription: (...args) => contextDescription(...args), unmetDependencies: (...args) => unmetDependencies(...args), riskChip: (...args) => riskChip(...args), dueCell: (...args) => dueCell(...args), activityCell: (...args) => activityCell(...args), relativeTime: (...args) => relativeTime(...args), percentLabel: (...args) => percentLabel(...args), durationLabel: (...args) => durationLabel(...args), costLabel: (...args) => costLabel(...args), energyLabel: (...args) => energyLabel(...args), nanoCurrencyLabel: (...args) => nanoCurrencyLabel(...args), costEvidencePresentation: (...args) => costEvidencePresentation(...args), localEnergyPresentation: (...args) => localEnergyPresentation(...args), readProjection: (...args) => readProjection(...args) });
+  const { scopedCounts, renderEvidence, renderProgression, renderOpenWork, reviewContext, renderAttention, renderRecentlyDone, attemptOutcome, loadTeamPerformance } = window.PipelineBoard.create({ $, state, hasExactCountEvidence: (...args) => hasExactCountEvidence(...args), formatDate: (...args) => formatDate(...args), sortTasks: (...args) => sortTasks(...args), matchesContext: (...args) => matchesContext(...args), matchesFilters: (...args) => matchesFilters(...args), formatStatus: (...args) => formatStatus(...args), escapeHtml: (...args) => escapeHtml(...args), statusBadge: (...args) => statusBadge(...args), STATUS_ORDER, priorityChip: (...args) => priorityChip(...args), isStale: (...args) => isStale(...args), summaryCount: (...args) => summaryCount(...args), hasActiveFilters: (...args) => hasActiveFilters(...args), contextDescription: (...args) => contextDescription(...args), unmetDependencies: (...args) => unmetDependencies(...args), riskChip: (...args) => riskChip(...args), dueCell: (...args) => dueCell(...args), activityCell: (...args) => activityCell(...args), relativeTime: (...args) => relativeTime(...args), percentLabel: (...args) => percentLabel(...args), durationLabel: (...args) => durationLabel(...args), costLabel: (...args) => costLabel(...args), energyLabel: (...args) => energyLabel(...args), nanoCurrencyLabel: (...args) => nanoCurrencyLabel(...args), costEvidencePresentation: (...args) => costEvidencePresentation(...args), localEnergyPresentation: (...args) => localEnergyPresentation(...args), readProjection: (...args) => readProjection(...args) });
 
   function drawerEls() {
     return {
@@ -660,11 +645,19 @@
       || el.querySelector?.('summary')?.firstChild?.textContent?.trim() || `detail-${index}`;
   }
 
+  function drawerFieldKey(el) {
+    const form = el.closest('form')?.dataset || {};
+    const context = el.name === 'reportScopeComplete' ? form.reportContext
+      : ['reportName', 'modelCallLimit', 'resumeReport'].includes(el.name) ? form.profileContext : null;
+    return `${form.drawerAction}:${el.name}${context == null ? '' : `:${context}`}`;
+  }
+
   function preserveDrawerDraft(body) {
     const fields = Array.from(body.querySelectorAll('input[name], textarea[name], select[name]'));
     return {
       scrollTop: body.scrollTop,
-      fields: fields.map(el => ({ key: `${el.closest('form')?.dataset.drawerAction}:${el.name}`, value: el.value,
+      fields: fields.map(el => ({ key: drawerFieldKey(el), value: el.value,
+        contextBound: ['reportScopeComplete', 'reportName', 'modelCallLimit', 'resumeReport'].includes(el.name),
         checked: el.checked, focused: el === document.activeElement, start: el.selectionStart, end: el.selectionEnd })),
       details: Array.from(body.querySelectorAll('details')).map((el, index) => ({ key: drawerDisclosureKey(el, index), open: el.open }))
     };
@@ -693,7 +686,7 @@
       if (saved) el.open = saved.open;
     });
     for (const el of body.querySelectorAll('input[name], textarea[name], select[name]')) {
-      const saved = draft.fields.find(item => item.key === `${el.closest('form')?.dataset.drawerAction}:${el.name}`);
+      const saved = draft.fields.find(item => item.key === drawerFieldKey(el));
       if (!saved) continue;
       el.value = saved.value;
       if (typeof saved.checked === 'boolean') el.checked = saved.checked;
@@ -774,18 +767,22 @@
     const submitLabel = submit?.innerHTML;
     if (submit) submit.disabled = true;
     try {
-      if (action === 'refresh-worker') {
+      if (action === 'reconcile-report') {
+        if (state.launchController?.control?.run?.pipelineId !== pipelineId || !state.launchController.canReconcile()) throw new Error('The original report status must be refreshed before reconciliation.');
+        if (!await state.launchController.reconcile()) throw new Error(state.launchController.reconcileError || 'The original report remains unverified.');
+      } else if (action === 'refresh-worker') {
         await refreshDrawerWorker();
         return;
       } else if (action === 'give-to-team' || action === 'reply-resume') {
         if (submit) submit.textContent = 'Handing task to the team…';
+        const profile = window.PipelineLaunchController.fromForm(form);
         const answer = action === 'reply-resume' ? String(new FormData(form).get('answer') || '').trim() : '';
         if (action === 'reply-resume' && state.drawer.task?.assignee === 'coding-team' && !state.drawer.task?.codingAutonomy
           && state.drawer.task?.automation?.mode !== 'review_only') {
           const observed = await refreshDrawerWorker();
           if (!observed || state.drawer.pipelineId !== pipelineId || !window.PipelineWorkerOutcome?.canResume(state.drawer.task, state.drawer.workerControl)) throw new Error('The original worker has not been confirmed as finished. Check its status before resuming.');
         }
-        await giveTaskToTeam(pipelineId, answer);
+        await giveTaskToTeam(pipelineId, answer, profile);
       } else if (action === 'supersede-preview') {
         const data = new FormData(form);
         const supersededBy = String(data.get('supersededBy') || '').trim();
@@ -822,9 +819,12 @@
         if (!by) return;
         assertIndependentReviewer(by);
         writeStorage(STORAGE_REVIEWER, by);
+        const report = window.PipelineLaunchController.currentReport(state.drawer.task);
+        const reportAcceptance = report && report.kind !== 'blocked' ? { requestId: report.requestId, sha256: report.sha256,
+          scopeComplete: new FormData(form).get('reportScopeComplete') === 'on' } : null;
         await fetchJson(`/api/pipeline/tasks/${encodeURIComponent(pipelineId)}/status`, {
           method: 'POST',
-          body: JSON.stringify({ status: 'done', by })
+          body: JSON.stringify({ status: 'done', by, ...(reportAcceptance ? { reportAcceptance } : {}) })
         });
         toast('success', `Task ${pipelineId} confirmed done by ${by}.`);
       } else if (action === 'request-correction') {
@@ -843,7 +843,6 @@
           body: JSON.stringify({ status: 'queued', by })
         });
         toast('success', `Correction requested for task ${pipelineId}; it is back in the guarded queue.`);
-        if (state.drawer.task?.automation?.mode === 'review_only') await giveTaskToTeam(pipelineId);
       } else if (action === 'requeue') {
         if (!window.confirm(`Release task ${pipelineId} back to the queue? Its worker claim and heartbeat will be cleared.`)) return;
         await fetchJson(`/api/pipeline/tasks/${encodeURIComponent(pipelineId)}/status`, {
@@ -874,25 +873,8 @@
     }
   }
 
-  async function giveTaskToTeam(pipelineId, answer = '') {
-    toast('info', 'Preparing this task for the team…');
-    const payload = await fetchJson('/api/runtime-bridges/coding-dispatch/prepare', {
-      method: 'POST', body: JSON.stringify({ pipelineId, answer })
-    });
-    if (!payload?.data?.ready) {
-      toast('info', payload?.data?.question || 'The team left an update on this ticket.');
-      return;
-    }
-    await state.launchController.refresh();
-    const launching = state.launchController.launch(pipelineId);
-    const submission = state.launchController.lastSubmission;
-    if (!await launching) throw new Error(state.launchController.error || 'The task is routed to the Coding Team, but the worker is busy or admission changed. Check why this task is waiting, then try again when available.');
-    if (state.launchController.error) throw new Error(state.launchController.error);
-    const run = state.launchController.control?.run;
-    if (!submission || run?.requestId !== submission.requestId || run?.pipelineId !== pipelineId) throw new Error('The new launch has not been confirmed. Checking the saved request; nothing was resubmitted.');
-    if (run?.pipelineId === pipelineId && run.phase === 'rejected') throw new Error(run.message || 'The worker refused this task. Check why it is waiting.');
-    if (run?.pipelineId !== pipelineId || !['accepted', 'waiting', 'running', 'finished'].includes(run.phase)) throw new Error(run?.message || 'The launch has not been confirmed. Checking the saved request; nothing was resubmitted.');
-    toast('success', `Task ${pipelineId} handed to the team.`);
+  async function giveTaskToTeam(pipelineId, answer = '', profile = {}) {
+    return window.PipelineLaunchController.handoff({ pipelineId, answer, profile, controller: state.launchController, fetchJson, toast });
   }
 
   // ---------------------------------------------------------------------------
@@ -1045,6 +1027,10 @@
       if (launchConfirm) launchConfirm.checked = false;
       renderDispatchControl();
     });
+    window.PipelineLaunchController.bindProfileForms(document);
+    launchForm?.addEventListener('change', event => {
+      if (['reportName', 'modelCallLimit', 'resumeReport'].includes(event.target.name)) { launchConfirm.checked = false; renderDispatchControl(); }
+    });
     if (launchConfirm) launchConfirm.addEventListener('change', renderDispatchControl);
     if (launchForm) launchForm.addEventListener('submit', (event) => {
       event.preventDefault();
@@ -1096,7 +1082,7 @@
     $('pipelineEpicFilter')?.addEventListener('change', (event) => { state.filters.epic = event.target.value; state.expandedStages.clear(); renderAll(); });
     $('pipelineIncludeDone')?.addEventListener('change', (event) => { state.includeDone = event.target.checked; renderProgression(); });
     $('pipelineIncludeArchivedQualifications')?.addEventListener('change', (event) => {
-      state.includeArchivedQualifications = event.target.checked; renderProgression(); renderOpenWork(); renderRecentlyDone();
+      state.includeArchivedQualifications = event.target.checked; renderCounts(); renderEvidence(); renderProgression(); renderOpenWork(); renderRecentlyDone();
     });
     document.querySelectorAll('[data-pipeline-view]').forEach((button) => button.addEventListener('click', () => { state.view = button.dataset.pipelineView; renderProgression(); }));
     $('pipelineProgression')?.addEventListener('click', (event) => {
@@ -1122,7 +1108,8 @@
       if (closer) { closeDrawer(); return; }
       const requeue = event.target.closest('button[data-drawer-action="requeue"]');
       if (requeue) { handleDrawerAction('requeue', null); return; }
-      if (event.target.closest('button[data-drawer-action="refresh-worker"]')) { handleDrawerAction('refresh-worker', null); return; }
+      const workerAction = event.target.closest('button[data-drawer-action="refresh-worker"], button[data-drawer-action="reconcile-report"]');
+      if (workerAction) { handleDrawerAction(workerAction.dataset.drawerAction, null); return; }
       const cancelSupersede = event.target.closest('button[data-drawer-action="supersede-cancel"]');
       if (cancelSupersede) { handleDrawerAction('supersede-cancel', null); return; }
       const merge = event.target.closest('button[data-delivery-merge]');

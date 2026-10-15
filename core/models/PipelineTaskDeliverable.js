@@ -21,10 +21,15 @@ const schema = new mongoose.Schema({
   },
   producer: {
     declared: { type: String, required: true, maxlength: 160 },
-    channel: { type: String, enum: ['worker_api', 'operator_api'], required: true },
+    channel: { type: String, enum: ['worker_api', 'operator_api', 'report_worker'], required: true },
     leaseRef: { type: String, default: null },
     permitSeq: { type: Number, min: 1, default: null },
   },
+  reportOrigin: { type: new mongoose.Schema({
+    requestId: { type: String, required: true }, claimSeq: { type: Number, required: true },
+    sourceCommit: { type: String, required: true }, specSha256: { type: String, required: true },
+    state: { type: String, enum: ['partial', 'candidate'], required: true },
+  }, { _id: false }), default: undefined },
   retention: { type: String, enum: ['task_lifetime'], default: 'task_lifetime' },
   storedAt: { type: Date, required: true },
 }, { collection: 'pipeline_task_deliverables' });

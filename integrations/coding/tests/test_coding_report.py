@@ -1,3 +1,5 @@
+import json
+import base64
 import hashlib
 import importlib.util
 import os
@@ -30,7 +32,7 @@ class ReportTest(unittest.TestCase):
         self.path = self.home/'deliverables'/KEY/'review.md'
         self.task = {'pipelineId':'0001','title':'Documentation review','spec':'Review every Markdown document.',
                      'status':'queued','service':'agentx-coding','feedback':[],'transitions':[{'kind':'claimed','seq':2}]}
-        self.uploads=[]; self.exit_code=0; self.limit=128; self.server_limit=None
+        self.uploads=[]; self.partial_uploads=[]; self.exit_code=0; self.limit=128; self.server_limit=None
         self.receipt=None;self.terminated=True;self.completed=True;self.lose_response=False
         for name,value in [('WORKSPACES',self.root),('MODEL','fixture-model'),('RECEIPTS',self.root/'receipts'),
                            ('request',self.request),('feedback',mock.Mock(side_effect=self.feedback)),
@@ -44,7 +46,10 @@ class ReportTest(unittest.TestCase):
         if '/reports/' in url:
             if url.endswith('/start'):
                 self.start_intent=body
-                return {'data':{'requestId':KEY,'claimSeq':2,'modelCallLimit':body['modelCallLimit'] if self.server_limit is None else self.server_limit}}
+                return {'data':{'requestId':KEY,'claimSeq':2,'modelCallLimit':body['modelCallLimit'] if self.server_limit is None else self.server_limit,
+                    'parentRequestId':body.get('parentRequestId'),'parentSha256':body.get('parentSha256')}}
+            if url.endswith('/checkpoint'):
+                return {'data':self.checkpoint}
             if url.endswith('/result'):
                 value={'requestId':KEY,'claimSeq':2,'sourceCommit':self.head,'sha256':body['sha256']}
                 if self.task['transitions'][-1]['seq']!=2:return {'data':{'superseded':True,'outcome':value}}
@@ -58,7 +63,9 @@ class ReportTest(unittest.TestCase):
                 return {'data':{'reportReadyForReview':True,'receipt':self.receipt,'outcome':value}}
             if url.endswith('/stop-result'):
                 self.task['status']='blocked'
-                return {'data':{'blocked':True,'outcome':{'requestId':KEY,'claimSeq':2}}}
+                self.partial_uploads.append(body.get('partial'))
+                archived = {'partial': {'deliverableId': 'b'*24, 'sha256': body['partial']['sha256']}} if body.get('partial') else {}
+                return {'data':{'blocked':True,'outcome':{'requestId':KEY,'claimSeq':2, **archived}}}
             return {'data':{'requestId':KEY,'claimSeq':2,'terminationVerified':self.terminated,'allCallsCompleted':self.completed}}
         if url.endswith('/claim'):self.task.update(status='in_progress',assignee='coding-team')
         elif '/deliverables/' in url:return {'data':{'receipt':self.receipt}}
@@ -86,10 +93,13 @@ class ReportTest(unittest.TestCase):
         self.assertTrue((runner.RECEIPTS/(KEY+'.report-result.json')).is_file())
         self.assertTrue((runner.RECEIPTS/(KEY+'.report.md')).is_file())
 
-    def test_stopped_worker_keeps_partial_report_without_deposit_or_publication(self):
+    def test_stopped_worker_archives_partial_without_offering_it_as_a_completed_report(self):
         self.exit_code=124
         with mock.patch('builtins.print'):self.assertEqual(runner.main(),1)
         self.assertEqual(self.task['status'],'blocked');self.assertTrue(self.path.is_file());self.assertEqual(self.uploads,[])
+        self.assertEqual(len(self.partial_uploads),1)
+        self.assertEqual(self.partial_uploads[0]['sha256'],hashlib.sha256(self.path.read_bytes()).hexdigest())
+        self.assertEqual((runner.RECEIPTS/(KEY+'.report-partial.md')).read_bytes(),self.path.read_bytes())
         self.assertEqual(runner.git(self.workspace,'rev-parse','HEAD'),self.head);runner.push_and_open_pr.assert_not_called()
 
     def test_extended_report_budget_reaches_core_prompt_and_terminal_progress(self):
@@ -218,6 +228,49 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual((self.workspace/'README.md').read_text(),'Public source\n')
         self.assertEqual(self.path.read_text(),'Private output works')
+
+    def test_resume_loads_verified_prior_bytes_before_the_worker_reads_or_writes(self):
+        parent='22222222-2222-4333-8444-555555555555';data=b'# Prior findings\n\nREADME reviewed; operations pending.\n'
+        digest=hashlib.sha256(data).hexdigest()
+        self.checkpoint={'requestId':KEY,'parentRequestId':parent,'sha256':digest,'sourceCommit':self.head,
+                         'dataUrl':'data:text/markdown;base64,'+base64.b64encode(data).decode()}
+        original=self.worker
+        def resumed(*args,**kwargs):
+            self.assertEqual(self.path.read_bytes(),data)
+            self.assertIn('Read it first and extend it',args[1])
+            return original(*args,**kwargs)
+        with mock.patch.object(sys,'argv',['coding_run','0001','--request-id',KEY,'--report-name','review.md',
+                 '--parent-request-id',parent,'--parent-sha256',digest]), mock.patch.object(runner,'run_worker',side_effect=resumed), mock.patch('builtins.print'):
+            self.assertEqual(runner.main(),0)
+        self.assertEqual(self.start_intent['parentRequestId'],parent)
+        self.assertEqual(runner.git(self.workspace,'rev-parse','HEAD'),self.head)
+
+    def test_resume_refuses_a_changed_core_checkpoint_before_any_model_dispatch(self):
+        parent='22222222-2222-4333-8444-555555555555';digest=hashlib.sha256(b'Original').hexdigest()
+        self.checkpoint={'requestId':KEY,'parentRequestId':parent,'sha256':digest,'sourceCommit':self.head,
+                         'dataUrl':'data:text/markdown;base64,'+base64.b64encode(b'Changed').decode()}
+        with mock.patch.object(sys,'argv',['coding_run','0001','--request-id',KEY,'--report-name','review.md',
+                 '--parent-request-id',parent,'--parent-sha256',digest]), mock.patch('builtins.print'):
+            self.assertEqual(runner.main(),2)
+        runner.run_worker.assert_not_called();self.assertEqual(self.uploads,[])
+
+    def test_lost_stop_response_reconciles_the_same_frozen_partial_even_if_the_output_changes(self):
+        self.exit_code=124;original=self.request;lost=[False];bodies=[]
+        def api(url,body=None,**kwargs):
+            result=original(url,body,**kwargs)
+            if url.endswith('/stop-result'):
+                bodies.append(body)
+                if not lost[0]:lost[0]=True;raise OSError('Acknowledgement lost after storage')
+            return result
+        with mock.patch.object(runner,'request',side_effect=api),mock.patch('builtins.print'):
+            self.assertEqual(runner.main(),2)
+            frozen=(runner.RECEIPTS/(KEY+'.report-partial.md')).read_bytes()
+            self.path.write_text('Later bytes must not replace the frozen original')
+            with mock.patch.object(runner.coding_dispatch_control,'unit_active',return_value=False), \
+                 mock.patch.object(runner.coding_dispatch_control,'read_receipt',return_value={'pipelineId':'0001','reportName':'review.md'}):
+                self.assertTrue(report.reconcile(runner,'0001',KEY)['reconciled'])
+        self.assertEqual(bodies[0],bodies[1]);self.assertEqual((runner.RECEIPTS/(KEY+'.report-partial.md')).read_bytes(),frozen)
+        self.assertEqual(json.loads((runner.RECEIPTS/(KEY+'.progress.json')).read_text())['coreRecorded'],True)
 
 
 class ReportDispatchTest(unittest.TestCase):

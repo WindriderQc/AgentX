@@ -47,6 +47,11 @@ function taskNextAction(task, { now = new Date(), dependencyStatuses = new Map()
       { attention: true, rank: 0, icon: 'fa-hand', tone: 'blocked', diagnostics });
   }
   if (task.status === 'review') {
+    const report = require('../../../shared/pipelineReportSelection').currentReport(task);
+    if (report && report.kind !== 'blocked') return action('human_review', 'human', 'Report candidate · coverage requires review',
+      'A private report is registered. Stored bytes and a normal worker exit do not establish complete requested coverage.',
+      'Read the report, verify its findings and complete scope, then record an independent decision.',
+      { attention: true, rank: 1, icon: 'fa-magnifying-glass', tone: 'review', receiptPresent: true, reportPresent: true });
     const receipt = Boolean(latest?.completedAt && latest?.evidence?.schema && latest.finalState === 'review');
     return action('human_review', 'human', receipt ? 'Human review required · Coding Team receipt present' : 'Human review required · interactive task',
       receipt ? 'A guarded attempt receipt is ready for an independent human decision.' : 'This task has no current automated attempt receipt. Inspect the recorded work directly.',

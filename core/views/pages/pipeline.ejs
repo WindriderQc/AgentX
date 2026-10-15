@@ -64,7 +64,7 @@
     <time id="pipelineStateUpdated"></time>
   </section>
 
-  <section class="pipeline-metrics" aria-label="All-time engineering task counts by status — select one to filter the progression below">
+  <section class="pipeline-metrics" aria-label="All-time engineering task counts with the selected archive visibility — select one to filter the progression below">
     <button class="pipeline-metric metric-queued" type="button" data-status-filter="queued" aria-pressed="false">
       <span><i class="fas fa-inbox" aria-hidden="true"></i> Queued</span>
       <strong id="pipelineCountQueued">--</strong>
@@ -86,9 +86,9 @@
       <small>Needs operator or upstream action</small>
     </button>
     <button class="pipeline-metric metric-done" type="button" data-status-filter="done" aria-pressed="false">
-      <span><i class="fas fa-check" aria-hidden="true"></i> Done</span>
+      <span><i class="fas fa-check" aria-hidden="true"></i> Closed</span>
       <strong id="pipelineCountDone">--</strong>
-      <small>Confirmed and closed</small>
+      <small>Recorded closures, including superseded tasks</small>
     </button>
   </section>
 
@@ -159,6 +159,7 @@
             <option value="">No candidate loaded</option>
           </select>
         </label>
+        <div id="pipelineTeamLaunchProfile" class="pipeline-team-launch-task"></div>
         <button id="pipelineTeamLaunchSelection" class="pipeline-btn compact" type="button" hidden>Review selected task</button>
         <label class="pipeline-team-launch-confirm">
           <input id="pipelineTeamLaunchConfirm" type="checkbox" disabled>

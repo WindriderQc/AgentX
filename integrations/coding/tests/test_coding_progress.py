@@ -118,6 +118,9 @@ class ProgressTest(unittest.TestCase):
         self.assertTrue(module.artifact('nested/session.v4.jsonl'))
         self.assertTrue(module.artifact('nested/session.v4.jsonl.zstd'))
         self.assertFalse(module.artifact('nested/session-source.jsonl'))
+        self.assertTrue(module.artifact('.review-work/DOCUMENTATION_PEER_REVIEW.md'))
+        self.assertTrue(module.artifact('nested/.review-work/REVIEW.md'))
+        self.assertFalse(module.artifact('docs/review-work.md'))
 
     def test_v4_invalid_call_identity_cannot_credit_a_test(self):
         self.call('expected')
@@ -467,7 +470,9 @@ class ProgressTest(unittest.TestCase):
         self.assertEqual(self.progress.usage()["testSeconds"], 10)
 
     def test_live_budget_guidance_tracks_time_without_granting_progress_or_changing_accounting(self):
+        self.progress.phase='preparing'
         self.assertIsNone(self.progress.model_guidance())
+        self.progress.phase='running'
         self.progress.carry({"remaining": {"workSeconds": 5000, "modelSeconds": 600, "modelCalls": 40, "testSeconds": 500},
                              "limits": {"noProgressSeconds": 2700}})
         self.progress.set_stage("model_wait")
@@ -487,6 +492,14 @@ class ProgressTest(unittest.TestCase):
         self.assertEqual((remaining["modelSeconds"], remaining["testSeconds"]), (400, 470))
         self.progress.stop_reason = "operator_stop"
         self.assertIsNone(self.progress.model_guidance())
+
+    def test_manual_code_advice_exposes_independent_call_and_time_limits_without_granting_progress(self):
+        self.progress.phase='running';self.progress.model_calls=123;self.clock[0]=100
+        before=(self.progress.accounted_at,dict(self.progress.stage_spent),self.progress.last_useful,self.progress.hard_deadline,self.progress.path.read_bytes())
+        advice=self.progress.model_guidance();remaining=json.loads(advice[advice.index('{'):advice.index('}')+1])
+        self.assertEqual(remaining['modelCalls'],5);self.assertIn('end now',advice);self.assertIn('count can lag',advice)
+        self.assertNotIn('Core enforces',advice)
+        self.assertEqual(before,(self.progress.accounted_at,dict(self.progress.stage_spent),self.progress.last_useful,self.progress.hard_deadline,self.progress.path.read_bytes()))
 
     def test_report_advice_exposes_call_limit_and_time_without_crediting_progress(self):
         self.progress.report_mode = True
