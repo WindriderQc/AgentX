@@ -1,4 +1,5 @@
 .personal-history{max-width:1050px;margin:0 auto;padding:clamp(16px,3vw,36px)}
+.personal-history [hidden]{display:none!important}
 .personal-history h1{font-size:clamp(2rem,5vw,3.2rem);margin:.3em 0}
 .history-filters{display:flex;flex-wrap:wrap;gap:16px;align-items:end;margin:28px 0}
 .history-filters label,.history-entry form label{display:grid;gap:7px;flex:1;min-width:180px}

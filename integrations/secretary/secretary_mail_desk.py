@@ -31,7 +31,7 @@ SENDER_TOP = 25
 ADDRESS = re.compile(r"[^\s<>\"',;]+@[^\s<>\"',;]+")
 EVIDENCE_ROOT = Path(os.environ.get("GMAIL_SECRETARY_ROOT") or Path.home() / ".local/share/agentx/secretary-evidence")
 CATCHUP_FIELDS = ("phase", "startedAt", "updatedAt", "finishedAt", "pending", "reviewed", "failed",
-                  "remaining", "pagesPerHour", "etaHours", "lane")
+                  "remaining", "pagesPerHour", "etaHours", "lane", "unresolvedInferenceAttempts")
 CATCHUP_LOCK_FRESH_SECONDS = 1800
 
 
@@ -78,6 +78,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     archived.add_argument("--message", required=True)
     archived.add_argument("--sha256", required=True)
     archived.add_argument("--offset", type=int, default=0)
+    archived.add_argument("--part", type=int)
     return parser.parse_args(argv)
 
 
@@ -289,7 +290,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "archived":
             from archive_read import ArchiveReadError, read_original
             try:
-                data = read_original(args.evidence_root, args.message, args.sha256, args.offset)
+                data = read_original(args.evidence_root, args.message, args.sha256, args.offset, part_index=args.part)
             except ArchiveReadError as error:
                 raise MailDeskError(str(error), error.code, error.status) from error
             except (OSError, ValueError, LookupError):

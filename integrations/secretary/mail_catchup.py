@@ -27,6 +27,8 @@ from evidence_record import record_page  # noqa: E402
 from evidence_store import load, now, save  # noqa: E402
 from mailbox_backfill import MAX_CONSECUTIVE_FAILURES, Lock  # noqa: E402
 from secretary_evidence import DEFAULT_ROOT, Archive  # noqa: E402
+from review_attempts import ReviewUncertain, extract_once, unsettled  # noqa: E402
+from review_policy import STRICT_RULES, context_for  # noqa: E402
 
 LOCK_NAME = "catchup.lock"  # secretary_evidence.native_next stops issuing pages while it is fresh
 STATUS_NAME = "catchup-status.json"
@@ -40,6 +42,8 @@ CURRENT_DAYS = 30
 EXPORT_EVERY = 25
 PAUSE_SECONDS = 60
 BUSY_HTTP = (409, 423, 429, 502, 503, 504)
+PRE_DISPATCH_CODES = {"BENCHMARK_CLAIM_ACTIVE", "BENCHMARK_CLAIM_PROOF_INVALID", "HOST_SESSION_HOLD_BUSY",
+                      "RUNTIME_INFERENCE_ADMISSION_DENIED", "NO_UNCLAIMED_OLLAMA_HOST"}
 INVOICE_FIELDS = ("supplier", "documentNumber", "documentDate", "person", "grossAmount", "currency", "tax",
                   "patientPaid", "insurancePaid", "insurer", "documentKind", "paymentEvidence",
                   "reimbursementStatus", "notes", "originalFilename")
@@ -82,6 +86,11 @@ Write in French. Return only the JSON object required by the schema.
   Your own reading, attachment checks, offsets and analysis are review work, not owner tasks.
   CI/build/deployment/security notifications are platform matters, never personal errands.
 - memories: durable dated facts or decisions about the owner's life, attributed to their author.
+  Professional signatures can contain role, employer and contact observations even in an otherwise
+  trivial message. Attribute them to the named person and the source date; never infer employment
+  start/end dates. Check known owner aliases and quoted authors before assigning a role to the owner.
+  A plain-text view is not proof that all MIME versions or linked documents were read. If another
+  version/material is missing, keep that gap unresolved as review work, never an owner errand.
 - sourceContext.messageDirection identifies a received message, sent message or unsent draft.
   A draft is not evidence that its words were sent, agreed, or communicated to another person.
   Preserve it as unconfirmed intent; never derive an accepted commitment or completed event from it.
@@ -96,15 +105,16 @@ Write in French. Return only the JSON object required by the schema.
   or reimbursement shares. If the attachment status is ocr_text_extracted, digits may be wrong:
   keep doubtful amounts "unknown" and write "lu par OCR" in notes.
 - unresolved: short strings for anything that needs a human (illegible scan, missing document,
-  ambiguous date). Empty arrays are correct when the page adds nothing."""
+  ambiguous date). Empty arrays are correct when the page adds nothing.""" + STRICT_RULES
 
 
 class Busy(Exception):
     """Core or the inference host is reserved; wait and retry the same page."""
 
-    def __init__(self, reason, retry_after=PAUSE_SECONDS):
+    def __init__(self, reason, retry_after=PAUSE_SECONDS, safe_to_retry=False):
         super().__init__(reason)
         self.reason, self.retry_after = reason, retry_after
+        self.safe_to_retry = safe_to_retry
 
 
 class CoreClient:
@@ -122,11 +132,20 @@ class CoreClient:
             with self.opener(request, timeout=self.timeout) as response:
                 return response.status, json.loads(response.read() or b"{}"), response.headers
         except urllib.error.HTTPError as exc:
+            if path == "/api/inference/generate" and method == "POST":
+                try: detail = json.loads(exc.read(65536))
+                except (ValueError, OSError): detail = {}
+                if exc.code in BUSY_HTTP and detail.get("code") in PRE_DISPATCH_CODES:
+                    retry = exc.headers.get("Retry-After") if exc.headers else None
+                    raise Busy(f"Core refused before dispatch ({detail['code']})", int(retry) if retry and retry.isdigit() else PAUSE_SECONDS, safe_to_retry=True)
+                raise ReviewUncertain(f"Core inference returned HTTP {exc.code}; native outcome needs reconciliation") from exc
             if exc.code in BUSY_HTTP:
                 retry = exc.headers.get("Retry-After") if exc.headers else None
                 raise Busy(f"Core refused ({exc.code})", int(retry) if retry and retry.isdigit() else PAUSE_SECONDS)
             raise RuntimeError(f"Core returned HTTP {exc.code}") from exc
         except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            if path == "/api/inference/generate" and method == "POST":
+                raise ReviewUncertain("Core inference transport outcome is unconfirmed") from exc
             raise Busy("Core unreachable") from exc
 
     def busy(self):
@@ -152,15 +171,18 @@ class CoreClient:
             raise RuntimeError("Core did not return the queued idea")
         return idea["id"]
 
-    def extract(self, system, prompt, light=False):
+    def extract(self, system, prompt, light=False, request_id=None):
         body = {"messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
                 "stream": False, "think": False, "format": REVIEW_SCHEMA, "options": {"temperature": 0},
                 "callerDetail": "secretary-catchup"}
+        if request_id:
+            body["telemetry"] = {"runtime": "external", "correlationId": request_id}
         if light and self.light_model:
             body.update(model=self.light_model, **({"host": self.light_host} if self.light_host else {}))
         else:
             body["taskType"] = self.task_type
         _, reply, _ = self._call("POST", "/api/inference/generate", body)
+        self.last_inference_receipt = {key: reply[key] for key in ("model", "host", "lane", "inferenceContract", "routing") if key in reply}
         content = (reply.get("message") or {}).get("content") or reply.get("response")
         if not isinstance(content, str):
             raise RuntimeError("Core inference returned no content")
@@ -211,7 +233,8 @@ def changed(root, page):
 def page_prompt(archive, page, named):
     previous = load(archive.root / "reviews" / (page["threadId"] + ".json"), {})
     attachment = page.get("attachment") or None
-    source = {"headers": page["headers"], "kind": page["kind"], "offset": page["offset"],
+    source = {"reviewContext": context_for(archive, page),
+              "headers": page["headers"], "kind": page["kind"], "offset": page["offset"],
               "totalChars": page["totalChars"], "moreOfThisSource": page["moreOfThisSource"],
               "attachment": {k: attachment.get(k) for k in ("filename", "mimeType", "status")} if attachment else None,
               "namedCorrespondence": named, "sourceContext": page.get("sourceContext"),
@@ -309,6 +332,9 @@ def catchup(archive, client, lock, *, max_pages=None, lanes=LANES, instructions=
 
     forward()  # proposals an earlier run could not deliver
     report()
+    blocked = unsettled(root)
+    if blocked:
+        return finish("uncertain", unresolvedInferenceAttempts=len(blocked))
     for lane in lanes:
         for page in queues[lane]:
             if max_pages is not None and status["reviewed"] + status["failed"] >= max_pages:
@@ -322,9 +348,11 @@ def catchup(archive, client, lock, *, max_pages=None, lanes=LANES, instructions=
                 try:
                     if reason:
                         raise Busy(reason)
-                    raw = client.extract(system, page_prompt(archive, page, page["threadId"] in contact),
-                                         light=lane == "bulk")
+                    raw = extract_once(archive, client, system, page_prompt(archive, page, page["threadId"] in contact),
+                                       page, light=lane == "bulk")
                     break
+                except ReviewUncertain:
+                    return finish("uncertain", unresolvedInferenceAttempts=max(1, len(unsettled(root))), lastUncertainPage=page["pageId"])
                 except Busy as exc:
                     report(paused={"reason": exc.reason, "since": status.get("paused", {}).get("since", now())})
                     sleep(exc.retry_after)

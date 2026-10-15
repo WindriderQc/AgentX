@@ -26,7 +26,7 @@
       <dl><div><dt>Date de la source</dt><dd>${esc(day(entry.sourceDate))}</dd></div><div><dt>Date de l’événement</dt><dd>${entry.eventDate ? esc(entry.eventDatePrecision === 'day' ? entry.eventDate : day(entry.eventDate)) : 'À préciser'}${entry.eventDateAsWritten ? `<small>Dans la source : ${esc(entry.eventDateAsWritten)}</small>` : ''}</dd></div></dl>
       <p class="muted">${esc(entry.source?.system === 'gmail' ? directions[entry.source.direction] : 'Archive Outlook sélectionnée')} · ${esc(assertions[entry.assertionState])}</p>
       ${entry.gmailUrl ? `<a href="${esc(entry.gmailUrl)}" target="_blank" rel="noopener noreferrer">Consulter l’échange Gmail ↗</a>` : '<p class="muted">Source conservée dans l’archive locale.</p>'}
-      ${entry.archiveUrl ? `<details data-history-source="${esc(entry.id)}"><summary>Lire la source sauvegardée</summary><p data-source-status role="status"></p><pre data-source-body></pre><p data-source-files class="muted"></p><button type="button" data-source-next hidden>Extrait suivant</button></details>` : ''}
+      ${entry.archiveUrl ? `<details data-history-source="${esc(entry.id)}"><summary>Lire la source sauvegardée</summary><p data-source-status role="status"></p><label data-source-version-label hidden>Version du texte<select data-source-version></select></label><p data-source-warning class="muted"></p><pre data-source-body></pre><details data-source-extra hidden><summary>Liens et autres données de cette version</summary><p>Les destinations sont affichées en texte. Les documents et ressources liés demandent leur propre collecte et leur propre lecture.</p><pre data-source-extra-body></pre><p data-source-extra-status class="muted"></p></details><p data-source-files class="muted"></p><button type="button" data-source-next hidden>Extrait suivant</button></details>` : ''}
       ${entry.sourceStatus ? `<details><summary>Interprétation enregistrée à l’extraction</summary><p>${esc(entry.sourceStatus)}</p></details>` : ''}
       ${entry.decision?.reason ? `<p class="history-decision">Dernière décision : ${esc(entry.decision.reason)}</p>` : ''}
       <form data-history-review="${esc(entry.id)}"><label>Votre constat<textarea name="reason" rows="2" maxlength="2000" required placeholder="Ce que la source établit, ou pourquoi ce suivi est clos."></textarea></label>
@@ -54,25 +54,38 @@
     get('filters').onsubmit = event => { event.preventDefault(); if (!loading) { offset = 0; void load(); } };
     get('prev').onclick = () => { if (!loading) { offset = Math.max(0, offset - maximum); void load(); } };
     get('next').onclick = () => { if (!loading && next !== null) { offset = next; void load(); } };
-    async function readSource(details, offset = 0) {
+    async function readSource(details, offset = 0, part) {
       const entry = rows.find(row => row.id === details.dataset.historySource);
       if (!entry?.archiveUrl) return;
       const status = details.querySelector('[data-source-status]'), nextButton = details.querySelector('[data-source-next]');
-      status.textContent = 'Lecture de la source sauvegardée…'; nextButton.disabled = true;
+      const version = details.querySelector('[data-source-version]');
+      status.textContent = 'Lecture de la source sauvegardée…'; nextButton.disabled = true; version.disabled = true;
       try {
-        const source = await api(`${entry.archiveUrl}&offset=${offset}`);
+        const source = await api(`${entry.archiveUrl}&offset=${offset}${part === undefined || part === null ? '' : `&part=${part}`}`);
         if (!details.isConnected) return;
+        const versions = source.bodyRepresentations || [];
+        details.querySelector('[data-source-version-label]').hidden = versions.length < 2;
+        version.innerHTML = versions.map(item => `<option value="${esc(item.partIndex)}"${item.partIndex === source.selectedPartIndex ? ' selected' : ''}${item.readable === false ? ' disabled' : ''}>${item.mimeType === 'text/html' ? 'HTML converti en texte' : 'Texte brut'}${item.readable === false ? ' · à examiner' : ''}</option>`).join('');
+        version.onchange = () => void readSource(details, 0, Number(version.value));
+        details.querySelector('[data-source-warning]').textContent = (versions.length > 1 ? 'Plusieurs versions du texte sont conservées. Elles peuvent contenir des informations différentes. ' : '')
+          + (versions.some(item => item.readable === false) ? 'Une version demande une lecture complémentaire de l’original.' : '');
         details.querySelector('[data-source-body]').textContent = source.body;
+        const extra = source.htmlEvidence;
+        details.querySelector('[data-source-extra]').hidden = !extra || !extra.items.length && !extra.truncated;
+        details.querySelector('[data-source-extra-body]').textContent = (extra?.items || [])
+          .map(item => `${item.kind === 'reference' ? 'Destination' : item.kind === 'description' ? 'Description' : 'Données de script à examiner'} · ${item.tag} · ${item.attribute}\n${item.value}${item.truncated ? '\n[Extrait incomplet]' : ''}`).join('\n\n');
+        details.querySelector('[data-source-extra-status]').textContent = extra?.truncated
+          ? 'Présentation incomplète : consultez l’original avant de terminer la revue.' : '';
         details.querySelector('[data-source-files]').textContent = source.attachmentCount
           ? `Pièces conservées avec l’original : ${(source.attachments || []).map(file => file.filename).join(', ')}. Leur contenu n’est pas affiché ici.` : '';
         const author = source.headers?.From ? ` Message de ${source.headers.From}.` : '';
         status.textContent = (source.bodyReadable === false ? 'L’original est conservé; son corps ne peut pas être présenté en texte.'
-          : source.bodyTruncated ? 'Extrait de l’original sauvegardé. La suite est disponible.' : 'Fin du texte de l’original sauvegardé.') + author;
+          : source.bodyTruncated ? 'Extrait de cette version du texte. La suite est disponible.' : 'Fin de cette version du texte sauvegardé.') + author;
         nextButton.hidden = source.nextOffset === null;
-        nextButton.onclick = () => void readSource(details, source.nextOffset);
+        nextButton.onclick = () => void readSource(details, source.nextOffset, source.selectedPartIndex);
         details.dataset.loaded = 'true';
       } catch { status.textContent = 'La source sauvegardée ne peut pas être vérifiée ou lue pour le moment.'; }
-      finally { nextButton.disabled = false; }
+      finally { nextButton.disabled = false; version.disabled = false; }
     }
     get('list').addEventListener('toggle', event => {
       const details = event.target;

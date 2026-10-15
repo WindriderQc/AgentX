@@ -53,4 +53,12 @@ describe('mail journal with real Mongo', () => {
     expect(journal.retentionDays({ MAIL_JOURNAL_RETENTION_DAYS: '365d' })).toBe(365);
     await expect(journal.record({ threadId: 'a\nb', occurredAt: '2026-09-01', summary: 'x' }, { now })).rejects.toMatchObject({ statusCode: 400 });
   });
+
+  test('a digest for another member of the thread cannot satisfy an exact message lookup', async () => {
+    for (const messageId of ['message-1', 'message-2']) await journal.record({
+      threadId: 'same-thread', messageId, occurredAt: '2026-09-25T00:00:00Z', summary: `Synthetic ${messageId}`
+    }, { now, days: 0 });
+    expect((await journal.search({ threadId: 'same-thread', messageId: 'message-1' })).entries.map(row => row.messageId)).toEqual(['message-1']);
+    expect((await journal.search({ threadId: 'same-thread', messageId: 'message-3' })).total).toBe(0);
+  });
 });

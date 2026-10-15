@@ -45,13 +45,13 @@ test("an unreachable Core means no rules, never a failed triage", async () => {
 });
 
 test("re-triage replaces the previous Secretary category that exists in the mailbox", () => {
-  const plan = buildTriageCommands({ threadId: "t1", category: "FYI" }, {},
+  const plan = buildTriageCommands({ threadId: "t1", messageId: "m1", category: "FYI" }, {},
     ["Secretary/Review", "Secretary/Newsletters", "Secretary/FYI", "Secretary/Processed"]);
   assert.deepEqual(plan.removeLabels, ["Secretary/Newsletters", "Secretary/Review"]);
   const args = plan.commands[0].args;
   assert.ok(args.includes("--remove=Secretary/Newsletters,Secretary/Review"));
-  const review = buildTriageCommands({ threadId: "t1", category: "Review" }, {}, ["Secretary/FYI"]);
-  assert.deepEqual(review.removeLabels, ["Secretary/FYI", "Secretary/À archiver"]);
+  const review = buildTriageCommands({ threadId: "t1", messageId: "m1", category: "Review" }, {}, ["Secretary/FYI"]);
+  assert.deepEqual(review.removeLabels, ["Secretary/FYI"]);
 });
 
 async function withState(run) {
@@ -75,12 +75,12 @@ test("rule-matched mail is labelled without the model; the next message is read 
     triage: async (params) => { triaged.push(params); return { ok: true, archiveCandidate: true }; },
     hit: async (_config, id) => { hits.push(id); },
   });
-  assert.deepEqual(triaged, [{ threadId: "t1", category: "FYI" }]);
+  assert.deepEqual(triaged, [{ threadId: "t1", messageId: "m1", category: "FYI" }]);
   assert.deepEqual(hits, ["r1"]);
   assert.equal(value.autoTriaged.length, 1);
   assert.equal(value.message.id, "m2");
   await assert.rejects(assertFullyRead(config, "t2"), /not fully read/);
-  await assertFullyRead(config, "other-thread");
+  await assert.rejects(assertFullyRead(config, "other-thread"), /Read the selected message/);
 
   await assert.rejects(continueBacklogMessage({ id: "m2", sourceHash: "a".repeat(64), offset: 10 }, config, async () => ({})), /cannot be skipped/);
   const page = await continueBacklogMessage({ id: "m2", sourceHash: "a".repeat(64), offset: 20000 }, config, async ({ stdin }) => {
