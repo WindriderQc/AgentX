@@ -264,6 +264,7 @@ export async function loadConversation(id, state, elements, helpers, preserveMod
       helpers.appendMessage({
         role: msg.role,
         content: msg.content,
+        answerBlocks: msg.answerBlocks,
         createdAt: msg.createdAt,
         id: msg._id,
         feedback: msg.feedback,

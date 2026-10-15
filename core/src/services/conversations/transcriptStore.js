@@ -114,6 +114,7 @@ function searchableStub(message, payload) {
   }
   return { _id: message._id, role: message.role, timestamp: message.timestamp,
     turnId: message.turnId, feedback: message.feedback, stats: message.stats, cost: message.cost,
+    ...(message.answerBlocks !== undefined ? { answerBlocks: message.answerBlocks } : {}),
     content: typeof message.content === 'string' ? message.content.slice(0, 4096) : '',
     metadata, ...(turn ? { turn } : {}), _payload: payload, _projectedFields: projectedFields };
 }

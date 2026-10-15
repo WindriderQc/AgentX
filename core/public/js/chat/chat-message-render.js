@@ -234,6 +234,13 @@ export function showModal(title, bodyHTML) {
   if (!dialog.open) dialog.showModal();
 }
 
+function renderBodyContent(body, content) {
+  if (typeof marked !== 'undefined') {
+    try { body.innerHTML = sanitizeHTML(marked.parse(content)); }
+    catch { body.textContent = content; }
+  } else body.textContent = content;
+}
+
 export function renderMessage(message, state, elements) {
   const role = message.role;
   const content = message.content;
@@ -271,15 +278,18 @@ export function renderMessage(message, state, elements) {
 
   const body = document.createElement('div');
   body.className = 'message-body';
-  if (typeof marked !== 'undefined') {
-    try {
-      body.innerHTML = sanitizeHTML(marked.parse(content));
-    } catch (err) {
-      console.error('Markdown rendering failed:', err);
-      body.textContent = content;
-    }
-  } else {
+  const hasAnswerBlocks = message.answerBlocks !== undefined;
+  // A narrative's open raw-HTML context can defeat the appended code fence.
+  // Never parse combined prose/table data, including unknown or invalid blocks.
+  if (hasAnswerBlocks) {
     body.textContent = content;
+    body.style.whiteSpace = 'pre-wrap';
+  } else renderBodyContent(body, content);
+  if (role === 'assistant' && hasAnswerBlocks) {
+    // Only a validated enhancement parses the narrative separately from cells.
+    void import('./answer-blocks-render.js').then(module => {
+      if (module.enhanceAnswerBlocks(body, message, { renderProse: renderBodyContent })) body.style.whiteSpace = '';
+    }).catch(() => {});
   }
 
   bubble.appendChild(meta);

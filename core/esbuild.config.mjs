@@ -2,6 +2,7 @@ import esbuild from 'esbuild';
 
 await esbuild.build({
   entryPoints: [
+    'src/frontend/answer-blocks.js',
     'src/frontend/shared-utils.js',
     'src/frontend/signal-evidence.js',
     'src/frontend/shared-tokens.css',
