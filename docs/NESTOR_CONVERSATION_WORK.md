@@ -104,6 +104,36 @@ tools retain their native owners. The matching native adapter must advertise
 `nativeConversation`; an older adapter refuses new native work before inference.
 No tools, execution permissions or approval bypasses are granted by this mode.
 
+## Inference profiles
+
+Personal Nestor's **Context and performance** editor selects Local, Cloud brain,
+or Cloud guardian and brain for upcoming standard personal voice turns. Local
+keeps the installed native routes. Cloud brain overrides only complete Main's
+model; the all-cloud profile also overrides the dedicated guardian's model.
+Agent identity, tools, permissions, selected memory and complete conversation
+ownership keep the same contracts. Family, text, Open and explicitly addressed
+specialists keep their existing routes.
+
+The instance names native model references in
+`PERSONAL_CONVERSATION_CLOUD_BOSS_MODEL` and
+`PERSONAL_CONVERSATION_CLOUD_GUARDIAN_MODEL`. Cloud choices require native work,
+its private binding and a separate configured guardian; an unset route disables
+that choice. A saved cloud profile that becomes unavailable refuses new work,
+instead of silently choosing a local model. No credentials enter preferences.
+
+Core freezes the profile and model references in the canonical acceptance
+receipt and durable work, before inference. A later save affects new turns;
+already accepted work and its recovery retain their original selection. Local
+records without a model override continue to follow the installed native policy.
+The browser cannot supply an arbitrary model through its turn request.
+
+Native provider configuration owns authentication, runtime selection, fallbacks
+and reasoning effort. Configure a fast thinking default for the guardian and
+more reasoning for Main through their existing native policies. OpenAI
+subscription OAuth and API-key billing are separate routes; qualify the intended
+account and effective model on the actual native run. Keep the OpenClaw native
+agent runtime when the installation relies on its existing tools and hooks.
+
 ## Legacy migration modes
 
 `read` retains bounded task reads/review through the dedicated worker and isolated

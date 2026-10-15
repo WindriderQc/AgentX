@@ -24,7 +24,7 @@ describe('Household live personality through server-bound LAN space routes', () 
     const endpoint = '/api/voice-personas/preferences';
     const current = (await request(app).get(endpoint).expect(200)).body.data;
     const family = (await request(app).get(endpoint + '?space=family').expect(200)).body.data;
-    const values = Object.fromEntries(current.catalog.filter(item => item.type !== 'number').map(item => [item.key, false]));
+    const values = Object.fromEntries(current.catalog.filter(item => !['number', 'enum'].includes(item.type)).map(item => [item.key, false]));
     const { sessionId: id } = await createPersonal();
     await turn(id, { text: 'SYNTHETIC_PREVIOUS_CONTEXT' });
     const saved = (await request(app).put(endpoint).send({ revision: current.revision, values }).expect(200)).body.data;
