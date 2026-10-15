@@ -79,6 +79,10 @@ reads `/workspace/AGENTS.md` explicitly. DSH saves its Markdown in
 Git. New verified report bytes count as useful progress; touching a file,
 repeating bytes or model activity does not extend budgets. No dependencies,
 Git publication, model/context changes or live acceptance jobs are introduced.
+The report prompt announces the existing 128-request ceiling. Each model request
+also receives a fresh estimate of remaining calls, time and progress allowance,
+with an early instruction to save and finish when few calls remain. Observed
+counts can lag; Core's exact limit and the fixed deadline remain authoritative.
 
 Core journals each call against the exact manual claim, task identity,
 specification digest, local model and fixed deadline before dispatch. Unknown
