@@ -19,6 +19,7 @@ import hashlib
 import json
 from pathlib import Path
 import random
+import re
 import shutil
 import socket
 import sys
@@ -75,7 +76,31 @@ class Tally:
                 "missingIds": self.missing[:200], "mismatchedIds": self.mismatched[:200]}
 
 
-def verify(root, with_sources=False):
+def verify_tree(root, index, with_sources=False):
+    """Rehash every indexed file, including metadata skipped by incremental sync.
+
+    Accept the native mirror-state file as the expected snapshot file index.
+    This does not change that mirror, trust size/mtime shortcuts or enumerate a
+    live .zfs subtree. The same pinned index can be checked on both hosts.
+    """
+    tally = Tally()
+    files = index.get("files", {})
+    if not isinstance(files, dict) or not files:
+        tally.mismatched.append("invalid_or_empty_tree_index")
+        files = {}
+    for relative, meta in files.items():
+        if not isinstance(relative, str) or not relative or not isinstance(meta, dict) \
+                or not isinstance(meta.get("sha256"), str) or not re.fullmatch(r"[a-f0-9]{64}", meta["sha256"]) \
+                or type(meta.get("bytes")) is not int or meta["bytes"] < 0:
+            tally.mismatched.append(relative)
+            continue
+        tally.check(root, relative, meta["sha256"], meta["bytes"])
+    return {**tally.report(), "expectedFiles": len(files),
+            "indexSha256": hashlib.sha256(json.dumps(index, sort_keys=True, ensure_ascii=False).encode()).hexdigest(),
+            **({"verifiedFiles": tally.sources} if with_sources else {})}
+
+
+def verify(root, with_sources=False, tree_index=None):
     root = Path(root)
     manifests = {}
     for file in (root / "threads").glob("*/manifest.json"):
@@ -128,7 +153,11 @@ def verify(root, with_sources=False):
     problems = (threads["withoutOriginal"] + raw_report["withoutOriginal"]
                 + sum(report[k]["missing"] + report[k]["mismatched"]
                 for k in ("raw", "attachments", "outlookItems", "outlookExports")))
+    if tree_index is not None:
+        report["archiveTree"] = verify_tree(root, tree_index, with_sources)
+        problems += report["archiveTree"]["missing"] + report["archiveTree"]["mismatched"]
     report["intact"] = problems == 0
+    tree_files = report.get("archiveTree", {}).pop("verifiedFiles", None)
     if with_sources:
         report["verificationProof"] = {
             "schema": "agentx.secretary-archive-verification/v1", "at": report["at"],
@@ -136,6 +165,8 @@ def verify(root, with_sources=False):
             "threads": {tid: {"evidenceHash": m["evidenceHash"]} for tid, m in manifests.items()},
             "raw": raw.sources, "attachments": attachments.sources,
             "outlookItems": outlook.sources, "outlookExports": exports.sources,
+            **({"archiveTree": report["archiveTree"]} if tree_index is not None else {}),
+            **({"archiveTreeFiles": tree_files} if tree_files is not None else {}),
         }
     return report, raw_ids
 
@@ -180,11 +211,15 @@ def main():
     parser.add_argument("--seed", type=int)
     parser.add_argument("--report", type=Path, help="Write the JSON report here (outside the copy)")
     parser.add_argument("--proof", type=Path, help="Write per-source hash verification evidence outside the copy")
+    parser.add_argument("--tree-index", type=Path, help="Pinned native mirror-state file; rehash every indexed file, metadata included")
     args = parser.parse_args()
-    for output in (args.proof, args.report):
+    for output in (args.proof, args.report, args.restore_to):
         if output and output.resolve().is_relative_to(args.root.resolve()):
             parser.error("Verification reports and proofs must stay outside the archive copy")
-    report, receipts = verify(args.root, with_sources=bool(args.proof))
+    tree = load(args.tree_index) if args.tree_index else None
+    if args.tree_index and not isinstance(tree, dict):
+        parser.error("The expected tree index is absent or invalid")
+    report, receipts = verify(args.root, with_sources=bool(args.proof), tree_index=tree)
     if args.sample:
         report["restoreSample"] = restore_sample(args.root, receipts, args.sample, args.restore_to, args.seed)
         report["intact"] = report["intact"] and not report["restoreSample"]["failures"]

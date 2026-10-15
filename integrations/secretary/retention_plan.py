@@ -10,12 +10,13 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+import hashlib
 import json
 from pathlib import Path
 import re
 
 from evidence_store import load, now, save
-from history_coverage import content_hash, coverage, cutoff_date
+from history_coverage import content_hash, coverage, cutoff_date, independent, proof_matches
 from secretary_evidence import Archive, DEFAULT_ROOT
 
 HASH = re.compile(r"[a-f0-9]{64}")
@@ -149,6 +150,21 @@ def plan(archive, before, inventory, primary, mirror, qualification, decisions, 
     for row in report["messages"]:
         packet = review_packet(archive, row)
         reasons = list(global_reasons) + [b for b in row["blockers"] if b not in reviewable]
+        primary_tree, mirror_tree = primary.get("archiveTree", {}), mirror.get("archiveTree", {})
+        if not independent(primary, mirror) or not HASH.fullmatch(primary_tree.get("indexSha256", "")) \
+                or primary_tree.get("indexSha256") != mirror_tree.get("indexSha256") \
+                or not primary_tree.get("expectedFiles") or not mirror_tree.get("expectedFiles"):
+            reasons.append("archive_metadata_copies_not_verified")
+        paths = [f"threads/{row['threadId']}/manifest.json", f"threads/{row['threadId']}/original.json",
+                 f"reviews/{row['threadId']}.json", f"raw-receipts/{row['messageId']}.json"]
+        paths += [f"page-reviews/{page}.json" for page in packet["pageIds"]
+                  if (archive.root / "page-reviews" / (page + ".json")).is_file()]
+        for relative in paths:
+            file = archive.root / relative
+            expected = {"sha256": hashlib.sha256(file.read_bytes()).hexdigest(), "bytes": file.stat().st_size} if file.is_file() else {}
+            if not proof_matches(primary, "archiveTreeFiles", relative, expected) \
+                    or not proof_matches(mirror, "archiveTreeFiles", relative, expected):
+                reasons.append("current_metadata_copies_not_verified")
         if row["messageId"] not in provider_ids:
             reasons.append("message_absent_from_provider_inventory")
         matching = grouped.get(row["messageId"], [])

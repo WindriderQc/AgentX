@@ -261,6 +261,14 @@ changed source or review invalidates the old decision; conflicting decisions hol
 the message. Missing originals/copies, drafts, unknown dates and stale thread
 reviews cannot be waived by an analysis receipt.
 
+Use `verify_archive.py --tree-index <pinned-native-mirror-state>` on both copies
+to rehash the complete indexed archive, including metadata. Incremental mirrors
+may skip unchanged size/mtime entries; that shortcut is not a fresh integrity
+check. The proof records the shared index hash and only actually verified files.
+The planner also checks that the current manifest, provider projection, raw
+receipt and review metadata match both copies; an older snapshot holds changed
+metadata until it is preserved and verified too.
+
 The private output contains `candidateForOwnerReview`, never execution permission.
 It has no provider transport or mailbox mutation. An actual cleanup still needs
 a fresh exact-message provider/metadata check, a concrete manifest, the native

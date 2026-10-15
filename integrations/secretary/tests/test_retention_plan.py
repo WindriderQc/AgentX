@@ -46,8 +46,10 @@ class RetentionPlanTests(unittest.TestCase):
                 "actions": [], "memories": [], "deliverables": [], "invoices": [], "unresolved": []}, export=False)
         copy = Path(self.temp.name) / "mirror"
         shutil.copytree(self.root, copy)
-        self.primary = verify(self.root, with_sources=True)[0]["verificationProof"]
-        self.mirror = verify(copy, with_sources=True)[0]["verificationProof"]
+        tree_index = {"files": {p.relative_to(self.root).as_posix(): {"sha256": sha(p.read_bytes()), "bytes": p.stat().st_size}
+                                 for p in self.root.rglob("*") if p.is_file()}}
+        self.primary = verify(self.root, with_sources=True, tree_index=tree_index)[0]["verificationProof"]
+        self.mirror = verify(copy, with_sources=True, tree_index=tree_index)[0]["verificationProof"]
         self.mirror["host"] = "independent-synthetic-host"
         self.inventory = {"query": f"in:anywhere before:{int(self.before.timestamp())}", "complete": True,
                           "next": None, "updatedAt": self.clock.isoformat(),
