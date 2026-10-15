@@ -1,10 +1,13 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+import { validateInspection } from './inspection.mjs';
 import { prepareImage } from './expert.mjs';
 
 export function invokeStudio(command, input, { emit = () => {}, signal, timeoutMs = 165000, spawnImpl = spawn } = {}) {
   if (!path.isAbsolute(command || '')) throw new Error('Image expert executable unavailable');
   if (!['describe', 'resource', 'consult', 'plan'].includes(input?.action)) throw new Error('Invalid image expert action');
+  validateInspection(input);
+  if (Buffer.byteLength(JSON.stringify(input), 'utf8') > 65536) throw new Error('Image expert request too large');
   if (JSON.stringify(input).length > 60000) throw new Error('Image expert request too large');
   if (signal?.aborted) throw new Error('Image expert interrupted');
   return new Promise((resolve, reject) => {

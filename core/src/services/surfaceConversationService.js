@@ -130,7 +130,7 @@ function forSurface(surface) {
       { new: true, runValidators: true }).select('-messages').lean());
   }
 
-  async function recordTurn(input, { sessionPatch = {} } = {}) {
+  async function recordTurn(input, { sessionPatch = {}, sessionConditions = {} } = {}) {
     const { inputText = '', replyText = '', attachments = [], ...event } = input;
     if (typeof event.traceId !== 'string' || !/^[a-zA-Z0-9_.:-]{1,260}$/.test(event.traceId)
       || typeof inputText !== 'string' || typeof replyText !== 'string'
@@ -153,13 +153,18 @@ function forSurface(surface) {
     // and turn count. The same native event cannot append or increment twice.
     const row = await Conversation.findOneAndUpdate({
       ...sessionQuery({ sessionId: event.sessionId, packId: event.packId, scopeId: event.scopeId }),
-      'surfaceSession.status': 'active', 'messages.turn.traceId': { $ne: event.traceId }
+      'surfaceSession.status': 'active', 'messages.turn.traceId': { $ne: event.traceId },
+      // A trusted surface can acquire session state atomically with this transcript slot.
+      ...(Object.keys(sessionConditions).length && { $and: [mapFields(sessionConditions, sessionField)] })
     }, { $push: { messages: { $each: messages } }, $inc: { 'surfaceSession.turnCount': 1 },
       $set: { 'surfaceSession.lastTurnAt': event.sourceCompletedAt || now, updatedAt: now,
         ...mapFields(sessionPatch, sessionField),
         ...(event.model ? { model: event.model } : {}) } }, { new: true, runValidators: true }).lean();
     if (!row) {
       if (await getTurn({ traceId: event.traceId })) throw failure('This turn is already recorded', 409, 11000);
+      if (Object.keys(sessionConditions).length && await getSession({ sessionId: event.sessionId, packId: event.packId, scopeId: event.scopeId })) {
+        throw failure('The conversation state changed before this turn could be accepted.', 409, 'CONVERSATION_SESSION_CONFLICT');
+      }
       throw failure('Active conversation not found in this space', 404, 'CONVERSATION_NOT_FOUND');
     }
     return turnView(row, row.messages.find(message => String(message._id) === String(messageId)));

@@ -31,6 +31,28 @@
   const genericSizes = [...$('image-size').options].map(option => [option.value, option.textContent]);
   const shape = (w, h) => w === h ? 'Square' : w > h ? 'Landscape' : 'Portrait';
   const referenceCount = () => (selectedReference ? 1 : 0) + $('image-references').files.length + (guideReference ? 1 : 0);
+  const references = globalThis.AgentXImageReferenceSelection.create({
+    getSelection: () => ({ epoch: referenceEpoch, parent: selectedReference && { operationId: selectedReference.id, sha256: selectedReference.sha256 },
+      files: $('image-references').files, sketch: guideReference }),
+    upload: async (sessionId, prepared, kind, original) => {
+      if (prepared.bytes > 2 * 1024 * 1024) throw new Error('Each selected working copy must be 2 MiB or less. Choose a smaller input; your draft and references are kept.');
+      if (original?.size > 50 * 1024 * 1024) throw new Error('The original reference exceeds 50 MiB. Choose a smaller original; your draft and references are kept.');
+      const route = `/expert/sessions/${encodeURIComponent(sessionId)}/references`;
+      const { reference } = await api(route, { kind, name: kind === 'sketch' ? 'composition-sketch.png' : 'browser-working-copy.jpg',
+        dataUrl: `data:${prepared.mimeType};base64,${prepared.base64}` });
+      if (reference?.sha256 !== prepared.sha256 || reference.mimeType !== prepared.mimeType || reference.byteLength !== prepared.bytes
+        || reference.width !== prepared.width || reference.height !== prepared.height) throw new Error('The uploaded reference does not match the prepared image. Your draft is kept.');
+      if (original) {
+        const response = await fetch(`/api/images${route}/${encodeURIComponent(reference.attachmentId)}/original`, {
+          method: 'POST', headers: { 'Content-Type': original.type, 'X-Attachment-Name': encodeURIComponent(original.name || 'original-image') }, body: original });
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error(result.message || 'The original reference could not be retained. Your draft and selection are kept.');
+      }
+      return reference;
+    },
+    resolve: async (sessionId, selected) => (await api(`/expert/sessions/${encodeURIComponent(sessionId)}/references/resolve`, { references: selected })).references,
+    onChange: () => queueMicrotask(() => expert?.refresh())
+  });
   const layoutGuide = globalThis.ImageLayoutGuide?.init({
     getContext: () => { const [width, height] = $('image-size').value.split(',').map(Number);
       return { locked: locked(), width, height, referenceCount: referenceCount(), guideAttached: !!guideReference }; },
@@ -41,6 +63,8 @@
     onRemoveReference: () => { if (locked()) return; guideReference = null; ++referenceEpoch; ++draftEpoch; draftExpert = null; updateFormMode(); }
   });
   const expert = globalThis.AgentXImageExpert?.mount({
+    prepareReferences: sessionId => references.inspect(sessionId),
+    matchReferences: selected => references.matches(selected),
     restoreBrief: saved => {
       if (locked() || $('image-prompt').value.trim()) return;
       globalThis.ImageBriefConstraints?.composeBrief(saved.prompt, saved.constraints);
@@ -55,7 +79,7 @@
       const [width, height] = $('image-size').value.split(',').map(Number);
       return { ready: !!config?.configured, locked: locked(), prompt: $('image-prompt').value,
         profile: $('image-profile').value, width, height, referenceCount: referenceCount(),
-        seed: $('image-seed').value, referenceEpoch, worker: workshop?.worker || null,
+        seed: $('image-seed').value, referenceEpoch, references: references.current(), worker: workshop?.worker || null,
         constraints: constraints?.getValue({ draft: true }), constraintsInvalid: constraints ? !constraints.isValid({ forPlanning: true }) : false,
         textPolicy: textPolicy?.getValue({ draft: true }), textPolicyError: textPolicy?.getError({ forPlanning: true }) || '' };
     },
@@ -307,14 +331,6 @@
     try { const result = await api('/operations'); history = result.operations.filter(x => x.artifact); renderHistory(); return result.operations; }
     catch { $('image-gallery-count').textContent = 'The library cannot be loaded right now.'; return []; }
   }
-  async function fileBytes(file) {
-    if (!['image/png', 'image/jpeg'].includes(file.type)) throw new Error('Choose a PNG or JPEG image.');
-    const url = URL.createObjectURL(file);
-    try { const img = new Image(); img.src = url; await img.decode(); const ratio = Math.min(1, 1536 / Math.max(img.width, img.height));
-      const canvas = document.createElement('canvas'); canvas.width = Math.round(img.width * ratio); canvas.height = Math.round(img.height * ratio);
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height); return canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
-    } finally { URL.revokeObjectURL(url); }
-  }
   $('image-form').addEventListener('input', () => { ++draftEpoch; controls(); });
   $('image-search').addEventListener('input', renderHistory);
   $('image-size').addEventListener('change', updateFormMode);
@@ -339,7 +355,7 @@
     $('image-status').textContent = 'New brief. Choose a recipe and a format.'; renderRecipe(); renderHistory(); $('image-prompt').focus();
   });
   $('image-references').addEventListener('change', () => {
-    ++referenceEpoch; $('image-reference-previews').replaceChildren();
+    ++referenceEpoch; draftExpert = null; $('image-reference-previews').replaceChildren();
     const files = [...$('image-references').files];
     files.slice(0, 2).forEach((file, i) => { const item = node('div', undefined, 'reference-preview'), img = node('img');
       const url = URL.createObjectURL(file); img.src = url; img.alt = file.name; img.onload = img.onerror = () => URL.revokeObjectURL(url);
@@ -383,8 +399,9 @@
       const declared = workshop?.profiles.find(p => p.id === payload.profile)?.declaredIdentity;
       if (declared) { payload.recipeId = declared.id; payload.recipeVersion = declared.version; }
       if (ref) payload.parent = { operationId: ref.id, sha256: ref.sha256 };
-      payload.references = await Promise.all(files.map(fileBytes));
-      if (guideReference) payload.references.push(guideReference.base64);
+      const prepared = await references.render();
+      payload.references = prepared.references;
+      if (prepared.referenceSelection) payload.referenceSelection = prepared.referenceSelection;
       const signature = JSON.stringify(payload);
       // A network retry retains its identity; an explicit next creation gets a new one.
       if (!request || request.signature !== signature) request = { signature, payload: { ...payload, actionKey: crypto.randomUUID() } };

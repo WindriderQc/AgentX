@@ -84,6 +84,8 @@
             <input id="image-references" type="file" accept="image/png,image/jpeg" multiple>
             <div id="image-reference-previews"></div>
             <p id="image-reference-help" class="image-help">Without an attached reference, the model creates a new composition.</p>
+            <button id="imagex-inspect-references" type="button" class="quiet-button" aria-describedby="imagex-inspection-help" disabled>Inspect selected references</button>
+            <p id="imagex-inspection-help" class="image-help" role="status">Attach one or two images to inspect them before refining the brief. Applying a proposal and creating an image remain separate actions.</p>
           </div>
           <%- include('image-layout-guide') %>
           <details id="image-render-preview" class="result-details" hidden><summary>Reread the final brief with its constraints</summary><pre id="image-render-prompt"></pre></details>

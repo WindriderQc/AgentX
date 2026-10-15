@@ -18,9 +18,10 @@ function validateParent(value) {
   return { operationId: value.operationId, sha256: value.sha256 };
 }
 
-async function resolveParent(parent, conversation, readBytes) {
+async function resolveParent(parent, conversation, readBytes, { atelierOnly = false } = {}) {
   const op = await ImageOperation.findById(parent.operationId).lean();
   if (!op) throw fail('Image parent inconnue.', 404);
+  if (atelierOnly && op.conversation) throw fail('Unknown parent image in the Atelier library.', 404);
   if (conversation && !['surface', 'sessionId', 'packId', 'scopeId'].every(key => op?.conversation?.[key] === conversation[key])) {
     throw fail('Unknown parent image in this conversation.', 404);
   }
@@ -51,4 +52,4 @@ async function prepareReferences(originals, parent, conversation, readBytes) {
       transform: TRANSFORM, ...(resolved && index === 0 && { parentOperationId: parent.operationId }) })) } }) };
 }
 
-module.exports = { TRANSFORM, validateParent, prepareReferences };
+module.exports = { TRANSFORM, validateParent, resolveParent, prepareReferences };

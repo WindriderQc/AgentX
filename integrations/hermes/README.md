@@ -8,8 +8,9 @@ Install Hermes using its official installer, create a dedicated profile, configu
 the reasoning provider on the host, and install the official optional `comfyui`
 skill. Copy `skills/agentx-images` into that profile's skill directory. Keep its
 credentials and runtime state outside this repository.
-Deploy `worker.py` together with its sibling `text_policy.py`; the latter validates
-Atelier lettering choices and supplies the bounded text-plan instructions.
+Deploy `worker.py` with `studio.py`, `text_policy.py` and `inspection.py` from the
+same AgentX revision. The siblings validate lettering/budget and closed reference
+inspection evidence; they contain no provider credentials or native routing changes.
 
 `worker.py` accepts `{action: "consult", prompt, status}` or
 `{action: "plan", request, status, actionKey}` on stdin. It serializes consultations
@@ -77,7 +78,8 @@ Core uses its existing `OPENCLAW_GATEWAY_URL` and server-only
 `--events` exposes bounded JSONL operational events while the default native
 tool protocol remains JSON. Only tool names and durations leave the worker;
 tool arguments, outputs and stderr are excluded. A restart marks an unfinished
-consultation interrupted and never repeats inference automatically.
+text consultation interrupted. A reference inspection retains its durable native
+identity and unknown dispatch fence; it never repeats inference automatically.
 
 Read-only `describe` and `resource` actions disclose selected model configuration
 and five allowlisted documents: SOUL, the AgentX and ComfyUI skills, the capability
@@ -87,7 +89,13 @@ distinguishes configured routing from the model declared at Hermes startup;
 that declaration does not attest an actual fallback. The consultation receives
 bounded successful conversation history and current recipe evidence, with no
 reference image bytes, private worker addresses or general owner conversations.
-Vision inspection and profile editing are not offered by this surface.
+Optional selected-reference inspection uses Core's shared native Main analysis
+helper before Hermes reasoning; `referenceInspection` carries only bounded text,
+ordered verified metadata and a completed Main receipt. The worker validates it
+and attributes the advisory analysis instead of claiming it saw the pixels.
+Without evidence it retains the no-unseen-images instruction. `describe` reports
+`referenceInspectionEvidence: 1` while `visualInspection` remains false for the
+text specialist. Profile editing remains in the native dashboard.
 
 When the instance runs the official `hermes dashboard`, set `HERMES_PUBLIC_URL`
 to its browser-facing URL (including any reverse-proxy prefix). Atelier shows
@@ -100,3 +108,35 @@ Run `python3 -m unittest discover -s integrations/hermes/test` and
 `npm test --prefix integrations/openclaw/imagex`, along with the personal harness
 suite when changing its shared adapter. Installation, native tool availability,
 reasoning-provider access and a completed restored image each need live checks.
+
+## Updating an existing imageX installation
+
+Prepare the reviewed Core build, the entire `integrations/openclaw/imagex`
+plugin and the Hermes sibling files above from one revision. Stage these local
+artifacts and record their source digests before requesting the instance's
+maintenance/queue window. Preserve the current Hermes executable/profile,
+`config.yaml`, reasoning/fallback provider choices, environment/credentials,
+workspace/memory and existing skills. Preserve OpenClaw Main's installed model,
+context and grants; this update supplies advisory evidence, not a replacement
+agent configuration. Keep all instance paths and receipts outside public Git.
+
+Under the native service owner, stop the affected consumers, snapshot their
+current code/plugin/skill files, replace the reviewed worker siblings and entire
+plugin through its existing installation mechanism, and update only the existing
+`agentx-images/SKILL.md`. Start the native owners with fresh processes, then the
+matched Core build. A partial deployment must not advertise inspection as
+installed. Roll back all matched artifacts together through those same owners;
+never remove canonical unknown-execution fences or coordination records.
+
+Verify inventory without inference: sibling hashes/imports match the reviewed
+revision, the active wrapper forwards `"$@"`, `describe` reports the expected
+`imagex` profile and `capabilities.referenceInspectionEvidence: 1`, and resource
+receipts match the installed AgentX skill. Confirm all five resource entries
+(identity, AgentX skill, ComfyUI skill, notebook, memory) retain their prior
+availability; this change creates neither a new skill collection nor a new
+reasoning profile. Compare disclosed routing/fallback fields with the snapshot,
+and verify the registered gateway-authenticated studio route and matched Core
+status. `visualInspection: false` still means Hermes receives text evidence.
+Source tests and read-only inventory do not attest a live Main analysis; any
+native acceptance uses a separately authorized queued synthetic-reference
+campaign and retains its original request and native result identity.

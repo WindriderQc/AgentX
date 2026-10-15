@@ -2,6 +2,8 @@
 module.exports = function productRequestParsers(app, express) {
   // Two bounded reference images can exceed the normal product body limit.
   // The owned parser must run before the default consumes the request.
+  app.use(/^\/api\/images\/expert\/sessions\/[a-f0-9-]{36}\/references\/?$/, express.json({ limit: '4mb' }));
+  app.use('/api/images/expert', express.json({ limit: '512kb' }));
   app.use('/api/images', express.json({ limit: '8mb' }));
   app.use(/^\/api\/voice-personas\/private\/sessions\/[a-f0-9-]{36}\/images\/?$/, express.json({ limit: '8mb' }));
   app.use(express.json({ limit: '5mb' }));
