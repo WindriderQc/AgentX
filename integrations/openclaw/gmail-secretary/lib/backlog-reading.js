@@ -28,13 +28,30 @@ export function readingFrom(message) {
   const totalChars = Number.isInteger(message?.totalChars) ? message.totalChars : null;
   const readTo = Number.isInteger(message?.nextOffset) ? message.nextOffset : totalChars;
   return { threadId: message.threadId, messageId: message.id, sourceHash: message.sourceHash,
-    totalChars, readTo, complete: message.bodyTruncated !== true };
+    totalChars, readTo, complete: message.bodyTruncated === false };
 }
 
-export async function assertFullyRead(config, threadId) {
+export async function assertFullyRead(config, threadId, messageId) {
   const reading = await readReading(config);
-  if (!reading || reading.threadId !== threadId || reading.complete) return;
+  if (!reading || reading.threadId !== threadId || messageId && reading.messageId !== messageId) {
+    throw new Error("Read the selected message with gmail_secretary_backlog_next or gmail_secretary_read before classifying it");
+  }
+  if (reading.complete && typeof reading.sourceHash === "string" && /^[a-f0-9]{64}$/.test(reading.sourceHash)) return reading;
+  if (reading.complete) throw new Error("The selected message has no pinned source hash; read it again before classifying");
   throw new Error(`Message not fully read: call gmail_secretary_backlog_next with continue {"id":"${reading.messageId}","sourceHash":"${reading.sourceHash}","offset":${reading.readTo}} until bodyTruncated is false, then classify.`);
+}
+
+export async function readSelectedMessage(config, params, readPage) {
+  if ((params.offset || 0) > 0) return continueReading(config, params, readPage);
+  const page = await readPage(params);
+  if (page?.id && page.id !== params.id || typeof page?.threadId !== "string" || !page.threadId
+      || !/^[a-f0-9]{64}$/.test(page?.sourceHash || "") || typeof page?.body !== "string"
+      || typeof page?.bodyTruncated !== "boolean" || !Number.isSafeInteger(page?.totalChars) || page.totalChars < 0
+      || page.bodyTruncated && (!Number.isSafeInteger(page.nextOffset) || page.nextOffset <= 0)) {
+    throw new Error("The selected source did not confirm its message, body and reading bounds; saved progress retained");
+  }
+  await writeReading(config, readingFrom({ ...page, id: params.id }));
+  return page;
 }
 
 export async function continueReading(config, params, readPage) {
@@ -44,6 +61,12 @@ export async function continueReading(config, params, readPage) {
   }
   if (params.offset !== reading.readTo) throw new Error(`continue from offset ${reading.readTo}; pages cannot be skipped`);
   const page = await readPage({ id: params.id, offset: params.offset, sourceHash: params.sourceHash });
+  if (page?.sourceHash !== reading.sourceHash || page?.threadId !== reading.threadId || page?.offset !== params.offset
+      || typeof page?.body !== "string" || typeof page?.bodyTruncated !== "boolean"
+      || page.bodyTruncated && (!Number.isSafeInteger(page.nextOffset) || page.nextOffset <= params.offset)
+      || reading.totalChars !== null && page?.totalChars !== reading.totalChars) {
+    throw new Error("Reading continuation did not confirm the selected source/page; saved progress retained");
+  }
   const next = readingFrom({ ...page, threadId: reading.threadId, id: reading.messageId });
   await writeReading(config, next);
   return page;

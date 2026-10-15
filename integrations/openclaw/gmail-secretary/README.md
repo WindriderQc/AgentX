@@ -36,10 +36,22 @@ message goes to the model. Rules only look at the sender and subject.
 
 A message the model classifies must be read to its last page: `backlog_next`
 returns 20,000-character pages, and `continue {id, sourceHash, offset}` reads the
-next page. `apply_triage` refuses a message that is only partly read, until
-`bodyTruncated` is false. A new category replaces the thread's previous
-Secretary category label. The reading position is kept in `readingStateFile`
-(default: next to `triageStateFile`).
+next page. Direct `read(kind=message)` uses the same sequential reading guard.
+`apply_triage` requires the exact `messageId` and `threadId` of a fully read,
+source-pinned message. Missing receipts, skipped pages and changed source/page
+bounds refuse. A new category replaces only that message's previous Secretary
+category labels. Other members of the thread retain all labels, Inbox and read
+state; verified receipts state `scope=message`. Sender-rule receipts explicitly
+report that their bodies were not read. Classification is separate from archive
+analysis and cleanup qualification. The reading position is kept in
+`readingStateFile` (default: next to `triageStateFile`).
+
+The triage digest searches and records the exact message identity in Core; an
+existing digest for another member or only the thread cannot hide the message.
+Journal retention and failed delivery remain explicit in the returned/audited
+receipt. Historical preservation uses the archive and source-assertion review;
+it does not extend the short journal's retention. Deploy the Core message filter
+before updating the native plugin, then qualify real mailbox effects separately.
 
 Named-contact queries are opt-in through `GMAIL_SECRETARY_CONTACT_QUERY`; no
 personal query is shipped. See `integrations/secretary/README.md` for the native
