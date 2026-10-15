@@ -243,7 +243,9 @@ failure and a returned HTTP promise do not prove settlement. Native runtime
 admission and workload ownership remain authoritative.
 
 The plugin binds calls using the native before-tool hook's session, run and call
-identity. Main's `conversation_work request` returns acceptance and result
+identity. Call identities retain the complete provider value, including composite
+call/item IDs; admission and result evidence join the exact bounded identity.
+Tool names keep their separate validation. Main's `conversation_work request` returns acceptance and result
 metadata, not task data. For migrated requests its legacy task reads are blocked.
 An explicit lookup is already accepted before guardian inference. Its canonical
 intake lets the guardian acknowledge it without another tool dispatch. Current intake IDs

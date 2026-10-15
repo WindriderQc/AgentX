@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isNativeToolCallId } from '../../../shared/nativeToolCallId.cjs';
 
 // Compare inside the native adapter. Neither arguments, results nor their
 // fingerprints leave it; Core receives only completed tool names and a loop.
@@ -34,14 +35,14 @@ export function nativeToolChecks(history, sessionKey, runId) {
       inside = row.__openclaw?.runId === runId;
       if (!inside || !Array.isArray(row.content)) continue;
       for (const part of row.content) {
-        if (part?.type !== 'toolCall' || !safeName(part.name) || !safeName(part.id)) continue;
+        if (part?.type !== 'toolCall' || !safeName(part.name) || !isNativeToolCallId(part.id)) continue;
         if (seen.has(part.id)) continue;
         seen.add(part.id);
         const wrapped = part.name === 'tool_call' && safeName(part.arguments?.id);
         calls.push({ id: part.id, tool: wrapped ? wrapped.split(':').at(-1) : part.name,
           identity: wrapped || part.name, args: wrapped ? part.arguments.args : part.arguments });
       }
-    } else if (inside && row?.role === 'toolResult' && safeName(row.toolCallId)) {
+    } else if (inside && row?.role === 'toolResult' && isNativeToolCallId(row.toolCallId)) {
       if (!row.__openclaw?.runId || row.__openclaw.runId === runId) results.set(row.toolCallId, row);
     } else if (row?.role === 'user') inside = false;
   }

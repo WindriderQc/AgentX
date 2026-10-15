@@ -1,5 +1,6 @@
 'use strict';
 const { hash, fail, notFound } = require('./contract');
+const { isNativeToolCallId } = require('../../../../shared/nativeToolCallId.cjs');
 
 // Core retains admissions in the existing work, including failed native reads.
 // A restart or a different URL cannot reset the consultation's budget.
@@ -17,7 +18,7 @@ function createNativeBudget({ repo, conversations, session, query, policy, now }
     if (!limits) throw notFound();
     const denied = { authority: 'core.conversation-works', admitted: false, workId: row._id, limits };
     if (!['running', 'dispatching', 'uncertain'].includes(row.state)) return denied;
-    if (!/^[a-zA-Z0-9_.:-]{1,160}$/.test(callId || '') || !input
+    if (!isNativeToolCallId(callId) || !input
         || Object.keys(input).some(k => k !== 'tool') || !/^[a-zA-Z0-9_.-]{1,100}$/.test(input.tool || '')) {
       throw fail('CONVERSATION_WORK_BUDGET_INVALID', 'A native tool identity is required.');
     }

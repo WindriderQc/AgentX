@@ -3,11 +3,20 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { continuityOperations, continuityHttpHandler } from '../continuity.js';
+import { continuityOperations, continuityHttpHandler, nativeTurnProgress } from '../continuity.js';
 import { updateState } from '../store.js';
 
 const sessionKey = 'agent:main:household:direct:11111111-1111-4111-8111-111111111111';
 const runId = 'resp_22222222-2222-4222-8222-222222222222';
+
+test('progress retains the complete composite native identity while tool names stay strict', () => {
+  const id = 'call_synthetic_shared|fc_synthetic_item';
+  const messages = [{ role: 'assistant', __openclaw: { runId, id: 'native-message' }, content: [
+    { type: 'toolCall', id, name: 'tool_call', arguments: { id: 'example:web_fetch', args: { url: 'private-example' } } },
+    { type: 'toolCall', id: 'other-call', name: 'web_fetch|forged', arguments: {} }
+  ] }];
+  assert.deepEqual(nativeTurnProgress({ sessionKey, messages }, sessionKey, runId), [{ id, tool: 'web_fetch' }]);
+});
 
 test('a failed transcript read is explicit while the HTTP capsule stays fresh and private', async t => {
   const workspace = await mkdtemp(path.join(tmpdir(), 'agentx-continuity-observation-'));
