@@ -175,8 +175,16 @@ previews, replay, measurements and advanced listening preferences into one place
 Its studio view follows capture, recognition, conversation and playback; STT-only
 tests mark the conversation step outside the test. The signal history plots
 observed microphone levels, while detailed receipts expand on demand. Playback
-scheduling, completion and interruption remain distinct. TTS text presets choose
-only that test’s language, without saving a conversation preference.
+scheduling, completion and interruption remain distinct. TTS example text follows
+the selected test language, including natural speech and number presets. The
+English shortcut selects English for that test without saving a conversation
+preference. Custom text is a separate in-memory draft per language while the
+workshop is open. Selecting a preset replaces only that language’s draft; no
+translation, storage or synthesis request runs on a language change.
+Playback controls stay disabled at rest. Stop replay affects only the playing
+excerpt and retains it for another listen; resuming capture is explicit. Stop
+reading cancels the current TTS preparation or playback. In attached diagnostics,
+the voice control interrupts the conversation's speech while Main work continues.
 Nestor and PsyX open that same component on their current conversation; Reading
 opens it on its learning loop. Attached diagnostics keep that loop and its scope,
 so opening them does not request another microphone. Their resume action resumes
