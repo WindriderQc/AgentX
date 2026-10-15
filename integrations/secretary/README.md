@@ -280,6 +280,29 @@ Keep manifests and all qualification/analysis receipts outside Git.
 python3 integrations/secretary/retention_plan.py --root "$GMAIL_SECRETARY_ROOT" --before "$HISTORICAL_CUTOFF" --inventory "$PRIVATE_GMAIL_INVENTORY" --primary-proof "$PRIVATE_PRIMARY_PROOF" --mirror-proof "$PRIVATE_MIRROR_PROOF" --qualification "$PRIVATE_QUALIFICATION" --decisions "$PRIVATE_ANALYSIS_RECEIPTS" --output "$PRIVATE_RETENTION_PLAN"
 ```
 
+### Durable analysis attempts
+
+The batch reviewer writes an acknowledged per-page dispatch fence before asking
+Core for inference. Its stable request identity appears in Core telemetry;
+the private archive retains policy/prompt hashes and a result receipt before
+recording findings. A later record/write failure reuses that saved result,
+including when the final completion-state write was lost. It never generates
+the page again merely because its review file is absent.
+
+Only typed Core refusals known to occur before dispatch can wait and retry the
+same identity. Transport loss, unrecognized HTTP errors, malformed model output
+and unreadable/corrupt receipts stop with `phase=uncertain`. Both batch review
+and the native cursor hold subsequent model requests until the original native
+outcome is reconciled. Status exposes `unresolvedInferenceAttempts`; no source
+is marked read or fully analyzed because the model request was attempted.
+
+Keep `review-attempts/` with the archive and its backups. Reconcile the original
+correlation ID through Core/native result and release receipts; restore a
+verified saved result where available. Do not delete fences, clear quarantine
+or change prompts to launch a replacement. A new policy must retain the prior
+attempt and its proven terminal outcome. These receipts add no model, routing,
+task/memory or mailbox authority. Synthetic tests do not qualify a live campaign.
+
 ## Outlook mailbox export
 
 ### Reviewing existing calendar and contact sources
