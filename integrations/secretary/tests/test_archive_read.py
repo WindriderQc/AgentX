@@ -76,3 +76,59 @@ class ArchivedOriginalReadingTests(unittest.TestCase):
         payload = json.loads(output.getvalue())
         self.assertEqual(payload['status'], 'success')
         self.assertTrue(payload['data']['bodyReadable'])
+
+    def preserve(self, message):
+        data = message.as_bytes(policy=policy.SMTP)
+        self.sha = hashlib.sha256(data).hexdigest()
+        self.file.write_bytes(data)
+        save(self.root / 'raw-receipts/message1.json', {'messageId': 'message1', 'threadId': 'thread01',
+             'sha256': self.sha, 'bytes': len(data), 'path': 'raw/source.eml'})
+
+    def test_plain_text_does_not_hide_a_different_html_action_and_html_never_executes(self):
+        message = EmailMessage(); message.set_content('Synthetic plain version has no request.')
+        message.add_alternative('<p>Please return the synthetic form by Friday.</p><script>steal()</script>', subtype='html')
+        self.preserve(message)
+        page = read_original(self.root, 'message1', self.sha)
+        self.assertEqual(len(page['bodyRepresentations']), 2)
+        self.assertIn('multiple_text_representations', page['readingWarnings'])
+        html = next(p for p in page['bodyRepresentations'] if p['mimeType'] == 'text/html')
+        other = read_original(self.root, 'message1', self.sha, part_index=html['partIndex'])
+        self.assertIn('return the synthetic form', other['body'])
+        self.assertNotIn('steal()', other['body'])
+        self.assertEqual(other['selectedPartIndex'], html['partIndex'])
+        self.assertEqual(other['readerContract'], 'secretary.archive-reader/v2')
+
+    def test_part_selection_and_pagination_stay_on_the_pinned_representation(self):
+        message = EmailMessage(); message.set_content('Short plain')
+        message.add_alternative('<p>' + 'Long synthetic HTML é ' * 2000 + '</p>', subtype='html')
+        self.preserve(message)
+        first = read_original(self.root, 'message1', self.sha)
+        html = next(p for p in first['bodyRepresentations'] if p['mimeType'] == 'text/html')
+        page = read_original(self.root, 'message1', self.sha, part_index=html['partIndex'])
+        pieces = [page['body']]
+        while page['nextOffset'] is not None:
+            page = read_original(self.root, 'message1', self.sha, page['nextOffset'], part_index=html['partIndex'])
+            pieces.append(page['body'])
+        self.assertEqual(''.join(pieces).count('Long synthetic HTML é'), 2000)
+        for part in (-1, 4096, True, 123):
+            with self.assertRaises(ArchiveReadError): read_original(self.root, 'message1', self.sha, part_index=part)
+
+    def test_nested_mail_and_unnamed_documents_are_not_misattributed_as_outer_body(self):
+        message = EmailMessage(); message.set_content('Outer synthetic message')
+        nested = EmailMessage(); nested.set_content('A different author inside an attachment')
+        message.add_attachment(nested)
+        message.add_attachment(b'BEGIN:VCALENDAR\nEND:VCALENDAR', maintype='text', subtype='calendar')
+        self.preserve(message)
+        page = read_original(self.root, 'message1', self.sha)
+        self.assertEqual(len(page['bodyRepresentations']), 1)
+        self.assertNotIn('different author', page['body'])
+        self.assertEqual({p['mimeType'] for p in page['attachments']}, {'message/rfc822', 'text/calendar'})
+
+    def test_an_unreadable_alternative_remains_visible_instead_of_certifying_whole_message_reading(self):
+        data = b'MIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=x\r\n\r\n--x\r\nContent-Type: text/plain\r\n\r\nSynthetic plain\r\n--x\r\nContent-Type: text/html; charset=not-a-charset\r\n\r\n<p>Other information</p>\r\n--x--\r\n'
+        self.sha = hashlib.sha256(data).hexdigest(); self.file.write_bytes(data)
+        save(self.root / 'raw-receipts/message1.json', {'messageId': 'message1', 'threadId': 'thread01',
+             'sha256': self.sha, 'bytes': len(data), 'path': 'raw/source.eml'})
+        page = read_original(self.root, 'message1', self.sha)
+        self.assertIn('unreadable_text_representation', page['readingWarnings'])
+        self.assertEqual(page['bodyCompleteScope'], 'selected-mime-text-part')

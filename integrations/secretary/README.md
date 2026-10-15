@@ -228,6 +228,14 @@ does not establish attachment reading. Sources remain readable when provider
 links disappear. HTTP reads and review retain the instance's existing private
 LAN human entrance; owner scope separates native domains, not human identities.
 
+Reader contract `secretary.archive-reader/v2` enumerates inline MIME text
+representations and permits an exact bounded `part` selector, with independent
+pagination and decoded-text hashes. The review page lets the reader inspect
+plain text and HTML converted to inert text separately. A preferred body view
+does not certify the other versions; unreadable alternatives remain visible.
+Nested message attachments and unnamed documents remain attachments, with their
+own authorship/content review, rather than silently becoming the outer body.
+
 The importer reports stale reviews, unknown dates, missing originals, oversized
 findings and thread questions that lack message attribution. Those gaps remain
 outstanding review work. Outlook exports are outside this adapter's scope.
@@ -252,6 +260,12 @@ pagination, quoted authors, dates, sent mail, drafts, attachments, calendar,
 contacts, invoices, later replies and untrusted mail instructions. These are
 reviewer attestations to inspect, not independent proof that conclusions are true.
 The planner never creates a successful qualification or analysis on its own.
+Qualification also covers signature information, owner aliases, MIME alternatives
+and external documents. Each analysis separately attests signature/identity
+checks, all MIME representations and external-reference disposition. An empty
+legacy finding array is never evidence that these checks passed. Synthetic
+reference inputs live in `fixtures/retention-challenges.json`; that corpus is
+explicitly unqualified until actual results are compared and reviewed.
 
 Analysis receipts use `agentx.secretary-retention-analysis/v1` and pin the original,
 current thread/review hashes, qualification hash and `reviewPacket` hash. Exact

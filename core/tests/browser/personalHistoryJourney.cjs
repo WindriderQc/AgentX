@@ -40,9 +40,12 @@ const source = { system: 'gmail', threadId: id, messageId: id, sourceSha256: 'a'
     fail: (res, code, message) => res.status(code).json({ status: 'error', message }) });
   app.use('/api/secretary', router);
   app.get(`/api/secretary/archive/${id}`, (request, response) => response.json({ status: 'success', data: {
-    body: request.query.offset === '10000' ? 'Fin de la source fictive sauvegardée.' : 'Source fictive sauvegardée <img src=x onerror=alert(1)>',
-    bodyReadable: true, bodyTruncated: request.query.offset !== '10000',
-    nextOffset: request.query.offset === '10000' ? null : 10000, attachmentCount: 0
+    body: request.query.part === '2' ? 'Information uniquement dans la version HTML <img src=x onerror=alert(1)>'
+      : request.query.offset === '10000' ? 'Fin de la source fictive sauvegardée.' : 'Source fictive sauvegardée <img src=x onerror=alert(1)>',
+    bodyReadable: true, bodyTruncated: request.query.part !== '2' && request.query.offset !== '10000',
+    nextOffset: request.query.part === '2' || request.query.offset === '10000' ? null : 10000, attachmentCount: 0,
+    selectedPartIndex: request.query.part === '2' ? 2 : 1,
+    bodyRepresentations: [{partIndex: 1, mimeType: 'text/plain', readable: true}, {partIndex: 2, mimeType: 'text/html', readable: true}]
   } }));
   app.get('/dad/history', (_request, response) => response.type('html').send(`<!doctype html><html lang="fr"><meta name="viewport" content="width=device-width,initial-scale=1">
     <link rel="stylesheet" href="/assets/household/app.css"><link rel="stylesheet" href="/assets/household/personal-history.css"><body class="household-product"><main id="app"></main>
@@ -77,6 +80,10 @@ const source = { system: 'gmail', threadId: id, messageId: id, sourceSha256: 'a'
   assert.equal(await card.locator('[data-source-body] img').count(), 0);
   await card.locator('[data-source-next]').click();
   await page.waitForFunction(() => document.querySelector('[data-source-body]').textContent.includes('Fin de la source'));
+  await card.locator('[data-source-version]').selectOption('2');
+  await page.waitForFunction(() => document.querySelector('[data-source-body]').textContent.includes('uniquement dans la version HTML'));
+  assert.equal(await card.locator('[data-source-next]').isVisible(), false);
+  assert.equal(await card.locator('[data-source-body] img').count(), 0);
   await card.locator('[name=reason]').fill('La source fictive confirme que ce suivi a été réalisé.');
   await card.getByRole('button', { name: 'Clore ce suivi' }).click();
   await page.waitForFunction(() => document.querySelectorAll('.history-entry').length === 2);
@@ -88,7 +95,7 @@ const source = { system: 'gmail', threadId: id, messageId: id, sourceSha256: 'a'
   await page.screenshot({ path: reportDir + '/mobile.png', fullPage: true });
   assert.deepEqual(errors, []); assert.deepEqual(external, []);
   fs.writeFileSync(reportDir + '/result.json', JSON.stringify({ passed: true, errors, external,
-    checks: ['oldest-first', 'filters', 'source-pagination', 'inert-source-html', 'explicit-resolution', 'no-personal-task-created', 'mobile-width'] }, null, 2));
+    checks: ['oldest-first', 'filters', 'source-pagination', 'mime-text-versions', 'inert-source-html', 'explicit-resolution', 'no-personal-task-created', 'mobile-width'] }, null, 2));
   console.log('Historical review browser journey passed');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   if (browser) await browser.close();

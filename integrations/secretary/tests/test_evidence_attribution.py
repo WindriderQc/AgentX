@@ -7,12 +7,23 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from evidence_attribution import body_segments, page_context
+from evidence_attribution import body_segments, page_context, mime_overview
 from secretary_evidence import Archive, save
 from mail_catchup import page_prompt
 
 
 class AttributionTests(unittest.TestCase):
+    def test_mime_overview_discloses_unread_alternatives_without_reading_nested_authors(self):
+        result = mime_overview({'payload': {'mimeType': 'multipart/mixed', 'parts': [
+            {'mimeType': 'text/plain', 'partId': '0', 'body': {'data': 'c3ludGhldGlj'}},
+            {'mimeType': 'text/html', 'partId': '1', 'body': {'data': 'c3ludGhldGlj'}},
+            {'mimeType': 'message/rfc822', 'parts': [{'mimeType': 'text/plain', 'body': {'data': 'cXVvdGU='}}]}
+        ]}})
+        self.assertEqual([p['mimeType'] for p in result['declaredTextParts']], ['text/plain', 'text/html'])
+        self.assertFalse(result['allMimeRepresentationsRead'])
+        self.assertEqual(result['pageScope'], 'preferred-body-view-only')
+        self.assertFalse(mime_overview({'body': 'No MIME tree'})['structureAvailable'])
+
     def test_draft_direction_is_explicit_without_changing_source_page_identity(self):
         with tempfile.TemporaryDirectory() as directory:
             payload = {'messages': [{'id': 'message1', 'body': 'Unsent synthetic intent',

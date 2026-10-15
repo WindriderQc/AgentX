@@ -104,3 +104,13 @@ test('archived originals use exact message/hash/offset arguments without a Gmail
   }
   assert.equal(commands.length, 1);
 });
+
+test('an archived MIME text selector is a bounded integer before reaching the host', async () => {
+  const commands = [];
+  const control = configured(async (_target, command) => { commands.push(command); return envelope({ body: 'Synthetic alternate text' }); });
+  const source = { messageId: '1a0a72c7f639bccf', sha256: 'a'.repeat(64) };
+  await control.archived({ ...source, part: '2' });
+  assert.deepEqual(commands, [`${script} archived --message ${source.messageId} --sha256 ${source.sha256} --offset 0 --part 2`]);
+  for (const part of [-1, 4096, '2; reboot', '$(reboot)']) await assert.rejects(() => control.archived({ ...source, part }), e => e.statusCode === 400);
+  assert.equal(commands.length, 1);
+});
