@@ -105,6 +105,11 @@ router.post('/tasks/:id/feedback', async (req, res) => {
 
     const query = { pipelineId: req.params.id };
     const options = { new: true };
+    if (b.manualReportClaim != null) {
+      if (lease || entry.by !== 'coding-team' || b.status !== 'blocked') return envelope.error(res, 400, 'Manual report stop must name its original claim', 'REPORT_CLAIM_INVALID');
+      try { Object.assign(query, require('../src/services/pipelineManualReportClaim').query(current, b.manualReportClaim, ['in_progress', 'blocked'])); }
+      catch (error) { return envelope.error(res, error.statusCode || 409, error.message, error.code); }
+    }
     if (b.workerOutcome != null) {
       if (!workerScope.contains(current) || lease || current.codingAutonomy || Number(current.automationAttemptCount) > 0
         || current.assignee !== 'coding-team' || !['in_progress', 'blocked'].includes(current.status)
@@ -161,6 +166,7 @@ router.post('/tasks/:id/feedback', async (req, res) => {
 
     const transition = feedbackTransition(query, update, current, { entry, lease, requested: b.status, evidence: normalizedEvidence });
     const task = await PipelineTask.findOneAndUpdate(query, update, options);
+    if (!task && b.manualReportClaim != null) return envelope.error(res, 409, 'Original report claim changed before feedback', 'REPORT_CLAIM_CHANGED');
     if (!task && b.workerOutcome != null) return envelope.error(res, 409, 'The task changed while recording this observation.', 'WORKER_OUTCOME_CONFLICT');
     if (!task && b.expectedQueuedUpdatedAt != null) {
       return envelope.error(res, 409, 'Task changed before preflight feedback was recorded', 'TASK_PREFLIGHT_CHANGED');

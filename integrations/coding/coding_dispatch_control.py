@@ -64,6 +64,10 @@ def unit_active() -> bool:
     return state.stdout.strip() in {"active", "activating", "deactivating"}
 
 
+def report_name(value: str) -> bool:
+    return isinstance(value, str) and len(value) <= 120 and bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*\.md", value))
+
+
 def read_receipt(key: str) -> dict | None:
     path = RECEIPTS / f"{key}.json"
     return json.loads(path.read_text()) if path.exists() else None
@@ -141,7 +145,9 @@ def status(key: str | None = None) -> dict:
     }
 
 
-def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomous=False) -> dict:
+def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomous=False, report="") -> dict:
+    if report and (autonomous or not report_name(report)):
+        raise ControlError("CODING_DISPATCH_INVALID_REQUEST", "Report mode needs a plain Markdown file name and a manual request.", 400)
     STATE.mkdir(parents=True, exist_ok=True)
     with (STATE / "coding-dispatcher-control.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -151,7 +157,7 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
                 if previous['pipelineId'] != pipeline_id:
                     raise ControlError('CODING_DISPATCH_REQUEST_CONFLICT', 'Cancelled request belongs to another task.')
                 return {'accepted': False, 'replayed': True, 'pipelineId': pipeline_id, 'run': previous}
-            if previous["pipelineId"] != pipeline_id or previous.get("expectedAttemptCount", 0) != expected_attempt_count or bool(previous.get("autonomous")) != autonomous:
+            if previous["pipelineId"] != pipeline_id or previous.get("expectedAttemptCount", 0) != expected_attempt_count or bool(previous.get("autonomous")) != autonomous or previous.get('reportName', '') != report:
                 raise ControlError("CODING_DISPATCH_REQUEST_CONFLICT", "This request id belongs to a different selection.")
             return {"accepted": True, "replayed": True, "pipelineId": pipeline_id, "run": previous}
         if (LEGACY_RECEIPTS / f"{key}.json").exists():
@@ -163,11 +169,14 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
         terminal = read_progress(pending) if pending else None
         if pending and pending["phase"] in {"accepted", "uncertain"} and not (
                 terminal and terminal["phase"] == "finished" and
-                (not pending.get("autonomous") or terminal["coreRecorded"])):
+                (not (pending.get("autonomous") or pending.get('reportName')) or terminal["coreRecorded"]
+                 or pending.get('reportName') and terminal.get('preflight') and terminal.get('modelCalls') == 0)):
             raise ControlError("CODING_DISPATCH_OUTCOME_UNKNOWN", "Reconcile the previous launch before starting another task.")
         selected = next((task for task in queued_tasks() if task["pipelineId"] == pipeline_id and can_start(task)), None)
         if not selected:
             raise ControlError("CODING_DISPATCH_INELIGIBLE", "Only unowned, queued, non-private agentx-coding tasks can start.")
+        if report and ((selected.get('automation') or {}).get('mode') == 'review_only' or selected.get('codingAutonomy') or selected.get('automationLease')):
+            raise ControlError('CODING_DISPATCH_INELIGIBLE', 'Report mode cannot replace an automated attempt.')
         if int(selected.get("automationAttemptCount") or 0) != expected_attempt_count:
             raise ControlError("CODING_DISPATCH_REQUEST_CONFLICT", "The task attempt changed before launch.")
         if autonomous:
@@ -180,12 +189,14 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
                "message": "The host is starting the coding worker."}
         if autonomous:
             run["autonomous"] = True
+        if report:
+            run['reportName'] = report
         save_receipt(run)
         subprocess.run(["systemd-run", "--user", "--collect", "--quiet", f"--unit={UNIT}",
                         f"--property=EnvironmentFile=-{ENV_FILE}", f"--setenv=AGENTX_CORE_URL={CORE}",
                         f"--setenv=PATH={os.environ.get('PATH', '/usr/local/bin:/usr/bin:/bin')}",
                         sys.executable, str(HERE / "coding_run.py"), pipeline_id, "--request-id", key,
-                        *(["--autonomous"] if autonomous else [])],
+                        *(["--autonomous"] if autonomous else []), *(["--report-name", report] if report else [])],
                        check=True, capture_output=True, text=True, timeout=10)
         run.update(phase="accepted", message="The coding worker started on this task.")
         save_receipt(run)
@@ -213,7 +224,7 @@ def stop(pipeline_id: str, key: str) -> dict:
         progress = read_progress(run)
         if progress and progress["phase"] == "finished":
             return {"accepted": True, "alreadyFinished": True, "requestId": key, "pipelineId": pipeline_id}
-        if progress and progress["stage"] == "publishing":
+        if (progress and progress["stage"] == "publishing") or (run.get('reportName') and (RECEIPTS/f'{key}.report-intent.json').exists()):
             raise ControlError("CODING_DISPATCH_STOP_TOO_LATE", "Publication already started; its external effects cannot be revoked by stopping the worker.")
         latest = RECEIPTS / "latest"
         if not latest.exists() or latest.read_text().strip() != key or not unit_active():
@@ -270,6 +281,11 @@ def reconcile(pipeline_id, key):
     # Only replay the exact saved native verdict. Never restart the worker or
     # its model, and never manufacture a receipt from an absent process.
     run = read_receipt(key)
+    if run and run.get('reportName') and run['pipelineId'] == pipeline_id:
+        spec = importlib.util.spec_from_file_location('coding_report', HERE/'coding_report.py')
+        reporter = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(reporter)
+        return reporter.reconcile(load_runner(),pipeline_id,key)
     if not run or run["pipelineId"] != pipeline_id or not run.get("autonomous"):
         raise ControlError("CODING_DISPATCH_REQUEST_CONFLICT", "No matching autonomous receipt.")
     path = RECEIPTS / f"{key}.verdict.json"
@@ -310,6 +326,8 @@ def main() -> int:
             data = status(values[0] if values else None)
         elif action in {"launch", "launch-autonomous"} and len(values) == 3 and re.fullmatch(r"\d{4}", values[0]) and values[2].isdigit():
             data = launch(values[0], values[1], int(values[2]), autonomous=action == "launch-autonomous")
+        elif action == "launch-report" and len(values) == 4 and re.fullmatch(r"\d{4}", values[0]) and values[2].isdigit() and report_name(values[3]):
+            data = launch(values[0], values[1], int(values[2]), report=values[3])
         elif action == "observe" and len(values) == 2 and re.fullmatch(r"\d{4}", values[0]):
             data = observe(values[0], values[1])
         elif action == "reconcile" and len(values) == 2 and re.fullmatch(r"\d{4}", values[0]):

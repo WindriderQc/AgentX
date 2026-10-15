@@ -463,7 +463,7 @@ describe('trusted runtime services', () => {
     expect(admission.abandon).toHaveBeenCalledTimes(1);
   });
 
-  test('Core coding deadline bounds a stalled native stream after caller detachment, including a subsecond remainder', async () => {
+  test.each(['coding', 'report'])('%s deadline bounds a stalled native stream after caller detachment, including a subsecond remainder', async mode => {
     const capacity = require('../../src/services/pipelineCodingCapacity');
     const authorize = jest.spyOn(capacity, 'authorizeInference').mockResolvedValue({ principal: 'core-trusted-runtime',
       workloadAdmissionId: 'coding-admission', workloadGeneration: 'coding-generation' });
@@ -473,7 +473,9 @@ describe('trusted runtime services', () => {
     try {
       const result = await executeRoutedInference(deps, {
         mode: 'chat', model: 'model-a', messages: [{ role: 'user', content: 'synthetic' }], stream: true, timeoutMs: 60000
-      }, { signal: caller.signal, codingCapacity: { pipelineId: '0800', leaseId: 'original-lease' }, codingDeadlineAt: started + 250 });
+      }, { signal: caller.signal, ...(mode === 'coding'
+        ? { codingCapacity: { pipelineId: '0800', leaseId: 'original-lease' }, codingDeadlineAt: started + 250 }
+        : { reportDeadlineAt: started + 250 }) });
       const failed = new Promise(resolve => result.stream.once('error', resolve)); result.stream.resume(); caller.abort();
       expect(deps.fetch.mock.calls[0][1].signal.aborted).toBe(false);
       await failed; await expect(result.completion).rejects.toMatchObject({ code: 'RUNTIME_INFERENCE_COMPLETION_FAILED' });
