@@ -11,6 +11,21 @@ function turn(index, { tool = 'agents_list', args = { query: 'private-example' }
 }
 const checks = messages => nativeToolChecks({ sessionKey, messages }, sessionKey, runId);
 
+test('composite native call ids match exact results and keep loop detection provider independent', () => {
+  const rows = [0, 1, 2, 3].flatMap(index => {
+    const pair = turn(index, { tool: 'web_fetch' });
+    pair[0].content[0].id = pair[1].toolCallId = 'call_synthetic_shared|fc_synthetic_' + index;
+    return pair;
+  });
+  assert.deepEqual(checks(rows), { status: 'observed', runId, completedTools: ['web_fetch'], loop: { tool: 'web_fetch', repetitions: 4 } });
+  const foreign = structuredClone(rows.slice(0, 2)); foreign[1].toolCallId = 'call_synthetic_shared|fc_foreign';
+  assert.deepEqual(checks(foreign).completedTools, []);
+  const otherRun = structuredClone(rows.slice(0, 2)); otherRun[1].__openclaw = { runId: 'other-run' };
+  assert.deepEqual(checks(otherRun).completedTools, []);
+  const malformed = structuredClone(rows.slice(0, 2)); malformed[0].content[0].id = malformed[1].toolCallId = 'call\nforged|fc_bad';
+  assert.deepEqual(checks(malformed).completedTools, []);
+});
+
 test('four distinct completed identical calls expose a loop without arguments, results or fingerprints', () => {
   const result = checks([0, 1, 2, 3].flatMap(i => turn(i)));
   assert.deepEqual(result, { status: 'observed', runId, completedTools: ['agents_list'], loop: { tool: 'agents_list', repetitions: 4 } });

@@ -1,5 +1,6 @@
 import { readState } from "./store.js";
 import { nativeToolChecks } from './tool-evidence.js';
+import { isNativeToolCallId } from '../../../shared/nativeToolCallId.cjs';
 
 const invalid = message => Object.assign(new Error(message), { statusCode: 400 });
 const householdKey = /^agent:([a-z0-9][a-z0-9_-]*):household:direct:[a-f0-9-]{36}$/;
@@ -75,7 +76,7 @@ const safeName = value => typeof value === 'string' && /^[a-zA-Z0-9_.:-]{1,120}$
 export function nativeTurnProgress(history, sessionKey, runId) {
   if (history?.sessionKey !== sessionKey || !Array.isArray(history.messages)) return [];
   return history.messages.filter(row => row?.role === 'assistant' && row.__openclaw?.runId === runId && Array.isArray(row.content))
-    .flatMap(row => row.content.map((part, index) => ({ part, id: safeName(part?.id) || `${row.__openclaw.id}:${index}` })))
+    .flatMap(row => row.content.map((part, index) => ({ part, id: isNativeToolCallId(part?.id) ? part.id : `${row.__openclaw.id}:${index}` })))
     .filter(({ part }) => part?.type === 'toolCall' && safeName(part.name))
     .map(({ part, id }) => {
       // Deferred tools run through tool_call with the native tool id inside.

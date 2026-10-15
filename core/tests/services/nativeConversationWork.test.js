@@ -45,6 +45,25 @@ beforeEach(async () => {
 });
 afterEach(() => works.observer.stop());
 
+test('composite native call identities keep exact replay, budget and run ownership', async () => {
+  const row = await admitted('Lis https://example.test et vérifie sur le web.');
+  const identity = context(row);
+  for (let index = 0; index < 4; index++) {
+    const callId = 'call_synthetic_shared|fc_synthetic_' + index;
+    expect(await works.admitNativeTool(identity, { tool: 'web_fetch' }, callId)).toMatchObject({ admitted: true });
+    expect(await works.admitNativeTool(identity, { tool: 'web_fetch' }, callId)).toMatchObject({ admitted: true });
+  }
+  expect((await works.repo.get(row._id)).nativeAdmissions).toHaveLength(4);
+  expect(await works.admitNativeTool(identity, { tool: 'web_fetch' }, 'call_synthetic_shared|fc_fifth')).toMatchObject({ admitted: false });
+  await expect(works.admitNativeTool(identity, { tool: 'web_search' }, 'call_synthetic_shared|fc_synthetic_0'))
+    .rejects.toMatchObject({ code: 'CONVERSATION_WORK_TOOL_CONFLICT' });
+  await expect(works.admitNativeTool({ ...identity, runId: 'resp_' + randomUUID() }, { tool: 'web_fetch' }, 'call_synthetic_shared|fc_synthetic_0'))
+    .rejects.toMatchObject({ statusCode: 404 });
+  for (const invalid of ['call bad|fc_bad', 'call\nforged|fc_bad', 'call_' + 'x'.repeat(161)]) {
+    await expect(works.admitNativeTool(identity, { tool: 'web_fetch' }, invalid)).rejects.toMatchObject({ code: 'CONVERSATION_WORK_BUDGET_INVALID' });
+  }
+});
+
 test('accepted cloud routes survive preference and instance changes while Main keeps its full native identity', async () => {
   const cloudEnv = { ...env, PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID: 'synthetic-guardian',
     PERSONAL_CONVERSATION_CLOUD_BOSS_MODEL: 'synthetic-cloud/deep-model',

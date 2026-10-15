@@ -7,6 +7,7 @@ const { OWNER, SCOPED, EXCHANGE_SCOPE, ACTIVE, LIMITS, hash, fail, notFound,
 const { createRepository } = require('./repository');
 const { readTurnContext, assertContextSize } = require('../conversations/turnContext');
 const { resolveProfile } = require('./performance');
+const { isNativeToolCallId } = require('../../../../shared/nativeToolCallId.cjs');
 
 function createConversationWorks({ conversations, tasks, env = process.env, repository = createRepository(), classify = () => false, nativeOnly = () => false, nativeRead = () => false,
   nativeBudget = () => null, nativeForeground = () => true, guardianNeedsMain = () => false,
@@ -187,7 +188,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
   async function readTasks(context, input, callId) {
     const row = await binding(context);
     if (row.mode !== 'read' || !['running', 'dispatching'].includes(row.state)) throw fail('CONVERSATION_WORK_READ_DENIED', 'This work cannot read tasks.', 403);
-    if (!/^[a-zA-Z0-9_.:-]{1,160}$/.test(callId || '') || !input || Object.keys(input).some(key => !['limit', 'includeDone'].includes(key))
+    if (!isNativeToolCallId(callId) || !input || Object.keys(input).some(key => !['limit', 'includeDone'].includes(key))
       || (input.limit !== undefined && (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 50))
       || (input.includeDone !== undefined && typeof input.includeDone !== 'boolean')) throw fail('CONVERSATION_WORK_READ_INVALID', 'Choose a bounded task read.');
     const normalized = { limit: input.limit ?? 25, includeDone: input.includeDone ?? false };
