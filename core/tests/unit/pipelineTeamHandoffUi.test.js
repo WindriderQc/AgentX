@@ -10,7 +10,7 @@ function fixture() {
   const Toast = { info: jest.fn(), success: jest.fn(), error: jest.fn() };
   const fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { ready: true } }) });
   const context = { window: { location: { search: '' }, setTimeout, clearTimeout }, document, Toast, fetch, URLSearchParams, AbortController,
-    FormData: class { get() { return 'Save a first report, then extend the verified findings.'; } } };
+    FormData: class { get(name) { return name === 'answer' ? 'Save a first report, then extend the verified findings.' : ''; } } };
   loadPipelineParts(context);
   const source = fs.readFileSync(path.resolve(__dirname, '../../public/js/pipeline.js'), 'utf8');
   vm.runInNewContext(source.replace(/\}\)\(\);\s*$/, 'loadTasks = async () => {}; globalThis.handoffTest = { state, giveTaskToTeam, handleDrawerAction, renderDrawer };\n})();'), context);
@@ -27,7 +27,7 @@ test('a handoff prepares the exact task before refreshing admission and launchin
   await f.giveTaskToTeam('0700');
   expect(JSON.parse(f.fetch.mock.calls[0][1].body)).toEqual({ pipelineId: '0700', answer: '' });
   expect(f.controller.refresh).toHaveBeenCalledTimes(1);
-  expect(f.controller.launch).toHaveBeenCalledWith('0700');
+  expect(f.controller.launch).toHaveBeenCalledWith('0700', {});
   expect(f.Toast.success).toHaveBeenCalledWith('Task 0700 handed to the team.');
 });
 

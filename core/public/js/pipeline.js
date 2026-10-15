@@ -786,13 +786,14 @@
         return;
       } else if (action === 'give-to-team' || action === 'reply-resume') {
         if (submit) submit.textContent = 'Handing task to the team…';
+        const profile = window.PipelineLaunchController.fromForm(form);
         const answer = action === 'reply-resume' ? String(new FormData(form).get('answer') || '').trim() : '';
         if (action === 'reply-resume' && state.drawer.task?.assignee === 'coding-team' && !state.drawer.task?.codingAutonomy
           && state.drawer.task?.automation?.mode !== 'review_only') {
           const observed = await refreshDrawerWorker();
           if (!observed || state.drawer.pipelineId !== pipelineId || !window.PipelineWorkerOutcome?.canResume(state.drawer.task, state.drawer.workerControl)) throw new Error('The original worker has not been confirmed as finished. Check its status before resuming.');
         }
-        await giveTaskToTeam(pipelineId, answer);
+        await giveTaskToTeam(pipelineId, answer, profile);
       } else if (action === 'supersede-preview') {
         const data = new FormData(form);
         const supersededBy = String(data.get('supersededBy') || '').trim();
@@ -881,7 +882,7 @@
     }
   }
 
-  async function giveTaskToTeam(pipelineId, answer = '') {
+  async function giveTaskToTeam(pipelineId, answer = '', profile = {}) {
     toast('info', 'Preparing this task for the team…');
     const payload = await fetchJson('/api/runtime-bridges/coding-dispatch/prepare', {
       method: 'POST', body: JSON.stringify({ pipelineId, answer })
@@ -891,7 +892,7 @@
       return;
     }
     await state.launchController.refresh();
-    const launching = state.launchController.launch(pipelineId);
+    const launching = state.launchController.launch(pipelineId, profile);
     const submission = state.launchController.lastSubmission;
     if (!await launching) throw new Error(state.launchController.error || 'The task is routed to the Coding Team, but the worker is busy or admission changed. Check why this task is waiting, then try again when available.');
     if (state.launchController.error) throw new Error(state.launchController.error);
@@ -1051,6 +1052,15 @@
     if (launchSelect) launchSelect.addEventListener('change', () => {
       if (launchConfirm) launchConfirm.checked = false;
       renderDispatchControl();
+    });
+    document.addEventListener('change', event => {
+      if (event.target.matches('[data-worker-profile]')) {
+        const form = event.target.closest('form');
+        form.querySelector('[data-report-budget]').hidden = !event.target.value;
+      }
+    });
+    launchForm?.addEventListener('change', event => {
+      if (['reportName', 'modelCallLimit'].includes(event.target.name)) { launchConfirm.checked = false; renderDispatchControl(); }
     });
     if (launchConfirm) launchConfirm.addEventListener('change', renderDispatchControl);
     if (launchForm) launchForm.addEventListener('submit', (event) => {

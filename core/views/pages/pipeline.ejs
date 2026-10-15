@@ -159,6 +159,12 @@
             <option value="">No candidate loaded</option>
           </select>
         </label>
+        <label class="pipeline-team-launch-task"><span>Result to produce</span><select name="reportName" data-worker-profile>
+          <option value="">Code change</option><option value="REVIEW.md">Private Markdown report (source read-only)</option>
+        </select></label>
+        <label class="pipeline-team-launch-task" data-report-budget hidden><span>Report call limit</span><select name="modelCallLimit">
+          <option value="128">128 model calls</option><option value="256">256 model calls</option>
+        </select></label>
         <button id="pipelineTeamLaunchSelection" class="pipeline-btn compact" type="button" hidden>Review selected task</button>
         <label class="pipeline-team-launch-confirm">
           <input id="pipelineTeamLaunchConfirm" type="checkbox" disabled>

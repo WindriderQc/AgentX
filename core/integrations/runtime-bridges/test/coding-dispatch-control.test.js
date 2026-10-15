@@ -78,3 +78,25 @@ test('routes await host observations and reserve 202 for request acknowledgement
   assert.equal(stop.statusCode, 202);
   assert.deepEqual(selection, { requestId: request.requestId, pipelineId: '0700', confirm: true });
 });
+
+test('private report launch reaches the native executor with its exact filename and explicit call budget', async () => {
+  const control = configured(async (_target, command) => {
+    assert.equal(command, `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py launch-report 0700 ${request.requestId} 0 REVIEW.md --model-call-limit 256`);
+    return envelope({ ...accepted, run: { ...accepted.run, reportName: 'REVIEW.md', modelCallLimit: 256 } });
+  });
+  const result = await control.launch({ ...request, reportName: 'REVIEW.md', modelCallLimit: 256 });
+  assert.equal(result.run.reportName, 'REVIEW.md');
+  assert.equal(result.run.modelCallLimit, 256);
+  for (const extra of [{ reportName: '../report.md' }, { reportName: 'report.md;reboot' }, { reportName: 'report.md', autonomous: true },
+    { reportName: 'report.md', modelCallLimit: 257 }, { reportName: 'report.md', modelCallLimit: '256' }, { modelCallLimit: 256 }]) {
+    await assert.rejects(configured(() => assert.fail('invalid selection reached the host')).launch({ ...request, ...extra }), error => error.statusCode === 400);
+  }
+});
+test('one request id cannot change report filename, mode or call budget while launch is unresolved', async () => {
+  let finish;
+  const control = configured(() => new Promise(resolve => { finish = resolve; }));
+  const original = control.launch({ ...request, reportName: 'REVIEW.md', modelCallLimit: 128 });
+  for (const change of [{ reportName: 'OTHER.md', modelCallLimit: 128 }, { reportName: 'REVIEW.md', modelCallLimit: 256 }, {}])
+    await assert.rejects(control.launch({ ...request, ...change }), error => error.code === 'CODING_DISPATCH_REQUEST_CONFLICT');
+  finish(envelope(accepted)); await original;
+});

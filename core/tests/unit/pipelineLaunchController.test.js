@@ -230,3 +230,35 @@ describe('Pipeline launch reconciliation', () => {
     expect(controller.canRetry()).toBe(false);
   });
 });
+
+describe('private report launch selection', () => {
+  const profile = { reportName: 'REVIEW.md', modelCallLimit: 256 };
+  test('lost-response recovery and an explicit retry preserve report mode, budget and request identity', async () => {
+    const data = new Map();
+    const storage = { getItem: key => data.get(key), setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key) };
+    const request = jest.fn().mockResolvedValue(snapshot());
+    const first = new Controller({ request, storage, newId: () => ID });
+    await first.refresh();
+    request.mockImplementation(async (_url, options) => {
+      if (options.method === 'POST') throw new Error('Response lost');
+      return snapshot(run('unknown', 'in_progress', profile), true);
+    });
+    await first.launch('0700', profile); first.dispose();
+    const reloaded = new Controller({ request, storage });
+    try {
+      expect(reloaded.pending).toEqual({ ...selection, ...profile });
+      request.mockResolvedValue(snapshot(run('not_received', 'queued', profile)));
+      await reloaded.refresh();
+      expect(reloaded.canRetry()).toBe(true);
+      await reloaded.retry();
+      const posts = request.mock.calls.filter(([, opts]) => opts.method === 'POST');
+      expect(posts).toHaveLength(2);
+      for (const [, opts] of posts) expect(JSON.parse(opts.body)).toEqual({ ...selection, ...profile, confirm: true });
+    } finally { reloaded.dispose(); }
+  });
+  test('recovery from a native running receipt without browser storage preserves the report profile', async () => {
+    const controller = new Controller({ request: async () => snapshot(run('running', 'in_progress', profile), true) });
+    try { await controller.refresh(); expect(controller.pending).toEqual({ ...selection, ...profile }); }
+    finally { controller.dispose(); }
+  });
+});

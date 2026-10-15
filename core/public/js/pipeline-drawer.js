@@ -40,10 +40,12 @@
     const canReply = !qualification && task.status === 'blocked' && codingTask && (!task.assignee || task.automation?.mode === 'review_only' || resumeWorker);
     if (!qualification && task.status === 'queued' && !task.assignee && codingTask) {
       actions.push(`<form class="pipeline-drawer-action" data-drawer-action="give-to-team">
+        ${window.PipelineLaunchController?.profileFields(task) || ''}
         <button type="submit" class="pipeline-btn primary">Give to the team</button></form>`);
     }
     if (canReply) {
       actions.unshift(`<form class="pipeline-drawer-action" data-drawer-action="reply-resume">
+        ${window.PipelineLaunchController?.profileFields(task) || ''}
         <label><span>Updated instructions or your answer</span><textarea name="answer" rows="4" maxlength="3000" required placeholder="Describe what the next pass must do and save."></textarea></label>
         <button type="submit" class="pipeline-btn primary">Update instructions and resume</button>
       </form>`);

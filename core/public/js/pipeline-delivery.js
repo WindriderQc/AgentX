@@ -234,6 +234,7 @@
     select.dataset.candidate = identity;
     const ready = control?.available === true && !control.busy && !pending && !controller?.submitting && !controller?.checking && !controller?.error;
     select.disabled = !ready || !candidates.length;
+    $('pipelineTeamLaunchForm')?.querySelectorAll('[name=reportName], [name=modelCallLimit]').forEach(field => { field.disabled = !ready; });
     confirm.disabled = !ready || !select.value;
     // A status read temporarily disables launch, but does not erase consent for
     // the same selection. A busy host, changed candidate or error clears it.
@@ -296,7 +297,10 @@
   async function launchOneTask() {
     const pipelineId = String($('pipelineTeamLaunchTask')?.value || '');
     if ($('pipelineTeamLaunchConfirm')?.checked !== true || !state.launchController?.canLaunch(pipelineId)) return;
-    const launch = state.launchController.launch(pipelineId);
+    let profile;
+    try { profile = window.PipelineLaunchController.fromForm($('pipelineTeamLaunchForm')); }
+    catch (error) { toast('error', error.message); return; }
+    const launch = state.launchController.launch(pipelineId, profile);
     const monitor = $('pipelineExecution');
     monitor?.scrollIntoView({ block: 'start', behavior: 'auto' });
     monitor?.focus({ preventScroll: true });

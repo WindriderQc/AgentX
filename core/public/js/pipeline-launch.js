@@ -25,11 +25,39 @@
       this.lastRun = '';
       this.disposed = false;
     }
+    static profile(input = {}) {
+      if (!input.reportName) {
+        if (input.modelCallLimit != null) throw new Error('Choose a private report before setting its call limit.');
+        return {};
+      }
+      if (typeof input.reportName !== 'string' || input.reportName.length > 120 || !/^[A-Za-z0-9][A-Za-z0-9._-]*\.md$/.test(input.reportName))
+        throw new Error('Choose a plain Markdown report filename.');
+      const modelCallLimit = input.modelCallLimit ?? 128;
+      if (!Number.isSafeInteger(modelCallLimit) || modelCallLimit < 128 || modelCallLimit > 256)
+        throw new Error('Report model call limit must be an integer from 128 to 256.');
+      return { reportName: input.reportName, modelCallLimit };
+    }
+    static fromForm(form) {
+      if (!form) return {};
+      const data = new FormData(form);
+      const reportName = data.get('reportName');
+      return this.profile(reportName ? { reportName, modelCallLimit: Number(data.get('modelCallLimit')) } : {});
+    }
+    static profileFields(task) {
+      if (task?.automation?.mode === 'review_only' || task?.codingAutonomy) return '';
+      const report = (task?.feedback || []).some(row => row.reportOutcome);
+      return `<label><span>Result to produce</span><select name="reportName" data-worker-profile>
+        <option value=""${report ? '' : ' selected'}>Code change</option>
+        <option value="REVIEW.md"${report ? ' selected' : ''}>Private Markdown report (source read-only)</option>
+      </select></label><label data-report-budget${report ? '' : ' hidden'}><span>Report call limit</span><select name="modelCallLimit">
+        <option value="128">128 model calls</option><option value="256">256 model calls</option></select></label>
+        <p>Time and model calls are separate limits. Save findings and pending work before either runs out.</p>`;
+    }
     restore() {
       try {
         const value = JSON.parse(this.storage?.getItem(STORAGE_KEY) || 'null');
         return value && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value.requestId) && /^\d{4}$/.test(value.pipelineId)
-          && Number.isSafeInteger(value.expectedAttemptCount) && value.expectedAttemptCount >= 0 ? value : null;
+          && Number.isSafeInteger(value.expectedAttemptCount) && value.expectedAttemptCount >= 0 ? { requestId: value.requestId, pipelineId: value.pipelineId, expectedAttemptCount: value.expectedAttemptCount, ...PipelineLaunchController.profile(value) } : null;
       } catch { return null; }
     }
     persist() {
@@ -78,7 +106,7 @@
         const run = this.control.run;
         if (!this.pending && run?.requestId && run.pipelineId && Number.isSafeInteger(run.expectedAttemptCount)
           && ['submitting', 'uncertain', 'accepted', 'running', 'stopping', 'unknown', 'waiting'].includes(run.phase)) {
-          this.pending = { requestId: run.requestId, pipelineId: run.pipelineId, expectedAttemptCount: run.expectedAttemptCount };
+          this.pending = { requestId: run.requestId, pipelineId: run.pipelineId, expectedAttemptCount: run.expectedAttemptCount, ...PipelineLaunchController.profile(run) };
           this.persist();
         }
         if (this.pending && run?.requestId === this.pending.requestId && TERMINAL.has(run.phase)) {
@@ -101,10 +129,11 @@
         }
       }
     }
-    async launch(id) {
+    async launch(id, profile = {}) {
       if (!this.canLaunch(id)) return false;
+      const selection = PipelineLaunchController.profile(profile);
       const candidate = this.control.candidates.find(item => item.pipelineId === id);
-      this.pending = { requestId: this.newId(), pipelineId: id, expectedAttemptCount: candidate.expectedAttemptCount };
+      this.pending = { requestId: this.newId(), pipelineId: id, expectedAttemptCount: candidate.expectedAttemptCount, ...selection };
       this.persist();
       return this.submit();
     }

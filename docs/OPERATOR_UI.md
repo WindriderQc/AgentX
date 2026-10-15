@@ -37,6 +37,20 @@ run. The task queue uses the overview filters; launch candidates use the host's
 admission rules, explained under **Which tasks can run here?** Queue totals and
 coverage expand separately from the rows.
 
+Status cards and the board use the same **Include archived qualifications**
+selection. Core aggregates archive counts before pagination, so a loaded sample
+cannot hide archived tasks from the totals. **Closed** means a recorded closure,
+including superseded work; it does not mean a successful deployment.
+
+Choose **Private Markdown report (source read-only)** for a documentation review
+in the one-task form or task dossier. This uses the native report executor and
+private Core deliverables. The report call limit is explicit (128 by default,
+256 when selected); time and model calls are independent limits. The chosen
+filename and call limit remain bound to the same request during reconciliation.
+A historical report result selects report mode in the dossier; a subsequent
+run still needs explicit launch and retains the existing admission and queue
+requirements. A stopped partial result does not establish complete coverage.
+
 **Follow and decide** holds the **Execution monitor**: current manual request,
 heartbeat, useful progress, remaining budgets, tests and exact stop/retry controls.
 A launch moves focus to this monitor; request references and worker details
