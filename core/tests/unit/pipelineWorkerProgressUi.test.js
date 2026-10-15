@@ -75,6 +75,15 @@ test('attempt identity requires the dossier request binding and never adds one t
   expect(Monitor.observation(f.controller, f.task, NOW).attempt).toBeNull();
 });
 
+test('the monitor shows an explicit report call budget and never invents one for a legacy receipt', () => {
+  const extended=renderMonitor(fixture({modelCalls:128,modelCallLimit:256}));
+  expect(extended.pipelineWorkerMonitorEvidence.innerHTML).toContain('128 / 256 · 128 remaining');
+  const legacy=renderMonitor(fixture({modelCalls:128}));
+  expect(legacy.pipelineWorkerMonitorEvidence.innerHTML).not.toContain('remaining</dd>');
+  const malformed=renderMonitor(fixture({modelCalls:128,modelCallLimit:10000}));
+  expect(malformed.pipelineWorkerMonitorEvidence.innerHTML).not.toContain('/ 10000');
+});
+
 test('completed receipts are historical and unknown host outcomes remain unresolved', () => {
   const progress = { stage: 'checkpoint', result: 'blocked', stopReason: 'soft_budget_no_progress' };
   const done = renderMonitor(fixture(progress, 'finished'));

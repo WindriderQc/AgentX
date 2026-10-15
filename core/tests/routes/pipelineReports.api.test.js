@@ -63,6 +63,39 @@ test('report start is bound to owner, scope, model and source without resetting 
   await start({ ...f.intent, sourceCommit: 'b'.repeat(40) }).expect(409);
   expect(await Run.countDocuments({})).toBe(1);
 });
+test.each([128,256])('a report admits its last call and refuses the next at its frozen %i-call budget', async limit => {
+  const f=await fixture();const accepted=(await start({...f.intent,modelCallLimit:limit}).expect(200)).body.data;
+  expect(accepted).toMatchObject({modelCallLimit:limit,modelCallsRemaining:limit});
+  const receipts=Array.from({length:limit-1},()=>({callId:crypto.randomUUID(),state:'completed'}));
+  await Run.updateOne({_id:KEY},{$set:{modelReceipts:receipts}});
+  await (await call()).finish('completed');
+  const owner=await Task.findById(f.owner._id).lean();
+  await expect(call(NEXT)).rejects.toMatchObject({code:'REPORT_MODEL_CALL_LIMIT'});
+  expect(await Task.findById(f.owner._id).lean()).toEqual(owner);
+  const saved=await Run.findById(KEY).lean();expect(saved.modelReceipts).toHaveLength(limit);
+  expect((await reports.status('0001',KEY)).modelCallsRemaining).toBe(0);
+});
+test('the default and legacy report budget remain 128 and cannot be increased on replay', async () => {
+  const f=await fixture();expect((await start(f.intent).expect(200)).body.data.modelCallLimit).toBe(128);
+  await Run.collection.updateOne({_id:KEY},{$unset:{modelCallLimit:''}});
+  const before=await Run.findById(KEY).lean();
+  await start({...f.intent,modelCallLimit:256}).expect(409);
+  expect(await Run.findById(KEY).lean()).toEqual(before);
+  expect((await start(f.intent).expect(200)).body.data.modelCallLimit).toBe(128);
+});
+test('a report budget is immutable on replay and conflicting concurrent starts retain one budget', async () => {
+  const f=await fixture();const replies=await Promise.all([start({...f.intent,modelCallLimit:128}),start({...f.intent,modelCallLimit:256})]);
+  expect(replies.map(row=>row.status).sort()).toEqual([200,409]);
+  const saved=await Run.findById(KEY).lean();
+  await start({...f.intent,modelCallLimit:saved.modelCallLimit,hardRemainingSeconds:14400}).expect(200);
+  await start({...f.intent,modelCallLimit:saved.modelCallLimit===128?256:128}).expect(409);
+  expect(await Run.findById(KEY).lean()).toEqual(saved);
+});
+test.each([0,127,257,512,128.5,'256',null,true])('invalid report budget %p refuses before any permit or journal write', async limit => {
+  const f=await fixture(),before=await Task.findById(f.owner._id).lean();
+  await start({...f.intent,modelCallLimit:limit}).expect(400);
+  expect(await Run.countDocuments({})).toBe(0);expect(await Task.findById(f.owner._id).lean()).toEqual(before);
+});
 test.each([{ service: 'personal' }, { source: 'household-task' }, { assignee: 'other-worker' },
   { automationAttemptCount: 1 }, { codingAutonomy: { state: 'active' } }])('report cannot replace private scope or another owner: %p', async extra => {
   const f = await fixture(extra); const old = await Task.findById(f.owner._id).lean();

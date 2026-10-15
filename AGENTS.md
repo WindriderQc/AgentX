@@ -23,6 +23,9 @@ and docs/OPERATIONS.md before changing architecture.
   stay in the private instance repository or outside Git (ADR 0001).
 - Run existing relevant tests and wait for their completed result. Distinguish
   code/tests, containers, deployment and real-device acceptance.
+- For documentation audits, use skills/agentx/references/documentation-review.md:
+  save verified document groups with per-file coverage, synchronized totals and
+  the next pending group before exhausting the current execution budget.
 - Queue heavy work from coding/operator sessions before launch: live inference
   tests, Benchmark/Profiler campaigns, image renders and long shared compute.
   Use Core's heavy-work queue and named operator executors

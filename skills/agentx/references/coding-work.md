@@ -61,6 +61,12 @@ to imply that its earlier authorization covers new work.
 
 ## Follow the worker in Pipeline
 
+For a documentation review, use [documentation-review.md](documentation-review.md)
+to specify the source revision, report location, document groups and saved
+coverage. A partial report records unfinished scope; it does not satisfy a full
+review request. The native private report profile and its operator controls are
+documented in `integrations/coding/README.md` in the product checkout.
+
 Open `<core>/pipeline#pipelineWorkerMonitor` for the worker monitor and
 `<core>/pipeline?task=0338` for a task dossier. An observed attempt links as
 `<core>/pipeline?task=0338&attempt=2`. Use the instance Core origin for these

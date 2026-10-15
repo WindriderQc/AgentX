@@ -30,7 +30,7 @@ class ReportTest(unittest.TestCase):
         self.path = self.home/'deliverables'/KEY/'review.md'
         self.task = {'pipelineId':'0001','title':'Documentation review','spec':'Review every Markdown document.',
                      'status':'queued','service':'agentx-coding','feedback':[],'transitions':[{'kind':'claimed','seq':2}]}
-        self.uploads=[]; self.exit_code=0
+        self.uploads=[]; self.exit_code=0; self.limit=128; self.server_limit=None
         self.receipt=None;self.terminated=True;self.completed=True;self.lose_response=False
         for name,value in [('WORKSPACES',self.root),('MODEL','fixture-model'),('RECEIPTS',self.root/'receipts'),
                            ('request',self.request),('feedback',mock.Mock(side_effect=self.feedback)),
@@ -42,7 +42,9 @@ class ReportTest(unittest.TestCase):
 
     def request(self,url,body=None,**kwargs):
         if '/reports/' in url:
-            if url.endswith('/start'):return {'data':{'requestId':KEY,'claimSeq':2}}
+            if url.endswith('/start'):
+                self.start_intent=body
+                return {'data':{'requestId':KEY,'claimSeq':2,'modelCallLimit':body['modelCallLimit'] if self.server_limit is None else self.server_limit}}
             if url.endswith('/result'):
                 value={'requestId':KEY,'claimSeq':2,'sourceCommit':self.head,'sha256':body['sha256']}
                 if self.task['transitions'][-1]['seq']!=2:return {'data':{'superseded':True,'outcome':value}}
@@ -68,7 +70,7 @@ class ReportTest(unittest.TestCase):
     def worker(self,workspace,prompt,timeout,progress,*,read_only):
         self.assertTrue(read_only); self.assertIn('/home/agent/deliverables/'+KEY+'/review.md',prompt)
         self.assertIn('/workspace/AGENTS.md',prompt);self.assertIn('git -C /workspace',prompt)
-        self.assertIn('128 model requests',prompt)
+        self.assertIn(str(self.limit)+' model requests',prompt)
         self.path.write_text('# Review\n\nVerified README against the source. Other files remain pending.\n')
         return subprocess.CompletedProcess([],self.exit_code,stdout='A report is ready for review.',stderr='')
 
@@ -89,6 +91,27 @@ class ReportTest(unittest.TestCase):
         with mock.patch('builtins.print'):self.assertEqual(runner.main(),1)
         self.assertEqual(self.task['status'],'blocked');self.assertTrue(self.path.is_file());self.assertEqual(self.uploads,[])
         self.assertEqual(runner.git(self.workspace,'rev-parse','HEAD'),self.head);runner.push_and_open_pr.assert_not_called()
+
+    def test_extended_report_budget_reaches_core_prompt_and_terminal_progress(self):
+        self.limit=256
+        with mock.patch.object(sys,'argv',['coding_run','0001','--request-id',KEY,'--report-name','review.md','--model-call-limit','256']), mock.patch('builtins.print'):
+            self.assertEqual(runner.main(),0)
+        self.assertEqual(self.start_intent['modelCallLimit'],256)
+        progress=__import__('json').loads((runner.RECEIPTS/(KEY+'.progress.json')).read_text())
+        self.assertEqual(progress['modelCallLimit'],256);self.assertEqual(len(self.uploads),1)
+
+    def test_a_core_budget_mismatch_refuses_model_dispatch(self):
+        self.limit=256;self.server_limit=128
+        with mock.patch.object(sys,'argv',['coding_run','0001','--request-id',KEY,'--report-name','review.md','--model-call-limit','256']), mock.patch('builtins.print'):
+            self.assertEqual(runner.main(),1)
+        runner.run_worker.assert_not_called();self.assertEqual(self.uploads,[])
+
+    def test_invalid_budget_or_nonreport_override_refuses_before_task_claim(self):
+        for tail in [['--report-name','review.md','--model-call-limit','257'], ['--model-call-limit','256'],
+                     ['--report-name','review.md','--model-call-limit','127']]:
+            with self.subTest(tail=tail), mock.patch.object(sys,'argv',['coding_run','0001','--request-id',KEY,*tail]), \
+                 mock.patch('sys.stderr'), self.assertRaises(SystemExit):runner.main()
+        self.assertEqual(self.task['status'],'queued');runner.run_worker.assert_not_called()
 
     def test_changed_source_is_not_delivered(self):
         original=self.worker
@@ -231,6 +254,29 @@ class ReportDispatchTest(unittest.TestCase):
             with mock.patch.object(sys,'argv',['control','launch-report','0001',KEY,'0','']), mock.patch('builtins.print') as printed:
                 self.assertEqual(control.main(),0)
             self.assertIn('CODING_DISPATCH_INVALID_REQUEST',printed.call_args.args[0]);self.assertEqual(unit.call_count,1)
+
+    def test_dispatch_binds_report_budget_and_rejects_replay_with_changed_budget(self):
+        control=runner.coding_dispatch_control
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(control,'STATE',Path(directory)), \
+             mock.patch.object(control,'RECEIPTS',Path(directory)/'requests'),mock.patch.object(control,'unit_active',return_value=False), \
+             mock.patch.object(control,'queued_tasks',return_value=[{'pipelineId':'0001','status':'queued','service':'agentx-coding'}]), \
+             mock.patch.object(control.subprocess,'run') as unit:
+            with mock.patch.object(sys,'argv',['control','launch-report','0001',KEY,'0','review.md','--model-call-limit','256']), mock.patch('builtins.print') as printed:
+                control.main()
+            result=__import__('json').loads(printed.call_args.args[0]);self.assertEqual(result['data']['run']['modelCallLimit'],256)
+            self.assertEqual(unit.call_args.args[0][-2:],['--model-call-limit','256'])
+            self.assertTrue(control.launch('0001',KEY,0,report='review.md',model_call_limit=256)['replayed'])
+            with self.assertRaises(control.ControlError):control.launch('0001',KEY,0,report='review.md')
+            self.assertEqual(unit.call_count,1)
+
+    def test_dispatch_refuses_invalid_budgets_without_host_effects(self):
+        control=runner.coding_dispatch_control
+        with mock.patch.object(control.subprocess,'run') as unit, mock.patch.object(control,'save_receipt') as save:
+            for value in [127,257,256.0,True,'256']:
+                with self.subTest(value=value),self.assertRaises(control.ControlError):
+                    control.launch('0001',KEY,0,report='review.md',model_call_limit=value)
+            with self.assertRaises(control.ControlError):control.launch('0001',KEY,0,model_call_limit=256)
+            unit.assert_not_called();save.assert_not_called()
 
     def test_report_name_cannot_inject_shell_or_leave_its_directory(self):
         for value in ['../review.md','/tmp/review.md','x.md;true','x.md\n','x.txt','.secret.md','a'*121+'.md']:

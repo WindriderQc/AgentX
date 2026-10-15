@@ -12,8 +12,10 @@ async function prepare(headers, model, signal) {
   const guard = claim.query(owner, value);
   if (value.model !== model || value.state !== 'active' || value.finalKind || value.deadlineAt.getTime() <= Date.now())
     throw claim.fail('Report model or execution window changed', 'REPORT_INFERENCE_CONFLICT');
-  if (value.pendingInferences.length || value.modelReceipts.length >= 128 || value.modelReceipts.some(row => row.callId === callId))
+  if (value.pendingInferences.length || value.modelReceipts.some(row => row.callId === callId))
     throw claim.fail('Reconcile the prior receipt; model requests cannot be replayed', 'REPORT_INFERENCE_PENDING');
+  if (value.modelReceipts.length >= reports.modelCallLimit(value.modelCallLimit))
+    throw claim.fail('Report model call budget exhausted', 'REPORT_MODEL_CALL_LIMIT');
   const permitted = await Task.updateOne(guard, { $inc: { manualReportPermitSeq: 1 } }, { timestamps: false, writeConcern: WC });
   reports.acknowledged(permitted);
   if (permitted.modifiedCount !== 1) throw claim.fail('Report claim changed before inference');

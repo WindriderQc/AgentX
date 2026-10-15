@@ -145,9 +145,15 @@ def status(key: str | None = None) -> dict:
     }
 
 
-def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomous=False, report="") -> dict:
+def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomous=False, report="", model_call_limit=None) -> dict:
     if report and (autonomous or not report_name(report)):
         raise ControlError("CODING_DISPATCH_INVALID_REQUEST", "Report mode needs a plain Markdown file name and a manual request.", 400)
+    try:
+        if model_call_limit is not None and not report:
+            raise ValueError('A model call override requires report mode')
+        limit = progress_module.report_call_limit(model_call_limit)
+    except ValueError as error:
+        raise ControlError('CODING_DISPATCH_INVALID_REQUEST', str(error), 400) from error
     STATE.mkdir(parents=True, exist_ok=True)
     with (STATE / "coding-dispatcher-control.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -157,7 +163,9 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
                 if previous['pipelineId'] != pipeline_id:
                     raise ControlError('CODING_DISPATCH_REQUEST_CONFLICT', 'Cancelled request belongs to another task.')
                 return {'accepted': False, 'replayed': True, 'pipelineId': pipeline_id, 'run': previous}
-            if previous["pipelineId"] != pipeline_id or previous.get("expectedAttemptCount", 0) != expected_attempt_count or bool(previous.get("autonomous")) != autonomous or previous.get('reportName', '') != report:
+            if (previous["pipelineId"] != pipeline_id or previous.get("expectedAttemptCount", 0) != expected_attempt_count
+                    or bool(previous.get("autonomous")) != autonomous or previous.get('reportName', '') != report
+                    or report and previous.get('modelCallLimit', progress_module.MANUAL_MODEL_CALL_LIMIT) != limit):
                 raise ControlError("CODING_DISPATCH_REQUEST_CONFLICT", "This request id belongs to a different selection.")
             return {"accepted": True, "replayed": True, "pipelineId": pipeline_id, "run": previous}
         if (LEGACY_RECEIPTS / f"{key}.json").exists():
@@ -191,12 +199,14 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
             run["autonomous"] = True
         if report:
             run['reportName'] = report
+            run['modelCallLimit'] = limit
         save_receipt(run)
         subprocess.run(["systemd-run", "--user", "--collect", "--quiet", f"--unit={UNIT}",
                         f"--property=EnvironmentFile=-{ENV_FILE}", f"--setenv=AGENTX_CORE_URL={CORE}",
                         f"--setenv=PATH={os.environ.get('PATH', '/usr/local/bin:/usr/bin:/bin')}",
                         sys.executable, str(HERE / "coding_run.py"), pipeline_id, "--request-id", key,
-                        *(["--autonomous"] if autonomous else []), *(["--report-name", report] if report else [])],
+                        *(["--autonomous"] if autonomous else []), *(["--report-name", report] if report else []),
+                        *(["--model-call-limit", str(limit)] if report and limit != progress_module.MANUAL_MODEL_CALL_LIMIT else [])],
                        check=True, capture_output=True, text=True, timeout=10)
         run.update(phase="accepted", message="The coding worker started on this task.")
         save_receipt(run)
@@ -326,8 +336,11 @@ def main() -> int:
             data = status(values[0] if values else None)
         elif action in {"launch", "launch-autonomous"} and len(values) == 3 and re.fullmatch(r"\d{4}", values[0]) and values[2].isdigit():
             data = launch(values[0], values[1], int(values[2]), autonomous=action == "launch-autonomous")
-        elif action == "launch-report" and len(values) == 4 and re.fullmatch(r"\d{4}", values[0]) and values[2].isdigit() and report_name(values[3]):
-            data = launch(values[0], values[1], int(values[2]), report=values[3])
+        elif (action == "launch-report" and len(values) in {4, 6} and re.fullmatch(r"\d{4}", values[0])
+              and values[2].isdigit() and report_name(values[3])
+              and (len(values) == 4 or values[4] == '--model-call-limit' and values[5].isdigit())):
+            data = launch(values[0], values[1], int(values[2]), report=values[3],
+                          model_call_limit=int(values[5]) if len(values) == 6 else None)
         elif action == "observe" and len(values) == 2 and re.fullmatch(r"\d{4}", values[0]):
             data = observe(values[0], values[1])
         elif action == "reconcile" and len(values) == 2 and re.fullmatch(r"\d{4}", values[0]):

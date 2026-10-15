@@ -130,6 +130,7 @@ def execute(r,args,progress,task,workspace):
     if not r.coding_dispatch_control.report_name(args.report_name) or not r.coding_progress.REQUEST_ID.fullmatch(args.request_id):
         raise ValueError('Report needs its exact request and plain Markdown name')
     progress.report_mode=True;progress.preflight=True
+    progress.report_model_call_limit=r.coding_progress.report_call_limit(getattr(args,'model_call_limit',None))
     progress.report_spec_sha256=hashlib.sha256(str(task.get('spec','')).encode()).hexdigest()
     home=r.worker_home(workspace)
     if home.is_symlink() or (home/'deliverables').is_symlink():
@@ -146,11 +147,14 @@ def execute(r,args,progress,task,workspace):
     source=r.coding_progress.source_state(workspace);progress.checkpoint=baseline
     progress.report_observer=lambda:report_signature(path,root)
     intent={'claimSeq':progress.task_claim_seq,'specSha256':progress.report_spec_sha256,'sourceCommit':baseline,
-            'reportName':args.report_name,'model':r.MODEL,'hardRemainingSeconds':max(1,int(progress.hard_deadline-progress.now()))}
+            'reportName':args.report_name,'model':r.MODEL,'hardRemainingSeconds':max(1,int(progress.hard_deadline-progress.now())),
+            'modelCallLimit':progress.call_limit()}
     started=r.request(endpoint(r,args.task_id,args.request_id)+'/start',intent)['data']
     if started.get('requestId')!=args.request_id or started.get('claimSeq')!=progress.task_claim_seq:
         raise ValueError('Core did not acknowledge the original report claim')
     progress.report_started=True
+    if started.get('modelCallLimit',r.coding_progress.MANUAL_MODEL_CALL_LIMIT)!=progress.call_limit():
+        return stop(r,args,progress,'runner_error')
     progress.heartbeat=lambda:r.request(endpoint(r,args.task_id,args.request_id)+'/heartbeat',{})
     progress.relay_headers={'x-agentx-report-request':args.request_id,'x-agentx-report-task':args.task_id}
     discussion='\n\n'.join(f"{row.get('by','someone')}: {row.get('text','')}" for row in task.get('feedback',[]))
@@ -161,12 +165,23 @@ def execute(r,args,progress,task,workspace):
             'Do not edit, commit, push or deploy source. '
             f'Save the requested Markdown report only at {output}, outside Git. Save first verified findings early, '
             'then extend and save the report as you inspect remaining documents. State reviewed and pending scope honestly. '
+            'For documentation audits, inventory the requested files once and review small related document groups, '
+            'batching relevant source reads. Before opening the next group, save and read back the findings and a '
+            'per-file coverage table with pending, partial or reviewed status and concrete source evidence. '
+            'Recompute every summary count from that table at each save; record the next group and unresolved checks. '
+            'Merge duplicate findings. If a targeted check remains unresolved, record the uncertainty rather than '
+            'repeating the same search without new evidence. Resume a supplied checkpoint instead of rebuilding '
+            'completed work; revalidate affected claims when its source revision differs. '
+            'If saving fails, report the exact error and stop. '
             'Do not claim complete coverage before checking it. No network exists except the existing model relay. '
             'Do not run live models, benchmarks or GPU jobs. Keep private data, secrets and runtime logs out of the report. '
             f'Remaining soft budget: {max(0,int(progress.soft_deadline-progress.now()))} seconds; '
             f'hard ceiling: {max(0,int(progress.hard_deadline-progress.now()))} seconds. '
-            f'Core also enforces {r.coding_progress.MANUAL_MODEL_CALL_LIMIT} model requests for this execution. '
+            f'Core also enforces {progress.call_limit()} model requests for this execution. '
             'Each request consumes that budget; finish before exhaustion, with pending scope explicit if necessary. '
+            'Reserve enough calls to save, verify and summarize the report. When few calls remain, start no new group; '
+            'finish with an honest partial checkpoint and next group. Partial delivery does not complete the full task '
+            'or authorize another execution. '
             'Saved report changes count as progress; the hard ceiling never moves. End with coverage and validation. '
             'The harness stores the report in Core task deliverables for independent review.\n\n'
             f'Requested result:\n{task.get("spec","")}\n\nDiscussion:\n{discussion}')

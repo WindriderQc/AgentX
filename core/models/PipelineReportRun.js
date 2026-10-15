@@ -11,6 +11,7 @@ const schema = new mongoose.Schema({
   sourceCommit: { type: String, required: true },
   reportName: { type: String, required: true },
   model: { type: String, required: true },
+  modelCallLimit: { type: Number, default: 128, min: 128, max: 256, immutable: true, validate: Number.isSafeInteger },
   host: { type: String, required: true },
   deadlineAt: { type: Date, required: true },
   state: { type: String, enum: ['active', 'review', 'blocked'], default: 'active' },
