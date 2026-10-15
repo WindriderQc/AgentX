@@ -76,13 +76,15 @@
         } finally { clearTimeout(expires); aborts.delete(abort); }
       },
       async speak(text, choice, speechLanguage = language()) {
+        const segments = root.NestorSpeech.splitSpeechText(root.NestorSpeech.speechText(text, { readAloud: true }));
+        if (!segments.some(segment => segment.trim())) throw new Error('Ajoutez du texte à lire avant de lancer cet essai.');
         session.stop(true); // One microphone owner; the TTS test does not hear itself.
         lastSpeech = null;
         const profile = preferences(), choices = choice ? [choice] : psyx
           ? [{ provider: profile.voice?.split('|')[0] || 'kokoro', voice: profile.voice?.split('|')[1] || '' }]
           : root.PersonaPresentation.speechChoices(persona(), speechLanguage, { selections: speechLanguage === language() && profile.voice ? { [speechLanguage]: profile.voice } : {} });
         await speech.speak((signal, segment, after) => ladder.speak({ text: segment, language: speechLanguage, choices, after }, signal),
-          { segments: root.NestorSpeech.splitSpeechText(root.NestorSpeech.speechText(text, { readAloud: true })) });
+          { segments });
         return lastSpeech;
       },
       stopSpeech() { speech.cancel(); },

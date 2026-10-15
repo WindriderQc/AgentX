@@ -2,7 +2,7 @@ const {chromium}=require(process.env.AGENTX_PLAYWRIGHT_MODULE || 'playwright');
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),crypto=require('node:crypto');
 const root=path.resolve(__dirname,'../../..'),report=process.env.AGENTX_VOICE_BROWSER_REPORT || fs.mkdtempSync(path.join(require('node:os').tmpdir(),'agentx-voice-workshop-'));
 fs.mkdirSync(report,{recursive:true});
-const calls=[],errors=[],unknown=[];let ttsDelayMs=0;
+const calls=[],errors=[],unknown=[];let ttsDelayMs=0, failNextTranscription=false;
 const persona={id:'nestor',name:'Nestor',description:'Test personality',version:1,voice:{provider:'voxcpm',voices:{fr:'gazz',en:'gazz'},source:'instance'}};
 const catalog={providers:[{id:'voxcpm',name:'Pocket TTS',available:true}],voices:[{id:'gazz',name:'Gazz',provider:'voxcpm',language:'fr',locale:'fr-CA',available:true},{id:'gazz',name:'Gazz',provider:'voxcpm',language:'en',locale:'en',available:true}]};
 const mime={'.js':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml'};
@@ -25,6 +25,7 @@ if(p.startsWith('/api/')){
  if(p.includes('/sessions/recent'))return json({sessions:[]});
  if(p.includes('conversation-preferences'))return json({revision:0,preferences:{}});
  if(p.endsWith('/transcribe')){
+  if(failNextTranscription){failNextTranscription=false;res.statusCode=503;return json({ok:false,message:'Recognition fixture unavailable'});}
   const mark=raw.indexOf('name="file"'),a=raw.indexOf('\r\n\r\n',mark)+4,boundary=(req.headers['content-type']||'').split('boundary=')[1],b=raw.indexOf('\r\n--'+boundary,a);const audio=mark>=0?raw.subarray(a,b):raw;
   calls.at(-1).audioSha256=crypto.createHash('sha256').update(audio).digest('hex');
   return json({text:'Raconte-moi une blague.',language:'fr',detectedLanguage:'fr',model:'test-whisper',recognitionId:crypto.randomUUID(),sttMs:23,recognition:{schema:1,queueMs:0,decodeMs:23}});
@@ -44,7 +45,7 @@ if(fs.existsSync(file)&&fs.statSync(file).isFile()){res.setHeader('Content-Type'
 res.statusCode=404;res.end('missing');
 }catch(e){res.statusCode=500;res.end(e.message);}});
 (async()=>{await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+server.address().port,browser=await chromium.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required']});
-try{const context=await browser.newContext();await context.addInitScript(()=>{window.captureCalls=0;if(!localStorage.getItem('agentx.voice.capture.v1.personal'))localStorage.setItem('agentx.voice.capture.v1.personal',JSON.stringify({inputDeviceId:'saved-mic'}));if(!localStorage.getItem('household.conversation.preferences.v2'))localStorage.setItem('household.conversation.preferences.v2',JSON.stringify({personaId:'nestor',profiles:{nestor:{language:'fr',selections:{fr:'voxcpm|gazz'}}}}));navigator.permissions.query=async()=>({state:'prompt'});navigator.mediaDevices.getUserMedia=async constraints=>{window.lastAudioConstraints=constraints;window.captureCalls++;const c=new AudioContext(),dest=c.createMediaStreamDestination(),osc=c.createOscillator(),gain=c.createGain();osc.connect(gain);gain.connect(dest);gain.gain.value=.035;osc.start();await c.resume();setTimeout(()=>gain.gain.value=0,1100);for(const track of dest.stream.getTracks())track.addEventListener('ended',()=>c.close());return dest.stream;};});
+try{const context=await browser.newContext();await context.addInitScript(()=>{window.captureCalls=0;if(!localStorage.getItem('agentx.voice.capture.v1.personal'))localStorage.setItem('agentx.voice.capture.v1.personal',JSON.stringify({inputDeviceId:'saved-mic'}));if(!localStorage.getItem('household.conversation.preferences.v2'))localStorage.setItem('household.conversation.preferences.v2',JSON.stringify({personaId:'nestor',profiles:{nestor:{language:'fr',selections:{fr:'voxcpm|gazz'}}}}));navigator.permissions.query=async()=>({state:'prompt'});navigator.mediaDevices.getUserMedia=async constraints=>{window.lastAudioConstraints=constraints;window.captureCalls++;const c=new AudioContext(),dest=c.createMediaStreamDestination(),osc=c.createOscillator(),gain=c.createGain();osc.connect(gain);gain.connect(dest);gain.gain.value=.035;osc.start();await c.resume();setTimeout(()=>gain.gain.value=0,1100);window.testMicrophonePhrase=()=>{gain.gain.value=.035;setTimeout(()=>gain.gain.value=0,1100);};for(const track of dest.stream.getTracks())track.addEventListener('ended',()=>c.close());return dest.stream;};});
 await context.addInitScript(() => {
   window.playbackEvents = [];
   for (const method of ['start', 'stop']) {
@@ -95,6 +96,15 @@ const speechText = page.locator('[data-field="speechText"]');
 await page.locator('[data-tab="speech"]').click();
 const initialFrench = await speechText.inputValue();
 assert.match(initialFrench, /^Bonjour/);
+for (const emptyDraft of ['', '  \n\t ']) {
+  await speechText.fill(emptyDraft);
+  assert.equal(await page.locator('[data-action="speak"]').isDisabled(), true, 'empty drafts cannot start a preview');
+  await page.locator('[data-action="speak"]').dispatchEvent('click');
+  assert.equal(await page.locator('[data-role="speechState"]').textContent(), 'À vous d’écouter.', 'an empty draft never reports successful playback');
+}
+assert.equal(calls.filter(c=>c.path.endsWith('/synthesize/stream')).length,0);
+await speechText.fill(initialFrench);
+assert.equal(await page.locator('[data-action="speak"]').isDisabled(), false, 'typing text immediately enables preview');
 await testLanguage.selectOption('en');
 assert.match(await speechText.inputValue(), /^Hello/);
 assert.equal(await page.locator('[data-field="language"]').inputValue(), 'fr', 'test language never saves a conversation language');
@@ -125,6 +135,29 @@ await page.waitForFunction(() => !document.querySelector('[data-action="replay"]
 assert.equal(await stopReplay.isDisabled(), true, 'Stop returns to rest after natural completion');
 assert.equal(await page.evaluate(() => window.captureCalls), 1, 'replay Stop does not reopen the microphone');
 await page.locator('[data-action="compare"]').click();await page.locator('[data-role="comparison"] dd').first().waitFor();const transcribes=calls.filter(c=>c.path.endsWith('/transcribe'));assert.equal(transcribes.length,3);assert.equal(transcribes[1].audioSha256,transcribes[2].audioSha256);
+// A new failed capture must not inherit the previous successful words or timing.
+failNextTranscription=true;
+await page.locator('[data-action="start"]').click();
+await page.waitForFunction(() => !document.querySelector('[data-role="comparison"]').childElementCount);
+await page.evaluate(() => window.testMicrophonePhrase());
+await page.locator('[data-role="phase"]').filter({hasText:'Transcription indisponible'}).waitFor({timeout:10000});
+await page.locator('[data-role="transcript"]').filter({hasText:'Transcription indisponible'}).waitFor({timeout:10000});
+assert.equal(await page.locator('[data-step="recognition"]').getAttribute('data-state'),'caution');
+assert.equal(await page.locator('[data-stat="recognition"]').textContent(),'—','failed STT never reuses a previous duration');
+assert.match(await page.locator('[data-role="monitorHint"]').textContent(),/Réécoutez/);
+assert.match(await page.locator('[data-role="clip"]').textContent(),/Extrait temporaire/,'failed STT remains reviewable');
+await page.screenshot({path:report+'/workshop-stt-unavailable.png',fullPage:true});
+await page.locator('[data-action="replay"]').click();
+await page.waitForFunction(() => !document.querySelector('[data-action="replay"]').disabled);
+assert.equal(await stopReplay.isDisabled(),true);
+await page.locator('[data-action="start"]').click();
+await page.locator('[data-role="transcript"]').filter({hasText:'Votre prochaine phrase apparaîtra ici.'}).waitFor();
+assert.equal(await page.locator('[data-step="recognition"]').getAttribute('data-state'),'idle','resuming never revives old words');
+await page.evaluate(() => window.testMicrophonePhrase());
+await page.locator('[data-role="transcript"]').filter({hasText:'Raconte-moi une blague.'}).waitFor({timeout:10000});
+assert.equal(await page.locator('[data-step="recognition"]').getAttribute('data-state'),'complete','a later successful capture clears the failed state');
+assert.equal(await page.evaluate(() => window.captureCalls),1,'failed STT recovery resumes the same microphone owner');
+await page.locator('[data-action="review"]').click();
 await page.locator('[data-action="erase"]').click();assert.equal(await page.locator('[data-action="compare"]').isDisabled(),true);
 await page.locator('[data-tab="settings"]').click();await page.locator('[data-capture="threshold"]').fill('0.01');await page.locator('[data-role="settings"] button[type="submit"]').click();await page.locator('[data-role="saved"]').filter({hasText:'Enregistré'}).waitFor();assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('agentx.voice.capture.v1.personal')).threshold),.01);
 await page.locator('[data-tab="speech"]').click();await page.locator('[data-action="speak"]').click();
@@ -213,5 +246,5 @@ await page.goto(origin+'/psyx');
 await page.route('**/psyx/assets/voice-audio.js*',route=>route.abort());await page.goto(origin+'/psyx');await page.locator('#voiceSettings').click();await page.locator('[data-role="notice"]').filter({hasText:'lecteur TTS est indisponible'}).waitFor();assert.equal(await page.evaluate(()=>window.captureCalls),0);await page.locator('[data-action="close"]').click();assert.deepEqual(errors,[]);await page.unroute('**/psyx/assets/voice-audio.js*');
 await page.goto(origin+'/voice-lab?tab=settings&persona=missing-personality');await page.locator('[data-action="sharedVoice"]').waitFor();await page.locator('[data-role="sharedStatus"]').filter({hasText:'indisponible'}).waitFor();assert.equal(await page.locator('[data-action="sharedVoice"]').isDisabled(),true);
 
-fs.writeFileSync(report+'/browser-check.json',JSON.stringify({state:'passed',errors,unknown,calls: calls.map(({body,...r})=>r),physicalDevice:false,liveModels:0},null,2));console.log(JSON.stringify({state:'passed',networkRequests:calls.length,transcriptions:transcribes.length,scriptErrors:0,realModelCalls:0,unknown}));
+fs.writeFileSync(report+'/browser-check.json',JSON.stringify({state:'passed',errors,unknown,calls: calls.map(({body,...r})=>r),physicalDevice:false,liveModels:0},null,2));console.log(JSON.stringify({state:'passed',networkRequests:calls.length,transcriptions:calls.filter(c=>c.path.endsWith('/transcribe')).length,scriptErrors:0,realModelCalls:0,unknown}));
 }finally{await browser.close();server.close();}})().catch(e=>{fs.writeFileSync(report+'/browser-errors.json',JSON.stringify({error:e.message,stack:e.stack,errors,unknown,calls},null,2));console.error(e);server.close();process.exitCode=1;});
