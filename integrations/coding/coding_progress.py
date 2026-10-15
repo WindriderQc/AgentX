@@ -513,11 +513,11 @@ class Progress:
     def baseline(self, home: Path, workspace: Path):
         for path in session_logs(home):
             self.offsets[path] = path.stat().st_size
-        self.source_signature = source_state(workspace)
+        self.source_signature = self.observed_state(workspace)
         self.seen_states.add(self.source_signature)
 
     def scan(self, home: Path, workspace: Path):
-        self.source_signature = source_state(workspace)
+        self.source_signature = self.observed_state(workspace)
         if self.source_signature not in self.seen_states:
             self.seen_states.add(self.source_signature)
             self.useful()
@@ -542,6 +542,11 @@ class Progress:
                     except (ValueError, UnicodeDecodeError, RecursionError):
                         continue
             self.offsets[path] = offset
+
+    def observed_state(self, workspace: Path) -> str:
+        signature = source_state(workspace)
+        observer = getattr(self, 'report_observer', None)
+        return hashlib.sha256((signature + observer()).encode()).hexdigest() if observer else signature
 
     def observe(self, home: Path | None = None, workspace: Path | None = None):
         while not self.model_events.empty():

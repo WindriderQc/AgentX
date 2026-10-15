@@ -385,7 +385,8 @@ async function executeRoutedInference(deps, request, options = {}) {
   // Core's coding budget must survive caller detachment while a stream drains.
   const codingTimeout = options.codingCapacity && Number.isFinite(options.codingDeadlineAt)
     ? Math.max(1, options.codingDeadlineAt - Date.now()) : Infinity;
-  const timeoutMs = Math.min(boundedTimeout(request.timeoutMs), codingTimeout);
+  const reportTimeout = Number.isFinite(options.reportDeadlineAt) ? Math.max(1, options.reportDeadlineAt - Date.now()) : Infinity;
+  const timeoutMs = Math.min(boundedTimeout(request.timeoutMs), codingTimeout, reportTimeout);
   const abortBridge = createAbortBridge(options.signal, timeoutMs);
 
   try {

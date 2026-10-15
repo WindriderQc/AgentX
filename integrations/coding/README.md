@@ -59,6 +59,38 @@ The runner uses four protections:
   stop ends the attempt without an automatic retry. An explicit handoff can
   resume its local source checkpoint.
 
+## Private Markdown reports
+
+An approved manual task whose result is a report can use the native report
+profile instead of opening a source PR. Queue the campaign through the instance
+operator entrance first, linking the coding session, task, required hosts and
+permitted window. Cover the unchanged four-hour hard ceiling and native drain
+with the reservation; ordinary admission still applies. Then use the installed
+`coding_dispatch_control.py launch-report TASK REQUEST_UUID ATTEMPT_COUNT review.md`
+control after the normal explicit task handoff. An empty or invalid name is
+refused. This profile cannot replace an automated lease or claim.
+
+The complete source snapshot is mounted read-only. DSH saves its Markdown in
+`/home/agent/deliverables/REQUEST_UUID/review.md`, in its private home outside
+Git. New verified report bytes count as useful progress; touching a file,
+repeating bytes or model activity does not extend budgets. No dependencies,
+Git publication, model/context changes or live acceptance jobs are introduced.
+
+Core journals each call against the exact manual claim, task identity,
+specification digest, local model and fixed deadline before dispatch. Unknown
+native model completion remains fenced. Once completion is proven, the runner
+freezes the bytes and a private delivery intent under the same stop/publication
+lock. Core stores and verifies the immutable file through task deliverables and
+moves the original claim to `review`. This is a candidate for independent review,
+not proof of coverage or automatic completion. A later owner or specification
+change supersedes only the old execution receipt and leaves that task intact.
+
+After a lost acknowledgement, use the same native `reconcile TASK REQUEST_UUID`
+control. It repairs only the original durable model settlement and frozen result;
+it never reruns the worker or invents completion from an inactive unit. Inspect
+partial private output after a stop. The original request, result and native
+release evidence remain required before another launch.
+
 ## Progress and stop decisions
 
 The runner writes a private progress receipt for each launch request. Pipeline

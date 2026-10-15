@@ -152,7 +152,7 @@ def worker_patch(model: str, context_size: int | None = None) -> list[dict]:
     ]
 
 
-def sandbox(workspace: Path, home: Path, command: list[str], *, network: bool, timeout_seconds: int) -> list[str]:
+def sandbox(workspace: Path, home: Path, command: list[str], *, network: bool, timeout_seconds: int, read_only=False) -> list[str]:
     return [
         "timeout", "-k", "30", str(timeout_seconds),
         "bwrap", "--unshare-all", *(["--share-net"] if network else []),
@@ -169,7 +169,7 @@ def sandbox(workspace: Path, home: Path, command: list[str], *, network: bool, t
         "--bind", str(home), "/home/agent", "--ro-bind", str(NODE_ROOT), "/opt/node",
         "--ro-bind", str(DSH_ROOT), "/opt/dsh", "--ro-bind", str(HERE), "/opt/coding",
         "--ro-bind", str(HERE.parent.parent / "shared/testing/prepareMongo.js"), "/opt/prepareMongo.js",
-        "--bind", str(workspace), "/workspace", "--ro-bind", str(workspace / ".git"), "/workspace/.git",
+        "--ro-bind" if read_only else "--bind", str(workspace), "/workspace", "--ro-bind", str(workspace / ".git"), "/workspace/.git",
         "--chdir", "/workspace", *command,
     ]
 
@@ -320,7 +320,7 @@ def terminate(process):
         process.wait()
 
 
-def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None, model=None) -> subprocess.CompletedProcess:
+def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None, model=None, *, read_only=False) -> subprocess.CompletedProcess:
     home = worker_home(workspace)
     (home / ".dsh").mkdir(exist_ok=True)
     selected_model = model or MODEL
@@ -337,19 +337,23 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
     relay = model_relay.serve(str(home / "model.sock"), MODEL_URL,
                              progress.model_events.put if progress else None,
                              getattr(progress, "relay_headers", None),
-                             drain_on_disconnect=bool(progress and progress.cumulative_limits),
+                             drain_on_disconnect=bool(progress and (progress.cumulative_limits or getattr(progress, 'report_mode', False))),
                              budget_guidance=getattr(progress, "model_guidance", None))
     try:
         return supervise(sandbox(workspace, home, [
             "python3", "/opt/coding/model_relay.py", "inside", "/home/agent/model.sock", str(RELAY_PORT), "--",
             "/opt/dsh/node_modules/.bin/dsh", "--profile", "headless", "--patch", "/home/agent/.dsh/agentx.patch.json",
             "--patch", "/opt/coding/guard.patch.yml", "--", prompt,
-        ], network=False, timeout_seconds=timeout_seconds), progress, home, workspace, on_stop=relay.begin_drain)
+        ], network=False, timeout_seconds=timeout_seconds, read_only=read_only), progress, home, workspace, on_stop=relay.begin_drain)
     finally:
         relay.begin_drain()
-        if progress and progress.cumulative_limits:
-            remaining = min(120, progress.model_remaining(), max(0, min(progress.hard_deadline, progress.queue_deadline) - progress.now()))
-            relay.drain(remaining, heartbeat=progress.tick)
+        if progress and (progress.cumulative_limits or getattr(progress, 'report_mode', False)):
+            remaining = min(120, max(0, min(progress.hard_deadline, progress.queue_deadline) - progress.now()))
+            if progress.cumulative_limits:
+                remaining = min(remaining, progress.model_remaining())
+            drained = relay.drain(remaining, heartbeat=progress.tick)
+            if getattr(progress, 'report_mode', False):
+                progress.report_drained = drained
         relay.shutdown()
         relay.server_close()
         if progress:
@@ -367,6 +371,10 @@ def feedback(task_id: str, text: str, status: str | None = None, *, progress=Non
     body = {"by": WORKER, "assignee": WORKER, "text": text}
     if status:
         body["status"] = status
+    if getattr(progress, 'report_mode', False):
+        if not getattr(progress, 'report_spec_sha256', None) or not getattr(progress, 'task_claim_seq', None):
+            return
+        body['manualReportClaim'] = {'claimSeq': progress.task_claim_seq, 'specSha256': progress.report_spec_sha256}
     known_reasons = {"no_useful_progress", "no_changes", "model_output_limit", "model_call_limit",
                      "soft_budget_no_progress", "hard_budget", "worker_exit", "model_termination_unverified",
                      "runner_error", "operator_stop", "dependencies_failed", "dependencies_changed",
@@ -407,7 +415,7 @@ def push_and_open_pr(workspace: Path, branch: str, task_id: str, title: str, sum
     return created["html_url"]
 
 
-def begin_publication(progress) -> bool:
+def begin_publication(progress, prepare=None) -> bool:
     # Serialize the irreversible boundary with cooperative stop acceptance.
     # Once this stage is durable, the host refuses a stop as too late to revoke publication.
     RECEIPTS.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -415,6 +423,8 @@ def begin_publication(progress) -> bool:
         fcntl.flock(lock, fcntl.LOCK_EX)
         if progress.check_stop():
             return False
+        if prepare:
+            prepare()
         progress.set_stage("publishing")
         progress.write()
         return True
@@ -427,6 +437,7 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", type=int, default=7200)
     parser.add_argument("--request-id", default="")
     parser.add_argument("--autonomous", action="store_true")
+    parser.add_argument("--report-name", default=None)
     args = parser.parse_args()
     if not TASK_ID.fullmatch(args.task_id):
         parser.error("task id is four digits")
@@ -436,9 +447,13 @@ def main() -> int:
         parser.error("request id must be a UUID")
     if not 1 <= args.timeout_seconds <= 43200:
         parser.error("timeout must be between 1 and 43200 seconds")
+    if args.report_name is not None:
+        if args.autonomous or not args.request_id or not coding_dispatch_control.report_name(args.report_name):
+            parser.error("report mode needs a manual request UUID and a plain Markdown file name")
 
     progress = coding_progress.Progress(args.task_id, args.request_id, args.timeout_seconds, receipts=RECEIPTS,
-        heartbeat=lambda: request(f"{CORE}/api/pipeline/tasks/{args.task_id}/heartbeat", {"assignee": WORKER}))
+        heartbeat=None if args.report_name else lambda: request(f"{CORE}/api/pipeline/tasks/{args.task_id}/heartbeat", {"assignee": WORKER}))
+    progress.report_mode = progress.preflight = bool(args.report_name)
     previous_handlers = {signum: signal.getsignal(signum) for signum in (signal.SIGTERM, signal.SIGINT)}
     def stop_worker(_signum, _frame):
         progress.stop_reason = "operator_stop"
@@ -447,6 +462,11 @@ def main() -> int:
     try:
         return execute(args, progress)
     except Exception as error:
+        if args.report_name:
+            spec = importlib.util.spec_from_file_location("coding_report", HERE / "coding_report.py")
+            reporter = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(reporter)
+            return reporter.failure(SimpleNamespace(**globals()), args, progress, error)
         if args.autonomous:
             # Never overwrite a leased native verdict with legacy feedback.
             progress.write()
@@ -493,6 +513,8 @@ def execute(args, progress) -> int:
     task = request(f"{CORE}/api/pipeline/tasks/{args.task_id}/worker?agent={WORKER}")["data"]["task"]
     claim = next((entry for entry in reversed(task.get("transitions") or []) if entry.get("kind") == "claimed"), {})
     progress.task_claim_seq = claim.get("seq")
+    if getattr(progress, "report_mode", False):
+        progress.report_spec_sha256 = hashlib.sha256(str(task.get("spec", "")).encode()).hexdigest()
     name = f"task-{args.task_id}"
     branch = f"agentx/coding-task-{args.task_id}"
     workspace = WORKSPACES / name
@@ -510,6 +532,12 @@ def execute(args, progress) -> int:
             progress.finish("blocked", progress.stop_reason or "runner_error")
             return 1
         git(workspace, "checkout", "--quiet", "-b", branch)
+
+    if getattr(args, "report_name", ""):
+        spec = importlib.util.spec_from_file_location("coding_report", HERE / "coding_report.py")
+        reporter = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(reporter)
+        return reporter.execute(SimpleNamespace(**globals()), args, progress, task, workspace)
 
     try:
         progress.tick()
