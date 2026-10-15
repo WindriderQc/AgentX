@@ -239,6 +239,35 @@ python3 integrations/secretary/history_import.py --root "$GMAIL_SECRETARY_ROOT" 
 
 ## Outlook mailbox export
 
+### Reviewing existing calendar and contact sources
+
+`structured_sources.py` reads preserved Gmail ICS/VCF attachments and, only when
+explicitly selected by export SHA-256, calendar/contact conversions from an
+existing Outlook inventory. It does not run `readpst`, connect to Outlook, create
+calendar events/contacts or write Core. Larger source scans use the instance's
+queued CPU/IO window. Original hash/size checks precede interpretation; missing,
+changed, oversized, malformed or unsupported encodings remain visible gaps.
+
+The private sidecar retains property names, groups, raw values, parameters,
+component hierarchy and source occurrences. It handles UTF-8 line unfolding and
+preserves multiple coordinates, nested alarms, calendar methods, sequence,
+cancellation and recurrence properties. It does not expand recurrence, merge
+versions/people or infer attendance. Local times retain their timezone text;
+unknown/partial dates and legacy converted properties stay unnormalized. Event
+dates, source timestamps and contact observations remain distinct; a dateless
+contact is not assigned a meeting or import date. `structureStatus=parsed`
+indicates structural reading only; `analysisComplete` remains false.
+
+This is a bounded structural reader, not a complete calendar scheduling or vCard
+implementation. The property formats are documented in
+[RFC 5545](https://www.rfc-editor.org/rfc/rfc5545),
+[vCard 3.0](https://www.rfc-editor.org/rfc/rfc2426) and
+[vCard 4.0](https://www.rfc-editor.org/rfc/rfc6350).
+
+```bash
+python3 integrations/secretary/structured_sources.py --root "$GMAIL_SECRETARY_ROOT" --outlook-export "$SELECTED_EXISTING_EXPORT_SHA256" --output "$PRIVATE_STRUCTURED_REVIEW"
+```
+
 `outlook_import.py import <file.pst>` brings an Outlook mailbox export into the
 same private archive. The PST is kept unchanged under `outlook/exports/<sha256>.pst`.
 Its items are extracted with `readpst` (Debian/Ubuntu `pst-utils`; override the
