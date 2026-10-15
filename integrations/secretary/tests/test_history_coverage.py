@@ -109,6 +109,16 @@ class HistoricalCoverageTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             cutoff_date("2026-01-01")
 
+    def test_proofs_require_real_hashes_numeric_sizes_and_an_observation_time(self):
+        proof = {'schema': 'agentx.secretary-archive-verification/v1', 'intact': True, 'at': '2026-01-01T00:00:00Z',
+                 'raw': {'message1': {'sha256': 'z' * 64, 'bytes': 1}}}
+        self.assertFalse(proof_matches(proof, 'raw', 'message1', {'sha256': 'z' * 64, 'bytes': 1}))
+        proof['raw']['message1'] = {'sha256': 'a' * 64, 'bytes': True}
+        self.assertFalse(proof_matches(proof, 'raw', 'message1', {'sha256': 'a' * 64, 'bytes': True}))
+        proof['raw']['message1']['bytes'] = 1
+        proof.pop('at')
+        self.assertFalse(proof_matches(proof, 'raw', 'message1', {'sha256': 'a' * 64, 'bytes': 1}))
+
 
 if __name__ == "__main__":
     unittest.main()

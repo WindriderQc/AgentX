@@ -181,6 +181,9 @@ def main():
     parser.add_argument("--report", type=Path, help="Write the JSON report here (outside the copy)")
     parser.add_argument("--proof", type=Path, help="Write per-source hash verification evidence outside the copy")
     args = parser.parse_args()
+    for output in (args.proof, args.report):
+        if output and output.resolve().is_relative_to(args.root.resolve()):
+            parser.error("Verification reports and proofs must stay outside the archive copy")
     report, receipts = verify(args.root, with_sources=bool(args.proof))
     if args.sample:
         report["restoreSample"] = restore_sample(args.root, receipts, args.sample, args.restore_to, args.seed)
