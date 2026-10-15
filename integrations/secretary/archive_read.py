@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 
 from evidence_store import load
+from compound_sources import packet_scopes
 
 MAX_BYTES = 64 * 1024 * 1024
 
@@ -87,12 +88,19 @@ def read_original(root, message_id, source_sha256, offset=0, size=10000, part_in
         warnings.append("html_attributes_or_script_data_require_review")
     if extra and extra["truncated"]:
         warnings.append("html_supplement_truncated")
+    thread = str(receipt.get("threadId") or "")
+    manifest = load(root / "threads" / thread / "manifest.json", {}) \
+        if re.fullmatch(r"[a-zA-Z0-9_-]{8,256}", thread) else {}
+    archived = next((m for m in manifest.get("messages", []) if m.get("id") == message_id), {})
+    compound = packet_scopes(root, archived.get("attachments", []), verify_members=False)
+    if compound:
+        warnings.append("compound_attachment_members_require_separate_review")
     return {"messageId": message_id, "threadId": receipt.get("threadId"), "sourceSha256": source_sha256,
             "representation": "archived-original-message", "readerContract": "secretary.archive-reader/v3",
             "bodyReadable": bool(selected and selected["readable"]), "bodyCompleteScope": "selected-mime-text-part",
             "selectedPartIndex": selected["partIndex"] if selected else None,
             "bodyRepresentations": versions, "readingWarnings": warnings,
-            "htmlEvidence": extra,
+            "htmlEvidence": extra, "compoundAttachments": compound,
             "headers": {key: str(message.get(key) or "")[:2000]
                 for key in ("From", "To", "Cc", "Date", "Subject")},
             "offset": offset, "nextOffset": end if end < len(content) else None,

@@ -304,6 +304,60 @@ Keep manifests and all qualification/analysis receipts outside Git.
 python3 integrations/secretary/retention_plan.py --root "$GMAIL_SECRETARY_ROOT" --before "$HISTORICAL_CUTOFF" --inventory "$PRIVATE_GMAIL_INVENTORY" --primary-proof "$PRIVATE_PRIMARY_PROOF" --mirror-proof "$PRIVATE_MIRROR_PROOF" --qualification "$PRIVATE_QUALIFICATION" --decisions "$PRIVATE_ANALYSIS_RECEIPTS" --output "$PRIVATE_RETENTION_PLAN"
 ```
 
+### Compound attachment preservation and reading
+
+A saved ZIP/RAR or Office package does not establish preservation or review of
+its interior documents. `compound_sources.py` explicitly inventories bounded
+containers into `compound-sources/indexes/<attachment sha256>.json` and preserves
+file members in content-addressed `compound-sources/blobs/`. Member identities
+include parent identity, ordinal and original name, so duplicate names and
+byte-identical files retain their distinct occurrences and parent chains.
+Original MIME, outer attachments, page identities and existing reading receipts
+are unchanged. No document, formula or member filename is executed.
+
+ZIP and Office ZIP packages use the standard library. RAR, 7z and tar require
+an already installed `libarchive`; no decoder is installed automatically.
+ZIP archive/member comments are separate preserved sources. Decoded timestamps
+remain archive metadata, not capture dates or life events. Libarchive does not
+expose every format-specific header or comment: those metadata need a separate
+review/evidence reference, not an assertion that the decoder supplied them.
+Unsupported declared containers (including MSG/EML here), encrypted data, bad
+paths, special entries, malformed directories, ZIP64/multipart archives and
+exceeded limits remain explicit incomplete/invalid coverage. Partial output is
+preserved without accepting it as complete.
+
+Default bounds are 32 MiB input, 8 MiB/member, 64 MiB expanded, 256 entries and
+three nested levels. The inventory checks a 30-second deadline between members;
+the native operator still owns process/runtime admission and timeouts. Queue
+heavy or long shared work before invocation through the installed heavy-work
+entrance. Indexing is never launched by collecting mail, opening the reader or
+preparing a cleanup plan. An existing index is reused; explicit `--retry` retains
+its exact prior bytes. Reconcile a lost native attempt before requesting a retry.
+
+```bash
+python3 integrations/secretary/compound_sources.py --root "$GMAIL_SECRETARY_ROOT" --message-id "$ARCHIVED_MESSAGE_ID"
+```
+
+The original reader exposes cached compound scope without decompressing or
+rehashing member bodies during that body read; `memberCopiesChecked` distinguishes
+that projection from the planner's integrity check. The planner hashes the current
+member copies and requires independent proofs for the index and every member blob.
+It adds `compoundAttachments` to the exact review packet only for compound
+attachments; ordinary-message packet hashes stay unchanged. A changed index or
+member invalidates the previous decision. Per-message aggregate bounds also hold
+oversized compound scopes rather than silently omitting excess sources.
+
+For these messages, qualification additionally needs an actually compared
+`compound_attachments` case. Analysis receipts must supply exact
+`compoundMembers` dispositions keyed by every file-member ID, including nested
+containers/comments, plus `compoundMetadata` keyed by every outer attachment hash.
+Each needs `state: addressed` or `no_relevant_content`, a reason and an evidence
+reference. The outer attachment disposition cannot substitute for these sets.
+An inventory remains unread with `analysisAccepted: false`; generating it does
+not settle actions, validate interpretation, confirm owner facts or authorize
+mailbox changes. Private indexes, blobs, proofs and review decisions stay outside
+Git and need the same independent preservation as other source evidence.
+
 ### Durable analysis attempts
 
 The batch prompt receives an explicit analysis date, frozen per page in
