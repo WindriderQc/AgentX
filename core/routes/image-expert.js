@@ -26,7 +26,10 @@ function createRouter(service = createService()) {
   router.get('/resources/:id', wrap(async (req, res) => res.json({ ok: true, resource: await service.resource(req.params.id) })));
   router.get('/sessions', wrap(async (_req, res) => res.json({ ok: true, sessions: await service.sessions() })));
   router.post('/sessions', wrap(async (_req, res) => res.status(201).json({ ok: true, session: await service.createSession() })));
-  router.get('/sessions/:id/turns', wrap(async (req, res) => res.json({ ok: true, turns: await service.turns(req.params.id) })));
+  router.get('/sessions/:id/turns', wrap(async (req, res) => {
+    const turns = await service.turns(req.params.id);
+    res.json({ ok: true, turns, inspectionFence: await service.inspectionFence(req.params.id) });
+  }));
   router.post('/sessions/:id/turns', wrap(async (req, res) => res.status(202).json({ ok: true, turn: await service.accept(req.params.id, req.body) })));
   router.post('/sessions/:id/turns/:turnId/cancel', wrap(async (req, res) => res.json({ ok: true, ...await service.cancel(req.params.id, req.params.turnId) })));
   return router;

@@ -87,6 +87,17 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
     }
     return rows.reverse().map(publicTurn);
   }
+  async function inspectionFence(sessionId) {
+    const session = await conversations.getSession(identity(sessionId));
+    if (!session) throw failure('imageX conversation not found.', 404);
+    const fence = session.imageInspection;
+    if (!fence) return null;
+    // Read-only disclosure, independent of the recent-turn window. Native
+    // session keys, references and execution internals remain private.
+    return { state: ['prepared', 'unknown'].includes(fence.state) ? fence.state : 'unknown',
+      ...(ID.test(fence.requestId || '') && { requestId: fence.requestId }),
+      ...(ID.test(fence.turnId || '') && { turnId: fence.turnId }) };
+  }
   function validate(input) {
     if (!input || !ID.test(input.clientTurnId || '') || !['consult', 'plan'].includes(input.mode)
       || !boundedText(input.message) || !input.message.trim()) throw failure('The imageX request requires valid Unicode text of at most 32,000 UTF-16 characters.');
@@ -230,7 +241,7 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
     const scope = identity(sessionId);
     if (!await conversations.getSession(scope)) throw failure('imageX conversation not found.', 404);
   }
-  return { status, resource, sessions, createSession, turns, accept, cancel,
+  return { status, resource, sessions, createSession, turns, inspectionFence, accept, cancel,
     uploadReference: async (id, input) => { await selected(id); return references.upload(id, input); },
     downloadReference: async (id, attachmentId) => { await selected(id); return references.download(id, attachmentId); },
     originalReference: async (id, attachmentId, bytes, name) => { await selected(id); return references.original(id, attachmentId, bytes, name); },

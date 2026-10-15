@@ -16,7 +16,7 @@ class Element {
 }
 const settle = async () => { for (let count = 0; count < 80; count++) await Promise.resolve(); };
 async function expert({ prompt = 'x'.repeat(9958), constraints = manifest, available = true, sessionPending, turnError, delayedFailure = false,
-  prepareReferences, references, inspection, savedTurn, referenceCount = 1, inspectionAvailable } = {}) {
+  prepareReferences, references, inspection, savedTurn, savedTurns = [], inspectionFence = null, omitInspectionFence = false, referenceCount = 1, inspectionAvailable } = {}) {
   const elements = new Map(), get = id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
   const current = { ready: true, locked: false, prompt, profile: 'quality', width: 1024, height: 576, referenceCount, referenceEpoch: 1, seed: '73', constraints, references };
   const getContext = () => {
@@ -25,7 +25,7 @@ async function expert({ prompt = 'x'.repeat(9958), constraints = manifest, avail
     return { ...current, constraintsInvalid };
   };
   const posts = [], sessions = [], turns = [], apply = jest.fn((text, receipt) => { current.prompt = text; current.receipt = receipt; });
-  if (savedTurn) { sessions.push({ sessionId, label: 'Saved fixture', createdAt: '2026-01-01T00:00:00Z' }); turns.push(savedTurn); }
+  if (savedTurn || savedTurns.length) { sessions.push({ sessionId, label: 'Saved fixture', createdAt: '2026-01-01T00:00:00Z' }); turns.push(...(savedTurn ? [savedTurn] : savedTurns)); }
   let next = 0;
   const fetch = jest.fn(async (url, options) => {
     const body = options.method === 'POST' ? JSON.parse(options.body) : null;
@@ -45,13 +45,13 @@ async function expert({ prompt = 'x'.repeat(9958), constraints = manifest, avail
       if (turnError && !turns.length) { turn.state = 'failed'; turn.error = turnError; delete turn.proposal; }
       if (inspection) turn.inspection = { ...inspection, references: body.context.references || [] };
       turns.push(turn); data = { turn: delayedFailure && turn.state === 'failed' ? { ...turn, state: 'accepted', error: undefined } : turn };
-    } else if (url.endsWith('/turns')) data = { turns };
+    } else if (url.endsWith('/turns')) data = { turns: turns.slice(-50), ...(!omitInspectionFence && { inspectionFence }) };
     else throw new Error(`Unexpected fixture endpoint: ${url}`);
     return { ok: true, json: async () => ({ ok: true, ...data }) };
   });
   const context = vm.createContext({ document: { getElementById: get, createElement: tag => new Element(tag) }, fetch,
     ImageBriefConstraints: contract, ImageTextPolicy: require('../../public/js/image-text-policy'), Intl, Date, URLSearchParams, location: { search: '' },
-    localStorage: { getItem: () => savedTurn ? sessionId : '', setItem() {}, removeItem() {} }, crypto: { randomUUID: () => `turn-${++next}` },
+    localStorage: { getItem: () => savedTurn || savedTurns.length ? sessionId : '', setItem() {}, removeItem() {} }, crypto: { randomUUID: () => `turn-${++next}` },
     setTimeout: jest.fn(), clearTimeout() {} });
   vm.runInContext(source, context);
   const restoreBrief = jest.fn(saved => { current.prompt = saved.prompt; current.constraints = saved.constraints; });
@@ -329,6 +329,36 @@ test('intervening text-only advice and refinement never reopen an earlier unknow
   expect(ui.posts[1].body.context.inspectReferences).toBeUndefined();
   expect(ui.get('imagex-inspect-references').disabled).toBe(true);
   expect(ui.get('imagex-inspection-help').textContent).toContain(requestId);
+});
+test('the canonical session fence blocks inspection after its original turn leaves the 50-turn reload window', async () => {
+  const inspectionFence = { state: 'unknown', requestId: 'retained-native-request', turnId: 'older-than-window' };
+  const savedTurns = Array.from({ length: 50 }, (_, index) => ({ id: `recent-${index}`, state: 'completed', mode: 'consult',
+    input: 'Recent text-only advice', text: 'Recorded answer', events: [], inspection: { state: 'not-requested' } }));
+  const ui = await expert({ prompt: 'A fixture scene', constraints: undefined, savedTurns, inspectionFence, referenceCount: 2, references: inspected });
+  expect(ui.turns.every(turn => turn.inspection.state !== 'unknown')).toBe(true);
+  expect(ui.get('imagex-inspect-references').disabled).toBe(true);
+  expect(ui.get('imagex-inspection-help').textContent).toContain(inspectionFence.requestId);
+  ui.get('imagex-message').value = 'Another text-only question'; await ui.fire('imagex-chat-form', 'submit');
+  expect(ui.posts).toHaveLength(1); expect(ui.posts[0].body.context.inspectReferences).toBeUndefined();
+  expect(ui.get('imagex-inspect-references').disabled).toBe(true);
+  await ui.fire('imagex-inspect-references'); await ui.fire('imagex-retry');
+  expect(ui.posts).toHaveLength(1); expect(ui.prepare).not.toHaveBeenCalled();
+  await ui.fire('imagex-new'); expect(ui.get('imagex-inspect-references').disabled).toBe(false);
+  ui.get('imagex-session').value = sessionId; await ui.fire('imagex-session', 'change');
+  expect(ui.get('imagex-inspect-references').disabled).toBe(true);
+  expect(ui.get('imagex-inspection-help').textContent).toContain(inspectionFence.requestId);
+});
+test('a restored session without required fence metadata keeps inspection unavailable while allowing text-only advice', async () => {
+  const savedTurns = [{ id: 'recent-text', state: 'completed', mode: 'consult', input: 'Recent advice', text: 'Recorded answer', events: [] }];
+  const ui = await expert({ prompt: 'A fixture scene', constraints: undefined, savedTurns, omitInspectionFence: true,
+    referenceCount: 2, references: inspected });
+  expect(ui.get('imagex-inspect-references').disabled).toBe(true);
+  expect(ui.get('imagex-inspection-help').textContent).toContain('unavailable');
+  await ui.fire('imagex-inspect-references'); expect(ui.posts).toHaveLength(0); expect(ui.prepare).not.toHaveBeenCalled();
+  ui.get('imagex-message').value = 'A text-only question'; await ui.fire('imagex-chat-form', 'submit');
+  expect(ui.posts).toHaveLength(1); expect(ui.posts[0].body.context.inspectReferences).toBeUndefined();
+  expect(ui.get('imagex-inspect-references').disabled).toBe(true);
+  expect(ui.get('imagex-inspection-help').textContent).toContain('unavailable');
 });
 test('an older installed specialist disables inspection without disabling text-only advice or discarding the draft', async () => {
   const ui = await expert({ references: inspected, referenceCount: 2, inspectionAvailable: false }), original = ui.current.prompt;

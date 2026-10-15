@@ -8,13 +8,19 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief, prepar
   const constraints = globalThis.ImageBriefConstraints;
   const textPolicy = globalThis.ImageTextPolicy;
   let applied = null;
+  let sessionFence = { state: 'unavailable' };
   const node = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
   const active = () => turns.find(turn => ['accepted', 'running'].includes(turn.state));
   const busy = () => pending || !!active();
   const signature = () => { const { references, ...context } = getContext(); return JSON.stringify(context); };
   const uncertainInspection = turn => turn?.inspection?.state === 'unknown';
-  const unresolvedInspection = () => turns.find(uncertainInspection);
-  const inspectionWarning = turn => `The inspection outcome is unknown. Check the original receipt; another inspection is not started.${turn?.inspection?.requestId ? ` Inspection request: ${turn.inspection.requestId}` : ''}`;
+  const unresolvedInspection = () => sessionFence ? { inspection: sessionFence } : turns.find(uncertainInspection);
+  const inspectionWarning = turn => {
+    const fence = turn?.inspection;
+    if (fence?.state === 'unavailable') return 'The recorded inspection state is unavailable. Another inspection stays disabled until the session can be checked.';
+    const notice = fence?.state === 'prepared' ? 'The original inspection remains recorded and unresolved.' : 'The inspection outcome is unknown.';
+    return `${notice} Check the original receipt; another inspection is not started.${fence?.requestId ? ` Inspection request: ${fence.requestId}` : ''}`;
+  };
   const terminal = turn => ['failed', 'interrupted', 'cancelled', 'unknown'].includes(turn?.state);
   function errorText(turn) {
     if (/Image expert changed the requested (width|height|profile)/.test(turn.error || '')) {
@@ -143,6 +149,10 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief, prepar
     try {
       const result = await api(`/sessions/${requested}/turns`);
       if (sessionId !== requested) return;
+      if (!Object.hasOwn(result, 'inspectionFence') || result.inspectionFence === undefined) {
+        sessionFence = { state: 'unavailable' }; throw new Error('The recorded inspection state is unavailable.');
+      }
+      sessionFence = result.inspectionFence;
       const previousIds = new Set(turns.filter(row => row.proposal).map(row => row.id));
       turns = result.turns;
       const newProposal = turns.find(row => row.proposal && !previousIds.has(row.id));
@@ -170,6 +180,7 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief, prepar
     }
     if (!sessionId) { try { sessionId = new URLSearchParams(location.search).get('expertSession') || localStorage.getItem('agentx-imagex-session') || ''; } catch {} }
     if (!result.sessions.some(row => row.sessionId === sessionId)) sessionId = '';
+    if (!sessionId) sessionFence = null;
     select.value = sessionId; if (sessionId) await loadTurns();
   }
   async function send(mode, message, inspectReferences = false) {
@@ -332,12 +343,12 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief, prepar
   $('imagex-plan-instruction').addEventListener('input', refresh);
   $('imagex-inspect-turn').addEventListener('change', () => { selectedTurn = $('imagex-inspect-turn').value; renderReceipt(); });
   $('imagex-new').addEventListener('click', () => {
-    if (busy()) return; sessionId = ''; turns = []; selectedTurn = ''; retry = null; clearTimeout(timer);
+    if (busy()) return; sessionId = ''; sessionFence = null; turns = []; selectedTurn = ''; retry = null; clearTimeout(timer);
     try { localStorage.removeItem('agentx-imagex-session'); } catch {}
     $('imagex-session').value = ''; $('imagex-notice').textContent = ''; showProposal(null); renderTurns(); $('imagex-message').focus();
   });
   $('imagex-session').addEventListener('change', () => {
-    if (busy()) return; sessionId = $('imagex-session').value; turns = []; selectedTurn = ''; retry = null;
+    if (busy()) return; sessionId = $('imagex-session').value; sessionFence = sessionId ? { state: 'unavailable' } : null; turns = []; selectedTurn = ''; retry = null;
     try { localStorage.setItem('agentx-imagex-session', sessionId); } catch {}
     $('imagex-notice').textContent = ''; showProposal(null); renderTurns(); void loadTurns();
   });

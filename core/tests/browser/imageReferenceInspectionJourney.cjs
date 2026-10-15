@@ -74,7 +74,11 @@ async function inspect(page) {
       return response.json({ ok: true, references, sha256: checksum(Buffer.from(JSON.stringify(references))) });
     }
     const session = sessions.get(sessionId);
-    if (method === 'GET') return response.json({ ok: true, turns: session.turns });
+    if (method === 'GET') {
+      const unresolved = session.turns.find(turn => turn.inspection?.state === 'unknown');
+      return response.json({ ok: true, turns: session.turns.slice(-50), inspectionFence: unresolved
+        ? { state: 'unknown', requestId: unresolved.inspection.requestId, turnId: unresolved.id } : null });
+    }
     assert.equal(action, 'turns'); consultations.push(structuredClone(body));
     const references = body.context.inspectReferences ? resolveReferences(sessionId, body.context.references) : [];
     assert.ok(!JSON.stringify(body.context).includes('base64'));

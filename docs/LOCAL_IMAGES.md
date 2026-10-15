@@ -95,6 +95,10 @@ observe the saved turn and never dispatch again. A new explicit text-only
 consultation may proceed without clearing that fence. The console shows the
 ordered input hashes, state and available native receipt, excluding raw pixels,
 archive paths and tool payloads.
+The existing session-turn read also returns `inspectionFence` with only its
+state and valid request/turn IDs, or `null`. This canonical projection keeps Inspect
+blocked after an unresolved turn leaves the 50-turn display window; the projection
+neither clears the fence nor starts native work. Switching sessions resets the UI scope.
 
 The proposal binds those ordered identities and actual input hashes across
 reloads; replacing or reordering references, including equal-count replacements,
