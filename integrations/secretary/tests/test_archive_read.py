@@ -96,7 +96,7 @@ class ArchivedOriginalReadingTests(unittest.TestCase):
         self.assertIn('return the synthetic form', other['body'])
         self.assertNotIn('steal()', other['body'])
         self.assertEqual(other['selectedPartIndex'], html['partIndex'])
-        self.assertEqual(other['readerContract'], 'secretary.archive-reader/v2')
+        self.assertEqual(other['readerContract'], 'secretary.archive-reader/v3')
 
     def test_part_selection_and_pagination_stay_on_the_pinned_representation(self):
         message = EmailMessage(); message.set_content('Short plain')
@@ -132,3 +132,49 @@ class ArchivedOriginalReadingTests(unittest.TestCase):
         page = read_original(self.root, 'message1', self.sha)
         self.assertIn('unreadable_text_representation', page['readingWarnings'])
         self.assertEqual(page['bodyCompleteScope'], 'selected-mime-text-part')
+
+    def test_html_only_document_targets_descriptions_and_structured_data_are_inert_evidence(self):
+        message = EmailMessage(); message.set_content('Preferred text has no document target.')
+        message.add_alternative('<p>Read <a href="https://example.invalid/invoice?a=1&amp;b=2">the document</a>.</p>'
+            '<img src="cid:photo1" alt="Workshop on 12 March" title="Printed caption">'
+            '<a href="javascript:steal()">Untrusted destination</a>'
+            '<script type="application/ld+json">{"startDate":"2020-03-12"}</script>', subtype='html')
+        self.preserve(message)
+        first = read_original(self.root, 'message1', self.sha)
+        self.assertIsNone(first['htmlEvidence'])
+        html = next(p for p in first['bodyRepresentations'] if p['mimeType'] == 'text/html')
+        page = read_original(self.root, 'message1', self.sha, part_index=html['partIndex'])
+        extra = page['htmlEvidence']
+        values = {item['value'] for item in extra['items']}
+        self.assertIn('https://example.invalid/invoice?a=1&b=2', values)
+        self.assertIn('cid:photo1', values)
+        self.assertIn('Workshop on 12 March', values)
+        self.assertIn('javascript:steal()', values)
+        self.assertIn('{"startDate":"2020-03-12"}', values)
+        self.assertFalse(extra['contentFetched']); self.assertFalse(extra['scriptsExecuted'])
+        self.assertFalse(extra['truncated'])
+        self.assertNotIn('startDate', page['body'])
+        self.assertIn('html_attributes_or_script_data_require_review', page['readingWarnings'])
+        self.assertEqual(first['bodyRepresentations'][0]['textSha256'], hashlib.sha256(first['body'].encode()).hexdigest())
+
+    def test_bounded_html_supplement_reports_every_clipping_without_hiding_the_limit(self):
+        message = EmailMessage()
+        long_target = 'https://example.invalid/' + 'x' * 2000
+        message.set_content('<a href="' + long_target + '">One</a>'
+            + '<img alt="Additional description">' * 101, subtype='html')
+        self.preserve(message)
+        page = read_original(self.root, 'message1', self.sha)
+        extra = page['htmlEvidence']
+        self.assertEqual(len(extra['items']), 100)
+        self.assertEqual(extra['omittedItems'], 2)
+        item = extra['items'][0]
+        self.assertEqual(item['totalChars'], len(long_target))
+        self.assertEqual(item['sha256'], hashlib.sha256(long_target.encode()).hexdigest())
+        self.assertTrue(item['truncated'])
+        self.assertIn('html_supplement_truncated', page['readingWarnings'])
+
+    def test_unclosed_script_data_is_saved_with_its_own_review_warning(self):
+        from archive_html import supplement
+        extra = supplement('<script type="application/json">{"pending":true}')
+        self.assertEqual(extra['items'][0]['kind'], 'script_data_requires_review')
+        self.assertEqual(extra['items'][0]['value'], '{"pending":true}')

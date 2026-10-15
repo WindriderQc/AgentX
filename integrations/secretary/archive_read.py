@@ -30,18 +30,20 @@ def representations(message):
         if not blocked and (document or not part.is_multipart() and kind not in ("text/plain", "text/html")):
             attachments.append({"partIndex": current, "filename": str(part.get_filename() or "(sans nom)")[:300], "mimeType": kind})
         if not blocked and not document and kind in ("text/plain", "text/html"):
-            value, readable = "", True
+            value, readable, extra = "", True, None
             try:
                 value = part.get_content()
                 if not isinstance(value, str): readable, value = False, ""
                 if kind == "text/html":
+                    from archive_html import supplement
+                    extra = supplement(value)
                     from secretary_evidence import TextHTML
                     parser = TextHTML(); parser.feed(value); value = "".join(parser.chunks)
             except (LookupError, UnicodeError, ValueError):
                 readable, value = False, ""
             bodies.append({"partIndex": current, "mimeType": kind, "readable": readable, "totalChars": len(value),
                            "textSha256": hashlib.sha256(value.encode()).hexdigest() if readable else None,
-                           "content": value, "part": part})
+                           "content": value, "part": part, "htmlEvidence": extra})
         if part.is_multipart():
             stack.extend((child, blocked or document, depth + 1) for child in reversed(list(part.iter_parts())))
     return bodies, attachments
@@ -77,14 +79,20 @@ def read_original(root, message_id, source_sha256, offset=0, size=10000, part_in
     if offset > len(content):
         raise ArchiveReadError("The source offset is outside the message", "SECRETARY_ARCHIVE_INVALID", 400)
     end = min(len(content), offset + size)
-    versions = [{k: v for k, v in part.items() if k not in ("content", "part")} for part in bodies]
+    versions = [{k: v for k, v in part.items() if k not in ("content", "part", "htmlEvidence")} for part in bodies]
+    extra = selected.get("htmlEvidence") if selected else None
     warnings = (["multiple_text_representations"] if len(bodies) > 1 else []) \
         + (["unreadable_text_representation"] if any(not part["readable"] for part in bodies) else [])
+    if extra and extra["items"]:
+        warnings.append("html_attributes_or_script_data_require_review")
+    if extra and extra["truncated"]:
+        warnings.append("html_supplement_truncated")
     return {"messageId": message_id, "threadId": receipt.get("threadId"), "sourceSha256": source_sha256,
-            "representation": "archived-original-message", "readerContract": "secretary.archive-reader/v2",
+            "representation": "archived-original-message", "readerContract": "secretary.archive-reader/v3",
             "bodyReadable": bool(selected and selected["readable"]), "bodyCompleteScope": "selected-mime-text-part",
             "selectedPartIndex": selected["partIndex"] if selected else None,
             "bodyRepresentations": versions, "readingWarnings": warnings,
+            "htmlEvidence": extra,
             "headers": {key: str(message.get(key) or "")[:2000]
                 for key in ("From", "To", "Cc", "Date", "Subject")},
             "offset": offset, "nextOffset": end if end < len(content) else None,
