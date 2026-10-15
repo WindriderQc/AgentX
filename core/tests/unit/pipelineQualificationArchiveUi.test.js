@@ -54,6 +54,7 @@ test('timeline history remains available without changing recorded dates or stat
 });
 test.each(['blocked', 'review'])('an archived %s dossier preserves its receipts and offers no resume or product acceptance', status => {
   const body = { innerHTML: '' }, state = { drawer: {} }, context = { window: {} };
+  vm.runInNewContext(read('pipeline-dossier-activity.js'), context);
   vm.runInNewContext(read('pipeline-drawer.js'), context);
   const api = context.window.PipelineDrawer.create({ state, drawerEls: () => ({ body }), readStorage: () => '',
     reviewContext: () => ({ label: 'Archived qualification', detail: 'UNKNOWN retained', action: 'Read original receipts' }),
