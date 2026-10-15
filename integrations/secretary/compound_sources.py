@@ -226,8 +226,9 @@ def scope(root, item, *, verify_members=True):
                     raise CompoundError("preserved_member_integrity_failed")
         return {**result, "indexPath": index.relative_to(root).as_posix(), "indexSha256": digest(data),
                 "readingState": "unread", "analysisAccepted": False, "memberCopiesChecked": verify_members}
-    except (OSError, ValueError, KeyError, TypeError):
-        return {**fallback, "status": "invalid"}
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        return {**fallback, "status": "invalid", "errors": [str(error) if isinstance(error, CompoundError)
+                                                                 else "inventory_invalid"]}
 
 
 def packet_scopes(root, attachments, *, verify_members=True):
