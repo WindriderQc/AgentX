@@ -86,7 +86,10 @@ class Remote:
         return [*self.ssh, "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", self.host, script]
 
     def run(self, script, data=None):
-        result = subprocess.run(self.command(script), input=data, capture_output=True, timeout=3600)
+        # No-payload commands must get EOF rather than inherit an operator's
+        # open SSH input, which can stall the nested transport.
+        result = subprocess.run(self.command(script), input=b"" if data is None else data,
+                                capture_output=True, timeout=3600)
         if result.returncode:
             raise RuntimeError(f"Remote command failed (exit {result.returncode})")
         return result.stdout
