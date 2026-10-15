@@ -581,7 +581,7 @@ class Archive:
             current = load(self.root / "threads" / issued["threadId"] / "manifest.json", {})
             if current.get("evidenceHash") == issued["evidenceHash"]:
                 # Enrich an old issued page without replacing its identity or text.
-                if "sourceContext" not in issued:
+                if not (issued.get("sourceContext") or {}).get("mimeOverview"):
                     fresh = next((p for p in self.review_pages(current) if p["pageId"] == issued["pageId"]), None)
                     if fresh and fresh["externalUntrustedContent"] == issued["externalUntrustedContent"]:
                         issued["sourceContext"] = fresh["sourceContext"]
@@ -754,7 +754,7 @@ class Archive:
                    "<h1>Secretary — communications et pièces justificatives</h1>",
                    "<p>Dossier privé. Récupération, lecture et analyse sont distinctes. Les pièces ci-dessous ne sont pas toutes des factures. Aucun solde, paiement ou partage des frais n’est présumé.</p>",
                    f"<p><b>{status['collectedMessages']} messages récupérés</b> · {status['collectedThreads']} conversations · {status['uniqueFiles']} fichiers distincts · {len(invoice_rows)} factures ou reçus identifiés.</p>",
-                   f"<p>Lecture : {partial} conversations avec des points ouverts, {status['fullyReviewedThreads']} avec couverture textuelle complète. Classement, validation des conclusions et traitement des informations sont distincts. Mise à jour : {esc(now())}.</p>"]
+                   f"<p>Lecture : {partial} conversations avec des points ouverts, {status['fullyReviewedThreads']} avec toutes les pages du flux de lecture traitées. Les variantes MIME peuvent demander une revue complémentaire. Classement, validation des conclusions et traitement des informations sont distincts. Mise à jour : {esc(now())}.</p>"]
         if invoice_rows:
             content.append("<h2>Factures et reçus identifiés</h2><p>Registre en cours. Montant payé au fournisseur et remboursement entre parents sont distincts.</p><table><tr><th>Date / personne</th><th>Document / fournisseur</th><th>Honoraires</th><th>Payé par le patient</th><th>Payé par un assureur</th><th>Preuve et rapprochement</th></tr>")
             for invoice in invoice_rows:
