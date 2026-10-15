@@ -260,12 +260,16 @@ seconds, including Spam and Trash with `in:anywhere`; ambiguous dates, duplicate
 IDs, unfinished pagination and observations older than 24 hours hold candidates.
 This is an observed inventory, not an atomic mailbox snapshot.
 
-The qualification uses `agentx.secretary-retention-qualification/v1`, identifies
+The qualification uses `agentx.secretary-retention-qualification/v1`, requires
+an explicit boolean `qualified: true`, identifies
 the reviewer and corpus hash, and records compared cases for full bodies,
 pagination, quoted authors, dates, sent mail, drafts, attachments, calendar,
 contacts, invoices, later replies and untrusted mail instructions. These are
 reviewer attestations to inspect, not independent proof that conclusions are true.
 The planner never creates a successful qualification or analysis on its own.
+Passing individual extraction focus checks does not override a false or missing
+whole-process attestation. Reference comparison reports remain separate from
+successful qualification receipts.
 Qualification also covers signature information, owner aliases, MIME alternatives
 and external documents. Each analysis separately attests signature/identity
 checks, all MIME representations and external-reference disposition. An empty
@@ -301,6 +305,19 @@ python3 integrations/secretary/retention_plan.py --root "$GMAIL_SECRETARY_ROOT" 
 ```
 
 ### Durable analysis attempts
+
+The batch prompt receives an explicit analysis date, frozen per page in
+`review-contexts/` before its inference intent is composed. Replays use the same
+date after midnight or a restart; corrupt or mismatched contexts stop instead
+of silently changing the request. Keep these small context receipts with the
+archive backups. The source date never becomes the analysis date.
+
+Source extraction records explicit requests and promises with their actual
+actors. Missing linked documents, OCR work and MIME comparison stay review gaps,
+and do not become personal errands. Old sources default to historical status,
+which does not mean their requests are resolved. Calendar status, partial dates
+and invoice/payment evidence remain attributed to their sources. These rules
+improve candidate extraction; every cleanup still needs source adjudication.
 
 The batch reviewer writes an acknowledged per-page dispatch fence before asking
 Core for inference. Its stable request identity appears in Core telemetry;

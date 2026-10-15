@@ -39,6 +39,7 @@ def aware(value):
 def qualification_valid(receipt):
     """A calibration attestation is evidence to inspect, not authentication."""
     if receipt.get("schema") != "agentx.secretary-retention-qualification/v1" \
+            or receipt.get("qualified") is not True \
             or receipt.get("analysisContract") != ANALYSIS_CONTRACT \
             or not receipt.get("reviewerId") or not aware(receipt.get("at")) \
             or not HASH.fullmatch(receipt.get("corpusSha256", "")):

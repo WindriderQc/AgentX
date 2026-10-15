@@ -126,6 +126,15 @@ assert body[spans[0]['start']:spans[0]['end']] == body
             self.assertEqual(resumed['page']['externalUntrustedContent'], issued['externalUntrustedContent'])
             self.assertEqual(resumed['page']['sourceContext'], quote_page['sourceContext'])
             self.assertEqual(receipt.read_bytes(), before)
+            # Previously enriched pages can predate the MIME scope metadata.
+            older = {**quote_page, 'sourceContext': {k: v for k, v in quote_page['sourceContext'].items() if k != 'mimeOverview'}}
+            save(archive.root / 'native-worker.json', {'issued': older})
+            upgraded = archive.native_next()
+            self.assertTrue(upgraded['resumed'])
+            self.assertEqual(upgraded['page']['sourceContext'], quote_page['sourceContext'])
+            self.assertEqual(upgraded['page']['pageId'], quote_page['pageId'])
+            self.assertEqual(upgraded['page']['externalUntrustedContent'], quote_page['externalUntrustedContent'])
+            self.assertEqual(receipt.read_bytes(), before)
 
 
 if __name__ == '__main__':

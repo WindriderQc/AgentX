@@ -17,6 +17,16 @@ from verify_archive import verify
 
 
 class RetentionPlanTests(unittest.TestCase):
+    def test_passing_focus_cases_do_not_override_an_absent_or_false_qualification_attestation(self):
+        self.assertTrue(qualification_valid(self.qualification))
+        for value in (False, None, 1, "true"):
+            with self.subTest(value=value):
+                receipt = {**self.qualification, 'qualified': value}
+                self.assertFalse(qualification_valid(receipt))
+        receipt = dict(self.qualification)
+        del receipt['qualified']
+        self.assertFalse(qualification_valid(receipt))
+
     def test_new_reference_challenges_are_unqualified_inputs_not_successful_process_receipts(self):
         corpus = load(ROOT / 'fixtures/retention-challenges.json')
         self.assertFalse(corpus['qualified'])
@@ -61,7 +71,7 @@ class RetentionPlanTests(unittest.TestCase):
         self.inventory = {"query": f"in:anywhere before:{int(self.before.timestamp())}", "complete": True,
                           "next": None, "updatedAt": self.clock.isoformat(),
                           "ids": [self.mid, "1234567890abcde1"]}
-        self.qualification = {"schema": "agentx.secretary-retention-qualification/v1", "at": self.clock.isoformat(),
+        self.qualification = {"schema": "agentx.secretary-retention-qualification/v1", "qualified": True, "at": self.clock.isoformat(),
             "analysisContract": ANALYSIS_CONTRACT, "reviewerId": "synthetic-qualified-reviewer", "corpusSha256": "a" * 64,
             "cases": [{"passed": True, "sourceSha256": "b" * 64, "reason": "Synthetic case independently compared",
                        "covers": sorted(QUALIFICATION_CASES)}]}
