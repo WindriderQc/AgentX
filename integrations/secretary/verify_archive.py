@@ -20,6 +20,7 @@ import json
 from pathlib import Path
 import random
 import shutil
+import socket
 import sys
 import tempfile
 import time
@@ -51,9 +52,13 @@ def folded(value):
 class Tally:
     def __init__(self):
         self.ok, self.missing, self.mismatched = 0, [], []
+        self.sources = {}
 
     def check(self, root, relative, sha256, size=None, key=None):
-        file = root / relative
+        file = (root / relative).resolve()
+        if not file.is_relative_to(root.resolve()):
+            self.mismatched.append(key or relative)
+            return False
         if not file.is_file():
             self.missing.append(key or relative)
             return False
@@ -61,6 +66,8 @@ class Tally:
             self.mismatched.append(key or relative)
             return False
         self.ok += 1
+        self.sources[str(key or relative)] = {"path": relative, "sha256": sha256,
+                                               "bytes": file.stat().st_size}
         return True
 
     def report(self):
@@ -68,7 +75,7 @@ class Tally:
                 "missingIds": self.missing[:200], "mismatchedIds": self.mismatched[:200]}
 
 
-def verify(root):
+def verify(root, with_sources=False):
     root = Path(root)
     manifests = {}
     for file in (root / "threads").glob("*/manifest.json"):
@@ -93,6 +100,7 @@ def verify(root):
                     found = folded(email.message_from_binary_file(handle, policy=policy.compat32).get("Message-ID") or "")
                 if found != expected:
                     raw.ok -= 1
+                    raw.sources.pop(receipt["messageId"], None)
                     raw.mismatched.append(receipt["messageId"])
                     continue
             raw_ids.append(receipt)
@@ -106,6 +114,8 @@ def verify(root):
             for item in message.get("attachments", []):
                 if item.get("path") and item.get("sha256"):
                     attachments.check(root, item["path"], item["sha256"], item.get("bytes"), item["path"])
+                else:
+                    attachments.missing.append(f"{message['id']}:{item.get('partId', 'unknown')}")
 
     outlook, exports = Tally(), Tally()
     for item in (load(root / "outlook" / "inventory.json", {"items": {}})["items"]).values():
@@ -115,9 +125,18 @@ def verify(root):
 
     report = {"at": now(), "threads": threads, "raw": raw_report, "attachments": attachments.report(),
               "outlookItems": outlook.report(), "outlookExports": exports.report()}
-    problems = (threads["withoutOriginal"] + sum(report[k]["missing"] + report[k]["mismatched"]
+    problems = (threads["withoutOriginal"] + raw_report["withoutOriginal"]
+                + sum(report[k]["missing"] + report[k]["mismatched"]
                 for k in ("raw", "attachments", "outlookItems", "outlookExports")))
     report["intact"] = problems == 0
+    if with_sources:
+        report["verificationProof"] = {
+            "schema": "agentx.secretary-archive-verification/v1", "at": report["at"],
+            "host": socket.gethostname(), "root": str(root.resolve()), "intact": report["intact"],
+            "threads": {tid: {"evidenceHash": m["evidenceHash"]} for tid, m in manifests.items()},
+            "raw": raw.sources, "attachments": attachments.sources,
+            "outlookItems": outlook.sources, "outlookExports": exports.sources,
+        }
     return report, raw_ids
 
 
@@ -160,11 +179,20 @@ def main():
     parser.add_argument("--restore-to", type=Path, help="Keep the restored sample here instead of a temporary directory")
     parser.add_argument("--seed", type=int)
     parser.add_argument("--report", type=Path, help="Write the JSON report here (outside the copy)")
+    parser.add_argument("--proof", type=Path, help="Write per-source hash verification evidence outside the copy")
     args = parser.parse_args()
-    report, receipts = verify(args.root)
+    for output in (args.proof, args.report):
+        if output and output.resolve().is_relative_to(args.root.resolve()):
+            parser.error("Verification reports and proofs must stay outside the archive copy")
+    report, receipts = verify(args.root, with_sources=bool(args.proof))
     if args.sample:
         report["restoreSample"] = restore_sample(args.root, receipts, args.sample, args.restore_to, args.seed)
         report["intact"] = report["intact"] and not report["restoreSample"]["failures"]
+    proof = report.pop("verificationProof", None)
+    if args.proof:
+        from evidence_store import save
+        proof.update(intact=report["intact"], restoreSample=report.get("restoreSample"))
+        save(args.proof, proof)
     text = json.dumps(report, ensure_ascii=False, indent=2)
     if args.report:
         args.report.write_text(text + "\n", encoding="utf-8")
