@@ -78,6 +78,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     archived.add_argument("--message", required=True)
     archived.add_argument("--sha256", required=True)
     archived.add_argument("--offset", type=int, default=0)
+    archived.add_argument("--part", type=int)
     return parser.parse_args(argv)
 
 
@@ -289,7 +290,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "archived":
             from archive_read import ArchiveReadError, read_original
             try:
-                data = read_original(args.evidence_root, args.message, args.sha256, args.offset)
+                data = read_original(args.evidence_root, args.message, args.sha256, args.offset, part_index=args.part)
             except ArchiveReadError as error:
                 raise MailDeskError(str(error), error.code, error.status) from error
             except (OSError, ValueError, LookupError):

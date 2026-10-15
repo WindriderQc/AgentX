@@ -82,6 +82,11 @@ Write in French. Return only the JSON object required by the schema.
   Your own reading, attachment checks, offsets and analysis are review work, not owner tasks.
   CI/build/deployment/security notifications are platform matters, never personal errands.
 - memories: durable dated facts or decisions about the owner's life, attributed to their author.
+  Professional signatures can contain role, employer and contact observations even in an otherwise
+  trivial message. Attribute them to the named person and the source date; never infer employment
+  start/end dates. Check known owner aliases and quoted authors before assigning a role to the owner.
+  A plain-text view is not proof that all MIME versions or linked documents were read. If another
+  version/material is missing, keep that gap unresolved as review work, never an owner errand.
 - sourceContext.messageDirection identifies a received message, sent message or unsent draft.
   A draft is not evidence that its words were sent, agreed, or communicated to another person.
   Preserve it as unconfirmed intent; never derive an accepted commitment or completed event from it.

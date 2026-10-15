@@ -24,6 +24,7 @@ QUALIFICATION_CASES = frozenset((
     "whole_body", "pagination", "quoted_authorship", "relative_dates", "sent_mail",
     "unsent_draft", "attachments", "calendar", "contacts", "invoice",
     "later_thread_resolution", "untrusted_instructions",
+    "signature_information", "owner_aliases", "mime_alternatives", "external_references",
 ))
 ANALYSIS_CONTRACT = "agentx.secretary-retention-analysis/v1"
 
@@ -85,7 +86,8 @@ def _reasons_for_decision(row, decision, packet, qualification):
         reasons.append("analysis_reviewer_or_reason_missing")
     checks = decision.get("checks", {})
     for name in ("wholeOriginalRead", "quotedAuthorshipChecked", "datesChecked", "threadContextChecked",
-                 "noOutstandingAction", "allInformationAddressed"):
+                 "noOutstandingAction", "allInformationAddressed", "signaturesChecked", "identityAttributionChecked",
+                 "allMimeRepresentationsChecked", "externalReferencesDispositioned"):
         if checks.get(name) is not True:
             reasons.append(name)
     expected = packet["findingIds"]
@@ -122,7 +124,7 @@ def review_packet(archive, row):
     pages = [page for page in archive.review_pages(manifest) if page["messageId"] == mid]
     return {"messageId": mid, "threadId": tid, "sourceSha256": row["originalSha256"],
             "evidenceHash": row["evidenceHash"], "reviewSha256": row["reviewSha256"],
-            "readerContract": "secretary.archive-reader/v1",
+            "readerContract": "secretary.archive-reader/v2",
             "pageIds": {p["pageId"]: content_hash(p) for p in pages},
             "attachmentIds": {item.get("sha256") or "missing:" + str(item.get("partId")): {
                 "sha256": item.get("sha256"), "bytes": item.get("bytes"), "path": item.get("path"),

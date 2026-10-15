@@ -1,0 +1,31 @@
+{
+  "schema": "agentx.secretary-retention-challenges/v1",
+  "qualified": false,
+  "purpose": "Synthetic reference cases for comparison with actual extraction; never a successful qualification receipt",
+  "cases": [
+    {
+      "id": "trivial-message-signature",
+      "covers": ["signature_information", "owner_aliases"],
+      "source": {"date": "2020-05-04T09:00:00Z", "from": "Alex Example <alex.work@example.invalid>", "to": "alex.personal@example.invalid", "ownerAliases": ["alex.work@example.invalid", "alex.personal@example.invalid"], "body": ":)\nAlex Example\nSystems analyst | Acme Sample\nhttps://example.invalid"},
+      "expected": {"outstandingActions": [], "informationMustInclude": ["The signature identifies Alex Example, Systems analyst, Acme Sample, as observed in this dated source"], "mustNotInfer": ["employment start or end", "a new job began on the mail date", "the self-sender is an unrelated person", "empty durable information merely because the message is a smiley"]}
+    },
+    {
+      "id": "quoted-other-person-signature",
+      "covers": ["signature_information", "quoted_authorship"],
+      "source": {"date": "2020-06-01T09:00:00Z", "from": "Alex Example <alex.personal@example.invalid>", "body": "For reference.\n----- Original Message -----\nFrom: Casey Sample <casey@example.invalid>\nDate: 2019-11-01\nCasey Sample\nStudio coordinator | Sample Studio"},
+      "expected": {"outstandingActions": [], "mustNotInfer": ["Alex worked at Sample Studio", "the current sender wrote the quoted signature", "Casey started employment on either message date"], "informationMustInclude": ["Any signature-role observation belongs to Casey and the quoted source date, with attribution uncertainty preserved"]}
+    },
+    {
+      "id": "different-mime-request",
+      "covers": ["mime_alternatives", "whole_body"],
+      "source": {"from": "Sender <sender@example.invalid>", "to": "Alex Example <alex.personal@example.invalid>", "date": "2020-07-01T09:00:00Z", "plain": "There is no request in this plain-text version.", "html": "<p>Alex, please return the signed consent form by Friday.</p>"},
+      "expected": {"mustNotInfer": ["no actions after reading only plain text", "all message representations were read from the preferred body view"], "informationMustInclude": ["The HTML request must be examined or retained as an unresolved source-reading gap", "the printed relative deadline remains attributed and is not silently converted"]}
+    },
+    {
+      "id": "external-document-only",
+      "covers": ["external_references", "invoice"],
+      "source": {"date": "2020-08-01T09:00:00Z", "from": "Supplier <supplier@example.invalid>", "body": "The supporting invoice can be read at https://example.invalid/private-document . It is not attached."},
+      "expected": {"mustNotInfer": ["invoice content preserved from this mail alone", "a paid amount", "a reimbursement obligation", "reading the document is automatically a personal owner errand"], "informationMustInclude": ["The external document is not preserved or read; its missing material remains a review gap"]}
+    }
+  ]
+}

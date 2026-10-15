@@ -11,12 +11,19 @@ sys.path.insert(0, str(ROOT))
 from evidence_record import record_page
 from evidence_store import load, save
 from history_coverage import content_hash, cutoff_date, coverage
-from retention_plan import ANALYSIS_CONTRACT, QUALIFICATION_CASES, plan, review_packet
+from retention_plan import ANALYSIS_CONTRACT, QUALIFICATION_CASES, plan, review_packet, qualification_valid
 from secretary_evidence import Archive, sha
 from verify_archive import verify
 
 
 class RetentionPlanTests(unittest.TestCase):
+    def test_new_reference_challenges_are_unqualified_inputs_not_successful_process_receipts(self):
+        corpus = load(ROOT / 'fixtures/retention-challenges.json')
+        self.assertFalse(corpus['qualified'])
+        self.assertFalse(qualification_valid(corpus))
+        covered = {kind for case in corpus['cases'] for kind in case['covers']}
+        self.assertTrue({'signature_information', 'owner_aliases', 'mime_alternatives', 'external_references'}.issubset(covered))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -70,7 +77,8 @@ class RetentionPlanTests(unittest.TestCase):
                 "qualificationSha256": content_hash(self.qualification), "reviewerId": self.qualification["reviewerId"],
                 "at": self.clock.isoformat(), "reason": "Synthetic full-source analysis and disposition checked",
                 "checks": {key: True for key in ("wholeOriginalRead", "quotedAuthorshipChecked", "datesChecked",
-                    "threadContextChecked", "noOutstandingAction", "allInformationAddressed")},
+                    "threadContextChecked", "noOutstandingAction", "allInformationAddressed", "signaturesChecked",
+                    "identityAttributionChecked", "allMimeRepresentationsChecked", "externalReferencesDispositioned")},
                 "findings": {key: {**disposition, "state": "resolved" if kind == "actions" else "retained"}
                              for key, kind in packet["findingIds"].items()},
                 "pages": {key: {**disposition, "state": "read"} for key in packet["pageIds"]},
@@ -151,7 +159,8 @@ class RetentionPlanTests(unittest.TestCase):
         self.assertIn("analysis_missing_or_ambiguous", self.target(self.result([decision, decision]))["blockers"])
 
     def test_explicit_outstanding_action_or_unaddressed_information_holds(self):
-        for check in ("noOutstandingAction", "allInformationAddressed"):
+        for check in ("noOutstandingAction", "allInformationAddressed", "signaturesChecked",
+                      "identityAttributionChecked", "allMimeRepresentationsChecked", "externalReferencesDispositioned"):
             decision = self.decision(); decision["checks"][check] = False
             self.assertIn(check, self.target(self.result([decision]))["blockers"])
 
