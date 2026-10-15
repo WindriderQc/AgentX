@@ -31,7 +31,7 @@ SENDER_TOP = 25
 ADDRESS = re.compile(r"[^\s<>\"',;]+@[^\s<>\"',;]+")
 EVIDENCE_ROOT = Path(os.environ.get("GMAIL_SECRETARY_ROOT") or Path.home() / ".local/share/agentx/secretary-evidence")
 CATCHUP_FIELDS = ("phase", "startedAt", "updatedAt", "finishedAt", "pending", "reviewed", "failed",
-                  "remaining", "pagesPerHour", "etaHours", "lane")
+                  "remaining", "pagesPerHour", "etaHours", "lane", "unresolvedInferenceAttempts")
 CATCHUP_LOCK_FRESH_SECONDS = 1800
 
 

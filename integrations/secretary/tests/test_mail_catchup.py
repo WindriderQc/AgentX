@@ -40,8 +40,8 @@ class FakeClient:
         self.proposed = getattr(self, "proposed", []) + [proposal["key"]]
         return "idea-" + proposal["key"][:6]
 
-    def extract(self, system, prompt, light=False):
-        self.calls.append({"prompt": prompt, "light": light, "system": system})
+    def extract(self, system, prompt, light=False, request_id=None):
+        self.calls.append({"prompt": prompt, "light": light, "system": system, "requestId": request_id})
         reply = self.replies(prompt) if callable(self.replies) else review()
         if isinstance(reply, Exception):
             raise reply
@@ -103,14 +103,73 @@ class CatchupTests(unittest.TestCase):
         self.assertEqual((status["reviewed"], len(client.calls)), (1, 1))
         self.assertNotIn("paused", catchup.load(self.root / catchup.STATUS_NAME))
 
-    def test_invalid_model_output_is_logged_and_repeated_failures_stop_the_job(self):
+    def test_invalid_model_output_stops_before_any_replacement_or_later_page_call(self):
         for index in range(catchup.MAX_CONSECUTIVE_FAILURES + 2):
             self.thread(f"thread-mail{index}", f"Synthetic mail {index}", internal=str(1000 + index))
         client = FakeClient(replies=lambda _: ValueError("Model output is not a JSON object"))
         status = self.run_catchup(client)
-        self.assertEqual((status["phase"], status["failed"]), ("stopped", catchup.MAX_CONSECUTIVE_FAILURES))
-        self.assertEqual(len(catchup.load(self.root / catchup.ERRORS_NAME)), catchup.MAX_CONSECUTIVE_FAILURES)
+        self.assertEqual((status["phase"], status["unresolvedInferenceAttempts"], len(client.calls)), ("uncertain", 1, 1))
+        self.assertEqual(len(catchup.load(self.root / catchup.ERRORS_NAME)), 0)
         self.assertEqual(list((self.root / "page-reviews").glob("*.json")) if (self.root / "page-reviews").exists() else [], [])
+
+    def test_timeout_keeps_one_identity_and_blocks_batch_and_native_cursor_replacement(self):
+        self.thread("thread-mail1", "Synthetic source with an unknown model outcome")
+        client = FakeClient(replies=lambda _: TimeoutError())
+        first = self.run_catchup(client)
+        self.assertEqual(first["phase"], "uncertain")
+        self.thread("thread-mail2", "Another source collected while the prior outcome is unknown")
+        second = self.run_catchup(client)
+        self.assertEqual(second["unresolvedInferenceAttempts"], 1)
+        self.assertEqual(len(client.calls), 1)
+        self.assertTrue(client.calls[0]["requestId"].startswith("secretary-review-"))
+        self.assertEqual(self.archive.native_next()["outcome"], "uncertain")
+        self.assertEqual(self.archive.native_status()["unresolvedInferenceAttempts"], 1)
+
+    def test_model_result_is_saved_before_recording_and_reused_after_record_failure(self):
+        self.thread("thread-mail1", "Synthetic source with a completed model result")
+        client = FakeClient()
+        with mock.patch.object(catchup, "record_page", side_effect=OSError("synthetic write failure")):
+            self.assertEqual(self.run_catchup(client)["failed"], 1)
+        self.assertEqual(self.run_catchup(client)["reviewed"], 1)
+        self.assertEqual(len(client.calls), 1)
+        self.assertEqual(len(list((self.root / "review-attempts").glob("*/result.json"))), 1)
+
+    def test_known_pre_dispatch_refusal_can_retry_the_same_identity(self):
+        self.thread("thread-mail1", "Synthetic source waiting for native admission")
+        replies = [catchup.Busy("Native claim", retry_after=0, safe_to_retry=True), review()]
+        client = FakeClient(replies=lambda _: replies.pop(0))
+        self.assertEqual(self.run_catchup(client)["reviewed"], 1)
+        self.assertEqual(len(client.calls), 2)
+        self.assertEqual(client.calls[0]["requestId"], client.calls[1]["requestId"])
+        self.assertEqual(len(list((self.root / "review-attempts").glob("*/dispatch-*.json"))), 2)
+
+    def test_saved_result_recovers_a_lost_completion_state_without_model_replay(self):
+        self.thread("thread-mail1", "Synthetic completed source")
+        client = FakeClient()
+        with mock.patch.object(catchup, "record_page", side_effect=OSError("synthetic write failure")):
+            self.run_catchup(client)
+        state_file = next((self.root / "review-attempts").glob("*/attempt.json"))
+        value = catchup.load(state_file); value["phase"] = "pending"; catchup.save(state_file, value)
+        self.assertEqual(self.run_catchup(client)["reviewed"], 1)
+        self.assertEqual(len(client.calls), 1)
+        self.assertEqual(catchup.load(state_file)["phase"], "completed")
+
+    def test_changed_analysis_policy_cannot_silently_replace_an_existing_page_attempt(self):
+        self.thread("thread-mail1", "Synthetic completed source awaiting record")
+        client = FakeClient()
+        with mock.patch.object(catchup, "record_page", side_effect=OSError("synthetic write failure")):
+            self.run_catchup(client)
+        self.assertEqual(self.run_catchup(client, instructions="Different synthetic policy")["phase"], "uncertain")
+        self.assertEqual(len(client.calls), 1)
+
+    def test_a_corrupt_result_receipt_never_causes_a_replacement_request(self):
+        self.thread("thread-mail1", "Synthetic source with corrupt saved result")
+        client = FakeClient()
+        with mock.patch.object(catchup, "record_page", side_effect=OSError("synthetic write failure")):
+            self.run_catchup(client)
+        next((self.root / "review-attempts").glob("*/result.json")).write_text("corrupt")
+        self.assertEqual(self.run_catchup(client)["phase"], "uncertain")
+        self.assertEqual(len(client.calls), 1)
 
     def test_only_current_findings_from_recent_mail_are_queued_for_the_owner(self):
         self.thread("thread-recent", "Please send the signed form")
@@ -222,15 +281,29 @@ class CoreClientTests(unittest.TestCase):
         self.assertEqual((calls[1]["model"], calls[1]["host"], "taskType" in calls[1]), ("small-model", "spare", False))
 
     def test_refusals_and_outages_pause_instead_of_failing(self):
-        refused = urllib.error.HTTPError("http://core.invalid", 409, "claim", {"Retry-After": "30"}, io.BytesIO(b"{}"))
+        refused = urllib.error.HTTPError("http://core.invalid", 409, "claim", {"Retry-After": "30"}, io.BytesIO(b'{"code":"BENCHMARK_CLAIM_ACTIVE"}'))
         open_, _ = self.opener(refused, urllib.error.URLError("down"), {"data": {"maintenance": None, "workloads": [{"kind": "benchmark"}]}})
         client = catchup.CoreClient("http://core.invalid", opener=open_)
         with self.assertRaises(catchup.Busy) as caught:
             client.extract("sys", "page")
         self.assertEqual(caught.exception.retry_after, 30)
-        with self.assertRaises(catchup.Busy):
+        with self.assertRaises(catchup.ReviewUncertain):
             client.extract("sys", "page")
         self.assertEqual(client.busy(), "benchmark running")
+
+    def test_an_unknown_409_or_gateway_timeout_is_not_a_proven_pre_dispatch_refusal(self):
+        for status in (409, 502, 503, 504):
+            error = urllib.error.HTTPError("http://core.invalid", status, "unknown", {}, io.BytesIO(b"{}"))
+            open_, _ = self.opener(error)
+            with self.assertRaises(catchup.ReviewUncertain):
+                catchup.CoreClient("http://core.invalid", opener=open_).extract("sys", "page")
+
+    def test_exact_review_identity_is_kept_in_native_core_telemetry(self):
+        open_, calls = self.opener({"model": "synthetic-resident", "response": json.dumps(review())})
+        client = catchup.CoreClient("http://core.invalid", opener=open_)
+        client.extract("sys", "page", request_id="secretary-review-synthetic")
+        self.assertEqual(calls[0]["telemetry"]["correlationId"], "secretary-review-synthetic")
+        self.assertEqual(client.last_inference_receipt, {"model": "synthetic-resident"})
 
     def test_an_announced_recreate_pauses_the_job_before_its_next_page(self):
         open_, _ = self.opener({"data": {"maintenance": None, "workloads": [], "drain": {"scope": "core-recreate"}}},
