@@ -2520,6 +2520,22 @@
       "secret": false,
       "description": "Interval at which Core turns the current operational findings and active alerts into one short model-written report (task ops_watch), minimum 300000. Applies until the watch is set in the Nerve Center. Unset: off."
     },
+    "PERSONAL_CONVERSATION_CLOUD_BOSS_MODEL": {
+      "services": ["core"],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Optional native cloud model reference for complete Main in personal voice inference profiles. Credentials, runtime and reasoning policy remain with the native agent. Unset disables cloud-brain selection; accepted work retains its selected route."
+    },
+    "PERSONAL_CONVERSATION_CLOUD_GUARDIAN_MODEL": {
+      "services": ["core"],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Optional native cloud model reference for the dedicated tool-free personal voice guardian. Together with the cloud brain route it enables the all-cloud inference profile without changing context or agent permissions."
+    },
     "PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID": {
       "services": [
         "core"

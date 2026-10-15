@@ -7,6 +7,7 @@ const schema = new mongoose.Schema({
   _id: String, owner: { type: String, required: true }, surface: String,
   conversationId: String, sessionId: String, turnId: String, exchangeId: String,
   requestSha256: String, mode: String, state: String, revision: Number,
+  performance: mongoose.Schema.Types.Mixed,
   receivedAt: Date, updatedAt: Date, contextReady: Boolean,
   contextRef: mongoose.Schema.Types.Mixed, attempt: mongoose.Schema.Types.Mixed,
   guardian: mongoose.Schema.Types.Mixed, result: mongoose.Schema.Types.Mixed,
