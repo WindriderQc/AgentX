@@ -591,6 +591,7 @@
       if (['/dad/memories', '/voice-personas', '/voice-personas.html'].includes(location.pathname)) return await loadMemories();
       if (location.pathname === '/dad/family') return await loadParents();
       if (location.pathname === '/dad/day') return await loadDad();
+      if (location.pathname === '/dad/history') return await window.mountPersonalHistory({ app, api, esc });
       if (location.pathname === '/dad') return await window.mountConversation({ app, api, esc, space: 'personal' });
       if (location.pathname === '/kids/sounds') return await loadKidSounds();
       if (location.pathname.startsWith('/kids')) return await loadKids();
@@ -608,7 +609,7 @@
       console.error('Household page initialization failed', error); setRuntime(false, 'unavailable');
       app.innerHTML = '<article class="card full danger-box"><h1>This page is temporarily unavailable.</h1><p>Try again in a moment.</p><button type="button" id="householdRetry">Try again</button></article>'; document.getElementById('householdRetry').onclick = () => location.reload();
     } finally {
-      if (['/dad', '/dad/day', '/dad/memories', '/dad/family', '/panel', '/kids', '/kids/sounds', '/lecture'].includes(location.pathname)) {
+      if (['/dad', '/dad/day', '/dad/memories', '/dad/history', '/dad/family', '/panel', '/kids', '/kids/sounds', '/lecture'].includes(location.pathname)) {
         window.HouseholdNavigation.mount(app, location.pathname);
       }
     }
