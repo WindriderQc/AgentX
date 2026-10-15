@@ -67,7 +67,8 @@ export function approvalFor(toolName, params = {}) {
     const target = params.to?.join(", ") || params.id || "selected conversation";
     return { title: "Send Gmail message", description: `${params.action || "send"} to ${target}${params.subject ? ` — ${params.subject}` : ""}`.slice(0, 256), severity: "warning" };
   }
-  if (toolName === TOOL_NAMES.organize && (params.action === "archive" || params.action === "trash" || params.action === "delete_label" || params.query || params.removeLabels?.includes("INBOX"))) {
+  if (toolName === TOOL_NAMES.organize && (params.action === "archive" || params.action === "trash" || params.action === "delete_label" || params.query || params.removeLabels?.includes("INBOX")
+      || params.addLabels?.includes("Secretary/Processed"))) {
     return { title: "Approve Gmail mailbox change", description: `${params.action}${params.query ? ` matching: ${params.query}` : ""}`.slice(0, 256), severity: params.action === "trash" ? "critical" : "warning" };
   }
   if (toolName === TOOL_NAMES.draft && params.action === "delete") {

@@ -45,6 +45,11 @@ state; verified receipts state `scope=message`. Sender-rule receipts explicitly
 report that their bodies were not read. Classification is separate from archive
 analysis and cleanup qualification. The reading position is kept in
 `readingStateFile` (default: next to `triageStateFile`).
+The generic organizer requires native one-time approval to add
+`Secretary/Processed` to whole threads; background sessions cannot bypass the
+message reading guard through that organizer. Explicit owner bulk organization
+retains its approval path. Previously applied thread labels are not retroactive
+proof that every message was read.
 
 The triage digest searches and records the exact message identity in Core; an
 existing digest for another member or only the thread cannot hide the message.

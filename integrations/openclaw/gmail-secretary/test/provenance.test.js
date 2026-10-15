@@ -21,6 +21,7 @@ test('native Gmail gates block background sends and destructive changes while re
     { toolName: 'gmail_secretary_send', params: { action: 'new', body: 'private body', provenance: { origin: 'owner_turn' } } },
     { toolName: 'gmail_secretary_organize', params: { action: 'archive' } },
     { toolName: 'gmail_secretary_organize', params: { action: 'trash' } },
+    { toolName: 'gmail_secretary_organize', params: { action: 'label_threads', ids: ['thread-1'], addLabels: ['Secretary/Processed'] } },
     { toolName: 'gmail_secretary_organize', params: { action: 'modify', removeLabels: ['INBOX'] } },
     { toolName: 'gmail_secretary_draft', params: { action: 'delete' } },
   ]) {
