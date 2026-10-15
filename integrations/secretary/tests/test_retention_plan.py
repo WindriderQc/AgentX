@@ -14,6 +14,8 @@ from history_coverage import content_hash, cutoff_date, coverage
 from retention_plan import ANALYSIS_CONTRACT, QUALIFICATION_CASES, plan, review_packet, qualification_valid
 from secretary_evidence import Archive, sha
 from verify_archive import verify
+from compound_sources import index_attachment
+from test_compound_sources import zipped
 
 
 class RetentionPlanTests(unittest.TestCase):
@@ -205,6 +207,68 @@ class RetentionPlanTests(unittest.TestCase):
         result = self.result([self.decision()])
         self.assertEqual(result["providerMessagesWithoutHistoricalArchive"], ["abcdef1234567890"])
         self.assertEqual(result["counts"]["candidatesForOwnerReview"], 1)
+
+    def compound(self, indexed=False):
+        data = zipped([("statement.txt", b"An amount and date"), ("inner.zip", zipped([("letter.txt", b"A request")]))])
+        item = {"filename": "records.zip", "mimeType": "application/zip", "sha256": sha(data),
+                "path": "files/records.zip", "bytes": len(data), "status": "needs_visual_review", "partId": "1"}
+        file = self.root / "threads/1234567890abcdea/manifest.json"; manifest = load(file)
+        next(m for m in manifest["messages"] if m["id"] == self.mid)["attachments"] = [item]
+        save(file, manifest)
+        (self.root / "files").mkdir(exist_ok=True); (self.root / item["path"]).write_bytes(data)
+        if indexed:
+            index_attachment(self.root, item)
+        self.refresh_proofs()
+        return item
+
+    def refresh_proofs(self):
+        mirror = Path(self.temp.name) / "mirror"
+        shutil.copytree(self.root, mirror, dirs_exist_ok=True)
+        tree = {"files": {p.relative_to(self.root).as_posix(): {"sha256": sha(p.read_bytes()), "bytes": p.stat().st_size}
+                          for p in self.root.rglob("*") if p.is_file()}}
+        self.primary = verify(self.root, with_sources=True, tree_index=tree)[0]["verificationProof"]
+        self.mirror = verify(mirror, with_sources=True, tree_index=tree)[0]["verificationProof"]
+        self.mirror["host"] = "independent-synthetic-host"
+
+    def compound_decision(self):
+        self.qualification["cases"][0]["covers"].append("compound_attachments")
+        decision = self.decision(); row = self.target(self.result())
+        scopes = row["reviewPacket"]["compoundAttachments"]
+        disposition = {"state": "addressed", "reason": "Each exact source read", "evidenceRef": "synthetic-proof"}
+        decision["compoundMembers"] = {member["id"]: deepcopy(disposition)
+                                        for scope in scopes.values() for member in scope["members"] if member["kind"] == "file"}
+        decision["compoundMetadata"] = {key: deepcopy(disposition) for key in scopes}
+        return decision
+
+    def test_outer_archive_review_cannot_waive_missing_recursive_inventory(self):
+        self.compound()
+        target = self.target(self.result([self.decision()]))
+        self.assertFalse(target["candidateForOwnerReview"])
+        self.assertIn("compound_inventory_missing_or_incomplete", target["blockers"])
+
+    def test_recursive_copies_members_metadata_and_process_all_require_evidence(self):
+        self.compound(indexed=True)
+        decision = self.decision()
+        target = self.target(self.result([decision]))
+        self.assertIn("compound_review_process_not_qualified", target["blockers"])
+        self.assertIn("compound_member_dispositions_incomplete", target["blockers"])
+        self.assertIn("compound_metadata_dispositions_incomplete", target["blockers"])
+        decision = self.compound_decision()
+        self.assertTrue(self.target(self.result([decision]))["candidateForOwnerReview"])
+        decision["compoundMembers"].pop(next(iter(decision["compoundMembers"])))
+        self.assertFalse(self.target(self.result([decision]))["candidateForOwnerReview"])
+
+    def test_current_member_bytes_and_independent_copies_cannot_be_waived(self):
+        self.compound(indexed=True)
+        decision = self.compound_decision()
+        target = self.target(self.result([decision]))
+        source = next(iter(target["reviewPacket"]["compoundAttachments"].values()))
+        member = next(m for m in source["members"] if m["kind"] == "file")
+        self.mirror["archiveTreeFiles"].pop(member["path"])
+        self.assertIn("current_metadata_copies_not_verified", self.target(self.result([decision]))["blockers"])
+        (self.root / member["path"]).write_bytes(b"changed")
+        self.assertIn("compound_inventory_missing_or_incomplete", self.target(self.result([decision]))["blockers"])
+        self.assertIn("analysis_receipt_stale_or_wrong_source", self.target(self.result([decision]))["blockers"])
 
 
 if __name__ == "__main__":

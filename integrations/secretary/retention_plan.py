@@ -18,6 +18,7 @@ import re
 from evidence_store import load, now, save
 from history_coverage import content_hash, coverage, cutoff_date, independent, proof_matches
 from secretary_evidence import Archive, DEFAULT_ROOT
+from compound_sources import packet_scopes, proof_paths, decision_reasons
 
 HASH = re.compile(r"[a-f0-9]{64}")
 QUALIFICATION_CASES = frozenset((
@@ -73,7 +74,12 @@ def inventory_checks(inventory, before, clock):
 
 
 def _reasons_for_decision(row, decision, packet, qualification):
-    reasons = []
+    reasons = decision_reasons(packet.get("compoundAttachments", {}), decision.get("compoundMembers", {}),
+                               decision.get("compoundMetadata", {}))
+    if packet.get("compoundAttachments") and not any(
+            case.get("passed") is True and "compound_attachments" in case.get("covers", [])
+            for case in qualification.get("cases", [])):
+        reasons.append("compound_review_process_not_qualified")
     if decision.get("schema") != ANALYSIS_CONTRACT:
         return ["message_analysis_missing"]
     pins = {"messageId": row["messageId"], "threadId": row["threadId"],
@@ -123,7 +129,7 @@ def review_packet(archive, row):
     review = load(archive.root / "reviews" / f"{tid}.json", {})
     message = next((m for m in manifest.get("messages", []) if m.get("id") == mid), {})
     pages = [page for page in archive.review_pages(manifest) if page["messageId"] == mid]
-    return {"messageId": mid, "threadId": tid, "sourceSha256": row["originalSha256"],
+    packet = {"messageId": mid, "threadId": tid, "sourceSha256": row["originalSha256"],
             "evidenceHash": row["evidenceHash"], "reviewSha256": row["reviewSha256"],
             "readerContract": "secretary.archive-reader/v3",
             "pageIds": {p["pageId"]: content_hash(p) for p in pages},
@@ -133,6 +139,10 @@ def review_packet(archive, row):
             } for item in message.get("attachments", [])},
             "findingIds": {identity: section for section, identities in row["findingIds"].items() for identity in identities},
             "questionIds": {content_hash([tid, item]): item for item in review.get("unresolved", [])}}
+    compound = packet_scopes(archive.root, message.get("attachments", []))
+    if compound:
+        packet["compoundAttachments"] = compound
+    return packet
 
 
 def plan(archive, before, inventory, primary, mirror, qualification, decisions, *, clock=None):
@@ -153,6 +163,10 @@ def plan(archive, before, inventory, primary, mirror, qualification, decisions, 
     for row in report["messages"]:
         packet = review_packet(archive, row)
         reasons = list(global_reasons) + [b for b in row["blockers"] if b not in reviewable]
+        # Inventory/file integrity is not an analysis judgment and cannot be waived.
+        if any(scope["status"] != "complete" or scope.get("errors")
+               for scope in packet.get("compoundAttachments", {}).values()):
+            reasons.append("compound_inventory_missing_or_incomplete")
         primary_tree, mirror_tree = primary.get("archiveTree", {}), mirror.get("archiveTree", {})
         if not independent(primary, mirror) or not HASH.fullmatch(primary_tree.get("indexSha256", "")) \
                 or primary_tree.get("indexSha256") != mirror_tree.get("indexSha256") \
@@ -162,6 +176,7 @@ def plan(archive, before, inventory, primary, mirror, qualification, decisions, 
                  f"reviews/{row['threadId']}.json", f"raw-receipts/{row['messageId']}.json"]
         paths += [f"page-reviews/{page}.json" for page in packet["pageIds"]
                   if (archive.root / "page-reviews" / (page + ".json")).is_file()]
+        paths += proof_paths(packet.get("compoundAttachments", {}))
         for relative in paths:
             file = archive.root / relative
             expected = {"sha256": hashlib.sha256(file.read_bytes()).hexdigest(), "bytes": file.stat().st_size} if file.is_file() else {}
