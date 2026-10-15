@@ -334,6 +334,8 @@ Unsupported declared containers (including MSG/EML here), encrypted data, bad
 paths, special entries, malformed directories, ZIP64 central directories,
 multipart archives and exceeded limits remain explicit incomplete/invalid
 coverage. Partial output is preserved without accepting it as complete.
+Directory entries with nonzero or unknown size also hold coverage: their payload
+cannot be skipped as though the directory were empty.
 
 Default bounds are 32 MiB input, 8 MiB/member, 64 MiB expanded, 256 entries and
 three nested levels. ZIP extra fields have a 256 KiB aggregate raw-byte limit per

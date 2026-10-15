@@ -95,6 +95,25 @@ class CompoundZipMetadataTests(unittest.TestCase):
         self.assertEqual(base64.b64decode(field["base64"]), value)
         self.assertNotIn("textAsUtf8", field)
 
+    def test_directory_payload_cannot_be_skipped_and_counted_as_complete(self):
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as archive:
+            archive.writestr("notes/", b"A source stored under a directory name")
+        data = output.getvalue()
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            self.assertTrue(archive.infolist()[0].is_dir())
+            self.assertEqual(archive.read("notes/"), b"A source stored under a directory name")
+        item, indexed = self.index(data)
+        self.assertEqual(indexed["status"], "incomplete")
+        self.assertIn("directory_member_has_data_or_unknown_size", indexed["errors"])
+        self.assertEqual((self.root / item["path"]).read_bytes(), data)
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as archive:
+            archive.writestr("notes/", b"")
+            archive.writestr("notes/readme.txt", b"An ordinary source")
+        _, empty_directory = self.index(output.getvalue())
+        self.assertEqual(empty_directory["status"], "complete")
+
     def test_malformed_extra_fields_hold_the_inventory_without_changing_original(self):
         for malformed in (b"x", struct.pack("<HH", 0xcafe, 8) + b"short"):
             for location in ("local", "central"):

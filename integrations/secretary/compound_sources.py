@@ -128,6 +128,8 @@ def index_attachment(root, item, *, limits=None, retry=False, reader=members):
                           "metadata": metadata}
                 result["members"].append(member)
                 if entry["kind"] == "directory":
+                    if type(size) is not int or size != 0:
+                        raise CompoundError("directory_member_has_data_or_unknown_size")
                     continue
                 if entry["kind"] != "file":
                     raise CompoundError("special_member_not_read")
