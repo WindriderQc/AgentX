@@ -488,6 +488,46 @@ class ProgressTest(unittest.TestCase):
         self.progress.stop_reason = "operator_stop"
         self.assertIsNone(self.progress.model_guidance())
 
+    def test_report_advice_exposes_call_limit_and_time_without_crediting_progress(self):
+        self.progress.report_mode = True
+        self.progress.set_stage("model_wait")
+        self.clock[0] = 100
+        before = (self.progress.accounted_at, dict(self.progress.stage_spent), self.progress.last_useful,
+                  self.progress.hard_deadline, self.progress.soft_deadline, self.progress.path.read_bytes())
+        for calls, expected in [(117, 11), (127, 1), (128, 0), (129, 0)]:
+            self.progress.model_calls = calls
+            text = self.progress.model_guidance()
+            remaining = json.loads(text[text.index("{"):text.index("}") + 1])
+            self.assertEqual(remaining, {"workSeconds": 14300, "softSeconds": 7100,
+                                         "modelCalls": expected, "noProgressSeconds": 2600})
+            self.assertIn("estimate", text); self.assertIn("count can lag", text)
+            self.assertIn("read-only", text); self.assertIn("private Markdown report", text)
+            self.assertNotIn("source correction", text); self.assertNotIn("focused tests", text)
+            self.assertEqual("end now" in text, expected <= 8)
+            self.assertEqual(self.progress.model_calls, calls)
+            self.assertEqual(before, (self.progress.accounted_at, self.progress.stage_spent, self.progress.last_useful,
+                                     self.progress.hard_deadline, self.progress.soft_deadline, self.progress.path.read_bytes()))
+        self.assertIsNone(self.progress.progress_at)
+        self.assertEqual(self.heartbeats, [])
+
+    def test_report_advice_does_not_change_stops_or_expose_negative_allowances(self):
+        self.progress.report_mode = True
+        self.clock[0] = 14401
+        text = self.progress.model_guidance()
+        remaining = json.loads(text[text.index("{"):text.index("}") + 1])
+        self.assertEqual(remaining["workSeconds"], 0)
+        self.assertEqual(remaining["softSeconds"], 0)
+        self.assertEqual(remaining["noProgressSeconds"], 0)
+        self.assertIsNone(self.progress.stop_reason)
+        self.progress.model_calls = 128
+        self.clock[0] = 100
+        self.assertEqual(self.progress.tick(), "model_call_limit")
+        self.assertIsNone(self.progress.model_guidance())
+        self.progress.stop_reason = None
+        for phase in ["preparing", "delivering", "finished"]:
+            self.progress.phase = phase
+            self.assertIsNone(self.progress.model_guidance())
+
     def test_native_harness_output_limit_is_explicit_without_replacing_an_operator_stop(self):
         self.progress.event({"type": "turn/end", "data": {"reason": {"kind": "completed"}}})
         self.assertIsNone(self.progress.stop_reason)

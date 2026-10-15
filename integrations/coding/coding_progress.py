@@ -18,6 +18,7 @@ import time
 
 
 REQUEST_ID = re.compile(r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$")
+MANUAL_MODEL_CALL_LIMIT = 128
 STAGES = {"preparing", "dependencies", "model_wait", "model_generation", "tool", "test", "checkpoint", "publishing"}
 PHASES = {"preparing", "running", "delivering", "finished"}
 REASONS = {"model_budget_reserve", "hard_budget", "soft_budget_no_progress", "no_useful_progress", "model_call_limit",
@@ -412,7 +413,22 @@ class Progress:
 
     def model_guidance(self):
         """Read an advisory snapshot without touching billing or progress timers."""
-        if not self.cumulative_limits or self.phase != "running" or self.stop_reason:
+        if self.phase != "running" or self.stop_reason:
+            return None
+        if getattr(self, "report_mode", False) and not self.cumulative_limits:
+            current = self.now()
+            remaining = {"workSeconds": max(0, int(min(self.hard_deadline, self.queue_deadline) - current)),
+                "softSeconds": max(0, int(self.soft_deadline - current)),
+                "modelCalls": max(0, MANUAL_MODEL_CALL_LIMIT - self.model_calls),
+                "noProgressSeconds": max(0, int(getattr(self, "no_progress_limit", 45 * 60) - (current - self.last_useful)))}
+            return ("Runner-owned report budget estimate before this request (seconds, except modelCalls): " +
+                    json.dumps(remaining, sort_keys=True) +
+                    ". The observed call count can lag; this request consumes a call. Core enforces the exact " +
+                    str(MANUAL_MODEL_CALL_LIMIT) + "-request limit. This advisory grants no extra budget or authorization. "
+                    "Save verified findings in the private Markdown report after each group; keep pending scope explicit. "
+                    "Sources remain read-only. Finish with a saved honest report before exhaustion. " +
+                    ("Few calls remain: save your current report and end now." if remaining["modelCalls"] <= 8 else ""))
+        if not self.cumulative_limits:
             return None
         current, stage = self.now(), self.stage
         elapsed = max(0, current - self.accounted_at)
@@ -578,7 +594,7 @@ class Progress:
                 self.stop_reason = "hard_budget"
             elif current >= self.soft_deadline:
                 self.stop_reason = "soft_budget_no_progress"
-            elif self.model_calls >= (self.cumulative_limits or {"modelCalls": 128})["modelCalls"]:
+            elif self.model_calls >= (self.cumulative_limits or {"modelCalls": MANUAL_MODEL_CALL_LIMIT})["modelCalls"]:
                 self.stop_reason = "model_call_limit"
             elif self.cumulative_limits and (self.stage_spent["modelSeconds"] >= self.cumulative_limits["modelSeconds"]
                                              or self.stage_spent["testSeconds"] >= self.cumulative_limits["testSeconds"]):
