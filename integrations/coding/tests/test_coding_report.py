@@ -67,6 +67,7 @@ class ReportTest(unittest.TestCase):
 
     def worker(self,workspace,prompt,timeout,progress,*,read_only):
         self.assertTrue(read_only); self.assertIn('/home/agent/deliverables/'+KEY+'/review.md',prompt)
+        self.assertIn('/workspace/AGENTS.md',prompt);self.assertIn('git -C /workspace',prompt)
         self.path.write_text('# Review\n\nVerified README against the source. Other files remain pending.\n')
         return subprocess.CompletedProcess([],self.exit_code,stdout='A report is ready for review.',stderr='')
 
@@ -175,20 +176,34 @@ class ReportTest(unittest.TestCase):
         clock[0]=7201;self.assertIsNone(progress.tick());self.assertEqual(progress.extensions,1)
         clock[0]=hard;self.assertEqual(progress.tick(),'hard_budget');self.assertEqual(progress.hard_deadline,hard)
 
+    def test_only_a_validated_report_can_change_the_sandbox_working_directory(self):
+        command=runner.sandbox(self.workspace,self.home,['true'],network=False,timeout_seconds=1)
+        self.assertEqual(command[command.index('--chdir')+1],'/workspace')
+        for options in [{'report_request_id':KEY}, {'read_only':True,'report_request_id':'../other'},
+                        {'read_only':True,'report_request_id':'/tmp'}]:
+            with self.assertRaises(ValueError):runner.sandbox(self.workspace,self.home,['true'],network=False,timeout_seconds=1,**options)
+
     def test_report_worker_sandbox_mounts_the_whole_source_read_only(self):
         if not shutil.which('bwrap'):self.skipTest('Bubblewrap unavailable')
-        self.home.mkdir();dsh=self.root/'dsh';dsh.mkdir()
-        script="from pathlib import Path\ntry:\n Path('/workspace/README.md').write_text('mutated')\nexcept OSError:\n Path('/home/agent/report.md').write_text('Private output works')\nelse:\n raise AssertionError('Source was writable')\n"
+        self.path.parent.mkdir(parents=True);dsh=self.root/'dsh';dsh.mkdir()
+        script="import os\nfrom pathlib import Path\nassert os.getcwd()=='/home/agent/deliverables/"+KEY+"'\nassert Path('/workspace/README.md').read_text()=='Public source\\n'\ntry:\n Path('/workspace/README.md').write_text('mutated')\nexcept OSError:\n Path('review.md').write_text('Private output works')\nelse:\n raise AssertionError('Source was writable')\n"
         with mock.patch.object(runner,'DSH_ROOT',dsh):
-            command=runner.sandbox(self.workspace,self.home,['python3','-c',script],network=False,timeout_seconds=10,read_only=True)
+            command=runner.sandbox(self.workspace,self.home,['python3','-c',script],network=False,timeout_seconds=10,read_only=True,report_request_id=KEY)
         result=subprocess.run(command,capture_output=True,text=True,timeout=15)
         if 'Operation not permitted' in result.stderr or 'No permissions to create' in result.stderr:self.skipTest('User namespaces unavailable')
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual((self.workspace/'README.md').read_text(),'Public source\n')
-        self.assertEqual((self.home/'report.md').read_text(),'Private output works')
+        self.assertEqual(self.path.read_text(),'Private output works')
 
 
 class ReportDispatchTest(unittest.TestCase):
+    def test_report_worker_refuses_an_unbound_directory_before_requests_or_dispatch(self):
+        with mock.patch.object(runner,'request') as api, mock.patch.object(runner.model_relay,'serve') as relay:
+            for progress in [None, __import__('types').SimpleNamespace(report_mode=False,request_id=KEY),
+                             __import__('types').SimpleNamespace(report_mode=True,request_id='../other')]:
+                with self.assertRaises(ValueError):runner.run_worker(Path('/unused'),'fixture',1,progress,read_only=True)
+            api.assert_not_called();relay.assert_not_called()
+
     def test_report_identity_binds_mode_and_name_before_replay(self):
         control=runner.coding_dispatch_control
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(control,'STATE',Path(directory)), \

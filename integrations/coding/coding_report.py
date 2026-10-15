@@ -156,7 +156,9 @@ def execute(r,args,progress,task,workspace):
     discussion='\n\n'.join(f"{row.get('by','someone')}: {row.get('text','')}" for row in task.get('feedback',[]))
     output=f'/home/agent/deliverables/{args.request_id}/{args.report_name}'
     prompt=(f'You are the documentation reviewer for task {args.task_id}: {task.get("title","")}\n'
-            f'Read AGENTS.md. /workspace is read-only at {baseline}. Do not edit, commit, push or deploy source. '
+            f'Your working directory is the private report output directory. Read /workspace/AGENTS.md explicitly. '
+            f'/workspace is the read-only source snapshot at {baseline}; use absolute source paths or git -C /workspace. '
+            'Do not edit, commit, push or deploy source. '
             f'Save the requested Markdown report only at {output}, outside Git. Save first verified findings early, '
             'then extend and save the report as you inspect remaining documents. State reviewed and pending scope honestly. '
             'Do not claim complete coverage before checking it. No network exists except the existing model relay. '
