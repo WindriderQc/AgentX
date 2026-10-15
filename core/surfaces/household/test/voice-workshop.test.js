@@ -77,7 +77,7 @@ function sessionHarness(scope='personal') {
     AgentXSpeechLadder:{ createSpeechLadder:options=>({ speak:async value=>{ speech.push({options,value});return {}; } }) },
     VoixAudio:{ Speech:class { cancel(){} async speak(fn,{segments}) { for (const text of segments) await fn(new AbortController().signal,text); } } },
     PersonaPresentation:{ speechChoices:()=>[{provider:'voxcpm',voice:'gazz'}] },
-    speechSynthesis:{}, NestorSpeech:{ splitSpeechText:text=>[text],speechText:text=>text }, performance:{ now:()=>now+=10 },
+    speechSynthesis:{}, NestorSpeech:require('../../../public/js/voice/speech-language'), performance:{ now:()=>now+=10 },
     fetch:async(url,options)=>{ requests.push({url,options}); if (failFetch) throw Error('Lost reply'); return new Response(JSON.stringify({text:'Bonjour',recognitionId:'id-'+requests.length}),{headers:{'Content-Type':'application/json'}}); }
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../../../public/js/voice/voice-workshop-session.js'),'utf8'), { window,Blob,FormData,AbortController,DOMException,Date,setTimeout,clearTimeout });
@@ -111,6 +111,15 @@ test('PsyX tests stay on protected routes and request local-only English fallbac
   assert.equal(h.speech[0].options.deviceVoice({language:'fr'}),false);
   const response=await h.speech[0].options.request({text:'Hello',language:'en',choice:{provider:'voxcpm',voice:'gazz'}},new AbortController().signal);
   assert.equal(response.status,200);assert.equal(h.requests[1].url,'/api/psyx/voice/synthesize/stream');
+});
+test('empty speech refuses before closing capture or opening a player and sending a request', async () => {
+  const h=sessionHarness(); await h.session.start();
+  for (const text of ['', '  \n\t  ', '![illustration](https://example.com/fixture.png)']) {
+    await assert.rejects(()=>h.session.speak(text,null,'fr'),/Ajoutez du texte/);
+    assert.equal(h.session.conversation.state,'listening');
+    assert.equal(h.requests.length,0);
+    assert.equal(h.speech.length,0);
+  }
 });
 
 test('workshop microphone discovery releases late permission tracks after its owner closes', async () => {

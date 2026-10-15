@@ -32,6 +32,7 @@
     signal?.addEventListener('abort', () => life.abort(), { once:true });
     find('[data-action="close"]')?.addEventListener('click', onClose, { signal:life.signal });
     const notice = text => { role('notice').textContent = text || ''; };
+    const hasSpeechText = () => Boolean(field('speechText').value.trim());
     const canStopSpeech = () => embedded
       ? ['speaking','preparing'].includes(conversation.state) && Boolean(conversation.activeTurn) && !conversation.activeTurn.speech.signal.aborted
       : ['preparing','scheduled'].includes(state.speech);
@@ -93,14 +94,19 @@
       if (state.destroyed) return;
       const active = conversation || standalone?.conversation, info = active?.audio?.reviewStatus();
       const phase = active?.state || 'idle';
+      if (state.comparisonExcerptId && state.comparisonExcerptId !== info?.id) {
+        role('comparison')?.replaceChildren(); state.comparisonExcerptId = null;
+      }
       if (embedded) setRows(role('timings'), Object.entries(measurements()).filter(([,v]) => typeof v === 'number').map(([k,v]) => [k, number(v, ' ms')]));
       const level = active?.audio?.readInputLevel() || 0;
       role('level').value = Math.min(1, level * 5);
       if (active?.audio) role('device').textContent = active.audio.deviceLabel || 'Micro de cet appareil';
+      const recognitionFailed = info?.stt === 'failed';
+      if (recognitionFailed) state.lastResult = null;
       const result = state.lastResult || info?.attempt || {};
-      setText(role('transcript'), result.control === 'stop' ? 'Commande Stop' : state.lastResult?.text ?? info?.text ?? 'Votre prochaine phrase apparaîtra ici.');
+      setText(role('transcript'), recognitionFailed ? 'Transcription indisponible. Réécoutez l’extrait, puis reprenez l’écoute.' : result.control === 'stop' ? 'Commande Stop' : state.lastResult?.text ?? info?.text ?? 'Votre prochaine phrase apparaîtra ici.');
       const recognition = result.recognition || {};
-      visual.update({ phase, embedded, hasAudio:Boolean(active?.audio), recognition:result, level, speech:state.speech, receipt:state.receipt, detail:state.sessionDetail, wakeWord:field('wakeWord').checked, language:state.tab === 'speech' ? field('testLanguage').value : field('language').value });
+      visual.update({ phase, embedded, hasAudio:Boolean(active?.audio), recognition:result, recognitionFailed, level, speech:state.speech, receipt:state.receipt, detail:state.sessionDetail, wakeWord:field('wakeWord').checked, language:state.tab === 'speech' ? field('testLanguage').value : field('language').value });
       setText(role('flowState'), embedded ? 'Conversation courante · ' + role('phase').textContent : 'Les essais STT et TTS de cet atelier n’envoient aucune demande au cerveau ni aux outils.');
       setRows(role('metrics'), [['Extrait disponible', info?.id ? number(info.seconds * 1000, ' ms') : null],
         ['Identité STT', result.recognitionId || recognition.id], ['Modèle effectif', result.effectiveModel || result.model],
@@ -115,7 +121,7 @@
       find('[data-action="start"]').disabled = state.busy || !['idle','paused','error','reviewing'].includes(phase);
       find('[data-action="stopReplay"]').disabled = !state.replaying;
       find('[data-action="stopSpeech"]').disabled = !canStopSpeech();
-      find('[data-action="speak"]').disabled = embedded || state.busy || !root.VoixAudio?.Speech;
+      find('[data-action="speak"]').disabled = embedded || state.busy || !root.VoixAudio?.Speech || !hasSpeechText();
     }
     const exclusive = async work => {
       if (state.busy || state.destroyed) return;
@@ -207,15 +213,17 @@
           else { state.speechRun++; state.speech = 'stopped'; standalone.stopSpeech(); }
           return refresh();
         case 'defaults': for (const [k,v] of Object.entries(S.DEFAULTS)) find(`[data-capture="${k}"]`).value = v; return;
-        case 'compare': return exclusive(async () => { const value = await standalone.compare(field('compareLanguage').value); V.comparison(role('comparison'),value); });
-        case 'speak': return exclusive(async () => {
-          const value = field('testVoice').value, split = value.indexOf('|'), run = ++state.speechRun;
-          state.speech = 'preparing'; state.receipt = null; role('speechReceipt').replaceChildren(); notice(''); refresh();
-          try {
-            await standalone.speak(field('speechText').value, split >= 0 ? { provider:value.slice(0,split),voice:value.slice(split+1) } : null, field('testLanguage').value);
-            if (run === state.speechRun) state.speech = 'done';
-          } catch (error) { if (run === state.speechRun) state.speech = error.name === 'AbortError' ? 'stopped' : 'error'; throw error; }
-        });
+        case 'compare': return exclusive(async () => { const value = await standalone.compare(field('compareLanguage').value); state.comparisonExcerptId = value.excerptId; V.comparison(role('comparison'),value); });
+        case 'speak':
+          if (!hasSpeechText()) return refresh();
+          return exclusive(async () => {
+            const value = field('testVoice').value, split = value.indexOf('|'), run = ++state.speechRun;
+            state.speech = 'preparing'; state.receipt = null; role('speechReceipt').replaceChildren(); notice(''); refresh();
+            try {
+              await standalone.speak(field('speechText').value, split >= 0 ? { provider:value.slice(0,split),voice:value.slice(split+1) } : null, field('testLanguage').value);
+              if (run === state.speechRun) state.speech = 'done';
+            } catch (error) { if (run === state.speechRun) state.speech = error.name === 'AbortError' ? 'stopped' : 'error'; throw error; }
+          });
         case 'sharedVoice': return exclusive(async () => {
           const id = field('sharedPersona').value, provider = field('sharedProvider').value;
           if (!state.personas.some(p => p.id === id) || !['kokoro','voxcpm','windows_sapi'].includes(provider)) throw new Error('Choisir une personnalité et un moteur disponibles.');
@@ -238,6 +246,7 @@
     }); }, { signal: life.signal });
     field('language').addEventListener('change', () => { voiceOptions(field('voice'), field('language').value); field('testLanguage').value = field('language').value; updateExample(field('testLanguage').value); voiceOptions(field('testVoice'), field('testLanguage').value); if (field('compareLanguage')) field('compareLanguage').value = field('language').value === 'fr' ? 'en' : 'fr'; refresh(); }, { signal: life.signal });
     field('testLanguage').addEventListener('change', () => { updateExample(field('testLanguage').value); voiceOptions(field('testVoice'), field('testLanguage').value); refresh(); }, { signal: life.signal });
+    field('speechText').addEventListener('input', refresh, { signal: life.signal });
     field('scope').addEventListener('change', () => { root.location.href = '/voice-lab?scope=' + field('scope').value; }, { signal: life.signal });
     const pause = () => { stopReplay(); role('replayState').textContent = ''; state.speechRun++; state.speech = 'idle'; standalone.pause(); if (embedded && document.hidden) conversation.stop(true); field('expected').value = ''; state.lastResult = null; role('comparison')?.replaceChildren(); refresh(); };
     document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); }, { signal: life.signal });

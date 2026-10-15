@@ -34,3 +34,14 @@ test('an attached conversation displays only its observed phase and keeps other 
   assert.equal(paused.active,false);
   assert.equal(paused.capture,'Au repos');
 });
+test('a failed recognition stays distinct from successful words and leaves capture at rest for review', () => {
+  const failed = describe({ phase:'reviewing',hasAudio:true,recognitionFailed:true });
+  assert.equal(failed.title,'Transcription indisponible.');
+  assert.equal(failed.recognition,'Indisponible');
+  assert.equal(failed.tones.recognition,'caution');
+  assert.equal(failed.capture,'Au repos');
+  assert.equal(failed.active,false);
+  const recovered = describe({phase:'listening',hasAudio:true,recognition:{text:'Bonjour'}});
+  assert.equal(recovered.recognition,'Reçue');
+  assert.equal(recovered.tones.recognition,'complete');
+});

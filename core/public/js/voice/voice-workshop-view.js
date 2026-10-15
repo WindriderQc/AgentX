@@ -83,19 +83,19 @@
       </section>
     </section>`;
   }
-  function describe({ phase = 'idle', embedded = false, hasAudio = false, recognition = null, speech = 'idle' } = {}) {
+  function describe({ phase = 'idle', embedded = false, hasAudio = false, recognition = null, recognitionFailed = false, speech = 'idle' } = {}) {
     const speaking = ['preparing','scheduled'].includes(speech);
     const states = { starting:'Ouverture du micro',listening:'À l’écoute.',hearing:'Signal détecté.',transcribing:'Vos mots prennent forme.',reviewing:'Prenez le temps d’écouter.',error:'L’essai est interrompu.' };
     const speechLabels = { preparing:'Préparation de la lecture',scheduled:'Lecture programmée',done:'Lecture terminée',stopped:'Lecture interrompue',error:'Lecture indisponible' };
     const received = Boolean(recognition?.text || recognition?.control);
     return {
-      title: speaking || !hasAudio && speech !== 'idle' ? speechLabels[speech] : states[phase] || (embedded && ['thinking','speaking','preparing'].includes(phase) ? 'Échange en cours.' : received ? 'Transcription reçue.' : 'À vous de jouer.'),
+      title: speaking || !hasAudio && speech !== 'idle' ? speechLabels[speech] : recognitionFailed ? 'Transcription indisponible.' : states[phase] || (embedded && ['thinking','speaking','preparing'].includes(phase) ? 'Échange en cours.' : received ? 'Transcription reçue.' : 'À vous de jouer.'),
       active: speaking || ['starting','listening','hearing','transcribing','thinking','speaking'].includes(phase) && hasAudio,
       capture: ['reviewing','paused'].includes(phase) ? 'Au repos' : hasAudio ? phase === 'hearing' ? 'Parole détectée' : 'Micro ouvert' : 'Micro éteint',
-      recognition: phase === 'transcribing' ? 'En cours' : received ? 'Reçue' : 'En attente',
+      recognition: phase === 'transcribing' ? 'En cours' : recognitionFailed ? 'Indisponible' : received ? 'Reçue' : 'En attente',
       response: embedded ? phase === 'thinking' ? 'En cours' : 'Suivi de l’échange' : 'Hors de cet essai',
       voice: speechLabels[speech] || (embedded && phase === 'speaking' ? 'Lecture demandée' : 'À essayer'),
-      tones: { capture: hasAudio && !['reviewing','paused'].includes(phase) ? 'active' : 'idle', recognition: phase === 'transcribing' ? 'active' : received ? 'complete' : 'idle', response: embedded ? phase === 'thinking' ? 'active' : 'idle' : 'off', voice: speaking || embedded && phase === 'speaking' ? 'active' : speech === 'done' ? 'complete' : ['stopped','error'].includes(speech) ? 'caution' : 'idle' },
+      tones: { capture: hasAudio && !['reviewing','paused'].includes(phase) ? 'active' : 'idle', recognition: phase === 'transcribing' ? 'active' : recognitionFailed ? 'caution' : received ? 'complete' : 'idle', response: embedded ? phase === 'thinking' ? 'active' : 'idle' : 'off', voice: speaking || embedded && phase === 'speaking' ? 'active' : speech === 'done' ? 'complete' : ['stopped','error'].includes(speech) ? 'caution' : 'idle' },
       speechLabel: speechLabels[speech] || 'À vous d’écouter.',
     };
   }
@@ -109,7 +109,7 @@
       update(input) {
         const view = describe(input), result = input.recognition || {}, trace = result.recognition || {};
         text(role('phase'),view.title);text(role('liveBadge'),view.active ? 'En direct' : 'Au repos');role('liveBadge').dataset.active=String(view.active);
-        text(role('monitorHint'),input.phase==='error' && input.detail ? input.detail : input.speech==='preparing' ? 'Le lecteur prépare le texte. Stop reste disponible.' : input.speech==='scheduled' ? 'Le signal est programmé par le lecteur. Stop coupe la lecture.' : input.speech==='done' ? 'Réécoutez le texte ou comparez une autre voix.' : input.speech==='stopped' ? 'La lecture est arrêtée. Vous pouvez reprendre un essai.' : input.speech==='error' ? 'Le lecteur n’a pas terminé. Les détails sont indiqués ci-dessous.' : input.embedded ? 'Diagnostic de votre conversation courante.' : input.hasAudio ? input.phase==='reviewing' ? 'L’extrait reste temporaire. Comparez le son et les mots.' : input.wakeWord ? 'Dites « Hey Nestor », puis enchaînez naturellement.' : 'Parlez naturellement. Pause ferme le micro.' : 'Une phrase pour commencer. Les détails viennent avec les essais.');
+        text(role('monitorHint'),input.phase==='error' && input.detail ? input.detail : input.recognitionFailed ? 'Réécoutez l’extrait capté, puis reprenez l’écoute pour réessayer. Le micro est au repos.' : input.speech==='preparing' ? 'Le lecteur prépare le texte. Stop reste disponible.' : input.speech==='scheduled' ? 'Le signal est programmé par le lecteur. Stop coupe la lecture.' : input.speech==='done' ? 'Réécoutez le texte ou comparez une autre voix.' : input.speech==='stopped' ? 'La lecture est arrêtée. Vous pouvez reprendre un essai.' : input.speech==='error' ? 'Le lecteur n’a pas terminé. Les détails sont indiqués ci-dessous.' : input.embedded ? 'Diagnostic de votre conversation courante.' : input.hasAudio ? input.phase==='reviewing' ? 'L’extrait reste temporaire. Comparez le son et les mots.' : input.wakeWord ? 'Dites « Hey Nestor », puis enchaînez naturellement.' : 'Parlez naturellement. Pause ferme le micro.' : 'Une phrase pour commencer. Les détails viennent avec les essais.');
         for (const id of ['capture','recognition','response','voice']) { const step=find(`[data-step="${id}"]`);step.dataset.state=view.tones[id];text(step.querySelector('.vw-step-status'),view[id]); }
         text(find('[data-stat="recognition"]'),ms(result.sttMs));text(find('[data-stat="queue"]'),ms(trace.queueMs));
         text(find('[data-stat="language"]'),input.language==='en' ? 'EN' : 'FR · QC');
