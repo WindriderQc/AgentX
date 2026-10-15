@@ -237,7 +237,50 @@ python3 integrations/secretary/history_import.py --root "$GMAIL_SECRETARY_ROOT" 
 python3 integrations/secretary/history_import.py --root "$GMAIL_SECRETARY_ROOT" --manifest "$PRIVATE_HISTORY_BATCH" --state "$PRIVATE_HISTORY_DELIVERY" --core "$CORE_ORIGIN" --publish
 ```
 
-## Durable analysis attempts
+### Preparing exact-message cleanup review
+
+`retention_plan.py` combines chronological coverage, a fresh completed Gmail ID
+inventory, independent-copy proofs, a triage qualification and exact-message
+analysis/disposition receipts. The inventory query uses the cutoff's epoch
+seconds, including Spam and Trash with `in:anywhere`; ambiguous dates, duplicate
+IDs, unfinished pagination and observations older than 24 hours hold candidates.
+This is an observed inventory, not an atomic mailbox snapshot.
+
+The qualification uses `agentx.secretary-retention-qualification/v1`, identifies
+the reviewer and corpus hash, and records compared cases for full bodies,
+pagination, quoted authors, dates, sent mail, drafts, attachments, calendar,
+contacts, invoices, later replies and untrusted mail instructions. These are
+reviewer attestations to inspect, not independent proof that conclusions are true.
+The planner never creates a successful qualification or analysis on its own.
+
+Analysis receipts use `agentx.secretary-retention-analysis/v1` and pin the original,
+current thread/review hashes, qualification hash and `reviewPacket` hash. Exact
+page, attachment, finding and thread-question sets require dispositions with a
+reason and evidence reference. Keeping an action open cannot discharge it. A
+changed source or review invalidates the old decision; conflicting decisions hold
+the message. Missing originals/copies, drafts, unknown dates and stale thread
+reviews cannot be waived by an analysis receipt.
+
+Use `verify_archive.py --tree-index <pinned-native-mirror-state>` on both copies
+to rehash the complete indexed archive, including metadata. Incremental mirrors
+may skip unchanged size/mtime entries; that shortcut is not a fresh integrity
+check. The proof records the shared index hash and only actually verified files.
+The planner also checks that the current manifest, provider projection, raw
+receipt and review metadata match both copies; an older snapshot holds changed
+metadata until it is preserved and verified too.
+
+The private output contains `candidateForOwnerReview`, never execution permission.
+It has no provider transport or mailbox mutation. An actual cleanup still needs
+a fresh exact-message provider/metadata check, a concrete manifest, the native
+one-time approval, reversible Trash first and reconciliation of each effect.
+Newer members of a mixed-date thread stay outside the selected message scope.
+Keep manifests and all qualification/analysis receipts outside Git.
+
+```bash
+python3 integrations/secretary/retention_plan.py --root "$GMAIL_SECRETARY_ROOT" --before "$HISTORICAL_CUTOFF" --inventory "$PRIVATE_GMAIL_INVENTORY" --primary-proof "$PRIVATE_PRIMARY_PROOF" --mirror-proof "$PRIVATE_MIRROR_PROOF" --qualification "$PRIVATE_QUALIFICATION" --decisions "$PRIVATE_ANALYSIS_RECEIPTS" --output "$PRIVATE_RETENTION_PLAN"
+```
+
+### Durable analysis attempts
 
 The batch reviewer writes an acknowledged per-page dispatch fence before asking
 Core for inference. Its stable request identity appears in Core telemetry;
@@ -261,6 +304,35 @@ attempt and its proven terminal outcome. These receipts add no model, routing,
 task/memory or mailbox authority. Synthetic tests do not qualify a live campaign.
 
 ## Outlook mailbox export
+
+### Reviewing existing calendar and contact sources
+
+`structured_sources.py` reads preserved Gmail ICS/VCF attachments and, only when
+explicitly selected by export SHA-256, calendar/contact conversions from an
+existing Outlook inventory. It does not run `readpst`, connect to Outlook, create
+calendar events/contacts or write Core. Larger source scans use the instance's
+queued CPU/IO window. Original hash/size checks precede interpretation; missing,
+changed, oversized, malformed or unsupported encodings remain visible gaps.
+
+The private sidecar retains property names, groups, raw values, parameters,
+component hierarchy and source occurrences. It handles UTF-8 line unfolding and
+preserves multiple coordinates, nested alarms, calendar methods, sequence,
+cancellation and recurrence properties. It does not expand recurrence, merge
+versions/people or infer attendance. Local times retain their timezone text;
+unknown/partial dates and legacy converted properties stay unnormalized. Event
+dates, source timestamps and contact observations remain distinct; a dateless
+contact is not assigned a meeting or import date. `structureStatus=parsed`
+indicates structural reading only; `analysisComplete` remains false.
+
+This is a bounded structural reader, not a complete calendar scheduling or vCard
+implementation. The property formats are documented in
+[RFC 5545](https://www.rfc-editor.org/rfc/rfc5545),
+[vCard 3.0](https://www.rfc-editor.org/rfc/rfc2426) and
+[vCard 4.0](https://www.rfc-editor.org/rfc/rfc6350).
+
+```bash
+python3 integrations/secretary/structured_sources.py --root "$GMAIL_SECRETARY_ROOT" --outlook-export "$SELECTED_EXISTING_EXPORT_SHA256" --output "$PRIVATE_STRUCTURED_REVIEW"
+```
 
 `outlook_import.py import <file.pst>` brings an Outlook mailbox export into the
 same private archive. The PST is kept unchanged under `outlook/exports/<sha256>.pst`.

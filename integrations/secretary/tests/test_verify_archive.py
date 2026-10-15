@@ -130,6 +130,25 @@ class VerifyArchiveTests(unittest.TestCase):
         self.assertIn("message2", proof["raw"])
         self.assertNotIn("Synthetic", json.dumps(proof))
 
+    def test_tree_verification_rehashes_metadata_even_when_size_and_mtime_match(self):
+        index = {"files": {p.relative_to(self.root).as_posix(): {
+            "sha256": module.sha_file(p), "bytes": p.stat().st_size, "mtime": str(p.stat().st_mtime)}
+            for p in self.root.rglob("*") if p.is_file()}}
+        report, _ = module.verify(self.copy, with_sources=True, tree_index=index)
+        self.assertTrue(report["intact"])
+        path = self.copy / "threads/thread01/original.json"
+        data = path.read_bytes()
+        path.write_bytes(data.replace(b'"body": "x"', b'"body": "y"'))
+        report, _ = module.verify(self.copy, with_sources=True, tree_index=index)
+        self.assertFalse(report["intact"])
+        self.assertEqual(report["archiveTree"]["mismatchedIds"], ["threads/thread01/original.json"])
+        self.assertNotIn("threads/thread01/original.json", report["verificationProof"]["archiveTreeFiles"])
+
+    def test_invalid_empty_or_escaping_tree_index_cannot_certify_an_archive(self):
+        for index in ({"files": {}}, {"files": {"../outside": {"sha256": "a" * 64, "bytes": 1}}},
+                      {"files": {"raw/file": {"sha256": "a" * 64, "bytes": True}}}):
+            self.assertFalse(module.verify(self.copy, tree_index=index)[0]["intact"])
+
 
 if __name__ == "__main__":
     unittest.main()
