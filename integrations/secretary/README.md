@@ -26,6 +26,14 @@ need visual review and their threads cannot become complete. Existing archived
 originals are reused; changed evidence reissues pages and preserves earlier
 findings as partial. OCR does not expand Nestor conversation upload formats.
 
+When a thread's evidence changes, page recording retains findings and task/note
+receipts whose message and attachment citations still exist. Findings from
+removed sources stay in the exact prior review under
+`review-history/<thread id>/<content hash>.json`; they do not block new pages or
+become findings about a different source. Only summaries for unchanged source
+pages survive. Unresolved questions remain open, and earlier quality acceptance
+does not certify the new revision. Current page citations are still validated.
+
 `openclaw_gmail_secretary_watchdog.py` retains the stale-review, resumable
 mailbox and auto-disabled-job handling. It requires explicit `--account`,
 `--triage-job-id` and `--watchdog-job-id`; executable, audit/keyring paths and
