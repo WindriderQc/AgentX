@@ -78,6 +78,14 @@ with the reservation; ordinary admission still applies. Then use the installed
 control after the normal explicit task handoff. An empty or invalid name is
 refused. This profile cannot replace an automated lease or claim.
 
+The model-call budget defaults to 128 for each report execution. For an authorized
+extended review, append `--model-call-limit 256` to that command (integer range
+128–256). The native launch receipt and Core report journal bind that choice to
+the exact task/request. The runner verifies Core's acknowledged limit before
+model dispatch. Replaying the same UUID cannot change its budget; older receipts
+without the field retain 128. This option applies only to manual private reports.
+Ordinary coding and autonomous cumulative budgets retain their existing rules.
+
 The complete source snapshot is mounted read-only at `/workspace`. The report
 session starts in its private per-request output directory: DSH's existing
 `workspace-write` policy allows that directory only, plus its normal temporary
@@ -87,7 +95,7 @@ reads `/workspace/AGENTS.md` explicitly. DSH saves its Markdown in
 Git. New verified report bytes count as useful progress; touching a file,
 repeating bytes or model activity does not extend budgets. No dependencies,
 Git publication, model/context changes or live acceptance jobs are introduced.
-The report prompt announces the existing 128-request ceiling. Each model request
+The report prompt announces the execution's accepted model-call ceiling. Each model request
 also receives a fresh estimate of remaining calls, time and progress allowance,
 with an early instruction to save and finish when few calls remain. Observed
 counts can lag; Core's exact limit and the fixed deadline remain authoritative.

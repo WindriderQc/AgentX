@@ -528,6 +528,23 @@ class ProgressTest(unittest.TestCase):
             self.progress.phase = phase
             self.assertIsNone(self.progress.model_guidance())
 
+    def test_report_override_controls_advice_and_stop_without_extending_time(self):
+        self.progress.report_mode=True;self.progress.report_model_call_limit=256
+        deadlines=(self.progress.soft_deadline,self.progress.hard_deadline)
+        self.progress.model_calls=128
+        self.assertIsNone(self.progress.tick())
+        text=self.progress.model_guidance();remaining=json.loads(text[text.index('{'):text.index('}')+1])
+        self.assertEqual(remaining['modelCalls'],128)
+        self.progress.model_calls=248;self.assertIn('end now',self.progress.model_guidance())
+        self.progress.model_calls=256;self.assertEqual(self.progress.tick(),'model_call_limit')
+        self.assertEqual((self.progress.soft_deadline,self.progress.hard_deadline),deadlines)
+        safe=module.safe_progress(json.loads(self.progress.path.read_text()),KEY,'0001')
+        self.assertEqual(safe['modelCallLimit'],256)
+
+    def test_a_report_budget_attribute_does_not_expand_an_ordinary_manual_task(self):
+        self.progress.report_model_call_limit=256;self.progress.model_calls=128
+        self.assertEqual(self.progress.tick(),'model_call_limit')
+
     def test_native_harness_output_limit_is_explicit_without_replacing_an_operator_stop(self):
         self.progress.event({"type": "turn/end", "data": {"reason": {"kind": "completed"}}})
         self.assertIsNone(self.progress.stop_reason)

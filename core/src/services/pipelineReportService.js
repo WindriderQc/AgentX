@@ -12,7 +12,14 @@ const WC = { w: 1, j: true };
 function acknowledged(result) {
   if (result.acknowledged !== true) throw claim.fail('Report persistence acknowledgement is unverified', 'REPORT_PERSISTENCE_UNVERIFIED', 503);
 }
-const FIELDS = ['pipelineId', 'taskId', 'claimSeq', 'specSha256', 'sourceCommit', 'reportName', 'model'];
+const FIELDS = ['pipelineId', 'taskId', 'claimSeq', 'specSha256', 'sourceCommit', 'reportName', 'model', 'modelCallLimit'];
+function modelCallLimit(value = 128) {
+  if (!Number.isSafeInteger(value) || value < 128 || value > 256)
+    throw claim.fail('Report model call limit must be an integer from 128 to 256', 'REPORT_BUDGET_INVALID', 400);
+  return value;
+}
+const sameIntent = (existing, intent) => FIELDS.every(name =>
+  (name === 'modelCallLimit' ? modelCallLimit(existing[name]) : existing[name]) === intent[name]);
 
 async function task(id) {
   const value = await Task.findOne({ pipelineId: id }).lean();
@@ -34,10 +41,12 @@ async function status(id, key) {
   // not erase custody of an outstanding inference; no task content is exposed.
   const value = await run(id, key);
   return { requestId: key, pipelineId: id, claimSeq: value.claimSeq, state: value.state, model: value.model,
+    modelCallLimit: modelCallLimit(value.modelCallLimit), modelCallsRemaining: Math.max(0, modelCallLimit(value.modelCallLimit) - value.modelReceipts.length),
     pendingInferences: value.pendingInferences, modelReceipts: value.modelReceipts, terminationVerified: termination(value),
     allCallsCompleted: completed(value), result: value.result || null };
 }
 async function start(id, key, body) {
+  const limit = modelCallLimit(body.modelCallLimit);
   if (!/^\d{4}$/.test(id) || !UUID.test(key) || !/^[a-f0-9]{40}$/.test(body.sourceCommit || '') || typeof body.reportName !== 'string'
     || body.reportName.length > 120 || !/^[A-Za-z0-9][A-Za-z0-9._-]*\.md$/.test(body.reportName)
     || !Number.isSafeInteger(body.hardRemainingSeconds) || body.hardRemainingSeconds < 1 || body.hardRemainingSeconds > 14400)
@@ -48,10 +57,11 @@ async function start(id, key, body) {
   const target = routerConfig.getModelForTask('code_generation');
   if (body.model !== target.model || !target.url || String(body.model).startsWith('openrouter/'))
     throw claim.fail('Report must use the qualified local coding route', 'REPORT_MODEL_CHANGED');
-  const intent = Object.fromEntries(FIELDS.map(name => [name, name === 'pipelineId' ? id : name === 'taskId' ? String(owner._id) : body[name]]));
+  const intent = Object.fromEntries(FIELDS.map(name => [name, name === 'pipelineId' ? id : name === 'taskId' ? String(owner._id)
+    : name === 'modelCallLimit' ? limit : body[name]]));
   const existing = await Run.findById(key).lean();
   if (existing) {
-    if (FIELDS.some(name => existing[name] !== intent[name])) throw claim.fail('This report request has a different intent', 'REPORT_REQUEST_CONFLICT');
+    if (!sameIntent(existing, intent)) throw claim.fail('This report request has a different intent', 'REPORT_REQUEST_CONFLICT');
     return status(id, key);
   }
   const permit = await Task.updateOne(guard, { $inc: { manualReportPermitSeq: 1 } }, { timestamps: false, writeConcern: WC });
@@ -60,7 +70,7 @@ async function start(id, key, body) {
   try { await Run.create([{ _id: key, ...intent, host: target.url, deadlineAt: new Date(Date.now() + body.hardRemainingSeconds * 1000) }], { writeConcern: WC }); }
   catch (error) { if (error.code !== 11000) throw error; }
   const created = await run(id, key);
-  if (FIELDS.some(name => created[name] !== intent[name])) throw claim.fail('This report request has a different intent', 'REPORT_REQUEST_CONFLICT');
+  if (!sameIntent(created, intent)) throw claim.fail('This report request has a different intent', 'REPORT_REQUEST_CONFLICT');
   return status(id, key);
 }
 function outcome(value, receipt) {
@@ -198,4 +208,4 @@ async function stop(id, key, body) {
   if (!changed) return await replayStop(await ownerOrNull(id)) || supersede();
   return { blocked: true, outcome: await record(value, summary, 'blocked') };
 }
-module.exports = { start, status, submit, stop, reconcileModels, heartbeat, run, task, termination, UUID, acknowledged };
+module.exports = { start, status, submit, stop, reconcileModels, heartbeat, run, task, termination, UUID, acknowledged, modelCallLimit };

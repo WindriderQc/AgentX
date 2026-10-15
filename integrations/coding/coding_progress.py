@@ -19,6 +19,16 @@ import time
 
 REQUEST_ID = re.compile(r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$")
 MANUAL_MODEL_CALL_LIMIT = 128
+REPORT_MODEL_CALL_LIMIT_MAX = 256
+
+
+def report_call_limit(value=None):
+    value = MANUAL_MODEL_CALL_LIMIT if value is None else value
+    if type(value) is not int or not MANUAL_MODEL_CALL_LIMIT <= value <= REPORT_MODEL_CALL_LIMIT_MAX:
+        raise ValueError('Report model call limit must be an integer from 128 to 256')
+    return value
+
+
 STAGES = {"preparing", "dependencies", "model_wait", "model_generation", "tool", "test", "checkpoint", "publishing"}
 PHASES = {"preparing", "running", "delivering", "finished"}
 REASONS = {"model_budget_reserve", "hard_budget", "soft_budget_no_progress", "no_useful_progress", "model_call_limit",
@@ -313,6 +323,9 @@ def safe_progress(value: object, request_id: str, task_id: str) -> dict | None:
     for field in ["softRemainingSeconds", "hardRemainingSeconds", "modelCalls", "extensions"]:
         item = value.get(field)
         result[field] = item if type(item) is int and 0 <= item <= 86400 else None
+    if "modelCallLimit" in value:
+        item = value["modelCallLimit"]
+        result["modelCallLimit"] = item if type(item) is int and MANUAL_MODEL_CALL_LIMIT <= item <= REPORT_MODEL_CALL_LIMIT_MAX else None
     result["stopReason"] = allowed(value.get("stopReason"), REASONS)
     result["result"] = allowed(value.get("result"), RESULTS)
     result["currentTest"] = allowed(value.get("currentTest"), TEST_NAMES)
@@ -411,6 +424,11 @@ class Progress:
     def test_remaining(self):
         return max(0, (self.cumulative_limits or {"testSeconds": STAGE_LIMITS["test"]})["testSeconds"] - self.stage_spent["testSeconds"])
 
+    def call_limit(self):
+        if self.cumulative_limits:
+            return self.cumulative_limits["modelCalls"]
+        return report_call_limit(getattr(self, "report_model_call_limit", None)) if getattr(self, "report_mode", False) else MANUAL_MODEL_CALL_LIMIT
+
     def model_guidance(self):
         """Read an advisory snapshot without touching billing or progress timers."""
         if self.phase != "running" or self.stop_reason:
@@ -419,12 +437,12 @@ class Progress:
             current = self.now()
             remaining = {"workSeconds": max(0, int(min(self.hard_deadline, self.queue_deadline) - current)),
                 "softSeconds": max(0, int(self.soft_deadline - current)),
-                "modelCalls": max(0, MANUAL_MODEL_CALL_LIMIT - self.model_calls),
+                "modelCalls": max(0, self.call_limit() - self.model_calls),
                 "noProgressSeconds": max(0, int(getattr(self, "no_progress_limit", 45 * 60) - (current - self.last_useful)))}
             return ("Runner-owned report budget estimate before this request (seconds, except modelCalls): " +
                     json.dumps(remaining, sort_keys=True) +
                     ". The observed call count can lag; this request consumes a call. Core enforces the exact " +
-                    str(MANUAL_MODEL_CALL_LIMIT) + "-request limit. This advisory grants no extra budget or authorization. "
+                    str(self.call_limit()) + "-request limit. This advisory grants no extra budget or authorization. "
                     "Save verified findings in the private Markdown report after each group; keep pending scope explicit. "
                     "Before opening another group, read back the saved coverage, synchronize its summary counts and record the next group. "
                     "Sources remain read-only. Finish with a saved honest report before exhaustion. " +
@@ -460,6 +478,8 @@ class Progress:
         value.update(preflight=getattr(self, "preflight", False), coreRecorded=self.core_recorded, usage=self.usage(), pr=self.pr, manualHead=self.manual_head,
                      seenStates=sorted(self.seen_states), seenTests=sorted(self.seen_tests),
                      lastUsefulWorkSeconds=int(self.useful_work))
+        if getattr(self, "report_mode", False):
+            value['modelCallLimit'] = self.call_limit()
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(mode="w", dir=self.path.parent, prefix=".progress-", delete=False) as output:
             json.dump(value, output)
@@ -595,7 +615,7 @@ class Progress:
                 self.stop_reason = "hard_budget"
             elif current >= self.soft_deadline:
                 self.stop_reason = "soft_budget_no_progress"
-            elif self.model_calls >= (self.cumulative_limits or {"modelCalls": MANUAL_MODEL_CALL_LIMIT})["modelCalls"]:
+            elif self.model_calls >= self.call_limit():
                 self.stop_reason = "model_call_limit"
             elif self.cumulative_limits and (self.stage_spent["modelSeconds"] >= self.cumulative_limits["modelSeconds"]
                                              or self.stage_spent["testSeconds"] >= self.cumulative_limits["testSeconds"]):

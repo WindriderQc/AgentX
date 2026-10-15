@@ -50,6 +50,12 @@ pending scope and the next group explicit. A full requested review remains
 incomplete until every scoped document has the required evidence; delivering a
 partial checkpoint for review does not complete or narrow the original task.
 
+Manual private reports default to 128 model calls per execution. An operator may
+explicitly select a budget up to 256 for an extended review through the native
+`launch-report` command's `--model-call-limit` option. Core freezes the budget for
+that request; the worker's prompt and budget advisories use the acknowledged
+value. This does not extend the fixed time ceiling or authorize a later run.
+
 For the native private report profile, a normal worker return lets the harness
 offer the saved report through Core for independent review. A budget stop may
 leave only private output. File presence, registered delivery, human acceptance

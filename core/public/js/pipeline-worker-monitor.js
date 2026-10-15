@@ -91,7 +91,9 @@
         + row('Soft budget', budget(progress.softRemainingSeconds))
         + row('Hard budget', budget(progress.hardRemainingSeconds))
         + row('Tests', esc(`${runningTest ? `Running: ${runningTest}` : 'No running test recorded'} · ${lastTest ? `Last: ${lastTest} ${own(OUTCOME, progress.lastTest.outcome) || 'unknown'}` : 'Last result unknown'}`))
-        + row('Model calls', integer(progress.modelCalls) ? String(progress.modelCalls) : 'Unknown')
+        + row('Model calls', integer(progress.modelCalls) ? String(progress.modelCalls)
+          + (integer(progress.modelCallLimit) && progress.modelCallLimit >= 128 && progress.modelCallLimit <= 256
+            ? ` / ${progress.modelCallLimit} · ${Math.max(0, progress.modelCallLimit - progress.modelCalls)} remaining` : '') : 'Unknown')
         + row('Local checkpoint', checkpoint ? `<code title="${checkpoint}">${checkpoint.slice(0, 12)}</code> · source saved locally` : 'Unknown')
         + (REASONS.has(progress.stopReason) ? row('Recorded stop reason', esc(progress.stopReason.replaceAll('_', ' '))) : '');
     } else if (identity) details += row('Worker progress', 'Unknown · no matching progress receipt');

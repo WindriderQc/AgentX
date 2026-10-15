@@ -446,6 +446,7 @@ def main() -> int:
     parser.add_argument("--request-id", default="")
     parser.add_argument("--autonomous", action="store_true")
     parser.add_argument("--report-name", default=None)
+    parser.add_argument("--model-call-limit", type=int, default=None)
     args = parser.parse_args()
     if not TASK_ID.fullmatch(args.task_id):
         parser.error("task id is four digits")
@@ -458,10 +459,18 @@ def main() -> int:
     if args.report_name is not None:
         if args.autonomous or not args.request_id or not coding_dispatch_control.report_name(args.report_name):
             parser.error("report mode needs a manual request UUID and a plain Markdown file name")
+    if args.model_call_limit is not None:
+        if not args.report_name:
+            parser.error("model call override requires report mode")
+        try:
+            coding_progress.report_call_limit(args.model_call_limit)
+        except ValueError as error:
+            parser.error(str(error))
 
     progress = coding_progress.Progress(args.task_id, args.request_id, args.timeout_seconds, receipts=RECEIPTS,
         heartbeat=None if args.report_name else lambda: request(f"{CORE}/api/pipeline/tasks/{args.task_id}/heartbeat", {"assignee": WORKER}))
     progress.report_mode = progress.preflight = bool(args.report_name)
+    progress.report_model_call_limit = coding_progress.report_call_limit(args.model_call_limit)
     previous_handlers = {signum: signal.getsignal(signum) for signum in (signal.SIGTERM, signal.SIGINT)}
     def stop_worker(_signum, _frame):
         progress.stop_reason = "operator_stop"
