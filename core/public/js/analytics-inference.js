@@ -99,7 +99,7 @@ function escapeHtml(value) {
 
 async function fetchSummary(windowKey) {
   const res = await fetch(`/api/analytics/inference/summary?window=${encodeURIComponent(windowKey)}`, {
-    headers: { Accept: 'application/json' }
+    headers: { Accept: 'application/json' }, cache: 'no-store', signal: AbortSignal.timeout(15000)
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const body = await res.json();
@@ -341,7 +341,7 @@ async function renderCodex(windowKey) {
  * with an opt-in to show them anyway. They come back automatically the moment
  * someone uses the chat UI.
  */
-const WINDOW_DAYS = { '24h': 1, '7d': 7, '30d': 30, '90d': 90 };
+let chatLoadVersion = 0;
 
 function setChatLaneVisible(visible) {
   document.querySelectorAll('.chat-lane').forEach((el) => {
@@ -349,12 +349,13 @@ function setChatLaneVisible(visible) {
   });
 }
 
-async function applyChatLaneCollapse(windowKey) {
+async function applyChatLaneCollapse() {
+  const version = ++chatLoadVersion;
   const note = $('chatLaneEmptyNote');
   const heading = $('chatLaneHeading');
   if (!note) return;
 
-  const days = WINDOW_DAYS[windowKey] || 7;
+  const days = Number($('periodSelect')?.value) || 7;
   const to = new Date();
   const from = new Date(to.getTime() - days * 86400000);
 
@@ -366,12 +367,13 @@ async function applyChatLaneCollapse(windowKey) {
     if (res.ok) {
       const body = await res.json();
       const d = body?.data || body;
-      conversations = Number(d?.totalConversations ?? 0);
+      conversations = Number.isFinite(d?.totalConversations) ? d.totalConversations : null;
     }
   } catch (err) {
     console.error('Chat-lane probe failed:', err);
   }
 
+  if (version !== chatLoadVersion) return;
   // Unknown (probe failed) is not the same as zero — leave the widgets alone.
   if (conversations === null || conversations > 0) {
     note.style.display = 'none';
@@ -400,25 +402,34 @@ async function applyChatLaneCollapse(windowKey) {
   }
 }
 
+let loadVersion = 0;
 async function load() {
+  const version = ++loadVersion;
   const windowKey = $('infWindow')?.value || '7d';
+  document.dispatchEvent(new CustomEvent('analytics:inference', { detail: { state: 'loading', windowKey } }));
   try {
     const data = await fetchSummary(windowKey);
+    if (version !== loadVersion) return;
+    document.dispatchEvent(new CustomEvent('analytics:inference', { detail: { state: 'ready', data, windowKey } }));
     renderTiles(data);
     renderModelTable(data);
     renderDimensionBreakdowns(data);
     renderDailyChart(data);
   } catch (err) {
+    if (version !== loadVersion) return;
+    document.dispatchEvent(new CustomEvent('analytics:inference', { detail: { state: 'error', windowKey } }));
     console.error('Inference analytics failed:', err);
     setText('infScope', `Could not load inference analytics: ${err.message}`);
   }
+  if (version !== loadVersion) return;
   renderCodex(windowKey);
-  applyChatLaneCollapse(windowKey);
+  applyChatLaneCollapse();
 }
 
 function init() {
   $('infRefreshBtn')?.addEventListener('click', load);
   $('infWindow')?.addEventListener('change', load);
+  $('periodSelect')?.addEventListener('change', applyChatLaneCollapse);
   load();
 }
 

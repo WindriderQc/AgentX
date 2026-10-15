@@ -685,7 +685,7 @@ app.get('/analytics', (req, res) => {
     footerJs: [
       '<script type="module" src="/js/analytics-cost.js"></script>',
       '<script type="module" src="/js/analytics-inference.js"></script>',
-      '<script src="/js/analytics-experience.js"></script>'
+      '<script src="/js/analytics-experience.js"></script><script src="/js/analytics-overview.js"></script>'
     ].join('\n')
   });
 });

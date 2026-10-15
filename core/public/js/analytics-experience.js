@@ -4,9 +4,6 @@
 
   var cockpit;
   var surface;
-  var status;
-  var statusLabel;
-  var statusDetail;
 
   function text(id) {
     return document.getElementById(id)?.textContent.trim() || '';
@@ -55,36 +52,14 @@
     return observed + ' of conversations used knowledge';
   }
 
-  function setStatus(state, label, detail, icon) {
-    status.className = 'analytics-experience-status is-' + state;
-    status.querySelector('.analytics-experience-icon i').className = 'fas ' + icon;
-    statusLabel.textContent = label;
-    statusDetail.textContent = detail;
-  }
-
   function refreshSummary() {
-    var calls = number('infCalls');
-    var errors = number('infErrors');
-    var cancellations = number('infCancellations');
-    var errorRate = text('infErrorRate');
     var conversations = number('totalConversations');
     var messages = number('totalMessages');
     var ragUsageElement = document.getElementById('ragUsage');
     var ragUsage = knowledgeUsagePhrase(text('ragUsage'), ragUsageElement?.dataset.signalState, ragUsageElement?.dataset.signalSample);
     var documents = number('ragTotalDocs');
-    var windowLabel = document.querySelector('#infWindow option:checked')?.textContent.toLowerCase() || 'recent window';
+    var windowLabel = 'Playground conversation window';
 
-    if (calls == null || errors == null) {
-      setStatus('unknown', 'Activity is still being observed', 'Refresh if the recent inference summary does not appear.', 'fa-circle-question');
-    } else if (errors > 0) {
-      setStatus('attention', 'Inference needs review', formatCount(errors) + ' operational error' + (errors === 1 ? '' : 's') + ' · ' + errorRate + ' error rate · ' + formatCount(cancellations || 0) + ' canceled · ' + windowLabel, 'fa-circle-info');
-    } else {
-      setStatus('ready', 'Inference is healthy', formatCount(calls) + ' call' + (calls === 1 ? '' : 's') + ' · no operational errors · ' + formatCount(cancellations || 0) + ' canceled · ' + windowLabel, 'fa-circle-check');
-    }
-
-    document.getElementById('analytics-inference-detail').textContent = calls == null
-      ? 'Calls and reliability are not observed yet'
-      : formatCount(calls) + ' call' + (calls === 1 ? '' : 's') + ' · ' + formatCount(errors || 0) + ' errors · ' + formatCount(cancellations || 0) + ' canceled · ' + windowLabel;
     document.getElementById('analytics-chat-detail').textContent = conversations == null
       ? 'Conversation activity is not observed yet'
       : formatCount(conversations) + ' conversation' + (conversations === 1 ? '' : 's') + ' · ' + formatCount(messages || 0) + ' messages';
@@ -112,19 +87,15 @@
   }
 
   function refreshAll() {
-    setStatus('unknown', 'Refreshing activity…', 'Reading recent inference, conversations and knowledge signals', 'fa-circle-notch fa-spin');
-    ['infRefreshBtn', 'refreshBtn', 'refreshRagBtn'].forEach(function (id) {
+    document.dispatchEvent(new Event('analytics:refresh-live'));
+    ['infRefreshBtn', 'refreshBtn'].forEach(function (id) {
       document.getElementById(id)?.click();
     });
-    window.setTimeout(refreshSummary, 900);
   }
 
   if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', function () {
     cockpit = document.getElementById('analytics-cockpit');
     surface = cockpit.querySelector('.analytics-cockpit-surface');
-    status = document.getElementById('analytics-experience-status');
-    statusLabel = document.getElementById('analytics-experience-status-label');
-    statusDetail = document.getElementById('analytics-experience-status-detail');
 
     cockpit.addEventListener('toggle', syncCockpitAccessibility);
     document.querySelectorAll('[data-analytics-target]').forEach(function (button) {
