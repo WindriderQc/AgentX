@@ -68,6 +68,7 @@ class ReportTest(unittest.TestCase):
     def worker(self,workspace,prompt,timeout,progress,*,read_only):
         self.assertTrue(read_only); self.assertIn('/home/agent/deliverables/'+KEY+'/review.md',prompt)
         self.assertIn('/workspace/AGENTS.md',prompt);self.assertIn('git -C /workspace',prompt)
+        self.assertIn('128 model requests',prompt)
         self.path.write_text('# Review\n\nVerified README against the source. Other files remain pending.\n')
         return subprocess.CompletedProcess([],self.exit_code,stdout='A report is ready for review.',stderr='')
 

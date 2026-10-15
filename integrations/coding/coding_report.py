@@ -165,6 +165,8 @@ def execute(r,args,progress,task,workspace):
             'Do not run live models, benchmarks or GPU jobs. Keep private data, secrets and runtime logs out of the report. '
             f'Remaining soft budget: {max(0,int(progress.soft_deadline-progress.now()))} seconds; '
             f'hard ceiling: {max(0,int(progress.hard_deadline-progress.now()))} seconds. '
+            f'Core also enforces {r.coding_progress.MANUAL_MODEL_CALL_LIMIT} model requests for this execution. '
+            'Each request consumes that budget; finish before exhaustion, with pending scope explicit if necessary. '
             'Saved report changes count as progress; the hard ceiling never moves. End with coverage and validation. '
             'The harness stores the report in Core task deliverables for independent review.\n\n'
             f'Requested result:\n{task.get("spec","")}\n\nDiscussion:\n{discussion}')
