@@ -1,7 +1,7 @@
 /* Nearby everyday destinations; the shared product navigation remains the catalogue. */
 (function () {
   'use strict';
-  const personal = [['/dad', 'Nestor'], ['/dad/day', 'My day'], ['/dad/memories', 'Memories'], ['/dad/family', 'Family tracking']];
+  const personal = [['/dad', 'Nestor'], ['/dad/day', 'My day'], ['/dad/memories', 'Memories'], ['/dad/history', 'Archives à revoir'], ['/dad/family', 'Family tracking']];
   const family = [['/panel', 'Nestor Family'], ['/kids', 'Kids'], ['/lecture', 'Reading'], ['/kids/sounds', 'Sounds']];
   function mount(app, path) {
     const parent = path.startsWith('/dad');

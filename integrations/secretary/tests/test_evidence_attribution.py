@@ -13,6 +13,17 @@ from mail_catchup import page_prompt
 
 
 class AttributionTests(unittest.TestCase):
+    def test_draft_direction_is_explicit_without_changing_source_page_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            payload = {'messages': [{'id': 'message1', 'body': 'Unsent synthetic intent',
+                'labelIds': ['DRAFT'], 'headers': {'from': 'Synthetic owner'}}]}
+            archive = Archive(Path(directory), lambda _: payload)
+            page = next(archive.review_pages(archive.collect_thread('thread01')))
+            self.assertEqual(page['sourceContext']['messageDirection'], 'draft')
+            expected = hashlib.sha256(json.dumps(['thread01', 'message1', 'body', None, 0,
+                                                  'Unsent synthetic intent']).encode()).hexdigest()
+            self.assertEqual(page['pageId'], expected)
+
     def test_indented_non_header_lines_do_not_stall_source_scanning(self):
         # Execute separately so a regression cannot strand a worker or the test
         # runner. This tiny unmatched header used to explore overlapping spaces
