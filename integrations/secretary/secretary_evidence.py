@@ -25,6 +25,8 @@ import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from evidence_store import load, now, save  # noqa: E402,F401  (re-exported for existing callers)
+from evidence_inventory import collect_discovered, collection_status, expected_rows, rediscovered  # noqa: E402
+from gmail_provider import read_gmail  # noqa: E402
 
 DEFAULT_ROOT = Path(os.environ.get("GMAIL_SECRETARY_ROOT", Path.home() / ".local/share/agentx/secretary-evidence"))
 REVIEW_PAGE_CHARS = 4000
@@ -236,20 +238,7 @@ class Archive:
         self.run = run or self.gog
 
     def gog(self, command):
-        env = os.environ.copy()
-        env["GOG_KEYRING_BACKEND"] = "file"
-        env["GOG_KEYRING_PASSWORD"] = Path(os.environ.get("GMAIL_SECRETARY_KEYRING_FILE", Path.home() / ".config/gogcli/keyring-password")).read_text().strip()
-        exact = "gmail.thread.get" if command[:3] == ["gmail", "thread", "get"] else (
-            "gmail.attachment" if command[:2] == ["gmail", "attachment"] else (
-                "gmail.get" if command[:2] == ["gmail", "get"] else "gmail.messages.search"))
-        result = subprocess.run([
-            os.environ.get("GMAIL_SECRETARY_GOG", "gog"), "--readonly", "--gmail-no-send",
-            "--no-input", "--json", "--account=" + os.environ.get("GMAIL_SECRETARY_ACCOUNT", "auto"), f"--enable-commands-exact={exact}", *command,
-        ], env=env, capture_output=True, text=True, timeout=120)
-        if result.returncode:
-            # Keep provider bodies/credentials out of scheduler error text.
-            raise RuntimeError(f"Gmail {exact} failed (exit {result.returncode})")
-        return json.loads(result.stdout)
+        return read_gmail(command)
 
     def discover(self, scope, restart=False):
         file = self.root / f"inventory-{scope}.json"
@@ -265,6 +254,7 @@ class Archive:
         if not isinstance(result, dict) or not isinstance(result.get("messages"), (list, type(None))):
             raise ValueError("Invalid paginated Gmail response")
         for item in result.get("messages") or []:
+            rediscovered(self.root, item)
             state["messages"][identifier(item["id"])] = item
         state.update(nextPageToken=result.get("nextPageToken"),
                      complete=not bool(result.get("nextPageToken")),
@@ -538,7 +528,7 @@ class Archive:
     def collect(self, scope, limit, restart=False):
         state = self.discover(scope, restart)
         candidates = sorted(state["messages"].values(), key=lambda row: row.get("date", ""), reverse=True)
-        seen, done, errors = set(), [], []
+        seen, done, reconciled, errors = set(), [], [], []
         for item in candidates:
             tid = identifier(item["threadId"])
             if tid in seen:
@@ -546,19 +536,21 @@ class Archive:
             seen.add(tid)
             existing = load(self.root / "threads" / tid / "manifest.json", {})
             known = {row["id"] for row in existing.get("messages", [])}
-            expected = {row["id"] for row in candidates if row["threadId"] == tid}
-            if expected <= known:
+            expected = expected_rows(self.root, candidates, tid, known)
+            if not expected:
                 continue
             try:
-                self.collect_thread(tid)
-                done.append(tid)
+                result = collect_discovered(self, tid, expected)
+                (done if result["collected"] else reconciled).append(tid)
             except Exception as error:
                 errors.append({"threadId": tid, "error": str(error)[:200]})
-            if len(done) + len(errors) >= limit:
+            if len(done) + len(reconciled) + len(errors) >= limit:
                 break
-        save(self.root / "last-collection.json", {"at": now(), "scope": scope, "collected": done, "errors": errors})
+        save(self.root / "last-collection.json", {"at": now(), "scope": scope, "collected": done,
+                                                  "reconciledUnavailableThreads": reconciled, "errors": errors})
         return {"scope": scope, "discoveredMessages": len(state["messages"]),
-                "discoveryComplete": state["complete"], "collected": done, "errors": errors, **self.status()}
+                "discoveryComplete": state["complete"], "collected": done,
+                "reconciledUnavailableThreads": reconciled, "errors": errors, **self.status()}
 
     def manifests(self):
         return [load(file) for file in sorted((self.root / "threads").glob("*/manifest.json"))]
@@ -573,18 +565,9 @@ class Archive:
         manifests = self.manifests()
         read = set(file.stem for file in (self.root / "page-reviews").glob("*.json"))
         pending = sum(page["pageId"] not in read for m in manifests for page in self.review_pages(m))
-        known = {m["threadId"]: {r["id"] for r in m["messages"]} for m in manifests}
-        uncollected, discovering = set(), []
-        for scope in QUERIES:
-            inventory = load(self.root / f"inventory-{scope}.json", {})
-            if not inventory.get("complete"):
-                discovering.append(scope)
-            for row in inventory.get("messages", {}).values():
-                if row["id"] not in known.get(row["threadId"], set()):
-                    uncollected.add(row["threadId"])
+        collection = collection_status(self, QUERIES, manifests)
         state = {"at": now(), "pendingTextPages": pending, "reviewedPages": len(read),
-                 "uncollectedThreads": len(uncollected), "discoveringScopes": discovering,
-                 "pending": bool(pending or uncollected or discovering)}
+                 **collection, "pending": bool(pending or collection["uncollectedThreads"] or collection["discoveringScopes"])}
         save(self.root / "native-status.json", state)
         return state
 
@@ -623,6 +606,8 @@ class Archive:
                 inventory.setdefault("query", QUERIES[scope])
                 inventory.setdefault("pages", 0)
                 inventory.setdefault("complete", False)
+                for row in response.get("messages") or []:
+                    rediscovered(self.root, row)
                 inventory.setdefault("messages", {}).update({identifier(m["id"]): m for m in response.get("messages") or []})
                 inventory["headCheckedEpoch"] = time.time()
                 save(inventory_file, inventory)

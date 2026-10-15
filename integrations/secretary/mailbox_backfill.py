@@ -19,6 +19,8 @@ import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from secretary_evidence import DEFAULT_ROOT, QUERIES, Archive, identifier, load, now, save  # noqa: E402
+from evidence_inventory import collect_discovered, rediscovered, unavailable  # noqa: E402
+from gmail_provider import GmailProviderError  # noqa: E402
 
 
 LOCK_NAME = "backfill.lock"
@@ -48,7 +50,9 @@ class Pacer:
             self.calls += 1
             try:
                 return self.run(command)
-            except (RuntimeError, subprocess.TimeoutExpired):
+            except (RuntimeError, subprocess.TimeoutExpired) as error:
+                if isinstance(error, GmailProviderError) and error.kind in ("not_found", "authorization"):
+                    raise
                 # gog failures carry only an exit code; quota and network errors look alike.
                 if attempt == len(self.delays):
                     raise
@@ -111,6 +115,8 @@ def refresh_heads(archive, pages=HEAD_PAGES):
             command = ["gmail", "messages", "search", query, "--max=100"] + (["--page=" + token] if token else [])
             result = archive.run(command)
             rows = result.get("messages") or []
+            for row in rows:
+                rediscovered(archive.root, row)
             fresh = [row for row in rows if identifier(row["id"]) not in inventory["messages"]]
             inventory["messages"].update({row["id"]: row for row in fresh})
             token = result.get("nextPageToken")
@@ -126,7 +132,7 @@ def pending_threads(archive):
     newest = {}
     for scope in QUERIES:
         for row in load(archive.root / f"inventory-{scope}.json", {}).get("messages", {}).values():
-            if row["id"] not in known.get(row["threadId"], set()):
+            if row["id"] not in known.get(row["threadId"], set()) and not unavailable(archive.root, row):
                 newest[row["threadId"]] = max(newest.get(row["threadId"], ""), row.get("date", ""))
     return sorted(newest, key=newest.get, reverse=True)
 
@@ -134,7 +140,7 @@ def pending_threads(archive):
 def backfill(archive, lock, max_threads=None, clock=time.monotonic):
     root = archive.root
     errors = load(root / ERRORS_NAME, {})
-    status = {"phase": "refreshing", "startedAt": now(), "collected": 0, "failed": 0}
+    status = {"phase": "refreshing", "startedAt": now(), "collected": 0, "processed": 0, "failed": 0}
 
     def report(**changes):
         status.update(changes, updatedAt=now())
@@ -148,16 +154,20 @@ def backfill(archive, lock, max_threads=None, clock=time.monotonic):
     report(phase="collecting", pendingAtStart=len(queue), remaining=len(queue))
     for thread_id in queue[:max_threads]:
         try:
-            archive.collect_thread(thread_id)
+            rows = [row for scope in QUERIES for row in load(root / f"inventory-{scope}.json", {}).get("messages", {}).values()
+                    if row["threadId"] == thread_id]
+            result = collect_discovered(archive, thread_id, rows)
             errors.pop(thread_id, None)
-            status["collected"] += 1
+            status["collected"] += int(result["collected"])
+            status["processed"] += 1
+            status["reconciledUnavailable"] = status.get("reconciledUnavailable", 0) + len(result["unavailable"])
             consecutive = 0
         except Exception as error:  # one bad thread never stops the catch-up
             errors[thread_id] = {"error": type(error).__name__, "detail": str(error)[:200], "at": now()}
             status["failed"] += 1
             consecutive += 1
         save(root / ERRORS_NAME, errors)
-        done = status["collected"] + status["failed"]
+        done = status["processed"] + status["failed"]
         rate = done / max(clock() - started, 1e-9) * 60
         remaining = len(queue) - done
         report(remaining=remaining, threadsPerMinute=round(rate, 1),

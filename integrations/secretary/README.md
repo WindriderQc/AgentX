@@ -34,6 +34,16 @@ become findings about a different source. Only summaries for unchanged source
 pages survive. Unresolved questions remain open, and earlier quality acceptance
 does not certify the new revision. Current page citations are still validated.
 
+Discovery retains every source ID, including replaced drafts. When a collected
+thread omits a discovered ID, the collector checks that message individually.
+Only a typed Gmail not-found response records it as unavailable; authorization,
+network and unclassified failures keep the source pending. Immutable
+`source-observations/` receipts back the `source-availability/` index. Rediscovery
+reopens collection without removing those receipts. Native progress and raw
+completeness report unavailable sources separately from uncollected sources.
+Unavailable means the provider could not return the source; it does not certify
+preservation, analysis or eligibility for mailbox cleanup.
+
 `openclaw_gmail_secretary_watchdog.py` retains the stale-review, resumable
 mailbox and auto-disabled-job handling. It requires explicit `--account`,
 `--triage-job-id` and `--watchdog-job-id`; executable, audit/keyring paths and
