@@ -74,5 +74,5 @@ test('summary normalization retains only qualification metadata and archive swit
   const payload = context.archiveTest.normalizePayload({ data: { tasks: [task('0001', { codingAutonomy: { ...archive, runs: [{ private: 'excluded' }] } })] } });
   expect(payload.tasks[0].codingAutonomy).toEqual({ disposition: { kind: 'qualification', outcome: 'abandoned' } });
   expect(context.archiveTest.state.includeArchivedQualifications).toBe(false);
-  expect(read('pipeline.js')).toContain('state.includeArchivedQualifications = event.target.checked; renderProgression(); renderOpenWork(); renderRecentlyDone();');
+  expect(read('pipeline.js')).toContain('state.includeArchivedQualifications = event.target.checked; renderCounts(); renderEvidence(); renderProgression(); renderOpenWork(); renderRecentlyDone();');
 });

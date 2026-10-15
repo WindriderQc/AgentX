@@ -471,18 +471,25 @@
 
   function summaryCount(key, fallback) {
     if (!hasExactCountEvidence()) return fallback;
-    const value = Number(state.summary?.[key]);
-    return Number.isFinite(value) && value >= 0 ? value : fallback;
+    const counts = statusCounts();
+    return key === 'doneCount' ? counts.done : key === 'openCount' ? STATUS_ORDER.slice(0, 4).reduce((sum, status) => sum + counts[status], 0)
+      : key === 'matchedCount' ? Object.values(counts).reduce((sum, count) => sum + count, 0) : fallback;
   }
 
   function statusCounts() {
     const loaded = countByStatus(state.tasks);
-    if (!hasExactCountEvidence()) return loaded;
+    const archived = task => task.codingAutonomy?.disposition?.kind === 'qualification';
+    const archiveCounts = state.summary?.archivedQualifications?.byStatus;
+    const validArchive = archiveCounts && STATUS_ORDER.every(status => Number.isSafeInteger(archiveCounts[status])
+      && archiveCounts[status] >= 0 && archiveCounts[status] <= state.summary?.byStatus?.[status]);
+    if (!hasExactCountEvidence() || (!state.includeArchivedQualifications && !validArchive && state.evidence?.rows?.truncated))
+      return countByStatus(state.tasks.filter(task => state.includeArchivedQualifications || !archived(task)));
+    const hidden = state.includeArchivedQualifications ? {} : validArchive ? archiveCounts : countByStatus(state.tasks.filter(archived));
     const summary = state.summary?.byStatus;
     const counts = {};
     STATUS_ORDER.forEach((status) => {
       const value = Number(summary[status]);
-      counts[status] = Number.isFinite(value) && value >= 0 ? value : loaded[status];
+      counts[status] = Number.isFinite(value) && value >= 0 ? value - (hidden[status] || 0) : loaded[status];
     });
     return counts;
   }
@@ -1096,7 +1103,7 @@
     $('pipelineEpicFilter')?.addEventListener('change', (event) => { state.filters.epic = event.target.value; state.expandedStages.clear(); renderAll(); });
     $('pipelineIncludeDone')?.addEventListener('change', (event) => { state.includeDone = event.target.checked; renderProgression(); });
     $('pipelineIncludeArchivedQualifications')?.addEventListener('change', (event) => {
-      state.includeArchivedQualifications = event.target.checked; renderProgression(); renderOpenWork(); renderRecentlyDone();
+      state.includeArchivedQualifications = event.target.checked; renderCounts(); renderEvidence(); renderProgression(); renderOpenWork(); renderRecentlyDone();
     });
     document.querySelectorAll('[data-pipeline-view]').forEach((button) => button.addEventListener('click', () => { state.view = button.dataset.pipelineView; renderProgression(); }));
     $('pipelineProgression')?.addEventListener('click', (event) => {

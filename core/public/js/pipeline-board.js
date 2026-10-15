@@ -22,6 +22,11 @@
       el.classList.add('pipeline-evidence-warning');
       return;
     }
+    const hidden = state.includeArchivedQualifications ? 0 : summary.archivedQualifications?.matchedCount
+      ?? state.tasks.filter(archivedQualification).length;
+    const displayScope = state.includeArchivedQualifications ? 'archived qualifications included' : `${hidden} archived qualifications excluded`;
+    const sampled = !state.includeArchivedQualifications && !summary.archivedQualifications && evidence.rows?.truncated;
+    const countLabel = sampled ? 'loaded sample counts; exact totals unavailable for this archive selection' : 'exact full-scope totals';
     const statusScope = evidence.scope?.includesDone ? 'all statuses, including done' : 'open statuses only';
     const returned = Number(evidence.rows?.returnedCount) || 0;
     const matched = Number(evidence.rows?.matchedCount) || 0;
@@ -30,7 +35,7 @@
       : `rows show all ${returned} matched records`;
     const observed = formatDate(evidence.observedAt);
     const taskScope = evidence.scope?.taskScope === 'engineering' ? 'Engineering tasks' : 'All task lanes';
-    el.textContent = `${taskScope} · MongoDB task authority · exact full-scope totals (${statusScope}) · all-time, no date filter · ${rowWindow} · sampled ${observed}`;
+    el.textContent = `${taskScope} · MongoDB task authority · ${countLabel} (${statusScope}; ${displayScope}) · all-time, no date filter · ${rowWindow} · sampled ${observed}`;
     el.classList.remove('pipeline-evidence-warning');
   }
 
@@ -49,11 +54,12 @@
     const target = $('pipelineProgression');
     if (!target) return;
     const scoped = state.tasks.filter(matchesContext).filter(matchesFilters);
-    const tasks = sortTasks(scoped.filter(includesQualification).filter((task) => state.filters.status || state.includeDone || task.status !== 'done'));
-    const done = scoped.filter((task) => task.status === 'done').length;
-    const superseded = scoped.filter((task) => task.resolution?.kind === 'superseded').length;
+    const eligible = scoped.filter(includesQualification);
+    const tasks = sortTasks(eligible.filter((task) => state.filters.status || state.includeDone || task.status !== 'done'));
+    const done = eligible.filter((task) => task.status === 'done').length;
+    const superseded = eligible.filter((task) => task.resolution?.kind === 'superseded').length;
     const scope = state.filters.epic ? `Group: ${state.filters.epic}` : 'All groups';
-    $('pipelineOverviewMeta').textContent = `${scope} · ${tasks.length} matching loaded tasks · ${done}/${scoped.length} closed${superseded ? ` (${superseded} superseded)` : ''}${state.filters.status ? ` · ${formatStatus(state.filters.status)}` : ''}. Counts above remain global.${archiveScope(scoped)}${state.evidence?.rows?.truncated ? ' Loaded sample is incomplete; see count scope above.' : ''}`;
+    $('pipelineOverviewMeta').textContent = `${scope} · ${tasks.length} matching loaded tasks · ${done}/${eligible.length} closed${superseded ? ` (${superseded} superseded)` : ''}${state.filters.status ? ` · ${formatStatus(state.filters.status)}` : ''}. Counts above use this archive selection across all groups and filters.${archiveScope(scoped)}${state.evidence?.rows?.truncated ? ' Loaded sample is incomplete; see count scope above.' : ''}`;
     $('pipelineIncludeDone').disabled = Boolean(state.filters.status);
     document.querySelectorAll('[data-pipeline-view]').forEach((button) => {
       const selected = button.dataset.pipelineView === state.view;
