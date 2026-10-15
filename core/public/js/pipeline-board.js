@@ -12,6 +12,23 @@
     return hidden ? ` ${hidden} archived qualification${hidden === 1 ? '' : 's'} hidden; include them to inspect original statuses. Their dependency barriers remain in force.` : '';
   }
 
+  function scopedCounts() {
+    const count = rows => Object.fromEntries(STATUS_ORDER.map(status => [status, rows.filter(row => row.status === status).length]));
+    const loaded = count(state.tasks), summary = state.summary, archived = summary?.archivedQualifications;
+    const validArchive = archived?.byStatus && STATUS_ORDER.every(status => Number.isSafeInteger(archived.byStatus[status])
+      && archived.byStatus[status] >= 0 && archived.byStatus[status] <= summary?.byStatus?.[status])
+      && STATUS_ORDER.reduce((sum, status) => sum + archived.byStatus[status], 0) === archived.matchedCount;
+    const complete = state.evidence?.rows?.truncated === false && state.evidence.rows.returnedCount === state.tasks.length
+      && summary?.matchedCount === state.tasks.length && STATUS_ORDER.every(status => summary?.byStatus?.[status] === loaded[status]);
+    const exact = Boolean(hasExactCountEvidence?.() && (state.includeArchivedQualifications || validArchive || complete));
+    const hidden = state.includeArchivedQualifications ? {} : validArchive ? archived.byStatus : count(state.tasks.filter(archivedQualification));
+    const counts = exact ? Object.fromEntries(STATUS_ORDER.map(status => [status, summary.byStatus[status] - (hidden[status] || 0)]))
+      : count(state.tasks.filter(includesQualification));
+    const matchedCount = Object.values(counts).reduce((sum, value) => sum + value, 0);
+    return { counts, exact, matchedCount, doneCount: counts.done || 0, openCount: matchedCount - (counts.done || 0),
+      hiddenCount: Object.values(hidden).reduce((sum, value) => sum + value, 0) };
+  }
+
   function renderEvidence() {
     const el = $('pipelineCountEvidence');
     if (!el) return;
@@ -22,10 +39,10 @@
       el.classList.add('pipeline-evidence-warning');
       return;
     }
-    const hidden = state.includeArchivedQualifications ? 0 : summary.archivedQualifications?.matchedCount
-      ?? state.tasks.filter(archivedQualification).length;
+    const projection = scopedCounts();
+    const hidden = projection.hiddenCount;
     const displayScope = state.includeArchivedQualifications ? 'archived qualifications included' : `${hidden} archived qualifications excluded`;
-    const sampled = !state.includeArchivedQualifications && !summary.archivedQualifications && evidence.rows?.truncated;
+    const sampled = !projection.exact;
     const countLabel = sampled ? 'loaded sample counts; exact totals unavailable for this archive selection' : 'exact full-scope totals';
     const statusScope = evidence.scope?.includesDone ? 'all statuses, including done' : 'open statuses only';
     const returned = Number(evidence.rows?.returnedCount) || 0;
@@ -36,7 +53,7 @@
     const observed = formatDate(evidence.observedAt);
     const taskScope = evidence.scope?.taskScope === 'engineering' ? 'Engineering tasks' : 'All task lanes';
     el.textContent = `${taskScope} · MongoDB task authority · ${countLabel} (${statusScope}; ${displayScope}) · all-time, no date filter · ${rowWindow} · sampled ${observed}`;
-    el.classList.remove('pipeline-evidence-warning');
+    el.classList.toggle('pipeline-evidence-warning', sampled);
   }
 
   function visibleTasks() {
@@ -116,16 +133,18 @@
     if (!rows) return;
 
     const tasks = visibleTasks();
-    const loadedOpen = state.tasks.filter((task) => task.status !== 'done').length;
+    const projection = scopedCounts();
+    const loadedScope = state.tasks.filter(includesQualification);
+    const loadedOpen = loadedScope.filter((task) => task.status !== 'done').length;
     const exactOpen = summaryCount('openCount', loadedOpen);
-    const exactMatched = summaryCount('matchedCount', state.tasks.length);
+    const exactMatched = summaryCount('matchedCount', loadedScope.length);
 
     if (meta) {
       const scope = state.filters.status ? `${formatStatus(state.filters.status)} tasks` : 'open tasks';
       const filtered = hasActiveFilters() || state.context;
       meta.textContent = filtered
-        ? `${tasks.length} matching loaded ${scope} · ${exactOpen} open overall across ${exactMatched} exact records`
-        : `${exactOpen} open task${exactOpen === 1 ? '' : 's'} across ${exactMatched} exact all-time record${exactMatched === 1 ? '' : 's'} · ${state.tasks.length} rows loaded`;
+        ? `${tasks.length} matching loaded ${scope} · ${exactOpen} ${projection.exact ? 'open overall' : 'loaded open'} across ${exactMatched} ${projection.exact ? 'exact' : 'loaded'} records`
+        : `${exactOpen} ${projection.exact ? 'open' : 'loaded open'} task${exactOpen === 1 ? '' : 's'} across ${exactMatched} ${projection.exact ? 'exact all-time' : 'loaded'} record${exactMatched === 1 ? '' : 's'} · ${state.tasks.length} rows loaded`;
       meta.textContent += archiveScope(state.tasks.filter(matchesContext).filter(matchesFilters));
     }
 
@@ -372,7 +391,7 @@
   window.PipelineBoard = {
     create(deps) {
       ({ $, state, hasExactCountEvidence, formatDate, sortTasks, matchesContext, matchesFilters, formatStatus, escapeHtml, statusBadge, STATUS_ORDER, priorityChip, isStale, summaryCount, hasActiveFilters, contextDescription, unmetDependencies, riskChip, dueCell, activityCell, relativeTime, percentLabel, durationLabel, costLabel, energyLabel, nanoCurrencyLabel, costEvidencePresentation, localEnergyPresentation, readProjection } = deps);
-      return { renderEvidence, renderProgression, renderOpenWork, reviewContext, renderAttention, renderRecentlyDone, attemptOutcome, loadTeamPerformance };
+      return { scopedCounts, renderEvidence, renderProgression, renderOpenWork, reviewContext, renderAttention, renderRecentlyDone, attemptOutcome, loadTeamPerformance };
     }
   };
 })();

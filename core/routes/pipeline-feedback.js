@@ -105,6 +105,12 @@ router.post('/tasks/:id/feedback', async (req, res) => {
 
     const query = { pipelineId: req.params.id };
     const options = { new: true };
+    if (b.manualWorkerClaim != null) {
+      if (lease || b.manualReportClaim != null || entry.by !== 'coding-team' || !FEEDBACK_STATUS[b.status])
+        return envelope.error(res, 400, 'Manual worker feedback must name its original claim', 'MANUAL_WORKER_CLAIM_INVALID');
+      try { Object.assign(query, require('../src/services/pipelineManualReportClaim').query(current, b.manualWorkerClaim, ['in_progress', 'blocked'])); }
+      catch (error) { return envelope.error(res, error.statusCode || 409, 'The original coding worker claim no longer owns this scope', 'MANUAL_WORKER_CLAIM_CHANGED'); }
+    }
     if (b.manualReportClaim != null) {
       if (lease || entry.by !== 'coding-team' || b.status !== 'blocked') return envelope.error(res, 400, 'Manual report stop must name its original claim', 'REPORT_CLAIM_INVALID');
       try { Object.assign(query, require('../src/services/pipelineManualReportClaim').query(current, b.manualReportClaim, ['in_progress', 'blocked'])); }
@@ -166,7 +172,7 @@ router.post('/tasks/:id/feedback', async (req, res) => {
 
     const transition = feedbackTransition(query, update, current, { entry, lease, requested: b.status, evidence: normalizedEvidence });
     const task = await PipelineTask.findOneAndUpdate(query, update, options);
-    if (!task && b.manualReportClaim != null) return envelope.error(res, 409, 'Original report claim changed before feedback', 'REPORT_CLAIM_CHANGED');
+    if (!task && (b.manualReportClaim != null || b.manualWorkerClaim != null)) return envelope.error(res, 409, 'Original worker claim changed before feedback', 'REPORT_CLAIM_CHANGED');
     if (!task && b.workerOutcome != null) return envelope.error(res, 409, 'The task changed while recording this observation.', 'WORKER_OUTCOME_CONFLICT');
     if (!task && b.expectedQueuedUpdatedAt != null) {
       return envelope.error(res, 409, 'Task changed before preflight feedback was recorded', 'TASK_PREFLIGHT_CHANGED');

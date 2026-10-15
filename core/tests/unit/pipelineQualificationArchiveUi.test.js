@@ -26,7 +26,7 @@ test('archived qualifications leave active rows and board while dependent work s
   expect(nodes.pipelineOpenRows.innerHTML).not.toContain('data-pipeline-task="0001"');
   expect(nodes.pipelineOpenRows.innerHTML).toContain('waits on 0001');
   expect(nodes.pipelineOverviewMeta.textContent).toContain('1 archived qualification hidden');
-  expect(nodes.pipelineOpenMeta.textContent).toContain('2 open tasks across 2 exact all-time records');
+  expect(nodes.pipelineOpenMeta.textContent).toContain('1 loaded open task across 1 loaded record');
   state.filters.status = 'blocked'; api.renderProgression();
   expect(nodes.pipelineProgression.innerHTML).not.toContain('data-pipeline-task="0001"');
   state.includeArchivedQualifications = true; api.renderProgression(); api.renderOpenWork();
@@ -75,4 +75,16 @@ test('summary normalization retains only qualification metadata and archive swit
   expect(payload.tasks[0].codingAutonomy).toEqual({ disposition: { kind: 'qualification', outcome: 'abandoned' } });
   expect(context.archiveTest.state.includeArchivedQualifications).toBe(false);
   expect(read('pipeline.js')).toContain('state.includeArchivedQualifications = event.target.checked; renderCounts(); renderEvidence(); renderProgression(); renderOpenWork(); renderRecentlyDone();');
+});
+test.each(['queued', 'blocked'])('a managed %s task points to its existing loop rather than a manual worker', status => {
+  const body = { innerHTML: '' }, context = { window: {} };
+  vm.runInNewContext(read('pipeline-drawer.js'), context);
+  const api = context.window.PipelineDrawer.create({ state: { drawer: {} }, drawerEls: () => ({ body }), readStorage: () => '',
+    reviewContext: () => ({ label: 'Managed work', detail: 'Inspect existing authorization', action: 'Review controls' }),
+    escapeHtml: escape, statusBadge: value => value, priorityChip: () => '', riskChip: () => '', latestTeamUpdate: () => '',
+    metaRow: () => '', formatDate: () => '', relativeTime: () => '', renderAttemptDossier: () => '', renderSupersedePreview: () => '' });
+  api.renderDrawer(task('0001', { status, codingAutonomy: { state: 'active' } }));
+  expect(body.innerHTML).toContain('existing Coding Team correction loop');
+  expect(body.innerHTML).not.toContain('data-drawer-action="reply-resume"');
+  expect(body.innerHTML).not.toContain('data-drawer-action="give-to-team"');
 });

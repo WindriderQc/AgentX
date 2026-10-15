@@ -422,6 +422,7 @@ router.post('/tasks/:id/status', async (req, res) => {
       return envelope.error(res, 409, `The reviewer must differ from the worker (${current.assignee})`, 'REVIEWER_IS_WORKER');
     }
 
+    const reportAcceptance = status === 'done' ? await require('../src/services/pipelineReportReview').acceptance(current, b) : null;
     const update = { $set: { status } };
     if (current.resolution?.kind === 'superseded' && status !== 'done' && b.reopen === true) {
       update.$unset = { ...(update.$unset || {}), resolution: 1 };
@@ -477,13 +478,21 @@ router.post('/tasks/:id/status', async (req, res) => {
 
     if (status === 'done' && current.status !== 'done') {
       const by = String(b.by || '').trim();
-      update.$push = { feedback: { by: by || 'operator', text: `Confirmed ${current.status} -> done${by ? ` by ${by}` : ' (operator override)'}.`, at: new Date() } };
+      update.$push = { feedback: { by: by || 'operator', text: `Confirmed ${current.status} -> done${by ? ` by ${by}` : ' (operator override)'}.`, at: new Date(), ...(reportAcceptance ? { reportAcceptance } : {}) } };
     }
 
     const mutationQuery = { pipelineId: req.params.id };
     if (b.expected !== undefined) {
       try { Object.assign(mutationQuery, expectedStatusGuard(current, b.expected)); }
       catch (err) { return envelope.error(res, err.status || 400, err.message, err.code || 'INVALID_EXPECTED_VERSION'); }
+    }
+    if (reportAcceptance) {
+      const guard = require('../src/services/pipelineManualReportClaim').query(current, {
+        claimSeq: require('../../shared/pipelineReportSelection').currentReport(current).claimSeq,
+        specSha256: require('../src/services/pipelineManualReportClaim').specHash(current)
+      }, ['review']);
+      const conditions = [...(mutationQuery.$and || []), ...guard.$and];
+      Object.assign(mutationQuery, guard, { $and: conditions });
     }
     if (workerLease) {
       mutationQuery.status = 'in_progress';
@@ -514,7 +523,7 @@ router.post('/tasks/:id/status', async (req, res) => {
     if (!task) return envelope.error(res, 404, 'Task not found', 'NOT_FOUND');
     if (terminalAutomationLease) await releaseAutomationSlot(terminalAutomationLease);
     return envelope.success(res, { task: redactTaskLeaseIds(task) });
-  } catch (err) { return envelope.error(res, 500, err.message); }
+  } catch (err) { return envelope.error(res, err.status || err.statusCode || 500, err.message, err.code); }
 });
 
 // Submit feedback. "done" sends it to REVIEW (overseer-gated). POST .../tasks/:id/feedback { text, status?, by? }

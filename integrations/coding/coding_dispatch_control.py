@@ -42,9 +42,23 @@ class ControlError(RuntimeError):
         self.code, self.status = code, status
 
 
+QUEUE_EVIDENCE = None
+
+
 def queued_tasks() -> list[dict]:
-    with urlopen(f"{CORE}/api/pipeline/tasks?status=queued&limit=2000", timeout=10) as response:
-        return json.load(response)["data"]["tasks"]
+    global QUEUE_EVIDENCE
+    # Filter private and unrelated services before pagination, just like Core's claim scope.
+    with urlopen(f"{CORE}/api/pipeline/tasks?status=queued&service=agentx-coding&scope=engineering&limit=1000", timeout=10) as response:
+        data = json.load(response)['data']
+    rows = data['tasks']
+    evidence, summary = data.get('evidence') or {}, data.get('summary') or {}
+    scoped = (evidence.get('authority') == 'core.pipeline' and (evidence.get('scope') or {}).get('taskScope') == 'engineering'
+              and (evidence.get('scope', {}).get('filters') or {}).get('service') == CODING_SERVICE)
+    total = summary.get('matchedCount')
+    QUEUE_EVIDENCE = {'scope': 'engineering_coding' if scoped else 'loaded_tasks',
+                      'queuedTasks': total if scoped and type(total) is int and total >= len(rows) else len(rows),
+                      'eligibleCountExact': bool(scoped and (evidence.get('rows') or {}).get('truncated') is False)}
+    return rows
 
 
 def is_private_task(task: dict) -> bool:
@@ -53,10 +67,27 @@ def is_private_task(task: dict) -> bool:
                 or PRIVATE_SOURCE.match(str(task.get("source") or "")))
 
 
-def can_start(task: dict) -> bool:
-    return (task.get("status") == "queued" and not task.get("assignee")
-            and task.get("service") == CODING_SERVICE
-            and not is_private_task(task))
+def can_start(task: dict, *, autonomous=False) -> bool:
+    if not (task.get('status') == 'queued' and not task.get('assignee')
+            and task.get('service') == CODING_SERVICE and not is_private_task(task)):
+        return False
+    # The separately authorized loop keeps its native manifest and atomic admission.
+    if autonomous:
+        return True
+    if not autonomous and (task.get('codingAutonomy') or task.get('automationLease') or task.get('automationAttemptCount')
+            or task.get('automationAttempts') or task.get('codingCapacity') or (task.get('automation') or {}).get('mode') == 'review_only'):
+        return False
+    if task.get('notBefore'):
+        try:
+            when = datetime.fromisoformat(str(task['notBefore']).replace('Z', '+00:00'))
+            if when.tzinfo is None or when > datetime.now(timezone.utc):
+                return False
+        except (ValueError, TypeError):
+            return False
+    code = (task.get('nextAction') or {}).get('code')
+    if code in {'wait_not_before', 'inspect_dependencies', 'inspect_owner'}:
+        return False
+    return not task.get('dependsOn') or code in {'await_claim', 'review_due_date'}
 
 
 def unit_active() -> bool:
@@ -108,7 +139,23 @@ def read_progress(run: dict) -> dict | None:
         return None
 
 
+def report_profile(task):
+    allowed = not (task.get('codingAutonomy') or task.get('automationLease') or task.get('automationAttemptCount')
+                   or task.get('automationAttempts') or (task.get('automation') or {}).get('mode') == 'review_only')
+    latest = next((row.get('reportOutcome') for row in reversed(task.get('feedback') or []) if row.get('reportOutcome')), None)
+    result = {'canReport': allowed}
+    if latest:
+        result['reportName'] = latest['reportName'] if report_name(latest.get('reportName')) else 'REVIEW.md'
+        saved = latest.get('partial') or latest
+        if (isinstance(latest.get('requestId'), str) and REQUEST_ID.fullmatch(latest['requestId'])
+                and saved.get('deliverableId') and isinstance(saved.get('sha256'), str) and re.fullmatch(r'[a-f0-9]{64}', saved['sha256'])):
+            result['reportCheckpoint'] = {'parentRequestId': latest['requestId'], 'parentSha256': saved['sha256']}
+    return result
+
+
 def status(key: str | None = None) -> dict:
+    global QUEUE_EVIDENCE
+    QUEUE_EVIDENCE = None
     tasks = queued_tasks()
     busy = unit_active()
     latest = RECEIPTS / "latest"
@@ -120,6 +167,10 @@ def status(key: str | None = None) -> dict:
         run["message"] = ("The coding worker is running." if run["phase"] == "running"
                           else "The coding worker stopped. Read its recorded result." if run["phase"] == "finished"
                           else "The host unit stopped without a terminal receipt. Inspect the task and checkpoint.")
+    if run and run.get('reportName') and progress and progress['phase'] == 'finished' and not progress.get('coreRecorded') and not (progress.get('preflight') and progress.get('modelCalls') == 0):
+        run.update(phase='unknown', message='The local report worker stopped; reconcile its original Core result before another launch.')
+    if run and run.get('reportName'):
+        run['canReconcile'] = not busy and run['phase'] == 'unknown'
     if key and not run:
         legacy = LEGACY_RECEIPTS / f"{key}.json"
         run = ({**json.loads(legacy.read_text()), "retired": True, "canRetry": False, "canCancel": False,
@@ -137,15 +188,20 @@ def status(key: str | None = None) -> dict:
         "contractVersion": 2, "available": True, "busy": busy,
         "observedAt": datetime.now(timezone.utc).isoformat(),
         "summary": {"queuedTasks": len(tasks), "eligibleTasks": sum(map(can_start, tasks)),
-                    "privateQueuedTasks": sum(map(is_private_task, tasks))},
+                    "privateQueuedTasks": sum(map(is_private_task, tasks)), **(QUEUE_EVIDENCE or {
+                        "scope": "loaded_tasks", "eligibleCountExact": False})},
         "candidates": [{"pipelineId": task["pipelineId"], "title": task.get("title", ""),
-                        "expectedAttemptCount": int(task.get("automationAttemptCount") or 0)}
+                        "expectedAttemptCount": int(task.get("automationAttemptCount") or 0), **report_profile(task)}
                        for task in tasks if can_start(task)],
-        "excluded": [], "run": run,
+        "excluded": [{"pipelineId": task['pipelineId'], "title": task.get('title', ''), "reasons": [
+            {"code": (task.get('nextAction') or {}).get('code', 'manual_worker_ineligible'),
+             "detail": 'Use the existing correction loop for this managed task.' if not report_profile(task)['canReport']
+                       else (task.get('nextAction') or {}).get('detail', 'Current task conditions do not admit a manual worker.')} ]}
+            for task in tasks if not is_private_task(task) and not can_start(task)][:50], "run": run,
     }
 
 
-def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomous=False, report="", model_call_limit=None) -> dict:
+def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomous=False, report="", model_call_limit=None, parent_request_id=None, parent_sha256=None) -> dict:
     if report and (autonomous or not report_name(report)):
         raise ControlError("CODING_DISPATCH_INVALID_REQUEST", "Report mode needs a plain Markdown file name and a manual request.", 400)
     try:
@@ -154,6 +210,9 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
         limit = progress_module.report_call_limit(model_call_limit)
     except ValueError as error:
         raise ControlError('CODING_DISPATCH_INVALID_REQUEST', str(error), 400) from error
+    if parent_request_id is not None or parent_sha256 is not None:
+        if not report or not isinstance(parent_request_id, str) or not REQUEST_ID.fullmatch(parent_request_id) or not isinstance(parent_sha256, str) or not re.fullmatch(r'[a-f0-9]{64}', parent_sha256) or parent_request_id == key:
+            raise ControlError('CODING_DISPATCH_INVALID_REQUEST', 'A report continuation needs its original request and file digest.', 400)
     STATE.mkdir(parents=True, exist_ok=True)
     with (STATE / "coding-dispatcher-control.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -165,7 +224,8 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
                 return {'accepted': False, 'replayed': True, 'pipelineId': pipeline_id, 'run': previous}
             if (previous["pipelineId"] != pipeline_id or previous.get("expectedAttemptCount", 0) != expected_attempt_count
                     or bool(previous.get("autonomous")) != autonomous or previous.get('reportName', '') != report
-                    or report and previous.get('modelCallLimit', progress_module.MANUAL_MODEL_CALL_LIMIT) != limit):
+                    or report and previous.get('modelCallLimit', progress_module.MANUAL_MODEL_CALL_LIMIT) != limit
+                    or previous.get('parentRequestId') != parent_request_id or previous.get('parentSha256') != parent_sha256):
                 raise ControlError("CODING_DISPATCH_REQUEST_CONFLICT", "This request id belongs to a different selection.")
             return {"accepted": True, "replayed": True, "pipelineId": pipeline_id, "run": previous}
         if (LEGACY_RECEIPTS / f"{key}.json").exists():
@@ -180,10 +240,10 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
                 (not (pending.get("autonomous") or pending.get('reportName')) or terminal["coreRecorded"]
                  or pending.get('reportName') and terminal.get('preflight') and terminal.get('modelCalls') == 0)):
             raise ControlError("CODING_DISPATCH_OUTCOME_UNKNOWN", "Reconcile the previous launch before starting another task.")
-        selected = next((task for task in queued_tasks() if task["pipelineId"] == pipeline_id and can_start(task)), None)
+        selected = next((task for task in queued_tasks() if task["pipelineId"] == pipeline_id and can_start(task, autonomous=autonomous)), None)
         if not selected:
             raise ControlError("CODING_DISPATCH_INELIGIBLE", "Only unowned, queued, non-private agentx-coding tasks can start.")
-        if report and ((selected.get('automation') or {}).get('mode') == 'review_only' or selected.get('codingAutonomy') or selected.get('automationLease')):
+        if report and ((selected.get('automation') or {}).get('mode') == 'review_only' or selected.get('codingAutonomy') or selected.get('automationLease') or selected.get('automationAttemptCount') or selected.get('automationAttempts')):
             raise ControlError('CODING_DISPATCH_INELIGIBLE', 'Report mode cannot replace an automated attempt.')
         if int(selected.get("automationAttemptCount") or 0) != expected_attempt_count:
             raise ControlError("CODING_DISPATCH_REQUEST_CONFLICT", "The task attempt changed before launch.")
@@ -200,13 +260,16 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
         if report:
             run['reportName'] = report
             run['modelCallLimit'] = limit
+            if parent_request_id:
+                run.update(parentRequestId=parent_request_id, parentSha256=parent_sha256)
         save_receipt(run)
         subprocess.run(["systemd-run", "--user", "--collect", "--quiet", f"--unit={UNIT}",
                         f"--property=EnvironmentFile=-{ENV_FILE}", f"--setenv=AGENTX_CORE_URL={CORE}",
                         f"--setenv=PATH={os.environ.get('PATH', '/usr/local/bin:/usr/bin:/bin')}",
                         sys.executable, str(HERE / "coding_run.py"), pipeline_id, "--request-id", key,
                         *(["--autonomous"] if autonomous else []), *(["--report-name", report] if report else []),
-                        *(["--model-call-limit", str(limit)] if report and limit != progress_module.MANUAL_MODEL_CALL_LIMIT else [])],
+                        *(["--model-call-limit", str(limit)] if report and limit != progress_module.MANUAL_MODEL_CALL_LIMIT else []),
+                        *(["--parent-request-id", parent_request_id, "--parent-sha256", parent_sha256] if parent_request_id else [])],
                        check=True, capture_output=True, text=True, timeout=10)
         run.update(phase="accepted", message="The coding worker started on this task.")
         save_receipt(run)
@@ -336,11 +399,18 @@ def main() -> int:
             data = status(values[0] if values else None)
         elif action in {"launch", "launch-autonomous"} and len(values) == 3 and re.fullmatch(r"\d{4}", values[0]) and values[2].isdigit():
             data = launch(values[0], values[1], int(values[2]), autonomous=action == "launch-autonomous")
-        elif (action == "launch-report" and len(values) in {4, 6} and re.fullmatch(r"\d{4}", values[0])
-              and values[2].isdigit() and report_name(values[3])
-              and (len(values) == 4 or values[4] == '--model-call-limit' and values[5].isdigit())):
+        elif action == 'launch-report' and len(values) >= 4 and re.fullmatch(r'\d{4}', values[0]) and values[2].isdigit() and report_name(values[3]):
+            flags = values[4:]
+            allowed = {'--model-call-limit', '--parent-request-id', '--parent-sha256'}
+            if len(flags) % 2 or any(flag not in allowed for flag in flags[::2]) or len(set(flags[::2])) != len(flags[::2]):
+                raise ControlError('CODING_DISPATCH_INVALID_REQUEST', 'Invalid report launch options.', 400)
+            options = dict(zip(flags[::2], flags[1::2]))
+            raw_limit = options.get('--model-call-limit')
+            if raw_limit is not None and not raw_limit.isdigit():
+                raise ControlError('CODING_DISPATCH_INVALID_REQUEST', 'Invalid report call limit.', 400)
             data = launch(values[0], values[1], int(values[2]), report=values[3],
-                          model_call_limit=int(values[5]) if len(values) == 6 else None)
+                          model_call_limit=int(raw_limit) if raw_limit is not None else None,
+                          parent_request_id=options.get('--parent-request-id'), parent_sha256=options.get('--parent-sha256'))
         elif action == "observe" and len(values) == 2 and re.fullmatch(r"\d{4}", values[0]):
             data = observe(values[0], values[1])
         elif action == "reconcile" and len(values) == 2 and re.fullmatch(r"\d{4}", values[0]):

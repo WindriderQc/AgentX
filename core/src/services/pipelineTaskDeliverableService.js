@@ -51,6 +51,7 @@ function receipt(row, state) {
     name: row.name,
     mimeType: row.mimeType,
     kind: row.kind,
+    ...(row.reportOrigin ? { reportOrigin: row.reportOrigin } : {}),
     size: row.size,
     sha256: row.sha256,
     owner: { kind: 'pipeline_task', ref: taskRef(row.pipelineId) },
@@ -162,14 +163,18 @@ const storedState = row => {
 
 // Same attempt + name + bytes is the same registration: return it unchanged,
 // with the stored bytes re-verified rather than assumed.
-function existingOutcome(row, payload) {
+function existingOutcome(row, payload, reportOrigin) {
+  const originFields = ['requestId', 'claimSeq', 'sourceCommit', 'specSha256', 'state'];
+  if (Boolean(row.reportOrigin) !== Boolean(reportOrigin)
+    || (reportOrigin && !originFields.every(key => row.reportOrigin[key] === reportOrigin[key])))
+    throw fail(409, 'DELIVERABLE_ORIGIN_CONFLICT', 'Stored report provenance differs from this registration');
   if (row.sha256 !== payload.sha256) {
     throw fail(409, 'DELIVERABLE_CONFLICT', 'A different file is already registered under this name for this attempt; deliverables are immutable');
   }
   return { created: false, receipt: receipt(row, storedState(row).state) };
 }
 
-async function register(pipelineId, body = {}) {
+async function register(pipelineId, body = {}, { reportOrigin } = {}) {
   const { by, attempt } = producerFor(body);
   const payload = decodeUpload(body);
   const task = await loadTask(pipelineId);
@@ -186,7 +191,7 @@ async function register(pipelineId, body = {}) {
   }
   const key = { pipelineId: task.pipelineId, attempt, name: payload.name };
   const existing = await Deliverable.findOne(key).select('+data').lean();
-  if (existing) return existingOutcome(existing, payload);
+  if (existing) return existingOutcome(existing, payload, reportOrigin);
   if (await Deliverable.countDocuments({ pipelineId: task.pipelineId }) >= MAX_PER_TASK) {
     throw fail(409, 'DELIVERABLE_LIMIT', `A task keeps at most ${MAX_PER_TASK} deliverables`);
   }
@@ -195,7 +200,8 @@ async function register(pipelineId, body = {}) {
     const row = await Deliverable.create({
       ...key, mimeType: payload.mimeType, kind: payload.kind, size: payload.size, sha256: payload.sha256, data: payload.data,
       scope: { lane, service: task.service || '' },
-      producer: { declared: by, channel: attempt === null ? 'operator_api' : 'worker_api', leaseRef, permitSeq },
+      producer: { declared: by, channel: reportOrigin ? 'report_worker' : attempt === null ? 'operator_api' : 'worker_api', leaseRef, permitSeq },
+      ...(reportOrigin ? { reportOrigin } : {}),
       storedAt: new Date(),
     });
     const stored = row.toObject();
@@ -204,7 +210,7 @@ async function register(pipelineId, body = {}) {
     if (error.code !== 11000) throw error;
     const raced = await Deliverable.findOne(key).select('+data').lean();
     if (!raced) throw error;
-    return existingOutcome(raced, payload);
+    return existingOutcome(raced, payload, reportOrigin);
   }
 }
 

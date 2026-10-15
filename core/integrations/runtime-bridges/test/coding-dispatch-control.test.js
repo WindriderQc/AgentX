@@ -100,3 +100,33 @@ test('one request id cannot change report filename, mode or call budget while la
     await assert.rejects(control.launch({ ...request, ...change }), error => error.code === 'CODING_DISPATCH_REQUEST_CONFLICT');
   finish(envelope(accepted)); await original;
 });
+
+test('report continuations preserve the exact parent and cannot mutate it under the same request id', async () => {
+  const parent = '20000000-0000-4000-8000-000000000002', sha = 'a'.repeat(64);
+  let finish;
+  const control = configured((_target, command) => {
+    assert.ok(command.endsWith(` --parent-request-id ${parent} --parent-sha256 ${sha}`));
+    return new Promise(resolve => { finish = resolve; });
+  });
+  const input = { ...request, reportName: 'REVIEW.md', parentRequestId: parent, parentSha256: sha };
+  const pending = control.launch(input);
+  await assert.rejects(control.launch({ ...input, parentSha256: 'b'.repeat(64) }), error => error.code === 'CODING_DISPATCH_REQUEST_CONFLICT');
+  finish(envelope(accepted)); await pending;
+  for (const extra of [{ parentRequestId: '../other', parentSha256: sha }, { parentRequestId: parent },
+    { parentRequestId: [parent], parentSha256: sha }, { parentRequestId: parent, parentSha256: sha, autonomous: true }]) {
+    await assert.rejects(configured(() => assert.fail('invalid checkpoint reached host')).launch({ ...request, reportName: 'REVIEW.md', ...extra }), error => error.statusCode === 400);
+  }
+});
+test('reconciliation requires confirmation and reaches only the original native request', async () => {
+  const control = configured(async (_target, command) => {
+    assert.equal(command, `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py reconcile 0700 ${request.requestId}`);
+    return envelope({ reconciled: true });
+  });
+  // Core's already authorized correction loop reconciles the same native identity internally.
+  assert.equal((await control.reconcile({ pipelineId: request.pipelineId, requestId: request.requestId })).reconciled, true);
+  const routes = {};
+  registerCodingDispatchControlRoutes({ express: { Router: () => ({ get() {}, post: (path, fn) => { routes[path] = fn; } }) }, control });
+  const response = { status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };
+  await routes['/runs/:requestId/reconcile']({ params: { requestId: request.requestId }, body: { pipelineId: '0700' } }, response);
+  assert.equal(response.code, 400);
+});

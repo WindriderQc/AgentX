@@ -14,7 +14,7 @@ const SUMMARY_FIELD_LIST = [
   'automationAttempts.evidence.failureCodes automationAttempts.evidence.verification.status',
   'automationAttempts.evidence.inference.state automationAttempts.evidence.inference.cause transitionSeq',
   'codingAutonomy.authorized codingAutonomy.disposition.kind codingAutonomy.disposition.outcome',
-  'feedback.workerOutcome'
+  'feedback.workerOutcome feedback.reportOutcome'
 ].join(' ');
 // Summary reads carry only the most recent transitions; the store keeps more.
 const SUMMARY_FIELDS = {

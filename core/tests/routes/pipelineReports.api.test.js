@@ -20,8 +20,10 @@ const { executeRoutedInference } = require('../../src/extensions/trustedRuntimeS
 const { registerHermesProtocol } = require('../../integrations/runtime-bridges/hermes/protocol');
 beforeAll(async () => {
   await File.createCollection(); await File.createIndexes();
+  await Run.createCollection(); await Run.createIndexes();
   const app = express().use(express.json({ limit: '5mb' })).use('/api/pipeline', require('../../routes/pipeline-deliverables'))
-    .use('/api/pipeline', require('../../routes/pipeline-feedback'));
+    .use('/api/pipeline', require('../../routes/pipeline-feedback'))
+    .use('/api/pipeline', require('../../routes/pipeline'));
   app.use(registerHermesProtocol({ express, logger: {}, runtimeServices: {
     routing: { getEffectiveSnapshot: async () => ({ tasks: { code_generation: { model: 'synthetic-local-model' } } }) },
     inference: { execute: (input, options) => executeRoutedInference(nativeDeps, input, options) },
@@ -129,7 +131,7 @@ test('a stored report is a review candidate, never automatic acceptance; bytes a
   await finished();
   const body = bytes(), first = (await result(body).expect(200)).body.data;
   expect(first.reportReadyForReview).toBe(true);
-  expect(first.receipt).toMatchObject({ attempt: null, name: `review-${KEY}.md`, producer: { channel: 'operator_api', declared: 'coding-team' },
+  expect(first.receipt).toMatchObject({ attempt: null, name: `review-${KEY}.md`, producer: { channel: 'report_worker', declared: 'coding-team' },
     availability: { status: 'available', hashVerified: true }, externalDelivery: { status: 'none' } });
   expect((await Task.findOne({ pipelineId: '0001' }).lean()).status).toBe('review');
   const retry = (await result(body).expect(200)).body.data;
@@ -310,4 +312,142 @@ test('preflight feedback cannot overwrite instructions changed after the last ta
     manualReportClaim:{claimSeq:2,specSha256:f.intent.specSha256}}).expect(409);
   const stored=await Task.findOne({pipelineId:'0001'}).lean();
   expect(stored).toMatchObject({status:'in_progress',spec:'New owner instructions'});expect(stored.feedback).toHaveLength(0);
+});
+
+test('a stopped report archives exact private bytes once and remains blocked, including a lost terminal acknowledgement', async () => {
+  await finished(); const body = { ...stopped(), partial: bytes('# Saved draft\n\nRemaining documents are pending.\n') };
+  const update = Run.updateOne.bind(Run); let lost = false;
+  const spy = jest.spyOn(Run, 'updateOne').mockImplementation(async (...args) => {
+    const result = await update(...args);
+    if (args[1].$set?.result && !lost) { lost = true; throw new Error('Lost acknowledgement after terminal persistence'); }
+    return result;
+  });
+  await expect(reports.stop('0001', KEY, body)).rejects.toThrow('Lost acknowledgement'); spy.mockRestore();
+  const response = await reports.stop('0001', KEY, body);
+  expect(response.blocked).toBe(true); expect(response.outcome.partial.sha256).toBe(body.partial.sha256);
+  const owner = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(owner.status).toBe('blocked'); expect(owner.feedback).toHaveLength(1);
+  expect(await File.countDocuments({})).toBe(1);
+  const file = await files.verify('0001', response.outcome.partial.deliverableId);
+  expect(file).toMatchObject({ producer: { channel: 'report_worker' }, reportOrigin: { requestId: KEY, claimSeq: 2, state: 'partial' },
+    availability: { hashVerified: true, status: 'available' } });
+  await expect(reports.stop('0001', KEY, { ...body, partial: bytes('# Changed draft') })).rejects.toMatchObject({ code: 'REPORT_RESULT_CONFLICT' });
+  expect((await Run.findById(KEY).lean()).result).toEqual(response.outcome);
+});
+
+test('a pending model call fences partial storage as well as the stop verdict', async () => {
+  const f = await fixture(); await start(f.intent); const pending = await call();
+  await expect(reports.stop('0001', KEY, { ...stopped(), partial: bytes() })).rejects.toMatchObject({ code: 'REPORT_MODEL_TERMINATION_UNVERIFIED' });
+  expect(await File.countDocuments({})).toBe(0); expect((await Task.findById(f.owner._id).lean()).status).toBe('in_progress');
+  await pending.finish('completed');
+});
+
+async function continuedFixture() {
+  const f = await finished(); const body = { ...stopped(), partial: bytes('# Saved checkpoint\n\nREADME reviewed; operations pending.\n') };
+  await reports.stop('0001', KEY, body);
+  await Task.updateOne({ _id: f.owner._id }, { $set: { status: 'in_progress', transitionSeq: 4 }, $push: { transitions:
+    buildTransition({ pipelineId: '0001', status: 'queued', transitionSeq: 3 }, { to: 'in_progress', kind: 'claimed', channel: 'worker_api', declaredActor: 'coding-team' }) } });
+  const intent = { ...f.intent, claimSeq: 4, parentRequestId: KEY, parentSha256: body.partial.sha256 };
+  return { f, body, intent };
+}
+test('an explicit new run resumes the exact previous checkpoint without resetting prior usage or granting another call budget', async () => {
+  const f = await continuedFixture();
+  await harness.request.post(`/api/pipeline/tasks/0001/reports/${NEXT}/start`).send(f.intent).expect(200);
+  const response = (await harness.request.get(`/api/pipeline/tasks/0001/reports/${NEXT}/checkpoint`).expect(200)).body.data;
+  expect(response).toMatchObject({ requestId: NEXT, parentRequestId: KEY, sourceCommit: f.intent.sourceCommit, sha256: f.body.partial.sha256, dataUrl: f.body.partial.dataUrl });
+  const observed = await reports.status('0001', NEXT);
+  expect(observed).toMatchObject({ modelCallsRemaining: 128, cumulativeUsage: { executions: 2, modelCalls: 1, budgetScope: 'current_execution_only' } });
+  expect((await Run.findById(KEY).lean()).state).toBe('blocked');
+  expect((await Run.findById(NEXT).lean()).modelReceipts).toHaveLength(0);
+});
+test.each(['digest', 'source', 'scope', 'task', 'pending', 'bytes'])('a continuation refuses a changed or uncertain prior %s before a new run is created', async change => {
+  const { f, intent } = await continuedFixture();
+  if (change === 'digest') intent.parentSha256 = 'b'.repeat(64);
+  if (change === 'source') intent.sourceCommit = 'b'.repeat(40);
+  if (change === 'scope') { await Task.updateOne({ _id: f.owner._id }, { $set: { spec: 'Different requested scope' } }); intent.specSha256 = digest('Different requested scope'); }
+  if (change === 'task') await Run.updateOne({ _id: KEY }, { $set: { taskId: 'different-task-record' } });
+  if (change === 'pending') await Run.updateOne({ _id: KEY }, { $set: { pendingInferences: [CALL] } });
+  if (change === 'bytes') await File.collection.updateOne({}, { $set: { data: Buffer.from('Altered bytes') } });
+  const before = await Task.findById(f.owner._id).lean();
+  await harness.request.post(`/api/pipeline/tasks/0001/reports/${NEXT}/start`).send(intent).expect(409);
+  expect(await Run.countDocuments({})).toBe(1); expect(await Task.findById(f.owner._id).lean()).toEqual(before);
+});
+test('the continuation limit refuses before creating an execution whose status could not be read', async () => {
+  const { f, intent } = await continuedFixture(), base = await Run.findById(KEY).lean();
+  await Run.updateOne({ _id: KEY }, { $set: { claimSeq: 64 } });
+  let previous = null;
+  for (let i = 1; i <= 31; i++) {
+    const key = crypto.randomUUID();
+    await Run.create({ ...base, _id: key, claimSeq: i * 2, parentRequestId: previous });
+    previous = key;
+  }
+  await Run.collection.updateOne({ _id: KEY }, { $set: { claimSeq: 64, parentRequestId: previous } });
+  await Task.updateOne({ _id: f.owner._id }, { $set: { transitionSeq: 66, transitions: [
+    buildTransition({ pipelineId: '0001', status: 'queued', transitionSeq: 65 },
+      { to: 'in_progress', kind: 'claimed', channel: 'worker_api', declaredActor: 'coding-team' })] } });
+  const before = await Task.findById(f.owner._id).lean();
+  const response = await harness.request.post(`/api/pipeline/tasks/0001/reports/${NEXT}/start`).send({ ...intent, claimSeq: 66 }).expect(409);
+  expect(response.body.code).toBe('REPORT_LINEAGE_LIMIT');
+  expect(await Run.countDocuments({})).toBe(32); expect(await Task.findById(f.owner._id).lean()).toEqual(before);
+});
+test('report acceptance binds the exact current candidate, verified bytes and an explicit independent coverage decision', async () => {
+  await finished(); const delivered = (await result(bytes()).expect(200)).body.data;
+  const status = body => harness.request.post('/api/pipeline/tasks/0001/status').send({ status: 'done', by: 'reviewer', ...body });
+  await status({}).expect(409);
+  const acceptance = { requestId: KEY, sha256: delivered.receipt.sha256, scopeComplete: true };
+  await status({ reportAcceptance: { ...acceptance, scopeComplete: false } }).expect(409);
+  await status({ reportAcceptance: { ...acceptance, requestId: NEXT } }).expect(409);
+  await status({ by: 'coding-team', reportAcceptance: acceptance }).expect(409);
+  await status({ reportAcceptance: acceptance }).expect(200);
+  const task = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(task.status).toBe('done'); expect(task.feedback.at(-1).reportAcceptance).toEqual(acceptance);
+});
+test('late manual code feedback cannot overwrite a newer claim or edited specification', async () => {
+  const f = await fixture();
+  const body = { by: 'coding-team', status: 'done', text: 'Old worker result', manualWorkerClaim: { claimSeq: 2, specSha256: f.intent.specSha256 } };
+  await Task.updateOne({ _id: f.owner._id }, { $set: { spec: 'Changed task instructions' } });
+  await harness.request.post('/api/pipeline/tasks/0001/feedback').send(body).expect(409);
+  expect((await Task.findById(f.owner._id).lean()).feedback).toHaveLength(0);
+});
+test('a specification edit during report acceptance cannot close the changed task', async () => {
+  await finished(); const delivered = (await result(bytes()).expect(200)).body.data;
+  const original = Task.findOneAndUpdate.bind(Task);
+  jest.spyOn(Task, 'findOneAndUpdate').mockImplementation(async (...args) => {
+    await Task.updateOne({ pipelineId: '0001' }, { $set: { spec: 'New requested scope' } });
+    return original(...args);
+  });
+  await harness.request.post('/api/pipeline/tasks/0001/status').send({ status: 'done', by: 'reviewer',
+    reportAcceptance: { requestId: KEY, sha256: delivered.receipt.sha256, scopeComplete: true } }).expect(409);
+  const task = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(task).toMatchObject({ status: 'review', spec: 'New requested scope' });
+  expect(task.feedback.some(row => row.reportAcceptance)).toBe(false);
+});
+test('a specification edit racing manual code feedback refuses the old result', async () => {
+  const { intent } = await fixture(), original = Task.findOneAndUpdate.bind(Task);
+  jest.spyOn(Task, 'findOneAndUpdate').mockImplementation(async (...args) => {
+    await Task.updateOne({ pipelineId: '0001' }, { $set: { spec: 'New requested scope' } });
+    return original(...args);
+  });
+  await harness.request.post('/api/pipeline/tasks/0001/feedback').send({ by: 'coding-team', status: 'done', text: 'Old result',
+    manualWorkerClaim: { claimSeq: 2, specSha256: intent.specSha256 } }).expect(409);
+  const task = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(task.status).toBe('in_progress'); expect(task.feedback).toHaveLength(0);
+});
+
+test('concurrent report starts cannot assign two request identities to one task claim', async () => {
+  const { intent } = await fixture();
+  const replies = await Promise.all([start(intent), harness.request.post(`/api/pipeline/tasks/0001/reports/${NEXT}/start`).send(intent)]);
+  expect(replies.map(row => row.status).sort()).toEqual([200, 409]);
+  expect(await Run.countDocuments({})).toBe(1);
+  const original = await Run.findOne({}).lean();
+  expect(original.executionVersion).toBe(1);
+  expect((await reports.status('0001', original._id)).modelCallsRemaining).toBe(128);
+});
+
+test('a valid maximum-length report name still permits immutable partial storage', async () => {
+  const { intent } = await fixture(); intent.reportName = 'a'.repeat(117) + '.md';
+  await start(intent).expect(200); await (await call()).finish('completed');
+  const response = await reports.stop('0001', KEY, { ...stopped(), partial: bytes() });
+  const receipt = await files.verify('0001', response.outcome.partial.deliverableId);
+  expect(receipt.name.length).toBeLessThanOrEqual(160); expect(receipt.availability.status).toBe('available');
 });

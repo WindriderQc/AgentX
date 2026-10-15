@@ -224,17 +224,22 @@
     const candidates = control?.candidates || [];
     const pending = controller?.pending;
     const selected = pending ? '' : select.value;
-    const options = '<option value="">' + (candidates.length ? 'Choose a task…' : 'No task is currently eligible') + '</option>'
+    const completeCandidates = control?.summary?.eligibleCountExact === true;
+    const options = '<option value="">' + (candidates.length ? 'Choose a task…' : completeCandidates ? 'No task is currently eligible' : 'No candidate in the loaded tasks') + '</option>'
       + candidates.map(task => `<option value="${escapeHtml(task.pipelineId)}">${escapeHtml(task.pipelineId)} · ${escapeHtml(task.title)}</option>`).join('');
     if (select.dataset.options !== options) { select.innerHTML = options; select.dataset.options = options; }
     const candidate = candidates.find(task => task.pipelineId === selected);
     select.value = candidate ? selected : '';
-    const identity = candidate ? JSON.stringify([candidate.pipelineId, candidate.expectedAttemptCount, candidate.title]) : '';
+    const identity = candidate ? JSON.stringify([candidate.pipelineId, candidate.expectedAttemptCount, candidate.title, candidate.canReport, candidate.reportName, candidate.reportCheckpoint]) : '';
     if (select.dataset.candidate !== identity) confirm.checked = false;
     select.dataset.candidate = identity;
+    const profile = $('pipelineTeamLaunchProfile');
+    if (profile && profile.dataset.candidate !== identity) {
+      profile.innerHTML = window.PipelineLaunchController.profileFields(candidate); profile.dataset.candidate = identity;
+    }
     const ready = control?.available === true && !control.busy && !pending && !controller?.submitting && !controller?.checking && !controller?.error;
     select.disabled = !ready || !candidates.length;
-    $('pipelineTeamLaunchForm')?.querySelectorAll('[name=reportName], [name=modelCallLimit]').forEach(field => { field.disabled = !ready; });
+    $('pipelineTeamLaunchForm')?.querySelectorAll('[name=reportName], [name=modelCallLimit], [name=resumeReport]').forEach(field => { field.disabled = !ready; });
     confirm.disabled = !ready || !select.value;
     // A status read temporarily disables launch, but does not erase consent for
     // the same selection. A busy host, changed candidate or error clears it.
@@ -247,8 +252,9 @@
         : !control ? 'Checking launch availability…'
           : !control.available ? 'The launch host is unavailable.'
             : pending || control.busy ? 'A run is already active. Follow it in the execution monitor.'
-              : candidates.length ? `${candidates.length} eligible task${candidates.length === 1 ? '' : 's'} · choose one to run`
-                : 'No eligible task. Check task scope and admission conditions below.';
+              : candidates.length ? `${completeCandidates ? '' : 'At least '}${candidates.length} eligible task${candidates.length === 1 ? '' : 's'} · choose one to run`
+                : completeCandidates ? 'No eligible task. Check task scope and admission conditions below.'
+                  : 'No candidate in the loaded tasks. Queue coverage is incomplete; inspect admission details.';
     }
     const selection = $('pipelineTeamLaunchSelection');
     if (selection) { selection.hidden = !select.value; selection.dataset.pipelineTask = select.value; }
@@ -258,8 +264,11 @@
     const run = pending && (control?.run?.requestId !== pending.requestId || (control?.run?.pipelineId && control.run.pipelineId !== pending.pipelineId)) ? null : control?.run;
     const summary = control?.summary;
     const admission = $('pipelineTeamAdmissionDetail');
-    const admissionText = summary
-      ? `${summary.eligibleTasks} of ${summary.queuedTasks} queued tasks eligible for this worker · ${summary.privateQueuedTasks} personal/household tasks outside its scope. Only unassigned, non-private agentx-coding tasks can start. Board filters do not change this list.`
+    const eligibleLabel = summary ? `${summary.eligibleCountExact === true ? '' : 'At least '}${summary.eligibleTasks}` : '';
+    const admissionText = summary?.scope === 'engineering_coding'
+      ? `${eligibleLabel} manual candidates across ${summary.queuedTasks} queued coding tasks. Private lanes and unrelated services are excluded before pagination. Core rechecks start time, dependencies and ownership at claim.`
+      : summary
+      ? `${eligibleLabel} of ${summary.queuedTasks} queued tasks eligible for this worker · ${summary.privateQueuedTasks} personal/household tasks outside its scope. Only unassigned, non-private agentx-coding tasks can start. Board filters do not change this list.`
       : 'The host checks task status, ownership, coding service and private lane before launch.';
     if (admission) admission.textContent = admissionText;
     detail.textContent = admissionText;
@@ -267,7 +276,7 @@
     if (result) {
       result.hidden = !run && !pending;
       result.innerHTML = run
-        ? `<strong>${escapeHtml(run.message || formatStatus(run.phase))}</strong>${window.PipelineEvidenceReferences?.launchMarkup(run) || ''}${run.task ? `<span>Task ${escapeHtml(run.task.pipelineId)}: ${escapeHtml(formatStatus(run.task.status))} · ${escapeHtml(run.task.automationAttemptCount || 0)} recorded attempt(s).</span>` : ''}${run.pipelineId ? `<button type="button" class="pipeline-btn compact" data-pipeline-task="${escapeHtml(run.pipelineId)}">Open task dossier</button>` : ''}`
+        ? `<strong>${escapeHtml(run.message || formatStatus(run.phase))}</strong>${controller?.reconcileError ? `<p class="pipeline-error" role="alert">${escapeHtml(controller.reconcileError)}</p>` : ''}${window.PipelineEvidenceReferences?.launchMarkup(run) || ''}${run.task ? `<span>Task ${escapeHtml(run.task.pipelineId)}: ${escapeHtml(formatStatus(run.task.status))} · ${escapeHtml(run.task.automationAttemptCount || 0)} recorded attempt(s).</span>` : ''}${run.pipelineId ? `<button type="button" class="pipeline-btn compact" data-pipeline-task="${escapeHtml(run.pipelineId)}">Open task dossier</button>` : ''}`
         : pending ? `<strong>Checking request for task ${escapeHtml(pending.pipelineId)}. Acknowledgement does not prove that the task has been claimed.</strong>` : '';
     }
     const retry = $('pipelineTeamLaunchRetry');
@@ -275,6 +284,14 @@
       retry.hidden = !pending || !(run?.phase === 'not_received' || run?.canRetry === true);
       retry.disabled = !controller?.canRetry();
     }
+    let reconcile = $('pipelineTeamLaunchReconcile');
+    if (!reconcile && retry) {
+      reconcile = document.createElement('button');
+      reconcile.id = 'pipelineTeamLaunchReconcile'; reconcile.type = 'button'; reconcile.className = 'pipeline-btn compact';
+      reconcile.textContent = 'Reconcile saved report';
+      reconcile.addEventListener('click', () => state.launchController?.reconcile()); retry.after(reconcile);
+    }
+    if (reconcile) { reconcile.hidden = !run?.reportName || run.phase !== 'unknown'; reconcile.disabled = !controller?.canReconcile(); }
     let cancel = $('pipelineTeamLaunchCancel');
     if (!cancel && retry) {
       cancel = document.createElement('button');

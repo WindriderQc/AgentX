@@ -36,26 +36,14 @@ function observedAttemptCount(value) {
   if (!Number.isSafeInteger(value) || value < 0 || value > 10000) throw new CodingDispatchControlError('The observed attempt count is required.', { code: 'CODING_DISPATCH_INVALID_TASK', statusCode: 400 });
   return value;
 }
-function reportSelection(input = {}) {
-  const reportName = input.reportName;
-  if (reportName == null || reportName === '') {
-    if (input.modelCallLimit != null) throw new CodingDispatchControlError('A model call limit requires a private report.', { statusCode: 400 });
-    return {};
-  }
-  if (input.autonomous === true || typeof reportName !== 'string' || reportName.length > 120
-    || !/^[A-Za-z0-9][A-Za-z0-9._-]*\.md$/.test(reportName))
-    throw new CodingDispatchControlError('Choose a plain Markdown report filename for a manual run.', { statusCode: 400 });
-  const modelCallLimit = input.modelCallLimit ?? 128;
-  if (!Number.isSafeInteger(modelCallLimit) || modelCallLimit < 128 || modelCallLimit > 256)
-    throw new CodingDispatchControlError('Report model call limit must be an integer from 128 to 256.', { statusCode: 400 });
-  return { reportName, modelCallLimit };
-}
+const reportSelection = require('../../../shared/pipelineReportSelection').normalize;
 function launchCommand(input) {
   const { pipelineId, requestId, expectedAttemptCount, root, autonomous } = input;
   const report = reportSelection(input);
   const action = report.reportName ? 'launch-report' : autonomous === true ? 'launch-autonomous' : 'launch';
   return `/usr/bin/python3 ${remoteRoot(root)}/integrations/coding/coding_dispatch_control.py ${action} ${exactPipelineId(pipelineId)} ${exactRequestId(requestId)} ${observedAttemptCount(expectedAttemptCount)}`
-    + (report.reportName ? ` ${report.reportName} --model-call-limit ${report.modelCallLimit}` : '');
+    + (report.reportName ? ` ${report.reportName} --model-call-limit ${report.modelCallLimit}` : '')
+    + (report.parentRequestId ? ` --parent-request-id ${report.parentRequestId} --parent-sha256 ${report.parentSha256}` : '');
 }
 async function defaultSshRunner(target, command, options = {}) {
   return execFileAsync(options.sshBin || process.env.OPENCLAW_INVENTORY_SSH_BIN || 'ssh', buildSshArgs(target, command, options), {
@@ -101,7 +89,7 @@ class CodingDispatchControl {
     const report = reportSelection(input);
     const pending = this.launching.get(requestId);
     if (pending) {
-      if (pending.pipelineId !== pipelineId || pending.expectedAttemptCount !== expectedAttemptCount || pending.autonomous !== (input.autonomous === true) || pending.reportName !== report.reportName || pending.modelCallLimit !== report.modelCallLimit) throw new CodingDispatchControlError('This request id belongs to a different selection.', { code: 'CODING_DISPATCH_REQUEST_CONFLICT' });
+      if (pending.pipelineId !== pipelineId || pending.expectedAttemptCount !== expectedAttemptCount || pending.autonomous !== (input.autonomous === true) || pending.reportName !== report.reportName || pending.modelCallLimit !== report.modelCallLimit || pending.parentRequestId !== report.parentRequestId || pending.parentSha256 !== report.parentSha256) throw new CodingDispatchControlError('This request id belongs to a different selection.', { code: 'CODING_DISPATCH_REQUEST_CONFLICT' });
       return pending.promise;
     }
     const promise = this.call(launchCommand({ pipelineId, requestId, expectedAttemptCount, root: this.root, autonomous: input.autonomous, ...report }));
@@ -149,6 +137,13 @@ function registerCodingDispatchControlRoutes({ express, control, preparation, lo
   });
   router.post('/runs/:requestId/cancel', async (req, res) => {
     try { return res.json({ status: 'success', data: await control.cancel(req.params) }); }
+    catch (error) { return sendError(res, error, logger); }
+  });
+  router.post('/runs/:requestId/reconcile', async (req, res) => {
+    try {
+      if (req.body?.confirm !== true) throw new CodingDispatchControlError('Explicit confirmation is required to reconcile this report.', { code: 'CODING_DISPATCH_CONFIRMATION_REQUIRED', statusCode: 400 });
+      return res.json({ status: 'success', data: await control.reconcile({ ...req.body, requestId: req.params.requestId }) });
+    }
     catch (error) { return sendError(res, error, logger); }
   });
   router.post('/runs/:requestId/stop', async (req, res) => {

@@ -1,7 +1,7 @@
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.PipelineLaunchController = factory();
-})(typeof window === 'undefined' ? globalThis : window, function () {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('../../../shared/pipelineReportSelection'));
+  else root.PipelineLaunchController = factory(root.PipelineReportSelection);
+})(typeof window === 'undefined' ? globalThis : window, function (profiles) {
   'use strict';
   const STORAGE_KEY = 'agentx.pipeline.simpleWorkerRequest.v1';
   const TERMINAL = new Set(['finished', 'rejected', 'stopped']);
@@ -15,6 +15,7 @@
       this.newId = newId;
       this.control = null;
       this.error = null;
+      this.reconcileError = null;
       this.pending = this.restore();
       this.lastSubmission = null;
       this.submitting = false;
@@ -25,33 +26,66 @@
       this.lastRun = '';
       this.disposed = false;
     }
-    static profile(input = {}) {
-      if (!input.reportName) {
-        if (input.modelCallLimit != null) throw new Error('Choose a private report before setting its call limit.');
-        return {};
-      }
-      if (typeof input.reportName !== 'string' || input.reportName.length > 120 || !/^[A-Za-z0-9][A-Za-z0-9._-]*\.md$/.test(input.reportName))
-        throw new Error('Choose a plain Markdown report filename.');
-      const modelCallLimit = input.modelCallLimit ?? 128;
-      if (!Number.isSafeInteger(modelCallLimit) || modelCallLimit < 128 || modelCallLimit > 256)
-        throw new Error('Report model call limit must be an integer from 128 to 256.');
-      return { reportName: input.reportName, modelCallLimit };
-    }
+    static profile(input = {}) { return profiles.normalize(input); }
     static fromForm(form) {
       if (!form) return {};
       const data = new FormData(form);
       const reportName = data.get('reportName');
-      return this.profile(reportName ? { reportName, modelCallLimit: Number(data.get('modelCallLimit')) } : {});
+      const saved = String(data.get('resumeReport') || '').split(':');
+      return this.profile(reportName ? { reportName, modelCallLimit: Number(data.get('modelCallLimit')),
+        ...(saved.length === 2 ? { parentRequestId: saved[0], parentSha256: saved[1] } : {}) } : {});
+    }
+    static currentReport(task) { return profiles.currentReport(task); }
+    static profileContext(task) {
+      const previous = (task?.feedback || []).slice().reverse().find(row => row.reportOutcome)?.reportOutcome;
+      const saved = previous?.partial || previous;
+      return [task?.reportName || previous?.reportName || '', task?.reportCheckpoint?.parentRequestId || previous?.requestId || '',
+        task?.reportCheckpoint?.parentSha256 || saved?.sha256 || ''].join(':');
     }
     static profileFields(task) {
-      if (task?.automation?.mode === 'review_only' || task?.codingAutonomy) return '';
-      const report = (task?.feedback || []).some(row => row.reportOutcome);
+      if (!task || task.canReport === false || task.automation?.mode === 'review_only' || task.codingAutonomy || task.automationAttemptCount > 0 || task.automationAttempts?.length) return '';
+      const previous = (task.feedback || []).slice().reverse().find(row => row.reportOutcome)?.reportOutcome;
+      const candidateName = task.reportName || previous?.reportName;
+      const name = typeof candidateName === 'string' && candidateName.length <= 120 && /^[A-Za-z0-9][A-Za-z0-9._-]*\.md$/.test(candidateName) ? candidateName : 'REVIEW.md';
+      const report = Boolean(previous || task.reportName);
+      const saved = previous?.partial || previous;
+      let checkpoint = task.reportCheckpoint || (saved?.deliverableId ? { parentRequestId: previous.requestId, parentSha256: saved.sha256 } : null);
+      try { if (checkpoint) this.profile({ reportName: name, ...checkpoint }); } catch { checkpoint = null; }
       return `<label><span>Result to produce</span><select name="reportName" data-worker-profile>
         <option value=""${report ? '' : ' selected'}>Code change</option>
-        <option value="REVIEW.md"${report ? ' selected' : ''}>Private Markdown report (source read-only)</option>
-      </select></label><label data-report-budget${report ? '' : ' hidden'}><span>Report call limit</span><select name="modelCallLimit">
+        <option value="${name}"${report ? ' selected' : ''}>Private Markdown report (source read-only)</option>
+      </select></label><div data-report-budget${report ? '' : ' hidden'}><label><span>Report call limit</span><select name="modelCallLimit">
         <option value="128">128 model calls</option><option value="256">256 model calls</option></select></label>
-        <p>Time and model calls are separate limits. Save findings and pending work before either runs out.</p>`;
+        ${checkpoint ? `<label><input type="checkbox" name="resumeReport" value="${checkpoint.parentRequestId}:${checkpoint.parentSha256}" checked> Continue the saved report at the same source revision</label>` : ''}
+        <p>Time and model calls are separate limits. Save findings and pending work before either runs out.</p></div>`;
+    }
+    static bindProfileForms(document) {
+      document.addEventListener('change', event => {
+        if (event.target.matches('[data-worker-profile]')) {
+          const form = event.target.closest('form');
+          form.querySelector('[data-report-budget]').hidden = !event.target.value;
+        }
+      });
+    }
+    static async handoff({ pipelineId, answer = '', profile = {}, controller, fetchJson, toast }) {
+    toast('info', 'Preparing this task for the team…');
+    const payload = await fetchJson('/api/runtime-bridges/coding-dispatch/prepare', {
+      method: 'POST', body: JSON.stringify({ pipelineId, answer, ...profile })
+    });
+    if (!payload?.data?.ready) {
+      toast('info', payload?.data?.question || 'The team left an update on this ticket.');
+      return;
+    }
+    await controller.refresh();
+    const launching = controller.launch(pipelineId, profile);
+    const submission = controller.lastSubmission;
+    if (!await launching) throw new Error(controller.error || 'The task is routed to the Coding Team, but the worker is busy or admission changed. Check why this task is waiting, then try again when available.');
+    if (controller.error) throw new Error(controller.error);
+    const run = controller.control?.run;
+    if (!submission || run?.requestId !== submission.requestId || run?.pipelineId !== pipelineId) throw new Error('The new launch has not been confirmed. Checking the saved request; nothing was resubmitted.');
+    if (run?.pipelineId === pipelineId && run.phase === 'rejected') throw new Error(run.message || 'The worker refused this task. Check why it is waiting.');
+    if (run?.pipelineId !== pipelineId || !['accepted', 'waiting', 'running', 'finished'].includes(run.phase)) throw new Error(run?.message || 'The launch has not been confirmed. Checking the saved request; nothing was resubmitted.');
+    toast('success', `Task ${pipelineId} handed to the team.`);
     }
     restore() {
       try {
@@ -109,8 +143,14 @@
           this.pending = { requestId: run.requestId, pipelineId: run.pipelineId, expectedAttemptCount: run.expectedAttemptCount, ...PipelineLaunchController.profile(run) };
           this.persist();
         }
+        if (this.pending && run?.requestId === this.pending.requestId && run.pipelineId
+          && Number.isSafeInteger(run.expectedAttemptCount)) {
+          if (run.pipelineId !== this.pending.pipelineId) throw new Error('This saved request belongs to a different task. Inspect its original receipt.');
+          this.pending = { requestId: run.requestId, pipelineId: run.pipelineId, expectedAttemptCount: run.expectedAttemptCount, ...PipelineLaunchController.profile(run) };
+          this.persist();
+        }
         if (this.pending && run?.requestId === this.pending.requestId && TERMINAL.has(run.phase)) {
-          this.pending = null;
+          this.pending = null; this.reconcileError = null;
           this.persist();
         }
         const signature = run ? [run.requestId, run.phase, run.task?.status, run.task?.automationAttemptCount].join(':') : '';
@@ -172,6 +212,24 @@
       } catch (error) { this.error = `${error.message}. Checking the same stop request; nothing was relaunched.`; }
       finally { this.submitting = false; await this.refresh(); }
       return true;
+    }
+    canReconcile() {
+      const run = this.control?.run;
+      return !this.disposed && !this.submitting && !this.checking && !this.error && !this.control?.busy && Boolean(this.pending)
+        && run?.requestId === this.pending.requestId && run.pipelineId === this.pending.pipelineId
+        && Boolean(run.reportName) && run.phase === 'unknown' && run.canReconcile === true;
+    }
+    async reconcile() {
+      if (!this.canReconcile()) return false;
+      const selection = { ...this.pending };
+      this.submitting = true; this.reconcileError = null; this.changed();
+      try {
+        await this.boundedRequest(`/api/runtime-bridges/coding-dispatch/runs/${selection.requestId}/reconcile`, {
+          method: 'POST', body: JSON.stringify({ pipelineId: selection.pipelineId, confirm: true })
+        });
+      } catch (error) { this.reconcileError = `${error.message}. The original report remains fenced; nothing was relaunched.`; }
+      finally { this.submitting = false; await this.refresh(); }
+      return !this.reconcileError;
     }
     async submit() {
       if (this.submitting || !this.pending || this.disposed) return false;

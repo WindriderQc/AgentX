@@ -2,7 +2,7 @@
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { loadPipelineParts } = require('../helpers/pipelineScripts');
 function fixture() {
-  const nodes = {}, document = { addEventListener() {}, getElementById: id => nodes[id] ||= { classList: { add() {}, remove() {} } }, querySelectorAll: () => [] };
+  const nodes = {}, document = { addEventListener() {}, getElementById: id => nodes[id] ||= { classList: { add() {}, remove() {}, toggle() {} } }, querySelectorAll: () => [] };
   const context = { window: { location: { search: '' } }, document, URLSearchParams };
   loadPipelineParts(context);
   const script = fs.readFileSync(path.resolve(__dirname, '../../public/js/pipeline.js'), 'utf8');
@@ -27,8 +27,14 @@ test('summary cards exclude archived qualifications even when their rows are out
 });
 test('an old server without exact archive counts labels a truncated fallback as a sample', () => {
   const f = fixture(); delete f.state.summary.archivedQualifications; f.renderCounts(); f.renderEvidence();
-  expect(f.nodes.pipelineCountReview.textContent).toBe('0');
+  expect(f.nodes.pipelineCountReview.textContent).toBe('Unknown');
   expect(f.nodes.pipelineCountEvidence.textContent).toContain('loaded sample counts');
   f.state.includeArchivedQualifications = true; f.renderCounts();
   expect(f.nodes.pipelineCountReview.textContent).toBe('7');
+});
+
+test('inconsistent archive totals never turn a loaded sample into a claimed exact zero', () => {
+  const f = fixture(); f.state.summary.archivedQualifications.matchedCount = 999; f.renderCounts(); f.renderEvidence();
+  expect(f.nodes.pipelineCountReview.textContent).toBe('Unknown');
+  expect(f.nodes.pipelineCountEvidence.textContent).toContain('exact totals unavailable');
 });
