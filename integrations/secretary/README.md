@@ -237,6 +237,29 @@ python3 integrations/secretary/history_import.py --root "$GMAIL_SECRETARY_ROOT" 
 python3 integrations/secretary/history_import.py --root "$GMAIL_SECRETARY_ROOT" --manifest "$PRIVATE_HISTORY_BATCH" --state "$PRIVATE_HISTORY_DELIVERY" --core "$CORE_ORIGIN" --publish
 ```
 
+## Durable analysis attempts
+
+The batch reviewer writes an acknowledged per-page dispatch fence before asking
+Core for inference. Its stable request identity appears in Core telemetry;
+the private archive retains policy/prompt hashes and a result receipt before
+recording findings. A later record/write failure reuses that saved result,
+including when the final completion-state write was lost. It never generates
+the page again merely because its review file is absent.
+
+Only typed Core refusals known to occur before dispatch can wait and retry the
+same identity. Transport loss, unrecognized HTTP errors, malformed model output
+and unreadable/corrupt receipts stop with `phase=uncertain`. Both batch review
+and the native cursor hold subsequent model requests until the original native
+outcome is reconciled. Status exposes `unresolvedInferenceAttempts`; no source
+is marked read or fully analyzed because the model request was attempted.
+
+Keep `review-attempts/` with the archive and its backups. Reconcile the original
+correlation ID through Core/native result and release receipts; restore a
+verified saved result where available. Do not delete fences, clear quarantine
+or change prompts to launch a replacement. A new policy must retain the prior
+attempt and its proven terminal outcome. These receipts add no model, routing,
+task/memory or mailbox authority. Synthetic tests do not qualify a live campaign.
+
 ## Outlook mailbox export
 
 `outlook_import.py import <file.pst>` brings an Outlook mailbox export into the

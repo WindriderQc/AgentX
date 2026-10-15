@@ -562,17 +562,15 @@ class Archive:
                                 sha=sha, json=json, page_chars=REVIEW_PAGE_CHARS)
 
     def native_status(self):
-        manifests = self.manifests()
-        read = set(file.stem for file in (self.root / "page-reviews").glob("*.json"))
-        pending = sum(page["pageId"] not in read for m in manifests for page in self.review_pages(m))
-        collection = collection_status(self, QUERIES, manifests)
-        state = {"at": now(), "pendingTextPages": pending, "reviewedPages": len(read),
-                 **collection, "pending": bool(pending or collection["uncollectedThreads"] or collection["discoveringScopes"])}
-        save(self.root / "native-status.json", state)
-        return state
+        from evidence_status import native_status
+        return native_status(self, QUERIES)
 
     def native_next(self):
         """One resumable work item in the existing Secretary agent turn, no scheduler."""
+        from review_attempts import unsettled
+        held = unsettled(self.root)
+        if held:
+            return {"outcome": "uncertain", "unresolvedInferenceAttempts": len(held), "requests": held}
         state_file = self.root / "native-worker.json"
         state = load(state_file, {"lane": 0})
         issued = state.get("issued")
