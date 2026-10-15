@@ -237,6 +237,49 @@ python3 integrations/secretary/history_import.py --root "$GMAIL_SECRETARY_ROOT" 
 python3 integrations/secretary/history_import.py --root "$GMAIL_SECRETARY_ROOT" --manifest "$PRIVATE_HISTORY_BATCH" --state "$PRIVATE_HISTORY_DELIVERY" --core "$CORE_ORIGIN" --publish
 ```
 
+### Preparing exact-message cleanup review
+
+`retention_plan.py` combines chronological coverage, a fresh completed Gmail ID
+inventory, independent-copy proofs, a triage qualification and exact-message
+analysis/disposition receipts. The inventory query uses the cutoff's epoch
+seconds, including Spam and Trash with `in:anywhere`; ambiguous dates, duplicate
+IDs, unfinished pagination and observations older than 24 hours hold candidates.
+This is an observed inventory, not an atomic mailbox snapshot.
+
+The qualification uses `agentx.secretary-retention-qualification/v1`, identifies
+the reviewer and corpus hash, and records compared cases for full bodies,
+pagination, quoted authors, dates, sent mail, drafts, attachments, calendar,
+contacts, invoices, later replies and untrusted mail instructions. These are
+reviewer attestations to inspect, not independent proof that conclusions are true.
+The planner never creates a successful qualification or analysis on its own.
+
+Analysis receipts use `agentx.secretary-retention-analysis/v1` and pin the original,
+current thread/review hashes, qualification hash and `reviewPacket` hash. Exact
+page, attachment, finding and thread-question sets require dispositions with a
+reason and evidence reference. Keeping an action open cannot discharge it. A
+changed source or review invalidates the old decision; conflicting decisions hold
+the message. Missing originals/copies, drafts, unknown dates and stale thread
+reviews cannot be waived by an analysis receipt.
+
+Use `verify_archive.py --tree-index <pinned-native-mirror-state>` on both copies
+to rehash the complete indexed archive, including metadata. Incremental mirrors
+may skip unchanged size/mtime entries; that shortcut is not a fresh integrity
+check. The proof records the shared index hash and only actually verified files.
+The planner also checks that the current manifest, provider projection, raw
+receipt and review metadata match both copies; an older snapshot holds changed
+metadata until it is preserved and verified too.
+
+The private output contains `candidateForOwnerReview`, never execution permission.
+It has no provider transport or mailbox mutation. An actual cleanup still needs
+a fresh exact-message provider/metadata check, a concrete manifest, the native
+one-time approval, reversible Trash first and reconciliation of each effect.
+Newer members of a mixed-date thread stay outside the selected message scope.
+Keep manifests and all qualification/analysis receipts outside Git.
+
+```bash
+python3 integrations/secretary/retention_plan.py --root "$GMAIL_SECRETARY_ROOT" --before "$HISTORICAL_CUTOFF" --inventory "$PRIVATE_GMAIL_INVENTORY" --primary-proof "$PRIVATE_PRIMARY_PROOF" --mirror-proof "$PRIVATE_MIRROR_PROOF" --qualification "$PRIVATE_QUALIFICATION" --decisions "$PRIVATE_ANALYSIS_RECEIPTS" --output "$PRIVATE_RETENTION_PLAN"
+```
+
 ## Outlook mailbox export
 
 ### Reviewing existing calendar and contact sources
