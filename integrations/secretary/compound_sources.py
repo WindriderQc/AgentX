@@ -50,6 +50,7 @@ class Limits:
     entries: int = 256
     depth: int = 3
     seconds: float = 30
+    metadata_bytes: int = 512 * 1024
 
 
 def confined(root, relative):
@@ -99,10 +100,10 @@ def index_attachment(root, item, *, limits=None, retry=False, reader=members):
     result = {"schema": CONTRACT, "at": now(), "sourceSha256": item["sha256"],
               "sourceBytes": item.get("bytes"), "status": "incomplete", "members": [],
               "errors": [], "dataAndNamesAreUntrusted": True, "analysisAccepted": False}
-    deadline, expanded = time.monotonic() + limits.seconds, 0
+    deadline, expanded, metadata_bytes = time.monotonic() + limits.seconds, 0, 0
 
     def walk(data, kind, parent, depth):
-        nonlocal expanded
+        nonlocal expanded, metadata_bytes
         if depth > limits.depth:
             raise CompoundError("nesting_depth_limit")
         iterator = iter(reader(data, kind))
@@ -117,10 +118,14 @@ def index_attachment(root, item, *, limits=None, retry=False, reader=members):
                 if not name or len(name) > 2048 or "\x00" in name or ":" in normalized \
                         or normalized.startswith("/") or ".." in PurePosixPath(normalized).parts:
                     raise CompoundError("unsafe_member_name")
+                metadata = entry.get("metadata", {})
+                metadata_bytes += len(json.dumps(metadata, ensure_ascii=False).encode("utf-8"))
+                if metadata_bytes > limits.metadata_bytes:
+                    raise CompoundError("metadata_size_limit")
                 member = {"id": identity(parent, ordinal, name), "parentId": parent,
                           "ordinal": ordinal, "nameAsWritten": name, "kind": entry["kind"],
                           "bytes": size, "readingState": "unread", "role": entry.get("role", "member"),
-                          "metadata": entry.get("metadata", {})}
+                          "metadata": metadata}
                 result["members"].append(member)
                 if entry["kind"] == "directory":
                     continue
@@ -165,7 +170,8 @@ def index_attachment(root, item, *, limits=None, retry=False, reader=members):
         if kind == "declared":
             raise CompoundError("unsupported_or_invalid_container")
         result["metadataScope"] = {"timestampsAreNotLifeEvents": True,
-                                   "unexposedFormatHeadersOrCommentsNeedSeparateReview": kind != "zip"}
+                                   "zipLocalAndCentralExtraFieldsExposed": kind == "zip",
+                                   "unexposedFormatHeadersOrCommentsNeedSeparateReview": True}
         walk(data, kind, item["sha256"], 0)
         if _source(root, item, limits.input_bytes) != data:
             raise CompoundError("source_changed_during_inventory")
@@ -174,6 +180,7 @@ def index_attachment(root, item, *, limits=None, retry=False, reader=members):
         result["errors"].append(str(error)[:300] if isinstance(error, CompoundError)
                                 else "archive_decode_failed:" + type(error).__name__)
     result["expandedBytes"] = expanded
+    result["metadataBytes"] = metadata_bytes
     if output.exists():
         prior = output.read_bytes()
         old = root / "compound-sources" / "history" / item["sha256"] / (digest(prior) + ".json")

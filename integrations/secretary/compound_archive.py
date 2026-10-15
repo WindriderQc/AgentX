@@ -1,8 +1,10 @@
 """Bounded, inert archive readers. No member is executed or extracted by name."""
 from __future__ import annotations
 
+import base64
 import ctypes as C
 import ctypes.util
+import hashlib
 import io
 import stat
 import struct
@@ -45,15 +47,95 @@ def _zip_directory(data, maximum):
         position += 46 + names + extra + comments
     if position != end or actual != count:
         raise CompoundError("zip_directory_count_mismatch")
+    return start
+
+
+def _zip_extra_fields(data, budget):
+    """Keep opaque extra payloads verbatim; local and central copies can differ."""
+    budget[0] += len(data)
+    if budget[0] > 256 * 1024:
+        raise CompoundError("zip_extra_metadata_size_limit")
+    fields, position = [], 0
+    while position < len(data):
+        if position + 4 > len(data):
+            raise CompoundError("zip_extra_field_invalid")
+        tag, size = struct.unpack_from("<HH", data, position)
+        end = position + 4 + size
+        if end > len(data):
+            raise CompoundError("zip_extra_field_invalid")
+        value = data[position + 4:end]
+        field = {"headerId": f"{tag:04x}", "bytes": size,
+                 "sha256": hashlib.sha256(value).hexdigest(),
+                 "base64": base64.b64encode(value).decode("ascii")}
+        try:
+            text = value.decode("utf-8")
+            if text and all(c.isprintable() or c in "\r\n\t" for c in text):
+                field["textAsUtf8"] = text
+        except UnicodeDecodeError:
+            pass
+        fields.append(field)
+        position = end
+    return fields
+
+
+def _zip_local_header(data, info, boundary, budget):
+    start = info.header_offset
+    if start < 0 or start + 30 > boundary or data[start:start + 4] != b"PK\x03\x04":
+        raise CompoundError("zip_local_header_invalid")
+    values = struct.unpack_from("<4s5H3I2H", data, start)
+    _, version, flags, method, dos_time, dos_date, crc, packed, size, names, extra = values
+    content = start + 30 + names + extra
+    if names > 2048 or content > boundary or content + info.compress_size > boundary:
+        raise CompoundError("zip_local_header_bounds_invalid")
+    name = data[start + 30:start + 30 + names].decode("utf-8" if flags & 0x800 else "cp437")
+    if "\x00" in name or name != info.orig_filename or flags != info.flag_bits or method != info.compress_type:
+        raise CompoundError("zip_local_header_mismatch")
+    raw_extra = data[start + 30 + names:content]
+    fields = _zip_extra_fields(raw_extra, budget)
+    decoded_size, decoded_packed = size, packed
+    if size == 0xffffffff or packed == 0xffffffff:
+        zip64 = next((f for f in fields if f["headerId"] == "0001"), None)
+        value = base64.b64decode(zip64["base64"]) if zip64 else b""
+        offset = 0
+        for key in ("size", "packed"):
+            if (size if key == "size" else packed) != 0xffffffff:
+                continue
+            if offset + 8 > len(value):
+                raise CompoundError("zip_local_zip64_size_missing")
+            number = struct.unpack_from("<Q", value, offset)[0]
+            offset += 8
+            if key == "size":
+                decoded_size = number
+            else:
+                decoded_packed = number
+    # Streaming writers leave these fields zero and put the values in a descriptor.
+    placeholders = {0} if flags & 8 else set()
+    if crc not in placeholders | {info.CRC} or decoded_size not in placeholders | {info.file_size} \
+            or decoded_packed not in placeholders | {info.compress_size}:
+        raise CompoundError("zip_local_header_size_or_crc_mismatch")
+    return {"headerOffset": start, "dataOffset": content, "versionNeeded": version,
+            "flags": flags, "compressionMethod": method,
+            "dosTimeAsEncoded": dos_time, "dosDateAsEncoded": dos_date,
+            "crc32AsEncoded": f"{crc:08x}", "compressedBytesAsEncoded": packed,
+            "uncompressedBytesAsEncoded": size, "extraFields": fields,
+            "otherPhysicalRecordsNeedSeparateReview": True}
 
 
 def zip_members(data):
-    _zip_directory(data, 256)
+    central_start = _zip_directory(data, 256)
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        infos = archive.infolist()
+        offsets = sorted(info.header_offset for info in infos)
+        if len(offsets) != len(set(offsets)) or (offsets and (offsets[0] < 0 or offsets[-1] >= central_start)):
+            raise CompoundError("zip_local_header_bounds_invalid")
+        boundaries = dict(zip(offsets, offsets[1:] + [central_start]))
+        extra_budget = [0]
         if archive.comment:
             yield {"name": "(ZIP archive comment)", "kind": "file", "bytes": len(archive.comment),
                    "read": lambda maximum: archive.comment, "role": "archive_comment"}
-        for ordinal, info in enumerate(archive.infolist()):
+        for ordinal, info in enumerate(infos):
+            local = _zip_local_header(data, info, boundaries[info.header_offset], extra_budget)
+            central_extras = _zip_extra_fields(info.extra, extra_budget)
             mode = info.external_attr >> 16
             kind = "directory" if info.is_dir() else "file"
             if stat.S_IFMT(mode) and not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
@@ -67,6 +149,12 @@ def zip_members(data):
                    "encrypted": bool(info.flag_bits & 1), "read": read,
                    "metadata": {"modifiedAsDecoded": list(info.date_time), "timezoneSpecified": False,
                                 "crc32": f"{info.CRC:08x}", "compressionMethod": info.compress_type,
+                                "zipLocalHeader": local,
+                                "zipCentralHeader": {"flags": info.flag_bits,
+                                    "versionNeeded": info.extract_version,
+                                    "versionMadeBy": info.create_version, "hostSystem": info.create_system,
+                                    "internalAttributes": info.internal_attr, "externalAttributes": info.external_attr,
+                                    "extraFields": central_extras},
                                 "timestampIsNotAnEventOrCaptureDate": True}}
             if info.comment:
                 comment = info.comment

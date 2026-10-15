@@ -318,21 +318,37 @@ are unchanged. No document, formula or member filename is executed.
 ZIP and Office ZIP packages use the standard library. RAR, 7z and tar require
 an already installed `libarchive`; no decoder is installed automatically.
 ZIP archive/member comments are separate preserved sources. Decoded timestamps
-remain archive metadata, not capture dates or life events. Libarchive does not
-expose every format-specific header or comment: those metadata need a separate
-review/evidence reference, not an assertion that the decoder supplied them.
+remain archive metadata, not capture dates or life events. New ZIP inventories
+also retain separate local-header and central-directory extra fields in member
+metadata, including each tag, byte count, SHA-256 and exact base64 payload.
+Printable UTF-8 payloads have an additional text representation; these are
+untrusted source data, never instructions. Local-only fields are retained even
+when the central directory reports no extra data. Local header bounds, names,
+flags, compression, sizes and CRC values are checked before reading members;
+streaming placeholders and small forced-ZIP64 local headers are supported.
+Other physical ZIP records still require separate review; exposing extra fields
+does not establish complete semantic reading of container metadata. Libarchive
+does not expose every format-specific header or comment: those metadata need a
+separate review/evidence reference, not an assertion that the decoder supplied them.
 Unsupported declared containers (including MSG/EML here), encrypted data, bad
-paths, special entries, malformed directories, ZIP64/multipart archives and
-exceeded limits remain explicit incomplete/invalid coverage. Partial output is
-preserved without accepting it as complete.
+paths, special entries, malformed directories, ZIP64 central directories,
+multipart archives and exceeded limits remain explicit incomplete/invalid
+coverage. Partial output is preserved without accepting it as complete.
 
 Default bounds are 32 MiB input, 8 MiB/member, 64 MiB expanded, 256 entries and
-three nested levels. The inventory checks a 30-second deadline between members;
+three nested levels. ZIP extra fields have a 256 KiB aggregate raw-byte limit per
+container; serialized member metadata has a 512 KiB limit across the complete
+nested inventory. Exceeded limits hold the source rather than truncate metadata.
+The inventory checks a 30-second deadline between members;
 the native operator still owns process/runtime admission and timeouts. Queue
 heavy or long shared work before invocation through the installed heavy-work
 entrance. Indexing is never launched by collecting mail, opening the reader or
 preparing a cleanup plan. An existing index is reused; explicit `--retry` retains
 its exact prior bytes. Reconcile a lost native attempt before requesting a retry.
+New code does not enrich or rewrite cached indexes automatically. An explicit
+retry adds the metadata while retaining existing member identities, saves the
+previous index verbatim and changes its hash, requiring new preservation proofs
+and a new exact analysis decision.
 
 ```bash
 python3 integrations/secretary/compound_sources.py --root "$GMAIL_SECRETARY_ROOT" --message-id "$ARCHIVED_MESSAGE_ID"
