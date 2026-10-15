@@ -28,6 +28,7 @@ from evidence_store import load, now, save  # noqa: E402
 from mailbox_backfill import MAX_CONSECUTIVE_FAILURES, Lock  # noqa: E402
 from secretary_evidence import DEFAULT_ROOT, Archive  # noqa: E402
 from review_attempts import ReviewUncertain, extract_once, unsettled  # noqa: E402
+from review_policy import STRICT_RULES, context_for  # noqa: E402
 
 LOCK_NAME = "catchup.lock"  # secretary_evidence.native_next stops issuing pages while it is fresh
 STATUS_NAME = "catchup-status.json"
@@ -104,7 +105,7 @@ Write in French. Return only the JSON object required by the schema.
   or reimbursement shares. If the attachment status is ocr_text_extracted, digits may be wrong:
   keep doubtful amounts "unknown" and write "lu par OCR" in notes.
 - unresolved: short strings for anything that needs a human (illegible scan, missing document,
-  ambiguous date). Empty arrays are correct when the page adds nothing."""
+  ambiguous date). Empty arrays are correct when the page adds nothing.""" + STRICT_RULES
 
 
 class Busy(Exception):
@@ -232,7 +233,8 @@ def changed(root, page):
 def page_prompt(archive, page, named):
     previous = load(archive.root / "reviews" / (page["threadId"] + ".json"), {})
     attachment = page.get("attachment") or None
-    source = {"headers": page["headers"], "kind": page["kind"], "offset": page["offset"],
+    source = {"reviewContext": context_for(archive, page),
+              "headers": page["headers"], "kind": page["kind"], "offset": page["offset"],
               "totalChars": page["totalChars"], "moreOfThisSource": page["moreOfThisSource"],
               "attachment": {k: attachment.get(k) for k in ("filename", "mimeType", "status")} if attachment else None,
               "namedCorrespondence": named, "sourceContext": page.get("sourceContext"),
