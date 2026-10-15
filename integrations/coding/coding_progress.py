@@ -426,6 +426,7 @@ class Progress:
                     ". The observed call count can lag; this request consumes a call. Core enforces the exact " +
                     str(MANUAL_MODEL_CALL_LIMIT) + "-request limit. This advisory grants no extra budget or authorization. "
                     "Save verified findings in the private Markdown report after each group; keep pending scope explicit. "
+                    "Before opening another group, read back the saved coverage, synchronize its summary counts and record the next group. "
                     "Sources remain read-only. Finish with a saved honest report before exhaustion. " +
                     ("Few calls remain: save your current report and end now." if remaining["modelCalls"] <= 8 else ""))
         if not self.cumulative_limits:

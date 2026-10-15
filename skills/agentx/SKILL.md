@@ -55,6 +55,11 @@ The longer list is in `references/endpoints.md`.
 - **Pipeline**: `POST /api/pipeline/tasks` with `{ title, spec, service }` for a supplied Markdown brief, or `{ title, objective, sourceFiles?, constraints?, acceptanceCriteria?, service }` for Core's rendered brief. Routes use the 4-digit `pipelineId` ("0338"), not the Mongo `_id`. For briefs, edits, worker observation and result evidence, read [references/coding-work.md](references/coding-work.md).
 - Saving or approving a plan starts no worker. The manual path launches from Pipeline; the separately authorized correction loop defaults off. Worker delivery ends at a draft PR and human review. Merging and deployment remain separate actions.
 
+For documentation audits or review reports, read
+[references/documentation-review.md](references/documentation-review.md). It
+defines saved coverage and continuation notes; native private report delivery
+uses the report profile described in the product's `integrations/coding/README.md`.
+
 ## Heavy work during coding and testing
 
 Before live model tests, model load/unload, Benchmark/Profiler work, image

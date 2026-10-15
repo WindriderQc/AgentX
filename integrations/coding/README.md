@@ -61,6 +61,14 @@ The runner uses four protections:
 
 ## Private Markdown reports
 
+Documentation audits follow the shared
+[review procedure](../../skills/agentx/references/documentation-review.md).
+The report prompt includes its essential checkpoint rules; the operator skill
+and repository instructions point to the same procedure. Choose document groups
+within the current budget, save and read back each group's findings and coverage,
+derive summary totals from that table, and record the next pending group. A
+partial report is a reviewable checkpoint, not completion of the requested audit.
+
 An approved manual task whose result is a report can use the native report
 profile instead of opening a source PR. Queue the campaign through the instance
 operator entrance first, linking the coding session, task, required hosts and
