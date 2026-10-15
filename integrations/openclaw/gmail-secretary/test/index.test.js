@@ -121,14 +121,14 @@ test("permanent draft deletion requires critical approval", () => {
 
 test("every scheduled category labels only; archive candidates await owner review", () => {
   for (const category of ["Urgent", "Needs Reply", "Waiting", "Review", "FYI", "Receipts", "Newsletters"]) {
-    const plan = buildTriageCommands({ threadId: "thread-1", category }, config);
+    const plan = buildTriageCommands({ threadId: "thread-1", messageId: "message-1", category }, config);
     assert.equal(plan.archived, false);
     assert.equal(plan.commands.length, 1);
-    assert.ok(plan.commands[0].args.includes("--enable-commands-exact=gmail.labels.modify"));
+    assert.ok(plan.commands[0].args.includes("--enable-commands-exact=gmail.messages.modify"));
     const candidate = ["FYI", "Receipts", "Newsletters"].includes(category);
     assert.equal(plan.archiveCandidate, candidate);
     assert.equal(plan.labels.includes(ARCHIVE_REVIEW_LABEL), candidate);
-    assert.ok(plan.commands[0].args.includes("thread-1"));
+    assert.ok(plan.commands[0].args.includes("message-1"));
     assert.ok(!plan.commands.flatMap(entry => entry.args).some(arg => /^(archive|trash|send|mark-read|unread)$/.test(arg)));
   }
 });
@@ -144,8 +144,8 @@ function triageMailbox({ loseInbox = false, loseUnread = false, omitCandidate = 
   return { messages, run: async ({ args }) => {
     if (args.includes("--enable-commands-exact=gmail.labels.list")) return labels;
     if (args.includes("thread_state")) return { thread: { messages: structuredClone(messages) } };
-    assert.ok(args.includes("--enable-commands-exact=gmail.labels.modify"));
-    for (const message of messages) {
+    assert.ok(args.includes("--enable-commands-exact=gmail.messages.modify"));
+    for (const message of messages.filter(item => item.id === args[args.indexOf("modify") + 1])) {
       message.labelIds.push("receipt", "processed", ...(!omitCandidate ? ["candidate"] : []));
       if (loseInbox) message.labelIds = message.labelIds.filter(label => label !== "INBOX");
       if (loseUnread) message.labelIds = message.labelIds.filter(label => label !== "UNREAD");
@@ -156,19 +156,39 @@ function triageMailbox({ loseInbox = false, loseUnread = false, omitCandidate = 
 
 test("archive proposal preserves mixed Inbox and unread state in the same thread", async () => {
   const mailbox = triageMailbox();
-  const receipt = await applyTriage({ threadId: "t1", category: "Receipts" }, config, mailbox.run);
+  const receipt = await applyTriage({ threadId: "t1", messageId: "inbox", category: "Receipts" }, config, mailbox.run);
   assert.equal(receipt.ok, true);
   assert.equal(receipt.archived, false);
   assert.equal(receipt.archiveCandidate, true);
   assert.ok(mailbox.messages[0].labelIds.includes("INBOX"));
   assert.ok(!mailbox.messages[1].labelIds.includes("INBOX"));
   assert.ok(mailbox.messages.every(message => message.labelIds.includes("UNREAD")));
+  assert.deepEqual(mailbox.messages[1].labelIds, ["UNREAD"]);
+  assert.equal(receipt.messageId, "inbox");
 });
 
 test("triage refuses success if Inbox/read state changed or the proposal label is missing", async () => {
   for (const options of [{ loseInbox: true }, { loseUnread: true }, { omitCandidate: true }]) {
-    await assert.rejects(applyTriage({ threadId: "t1", category: "Receipts" }, config, triageMailbox(options).run), /verification failed/);
+    await assert.rejects(applyTriage({ threadId: "t1", messageId: "inbox", category: "Receipts" }, config, triageMailbox(options).run), /verification failed/);
   }
+});
+
+test("an unread sibling is not classified, and changing its labels cannot be reported as success", async () => {
+  const mailbox = triageMailbox();
+  const run = async (command, options) => {
+    const result = await mailbox.run(command, options);
+    if (command.args.includes("--enable-commands-exact=gmail.messages.modify")) mailbox.messages[1].labelIds.push("processed");
+    return result;
+  };
+  await assert.rejects(applyTriage({ threadId: "t1", messageId: "inbox", category: "Receipts" }, config, run), /verification failed/);
+});
+
+test("a thread/message mismatch refuses before any label mutation", async () => {
+  const mailbox = triageMailbox();
+  await assert.rejects(applyTriage({ threadId: "t1", messageId: "not-in-thread", category: "Receipts" }, config, mailbox.run), /not in this thread/);
+  assert.deepEqual(mailbox.messages[0].labelIds, ["INBOX", "UNREAD"]);
+  assert.deepEqual(mailbox.messages[1].labelIds, ["UNREAD"]);
+  assert.throws(() => buildTriageCommands({ threadId: "t1", messageId: "--query=in:anywhere", category: "Receipts" }, config), /Exact messageId/);
 });
 
 test("archaeology searches archived received mail and excludes sent, drafts, Spam and Trash", () => {
