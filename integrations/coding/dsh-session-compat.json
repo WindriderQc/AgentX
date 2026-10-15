@@ -1,0 +1,22 @@
+{
+  "schema": "agentx.dsh-session-compat/v1",
+  "package": "@deepseek-ai/dsh-session-format-v0-to-v1",
+  "version": "0.2.0-rc.2",
+  "target": "lib/index.js",
+  "beforeSha256": "1b3bff6aaf28ca62a864cf97b9aa9aa45ab76de5e459f7881ba4bc8de73490b1",
+  "afterSha256": "0511ee9eda491247efed9a875a3c2004f3124f053fd24048dadb595aaa6020d1",
+  "changes": [
+    {
+      "before": "function subagentDescriptorValue(data, label) {",
+      "after": "/**\n* Validate the released descriptor-v2 shape without upgrading its identity.\n* Current runtime folding deliberately ignores v2 for cold continuation.\n* Preserve the old schema's strings, absent route members and tool restrictions.\n*/\nfunction releasedSubagentDescriptorV2Value(data, label) {\n\tliteralValue(data[\"version\"], [2], `${label} version`);\n\tliteralValue(data[\"mode\"], [\"one-shot\", \"continuable\"], `${label} mode`);\n\tconst optional = data[\"mode\"] === \"one-shot\" ? [\"label\"] : [\n\t\t\"label\", \"agentProvider\", \"agentModel\", \"persona\", \"toolFilter\"\n\t];\n\tassertReleasedV0Keys(data, [\"mode\", \"version\", \"provider\"], optional, `${label} data`);\n\tstringValue(data[\"provider\"], `${label} provider`);\n\tif (data[\"mode\"] === \"one-shot\") {\n\t\tif (Object.hasOwn(data, \"label\")) stringValue(data[\"label\"], `${label} label`);\n\t\treturn;\n\t}\n\tstringValue(data[\"label\"], `${label} label`);\n\tfor (const key of [\"agentProvider\", \"agentModel\", \"persona\"]) {\n\t\tif (Object.hasOwn(data, key)) stringValue(data[key], `${label} ${key}`);\n\t}\n\tif (Object.hasOwn(data, \"toolFilter\")) {\n\t\tconst filter = exactRecord(data[\"toolFilter\"], `${label} toolFilter`, [], [\"allow\", \"deny\"]);\n\t\tif (!Object.hasOwn(filter, \"allow\") && !Object.hasOwn(filter, \"deny\")) throw new SessionFormatError(`${label} toolFilter requires allow or deny`);\n\t\tif (Object.hasOwn(filter, \"allow\")) arrayValue(filter[\"allow\"], `${label} allow`, stringValue);\n\t\tif (Object.hasOwn(filter, \"deny\")) arrayValue(filter[\"deny\"], `${label} deny`, stringValue);\n\t}\n}\nfunction subagentDescriptorValue(data, label) {"
+    },
+    {
+      "before": "\t\tcase \"subagent/descriptor\":\n\t\t\tsubagentDescriptorValue(data, label);",
+      "after": "\t\tcase \"subagent/descriptor\":\n\t\t\tif (data[\"version\"] === 2) releasedSubagentDescriptorV2Value(data, label);\n\t\t\telse subagentDescriptorValue(data, label);"
+    },
+    {
+      "before": "\tif (event.type === \"subagent/descriptor\" && data[\"version\"] !== 3) {",
+      "after": "\tif (version === 0 && event.type === \"subagent/descriptor\" && data[\"version\"] === 2) {\n\t\treleasedSubagentDescriptorV2Value(data, `${event.type} ${event.seq}`);\n\t\treturn;\n\t}\n\tif (event.type === \"subagent/descriptor\" && data[\"version\"] !== 3) {"
+    }
+  ]
+}
