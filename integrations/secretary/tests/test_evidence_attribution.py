@@ -2,6 +2,7 @@ import hashlib
 import json
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 
@@ -12,6 +13,23 @@ from mail_catchup import page_prompt
 
 
 class AttributionTests(unittest.TestCase):
+    def test_indented_non_header_lines_do_not_stall_source_scanning(self):
+        # Execute separately so a regression cannot strand a worker or the test
+        # runner. This tiny unmatched header used to explore overlapping spaces
+        # across four continuation lines instead of respecting the read budget.
+        script = """
+from evidence_attribution import body_segments
+body = 'On an ordinary line\\n' + (' ' * 300 + 'x\\n') * 5
+spans = body_segments(body, {'from': 'Container author'})
+assert len(spans) == 1
+assert spans[0]['relation'] == 'authored'
+assert body[spans[0]['start']:spans[0]['end']] == body
+"""
+        result = subprocess.run([sys.executable, '-c', script],
+                                cwd=Path(__file__).resolve().parents[1],
+                                capture_output=True, text=True, timeout=3)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_wrapped_french_nested_quote_keeps_context_across_page_boundary(self):
         header = 'Le 16 juillet 2026 à 20:00, Person A\n<a@example.invalid>\n a\n écrit :\n'
         body = 'Current reply.\n\n' + header + 'Please bring the backpack Monday.\n' * 180

@@ -18,9 +18,11 @@ POLICY = (
 
 # Gmail wraps even 'a écrit :' onto several lines. Inspect a bounded header, not
 # arbitrary body text containing 'wrote'. Prefixes belong to nested quotations.
+# The continuation budget includes indentation: overlapping whitespace and line
+# quantifiers otherwise make an unsuccessful multiline match combinatorial.
 GMAIL = re.compile(
     r"(?im)^[ \t>]*(?:Le|On)\s+[^\n]{1,300}"
-    r"(?:\n[ \t>]*[^\n]{0,300}){0,4}?"
+    r"(?:\n[^\n]{0,300}){0,4}?"
     r"(?:a\s+écrit|wrote)\s*:\s*(?:\r?\n|$)"
 )
 FORWARDED = re.compile(
