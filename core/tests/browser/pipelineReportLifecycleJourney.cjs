@@ -114,6 +114,7 @@ const nativeCommands = [], errors = [], results = [], fixtureRoots = [];
     assert.equal(await page.locator('#pipelineDrawerBody').evaluate(node => node.scrollWidth > node.clientWidth + 1), false);
     await accept.locator('button[type=submit]').click();
     await page.waitForFunction(() => document.getElementById('pipelineCountDone').textContent === '1');
+    await page.waitForFunction(() => document.querySelector('[data-deliverables-view="files"]')?.textContent.includes('scope confirmed by fixture-reviewer'));
     owner = await Task.findOne({ pipelineId }).lean();
     assert.equal(owner.status, 'done'); assert.equal(owner.feedback.at(-1).reportAcceptance.requestId, current._id);
     assert.equal(await File.countDocuments({}), 2); assert.equal(syntheticCalls - before, 2);

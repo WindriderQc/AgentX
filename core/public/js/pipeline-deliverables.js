@@ -41,16 +41,19 @@
   const servable = row => ['available', 'present_unverified'].includes(row.availability?.status);
   const validRecord = row => ID_RE.test(String(row.id || '')) && SHA_RE.test(String(row.sha256 || ''));
 
-  function reportLabel(row) {
+  function reportLabel(pipelineId, row) {
+    const review = entry(pipelineId).reportReviews?.find(item => item.reportAcceptance.requestId === row.reportOrigin?.requestId
+      && item.reportAcceptance.sha256 === row.sha256);
     return row.reportOrigin?.state === 'partial' ? 'Partial draft · scope incomplete'
-      : row.reportOrigin?.state === 'candidate' ? 'Report candidate · coverage unverified' : '';
+      : row.reportOrigin?.state === 'candidate' ? review ? `Report candidate · scope confirmed by ${review.by || 'reviewer'}`
+        : 'Report candidate · coverage unverified' : '';
   }
 
   function fileRow(pipelineId, row) {
     if (!validRecord(row)) return '<p class="pipeline-drawer-context">This file record is incomplete and cannot be downloaded.</p>';
     const availability = { available: 'Verified file', present_unverified: 'Checked on download', missing: 'File missing', corrupt: 'File altered' }[row.availability?.status] || 'Availability unknown';
     return `<article class="pipeline-result-file">
-      <div><strong>${esc(row.name)}</strong><p>${esc(formatSize(row.size))}${reportLabel(row) ? ` · ${esc(reportLabel(row))}` : ''}${row.attempt ? ` · Attempt ${esc(row.attempt)}` : ''} · ${esc(availability)}</p></div>
+      <div><strong>${esc(row.name)}</strong><p>${esc(formatSize(row.size))}${reportLabel(pipelineId, row) ? ` · ${esc(reportLabel(pipelineId, row))}` : ''}${row.attempt ? ` · Attempt ${esc(row.attempt)}` : ''} · ${esc(availability)}</p></div>
       ${servable(row) ? `<button type="button" class="pipeline-btn compact" data-download-deliverable="${esc(row.id)}" data-deliverable-task="${esc(pipelineId)}" aria-label="Download ${esc(row.name)}"><i class="fas fa-download" aria-hidden="true"></i><span>Download</span></button>` : ''}
     </article>`;
   }
@@ -59,7 +62,7 @@
     if (!validRecord(row)) {
       return '<article class="pipeline-evidence-attempt"><p class="pipeline-evidence-unknown">Unknown deliverable · the record is malformed and is not offered.</p></article>';
     }
-    const origin = row.reportOrigin ? `Native report · ${esc(reportLabel(row))}` : row.attempt ? `Attempt ${esc(row.attempt)} · ${esc(row.producer?.declared || 'unknown worker')}` : `Operator upload · ${esc(row.producer?.declared || 'unknown')}`;
+    const origin = row.reportOrigin ? `Native report · ${esc(reportLabel(pipelineId, row))}` : row.attempt ? `Attempt ${esc(row.attempt)} · ${esc(row.producer?.declared || 'unknown worker')}` : `Operator upload · ${esc(row.producer?.declared || 'unknown')}`;
     return `<article class="pipeline-evidence-attempt pipeline-deliverable" data-deliverable="${esc(row.id)}">
       <header><strong>${esc(row.name)}</strong><span>${esc(row.mimeType)} · ${esc(formatSize(row.size))} · ${origin}</span></header>
       <dl>
@@ -204,6 +207,7 @@
     const pipelineId = String(task?.pipelineId || '');
     if (!/^[0-9A-Za-z_-]{1,16}$/.test(pipelineId)) return '';
     const state = entry(pipelineId);
+    state.reportReviews = (task.feedback || []).filter(row => row.reportAcceptance?.scopeComplete === true);
     const report = (task.feedback || []).slice().reverse().find(row => row.reportOutcome)?.reportOutcome;
     const signature = report ? JSON.stringify([report.requestId, report.deliverableId, report.sha256, report.partial]) : '';
     const changed = state.reportSignature !== signature; state.reportSignature = signature;

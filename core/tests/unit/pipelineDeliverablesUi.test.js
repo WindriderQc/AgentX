@@ -114,3 +114,17 @@ test('a newly recorded report refreshes a fresh file cache and an older list res
   expect(api.markup(task)).toContain('Native report');
   expect(requests).toHaveLength(2);
 });
+test('the exact recorded review updates the candidate label without accepting other files or partial drafts', async () => {
+  const records = [row('0'.repeat(23) + '1', 'available', { reportOrigin: { requestId: 'candidate', state: 'candidate' } }),
+    row('0'.repeat(23) + '2', 'available', { reportOrigin: { requestId: 'partial', state: 'partial' } })];
+  const { api, flush } = load(ok({ deliverables: records }));
+  const task = { pipelineId: '0307', feedback: [] };
+  api.markup(task); await flush();
+  const accepted = (requestId, sha256 = SHA) => ({ by: 'reviewer', reportAcceptance: { requestId, sha256, scopeComplete: true } });
+  task.feedback = [accepted('candidate', 'b'.repeat(64))];
+  expect(api.markup(task)).toContain('coverage unverified');
+  task.feedback = [accepted('candidate'), accepted('partial')];
+  const html = api.markup(task, { compact: true });
+  expect(html).toContain('Report candidate · scope confirmed by reviewer');
+  expect(html).toContain('Partial draft · scope incomplete'); expect(html).not.toContain('coverage unverified');
+});
