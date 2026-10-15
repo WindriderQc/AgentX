@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
+import re
 
 from evidence_store import load, now, save
 from secretary_evidence import Archive, DEFAULT_ROOT, message_text
@@ -46,8 +47,8 @@ def finding_id(thread_id, section, item):
 def proof_matches(proof, kind, key, expected):
     if proof.get("schema") != "agentx.secretary-archive-verification/v1" or proof.get("intact") is not True:
         return False
-    if not isinstance(expected.get("sha256"), str) or len(expected["sha256"]) != 64 \
-            or not isinstance(expected.get("bytes"), int) or expected["bytes"] < 0:
+    if not isinstance(expected.get("sha256"), str) or not re.fullmatch(r"[a-f0-9]{64}", expected["sha256"]) \
+            or type(expected.get("bytes")) is not int or expected["bytes"] < 0 or not proof.get("at"):
         return False
     value = proof.get(kind, {}).get(key, {})
     return all(value.get(k) == expected.get(k) for k in ("sha256", "bytes"))
