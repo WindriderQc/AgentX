@@ -114,6 +114,22 @@ class VerifyArchiveTests(unittest.TestCase):
         report["restoreSample"] = module.restore_sample(self.copy, receipts, 2, seed=1)
         self.assertNotIn("Synthetic", json.dumps(report))
 
+    def test_a_missing_raw_receipt_never_produces_an_intact_report(self):
+        (self.copy / "raw-receipts/message1.json").unlink()
+        report, _ = module.verify(self.copy)
+        self.assertFalse(report["intact"])
+        self.assertEqual(report["raw"]["withoutOriginal"], 1)
+
+    def test_optional_proof_names_only_sources_actually_verified(self):
+        receipt = json.loads((self.copy / "raw-receipts/message1.json").read_text())
+        (self.copy / receipt["path"]).write_bytes(b"X" * receipt["bytes"])
+        report, _ = module.verify(self.copy, with_sources=True)
+        proof = report["verificationProof"]
+        self.assertFalse(proof["intact"])
+        self.assertNotIn("message1", proof["raw"])
+        self.assertIn("message2", proof["raw"])
+        self.assertNotIn("Synthetic", json.dumps(proof))
+
 
 if __name__ == "__main__":
     unittest.main()

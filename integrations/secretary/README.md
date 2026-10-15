@@ -168,6 +168,39 @@ python3 integrations/secretary/raw_messages.py --root "$GMAIL_SECRETARY_ROOT" sy
 python3 integrations/secretary/raw_messages.py --root "$GMAIL_SECRETARY_ROOT" completeness
 ```
 
+## Historical coverage and preservation evidence
+
+`history_coverage.py` prepares a chronological inventory and review backlog from
+the existing Gmail archive. Supply an explicit timezone-aware `--before` cutoff.
+Each row names a message, its immutable-source hash, review revision, reading
+coverage, extracted-finding identities and outstanding checks. A thread can
+contain messages on both sides of the cutoff: recent messages are excluded
+individually. Unknown dates and drafts remain visible as blocked work.
+
+This is an archive coverage report, not proof that discovery includes the entire
+live mailbox. `Secretary/Processed`, `coverage: complete` and empty finding arrays
+do not establish validated interpretation, message-level classification, resolved
+actions or addressed information. The report contains no Gmail commands and
+grants no mailbox approval. Existing native approvals still own mailbox effects.
+
+`verify_archive.py --proof <private-file>` adds per-source hash verification
+evidence to the existing verifier. Its report fails if an archived message has
+no raw receipt, even when all receipts that remain are intact. A proof records
+the host, root, source hashes and optional MIME restore sample. Coverage accepts
+independent-copy evidence only from a different host with matching source hashes;
+another directory on the same host does not establish independent preservation.
+Hash verification and restoration of a large live archive use the instance's
+heavy-work queue; synthetic tests remain ordinary isolated checks.
+
+```bash
+python3 integrations/secretary/verify_archive.py "$ARCHIVE_COPY" --sample 20 --proof "$PRIVATE_PROOF" --report "$PRIVATE_VERIFICATION_REPORT"
+python3 integrations/secretary/history_coverage.py --root "$GMAIL_SECRETARY_ROOT" --before "$HISTORY_CUTOFF_WITH_OFFSET" --primary-proof "$PRIVATE_PRIMARY_PROOF" --mirror-proof "$PRIVATE_MIRROR_PROOF" --output "$PRIVATE_COVERAGE_REPORT"
+```
+
+Reports and proof files contain private source identifiers and stay outside Git.
+The separate Outlook import is not part of Gmail coverage; selecting an existing
+export does not start an Outlook synchronization or a new import.
+
 ## Outlook mailbox export
 
 `outlook_import.py import <file.pst>` brings an Outlook mailbox export into the
