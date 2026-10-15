@@ -10,6 +10,7 @@ function productSpaces(link) {
         item('dad', 'Nestor', '/dad', 'fa-comment'),
         item('dad-day', 'My day', '/dad/day', 'fa-calendar-day'),
         item('dad-memories', 'Memories', '/dad/memories', 'fa-bookmark'),
+        item('dad-history', 'Archives à revoir', '/dad/history', 'fa-clock-rotate-left'),
         item('finance', 'Finance', '/finance', 'fa-wallet'),
         item('psyx', 'PsyX', '/psyx', 'fa-brain')
       ] },

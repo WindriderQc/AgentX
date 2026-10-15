@@ -93,3 +93,14 @@ test('the archive catch-up status is read once a minute and shared by concurrent
   now += 2000;
   assert.equal((await control.catchup()).reviewed, 2);
 });
+
+test('archived originals use exact message/hash/offset arguments without a Gmail operation', async () => {
+  const commands = [];
+  const control = configured(async (_target, command) => { commands.push(command); return envelope({ body: 'Synthetic stored source' }); });
+  await control.archived({ messageId: '1a0a72c7f639bccf', sha256: 'a'.repeat(64), offset: 10000 });
+  assert.deepEqual(commands, [`${script} archived --message 1a0a72c7f639bccf --sha256 ${'a'.repeat(64)} --offset 10000`]);
+  for (const bad of [{ sha256: '$(reboot)' }, { offset: '0; reboot' }, { offset: -1 }]) {
+    await assert.rejects(() => control.archived({ messageId: '1a0a72c7f639bccf', sha256: 'a'.repeat(64), ...bad }), e => e.statusCode === 400);
+  }
+  assert.equal(commands.length, 1);
+});

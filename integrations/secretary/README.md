@@ -201,6 +201,42 @@ Reports and proof files contain private source identifiers and stay outside Git.
 The separate Outlook import is not part of Gmail coverage; selecting an existing
 export does not start an Outlook synchronization or a new import.
 
+### Chronological source review in Core
+
+`history_import.py` projects existing Gmail findings into Core's historical
+review at `/dad/history`, starting with the oldest source. A prepared private
+manifest pins the source, finding and review hashes. `--publish` submits bounded
+batches to `/api/secretary/history/import`; exact source-key receipts let an
+interrupted delivery resume without creating another assertion. Use the same
+delivery state when preparing a new manifest to advance beyond delivered rows.
+Preparation never calls Gmail or a model. Larger preparations/imports use the
+instance's queued CPU/IO window.
+
+Imported assertions remain candidates, with their extracted actor, raw status,
+source date and event date kept separate. Unknown event dates stay unknown.
+Review can retain an assertion, resolve an action/deliverable, dismiss it or
+forget it using the current revision. Retaining an action keeps it in the open
+review list. This creates neither an accepted personal task nor a selected memory.
+Decisions retain a revision history; forgotten identities suppress replay, and
+forgetting a linked owner note suppresses its historical derivative too.
+
+The source reader uses the preserved `.eml`, pinned by its SHA-256, through the
+existing native Secretary host bridge. It paginates body text without Gmail or
+credentials and lists attachment metadata separately. Corruption, changed source
+hashes, unsafe paths and oversized originals refuse explicitly. The body view
+does not establish attachment reading. Sources remain readable when provider
+links disappear. HTTP reads and review retain the instance's existing private
+LAN human entrance; owner scope separates native domains, not human identities.
+
+The importer reports stale reviews, unknown dates, missing originals, oversized
+findings and thread questions that lack message attribution. Those gaps remain
+outstanding review work. Outlook exports are outside this adapter's scope.
+
+```bash
+python3 integrations/secretary/history_import.py --root "$GMAIL_SECRETARY_ROOT" --maximum 200 --manifest "$PRIVATE_HISTORY_BATCH" --state "$PRIVATE_HISTORY_DELIVERY"
+python3 integrations/secretary/history_import.py --root "$GMAIL_SECRETARY_ROOT" --manifest "$PRIVATE_HISTORY_BATCH" --state "$PRIVATE_HISTORY_DELIVERY" --core "$CORE_ORIGIN" --publish
+```
+
 ## Outlook mailbox export
 
 ### Reviewing existing calendar and contact sources

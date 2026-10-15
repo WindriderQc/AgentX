@@ -120,6 +120,8 @@ def review_pages(archive, manifest, *, load, message_text, sha, json, page_chars
         h = {k.lower(): v for k, v in message["headers"].items()
              if k.lower() in ("from", "to", "cc", "bcc", "date", "subject")}
         body = message_text(originals[message["id"]])
+        labels = set(originals[message["id"]].get("labelIds", []))
+        direction = "draft" if "DRAFT" in labels else "sent" if "SENT" in labels else "received" if labels else "unknown"
         spans = body_segments(body, h)
         newer = sum(int(m.get("internalDate") or 0) > int(message.get("internalDate") or 0) for m in messages)
         units = [("body", body, None)]
@@ -136,4 +138,5 @@ def review_pages(archive, manifest, *, load, message_text, sha, json, page_chars
                        "headers": h, "kind": kind, "offset": offset, "totalChars": len(text),
                        "moreOfThisSource": offset + page_chars < len(text), "attachment": attachment,
                        "externalUntrustedContent": content,
-                       "sourceContext": page_context(spans, offset, len(content), kind=kind, newer_messages=newer)}
+                       "sourceContext": {**page_context(spans, offset, len(content), kind=kind, newer_messages=newer),
+                                         "messageDirection": direction}}
