@@ -131,6 +131,13 @@ Instance configuration, data and deployment receipts remain outside Git.
   on `/mcp` share the same owner notes; sensitive identifiers leave note and
   journal text for the vault when its key is set. Agents file Markdown notes
   into the owner's vault inbox when the instance names one.
+  Historical source assertions have a separate review at `/dad/history`: source
+  dates, event dates, attribution and revision-fenced decisions stay explicit.
+  Retaining an action keeps it open; source review creates neither a personal
+  commitment nor selected memory. The native archive reader verifies pinned
+  originals independently of Gmail. Instance import, process qualification and
+  evidence-gated mailbox cleanup are tracked in
+  [#795](https://github.com/WindriderQc/AgentX/issues/795).
 - **Voice.** Household and PsyX share Core's browser conversation engine, VoiX
   transport, synthesis validation, stream relay and spoken-text cleanup. Native
   voice replies use the same speech boundary; physical device adapters retain

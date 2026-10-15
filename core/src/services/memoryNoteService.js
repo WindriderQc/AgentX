@@ -164,6 +164,11 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     noteId(id);
     const row = await MemoryNote.findOneAndUpdate({ ...boundary, _id: id, status: { $ne: 'forgotten' } },
       { $set: { status: 'forgotten', forgottenAt: new Date() } }, { new: true });
+    if (audience === 'owner') {
+      // Retry a failed derivative cleanup without reviving the selected note.
+      const forgotten = row || await MemoryNote.findOne({ ...boundary, _id: id, status: 'forgotten' }).lean();
+      if (forgotten) await require('./personalHistoryPrivacy').forgetSourceNote(forgotten);
+    }
     return { ok: true, authority: 'agentx.core', id, removed: Boolean(row) };
   }
 

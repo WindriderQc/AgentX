@@ -82,6 +82,9 @@ Write in French. Return only the JSON object required by the schema.
   Your own reading, attachment checks, offsets and analysis are review work, not owner tasks.
   CI/build/deployment/security notifications are platform matters, never personal errands.
 - memories: durable dated facts or decisions about the owner's life, attributed to their author.
+- sourceContext.messageDirection identifies a received message, sent message or unsent draft.
+  A draft is not evidence that its words were sent, agreed, or communicated to another person.
+  Preserve it as unconfirmed intent; never derive an accepted commitment or completed event from it.
 - deliverables: documents or items promised, sent or missing (missing referenced invoices included).
 - status of each finding: "current" only when the page itself shows it still needs attention now;
   otherwise "waiting", "resolved", "historical" (old, no evidence of current relevance) or "uncertain".

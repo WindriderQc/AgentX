@@ -79,7 +79,7 @@ function secretaryMailControl(app) {
   const control = app.locals?.aioOpsSecretaryMail;
   if (control?.contractVersion === 1) return control;
   const unavailable = async () => { throw Object.assign(new Error('Secretary mail needs the native runtime bridge.'), { statusCode: 503, code: 'SECRETARY_MAIL_UNAVAILABLE' }); };
-  return { threads: unavailable, handled: unavailable, backlog: unavailable, senders: unavailable };
+  return { threads: unavailable, handled: unavailable, backlog: unavailable, senders: unavailable, archived: unavailable };
 }
 
 function registerSecretaryMailRoutes({ app, router, mongoose, envelope, fail, Rule = createTriageRuleModel(mongoose) }) {
@@ -96,6 +96,10 @@ function registerSecretaryMailRoutes({ app, router, mongoose, envelope, fail, Ru
   router.get('/mail', async (req, res) => {
     try { return envelope(res, await mail().threads(req.query.label)); }
     catch (error) { return failWith(res, error, 'SECRETARY_MAIL_FAILED'); }
+  });
+  router.get('/archive/:messageId', async (req, res) => {
+    try { return envelope(res, await mail().archived({ messageId: req.params.messageId, sha256: req.query.sha256, offset: req.query.offset || 0 })); }
+    catch (error) { return failWith(res, error, 'SECRETARY_ARCHIVE_UNAVAILABLE'); }
   });
   router.post('/mail/handled', async (req, res) => {
     try { return envelope(res, await mail().handled({ threadId: req.body?.threadId, label: req.body?.label })); }
