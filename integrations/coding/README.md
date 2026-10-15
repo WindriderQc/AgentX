@@ -70,7 +70,11 @@ with the reservation; ordinary admission still applies. Then use the installed
 control after the normal explicit task handoff. An empty or invalid name is
 refused. This profile cannot replace an automated lease or claim.
 
-The complete source snapshot is mounted read-only. DSH saves its Markdown in
+The complete source snapshot is mounted read-only at `/workspace`. The report
+session starts in its private per-request output directory: DSH's existing
+`workspace-write` policy allows that directory only, plus its normal temporary
+storage. Source commands use absolute paths or `git -C /workspace`; the worker
+reads `/workspace/AGENTS.md` explicitly. DSH saves its Markdown in
 `/home/agent/deliverables/REQUEST_UUID/review.md`, in its private home outside
 Git. New verified report bytes count as useful progress; touching a file,
 repeating bytes or model activity does not extend budgets. No dependencies,

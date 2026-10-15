@@ -152,7 +152,12 @@ def worker_patch(model: str, context_size: int | None = None) -> list[dict]:
     ]
 
 
-def sandbox(workspace: Path, home: Path, command: list[str], *, network: bool, timeout_seconds: int, read_only=False) -> list[str]:
+def sandbox(workspace: Path, home: Path, command: list[str], *, network: bool, timeout_seconds: int, read_only=False, report_request_id="") -> list[str]:
+    if report_request_id and (not read_only or not coding_progress.REQUEST_ID.fullmatch(report_request_id)):
+        raise ValueError("A report working directory requires its read-only source and exact request UUID")
+    # DSH workspace-write follows the session cwd. Give it only the private
+    # output directory, while source reads remain available at /workspace.
+    directory = f"/home/agent/deliverables/{report_request_id}" if report_request_id else "/workspace"
     return [
         "timeout", "-k", "30", str(timeout_seconds),
         "bwrap", "--unshare-all", *(["--share-net"] if network else []),
@@ -170,7 +175,7 @@ def sandbox(workspace: Path, home: Path, command: list[str], *, network: bool, t
         "--ro-bind", str(DSH_ROOT), "/opt/dsh", "--ro-bind", str(HERE), "/opt/coding",
         "--ro-bind", str(HERE.parent.parent / "shared/testing/prepareMongo.js"), "/opt/prepareMongo.js",
         "--ro-bind" if read_only else "--bind", str(workspace), "/workspace", "--ro-bind", str(workspace / ".git"), "/workspace/.git",
-        "--chdir", "/workspace", *command,
+        "--chdir", directory, *command,
     ]
 
 
@@ -321,6 +326,8 @@ def terminate(process):
 
 
 def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None, model=None, *, read_only=False) -> subprocess.CompletedProcess:
+    if read_only and (not progress or not getattr(progress, "report_mode", False) or not coding_progress.REQUEST_ID.fullmatch(progress.request_id)):
+        raise ValueError("A report worker requires its original native request")
     home = worker_home(workspace)
     (home / ".dsh").mkdir(exist_ok=True)
     selected_model = model or MODEL
@@ -344,7 +351,8 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
             "python3", "/opt/coding/model_relay.py", "inside", "/home/agent/model.sock", str(RELAY_PORT), "--",
             "/opt/dsh/node_modules/.bin/dsh", "--profile", "headless", "--patch", "/home/agent/.dsh/agentx.patch.json",
             "--patch", "/opt/coding/guard.patch.yml", "--", prompt,
-        ], network=False, timeout_seconds=timeout_seconds, read_only=read_only), progress, home, workspace, on_stop=relay.begin_drain)
+        ], network=False, timeout_seconds=timeout_seconds, read_only=read_only,
+            report_request_id=progress.request_id if read_only else ""), progress, home, workspace, on_stop=relay.begin_drain)
     finally:
         relay.begin_drain()
         if progress and (progress.cumulative_limits or getattr(progress, 'report_mode', False)):
