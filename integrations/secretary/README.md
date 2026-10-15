@@ -201,6 +201,41 @@ Reports and proof files contain private source identifiers and stay outside Git.
 The separate Outlook import is not part of Gmail coverage; selecting an existing
 export does not start an Outlook synchronization or a new import.
 
+### Preparing exact-message cleanup review
+
+`retention_plan.py` combines chronological coverage, a fresh completed Gmail ID
+inventory, independent-copy proofs, a triage qualification and exact-message
+analysis/disposition receipts. The inventory query uses the cutoff's epoch
+seconds, including Spam and Trash with `in:anywhere`; ambiguous dates, duplicate
+IDs, unfinished pagination and observations older than 24 hours hold candidates.
+This is an observed inventory, not an atomic mailbox snapshot.
+
+The qualification uses `agentx.secretary-retention-qualification/v1`, identifies
+the reviewer and corpus hash, and records compared cases for full bodies,
+pagination, quoted authors, dates, sent mail, drafts, attachments, calendar,
+contacts, invoices, later replies and untrusted mail instructions. These are
+reviewer attestations to inspect, not independent proof that conclusions are true.
+The planner never creates a successful qualification or analysis on its own.
+
+Analysis receipts use `agentx.secretary-retention-analysis/v1` and pin the original,
+current thread/review hashes, qualification hash and `reviewPacket` hash. Exact
+page, attachment, finding and thread-question sets require dispositions with a
+reason and evidence reference. Keeping an action open cannot discharge it. A
+changed source or review invalidates the old decision; conflicting decisions hold
+the message. Missing originals/copies, drafts, unknown dates and stale thread
+reviews cannot be waived by an analysis receipt.
+
+The private output contains `candidateForOwnerReview`, never execution permission.
+It has no provider transport or mailbox mutation. An actual cleanup still needs
+a fresh exact-message provider/metadata check, a concrete manifest, the native
+one-time approval, reversible Trash first and reconciliation of each effect.
+Newer members of a mixed-date thread stay outside the selected message scope.
+Keep manifests and all qualification/analysis receipts outside Git.
+
+```bash
+python3 integrations/secretary/retention_plan.py --root "$GMAIL_SECRETARY_ROOT" --before "$HISTORICAL_CUTOFF" --inventory "$PRIVATE_GMAIL_INVENTORY" --primary-proof "$PRIVATE_PRIMARY_PROOF" --mirror-proof "$PRIVATE_MIRROR_PROOF" --qualification "$PRIVATE_QUALIFICATION" --decisions "$PRIVATE_ANALYSIS_RECEIPTS" --output "$PRIVATE_RETENTION_PLAN"
+```
+
 ## Outlook mailbox export
 
 `outlook_import.py import <file.pst>` brings an Outlook mailbox export into the
