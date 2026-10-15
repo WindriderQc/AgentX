@@ -232,9 +232,9 @@ the residency of its configured pins:
 
 | Residency label | Meaning | Next action |
 |---|---|---|
-| Pins fully on GPU | Every configured pin is loaded with measured full GPU residency in the current observation | Inspect residency evidence when qualifying the host |
-| GPU residency degraded | A pin is partly/entirely on CPU, or fresh collector inventory reports no GPU | Inspect affected models and runtime evidence before changing the host |
-| GPU residency unknown | Evidence is missing, stale or incomplete, or an operation owns the runtime | Refresh and inspect the runtime owner |
+| Pins fully on GPU | Every configured pin is loaded with measured full GPU residency | Open residency evidence when qualifying the host |
+| GPU residency degraded | A pin is partly/entirely on CPU, or fresh inventory reports no GPU | Inspect the affected pins |
+| GPU residency unknown | Evidence is missing, stale or incomplete, or an operation owns the runtime | Refresh, then check the runtime owner |
 | No configured pins | No configured set exists to qualify | Use the existing pin controls if a pin policy is required |
 
 **Residency evidence** reveals per-model observations and their time, including
