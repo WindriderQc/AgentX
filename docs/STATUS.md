@@ -224,6 +224,12 @@ Instance configuration, data and deployment receipts remain outside Git.
   or test progress, remaining budgets, test outcomes and the stop checkpoint.
   A controlled stop preserves source changes locally without an automatic retry;
   an inactive host without a terminal receipt stays unknown and blocks new work.
+  Manual private reports keep source read-only, archive verified partial files
+  on controlled stops and support explicit continuation of the same scope and
+  source from a digest-bound checkpoint. Lost outcomes reconcile the original
+  request without relaunch; candidate acceptance requires independent review and
+  explicit complete-scope confirmation. Archive selections agree across status
+  cards and board, with unknown or incomplete count evidence labelled explicitly.
   Review of that pull request and its CI is
   the gate; nothing merges or deploys by itself. See
   [the coding worker](../integrations/coding/README.md). The disabled-by-default

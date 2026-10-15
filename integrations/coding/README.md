@@ -78,9 +78,11 @@ with the reservation; ordinary admission still applies. Then use the installed
 control after the normal explicit task handoff. An empty or invalid name is
 refused. This profile cannot replace an automated lease or claim.
 
-The model-call budget defaults to 128 for each report execution. For an authorized
-extended review, append `--model-call-limit 256` to that command (integer range
-128–256). The native launch receipt and Core report journal bind that choice to
+Pipeline's one-task form and dossier offer **Private Markdown report** and its
+call limit; the same selection reaches native preparation and launch. The
+model-call budget defaults to 128 for each report execution. For an authorized
+extended review, select 256 in Pipeline or append `--model-call-limit 256` to
+that command (integer range 128–256). The native launch receipt and Core report journal bind that choice to
 the exact task/request. The runner verifies Core's acknowledged limit before
 model dispatch. Replaying the same UUID cannot change its budget; older receipts
 without the field retain 128. This option applies only to manual private reports.
@@ -109,11 +111,33 @@ moves the original claim to `review`. This is a candidate for independent review
 not proof of coverage or automatic completion. A later owner or specification
 change supersedes only the old execution receipt and leaves that task intact.
 
-After a lost acknowledgement, use the same native `reconcile TASK REQUEST_UUID`
-control. It repairs only the original durable model settlement and frozen result;
+On a controlled stop, proven native model settlement also allows Core to archive
+valid, nonempty Markdown as a **partial** deliverable. The task stays blocked.
+The native stop intent freezes the partial bytes and digest for replay; editing
+the live output later cannot change the original receipt. Partial and candidate
+files carry their request, claim, source revision and specification provenance.
+If there is no valid file or termination remains unknown, do not infer a saved
+checkpoint from model activity or a stopped process.
+
+A subsequent explicit handoff can continue a saved checkpoint. Pipeline offers
+**Continue the saved report at the same source revision**; native callers pass
+`--parent-request-id UUID --parent-sha256 SHA256` to `launch-report`. Core checks
+the original task, specification, source commit, earlier terminal claim and
+verified bytes before the runner restores them into the new private output.
+Changed scope or source requires a new review rather than silently reusing that
+checkpoint. Each claim has one new execution identity; replay retains its exact
+selection. Core exposes cumulative calls and execution count for the selected
+lineage, while each authorized execution keeps its own fixed budget. No restart
+or budget increase happens automatically.
+
+After a lost acknowledgement, use **Reconcile saved report** in Pipeline or the
+same native `reconcile TASK REQUEST_UUID` control. It repairs only the original durable model settlement and frozen result;
 it never reruns the worker or invents completion from an inactive unit. Inspect
 partial private output after a stop. The original request, result and native
-release evidence remain required before another launch.
+release evidence remain required before another launch. Accepting a candidate
+requires a separate reviewer, the exact candidate request and digest, and an
+explicit confirmation that the complete requested scope was checked. A saved
+file or normal worker exit does not establish that coverage.
 
 ## Progress and stop decisions
 

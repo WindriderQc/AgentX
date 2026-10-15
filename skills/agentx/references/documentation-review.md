@@ -51,17 +51,23 @@ incomplete until every scoped document has the required evidence; delivering a
 partial checkpoint for review does not complete or narrow the original task.
 
 Manual private reports default to 128 model calls per execution. An operator may
-explicitly select a budget up to 256 for an extended review through the native
-`launch-report` command's `--model-call-limit` option. Core freezes the budget for
+explicitly select a budget up to 256 for an extended review in Pipeline's report
+form or through the native `launch-report` command's `--model-call-limit` option. Core freezes the budget for
 that request; the worker's prompt and budget advisories use the acknowledged
 value. This does not extend the fixed time ceiling or authorize a later run.
 
 For the native private report profile, a normal worker return lets the harness
-offer the saved report through Core for independent review. A budget stop may
-leave only private output. File presence, registered delivery, human acceptance
+offer the saved report through Core for independent review. After proven native
+model termination, a controlled budget stop archives valid saved Markdown as a
+partial deliverable and leaves the task blocked. Missing or invalid output cannot
+be archived. File presence, registered delivery, human acceptance
 and task completion are separate facts. For location and execution controls,
 read `integrations/coding/README.md` in the product checkout.
 
 A later execution needs the existing authorization, queue/admission and native
-receipt checks. Resolve uncertain original outcomes through their owner first.
+receipt checks. Explicit checkpoint selection binds the prior request and digest;
+Core verifies the same task, specification and source revision before restoring
+its bytes for the new execution. Read this checkpoint first, preserve its coverage
+and use the current runner's output path and budget; old paths in the discussion
+are historical. Resolve uncertain original outcomes through their owner first.
 These instructions do not provide automatic continuation or budget increases.
