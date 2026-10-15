@@ -124,7 +124,7 @@ def review_packet(archive, row):
     pages = [page for page in archive.review_pages(manifest) if page["messageId"] == mid]
     return {"messageId": mid, "threadId": tid, "sourceSha256": row["originalSha256"],
             "evidenceHash": row["evidenceHash"], "reviewSha256": row["reviewSha256"],
-            "readerContract": "secretary.archive-reader/v2",
+            "readerContract": "secretary.archive-reader/v3",
             "pageIds": {p["pageId"]: content_hash(p) for p in pages},
             "attachmentIds": {item.get("sha256") or "missing:" + str(item.get("partId")): {
                 "sha256": item.get("sha256"), "bytes": item.get("bytes"), "path": item.get("path"),

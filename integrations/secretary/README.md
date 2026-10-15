@@ -228,13 +228,19 @@ does not establish attachment reading. Sources remain readable when provider
 links disappear. HTTP reads and review retain the instance's existing private
 LAN human entrance; owner scope separates native domains, not human identities.
 
-Reader contract `secretary.archive-reader/v2` enumerates inline MIME text
+Reader contract `secretary.archive-reader/v3` enumerates inline MIME text
 representations and permits an exact bounded `part` selector, with independent
 pagination and decoded-text hashes. The review page lets the reader inspect
 plain text and HTML converted to inert text separately. A preferred body view
 does not certify the other versions; unreadable alternatives remain visible.
 Nested message attachments and unnamed documents remain attachments, with their
 own authorship/content review, rather than silently becoming the outer body.
+HTML reading also exposes link/resource destinations, image descriptions,
+attribute text and script data as a bounded inert supplement. No link is fetched
+and no script executes. Clipped values and omitted entries stay explicit review
+gaps; the original remains the retrieval source. Supplements do not change body
+text, decoded-text hashes or pagination offsets. Legacy evidence pages retain
+their preferred-body text and are not retroactively qualified by this reader.
 
 The importer reports stale reviews, unknown dates, missing originals, oversized
 findings and thread questions that lack message attribution. Those gaps remain
