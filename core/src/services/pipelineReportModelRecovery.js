@@ -8,7 +8,8 @@ const crypto = require('crypto');
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const WC = { w: 1, j: true };
 const fail = message => claim.fail(message, 'REPORT_NATIVE_TERMINATION_UNVERIFIED');
-const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object'
+const timestamp = value => value instanceof Date ? value.getTime() : Date.parse(value);
+const canonical = value => value instanceof Date ? value.toISOString() : Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object'
   ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
 const digest = value => crypto.createHash('sha256').update(JSON.stringify(canonical(value)) ?? 'undefined').digest('hex');
 let control;
@@ -55,23 +56,27 @@ function nativeRelease(value, binding, runtime) {
     const receipt = binding.releaseReceipt || runtime?.releaseReceipts?.find(x => x.admissionId === proof.admissionId && x.generation === proof.generation);
     if (!receipt || receipt.released !== true || !['agentx.runtime-inference-completion/v1', 'agentx.caller-abort-recovery/v1'].includes(receipt.contract)
       || receipt.principal !== proof.principal || receipt.host !== value.host || receipt.model !== value.model
-      || !Number.isFinite(Date.parse(receipt.releasedAt)) || !Number.isFinite(Date.parse(receipt.acquiredAt))
-      || Date.parse(receipt.releasedAt) < Date.parse(receipt.acquiredAt) || Date.parse(receipt.releasedAt) > Date.now() + 1000)
+      || !Number.isFinite(timestamp(receipt.releasedAt)) || !Number.isFinite(timestamp(receipt.acquiredAt))
+      || timestamp(receipt.releasedAt) < timestamp(receipt.acquiredAt) || timestamp(receipt.releasedAt) > Date.now() + 1000
+      || (receipt.contract === 'agentx.caller-abort-recovery/v1' && (!Number.isFinite(timestamp(receipt.unknownAt))
+        || timestamp(receipt.unknownAt) < timestamp(receipt.acquiredAt) || timestamp(receipt.unknownAt) > timestamp(receipt.releasedAt))))
       throw fail('The native owner has not provided the exact terminal release receipt');
     return receipt;
+}
+async function preserveRelease(binding, receipt) {
+  if (binding.releaseReceipt) return;
+  const saved = await Binding.updateOne({ _id: binding._id, releaseReceipt: { $exists: false } },
+    { $set: { releaseReceipt: receipt } }, { writeConcern: WC });
+  if (saved.acknowledged !== true) throw fail('Native receipt custody acknowledgement is unverified');
+  const stored = await Binding.findById(binding._id).lean();
+  if (digest(stored?.releaseReceipt) !== digest(receipt)) throw fail('The original native release receipt differs');
 }
 async function releases(value, bindings) {
   const runtime = await Runtime.findById('runtime').select('+releaseReceipts').lean();
   const results = [];
   for (const binding of bindings) {
     const receipt = nativeRelease(value, binding, runtime);
-    if (!binding.releaseReceipt) {
-      const saved = await Binding.updateOne({ _id: binding._id, releaseReceipt: { $exists: false } },
-        { $set: { releaseReceipt: receipt } }, { writeConcern: WC });
-      if (saved.acknowledged !== true) throw fail('Native receipt custody acknowledgement is unverified');
-      const stored = await Binding.findById(binding._id).lean();
-      if (digest(stored?.releaseReceipt) !== digest(receipt)) throw fail('The original native release receipt differs');
-    }
+    await preserveRelease(binding, receipt);
     results.push(receipt);
   }
   return results;
@@ -82,7 +87,7 @@ async function receive(value, row, bindings) {
     throw fail('Native admission scope differs from the original report call');
   const nativeReceipts = await releases(value, bindings);
   const recovery = { terminationOnly: true, originalUnknownReceipt: row,
-    receivedAt: new Date().toISOString(), terminationAt: nativeReceipts.map(x => x.releasedAt).sort().at(-1),
+    receivedAt: new Date().toISOString(), terminationAt: new Date(Math.max(...nativeReceipts.map(x => timestamp(x.releasedAt)))).toISOString(),
     nativeReceipts, ...(bindings[0].mapping ? { operatorMapping: bindings[0].mapping } : {}) };
   const saved = await Run.updateOne({ _id: value._id, revision: value.revision,
     taskId: value.taskId, claimSeq: value.claimSeq, specSha256: value.specSha256, sourceCommit: value.sourceCommit,
@@ -111,6 +116,15 @@ async function observe() {
   if (observing) return;
   observing = true;
   try {
+    // Preserve each released attempt while its call may still be pending or
+    // retrying. Query the bounded native journal by admission ID, not old runs.
+    const runtime = await Runtime.findById('runtime').select('+releaseReceipts').lean();
+    const keys = (runtime?.releaseReceipts || []).map(x => x.admissionId + ':' + x.generation);
+    const bindings = await Binding.find({ _id: { $in: keys }, releaseReceipt: { $exists: false } }).lean();
+    for (const binding of bindings) {
+      try { await preserveRelease(binding, nativeRelease(binding.native, binding, runtime)); }
+      catch (error) { if (error.code !== 'REPORT_NATIVE_TERMINATION_UNVERIFIED') throw error; }
+    }
     // Capture native owner recovery before its bounded recent-receipt journal
     // rotates. This settles custody only; it never launches a worker or model.
     const values = await Run.find({ state: 'active', modelReceipts: { $elemMatch: { state: 'unknown' } } })
@@ -160,8 +174,10 @@ async function mapLegacy(id, key, body) {
       throw fail('The archived native admission identity differs');
   }
   const receipt = nativeRelease(value, { native, ...(archived ? { releaseReceipt: archived } : {}) }, runtime);
-  if (Math.abs(Date.parse(receipt.acquiredAt) - Date.parse(row.startedAt)) > 5000
-    || (receipt.unknownAt && Math.abs(Date.parse(receipt.unknownAt) - Date.parse(row.finishedAt)) > 5000))
+  const started = timestamp(row.startedAt), finished = timestamp(row.finishedAt);
+  const stopped = timestamp(receipt.contract === 'agentx.caller-abort-recovery/v1' ? receipt.unknownAt : receipt.releasedAt);
+  if (![started, finished, stopped].every(Number.isFinite) || finished < started
+    || Math.abs(timestamp(receipt.acquiredAt) - started) > 5000 || Math.abs(stopped - finished) > 5000)
     throw fail('Native admission timing contradicts the operator mapping');
   const mapping = { authority: 'operator-attestation', intentHash, by: body.by, evidence: body.evidence,
     nativeReceiptSource: archived ? 'operator-task-archive' : 'native-owner-journal',
