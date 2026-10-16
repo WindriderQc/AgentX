@@ -1,0 +1,60 @@
+<section class="analytics-overview" aria-labelledby="analytics-experience-title" aria-busy="true">
+  <header class="ao-header">
+    <div><span class="ao-eyebrow">Intelligence / Overview</span><h1 id="analytics-experience-title">Every call. The whole picture.</h1></div>
+    <div class="ao-controls">
+      <label for="analyticsWindow">Recorded activity</label>
+      <select id="analyticsWindow"><option value="24h" selected>Last 24 hours</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="90d">Last 90 days</option></select>
+      <button id="analytics-experience-refresh" type="button" aria-label="Refresh analytics"><i class="fas fa-rotate" aria-hidden="true"></i></button>
+    </div>
+  </header>
+  <div class="ao-context"><span id="ao-status" role="status">Reading recorded calls…</span><span id="ao-updated">—</span></div>
+
+  <div class="ao-kpis">
+    <button class="ao-kpi" type="button" data-analytics-target="analytics-platform-inference"><span class="ao-label">Inference calls <i class="fas fa-arrow-down" aria-hidden="true"></i></span><strong id="ao-calls">—</strong><span id="ao-calls-spark" class="ao-spark ao-spark-calls"></span><small id="ao-calls-note">All callers, models and routes</small></button>
+    <button class="ao-kpi ao-kpi-outcomes" type="button" data-analytics-target="analytics-platform-inference"><span class="ao-label">Completed successfully</span><strong id="ao-success">—</strong><span id="ao-outcome-ring" class="ao-outcome-ring is-empty" role="img" aria-label="Outcomes not observed"><span id="ao-outcome-count">—</span></span><small id="ao-outcomes">Errors and cancellations counted separately</small></button>
+    <button class="ao-kpi" type="button" data-analytics-target="analytics-models"><span class="ao-label">Reported output tokens</span><strong id="ao-output">—</strong><span id="ao-output-spark" class="ao-spark ao-spark-output"></span><small id="ao-input">— prompt tokens in</small></button>
+    <button class="ao-kpi" type="button" data-analytics-target="analytics-models"><span class="ao-label">Mean call latency</span><strong id="ao-latency">—</strong><span id="ao-latency-spark" class="ao-spark ao-spark-latency"></span><small id="ao-time">End to end, including routing and waits</small></button>
+  </div>
+
+  <div class="ao-main-grid<%= locals.agentxProfile === 'demo' ? ' is-history-only' : '' %>">
+    <section class="ao-panel ao-trend" aria-labelledby="ao-trend-title">
+      <div class="ao-panel-head"><div><span class="ao-eyebrow">Volume × performance</span><h2 id="ao-trend-title">Activity over time</h2></div><div class="ao-trend-controls"><div class="ao-segment" role="group" aria-label="Overlay on call volume"><button type="button" data-ao-overlay="errors" aria-pressed="true">Errors</button><button type="button" data-ao-overlay="latency" aria-pressed="false">Latency</button></div><div class="ao-legend"><span>Calls</span><span id="ao-overlay-label">Errors %</span></div></div></div>
+      <div class="ao-chart"><canvas id="ao-trend-chart" role="img" aria-label="Inference calls and operational error rate over time"></canvas><p id="ao-trend-empty" hidden>No recorded calls in this window.</p></div>
+      <div class="ao-panel-foot"><span id="ao-trend-note">Same time buckets · calls on left, error rate on right</span><span id="ao-fallbacks">— fallbacks</span></div>
+    </section>
+    <% if (locals.agentxProfile !== 'demo') { %>
+    <section class="ao-panel ao-live" aria-labelledby="ao-live-title">
+      <div class="ao-panel-head"><div><span class="ao-eyebrow"><span class="ao-dot" aria-hidden="true"></span> Now / independent of window</span><h2 id="ao-live-title">Live inference</h2></div><div class="ao-live-tools"><span class="ao-live-key"><span>Load</span><span>VRAM</span></span><a href="/nerve-center?focus=cluster" aria-label="Open live GPU and host details"><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i></a></div></div>
+      <div class="ao-live-count"><strong id="ao-active">—</strong><span>active admissions<small id="ao-live-status" role="status">Checking Core…</small></span></div>
+      <div id="ao-active-models" class="ao-active-models"></div>
+      <div id="ao-gpus" class="ao-gpus"><p class="ao-empty">Reading GPU telemetry…</p></div>
+      <div class="ao-panel-foot"><span id="ao-live-updated">Reads every 15 s while visible</span><a href="/nerve-center?focus=inference">Inference detail →</a></div>
+    </section>
+    <% } %>
+  </div>
+
+  <div class="ao-bottom-grid">
+    <section class="ao-panel" aria-labelledby="ao-model-title">
+      <div class="ao-panel-head"><div><span class="ao-eyebrow">Compare / same window</span><h2 id="ao-model-title">Where the work goes</h2></div><div class="ao-segment" role="group" aria-label="Compare activity by"><button type="button" data-ao-group="byModel" aria-pressed="true">Models</button><button type="button" data-ao-group="byConsumerContract" aria-pressed="false">Consumers</button></div></div>
+      <div class="ao-comparison-head" aria-hidden="true"><span>Share of recorded calls</span><span>Calls</span><span>Mean time</span><span>Errors</span></div>
+      <div id="ao-comparison" class="ao-comparison"><p class="ao-empty">Reading model activity…</p></div>
+      <div class="ao-panel-foot"><span class="ao-comparison-key"><span>Calls</span><span>Elapsed time</span></span><span id="ao-model-note">Share of window total</span><button type="button" data-analytics-target="analytics-models">Full comparison →</button></div>
+    </section>
+    <section class="ao-panel ao-accounting" aria-labelledby="ao-accounting-title">
+      <div class="ao-panel-head"><div><span class="ao-eyebrow">Resources / accounting</span><h2 id="ao-accounting-title">Local &amp; cloud</h2></div><i class="fas fa-scale-balanced" aria-hidden="true"></i></div>
+      <div class="ao-account-body">
+        <div class="ao-mix-visual"><div id="ao-mix-ring" class="ao-mix-ring is-empty" role="img" aria-label="Local and cloud call split not observed"><span><strong id="ao-mix-value">—</strong><small>local calls</small></span></div><span class="ao-mix-key"><span>Local</span><span>Cloud</span></span></div>
+        <div class="ao-account-values"><div class="ao-account-row"><span>Local calls<small id="ao-local-share">— of recorded calls</small></span><strong id="ao-local-calls">—</strong></div>
+        <div class="ao-account-row"><span>Local elapsed time<small>Sum of durations · includes waits</small></span><strong id="ao-local-time">—</strong></div>
+        <div class="ao-account-row"><span>Cloud estimate <small id="ao-cloud-note">Configured token prices only</small></span><strong id="ao-cloud-cost">—</strong></div></div>
+      </div>
+      <% if (locals.agentxProfile !== 'demo') { %><div class="ao-panel-foot"><a href="/nerve-center?focus=cluster">Actual GPU utilization &amp; VRAM →</a></div><% } %>
+    </section>
+  </div>
+  <p id="ao-coverage" class="ao-coverage">Recorded AgentX calls only. Native calls that bypass Core are outside this view. Elapsed call time is not GPU busy time.</p>
+  <nav class="ao-links" aria-label="Related activity">
+    <button type="button" data-analytics-target="chatLaneHeading"><i class="fas fa-comments" aria-hidden="true"></i> Playground conversations <small id="analytics-chat-detail">Separate conversation scope</small></button>
+    <a href="<%= publicUrls.rag %>/"><i class="fas fa-book-open" aria-hidden="true"></i> Knowledge <small id="analytics-knowledge-detail">Corpus and retrieval</small></a>
+    <a href="/performance"><i class="fas fa-gauge-high" aria-hidden="true"></i> Server performance <small>Page and API response times</small></a>
+  </nav>
+</section>

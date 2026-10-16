@@ -21,6 +21,7 @@
  * Mounted at /api/analytics/inference by routes/analytics.js.
  */
 
+const { bucketFacet, summaryCoverage } = require('../src/services/inferenceSummaryMetrics');
 const express = require('express');
 const router = express.Router();
 
@@ -381,6 +382,7 @@ router.get('/summary', async (req, res) => {
       tokensIn: { $sum: { $ifNull: ['$tokensIn', 0] } },
       tokensOut: { $sum: { $ifNull: ['$tokensOut', 0] } },
       durationMs: { $sum: { $ifNull: ['$durationMs', 0] } },
+      timedCalls: { $sum: { $cond: [{ $gt: ['$durationMs', 0] }, 1, 0] } },
       fallbacks: { $sum: { $cond: ['$fallbackUsed', 1, 0] } },
       classificationMs: { $sum: { $ifNull: ['$classificationMs', 0] } },
       classifiedCalls: { $sum: { $cond: [{ $gt: ['$classificationMs', 0] }, 1, 0] } },
@@ -407,8 +409,7 @@ router.get('/summary', async (req, res) => {
           totals: [{ $group: { _id: null, ...groupMetrics } }],
           byModel: [
             { $group: { _id: '$model', ...groupMetrics, hosts: { $addToSet: '$host' } } },
-            { $sort: { calls: -1 } },
-            { $limit: 40 }
+            { $sort: { calls: -1 } }
           ],
           byCaller: [{ $group: { _id: '$caller', ...groupMetrics } }, { $sort: { calls: -1 } }],
           // callerDetail is caller-controlled legacy text and may contain a
@@ -421,6 +422,7 @@ router.get('/summary', async (req, res) => {
           byDegraded: [{ $group: { _id: { $ifNull: ['$routeDecision.degraded', false] }, ...groupMetrics } }, { $sort: { calls: -1 } }],
           byRuntime: [{ $group: { _id: '$runtime', ...groupMetrics } }, { $sort: { calls: -1 } }],
           byHost: [{ $group: { _id: '$host', ...groupMetrics } }, { $sort: { calls: -1 } }],
+          byBucket: bucketFacet(key, groupMetrics),
           byDay: [
             {
               $group: {
@@ -480,13 +482,13 @@ router.get('/summary', async (req, res) => {
         tokensOut,
         totalTokens: (row.tokensIn || 0) + tokensOut,
         inferenceSeconds: round(seconds),
-        avgLatencyMs: calls > 0 ? Math.round((row.durationMs || 0) / calls) : 0,
+        timedCalls: row.timedCalls ?? calls,
+        avgLatencyMs: (row.timedCalls ?? calls) > 0 ? Math.round((row.durationMs || 0) / (row.timedCalls ?? calls)) : null,
         // null, never 0: a row with no classified call has no classifier time.
         avgClassificationMs: row.classifiedCalls > 0
           ? Math.round((row.classificationMs || 0) / row.classifiedCalls)
           : null,
-        // Real generation throughput, the number that actually tells you
-        // whether a model is worth its VRAM.
+        // Effective output throughput includes routing and waits, not just decoding.
         tokensOutPerSecond: seconds > 0 ? round(tokensOut / seconds) : 0
       };
     };
@@ -581,7 +583,8 @@ router.get('/summary', async (req, res) => {
         totalTokens: t.tokensIn + t.tokensOut,
         inferenceSeconds: round(totalSeconds),
         inferenceHours: round(totalSeconds / 3600),
-        avgLatencyMs: t.calls > 0 ? Math.round((t.durationMs || 0) / t.calls) : 0,
+        timedCalls: t.timedCalls ?? t.calls,
+        avgLatencyMs: (t.timedCalls ?? t.calls) > 0 ? Math.round((t.durationMs || 0) / (t.timedCalls ?? t.calls)) : null,
         classifiedCalls,
         // null (not 0) when nothing was classified — the same semantics the
         // Nerve Center routing summary already uses for this signal.
@@ -602,7 +605,7 @@ router.get('/summary', async (req, res) => {
         calls: sum(localModels, 'calls'),
         totalTokens: sum(localModels, 'totalTokens'),
         inferenceHours: round(sum(localModels, 'inferenceSeconds') / 3600),
-        note: 'Local inference is accounted in compute, not currency. No per-token price exists for it.'
+        note: 'Local elapsed call time includes routing and waits, on CPU or GPU; it is not GPU busy time. No per-token price exists for it.'
       },
       cloud: {
         models: cloudModels.length,
@@ -614,7 +617,10 @@ router.get('/summary', async (req, res) => {
           ? 'All cloud models resolved a price.'
           : 'Some cloud models have no configured price; their spend is excluded rather than guessed.'
       },
-      byModel,
+      byModel: byModel.slice(0, 40),
+      coverage: summaryCoverage({ models: byModel, listedModels: byModel.slice(0, 40), calls: t.calls, windowKey: key }),
+      bucketHours: key === '24h' ? 1 : 24,
+      byBucket: (facet?.byBucket || []).map((row) => shape(row, 'date')),
       byCaller: (facet?.byCaller || []).map((r) => shape(r, 'caller')),
       byConsumerContract: (facet?.byConsumerContract || []).map((r) => {
         const projected = projectInferenceLog({ consumerContract: r._id });
