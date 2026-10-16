@@ -125,7 +125,9 @@ describe('Agent X Knowledge progressive-disclosure experience', () => {
     expect(documentsJs).toContain('els.deleteInput.value === els.deleteExpected.textContent');
     expect(documentsJs).toContain('await window.RAG.deleteDocument(docId, confirmation, exclude)');
     expect(documents).toContain('id="delete-document-exclude"');
-    expect(documents).toContain('>Delete and exclude</button>');
+    // Owner decision: a plain Delete keeps a scanned file out of later scans.
+    expect(documents).toContain('value="exclude" disabled>Delete</button>');
+    expect(documents).toContain('value="delete" disabled>Delete, re-index at next scan</button>');
     expect(documents).toContain('id="excluded-files"');
     expect(documentsJs).toContain('showDeleteReceipt(documentData)');
     expect(documentsJs).toContain('Other indexed documents may remain.');
