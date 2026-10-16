@@ -27,6 +27,8 @@
     { key: 'allocations', label: 'Allocation', fields: [['step', 'Step', 'long'], ['amountCents', 'Amount ($)', 'money'], ['amountText', 'or text'],
       ['status', 'Status'], ['effect', 'Effect', 'long']] },
     { key: 'milestones', label: 'Settled', fields: [['text', 'Item', 'long'], ['done', 'Done', 'bool']] },
+    { key: 'seriesStatus', label: 'Statement series', fields: [['series', 'Series (issuer ···last 4)', 'long'], ['label', 'Name'],
+      ['closed', 'Closed', 'bool'], ['note', 'Note', 'long']] },
     { key: 'phase', label: 'Phase', scalar: true },
     { key: 'excludeTags', label: 'Exceptional tags', list: true }
   ];

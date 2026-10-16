@@ -730,8 +730,11 @@ category trends, large recent expenses) and `/api/finance/export.csv` exports
 the filtered transactions with their totals for a spreadsheet.
 Deterministic alerts are recomputed after each scan that ingests something and
 on `GET /api/finance/alerts`: statement to review, no statement for an account
-series (each account's latest reconciled period) for more than
-`FINANCE_ALERT_STALE_DAYS` (45), balance of `FINANCE_ALERT_MIN_BALANCE_ACCOUNTS`
+statement series (issuer and account or card last four, one alert whatever its
+sub-accounts) for more than `FINANCE_ALERT_STALE_DAYS` (45); beyond
+`FINANCE_ALERT_DORMANT_DAYS` (180) the series is dormant and raises one info
+alert instead. A series the plan marks `closed` (`seriesStatus`) raises nothing.
+Balance of `FINANCE_ALERT_MIN_BALANCE_ACCOUNTS`
 (EOP) under `FINANCE_ALERT_MIN_BALANCE_CENTS` (off when unset), expense over
 `FINANCE_ALERT_LARGE_EXPENSE_CENTS` (1 000 $) in the last 45 days, new stable
 recurring charge, and a category up 50 % and `FINANCE_ALERT_CATEGORY_SPIKE_CENTS`

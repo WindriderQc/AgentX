@@ -529,6 +529,43 @@ describe('payroll coverage, standing alerts and deadlines', () => {
   });
 });
 
+describe('alert noise: one alert per statement series', () => {
+  const alerts = require('../../src/services/finance/financeAlerts');
+  const plan = require('../../src/services/finance/financePlan');
+  const env = { FINANCE_ALERT_STALE_DAYS: '45', FINANCE_ALERT_DORMANT_DAYS: '180' };
+
+  // One statement with several sub-accounts (same issuer and last four), each with one row.
+  function multi(period, codes) {
+    return { issuer: 'Caisse Exemple', account_last4: '0000', period_start: period[0], period_end: period[1],
+      accounts: codes.map((code) => ({ code, opening_cents: 100000, closing_cents: 100100,
+        transactions: [{ date: period[0], description: 'FRAIS', amount_cents: 100, balance_after_cents: 100100 }] })) };
+  }
+
+  test('raises one stale alert per series, however many sub-accounts it has', async () => {
+    await ingestDocument(await writeDoc('multi.pdf'), { readText, extract: extractWith(multi(['2026-06-01', '2026-06-30'], ['EOP', 'ES1', 'MC1'])) });
+    const found = await alerts.evaluate({ env, now: new Date('2026-09-01T00:00:00Z') });
+    expect(found.filter((a) => a.kind === 'stale_data')).toEqual([expect.objectContaining({
+      key: 'stale:Caisse Exemple ···0000', title: expect.stringContaining('Caisse Exemple ···0000') })]);
+  });
+
+  test('a named and closed series raises nothing; a long-silent series is dormant, once', async () => {
+    await ingestDocument(await writeDoc('closed.pdf'), { readText, extract: extractWith(multi(['2026-06-01', '2026-06-30'], ['EOP'])) });
+    await plan.savePlan({ seriesStatus: [{ series: 'Caisse Exemple ···0000', label: 'Desjardins compte', closed: true }] });
+    expect((await alerts.evaluate({ env, now: new Date('2026-09-01T00:00:00Z') })).filter((a) => a.kind.includes('stale')
+      || a.kind.includes('dormant'))).toEqual([]);
+
+    await plan.savePlan({ seriesStatus: [{ series: 'Caisse Exemple ···0000', label: 'Desjardins compte', closed: false }] });
+    const late = new Date('2027-01-15T00:00:00Z');
+    const dormant = await alerts.evaluate({ env, now: late });
+    expect(dormant.map((a) => a.kind)).toEqual(['dormant_account']);
+    expect(dormant[0].title).toContain('Desjardins compte');
+    expect((await alerts.report({ env, now: late })).alerts.map((a) => a.kind)).toEqual(['dormant_account']);
+    // Same key on a later day: already reported, not sent again.
+    expect((await alerts.report({ env, now: new Date('2027-01-16T00:00:00Z') })).alerts).toEqual([]);
+    expect((await alerts.refresh({ env, now: new Date('2027-01-16T00:00:00Z') })).alerts.map((a) => a.kind)).toEqual([]);
+  });
+});
+
 describe('statement coverage', () => {
   test('lists the months each statement series covers and the gaps between', async () => {
     for (const [name, period] of [['a.pdf', ['2026-01-01', '2026-01-31']], ['b.pdf', ['2026-04-01', '2026-04-30']]]) {
