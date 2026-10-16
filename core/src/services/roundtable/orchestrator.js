@@ -36,6 +36,9 @@ try {
 
 // Per-roundtable streaming emitters — the SSE route picks these up.
 const emitterRegistry = new Map();
+// Per-run abort controllers: a cancel or the total timeout stops the agent in flight.
+const runControllers = new Map();
+const CANCELLED_ERROR = 'Cancelled by the chair';
 
 const {
   assessModelParticipantReadiness,
@@ -77,6 +80,7 @@ async function executeRound(roundtableDoc, roundNum, agents, buildMessages, time
   const participantCaller = options.callParticipantImpl || callParticipant;
 
   for (const agent of agents) {
+    if (options.signal?.aborted) break;
     const routeKey = participantRouteKey(agent);
     const messages = buildMessages(agent, results);
 
@@ -120,7 +124,7 @@ async function executeRound(roundtableDoc, roundNum, agents, buildMessages, time
           timeoutMs,
           emitter,
           'turn',
-          { roundtableId: String(roundtableDoc._id), round: roundNum }
+          { roundtableId: String(roundtableDoc._id), round: roundNum, signal: options.signal }
         );
 
     if (!priorFailure && isSystemicParticipantFailure(result)) {
@@ -169,7 +173,11 @@ async function runRoundtable(roundtableId, emitter) {
     if (emitter) emitter.emit('chunk', { type: 'started', roundtableId, rounds: doc.rounds });
 
     const agents = doc.panelConfig.map((a) => a.toObject());
+    const controller = new AbortController();
+    runControllers.set(String(roundtableId), controller);
+    const runOptions = { signal: controller.signal };
     const totalTimer = setTimeout(async () => {
+      controller.abort();
       logger.error('Roundtable total timeout exceeded', { roundtableId });
       const totalDurationMs = Date.now() - startTime;
       const timeoutError = `Total timeout after ${DEFAULT_TOTAL_TIMEOUT_MS}ms`;
@@ -189,7 +197,9 @@ async function runRoundtable(roundtableId, emitter) {
     const r1Results = await executeRound(doc, 1, agents, (agent, earlier) => withInterjectionContext([
       { role: 'system', content: withCouncilAdvisoryGuard(agent.systemPrompt) },
       { role: 'user', content: doc.question + (doc.turnOrder === 'conversation' ? spokenBefore(agents, earlier) : '') }
-    ], r1Interjections), DEFAULT_TIMEOUT_MS, emitter);
+    ], r1Interjections), DEFAULT_TIMEOUT_MS, emitter, runOptions);
+    // Cancelled or timed out: the status already says so.
+    if (controller.signal.aborted) { clearTimeout(totalTimer); return; }
     await recordAppliedInterjections(doc, r1Interjections, 1, emitter);
     if (emitter) emitter.emit('chunk', { type: 'round-done', round: 1 });
     if (!Object.values(r1Results).some(result => String(result?.response || '').trim())) {
@@ -217,7 +227,7 @@ async function runRoundtable(roundtableId, emitter) {
             { role: 'assistant', content: r1Results[agent.agentId]?.response || '' },
             { role: 'user', content: REBUTTAL_PREAMBLE + otherResponses + '\n\n---\nNow provide your rebuttal.' }
           ], roundInterjections);
-        }, DEFAULT_TIMEOUT_MS, emitter);
+        }, DEFAULT_TIMEOUT_MS, emitter, runOptions);
 
         await recordAppliedInterjections(doc, roundInterjections, roundNum, emitter);
         if (emitter) emitter.emit('chunk', { type: 'round-done', round: roundNum });
@@ -249,7 +259,7 @@ async function runRoundtable(roundtableId, emitter) {
       { agentId: synthesizer.agentId || 'synthesizer', role: synthesizer.agentId ? 'Chair' : 'Synthesizer',
         runtime: synthesizer.runtime || 'model', model: synthesizer.model, systemPrompt: synthesizer.systemPrompt, _round: 0 },
       synthMessages, DEFAULT_TIMEOUT_MS, emitter, 'synthesis',
-      { roundtableId: String(doc._id), round: 0, phase: 'synthesis' }
+      { roundtableId: String(doc._id), round: 0, phase: 'synthesis', signal: controller.signal }
     );
 
     if (emitter) emitter.emit('chunk', { type: 'synthesis-done', stats: synthResult.stats, error: synthResult.error });
@@ -267,7 +277,7 @@ async function runRoundtable(roundtableId, emitter) {
     const decisionStatus = doc.governance?.requireApproval ? 'awaiting_approval' : 'advisory';
     const completedAt = new Date();
     await Roundtable.updateOne(
-      { _id: roundtableId },
+      { _id: roundtableId, status: 'running' },
       { $set: {
         synthesis: {
           model: synthesizer.model, target: synthResult.target, hostName: synthResult.hostName,
@@ -289,13 +299,15 @@ async function runRoundtable(roundtableId, emitter) {
     });
   } catch (err) {
     logger.error('Roundtable failed', { roundtableId, error: err.message });
-    await Roundtable.updateOne(
-      { _id: roundtableId },
+    // A cancelled or timed-out run keeps that status.
+    const result = await Roundtable.updateOne(
+      { _id: roundtableId, status: { $in: ['pending', 'running'] } },
       { $set: { status: 'failed', error: err.message, totalDurationMs: Date.now() - startTime, completedAt: new Date() } }
-    ).catch(() => {});
-    if (emitter) emitter.emit('chunk', { type: 'done', status: 'failed', error: err.message });
+    ).catch(() => null);
+    if (emitter && result?.modifiedCount > 0) emitter.emit('chunk', { type: 'done', status: 'failed', error: err.message });
   } finally {
     emitterRegistry.delete(roundtableId);
+    runControllers.delete(String(roundtableId));
   }
 }
 
@@ -361,6 +373,23 @@ async function reconcileStaleRoundtables({ now = Date.now(), maxAgeMs } = {}) {
   return { reconciled, cutoff };
 }
 
+/** Stop a pending or running council: mark it cancelled, then abort the agent in flight. */
+async function cancelRoundtable(roundtableId) {
+  const doc = await Roundtable.findOneAndUpdate(
+    { _id: roundtableId, status: { $in: ['pending', 'running'] } },
+    { $set: { status: 'cancelled', error: CANCELLED_ERROR, completedAt: new Date() } },
+    { new: true }
+  );
+  if (!doc) {
+    const err = new Error('This council is not running.');
+    err.status = 409;
+    throw err;
+  }
+  runControllers.get(String(roundtableId))?.abort();
+  emitterRegistry.get(String(roundtableId))?.emit('chunk', { type: 'done', status: 'cancelled', error: CANCELLED_ERROR });
+  return doc;
+}
+
 async function getRoundtable(id) {
   await reconcileStaleRoundtables().catch(() => {});
   return Roundtable.findById(id);
@@ -386,6 +415,7 @@ module.exports = {
   executeRound,
   runRoundtable,
   createRoundtable,
+  cancelRoundtable,
   getRoundtable,
   listRoundtables,
   reconcileStaleRoundtables,

@@ -92,7 +92,7 @@ const RoundtableSchema = new mongoose.Schema({
   question: { type: String, required: true, maxlength: 5000 },
   status: {
     type: String,
-    enum: ['pending', 'running', 'completed', 'failed', 'timeout'],
+    enum: ['pending', 'running', 'completed', 'failed', 'timeout', 'cancelled'],
     default: 'pending',
     index: true
   },

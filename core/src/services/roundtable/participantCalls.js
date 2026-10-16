@@ -183,7 +183,9 @@ async function callAgent(agent, messages, timeoutMs = DEFAULT_TIMEOUT_MS, contex
       timeoutMs,
       admissionKind: 'council',
       principal: 'core-council',
-      runtimeOptions: payload.options
+      runtimeOptions: payload.options,
+      // A cancelled council stops this call instead of waiting for its answer.
+      ...(context?.signal ? { signal: context.signal } : {})
     });
     const { response: res, data, raw } = attempt;
 
@@ -209,7 +211,7 @@ async function callAgent(agent, messages, timeoutMs = DEFAULT_TIMEOUT_MS, contex
   } catch (err) {
     const completedAt = new Date();
     const isTimeout = err.isOllamaTimeout === true || err.name === 'AbortError';
-    const errorMsg = isTimeout ? `Timeout after ${timeoutMs}ms` : err.message;
+    const errorMsg = context?.signal?.aborted ? 'Cancelled' : isTimeout ? `Timeout after ${timeoutMs}ms` : err.message;
     logger.error('Roundtable callAgent failed', { agentId: agent.agentId, model: agent.model, target, error: errorMsg });
     const result = {
       response: '', thinking: null,
@@ -242,6 +244,10 @@ async function callAgentStreaming(agent, messages, timeoutMs, emitter, eventPref
   const payload = await buildPinnedAgentPayload(agent, messages, target, true);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  // A cancelled council stops the stream too.
+  const stopOnCancel = () => controller.abort();
+  if (context?.signal?.aborted) controller.abort();
+  else context?.signal?.addEventListener('abort', stopOnCancel, { once: true });
   let streamAttempt = null;
 
   try {
@@ -301,6 +307,7 @@ async function callAgentStreaming(agent, messages, timeoutMs, emitter, eventPref
     const completion = await streamAttempt.completion;
     if (!completion.completed) throw new Error(completion.admissionError || 'Stream settlement failed');
     clearTimeout(timer);
+    context?.signal?.removeEventListener('abort', stopOnCancel);
 
     const completedAt = new Date();
     const latencyMs = completedAt - startedAt;
@@ -323,9 +330,10 @@ async function callAgentStreaming(agent, messages, timeoutMs, emitter, eventPref
     if (streamAttempt?.stream && !streamAttempt.stream.destroyed) streamAttempt.stream.destroy();
     if (streamAttempt?.completion) await streamAttempt.completion;
     clearTimeout(timer);
+    context?.signal?.removeEventListener('abort', stopOnCancel);
     const completedAt = new Date();
     const isTimeout = err.name === 'AbortError';
-    const errorMsg = isTimeout ? `Timeout after ${timeoutMs}ms` : err.message;
+    const errorMsg = context?.signal?.aborted ? 'Cancelled' : isTimeout ? `Timeout after ${timeoutMs}ms` : err.message;
     logger.error('Roundtable streaming callAgent failed', { agentId: agent.agentId, model: agent.model, target, error: errorMsg });
     const result = {
       response: '', thinking: null,
