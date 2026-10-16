@@ -67,6 +67,16 @@ describe('inference analytics summary', () => {
     expect(res.body.data.source).toBe('inferencelogs');
   });
 
+  test('reports last-hour errors separately from a long window', async () => {
+    InferenceLog.aggregate.mockResolvedValue(facet({ recent: [{ _id: null, calls: 12, errors: 2 }] }));
+    const res = await request(server).get('/api/analytics/inference/summary?window=30d');
+
+    expect(res.body.data.recent).toMatchObject({ calls: 12, errors: 2 });
+    const recentStages = InferenceLog.aggregate.mock.calls[0][0].find(stage => stage.$facet).$facet.recent;
+    const since = recentStages[0].$match.timestamp.$gte;
+    expect(Date.now() - since.getTime()).toBeLessThan(61 * 60 * 1000);
+  });
+
   test('separates caller cancellations from inference errors without hiding non-successes', async () => {
     InferenceLog.aggregate.mockResolvedValue(facet({
       totals: [{

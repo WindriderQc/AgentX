@@ -82,6 +82,13 @@ describe('analytics overview review threshold', () => {
     expect(statusText({ calls: 100, errors: 3, errorRate: 3 }).state).toBe('attention');
   });
 
+  test('any error in the last hour needs review, however long the window', () => {
+    const totals = { calls: 10000, errors: 50, errorRate: 0.5 };
+    expect(needsReview(totals, { calls: 40, errors: 0 })).toBe(false);
+    expect(needsReview(totals, { calls: 40, errors: 1 })).toBe(true);
+    expect(statusText(totals, { calls: 40, errors: 2 })).toEqual({ state: 'attention', text: '2 errors in the last hour need review' });
+  });
+
   test('no calls is empty, not healthy', () => {
     expect(statusText({ calls: 0, errors: 0 }).state).toBe('empty');
   });

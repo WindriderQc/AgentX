@@ -198,20 +198,25 @@
     });
   }
 
-  // Review threshold: a single failure in a busy window is noise. Flag the
-  // window only when at least 3 operational errors push the rate above 2 %.
+  // Review threshold: a single old failure in a busy window is noise. Flag the
+  // window when at least 3 operational errors push the rate above 2 %, or
+  // when any error happened in the last hour (a fresh outage must not be
+  // diluted by a 7- or 30-day window).
   const REVIEW_MIN_ERRORS = 3;
   const REVIEW_ERROR_RATE_PCT = 2;
-  function needsReview(totals = {}) {
+  function needsReview(totals = {}, recent = null) {
+    if ((Number(recent?.errors) || 0) > 0) return true;
     const errors = Number(totals.errors) || 0;
     const calls = Number(totals.calls) || 0;
     const rate = Number.isFinite(Number(totals.errorRate)) ? Number(totals.errorRate) : (calls > 0 ? errors / calls * 100 : 0);
     return errors >= REVIEW_MIN_ERRORS && rate > REVIEW_ERROR_RATE_PCT;
   }
 
-  function statusText(totals = {}) {
+  function statusText(totals = {}, recent = null) {
     const errors = Number(totals.errors) || 0;
+    const recentErrors = Number(recent?.errors) || 0;
     if (!(totals.calls > 0)) return { state: 'empty', text: 'No recorded calls in this window' };
+    if (recentErrors > 0) return { state: 'attention', text: `${count(recentErrors)} error${recentErrors === 1 ? '' : 's'} in the last hour need review` };
     if (needsReview(totals)) return { state: 'attention', text: 'Error rate needs review' };
     if (errors > 0) return { state: 'ready', text: `${count(errors)} recorded error${errors === 1 ? '' : 's'} · below the ${REVIEW_ERROR_RATE_PCT}% review threshold` };
     return { state: 'ready', text: 'No operational errors recorded' };
@@ -222,7 +227,7 @@
     const t = data.totals || {}, hasCalls = t.calls > 0;
     const success = outcome(t);
     const status = $('ao-status');
-    const view = statusText(t);
+    const view = statusText(t, data.recent);
     status.dataset.state = view.state;
     set('ao-status', view.text);
     set('ao-calls', count(t.calls));
