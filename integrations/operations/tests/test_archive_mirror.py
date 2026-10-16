@@ -4,6 +4,7 @@ import io
 import json
 import os
 from pathlib import Path
+import subprocess
 import tarfile
 import sys
 import tempfile
@@ -158,6 +159,38 @@ class ArchiveMirrorTests(unittest.TestCase):
         worker.join(60)
         self.assertFalse(worker.is_alive(), "mirror hung on the remote stream")
         self.assertEqual((result["status"], result["copied"]), ("verified", 2))
+
+    def test_remote_command_finishes_while_callers_stdin_stays_open(self):
+        fake = Path(self.temp.name) / "fake_ssh.py"
+        fake.write_text("import sys\nsys.stdin.buffer.read()\n"
+                        "sys.stdout.buffer.write(b'x' * (3 << 20))\n")
+        caller = textwrap.dedent(f"""
+            import hashlib, sys
+            sys.path.insert(0, {str(Path(module.__file__).parent)!r})
+            from archive_mirror import Remote
+            data = Remote('source.invalid', '/archive',
+                          ssh=[sys.executable, {str(fake)!r}]).run('list')
+            print(len(data), hashlib.sha256(data).hexdigest())
+        """)
+        process = subprocess.Popen([sys.executable, "-c", caller], stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            process.wait(timeout=5)
+        finally:
+            # Also unblock the inherited-input regression, leaving no child behind.
+            process.stdin.close()
+            process.stdin = None
+            out, err = process.communicate(timeout=10)
+        self.assertEqual(process.returncode, 0, err.decode())
+        expected = f"{3 << 20} {hashlib.sha256(b'x' * (3 << 20)).hexdigest()}"
+        self.assertEqual(out.decode().strip(), expected)
+
+    def test_remote_command_preserves_binary_input(self):
+        fake = Path(self.temp.name) / "fake_ssh.py"
+        fake.write_text("import sys\nsys.stdout.buffer.write(sys.stdin.buffer.read())\n")
+        remote = module.Remote("source.invalid", "/archive", ssh=[sys.executable, str(fake)])
+        payload = b"path-one\x00path-two\x00\xff"
+        self.assertEqual(remote.run("hash", payload), payload)
 
     def test_source_target_and_root_are_validated(self):
         with self.assertRaises(ValueError):
