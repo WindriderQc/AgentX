@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import stat
 import sys
+import time
 import importlib.util
 _scope_spec = importlib.util.spec_from_file_location('coding_report_scope', __import__('pathlib').Path(__file__).with_name('coding_report_scope.py'))
 scope = importlib.util.module_from_spec(_scope_spec)
@@ -142,8 +143,23 @@ def verify_stop(response, body, key):
             raise ValueError('Core did not verify the original partial report')
 
 
+def settled_status(r, args, progress):
+    """Read Core's view of this execution's own calls, allowing a short settlement lag.
+
+    A drained relay proves EOF, not Core's receipt; the bounded poll never
+    replays or starts a model call."""
+    url = endpoint(r, args.task_id, args.request_id)
+    status = r.request(url)['data']
+    for _ in range(int(getattr(r, 'REPORT_SETTLE_GRACE_SECONDS', 30) // 2)):
+        if status.get('terminationVerified') or not getattr(progress, 'report_drained', True):
+            break
+        time.sleep(2)
+        status = r.request(url)['data']
+    return status
+
+
 def stop(r, args, progress, reason):
-    status = r.request(endpoint(r,args.task_id,args.request_id))['data']
+    status = settled_status(r, args, progress)
     if not status.get('terminationVerified') or not getattr(progress,'report_drained',True):
         progress.stop_reason='model_termination_unverified';progress.write()
         return 2
@@ -317,7 +333,7 @@ def execute(r,args,progress,task,workspace):
     if progress.check_stop():return stop(r,args,progress,'operator_stop')
     run=r.run_worker(workspace,prompt,max(1,int(progress.hard_deadline-progress.now())),progress,read_only=True)
     progress.check_stop();progress.phase='delivering';progress.set_stage('checkpoint')
-    status=r.request(endpoint(r,args.task_id,args.request_id))['data']
+    status=settled_status(r,args,progress)
     if not status.get('terminationVerified') or not getattr(progress,'report_drained',True):
         progress.stop_reason='model_termination_unverified';progress.write();return 2
     if run.returncode or progress.stop_reason:return stop(r,args,progress,progress.stop_reason or 'worker_exit')

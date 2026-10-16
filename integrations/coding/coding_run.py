@@ -49,6 +49,7 @@ RELAY_PORT = 8377
 PACKAGE_DIRS = ("core", "benchmark", "rag", "data")
 INSTALL_TIMEOUT_SECONDS = 1800
 CLONE_TIMEOUT_SECONDS = 1800
+REPORT_SETTLE_GRACE_SECONDS = 30
 
 _spec = importlib.util.spec_from_file_location("model_relay", HERE / "model_relay.py")
 model_relay = importlib.util.module_from_spec(_spec)
@@ -357,9 +358,14 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
     finally:
         relay.begin_drain()
         if progress and (progress.cumulative_limits or getattr(progress, 'report_mode', False)):
-            remaining = min(120, max(0, min(progress.hard_deadline, progress.queue_deadline) - progress.now()))
+            remaining = max(0, min(progress.hard_deadline, progress.queue_deadline) - progress.now())
             if progress.cumulative_limits:
-                remaining = min(remaining, progress.model_remaining())
+                remaining = min(120, remaining, progress.model_remaining())
+            else:
+                # Core aborts report calls at this same deadline, so waiting for
+                # their EOF holds no extra model time; a short cap leaves a slow
+                # call unverified and the execution stuck until manual reconcile.
+                remaining += REPORT_SETTLE_GRACE_SECONDS
             drained = relay.drain(remaining, heartbeat=progress.tick)
             if getattr(progress, 'report_mode', False):
                 progress.report_drained = drained

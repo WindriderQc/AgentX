@@ -504,5 +504,33 @@ print(json.dumps({
             self.assertTrue(closed.wait(2), "Core's model request must close when its worker stops")
 
 
+class ReportDrainTest(unittest.TestCase):
+    def drained_seconds(self, cumulative_limits):
+        relay = mock.Mock()
+        relay.drain.return_value = True
+        progress = mock.Mock(report_mode=True, request_id='11111111-2222-4333-8444-555555555555',
+                             cumulative_limits=cumulative_limits, model_context_size=4096,
+                             hard_deadline=1600.0, queue_deadline=1900.0)
+        progress.now.return_value = 1000.0
+        progress.model_remaining.return_value = 900
+        with tempfile.TemporaryDirectory() as root, \
+                mock.patch.object(runner, 'WORKSPACES', Path(root)), \
+                mock.patch.object(runner.model_relay, 'serve', return_value=relay), \
+                mock.patch.object(runner, 'sandbox', return_value=[]), \
+                mock.patch.object(runner, 'supervise', return_value=subprocess.CompletedProcess([], 0)):
+            workspace = Path(root) / 'task-0001'
+            workspace.mkdir()
+            runner.run_worker(workspace, 'Review', 600, progress, read_only=cumulative_limits is None)
+        return relay.drain.call_args.args[0]
+
+    def test_report_drain_waits_for_a_slow_call_until_core_deadline(self):
+        # A 27B report call outlived the former 120-second cap; Core aborts at
+        # the same deadline, so the runner can wait for the native EOF.
+        self.assertEqual(self.drained_seconds(None), 600 + runner.REPORT_SETTLE_GRACE_SECONDS)
+
+    def test_cumulative_coding_drain_keeps_its_short_model_bound(self):
+        self.assertEqual(self.drained_seconds({'modelSeconds': 1}), 120)
+
+
 if __name__ == "__main__":
     unittest.main()
