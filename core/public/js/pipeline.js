@@ -821,7 +821,8 @@
         writeStorage(STORAGE_REVIEWER, by);
         const report = window.PipelineLaunchController.currentReport(state.drawer.task);
         const reportAcceptance = report && report.kind !== 'blocked' ? { requestId: report.requestId, sha256: report.sha256,
-          scopeComplete: new FormData(form).get('reportScopeComplete') === 'on' } : null;
+          scopeComplete: new FormData(form).get('reportScopeComplete') === 'on',
+          evidenceRef: new FormData(form).get('reportReviewRef'), evidenceSha256: new FormData(form).get('reportReviewSha256') } : null;
         await fetchJson(`/api/pipeline/tasks/${encodeURIComponent(pipelineId)}/status`, {
           method: 'POST',
           body: JSON.stringify({ status: 'done', by, ...(reportAcceptance ? { reportAcceptance } : {}) })

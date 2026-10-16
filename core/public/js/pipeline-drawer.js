@@ -73,6 +73,7 @@
             <input type="text" name="by" required maxlength="80" placeholder="your identity, e.g. reviewer" value="${escapeHtml(reviewer)}">
           </label>
           ${report && report.kind !== 'blocked' ? '<label><input type="checkbox" name="reportScopeComplete" required> I reviewed this report and confirm it covers the complete requested scope.</label>' : ''}
+          ${report && report.kind !== 'blocked' ? '<label>Independent review receipt<input name="reportReviewRef" required maxlength="500"></label><label>Review receipt SHA-256<input name="reportReviewSha256" required pattern="[a-f0-9]{64}"></label>' : ''}
           <button type="submit" class="pipeline-btn primary compact"><i class="fas fa-check-double"></i><span>Accept result</span></button>
         </form>
       `);

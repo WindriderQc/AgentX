@@ -8,6 +8,8 @@ const reports = require('../../src/services/pipelineReportService');
 const inference = require('../../src/services/pipelineReportInference');
 const files = require('../../src/services/pipelineTaskDeliverableService');
 const config = require('../../src/services/modelRouterConfig');
+const authority = require('../../src/services/pipelineReportAuthority');
+const queue = require('../../src/services/heavyWorkQueueService');
 const { buildTransition } = require('../../src/services/pipelineTaskTransitions');
 const { startTestHttpHarness } = require('../helpers/testHttpServer');
 const KEY = '11111111-2222-4333-8444-555555555555';
@@ -33,18 +35,24 @@ beforeAll(async () => {
 afterAll(async () => { await harness?.close(); });
 beforeEach(async () => {
   await Promise.all([Task.deleteMany({}), Run.deleteMany({}), File.deleteMany({})]);
+  authority.configureControl({status: async () => ({busy:false})});
+  jest.spyOn(queue, 'get').mockResolvedValue({id:NEXT,dispatchId:CALL,state:'running',executor:{mode:'operator'},source:{type:'coding',ref:'synthetic-session',taskId:'0001'},hosts:['http://ollama.invalid:11434'],reservation:{start:new Date(Date.now()-60000).toISOString(),end:new Date(Date.now()+14400000).toISOString()}});
   jest.spyOn(config, 'ensureTaskModelOverridesLoaded').mockResolvedValue();
   jest.spyOn(config, 'getModelForTask').mockReturnValue({ model: 'synthetic-local-model', url: 'http://ollama.invalid:11434' });
 });
 afterEach(() => jest.restoreAllMocks());
 
-async function fixture(extra = {}) {
+async function fixture(extra = {}, limit = 128) {
   const owner = await Task.create({ pipelineId: '0001', title: 'Report fixture', spec: 'Review every Markdown document.',
     service: 'agentx-coding', status: 'in_progress', assignee: 'coding-team', transitionSeq: 2,
     transitions: [buildTransition({ pipelineId: '0001', status: 'queued', transitionSeq: 1 },
       { to: 'in_progress', kind: 'claimed', channel: 'worker_api', declaredActor: 'coding-team' })], ...extra });
   const intent = { claimSeq: 2, specSha256: digest(owner.spec), sourceCommit: 'a'.repeat(40), reportName: 'review.md',
-    model: 'synthetic-local-model', hardRemainingSeconds: 7200 };
+    model: 'synthetic-local-model', hardRemainingSeconds: 7200,
+    inventory:{sourceCommit:'a'.repeat(40),documents:[{path:'README.md',sha256:digest('fixture document')}]}};
+  const profile={reportName:'review.md',modelCallLimit:limit};
+  const state=await authority.prepare(owner.toObject(),profile,{key:KEY,queueRequestId:NEXT,confirm:true,additionalRuns:1,budget:{modelCalls:256,workSeconds:14400}});
+  await Task.updateOne({_id:owner._id},{$set:{codingResult:{profile:'report',...profile},codingReportAuthority:state}});
   return { owner, intent };
 }
 const start = body => harness.request.post(`/api/pipeline/tasks/0001/reports/${KEY}/start`).send(body);
@@ -62,11 +70,11 @@ test('report start is bound to owner, scope, model and source without resetting 
   const first = await Run.findById(KEY).lean();
   await start({ ...f.intent, hardRemainingSeconds: 14400 }).expect(200);
   expect((await Run.findById(KEY).lean()).deadlineAt).toEqual(first.deadlineAt);
-  await start({ ...f.intent, sourceCommit: 'b'.repeat(40) }).expect(409);
+  await start({ ...f.intent, sourceCommit: 'b'.repeat(40),inventory:{...f.intent.inventory,sourceCommit:'b'.repeat(40)} }).expect(409);
   expect(await Run.countDocuments({})).toBe(1);
 });
 test.each([128,256])('a report admits its last call and refuses the next at its frozen %i-call budget', async limit => {
-  const f=await fixture();const accepted=(await start({...f.intent,modelCallLimit:limit}).expect(200)).body.data;
+  const f=await fixture({},limit);const accepted=(await start({...f.intent,modelCallLimit:limit}).expect(200)).body.data;
   expect(accepted).toMatchObject({modelCallLimit:limit,modelCallsRemaining:limit});
   const receipts=Array.from({length:limit-1},()=>({callId:crypto.randomUUID(),state:'completed'}));
   await Run.updateOne({_id:KEY},{$set:{modelReceipts:receipts}});
@@ -261,6 +269,22 @@ test.each([true, false])('the real Hermes report path preserves native stream se
     expect(await File.countDocuments({})).toBe(0);
   }
 });
+test('revoking the campaign during native admission refuses before any model dispatch', async () => {
+  const f = await fixture(); await start(f.intent).expect(200);
+  nativeDeps = runtimeDeps(new PassThrough());
+  const admission = nativeDeps.beginInferenceAdmission;
+  nativeDeps.beginInferenceAdmission = jest.fn(async input => {
+    const value = await admission(input);
+    queue.get.mockResolvedValue({ id: NEXT, state: 'uncertain' });
+    return value;
+  });
+  await harness.request.post('/v1/chat/completions').set({ 'x-agentx-report-request': KEY,
+    'x-agentx-report-task': '0001', 'x-agentx-coding-call': CALL }).send({ model: 'synthetic-local-model',
+    stream: true, messages: [{ role: 'user', content: 'Synthetic admission race fixture' }] });
+  expect(nativeDeps.beginInferenceAdmission).toHaveBeenCalledTimes(1);
+  expect(nativeDeps.fetch).not.toHaveBeenCalled();
+  expect((await Run.findById(KEY).lean()).modelReceipts).toHaveLength(1);
+});
 
 test('report heartbeat cannot touch a replacement owner or a changed lane after its last read', async () => {
   const f = await fixture(); await start(f.intent).expect(200);
@@ -348,6 +372,11 @@ async function continuedFixture() {
   await Task.updateOne({ _id: f.owner._id }, { $set: { status: 'in_progress', transitionSeq: 4 }, $push: { transitions:
     buildTransition({ pipelineId: '0001', status: 'queued', transitionSeq: 3 }, { to: 'in_progress', kind: 'claimed', channel: 'worker_api', declaredActor: 'coding-team' }) } });
   const intent = { ...f.intent, claimSeq: 4, parentRequestId: KEY, parentSha256: body.partial.sha256 };
+  const task=await Task.findById(f.owner._id).lean();
+  authority.configureControl({status:async()=>({busy:false,run:{requestId:KEY,pipelineId:'0001',phase:'finished',progress:{phase:'finished'}}})});
+  const profile={reportName:'review.md',modelCallLimit:128,parentRequestId:KEY,parentSha256:body.partial.sha256};
+  const state=await authority.prepare(task,profile,{key:NEXT,queueRequestId:NEXT,confirm:true,additionalRuns:1,budget:{modelCalls:128,workSeconds:7200}});
+  await Task.updateOne({_id:task._id},{$set:{codingResult:{profile:'report',...profile},codingReportAuthority:state}});
   return { f, body, intent };
 }
 test('an explicit new run resumes the exact previous checkpoint without resetting prior usage or granting another call budget', async () => {
@@ -356,14 +385,14 @@ test('an explicit new run resumes the exact previous checkpoint without resettin
   const response = (await harness.request.get(`/api/pipeline/tasks/0001/reports/${NEXT}/checkpoint`).expect(200)).body.data;
   expect(response).toMatchObject({ requestId: NEXT, parentRequestId: KEY, sourceCommit: f.intent.sourceCommit, sha256: f.body.partial.sha256, dataUrl: f.body.partial.dataUrl });
   const observed = await reports.status('0001', NEXT);
-  expect(observed).toMatchObject({ modelCallsRemaining: 128, cumulativeUsage: { executions: 2, modelCalls: 1, budgetScope: 'current_execution_only' } });
+  expect(observed).toMatchObject({ modelCallsRemaining: 128, cumulativeUsage: {budgetScope:'whole_task',spent:{executions:2,modelCalls:1},limits:{modelCalls:384,executions:2}} });
   expect((await Run.findById(KEY).lean()).state).toBe('blocked');
   expect((await Run.findById(NEXT).lean()).modelReceipts).toHaveLength(0);
 });
 test.each(['digest', 'source', 'scope', 'task', 'pending', 'bytes'])('a continuation refuses a changed or uncertain prior %s before a new run is created', async change => {
   const { f, intent } = await continuedFixture();
   if (change === 'digest') intent.parentSha256 = 'b'.repeat(64);
-  if (change === 'source') intent.sourceCommit = 'b'.repeat(40);
+  if (change === 'source') {intent.sourceCommit = 'b'.repeat(40);intent.inventory={...intent.inventory,sourceCommit:intent.sourceCommit};}
   if (change === 'scope') { await Task.updateOne({ _id: f.owner._id }, { $set: { spec: 'Different requested scope' } }); intent.specSha256 = digest('Different requested scope'); }
   if (change === 'task') await Run.updateOne({ _id: KEY }, { $set: { taskId: 'different-task-record' } });
   if (change === 'pending') await Run.updateOne({ _id: KEY }, { $set: { pendingInferences: [CALL] } });
@@ -391,10 +420,12 @@ test('the continuation limit refuses before creating an execution whose status c
   expect(await Run.countDocuments({})).toBe(32); expect(await Task.findById(f.owner._id).lean()).toEqual(before);
 });
 test('report acceptance binds the exact current candidate, verified bytes and an explicit independent coverage decision', async () => {
-  await finished(); const delivered = (await result(bytes()).expect(200)).body.data;
+  await finished(); const run=await Run.findById(KEY).lean();
+  const coverage={inventorySha256:run.inventory.sha256,documents:[{...run.inventory.documents[0],state:'reviewed',evidence:[{path:'core/server.js',sha256:digest('fixture source'),line:1,check:'Checked entry point against source.'}]}]};
+  const delivered = (await result({...bytes(),coverage}).expect(200)).body.data;
   const status = body => harness.request.post('/api/pipeline/tasks/0001/status').send({ status: 'done', by: 'reviewer', ...body });
   await status({}).expect(409);
-  const acceptance = { requestId: KEY, sha256: delivered.receipt.sha256, scopeComplete: true };
+  const acceptance = { requestId: KEY, sha256: delivered.receipt.sha256, scopeComplete: true,evidenceRef:'private-review-receipt',evidenceSha256:digest('independent review') };
   await status({ reportAcceptance: { ...acceptance, scopeComplete: false } }).expect(409);
   await status({ reportAcceptance: { ...acceptance, requestId: NEXT } }).expect(409);
   await status({ by: 'coding-team', reportAcceptance: acceptance }).expect(409);
@@ -410,14 +441,16 @@ test('late manual code feedback cannot overwrite a newer claim or edited specifi
   expect((await Task.findById(f.owner._id).lean()).feedback).toHaveLength(0);
 });
 test('a specification edit during report acceptance cannot close the changed task', async () => {
-  await finished(); const delivered = (await result(bytes()).expect(200)).body.data;
+  await finished(); const value=await Run.findById(KEY).lean();
+  const checked={inventorySha256:value.inventory.sha256,documents:[{...value.inventory.documents[0],state:'reviewed',evidence:[{path:'core/server.js',sha256:digest('source'),line:1,check:'Checked implementation.'}]}]};
+  const delivered = (await result({...bytes(),coverage:checked}).expect(200)).body.data;
   const original = Task.findOneAndUpdate.bind(Task);
   jest.spyOn(Task, 'findOneAndUpdate').mockImplementation(async (...args) => {
     await Task.updateOne({ pipelineId: '0001' }, { $set: { spec: 'New requested scope' } });
     return original(...args);
   });
   await harness.request.post('/api/pipeline/tasks/0001/status').send({ status: 'done', by: 'reviewer',
-    reportAcceptance: { requestId: KEY, sha256: delivered.receipt.sha256, scopeComplete: true } }).expect(409);
+    reportAcceptance: { requestId: KEY, sha256: delivered.receipt.sha256, scopeComplete: true,evidenceRef:'review-receipt',evidenceSha256:digest('review') } }).expect(409);
   const task = await Task.findOne({ pipelineId: '0001' }).lean();
   expect(task).toMatchObject({ status: 'review', spec: 'New requested scope' });
   expect(task.feedback.some(row => row.reportAcceptance)).toBe(false);
@@ -445,7 +478,8 @@ test('concurrent report starts cannot assign two request identities to one task 
 });
 
 test('a valid maximum-length report name still permits immutable partial storage', async () => {
-  const { intent } = await fixture(); intent.reportName = 'a'.repeat(117) + '.md';
+  const { intent,owner } = await fixture(); intent.reportName = 'a'.repeat(117) + '.md';
+  await Task.updateOne({_id:owner._id},{$set:{'codingResult.reportName':intent.reportName,'codingReportAuthority.reportName':intent.reportName}});
   await start(intent).expect(200); await (await call()).finish('completed');
   const response = await reports.stop('0001', KEY, { ...stopped(), partial: bytes() });
   const receipt = await files.verify('0001', response.outcome.partial.deliverableId);

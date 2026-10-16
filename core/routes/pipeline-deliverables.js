@@ -29,7 +29,26 @@ function validId(req, res, next) {
 
 router.post('/tasks/:id/reports/:requestId/start', validId, async (req, res) => {
   try { return envelope.success(res, await reports.start(req.params.id, req.params.requestId, req.body || {})); }
+  catch (error) {
+    try {
+      const receipt = await require('../src/services/pipelineReportPreflight').receive(req.params.id, req.params.requestId, req.body || {}, error);
+      if (receipt) return res.status(error.statusCode || 409).json({ ok: false, status: 'error', code: error.code, message: error.message,
+        data: { reportRefusalReceived: true, requestId: receipt.requestId, pipelineId: receipt.pipelineId, claimSeq: receipt.claimSeq } });
+    } catch (settlement) { return sendError(res, settlement); }
+    return sendError(res, error);
+  }
+});
+router.post('/tasks/:id/reports/:requestId/archive-checkpoint', validId, async (req, res) => {
+  try { return envelope.success(res, await require('../src/services/pipelineReportCheckpointArchive').archive(req.params.id, req.params.requestId, req.body || {})); }
   catch (error) { return sendError(res, error); }
+});
+router.post('/tasks/:id/reports/:requestId/preflight-result', validId, async (req, res) => {
+  try {
+    const receipt = await require('../src/services/pipelineReportPreflight').receive(req.params.id, req.params.requestId, req.body || {},
+      { code: 'REPORT_PREFLIGHT_FAILED', message: 'Native preparation failed before model dispatch' });
+    if (!receipt) throw Object.assign(new Error('Preparation refusal remains unverified'), { statusCode: 409, code: 'REPORT_PREFLIGHT_UNVERIFIED' });
+    return envelope.success(res, { reportRefusalReceived: true, requestId: receipt.requestId, pipelineId: receipt.pipelineId, claimSeq: receipt.claimSeq });
+  } catch (error) { return sendError(res, error); }
 });
 router.get('/tasks/:id/reports/:requestId', validId, async (req, res) => {
   try { return envelope.success(res, await reports.status(req.params.id, req.params.requestId)); }

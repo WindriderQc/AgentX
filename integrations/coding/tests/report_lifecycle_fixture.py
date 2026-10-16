@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import hashlib
 
 if os.environ.get('AGENTX_REPORT_LIFECYCLE_FIXTURE') != '1':
     raise SystemExit('This adapter runs only inside the disposable report lifecycle fixture')
@@ -34,6 +35,13 @@ def fake_worker(workspace, prompt, timeout, progress, *, read_only):
         assert original == b'# Partial review\n\nREADME reviewed; operations remain pending.\n'
         output.write_text('# Documentation review\n\nREADME and operations reviewed against the frozen source.\nCoverage: both scoped files reviewed.\n')
         result = 0
+    coverage_path = output.parent / 'coverage.json'
+    coverage = json.loads(coverage_path.read_text())
+    for row in coverage['documents']:
+        if original is not None or row['path'] == 'README.md':
+            row.update(state='reviewed', evidence=[{'path': row['path'], 'sha256': hashlib.sha256((workspace / row['path']).read_bytes()).hexdigest(),
+                'line': 1, 'check': 'Verified the synthetic source header in this CPU fixture.'}])
+    coverage_path.write_text(json.dumps(coverage))
     progress.observe(runner.worker_home(workspace), workspace)
     return subprocess.CompletedProcess([], result, stdout='Synthetic model fixture finished.', stderr='')
 

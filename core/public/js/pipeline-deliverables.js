@@ -62,7 +62,9 @@
     if (!validRecord(row)) {
       return '<article class="pipeline-evidence-attempt"><p class="pipeline-evidence-unknown">Unknown deliverable · the record is malformed and is not offered.</p></article>';
     }
-    const origin = row.reportOrigin ? `Native report · ${esc(reportLabel(pipelineId, row))}` : row.attempt ? `Attempt ${esc(row.attempt)} · ${esc(row.producer?.declared || 'unknown worker')}` : `Operator upload · ${esc(row.producer?.declared || 'unknown')}`;
+    const origin = row.reportOrigin?.depositChannel === 'operator_archive'
+      ? `Model content · archived by ${esc(row.reportOrigin.archiveActor)} · ${esc(reportLabel(pipelineId, row))}`
+      : row.reportOrigin ? `Native report · ${esc(reportLabel(pipelineId, row))}` : row.attempt ? `Attempt ${esc(row.attempt)} · ${esc(row.producer?.declared || 'unknown worker')}` : `Operator upload · ${esc(row.producer?.declared || 'unknown')}`;
     return `<article class="pipeline-evidence-attempt pipeline-deliverable" data-deliverable="${esc(row.id)}">
       <header><strong>${esc(row.name)}</strong><span>${esc(row.mimeType)} · ${esc(formatSize(row.size))} · ${origin}</span></header>
       <dl>
@@ -217,11 +219,17 @@
       setTimeout(() => { const force = state.forceScheduled; state.scheduled = state.forceScheduled = false; return load(pipelineId, { force }); }, 0);
     }
     const count = state.status === 'ready' ? String(state.rows.length) : '…';
+    const budget = task.reportBudget;
+    const reviewProgress = budget ? `<p>Whole task: ${esc(budget.spent.modelCalls)} / ${esc(budget.limits?.modelCalls ?? 'unallocated')} model calls · ${esc(budget.spent.workSeconds)} / ${esc(budget.limits?.workSeconds ?? 'unallocated')} work seconds · ${esc(budget.spent.executions)} / ${esc(budget.limits?.executions ?? 'unallocated')} workers. Previous costs remain charged.</p>
+      ${budget.latest?.inventory ? `<details><summary>Frozen source coverage · ${esc(budget.latest.sourceCommit)} · independent review required</summary>
+      <ul>${(budget.latest.coverage?.documents || budget.latest.inventory.documents.map(row => ({ ...row, state: 'pending' }))).map(row => `<li><code>${esc(row.path)}</code> · ${esc(row.state)}${row.evidence?.length ? ` · ${row.evidence.map(ref => `${esc(ref.path)}:${esc(ref.line)} — ${esc(ref.check)}`).join('; ')}` : ''}</li>`).join('')}</ul></details>` : ''}` : '';
     if (compact) return `<section class="pipeline-result-files" data-pipeline-deliverables="${esc(pipelineId)}" data-deliverables-view="files" aria-label="Files from this task">
       <h3>Files from this task <span class="pipeline-drawer-count">${count}</span></h3>
+      ${reviewProgress}
       <div class="pipeline-deliverables-body">${body(pipelineId, true)}</div></section>`;
     return `<details class="pipeline-evidence-refs pipeline-deliverables" data-pipeline-deliverables="${esc(pipelineId)}"${state.open ? ' open' : ''}>
       <summary>Deliverables <span class="pipeline-drawer-count">${count}</span></summary>
+      ${reviewProgress}
       <p class="pipeline-muted">Files this task produced, kept in Core within this task's scope. The SHA-256 is checked before a download is served. Deliverables are not memory and are never sent to a third party from here.</p>
       <div class="pipeline-deliverables-body">${body(pipelineId)}</div>
     </details>`;

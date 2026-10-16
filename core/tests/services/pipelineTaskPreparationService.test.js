@@ -110,3 +110,11 @@ test.each([{ service: 'personal' }, { source: 'household-inbox' }, { assignee: '
   expect(current.service).toBe(changes.service || task.service);
   expect(current.feedback).toEqual([]);
 });
+test('a legacy task without the new file registry revision remains preparable without resetting its records', async () => {
+  const task = await create();
+  await PipelineTask.collection.updateOne({ _id: task._id }, { $unset: { deliverableRegistryRevision: '' } });
+  const { task: legacy } = await preparation.read(task.pipelineId);
+  const updated = await apply(legacy, { handoff: true, result: { profile: 'code' } });
+  expect(updated.codingResult).toEqual({ profile: 'code' });
+  expect(updated.spec).toBe(task.spec);
+});

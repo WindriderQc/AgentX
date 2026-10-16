@@ -32,8 +32,13 @@
       const data = new FormData(form);
       const reportName = data.get('reportName');
       const saved = String(data.get('resumeReport') || '').split(':');
-      return this.profile(reportName ? { reportName, modelCallLimit: Number(data.get('modelCallLimit')),
-        ...(saved.length === 2 ? { parentRequestId: saved[0], parentSha256: saved[1] } : {}) } : {});
+      const documentPaths = String(data.get('reportDocuments') || '').split(/\r?\n/).map(path => path.trim()).filter(Boolean);
+      return reportName ? { ...this.profile({ reportName, modelCallLimit: Number(data.get('modelCallLimit')),
+        ...(documentPaths.length ? { documentPaths } : {}),
+        ...(saved.length === 2 ? { parentRequestId: saved[0], parentSha256: saved[1] || null } : {}) }),
+        reportGrant: { key: data.get('reportGrantKey'), confirm: true, queueRequestId: data.get('reportCampaign'),
+          additionalRuns: Number(data.get('reportRuns')), budget: { modelCalls: Number(data.get('reportCalls')),
+            workSeconds: Number(data.get('reportWorkSeconds')) } } } : {};
     }
     static currentReport(task) { return profiles.currentReport(task); }
     static profileContext(task) {
@@ -45,18 +50,28 @@
     static profileFields(task) {
       if (!task || task.canReport === false || task.automation?.mode === 'review_only' || task.codingAutonomy || task.automationAttemptCount > 0 || task.automationAttempts?.length) return '';
       const previous = (task.feedback || []).slice().reverse().find(row => row.reportOutcome)?.reportOutcome;
-      const candidateName = task.reportName || previous?.reportName;
+      const candidateName = task.codingResult?.reportName || task.reportCheckpointArchive?.reportName || task.reportName || previous?.reportName;
       const name = typeof candidateName === 'string' && candidateName.length <= 120 && /^[A-Za-z0-9][A-Za-z0-9._-]*\.md$/.test(candidateName) ? candidateName : 'REVIEW.md';
-      const report = Boolean(previous || task.reportName);
+      const report = task.codingResult ? task.codingResult.profile === 'report' : Boolean(previous || task.reportName || task.reportCheckpointArchive);
       const saved = previous?.partial || previous;
-      let checkpoint = task.reportCheckpoint || (saved?.deliverableId ? { parentRequestId: previous.requestId, parentSha256: saved.sha256 } : null);
+      const selected = task.codingResult?.parentRequestId ? task.codingResult : null;
+      let checkpoint = selected && !task.codingReportAuthority?.bindings?.some(row => row.requestId === previous?.requestId && row.grantKey === task.codingReportAuthority.grants.at(-1)?.key) ? selected
+        : task.reportCheckpointArchive && !task.codingResult ? task.reportCheckpointArchive
+        : task.reportCheckpoint || (previous?.requestId ? { parentRequestId: previous.requestId, parentSha256: saved?.sha256 || null } : null);
       try { if (checkpoint) this.profile({ reportName: name, ...checkpoint }); } catch { checkpoint = null; }
       return `<label><span>Result to produce</span><select name="reportName" data-worker-profile>
         <option value=""${report ? '' : ' selected'}>Code change</option>
         <option value="${name}"${report ? ' selected' : ''}>Private Markdown report (source read-only)</option>
       </select></label><div data-report-budget${report ? '' : ' hidden'}><label><span>Report call limit</span><select name="modelCallLimit">
         <option value="128">128 model calls</option><option value="256">256 model calls</option></select></label>
-        ${checkpoint ? `<label><input type="checkbox" name="resumeReport" value="${checkpoint.parentRequestId}:${checkpoint.parentSha256}" checked> Continue the saved report at the same source revision</label>` : ''}
+        ${checkpoint ? `<label><input type="checkbox" name="resumeReport" value="${checkpoint.parentRequestId}:${checkpoint.parentSha256 || ''}" checked> ${checkpoint.parentSha256 ? 'Continue the saved report at the same source revision' : 'Continue the terminal execution; no report had been saved'}</label>` : ''}
+        <input type="hidden" name="reportGrantKey" value="">
+        <label>Markdown paths, one per line (empty = all tracked Markdown)<textarea name="reportDocuments" rows="3">${(task.codingResult?.documentPaths || []).join('\n')}</textarea></label>
+        <label>Active campaign ID<input name="reportCampaign" pattern="[a-f0-9-]{36}" placeholder="Campaign from Cluster Schedule"></label>
+        <label>Additional model calls<input name="reportCalls" type="number" min="128" max="1024" value="256"></label>
+        <label>Additional work seconds<input name="reportWorkSeconds" type="number" min="60" max="57600" value="14400"></label>
+        <label>Maximum authorized workers<input name="reportRuns" type="number" min="1" max="4" value="1"></label>
+        <p>Giving this task records these explicit credits. All earlier consumption stays charged. Each continuation needs the saved checkpoint and this campaign's active window.</p>
         <p>Time and model calls are separate limits. Save findings and pending work before either runs out.</p></div>`;
     }
     static bindProfileForms(document) {
@@ -68,6 +83,15 @@
       });
     }
     static async handoff({ pipelineId, answer = '', profile = {}, controller, fetchJson, toast }) {
+    if (profile.reportGrant) {
+      const storageKey = `agentx.pipeline.reportGrant.v1:${pipelineId}`;
+      const signature = JSON.stringify({ ...profile, reportGrant: { ...profile.reportGrant, key: null } });
+      let saved;
+      try { saved = JSON.parse(controller.storage?.getItem(storageKey) || 'null'); } catch { /* Preserve server authority on storage failure. */ }
+      const key = saved?.signature === signature ? saved.key : controller.newId();
+      profile.reportGrant.key = key;
+      try { controller.storage?.setItem(storageKey, JSON.stringify({ key, signature })); } catch { /* The Core grant remains authoritative. */ }
+    }
     toast('info', 'Preparing this task for the team…');
     const payload = await fetchJson('/api/runtime-bridges/coding-dispatch/prepare', {
       method: 'POST', body: JSON.stringify({ pipelineId, answer, ...profile })

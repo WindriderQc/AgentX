@@ -47,7 +47,9 @@ class ReportTest(unittest.TestCase):
             if url.endswith('/start'):
                 self.start_intent=body
                 return {'data':{'requestId':KEY,'claimSeq':2,'modelCallLimit':body['modelCallLimit'] if self.server_limit is None else self.server_limit,
-                    'parentRequestId':body.get('parentRequestId'),'parentSha256':body.get('parentSha256')}}
+                    'parentRequestId':body.get('parentRequestId'),'parentSha256':body.get('parentSha256'),
+                    'authority':{'queueEndAt':'2099-01-01T00:00:00Z','workSeconds':14400},
+                    'inventory':dict(body['inventory'],sha256='a'*64)}}
             if url.endswith('/checkpoint'):
                 return {'data':self.checkpoint}
             if url.endswith('/result'):
@@ -66,7 +68,8 @@ class ReportTest(unittest.TestCase):
                 self.partial_uploads.append(body.get('partial'))
                 archived = {'partial': {'deliverableId': 'b'*24, 'sha256': body['partial']['sha256']}} if body.get('partial') else {}
                 return {'data':{'blocked':True,'outcome':{'requestId':KEY,'claimSeq':2, **archived}}}
-            return {'data':{'requestId':KEY,'claimSeq':2,'terminationVerified':self.terminated,'allCallsCompleted':self.completed}}
+            return {'data':{'requestId':KEY,'claimSeq':2,'terminationVerified':self.terminated,'allCallsCompleted':self.completed,
+                'inventory':dict(self.start_intent['inventory'],sha256='a'*64) if hasattr(self,'start_intent') else None}}
         if url.endswith('/claim'):self.task.update(status='in_progress',assignee='coding-team')
         elif '/deliverables/' in url:return {'data':{'receipt':self.receipt}}
         return {'data':{'task':self.task}}
@@ -271,6 +274,170 @@ class ReportTest(unittest.TestCase):
                 self.assertTrue(report.reconcile(runner,'0001',KEY)['reconciled'])
         self.assertEqual(bodies[0],bodies[1]);self.assertEqual((runner.RECEIPTS/(KEY+'.report-partial.md')).read_bytes(),frozen)
         self.assertEqual(json.loads((runner.RECEIPTS/(KEY+'.progress.json')).read_text())['coreRecorded'],True)
+
+    def test_start_ack_loss_exposes_same_uuid_reconciliation_without_running_the_model(self):
+        original=self.request;lost=[False];starts=[]
+        def api(url,body=None,**kwargs):
+            value=original(url,body,**kwargs)
+            if url.endswith('/start'):
+                starts.append(body)
+                if not lost[0]:
+                    lost[0]=True;raise OSError('Start acknowledgement lost after Core allocation')
+            return value
+        control=runner.coding_dispatch_control
+        with mock.patch.object(runner,'request',side_effect=api),mock.patch('builtins.print'):
+            self.assertEqual(runner.main(),2)
+            self.assertTrue((runner.RECEIPTS/(KEY+'.report-start.json')).exists())
+            runner.run_worker.assert_not_called()
+            with mock.patch.object(control,'STATE',self.root),mock.patch.object(control,'RECEIPTS',runner.RECEIPTS), \
+                 mock.patch.object(control,'queued_tasks',return_value=[]),mock.patch.object(control,'unit_active',return_value=False):
+                control.save_receipt({'requestId':KEY,'pipelineId':'0001','expectedAttemptCount':0,'phase':'accepted','reportName':'review.md'})
+                state=control.status(KEY)
+                self.assertEqual(state['run']['phase'],'unknown');self.assertTrue(state['run']['canReconcile'])
+                self.assertTrue(report.reconcile(runner,'0001',KEY)['reconciled'])
+        self.assertEqual(len(starts),1);runner.run_worker.assert_not_called()
+        self.assertEqual(self.task['status'],'blocked')
+
+    def test_missing_core_run_replays_the_saved_start_without_a_new_model_worker(self):
+        original=self.request;starts=[];missing=[True]
+        def api(url,body=None,**kwargs):
+            if url.endswith('/start'):
+                starts.append(body)
+                if len(starts)==1:raise OSError('Allocation saved without Run acknowledgement')
+            if '/reports/' in url and body is None and not url.endswith('/checkpoint') and missing[0]:
+                missing[0]=False;error=RuntimeError('HTTP404 missing Run');error.code='REPORT_NOT_FOUND';raise error
+            return original(url,body,**kwargs)
+        with mock.patch.object(runner,'request',side_effect=api),mock.patch('builtins.print'):
+            self.assertEqual(runner.main(),2)
+            with mock.patch.object(runner.coding_dispatch_control,'unit_active',return_value=False), \
+                 mock.patch.object(runner.coding_dispatch_control,'read_receipt',return_value={'pipelineId':'0001','reportName':'review.md'}):
+                self.assertTrue(report.reconcile(runner,'0001',KEY)['reconciled'])
+        self.assertEqual(starts[0],starts[1]);runner.run_worker.assert_not_called()
+
+    def test_malformed_coverage_never_loses_a_valid_stopped_report(self):
+        original=self.worker;self.exit_code=124
+        def incomplete(*args,**kwargs):
+            result=original(*args,**kwargs)
+            (self.path.parent/'coverage.json').write_text('[]')
+            return result
+        runner.run_worker.side_effect=incomplete
+        with mock.patch('builtins.print'):self.assertEqual(runner.main(),1)
+        self.assertEqual(self.task['status'],'blocked');self.assertEqual(len(self.partial_uploads),1)
+        self.assertEqual(self.partial_uploads[0]['sha256'],hashlib.sha256(self.path.read_bytes()).hexdigest())
+
+    def test_missing_source_reference_does_not_prevent_partial_reconciliation(self):
+        original=self.worker;self.exit_code=124;api=self.request;lost=[False]
+        def incomplete(*args,**kwargs):
+            result=original(*args,**kwargs);path=self.path.parent/'coverage.json';value=json.loads(path.read_text())
+            value['documents'][0].update(state='reviewed',evidence=[{'path':'absent-source.js','sha256':'a'*64,'line':1,'check':'Incomplete source lookup'}])
+            path.write_text(json.dumps(value));return result
+        def response(url,body=None,**kwargs):
+            value=api(url,body,**kwargs)
+            if url.endswith('/stop-result') and not lost[0]:
+                lost[0]=True;raise OSError('Stop acknowledgement lost')
+            return value
+        runner.run_worker.side_effect=incomplete
+        with mock.patch.object(runner,'request',side_effect=response),mock.patch('builtins.print'):
+            self.assertEqual(runner.main(),2)
+            with mock.patch.object(runner.coding_dispatch_control,'unit_active',return_value=False), \
+                 mock.patch.object(runner.coding_dispatch_control,'read_receipt',return_value={'pipelineId':'0001','reportName':'review.md'}):
+                self.assertTrue(report.reconcile(runner,'0001',KEY)['reconciled'])
+        self.assertEqual(len(self.partial_uploads),2);self.assertEqual(self.partial_uploads[0],self.partial_uploads[1])
+        runner.run_worker.assert_called_once()
+
+    def test_source_coverage_checks_the_frozen_git_bytes_and_refuses_invalid_structures(self):
+        snapshot=report.scope.inventory(self.workspace,self.head);snapshot['sha256']='a'*64
+        self.path.parent.mkdir(parents=True);report.scope.seed(self.path.parent,snapshot)
+        path=self.path.parent/'coverage.json';value=json.loads(path.read_text())
+        value['documents'][0].update(state='reviewed',evidence=[{'path':'README.md','sha256':hashlib.sha256(b'Public source\n').hexdigest(),'line':1,'check':'Verified public source claim'}])
+        path.write_text(json.dumps(value))
+        self.assertEqual(report.scope.read(report.report_bytes,self.workspace,self.path.parent,snapshot)['documents'][0]['state'],'reviewed')
+        for invalid in [[],{'inventorySha256':'a'*64,'documents':[None]}, {'inventorySha256':'a'*64,'documents':[dict(value['documents'][0],evidence=[None])]}]:
+            path.write_text(json.dumps(invalid))
+            with self.assertRaises(ValueError):report.scope.read(report.report_bytes,self.workspace,self.path.parent,snapshot)
+
+    def test_known_start_refusal_is_received_without_unknown_or_model_replay(self):
+        original=self.request
+        def api(url,body=None,**kwargs):
+            if url.endswith('/start'):
+                error=RuntimeError('Known expired campaign');error.code='REPORT_CAMPAIGN_UNVERIFIED'
+                error.data={'reportRefusalReceived':True,'pipelineId':'0001','requestId':KEY,'claimSeq':2}
+                raise error
+            return original(url,body,**kwargs)
+        with mock.patch.object(runner,'request',side_effect=api),mock.patch('builtins.print'):
+            self.assertEqual(runner.main(),1)
+        value=json.loads((runner.RECEIPTS/(KEY+'.progress.json')).read_text())
+        self.assertTrue(value['coreRecorded']);self.assertEqual(value['modelCalls'],0)
+        runner.run_worker.assert_not_called()
+
+    def test_preparation_receipt_ack_loss_reconciles_same_intent_without_model(self):
+        original=self.request;received=[False];bodies=[]
+        def api(url,body=None,**kwargs):
+            if url.endswith('/preflight-result'):
+                bodies.append(body);received[0]=True;raise OSError('Receipt committed, response lost')
+            if '/reports/' in url and body is None and received[0]:
+                return {'data':{'requestId':KEY,'pipelineId':'0001','claimSeq':2,'preflight':True,'terminationVerified':True}}
+            return original(url,body,**kwargs)
+        (self.workspace/'README.md').write_text('Changed source must refuse before dispatch')
+        with mock.patch.object(runner,'request',side_effect=api),mock.patch('builtins.print'):
+            self.assertEqual(runner.main(),2)
+            with mock.patch.object(runner.coding_dispatch_control,'unit_active',return_value=False):
+                self.assertTrue(report.reconcile(runner,'0001',KEY)['reconciled'])
+        self.assertEqual(len(bodies),1);runner.run_worker.assert_not_called()
+        self.assertTrue(json.loads((runner.RECEIPTS/(KEY+'.progress.json')).read_text())['coreRecorded'])
+
+    def test_resume_inherits_original_bytes_through_a_terminal_parent_with_no_new_file(self):
+        parent='22222222-2222-4333-8444-555555555555';author='33333333-2222-4333-8444-555555555555'
+        data=b'# Preserved model work';digest=hashlib.sha256(data).hexdigest()
+        self.checkpoint={'requestId':KEY,'parentRequestId':parent,'sha256':digest,'sourceCommit':self.head,
+            'inherited':True,'contentRequestId':author,'dataUrl':'data:text/markdown;base64,'+base64.b64encode(data).decode()}
+        self.path.parent.mkdir(parents=True)
+        args=__import__('types').SimpleNamespace(task_id='0001',request_id=KEY,parent_request_id=parent,parent_sha256=None)
+        report.restore_checkpoint(runner,args,self.path,self.head)
+        self.assertEqual(self.path.read_bytes(),data);runner.run_worker.assert_not_called()
+
+    def test_excess_coverage_evidence_keeps_saved_markdown_archivable_and_reconcilable(self):
+        original_worker=self.worker;original_api=self.request;self.exit_code=124;lost=[False]
+        def excessive(*args,**kwargs):
+            result=original_worker(*args,**kwargs);path=self.path.parent/'coverage.json';value=json.loads(path.read_text())
+            ref={'path':'README.md','sha256':hashlib.sha256(b'Public source\n').hexdigest(),'line':1,'check':'Checked source claim'}
+            value['documents'][0].update(state='reviewed',evidence=[ref]*101);path.write_text(json.dumps(value));return result
+        def api(url,body=None,**kwargs):
+            value=original_api(url,body,**kwargs)
+            if url.endswith('/stop-result'):
+                self.assertNotIn('coverage',body)
+                if not lost[0]:lost[0]=True;raise OSError('Lost archive acknowledgement')
+            return value
+        runner.run_worker.side_effect=excessive
+        with mock.patch.object(runner,'request',side_effect=api),mock.patch('builtins.print'):
+            self.assertEqual(runner.main(),2)
+            with mock.patch.object(runner.coding_dispatch_control,'unit_active',return_value=False), \
+                 mock.patch.object(runner.coding_dispatch_control,'read_receipt',return_value={'pipelineId':'0001','reportName':'review.md'}):
+                self.assertTrue(report.reconcile(runner,'0001',KEY)['reconciled'])
+        self.assertEqual(len(self.partial_uploads),2);self.assertEqual(self.partial_uploads[0],self.partial_uploads[1])
+        runner.run_worker.assert_called_once()
+
+    def test_modified_sandbox_inventory_cannot_poison_the_immutable_stop_receipt(self):
+        original_worker=self.worker;original_api=self.request;self.exit_code=124;lost=[False]
+        def poisoned(*args,**kwargs):
+            result=original_worker(*args,**kwargs);root=self.path.parent
+            snapshot=json.loads((root/'source-inventory.json').read_text());snapshot['sha256']='b'*64
+            (root/'source-inventory.json').write_text(json.dumps(snapshot))
+            value=json.loads((root/'coverage.json').read_text());value['inventorySha256']='b'*64
+            (root/'coverage.json').write_text(json.dumps(value));return result
+        def api(url,body=None,**kwargs):
+            value=original_api(url,body,**kwargs)
+            if url.endswith('/stop-result'):
+                self.assertNotIn('coverage',body)
+                if not lost[0]:lost[0]=True;raise OSError('Lost stop acknowledgement')
+            return value
+        runner.run_worker.side_effect=poisoned
+        with mock.patch.object(runner,'request',side_effect=api),mock.patch('builtins.print'):
+            self.assertEqual(runner.main(),2)
+            with mock.patch.object(runner.coding_dispatch_control,'unit_active',return_value=False), \
+                 mock.patch.object(runner.coding_dispatch_control,'read_receipt',return_value={'pipelineId':'0001','reportName':'review.md'}):
+                self.assertTrue(report.reconcile(runner,'0001',KEY)['reconciled'])
+        self.assertEqual(self.partial_uploads[0],self.partial_uploads[1]);runner.run_worker.assert_called_once()
 
 
 class ReportDispatchTest(unittest.TestCase):

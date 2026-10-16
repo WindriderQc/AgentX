@@ -14,7 +14,7 @@ const SUMMARY_FIELD_LIST = [
   'automationAttempts.evidence.failureCodes automationAttempts.evidence.verification.status',
   'automationAttempts.evidence.inference.state automationAttempts.evidence.inference.cause transitionSeq',
   'codingAutonomy.authorized codingAutonomy.disposition.kind codingAutonomy.disposition.outcome',
-  'feedback.workerOutcome feedback.reportOutcome'
+  'feedback.workerOutcome feedback.reportOutcome codingResult'
 ].join(' ');
 // Summary reads carry only the most recent transitions; the store keeps more.
 const SUMMARY_FIELDS = {
@@ -49,9 +49,10 @@ function redactTaskLeaseIds(task) {
 async function projectTaskRows(tasks, { summary = false, now = new Date(), references = true } = {}) {
   const dependencyStatuses = await loadDependencyStatuses(tasks);
   const options = { now, dependencyStatuses };
-  return tasks.map(task => redactTaskLeaseIds(summary ? taskSummaryWithTimeline(task, options)
+  return Promise.all(tasks.map(async task => redactTaskLeaseIds(summary ? taskSummaryWithTimeline(task, options)
     : { ...task, nextAction: taskNextAction(task, options), transitionLog: transitionLog(task), plan: planView(task),
-      ...(references ? { evidenceReferences: taskEvidenceReferences(task) } : {}) }));
+      ...(task.codingReportAuthority ? { reportBudget: await require('./pipelineReportAuthority').projection(task) } : {}),
+      ...(references ? { evidenceReferences: taskEvidenceReferences(task) } : {}) })));
 }
 async function loadDeliveryTasks(query) {
   const tasks = await PipelineTask.find(query).select(SUMMARY_FIELDS).sort({ pipelineId: 1 }).lean();

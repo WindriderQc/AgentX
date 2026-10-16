@@ -164,7 +164,7 @@ const storedState = row => {
 // Same attempt + name + bytes is the same registration: return it unchanged,
 // with the stored bytes re-verified rather than assumed.
 function existingOutcome(row, payload, reportOrigin) {
-  const originFields = ['requestId', 'claimSeq', 'sourceCommit', 'specSha256', 'state'];
+  const originFields = ['requestId', 'claimSeq', 'sourceCommit', 'specSha256', 'state', 'contentAuthor', 'archiveActor', 'depositChannel'];
   if (Boolean(row.reportOrigin) !== Boolean(reportOrigin)
     || (reportOrigin && !originFields.every(key => row.reportOrigin[key] === reportOrigin[key])))
     throw fail(409, 'DELIVERABLE_ORIGIN_CONFLICT', 'Stored report provenance differs from this registration');
@@ -196,11 +196,13 @@ async function register(pipelineId, body = {}, { reportOrigin } = {}) {
     throw fail(409, 'DELIVERABLE_LIMIT', `A task keeps at most ${MAX_PER_TASK} deliverables`);
   }
   if (attempt !== null) permitSeq = await authorizeWorkerDeposit(task, { attempt, by, leaseId: body.leaseId });
+  await require('./pipelineDeliverableCapacity').reserve(task.pipelineId, payload, attempt, reportOrigin, MAX_PER_TASK);
   try {
     const row = await Deliverable.create({
       ...key, mimeType: payload.mimeType, kind: payload.kind, size: payload.size, sha256: payload.sha256, data: payload.data,
       scope: { lane, service: task.service || '' },
-      producer: { declared: by, channel: reportOrigin ? 'report_worker' : attempt === null ? 'operator_api' : 'worker_api', leaseRef, permitSeq },
+      producer: { declared: by, channel: reportOrigin?.depositChannel === 'operator_archive' ? 'report_archive'
+        : reportOrigin ? 'report_worker' : attempt === null ? 'operator_api' : 'worker_api', leaseRef, permitSeq },
       ...(reportOrigin ? { reportOrigin } : {}),
       storedAt: new Date(),
     });

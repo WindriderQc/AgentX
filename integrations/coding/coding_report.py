@@ -7,6 +7,10 @@ import os
 from pathlib import Path
 import stat
 import sys
+import importlib.util
+_scope_spec = importlib.util.spec_from_file_location('coding_report_scope', __import__('pathlib').Path(__file__).with_name('coding_report_scope.py'))
+scope = importlib.util.module_from_spec(_scope_spec)
+_scope_spec.loader.exec_module(scope)
 
 MAX_BYTES = 2 * 1024 * 1024
 # Only reasons accepted by Core\'s shared worker-outcome observation contract.
@@ -69,7 +73,8 @@ def publish(r, task_id, key):
     if len(data) != intent['size'] or hashlib.sha256(data).hexdigest() != intent['sha256']:
         raise ValueError('Original frozen report bytes changed')
     result = r.request(endpoint(r,task_id,key)+'/result', {'sha256':intent['sha256'],
-        'dataUrl':'data:text/markdown;base64,'+base64.b64encode(data).decode('ascii')})['data']
+        'dataUrl':'data:text/markdown;base64,'+base64.b64encode(data).decode('ascii'),
+        **({'coverage': intent['coverage']} if 'coverage' in intent else {})})['data']
     if result.get('superseded'):
         value = result.get('outcome',{})
         if value.get('requestId')!=key or value.get('claimSeq')!=intent['claimSeq'] or value.get('sha256')!=intent['sha256']:
@@ -108,7 +113,7 @@ def freeze_partial(r, task_id, key, report_name):
             'dataUrl': 'data:text/markdown;base64,' + base64.b64encode(data).decode('ascii')}
 
 
-def stop_body(r, task_id, key, report_name, worker_outcome):
+def stop_body(r, task_id, key, report_name, worker_outcome, snapshot=None):
     path = r.RECEIPTS / f'{key}.report-stop.json'
     if path.exists():
         return json.loads(path.read_text())
@@ -116,6 +121,13 @@ def stop_body(r, task_id, key, report_name, worker_outcome):
     partial = freeze_partial(r, task_id, key, report_name)
     if partial:
         body['partial'] = partial
+    root = r.WORKSPACES / f'.home-task-{task_id}' / 'deliverables' / key
+    try:
+        if not isinstance(snapshot, dict):
+            raise ValueError('Core inventory is unavailable; retain pending coverage')
+        body['coverage'] = scope.read(report_bytes, r.WORKSPACES / f'task-{task_id}', root, snapshot)
+    except (OSError, ValueError, KeyError, TypeError, RecursionError):
+        pass  # Core retains the frozen inventory with pending coverage, never invented findings.
     immutable_json(r, path, body)
     return body
 
@@ -139,7 +151,7 @@ def stop(r, args, progress, reason):
         {'schema':'agentx.pipeline-worker-outcome/v1','requestId':args.request_id,'pipelineId':args.task_id,
          'claimSeq':progress.task_claim_seq,'result':'blocked','reason':stop_reason(reason),'source':'worker_report',
          'startedAt':progress.started_at,'finishedAt':r.coding_progress.utc_now(),
-         'usage':{name:progress.usage()[name] for name in ('workSeconds','modelCalls')}})
+         'usage':{name:progress.usage()[name] for name in ('workSeconds','modelCalls')}}, status.get('inventory'))
     response=r.request(endpoint(r,args.task_id,args.request_id)+'/stop-result',body)['data']
     verify_stop(response, body, args.request_id)
     progress.core_recorded=True
@@ -147,7 +159,20 @@ def stop(r, args, progress, reason):
     return 1
 
 
+def refused(r, task_id, key, progress, value):
+    if (not value.get('reportRefusalReceived') or value.get('requestId') != key or value.get('pipelineId') != task_id
+            or value.get('claimSeq') != progress.task_claim_seq):
+        raise ValueError('Original preparation refusal is unverified')
+    progress.core_recorded = True
+    progress.preflight = True
+    progress.finish('blocked', 'runner_error', progress.checkpoint)
+    return 1
+
+
 def failure(r,args,progress,error):
+    value = getattr(error, 'data', None) or {}
+    if value.get('reportRefusalReceived'):
+        return refused(r, args.task_id, args.request_id, progress, value)
     if (r.RECEIPTS/f'{args.request_id}.report-intent.json').exists() or getattr(progress,'report_started',False):
         progress.stop_reason = progress.stop_reason or 'runner_error'
         progress.write()
@@ -155,12 +180,18 @@ def failure(r,args,progress,error):
         return 2
     progress.preflight=True
     if getattr(progress,'task_claim_seq',None) and getattr(progress,'report_spec_sha256',None):
+        body = {'claimSeq': progress.task_claim_seq, 'specSha256': progress.report_spec_sha256,
+                'runnerStartedAt': progress.started_at, 'sourceCommit': progress.checkpoint,
+                'reportName': args.report_name, 'parentRequestId': getattr(args, 'parent_request_id', None),
+                'parentSha256': getattr(args, 'parent_sha256', None)}
+        intent = r.RECEIPTS/f'{args.request_id}.report-preflight.json'
         try:
-            r.request(f'{r.CORE}/api/pipeline/tasks/{args.task_id}/feedback',{'by':r.WORKER,'status':'blocked',
-                'text':'Report preparation failed before model dispatch; no report or publication was attempted.',
-                'manualReportClaim':{'claimSeq':progress.task_claim_seq,'specSha256':progress.report_spec_sha256}})
-        except (OSError,RuntimeError):
-            pass  # A new owner must remain untouched.
+            immutable_json(r, intent, body)
+            value = r.request(endpoint(r,args.task_id,args.request_id)+'/preflight-result',body)['data']
+            return refused(r, args.task_id, args.request_id, progress, value)
+        except (OSError,RuntimeError,ValueError):
+            progress.stop_reason = 'runner_error'; progress.write()
+            return 2  # The original receipt must be reconciled before another worker.
     progress.finish('blocked','runner_error',progress.checkpoint)
     return 1
 
@@ -170,17 +201,25 @@ def restore_checkpoint(r, args, path, baseline):
         return
     saved = r.request(endpoint(r, args.task_id, args.request_id) + '/checkpoint')['data']
     prefix = 'data:text/markdown;base64,'
+    if (saved.get('requestId') == args.request_id and saved.get('parentRequestId') == args.parent_request_id
+            and saved.get('sourceCommit') == baseline and args.parent_sha256 is None
+            and saved.get('checkpointAvailable') is False and saved.get('dataUrl') is None):
+        return saved.get('coverage')
+    expected_sha = args.parent_sha256
+    if expected_sha is None and saved.get('inherited') is True and r.coding_progress.REQUEST_ID.fullmatch(saved.get('contentRequestId', '')):
+        expected_sha = saved.get('sha256')
     if (saved.get('requestId') != args.request_id or saved.get('parentRequestId') != args.parent_request_id
-            or saved.get('sha256') != args.parent_sha256 or saved.get('sourceCommit') != baseline
+            or saved.get('sha256') != expected_sha or saved.get('sourceCommit') != baseline
             or not isinstance(saved.get('dataUrl'), str) or not saved['dataUrl'].startswith(prefix)):
         raise ValueError('Core checkpoint identity or source changed')
     data = base64.b64decode(saved['dataUrl'][len(prefix):], validate=True)
-    if not 0 < len(data) <= MAX_BYTES or hashlib.sha256(data).hexdigest() != args.parent_sha256:
+    if not 0 < len(data) <= MAX_BYTES or hashlib.sha256(data).hexdigest() != expected_sha:
         raise ValueError('Core checkpoint bytes changed')
     with path.open('xb') as stream:
         os.fchmod(stream.fileno(), 0o600)
         stream.write(data); stream.flush(); os.fsync(stream.fileno())
     report_bytes(path, path.parent)
+    return saved.get('coverage')
 
 
 def execute(r,args,progress,task,workspace):
@@ -204,24 +243,47 @@ def execute(r,args,progress,task,workspace):
     source=r.coding_progress.source_state(workspace);progress.checkpoint=baseline
     progress.report_observer=lambda:report_signature(path,root)
     intent={'claimSeq':progress.task_claim_seq,'specSha256':progress.report_spec_sha256,'sourceCommit':baseline,
+            'runnerStartedAt':progress.started_at,
             'reportName':args.report_name,'model':r.MODEL,'hardRemainingSeconds':max(1,int(progress.hard_deadline-progress.now())),
             'modelCallLimit':progress.call_limit(), 'parentRequestId':getattr(args,'parent_request_id',None),
             'parentSha256':getattr(args,'parent_sha256',None)}
+    intent['inventory'] = scope.inventory(workspace, baseline, (task.get('codingResult') or {}).get('documentPaths'))
+    immutable_json(r, r.RECEIPTS / f'{args.request_id}.report-start.json', intent)
+    progress.report_started = True
     started=r.request(endpoint(r,args.task_id,args.request_id)+'/start',intent)['data']
     if started.get('requestId')!=args.request_id or started.get('claimSeq')!=progress.task_claim_seq:
         raise ValueError('Core did not acknowledge the original report claim')
     progress.report_started=True
+    authority = started.get('authority')
+    if not authority or not authority.get('queueEndAt'):
+        return stop(r,args,progress,'runner_error')
+    import datetime
+    remaining = max(0, datetime.datetime.fromisoformat(authority['queueEndAt'].replace('Z', '+00:00')).timestamp() - __import__('time').time())
+    progress.queue_deadline = min(progress.queue_deadline, progress.now() + remaining)
+    progress.hard_deadline = min(progress.hard_deadline, progress.now() + authority['workSeconds'], progress.queue_deadline)
+    snapshot = started['inventory']
+    scope.seed(root, snapshot)
     if started.get('modelCallLimit',r.coding_progress.MANUAL_MODEL_CALL_LIMIT)!=progress.call_limit():
         return stop(r,args,progress,'runner_error')
     if getattr(args,'parent_request_id',None):
         if started.get('parentRequestId') != args.parent_request_id or started.get('parentSha256') != args.parent_sha256:
             return stop(r,args,progress,'runner_error')
-        restore_checkpoint(r,args,path,baseline)
+        previous_coverage = restore_checkpoint(r,args,path,baseline)
+        if previous_coverage:
+            if previous_coverage.get('inventorySha256') != snapshot['sha256']:
+                raise ValueError('Checkpoint coverage belongs to a different source inventory')
+            scope.seed(root, snapshot, previous_coverage)
     progress.heartbeat=lambda:r.request(endpoint(r,args.task_id,args.request_id)+'/heartbeat',{})
     progress.relay_headers={'x-agentx-report-request':args.request_id,'x-agentx-report-task':args.task_id}
     discussion='\n\n'.join(f"{row.get('by','someone')}: {row.get('text','')}" for row in task.get('feedback',[]))
     output=f'/home/agent/deliverables/{args.request_id}/{args.report_name}'
     prompt=(f'You are the documentation reviewer for task {args.task_id}: {task.get("title","")}\n'
+            f'The exact review inventory is source-inventory.json in your output directory. '
+            'Keep coverage.json updated after each group; preserve its inventorySha256, document paths and hashes. '
+            'Each document has state pending, partial, blocked or reviewed and an evidence list. '
+            'Each reviewed document requires evidence objects with path, sha256 (SHA-256 of that frozen source file), '
+            'line (one-based) and check (the concrete claim checked). Verify content against implementation. '
+            'These are declared checks, not independent acceptance. Preserve earlier coverage on continuation. '
             f'Your working directory is the private report output directory. Read /workspace/AGENTS.md explicitly. '
             f'/workspace is the read-only source snapshot at {baseline}; use absolute source paths or git -C /workspace. '
             'Do not edit, commit, push or deploy source. '
@@ -269,6 +331,7 @@ def execute(r,args,progress,task,workspace):
         os.fchmod(stream.fileno(),0o600);stream.write(data);stream.flush();os.fsync(stream.fileno())
     publish_intent={'requestId':args.request_id,'pipelineId':args.task_id,'claimSeq':progress.task_claim_seq,
         'sourceCommit':baseline,'specSha256':progress.report_spec_sha256,'size':len(data),'sha256':hashlib.sha256(data).hexdigest()}
+    publish_intent['coverage'] = scope.read(report_bytes, workspace, root, snapshot)
     if not r.begin_publication(progress,lambda:immutable_json(r,r.RECEIPTS/f'{args.request_id}.report-intent.json',publish_intent)):
         return stop(r,args,progress,'operator_stop')
     result=publish(r,args.task_id,args.request_id)
@@ -283,6 +346,30 @@ def reconcile(r,task_id,key):
     control=r.coding_dispatch_control
     if control.unit_active():raise ValueError('Wait for the original native report worker to terminate')
     path=r.RECEIPTS/f'{key}.progress.json';progress=json.loads(path.read_text())
+    start_intent = r.RECEIPTS / f'{key}.report-start.json'
+    preflight_intent = r.RECEIPTS / f'{key}.report-preflight.json'
+    try:
+        observed = r.request(endpoint(r, task_id, key))['data']
+    except RuntimeError as error:
+        if getattr(error, 'code', None) != 'REPORT_NOT_FOUND':
+            raise
+        if preflight_intent.exists():
+            r.request(endpoint(r,task_id,key)+'/preflight-result',json.loads(preflight_intent.read_text()))
+        elif start_intent.exists():
+            try:
+                r.request(endpoint(r,task_id,key)+'/start',json.loads(start_intent.read_text()))
+            except RuntimeError as refusal:
+                if not (getattr(refusal, 'data', None) or {}).get('reportRefusalReceived'):
+                    raise
+        else:
+            raise
+        observed = r.request(endpoint(r,task_id,key))['data']
+    if observed.get('preflight') and observed.get('terminationVerified'):
+        if observed.get('requestId') != key or observed.get('claimSeq') != json.loads((preflight_intent if preflight_intent.exists() else start_intent).read_text())['claimSeq']:
+            raise ValueError('Original preparation receipt is unverified')
+        progress.update(phase='finished', result='blocked', stopReason='runner_error', coreRecorded=True, preflight=True)
+        control.atomic_json(path, progress)
+        return {'reconciled':True,'pipelineId':task_id,'requestId':key,'result':'blocked'}
     status=r.request(endpoint(r,task_id,key)+'/reconcile-models',{})['data']
     if not status.get('terminationVerified'):raise ValueError('Original native inference remains unverified')
     if (r.RECEIPTS/f'{key}.report-intent.json').exists():
@@ -296,7 +383,7 @@ def reconcile(r,task_id,key):
             {'schema':'agentx.pipeline-worker-outcome/v1','requestId':key,'pipelineId':task_id,
              'claimSeq':status['claimSeq'],'result':'blocked','reason':stop_reason(progress.get('stopReason')),
              'source':'worker_report','startedAt':progress['startedAt'],'finishedAt':r.coding_progress.utc_now(),
-             'usage':{name:progress['usage'][name] for name in ('workSeconds','modelCalls')}})
+             'usage':{name:progress['usage'][name] for name in ('workSeconds','modelCalls')}}, status.get('inventory'))
         response=r.request(endpoint(r,task_id,key)+'/stop-result',body)['data']
         verify_stop(response, body, key)
         result='blocked';reason='authorization_removed' if response.get('superseded') else body['workerOutcome']['reason']

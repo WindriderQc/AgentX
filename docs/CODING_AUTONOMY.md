@@ -439,3 +439,22 @@ retains the original operator review guidance, charges the failed run and links
 the next worker; the native feedback carries bounded test diagnostics as
 untrusted data. Operator stops, exhausted budgets, unknown runtime outcomes and
 published PR review remain subject to their existing gates.
+
+
+## Private report authority
+
+Manual reports use the original Pipeline task and its explicit result selection.
+They do not borrow a Git attempt or reset the autonomous code envelope. Core
+records immutable report grants, their terminal parent/checkpoint, campaign,
+source, specification and all historical usage. A new execution receives a new
+identity only under those finite credits; a lost reply reconciles the original
+identity. Earlier active or uncertain report calls and unreceived allocations
+retain their fences, including when a parent is omitted. An operator stop needs
+a subsequent explicit grant before more work.
+
+Campaign identity, task, host, dispatch and window are checked at start and before
+native model dispatch after admission. Each call remains subject to Core's native
+runtime admission. The deadline covers the runner preparation time and cannot
+move on replay. File capacity is reserved under the task CAS for every promised
+checkpoint. No automatic report restart, merge, installation or acceptance is
+introduced. See the [report workflow](../integrations/coding/README.md#private-markdown-reports).

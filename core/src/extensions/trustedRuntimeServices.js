@@ -393,6 +393,7 @@ async function executeRoutedInference(deps, request, options = {}) {
     const execute = request.stream === true ? executeAdmittedOllamaStream : executeAdmittedOllamaAttempt;
     const attempt = await withInferenceRetry(async () => {
       await assertClaim();
+      await require('../services/pipelineReportInference').assertDispatch(options.reportAuthority);
       const capacity = await require('../services/pipelineCodingCapacity').authorizeInference(options.codingCapacity,
         { model, hostUrl, inferenceContract, numCtx: runtimeOptions.num_ctx });
       return execute({
@@ -416,6 +417,7 @@ async function executeRoutedInference(deps, request, options = {}) {
         if (benchmarkClaim) await assertClaim();
         if (capacity) await require('../services/pipelineCodingCapacity').authorizeInference(options.codingCapacity,
           { model, hostUrl, inferenceContract, numCtx: runtimeOptions.num_ctx });
+        await require('../services/pipelineReportInference').assertDispatch(options.reportAuthority);
         options.signal?.throwIfAborted();
         // Compared once, in admission order: the order Ollama receives prompts.
         if (observePrefix) promptPrefix ??= observePrefix({ hostUrl, model, messages: request.messages, tools: request.tools });
