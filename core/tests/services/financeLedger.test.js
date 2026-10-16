@@ -711,6 +711,37 @@ describe('Secretary documents matched to ledger rows', () => {
   });
 });
 
+describe('finance line for the daily brief', () => {
+  const brief = require('../../src/services/finance/financeBrief');
+  const plan = require('../../src/services/finance/financePlan');
+
+  async function eop(period, description) {
+    await ingestDocument(await writeDoc(`brief-${period[0]}.pdf`), { readText, extract: extractWith({
+      issuer: 'Caisse Exemple', account_last4: '0000', period_start: period[0], period_end: period[1],
+      accounts: [{ code: 'EOP', opening_cents: 100000, closing_cents: 100100,
+        transactions: [{ date: period[0], description, amount_cents: 100, balance_after_cents: 100100 }] }] }) });
+  }
+
+  test('names deadlines and late series without any amount, account number or path', async () => {
+    await eop(['2026-06-01', '2026-06-30'], 'PAIE');
+    await eop(['2026-07-15', '2026-07-31'], 'PAIE');
+    await plan.savePlan({
+      openItems: [{ title: 'Odyssée 150 $', dueDate: '2026-10-08' }, { title: 'Impôt corp', dueDate: '2026-09-30' }]
+    });
+    const line = await brief.summary({ now: new Date('2026-10-01T12:00:00Z') });
+    expect(line.summary).toBe('Finances : Impôt corp en retard · Odyssée à payer dans 7 jours · relevés en retard : Caisse Exemple · 1 relevé attendu');
+    // Counts may be written; no amount ($ or cents) and no account-like number.
+    expect(line.summary).not.toMatch(/\$|\d{3,}/);
+    expect(line.counts).toMatchObject({ overdue: 1, dueSoon: 1, lateSeries: 1, missingStatements: 1 });
+  });
+
+  test('says nothing when there is nothing to say', async () => {
+    await plan.savePlan({});
+    const line = await brief.summary({ now: new Date('2026-09-01T12:00:00Z') });
+    expect(line).toEqual({ summary: null, counts: { overdue: 0, dueSoon: 0, lateSeries: 0, missingStatements: 0, proposals: 0 } });
+  });
+});
+
 describe('statement coverage', () => {
   test('lists the months each statement series covers and the gaps between', async () => {
     for (const [name, period] of [['a.pdf', ['2026-01-01', '2026-01-31']], ['b.pdf', ['2026-04-01', '2026-04-30']]]) {
