@@ -44,18 +44,18 @@ Object.assign(PerformanceDashboard, {
 
                     item.innerHTML = `
                         <div class="baseline-info">
-                            <div class="baseline-name">${baseline.name}</div>
+                            <div class="baseline-name">${escapeHtml(baseline.name)}</div>
                             <div class="baseline-meta">
                                 Created: ${date} ${baseline.active ? '• <strong style="color: var(--accent);">ACTIVE</strong>' : ''}
                             </div>
                         </div>
                         <div class="baseline-actions">
                             ${!baseline.active ? `
-                                <button class="action-btn activate-baseline-btn" data-id="${baseline._id}">
+                                <button class="action-btn activate-baseline-btn" data-id="${escapeHtml(baseline._id)}">
                                     <i class="fas fa-check"></i> Activate
                                 </button>
                             ` : ''}
-                            <button class="action-btn delete-baseline-btn" data-id="${baseline._id}">
+                            <button class="action-btn delete-baseline-btn" data-id="${escapeHtml(baseline._id)}">
                                 <i class="fas fa-trash"></i> Delete
                             </button>
                         </div>

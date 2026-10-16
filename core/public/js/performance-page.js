@@ -3,6 +3,14 @@
             return { 'Content-Type': 'application/json' };
         }
 
+        // Helper: escape stored text (names, scenarios, request paths) before
+        // it is written into markup; any LAN client can store these values.
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, (c) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            })[c]);
+        }
+
         // Performance Dashboard Controller
         const PerformanceDashboard = {
             // State
@@ -210,7 +218,7 @@
                                 const extras = [];
                                 if (Number.isFinite(err) && err > 0) extras.push(`${err.toFixed(2)}% err`);
                                 if (Number.isFinite(lat) && lat > 0) extras.push(`${lat.toFixed(0)}ms avg`);
-                                return `${categoryLabel(r.category)} ${count}${extras.length ? ` (${extras.join(', ')})` : ''}`;
+                                return `${escapeHtml(categoryLabel(r.category))} ${count}${extras.length ? ` (${extras.join(', ')})` : ''}`;
                             })
                             .join(' • ')}`
                         : '';
@@ -226,7 +234,7 @@
                             const parts = [];
                             if (Number.isFinite(err) && err >= 2) parts.push(`${err.toFixed(2)}% err`);
                             if (Number.isFinite(lat) && lat >= 250) parts.push(`${lat.toFixed(0)}ms avg`);
-                            hotspots.push(`${categoryLabel(r.category)} (${parts.join(', ')})`);
+                            hotspots.push(`${escapeHtml(categoryLabel(r.category))} (${parts.join(', ')})`);
                         }
                     }
 
@@ -238,7 +246,7 @@
                             const extras = [];
                             if (Number.isFinite(err) && err > 0) extras.push(`${err.toFixed(2)}% err`);
                             if (Number.isFinite(lat) && lat > 0) extras.push(`${lat.toFixed(0)}ms avg`);
-                            return `${e.method} ${e.path} (${e.count}${extras.length ? `, ${extras.join(', ')}` : ''})`;
+                            return `${escapeHtml(e.method)} ${escapeHtml(e.path)} (${escapeHtml(e.count)}${extras.length ? `, ${extras.join(', ')}` : ''})`;
                         }).join(' • ')}`
                         : '';
 
@@ -248,7 +256,7 @@
                             const err = Number(e.error_rate || 0);
                             const count = Number(e.count || 0);
                             const extra = Number.isFinite(err) ? `${err.toFixed(2)}%` : '0%';
-                            return `${e.method} ${e.path} (${extra}, ${count})`;
+                            return `${escapeHtml(e.method)} ${escapeHtml(e.path)} (${extra}, ${count})`;
                         }).join(' • ')}`
                         : '';
 
@@ -257,7 +265,7 @@
                         ? `Top slow: ${topSlow.map(e => {
                             const lat = Number(e.avg_latency || 0);
                             const count = Number(e.count || 0);
-                            return `${e.method} ${e.path} (${lat.toFixed(0)}ms, ${count})`;
+                            return `${escapeHtml(e.method)} ${escapeHtml(e.path)} (${lat.toFixed(0)}ms, ${count})`;
                         }).join(' • ')}`
                         : '';
 
@@ -273,16 +281,16 @@
 
                     const loadTest = src.latest_load_test;
                     const loadTestText = loadTest
-                        ? `Latest load test: ${loadTest.scenario || loadTest.name || '—'} (${new Date(loadTest.timestamp).toLocaleString()})`
+                        ? `Latest load test: ${escapeHtml(loadTest.scenario || loadTest.name || '—')} (${new Date(loadTest.timestamp).toLocaleString()})`
                         : 'Latest load test: none';
 
                     const baseline = src.active_baseline;
                     const baselineText = baseline
-                        ? `Active baseline: ${baseline.name}`
+                        ? `Active baseline: ${escapeHtml(baseline.name)}`
                         : 'Active baseline: none';
 
                     const scopeText = src.tracking_scope
-                        ? `Tracking scope: ${src.tracking_scope}`
+                        ? `Tracking scope: ${escapeHtml(src.tracking_scope)}`
                         : 'Tracking scope: non-static, non-health HTTP requests';
 
                     const extraLines = [breakdownText, categoryText, hotspotText, topText, topErrorsText, topSlowText, legendText].filter(Boolean);

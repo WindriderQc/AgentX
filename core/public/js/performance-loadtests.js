@@ -48,7 +48,7 @@ Object.assign(PerformanceDashboard, {
 
                     row.innerHTML = `
                         <td>${date}</td>
-                        <td>${scenario}</td>
+                        <td>${escapeHtml(scenario)}</td>
                         <td class="text-right mono">${duration}</td>
                         <td class="text-right mono">${rpsText}</td>
                         <td class="text-right mono">${successRate}%</td>
@@ -59,10 +59,10 @@ Object.assign(PerformanceDashboard, {
                             </span>
                         </td>
                         <td class="text-center">
-                            <button class="action-btn view-details-btn" data-test-id="${test._id}">
+                            <button class="action-btn view-details-btn" data-test-id="${escapeHtml(test._id)}">
                                 <i class="fas fa-eye"></i> Details
                             </button>
-                            <button class="action-btn set-baseline-btn" data-test-id="${test._id}">
+                            <button class="action-btn set-baseline-btn" data-test-id="${escapeHtml(test._id)}">
                                 <i class="fas fa-flag"></i> Baseline
                             </button>
                         </td>
@@ -93,7 +93,7 @@ Object.assign(PerformanceDashboard, {
 
             // Toggle test details
             toggleTestDetails(testId, testData) {
-                const row = document.querySelector(`tr[data-test-id="${testId}"]`);
+                const row = document.querySelector(`tr[data-test-id="${CSS.escape(String(testId))}"]`);
                 const existingDetails = row.nextElementSibling;
 
                 if (existingDetails && existingDetails.classList.contains('test-details-row')) {
@@ -113,7 +113,7 @@ Object.assign(PerformanceDashboard, {
                             <div class="detail-grid">
                                 <div class="detail-item">
                                     <div class="detail-label">Scenario</div>
-                                    <div class="detail-value">${testData.scenario || 'N/A'}</div>
+                                    <div class="detail-value">${escapeHtml(testData.scenario || 'N/A')}</div>
                                 </div>
                                 <div class="detail-item">
                                     <div class="detail-label">Duration</div>
@@ -121,7 +121,7 @@ Object.assign(PerformanceDashboard, {
                                 </div>
                                 <div class="detail-item">
                                     <div class="detail-label">Total Requests</div>
-                                    <div class="detail-value">${testData.summary?.requests_completed || 0}</div>
+                                    <div class="detail-value">${Number(testData.summary?.requests_completed) || 0}</div>
                                 </div>
                                 <div class="detail-item">
                                     <div class="detail-label">RPS (Mean)</div>
@@ -148,7 +148,7 @@ Object.assign(PerformanceDashboard, {
                                     <div class="detail-value">${testData.summary?.error_rate ? `${Number(testData.summary.error_rate).toFixed(2)}%` : '0.00%'}</div>
                                 </div>
                             </div>
-                            ${testData.notes ? `<p style="margin-top: 12px; color: var(--muted); font-size: 12px;"><strong>Notes:</strong> ${testData.notes}</p>` : ''}
+                            ${testData.notes ? `<p style="margin-top: 12px; color: var(--muted); font-size: 12px;"><strong>Notes:</strong> ${escapeHtml(testData.notes)}</p>` : ''}
                         </div>
                     </td>
                 `;
