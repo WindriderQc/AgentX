@@ -39,6 +39,34 @@ describe('Alert API Routes', () => {
     delete process.env.ALERT_TEST_MODE;
   });
 
+  describe('POST /api/alerts/bulk-resolve', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const base = { message: 'm', severity: 'warning', status: 'active', source: 'agentx', ruleId: 'r', ruleName: 'R' };
+
+    beforeEach(async () => {
+      await Alert.create([
+        // Raised long ago but still firing today: must stay active.
+        { ...base, title: 'Recurring', fingerprint: 'recurring', lastOccurrence: new Date() },
+        // Quiet for ten days: resolvable.
+        { ...base, title: 'Quiet', fingerprint: 'quiet', lastOccurrence: new Date(Date.now() - 10 * DAY) }
+      ]);
+      await Alert.collection.updateMany({}, { $set: { createdAt: new Date(Date.now() - 20 * DAY) } });
+    });
+
+    it('counts without resolving on a dry run', async () => {
+      const response = await request(app).post('/api/alerts/bulk-resolve').send({ olderThanDays: 7, dryRun: true }).expect(200);
+      expect(response.body.data.matching).toBe(1);
+      expect(await Alert.countDocuments({ status: 'active' })).toBe(2);
+    });
+
+    it('resolves only alerts with no occurrence in the window', async () => {
+      const response = await request(app).post('/api/alerts/bulk-resolve').send({ olderThanDays: 7 }).expect(200);
+      expect(response.body.data.resolved).toBe(1);
+      expect((await Alert.findOne({ fingerprint: 'recurring' })).status).toBe('active');
+      expect((await Alert.findOne({ fingerprint: 'quiet' })).status).toBe('resolved');
+    });
+  });
+
   describe('POST /api/alerts', () => {
     it('should create a new alert manually', async () => {
       const alertData = {
