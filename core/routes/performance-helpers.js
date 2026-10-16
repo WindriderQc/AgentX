@@ -18,7 +18,8 @@
  * @returns {string} 'healthy' | 'degraded' | 'unhealthy' | 'unknown'
  */
 function calculateSystemHealth(metrics, baseline) {
-  if (!metrics) {
+  // No measured request (only model-bound traffic, or none) is unknown, not healthy.
+  if (!metrics || metrics.total_requests === 0) {
     return 'unknown';
   }
 
