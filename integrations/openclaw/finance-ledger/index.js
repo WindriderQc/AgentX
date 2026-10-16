@@ -26,6 +26,9 @@ export default definePluginEntry({
           + "transactions = matching rows plus totals (filter by account code like EOP or CARD, from/to YYYY-MM-DD, "
           + "q = words of the merchant description); monthly = in/out/net per month plus the average; "
           + "yearly = in/out/net per calendar year (use with tag, category or q for multi-year questions); "
+          + "a month or year with complete=false has no payroll (EOP) statement covering it: say so, quote it apart, "
+          + "and never count it in an average or a savings rate (monthly and insights already leave it out of averages); "
+          + "dataAsOf = last payroll statement date, say it when the figures are asked; "
           + "insights = advice material over the last `months` (default 12): savings rate per month, stable "
           + "recurring charges with yearly cost, category trends (last 3 months vs before), large recent expenses; "
           + "categories = totals per category (null = not categorized yet); uncategorized = descriptions still "
@@ -131,7 +134,10 @@ export default definePluginEntry({
         name: "finance_plan",
         label: "Finance Plan",
         description: "The owner's financial plan: budget lines, debts, credit lines, provisions, assets, tax room, open items, "
-          + "cash allocation, upcoming deadlines (watch), settled items (milestones), phase and exceptional tags. "
+          + "cash allocation, upcoming deadlines (watch), open items, settled items (milestones), phase and exceptional tags. "
+          + "A watch or open item can carry dueDate (YYYY-MM-DD) and recurrence (monthly, quarterly, yearly): Core then alerts "
+          + "7 days, 1 day before and when overdue, every day until the dueDate is moved forward (set the next dueDate when the owner "
+          + "says it is paid). Free-text dates such as '~23 de chaque mois' stay valid without dueDate. "
           + "action get reads it. action apply changes it ONLY with what the owner explicitly said in this conversation "
           + "(e.g. 'le T2 est payé' → remove the open item, add a settled milestone; 'mon REER vaut 215 000 $' → update the asset). "
           + "ops: {op: add|update|remove|set, section, match (words of the item) or index, item (fields to set), value (for set)}. "

@@ -72,6 +72,19 @@ purchases as income.
 - Scheduled agent jobs (instance configuration): daily alert check (silent
   with `NO_REPLY` when nothing is new) and a weekly review.
 
+## Completeness and deadlines
+
+- A month is complete only when the payroll account (`EOP`) statements cover
+  every day of it (`financeCompleteness.js`). Incomplete months keep their
+  totals, are flagged `complete: false` and are excluded from averages and
+  savings rates. A ledger with no payroll statement at all flags nothing.
+- Staleness is judged per account series, not on the newest statement of all
+  accounts: a card that is still fed does not hide a payroll account that stopped.
+- `watch` and `openItems` accept optional `dueDate` (YYYY-MM-DD) and
+  `recurrence` (`monthly`, `quarterly`, `yearly`). The free-text `date` stays
+  valid. Settling an item means moving its `dueDate` forward; until then Core
+  alerts daily (J-7, J-1, overdue).
+
 ## Known traps (each found on real statements)
 
 - Desjardins prints overdrafts with a trailing minus (`1 234.56-`).

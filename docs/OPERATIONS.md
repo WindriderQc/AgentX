@@ -729,13 +729,22 @@ computes the advice material (monthly savings rate, stable recurring charges,
 category trends, large recent expenses) and `/api/finance/export.csv` exports
 the filtered transactions with their totals for a spreadsheet.
 Deterministic alerts are recomputed after each scan that ingests something and
-on `GET /api/finance/alerts`: statement to review, no statement for
+on `GET /api/finance/alerts`: statement to review, no statement for an account
+series (each account's latest reconciled period) for more than
 `FINANCE_ALERT_STALE_DAYS` (45), balance of `FINANCE_ALERT_MIN_BALANCE_ACCOUNTS`
 (EOP) under `FINANCE_ALERT_MIN_BALANCE_CENTS` (off when unset), expense over
 `FINANCE_ALERT_LARGE_EXPENSE_CENTS` (1 000 $) in the last 45 days, new stable
 recurring charge, and a category up 50 % and `FINANCE_ALERT_CATEGORY_SPIKE_CENTS`
-(100 $) a month. Each fact is raised once; `POST /api/finance/alerts/report`
+(100 $) a month, and dated plan items (`watch` and `openItems` with `dueDate`):
+upcoming 7 days before, due the day before or the day itself, overdue after.
+A dated item keeps alerting every day until its `dueDate` is moved forward. A
+pending alert is reported once; standing conditions (stale data, deadlines, low
+balance) stay listed on `GET` while they hold. `POST /api/finance/alerts/report`
 returns the pending alerts and marks them reported for a delivery job.
+Months without a payroll (EOP) statement covering every day are incomplete: they
+are flagged in `monthly`, `insights` and `yearly` (`complete: false`,
+`dataAsOf`), and left out of averages, the savings rate and the situation's
+monthly averages.
 The OpenClaw finance agent (`comptable`) reads it through the `finance_ledger` tool of the
 `integrations/openclaw/finance-ledger` plugin (loopback Core URL, visible only
 to the configured finance agent); amounts arrive as cents plus a formatted

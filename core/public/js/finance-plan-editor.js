@@ -8,9 +8,12 @@
   const $ = (id) => document.getElementById(id);
 
   const SEVERITY = [['critical', 'Urgent'], ['warning', 'Important'], ['info', 'Info']];
+  const RECURRENCE = [['', 'Once'], ['monthly', 'Monthly'], ['quarterly', 'Quarterly'], ['yearly', 'Yearly']];
   const SECTIONS = [
-    { key: 'openItems', label: 'Open items', fields: [['title', 'Title'], ['detail', 'Detail', 'long'], ['severity', 'Priority', SEVERITY]] },
-    { key: 'watch', label: 'Watch', fields: [['date', 'Date'], ['what', 'What', 'long'], ['status', 'Status']] },
+    { key: 'openItems', label: 'Open items', fields: [['title', 'Title'], ['detail', 'Detail', 'long'], ['severity', 'Priority', SEVERITY],
+      ['dueDate', 'Due (YYYY-MM-DD)'], ['recurrence', 'Repeats', RECURRENCE]] },
+    { key: 'watch', label: 'Watch', fields: [['date', 'Date'], ['what', 'What', 'long'], ['status', 'Status'],
+      ['dueDate', 'Due (YYYY-MM-DD)'], ['recurrence', 'Repeats', RECURRENCE]] },
     { key: 'debts', label: 'Debts', fields: [['name', 'Debt', 'long'], ['accountCode', 'Account code'], ['issuer', 'Issuer'],
       ['balanceCents', 'Balance ($, if not linked)', 'money'], ['rateBp', 'Rate (%)', 'rate'], ['paymentCents', 'Payment ($)', 'money'],
       ['status', 'Status'], ['endDate', 'End (YYYY-MM-DD)']] },

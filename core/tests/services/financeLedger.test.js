@@ -173,7 +173,7 @@ describe('ledger questions', () => {
     expect(result.totals).toEqual({ count: 2, inCents: 0, outCents: -900, netCents: -900 });
     expect(result.rows).toHaveLength(2);
     expect((await query.monthly({ account: 'eop' })).months)
-      .toEqual([{ month: '2026-06', count: 3, inCents: 250000, outCents: -900, netCents: 249100 }]);
+      .toEqual([{ month: '2026-06', count: 3, inCents: 250000, outCents: -900, netCents: 249100, complete: true }]);
   });
 
   test('reports the latest closing balance per account', async () => {
@@ -329,8 +329,9 @@ describe('history, insights and export', () => {
       ['2026-01', [['2026-01-02', 'PAIE EMPLOYEUR', 310000], ['2026-01-05', 'NETFLIX', -1999], ['2026-01-20', 'VIREMENT A EPARGNE', -50000]]]
     ];
     for (const [ym, rows] of plan) {
+      const lastDay = new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0)).toISOString().slice(0, 10);
       await ingestDocument(await writeDoc(`${ym}.pdf`, ym), { readText,
-        extract: extractWith(month([`${ym}-01`, `${ym}-28`], rows)) });
+        extract: extractWith(month([`${ym}-01`, lastDay], rows)) });
     }
     await categories.saveRules([
       { pattern: 'dojo', category: 'Enfants et activités', tags: ['karate'] },
@@ -340,7 +341,8 @@ describe('history, insights and export', () => {
 
   test('totals each year, for everything or one tag', async () => {
     expect((await analysis.yearly({ tag: 'karate' })).years)
-      .toEqual([{ year: '2025', count: 2, inCents: 0, outCents: -29800, netCents: -29800, firstDate: '2025-01-09', lastDate: '2025-03-09' }]);
+      .toEqual([{ year: '2025', count: 2, inCents: 0, outCents: -29800, netCents: -29800, firstDate: '2025-01-09', lastDate: '2025-03-09',
+        complete: true, incompleteMonths: [] }]);
     expect((await analysis.yearly({})).years.map((y) => [y.year, y.count])).toEqual([['2025', 9], ['2026', 3]]);
   });
 
@@ -350,7 +352,7 @@ describe('history, insights and export', () => {
     expect(result.recurring.map((r) => [r.description, r.months, r.monthlyCents])).toEqual([['NETFLIX', 4, -1799]]);
     expect(result.largeExpenses.map((e) => e.description)).not.toContain('VIREMENT A EPARGNE');
     const january = result.savings.find((s) => s.month === '2026-01');
-    expect(january).toEqual({ month: '2026-01', inCents: 310000, outCents: -1999, netCents: 308001, savingsRatePercent: 99.4 });
+    expect(january).toEqual({ month: '2026-01', inCents: 310000, outCents: -1999, netCents: 308001, complete: true, savingsRatePercent: 99.4 });
   });
 
   test('exports an Excel-friendly CSV with totals', async () => {
@@ -424,6 +426,106 @@ describe('deterministic alerts', () => {
       extract: extractWith(...Array.from({ length: 4 }, () => statement({ trap: true }))) });
     const found = await alerts.evaluate({ env: {}, now: new Date('2026-07-05T00:00:00Z') });
     expect(found.map((a) => a.kind)).toContain('statement_needs_review');
+  });
+});
+
+describe('payroll coverage, standing alerts and deadlines', () => {
+  const alerts = require('../../src/services/finance/financeAlerts');
+  const plan = require('../../src/services/finance/financePlan');
+  const analysis = require('../../src/services/finance/financeInsights');
+  const env = { FINANCE_ALERT_STALE_DAYS: '45' };
+
+  // Synthetic one-account statement; rows are [date, description, cents]. EOP is the payroll account.
+  function account(code, period, rows) {
+    const card = code !== 'EOP';
+    let balance = 100000;
+    const transactions = rows.map(([date, description, cents]) => {
+      balance += cents;
+      return { date, description, amount_cents: cents, balance_after_cents: balance };
+    });
+    return { issuer: card ? 'Carte Exemple' : 'Caisse Exemple', account_last4: card ? '1111' : '0000',
+      period_start: period[0], period_end: period[1],
+      accounts: [{ code, opening_cents: 100000, closing_cents: balance, transactions }] };
+  }
+
+  async function ingest(name, doc) {
+    await ingestDocument(await writeDoc(name), { readText, extract: extractWith(doc) });
+  }
+
+  test('marks a month without a full payroll statement incomplete, everywhere', async () => {
+    await ingest('mar.pdf', account('EOP', ['2026-03-01', '2026-03-31'], [['2026-03-02', 'PAIE EMPLOYEUR', 300000]]));
+    await ingest('apr-card.pdf', account('MC 1', ['2026-04-01', '2026-04-30'], [['2026-04-07', 'EPICERIE', -20000]]));
+    await ingest('may.pdf', account('EOP', ['2026-05-01', '2026-05-31'],
+      [['2026-05-02', 'PAIE EMPLOYEUR', 300000], ['2026-05-08', 'EPICERIE', -100000]]));
+    await ingest('jun-partial.pdf', account('EOP', ['2026-06-01', '2026-06-15'], [['2026-06-02', 'PAIE EMPLOYEUR', 300000]]));
+
+    const monthly = await query.monthly({ ledger: 'perso' });
+    expect(monthly.months.map((m) => [m.month, m.complete])).toEqual([['2026-03', true], ['2026-04', false], ['2026-05', true], ['2026-06', false]]);
+    expect(monthly.incompleteMonths).toEqual(['2026-04', '2026-06']);
+    expect(monthly.dataAsOf).toBe('2026-06-15');
+    // Average over March and May only: (300000 + 200000) / 2.
+    expect(monthly.averageNetCents).toBe(250000);
+
+    const result = await analysis.insights({ months: 3 });
+    expect(result.savings.map((s) => [s.month, s.complete, s.savingsRatePercent])).toEqual([
+      ['2026-04', false, null], ['2026-05', true, 66.7], ['2026-06', false, null]]);
+    expect(result.incompleteMonths).toEqual(['2026-04', '2026-06']);
+    expect(result.dataAsOf).toBe('2026-06-15');
+
+    const years = await analysis.yearly({});
+    expect(years.years).toEqual([expect.objectContaining({ year: '2026', complete: false, incompleteMonths: ['2026-04', '2026-06'] })]);
+    expect(years.dataAsOf).toBe('2026-06-15');
+  });
+
+  test('marks nothing incomplete when a ledger has no payroll statement at all', async () => {
+    await ingest('card-only.pdf', account('MC 1', ['2026-04-01', '2026-04-30'], [['2026-04-07', 'EPICERIE', -20000]]));
+    const monthly = await query.monthly({});
+    expect(monthly.months.every((m) => m.complete)).toBe(true);
+    expect(monthly.incompleteMonths).toEqual([]);
+    expect(monthly.dataAsOf).toBeNull();
+  });
+
+  test('keeps a stale account listed while it stays stale, and not after a threshold change', async () => {
+    await ingest('jun.pdf', account('EOP', ['2026-06-01', '2026-06-30'], [['2026-06-02', 'PAIE EMPLOYEUR', 300000]]));
+    const late = new Date('2026-09-01T00:00:00Z');
+
+    expect((await alerts.report({ env, now: late })).alerts.map((a) => a.kind)).toEqual(['stale_data']);
+    expect((await alerts.report({ env, now: late })).alerts).toEqual([]);
+    expect((await alerts.refresh({ env, now: late })).alerts.map((a) => a.kind)).toEqual(['stale_data']);
+    expect((await alerts.refresh({ env, now: new Date('2026-06-20T00:00:00Z') })).alerts).toEqual([]);
+    expect((await alerts.refresh({ env: { FINANCE_ALERT_STALE_DAYS: '90' }, now: late })).alerts).toEqual([]);
+  });
+
+  test('alerts on dated plan items at J-7, J-1 and overdue, daily until the date moves', async () => {
+    await plan.savePlan({
+      watch: [{ what: 'Hydro-Québec', date: '~23 de chaque mois', dueDate: '2026-10-23', recurrence: 'monthly', status: '' }],
+      openItems: [{ title: 'Impôt T2', detail: '', severity: 'warning', dueDate: '2026-10-30' }]
+    });
+    const kinds = async (day) => (await alerts.evaluate({ env, now: new Date(`${day}T12:00:00Z`) }))
+      .filter((a) => a.kind.startsWith('deadline')).map((a) => [a.kind, a.facts.label]);
+
+    expect(await kinds('2026-10-15')).toEqual([]);
+    expect(await kinds('2026-10-16')).toEqual([['deadline_upcoming', 'Hydro-Québec']]);
+    expect(await kinds('2026-10-22')).toEqual([['deadline_due', 'Hydro-Québec']]);
+    expect(await kinds('2026-10-24')).toEqual([['deadline_overdue', 'Hydro-Québec'], ['deadline_upcoming', 'Impôt T2']]);
+
+    const day = new Date('2026-10-24T12:00:00Z');
+    const sortedKinds = (result) => result.alerts.map((a) => a.kind).sort();
+    expect(sortedKinds(await alerts.report({ env, now: day }))).toEqual(['deadline_overdue', 'deadline_upcoming']);
+    expect((await alerts.report({ env, now: day })).alerts).toEqual([]);
+    expect(sortedKinds(await alerts.refresh({ env, now: day }))).toEqual(['deadline_overdue', 'deadline_upcoming']);
+    expect(sortedKinds(await alerts.report({ env, now: new Date('2026-10-25T12:00:00Z') })))
+      .toEqual(['deadline_overdue', 'deadline_upcoming']);
+
+    await plan.applyOps([{ op: 'update', section: 'watch', match: 'Hydro', item: { dueDate: '2026-11-23' } }]);
+    expect(await kinds('2026-10-25')).toEqual([['deadline_upcoming', 'Impôt T2']]);
+  });
+
+  test('rejects a malformed dueDate or recurrence and keeps free-text dates', async () => {
+    await expect(plan.savePlan({ watch: [{ what: 'Loyer', dueDate: 'demain' }] })).rejects.toMatchObject({ code: 'FINANCE_PLAN_INVALID' });
+    await expect(plan.savePlan({ openItems: [{ title: 'Assurance', recurrence: 'weekly' }] })).rejects.toMatchObject({ code: 'FINANCE_PLAN_INVALID' });
+    const saved = await plan.savePlan({ watch: [{ what: 'Assurance', date: '~23 de chaque mois' }] });
+    expect(saved.watch[0]).toMatchObject({ date: '~23 de chaque mois', dueDate: null, recurrence: null });
   });
 });
 
@@ -544,7 +646,7 @@ describe('financial plan and situation', () => {
     expect(s.budget.map((b) => [b.label, b.actualMonthlyCents])).toEqual([['Paye', 250000], ['Café', 900], ['Restos', 0]]);
     expect(s.monthly).toEqual({ inCents: 250000, outCents: -900, netCents: 249100 });
     expect(s).toMatchObject({ provisionsMonthlyCents: 30000, taxRoomCents: 1000000, phase: 'Reconstruction' });
-    expect(s.openItems).toEqual([{ title: 'Relevé manquant', detail: '', severity: 'warning' }]);
+    expect(s.openItems).toEqual([{ title: 'Relevé manquant', detail: '', severity: 'warning', dueDate: null, recurrence: null }]);
     expect(s.excludeTags).toEqual(['refi']);
     await categories.saveRules({ pattern: 'cafe du coin', category: 'Restaurants', tags: ['cafe', 'refi'] });
     expect((await plan.situation({ months: 1 })).monthly).toEqual({ inCents: 250000, outCents: 0, netCents: 250000 });
