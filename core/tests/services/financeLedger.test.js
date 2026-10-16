@@ -623,7 +623,9 @@ describe('Secretary documents matched to ledger rows', () => {
     { supplier: 'PlayStation Exemple', documentNumber: 'P-8', documentDate: '2026-06-05', documentKind: 'reçu', grossAmountCents: 7000, messageId: 'm7' },
     { supplier: 'Revenu Exemple', documentNumber: 'T-9', documentDate: '2026-06-03', documentKind: 'annexe fiscale', grossAmountCents: 7000, messageId: 'm8' },
     { supplier: 'Assureur Exemple', documentNumber: 'C-10', documentDate: '2026-06-16', documentKind: 'claim', patientPaidCents: 600000, messageId: 'm9' },
-    { supplier: 'Assurance Exemple', documentNumber: 'S-11', documentDate: '2026-06-28', documentKind: "relevé d'assurance", messageId: 'm10' }
+    { supplier: 'Assurance Exemple', documentNumber: 'S-11', documentDate: '2026-06-28', documentKind: "relevé d'assurance", messageId: 'm10' },
+    { supplier: 'Fournisseur Exemple', documentNumber: 'A-12', documentDate: '2026-06-18', documentKind: 'avis de paiement', person: 'Corp Exemple Inc.', grossAmountCents: 25000, messageId: 'm11' },
+    { supplier: 'Voyage Exemple', documentNumber: 'V-13', documentDate: '2026-06-19', documentKind: 'claim', grossAmountCents: 40000, messageId: 'm12' }
   ];
 
   beforeEach(async () => {
@@ -639,11 +641,25 @@ describe('Secretary documents matched to ledger rows', () => {
     const file = await writeDoc('register.json', JSON.stringify({ schemaVersion: 2, generatedAt: '2026-10-16T08:00:00Z', complete: true, coverage: {}, invoices }));
     process.env.FINANCE_SECRETARY_REGISTER = file;
     delete process.env.FINANCE_DOCUMENT_CLAIM_MAX_CENTS;
+    process.env.FINANCE_CORP_NAMES = 'Corp Exemple';
   });
 
   afterEach(() => {
     if (previous === undefined) delete process.env.FINANCE_SECRETARY_REGISTER; else process.env.FINANCE_SECRETARY_REGISTER = previous;
     if (previousMax === undefined) delete process.env.FINANCE_DOCUMENT_CLAIM_MAX_CENTS; else process.env.FINANCE_DOCUMENT_CLAIM_MAX_CENTS = previousMax;
+    delete process.env.FINANCE_CORP_NAMES;
+  });
+
+  test('a corporate payment advice is never a personal claim and never links to a personal row', async () => {
+    const view = await links.documents({ minCents: 10000 });
+    expect(view.toClaim.items.map((d) => d.documentNumber)).toEqual(['C-7']);
+    expect(view.unmatchedDocuments.items.map((d) => d.supplier).sort()).toEqual(
+      ['Assureur Exemple', 'Assureur Exemple', 'PlayStation Exemple', 'Revenu Exemple', 'Voyage Exemple', 'Vrac Exemple']);
+    const corp = await links.documents({ minCents: 10000, ledger: 'corp' });
+    expect(corp.ledger).toBe('corp');
+    expect(corp.toClaim).toMatchObject({ count: 0 });
+    expect(corp.unmatchedDocuments.items.map((d) => d.supplier)).toEqual(['Fournisseur Exemple']);
+    expect(corp.proposals).toEqual([]);
   });
 
   test('reads free-text kinds into the closed set and keeps the original label', async () => {
@@ -661,7 +677,7 @@ describe('Secretary documents matched to ledger rows', () => {
     const boutique = view.ambiguous.find((group) => group.document.supplier === 'Boutique Exemple');
     expect(boutique.candidates.map((c) => c.transaction.description).sort()).toEqual(['MARCHE A', 'MARCHE B']);
     expect(view.unmatchedDocuments.items.map((d) => d.supplier).sort())
-      .toEqual(['Assureur Exemple', 'Assureur Exemple', 'PlayStation Exemple', 'Revenu Exemple', 'Vrac Exemple']);
+      .toEqual(['Assureur Exemple', 'Assureur Exemple', 'PlayStation Exemple', 'Revenu Exemple', 'Voyage Exemple', 'Vrac Exemple']);
     expect(view.statements.items.map((d) => d.originalFilename)).toEqual(['releve-juin.pdf']);
     expect(view.unlinkedTransactions.items.map((t) => t.description)).toEqual(['GROS ACHAT']);
   });

@@ -125,9 +125,13 @@ personal ledger. Core never writes to it.
   their candidate rows, for the owner to pick one; documents without a
   transaction; outflows above a threshold without a document; claims still to
   file; figures to verify; bank statements found in mail. Totals are computed by Core.
-- Claims keep health and insurance only: an insurer, a claim or remittance kind,
-  a health supplier word (clinic, pharmacy, dental, ...), or a linked row in the
-  Santé category. Tax and government documents are excluded.
+- Claims keep health and insurance only: an insurer, a health or insurance
+  supplier word (clinic, pharmacy, dental, insurer...), or a linked row in the
+  Santé category. A claim or remittance kind alone is not enough: a client's
+  payment advice is not an insurer's. Tax and government documents are excluded.
+- A document whose `person` names one of the corporations (`FINANCE_CORP_NAMES`)
+  belongs to the corporate ledger: it matches corporate rows only, is never a
+  personal claim, and is listed by `GET /api/finance/documents?ledger=corp`.
 - A claim goes to `toVerify`, out of the totals, when it is above
   `FINANCE_DOCUMENT_CLAIM_MAX_CENTS` (500 000 cents by default) or when its amount
   is more than twice its gross amount, or its patient share exceeds the gross.

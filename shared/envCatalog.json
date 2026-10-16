@@ -1169,6 +1169,16 @@
       "secret": false,
       "description": "Ceiling in cents for a document in the claims view; above it, or when it is more than twice its gross amount, the document goes to toVerify. Unset: 500000 (5 000 $)."
     },
+    "FINANCE_CORP_NAMES": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "finance",
+      "secret": false,
+      "description": "Comma-separated names of the owner's corporations. A Secretary document whose person names one of them belongs to the corporate ledger and is never a personal claim. Unset: none."
+    },
     "FINANCE_SECRETARY_REGISTER": {
       "services": [
         "core"
