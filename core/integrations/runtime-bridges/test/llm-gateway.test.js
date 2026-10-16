@@ -50,7 +50,7 @@ class Response extends PassThrough {
 }
 
 function snapshot() {
-  const task = { taskType: 'daily_operator', model: 'model-a', hostUrl: 'http://model-host.test:11434', contextSize: 196608 };
+  const task = { taskType: 'daily_operator', model: 'model-a', hostUrl: 'http://model-host.test:11434', contextSize: 196608, pinAligned: true };
   return { generatedAt: '2026-10-16T00:00:00.000Z', tasks: { daily_operator: task } };
 }
 

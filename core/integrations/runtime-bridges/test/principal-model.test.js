@@ -6,12 +6,17 @@ const { studioSettings, studioPatch, settingsPatch } = require('../../../../inte
 
 test('a following consumer resolves the current concrete model and preserves the full context', () => {
   for (const model of ['standard', 'abliterated']) {
-    const target = resolvePrincipalAlias({ tasks: { daily_operator: { model, contextSize: 196608, hostUrl: 'http://model-host' } } }, 'agentx-primary');
+    const target = resolvePrincipalAlias({ tasks: { daily_operator: { model, contextSize: 196608, hostUrl: 'http://model-host', pinAligned: true } } }, 'agentx-primary');
     assert.equal(target.model, model);
     assert.equal(target.numCtx, 196608);
   }
   assert.equal(resolvePrincipalAlias({ tasks: {} }, 'explicit-standard'), null);
   assert.throws(() => resolvePrincipalAlias({ tasks: {} }, 'agentx-primary'), { code: 'PRINCIPAL_MODEL_UNAVAILABLE' });
+});
+
+test('the alias refuses a principal route that no longer serves its host pin', () => {
+  const unpinned = { tasks: { daily_operator: { model: 'other', contextSize: 196608, hostUrl: 'http://model-host', pinAligned: false } } };
+  assert.throws(() => resolvePrincipalAlias(unpinned, 'agentx-primary'), { code: 'PRINCIPAL_MODEL_UNAVAILABLE', statusCode: 409 });
 });
 
 test('Studio launch overlays preserve preferences, principal context and optional browser configuration', () => {
