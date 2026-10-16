@@ -137,6 +137,19 @@ async function saveSection(section, value) {
   return savePlan({ ...current, [section]: value });
 }
 
+const RECURRENCE_MONTHS = { monthly: 1, quarterly: 3, yearly: 12 };
+
+// Moves a YYYY-MM-DD date by whole months. A last-day date stays on the last day of the target month.
+function addMonths(date, months) {
+  const [year, month, day] = date.split('-').map(Number);
+  const first = new Date(Date.UTC(year, month - 1 + months, 1));
+  const y = first.getUTCFullYear();
+  const m = first.getUTCMonth();
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const isLastDay = new Date(Date.UTC(year, month, 0)).getUTCDate() === day;
+  return new Date(Date.UTC(y, m, isLastDay ? lastDay : Math.min(day, lastDay))).toISOString().slice(0, 10);
+}
+
 // Small edits for the finance persona: add, update (by index or by a text
 // match on the first text field) or remove items, or set a scalar section.
 async function applyOps(ops) {
@@ -167,8 +180,22 @@ async function applyOps(ops) {
       if (index < 0 || index >= items.length) throw new FinancePlanError(`no ${section} item matches ${op.match ?? op.index}`);
       if (op.op === 'remove') items.splice(index, 1); else items[index] = { ...items[index], ...(op.item || {}) };
       applied.push({ op: op.op, section, index });
+    } else if (op.op === 'done') {
+      // Settled: a recurring item moves to its next dueDate; any other item is removed and kept as a settled milestone.
+      if (!['watch', 'openItems'].includes(section)) throw new FinancePlanError(`${section} does not take done`);
+      const index = find();
+      if (index < 0 || index >= items.length) throw new FinancePlanError(`no ${section} item matches ${op.match ?? op.index}`);
+      const item = items[index];
+      if (item.recurrence) {
+        if (!item.dueDate) throw new FinancePlanError(`${section} item with a recurrence needs a dueDate`);
+        items[index] = { ...item, dueDate: addMonths(item.dueDate, RECURRENCE_MONTHS[item.recurrence]) };
+      } else {
+        items.splice(index, 1);
+        plan.milestones.push({ text: `${item.what || item.title} — réglé le ${new Date().toISOString().slice(0, 10)}`, done: true });
+      }
+      applied.push({ op: 'done', section, index });
     } else {
-      throw new FinancePlanError('op must be add, update, remove or set');
+      throw new FinancePlanError('op must be add, update, remove, set or done');
     }
   }
   const saved = await savePlan(plan);
