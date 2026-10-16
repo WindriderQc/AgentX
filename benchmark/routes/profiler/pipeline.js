@@ -22,7 +22,7 @@ const logger = require('../../config/logger');
 const STEPS_BY_DEPTH = {
   quick:    ['warmup', 'throughput', 'spill_detection', 'thinking_behavior', 'saving'],
   standard: ['warmup', 'throughput', 'spill_detection', 'thinking_behavior', 'context_probe', 'saving'],
-  full:     ['warmup', 'throughput', 'spill_detection', 'thinking_behavior', 'context_probe', 'throughput_curve', 'generation_stability', 'prefill_decode_matrix', 'long_context_quality', 'load_timing', 'saving']
+  full:     ['warmup', 'throughput', 'spill_detection', 'thinking_behavior', 'context_probe', 'throughput_curve', 'generation_stability', 'prefill_decode_matrix', 'long_context_quality', 'agent_workload', 'load_timing', 'saving']
 };
 
 // Rough upper bound on how long a profile run can take — used by the

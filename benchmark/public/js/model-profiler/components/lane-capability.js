@@ -21,6 +21,7 @@ const READINESS = {
   ready: { label: 'Ready', tone: 'good' },
   speed_only: { label: 'Speed only', tone: 'warn', hint: 'Speed is measured; answer quality at this size is not' },
   unverified: { label: 'Unverified', tone: 'warn', hint: 'Recommendations need a fresh standard profile' },
+  limited: { label: 'Limited', tone: 'warn', hint: 'Measured, but below the minimum for autonomous work steps' },
   not_measured: { label: 'Not measured', tone: 'dim' }
 };
 
@@ -81,6 +82,52 @@ export function renderContextGauge(capability, pinContext) {
     <ul class="lc-legend">${legend}${qualityUnknown}</ul>`;
 }
 
+/**
+ * Session growth sparkline: call time against session size, one dot per turn,
+ * red where the answer was wrong. Drawn to one scale from the data.
+ */
+export function renderSessionCurve(curve) {
+  const rows = (Array.isArray(curve) ? curve : []).filter(row => row.contextTokens > 0 && row.latencyMs > 0);
+  if (rows.length < 2) return '';
+  const W = 300; const H = 84; const L = 34; const B = 18; const T = 6; const R = 6;
+  const maxX = Math.max(...rows.map(row => row.contextTokens));
+  const maxY = Math.max(...rows.map(row => row.latencyMs));
+  const x = v => L + (W - L - R) * v / maxX;
+  const y = v => T + (H - T - B) * (1 - v / maxY);
+  const path = rows.map((row, i) => `${i ? 'L' : 'M'}${x(row.contextTokens).toFixed(1)} ${y(row.latencyMs).toFixed(1)}`).join(' ');
+  const dots = rows.map(row => `<circle cx="${x(row.contextTokens).toFixed(1)}" cy="${y(row.latencyMs).toFixed(1)}" r="2.6" class="${row.correct ? 'lc-dot' : 'lc-dot lc-dot--wrong'}"></circle>`).join('');
+  const sec = v => `${Math.round(v / 1000)} s`;
+  return `<figure class="lc-curve">
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Call time as the session grows, up to ${fmtCtx(maxX)} and ${sec(maxY)}">
+      <line x1="${L}" y1="${H - B}" x2="${W - R}" y2="${H - B}" class="lc-axis"></line>
+      <line x1="${L}" y1="${T}" x2="${L}" y2="${H - B}" class="lc-axis"></line>
+      <text x="${L - 4}" y="${T + 8}" text-anchor="end">${sec(maxY)}</text>
+      <text x="${L - 4}" y="${H - B}" text-anchor="end">0</text>
+      <text x="${W - R}" y="${H - 4}" text-anchor="end">${fmtCtx(maxX)}</text>
+      <text x="${L}" y="${H - 4}">session size</text>
+      <path d="${path}" class="lc-line"></path>${dots}
+    </svg>
+    <figcaption>Call time as one agent session grows${rows.some(row => !row.correct) ? '; red dots are wrong answers' : ''}.</figcaption>
+  </figure>`;
+}
+
+function renderAgentBlock(agent) {
+  if (agent?.status !== 'measured') {
+    return `<section class="lc-block" aria-label="Agent work"><h4>Agent work</h4>
+      <p class="lc-empty">Not measured yet. A Full profile measures a growing session, structured output, verification and tool turns.</p></section>`;
+  }
+  const tools = `${agent.reliableToolTurns} turns${agent.toolChecksTotal ? ` · ${agent.toolChecksCorrect}/${agent.toolChecksTotal} right` : ''}`;
+  return `<section class="lc-block" aria-label="Agent work"><h4>Agent work</h4>
+    <dl class="lc-speed lc-agent">
+      <div class="lc-agent-step"><dt>Recommended step</dt><dd>${fmtCtx(agent.recommendedStepContext)}</dd></div>
+      <div><dt>Tool calls</dt><dd>${escAttr(tools)}</dd></div>
+      <div><dt>Structured output</dt><dd>${agent.reliableOutputTokens ? `${fmtCtx(agent.reliableOutputTokens)} tok` : '—'}</dd></div>
+      <div><dt>Finds mismatches up to</dt><dd>${fmtCtx(agent.verificationVerifiedContext)}</dd></div>
+    </dl>
+    ${renderSessionCurve(agent.sessionCurve)}
+  </section>`;
+}
+
 export function laneWarnings(lane) {
   const c = lane?.capability?.context || {};
   const warnings = [];
@@ -136,6 +183,7 @@ export function renderLaneCard(lane, index = 0) {
       </dl>
       ${prefill}
     </section>
+    ${renderAgentBlock(cap.agent)}
     <footer class="lc-card-foot">
       <p class="lc-provenance">${escAttr(ageText(provenance.ageDays))}${provenance.depth ? ` · ${escAttr(provenance.depth)} profile` : ''}</p>
       ${gapList}
@@ -152,12 +200,14 @@ export function renderLaneCard(lane, index = 0) {
 export function renderLaneSummary(lanes) {
   const list = Array.isArray(lanes) ? lanes : [];
   const count = state => list.filter(lane => lane.capability?.readiness?.codingAgent === state).length;
+  const unmeasured = list.filter(lane => lane.capability?.agent?.status !== 'measured').length;
   const knee = list.filter(lane => laneWarnings(lane).length).length;
   const quality = list.filter(lane => lane.capability?.quality?.status !== 'verified').length;
   return `<span class="lc-summary-item"><strong>${list.length}</strong> ${list.length === 1 ? 'lane' : 'lanes'}</span>
     <span class="lc-summary-item${knee ? ' is-warn' : ''}"><strong>${knee}</strong> past the speed knee</span>
     <span class="lc-summary-item${quality ? ' is-warn' : ''}"><strong>${quality}</strong> without verified quality</span>
-    <span class="lc-summary-item${count('not_measured') ? ' is-dim' : ''}"><strong>${count('ready')}</strong> ready for coding agents</span>`;
+    <span class="lc-summary-item${count('not_measured') ? ' is-dim' : ''}"><strong>${count('ready')}</strong> ready for coding agents</span>
+    <span class="lc-summary-item${unmeasured ? ' is-dim' : ''}"><strong>${unmeasured}</strong> without agent measurements</span>`;
 }
 
 /**
@@ -175,4 +225,18 @@ export function buildMeasureRequest(lane, now = new Date()) {
   end.setDate(end.getDate() + 1);
   end.setHours(6, 0, 0, 0);
   return { model: cap.model, hostUrl: cap.hostUrl, notBefore: start.toISOString(), startBefore: end.toISOString() };
+}
+
+/** Lanes the night campaign measures: those still missing quality or agent evidence. */
+export function campaignTargets(lanes) {
+  return (Array.isArray(lanes) ? lanes : []).filter(lane => lane.capability?.hostId
+    && (lane.capability.quality?.status !== 'verified' || lane.capability.agent?.status !== 'measured'));
+}
+
+export function campaignText(targets) {
+  if (!targets.length) return 'Every lane already has verified quality and agent measurements.';
+  const hosts = new Set(targets.map(lane => lane.hostName || lane.capability.hostId));
+  return `Record ${targets.length} Full-profile ${targets.length === 1 ? 'request' : 'requests'} for tonight, 23:00 to 06:00, `
+    + `on ${hosts.size} ${hosts.size === 1 ? 'host' : 'hosts'}: lanes still missing verified quality or agent measurements. `
+    + 'Each takes about three hours. Nothing starts until you reserve them in Automations → Calendar.';
 }

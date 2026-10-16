@@ -12,6 +12,8 @@
 
 const SCHEMA = 'agentx.lane-capability/v1';
 const MAX_AGE_DAYS = 30;
+// Minimums for an autonomous coding or report worker step.
+const AGENT_MINIMUMS = Object.freeze({ stepContext: 8192, toolTurns: 8, outputTokens: 1500, toolAccuracy: 0.75 });
 // Physical plausibility bounds. A value outside them is a measurement defect
 // (one recorded profile claimed 1,000,000 tok/s), not a capability.
 const LIMITS = Object.freeze({
@@ -32,6 +34,10 @@ const GAP_TEXT = Object.freeze({
   prompt_speed_missing: 'Prompt reading speed is not measured.',
   long_prefill_missing: 'Reading speed at 32k–128k contexts is not measured (needs a Full profile).',
   agent_workload_missing: 'Agent workload (growing session, long structured output, many tool turns) is not measured yet.',
+  agent_session_short: 'In a growing agent session, calls slow down or answers break before an 8k-token step.',
+  agent_tools_unreliable: 'The model makes fewer than 8 consecutive valid tool calls.',
+  agent_output_short: 'The model cannot return a complete structured answer of about 1,500 tokens.',
+  agent_tool_answers_wrong: 'Fewer than three quarters of the checks recorded through tools were right.',
   profile_old: 'The newest measurement is older than 30 days.',
   implausible_values: 'Some recorded values are physically impossible and were ignored.'
 });
@@ -75,6 +81,38 @@ function longPrefillRows(profile, rejected) {
     .sort((a, b) => a.numCtx - b.numCtx);
 }
 
+function agentCapability(profile, rejected) {
+  const summary = profile?.agentWorkload?.summary;
+  if (!summary) return { status: 'not_measured' };
+  const value = (field, max) => plausible(`agent.${field}`, summary[field], max, rejected, { integer: true });
+  const agent = {
+    status: 'measured',
+    sessionLatencyKneeContext: value('sessionLatencyKneeContext', LIMITS.context),
+    sessionAccuracyContext: value('sessionAccuracyContext', LIMITS.context),
+    verificationVerifiedContext: value('verificationVerifiedContext', LIMITS.context),
+    reliableOutputItems: value('reliableOutputItems', 100000),
+    reliableOutputTokens: value('reliableOutputTokens', LIMITS.context),
+    reliableToolTurns: finite(summary.reliableToolTurns) ?? 0,
+    toolChecksCorrect: finite(summary.toolChecksCorrect),
+    toolChecksTotal: finite(summary.toolChecksTotal),
+    sessionCurve: (profile.agentWorkload.session?.turns || [])
+      .filter(row => row?.status === 'pass')
+      .slice(0, 60)
+      .map(row => ({ contextTokens: finite(row.contextTokens), latencyMs: finite(row.latencyMs), correct: row.correct === true })),
+    measuredAt: profile.agentWorkload.measuredAt || null
+  };
+  // The step a worker can give this model: the smallest of the measured
+  // limits, so a step stays fast, exact and verifiable.
+  const limits = [agent.sessionLatencyKneeContext, agent.sessionAccuracyContext, agent.verificationVerifiedContext]
+    .filter(limit => Number(limit) > 0);
+  agent.recommendedStepContext = limits.length ? Math.min(...limits) : null;
+  return agent;
+}
+
+function toolAccuracy(agent) {
+  return agent.toolChecksTotal > 0 ? (agent.toolChecksCorrect || 0) / agent.toolChecksTotal : 0;
+}
+
 function readiness({ context, quality, agent }) {
   const chat = context.interactive ? 'ready' : context.max ? 'unverified' : 'not_measured';
   let documents = 'not_measured';
@@ -83,7 +121,13 @@ function readiness({ context, quality, agent }) {
   } else if (context.max) {
     documents = 'unverified';
   }
-  const codingAgent = agent.status === 'measured' ? 'ready' : 'not_measured';
+  let codingAgent = 'not_measured';
+  if (agent.status === 'measured') {
+    codingAgent = (agent.recommendedStepContext || 0) >= AGENT_MINIMUMS.stepContext
+      && agent.reliableToolTurns >= AGENT_MINIMUMS.toolTurns
+      && (agent.reliableOutputTokens || 0) >= AGENT_MINIMUMS.outputTokens
+      && toolAccuracy(agent) >= AGENT_MINIMUMS.toolAccuracy ? 'ready' : 'limited';
+  }
   return { chat, documents, codingAgent };
 }
 
@@ -110,7 +154,11 @@ function buildLaneCapability({
 
   const perf = performanceProfile?.profile ? performanceProfile : null;
   const perfDigest = perf?.artifact?.digest || perf?.profile?.artifact?.digest || null;
-  const perfMatches = Boolean(perf) && (!identified || !perfDigest || digestsMatch(perfDigest, artifact.digest));
+  const perfRuntime = perf?.artifact?.runtimeFingerprint || perf?.profile?.artifact?.runtimeFingerprint || null;
+  // Quality and agent evidence are bound to the exact artifact and runtime:
+  // a different Ollama build or setting is a different measurement.
+  const perfMatches = Boolean(perf) && (!identified || ((!perfDigest || digestsMatch(perfDigest, artifact.digest))
+    && (!perfRuntime || perfRuntime === artifact.runtimeFingerprint)));
   if (!perf) gaps.push('no_performance_profile');
   else if (!perfMatches) gaps.push('performance_artifact_mismatch');
   const p = perfMatches ? perf.profile : {};
@@ -154,8 +202,14 @@ function buildLaneCapability({
   if (perfMatches && !throughput.promptTokensPerSec) gaps.push('prompt_speed_missing');
   if (perfMatches && longPrefill.length === 0) gaps.push('long_prefill_missing');
 
-  const agent = { status: 'not_measured' };
-  gaps.push('agent_workload_missing');
+  const agent = agentCapability(perfMatches ? p : null, rejected);
+  if (agent.status !== 'measured') gaps.push('agent_workload_missing');
+  else {
+    if ((agent.recommendedStepContext || 0) < AGENT_MINIMUMS.stepContext) gaps.push('agent_session_short');
+    if (agent.reliableToolTurns < AGENT_MINIMUMS.toolTurns) gaps.push('agent_tools_unreliable');
+    if ((agent.reliableOutputTokens || 0) < AGENT_MINIMUMS.outputTokens) gaps.push('agent_output_short');
+    if (toolAccuracy(agent) < AGENT_MINIMUMS.toolAccuracy) gaps.push('agent_tool_answers_wrong');
+  }
 
   const dates = [dateOrNull(ctxProfile?.lastValidatedAt), dateOrNull(p?.profiledAt || perf?.updatedAt)].filter(Boolean);
   const measuredAt = dates.length ? new Date(Math.max(...dates.map(date => date.getTime()))) : null;
@@ -186,4 +240,4 @@ function buildLaneCapability({
   };
 }
 
-module.exports = { buildLaneCapability, SCHEMA, LIMITS, MAX_AGE_DAYS, GAP_TEXT };
+module.exports = { buildLaneCapability, SCHEMA, LIMITS, MAX_AGE_DAYS, GAP_TEXT, AGENT_MINIMUMS };

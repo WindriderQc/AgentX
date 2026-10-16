@@ -8,7 +8,7 @@ const helpers = {
   escAttr: value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 };
 const ui = loadBrowserModule('model-profiler/components/lane-capability.js',
-  'renderLaneCard, renderLaneSummary, renderContextGauge, laneWarnings, buildMeasureRequest, taskLabel, ageText', helpers);
+  'renderLaneCard, renderLaneSummary, renderContextGauge, laneWarnings, buildMeasureRequest, taskLabel, ageText, renderSessionCurve, campaignTargets, campaignText', helpers);
 
 const NOW = new Date('2026-10-16T12:00:00Z');
 const capability = (over = {}) => buildLaneCapability({
@@ -45,6 +45,7 @@ describe('lane capability card', () => {
     expect(html).toContain('1450 tok/s');
     expect(html).toContain('measured 8 days ago · standard profile');
     expect(html).toContain('3 missing measurements');
+    expect(html).toContain('Not measured yet. A Full profile measures a growing session');
     expect(html).toContain('Agent workload (growing session');
     expect(html).toContain('data-lane-action="measure"');
   });
@@ -107,5 +108,39 @@ describe('measure tonight window', () => {
     expect(ui.ageText(null)).toBe('never measured');
     expect(ui.ageText(0)).toBe('measured today');
     expect(ui.ageText(12)).toBe('measured 12 days ago');
+  });
+});
+
+describe('agent work on the lane card', () => {
+  const measured = () => {
+    const base = capability();
+    return { ...base, readiness: { ...base.readiness, codingAgent: 'limited' }, agent: {
+      status: 'measured', recommendedStepContext: 24576, reliableToolTurns: 6, toolChecksCorrect: 5, toolChecksTotal: 12,
+      reliableOutputTokens: 4200, verificationVerifiedContext: 32768,
+      sessionCurve: [{ contextTokens: 3000, latencyMs: 9000, correct: true }, { contextTokens: 30000, latencyMs: 60000, correct: false }] } };
+  };
+
+  it('shows the recommended step, tool reliability, output and the session curve', () => {
+    const html = ui.renderLaneCard(lane({ capability: measured() }));
+    expect(html).toMatch(/Coding agent<\/span><span class="lc-ready-state">Limited/);
+    expect(html).toContain('<dt>Recommended step</dt><dd>24k</dd>');
+    expect(html).toContain('6 turns · 5/12 right');
+    expect(html).toContain('<dt>Finds mismatches up to</dt><dd>32k</dd>');
+    expect(html).toContain('red dots are wrong answers');
+    expect(html).toContain('lc-dot lc-dot--wrong');
+  });
+
+  it('draws no curve from fewer than two turns', () => {
+    expect(ui.renderSessionCurve([{ contextTokens: 3000, latencyMs: 9000, correct: true }])).toBe('');
+    expect(ui.renderSessionCurve(null)).toBe('');
+  });
+
+  it('targets only lanes missing quality or agent evidence and explains the cost', () => {
+    const done = lane({ capability: { ...measured(), quality: { status: 'verified', context: 65536 } } });
+    const targets = ui.campaignTargets([lane(), done, lane({ capability: { ...capability(), hostId: null } })]);
+    expect(targets).toHaveLength(1);
+    expect(ui.campaignText(targets)).toContain('Record 1 Full-profile request for tonight, 23:00 to 06:00, on 1 host');
+    expect(ui.campaignText(targets)).toContain('Nothing starts until you reserve them');
+    expect(ui.campaignText([])).toBe('Every lane already has verified quality and agent measurements.');
   });
 });

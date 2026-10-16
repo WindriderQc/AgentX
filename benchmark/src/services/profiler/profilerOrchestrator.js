@@ -9,6 +9,7 @@ const settingsService = require('./settingsService');
 const { _captureHardwareSnapshot, _buildHardwareTelemetry } = require('./profilerHardwareSnapshots');
 const { runPrefillDecodeMatrix } = require('./prefillDecodeMatrix');
 const { runLongContextQualityProbe } = require('./longContextQualityProbe');
+const { runAgentWorkloadProbe } = require('./agentWorkloadProbe');
 const { profileThinkingBehavior } = require('./thinkingProfileService');
 const { resolveModelNumCtxDetails } = require('../modelContextResolver');
 const { listRunning, showModel } = require('../../clients/ollamaClient');
@@ -37,6 +38,15 @@ const {
   _runGenerationStability,
   _runLoadTiming
 } = require('./profilerMeasurementPhases');
+
+function agentWorkloadMessage(phase, row) {
+  if (phase === 'session') {
+    return `Session turn ${row.turn} at ${_formatCtx(row.contextTokens)}: ${(row.latencyMs / 1000).toFixed(1)} s, ${row.correct ? 'exact' : 'wrong'}`;
+  }
+  if (phase === 'output') return `Structured output ${row.items} items: ${row.status} (${row.exact ?? 0}/${row.total ?? row.items} exact)`;
+  if (phase === 'verification') return `Verification at ${_formatCtx(row.numCtx)}: ${row.status} (${row.found ?? 0}/${row.expected ?? '?'} found)`;
+  return `Tool turn ${row.turn}: ${row.validTurns} valid, ${row.recorded} checks recorded`;
+}
 
 async function profile(modelName, hostId, hostUrl, depth = 'standard', {
   onProgress,
@@ -451,6 +461,17 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
     });
     profileData.qualityVerifiedContext = profileData.longContextQuality.qualityVerifiedContext;
     profileData.qualityContextStatus = profileData.qualityVerifiedContext ? 'verified' : 'unknown';
+  }
+  if (settings.agentWorkloadEnabled !== false) {
+    notify('agent_workload', { message: 'Measuring agent work: growing session, structured output, verification and tool turns…' });
+    checkpoint();
+    profileData.agentWorkload = await runAgentWorkloadProbe(hostUrl, modelName, {
+      maxVerifiedContext: maxCtx,
+      timeoutMs: require('../probePlacement').residencyTimeoutMs(hostUrl, contextProbeService.getConfig().timeoutMs),
+      signal,
+      checkpoint,
+      onProgress: ({ phase, row }) => notify('agent_workload', { message: agentWorkloadMessage(phase, row) }),
+    });
   }
   notify('load_timing', { message: 'Measuring cold and hot load timing…' });
   profileData.loadTiming = await _runLoadTiming(hostUrl, modelName, {
