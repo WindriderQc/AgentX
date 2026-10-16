@@ -5,7 +5,7 @@ const path = require('path');
 const vm = require('vm');
 
 // pipeline.js creates its sections from these scripts, which the page loads first.
-const PIPELINE_PARTS = ['pipeline-launch.js', 'pipeline-worker-monitor.js', 'pipeline-delivery.js', 'pipeline-board.js', 'pipeline-attempt-dossier.js', 'pipeline-drawer.js'];
+const PIPELINE_PARTS = ['pipeline-launch.js', 'pipeline-worker-monitor.js', 'pipeline-delivery.js', 'pipeline-board.js', 'pipeline-attempt-dossier.js', 'pipeline-dossier-activity.js', 'pipeline-drawer.js'];
 const jsDir = path.resolve(__dirname, '../../public/js');
 
 function readPipelineScript(name = 'pipeline.js') {

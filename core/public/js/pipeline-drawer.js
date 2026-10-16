@@ -20,6 +20,7 @@
     const deps = Array.isArray(task.dependsOn) ? task.dependsOn : [];
     const reviewer = readStorage(STORAGE_REVIEWER) || '';
     const review = reviewContext(task);
+    const activity = window.PipelineDossierActivity.read(task);
     const report = window.PipelineLaunchController?.currentReport(task);
     const profileContext = escapeHtml(window.PipelineLaunchController?.profileContext(task) || '');
     const deliveryItem = Array.isArray(state.delivery?.items)
@@ -141,7 +142,7 @@
     const resolution = task.resolution && task.resolution.kind === 'superseded' ? task.resolution : null;
     const mode = qualification ? 'archive' : ['queued', 'in_progress', 'blocked', 'review', 'done'].includes(task.status) ? task.status : 'unknown';
     const nextStepTitles = {
-      observe_progress: 'Nothing to decide right now',
+      observe_progress: 'Check work progress',
       human_review: 'Your decision',
       inspect_blocker: canReply ? 'Your answer' : 'Your attention is needed',
       inspect_worker: 'Check the worker before intervening',
@@ -155,17 +156,17 @@
       qualification_archived: 'For reference',
     };
     const nextStepCopy = {
-      observe_progress: 'The worker owns the next step.',
+      observe_progress: 'A recent worker signal was recorded. Check work updates and registered files to assess progress.',
       human_review: 'Accept the result or request a correction. Merge and deployment remain separate.',
       inspect_blocker: canReply ? 'Read the problem above before sending your answer.' : 'Check the recorded work and execution before retrying.',
       await_claim: 'Check the request before handing it to the team.',
       none: 'Merge and deployment are tracked separately.',
     };
-    const messageEntry = mode === 'blocked'
+    const messageEntry = mode === 'in_progress' ? activity.workerEntry : mode === 'blocked'
       ? feedback.find(entry => ['coding-team', 'guarded-dispatch', task.assignee].includes(entry.by)) || feedback[0] : feedback[0];
     const resultLink = window.PipelineEvidenceReferences?.resultLink?.(task, state.deliveryError ? undefined : state.delivery?.items) || '';
     const resultChange = resultLink && ['review', 'done'].includes(mode) ? deliveryItem?.summary?.change : '';
-    const headings = { queued: 'Requested result', in_progress: 'Latest update', blocked: 'What is blocking this task?',
+    const headings = { queued: 'Requested result', in_progress: activity.workerEntry ? 'Latest worker update' : 'No progress update for this run', blocked: 'What is blocking this task?',
       review: 'Result to review', done: resolution ? 'Replaced task' : 'Recorded result',
       archive: `Archived qualification · ${qualification?.outcome || ''}`, unknown: 'Task state unavailable' };
     const mainText = mode === 'queued' ? task.spec || 'No requested result is recorded yet. Use Edit task to describe what you need.'
@@ -174,7 +175,7 @@
       : resultChange && ['review', 'done'].includes(mode) ? resultChange
       : mode === 'review' && String(messageEntry?.text || '').startsWith('Dispatcher independent verification: PASS') ? 'The worker submitted the result for review.'
       : stopped ? `${stopped.detail}\n\n${stopped.facts}`
-      : messageEntry ? latestTeamUpdate(task)
+      : messageEntry ? latestTeamUpdate(mode === 'in_progress' ? { ...task, feedback: [messageEntry] } : task)
       : mode === 'blocked' ? 'No blocking reason has been recorded.'
       : mode === 'in_progress' ? 'No progress update has been recorded yet.'
       : mode === 'unknown' ? 'Refresh the task before making a decision.' : 'No work summary has been recorded.';
@@ -193,6 +194,7 @@
       <p class="pipeline-drawer-byline">${escapeHtml(task.assignee ? `Assigned to ${task.assignee}` : 'Not assigned')}${task.dueAt ? ` · Due ${escapeHtml(formatDate(task.dueAt))}` : ''}</p>
       <div class="pipeline-drawer-workspace" data-dossier-mode="${mode}">
         <div class="pipeline-drawer-content">
+          ${window.PipelineDossierActivity.markup(task, activity, formatDate)}
           <section class="pipeline-drawer-document${mode === 'blocked' ? ' needs-answer' : ''}" aria-labelledby="pipelineDrawerContentTitle">
             <h3 id="pipelineDrawerContentTitle">${escapeHtml(stopped ? stopped.title : headings[mode])}</h3>
             ${messageEntry && !['queued', 'archive'].includes(mode) && !resolution && !resultChange ? `<p class="pipeline-drawer-byline">${escapeHtml(messageEntry.by || 'Recorded message')}${messageEntry.at ? ` · ${escapeHtml(formatDate(messageEntry.at))}` : ''}</p>` : ''}
@@ -207,10 +209,12 @@
         <section class="pipeline-drawer-section pipeline-drawer-next" aria-labelledby="pipelineDrawerNextTitle" data-attention="${review.actor === 'human' ? 'human' : 'follow-up'}">
           <h3 id="pipelineDrawerNextTitle">${escapeHtml(stopped ? stopped.requiresInspection ? 'Check original execution' : resumeWorker ? 'Update instructions and resume' : 'Check worker status' : closedUnmergedDelivery ? 'Correction needed' : nextStepTitles[review.code] || review.label)}</h3>
           <p class="pipeline-drawer-copy">${escapeHtml(stopped ? stopped.suggestion : closedUnmergedDelivery ? 'The PR closed without a merge. Record the correction needed.' : nextStepCopy[review.code] || review.action)}</p>
+          ${mode === 'in_progress' ? '<button type="button" class="pipeline-btn primary" data-inspect-pipeline-activity>Inspect activity and history</button><p class="pipeline-drawer-context">Start with the current diagnosis and recorded work before deciding whether to intervene.</p>' : ''}
           ${state.drawer.actionError?.pipelineId === task.pipelineId ? `<p class="pipeline-error" role="alert" data-drawer-action-error>${escapeHtml(state.drawer.actionError.message)}</p>` : ''}
           ${actions.join('')}
         </section>
       </div>
+      ${activity.instruction && ['in_progress', 'blocked'].includes(mode) ? `<details class="pipeline-drawer-original" data-drawer-section="instructions"><summary>Latest operator instructions · ${escapeHtml(formatDate(activity.instruction.at))}</summary><div class="pipeline-drawer-copy">${escapeHtml(activity.instruction.text)}</div></details>` : ''}
       ${resolution ? `<div class="pipeline-drawer-resolution"><strong>Superseded</strong> by <code>${escapeHtml(resolution.supersededBy)}</code> · ${escapeHtml(resolution.by || 'operator')} · ${escapeHtml(formatDate(resolution.at))}<br>${escapeHtml(resolution.reason || '')}<br><span class="pipeline-muted">Closed without delivery. Reopening requires an explicit decision; it never re-queues by itself.</span></div>` : ''}
       ${mode !== 'queued' && task.spec ? `<details class="pipeline-drawer-original" data-drawer-section="request"><summary>Original request</summary><div class="pipeline-drawer-copy">${escapeHtml(task.spec)}</div></details>` : ''}
       <details class="pipeline-drawer-technical" data-drawer-section="technical"><summary>Technical details and history</summary>

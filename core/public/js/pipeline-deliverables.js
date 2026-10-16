@@ -91,7 +91,7 @@
     }
     const stale = state.status === 'error' ? `<p class="pipeline-evidence-notice pipeline-evidence-conflict">Refresh failed (${esc(state.error)}); last loaded list shown.</p>` : '';
     return `${live}${stale}${state.rows.length ? state.rows.map(row => compact ? fileRow(pipelineId, row) : card(pipelineId, row)).join('')
-      : compact ? '<p class="pipeline-drawer-context">No result file is recorded yet.</p>' : '<div class="pipeline-empty">No deliverable is registered for this task.</div>'}`;
+      : compact ? '<p class="pipeline-drawer-context">No result file is registered in Core. Private worker drafts are not listed here.</p>' : '<div class="pipeline-empty">No deliverable is registered for this task.</div>'}`;
   }
 
   function render(pipelineId) {

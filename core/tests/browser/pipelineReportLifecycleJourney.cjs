@@ -61,7 +61,7 @@ const nativeCommands = [], errors = [], results = [], fixtureRoots = [];
   app.use('/api', (_q, r) => r.json({ ok: true, data: { items: [], tasks: [], counts: {}, enabled: false } }));
   const html = await ejs.renderFile(path.join(core, 'views/pages/pipeline.ejs'));
   const scripts = ['pipeline-report-selection', 'pipeline-launch', 'pipeline-worker-outcome', 'pipeline-worker-monitor', 'pipeline-delivery',
-    'pipeline-board', 'pipeline-attempt-dossier', 'pipeline-deliverables', 'pipeline-drawer', 'pipeline'];
+    'pipeline-board', 'pipeline-attempt-dossier', 'pipeline-deliverables', 'pipeline-dossier-activity', 'pipeline-drawer', 'pipeline'];
   app.get('/', (_q, r) => r.send(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/css/pipeline.css"><body>${html}${scripts.map(name => `<script src="/js/${name}.js"></script>`).join('')}</body></html>`));
   server = await new Promise(resolve => { const current = app.listen(0, '127.0.0.1', () => resolve(current)); });
   base = 'http://127.0.0.1:' + server.address().port;
