@@ -11,6 +11,7 @@ const logger = require('../config/logger');
 const {
   activeMessageCostExpression,
   activeMessagesExpression,
+  activeMessageStages,
   activityDayPipeline,
   conversationActivityFilter
 } = require('../src/services/conversationActivityAnalytics');
@@ -169,14 +170,12 @@ router.get('/feedback', async (req, res) => {
     const toDate = to ? new Date(to) : new Date();
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    const dateFilter = {
-      createdAt: { $gte: fromDate, $lte: toDate }
-    };
+    // Votes on messages observed in the window (the page-wide activity basis).
+    const windowMessages = activeMessageStages(fromDate, toDate);
 
     // Total feedback counts
     const feedbackAgg = await Conversation.aggregate([
-      { $match: dateFilter },
-      { $unwind: '$messages' },
+      ...windowMessages,
       { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
       { $group: {
           _id: null,
@@ -196,8 +195,7 @@ router.get('/feedback', async (req, res) => {
     let breakdown = [];
     if (groupBy === 'promptVersion') {
       breakdown = await Conversation.aggregate([
-        { $match: dateFilter },
-        { $unwind: '$messages' },
+        ...windowMessages,
         { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
         { $group: {
             _id: { name: '$promptName', version: '$promptVersion' },
@@ -220,8 +218,7 @@ router.get('/feedback', async (req, res) => {
       ]);
     } else if (groupBy === 'model') {
       breakdown = await Conversation.aggregate([
-        { $match: dateFilter },
-        { $unwind: '$messages' },
+        ...windowMessages,
         { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
         { $group: {
             _id: '$model',
@@ -244,8 +241,7 @@ router.get('/feedback', async (req, res) => {
     } else if (groupBy === 'promptAndModel') {
       // Combined grouping: shows performance of each prompt version on each model
       breakdown = await Conversation.aggregate([
-        { $match: dateFilter },
-        { $unwind: '$messages' },
+        ...windowMessages,
         { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
         { $group: {
             _id: {
@@ -307,17 +303,16 @@ router.get('/rag-stats', async (req, res) => {
     const toDate = to ? new Date(to) : new Date();
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    const dateFilter = {
-      createdAt: { $gte: fromDate, $lte: toDate }
-    };
+    // Conversations with a message in the window: the same basis as the
+    // Conversations tile, so adoption shares its denominator.
+    const dateFilter = conversationActivityFilter(fromDate, toDate);
 
     // RAG usage counts
     const totalConversations = await Conversation.countDocuments(dateFilter);
     // Backward compatible: older data may not have `ragRequested` persisted.
     // In that case, `ragUsed: true` implies it was requested/enabled.
     const ragRequestedConversations = await Conversation.countDocuments({
-      ...dateFilter,
-      $or: [{ ragRequested: true }, { ragUsed: true }]
+      $and: [dateFilter, { $or: [{ ragRequested: true }, { ragUsed: true }] }]
     });
     const ragConversations = await Conversation.countDocuments({ ...dateFilter, ragUsed: true });
     const noRagConversations = totalConversations - ragConversations;
@@ -326,8 +321,7 @@ router.get('/rag-stats', async (req, res) => {
 
     // Feedback for RAG vs non-RAG conversations
     const ragFeedback = await Conversation.aggregate([
-      { $match: { ...dateFilter, ragUsed: true } },
-      { $unwind: '$messages' },
+      ...activeMessageStages(fromDate, toDate, { ragUsed: true }),
       { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
       { $group: {
           _id: null,
@@ -338,8 +332,7 @@ router.get('/rag-stats', async (req, res) => {
     ]);
 
     const noRagFeedback = await Conversation.aggregate([
-      { $match: { ...dateFilter, ragUsed: { $ne: true } } },
-      { $unwind: '$messages' },
+      ...activeMessageStages(fromDate, toDate, { ragUsed: { $ne: true } }),
       { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
       { $group: {
           _id: null,

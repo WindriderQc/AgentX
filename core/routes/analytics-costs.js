@@ -8,6 +8,7 @@ const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
 const logger = require('../config/logger');
+const { activeMessageStages } = require('../src/services/conversationActivityAnalytics');
 const { rankingSignal, serializeSignal } = require('../../shared/signalEvidence');
 
 // Same freshness contract as the rest of the chat lane (routes/analytics.js).
@@ -31,12 +32,11 @@ router.get('/costs', async (req, res) => {
     const toDate = to ? new Date(to) : new Date();
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    const dateFilter = { createdAt: { $gte: fromDate, $lte: toDate } };
-
     // Determine grouping key
     let groupKey;
     if (groupBy === 'day') {
-      groupKey = { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } };
+      // Day of the message, not of the conversation's first turn.
+      groupKey = { $dateToString: { format: '%Y-%m-%d', date: { $ifNull: ['$messages.timestamp', '$messages.createdAt'] } } };
     } else if (groupBy === 'promptVersion') {
       groupKey = { name: '$promptName', version: '$promptVersion' };
     } else {
@@ -44,9 +44,10 @@ router.get('/costs', async (req, res) => {
     }
 
     // Aggregate cost data
+    // Assistant messages observed in the window: a long conversation started
+    // before the window still counts its in-window spend.
     const costAgg = await Conversation.aggregate([
-      { $match: dateFilter },
-      { $unwind: '$messages' },
+      ...activeMessageStages(fromDate, toDate),
       { $match: { 'messages.role': 'assistant' } },
       { $group: {
           _id: groupKey,
