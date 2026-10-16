@@ -5,7 +5,7 @@ const { EventEmitter, once } = require('node:events');
 const { PassThrough } = require('node:stream');
 const test = require('node:test');
 
-const { authorizeClient, gatewayTokens, parseGatewayClients } = require('../llm-gateway/clients');
+const { clientForRequest, parseGatewayClients } = require('../llm-gateway/clients');
 const { ChatSseToResponsesSse, chatRequest, foldHistory } = require('../llm-gateway/responses');
 const { registerLlmGateway } = require('../llm-gateway/router');
 
@@ -54,7 +54,10 @@ function snapshot() {
   return { generatedAt: '2026-10-16T00:00:00.000Z', tasks: { daily_operator: task } };
 }
 
-function gateway(execute, clients = parseGatewayClients('{"codex":{"admission":"immediate"}}')) {
+const CODEX_TOKEN = 'codex-token-0123456789';
+const AUTH = { authorization: `Bearer ${CODEX_TOKEN}` };
+
+function gateway(execute, clients = parseGatewayClients(JSON.stringify({ codex: { token: CODEX_TOKEN, admission: 'immediate' } }))) {
   const calls = [];
   const router = registerLlmGateway({
     express: fakeExpress(),
@@ -88,43 +91,42 @@ const CODEX_TOOLS = [
   { type: 'web_search', external_web_access: false }
 ];
 
-test('gateway clients: Hermes is built in and declared clients are validated', () => {
-  const clients = parseGatewayClients('{"codex":{"token":true}}');
-  assert.equal(clients.get('hermes').consumerContract, 'hermes-runtime-v1');
-  assert.deepEqual({ ...clients.get('codex') }, {
-    id: 'codex', label: 'Gateway client codex', callerDetail: 'llm-gateway/codex',
-    consumerContract: 'codex-gateway-v1', admission: 'patient', token: true
-  });
-  assert.equal(parseGatewayClients('').size, 1);
-  for (const raw of ['[1]', 'nope', '{"Codex":{}}', '{"hermes":{}}', '{"codex":{"priority":1}}',
-    '{"codex":{"admission":"later"}}', '{"codex":{"token":"yes"}}']) {
+test('gateway clients are named by unique tokens and validated at startup', () => {
+  const clients = parseGatewayClients('{"codex-windows":"abcdefghijklmnop","script":{"token":"qrstuvwxyz012345","admission":"immediate"}}');
+  assert.deepEqual(clients.map(client => [client.id, client.callerDetail, client.consumerContract, client.admission]), [
+    ['codex-windows', 'llm-gateway/codex-windows', 'codex-windows-gateway-v1', 'patient'],
+    ['script', 'llm-gateway/script', 'script-gateway-v1', 'immediate']
+  ]);
+  assert.deepEqual(parseGatewayClients(''), []);
+  for (const raw of ['[1]', 'nope', '{"Codex":"abcdefghijklmnop"}', '{"hermes":"abcdefghijklmnop"}', '{"codex":"short"}',
+    '{"codex":{"token":"abcdefghijklmnop","priority":1}}', '{"codex":{"token":"abcdefghijklmnop","admission":"later"}}',
+    '{"a":"abcdefghijklmnop","b":"abcdefghijklmnop"}', '{"codex":{}}']) {
     assert.throws(() => parseGatewayClients(raw), { code: 'LLM_GATEWAY_CLIENTS_INVALID' }, raw);
   }
 });
 
-test('a client token is required when declared and fails closed when unset', () => {
-  const client = parseGatewayClients('{"codex":{"token":true}}').get('codex');
+test('the bearer token alone identifies the client', () => {
+  const clients = parseGatewayClients('{"one":"abcdefghijklmnop","two":"qrstuvwxyz012345"}');
   const request = authorization => ({ headers: authorization ? { authorization } : {} });
-  const env = { AGENTX_LLM_GATEWAY_TOKENS: '{"codex":"s3cret"}' };
-  assert.equal(authorizeClient(client, request('Bearer s3cret'), env), null);
-  assert.equal(authorizeClient(client, request('Bearer wrong'), env).status, 401);
-  assert.equal(authorizeClient(client, request(), env).status, 401);
-  assert.equal(authorizeClient(client, request('Bearer s3cret'), {}).status, 503);
-  assert.equal(authorizeClient(client, request('Bearer s3cret'), { AGENTX_LLM_GATEWAY_TOKENS: 'not json' }).status, 503);
-  assert.throws(() => gatewayTokens('{"codex":1}'), { code: 'LLM_GATEWAY_CLIENTS_INVALID' });
-  assert.equal(authorizeClient(parseGatewayClients('{"open":{}}').get('open'), request(), {}), null);
+  assert.equal(clientForRequest(clients, request('Bearer qrstuvwxyz012345')).id, 'two');
+  assert.equal(clientForRequest(clients, request('bearer abcdefghijklmnop')).id, 'one');
+  assert.equal(clientForRequest(clients, request('Bearer wrong')), null);
+  assert.equal(clientForRequest(clients, request()), null);
+  assert.equal(clientForRequest([], request('Bearer abcdefghijklmnop')), null);
 });
 
-test('unknown clients and missing tokens are refused before inference', async () => {
-  const { calls, handler } = gateway(async () => assert.fail('no inference'),
-    parseGatewayClients('{"codex":{"token":true}}'));
+test('requests without a known token are refused before inference', async () => {
+  const { calls, handler } = gateway(async () => assert.fail('no inference'));
   const body = { model: 'model-a', messages: [{ role: 'user', content: 'hi' }] };
-  const unknown = new Response();
-  await handler('post', '/:client/v1/chat/completions')(new Request({ body, params: { client: 'stranger' } }), unknown);
-  assert.equal(unknown.statusCode, 404);
-  const locked = new Response();
-  await handler('post', '/:client/v1/responses')(new Request({ body, params: { client: 'codex' } }), locked);
-  assert.equal(locked.statusCode, 503);
+  for (const headers of [{}, { authorization: 'Bearer stranger-token-000000' }]) {
+    const res = new Response();
+    await handler('post', '/v1/responses')(new Request({ body, headers }), res);
+    assert.equal(res.statusCode, 401);
+    assert.equal(res.headers['WWW-Authenticate'], 'Bearer');
+  }
+  const models = new Response();
+  await handler('get', '/v1/models')(new Request(), models);
+  assert.equal(models.statusCode, 401);
   assert.equal(calls.length, 0);
 });
 
@@ -134,8 +136,8 @@ test('chat completions run under the client identity and the principal alias con
     body: { model: 'model-a', message: { role: 'assistant', content: 'bonjour' }, done: true, prompt_eval_count: 3, eval_count: 1 }
   }));
   const res = new Response();
-  await handler('post', '/:client/v1/chat/completions')(new Request({
-    params: { client: 'codex' }, body: { model: 'agentx-primary', messages: [{ role: 'user', content: 'salut' }] }
+  await handler('post', '/v1/chat/completions')(new Request({
+    headers: AUTH, body: { model: 'agentx-primary', messages: [{ role: 'user', content: 'salut' }] }
   }), res);
   assert.equal(res.jsonBody.choices[0].message.content, 'bonjour');
   const [{ request, options }] = calls;
@@ -189,7 +191,7 @@ test('a non-streaming answer becomes reasoning, message and namespaced call item
     }
   }));
   const res = new Response();
-  await handler('post', '/:client/v1/responses')(new Request({ params: { client: 'codex' },
+  await handler('post', '/v1/responses')(new Request({ headers: AUTH,
     body: { model: 'agentx-primary', input: 'go', tools: CODEX_TOOLS } }), res);
   const response = res.jsonBody;
   assert.equal(response.object, 'response');
@@ -207,7 +209,7 @@ test('a streamed Ollama answer becomes the Responses event sequence Codex reads'
   const upstream = new PassThrough();
   const { handler } = gateway(async () => ({ ok: true, status: 200, stream: upstream, metadata: { model: 'model-a', upstreamProtocol: 'ollama' } }));
   const res = new Response();
-  await handler('post', '/:client/v1/responses')(new Request({ params: { client: 'codex' },
+  await handler('post', '/v1/responses')(new Request({ headers: AUTH,
     body: { model: 'agentx-primary', stream: true, input: 'go', tools: CODEX_TOOLS } }), res);
   upstream.end([
     { message: { role: 'assistant', thinking: 'plan ' }, done: false },

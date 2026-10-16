@@ -1,56 +1,60 @@
 'use strict';
 
-// Who may use the OpenAI-compatible gateway. Each client is attested by Core:
-// its id becomes the inference caller and the consumer contract that analytics
-// group by. Clients never ask for household (interactive) priority, so Nestor's
-// conversations keep precedence over them at admission.
+// Who may use the OpenAI-compatible gateway. A client is known by its bearer
+// token alone: Core attests its id as the inference caller and the consumer
+// contract that analytics group by. Clients never ask for household
+// (interactive) priority, so Nestor's conversations keep precedence.
 const crypto = require('crypto');
 const { PATIENT_WAIT_MS } = require('./chat');
 
 const CLIENT_ID = /^[a-z][a-z0-9-]{0,39}$/;
 const ADMISSION_MODES = new Set(['patient', 'immediate']);
+const MIN_TOKEN_LENGTH = 16;
 
+// Hermes keeps its own address (/api/hermes-openai) and is not a token client.
 const HERMES_CLIENT = Object.freeze({
   id: 'hermes',
   label: 'Hermes',
   callerDetail: 'hermes-runtime-bridge',
   consumerContract: 'hermes-runtime-v1',
-  admission: 'immediate',
-  token: false
+  admission: 'immediate'
 });
 
 function invalid(message) {
   return Object.assign(new Error(`AGENTX_LLM_GATEWAY_CLIENTS: ${message}`), { code: 'LLM_GATEWAY_CLIENTS_INVALID' });
 }
 
-// AGENTX_LLM_GATEWAY_CLIENTS='{"codex":{"admission":"patient","token":true}}'
+// Secret. AGENTX_LLM_GATEWAY_CLIENTS='{"codex-windows":{"token":"…","admission":"patient"},"script":"…"}'
+// A string entry is the token with the default patient admission.
 function parseGatewayClients(raw = process.env.AGENTX_LLM_GATEWAY_CLIENTS) {
-  const clients = new Map([[HERMES_CLIENT.id, HERMES_CLIENT]]);
   const text = String(raw || '').trim();
-  if (!text) return clients;
+  if (!text) return [];
   let declared;
   try { declared = JSON.parse(text); } catch { throw invalid('must be a JSON object'); }
   if (!declared || typeof declared !== 'object' || Array.isArray(declared)) throw invalid('must be a JSON object');
-  for (const [id, entry] of Object.entries(declared)) {
+  const tokens = new Set();
+  return Object.entries(declared).map(([id, value]) => {
     if (!CLIENT_ID.test(id)) throw invalid(`client id "${id}" must be lowercase letters, digits and dashes`);
-    if (clients.has(id)) throw invalid(`client "${id}" is built in and cannot be redeclared`);
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw invalid(`client "${id}" must be an object`);
+    if (id === HERMES_CLIENT.id) throw invalid('hermes is built in and keeps /api/hermes-openai');
+    const entry = typeof value === 'string' ? { token: value } : value;
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw invalid(`client "${id}" must be a token or an object`);
     const unknown = Object.keys(entry).filter(key => !['admission', 'token'].includes(key));
     if (unknown.length) throw invalid(`client "${id}" has unsupported keys: ${unknown.join(', ')}`);
     const admission = entry.admission ?? 'patient';
     if (!ADMISSION_MODES.has(admission)) throw invalid(`client "${id}" admission must be patient or immediate`);
-    const token = entry.token ?? false;
-    if (typeof token !== 'boolean') throw invalid(`client "${id}" token must be true or false`);
-    clients.set(id, Object.freeze({
+    const token = typeof entry.token === 'string' ? entry.token.trim() : '';
+    if (token.length < MIN_TOKEN_LENGTH) throw invalid(`client "${id}" needs a token of at least ${MIN_TOKEN_LENGTH} characters`);
+    if (tokens.has(token)) throw invalid(`client "${id}" reuses another client's token`);
+    tokens.add(token);
+    return Object.freeze({
       id,
       label: `Gateway client ${id}`,
       callerDetail: `llm-gateway/${id}`,
       consumerContract: `${id}-gateway-v1`,
       admission,
-      token
-    }));
-  }
-  return clients;
+      token: Buffer.from(token)
+    });
+  });
 }
 
 function admissionWaitMs(client) {
@@ -59,35 +63,19 @@ function admissionWaitMs(client) {
 
 function bearer(req) {
   const match = /^Bearer\s+(.+)$/i.exec(String(req.headers?.authorization || '').trim());
-  return match ? match[1].trim() : '';
+  return Buffer.from(match ? match[1].trim() : '');
 }
 
-// Secret bearer tokens per client: AGENTX_LLM_GATEWAY_TOKENS='{"codex":"…"}'.
-function gatewayTokens(raw = process.env.AGENTX_LLM_GATEWAY_TOKENS) {
-  const text = String(raw || '').trim();
-  if (!text) return {};
-  let tokens;
-  try { tokens = JSON.parse(text); } catch { tokens = null; }
-  if (!tokens || typeof tokens !== 'object' || Array.isArray(tokens)
-    || Object.values(tokens).some(value => typeof value !== 'string')) {
-    throw Object.assign(new Error('AGENTX_LLM_GATEWAY_TOKENS must be a JSON object of client tokens'), { code: 'LLM_GATEWAY_CLIENTS_INVALID' });
+// The client whose token the request presents, or null. Every token is
+// compared so the answer time does not depend on which one matches.
+function clientForRequest(clients, req) {
+  const presented = bearer(req);
+  let found = null;
+  for (const client of clients) {
+    const same = presented.length === client.token.length && crypto.timingSafeEqual(presented, client.token);
+    if (same) found = client;
   }
-  return tokens;
+  return found;
 }
 
-// A client with a token is refused unless the request presents it. A declared
-// token that is missing or unreadable fails closed instead of opening the door.
-function authorizeClient(client, req, env = process.env) {
-  if (!client.token) return null;
-  let tokens;
-  try { tokens = gatewayTokens(env.AGENTX_LLM_GATEWAY_TOKENS); } catch { tokens = {}; }
-  const expected = Buffer.from(String(tokens[client.id] || ''));
-  if (expected.length === 0) {
-    return { status: 503, code: 'LLM_GATEWAY_TOKEN_UNCONFIGURED', message: `The gateway token for client ${client.id} is not configured.` };
-  }
-  const presented = Buffer.from(bearer(req));
-  const valid = presented.length === expected.length && crypto.timingSafeEqual(presented, expected);
-  return valid ? null : { status: 401, code: 'LLM_GATEWAY_TOKEN_INVALID', message: 'A valid bearer token is required for this gateway client.' };
-}
-
-module.exports = { HERMES_CLIENT, admissionWaitMs, authorizeClient, gatewayTokens, parseGatewayClients };
+module.exports = { HERMES_CLIENT, admissionWaitMs, clientForRequest, parseGatewayClients };

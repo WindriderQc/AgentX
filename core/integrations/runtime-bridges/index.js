@@ -5,7 +5,7 @@ const { CodingTaskPreparation } = require('./coding-task-preparation');
 
 const { cleanBaseUrl } = require('./common');
 const { registerHermesProtocol } = require('./hermes/protocol');
-const { gatewayTokens, parseGatewayClients } = require('./llm-gateway/clients');
+const { parseGatewayClients } = require('./llm-gateway/clients');
 const { registerLlmGateway } = require('./llm-gateway/router');
 const { registerOpenClawProtocol } = require('./openclaw/protocol');
 const { createConversationHostResolver, parseConversationHosts, parseNoThinkModels } = require('./openclaw/conversationHosts');
@@ -38,7 +38,6 @@ function validateEnvironment() {
     if (process.env[key]) cleanBaseUrl(process.env[key]);
   }
   parseGatewayClients();
-  gatewayTokens();
   if (process.env.OPENCLAW_AGENTX_PROVIDER_BASE_URL) {
     resolveOpenClawProviderBaseUrl(process.env.OPENCLAW_AGENTX_PROVIDER_BASE_URL);
   }

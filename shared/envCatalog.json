@@ -119,18 +119,8 @@
       "forwarded": true,
       "default": null,
       "category": "bridges",
-      "secret": false,
-      "description": "JSON object of clients allowed on the OpenAI-compatible gateway /api/llm/<client>/v1, e.g. {\"codex\":{\"admission\":\"patient\",\"token\":true}}. admission is patient (waits up to 8 min for a busy host) or immediate; token requires a bearer token. Hermes is built in. Unset: only hermes; an invalid value fails bridge startup."
-    },
-    "AGENTX_LLM_GATEWAY_TOKENS": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "bridges",
       "secret": true,
-      "description": "JSON object of bearer tokens for gateway clients declared with token true, e.g. {\"codex\":\"<random>\"}. Unset or missing entry: those clients are refused (503); an invalid value fails bridge startup."
+      "description": "Secret JSON object naming the clients of the OpenAI-compatible gateway /api/llm/v1 by their bearer token (the standard OpenAI API key), e.g. {\"codex-windows\":{\"token\":\"<random>\",\"admission\":\"patient\"},\"script\":\"<random>\"}. Tokens are unique and at least 16 characters; admission is patient (default, waits up to 8 min for a busy host) or immediate. Unset: the gateway refuses every request; Hermes keeps /api/hermes-openai. An invalid value fails bridge startup."
     },
     "AGENTX_OLLAMA_ALLOWED_TARGETS": {
       "services": [

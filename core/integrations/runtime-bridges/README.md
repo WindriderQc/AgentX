@@ -12,24 +12,25 @@ runtime configuration, accounts, histories and catalog files stay external.
 
 ## OpenAI-compatible gateway
 
-`/api/llm/<client>/v1` is one OpenAI-compatible door for any client: `models`,
-`chat/completions` and `responses`. Every request takes Hermes's path through
-Core: the effective model policy, the `agentx-primary` alias (the principal
-model with its host and pinned context, so a client never loads a second copy),
-admission and InferenceLog. The client id is the caller (`llm-gateway/<id>`) and
-the consumer contract (`<id>-gateway-v1`) that analytics group by. Gateway
-clients never request household priority: Nestor's conversations go first.
+`/api/llm/v1` is one OpenAI-compatible door for any client: `models`,
+`chat/completions` and `responses`. A client sends the standard OpenAI API key
+header, `Authorization: Bearer <token>`, and the token alone says which client
+it is; a request without a known token gets 401. Every request then takes
+Hermes's path through Core: the effective model policy, the `agentx-primary`
+alias (the principal model with its host and pinned context, so a client never
+loads a second copy), admission and InferenceLog. The client id is the caller
+(`llm-gateway/<id>`) and the consumer contract (`<id>-gateway-v1`) that
+analytics group by. Gateway clients never request household priority: Nestor's
+conversations go first.
 
-Hermes is the built-in client `hermes`; `/api/hermes-openai` remains its
-address, unchanged. Other clients are declared in
-`AGENTX_LLM_GATEWAY_CLIENTS`, a JSON object such as
-`{"codex":{"admission":"patient","token":true}}`. `patient` (the default)
-waits up to eight minutes for a busy host, like Hermes's patient route;
-`immediate` is refused at once. With `token: true` the client must send
-`Authorization: Bearer` with its entry from the secret
-`AGENTX_LLM_GATEWAY_TOKENS` (`{"codex":"<random>"}`); a missing entry refuses
-the client. An unknown client gets 404. Invalid JSON in either variable fails
-startup.
+Clients are declared in the secret `AGENTX_LLM_GATEWAY_CLIENTS`, a JSON object
+from client id to token, or to `{ "token", "admission" }`, for example
+`{"codex-windows":"<random>","script":{"token":"<random>","admission":"immediate"}}`.
+Give each device or tool its own token to see its load under its own name.
+Tokens are unique and at least 16 characters. `patient` admission (the
+default) waits up to eight minutes for a busy host, like Hermes's patient
+route; `immediate` is refused at once. Invalid JSON fails startup. Hermes keeps
+its own address, `/api/hermes-openai`, unchanged.
 
 `responses` serves the stateless Responses API that OpenAI Codex uses
 (`store: false`, full history in `input`); `previous_response_id` is refused.
@@ -40,7 +41,7 @@ local executor and are not offered. Images are replaced by a short notice.
 Reasoning streams as a reasoning summary. Core accepts at most 512 messages,
 so a longer history folds its oldest turns into one text message.
 
-Codex configuration (`~/.codex/config.toml`), with the token in the
+Codex configuration (`~/.codex/config.toml`), with the client's token in the
 environment variable named by `env_key`:
 
 ```toml
@@ -51,7 +52,7 @@ model_auto_compact_token_limit = 180000
 
 [model_providers.agentx]
 name = "AgentX"
-base_url = "https://<core-address>/api/llm/codex/v1"
+base_url = "https://<core-address>/api/llm/v1"
 wire_api = "responses"
 env_key = "AGENTX_LLM_CODEX_TOKEN"
 ```
