@@ -189,6 +189,7 @@ async function checkpoint(id, key) {
 }
 async function reconcileModels(id, key) {
   const value = await run(id, key);
+  await require('./pipelineReportModelRecovery').reconcile(value);
   for (const row of value.modelReceipts) {
     if (row.state !== 'unknown' || !['completed', 'refused'].includes(row.settlement?.state)
       || row.finishedAt !== row.settlement.finishedAt || !Number.isFinite(Date.parse(row.settlement.finishedAt))) continue;

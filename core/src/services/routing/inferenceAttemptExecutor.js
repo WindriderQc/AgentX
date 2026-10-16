@@ -286,7 +286,7 @@ async function beginAdmittedOllamaAttempt(options, dependencies = {}) {
       });
     }
     waits.hostGateMs = Date.now() - gateStartedAt;
-    await options.afterAdmission?.();
+    await options.afterAdmission?.(distributed);
     distributed.assertActive();
     distributed.markDispatched();
     dispatched = true;

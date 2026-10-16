@@ -42,6 +42,14 @@ router.post('/tasks/:id/reports/:requestId/archive-checkpoint', validId, async (
   try { return envelope.success(res, await require('../src/services/pipelineReportCheckpointArchive').archive(req.params.id, req.params.requestId, req.body || {})); }
   catch (error) { return sendError(res, error); }
 });
+// Explicit operator custody for calls predating native admission binding. The
+// private-LAN caller header is attribution, not an authentication mechanism.
+router.post('/tasks/:id/reports/:requestId/map-native-termination', validId, async (req, res) => {
+  if (req.get('x-agentx-caller') !== 'operator' || req.get('x-agentx-report-request'))
+    return envelope.error(res, 403, 'Explicit operator recovery is required', 'REPORT_OPERATOR_REQUIRED');
+  try { return envelope.success(res, await require('../src/services/pipelineReportModelRecovery').mapLegacy(req.params.id, req.params.requestId, req.body || {})); }
+  catch (error) { return sendError(res, error); }
+});
 router.post('/tasks/:id/reports/:requestId/preflight-result', validId, async (req, res) => {
   try {
     const receipt = await require('../src/services/pipelineReportPreflight').receive(req.params.id, req.params.requestId, req.body || {},
