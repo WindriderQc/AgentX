@@ -142,6 +142,8 @@ export default definePluginEntry({
           + "(e.g. 'le T2 est payé' → remove the open item, add a settled milestone; 'mon REER vaut 215 000 $' → update the asset). "
           + "ops: {op: add|update|remove|set, section, match (words of the item) or index, item (fields to set), value (for set)}. "
           + "Amounts are integer cents (monthlyCents, balanceCents, valueCents, annualCents...), rates in basis points (rateBp). "
+          + "op done settles a watch or open item the owner says is paid ('Odyssée payée' → done, match 'Odyssée'): a recurring item "
+          + "moves its dueDate to the next period (monthly, quarterly, yearly); any other item is removed and kept as a settled milestone. "
           + "seriesStatus names a statement series (issuer ··· last four) with label, and closed=true for a closed account or card "
           + "(no stale alert then). "
           + "Confirm what changed in one line.",
@@ -154,7 +156,7 @@ export default definePluginEntry({
               items: {
                 type: "object",
                 properties: {
-                  op: { type: "string", enum: ["add", "update", "remove", "set"] },
+                  op: { type: "string", enum: ["add", "update", "remove", "set", "done"] },
                   section: { type: "string", enum: ["phase", "excludeTags", "budget", "debts", "credit", "provisions", "assets",
                     "milestones", "openItems", "allocations", "watch", "taxRoom", "seriesStatus"] },
                   match: { type: "string", maxLength: 80 },

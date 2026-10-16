@@ -147,6 +147,14 @@ async function evaluate({ now = new Date(), env = process.env } = {}) {
   return found;
 }
 
+// A closed series raises nothing: its pending stale or dormant alerts are acknowledged.
+async function silenceClosed() {
+  const plan = await getPlan();
+  const keys = plan.seriesStatus.filter((item) => item.closed && item.series)
+    .flatMap((item) => [`stale:${item.series}`, `dormant:${item.series}`]);
+  if (keys.length) await FinanceAlert.updateMany({ key: { $in: keys }, acknowledgedAt: null }, { $set: { acknowledgedAt: new Date() } });
+}
+
 // Stores the alerts that hold now. Known keys are refreshed, acknowledgement is kept.
 async function store(found) {
   for (const alert of found) {
@@ -173,6 +181,7 @@ async function list({ includeAcknowledged = false, current = null } = {}) {
 async function refresh(options = {}) {
   const found = await evaluate(options);
   await store(found);
+  await silenceClosed();
   return list({ current: found.map((alert) => alert.key) });
 }
 
@@ -180,6 +189,7 @@ async function refresh(options = {}) {
 async function report(options = {}) {
   const found = await evaluate(options);
   await store(found);
+  await silenceClosed();
   const { alerts } = await list({ current: found.map((alert) => alert.key) });
   const pending = alerts.filter((alert) => !alert.acknowledgedAt);
   await acknowledge(pending.map((alert) => alert.id));

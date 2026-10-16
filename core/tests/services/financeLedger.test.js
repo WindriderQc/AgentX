@@ -566,6 +566,46 @@ describe('alert noise: one alert per statement series', () => {
   });
 });
 
+describe('closing a series and settling deadlines', () => {
+  const alerts = require('../../src/services/finance/financeAlerts');
+  const plan = require('../../src/services/finance/financePlan');
+  const env = { FINANCE_ALERT_STALE_DAYS: '45', FINANCE_ALERT_DORMANT_DAYS: '180' };
+
+  test('closing a series acknowledges its pending dormant alert', async () => {
+    await ingestDocument(await writeDoc('scotia.pdf'), { readText, extract: extractWith({
+      issuer: 'Banque Exemple', account_last4: '5555', period_start: '2026-06-01', period_end: '2026-06-30',
+      accounts: [{ code: 'EOP', opening_cents: 100000, closing_cents: 100100,
+        transactions: [{ date: '2026-06-02', description: 'FRAIS', amount_cents: 100, balance_after_cents: 100100 }] }] }) });
+    const late = new Date('2027-01-15T00:00:00Z');
+    expect((await alerts.report({ env, now: late })).alerts.map((a) => a.key)).toEqual(['dormant:Banque Exemple ···5555']);
+    await plan.savePlan({ seriesStatus: [{ series: 'Banque Exemple ···5555', label: 'Banque Scotia', closed: true }] });
+    expect((await alerts.refresh({ env, now: late })).alerts).toEqual([]);
+    const all = await alerts.list({ includeAcknowledged: true });
+    expect(all.alerts.map((a) => a.key)).toEqual(['dormant:Banque Exemple ···5555']);
+    expect(all.alerts[0].acknowledgedAt).toBeTruthy();
+  });
+
+  test('done moves a recurring deadline to its next period, month-end safe', async () => {
+    await plan.savePlan({ watch: [{ what: 'Odyssée', dueDate: '2026-01-31', recurrence: 'monthly', status: '' }] });
+    let saved = await plan.applyOps([{ op: 'done', section: 'watch', match: 'Odyssée' }]);
+    expect(saved.plan.watch[0].dueDate).toBe('2026-02-28');
+    saved = await plan.applyOps([{ op: 'done', section: 'watch', match: 'Odyssée' }]);
+    expect(saved.plan.watch[0].dueDate).toBe('2026-03-31');
+    await plan.savePlan({ openItems: [{ title: 'Impôt', dueDate: '2026-11-30', recurrence: 'quarterly' }] });
+    saved = await plan.applyOps([{ op: 'done', section: 'openItems', match: 'Impôt' }]);
+    expect(saved.plan.openItems[0].dueDate).toBe('2027-02-28');
+  });
+
+  test('done on a one-off item removes it and keeps a settled milestone; a recurring one without dueDate is refused', async () => {
+    await plan.savePlan({ openItems: [{ title: 'Facture T2', detail: '', severity: 'warning' }],
+      watch: [{ what: 'Assurance', recurrence: 'yearly' }] });
+    const saved = await plan.applyOps([{ op: 'done', section: 'openItems', match: 'T2' }]);
+    expect(saved.plan.openItems).toEqual([]);
+    expect(saved.plan.milestones.map((m) => [m.done, m.text.startsWith('Facture T2 — réglé le ')])).toEqual([[true, true]]);
+    await expect(plan.applyOps([{ op: 'done', section: 'watch', match: 'Assurance' }])).rejects.toMatchObject({ code: 'FINANCE_PLAN_INVALID' });
+  });
+});
+
 describe('statement coverage', () => {
   test('lists the months each statement series covers and the gaps between', async () => {
     for (const [name, period] of [['a.pdf', ['2026-01-01', '2026-01-31']], ['b.pdf', ['2026-04-01', '2026-04-30']]]) {

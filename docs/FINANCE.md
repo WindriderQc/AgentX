@@ -82,11 +82,14 @@ purchases as income.
   four), not on the newest statement of all accounts: a card that is still fed
   does not hide a payroll account that stopped. One alert per series. A series
   silent beyond `FINANCE_ALERT_DORMANT_DAYS` is dormant (one info alert). The plan
-  section `seriesStatus` names a series and marks it `closed` to silence it.
+  section `seriesStatus` names a series and marks it `closed` to silence it;
+  a closed series' pending alerts are acknowledged at the next refresh.
 - `watch` and `openItems` accept optional `dueDate` (YYYY-MM-DD) and
   `recurrence` (`monthly`, `quarterly`, `yearly`). The free-text `date` stays
   valid. Settling an item means moving its `dueDate` forward; until then Core
-  alerts daily (J-7, J-1, overdue).
+  alerts daily (J-7, J-1, overdue). The plan operation `done` settles an item:
+  a recurring one moves its `dueDate` to the next period (month-end safe), any
+  other one is removed and kept as a settled milestone.
 
 ## Known traps (each found on real statements)
 
