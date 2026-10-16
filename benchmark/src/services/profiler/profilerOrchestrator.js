@@ -10,6 +10,7 @@ const { _captureHardwareSnapshot, _buildHardwareTelemetry } = require('./profile
 const { runPrefillDecodeMatrix } = require('./prefillDecodeMatrix');
 const { runLongContextQualityProbe } = require('./longContextQualityProbe');
 const { runAgentWorkloadProbe } = require('./agentWorkloadProbe');
+const { runConcurrencyProbe } = require('./concurrencyProbe');
 const { profileThinkingBehavior } = require('./thinkingProfileService');
 const { resolveModelNumCtxDetails } = require('../modelContextResolver');
 const { listRunning, showModel } = require('../../clients/ollamaClient');
@@ -471,6 +472,19 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
       signal,
       checkpoint,
       onProgress: ({ phase, row }) => notify('agent_workload', { message: agentWorkloadMessage(phase, row) }),
+    });
+  }
+  if (settings.concurrencyEnabled !== false) {
+    notify('concurrency', { message: 'Measuring speed with each co-resident model answering at the same time…' });
+    checkpoint();
+    profileData.concurrency = await runConcurrencyProbe(hostUrl, modelName, {
+      timeoutMs: require('../probePlacement').residencyTimeoutMs(hostUrl, contextProbeService.getConfig().timeoutMs),
+      signal,
+      checkpoint,
+      onProgress: ({ index, total, pair }) => notify('concurrency', {
+        message: `Concurrency ${index}/${total} with ${pair.model}: ${pair.status === 'measured'
+          ? `${pair.selfSlowdownPct}% slower together` : pair.status}`,
+      }),
     });
   }
   notify('load_timing', { message: 'Measuring cold and hot load timing…' });

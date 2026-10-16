@@ -140,16 +140,15 @@ async function requestLaneMeasurement({ model, hostUrl, notBefore, startBefore }
 }
 
 /**
- * Night campaign: one Full-profile request per current lane that still lacks
- * verified quality or agent measurements (or every lane with `all`). Each is
+ * Night campaign: one Full-profile request per current lane with a
+ * re-measurement proposal (or every lane with `all`). Each is
  * an independent request with its own stable key; a lane already requested
  * for that night returns Core's existing request instead of a duplicate.
  */
 async function requestLaneCampaign({ notBefore, startBefore, all = false } = {}, deps = {}) {
   const d = defaults(deps);
   const { lanes } = await listLaneCapabilities(deps);
-  const targets = lanes.filter(lane => lane.capability?.hostId && (all === true
-    || lane.capability.quality?.status !== 'verified' || lane.capability.agent?.status !== 'measured'));
+  const targets = lanes.filter(lane => lane.capability?.hostId && (all === true || lane.capability.remeasure?.needed === true));
   const results = [];
   for (const lane of targets) {
     try {
