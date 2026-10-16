@@ -18,7 +18,8 @@ const hostUrl = 'http://principal-host:11434';
 let restore;
 
 beforeEach(async () => {
-  config.tasks.daily_operator.model = config.tasks.general_chat.model = 'standard';
+  config.tasks.daily_operator.model = config.tasks.general_chat.model = config.tasks.voice_persona_reader.model = 'standard';
+  delete config.tasks.nestor_answer_light;
   config.ensureTaskModelOverridesLoaded.mockImplementation(async () => {
     for (const doc of await RouterTaskConfig.find({}).lean()) config.tasks[doc.taskType] = { model: doc.model, host: doc.host };
   });
@@ -34,13 +35,13 @@ beforeEach(async () => {
 afterEach(async () => { jest.restoreAllMocks(); await Promise.all([HostPreference.deleteMany({}), RouterTaskConfig.deleteMany({})]); });
 const select = () => service.selectPrincipalModel({ selected: 'abliterated', expectedModel: 'standard', principal: 'test-operator' });
 
-test('switch preserves sibling pins/context and dedicated routes, and survives a fresh read', async () => {
+test('switch preserves sibling pins/context, moves every principal route on the host, and survives a fresh read', async () => {
   const result = await select();
   expect(result.selected).toBe('abliterated');
   expect(result.contextSize).toBe(196608);
   expect(result.pinnedModels[1]).toMatchObject({ model: 'embedding', contextSize: 8192 });
   expect(config.tasks.general_chat.model).toBe(result.model);
-  expect(config.tasks.voice_persona_reader.model).toBe('standard');
+  expect(config.tasks.voice_persona_reader.model).toBe(result.model);
   expect(config.tasks.code_generation.model).toBe('specialist');
   expect((await service.getPrincipalModel()).model).toBe(result.model);
   await service.selectPrincipalModel({ selected: 'standard', expectedModel: result.model, principal: 'test-operator' });
@@ -75,4 +76,11 @@ test('ambiguous persistence never launches a replacement or rollback', async () 
   await expect(select()).rejects.toThrow('lost acknowledgment');
   expect(restore).toHaveBeenCalledTimes(1);
   expect((await service.getPrincipalModel()).selected).toBe('abliterated');
+});
+test('a route on the principal host naming an unpinned model blocks the switch and is shown', async () => {
+  config.tasks.nestor_answer_light = { model: 'stale', host: 'primary' };
+  expect((await service.getPrincipalModel()).divergentRoutes).toEqual(['nestor_answer_light']);
+  await expect(select()).rejects.toMatchObject({ code: 'PRINCIPAL_ROUTES_DIVERGE' });
+  expect((await service.getPrincipalModel()).model).toBe('standard');
+  expect(restore).not.toHaveBeenCalled();
 });

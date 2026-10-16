@@ -16,6 +16,7 @@
             <button id="ncPrincipalApply" class="nc-btn" ${principalModel.available ? '' : 'disabled'}>Apply</button>
             <span class="nc-muted"> ${shared.escapeHtml(principalModel.model || 'Configure the principal pin first')}</span>
             <p class="nc-muted">The selection persists. A busy host refuses the switch; retry when its work finishes.</p>
+            ${principalModel.divergentRoutes?.length ? `<p class="nc-muted">Routes on this host that name an unpinned model block the switch: ${principalModel.divergentRoutes.map(task => shared.escapeHtml(task)).join(', ')}.</p>` : ''}
         </div>`;
     }
 
