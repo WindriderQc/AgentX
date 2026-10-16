@@ -52,6 +52,39 @@ test('contradictory or uncertain canonical observations remain an inspection dec
   }
 });
 
+function reconciledReport() {
+  const observed = { ...observation, reason: 'runner_error' }, sourceCommit = 'a'.repeat(40);
+  const report = { schema: 'agentx.pipeline-report-result/v1', requestId: observed.requestId, claimSeq: 2,
+    kind: 'blocked', reason: 'runner_error', reportName: 'REVIEW.md', sourceCommit,
+    partial: { deliverableId: 'b'.repeat(24), sha256: 'c'.repeat(64), size: 100 } };
+  const ticket = { ...task, feedback: [{ workerOutcome: observed, reportOutcome: report }],
+    reportBudget: { latest: { requestId: observed.requestId, state: 'blocked', sourceCommit } } };
+  const c = control(); Object.assign(c.run, { reportName: report.reportName });
+  Object.assign(c.run.progress, { stopReason: 'runner_error', checkpoint: sourceCommit, coreRecorded: true });
+  return { ticket, c };
+}
+test('a Core-recorded partial report exposes resume after reconciliation without rewriting runner_error', () => {
+  const { ticket, c } = reconciledReport();
+  expect(outcome.canResume(ticket, c, now)).toBe(true);
+  expect(outcome.latest(ticket).reason).toBe('runner_error');
+  expect(outcome.canResume({ ...ticket, reportBudget: undefined }, c, now)).toBe(false);
+});
+test.each([
+  (t, c) => { c.run.progress.coreRecorded = false; },
+  (t, c) => { c.run.progress.checkpoint = 'd'.repeat(40); },
+  (t, c) => { c.run.reportName = 'OTHER.md'; },
+  t => { t.reportBudget.latest.state = 'active'; },
+  t => { t.reportBudget.latest.requestId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'; },
+  t => { t.feedback[0].reportOutcome.claimSeq = 1; },
+  t => { t.feedback[0].reportOutcome.partial.sha256 = 'invalid'; },
+  t => { delete t.feedback[0].reportOutcome.partial; },
+  (t, c) => { t.feedback[0].workerOutcome.reason = c.run.progress.stopReason = 'model_termination_unverified'; },
+  (t, c) => { c.run.phase = 'unknown'; },
+])('uncertain or mismatched report evidence keeps the inspection barrier', mutate => {
+  const { ticket, c } = reconciledReport(); mutate(ticket, c);
+  expect(outcome.canResume(ticket, c, now)).toBe(false);
+});
+
 test.each([{ reason: 'invented' }, { reason: 'constructor' }, { reason: '__proto__' }, { reason: 'toString' }, { claimSeq: 0 }, { requestId: 'wrong' }, { pipelineId: '0701' },
   { finishedAt: '2026-09-01' }, { usage: { workSeconds: -1, modelCalls: 20 } }])('malformed observation %j cannot explain a task', override => {
   expect(() => outcome.normalize({ ...observation, ...override }, '0700')).toThrow();

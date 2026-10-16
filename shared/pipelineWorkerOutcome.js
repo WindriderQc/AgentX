@@ -74,9 +74,24 @@
   function canResume(task, control, now = Date.now()) {
     const outcome = native(task, control, now);
     const recorded = latest(task);
+    const report = (task.feedback || []).slice().reverse().find(row => row.workerOutcome)?.reportOutcome;
+    const saved = report?.partial;
+    // Core only registers a stopped report after its native calls terminate.
+    // A reconciled private checkpoint can retain runner_error as its original
+    // diagnostic; that label must not permanently hide its continuation form.
+    const recoveredReport = recorded?.reason === 'runner_error' && report?.schema === 'agentx.pipeline-report-result/v1'
+      && report.kind === 'blocked' && report.reason === 'runner_error' && report.requestId === recorded.requestId
+      && report.claimSeq === recorded.claimSeq && /^[a-f0-9]{40}$/.test(report.sourceCommit || '')
+      && /^[a-f0-9]{24}$/.test(saved?.deliverableId || '') && /^[a-f0-9]{64}$/.test(saved?.sha256 || '')
+      && Number.isSafeInteger(saved?.size) && saved.size > 0
+      && task.reportBudget?.latest?.requestId === report.requestId && task.reportBudget.latest.state === 'blocked'
+      && task.reportBudget.latest.sourceCommit === report.sourceCommit
+      && typeof report.reportName === 'string' && control?.run?.reportName === report.reportName
+      && control.run.progress?.checkpoint === report.sourceCommit && control.run.progress?.coreRecorded === true;
     return Boolean(task.status === 'blocked' && task.assignee === 'coding-team' && !task.automationLease?.leaseId
-      && !task.codingAutonomy && !(Number(task.automationAttemptCount) > 0) && control?.busy === false && outcome && !describe(outcome).requiresInspection
-      && recorded && !describe(recorded).requiresInspection && recorded.reason === outcome.reason
+      && !task.codingAutonomy && !(Number(task.automationAttemptCount) > 0) && control?.busy === false && outcome
+      && (!describe(outcome).requiresInspection || recoveredReport)
+      && recorded && (!describe(recorded).requiresInspection || recoveredReport) && recorded.reason === outcome.reason
       && recorded.requestId === outcome.requestId && recorded.claimSeq === outcome.claimSeq);
   }
   return { SCHEMA, normalize, latest, native, describe, canResume };
