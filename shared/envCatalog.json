@@ -1159,6 +1159,16 @@
       "secret": false,
       "description": "Balance in cents under which the listed accounts raise a finance alert. Unset: 0, so the minimum-balance alert is off."
     },
+    "FINANCE_DOCUMENT_CLAIM_MAX_CENTS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "500000",
+      "category": "finance",
+      "secret": false,
+      "description": "Ceiling in cents for a document in the claims view; above it, or when it is more than twice its gross amount, the document goes to toVerify. Unset: 500000 (5 000 $)."
+    },
     "FINANCE_SECRETARY_REGISTER": {
       "services": [
         "core"

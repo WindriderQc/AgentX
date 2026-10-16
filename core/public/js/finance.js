@@ -250,6 +250,14 @@
   function documentLine(doc) {
     return el('li', {}, `${doc.documentDate || '—'} · ${doc.supplier || ''} ${doc.documentNumber || ''} · ${money(doc.amountCents)}${doc.originalFilename ? ` · ${doc.originalFilename}` : ''}`);
   }
+  // An ambiguous document with each candidate row; the owner picks one (confirming rejects the others).
+  function ambiguousGroup(group) {
+    const d = group.document || {};
+    return el('li', {}, `${d.documentDate || ''} · ${d.supplier || ''} ${d.documentNumber || ''} · ${money(d.amountCents)}`,
+      el('ul', {}, ...group.candidates.map((c) => el('li', {}, `${c.transaction.date} · ${c.transaction.description} · ${money(c.transaction.flowCents)} `,
+        el('button', { type: 'button', class: 'finance-link', 'data-decide': c.id, 'data-status': 'confirmed' }, 'Confirm'),
+        el('button', { type: 'button', class: 'finance-link', 'data-decide': c.id, 'data-status': 'rejected' }, 'Reject')))));
+  }
   async function renderDocuments() {
     const data = await api('documents', {}).catch(() => null);
     const card = $('financeDocumentsCard');
@@ -261,10 +269,13 @@
     card.hidden = false;
     $('documentsNote').textContent = `Read-only register${data.generatedAt ? `, generated ${data.generatedAt}` : ''}${data.complete ? '' : ' · incomplete'}.`;
     $('documentsProposals').replaceChildren(...(data.proposals.length ? data.proposals.map(documentItem) : [el('li', { class: 'finance-note' }, 'Nothing to confirm.')]));
+    $('documentsAmbiguous').replaceChildren(...(data.ambiguous.length ? data.ambiguous.map(ambiguousGroup) : [el('li', { class: 'finance-note' }, 'None.')]));
     $('documentsUnmatched').replaceChildren(...data.unmatchedDocuments.items.map(documentLine));
     $('documentsUnlinked').replaceChildren(...data.unlinkedTransactions.items.map((row) => el('li', {}, `${row.date} · ${row.description} · ${money(row.flowCents)}`)));
     $('documentsClaimTotal').textContent = `${data.toClaim.count} document(s) · ${money(data.toClaim.totalCents)} still to claim`;
     $('documentsClaims').replaceChildren(...data.toClaim.items.map(documentLine));
+    $('documentsVerifyNote').textContent = `${data.toVerify.count} document(s) left out of the total: above ${money(data.toVerify.maxCents)} or inconsistent with the gross amount.`;
+    $('documentsToVerify').replaceChildren(...data.toVerify.items.map(documentLine));
     $('documentsStatements').replaceChildren(...data.statements.items.map(documentLine));
   }
   $('financeDocumentsCard').addEventListener('click', async (event) => {

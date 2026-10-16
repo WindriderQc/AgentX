@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import unicodedata
 import time
 import zipfile
 
@@ -39,7 +40,11 @@ QUERIES = {
 if os.environ.get("GMAIL_SECRETARY_CONTACT_QUERY"):
     QUERIES = {"contact": os.environ["GMAIL_SECRETARY_CONTACT_QUERY"], **QUERIES}
 
-REGISTER_SCHEMA = 2
+REGISTER_SCHEMA = 3
+
+# Closed set of document kinds the finance ledger matches on. The original text stays in documentKind.
+DOCUMENT_KINDS = ("invoice", "receipt", "payment_proof", "claim", "remit_advice", "quote",
+                  "bank_statement", "insurance_statement", "tax", "other")
 # Machine reading of scans and photos. OCR text lets the model read a page; it is
 # never visual acceptance, so these files stay counted as awaiting visual review.
 OCR_IMAGES = (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp")
@@ -114,6 +119,40 @@ def cents(value):
     return int(amount) if amount == amount.to_integral_value() else None
 
 
+def fold(value):
+    return "".join(ch for ch in unicodedata.normalize("NFD", str(value or "")) if unicodedata.category(ch) != "Mn").lower()
+
+
+def document_kind(text):
+    """Closed kind of a free-text document label; checks statements first, since their labels name invoices."""
+    t = fold(text)
+    if "relev" in t or "statement" in t:
+        if "assur" in t or "insur" in t:
+            return "insurance_statement"
+        if any(word in t for word in ("fiscal", "tax", "impot", "revenu")):
+            return "tax"
+        if any(word in t for word in ("bancaire", "bank", "compte", "account", "carte", "card")):
+            return "bank_statement"
+        return "other"
+    if "remit" in t or "avis de paiement" in t:
+        return "remit_advice"
+    if "claim" in t or "reclamation" in t:
+        return "claim"
+    if any(word in t for word in ("preuve", "payment proof", "virement", "interac")):
+        return "payment_proof"
+    if any(word in t for word in ("soumission", "devis", "quote", "estimate")):
+        return "quote"
+    if any(word in t for word in ("fiscal", "tax", "impot", "annexe")):
+        return "tax"
+    if "assurance" in t or "insurance" in t:
+        return "insurance_statement"
+    if "recu" in t or "receipt" in t:
+        return "receipt"
+    if "facture" in t or "invoice" in t:
+        return "invoice"
+    return "other"
+
+
 def accounting_row(invoice):
     """Deterministic accounting projection beside the model's own readings.
 
@@ -121,6 +160,7 @@ def accounting_row(invoice):
     unexplained: it is not evidence of insurance, debt or reimbursement.
     """
     row = dict(invoice)
+    row["kind"] = document_kind(invoice.get("documentKind"))
     printed = invoice.get("currency")
     compact = re.sub(r"\s+", "", str(printed or "")).upper()
     row["currency"] = CURRENCIES.get(compact)

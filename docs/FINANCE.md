@@ -114,10 +114,23 @@ personal ledger. Core never writes to it.
 - Confirming a proposal rejects the other proposals for the same document.
   Rejected links are never proposed again. Confirmed and rejected links survive
   a sync; proposals that no longer match are removed.
-- The views: proposals to confirm, documents without a transaction, outflows
-  above a threshold without a document, claims still to file (kinds `claim` and
-  `remit_advice`, or a patient share, where the insurer has not paid or the status
-  is not settled), and bank statements found in mail. Totals are computed by Core.
+- Document kinds are a closed set: `invoice`, `receipt`, `payment_proof`,
+  `claim`, `remit_advice`, `quote`, `bank_statement`, `insurance_statement`,
+  `tax`, `other`. Core reads the free-text label (kept as `documentKindRaw`)
+  when the register does not carry `kind`; the Secretary producer writes `kind`
+  from schema 3. Schemas 2 and 3 are both read.
+- Statements of kind `insurance_statement` and `bank_statement` are never
+  matched. Only `bank_statement` is listed as found in mail, for the owner to file.
+- The views: confident proposals; ambiguous matches grouped by document with
+  their candidate rows, for the owner to pick one; documents without a
+  transaction; outflows above a threshold without a document; claims still to
+  file; figures to verify; bank statements found in mail. Totals are computed by Core.
+- Claims keep health and insurance only: an insurer, a claim or remittance kind,
+  a health supplier word (clinic, pharmacy, dental, ...), or a linked row in the
+  Santé category. Tax and government documents are excluded.
+- A claim goes to `toVerify`, out of the totals, when it is above
+  `FINANCE_DOCUMENT_CLAIM_MAX_CENTS` (500 000 cents by default) or when its amount
+  is more than twice its gross amount, or its patient share exceeds the gross.
 - The statuses that count as settled for a reimbursement are `paid`, `reimbursed`,
   `settled` and `regle` (accents folded). Check them against the real register.
 
