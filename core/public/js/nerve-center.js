@@ -112,6 +112,30 @@ const NerveCenter = (() => {
         body.innerHTML = `<div class="nc-section-placeholder" role="status" aria-live="polite" aria-atomic="true"><i class="fas fa-spinner fa-spin" aria-hidden="true"></i> ${escapeHtml(message)}</div>`;
     }
 
+    // Sections rebuild their markup after an action or a refresh. Remember the
+    // control the keyboard was on (its nc- class and data attributes) and put focus
+    // back on its replacement, so a keyboard user is not thrown to the page top.
+    function trackSectionFocus(body) {
+        if (!body || body.dataset.ncFocusTracked) return;
+        body.dataset.ncFocusTracked = 'true';
+        body.addEventListener('focusin', (event) => {
+            const el = event.target;
+            const cls = [...el.classList].find(c => c.startsWith('nc-') && c !== 'nc-btn' && c !== 'active');
+            body._ncFocusKey = { id: el.id, cls, tag: el.tagName, data: { ...el.dataset } };
+        });
+    }
+
+    function restoreSectionFocus(body) {
+        const key = body?._ncFocusKey;
+        const active = document.activeElement;
+        if (!key || (active && active !== document.body && active.isConnected)) return;
+        const candidates = key.id ? [document.getElementById(key.id)]
+            : [...body.querySelectorAll(key.cls ? `.${CSS.escape(key.cls)}` : key.tag)];
+        const match = candidates.find(el => el && body.contains(el)
+            && Object.entries(key.data).every(([name, value]) => el.dataset[name] === value));
+        match?.focus();
+    }
+
     function finishSectionLoad(body) {
         setSectionBusy(body, false);
     }
@@ -759,6 +783,8 @@ const NerveCenter = (() => {
         setSectionBusy,
         renderSectionLoading,
         finishSectionLoad,
+        trackSectionFocus,
+        restoreSectionFocus,
         renderSectionError,
         getEcosystemSnapshot,
         invalidateEcosystemSnapshot,

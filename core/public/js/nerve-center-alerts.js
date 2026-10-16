@@ -136,8 +136,10 @@
 
         if (!_poller) {
             _poller = new window.PollingController();
-            // The refresh rebuilds the section, rule editor included: skip it while a rule is being written.
-            _poller.addTask('alerts', () => (ruleEditorOpen() ? undefined : loadAlerts()), 30000, { runOnStart: false });
+            // The refresh rebuilds the section, rule editor included: skip it while a rule
+            // is being written or while keyboard focus sits on an alert or rule control.
+            const busy = () => ruleEditorOpen() || document.getElementById('nc-alerts-body')?.contains(document.activeElement);
+            _poller.addTask('alerts', () => (busy() ? undefined : loadAlerts()), 30000, { runOnStart: false });
             _poller.start();
         }
     }

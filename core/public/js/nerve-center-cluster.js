@@ -657,11 +657,11 @@
                         body: JSON.stringify({ maxConcurrentModels })
                     });
                     if (data.status === 'success') {
-                        window.NerveCenterCluster?.loadCluster();
+                        window.NerveCenterCluster?.loadCluster({ quiet: true });
                     }
                 } catch (err) {
                     showPinError(select, err);
-                    window.NerveCenterCluster?.loadCluster();
+                    window.NerveCenterCluster?.loadCluster({ quiet: true });
                 }
             });
         });
@@ -681,7 +681,7 @@
                             body: JSON.stringify({ model: select.dataset.model, [field]: Number(select.value) })
                         });
                         committed = select.value;
-                        window.NerveCenterCluster?.loadCluster();
+                        window.NerveCenterCluster?.loadCluster({ quiet: true });
                     } catch (err) {
                         select.value = committed;
                         showPinError(select, err);
@@ -706,7 +706,7 @@
                         method: removing ? 'DELETE' : 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ model })
                     });
-                    window.NerveCenterCluster?.loadCluster();
+                    window.NerveCenterCluster?.loadCluster({ quiet: true });
                 } catch (err) { showPinError(button, err); }
                 finally { button.disabled = false; }
             });
@@ -724,7 +724,7 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' }
                     });
-                    setTimeout(() => window.NerveCenterCluster?.loadCluster(), 2000);
+                    setTimeout(() => window.NerveCenterCluster?.loadCluster({ quiet: true }), 2000);
                 } catch (err) {
                     console.error('Failed to reload defaults:', err);
                 } finally {
@@ -777,7 +777,7 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' }
                     });
-                    setTimeout(() => window.NerveCenterCluster?.loadCluster(), 2000);
+                    setTimeout(() => window.NerveCenterCluster?.loadCluster({ quiet: true }), 2000);
                 } catch (err) {
                     showPinError(button, err);
                 } finally {
@@ -803,7 +803,7 @@
                         method: 'DELETE',
                         headers: { 'Content-Type': 'application/json', ...headers }
                     });
-                    window.NerveCenterCluster?.loadCluster();
+                    window.NerveCenterCluster?.loadCluster({ quiet: true });
                 } catch (err) {
                     showPinError(button, err);
                 } finally {
@@ -828,7 +828,7 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ model })
                     });
-                    setTimeout(() => window.NerveCenterCluster?.loadCluster(), 2000);
+                    setTimeout(() => window.NerveCenterCluster?.loadCluster({ quiet: true }), 2000);
                 } catch (err) {
                     showPinError(button, err);
                 } finally {
@@ -846,7 +846,7 @@
                         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ model: checkbox.dataset.model, autoRestore: checkbox.checked })
                     });
-                    window.NerveCenterCluster?.loadCluster();
+                    window.NerveCenterCluster?.loadCluster({ quiet: true });
                 } catch (err) { checkbox.checked = !checkbox.checked; showPinError(checkbox, err); }
                 finally { checkbox.disabled = false; }
             });
@@ -860,6 +860,7 @@
         const body = document.getElementById('sectionClusterBody');
         if (!body) return;
         const load = ++clusterLoad;
+        shared.trackSectionFocus?.(body);
 
         if (!quiet) shared.renderSectionLoading(body, 'Loading cluster data...');
         startClusterRefresh();
@@ -897,6 +898,7 @@
             attachHostCardHandlers();
             attachClusterPreferenceHandlers();
             attachPinHandlers();
+            shared.restoreSectionFocus?.(body);
             // Occupancy over a window loads on its own and never holds the cards.
             void window.NerveCenterGpuOccupancy?.mount(body);
         } catch (err) {
@@ -918,7 +920,7 @@
         clusterRefresh = setInterval(() => {
             const body = document.getElementById('sectionClusterBody');
             if (!body || document.hidden || body.offsetParent === null) return;
-            if (body.contains(document.activeElement) || body.querySelector('details[open]')) return;
+            if (body.contains(document.activeElement) || body.querySelector('details[open], .nc-host-expand[aria-expanded="true"]')) return;
             loadCluster({ quiet: true });
         }, CLUSTER_REFRESH_MS);
     }
