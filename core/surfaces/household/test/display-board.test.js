@@ -158,3 +158,21 @@ test('bold written by the model shows as emphasis, not asterisks', () => {
   assert.deepEqual(body.children.map(child => [child.tagName, child.textContent]), [['SPAN', '1. '], ['STRONG', 'Optimisation du RAG'], ['SPAN', ' : re-ranking']]);
   assert.doesNotMatch(container.text(), /\*\*/);
 });
+
+test('Famille shows external links as text unless the household turned them on', () => {
+  const store = new Map();
+  globalThis.localStorage = { getItem: key => store.get(key) ?? null };
+  const linkOf = space => {
+    const container = new Element('section');
+    create(container, { space }).add({ id: 'b1', kind: 'link', title: 'Site', body: 'https://example.org/page' });
+    return container.find(child => child.tagName === 'A');
+  };
+  try {
+    assert.equal(linkOf('family'), null, 'text by default for children');
+    assert.equal(linkOf('personal')?.href, 'https://example.org/page', 'the personal space keeps its links');
+    store.set('household.space.family.links', 'clickable');
+    assert.equal(linkOf('family')?.href, 'https://example.org/page');
+  } finally {
+    delete globalThis.localStorage;
+  }
+});
