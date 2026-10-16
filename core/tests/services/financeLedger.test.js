@@ -852,6 +852,64 @@ describe('bank statements from mail: coverage status and deposit into the inbox'
   });
 });
 
+describe('savings goals and the monthly review', () => {
+  const goals = require('../../src/services/finance/financeGoals');
+  const plan = require('../../src/services/finance/financePlan');
+  const categories = require('../../src/services/finance/financeCategories');
+
+  async function eop(period, rows) {
+    let balance = 100000;
+    const transactions = rows.map(([date, description, cents]) => { balance += cents; return { date, description, amount_cents: cents, balance_after_cents: balance }; });
+    await ingestDocument(await writeDoc(`goal-${period[0]}.pdf`), { readText, extract: extractWith({
+      issuer: 'Caisse Exemple', account_last4: '0000', period_start: period[0], period_end: period[1],
+      accounts: [{ code: 'EOP', opening_cents: 100000, closing_cents: balance, transactions }] }) });
+  }
+
+  test('measures progress, the pace of complete months, the projection and the monthly need', async () => {
+    for (const month of ['2026-04', '2026-05', '2026-06']) {
+      const end = new Date(Date.UTC(2026, Number(month.slice(5)), 0)).toISOString().slice(0, 10);
+      await eop([`${month}-01`, end], [[`${month}-02`, 'PAIE EMPLOYEUR', 300000], [`${month}-10`, 'EPARGNE VAC', -20000]]);
+    }
+    // July is incomplete: it counts toward progress but not toward the pace.
+    await eop(['2026-07-01', '2026-07-10'], [['2026-07-05', 'EPARGNE VAC', -90000]]);
+    await categories.saveRules({ pattern: 'epargne vac', category: 'Restaurants', tags: ['vacances'] });
+    await plan.savePlan({
+      budget: [{ label: 'Restos', category: 'Restaurants', monthlyCents: 10000 }],
+      goals: [
+        { name: 'Vacances', targetCents: 500000, targetDate: '2026-12-31', priority: 'high', source: { kind: 'tag', ref: 'vacances' } },
+        { name: 'Fonds', targetCents: 1000000, priority: 'low', source: { kind: 'account', ref: 'EOP' } }
+      ]
+    });
+    const result = await goals.goals({ now: new Date('2026-07-15T12:00:00Z') });
+    expect(result.windowMonths).toEqual(['2026-04', '2026-05', '2026-06']);
+    const [vacances, fonds] = result.goals;
+    expect(vacances).toMatchObject({ name: 'Vacances', progressCents: 150000, remainingCents: 350000, paceMonthlyCents: 20000,
+      status: 'behind', projectedMonth: '2028-01', requiredMonthlyCents: 70000 });
+    expect(fonds).toMatchObject({ name: 'Fonds', progressCents: 10000, paceMonthlyCents: 280000, status: 'on_track', requiredMonthlyCents: null });
+  });
+
+  test('a goal with no pace says so, and a reached goal needs nothing more', async () => {
+    await eop(['2026-06-01', '2026-06-30'], [['2026-06-02', 'PAIE EMPLOYEUR', 300000]]);
+    await plan.savePlan({ assets: [{ name: 'REER', valueCents: 2000000 }],
+      goals: [{ name: 'REER', targetCents: 1500000, priority: 'medium', source: { kind: 'asset', ref: 'REER' } }] });
+    const [reer] = (await goals.goals({ now: new Date('2026-07-15T12:00:00Z') })).goals;
+    expect(reer).toMatchObject({ progressCents: 2000000, remainingCents: 0, status: 'reached', requiredMonthlyCents: 0 });
+    await plan.savePlan({ assets: [{ name: 'Compte', valueCents: 1 }], goals: [{ name: 'Tag', targetCents: 9000, source: { kind: 'tag', ref: 'nothing' } }] });
+    const [tag] = (await goals.goals({ now: new Date('2026-07-15T12:00:00Z') })).goals;
+    // A tag with no movement has a pace of zero: nothing is set aside.
+    expect(tag).toMatchObject({ status: 'no_pace', paceMonthlyCents: 0 });
+  });
+
+  test('the monthly review plans the last complete month against actual and lists the three largest overspends', async () => {
+    await eop(['2026-06-01', '2026-06-30'], [['2026-06-02', 'PAIE EMPLOYEUR', 300000], ['2026-06-10', 'EPARGNE VAC', -20000]]);
+    await categories.saveRules({ pattern: 'epargne vac', category: 'Restaurants', tags: ['vacances'] });
+    await plan.savePlan({ budget: [{ label: 'Restos', category: 'Restaurants', monthlyCents: 10000 }, { label: 'Paie', category: 'Revenus', monthlyCents: 300000 }] });
+    const review = await goals.monthlyReview({ now: new Date('2026-07-15T12:00:00Z') });
+    expect(review.month).toBe('2026-06');
+    expect(review.topGaps).toEqual([expect.objectContaining({ label: 'Restos', plannedCents: 10000, actualCents: 20000, gapCents: 10000 })]);
+  });
+});
+
 describe('statement coverage', () => {
   test('lists the months each statement series covers and the gaps between', async () => {
     for (const [name, period] of [['a.pdf', ['2026-01-01', '2026-01-31']], ['b.pdf', ['2026-04-01', '2026-04-30']]]) {

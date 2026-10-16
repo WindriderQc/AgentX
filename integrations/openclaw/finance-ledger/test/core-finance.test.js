@@ -154,3 +154,16 @@ test('deposits chosen statements through Core and refuses more than ten', async 
   assert.equal(result.copied.length, 1);
   await assert.rejects(deposit({ ids: [] }), /1 to 10/);
 });
+
+test('reads savings goals and the monthly review from Core', async () => {
+  const { createCoreFinanceClient: readClient } = await import('../core-finance.js');
+  const urls = [];
+  const read = readClient({ baseUrl: 'http://127.0.0.1:3180', fetchImpl: async (url) => {
+    urls.push(String(url));
+    return { ok: true, json: async () => ({ status: 'success', data: { goals: [{ name: 'Vacances', progressCents: 150000 }], topGaps: [] } }) };
+  } });
+  const goals = await read({ action: 'goals' });
+  await read({ action: 'review' });
+  assert.deepEqual(urls, ['http://127.0.0.1:3180/api/finance/goals', 'http://127.0.0.1:3180/api/finance/review/monthly']);
+  assert.equal(goals.goals[0].progressDisplay, '1 500,00 $');
+});

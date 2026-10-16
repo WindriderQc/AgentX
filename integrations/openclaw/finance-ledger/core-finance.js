@@ -12,7 +12,9 @@ const ACTIONS = {
   insights: { path: '/api/finance/insights', params: ['account', 'category', 'tag', 'months'] },
   rules: { path: '/api/finance/rules', params: [] },
   statements: { path: '/api/finance/statements', params: ['status'] },
-  documents: { path: '/api/finance/documents', params: ['minCents'] }
+  documents: { path: '/api/finance/documents', params: ['minCents'] },
+  goals: { path: '/api/finance/goals', params: [] },
+  review: { path: '/api/finance/review/monthly', params: [] }
 };
 
 // Formats integer cents the Quebec way: 1 234,56 $ (narrow no-break space

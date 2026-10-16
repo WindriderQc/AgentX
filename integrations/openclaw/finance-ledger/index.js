@@ -46,7 +46,7 @@ export default definePluginEntry({
         parameters: {
           type: "object",
           properties: {
-            action: { type: "string", enum: ["balances", "transactions", "monthly", "yearly", "insights", "categories", "uncategorized", "rules", "statements", "documents"] },
+            action: { type: "string", enum: ["balances", "transactions", "monthly", "yearly", "insights", "categories", "uncategorized", "rules", "statements", "documents", "goals", "review"] },
             account: { type: "string", maxLength: 80 },
             from: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
             to: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
@@ -199,6 +199,10 @@ export default definePluginEntry({
           + "op done settles a watch or open item the owner says is paid ('Odyssée payée' → done, match 'Odyssée'): a recurring item "
           + "moves its dueDate to the next period (monthly, quarterly, yearly); any other item is removed and kept as a settled milestone. "
           + "An open item or watch line can carry briefLabel: the short wording the morning brief uses. "
+          + "goals = savings goals: progress from an account, an asset or a tag, the pace of the last three complete months, the projected "
+          + "month and the monthly amount the target date needs (quote the *Display strings; a goal with no pace says so). "
+          + "review = the last complete month planned against actual by category, the three largest overspends and the goals. "
+          + "A goal is set with finance_plan section goals: {name, targetCents, targetDate, priority, source: {kind: account|asset|tag, ref}}. "
           + "seriesStatus names a statement series (issuer ··· last four) with label, and closed=true for a closed account or card "
           + "(no stale alert then). "
           + "Confirm what changed in one line.",
@@ -213,7 +217,7 @@ export default definePluginEntry({
                 properties: {
                   op: { type: "string", enum: ["add", "update", "remove", "set", "done"] },
                   section: { type: "string", enum: ["phase", "excludeTags", "budget", "debts", "credit", "provisions", "assets",
-                    "milestones", "openItems", "allocations", "watch", "taxRoom", "seriesStatus"] },
+                    "milestones", "openItems", "allocations", "watch", "taxRoom", "seriesStatus", "goals"] },
                   match: { type: "string", maxLength: 80 },
                   index: { type: "integer", minimum: 0 },
                   item: { type: "object" },

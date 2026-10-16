@@ -162,6 +162,26 @@
     show('financeProvisionsCard', s.provisions.length > 0);
   }
 
+  // Savings goals as progress bars: progress, status, projected month and the monthly amount the date needs.
+  const GOAL_STATUS = { reached: 'reached', on_track: 'on track', behind: 'behind the date', no_pace: 'no pace yet' };
+  function renderGoals(list) {
+    $('financeGoals').replaceChildren(...list.map((goal) => {
+      const detail = [`${money(goal.progressCents)} of ${money(goal.targetCents)}`,
+        goal.projectedMonth ? `projected ${goal.projectedMonth}` : null,
+        goal.requiredMonthlyCents && goal.targetDate ? `${money(goal.requiredMonthlyCents)} a month to reach it by ${goal.targetDate}` : null]
+        .filter(Boolean).join(' · ');
+      return el('div', { class: 'finance-goal' },
+        el('div', { class: 'finance-goal-head' }, el('strong', {}, goal.name), el('span', {}, ` · ${GOAL_STATUS[goal.status] || goal.status}`)),
+        el('div', { class: 'finance-goal-track', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(goal.percent) },
+          el('span', { class: 'finance-goal-fill', style: `width:${goal.percent}%` })),
+        el('small', {}, detail));
+    }));
+  }
+  fetch('/api/finance/goals', { credentials: 'same-origin' })
+    .then((response) => response.json())
+    .then((body) => { if (body?.status === 'success' && body.data.goals.length) renderGoals(body.data.goals); })
+    .catch(() => {});
+
   fetch('/api/finance/situation', { credentials: 'same-origin' })
     .then((response) => response.json())
     .then((body) => {
