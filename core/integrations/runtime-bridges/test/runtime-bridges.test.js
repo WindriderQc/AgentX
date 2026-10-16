@@ -139,10 +139,11 @@ function runtimeServices(execute) {
 
 test('manifest owns the complete AIOps bridge surface and registers every route family', () => {
   assert.equal(manifest.id, 'aio-ops-runtime-bridges');
-  assert.equal(manifest.version, '1.7.6');
+  assert.equal(manifest.version, '1.8.0');
   assert.deepEqual(manifest.capabilities, [
     'agent-runtime-config',
     'hermes-runtime-bridge',
+    'openai-compatible-llm-gateway',
     'openclaw-runtime-bridge',
     'dsh-studio-launcher',
     'runtime-operations-projection',
@@ -172,6 +173,7 @@ test('manifest owns the complete AIOps bridge surface and registers every route 
     ['/mcp', '/api/mcp'],
     '/api/openclaw-ollama',
     '/api/hermes-openai',
+    '/api/llm',
     '/api/openclaw',
     '/api/dsh',
     '/api/hermes',

@@ -1103,6 +1103,17 @@ used. It verifies service health and synthetic Qdrant write/read/filter/delete,
 then removes that runner's disposable stack. A passing result validates containers,
 not Ollama inference or the real-phone experience.
 
+## OpenAI-compatible LLM gateway
+
+External clients reach local models through Core at `/api/llm/v1` (`models`,
+`chat/completions`, `responses`), never through an Ollama host directly, so
+their load appears in admission, the cluster view and analytics under the
+client's name. Each client authenticates with the standard OpenAI API key
+header; its token, declared in the secret `AGENTX_LLM_GATEWAY_CLIENTS`, names
+it. Model `agentx-primary` follows the principal route with its pinned
+context. Hermes keeps `/api/hermes-openai`. OpenAI Codex uses the `responses`
+door; its configuration is in `core/integrations/runtime-bridges/README.md`.
+
 ## Light-task fallback ladder
 
 Host health reports `gpuHealth` for configured pins. A fresh `/api/ps` sample

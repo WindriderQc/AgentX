@@ -1,10 +1,12 @@
 'use strict';
 
-const VERSION = '1.7.6';
+const VERSION = '1.8.0';
 const { CodingTaskPreparation } = require('./coding-task-preparation');
 
 const { cleanBaseUrl } = require('./common');
 const { registerHermesProtocol } = require('./hermes/protocol');
+const { parseGatewayClients } = require('./llm-gateway/clients');
+const { registerLlmGateway } = require('./llm-gateway/router');
 const { registerOpenClawProtocol } = require('./openclaw/protocol');
 const { createConversationHostResolver, parseConversationHosts, parseNoThinkModels } = require('./openclaw/conversationHosts');
 const { createAioOpsEvidenceService } = require('./evidence-service');
@@ -35,6 +37,7 @@ function validateEnvironment() {
   for (const key of ['CORE_PUBLIC_URL', 'HERMES_DASHBOARD_URL', 'HERMES_PUBLIC_URL', 'OPENCLAW_GATEWAY_URL', 'OPENCLAW_CONTROL_UI_PUBLIC_URL', 'DSH_STUDIO_PUBLIC_URL']) {
     if (process.env[key]) cleanBaseUrl(process.env[key]);
   }
+  parseGatewayClients();
   if (process.env.OPENCLAW_AGENTX_PROVIDER_BASE_URL) {
     resolveOpenClawProviderBaseUrl(process.env.OPENCLAW_AGENTX_PROVIDER_BASE_URL);
   }
@@ -171,6 +174,7 @@ function register(api) {
       || conversationHosts(model)
   }));
   app.use('/api/hermes-openai', registerHermesProtocol({ express, runtimeServices, logger }));
+  app.use('/api/llm', registerLlmGateway({ express, runtimeServices, logger }));
   app.use('/api/openclaw', registerOpenClawOperations({
     express,
     logger,
@@ -237,7 +241,7 @@ function register(api) {
       version: VERSION,
       coreRuntimeContract: runtimeServices.contractVersion,
       inProcessEvidence: { contractVersion: evidence.contractVersion },
-      routes: ['ecosystem-snapshot-mcp', 'openclaw-ollama', 'hermes-openai', 'agent-runtime-config', 'openclaw-operations', 'dsh-studio', 'hermes-operations', 'agent-ops', 'pipeline-attribution', 'coding-dispatch', 'coding-delivery']
+      routes: ['ecosystem-snapshot-mcp', 'openclaw-ollama', 'hermes-openai', 'llm-gateway', 'agent-runtime-config', 'openclaw-operations', 'dsh-studio', 'hermes-operations', 'agent-ops', 'pipeline-attribution', 'coding-dispatch', 'coding-delivery']
     }
   }));
 }
@@ -248,6 +252,7 @@ module.exports = {
   capabilities: [
     'agent-runtime-config',
     'hermes-runtime-bridge',
+    'openai-compatible-llm-gateway',
     'openclaw-runtime-bridge',
     'dsh-studio-launcher',
     'runtime-operations-projection',
