@@ -8,6 +8,15 @@ is 24 hours. Models and consumers share the same total-call denominator;
 **Explore the details** retains routing, full model tables, Playground analytics,
 knowledge, provider and subscription panels.
 
+Mini-curves beside calls, output and latency show the same UTC buckets as the
+main chart. Each uses its own scale with a zero baseline; missing observations
+leave gaps. Outcome and local/cloud rings require reconciled counts. Empty or
+failed reads leave a neutral ring. GPU tracks distinguish load from allocated
+VRAM on the same 0–100% scale; memory allocation is not evidence of GPU work.
+The model/consumer view compares call share (blue) with share of recorded elapsed
+time (violet), each against its own full-window total. These comparisons describe
+observations, not a claim that one metric caused another.
+
 ## What the numbers mean
 
 - **Inference calls** counts recorded calls across callers and routes. Calls
@@ -28,8 +37,10 @@ knowledge, provider and subscription panels.
   different from unpriced traffic. All models contribute to local/cloud totals;
   the detailed model list displays at most 40, with coverage in the API.
 
-The overlaid chart uses calls on the left axis and operational error percentage
-on the right. Cancellations are excluded from that error percentage. Buckets
+The overlaid chart uses calls on the left axis. **Errors** puts operational error
+percentage on the right; **Latency** puts mean end-to-end seconds there for the
+same buckets. The right axis is labeled separately and scales independently.
+Cancellations are excluded from the error percentage. Buckets
 are hourly for 24 hours and daily otherwise, in UTC; first and last buckets can
 be partial. Empty buckets in a successfully read window have zero calls and
 no error percentage. Retention is disclosed, including when a requested window

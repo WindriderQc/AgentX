@@ -13,6 +13,7 @@
   let summary = null;
   let groupBy = 'byModel';
   let trend = null;
+  let overlay = 'errors';
   let livePending = false;
 
   function outcome(totals) {
@@ -21,16 +22,81 @@
     return (t.calls - t.nonSuccesses) / t.calls * 100;
   }
 
+  function outcomeSplit(t) {
+    if (outcome(t) == null || ![t.errors, t.cancellations].every(n => finite(n) && n >= 0)
+      || t.errors + t.cancellations !== t.nonSuccesses) return null;
+    return { success: t.calls - t.nonSuccesses, errors: t.errors, canceled: t.cancellations, total: t.calls };
+  }
+
+  function callSplit(data) {
+    const total = data.totals?.calls, local = data.local?.calls, cloud = data.cloud?.calls;
+    if (!(total > 0) || ![local, cloud].every(n => finite(n) && n >= 0) || local + cloud !== total) return null;
+    return { local, cloud, total, localPct: local / total * 100 };
+  }
+
+  // Each mini-chart starts at zero; absent observations create gaps, not a line.
+  function sparkPaths(values) {
+    const known = values.filter(n => finite(n) && n >= 0);
+    if (known.length < 2 || values.length < 2) return null;
+    const max = Math.max(...known), groups = [];
+    let group = [];
+    values.forEach((n, i) => {
+      if (!finite(n) || n < 0) { if (group.length) groups.push(group); group = []; return; }
+      group.push([2 + i / (values.length - 1) * 96, max > 0 ? 27 - n / max * 24 : 27]);
+    });
+    if (group.length) groups.push(group);
+    const point = p => p.map(n => n.toFixed(2)).join(',');
+    return {
+      line: groups.map(points => `M${points.map(point).join(' L')}`).join(' '),
+      area: groups.filter(points => points.length > 1).map(points => `M${point([points[0][0], 29])} L${points.map(point).join(' L')} L${point([points.at(-1)[0], 29])} Z`).join(' ')
+    };
+  }
+
+  function renderVisuals(data) {
+    const active = data.totals?.calls > 0;
+    const rows = active && Array.isArray(data.byBucket) ? buckets(data) : [];
+    const series = {
+      calls: rows.map(row => row.calls),
+      output: rows.map(row => row.calls === 0 ? 0 : row.tokensOut),
+      latency: rows.map(row => row.calls > 0 ? row.avgLatencyMs : null)
+    };
+    for (const [key, values] of Object.entries(series)) {
+      const paths = sparkPaths(values);
+      const label = `${key === 'output' ? 'Reported output tokens' : key === 'latency' ? 'Mean call latency' : 'Recorded calls'} by ${data.bucketHours === 1 ? 'hourly' : 'daily'} UTC bucket; zero baseline, independent scale, gaps unobserved`;
+      $(`ao-${key}-spark`).innerHTML = paths ? `<svg viewBox="0 0 100 32" role="img" aria-label="${esc(label)}"><title>${esc(label)}</title><path class="ao-spark-area" d="${paths.area}"/><path class="ao-spark-line" d="${paths.line}"/></svg>` : '';
+    }
+    const parts = outcomeSplit(data.totals || {}), ring = $('ao-outcome-ring');
+    ring.classList.toggle('is-empty', !parts);
+    ring.style.setProperty('--success-end', `${parts ? parts.success / parts.total * 100 : 0}%`);
+    ring.style.setProperty('--error-end', `${parts ? (parts.success + parts.errors) / parts.total * 100 : 0}%`);
+    ring.setAttribute('aria-label', parts ? `${count(parts.success)} successful, ${count(parts.errors)} errors, ${count(parts.canceled)} canceled out of ${count(parts.total)} recorded calls` : 'Outcomes not observed');
+    ring.title = ring.getAttribute('aria-label');
+    set('ao-outcome-count', parts ? compact(parts.success) : '—');
+    const mix = callSplit(data), mixRing = $('ao-mix-ring');
+    mixRing.classList.toggle('is-empty', !mix);
+    mixRing.style.setProperty('--local-end', `${mix?.localPct ?? 0}%`);
+    mixRing.setAttribute('aria-label', mix ? `${count(mix.local)} local calls and ${count(mix.cloud)} cloud calls out of ${count(mix.total)} recorded calls` : 'Local and cloud call split not observed');
+    mixRing.title = mixRing.getAttribute('aria-label');
+    set('ao-mix-value', mix ? percent(mix.localPct) : '—');
+  }
+
   // Denominators always use all recorded calls, even if only the top rows fit.
   function comparisonRows(data, field, limit = 3) {
     const calls = data.totals?.calls;
+    const elapsed = data.totals?.inferenceSeconds;
     const rows = [...(data[field] || [])].sort((a, b) => b.calls - a.calls);
     const shown = rows.slice(0, limit).map(row => ({
       ...row, label: row[field === 'byModel' ? 'model' : 'consumerContract'] || 'Unknown',
-      share: calls > 0 ? row.calls / calls * 100 : null
+      share: calls > 0 ? row.calls / calls * 100 : null,
+      timeShare: elapsed > 0 && row.inferenceSeconds > 0 ? row.inferenceSeconds / elapsed * 100 : null
     }));
     const remainder = calls - shown.reduce((sum, row) => sum + row.calls, 0);
-    if (remainder > 0) shown.push({ label: 'All other calls', calls: remainder, share: remainder / calls * 100, other: true });
+    if (remainder > 0) {
+      const measured = shown.every(row => finite(row.inferenceSeconds));
+      const remainingTime = measured ? elapsed - shown.reduce((sum, row) => sum + row.inferenceSeconds, 0) : null;
+      shown.push({ label: 'All other calls', calls: remainder, share: remainder / calls * 100,
+        timeShare: elapsed > 0 && remainingTime > 0 ? remainingTime / elapsed * 100 : null, other: true });
+    }
     return shown;
   }
 
@@ -79,10 +145,10 @@
     if (!summary) return;
     const rows = comparisonRows(summary, groupBy);
     $('ao-comparison').innerHTML = rows.length ? rows.map(row => `<div class="ao-model${row.other ? ' is-other' : ''}">
-      <span class="ao-model-name" style="--share:${Math.max(0, Math.min(100, row.share || 0))}%" title="${esc(row.label)} · ${esc(percent(row.share))} of all recorded calls">${esc(row.label)}</span>
+      <span class="ao-model-name" style="--share:${Math.max(0, Math.min(100, row.share || 0))}%;--time-share:${Math.max(0, Math.min(100, row.timeShare || 0))}%" title="${esc(row.label)} · ${esc(percent(row.share))} of calls · ${esc(percent(row.timeShare))} of recorded elapsed time"><span>${esc(row.label)}</span></span>
       <span>${esc(count(row.calls))}</span><span>${row.other ? '—' : esc(duration(row.calls > 0 ? row.avgLatencyMs : null))}</span><span>${row.other ? '—' : esc(percent(row.calls > 0 ? row.errorRate : null))}</span></div>`).join('')
       : '<p class="ao-empty">No recorded activity in this window.</p>';
-    set('ao-model-note', groupBy === 'byModel' ? 'Calls compared with elapsed time · all other models included in remainder' : 'Server-attested consumers · unknown means unattributed');
+    set('ao-model-note', 'Share of window total · durations include waits');
   }
 
   function renderTrend(data) {
@@ -95,11 +161,16 @@
       set('ao-trend-empty', 'Time buckets unavailable. See daily detail below.');
       return;
     }
-    const rows = buckets(data), empty = !(data.totals?.calls > 0);
+    const rows = buckets(data), empty = !(data.totals?.calls > 0), latency = overlay === 'latency';
+    const color = latency ? '#bd9df7' : '#f0b47d';
+    set('ao-overlay-label', latency ? 'Mean latency (s)' : 'Errors %');
+    $('ao-overlay-label').style.setProperty('--overlay-color', color);
+    canvas.setAttribute('aria-label', `Inference calls and ${latency ? 'mean end-to-end latency' : 'operational error rate'} over time; separate labeled axes`);
     canvas.hidden = empty;
     $('ao-trend-empty').hidden = !empty;
     set('ao-trend-empty', 'No recorded calls in this window.');
-    set('ao-trend-note', `${data.bucketHours === 1 ? 'Hourly' : 'Daily'} UTC · edge buckets partial · errors exclude cancellations`);
+    const basis = latency ? (rows.some(row => row.calls > 0 && finite(row.avgLatencyMs)) ? 'mean end-to-end latency' : 'latency not observed') : 'errors exclude cancellations';
+    set('ao-trend-note', `${data.bucketHours === 1 ? 'Hourly' : 'Daily'} UTC · edge buckets partial · ${basis}`);
     if (empty || typeof Chart === 'undefined') return;
     const hourly = data.bucketHours === 1;
     trend = new Chart(canvas, {
@@ -108,7 +179,7 @@
         labels: rows.map(row => new Date(row.at).toLocaleString('en-US', { timeZone: 'UTC', ...(hourly ? { hour: '2-digit', hour12: false } : { month: 'short', day: 'numeric' }) })),
         datasets: [
           { label: 'Calls', data: rows.map(row => row.calls), backgroundColor: '#6d9df580', hoverBackgroundColor: '#8fb7ff', borderRadius: 3, yAxisID: 'calls', order: 2 },
-          { type: 'line', label: 'Operational errors %', data: rows.map(row => row.errorPct), borderColor: '#f0b47d', backgroundColor: '#f0b47d', yAxisID: 'rate', borderWidth: 2, pointRadius: rows.length < 40 ? 2 : 0, tension: .25, order: 1 }
+          { type: 'line', label: latency ? 'Mean latency (s)' : 'Operational errors %', data: rows.map(row => latency ? (row.calls > 0 && finite(row.avgLatencyMs) ? row.avgLatencyMs / 1000 : null) : row.errorPct), borderColor: color, backgroundColor: color, yAxisID: 'rate', borderWidth: 2, pointRadius: rows.length < 40 ? 2 : 0, tension: .25, order: 1 }
         ]
       },
       options: {
@@ -116,12 +187,12 @@
         interaction: { mode: 'index', intersect: false },
         plugins: { legend: { display: false }, tooltip: { callbacks: {
           title: items => items.length ? `${new Date(rows[items[0].dataIndex].at).toISOString().slice(0, 16).replace('T', ' ')} UTC` : '',
-          label: item => item.dataset.yAxisID === 'rate' ? `Errors: ${percent(item.raw)}` : `Calls: ${count(item.raw)}`
+          label: item => item.dataset.yAxisID === 'rate' ? (latency ? `Mean call latency: ${duration(finite(item.raw) ? item.raw * 1000 : null)}` : `Errors: ${percent(item.raw)}`) : `Calls: ${count(item.raw)}`
         } } },
         scales: {
           x: { grid: { display: false }, ticks: { color: '#8e9db5', maxTicksLimit: 9, maxRotation: 0, font: { size: 10 } } },
           calls: { beginAtZero: true, grid: { color: '#ffffff09' }, ticks: { color: '#8e9db5', maxTicksLimit: 4, precision: 0, font: { size: 10 } } },
-          rate: { position: 'right', beginAtZero: true, suggestedMax: 1, grid: { display: false }, ticks: { color: '#c99b77', maxTicksLimit: 4, callback: v => `${v}%`, font: { size: 10 } } }
+          rate: { position: 'right', beginAtZero: true, suggestedMax: 1, grid: { display: false }, ticks: { color, maxTicksLimit: 4, callback: v => `${v}${latency ? 's' : '%'}`, font: { size: 10 } } }
         }
       }
     });
@@ -156,6 +227,7 @@
     set('ao-coverage', `Recorded AgentX calls only; native calls bypassing Core are outside this view. ${c ? `${c.retentionDays}-day log retention${c.requestedDays > c.retentionDays ? ` limits this ${c.requestedDays}-day window` : ''}. ` : ''}Reported tokens may omit unreported usage. Summed call time is not GPU busy time.`);
     renderComparison();
     renderTrend(data);
+    renderVisuals(data);
   }
 
   function clearSummary(state) {
@@ -171,6 +243,7 @@
     ['ao-calls', 'ao-success', 'ao-output', 'ao-latency', 'ao-local-calls', 'ao-local-time', 'ao-cloud-cost'].forEach(id => set(id, '—'));
     ['ao-calls-note', 'ao-outcomes', 'ao-input', 'ao-time', 'ao-fallbacks', 'ao-local-share', 'ao-cloud-note', 'ao-model-note'].forEach(id => set(id, 'Waiting for this window’s data'));
     set('ao-comparison', message);
+    renderVisuals({});
   }
 
   async function readJSON(url) {
@@ -209,7 +282,8 @@
         if (!row.fresh) return `<div class="ao-gpu is-unknown"><span>${esc(row.label)}</span><span>Unknown</span><small>GPU telemetry ${esc(row.state.replaceAll('_', ' '))}</small></div>`;
         const utilization = finite(row.utilization) ? Math.max(0, Math.min(100, row.utilization)) : null;
         const vram = finite(row.vramUsed) && row.vramTotal > 0 ? `${(row.vramUsed / 1024).toFixed(1)} / ${(row.vramTotal / 1024).toFixed(1)} GiB VRAM` : 'VRAM unknown';
-        return `<div class="ao-gpu"><span title="${esc(row.name)}">${esc(row.label)}</span><div class="ao-meter"><span style="width:${utilization ?? 0}%"></span></div><strong>${finite(utilization) ? `${Math.round(utilization)}%` : '—'}</strong><small>${esc(vram)} · ${Math.round(row.age / 1000)}s old${finite(row.powerDraw) ? ` · ${Math.round(row.powerDraw)} W` : ''}</small></div>`;
+        const memoryPct = finite(row.vramUsed) && row.vramTotal > 0 ? Math.min(100, Math.max(0, row.vramUsed / row.vramTotal * 100)) : null;
+        return `<div class="ao-gpu"><span title="${esc(row.name)}">${esc(row.label)}</span><div class="ao-gpu-tracks"><div class="ao-meter" role="img" aria-label="GPU load ${esc(percent(utilization))}" title="GPU load: ${esc(percent(utilization))}"><span style="width:${utilization ?? 0}%"></span></div><div class="ao-meter ao-meter-memory" role="img" aria-label="VRAM allocation ${esc(percent(memoryPct))}" title="VRAM allocated: ${esc(percent(memoryPct))}"><span style="width:${memoryPct ?? 0}%"></span></div></div><strong>${finite(utilization) ? `${Math.round(utilization)}%` : '—'}</strong><small>${esc(vram)} · ${Math.round(row.age / 1000)}s old${finite(row.powerDraw) ? ` · ${Math.round(row.powerDraw)} W` : ''}</small></div>`;
       }).join('') || '<p class="ao-empty">No GPU collector evidence. Open Nerve Center for hosts.</p>';
     } catch {
       $('ao-gpus').innerHTML = '<p class="ao-empty">GPU telemetry unavailable · utilization unknown</p>';
@@ -243,6 +317,11 @@
       document.querySelectorAll('[data-ao-group]').forEach(other => other.setAttribute('aria-pressed', String(other === button)));
       renderComparison();
     }));
+    document.querySelectorAll('[data-ao-overlay]').forEach(button => button.addEventListener('click', () => {
+      overlay = button.dataset.aoOverlay;
+      document.querySelectorAll('[data-ao-overlay]').forEach(other => other.setAttribute('aria-pressed', String(other === button)));
+      if (summary) renderTrend(summary);
+    }));
     document.addEventListener('analytics:refresh-live', refreshLive);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshLive(); });
     refreshLive();
@@ -255,7 +334,7 @@
     }, 15000);
   }
 
-  if (typeof module !== 'undefined' && module.exports) module.exports = { outcome, comparisonRows, buckets, runtimeView, gpuRows };
+  if (typeof module !== 'undefined' && module.exports) module.exports = { outcome, outcomeSplit, callSplit, sparkPaths, comparisonRows, buckets, runtimeView, gpuRows };
   // Loaded after the markup: subscribe before deferred inference modules run.
   if (typeof document !== 'undefined') init();
 })();

@@ -22,23 +22,38 @@ function summary(key) {
   const models = ['local/brain-27b', 'local/guardian-4b', 'embedding/bge-m3', 'cloud/reasoner', 'local/worker'].map((model, i) => ({
     model, calls: [780, 310, 235, 100, 56][i], errors: i === 0 ? 3 : 0, cancellations: i === 0 ? 4 : 0,
     errorRate: i === 0 ? .38 : 0, cancellationRate: i === 0 ? .51 : 0,
-    avgLatencyMs: [21800, 1200, 96, 8900, 18300][i], tokensOut: 10000, tokensIn: 40000,
-    inferenceSeconds: 100, tokensOutPerSecond: 5, isCloud: i === 3, estimatedCostUsd: i === 3 ? 1.42 : null
+    avgLatencyMs: [21800, 1200, 96, 8900, 18300][i], tokensOut: [440000, 40000, 0, 11000, 8407][i], tokensIn: [36000000, 1500000, 30000, 1000000, 557891][i],
+    inferenceSeconds: [21800, 1200, 96, 8900, 18300][i] * [780, 310, 235, 100, 56][i] / 1000, tokensOutPerSecond: 5, isCloud: i === 3, estimatedCostUsd: i === 3 ? 1.42 : null
   }));
   const calls = empty ? 0 : 1481;
+  const elapsedMs = empty ? 0 : Math.round(models.reduce((sum, model) => sum + model.inferenceSeconds, 0) * 1000);
   const bucketHours = key === '24h' ? 1 : 24;
   const step = bucketHours * 3600000, byBucket = [];
   const volume = [16, 10, 8, 6, 5, 15, 30, 66, 100, 128, 94, 86, 110, 78, 68, 82, 60, 70, 62, 58, 52, 64, 76, 90, 53];
-  for (let at = Math.floor(+from / step) * step, i = 0; at < +to; at += step, i++) byBucket.push({ date: new Date(at).toISOString(), calls: empty ? 0 : volume[i % volume.length], errors: i === 9 ? 2 : i === 16 ? 1 : 0 });
+  for (let at = Math.floor(+from / step) * step; at < +to; at += step) byBucket.push({ date: new Date(at).toISOString() });
+  function allocate(total, weights) {
+    const sum = weights.reduce((a, b) => a + b, 0);
+    let remaining = total;
+    return weights.map((weight, i) => { const value = sum === 0 ? 0 : i === weights.length - 1 ? remaining : Math.floor(total * weight / sum); remaining -= value; return value; });
+  }
+  const counts = allocate(calls, byBucket.map((_, i) => volume[i % volume.length]));
+  const outputs = allocate(empty ? 0 : 499407, counts.map((n, i) => n * (2 + i % 5)));
+  const durations = allocate(elapsedMs, counts.map((n, i) => n * (8000 + (i % 7) * 2000)));
+  byBucket.forEach((row, i) => Object.assign(row, {
+    calls: counts[i], errors: empty ? 0 : (i === Math.min(9, byBucket.length - 1) ? 2 : 0) + (i === Math.min(16, byBucket.length - 1) ? 1 : 0),
+    cancellations: !empty && i === Math.min(17, byBucket.length - 1) ? 4 : 0,
+    nonSuccesses: empty ? 0 : (i === Math.min(9, byBucket.length - 1) ? 2 : 0) + (i === Math.min(16, byBucket.length - 1) ? 1 : 0) + (i === Math.min(17, byBucket.length - 1) ? 4 : 0),
+    tokensOut: outputs[i], inferenceSeconds: durations[i] / 1000, avgLatencyMs: counts[i] > 0 ? durations[i] / counts[i] : null
+  }));
   return {
     window: { key, from, to }, source: 'inferencelogs', scope: 'Recorded calls only', bucketHours, byBucket,
     totals: { calls, callsPerDay: calls / days, errors: empty ? 0 : 3, cancellations: empty ? 0 : 4, nonSuccesses: empty ? 0 : 7,
       errorRate: .2, fallbackRate: 0, fallbackCalls: 0, tokensIn: empty ? 0 : 39087891, tokensOut: empty ? 0 : 499407,
-      inferenceHours: empty ? 0 : 5.76, avgLatencyMs: empty ? 0 : 14000, tokensOutPerSecond: 24.09, classifiedCalls: 0 },
+      inferenceHours: elapsedMs / 3600000, inferenceSeconds: elapsedMs / 1000, avgLatencyMs: calls > 0 ? Math.round(elapsedMs / calls) : null, tokensOutPerSecond: 24.09, classifiedCalls: 0 },
     byModel: empty ? [] : models, byConsumerContract: empty ? [] : [{ consumerContract: 'native-conversation-v1', calls: 1000, avgLatencyMs: 20000, errorRate: .3 }],
     byDayCaller: [], byCaller: [], byRuntime: [], byTaskType: [], byFallbackUsed: [], byFallbackReason: [], byDegraded: [], topErrors: [],
     coverage: summaryCoverage({ models: empty ? [] : models, listedModels: empty ? [] : models, calls, windowKey: key }),
-    local: { calls: empty ? 0 : 1381, inferenceHours: 5.51 },
+    local: { calls: empty ? 0 : 1381, inferenceHours: empty ? 0 : models.filter(model => !model.isCloud).reduce((sum, model) => sum + model.inferenceSeconds, 0) / 3600 },
     cloud: { calls: empty ? 0 : 100, estimatedCostUsd: empty ? null : 1.42, unpricedModels: [] }
   };
 }
@@ -105,12 +120,30 @@ const server = http.createServer(async (req, res) => {
     assert.equal(await page.locator('#ao-success').textContent(), '99.5%');
     assert.match(await page.locator('#ao-live-status').textContent(), /1 uncertain/);
     assert.equal(await page.locator('.ao-gpu').count(), 3);
+    assert.equal(await page.locator('.ao-spark svg').count(), 3);
+    assert.equal(await page.locator('.ao-meter-memory').count(), 3);
+    assert.equal(await page.locator('#ao-outcome-ring').getAttribute('aria-label'), '1,474 successful, 3 errors, 4 canceled out of 1,481 recorded calls');
+    assert.equal(await page.locator('#ao-mix-value').textContent(), '93.2%');
+    const plotted = await page.evaluate(() => {
+      const chart = Chart.getChart(document.getElementById('ao-trend-chart'));
+      return { calls: chart.data.datasets[0].data.reduce((a, b) => a + b, 0), current: chart.data.datasets[0].data };
+    });
+    assert.equal(plotted.calls, 1481, 'plotted volume reconciles with the headline');
     assert.equal(await page.locator('#analytics-cockpit').getAttribute('open'), null);
+    await page.evaluate(() => document.fonts.ready);
     for (const [width, height] of [[1920, 1080], [1440, 900], [1366, 768], [1280, 720], [820, 1000], [390, 844], [320, 800]]) {
       await page.setViewportSize({ width, height });
       await page.evaluate(() => scrollTo(0, 0));
       await page.waitForTimeout(60);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, `horizontal overflow at ${width}`);
+      const overlaps = await page.evaluate(() => [...document.querySelectorAll('.ao-kpi')].flatMap(card => {
+        const number = card.querySelector(':scope > strong'), visual = card.querySelector('.ao-spark svg, .ao-outcome-ring');
+        if (!number || !visual) return [];
+        const range = document.createRange(); range.selectNodeContents(number);
+        const a = range.getBoundingClientRect(), b = visual.getBoundingClientRect();
+        return a.right > b.left + 1 && a.left < b.right && a.bottom > b.top && a.top < b.bottom ? [number.id] : [];
+      }));
+      assert.deepEqual(overlaps, [], `visual overlaps headline at ${width}`);
       if (width >= 1280) {
         const edge = await page.locator('.ao-bottom-grid').evaluate(el => el.getBoundingClientRect().bottom);
         assert.ok(edge < height, `essential dashboard below first screen: ${edge} > ${height}`);
@@ -118,6 +151,14 @@ const server = http.createServer(async (req, res) => {
       if (width === 1440 || width === 390) await page.screenshot({ path: path.join(report, `overview-${width}.png`), fullPage: true });
     }
     await page.setViewportSize({ width: 1440, height: 900 });
+    await page.locator('[data-ao-overlay="latency"]').click();
+    assert.equal(await page.locator('[data-ao-overlay="latency"]').getAttribute('aria-pressed'), 'true');
+    assert.equal(await page.locator('#ao-overlay-label').textContent(), 'Mean latency (s)');
+    assert.deepEqual(await page.evaluate(() => Chart.getChart(document.getElementById('ao-trend-chart')).data.datasets[0].data), plotted.current, 'changing the overlay keeps the same calls');
+    assert.equal(await page.evaluate(() => Chart.getChart(document.getElementById('ao-trend-chart')).options.scales.rate.ticks.callback(2)), '2s');
+    await page.screenshot({ path: path.join(report, 'overview-latency-1440.png'), fullPage: true });
+    await page.locator('[data-ao-overlay="errors"]').click();
+    assert.equal(await page.evaluate(() => Chart.getChart(document.getElementById('ao-trend-chart')).options.scales.rate.ticks.callback(2)), '2%');
     await page.waitForFunction(() => document.getElementById('chatLaneEmptyNote').textContent.includes('last 7 days'));
     await page.evaluate(() => { const period = document.getElementById('periodSelect'); period.value = '14'; period.dispatchEvent(new Event('change')); });
     await page.waitForFunction(() => document.getElementById('chatLaneEmptyNote').textContent.includes('last 14 days'));
@@ -140,11 +181,16 @@ const server = http.createServer(async (req, res) => {
     await page.waitForFunction(() => document.querySelector('.analytics-overview').dataset.state === 'error');
     assert.equal(await page.locator('#ao-calls').textContent(), '—');
     assert.equal(await page.locator('#ao-success').textContent(), '—');
+    assert.equal(await page.locator('.ao-spark svg').count(), 0, 'failed reads clear prior mini-charts');
+    assert.equal(await page.locator('#ao-outcome-ring').evaluate(el => el.classList.contains('is-empty')), true);
+    assert.equal(await page.locator('#ao-mix-value').textContent(), '—');
     failSummary = false; empty = true;
     await page.locator('#analytics-experience-refresh').click();
     await page.waitForFunction(() => document.getElementById('ao-calls').textContent === '0');
     assert.equal(await page.locator('#ao-success').textContent(), '—');
     assert.equal(await page.locator('#ao-latency').textContent(), '—');
+    assert.equal(await page.locator('.ao-spark svg').count(), 0);
+    assert.equal(await page.locator('#ao-mix-ring').evaluate(el => el.classList.contains('is-empty')), true);
     assert.match(await page.locator('#ao-status').textContent(), /No recorded calls/);
     staleGPU = true;
     await page.evaluate(() => document.dispatchEvent(new Event('analytics:refresh-live')));
@@ -168,6 +214,6 @@ const server = http.createServer(async (req, res) => {
     assert.deepEqual(errors, []);
     assert.ok(requests.some(p => p.includes('/summary?window=24h')));
     assert.ok(bucketFacet('24h', {})[0].$group._id.$dateToString.format.includes('%H'));
-    console.log(JSON.stringify({ ok: true, report, viewports: 7, scenarios: ['initial', 'comparison', 'window race', 'retention', 'failed read', 'empty', 'stale GPU', 'live failure', 'detail focus', 'demo profile', 'independent Playground window'], requests: requests.length }, null, 2));
+    console.log(JSON.stringify({ ok: true, report, viewports: 7, scenarios: ['initial', 'comparison', 'volume/latency overlay', 'visual evidence reset', 'window race', 'retention', 'failed read', 'empty', 'stale GPU', 'live failure', 'detail focus', 'demo profile', 'independent Playground window'], requests: requests.length }, null, 2));
   } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
