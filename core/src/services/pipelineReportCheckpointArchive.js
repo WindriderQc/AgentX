@@ -16,7 +16,7 @@ async function attach(task, stored) {
   const saved = await Task.updateOne({ _id: task._id, transitionSeq: task.transitionSeq, spec: task.spec,
     status: task.status, 'codingReportAuthority.revision': task.codingReportAuthority?.revision ?? null }, {
     $set: { reportHistoryReceipts: stored.nativeCosts, reportCheckpointArchive: { parentRequestId: stored._id,
-      parentSha256: stored.sha256, sourceCommit: stored.sourceCommit, reportName: stored.reportName, deliverableId: stored.deliverableId } },
+      parentSha256: stored.sha256, claimSeq: stored.claimSeq, sourceCommit: stored.sourceCommit, reportName: stored.reportName, deliverableId: stored.deliverableId } },
   }, { timestamps: false, writeConcern: WC });
   if (saved.acknowledged !== true || saved.matchedCount !== 1)
     throw claim.fail('Archive stored; reconcile its original task attachment', 'REPORT_ARCHIVE_ATTACH_UNVERIFIED');

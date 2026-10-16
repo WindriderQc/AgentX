@@ -315,3 +315,11 @@ test('reloading a prepared archive continuation retains its durable parent until
   task.codingReportAuthority.bindings.push({ requestId: older, grantKey: 'grant' });
   expect(Controller.profileFields(task)).toContain(`value="${older}:${'b'.repeat(64)}"`);
 });
+
+test('global native candidates use their reconciled checkpoint after review rejection without requiring the private authority ledger', () => {
+  const oldParent = '20000000-0000-4000-8000-000000000002', candidate = '30000000-0000-4000-8000-000000000003';
+  const nativeCandidate = { canReport: true, codingResult: { profile: 'report', reportName: 'REVIEW.md',
+    parentRequestId: oldParent, parentSha256: 'a'.repeat(64) },
+    reportCheckpoint: { parentRequestId: candidate, parentSha256: 'b'.repeat(64) } };
+  expect(Controller.profileFields(nativeCandidate)).toContain(`value="${candidate}:${'b'.repeat(64)}"`);
+});

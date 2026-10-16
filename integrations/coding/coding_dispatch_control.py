@@ -150,14 +150,20 @@ def report_profile(task):
         result.update(codingResult=task['codingResult'])
         if task['codingResult'].get('profile') == 'report':
             result.update(reportName=task['codingResult']['reportName'])
-    if task.get('reportCheckpointArchive') and not task.get('codingResult'):
-        result.update(reportName=task['reportCheckpointArchive']['reportName'], reportCheckpoint=task['reportCheckpointArchive'])
-    if latest:
+    archive = task.get('reportCheckpointArchive')
+    archived = next((row.get('workerOutcome') for row in reversed(task.get('feedback') or [])
+                     if (row.get('workerOutcome') or {}).get('requestId') == (archive or {}).get('parentRequestId')), {})
+    archive_claim = (archive or {}).get('claimSeq') or (archived or {}).get('claimSeq') or 0
+    if archive and archive_claim > (latest or {}).get('claimSeq', 0):
+        result.update(reportName=archive['reportName'], reportCheckpoint=archive)
+    elif latest:
         result['reportName'] = latest['reportName'] if report_name(latest.get('reportName')) else 'REVIEW.md'
         saved = latest.get('partial') or latest
-        if (isinstance(latest.get('requestId'), str) and REQUEST_ID.fullmatch(latest['requestId'])
-                and saved.get('deliverableId') and isinstance(saved.get('sha256'), str) and re.fullmatch(r'[a-f0-9]{64}', saved['sha256'])):
-            result['reportCheckpoint'] = {'parentRequestId': latest['requestId'], 'parentSha256': saved['sha256']}
+        if isinstance(latest.get('requestId'), str) and REQUEST_ID.fullmatch(latest['requestId']):
+            if saved.get('deliverableId') and isinstance(saved.get('sha256'), str) and re.fullmatch(r'[a-f0-9]{64}', saved['sha256']):
+                result['reportCheckpoint'] = {'parentRequestId': latest['requestId'], 'parentSha256': saved['sha256']}
+            elif latest.get('kind') == 'blocked' and not saved.get('deliverableId') and not saved.get('sha256'):
+                result['reportCheckpoint'] = {'parentRequestId': latest['requestId'], 'parentSha256': None}
     selected = task.get('codingResult') or {}
     grants = (task.get('codingReportAuthority') or {}).get('grants') or []
     if selected.get('parentRequestId') and not any(row.get('requestId') == (latest or {}).get('requestId') and grants and row.get('grantKey') == grants[-1]['key'] for row in (task.get('codingReportAuthority') or {}).get('bindings', [])):
