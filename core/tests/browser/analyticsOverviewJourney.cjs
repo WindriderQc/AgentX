@@ -203,7 +203,8 @@ const server = http.createServer(async (req, res) => {
     // Detail remains reachable with keyboard focus and the existing controls.
     await page.locator('.ao-kpi').first().click();
     assert.equal(await page.locator('#analytics-cockpit').evaluate(el => el.open), true);
-    assert.equal(await page.locator('#analytics-platform-inference').evaluate(el => document.activeElement === el), true);
+    // openTo() moves focus on the next animation frame.
+    await page.waitForFunction(() => document.activeElement === document.getElementById('analytics-platform-inference'), null, { timeout: 5000 });
     await page.locator('[data-analytics-target="chatLaneHeading"]').click();
     assert.equal(await page.locator('#chatLaneHeading').isVisible(), true, 'the shortcut reveals the collapsed Playground lane');
     await page.selectOption('#analyticsWindow', '7d');
