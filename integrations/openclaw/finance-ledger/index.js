@@ -1,5 +1,5 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
-import { createCoreAlertsClient, createCoreDocumentLinkClient, createCoreFinanceClient, createCorePlanClient, createCoreRulesClient, financeContext } from "./core-finance.js";
+import { createCoreAlertsClient, createCoreDocumentLinkClient, createCoreFinanceClient, createCorePlanClient, createCoreRulesClient, createCoreStatementDepositClient, financeContext } from "./core-finance.js";
 
 const receipt = value => ({ content: [{ type: "text", text: JSON.stringify(value) }], details: value });
 
@@ -13,6 +13,7 @@ export default definePluginEntry({
     const alertsClient = createCoreAlertsClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const planClient = createCorePlanClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const documentLinkClient = createCoreDocumentLinkClient({ baseUrl: api.pluginConfig?.agentxUrl });
+    const statementDepositClient = createCoreStatementDepositClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const agentIds = Array.isArray(api.pluginConfig?.agentIds) && api.pluginConfig.agentIds.length
       ? api.pluginConfig.agentIds : ["comptable"];
 
@@ -39,8 +40,9 @@ export default definePluginEntry({
           + "documents = the Secretary's invoices matched to ledger rows: proposals (to confirm), confirmed pairs, documents without "
           + "a transaction, big outflows without a document (thresholdCents), ambiguous matches (grouped: one document, several candidate rows, "
           + "the owner picks one), health and insurance claims still to file (toClaim, quote its totals as given), figures that look wrong "
-          + "(toVerify, outside every total: say they need checking), and bank statements found in mail (statements, to be filed by the owner, "
-          + "never ingested). If nothing matches, say so; never estimate.",
+          + "(toVerify, outside every total: say they need checking), and bank statements found in mail (statements, each with a status: "
+          + "fillsGap = fills a missing month, alreadyIngested, unknown; offer to deposit the fillsGap ones with finance_statement_deposit "
+          + "only after the owner's yes). If nothing matches, say so; never estimate.",
         parameters: {
           type: "object",
           properties: {
@@ -136,6 +138,29 @@ export default definePluginEntry({
         },
       };
     }, { name: "finance_document_link", optional: true });
+
+    api.registerTool(context => {
+      if (!financeContext(context, agentIds)) return null;
+      return {
+        name: "finance_statement_deposit",
+        label: "Finance Statement Deposit",
+        description: "Copy up to 10 bank statements the Secretary found in mail (ids from finance_ledger action documents, "
+          + "statements) into the finance inbox, where the normal reconciliation decides. Copy only: nothing is deleted. "
+          + "Use it ONLY after the owner said yes in this conversation to those statements. Say what was copied and what was refused.",
+        parameters: {
+          type: "object",
+          properties: {
+            ids: { type: "array", minItems: 1, maxItems: 10, items: { type: "string", pattern: "^[a-f0-9]{16}$" } },
+            ledger: { type: "string", enum: ["perso", "corp"] },
+          },
+          required: ["ids"],
+          additionalProperties: false,
+        },
+        async execute(_callId, params) {
+          return receipt(await statementDepositClient(params));
+        },
+      };
+    }, { name: "finance_statement_deposit", optional: true });
 
     api.registerTool(context => {
       if (!financeContext(context, agentIds)) return null;

@@ -129,7 +129,15 @@ personal ledger. Core never writes to it.
   when the register does not carry `kind`; the Secretary producer writes `kind`
   from schema 3. Schemas 2 and 3 are both read.
 - Statements of kind `insurance_statement` and `bank_statement` are never
-  matched. Only `bank_statement` is listed as found in mail, for the owner to file.
+  matched. Bank statements are listed under "Relevés trouvés dans Gmail" with a
+  status: `fillsGap` (its month is a gap of the series coverage), `alreadyIngested`
+  (its month is covered) or `unknown` (no series matches, or no date).
+- Deposit (`POST /api/finance/documents/statements/deposit`, up to 10 ids, `ledger`):
+  Core copies the file from `FINANCE_SECRETARY_FILES` into `FINANCE_INBOX_PATH`
+  (`corp/` for the corporate ledger). It copies only: nothing is deleted, the
+  name keeps the Secretary id and date, a file whose hash is already ingested or
+  already in the inbox is refused, and the normal reconciliation decides. The
+  plugin tool `finance_statement_deposit` runs only after the owner's yes.
 - The views: confident proposals; ambiguous matches grouped by document with
   their candidate rows, for the owner to pick one; documents without a
   transaction; outflows above a threshold without a document; claims still to

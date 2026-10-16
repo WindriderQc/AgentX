@@ -6,6 +6,7 @@
 
 const { createHash } = require('crypto');
 const fs = require('fs/promises');
+const path = require('path');
 
 // Schema 2 has no `kind`: Core classifies the free-text documentKind itself. Schema 3 adds it from the producer.
 const SUPPORTED_SCHEMAS = [2, 3];
@@ -15,6 +16,10 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const fold = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const hasAny = (text, words) => words.some((word) => text.includes(word));
+
+// Names of the owner's corporations, from configuration: a document addressed to one of them belongs to the corporate ledger.
+const corpNames = () => String(process.env.FINANCE_CORP_NAMES || '').split(',').map((name) => fold(name).trim()).filter(Boolean);
+const documentLedger = (doc) => (corpNames().some((name) => fold(doc.person).includes(name)) ? 'corp' : 'perso');
 
 // Same rules as the Secretary producer (document_kind): statements first, since their labels name invoices.
 function documentKindOf(label) {
@@ -66,7 +71,10 @@ function normalize(raw) {
     insurancePaidCents: cents(raw.insurancePaidCents),
     insurer: text(raw.insurer, 80) || null,
     reimbursementStatus: text(raw.reimbursementStatus, 40) || null,
-    originalFilename: text(raw.originalFilename, 160) || null
+    originalFilename: text(raw.originalFilename, 160) || null,
+    // Bare file names the Secretary keeps for this document; never a path.
+    files: [raw.originalFilename, ...(Array.isArray(raw.sources) ? raw.sources.map((s) => s?.path || s?.filename) : [])]
+      .map((name) => path.basename(String(name || ''))).filter((name) => name && name !== '.' && name !== '..')
   };
 }
 
@@ -95,4 +103,4 @@ async function loadRegister(file = process.env.FINANCE_SECRETARY_REGISTER) {
   };
 }
 
-module.exports = { loadRegister, normalize, documentKindOf, KINDS, SUPPORTED_SCHEMAS };
+module.exports = { loadRegister, normalize, documentKindOf, documentLedger, KINDS, SUPPORTED_SCHEMAS };

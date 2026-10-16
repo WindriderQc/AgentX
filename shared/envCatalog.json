@@ -1179,6 +1179,16 @@
       "secret": false,
       "description": "Comma-separated names of the owner's corporations. A Secretary document whose person names one of them belongs to the corporate ledger and is never a personal claim. Unset: none."
     },
+    "FINANCE_SECRETARY_FILES": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "finance",
+      "secret": false,
+      "description": "Folder where the Secretary keeps the files its register refers to. Core copies chosen bank statements from it into the finance inbox; it never writes there. Unset: no deposit."
+    },
     "FINANCE_SECRETARY_REGISTER": {
       "services": [
         "core"
