@@ -62,10 +62,10 @@
     var windowLabel = document.querySelector('#analyticsWindow option:checked')?.textContent.toLowerCase() || 'selected period';
 
     document.getElementById('analytics-chat-detail').textContent = conversations == null
-      ? 'Conversation activity is not observed yet'
+      ? 'Counted when Explore the details is opened'
       : formatCount(conversations) + ' conversation' + (conversations === 1 ? '' : 's') + ' · ' + formatCount(messages || 0) + ' messages';
     document.getElementById('analytics-knowledge-detail').textContent = documents == null
-      ? (ragUsage ? ragUsage + ' · ' + windowLabel : 'Knowledge usage is not observed yet')
+      ? (ragUsage ? ragUsage + ' · ' + windowLabel : 'Counted when Explore the details is opened')
       : formatCount(documents) + ' document' + (documents === 1 ? '' : 's') + ' indexed · ' + (ragUsage || 'usage not observed') + ' · ' + windowLabel;
   }
 
