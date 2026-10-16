@@ -112,3 +112,15 @@ test('reasoning refuses image parts rather than silently removing them', () => {
   assert.throws(() => ollamaMessages(messages), error => error.code === 'HERMES_IMAGE_ROUTE_REQUIRED');
   assert.throws(() => ollamaMessages([{ role: 'user', content: 'image', images: ['base64'] }]), /vision endpoint/);
 });
+
+test('the shared advisory helper binds completed receipts to the saved request and preserves unknown native outcomes', async () => {
+  const { analyzeImages } = require('../../../src/services/imageAnalysisService');
+  const requestId = '11111111-1111-4111-8111-111111111111';
+  let result = completed(); result.body.executionReceipt.requestId = 'other-request';
+  const runtimeServices = { inference: { execute: async () => result } };
+  await assert.rejects(analyzeImages({ messages, requestId, runtimeServices }), error => error.executionState === 'unknown');
+  result = { ok: false, status: 409, body: { executionState: 'not-dispatched', code: 'ADMISSION_REFUSED' } };
+  await assert.rejects(analyzeImages({ messages, requestId, runtimeServices }), error => error.executionState === 'not-dispatched' && error.code === 'ADMISSION_REFUSED');
+  result = { ok: false, status: 502, body: { executionState: 'unknown' } };
+  await assert.rejects(analyzeImages({ messages, requestId, runtimeServices }), error => error.executionState === 'unknown');
+});

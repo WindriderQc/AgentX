@@ -37,4 +37,8 @@ async function invoke(input, { onEvent = () => {}, signal, timeoutMs = 180000, e
     return result;
   } finally { controller.abort(); clearTimeout(timer); signal?.removeEventListener('abort', abort); }
 }
-module.exports = { configured, invoke };
+async function supportsReferenceInspection() {
+  const result = await invoke({ action: 'describe' }, { timeoutMs: 12000 });
+  return result.capabilities?.referenceInspectionEvidence === 1;
+}
+module.exports = { configured, invoke, supportsReferenceInspection };

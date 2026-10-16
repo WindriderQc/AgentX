@@ -85,6 +85,12 @@ focused tests before expanding your investigation. New source or test progress
 can extend the soft budget; the hard ceiling never moves. If you cannot finish,
 explain the remaining work and stop with a useful source checkpoint.
 
+This is the code-change profile. Product documentation edits requested for the
+repository follow its source rules. A standalone review or audit report requires
+the private report profile. If the requested result is only such a report, stop
+without changing source and tell the operator to select that profile. Keep private
+reports, logs and runtime artifacts outside the source checkpoint and public PR.
+
 You have no network. The dependencies of core, benchmark, rag and data are already
 installed, and the test database is ready. Do not try to download anything. If the
 task needs a new package, add it to the right package.json, explain why in your
@@ -146,7 +152,12 @@ def worker_patch(model: str, context_size: int | None = None) -> list[dict]:
     ]
 
 
-def sandbox(workspace: Path, home: Path, command: list[str], *, network: bool, timeout_seconds: int) -> list[str]:
+def sandbox(workspace: Path, home: Path, command: list[str], *, network: bool, timeout_seconds: int, read_only=False, report_request_id="") -> list[str]:
+    if report_request_id and (not read_only or not coding_progress.REQUEST_ID.fullmatch(report_request_id)):
+        raise ValueError("A report working directory requires its read-only source and exact request UUID")
+    # DSH workspace-write follows the session cwd. Give it only the private
+    # output directory, while source reads remain available at /workspace.
+    directory = f"/home/agent/deliverables/{report_request_id}" if report_request_id else "/workspace"
     return [
         "timeout", "-k", "30", str(timeout_seconds),
         "bwrap", "--unshare-all", *(["--share-net"] if network else []),
@@ -163,8 +174,8 @@ def sandbox(workspace: Path, home: Path, command: list[str], *, network: bool, t
         "--bind", str(home), "/home/agent", "--ro-bind", str(NODE_ROOT), "/opt/node",
         "--ro-bind", str(DSH_ROOT), "/opt/dsh", "--ro-bind", str(HERE), "/opt/coding",
         "--ro-bind", str(HERE.parent.parent / "shared/testing/prepareMongo.js"), "/opt/prepareMongo.js",
-        "--bind", str(workspace), "/workspace", "--ro-bind", str(workspace / ".git"), "/workspace/.git",
-        "--chdir", "/workspace", *command,
+        "--ro-bind" if read_only else "--bind", str(workspace), "/workspace", "--ro-bind", str(workspace / ".git"), "/workspace/.git",
+        "--chdir", directory, *command,
     ]
 
 
@@ -314,7 +325,9 @@ def terminate(process):
         process.wait()
 
 
-def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None, model=None) -> subprocess.CompletedProcess:
+def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None, model=None, *, read_only=False) -> subprocess.CompletedProcess:
+    if read_only and (not progress or not getattr(progress, "report_mode", False) or not coding_progress.REQUEST_ID.fullmatch(progress.request_id)):
+        raise ValueError("A report worker requires its original native request")
     home = worker_home(workspace)
     (home / ".dsh").mkdir(exist_ok=True)
     selected_model = model or MODEL
@@ -331,19 +344,24 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
     relay = model_relay.serve(str(home / "model.sock"), MODEL_URL,
                              progress.model_events.put if progress else None,
                              getattr(progress, "relay_headers", None),
-                             drain_on_disconnect=bool(progress and progress.cumulative_limits),
+                             drain_on_disconnect=bool(progress and (progress.cumulative_limits or getattr(progress, 'report_mode', False))),
                              budget_guidance=getattr(progress, "model_guidance", None))
     try:
         return supervise(sandbox(workspace, home, [
             "python3", "/opt/coding/model_relay.py", "inside", "/home/agent/model.sock", str(RELAY_PORT), "--",
             "/opt/dsh/node_modules/.bin/dsh", "--profile", "headless", "--patch", "/home/agent/.dsh/agentx.patch.json",
             "--patch", "/opt/coding/guard.patch.yml", "--", prompt,
-        ], network=False, timeout_seconds=timeout_seconds), progress, home, workspace, on_stop=relay.begin_drain)
+        ], network=False, timeout_seconds=timeout_seconds, read_only=read_only,
+            report_request_id=progress.request_id if read_only else ""), progress, home, workspace, on_stop=relay.begin_drain)
     finally:
         relay.begin_drain()
-        if progress and progress.cumulative_limits:
-            remaining = min(120, progress.model_remaining(), max(0, min(progress.hard_deadline, progress.queue_deadline) - progress.now()))
-            relay.drain(remaining, heartbeat=progress.tick)
+        if progress and (progress.cumulative_limits or getattr(progress, 'report_mode', False)):
+            remaining = min(120, max(0, min(progress.hard_deadline, progress.queue_deadline) - progress.now()))
+            if progress.cumulative_limits:
+                remaining = min(remaining, progress.model_remaining())
+            drained = relay.drain(remaining, heartbeat=progress.tick)
+            if getattr(progress, 'report_mode', False):
+                progress.report_drained = drained
         relay.shutdown()
         relay.server_close()
         if progress:
@@ -357,10 +375,30 @@ def git(workspace: Path, *args: str, env: dict | None = None) -> str:
                           capture_output=True, env=isolated).stdout.strip()
 
 
-def feedback(task_id: str, text: str, status: str | None = None) -> None:
+def feedback(task_id: str, text: str, status: str | None = None, *, progress=None, reason=None) -> None:
     body = {"by": WORKER, "assignee": WORKER, "text": text}
     if status:
         body["status"] = status
+    if progress is not None and not getattr(progress, 'report_mode', False):
+        if not getattr(progress, 'task_claim_seq', None) or not getattr(progress, 'task_spec_sha256', None):
+            print('No original worker claim: task feedback was not written.', file=sys.stderr)
+            return
+        body['manualWorkerClaim'] = {'claimSeq': progress.task_claim_seq, 'specSha256': progress.task_spec_sha256}
+    if getattr(progress, 'report_mode', False):
+        if not getattr(progress, 'report_spec_sha256', None) or not getattr(progress, 'task_claim_seq', None):
+            return
+        body['manualReportClaim'] = {'claimSeq': progress.task_claim_seq, 'specSha256': progress.report_spec_sha256}
+    known_reasons = {"no_useful_progress", "no_changes", "model_output_limit", "model_call_limit",
+                     "soft_budget_no_progress", "hard_budget", "worker_exit", "model_termination_unverified",
+                     "runner_error", "operator_stop", "dependencies_failed", "dependencies_changed",
+                     "runtime_unavailable", "runtime_changed", "tests_failed", "generated_artifacts"}
+    stop_reason = (progress.stop_reason or reason) if progress else None
+    claim_seq = getattr(progress, "task_claim_seq", None)
+    if status == "blocked" and progress and progress.request_id and claim_seq and stop_reason in known_reasons:
+        body["workerOutcome"] = {"schema": "agentx.pipeline-worker-outcome/v1", "requestId": progress.request_id,
+            "pipelineId": task_id, "claimSeq": claim_seq, "result": "blocked", "reason": stop_reason, "source": "worker_report",
+            "startedAt": progress.started_at, "finishedAt": coding_progress.utc_now(),
+            "usage": {key: progress.usage()[key] for key in ("workSeconds", "modelCalls")}}
     try:
         request(f"{CORE}/api/pipeline/tasks/{task_id}/feedback", body)
     except (OSError, RuntimeError) as error:
@@ -390,7 +428,7 @@ def push_and_open_pr(workspace: Path, branch: str, task_id: str, title: str, sum
     return created["html_url"]
 
 
-def begin_publication(progress) -> bool:
+def begin_publication(progress, prepare=None) -> bool:
     # Serialize the irreversible boundary with cooperative stop acceptance.
     # Once this stage is durable, the host refuses a stop as too late to revoke publication.
     RECEIPTS.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -398,6 +436,8 @@ def begin_publication(progress) -> bool:
         fcntl.flock(lock, fcntl.LOCK_EX)
         if progress.check_stop():
             return False
+        if prepare:
+            prepare()
         progress.set_stage("publishing")
         progress.write()
         return True
@@ -410,6 +450,10 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", type=int, default=7200)
     parser.add_argument("--request-id", default="")
     parser.add_argument("--autonomous", action="store_true")
+    parser.add_argument("--report-name", default=None)
+    parser.add_argument("--model-call-limit", type=int, default=None)
+    parser.add_argument("--parent-request-id", default=None)
+    parser.add_argument("--parent-sha256", default=None)
     args = parser.parse_args()
     if not TASK_ID.fullmatch(args.task_id):
         parser.error("task id is four digits")
@@ -419,9 +463,25 @@ def main() -> int:
         parser.error("request id must be a UUID")
     if not 1 <= args.timeout_seconds <= 43200:
         parser.error("timeout must be between 1 and 43200 seconds")
+    if args.report_name is not None:
+        if args.autonomous or not args.request_id or not coding_dispatch_control.report_name(args.report_name):
+            parser.error("report mode needs a manual request UUID and a plain Markdown file name")
+    if args.model_call_limit is not None:
+        if not args.report_name:
+            parser.error("model call override requires report mode")
+        try:
+            coding_progress.report_call_limit(args.model_call_limit)
+        except ValueError as error:
+            parser.error(str(error))
+
+    if args.parent_request_id is not None or args.parent_sha256 is not None:
+        if not args.report_name or not coding_progress.REQUEST_ID.fullmatch(args.parent_request_id or '') or not re.fullmatch(r'[a-f0-9]{64}', args.parent_sha256 or '') or args.parent_request_id == args.request_id:
+            parser.error('report continuation needs its original request and SHA-256')
 
     progress = coding_progress.Progress(args.task_id, args.request_id, args.timeout_seconds, receipts=RECEIPTS,
-        heartbeat=lambda: request(f"{CORE}/api/pipeline/tasks/{args.task_id}/heartbeat", {"assignee": WORKER}))
+        heartbeat=None if args.report_name else lambda: request(f"{CORE}/api/pipeline/tasks/{args.task_id}/heartbeat", {"assignee": WORKER}))
+    progress.report_mode = progress.preflight = bool(args.report_name)
+    progress.report_model_call_limit = coding_progress.report_call_limit(args.model_call_limit)
     previous_handlers = {signum: signal.getsignal(signum) for signum in (signal.SIGTERM, signal.SIGINT)}
     def stop_worker(_signum, _frame):
         progress.stop_reason = "operator_stop"
@@ -430,6 +490,11 @@ def main() -> int:
     try:
         return execute(args, progress)
     except Exception as error:
+        if args.report_name:
+            spec = importlib.util.spec_from_file_location("coding_report", HERE / "coding_report.py")
+            reporter = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(reporter)
+            return reporter.failure(SimpleNamespace(**globals()), args, progress, error)
         if args.autonomous:
             # Never overwrite a leased native verdict with legacy feedback.
             progress.write()
@@ -437,7 +502,7 @@ def main() -> int:
             return 2
         progress.finish("blocked", "runner_error", progress.checkpoint)
         feedback(args.task_id, f"Coding runner failed ({type(error).__name__}). Inspect the local workspace and host unit; "
-                               "no automatic retry was started.", "blocked")
+                               "no automatic retry was started.", "blocked", progress=progress)
         print(f"coding runner failed: {type(error).__name__}", file=sys.stderr)
         return 1
     finally:
@@ -474,6 +539,11 @@ def execute(args, progress) -> int:
     # The claim makes the task visibly in progress and refuses a second worker.
     request(f"{CORE}/api/pipeline/tasks/{args.task_id}/claim", {"assignee": WORKER})
     task = request(f"{CORE}/api/pipeline/tasks/{args.task_id}/worker?agent={WORKER}")["data"]["task"]
+    claim = next((entry for entry in reversed(task.get("transitions") or []) if entry.get("kind") == "claimed"), {})
+    progress.task_claim_seq = claim.get("seq")
+    progress.task_spec_sha256 = hashlib.sha256(str(task.get('spec', '')).encode()).hexdigest()
+    if getattr(progress, "report_mode", False):
+        progress.report_spec_sha256 = hashlib.sha256(str(task.get("spec", "")).encode()).hexdigest()
     name = f"task-{args.task_id}"
     branch = f"agentx/coding-task-{args.task_id}"
     workspace = WORKSPACES / name
@@ -487,10 +557,16 @@ def execute(args, progress) -> int:
         if clone.returncode or progress.check_stop():
             feedback(args.task_id, "Repository preparation stopped before dependencies or model dispatch. "
                                    f"Any partial clone remains in {workspace}; inspect it before handing the task back. "
-                                   "No automatic retry or publication was started.", "blocked")
+                                   "No automatic retry or publication was started.", "blocked", progress=progress, reason="runner_error")
             progress.finish("blocked", progress.stop_reason or "runner_error")
             return 1
         git(workspace, "checkout", "--quiet", "-b", branch)
+
+    if getattr(args, "report_name", ""):
+        spec = importlib.util.spec_from_file_location("coding_report", HERE / "coding_report.py")
+        reporter = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(reporter)
+        return reporter.execute(SimpleNamespace(**globals()), args, progress, task, workspace)
 
     try:
         progress.tick()
@@ -498,12 +574,13 @@ def execute(args, progress) -> int:
         installed = dependency_state(workspace)
     except subprocess.CalledProcessError as error:
         feedback(args.task_id, "Dependencies could not be installed before the worker started.\n\n"
-                               f"{(error.stderr or error.stdout or '')[-3000:]}", "blocked")
+                               f"{(error.stderr or error.stdout or '')[-3000:]}", "blocked", progress=progress, reason="dependencies_failed")
         progress.finish("blocked", progress.stop_reason or "dependencies_failed")
         return 1
     except (coding_runtime.RuntimeUnavailable, coding_runtime.RuntimeChanged) as error:
         feedback(args.task_id, "The selected Node/npm runtime could not be validated for dependency preparation. "
-                               "Inspect the operator runtime selection; no fallback or worker was started.", "blocked")
+                               "Inspect the operator runtime selection; no fallback or worker was started.", "blocked",
+                 progress=progress, reason="runtime_changed" if isinstance(error, coding_runtime.RuntimeChanged) else "runtime_unavailable")
         reason = "runtime_changed" if isinstance(error, coding_runtime.RuntimeChanged) else "runtime_unavailable"
         progress.finish("blocked", reason)
         return 1
@@ -536,7 +613,8 @@ def execute(args, progress) -> int:
     progress.checkpoint = git(workspace, "rev-parse", "HEAD")
     progress.write()
     if git(workspace, "rev-parse", "HEAD") == git(workspace, "rev-parse", f"origin/{BASE_BRANCH}"):
-        feedback(args.task_id, f"Coding worker changed nothing (exit {run.returncode}).\n\n{summary[-4000:]}", "blocked")
+        feedback(args.task_id, f"Coding worker changed nothing (exit {run.returncode}).\n\n{summary[-4000:]}", "blocked",
+                 progress=progress, reason="no_changes")
         progress.finish("blocked", progress.stop_reason or "no_changes", progress.checkpoint)
         print(summary)
         return 1
@@ -546,38 +624,38 @@ def execute(args, progress) -> int:
         feedback(args.task_id, "The coding worker changed package files and needs them installed before it can "
                                "finish. Review the change on local branch "
                                f"{branch} in {workspace}; hand the task back to the team to approve the "
-                               f"installation and let it continue.\n\n{summary[-4000:]}", "blocked")
+                               f"installation and let it continue.\n\n{summary[-4000:]}", "blocked", progress=progress, reason="dependencies_changed")
         progress.finish("blocked", "dependencies_changed", progress.checkpoint)
         print(summary)
         return 1
     if run.returncode != 0 or progress.stop_reason:
         # Unfinished work stays on the local branch for the next run; it is not offered for review.
         feedback(args.task_id, f"Coding worker stopped before finishing (exit {run.returncode}). Its partial work is "
-                               f"committed on local branch {branch} in {workspace}.\n\n{summary[-4000:]}", "blocked")
+                               f"committed on local branch {branch} in {workspace}.\n\n{summary[-4000:]}", "blocked", progress=progress, reason="worker_exit")
         progress.finish("blocked", progress.stop_reason or "worker_exit", progress.checkpoint)
         print(summary)
         return 1
     if progress.last_test and progress.last_test["outcome"] != "passed":
         feedback(args.task_id, "The last observed test did not pass. The checkpoint stays local; "
-                               "correct the failure and rerun the tests before publishing.", "blocked")
+                               "correct the failure and rerun the tests before publishing.", "blocked", progress=progress, reason="tests_failed")
         progress.finish("blocked", "tests_failed", progress.checkpoint)
         return 1
     introduced = git(workspace, "diff", "--name-only", f"origin/{BASE_BRANCH}", "HEAD").splitlines()
     if any(coding_progress.artifact(name) for name in introduced):
         feedback(args.task_id, "The branch contains generated runtime artifacts from a previous checkpoint. "
-                               "Preserve that checkpoint privately and transfer the source patch to a clean branch.", "blocked")
+                               "Preserve that checkpoint privately and transfer the source patch to a clean branch.", "blocked", progress=progress, reason="generated_artifacts")
         progress.finish("blocked", "generated_artifacts", progress.checkpoint)
         return 1
     token = os.environ.get("GH_TOKEN", "").strip()
     if progress.check_stop() or (token and not begin_publication(progress)):
-        feedback(args.task_id, "Operator stop recorded. The checkpoint stays local; no publication was started.", "blocked")
+        feedback(args.task_id, "Operator stop recorded. The checkpoint stays local; no publication was started.", "blocked", progress=progress, reason="operator_stop")
         progress.finish("blocked", checkpoint=progress.checkpoint)
         return 1
     if token:
         where = push_and_open_pr(workspace, branch, args.task_id, task.get("title", "Coding task"), summary, token)
     else:
         where = f"local branch {branch} in {workspace} (no GH_TOKEN: not pushed)"
-    feedback(args.task_id, f"Coding worker finished. Result: {where}\n\n{summary[-4000:]}", "done" if token else "blocked")
+    feedback(args.task_id, f"Coding worker finished. Result: {where}\n\n{summary[-4000:]}", "done" if token else "blocked", progress=progress)
     progress.finish("review" if token else "local_only", checkpoint=progress.checkpoint)
     print(summary)
     print(where)

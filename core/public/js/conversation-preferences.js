@@ -6,8 +6,8 @@
     dialog.className = 'conversation-preferences-dialog'; dialog.setAttribute('aria-label', title);
     dialog.innerHTML = `<form><header><div><h2></h2><p>Choose what to add to your conversations.</p></div><button type="button" data-close aria-label="Close">×</button></header>
       <p data-scope></p><p data-note class="conversation-preferences-help" hidden></p><div class="conversation-preferences-presets"><button type="button" data-light>Light</button><button type="button" data-reload>Reload</button><button type="button" data-default>Default</button></div>
-      <p class="conversation-preferences-help">Light turns off the options in this panel. Default restores this space’s initial settings. Your data is kept.</p>
-      <div data-groups></div><div data-integrations></div><p class="conversation-preferences-help">Access, integrity and safety checks stay active. A run already started may finish; its result is discarded if the settings changed.</p>
+      <p class="conversation-preferences-help">Light turns off optional switches and keeps numeric and model settings. Default restores this space’s initial settings. Your data is kept.</p>
+      <div data-groups></div><div data-integrations></div><p class="conversation-preferences-help">Access, integrity and safety checks stay active. Accepted work keeps its execution settings. Optional background observations may be discarded when their settings change.</p>
       <p data-status role="status" aria-live="polite"></p><footer><button type="button" data-cancel>Cancel</button><button type="submit">Save settings</button></footer></form>`;
     dialog.querySelector('h2').textContent = title; doc.body.append(dialog);
     if (note) { const node = dialog.querySelector('[data-note]'); node.hidden = false; node.textContent = note; }
@@ -15,7 +15,7 @@
     let epoch = 0, snapshot = null, draft = {}, busy = false;
     const endpointFor = () => typeof endpoint === 'function' ? endpoint() : endpoint;
     const resolved = key => Object.hasOwn(draft, key) ? draft[key] : snapshot.defaults[key];
-    function working(value) { busy = value; for (const control of form.querySelectorAll('input, button:not([data-close]):not([data-cancel])')) control.disabled = value; }
+    function working(value) { busy = value; for (const control of form.querySelectorAll('input, select, button:not([data-close]):not([data-cancel])')) control.disabled = value; }
     function render() {
       groups.replaceChildren();
       const labels = { playground: 'Playground', psyx: 'PsyX', nestor: 'Personal Nestor', family: 'Family · parental control' };
@@ -23,16 +23,27 @@
       for (const group of [...new Set(snapshot.catalog.map(item => item.group))]) {
         const items = snapshot.catalog.filter(item => item.group === group), details = doc.createElement('details');
         const summary = doc.createElement('summary'); details.append(summary);
-        const count = () => { summary.textContent = `${items[0].groupTitle} · ${items.filter(item => item.type !== 'number' && resolved(item.key)).length}/${items.filter(item => item.type !== 'number').length} selected`; };
-        count(); details.open = group === 'background' || snapshot.catalog.length <= 5;
+        const toggles = items.filter(item => !['number', 'enum'].includes(item.type));
+        const count = () => { summary.textContent = items[0].groupTitle + (toggles.length ? ` · ${toggles.filter(item => resolved(item.key)).length}/${toggles.length} selected` : ''); };
+        count(); details.open = ['background', 'inference'].includes(group) || snapshot.catalog.length <= 5;
         for (const item of items) {
           const label = doc.createElement('label'); label.className = 'conversation-preference-option';
-          const input = doc.createElement('input'); input.type = item.type === 'number' ? 'number' : 'checkbox'; input.name = item.key; input.disabled = busy;
-          if (item.type === 'number') { input.value = resolved(item.key); input.min = item.min; input.max = item.max; input.step = item.step; input.required = true; } else input.checked = resolved(item.key);
+          const input = doc.createElement(item.type === 'enum' ? 'select' : 'input'); input.name = item.key; input.disabled = busy;
+          if (item.type === 'enum') {
+            label.classList.add('conversation-preference-choice');
+            for (const choice of item.choices) {
+              const option = doc.createElement('option'); option.value = choice.value; option.disabled = Boolean(choice.disabled);
+              option.textContent = choice.label + (choice.disabled ? ' · unavailable' : ''); input.append(option);
+            }
+            input.value = resolved(item.key); input.required = true;
+          } else {
+            input.type = item.type === 'number' ? 'number' : 'checkbox';
+            if (item.type === 'number') { input.value = resolved(item.key); input.min = item.min; input.max = item.max; input.step = item.step; input.required = true; } else input.checked = resolved(item.key);
+          }
           const copy = doc.createElement('span'), heading = doc.createElement('strong'), description = doc.createElement('span'), cost = doc.createElement('small');
           heading.textContent = item.title; description.textContent = item.description; cost.textContent = item.cost;
           copy.append(heading, description, cost); label.append(input, copy); details.append(label);
-          input.onchange = () => { draft[item.key] = item.type === 'number' ? Number(input.value) : input.checked; count(); status.textContent = 'Unsaved changes.'; };
+          input.onchange = () => { draft[item.key] = item.type === 'number' ? Number(input.value) : item.type === 'enum' ? input.value : input.checked; count(); status.textContent = 'Unsaved changes.'; };
         }
         groups.append(details);
       }
@@ -48,7 +59,7 @@
     }
     button.onclick = () => void open();
     dialog.querySelector('[data-reload]').onclick = () => void open();
-    dialog.querySelector('[data-light]').onclick = () => { if (!snapshot) return; draft = { ...draft, ...Object.fromEntries(snapshot.catalog.filter(item => item.type !== 'number').map(item => [item.key, false])) }; render(); status.textContent = 'Light profile ready. Save to apply it.'; };
+    dialog.querySelector('[data-light]').onclick = () => { if (!snapshot) return; draft = { ...draft, ...Object.fromEntries(snapshot.catalog.filter(item => !['number', 'enum'].includes(item.type)).map(item => [item.key, false])) }; render(); status.textContent = 'Light profile ready. Save to apply it.'; };
     dialog.querySelector('[data-default]').onclick = () => { if (!snapshot) return; draft = {}; render(); status.textContent = 'Defaults ready. Save to apply them.'; };
     for (const control of dialog.querySelectorAll('[data-close], [data-cancel]')) control.onclick = () => dialog.close();
     dialog.addEventListener('close', () => { epoch++; snapshot = null; draft = {}; groups.replaceChildren(); status.textContent = ''; working(false); });

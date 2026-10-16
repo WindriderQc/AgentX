@@ -57,14 +57,11 @@ describe('Cluster Schedule browser-local calendar', () => {
   });
 
   test('loads the calendar helper before the dashboard and removes UTC-derived UI day keys', () => {
-    const app = read('src/app.js');
+    const app = require('../../routes/automations').resourceScripts;
     const controller = read('public/js/cluster-schedule.js');
     const actual = read('public/js/cluster-schedule-actual.js');
     const view = read('views/pages/cluster-schedule.ejs');
-    const routeBlock = app.slice(
-      app.indexOf("app.get('/cluster-schedule'"),
-      app.indexOf("app.get('/memory-review'")
-    );
+    const routeBlock = app;
 
     expect(routeBlock.indexOf('/js/cluster-schedule-date.js'))
       .toBeLessThan(routeBlock.indexOf('/js/cluster-schedule.js'));

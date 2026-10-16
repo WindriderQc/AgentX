@@ -6,6 +6,9 @@ const FeedbackSchema = new mongoose.Schema({
   at: { type: Date, default: Date.now },
   by: String,
   text: String,
+  workerOutcome: { type: mongoose.Schema.Types.Mixed, default: undefined },
+  reportOutcome: { type: mongoose.Schema.Types.Mixed, default: undefined },
+  reportAcceptance: { type: mongoose.Schema.Types.Mixed, default: undefined },
 }, { _id: false });
 
 // Why a task was closed without being delivered. Set once by the guarded
@@ -233,6 +236,7 @@ const PipelineTaskSchema = new mongoose.Schema({
   codingAutonomy: { type: mongoose.Schema.Types.Mixed, default: undefined },
   automationAttempts: { type: [AutomationAttemptSchema], default: [] },
   deliverablePermitSeq: { type: Number, min: 0, default: 0 },
+  manualReportPermitSeq: { type: Number, min: 1, default: undefined },
   planningItemIds: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'PlanningItem',

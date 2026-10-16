@@ -10,6 +10,7 @@ const { householdActivation } = require('./readiness');
 const { registerSecretaryMailRoutes } = require('./secretary-mail-routes');
 const { checkEmailActionReadiness } = require('./email-action');
 const { registerSecretaryCatchupRoutes } = require('./secretary-catchup');
+const { registerSecretaryHistoryRoutes } = require('./secretary-history');
 
 // A slow or unreachable host never delays the desk; its late answer shows on the next refresh.
 const hostRead = (read, pending) => Promise.race([
@@ -94,6 +95,7 @@ function registerSecretaryRoutes(app, {
   // Dad's two actionable Gmail labels and the owner's sender triage rules.
   registerSecretaryMailRoutes({ app, router: secretary, mongoose, envelope, fail });
   registerSecretaryCatchupRoutes({ router: secretary, envelope, fail });
+  registerSecretaryHistoryRoutes({ router: secretary, envelope, fail });
   secretary.get('/email-action/readiness', async (_req, res) => {
     const readiness = await checkEmailActionReadiness();
     if (readiness.code === 'EMAIL_ACTION_READY') return envelope(res, { readiness });
@@ -116,6 +118,13 @@ function registerSecretaryRoutes(app, {
     }
   });
   // Human page only. Never advertised or relayed as a model tool.
+  secretary.post('/tasks/edit', async (req, res) => {
+    try {
+      return envelope(res, { task: await personalTasks.edit(req.body || {}) });
+    } catch (error) {
+      return fail(res, error.status || 500, error.message, error.code || 'SECRETARY_EDIT_FAILED', error.details);
+    }
+  });
   secretary.post('/tasks/review', async (req, res) => {
     try {
       return envelope(res, { task: await personalTasks.review(req.body || {}) });

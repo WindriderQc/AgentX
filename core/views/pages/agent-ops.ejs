@@ -84,10 +84,10 @@
       <small id="agentOpsMetricObservedDetail">Runtime evidence</small>
       <i class="fas fa-arrow-right agent-ops-card-arrow"></i>
     </button>
-    <button class="agent-ops-metric blue" type="button" data-metric-tab="automations" data-metric-preset="all-automations">
-      <span>Recurring work</span>
+    <button class="agent-ops-metric blue" type="button" data-automation-hub>
+      <span>OpenClaw jobs</span>
       <strong id="agentOpsMetricAutomations">—</strong>
-      <small id="agentOpsMetricAutomationsDetail">Live + documented</small>
+      <small id="agentOpsMetricAutomationsDetail">Native inventory</small>
       <i class="fas fa-arrow-right agent-ops-card-arrow"></i>
     </button>
     <button class="agent-ops-metric amber" type="button" data-metric-tab="work" data-metric-preset="all-work">
@@ -125,7 +125,7 @@
       <span id="agentOpsTabAgentCount">—</span>
     </button>
     <button type="button" data-agent-ops-tab="automations" role="tab" aria-selected="false">
-      <i class="fas fa-clock"></i> Automations
+      <i class="fas fa-file-circle-question"></i> Obligations
       <span id="agentOpsTabAutomationCount">—</span>
     </button>
     <button type="button" data-agent-ops-tab="work" role="tab" aria-selected="false">
@@ -179,7 +179,7 @@
             <span class="agent-ops-kicker">Cadence</span>
             <h2>Next and recurring <button class="cockpit-help-dot" type="button" data-cockpit-tip-title="Recurring work" data-cockpit-tip="The next projected runs combine native automation receipts with documented recurring obligations; evidence confidence remains visible." aria-label="Explain recurring work"><i class="fas fa-question"></i></button></h2>
           </div>
-          <button type="button" class="agent-ops-link-button" data-open-agent-ops-tab="automations">View all</button>
+          <a class="agent-ops-link-button" href="/automations">View all</a>
         </header>
         <div class="agent-ops-stack" id="agentOpsNextRuns"></div>
       </article>
@@ -265,8 +265,8 @@
 
   <section class="agent-ops-pane" data-agent-ops-pane="automations" role="tabpanel" hidden>
     <div class="agent-ops-section-intro">
-      <div><span class="agent-ops-kicker">Recurring work</span><h2>Live schedules and documented obligations <button class="cockpit-help-dot" type="button" data-cockpit-tip-title="Automation evidence" data-cockpit-tip="A failed receipt stays attached to its native runtime. Inspect its dossier for bounded diagnosis and the owning surface that can make the correction." aria-label="Explain automation evidence"><i class="fas fa-question"></i></button></h2></div>
-      <p>Every row states whether its evidence is live, observed, or documentation-only.</p>
+      <div><span class="agent-ops-kicker">Recurring work</span><h2>Documented obligations <button class="cockpit-help-dot" type="button" data-cockpit-tip-title="Automation evidence" data-cockpit-tip="A failed receipt stays attached to its native runtime. Inspect its dossier for bounded diagnosis and the owning surface that can make the correction." aria-label="Explain automation evidence"><i class="fas fa-question"></i></button></h2></div>
+      <p>Obligations without native runtime evidence. Active schedules and controls live in Automations. <a href="/automations">Open Automations</a></p>
     </div>
     <div class="agent-ops-automation-list" id="agentOpsAutomations"></div>
   </section>

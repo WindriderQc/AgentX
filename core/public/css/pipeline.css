@@ -1,4 +1,7 @@
-/* pipeline.css: its rules live in 2 parts, imported here in their original
-   order so the cascade is unchanged; pages link only this file. */
+/* Pipeline sections, shared chips, preparation, decisions and task dossiers. */
 @import url("pipeline/1-pipeline-delivery-cockpit.css");
 @import url("pipeline/2-chips.css");
+@import url("pipeline/3-workbench.css");
+@import url("pipeline/4-decisions.css");
+@import url("pipeline/dossier.css");
+@import url("pipeline-worker-monitor.css");

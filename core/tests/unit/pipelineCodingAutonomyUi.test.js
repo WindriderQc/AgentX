@@ -9,6 +9,7 @@ class Element {
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren(...nodes) { this.children = nodes; }
   addEventListener(name, fn) { this.events[name] = fn; }
+  setAttribute(name, value) { this[name] = value; }
   contains(node) { return descendants(this).includes(node); }
   querySelectorAll(selector) {
     return descendants(this).slice(1).filter(node => selector.split(',').some(part => {
@@ -65,8 +66,11 @@ test('idle status separates blocked cards from work awaiting execution and keeps
   const { nodes } = setup(snapshot); await flush();
   expect(nodes.codingAutonomyStatus.textContent).toContain('0 authorized tasks waiting · 0 blocked');
   expect(descendants(nodes.codingAutonomyTasks).some(n => n.textContent.includes('Synthetic <script> task'))).toBe(false);
-  descendants(nodes.codingAutonomyTasks).find(n => n.textContent.startsWith('Show archived')).events.click();
-  expect(descendants(nodes.codingAutonomyTasks).some(n => n.textContent.includes('Original execution outcomes'))).toBe(true);
+  expect(nodes.codingAutonomyArchiveTasks.hidden).toBe(true);
+  descendants(nodes.codingAutonomyArchiveControls).find(n => n.textContent.startsWith('Show archived')).events.click();
+  expect(nodes.codingAutonomyArchiveTasks.hidden).toBe(false);
+  expect(descendants(nodes.codingAutonomyArchiveTasks).some(n => n.textContent.includes('Original execution outcomes'))).toBe(true);
+  expect(descendants(nodes.codingAutonomyTasks).some(n => n.textContent.includes('Original execution outcomes'))).toBe(false);
 });
 test('merged PR and failed CI remain visible as separate facts without acceptance', async () => {
   const snapshot = state('ready_for_review'); snapshot.tasks[0].delivery = { merged: true, state: 'closed',

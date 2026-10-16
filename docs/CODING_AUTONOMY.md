@@ -180,6 +180,10 @@ Default cumulative per-task limits:
 | CI waiting across all executions | 60 minutes |
 | No useful source/test progress | 45 minutes |
 
+The separate manual private report profile defaults to 128 calls per execution
+and accepts an explicit operator budget up to 256. It does not change these
+autonomous cumulative limits. See [private reports](../integrations/coding/README.md#private-markdown-reports).
+
 Worker test observation recognizes the installed Node Jest entry point and
 correlates the harness's encoded tool-result envelope with its original call.
 Filtered output cannot hide a failing test or tool error. Only test names,

@@ -37,7 +37,9 @@ runbooks and assets ([ADR 0001](adr/0001-one-repository.md)).
 
 Native operational jobs use one server supervisor for recurrence and effect
 receipts. Core provides bounded status and controls through its existing SSH
-bridge; Cluster Schedule mirrors the native authority. Local collectors and
+bridge. The Automations catalogue reads each native scheduler directly; its Calendar
+view reuses Cluster Schedule and the existing resource projections.
+Calendar recurrence is a read-only projection of its native owner. Local collectors and
 verified off-host transfers execute beside their data. A lost launch/result
 retains its identity and blocks replacement. See [operational jobs](OPERATIONS_JOBS.md).
 
@@ -173,8 +175,20 @@ shared execution status. Legacy mail imports and misplaced platform/assistant
 work project as pending proposals without rewriting their records. Only accepted
 actions enter personal focus and briefings. Human review checks the displayed
 revision, records the original wording, and explicitly chooses the deadline;
-dismissal retains the source and can be reversed. The MCP tools cannot accept a
-proposal. Desk counts use the complete snapshot before paging display lists.
+dismissal retains the source and can be reversed. The human action editor also
+checks the displayed revision, retains original wording in feedback, and leaves
+source notes untouched. Its read projection includes the deadline's household
+calendar date so the editor preserves an unchanged exact datetime. The MCP tools
+cannot accept a proposal or call this editor. Desk counts use the complete
+snapshot before paging display lists.
+
+Secretary evidence pages retain their raw content and stable page identities.
+`sourceContext` describes authored, quoted and attachment spans in original-body
+Unicode code-point offsets, computed before the 4,000-character windows. Quoted
+headers remain unverified source text; unknown authorship is explicit, and
+container headers never stand in for quoted authors. This is a conservative
+reading aid, not a semantic currentness or duplicate-resolution authority.
+Historical receipts are not invalidated or replayed when metadata is added.
 
 `GET /api/pipeline/tasks/:id/eligibility?automation=true` explains the current
 engineering-task admission snapshot with the same dependency, time and automation
@@ -235,6 +249,12 @@ Canonical conversations store immutable BSON pages and complete binary payloads
 behind an atomic reference in `Conversation`. Model reads hydrate the complete
 messages; embedded legacy histories move to pages on their next content write.
 Message IDs, feedback, attachments and audit evidence retain their contracts.
+
+Optional assistant [answer tables](ANSWER_BLOCKS.md) are declared canonical
+message data with a bounded, passive envelope and complete literal-text fallback
+in `content`. The existing authorized history route validates them before any
+write; Playground restores accessible tables without adding actions or inference
+authority. There is no automatic model-output adapter.
 
 A `conversationId` is a continuation handle for the Playground chat endpoints
 (`POST /api/chat` and `POST /api/chat/stream`). Core stores every accepted turn
@@ -880,6 +900,21 @@ leased turn, journals publication before effects and reconciles lost responses
 without relaunch. Exact-commit GitHub observations produce bounded corrections
 or ready-for-human-review; native model completion and capacity release remain
 separate gates. See [the coding worker](../integrations/coding/README.md).
+
+Manual private reports reuse the native worker, Core claim and inference
+journals with read-only source and a private per-request output directory.
+`PipelineReportRun` freezes the filename, budget and optional parent request and
+digest. New journals use `executionVersion: 1` with a partial unique index on
+task/claim, leaving legacy journals unchanged. Proven native completion permits
+either a candidate for review or an archived partial file with a blocked task.
+Deliverable provenance binds the exact request, claim, source and specification;
+clients cannot supply that internal provenance through a file upload. Explicit
+continuation verifies a prior terminal checkpoint's bytes and unchanged scope
+before restoration. Lost stop/publication replies replay the frozen intent under
+the same identity. Acceptance binds an independent reviewer's complete-scope
+confirmation to the current candidate and its verified digest. Core and native
+scripts must be installed together for the continuation and partial-stop
+protocol; old receipts retain their existing reconciliation path.
 
 Nerve Center reads `live.gpuHealth` from the existing host-preference endpoint;
 HTTP reachability stays separate from pin GPU residency. Benchmark's bounded

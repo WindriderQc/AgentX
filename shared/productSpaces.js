@@ -10,6 +10,7 @@ function productSpaces(link) {
         item('dad', 'Nestor', '/dad', 'fa-comment'),
         item('dad-day', 'My day', '/dad/day', 'fa-calendar-day'),
         item('dad-memories', 'Memories', '/dad/memories', 'fa-bookmark'),
+        item('dad-history', 'Archives à revoir', '/dad/history', 'fa-clock-rotate-left'),
         item('finance', 'Finance', '/finance', 'fa-wallet'),
         item('psyx', 'PsyX', '/psyx', 'fa-brain')
       ] },
@@ -52,8 +53,7 @@ function productSpaces(link) {
     { id: 'system-group', label: 'System', icon: 'fa-sliders', secondary: true, children: [
       item('nerve-center', 'Nerve Center', '/nerve-center', 'fa-brain'),
       item('agent-ops', 'Agent Ops', '/agent-ops', 'fa-users-gear'),
-      item('cluster-schedule', 'Schedule', '/cluster-schedule', 'fa-calendar-alt'),
-      item('operations-jobs', 'Automations', '/operations-jobs', 'fa-gears'),
+      item('automations', 'Automations', '/automations', 'fa-gears'),
       item('analytics', 'AI activity', '/analytics', 'fa-chart-line'),
       item('performance', 'Server performance', '/performance', 'fa-tachometer-alt'),
       item('backup', 'Backup', '/backup', 'fa-box-archive'),

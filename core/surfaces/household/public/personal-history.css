@@ -1,0 +1,14 @@
+.personal-history{max-width:1050px;margin:0 auto;padding:clamp(16px,3vw,36px)}
+.personal-history [hidden]{display:none!important}
+.personal-history h1{font-size:clamp(2rem,5vw,3.2rem);margin:.3em 0}
+.history-filters{display:flex;flex-wrap:wrap;gap:16px;align-items:end;margin:28px 0}
+.history-filters label,.history-entry form label{display:grid;gap:7px;flex:1;min-width:180px}
+.history-filters input,.history-filters select,.history-entry input,.history-entry select,.history-entry textarea{width:100%;padding:10px;border:1px solid var(--border,#38515c);border-radius:9px;background:var(--surface,#10212b);color:inherit;font:inherit;box-sizing:border-box}
+.history-list{display:grid;gap:24px;margin:22px 0}
+.history-entry{padding:clamp(18px,3vw,28px);border:1px solid var(--border,#38515c);border-radius:18px;background:var(--surface,#10212b)}
+.history-entry h2{font-size:1.2rem;line-height:1.6;overflow-wrap:anywhere}
+.history-entry dl{display:flex;flex-wrap:wrap;gap:24px;margin:20px 0}
+.history-entry dt{font-size:.85rem;opacity:.7}.history-entry dd{margin:5px 0}.history-entry dd small{display:block;margin-top:7px;opacity:.7}
+.history-entry form{display:grid;gap:16px;margin-top:22px}.history-entry .row{gap:12px}.history-entry details{margin-top:16px;overflow-wrap:anywhere}
+.history-decision{border-left:3px solid #60c3ac;padding-left:13px;margin-top:20px}.personal-history button{padding:10px 15px}
+.history-entry pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.65;max-height:65vh;overflow:auto;padding:14px;border:1px solid var(--border,#38515c);border-radius:10px}

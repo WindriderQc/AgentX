@@ -36,8 +36,14 @@ function observedAttemptCount(value) {
   if (!Number.isSafeInteger(value) || value < 0 || value > 10000) throw new CodingDispatchControlError('The observed attempt count is required.', { code: 'CODING_DISPATCH_INVALID_TASK', statusCode: 400 });
   return value;
 }
-function launchCommand({ pipelineId, requestId, expectedAttemptCount, root, autonomous }) {
-  return `/usr/bin/python3 ${remoteRoot(root)}/integrations/coding/coding_dispatch_control.py ${autonomous === true ? 'launch-autonomous' : 'launch'} ${exactPipelineId(pipelineId)} ${exactRequestId(requestId)} ${observedAttemptCount(expectedAttemptCount)}`;
+const reportSelection = require('../../../shared/pipelineReportSelection').normalize;
+function launchCommand(input) {
+  const { pipelineId, requestId, expectedAttemptCount, root, autonomous } = input;
+  const report = reportSelection(input);
+  const action = report.reportName ? 'launch-report' : autonomous === true ? 'launch-autonomous' : 'launch';
+  return `/usr/bin/python3 ${remoteRoot(root)}/integrations/coding/coding_dispatch_control.py ${action} ${exactPipelineId(pipelineId)} ${exactRequestId(requestId)} ${observedAttemptCount(expectedAttemptCount)}`
+    + (report.reportName ? ` ${report.reportName} --model-call-limit ${report.modelCallLimit}` : '')
+    + (report.parentRequestId ? ` --parent-request-id ${report.parentRequestId} --parent-sha256 ${report.parentSha256}` : '');
 }
 async function defaultSshRunner(target, command, options = {}) {
   return execFileAsync(options.sshBin || process.env.OPENCLAW_INVENTORY_SSH_BIN || 'ssh', buildSshArgs(target, command, options), {
@@ -80,13 +86,14 @@ class CodingDispatchControl {
     const expectedAttemptCount = observedAttemptCount(input.expectedAttemptCount);
     if (input.confirm !== true) throw new CodingDispatchControlError('Explicit confirmation is required for a one-shot launch.', { code: 'CODING_DISPATCH_CONFIRMATION_REQUIRED', statusCode: 400 });
     if (!this.target) throw new CodingDispatchControlError('The coding dispatcher launch target is not configured.', { code: 'CODING_DISPATCH_UNAVAILABLE', statusCode: 503 });
+    const report = reportSelection(input);
     const pending = this.launching.get(requestId);
     if (pending) {
-      if (pending.pipelineId !== pipelineId || pending.expectedAttemptCount !== expectedAttemptCount || pending.autonomous !== (input.autonomous === true)) throw new CodingDispatchControlError('This request id belongs to a different selection.', { code: 'CODING_DISPATCH_REQUEST_CONFLICT' });
+      if (pending.pipelineId !== pipelineId || pending.expectedAttemptCount !== expectedAttemptCount || pending.autonomous !== (input.autonomous === true) || pending.reportName !== report.reportName || pending.modelCallLimit !== report.modelCallLimit || pending.parentRequestId !== report.parentRequestId || pending.parentSha256 !== report.parentSha256) throw new CodingDispatchControlError('This request id belongs to a different selection.', { code: 'CODING_DISPATCH_REQUEST_CONFLICT' });
       return pending.promise;
     }
-    const promise = this.call(launchCommand({ pipelineId, requestId, expectedAttemptCount, root: this.root, autonomous: input.autonomous }));
-    this.launching.set(requestId, { pipelineId, expectedAttemptCount, autonomous: input.autonomous === true, promise });
+    const promise = this.call(launchCommand({ pipelineId, requestId, expectedAttemptCount, root: this.root, autonomous: input.autonomous, ...report }));
+    this.launching.set(requestId, { pipelineId, expectedAttemptCount, autonomous: input.autonomous === true, ...report, promise });
     try { return await promise; } finally { this.launching.delete(requestId); }
   }
   async cancel(input = {}) {
@@ -130,6 +137,13 @@ function registerCodingDispatchControlRoutes({ express, control, preparation, lo
   });
   router.post('/runs/:requestId/cancel', async (req, res) => {
     try { return res.json({ status: 'success', data: await control.cancel(req.params) }); }
+    catch (error) { return sendError(res, error, logger); }
+  });
+  router.post('/runs/:requestId/reconcile', async (req, res) => {
+    try {
+      if (req.body?.confirm !== true) throw new CodingDispatchControlError('Explicit confirmation is required to reconcile this report.', { code: 'CODING_DISPATCH_CONFIRMATION_REQUIRED', statusCode: 400 });
+      return res.json({ status: 'success', data: await control.reconcile({ ...req.body, requestId: req.params.requestId }) });
+    }
     catch (error) { return sendError(res, error, logger); }
   });
   router.post('/runs/:requestId/stop', async (req, res) => {

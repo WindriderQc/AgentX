@@ -37,7 +37,9 @@ function summarizeCronHistory(job) {
 function summarizeCron(raw) {
   const jobs = asArray(raw?.jobs || raw?.data || raw).map((job) => ({
     id: job.id || null,
-    name: job.name || job.id || 'Unnamed automation',
+    name: job.displayName || job.name || job.id || 'Unnamed automation',
+    payloadKind: job.payload?.kind || null,
+    coreJob: /^__openclaw_[a-z0-9_]+__$/.test(job.payload?.message || ''),
     description: job.description || '',
     enabled: job.enabled !== false,
     agentId: job.agentId || null,
@@ -45,7 +47,7 @@ function summarizeCron(raw) {
     lastRunStatus: job.state?.lastRunStatus ?? job.lastRunStatus ?? null,
     lastStatus: job.state?.lastStatus ?? job.lastStatus ?? null,
     consecutiveErrors: Number(job.state?.consecutiveErrors ?? job.consecutiveErrors ?? 0),
-    lastError: job.state?.lastError ?? job.lastError ?? null,
+    lastError: job.state?.lastError ?? job.lastRunError ?? job.lastError ?? null,
     lastDiagnosticSummary: job.state?.lastDiagnosticSummary ?? job.lastDiagnosticSummary ?? null,
     lastRunAtMs: job.state?.lastRunAtMs ?? job.lastRunAtMs ?? null,
     runningAtMs: job.state?.runningAtMs ?? job.runningAtMs ?? null,

@@ -77,3 +77,54 @@ test('empty and error states are explicit and the error offers a retry', async (
   expect(html).toContain('data-retry-deliverables="0309"');
   expect(failing.api.markup({ pipelineId: '../x' })).toBe('');
 });
+
+test('the main result list offers only valid files and keeps inspection metadata in the technical panel', async () => {
+  const records = [row('0'.repeat(23) + '1', 'available', { name: 'review.md' }), row('0'.repeat(23) + '2', 'corrupt'),
+    row('0'.repeat(23) + '3', 'missing'), row('0'.repeat(23) + '4', 'unknown'), row('invalid', 'available')];
+  const { api, flush } = load(ok({ deliverables: records }));
+  api.markup({ pipelineId: '0307' }, { compact: true });
+  await flush();
+  const main = api.markup({ pipelineId: '0307' }, { compact: true });
+  expect(main).toContain('review.md');
+  expect(main.match(/data-download-deliverable=/g)).toHaveLength(1);
+  expect(main).not.toContain('SHA-256');
+  expect(main).not.toContain('External delivery');
+  expect(main).toContain('File altered');
+  expect(main).toContain('File missing');
+  expect(main).toContain('Availability unknown');
+  const technical = api.markup({ pipelineId: '0307' });
+  expect(technical).toContain('SHA-256');
+  expect(technical).toContain('External delivery');
+});
+
+test('a newly recorded report refreshes a fresh file cache and an older list response cannot overwrite it', async () => {
+  const pending = [], requests = [];
+  const { api, flush } = load(url => { requests.push(url); return new Promise(resolve => pending.push(resolve)); });
+  api.markup({ pipelineId: '0307' }); const old = flush();
+  const candidate = row('0'.repeat(23) + '7', 'available', { name: 'current-report.md',
+    reportOrigin: { state: 'candidate' }, producer: { channel: 'report_worker', declared: 'coding-team' } });
+  api.markup({ pipelineId: '0307', feedback: [{ reportOutcome: { requestId: 'new-report', sha256: SHA, deliverableId: candidate.id } }] });
+  const current = flush();
+  expect(requests).toHaveLength(2);
+  pending[1]({ ok: true, json: async () => ({ ok: true, data: { deliverables: [candidate] } }) }); await current;
+  pending[0]({ ok: true, json: async () => ({ ok: true, data: { deliverables: [] } }) }); await old;
+  const task = { pipelineId: '0307', feedback: [{ reportOutcome: { requestId: 'new-report', sha256: SHA, deliverableId: candidate.id } }] };
+  expect(api.markup(task, { compact: true })).toContain('current-report.md');
+  expect(api.markup(task, { compact: true })).toContain('Report candidate · coverage unverified');
+  expect(api.markup(task)).toContain('Native report');
+  expect(requests).toHaveLength(2);
+});
+test('the exact recorded review updates the candidate label without accepting other files or partial drafts', async () => {
+  const records = [row('0'.repeat(23) + '1', 'available', { reportOrigin: { requestId: 'candidate', state: 'candidate' } }),
+    row('0'.repeat(23) + '2', 'available', { reportOrigin: { requestId: 'partial', state: 'partial' } })];
+  const { api, flush } = load(ok({ deliverables: records }));
+  const task = { pipelineId: '0307', feedback: [] };
+  api.markup(task); await flush();
+  const accepted = (requestId, sha256 = SHA) => ({ by: 'reviewer', reportAcceptance: { requestId, sha256, scopeComplete: true } });
+  task.feedback = [accepted('candidate', 'b'.repeat(64))];
+  expect(api.markup(task)).toContain('coverage unverified');
+  task.feedback = [accepted('candidate'), accepted('partial')];
+  const html = api.markup(task, { compact: true });
+  expect(html).toContain('Report candidate · scope confirmed by reviewer');
+  expect(html).toContain('Partial draft · scope incomplete'); expect(html).not.toContain('coverage unverified');
+});

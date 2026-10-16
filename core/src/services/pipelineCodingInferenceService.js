@@ -7,6 +7,7 @@ const { assertLeaseMutationAllowed } = require('./pipelineTaskService');
 // The runner adds these headers outside the network-free worker. The existing
 // claim lease is the capability; request/call IDs are only replay identities.
 async function prepare(headers, model, signal) {
+  if (headers['x-agentx-report-request']) return require('./pipelineReportInference').prepare(headers, model, signal);
   const requestId = headers['x-agentx-coding-request'];
   if (!requestId) return null;
   const pipelineId = headers['x-agentx-coding-task'];

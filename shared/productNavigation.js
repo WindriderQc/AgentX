@@ -13,7 +13,8 @@ function buildProductNavigation({ service = 'core', activePage = '', publicUrls 
   const link = (owner, route) => (owner === 'core' ? coreBase : cleanBase(urls[owner])) + route;
   const retired = ['operations', 'hosts', 'cluster', 'alerts', 'dashboard', 'alert-analytics', 'hardware-matrix'];
   const effectiveActive = activePage === 'cost-tracking' ? 'analytics'
-    : retired.includes(activePage) ? 'nerve-center' : activePage;
+    : retired.includes(activePage) ? 'nerve-center'
+    : ['cluster-schedule', 'operations-jobs'].includes(activePage) ? 'automations' : activePage;
   const groups = productSpaces(link);
   const system = groups.find(group => group.secondary);
   if (agentxProfile !== 'demo' && Array.isArray(trustedRuntimeNavItems) && trustedRuntimeNavItems.length) {

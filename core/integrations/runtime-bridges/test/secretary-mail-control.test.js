@@ -93,3 +93,24 @@ test('the archive catch-up status is read once a minute and shared by concurrent
   now += 2000;
   assert.equal((await control.catchup()).reviewed, 2);
 });
+
+test('archived originals use exact message/hash/offset arguments without a Gmail operation', async () => {
+  const commands = [];
+  const control = configured(async (_target, command) => { commands.push(command); return envelope({ body: 'Synthetic stored source' }); });
+  await control.archived({ messageId: '1a0a72c7f639bccf', sha256: 'a'.repeat(64), offset: 10000 });
+  assert.deepEqual(commands, [`${script} archived --message 1a0a72c7f639bccf --sha256 ${'a'.repeat(64)} --offset 10000`]);
+  for (const bad of [{ sha256: '$(reboot)' }, { offset: '0; reboot' }, { offset: -1 }]) {
+    await assert.rejects(() => control.archived({ messageId: '1a0a72c7f639bccf', sha256: 'a'.repeat(64), ...bad }), e => e.statusCode === 400);
+  }
+  assert.equal(commands.length, 1);
+});
+
+test('an archived MIME text selector is a bounded integer before reaching the host', async () => {
+  const commands = [];
+  const control = configured(async (_target, command) => { commands.push(command); return envelope({ body: 'Synthetic alternate text' }); });
+  const source = { messageId: '1a0a72c7f639bccf', sha256: 'a'.repeat(64) };
+  await control.archived({ ...source, part: '2' });
+  assert.deepEqual(commands, [`${script} archived --message ${source.messageId} --sha256 ${source.sha256} --offset 0 --part 2`]);
+  for (const part of [-1, 4096, '2; reboot', '$(reboot)']) await assert.rejects(() => control.archived({ ...source, part }), e => e.statusCode === 400);
+  assert.equal(commands.length, 1);
+});

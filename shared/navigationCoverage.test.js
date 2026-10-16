@@ -26,6 +26,7 @@ const HOUSEHOLD_PUBLIC = 'core/surfaces/household/public';
 // A second address for a page that has its own entry: old bookmarks keep working.
 const ALIASES = {
   core: {
+    '/cluster-schedule': '/automations', '/operations-jobs': '/automations',
     '/ecosystem': '/', '/portal': '/',
     '/dad/nestor': '/dad', '/voice': '/dad', '/voix': '/dad', '/voice.html': '/dad',
     '/device-check': '/voice-lab/devices', '/voice-personas/debug': '/voice-lab/personas',
@@ -38,7 +39,7 @@ const ALIASES = {
 const CONTEXTUAL = {
   core: {
     '/images/guide': ['core/views/pages/images.ejs', 'href="/images/guide"'],
-    '/voice-lab/devices': ['core/public/js/voice/voice-workshop.js', 'href="/voice-lab/devices"']
+    '/voice-lab/devices': ['core/public/js/voice/voice-workshop-view.js', 'href="/voice-lab/devices"']
   },
   benchmark: {
     '/setup': ['benchmark/public/js/benchmark-v2/experience.js', "'/benchmark/setup'"]

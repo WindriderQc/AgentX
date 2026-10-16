@@ -5,9 +5,34 @@ the bounded catch-up job (mail_catchup.py), which reviews pages back to back.
 """
 from __future__ import annotations
 
+import hashlib
+import json
+
 from evidence_store import load, now, save
 
 SECTIONS = ("actions", "memories", "deliverables", "invoices")
+
+
+def rebase_review(previous, manifest, page_ids):
+    """Keep current citations, without certifying an earlier evidence revision.
+
+    Removed messages/attachments remain in the immutable historical review;
+    their findings cannot be validated against the new manifest. Unresolved
+    questions remain open, and task/note receipts on surviving findings survive.
+    """
+    messages = {m["id"] for m in manifest["messages"]}
+    attachments = {(m["id"], a.get("sha256")) for m in manifest["messages"] for a in m["attachments"]}
+    review = {section: [row for row in previous.get(section, [])
+                        if row.get("messageId") in messages and
+                        (not row.get("attachmentSha256") or
+                         (row["messageId"], row["attachmentSha256"]) in attachments)]
+              for section in SECTIONS}
+    review["unresolved"] = previous.get("unresolved", [])
+    review["pageSummaries"] = {key: row for key, row in previous.get("pageSummaries", {}).items()
+                               if key in page_ids and row.get("messageId") in messages}
+    revision = hashlib.sha256(json.dumps(previous, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    review["previousReviewRevision"] = revision
+    return review, revision
 
 
 def record_page(archive, page, value, *, export=True):
@@ -25,6 +50,10 @@ def record_page(archive, page, value, *, export=True):
     if page["evidenceHash"] != manifest["evidenceHash"]:
         raise ValueError("Evidence changed; retrieve a fresh page")
     review = load(root / "reviews" / (page["threadId"] + ".json"), {})
+    previous, revision = review, None
+    if previous and previous.get("evidenceHash") != manifest["evidenceHash"]:
+        page_ids = {p["pageId"] for p in archive.review_pages(manifest)}
+        review, revision = rebase_review(previous, manifest, page_ids)
     review.update(threadId=page["threadId"], evidenceHash=page["evidenceHash"], coverage="partial")
     for section in SECTIONS:
         additions = value.get(section, [])
@@ -51,6 +80,12 @@ def record_page(archive, page, value, *, export=True):
     visual_pending = any(a["status"] != "text_extracted" for m in manifest["messages"] for a in m["attachments"])
     if all_read and not visual_pending and not review["unresolved"]:
         review["coverage"] = "complete"
+    if revision:
+        # Preserve the exact prior review before replacing it. Content addressing
+        # makes retries reuse one snapshot, including after an export failure.
+        history = root / "review-history" / page["threadId"] / (revision + ".json")
+        if not history.exists():
+            save(history, previous)
     # Existing receipt validation runs before the page is marked read.
     archive.review(review, export=export)
     save(reviewed / (page["pageId"] + ".json"), {**value, "threadId": page["threadId"], "at": now()})

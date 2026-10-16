@@ -64,7 +64,7 @@ async function studio({ failFirst = false, lineage, requested = parentId, availa
     if (tag === 'canvas') { canvas(); el.getContext = () => ({ drawImage() {} }); el.toDataURL = () => 'data:image/jpeg;base64,bWFudWFs'; }
     return el;
   } }, fetch, Intl, Date, URLSearchParams, location: { search: `?operation=${requested}` },
-  localStorage: { setItem() {} }, crypto: { randomUUID: () => `fixture-action-${++sequence}` },
+  localStorage: { setItem() {} }, crypto: { randomUUID: () => `fixture-action-${++sequence}`, subtle: require('node:crypto').webcrypto.subtle }, atob,
   URL: { createObjectURL: () => 'blob:fixture', revokeObjectURL() {} },
   Image: class { constructor() { this.width = 2; this.height = 2; } async decode() { imageDecode(); } },
   Event: class { constructor(type) { this.type = type; } }, queueMicrotask, setTimeout: jest.fn(), clearTimeout: jest.fn() });
@@ -73,7 +73,9 @@ async function studio({ failFirst = false, lineage, requested = parentId, availa
   vm.runInContext(constraintsSource, context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../public/js/image-text-policy.js'), 'utf8'), context);
   if (constraintsEnabled) vm.runInContext(constraintsUiSource, context);
-  vm.runInContext(starterSource, context); vm.runInContext(source, context);
+  vm.runInContext(starterSource, context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../public/js/image-reference-selection.js'), 'utf8'), context);
+  vm.runInContext(source, context);
   await settle();
   const fire = async (id, type = 'click') => { await get(id).dispatchEvent({ type, preventDefault() {} }); await settle(); };
   return { get, fire, post, canvas, imageDecode, fetch, expertController };

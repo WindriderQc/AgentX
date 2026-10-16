@@ -57,6 +57,7 @@ def describe(home):
     return {'ok': True, 'expert': 'hermes', 'profile': 'imagex', 'routing': routing,
             'resources': [resource(home, key) for key in FILES],
             'capabilities': {'chat': True, 'planning': True, 'visualInspection': False,
+                             'referenceInspectionEvidence': 1,
                              'profileWrites': False, 'shell': False}}
 
 

@@ -12,6 +12,30 @@ function runtimeWithContext(options) {
     conversationContext: sessionId => readTurnContext(options.conversations, { sessionId }) } });
 }
 
+for (const [agentId, channel] of [['main', 'work'], ['synthetic-guardian', 'voice']]) {
+  test(`cloud model selection preserves the native ${agentId} agent, session, instructions and context`, async () => {
+    const sessionId = '11111111-1111-4111-8111-111111111111', runId = 'resp_22222222-2222-4222-8222-222222222222';
+    let sent;
+    const event = type => Buffer.from('data: ' + JSON.stringify({ type, response: { id: runId } }) + '\n\n');
+    const client = createAgentClient({ env: { OPENCLAW_GATEWAY_URL: 'http://synthetic.invalid', OPENCLAW_GATEWAY_TOKEN: 'synthetic-token',
+      PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID: 'synthetic-guardian', HOUSEHOLD_VOICE_MODEL: 'legacy-voice-model' },
+      progressMs: 1, settleMs: 0, streamGraceMs: 0,
+      continuity: async () => ({ run: { runId, model: 'cloud-model', provider: 'synthetic-cloud' },
+        answer: { runId, status: 'ready', text: 'Actual native answer.' } }),
+      fetchImpl: async (_url, request) => { sent = request; return { ok: true, body: [event('response.created'), event('response.completed')] }; } });
+    const result = await client({ session: { sessionId, agentId, packId: 'personal_operator', scopeId: 'personal', modeId: 'standard' },
+      channel, model: 'synthetic-cloud/cloud-model', text: 'Synthetic complete request.',
+      turnContext: 'COMPLETE_CANONICAL_CONTEXT', instructions: 'UNCHANGED_NATIVE_ROLE', guardianStreaming: channel === 'voice' });
+    assert.equal(sent.headers['x-openclaw-model'], 'synthetic-cloud/cloud-model');
+    assert.equal(sent.headers['x-openclaw-session-key'], `agent:${agentId}:household:direct:${sessionId}`);
+    const body = JSON.parse(sent.body);
+    assert.equal(body.model, `openclaw/${agentId}`); assert.equal(body.instructions, 'UNCHANGED_NATIVE_ROLE');
+    assert.match(JSON.stringify(body.input), /COMPLETE_CANONICAL_CONTEXT/);
+    assert.match(JSON.stringify(body.input), /Synthetic complete request/);
+    assert.equal(result.metadata.model, 'cloud-model'); assert.equal(result.metadata.provider, 'synthetic-cloud');
+  });
+}
+
 test('background native Main preserves the complete request, references prior turns and retains its native model in a distinct session', async () => {
   const originalId = '11111111-1111-4111-8111-111111111111', workSessionId = '33333333-3333-4333-8333-333333333333';
   const text = 'Résume mes courriels récents.';

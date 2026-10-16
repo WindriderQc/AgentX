@@ -44,11 +44,27 @@ test('rejects foreign keys, malformed switches and owner selection in the body',
 });
 test('every exposed optional control can be disabled and persists across factories', async () => {
   for (const surface of ['psyx', 'nestor', 'family', 'playground']) {
-    const values = Object.fromEntries(catalogFor(surface).map(item => [item.key, item.type === 'number' ? defaultsFor(surface, {})[item.key] : false]));
+    const values = Object.fromEntries(catalogFor(surface).map(item => [item.key, ['number', 'enum'].includes(item.type) ? defaultsFor(surface, {})[item.key] : false]));
     await own(surface).save({ revision: 0, values });
     const fresh = createConversationPreferences({ Model, env: {} }).forOwner({ ownerId: 'synthetic-owner', surface });
     expect((await fresh.read()).values).toEqual(values);
   }
+});
+test('Nestor stores only configured inference profiles and keeps family and other surfaces independent', async () => {
+  const env = { PERSONAL_CONVERSATION_WORK_MODE: 'native', PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID: 'test-guardian',
+    PERSONAL_CONVERSATION_WORK_AGENT_ID: 'test-worker', PERSONAL_CONVERSATION_WORK_TOKEN: 'synthetic-private-work-binding-token',
+    PERSONAL_CONVERSATION_CLOUD_BOSS_MODEL: 'synthetic-cloud/deep-model', PERSONAL_CONVERSATION_CLOUD_GUARDIAN_MODEL: 'synthetic-cloud/fast-model' };
+  const selected = createConversationPreferences({ Model, env }).forOwner({ ownerId: 'profile-owner', surface: 'nestor' });
+  expect((await selected.read()).values.inferenceProfile).toBe('local');
+  for (const [revision, value] of ['boss_cloud', 'full_cloud', 'local'].entries()) {
+    expect((await selected.save({ revision, values: { inferenceProfile: value } })).values.inferenceProfile).toBe(value);
+  }
+  for (const value of [false, {}, 'synthetic-cloud/arbitrary-model', 'guardian_cloud']) {
+    await expect(selected.save({ revision: 3, values: { inferenceProfile: value } })).rejects.toMatchObject({ statusCode: 400 });
+  }
+  await expect(own('nestor').save({ revision: 0, values: { inferenceProfile: 'boss_cloud' } })).rejects.toMatchObject({ statusCode: 400 });
+  await expect(own('family').save({ revision: 0, values: { inferenceProfile: 'full_cloud' } })).rejects.toMatchObject({ statusCode: 400 });
+  expect((await own('family').read()).catalog.some(item => item.key === 'inferenceProfile')).toBe(false);
 });
 test('disabling context removes model material, retains stored state, and preserves safety instructions', () => {
   const state = emptyState('synthetic'); state.profile = { about: 'SYNTHETIC_PRIVATE_PROFILE', expectations: 'SYNTHETIC_EXPECTATION' };

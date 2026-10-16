@@ -23,3 +23,7 @@
 .conversation-preferences-dialog button:focus-visible, .conversation-preferences-dialog input:focus-visible, .conversation-preferences-dialog summary:focus-visible { outline: 3px solid #a7d7c5; outline-offset: 3px; }
 @media (max-width: 540px) { .conversation-preferences-dialog { padding: 18px; } .conversation-preferences-dialog footer { bottom: -18px; } .conversation-preferences-dialog footer button { flex: 1 1 auto; } }
 .conversation-preference-option input[type=number] { width: 76px; height: 42px; box-sizing: border-box; border: 1px solid #607780; border-radius: 8px; padding: 6px; background: #23343e; color: #f1f5f7; font: inherit; }
+.conversation-preference-choice { flex-direction: column-reverse; }
+.conversation-preference-choice select { width: 100%; min-height: 44px; border: 1px solid #607780; border-radius: 8px; padding: 8px; background: #23343e; color: #f1f5f7; font: inherit; }
+.conversation-preference-choice select:disabled { opacity: .55; }
+.conversation-preference-choice select:focus-visible { outline: 3px solid #a7d7c5; outline-offset: 3px; }

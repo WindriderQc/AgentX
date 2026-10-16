@@ -45,6 +45,78 @@ beforeEach(async () => {
 });
 afterEach(() => works.observer.stop());
 
+test('composite native call identities keep exact replay, budget and run ownership', async () => {
+  const row = await admitted('Lis https://example.test et vérifie sur le web.');
+  const identity = context(row);
+  for (let index = 0; index < 4; index++) {
+    const callId = 'call_synthetic_shared|fc_synthetic_' + index;
+    expect(await works.admitNativeTool(identity, { tool: 'web_fetch' }, callId)).toMatchObject({ admitted: true });
+    expect(await works.admitNativeTool(identity, { tool: 'web_fetch' }, callId)).toMatchObject({ admitted: true });
+  }
+  expect((await works.repo.get(row._id)).nativeAdmissions).toHaveLength(4);
+  expect(await works.admitNativeTool(identity, { tool: 'web_fetch' }, 'call_synthetic_shared|fc_fifth')).toMatchObject({ admitted: false });
+  await expect(works.admitNativeTool(identity, { tool: 'web_search' }, 'call_synthetic_shared|fc_synthetic_0'))
+    .rejects.toMatchObject({ code: 'CONVERSATION_WORK_TOOL_CONFLICT' });
+  await expect(works.admitNativeTool({ ...identity, runId: 'resp_' + randomUUID() }, { tool: 'web_fetch' }, 'call_synthetic_shared|fc_synthetic_0'))
+    .rejects.toMatchObject({ statusCode: 404 });
+  for (const invalid of ['call bad|fc_bad', 'call\nforged|fc_bad', 'call_' + 'x'.repeat(161)]) {
+    await expect(works.admitNativeTool(identity, { tool: 'web_fetch' }, invalid)).rejects.toMatchObject({ code: 'CONVERSATION_WORK_BUDGET_INVALID' });
+  }
+});
+
+test('accepted cloud routes survive preference and instance changes while Main keeps its full native identity', async () => {
+  const cloudEnv = { ...env, PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID: 'synthetic-guardian',
+    PERSONAL_CONVERSATION_CLOUD_BOSS_MODEL: 'synthetic-cloud/deep-model',
+    PERSONAL_CONVERSATION_CLOUD_GUARDIAN_MODEL: 'synthetic-cloud/fast-model' };
+  const cloud = registerWorkRuntime({ router, conversations, tasks: {}, agentClient: execute, continuity, env: cloudEnv, capability });
+  try {
+    const original = { ...input('Regarde mes tâches.'), performanceProfile: 'full_cloud' };
+    const first = await cloud.intake(original);
+    expect(first.row.performance).toEqual({ profile: 'full_cloud', guardian: { model: 'synthetic-cloud/fast-model' }, boss: { model: 'synthetic-cloud/deep-model' } });
+    expect(first.row.guardian.agentId).toBe('synthetic-guardian');
+    cloudEnv.PERSONAL_CONVERSATION_CLOUD_BOSS_MODEL = 'synthetic-cloud/replacement-model';
+    cloudEnv.PERSONAL_CONVERSATION_WORK_MODE = 'off';
+    const duplicate = await cloud.intake({ ...original, performanceProfile: 'local' });
+    expect(duplicate.duplicate).toBe(true); expect(duplicate.row.performance).toEqual(first.row.performance);
+    await cloud.prepare(first.row._id, 'Selected memory.');
+    await cloud.observer.tick();
+    expect(execute).toHaveBeenCalledTimes(1);
+    const sent = execute.mock.calls[0][0];
+    expect(sent.model).toBe('synthetic-cloud/deep-model'); expect(sent.session.agentId).toBe('main');
+    expect(sent.instructions).toContain('installed tools, personal memory');
+    expect(sent.instructions).toContain('existing permissions and approval contracts');
+    expect(sent.turnContext).toContain('Selected memory.'); expect(sent.turnContext).toContain(original.text);
+    expect(sent.maxOutputTokens).toBeUndefined();
+  } finally { cloud.observer.stop(); }
+});
+
+test('recovery reconstructs the original cloud routes from the canonical acceptance receipt', async () => {
+  const cloudEnv = { ...env, PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID: 'synthetic-guardian',
+    PERSONAL_CONVERSATION_CLOUD_BOSS_MODEL: 'synthetic-cloud/original-model' };
+  const cloud = registerWorkRuntime({ router, conversations, tasks: {}, agentClient: execute, continuity, env: cloudEnv, capability });
+  try {
+    const original = { ...input('Regarde mes tâches.'), performanceProfile: 'boss_cloud' };
+    const first = await cloud.intake(original);
+    await Model.collection.deleteOne({ _id: first.row._id });
+    delete cloudEnv.PERSONAL_CONVERSATION_CLOUD_BOSS_MODEL;
+    await cloud.recover();
+    const recovered = await cloud.repo.get(first.row._id);
+    expect(recovered.performance).toEqual(first.row.performance);
+    expect(recovered.guardian.state).toBe('uncertain');
+    const duplicate = await cloud.intake({ ...original, performanceProfile: 'local' });
+    expect(duplicate.row.performance.boss.model).toBe('synthetic-cloud/original-model');
+    expect(execute).not.toHaveBeenCalled();
+  } finally { cloud.observer.stop(); }
+});
+
+test('unavailable cloud selection refuses before acceptance or native dispatch', async () => {
+  await expect(works.intake({ ...input('Regarde mes tâches.'), performanceProfile: 'boss_cloud' }))
+    .rejects.toMatchObject({ code: 'CONVERSATION_INFERENCE_PROFILE_UNAVAILABLE' });
+  expect(await Model.countDocuments()).toBe(0);
+  expect(await mongoose.connection.collection('conversation_exchange_receipts').countDocuments({ scope: EXCHANGE_SCOPE })).toBe(0);
+  expect(execute).not.toHaveBeenCalled();
+});
+
 test.each([['Regarde mes tâches.', 'native_work'], ['Ajoute une tâche personnelle pour demain.', 'native_work'],
   ['Résume mes courriels récents.', 'native_work'], ['Demande à la secrétaire de rédiger un courriel.', 'native_work'],
   ['Does the team play tonight?', 'native_work'], ['Quelles sont mes tâches prioritaires ?', 'native_work'],

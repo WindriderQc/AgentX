@@ -1,7 +1,7 @@
 /* Diagnostic adapters use the same capture, recognition and speech ladder as their surface. */
 (function (root) {
   'use strict';
-  function create({ scope, language, capture, preferences, persona, changed = () => {}, result = () => {}, timing = () => {}, receipt = () => {},
+  function create({ scope, language, capture, preferences, persona, changed = () => {}, result = () => {}, timing = () => {}, receipt = () => {}, scheduled = () => {},
     fetchImpl = root.fetch.bind(root), openAudio = root.AgentXVoice.openAudio }) {
     const psyx = scope === 'psyx';
     let latest = null, lastSpeech = null, stopped = false;
@@ -41,7 +41,7 @@
       deviceVoice: ({ language: requestedLanguage }) => psyx ? requestedLanguage === 'en' && root.speechSynthesis ? { localOnly: true } : false : Boolean(root.speechSynthesis),
       unavailable: 'Speech is unavailable for this choice. The complete text remains visible.'
     });
-    const speech = root.VoixAudio?.Speech ? new root.VoixAudio.Speech({ retryUnplayed: true, playBrowser: root.AgentXVoice.speakWithBrowser, onReceipt: receipt, onMetrics: timing }) : { cancel() {}, async speak() { throw new Error('The speech player is unavailable. Reload the workshop after restoring the voice service.'); } };
+    const speech = root.VoixAudio?.Speech ? new root.VoixAudio.Speech({ retryUnplayed: true, playBrowser: root.AgentXVoice.speakWithBrowser, onReceipt: receipt, onMetrics: timing, onScheduled: scheduled }) : { cancel() {}, async speak() { throw new Error('The speech player is unavailable. Reload the workshop after restoring the voice service.'); } };
     function clip() {
       const info = session.audio?.reviewStatus();
       return info?.id && info.expiresAt > Date.now() ? info : null;
@@ -76,13 +76,15 @@
         } finally { clearTimeout(expires); aborts.delete(abort); }
       },
       async speak(text, choice, speechLanguage = language()) {
+        const segments = root.NestorSpeech.splitSpeechText(root.NestorSpeech.speechText(text, { readAloud: true }));
+        if (!segments.some(segment => segment.trim())) throw new Error('Ajoutez du texte à lire avant de lancer cet essai.');
         session.stop(true); // One microphone owner; the TTS test does not hear itself.
         lastSpeech = null;
         const profile = preferences(), choices = choice ? [choice] : psyx
           ? [{ provider: profile.voice?.split('|')[0] || 'kokoro', voice: profile.voice?.split('|')[1] || '' }]
           : root.PersonaPresentation.speechChoices(persona(), speechLanguage, { selections: speechLanguage === language() && profile.voice ? { [speechLanguage]: profile.voice } : {} });
         await speech.speak((signal, segment, after) => ladder.speak({ text: segment, language: speechLanguage, choices, after }, signal),
-          { segments: root.NestorSpeech.splitSpeechText(root.NestorSpeech.speechText(text, { readAloud: true })) });
+          { segments });
         return lastSpeech;
       },
       stopSpeech() { speech.cancel(); },

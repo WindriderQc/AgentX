@@ -7,7 +7,7 @@ function createConversationPreferences({ Model = require('../../../models/Conver
   let indexes;
   function forOwner({ ownerId, surface, defaults = {} }) {
     if (typeof ownerId !== 'string' || !ownerId.trim() || ownerId.length > 200 || !SURFACES.includes(surface)) throw invalid('Un espace de réglages exact est requis.');
-    const scope = { ownerId, surface }, catalog = catalogFor(surface), initial = { ...defaultsFor(surface, env), ...defaults };
+    const scope = { ownerId, surface }, catalog = catalogFor(surface, env), initial = { ...defaultsFor(surface, env), ...defaults };
     const allowed = new Map(catalog.map(item => [item.key, item]));
     const view = row => ({ contract: CONTRACT, surface, revision: row?.revision || 0, defaults: initial,
       overrides: row?.values || {}, values: { ...initial, ...row?.values }, catalog });
@@ -17,7 +17,9 @@ function createConversationPreferences({ Model = require('../../../models/Conver
         || !body.values || typeof body.values !== 'object' || Array.isArray(body.values)) throw invalid('Les réglages et leur version sont requis.');
       for (const [key, value] of Object.entries(body.values)) {
         const field = allowed.get(key);
-        if (!field || (field.type === 'number' ? !Number.isFinite(value) || value < field.min || value > field.max || (field.step === 1 && !Number.isInteger(value)) : typeof value !== 'boolean')) throw invalid('Une option est inconnue ou sa valeur est invalide.');
+        if (!field || (field.type === 'number' ? !Number.isFinite(value) || value < field.min || value > field.max || (field.step === 1 && !Number.isInteger(value))
+          : field.type === 'enum' ? !field.choices.some(choice => choice.value === value && !choice.disabled)
+          : typeof value !== 'boolean')) throw invalid('Une option est inconnue, indisponible ou sa valeur est invalide.');
       }
       if (Model.createIndexes) await (indexes ||= Model.createIndexes().catch(error => { indexes = null; throw error; }));
       let row;

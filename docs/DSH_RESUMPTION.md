@@ -80,6 +80,32 @@ browser plugins are enabled only for the human-operated Studio. Reuse compatible
 project skills through DSH's existing `.agents/skills` or `.dsh/skills` discovery.
 No extra memory service, scheduler or agent-team layer is needed.
 
+## Optional worker navigation and presentation plugins
+
+The optional [AgentX Coding Team bundle](../integrations/dsh/coding-team/README.md)
+adds a native Studio sidebar link to `/pipeline#pipelineWorkerMonitor`. Supply
+the instance's HTTPS Core origin when packaging outside Git. The link starts
+no worker or model call. Pipeline's **Follow and decide** view observes the
+existing worker controller: exact task/request identity, recorded attempt when
+the dossier proves its binding, observation age, heartbeat, useful progress,
+budgets, tests and checkpoint. Its Stop action uses the original request;
+acknowledgement, termination and native resource release remain separate.
+
+Optional third-party presentation bundles belong only in Studio's Web profile.
+Stage exact versions in a disposable native profile before activation, preserve
+the original manifest, bundles and lockfile, and retain native authentication.
+For `dsh-context`, empty `promptPrefix` and `promptSuffix` avoid adding global
+prompt text. For `@changfenhuang/dsh-genui`, `renderUiTool: false` and
+`fenceFeedback: false` disable the rendering tool and fence steering; the plugin
+still registers validation and formatting guidance. Account for that overhead
+when qualifying it. These bundles do not change the worker profile, Core tasks
+or shared memory authority.
+
+Refresh the managed operator skill from `/api/operator-skill/download` after
+the serving revision changes. Preserve private instance references and record
+file installation, native workspace discovery and current-session adoption
+separately. See [coding work guidance](../skills/agentx/references/coding-work.md).
+
 ## Optional prior-session recall and shared memory
 
 Set `DSH_STUDIO_MEMORY_ENABLED=true` in the existing Studio service environment
@@ -105,6 +131,34 @@ files and session history; durable personal facts belong in the shared notes.
 These are human Studio capabilities. Automatic Coding Team workers retain their
 existing network boundary and task-local evidence. Disabling the Studio setting
 and restarting removes the optional tools without deleting notes or histories.
+
+### Retained legacy-session compatibility
+
+DSH 0.2.0-rc.2's session reader can reject retained v0 histories containing a
+released subagent descriptor-v2 shape. Session search cold-reads persisted
+sessions before applying its workspace filter, so one such archive can make
+every search report that session history storage is unavailable. Resetting the
+derived index does not repair that reader.
+
+The optional [pinned compatibility installer](../integrations/coding/dsh-session-compat.md)
+admits the released descriptor shape in the migration reader, preserving its
+version, fields and original archives. It does not make those historical
+subagents resumable. Unknown or malformed descriptors still refuse. The
+installer accepts only the reviewed package version and exact source hashes;
+launchers never apply it automatically. It requires a POSIX operator host.
+
+Run its read-only `--check` with the explicit installed package directory first.
+Before `--apply`, retain the original package file and hash outside Git, follow
+the instance's queue and maintenance procedure, and observe Studio and any
+worker sharing the runtime idle. Stop those package consumers under their
+native owner. Apply once, then restart only the stopped services and verify
+authenticated readiness. Never interrupt a running session to install it.
+
+Record cold-read and bounded search results separately from installer tests,
+with no model invocation. Verify original history bytes and protected settings
+remain unchanged. An uncertain installation requires reconciliation of the same
+operation and source hash before another action. An upstream reinstall or
+upgrade needs a fresh compatibility review; retain no automatic patch hook.
 
 ## Qualification
 

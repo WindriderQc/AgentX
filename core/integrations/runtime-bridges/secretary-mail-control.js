@@ -104,6 +104,17 @@ class SecretaryMailControl {
     return this.call('senders');
   }
 
+  async archived({ messageId, sha256, offset = 0, part } = {}) {
+    const id = exactThreadId(messageId);
+    if (!/^[a-f0-9]{64}$/.test(sha256 || '') || !Number.isSafeInteger(Number(offset)) || Number(offset) < 0) {
+      throw new SecretaryMailError('The archived source hash or offset is invalid.', { code: 'SECRETARY_ARCHIVE_INVALID', statusCode: 400 });
+    }
+    if (part !== undefined && (!Number.isSafeInteger(Number(part)) || Number(part) < 0 || Number(part) >= 4096)) {
+      throw new SecretaryMailError('The archived text representation is invalid.', { code: 'SECRETARY_ARCHIVE_INVALID', statusCode: 400 });
+    }
+    return this.call(`archived --message ${id} --sha256 ${sha256} --offset ${Number(offset)}${part === undefined ? '' : ` --part ${Number(part)}`}`);
+  }
+
   // The desk refreshes often; one Gmail count every five minutes is enough to
   // show that mail is piling up unlabelled.
   async backlog({ refresh = false } = {}) {

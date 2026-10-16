@@ -137,6 +137,7 @@ and the Data Toolbox world map geometry [its own](core/surfaces/data-toolbox/pub
 [Operations](docs/OPERATIONS.md) · [Decisions](docs/adr/0001-one-repository.md) ·
 [Modernization candidates](MODERNIZATION.md)
 
+[Analytics](docs/ANALYTICS.md) explains recorded activity, comparisons and live GPU evidence.
 [Operational screens](docs/OPERATOR_UI.md) explains Pipeline admission conditions,
 Nerve Center GPU residency and Profiler runtime continuity, with links to their
 operator procedures.

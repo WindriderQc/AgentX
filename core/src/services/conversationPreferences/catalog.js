@@ -32,9 +32,12 @@ const NUMBERS = [
 ];
 const GROUPS = { context: 'Reply context', reply: 'Reply compute', background: 'After messages', sources: 'Dreaming sources' };
 const SURFACES = ['playground', 'psyx', 'nestor', 'family'];
-function catalogFor(surface) { return [...CATALOG, ...NUMBERS].filter(item => item.surfaces.includes(surface)).map(({ surfaces, ...item }) => ({ ...item, groupTitle: GROUPS[item.group] })); }
+function catalogFor(surface, env = process.env) {
+  const fields = [...CATALOG, ...NUMBERS].filter(item => item.surfaces.includes(surface)).map(({ surfaces, ...item }) => ({ ...item, groupTitle: GROUPS[item.group] }));
+  return surface === 'nestor' ? [require('../conversationWorks/performance').profileField(env), ...fields] : fields;
+}
 function defaultsFor(surface, env = process.env) {
-  const values = Object.fromEntries(catalogFor(surface).map(item => [item.key, true]));
+  const values = Object.fromEntries(catalogFor(surface, env).map(item => [item.key, item.type === 'enum' ? 'local' : true]));
   if (surface === 'psyx') { values.backgroundReview = env.PSYX_AUTO_REVIEW !== 'false'; values.automaticDream = env.PSYX_DREAM !== 'false'; values.dreamEnabled = env.PSYX_DREAM !== 'false'; }
   if (['nestor', 'family'].includes(surface)) values.backgroundReview = env.HOUSEHOLD_BRAIN_ENABLED === 'true' && (surface !== 'family' || env.HOUSEHOLD_BRAIN_FAMILY !== 'false');
   if (surface === 'psyx') Object.assign(values, { reviewDelaySeconds: Number(env.PSYX_REVIEW_DELAY_MS || 4000) / 1000, dreamIdleMinutes: 30, dreamNightHour: 3 });

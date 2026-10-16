@@ -9,12 +9,17 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 ## On main
 
-- **Operational jobs.** Core exposes native server-owned host jobs at
-  `/operations-jobs`: cadence, pause/resume, explicit execution, durable receipts
-  and Windows inventory. Named collectors and verified transfers retain local
-  data, source dependencies and unknown-outcome fences. The capability defaults
-  unconfigured; native installation and cutover are per-instance acceptance. See
-  [operational jobs](OPERATIONS_JOBS.md).
+- **Automations.** `/automations` is the shared catalogue and calendar for native
+  AgentX host jobs, Core backups and OpenClaw cron jobs, including native core
+  functions. Identity comes from the owning scheduler; Cluster Schedule mirrors
+  are excluded from executable counts. Retired mirrors have a separate archive.
+  Each source reports freshness independently; unavailable sources retain bounded
+  cached evidence and disable controls. Cadence, pause/resume, explicit execution,
+  durable receipts and Windows inventory remain available for host jobs. OpenClaw
+  and backup controls continue in their native owning screens. Its Calendar view reuses Cluster Schedule for tasks, hosts, continuous services,
+  GPU capacity, measured use, placement and Core's heavy-work queue; there is no
+  parallel agenda. Old schedule and host-job URLs redirect to this hub. Agent Ops keeps agent evidence and
+  documentation-only obligations. See [operational jobs](OPERATIONS_JOBS.md).
 
 - **Household daily use.** The parent view filters tasks by child, review, date
   and text, shows recorded deadlines for the next seven days, and edits open
@@ -22,15 +27,19 @@ Instance configuration, data and deployment receipts remain outside Git.
   day. Nestor, its day page and the family conversation share the Core shopping
   list; purchases are checked on parent pages. Local space navigation,
   conversation starters and a character count support desktop and mobile use.
-  My day shows owner actions, mail requests to clarify, technical follow-ups and
-  Secretary reading in distinct categories with complete counts and sources.
-  Human acceptance chooses the personal action wording and deadline;
-  dismissed proposals keep their sources and can be restored. Focus and spoken
-  briefings use accepted actions, with counts taken before display pagination.
+  My day opens on owner actions, with complete search, date filters and a
+  revision-checked title/date editor. Separate views group mail findings by
+  exchange and retain technical follow-ups and Secretary reading. Human
+  acceptance chooses the personal action wording and deadline; dismissed
+  proposals keep their sources and can be restored. Focus and spoken briefings
+  use accepted actions, with counts taken before display pagination. Secretary
+  source pages carry conservative quote-boundary context across continuation
+  windows; container headers do not attribute quotations or attachments.
+  Existing source text, page identities and reading receipts remain valid.
 
 - **Heavy work.** Core stores one-off requests from operator/coding sessions,
   resource-aware planned windows, dispatch identities and executor receipts.
-  Cluster Schedule edits slots and shows estimated versus actual status. The
+  The Automations Calendar view edits slots and shows estimated versus actual status. The
   operator CLI explicitly launches existing Benchmark plans and Profiler host
   queues, and tracks custom coding checks through explicit operator receipts.
   Accepted images queue before GPU work and start once within a bounded window.
@@ -111,6 +120,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   owner filters, phrases and conversation-wide exclusions. Atomic root writes
   retain session counters, message identities and conditional review predicates;
   stale writers and missing content refuse explicitly.
+  Optional [answer tables](ANSWER_BLOCKS.md) persist through the existing history
+  route and restore in Playground with a complete text version. The passive
+  table contract does not yet include an automatic model-output adapter.
   Ordinary Ollama calls preserve complete input and disable context shifting;
   an unqualified runtime refuses before inference. Benchmark/Profiler keep
   their intentional probes under validated workload ownership.
@@ -119,6 +131,13 @@ Instance configuration, data and deployment receipts remain outside Git.
   on `/mcp` share the same owner notes; sensitive identifiers leave note and
   journal text for the vault when its key is set. Agents file Markdown notes
   into the owner's vault inbox when the instance names one.
+  Historical source assertions have a separate review at `/dad/history`: source
+  dates, event dates, attribution and revision-fenced decisions stay explicit.
+  Retaining an action keeps it open; source review creates neither a personal
+  commitment nor selected memory. The native archive reader verifies pinned
+  originals independently of Gmail. Instance import, process qualification and
+  evidence-gated mailbox cleanup are tracked in
+  [#795](https://github.com/WindriderQc/AgentX/issues/795).
 - **Voice.** Household and PsyX share Core's browser conversation engine, VoiX
   transport, synthesis validation, stream relay and spoken-text cleanup. Native
   voice replies use the same speech boundary; physical device adapters retain
@@ -198,10 +217,19 @@ Instance configuration, data and deployment receipts remain outside Git.
   **Run one task** hands a queued, unowned, non-private `agentx-coding` ticket
   to the local coding worker: a fresh clone on its own branch, a shell and the tests inside a
   sandbox without network (its one way out is the model route), then a draft
-  pull request. Pipeline shows the host heartbeat separately from useful source
+  pull request. **Follow and decide** has a coding-worker monitor with the exact
+  task and launch request, observation age and a dossier link. Its attempt is
+  shown only when the loaded dossier proves the request binding. The optional
+  native Studio sidebar bundle links to this same monitor. Pipeline shows the host heartbeat separately from useful source
   or test progress, remaining budgets, test outcomes and the stop checkpoint.
   A controlled stop preserves source changes locally without an automatic retry;
   an inactive host without a terminal receipt stays unknown and blocks new work.
+  Manual private reports keep source read-only, archive verified partial files
+  on controlled stops and support explicit continuation of the same scope and
+  source from a digest-bound checkpoint. Lost outcomes reconcile the original
+  request without relaunch; candidate acceptance requires independent review and
+  explicit complete-scope confirmation. Archive selections agree across status
+  cards and board, with unknown or incomplete count evidence labelled explicitly.
   Review of that pull request and its CI is
   the gate; nothing merges or deploys by itself. See
   [the coding worker](../integrations/coding/README.md). The disabled-by-default

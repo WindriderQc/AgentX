@@ -24,6 +24,7 @@ const { serverTimingsOf } = require('./turn-phases');
 const { turnDirective } = require('./persona-prompt');
 const { interruptedRequestContext } = require('./persona-records');
 const dedicatedGuardian = require('./dedicated-guardian');
+const { profileUnavailable } = require('../../src/services/conversationWorks/performance');
 
 // A team member's own personality: the active catalog persona naming that agent, so an
 // edit made on the Team page applies; the shared definition when the catalog is unreadable.
@@ -137,17 +138,23 @@ function createPersonaTurnHandler({
         ? personalAttachments(session.sessionId) : null;
       if (requestedAttachments.length && !attachmentStore) return fail(res, 400, 'Attachments are available in personal Nestor.', 'ATTACHMENTS_PERSONAL_ONLY');
       entry.attachments = requestedAttachments.length ? await attachmentStore.references(requestedAttachments) : [];
-      const nativeDelegation = conversationEnv.PERSONAL_CONVERSATION_WORK_MODE === 'native'
-        && Boolean(conversationWorks?.eligible(session, req.body?.channel));
-      if (!consult && !isLlmX && !teamAddress.addressedMember(userText, teamAddress.teamMembers(conversationEnv), agentIdFor(session), { nativeDelegation })
-          && (conversationWorks?.eligible(session, req.body?.channel)
-            || await conversationWorks?.retained?.(session, req.body?.turnId, req.body?.channel))) {
+      const workEligible = Boolean(conversationWorks?.eligible(session, req.body?.channel));
+      const nativeDelegation = conversationEnv.PERSONAL_CONVERSATION_WORK_MODE === 'native' && workEligible;
+      const workCandidate = !consult && !isLlmX
+        && !teamAddress.addressedMember(userText, teamAddress.teamMembers(conversationEnv), agentIdFor(session), { nativeDelegation });
+      const retainedWork = workCandidate && !workEligible ? await conversationWorks?.retained?.(session, req.body?.turnId, req.body?.channel) : null;
+      if (workCandidate && !workEligible && !retainedWork && features.inferenceProfile && features.inferenceProfile !== 'local'
+          && personalVoice(session, req.body?.channel) && session.backend === 'openclaw'
+          && !session.inference?.open && session.modeId !== 'open') throw profileUnavailable();
+      if (workCandidate && (workEligible || retainedWork)) {
         clientTurnId ||= req.body.turnId; entry.clientTurnId = clientTurnId;
-        const intake = await conversationWorks.intake({ session, turnId: clientTurnId, text: userText, attachments: entry.attachments, speechLanguage: preferredSpeechLanguage });
+        const intake = await conversationWorks.intake({ session, turnId: clientTurnId, text: userText, attachments: entry.attachments,
+          speechLanguage: preferredSpeechLanguage, performanceProfile: features.inferenceProfile });
         entry.workId = intake.row._id; entry.traceId = clientTurnId; entry.snapshot ||= {
           sessionId: session.sessionId, packId: pack.id, modeId: session.modeId, scopeId: session.scopeId };
         entry.guardianAgentId = intake.row.guardian?.agentId;
         entry.guardianSessionId = intake.row.guardian?.sessionId;
+        entry.performance = intake.row.performance;
         if (intake.duplicate) { entry.auditWritten = true; return envelope(res, { accepted: true, turnId: clientTurnId, workId: entry.workId,
           outcome: intake.turn.outcome, reply: intake.turn.outcome === 'completed' ? { text: intake.turn.replyText } : null,
           replayed: false }, 202); }
@@ -362,6 +369,7 @@ function createPersonaTurnHandler({
 
         serverPhases.prepared = Date.now() - startedAt;
         const run = executeConversation({ backend, session: turnSession, ...(guardianSession ? { canonicalSession: session,
+          ...(entry.performance?.guardian?.model && { model: entry.performance.guardian.model }),
           guardianStreaming: true, maxOutputTokens: 1024 } : {}), pack: isOpening ? { ...pack, maxTokens: 180 }
           : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText,
           history: features.historyContext === false ? [] : guardianSession ? dedicatedGuardian.history(history) : history, streaming, channel: req.body?.channel,

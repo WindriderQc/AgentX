@@ -22,6 +22,7 @@ const modelsExperienceCssPath = path.join(root, 'public/css/models-experience.cs
 const analyticsExperiencePath = path.join(root, 'public/js/analytics-experience.js');
 const analyticsExperienceCssPath = path.join(root, 'public/css/analytics-experience.css');
 const analyticsInferencePath = path.join(root, 'public/js/analytics-inference.js');
+const analyticsOverviewPath = path.join(root, 'public/js/analytics-overview.js');
 
 async function renderDemo() {
   return ejs.renderFile(demoPath, {
@@ -45,8 +46,9 @@ async function renderModels() {
   });
 }
 
-async function renderAnalytics() {
+async function renderAnalytics(agentxProfile = 'full') {
   return ejs.renderFile(analyticsPath, {
+    agentxProfile,
     publicUrls: { rag: 'https://rag.example' },
   });
 }
@@ -240,12 +242,13 @@ describe('simple-to-expert UX contract', () => {
     const html = await renderAnalytics();
     const simpleDepth = html.slice(0, html.indexOf('<details id="analytics-cockpit"'));
 
-    expect(simpleDepth).toContain('Understand what Agent&nbsp;X has been doing.');
-    expect(simpleDepth).toContain('Inference activity');
-    expect(simpleDepth).toContain('Conversation activity');
-    expect(simpleDepth).toContain('Knowledge activity');
+    for (const id of ['analytics-experience-title', 'ao-status', 'analyticsWindow', 'ao-calls', 'ao-success', 'ao-output', 'ao-latency', 'ao-trend-chart', 'ao-active', 'ao-gpus', 'ao-comparison', 'ao-mix-ring']) {
+      expect(simpleDepth).toContain(`id="${id}"`);
+    }
+    expect(simpleDepth).toContain('Playground conversations');
+    expect(simpleDepth).toContain('href="https://rag.example/"');
     expect(simpleDepth).not.toMatch(/Fallback Rate|Cost\/1K Tokens|Federated Cost|Model Activity/);
-    expect(html).toContain('<strong>Take the controls</strong>');
+    expect(html).toContain('<strong>Explore the details</strong>');
     expect(html).toContain('Activity workbench');
     expect(html).toContain('Operational Error Rate');
     expect(html).toContain('id="infCancellations"');
@@ -260,17 +263,24 @@ describe('simple-to-expert UX contract', () => {
     const source = fs.readFileSync(analyticsExperiencePath, 'utf8');
     const css = fs.readFileSync(analyticsExperienceCssPath, 'utf8');
     const inference = fs.readFileSync(analyticsInferencePath, 'utf8');
+    const overview = fs.readFileSync(analyticsOverviewPath, 'utf8');
+    const demoHtml = await renderAnalytics('demo');
+    const demoOverview = demoHtml.slice(0, demoHtml.indexOf('<details id="analytics-cockpit"'));
 
     expect(source).toContain('surface.inert = !cockpit.open');
-    expect(source).toContain("setStatus('ready'");
-    expect(source).toContain("setStatus('attention'");
-    expect(source).toContain("setStatus('unknown'");
+    expect(html).toContain('id="ao-status" role="status"');
+    expect(overview).toContain('No recorded calls in this window');
+    expect(overview).toContain("if (state === 'ready') renderSummary(data)");
+    expect(overview).toContain('else clearSummary(state)');
+    expect(demoOverview).not.toContain('id="ao-active"');
+    expect(demoOverview).not.toContain('href="/nerve-center');
     expect(source).toContain('parseCompactNumber');
     expect(source).toContain("of conversations used knowledge");
     expect(html).toContain("document.body.dataset.agentxProfile === 'demo'");
     expect(html).toContain("section.setAttribute('aria-hidden', 'true')");
     expect(inference).toContain("document.body.dataset.agentxProfile === 'demo'");
-    expect(css).toContain('@media (max-width: 600px)');
+    expect(css).toContain('@media (max-width: 760px)');
+    expect(css).toContain('@media (max-width: 450px)');
     expect(css).toContain('@media (prefers-reduced-motion: reduce)');
   });
 });

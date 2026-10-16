@@ -74,8 +74,8 @@
       detail: `At least ${coverage.lowerBound} engineering tasks need action; the bounded scan has partial coverage.` };
     const total = coverage.total;
     if (total > 0) return { tone: 'attention', icon: 'fa-triangle-exclamation',
-      title: `${plural(total, 'engineering task')} need action`,
-      detail: 'Exact total for the current engineering filters. See Needs attention for the next step.' };
+      title: `${plural(total, 'engineering task')} need${total === 1 ? 's' : ''} action`,
+      detail: 'Open Needs attention to see what to do next.' };
     return { tone: 'ready', icon: 'fa-circle-check', title: 'Engineering queue clear',
       detail: 'No engineering task needs action for the current filters.' };
   }
@@ -91,6 +91,12 @@
       parts.push(`showing ${shown.length ? `${shownFrom}–${shownFrom + shown.length - 1}` : 'none'}`);
     }
     return parts.join(' · ');
+  }
+
+  function headline(view) {
+    const count = view.coverage.total ?? view.coverage.lowerBound;
+    if (view.coverage.complete && count === 0) return 'No tasks need attention in this view.';
+    return `${view.coverage.complete ? '' : 'At least '}${plural(count, 'task')} ${count === 1 ? 'needs' : 'need'} attention${view.coverage.complete ? '' : ' · total unknown'}`;
   }
 
   function coverageNote(view) {
@@ -114,8 +120,8 @@
     return `<button type="button" class="pipeline-attention-item tone-${esc(item.tone)}${isNew ? ' is-new' : ''}" data-pipeline-task="${esc(item.pipelineId)}">
         <i class="fas ${esc(item.icon)}" aria-hidden="true"></i>
         <span class="pipeline-attention-copy">
-          <strong>${isNew ? '<span class="pipeline-attention-new">New</span> ' : ''}${esc(item.pipelineId)} ${esc(item.label)}</strong>
-          <span>${esc(item.title)} · ${esc(item.detail)}</span>
+          <strong>${isNew ? '<span class="pipeline-attention-new">New</span> ' : ''}#${esc(item.pipelineId)} · ${esc(item.title)}</strong>
+          <span>${esc(item.label)} · ${esc(item.detail)}</span>
           <em>${esc(item.action)}</em>
         </span>
         <i class="fas fa-arrow-right pipeline-attention-arrow" aria-hidden="true"></i>
@@ -172,7 +178,7 @@
 
     // The pressed scope and a pending list render before the read completes.
     setScope(scope) {
-      if (!SCOPES[scope] || scope === this.scope) return;
+      if (scope !== 'engineering' || scope === this.scope) return;
       this.scope = scope;
       this.pageIndex = 0;
       this.view = null;
@@ -209,7 +215,7 @@
         const payload = await this.fetchJson(`/api/pipeline/attention?${params}`);
         if (version !== this.version) return;
         const view = payload?.data?.attention;
-        if (!validPayload(view)) throw new Error('Attention evidence unavailable or in an unknown format.');
+        if (!validPayload(view) || view.scope !== 'engineering') throw new Error('Engineering attention evidence unavailable or in an unknown format.');
         const basis = this.basis();
         const diff = diffSignal(this.signals[basis], { basis, fingerprint: view.signal.fingerprint, keys: view.signal.keys });
         this.signals[basis] = { basis, fingerprint: view.signal.fingerprint, keys: view.signal.keys };
@@ -258,8 +264,7 @@
         const items = pageItems(view, this.pageIndex);
         metaText = describe(view, this.pageIndex);
         if (this.error) metaText = `Refresh failed · last observation retained · ${metaText}`;
-        const otherBasis = view.otherScope ? `${view.otherScope.scope}|${JSON.stringify(this.query)}` : '';
-        noteText = [coverageNote(view), scopeNote(view, this.counts[otherBasis])].filter(Boolean).join(' ');
+        noteText = coverageNote(view);
         listHtml = items.length ? items.map(item => itemMarkup(item, this.newKeys.has(item.key))).join('') : emptyMarkup(view, filtered);
         const last = lastPageIndex(view);
         if (last > 0 || this.pageIndex > 0) {
@@ -275,6 +280,8 @@
       this.rendered = signature;
       const focused = pager?.contains(document.activeElement) ? document.activeElement.dataset.attentionPage : null;
       if (meta) meta.textContent = metaText;
+      if (this.el.summary) this.el.summary.textContent = this.error ? 'Current task decision count unavailable. See the observation details below.'
+        : this.view ? headline(this.view) : `Reading ${SCOPES[this.scope].toLowerCase()} decisions…`;
       if (notes) { notes.textContent = noteText; notes.hidden = !noteText; }
       if (list) list.innerHTML = listHtml;
       if (pager) { pager.innerHTML = pagerHtml; pager.hidden = !pagerHtml; }
@@ -307,5 +314,5 @@
     }
   }
 
-  return { Controller, bannerState, buildQuery, diffSignal, describe, scopeNote, pageItems, lastPageIndex, windowOffset, validPayload, PAGE_SIZE, WINDOW_SIZE };
+  return { Controller, bannerState, buildQuery, diffSignal, describe, headline, scopeNote, pageItems, lastPageIndex, windowOffset, validPayload, PAGE_SIZE, WINDOW_SIZE };
 });

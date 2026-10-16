@@ -7,6 +7,12 @@ attachments, regardless of the people or subject involved.
 - Identify the author, addressee and person expected to act for each statement.
   Keep a correspondent's request or allegation attributed. A request, suggestion,
   criticism, condition or another person's promise is not the owner's agreement.
+- Evidence pages expose `sourceContext.segments` with original body offsets.
+  A page can start inside a quotation whose header is on an earlier page.
+  `headers` and `messageId` identify the **container**, not the quoted speaker.
+  Quoted headers are unverified source text: keep the quoted date/author separate,
+  or unknown. Attachment authorship is unknown. These reading aids do not prove
+  that an action is current; check newer messages and the complete chronology.
 - Read the dated context and later replies before calling an action current.
   Missing proof of completion does not establish an open obligation. A quoted
   older request keeps its original author and date; a new containing message

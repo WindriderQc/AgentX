@@ -99,8 +99,7 @@ function escapeHtml(value) {
 
 async function fetchSummary(windowKey) {
   const res = await fetch(`/api/analytics/inference/summary?window=${encodeURIComponent(windowKey)}`, {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(30000)
+    headers: { Accept: 'application/json' }, cache: 'no-store', signal: AbortSignal.timeout(30000)
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const body = await res.json();
@@ -115,7 +114,6 @@ function renderTiles(d) {
   setText('infCallsPerDay', compact(t.callsPerDay));
   setText('infTokensOut', compact(t.tokensOut));
   setText('infTokensIn', compact(t.tokensIn));
-  // With no calls there is no rate, speed or latency to report.
   const observed = Number(t.calls) > 0;
   setText('infErrorRate', observed ? `${(t.errorRate ?? 0).toFixed(2)}%` : '—');
   setText('infErrors', compact(t.errors));
@@ -291,6 +289,7 @@ function renderDailyChart(d) {
  * the page simply never rendered it.
  */
 async function renderCodex(windowKey) {
+  const version = loadVersion;
   const section = $('infCodexSection');
   if (!section) return;
   // Federated provider/Codex telemetry is intentionally outside the
@@ -304,11 +303,10 @@ async function renderCodex(windowKey) {
       headers: { Accept: 'application/json' },
       signal: AbortSignal.timeout(30000)
     });
-    if (!isCurrentWindow(windowKey)) return;
-    // Never leave the previous window's subscription figures on screen.
+    if (version !== loadVersion) return;
     if (!res.ok) { section.style.display = 'none'; return; }
     const body = await res.json();
-    if (!isCurrentWindow(windowKey)) return;
+    if (version !== loadVersion) return;
     const c = body?.codexSubscription;
     if (!c || !c.available) { section.style.display = 'none'; return; }
 
@@ -332,8 +330,9 @@ async function renderCodex(windowKey) {
       : '—');
     setText('infCodexMessage', c.valueMessage || '');
   } catch (err) {
-    console.error('Codex entitlement fetch failed:', err);
+    if (version !== loadVersion) return;
     section.style.display = 'none';
+    console.error('Codex entitlement fetch failed:', err);
   }
 }
 
@@ -348,6 +347,7 @@ async function renderCodex(windowKey) {
  * with an opt-in to show them anyway. They come back automatically the moment
  * someone uses the chat UI.
  */
+let chatLoadVersion = 0;
 let chatLaneForced = false;
 
 function setChatLaneVisible(visible) {
@@ -358,25 +358,19 @@ function setChatLaneVisible(visible) {
 
 function showChatLane() {
   chatLaneForced = true;
-  const note = $('chatLaneEmptyNote');
-  const heading = $('chatLaneHeading');
+  ++chatLoadVersion;
   setChatLaneVisible(true);
-  if (heading) heading.style.display = '';
-  if (note) note.style.display = 'none';
-}
-
-// The chat-lane widgets follow the chat Period selector, so the probe reads
-// the same period they do rather than the inference window.
-function chatPeriodDays() {
-  return Number($('periodSelect')?.value) || 7;
+  if ($('chatLaneHeading')) $('chatLaneHeading').style.display = '';
+  if ($('chatLaneEmptyNote')) $('chatLaneEmptyNote').style.display = 'none';
 }
 
 async function applyChatLaneCollapse() {
+  const version = ++chatLoadVersion;
   const note = $('chatLaneEmptyNote');
   const heading = $('chatLaneHeading');
   if (!note || chatLaneForced) return;
 
-  const days = chatPeriodDays();
+  const days = Number($('periodSelect')?.value) || 7;
   const to = new Date();
   const from = new Date(to.getTime() - days * 86400000);
 
@@ -389,13 +383,13 @@ async function applyChatLaneCollapse() {
     if (res.ok) {
       const body = await res.json();
       const d = body?.data || body;
-      conversations = Number(d?.totalConversations ?? 0);
+      conversations = Number.isFinite(d?.totalConversations) ? d.totalConversations : null;
     }
   } catch (err) {
     console.error('Chat-lane probe failed:', err);
   }
-  if (chatPeriodDays() !== days || chatLaneForced) return;
 
+  if (version !== chatLoadVersion) return;
   // Unknown (probe failed) is not the same as zero — leave the widgets alone.
   if (conversations === null || conversations > 0) {
     note.style.display = 'none';
@@ -422,29 +416,30 @@ async function applyChatLaneCollapse() {
   }
 }
 
-// A response for a window the user already left must not repaint the panel.
-function isCurrentWindow(windowKey) {
-  return ($('infWindow')?.value || '7d') === windowKey;
-}
-
+let loadVersion = 0;
 async function load() {
+  const version = ++loadVersion;
   const windowKey = $('infWindow')?.value || '7d';
+  document.dispatchEvent(new CustomEvent('analytics:inference', { detail: { state: 'loading', windowKey } }));
   try {
     const data = await fetchSummary(windowKey);
-    if (!isCurrentWindow(windowKey)) return;
+    if (version !== loadVersion) return;
+    document.dispatchEvent(new CustomEvent('analytics:inference', { detail: { state: 'ready', data, windowKey } }));
     renderTiles(data);
     renderModelTable(data);
     renderDimensionBreakdowns(data);
     renderDailyChart(data);
   } catch (err) {
-    if (!isCurrentWindow(windowKey)) return;
+    if (version !== loadVersion) return;
+    document.dispatchEvent(new CustomEvent('analytics:inference', { detail: { state: 'error', windowKey } }));
     console.error('Inference analytics failed:', err);
-    // Clear the previous window's figures so nothing reads as current.
     ['infCalls', 'infCallsPerDay', 'infTokensOut', 'infTokensIn', 'infErrorRate', 'infErrors', 'infCancellations',
       'infHours', 'infTokPerSec', 'infFallbackRate', 'infFallbacks', 'infAvgLatency', 'infLocalHours', 'infLocalCalls', 'infCloudSpend'].forEach((id) => setText(id, '—'));
     setText('infScope', `Could not load inference analytics: ${err.message}`);
   }
+  if (version !== loadVersion) return;
   renderCodex(windowKey);
+  applyChatLaneCollapse();
 }
 
 function init() {
@@ -452,10 +447,8 @@ function init() {
   $('infWindow')?.addEventListener('change', load);
   $('periodSelect')?.addEventListener('change', applyChatLaneCollapse);
   $('refreshBtn')?.addEventListener('click', applyChatLaneCollapse);
-  // The summary's "Conversation activity" shortcut must reveal a collapsed lane.
   document.addEventListener('analytics:show-chat-lane', showChatLane);
   load();
-  applyChatLaneCollapse();
 }
 
 if (document.readyState === 'loading') {

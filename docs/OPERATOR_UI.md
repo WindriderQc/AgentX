@@ -31,24 +31,107 @@ queued, unassigned task and does not dispatch an agent. An explicitly empty
 group stays empty; API/MCP clients omitting the group keep their inbox default.
 The optional AI writing proposal still requires applying it and saving the form.
 
+**Prepare and launch** separates the manual one-task form from the optional
+Coding Team correction loop. Review a selected task before confirming a local
+run. The task queue uses the overview filters; launch candidates use the host's
+admission rules, explained under **Which tasks can run here?** Queue totals and
+coverage expand separately from the rows.
+
+Status cards and the board use the same **Include archived qualifications**
+selection. Core aggregates archive counts before pagination, so a loaded sample
+cannot hide archived tasks from the totals. **Closed** means a recorded closure,
+including superseded work; it does not mean a successful deployment.
+Missing or inconsistent archive evidence displays **Unknown**, never a fabricated
+zero. Manual launch counts distinguish a complete queue from the candidates in a
+bounded loaded sample. Managed correction-loop tasks, deferred work and unmet
+dependencies are excluded from the manual selector.
+
+Choose **Private Markdown report (source read-only)** for a documentation review
+in the one-task form or task dossier. This uses the native report executor and
+private Core deliverables. The report call limit is explicit (128 by default,
+256 when selected); time and model calls are independent limits. The chosen
+filename and call limit remain bound to the same request during reconciliation.
+A historical report result selects report mode in the dossier. After proven
+native model termination, a controlled stop archives valid saved Markdown as a
+**Partial draft**, visible and downloadable even while the task stays blocked.
+**Continue the saved report at the same source revision** explicitly selects its
+request and digest for the next handoff. Core verifies task, specification,
+revision and bytes, then restores the checkpoint before the worker starts.
+A subsequent run still needs explicit launch and retains the existing admission
+and queue requirements. Its call limit applies to that execution; Core retains
+cumulative usage across the selected lineage. A stopped partial result does not
+establish complete coverage.
+
+An inactive unit without an acknowledged Core result stays **Unknown**.
+**Reconcile saved report**, also available in the open dossier, repairs the same
+request's frozen result without another worker launch. A report candidate needs
+a separate reviewer and an explicit complete-scope confirmation bound to its
+request and file digest. A newer candidate clears that confirmation; background
+refreshes preserve unsent instructions and choices only for the same checkpoint.
+
+**Follow and decide** holds the **Execution monitor**: current manual request,
+heartbeat, useful progress, remaining budgets, tests and exact stop/retry controls.
+A launch moves focus to this monitor; request references and worker details
+expand separately. **Coding Team autonomy** shows current tasks and loop controls;
+its campaign, file-scope and cumulative-budget forms expand under setup.
+Qualification archives and closed Coding Team cards live in **History and
+performance**. These placements keep execution updates out of the launch form
+and retain the existing confirmation and admission requirements.
+
+Opening a task shows its request before launch, its latest recorded update
+while work is in progress, its recorded blocker when blocked, and its result
+when awaiting review or closed. Result files have direct download controls;
+a PR link appears only for the current attempt with a proven receipt binding.
+The **Original request** remains available after launch. **Technical details
+and history** holds status explanations, diagnosis, plans, verification,
+file integrity evidence and task management actions.
+
 Use **Needs attention** to find tasks requiring a decision.
-Its header separates the known total, the rows loaded in the browser and the
-page shown; **Previous** and **Next** reach every item ten at a time, in Core's
-next-action order. **Engineering** is the default queue; **Personal & household** is a
-separate queue for personal, family, household and secretary work, never mixed
-into the engineering list. The board's service, lane, status, group and search
+Its header shows the current decision count. **Task queue scope and counts**
+separates the known total, the rows loaded in the browser and the page shown;
+**Previous** and **Next** reach every item ten at a time, in Core's
+next-action order. This section contains **Engineering tasks** only; personal
+and household work stays in the header's **My personal tasks** and **Family
+tracking** links. The board's service, lane, status, group and search
 filters narrow the queue before paging. When the bounded scan cannot see every
 open task, the header shows a lower bound and says the total is unknown. A
 refresh that observes the same state changes nothing on screen; only an
 actionable item that was not in the previous observation is announced and
 marked **New**.
+
+**Reviews and delivery** reads the delivery snapshot independently of the
+overview filters. The server projects the 50 most recently updated tasks in
+`review_only` automation mode; its counts are not all-time totals.
+Its counts can overlap **Needs attention**; they are not added
+to the task-decision count. **All active**, **Needs a decision** and **Follow
+progress** select records using the received human-action flag. Pages show five
+deliveries at a time, with their recorded next step and task-dossier action.
+Change, tests, risks, exact commit and delivery gates expand under evidence;
+expanded evidence survives refresh and page changes. A result awaiting review
+says **Review result**, even when its receipt recommends merge. Only the exact
+verified merge gate offers **Merge PR** and its existing explicit confirmation.
+Failed or pending reads disable merge and retain any previous observation.
+No delivery is excluded because of its title or a qualification-like label.
+
 The Pipeline state strip uses that engineering queue's current filtered count:
 an exact total when coverage is complete, a lower bound when it is partial,
-or "unknown" when the read failed or the private queue is selected. It does
+or "unknown" when the read failed. Its actionable title and **View tasks needing
+attention** link lead directly to that section. It does
 not treat the browser's loaded task rows as the full attention queue.
-Open a task dossier to read its **Next action**, current ownership and audit
-trail. Planning references link to the same dossier and display Core's same
+Open a task dossier to see its next step and current ownership; its audit
+trail is under **Technical details and history**. Planning references link to the same dossier and display Core's same
 next-action projection.
+
+A manual Coding Team worker can report a bounded stop observation in feedback
+(`agentx.pipeline-worker-outcome/v1`): its request ID, exact claim sequence,
+reason, dates and usage. The dossier explains that reason and keeps the raw
+update in **Audit trail**, under collapsed **Technical details and history**. This
+observation never proves runtime release, grants a retry or replaces an
+automation attempt receipt. **Update instructions and resume** appears only
+after a fresh native read confirms that same worker finished and is idle;
+the action rechecks the original request before preparing the task. Uncertain
+termination still requires inspection. Preparation, admission and atomic claim
+retain their existing policies. Archived qualifications keep their barriers.
 
 **Why can this task start, or why is it waiting?** expands two read-only views:
 
@@ -70,7 +153,8 @@ Core refuses late results from that lease, yet expiry proves no stop either.
 Inspect ownership and recorded effects before releasing or re-queuing it. Human review,
 merge, deployment and device acceptance remain separate decisions and receipts.
 
-**Why tasks are not advancing**, under **Needs attention**, lists active engineering tasks (private lanes excluded)
+**Why tasks are not advancing**, below the decision lists and collapsed by
+default, lists active engineering tasks (private lanes excluded)
 that wait on a recovery, an unknown state, a human decision or a dependency.
 Each row names the category, the owner of the next step, the action and the
 missing evidence; selecting it opens the dossier. In the dossier, **Why is this
@@ -79,6 +163,9 @@ ambiguous case shows **New escalation** the first time this browser session sees
 its key and **Escalated earlier — not repeated** on later refreshes. The panels
 offer no repair: corrections use the existing guarded task actions. Failed or
 malformed reads keep the last observation and say so.
+This diagnostic reads when opened and uses its own engineering scope,
+independently of overview filters. Its counts can overlap both decision lists.
+Lists use the page scroll; evidence expands within a row.
 
 **Evidence references** in a coding dossier lists, per attempt, copyable
 references: task, attempt (`task-0307/attempt-2`), launch request id, lease
@@ -106,7 +193,9 @@ A newer revision says the earlier decision does not carry over. When the task
 request or scope changed after a decision, the dossier shows it as no longer
 current. A task without a plan shows no plan section.
 
-**Deliverables** in a task dossier lists the files registered for that task:
+**Files from this task** provides direct downloads during execution and review
+and on closed tasks. **Deliverables**, under **Technical details and history**,
+lists the files registered for that task with their inspection evidence:
 name, type, size, attempt or operator upload, SHA-256, storage, availability,
 external delivery and scope. A listed file reads "digest not checked yet" until
 **Verify SHA-256** recomputes it on the server. **Download** fetches the file in

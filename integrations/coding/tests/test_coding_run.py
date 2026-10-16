@@ -12,9 +12,22 @@ from unittest import mock
 SPEC = importlib.util.spec_from_file_location("coding_run", Path(__file__).resolve().parents[1] / "coding_run.py")
 runner = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(runner)
+original_feedback = runner.feedback
 
 
 class CodingRunTest(unittest.TestCase):
+    def test_manual_stop_records_bounded_cause_without_runtime_or_retry_authority(self):
+        progress = runner.coding_progress.Progress('0001', '11111111-2222-4333-8444-555555555555')
+        progress.stop_reason, progress.model_calls, progress.task_claim_seq = 'no_useful_progress', 20, 2
+        progress.task_spec_sha256 = 'a'*64
+        with mock.patch.object(runner, 'request') as send:
+            original_feedback('0001', 'Raw diagnostic retained in the note.', 'blocked', progress=progress)
+        value = send.call_args.args[1]['workerOutcome']
+        self.assertEqual(value['reason'], 'no_useful_progress')
+        self.assertEqual(value['usage']['modelCalls'], 20)
+        self.assertEqual(set(value), {'schema', 'requestId', 'pipelineId', 'claimSeq', 'result', 'reason', 'source', 'startedAt', 'finishedAt', 'usage'})
+        self.assertEqual(set(value['usage']), {'workSeconds', 'modelCalls'})
+
     def test_worker_patch_preserves_frozen_model_context_and_json_values(self):
         model = 'selected-model\nwith-literal-characters'
         patch = runner.worker_patch(model, 196608)
@@ -262,7 +275,7 @@ class CodingRunTest(unittest.TestCase):
     def test_checkpoint_excludes_generated_caches_and_transcripts(self):
         self.exit_code = 124
         def worker(workspace, prompt, timeout, progress):
-            for name in [".lab/probe.txt", ".npmcache/cache", "nested/session.jsonl", "core/result.js"]:
+            for name in [".lab/probe.txt", ".review-work/REVIEW.md", ".npmcache/cache", "nested/session.jsonl", "core/result.js"]:
                 path = workspace / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("Synthetic fixture")

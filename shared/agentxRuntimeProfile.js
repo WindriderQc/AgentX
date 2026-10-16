@@ -5,6 +5,7 @@ const DEMO_PROFILE = 'demo';
 const FULL_PROFILE = 'full';
 
 const DEMO_DISABLED_PREFIXES = Object.freeze([
+  '/api/automations',
   '/api/agent-ops',
   '/api/alerts',
   '/api/analytics/codex-subscription-value',
@@ -49,6 +50,7 @@ const DEMO_DISABLED_PREFIXES = Object.freeze([
   '/backup',
   '/cluster-schedule',
   '/operations-jobs',
+  '/automations',
   '/dad',
   '/data-toolbox',
   '/device-check',

@@ -473,7 +473,7 @@ for (const [route, assetPath] of Object.entries(coreVendorAssets)) {
 
 registerLocalStyleVendorAssets(app, path.join(__dirname, '..', 'node_modules'));
 
-app.use(express.static(path.join(__dirname, '..', 'public'))); require('../../shared/benchmarkCategories').mountBrowserCategories(app);
+app.use(express.static(path.join(__dirname, '..', 'public'))); require('../../shared/benchmarkCategories').mountBrowserCategories(app); require('../../shared/pipelineWorkerOutcome').mountBrowser(app);
 
 // Browsers often request /favicon.ico implicitly. We serve a real icon to avoid noisy 404s.
 app.get('/favicon.ico', (_req, res) => {
@@ -635,30 +635,7 @@ app.get('/models', (req, res) => {
   });
 });
 
-app.get('/cluster-schedule', (req, res) => {
-  res.render('layouts/main', {
-    pageView: '../pages/cluster-schedule',
-    title: 'AgentX \u2022 Cluster Schedule',
-    service: 'core',
-    activePage: 'cluster-schedule',
-    headCss: [
-      '<link rel="stylesheet" href="/styles.css">',
-      '<link rel="stylesheet" href="/css/cluster-schedule-layout.css">',
-      '<link rel="stylesheet" href="/css/cluster-schedule-components.css">'
-    ].join('\n'),
-    footerJs: [
-      '<script src="/js/cluster-schedule-date.js"></script>',
-      '<script src="/js/cluster-schedule-upcoming.js"></script>',
-      '<script src="/js/cluster-schedule-headline.js"></script>',
-      '<script src="/js/cluster-schedule.js"></script>',
-        '<script src="/js/cluster-schedule-attention.js"></script>',
-        '<script src="/js/cluster-schedule-actual.js"></script>',
-        '<script src="/js/cluster-schedule-services.js"></script>',
-        '<script src="/js/cluster-schedule-queue.js"></script>',
-        '<script src="/js/cluster-schedule-controls.js"></script>'
-    ].join('\n')
-  });
-});
+app.get('/cluster-schedule', (req, res) => res.redirect(302, '/automations?view=calendar'));
 
 app.get('/memory-review', (req, res) => {
   res.render('layouts/main', {
@@ -674,26 +651,7 @@ app.get('/memory-review', (req, res) => {
   });
 });
 
-app.get('/pipeline', (req, res) => {
-  res.render('layouts/main', {
-    pageView: '../pages/pipeline',
-    title: 'AgentX - Pipeline',
-    service: 'core',
-    activePage: 'pipeline',
-    headCss: [
-      '<link rel="stylesheet" href="/styles.css">',
-      '<link rel="stylesheet" href="/css/pipeline.css"><link rel="stylesheet" href="/css/pipeline-diagnostics.css"><link rel="stylesheet" href="/css/pipeline-attention.css"><link rel="stylesheet" href="/css/pipeline-evidence-references.css"><link rel="stylesheet" href="/css/pipeline-phase-durations.css"><link rel="stylesheet" href="/css/pipeline-plan.css"><link rel="stylesheet" href="/css/pipeline-stall-diagnosis.css">',
-      '<link rel="stylesheet" href="/css/pipeline-editor.css"><link rel="stylesheet" href="/css/pipeline-deliverables.css">',
-      '<link rel="stylesheet" href="/css/cockpit-help.css">'
-    ].join('\n'),
-    footerJs: [
-      '<script src="/js/cockpit-help.js"></script>',
-      '<script src="/js/pipeline-editor.js"></script><script src="/js/pipeline-deliverables.js"></script>',
-      '<script src="/js/pipeline-eligibility.js"></script><script src="/js/pipeline-launch.js"></script><script src="/js/pipeline-attention.js"></script><script src="/js/pipeline-evidence-references.js"></script><script src="/js/pipeline-phase-durations.js"></script><script src="/js/pipeline-plan.js"></script><script src="/js/pipeline-stall-diagnosis.js"></script>',
-      '<script src="/js/pipeline-delivery.js"></script><script src="/js/pipeline-board.js"></script><script src="/js/pipeline-attempt-dossier.js"></script><script src="/js/pipeline-drawer.js"></script><script src="/js/pipeline.js"></script>'
-    ].join('\n')
-  });
-});
+require('../routes/pipeline-page')(app);
 
 app.get('/planning', (req, res) => {
   res.render('layouts/main', {
@@ -727,7 +685,7 @@ app.get('/analytics', (req, res) => {
     footerJs: [
       '<script type="module" src="/js/analytics-cost.js"></script>',
       '<script type="module" src="/js/analytics-inference.js"></script>',
-      '<script src="/js/analytics-experience.js"></script>'
+      '<script src="/js/analytics-experience.js"></script><script src="/js/analytics-overview.js"></script>'
     ].join('\n')
   });
 });

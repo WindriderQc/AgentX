@@ -138,7 +138,7 @@ describe('API Routes Integration', () => {
         messages: [{ _id: { toHexString: () => '507f1f77bcf86cd799439012' }, role: 'user', content: 'Hello', timestamp: new Date('2026-08-20T01:30:00.000Z') }]
       };
       const mockFindById = Conversation.__mocks.findOne;
-      mockFindById.mockResolvedValue(mockConversation);
+      mockFindById.mockReturnValue({ lean: jest.fn().mockResolvedValue(mockConversation) });
 
       const res = await request(app)
         .get('/api/history/507f1f77bcf86cd799439011');
@@ -152,7 +152,7 @@ describe('API Routes Integration', () => {
 
     it('should return 404 if not found', async () => {
       const mockFindById = Conversation.__mocks.findOne;
-      mockFindById.mockResolvedValue(null);
+      mockFindById.mockReturnValue({ lean: jest.fn().mockResolvedValue(null) });
 
       const res = await request(app)
         .get('/api/history/507f1f77bcf86cd799439011');

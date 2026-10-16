@@ -7,6 +7,7 @@ const router = require('express').Router();
 const envelope = require('../src/helpers/responseEnvelope');
 const logger = require('../config/logger');
 const deliverables = require('../src/services/pipelineTaskDeliverableService');
+const reports = require('../src/services/pipelineReportService');
 
 const ID_RE = /^[0-9A-Za-z_-]{1,16}$/;
 function sendError(res, error) {
@@ -25,6 +26,35 @@ function validId(req, res, next) {
   res.set('Cache-Control', 'private, no-store');
   return next();
 }
+
+router.post('/tasks/:id/reports/:requestId/start', validId, async (req, res) => {
+  try { return envelope.success(res, await reports.start(req.params.id, req.params.requestId, req.body || {})); }
+  catch (error) { return sendError(res, error); }
+});
+router.get('/tasks/:id/reports/:requestId', validId, async (req, res) => {
+  try { return envelope.success(res, await reports.status(req.params.id, req.params.requestId)); }
+  catch (error) { return sendError(res, error); }
+});
+router.get('/tasks/:id/reports/:requestId/checkpoint', validId, async (req, res) => {
+  try { return envelope.success(res, await reports.checkpoint(req.params.id, req.params.requestId)); }
+  catch (error) { return sendError(res, error); }
+});
+router.post('/tasks/:id/reports/:requestId/result', validId, async (req, res) => {
+  try { return envelope.success(res, await reports.submit(req.params.id, req.params.requestId, req.body || {})); }
+  catch (error) { return sendError(res, error); }
+});
+router.post('/tasks/:id/reports/:requestId/stop-result', validId, async (req, res) => {
+  try { return envelope.success(res, await reports.stop(req.params.id, req.params.requestId, req.body || {})); }
+  catch (error) { return sendError(res, error); }
+});
+router.post('/tasks/:id/reports/:requestId/reconcile-models', validId, async (req, res) => {
+  try { return envelope.success(res, await reports.reconcileModels(req.params.id, req.params.requestId)); }
+  catch (error) { return sendError(res, error); }
+});
+router.post('/tasks/:id/reports/:requestId/heartbeat', validId, async (req, res) => {
+  try { return envelope.success(res, await reports.heartbeat(req.params.id, req.params.requestId)); }
+  catch (error) { return sendError(res, error); }
+});
 
 router.get('/tasks/:id/deliverables', validId, async (req, res) => {
   try {

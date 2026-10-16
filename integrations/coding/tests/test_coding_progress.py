@@ -118,6 +118,9 @@ class ProgressTest(unittest.TestCase):
         self.assertTrue(module.artifact('nested/session.v4.jsonl'))
         self.assertTrue(module.artifact('nested/session.v4.jsonl.zstd'))
         self.assertFalse(module.artifact('nested/session-source.jsonl'))
+        self.assertTrue(module.artifact('.review-work/DOCUMENTATION_PEER_REVIEW.md'))
+        self.assertTrue(module.artifact('nested/.review-work/REVIEW.md'))
+        self.assertFalse(module.artifact('docs/review-work.md'))
 
     def test_v4_invalid_call_identity_cannot_credit_a_test(self):
         self.call('expected')
@@ -467,7 +470,9 @@ class ProgressTest(unittest.TestCase):
         self.assertEqual(self.progress.usage()["testSeconds"], 10)
 
     def test_live_budget_guidance_tracks_time_without_granting_progress_or_changing_accounting(self):
+        self.progress.phase='preparing'
         self.assertIsNone(self.progress.model_guidance())
+        self.progress.phase='running'
         self.progress.carry({"remaining": {"workSeconds": 5000, "modelSeconds": 600, "modelCalls": 40, "testSeconds": 500},
                              "limits": {"noProgressSeconds": 2700}})
         self.progress.set_stage("model_wait")
@@ -487,6 +492,71 @@ class ProgressTest(unittest.TestCase):
         self.assertEqual((remaining["modelSeconds"], remaining["testSeconds"]), (400, 470))
         self.progress.stop_reason = "operator_stop"
         self.assertIsNone(self.progress.model_guidance())
+
+    def test_manual_code_advice_exposes_independent_call_and_time_limits_without_granting_progress(self):
+        self.progress.phase='running';self.progress.model_calls=123;self.clock[0]=100
+        before=(self.progress.accounted_at,dict(self.progress.stage_spent),self.progress.last_useful,self.progress.hard_deadline,self.progress.path.read_bytes())
+        advice=self.progress.model_guidance();remaining=json.loads(advice[advice.index('{'):advice.index('}')+1])
+        self.assertEqual(remaining['modelCalls'],5);self.assertIn('end now',advice);self.assertIn('count can lag',advice)
+        self.assertNotIn('Core enforces',advice)
+        self.assertEqual(before,(self.progress.accounted_at,dict(self.progress.stage_spent),self.progress.last_useful,self.progress.hard_deadline,self.progress.path.read_bytes()))
+
+    def test_report_advice_exposes_call_limit_and_time_without_crediting_progress(self):
+        self.progress.report_mode = True
+        self.progress.set_stage("model_wait")
+        self.clock[0] = 100
+        before = (self.progress.accounted_at, dict(self.progress.stage_spent), self.progress.last_useful,
+                  self.progress.hard_deadline, self.progress.soft_deadline, self.progress.path.read_bytes())
+        for calls, expected in [(117, 11), (127, 1), (128, 0), (129, 0)]:
+            self.progress.model_calls = calls
+            text = self.progress.model_guidance()
+            remaining = json.loads(text[text.index("{"):text.index("}") + 1])
+            self.assertEqual(remaining, {"workSeconds": 14300, "softSeconds": 7100,
+                                         "modelCalls": expected, "noProgressSeconds": 2600})
+            self.assertIn("estimate", text); self.assertIn("count can lag", text)
+            self.assertIn("read-only", text); self.assertIn("private Markdown report", text)
+            self.assertNotIn("source correction", text); self.assertNotIn("focused tests", text)
+            self.assertEqual("end now" in text, expected <= 8)
+            self.assertEqual(self.progress.model_calls, calls)
+            self.assertEqual(before, (self.progress.accounted_at, self.progress.stage_spent, self.progress.last_useful,
+                                     self.progress.hard_deadline, self.progress.soft_deadline, self.progress.path.read_bytes()))
+        self.assertIsNone(self.progress.progress_at)
+        self.assertEqual(self.heartbeats, [])
+
+    def test_report_advice_does_not_change_stops_or_expose_negative_allowances(self):
+        self.progress.report_mode = True
+        self.clock[0] = 14401
+        text = self.progress.model_guidance()
+        remaining = json.loads(text[text.index("{"):text.index("}") + 1])
+        self.assertEqual(remaining["workSeconds"], 0)
+        self.assertEqual(remaining["softSeconds"], 0)
+        self.assertEqual(remaining["noProgressSeconds"], 0)
+        self.assertIsNone(self.progress.stop_reason)
+        self.progress.model_calls = 128
+        self.clock[0] = 100
+        self.assertEqual(self.progress.tick(), "model_call_limit")
+        self.assertIsNone(self.progress.model_guidance())
+        self.progress.stop_reason = None
+        for phase in ["preparing", "delivering", "finished"]:
+            self.progress.phase = phase
+            self.assertIsNone(self.progress.model_guidance())
+
+    def test_report_override_controls_advice_and_stop_without_extending_time(self):
+        self.progress.report_mode=True;self.progress.report_model_call_limit=256
+        deadlines=(self.progress.soft_deadline,self.progress.hard_deadline)
+        self.progress.model_calls=128
+        self.assertIsNone(self.progress.tick())
+        text=self.progress.model_guidance();remaining=json.loads(text[text.index('{'):text.index('}')+1])
+        self.assertEqual(remaining['modelCalls'],128)
+        self.progress.model_calls=248;self.assertIn('end now',self.progress.model_guidance())
+        self.progress.model_calls=256;self.assertEqual(self.progress.tick(),'model_call_limit')
+        self.assertEqual((self.progress.soft_deadline,self.progress.hard_deadline),deadlines)
+        safe=module.safe_progress(json.loads(self.progress.path.read_text()),KEY,'0001')
+        self.assertEqual(safe['modelCallLimit'],256)
+
+    def test_a_report_budget_attribute_does_not_expand_an_ordinary_manual_task(self):
+        self.progress.report_model_call_limit=256;self.progress.model_calls=128
+        self.assertEqual(self.progress.tick(),'model_call_limit')
 
     def test_native_harness_output_limit_is_explicit_without_replacing_an_operator_stop(self):
         self.progress.event({"type": "turn/end", "data": {"reason": {"kind": "completed"}}})

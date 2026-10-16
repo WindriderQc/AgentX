@@ -56,3 +56,23 @@ test('Tab and Shift+Tab loop through dialog controls rather than the scrim', () 
   expect(first.focus).toHaveBeenCalledTimes(1);
   expect(preventDefault).toHaveBeenCalledTimes(2);
 });
+
+test('Tab ignores fields inside nested closed disclosures even when they retain layout rectangles', () => {
+  const first = { focus: jest.fn(), getClientRects: () => [1] };
+  const outerSummary = { focus: jest.fn(), getClientRects: () => [1] };
+  const outer = { open: false, querySelector: () => ({ contains: node => node === outerSummary }), parentElement: null };
+  const inner = { open: true, parentElement: { closest: () => outer } };
+  const hidden = { focus: jest.fn(), getClientRects: () => [1], closest: () => inner };
+  outerSummary.closest = () => outer;
+  const listeners = {}, dialog = { querySelectorAll: () => [first, outerSummary, hidden] };
+  const document = { activeElement: first, addEventListener: (name, listener) => { listeners[name] = listener; },
+    getElementById: id => id === 'pipelineDrawerShell' ? { hidden: false, querySelector: () => dialog } : null };
+  vm.runInNewContext(source, { document, window: {} });
+  const preventDefault = jest.fn();
+  listeners.keydown({ key: 'Tab', shiftKey: true, preventDefault });
+  expect(outerSummary.focus).toHaveBeenCalledTimes(1);
+  expect(hidden.focus).not.toHaveBeenCalled();
+  document.activeElement = outerSummary;
+  listeners.keydown({ key: 'Tab', shiftKey: false, preventDefault });
+  expect(first.focus).toHaveBeenCalledTimes(1);
+});

@@ -172,6 +172,25 @@ cached routing snapshot is not permission to dispatch.
 
 Workshop → Voice workshop (`/voice-lab`) brings microphone/STT tests, full TTS
 previews, replay, measurements and advanced listening preferences into one place.
+Its studio view follows capture, recognition, conversation and playback; STT-only
+tests mark the conversation step outside the test. The signal history plots
+observed microphone levels, while detailed receipts expand on demand. Playback
+scheduling, completion and interruption remain distinct. TTS example text follows
+the selected test language, including natural speech and number presets. The
+English shortcut selects English for that test without saving a conversation
+preference. Custom text is a separate in-memory draft per language while the
+workshop is open. Selecting a preset replaces only that language’s draft; no
+translation, storage or synthesis request runs on a language change.
+Empty or whitespace-only text cannot start a TTS preview. If speech formatting
+leaves no readable segment, the adapter refuses before closing capture or
+opening playback. A failed STT capture shows an unavailable recognition state
+and keeps its excerpt reviewable; words and duration from the previous success
+are not attributed to it. A/B results belong to their excerpt and clear when it
+expires, is erased or is replaced, and when capture resumes.
+Playback controls stay disabled at rest. Stop replay affects only the playing
+excerpt and retains it for another listen; resuming capture is explicit. Stop
+reading cancels the current TTS preparation or playback. In attached diagnostics,
+the voice control interrupts the conversation's speech while Main work continues.
 Nestor and PsyX open that same component on their current conversation; Reading
 opens it on its learning loop. Attached diagnostics keep that loop and its scope,
 so opening them does not request another microphone. Their resume action resumes

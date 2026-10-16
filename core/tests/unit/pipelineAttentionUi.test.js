@@ -35,6 +35,13 @@ describe('Pipeline attention queue', () => {
     expect(new Set(pages).size).toBe(25);
   });
 
+  test('the visible headline keeps exact and partial decision counts distinct', () => {
+    expect(attention.headline(payload({ total: 1 }))).toBe('1 task needs attention');
+    expect(attention.headline(payload({ total: 25 }))).toBe('25 tasks need attention');
+    expect(attention.headline(payload({ total: 0 }))).toBe('No tasks need attention in this view.');
+    expect(attention.headline(payload({ total: 40, complete: false }))).toBe('At least 40 tasks need attention · total unknown');
+  });
+
   test('reads a new window when paging beyond the loaded rows', () => {
     expect(attention.windowOffset(4)).toBe(0);
     expect(attention.windowOffset(5)).toBe(50);
@@ -48,6 +55,7 @@ describe('Pipeline attention queue', () => {
   });
 
   test('the Pipeline banner distinguishes exact, partial and unavailable engineering counts', () => {
+    expect(attention.bannerState({ complete: true, total: 1 }).title).toBe('1 engineering task needs action');
     expect(attention.bannerState({ complete: true, total: 25 }).title).toBe('25 engineering tasks need action');
     expect(attention.bannerState({ complete: true, total: 0 }).title).toBe('Engineering queue clear');
     const partial = attention.bannerState({ complete: false, total: null, lowerBound: 40 });
@@ -85,6 +93,21 @@ describe('Pipeline attention queue', () => {
     expect(attention.diffSignal(base, { ...base, fingerprint: 'c', keys: [...base.keys, '0003:inspect_worker'] }))
       .toEqual({ changed: true, newKeys: ['0003:inspect_worker'], announce: true });
     expect(attention.diffSignal(base, { ...base, basis: 'private|{}', fingerprint: 'd' }).announce).toBe(false);
+  });
+
+  test('engineering attention cannot switch to or render personal data', async () => {
+    const elements = { notes: { textContent: '' }, list: { innerHTML: '', addEventListener() {}, setAttribute() {} } };
+    const fetchJson = jest.fn().mockResolvedValue({ data: { attention: { ...payload(), scope: 'private' } } });
+    const controller = new attention.Controller({ elements, filters: {}, fetchJson });
+    controller.setScope('private'); expect(controller.scope).toBe('engineering'); expect(fetchJson).not.toHaveBeenCalled();
+    await controller.refresh(); expect(controller.error).toBeTruthy(); expect(controller.view).toBeNull();
+    expect(elements.list.innerHTML).not.toContain('0001');
+    fetchJson.mockResolvedValue({ data: { attention: { ...payload(), scope: 'engineering' } } });
+    await controller.refresh(); expect(controller.error).toBeNull();
+    expect(elements.notes.textContent).not.toMatch(/private|household/i);
+    expect(view).not.toContain('data-attention-scope="private"');
+    expect(view).toContain('href="#pipelineAttention"');
+    expect(view).toContain('href="/dad/day"'); expect(view).toContain('href="/dad/family"');
   });
 
   test('maps board filters and Agent Ops focus into one query', () => {

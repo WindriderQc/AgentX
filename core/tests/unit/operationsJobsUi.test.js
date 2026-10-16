@@ -9,7 +9,9 @@ const {demoSurfaceDisabled} = require('../../../shared/agentxRuntimeProfile');
 
 test('the operations destination is reachable from shared navigation and confined to the full profile', () => {
   const links = productSpaces((_service, route) => route).flatMap(group => group.children);
-  expect(links.some(link => link.href === '/operations-jobs')).toBe(true);
+  expect(links.some(link => link.href === '/automations')).toBe(true);
+  expect(demoSurfaceDisabled('/automations')).toBe(true);
+  expect(demoSurfaceDisabled('/api/automations')).toBe(true);
   expect(demoSurfaceDisabled('/operations-jobs')).toBe(true);
   expect(demoSurfaceDisabled('/api/operations/jobs')).toBe(true);
 });

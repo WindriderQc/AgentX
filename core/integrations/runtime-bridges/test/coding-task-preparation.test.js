@@ -38,3 +38,14 @@ test('a running or reviewed task and an inexact id are refused', async () => {
   await assert.rejects(fixture({ status: 'review' }).preparation.prepare({ pipelineId: '0700' }), /already running or awaiting review/);
   await assert.rejects(fixture().preparation.prepare({ pipelineId: '70' }), /exact task/);
 });
+test('managed corrections and invalid report selections refuse before changing the task', async () => {
+  for (const changes of [{ codingAutonomy: { state: 'active' } }, { automation: { mode: 'review_only' } },
+    { automationAttemptCount: 1 }, { automationAttempts: [{}] }]) {
+    const f = fixture({ status: 'blocked', ...changes });
+    await assert.rejects(f.preparation.prepare({ pipelineId: '0700', answer: 'Resume' }), /existing Coding Team correction loop/);
+    assert.equal(f.writes.length, 0);
+  }
+  const f = fixture({ status: 'blocked' });
+  await assert.rejects(f.preparation.prepare({ pipelineId: '0700', answer: 'Resume', reportName: '../private.md' }));
+  assert.equal(f.writes.length, 0);
+});

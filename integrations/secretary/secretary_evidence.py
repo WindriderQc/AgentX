@@ -25,6 +25,8 @@ import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from evidence_store import load, now, save  # noqa: E402,F401  (re-exported for existing callers)
+from evidence_inventory import collect_discovered, collection_status, expected_rows, rediscovered  # noqa: E402
+from gmail_provider import read_gmail  # noqa: E402
 
 DEFAULT_ROOT = Path(os.environ.get("GMAIL_SECRETARY_ROOT", Path.home() / ".local/share/agentx/secretary-evidence"))
 REVIEW_PAGE_CHARS = 4000
@@ -236,20 +238,7 @@ class Archive:
         self.run = run or self.gog
 
     def gog(self, command):
-        env = os.environ.copy()
-        env["GOG_KEYRING_BACKEND"] = "file"
-        env["GOG_KEYRING_PASSWORD"] = Path(os.environ.get("GMAIL_SECRETARY_KEYRING_FILE", Path.home() / ".config/gogcli/keyring-password")).read_text().strip()
-        exact = "gmail.thread.get" if command[:3] == ["gmail", "thread", "get"] else (
-            "gmail.attachment" if command[:2] == ["gmail", "attachment"] else (
-                "gmail.get" if command[:2] == ["gmail", "get"] else "gmail.messages.search"))
-        result = subprocess.run([
-            os.environ.get("GMAIL_SECRETARY_GOG", "gog"), "--readonly", "--gmail-no-send",
-            "--no-input", "--json", "--account=" + os.environ.get("GMAIL_SECRETARY_ACCOUNT", "auto"), f"--enable-commands-exact={exact}", *command,
-        ], env=env, capture_output=True, text=True, timeout=120)
-        if result.returncode:
-            # Keep provider bodies/credentials out of scheduler error text.
-            raise RuntimeError(f"Gmail {exact} failed (exit {result.returncode})")
-        return json.loads(result.stdout)
+        return read_gmail(command)
 
     def discover(self, scope, restart=False):
         file = self.root / f"inventory-{scope}.json"
@@ -265,6 +254,7 @@ class Archive:
         if not isinstance(result, dict) or not isinstance(result.get("messages"), (list, type(None))):
             raise ValueError("Invalid paginated Gmail response")
         for item in result.get("messages") or []:
+            rediscovered(self.root, item)
             state["messages"][identifier(item["id"])] = item
         state.update(nextPageToken=result.get("nextPageToken"),
                      complete=not bool(result.get("nextPageToken")),
@@ -538,7 +528,7 @@ class Archive:
     def collect(self, scope, limit, restart=False):
         state = self.discover(scope, restart)
         candidates = sorted(state["messages"].values(), key=lambda row: row.get("date", ""), reverse=True)
-        seen, done, errors = set(), [], []
+        seen, done, reconciled, errors = set(), [], [], []
         for item in candidates:
             tid = identifier(item["threadId"])
             if tid in seen:
@@ -546,70 +536,41 @@ class Archive:
             seen.add(tid)
             existing = load(self.root / "threads" / tid / "manifest.json", {})
             known = {row["id"] for row in existing.get("messages", [])}
-            expected = {row["id"] for row in candidates if row["threadId"] == tid}
-            if expected <= known:
+            expected = expected_rows(self.root, candidates, tid, known)
+            if not expected:
                 continue
             try:
-                self.collect_thread(tid)
-                done.append(tid)
+                result = collect_discovered(self, tid, expected)
+                (done if result["collected"] else reconciled).append(tid)
             except Exception as error:
                 errors.append({"threadId": tid, "error": str(error)[:200]})
-            if len(done) + len(errors) >= limit:
+            if len(done) + len(reconciled) + len(errors) >= limit:
                 break
-        save(self.root / "last-collection.json", {"at": now(), "scope": scope, "collected": done, "errors": errors})
+        save(self.root / "last-collection.json", {"at": now(), "scope": scope, "collected": done,
+                                                  "reconciledUnavailableThreads": reconciled, "errors": errors})
         return {"scope": scope, "discoveredMessages": len(state["messages"]),
-                "discoveryComplete": state["complete"], "collected": done, "errors": errors, **self.status()}
+                "discoveryComplete": state["complete"], "collected": done,
+                "reconciledUnavailableThreads": reconciled, "errors": errors, **self.status()}
 
     def manifests(self):
         return [load(file) for file in sorted((self.root / "threads").glob("*/manifest.json"))]
 
     def review_pages(self, manifest):
-        """Stable source pages; a new reply never discards prior reading receipts.
-
-        Raw headers and complete quoted bodies remain in original.json/packet.txt.
-        Only transport headers are omitted from the model's reading view.
-        """
-        payload = load(self.root / "threads" / manifest["threadId"] / "original.json")
-        originals = {m["id"]: m for m in payload.get("thread", payload)["messages"]}
-        for message in sorted(manifest["messages"], key=lambda m: int(m.get("internalDate") or 0), reverse=True):
-            h = {k.lower(): v for k, v in message["headers"].items()
-                 if k.lower() in ("from", "to", "cc", "bcc", "date", "subject")}
-            units = [("body", message_text(originals[message["id"]]), None)]
-            for attachment in message["attachments"]:
-                text = (self.root / attachment["textPath"]).read_text(encoding="utf-8", errors="replace") if attachment.get("textPath") else ""
-                units.append(("attachment", json.dumps(attachment, ensure_ascii=False) + "\n" + text, attachment))
-            for kind, text, attachment in units:
-                for offset in range(0, max(1, len(text)), REVIEW_PAGE_CHARS):
-                    content = text[offset:offset + REVIEW_PAGE_CHARS]
-                    key = sha(json.dumps([manifest["threadId"], message["id"], kind,
-                                          attachment.get("sha256") if attachment else None, offset, content]).encode())
-                    yield {"pageId": key, "threadId": manifest["threadId"], "messageId": message["id"],
-                           "evidenceHash": manifest["evidenceHash"], "gmailUrl": manifest["gmailUrl"],
-                           "headers": h, "kind": kind, "offset": offset, "totalChars": len(text),
-                           "moreOfThisSource": offset + REVIEW_PAGE_CHARS < len(text), "attachment": attachment,
-                           "externalUntrustedContent": content}
+        """Stable raw pages with quote attribution computed before pagination."""
+        from evidence_attribution import review_pages
+        yield from review_pages(self, manifest, load=load, message_text=message_text,
+                                sha=sha, json=json, page_chars=REVIEW_PAGE_CHARS)
 
     def native_status(self):
-        manifests = self.manifests()
-        read = set(file.stem for file in (self.root / "page-reviews").glob("*.json"))
-        pending = sum(page["pageId"] not in read for m in manifests for page in self.review_pages(m))
-        known = {m["threadId"]: {r["id"] for r in m["messages"]} for m in manifests}
-        uncollected, discovering = set(), []
-        for scope in QUERIES:
-            inventory = load(self.root / f"inventory-{scope}.json", {})
-            if not inventory.get("complete"):
-                discovering.append(scope)
-            for row in inventory.get("messages", {}).values():
-                if row["id"] not in known.get(row["threadId"], set()):
-                    uncollected.add(row["threadId"])
-        state = {"at": now(), "pendingTextPages": pending, "reviewedPages": len(read),
-                 "uncollectedThreads": len(uncollected), "discoveringScopes": discovering,
-                 "pending": bool(pending or uncollected or discovering)}
-        save(self.root / "native-status.json", state)
-        return state
+        from evidence_status import native_status
+        return native_status(self, QUERIES)
 
     def native_next(self):
         """One resumable work item in the existing Secretary agent turn, no scheduler."""
+        from review_attempts import unsettled
+        held = unsettled(self.root)
+        if held:
+            return {"outcome": "uncertain", "unresolvedInferenceAttempts": len(held), "requests": held}
         state_file = self.root / "native-worker.json"
         state = load(state_file, {"lane": 0})
         issued = state.get("issued")
@@ -619,7 +580,12 @@ class Archive:
         if issued and not catching_up and not (self.root / "page-reviews" / (issued["pageId"] + ".json")).exists():
             current = load(self.root / "threads" / issued["threadId"] / "manifest.json", {})
             if current.get("evidenceHash") == issued["evidenceHash"]:
-                # Retry precisely the same page after an interrupted model run.
+                # Enrich an old issued page without replacing its identity or text.
+                if not (issued.get("sourceContext") or {}).get("mimeOverview"):
+                    fresh = next((p for p in self.review_pages(current) if p["pageId"] == issued["pageId"]), None)
+                    if fresh and fresh["externalUntrustedContent"] == issued["externalUntrustedContent"]:
+                        issued["sourceContext"] = fresh["sourceContext"]
+                        save(state_file, state)
                 return {"outcome": "ready", "page": issued, "resumed": True}
             # A reply or OCR text changed the evidence; unread pages are reissued by content below.
         started = time.monotonic()
@@ -638,6 +604,8 @@ class Archive:
                 inventory.setdefault("query", QUERIES[scope])
                 inventory.setdefault("pages", 0)
                 inventory.setdefault("complete", False)
+                for row in response.get("messages") or []:
+                    rediscovered(self.root, row)
                 inventory.setdefault("messages", {}).update({identifier(m["id"]): m for m in response.get("messages") or []})
                 inventory["headCheckedEpoch"] = time.time()
                 save(inventory_file, inventory)
@@ -786,7 +754,7 @@ class Archive:
                    "<h1>Secretary — communications et pièces justificatives</h1>",
                    "<p>Dossier privé. Récupération, lecture et analyse sont distinctes. Les pièces ci-dessous ne sont pas toutes des factures. Aucun solde, paiement ou partage des frais n’est présumé.</p>",
                    f"<p><b>{status['collectedMessages']} messages récupérés</b> · {status['collectedThreads']} conversations · {status['uniqueFiles']} fichiers distincts · {len(invoice_rows)} factures ou reçus identifiés.</p>",
-                   f"<p>Analyse en cours : {partial} conversations partiellement analysées, {status['fullyReviewedThreads']} entièrement validées. Les autres restent à examiner. Mise à jour : {esc(now())}.</p>"]
+                   f"<p>Lecture : {partial} conversations avec des points ouverts, {status['fullyReviewedThreads']} avec toutes les pages du flux de lecture traitées. Les variantes MIME peuvent demander une revue complémentaire. Classement, validation des conclusions et traitement des informations sont distincts. Mise à jour : {esc(now())}.</p>"]
         if invoice_rows:
             content.append("<h2>Factures et reçus identifiés</h2><p>Registre en cours. Montant payé au fournisseur et remboursement entre parents sont distincts.</p><table><tr><th>Date / personne</th><th>Document / fournisseur</th><th>Honoraires</th><th>Payé par le patient</th><th>Payé par un assureur</th><th>Preuve et rapprochement</th></tr>")
             for invoice in invoice_rows:

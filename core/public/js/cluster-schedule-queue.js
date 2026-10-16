@@ -1,6 +1,7 @@
 /** Core heavy-work requests and explicit legacy migration. */
 let heavyQueuePage = 0;
 let heavyQueueData = null;
+let heavyQueueView = 'active';
 const HEAVY_QUEUE_API = '/api/cluster/schedule/work-queue';
 
 async function loadHeavyQueue() {
@@ -47,12 +48,22 @@ function renderHeavyQueue(container, queue) {
 }
 
 function renderCoreHeavyQueue(container, queue) {
-  const jobs = queue.jobs || [];
+  const terminal = new Set(['completed', 'failed', 'cancelled']);
+  const all = queue.jobs || [];
+  const pending = all.filter(job => !terminal.has(job.state));
+  const finished = all.filter(job => terminal.has(job.state));
+  const rank = job => job.state === 'uncertain' ? 0 : ['running', 'dispatching'].includes(job.state) ? 1
+    : job.state === 'reserved' && Date.parse(job.reservation?.end) > Date.now() ? 2 : job.state === 'requested' ? 3 : 4;
+  const jobs = heavyQueueView === 'finished'
+    ? finished.sort((a, b) => String(b.finishedAt || b.updatedAt || b.createdAt).localeCompare(String(a.finishedAt || a.updatedAt || a.createdAt)))
+    : pending.sort((a, b) => rank(a) - rank(b) || a.priority - b.priority || String(a.reservation?.start || a.createdAt).localeCompare(String(b.reservation?.start || b.createdAt)));
   const size = 10;
   heavyQueuePage = Math.min(heavyQueuePage, Math.max(0, Math.ceil(jobs.length / size) - 1));
-  let html = '<div class="cs-queue-note">Requests from Nestor and coding sessions. Planned slots do not hold a GPU; Core admission remains required at launch.</div>';
-  html += `<div class="cs-queue-note"><a href="${HEAVY_QUEUE_API}/export">Download queue snapshot</a> · ${Number(queue.archivedCount || 0)} archived</div>`;
-  if (queue.legacy) html += '<div class="cs-queue-note">QUEUE.md is an archived snapshot. Submit new work to Core.</div>';
+  let html = `<div class="cs-queue-actions" role="group" aria-label="Demandes de travaux lourds">
+    <button type="button" class="cs-queue-button" data-queue-action="active" aria-pressed="${heavyQueueView === 'active'}">À traiter · ${pending.length}</button>
+    <button type="button" class="cs-queue-button" data-queue-action="finished" aria-pressed="${heavyQueueView === 'finished'}">Terminées · ${finished.length}</button></div>`;
+  html += '<div class="cs-queue-note">Demandes de Nestor et des sessions de code. Les créneaux sont estimés; Core vérifie la disponibilité au lancement.</div>';
+  html += `<div class="cs-queue-note"><a href="${HEAVY_QUEUE_API}/export">Exporter la file</a> · ${Number(queue.archivedCount || 0)} archivées</div>`;
   html += jobs.slice(heavyQueuePage * size, (heavyQueuePage + 1) * size).map(job => {
     const editable = ['requested', 'reserved'].includes(job.state);
     const active = ['dispatching', 'running', 'uncertain'].includes(job.state);
@@ -80,7 +91,7 @@ function renderCoreHeavyQueue(container, queue) {
       </div>
     </article>`;
   }).join('');
-  if (!jobs.length) html += '<div class="cs-empty">No heavy-work requests. Coding sessions submit them through the operator queue tool.</div>';
+  if (!jobs.length) html += `<div class="cs-empty">${heavyQueueView === 'finished' ? 'Aucune demande terminée dans la file courante.' : 'Aucun travail lourd à traiter.'}</div>`;
   if (jobs.length > size) html += `<div class="cs-queue-actions">
     <button type="button" class="cs-queue-button" data-queue-action="previous" ${heavyQueuePage === 0 ? 'disabled' : ''}>Previous</button>
     <span>${heavyQueuePage * size + 1}–${Math.min((heavyQueuePage + 1) * size, jobs.length)} / ${jobs.length}</span>
@@ -112,6 +123,11 @@ document.getElementById('heavyQueueList')?.addEventListener('click', async event
   if (!button) return;
   const action = button.dataset.queueAction;
   const container = document.getElementById('heavyQueueList');
+  if (action === 'active' || action === 'finished') {
+    heavyQueueView = action;
+    heavyQueuePage = 0;
+    return renderHeavyQueue(container, heavyQueueData);
+  }
   if (action === 'previous' || action === 'next') {
     heavyQueuePage += action === 'next' ? 1 : -1;
     return renderHeavyQueue(container, heavyQueueData);

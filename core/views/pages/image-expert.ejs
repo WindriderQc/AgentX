@@ -24,7 +24,7 @@
       <form id="imagex-chat-form"><label for="imagex-message">A question for imageX</label>
         <textarea id="imagex-message" rows="2" aria-describedby="imagex-message-counter" placeholder="An idea, some advice, a question about your edit…" required></textarea>
         <p id="imagex-message-counter" class="image-help" role="status">Message: 0 / 32,000 characters.</p>
-        <div class="imagex-send-row"><p>The brief’s text and settings are sent. Attached images stay reserved for the local render.</p><button id="imagex-send" type="submit">Send ↗</button></div>
+        <div class="imagex-send-row"><p>Send and Refine use text advice. Choose “Inspect selected references” beside the references to request image analysis.</p><button id="imagex-send" type="submit">Send ↗</button></div>
       </form>
       <p id="imagex-chat-notice" class="image-help" role="status"></p>
     </section>
@@ -41,6 +41,7 @@
         <select id="imagex-inspect-turn" aria-label="Consultation to inspect"><option value="">No consultation</option></select>
         <ol id="imagex-events" class="imagex-events"></ol>
         <p id="imagex-receipt" class="image-help"></p>
+        <p id="imagex-inspection-receipt" class="image-help" role="status"></p>
         <details><summary>Message and context sent</summary><pre id="imagex-envelope"></pre></details>
       </div>
       <div id="imagex-files" role="tabpanel" aria-labelledby="imagex-tab-files" hidden>

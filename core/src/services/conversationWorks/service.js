@@ -6,6 +6,8 @@ const { OWNER, SCOPED, EXCHANGE_SCOPE, ACTIVE, LIMITS, hash, fail, notFound,
   MODES, nativeWork, simple, eligible, sessionScope, validateResult } = require('./contract');
 const { createRepository } = require('./repository');
 const { readTurnContext, assertContextSize } = require('../conversations/turnContext');
+const { resolveProfile } = require('./performance');
+const { isNativeToolCallId } = require('../../../../shared/nativeToolCallId.cjs');
 
 function createConversationWorks({ conversations, tasks, env = process.env, repository = createRepository(), classify = () => false, nativeOnly = () => false, nativeRead = () => false,
   nativeBudget = () => null, nativeForeground = () => true, guardianNeedsMain = () => false,
@@ -29,17 +31,21 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     if (row) return row;
     const receipt = await exchangeStore.read(EXCHANGE_SCOPE, hash(EXCHANGE_SCOPE + '\n' + turnId));
     return receipt?.request?.body?.sessionId === current.sessionId && MODES.includes(receipt.request.body.mode)
-      ? { mode: receipt.request.body.mode } : null;
+      ? { mode: receipt.request.body.mode, ...(receipt.request.body.performance && { performance: receipt.request.body.performance }) } : null;
   }
-  async function intake({ session: current, turnId, text, attachments = [], channel = 'voice', speechLanguage }) {
+  async function intake({ session: current, turnId, text, attachments = [], channel = 'voice', speechLanguage, performanceProfile }) {
     const previousWork = await retained(current, turnId, channel);
     if (!eligible(current, channel, env) && !previousWork) return null;
     if (!/^[a-zA-Z0-9-]{16,80}$/.test(turnId || '') || typeof text !== 'string' || !text.trim() || text.length > LIMITS.request) {
       throw fail('CONVERSATION_WORK_INTAKE_INVALID', 'A stable turn identity and complete request are required.');
     }
     const id = hash(current.sessionId + '\n' + turnId);
+    const mode = previousWork?.mode || env.PERSONAL_CONVERSATION_WORK_MODE;
+    // A duplicate or recovered intake retains its original routes, including
+    // legacy records without a profile. New preferences never rewrite a dispatch.
+    const performance = previousWork ? previousWork.performance : mode === 'native' ? resolveProfile(performanceProfile, env) : undefined;
     const snapshot = { text, attachments, sessionId: current.sessionId, channel, clientTurnId: turnId,
-      mode: previousWork?.mode || env.PERSONAL_CONVERSATION_WORK_MODE };
+      mode, ...(performance && { performance }) };
     const accepted = await exchangeStore.accept(EXCHANGE_SCOPE, { body: snapshot }, turnId, current.conversationId);
     const taken = await conversations.acceptTurn({ ...query(current.sessionId), modeId: current.modeId,
       traceId: turnId, clientTurnId: turnId, channel, inputText: text, attachments,
@@ -57,6 +63,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     const row = await repo.insert({ _id: id, owner: OWNER, surface: 'household',
       conversationId: current.conversationId, sessionId: current.sessionId, turnId,
       exchangeId: accepted.receipt._id, requestSha256: hash(text), mode: snapshot.mode,
+      ...(performance && { performance }),
       state: 'received', classification: classification(text, snapshot.mode),
       revision: 0, receivedAt: at, updatedAt: at, contextReady: false, tools: [], events: [], sequence: 0,
       ...(snapshot.mode === 'native' && { foreground: nativeForeground(text) && !simple(text) ? 'acknowledge' : 'guardian' }),
@@ -181,7 +188,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
   async function readTasks(context, input, callId) {
     const row = await binding(context);
     if (row.mode !== 'read' || !['running', 'dispatching'].includes(row.state)) throw fail('CONVERSATION_WORK_READ_DENIED', 'This work cannot read tasks.', 403);
-    if (!/^[a-zA-Z0-9_.:-]{1,160}$/.test(callId || '') || !input || Object.keys(input).some(key => !['limit', 'includeDone'].includes(key))
+    if (!isNativeToolCallId(callId) || !input || Object.keys(input).some(key => !['limit', 'includeDone'].includes(key))
       || (input.limit !== undefined && (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 50))
       || (input.includeDone !== undefined && typeof input.includeDone !== 'boolean')) throw fail('CONVERSATION_WORK_READ_INVALID', 'Choose a bounded task read.');
     const normalized = { limit: input.limit ?? 25, includeDone: input.includeDone ?? false };
@@ -321,7 +328,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
         const at = now();
         row = await repo.insert({ _id: id, owner: OWNER, surface: 'household', conversationId: current.conversationId,
           sessionId: input.sessionId, turnId: input.clientTurnId, exchangeId: item.id, requestSha256: hash(input.text),
-          mode: input.mode, state: 'received', revision: 0,
+          mode: input.mode, ...(input.performance && { performance: input.performance }), state: 'received', revision: 0,
           receivedAt: at, updatedAt: at, contextReady: false, tools: [], events: [], sequence: 0,
           guardian: { state: taken.turn.outcome === 'pending' ? 'uncertain' : taken.turn.outcome }, erased: false,
           classification: classification(input.text, input.mode) });

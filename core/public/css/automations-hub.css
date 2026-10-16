@@ -1,0 +1,25 @@
+.oj-source-strip{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 24px}
+.oj-source-pill{display:flex;align-items:center;gap:10px;border:1px solid var(--oj-line);background:var(--oj-card);color:var(--oj-text);padding:12px 16px;border-radius:10px;font-size:12px;min-height:44px}
+.oj-source-pill:hover{border-color:var(--oj-accent)}
+.oj-source-pill>span:not(.oj-source-dot),.oj-source-pill small{color:var(--oj-muted)}
+.oj-source-dot{width:7px;height:7px;border-radius:50%;background:var(--oj-amber);flex-shrink:0}
+.oj-source-dot.online{background:var(--oj-accent)}
+.oj-job-filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.oj-hub-navigation{display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--oj-line);margin-bottom:28px;padding-bottom:10px}
+.oj-hub-navigation a{padding:12px 16px;color:var(--oj-muted);text-decoration:none;border-radius:9px;font-size:13px}
+.oj-hub-navigation a:hover,.oj-hub-navigation a[aria-current]{background:var(--oj-raised);color:var(--oj-accent)}
+.oj-native-job .oj-job-actions{margin-top:auto;min-height:41px}
+.oj-tabs{flex-wrap:wrap}
+.oj-density{display:flex;gap:3px;padding:3px;background:var(--oj-card);border:1px solid var(--oj-line);border-radius:9px}
+.oj-density button{padding:8px 10px;min-height:34px;border:0;background:transparent}
+.oj-density button[aria-pressed=true]{color:var(--oj-accent);background:var(--oj-raised)}
+.oj-jobs-compact .oj-job-expanded{display:none}
+.oj-jobs-compact .oj-job-is-expanded .oj-job-expanded{display:block}
+.oj-jobs-compact .oj-job-details{margin-top:18px}
+.oj-jobs-compact .oj-job-actions{margin-top:auto}
+.oj-expand-button{margin-left:auto;min-width:38px;padding:10px}
+.oj-job-is-expanded .oj-expand-button i{transform:rotate(180deg)}
+.oj-jobs:not(.oj-jobs-compact) .oj-expand-button{display:none}
+@media(max-width:900px){.oj-navigation{align-items:stretch;flex-direction:column}.oj-job-filters{width:100%}.oj-job-filters label{flex:1}.oj-job-filters select{width:100%}}
+@media(max-width:600px){.oj-calendar-row{grid-template-columns:1fr auto;gap:14px;padding:17px}.oj-calendar-time{grid-column:1/-1;font-size:16px}.oj-calendar-copy{grid-column:1}.oj-calendar-row>.oj-badge{grid-column:2}.oj-source-pill{flex:1;justify-content:center;padding:12px 9px;gap:7px}.oj-source-pill>span:not(.oj-source-dot){font-size:11px}.oj-calendar-controls{width:100%;gap:7px}.oj-calendar-date{flex:1;min-width:0}.oj-calendar-controls .oj-button{padding:10px}.oj-resource-link{font-size:12px}}
+@media(prefers-reduced-motion:reduce){.oj-shell *{transition:none!important;animation:none!important}}

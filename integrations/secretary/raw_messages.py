@@ -22,6 +22,7 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from mailbox_backfill import MAX_CONSECUTIVE_FAILURES, Lock, Pacer  # noqa: E402
 from secretary_evidence import DEFAULT_ROOT, QUERIES, Archive, decode, identifier, load, now, save, sha  # noqa: E402
+from evidence_inventory import unavailable  # noqa: E402
 
 
 LOCK_NAME = "raw-sync.lock"
@@ -141,16 +142,17 @@ def completeness(archive, rehash=False):
     for scope in QUERIES:
         inventory = load(root / f"inventory-{scope}.json", {})
         discovered = set(inventory.get("messages", {}))
-        missing_thread = sorted(discovered - archived)
+        absent = sorted(mid for mid in discovered - archived if unavailable(root, inventory["messages"][mid]))
+        missing_thread = sorted(discovered - archived - set(absent))
         for mid in discovered & archived:
             if mid not in raw_ok:
                 raw_ok[mid] = verified(root, load(receipt_file(root, mid)), rehash)
         missing_raw = sorted(mid for mid in discovered & archived if not raw_ok[mid])
         report["scopes"][scope] = {
             "discoveryComplete": bool(inventory.get("complete")), "discovered": len(discovered),
-            "archived": len(discovered) - len(missing_thread),
-            "rawVerified": len(discovered) - len(missing_thread) - len(missing_raw),
-            "missingThread": missing_thread, "missingRaw": missing_raw}
+            "archived": len(discovered & archived),
+            "rawVerified": len(discovered & archived) - len(missing_raw),
+            "missingThread": missing_thread, "missingRaw": missing_raw, "unavailable": absent}
     in_threads = [verified(root, load(receipt_file(root, mid)), rehash) for mid in archived]
     report["allArchivedMessages"] = {"messages": len(archived), "rawVerified": sum(in_threads)}
     report["complete"] = all(s["discoveryComplete"] and not s["missingThread"] and not s["missingRaw"]
