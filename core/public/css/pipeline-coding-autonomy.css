@@ -38,3 +38,8 @@
   .pipeline-autonomy-actions .pipeline-btn { flex: 1 1 100%; }
   :is(#pipelineCodingAutonomy, #codingAutonomyArchiveTasks) fieldset { padding: 12px; }
 }
+
+/* Automatic continuation of private reports (#835) */
+.pipeline-report-continuation { display: grid; gap: 8px; margin: 14px 0; padding: 12px 14px; border: 1px solid var(--border-color, rgba(148, 163, 184, 0.22)); border-radius: 10px; }
+.pipeline-report-continuation h4 { margin: 0; }
+.pipeline-report-continuation p { margin: 0; }

@@ -9,6 +9,16 @@
     <button type="button" class="pipeline-btn compact" data-autonomy-switch="false">Pause new work and corrections</button>
   </div>
   <p class="pipeline-subtle">Pausing prevents new workers and corrections. Stop a running worker from its task card. Human review, merge, installation and product acceptance are separate decisions.</p>
+  <section class="pipeline-report-continuation" id="reportContinuation" aria-labelledby="reportContinuationTitle">
+    <h4 id="reportContinuationTitle">Private reports continue automatically</h4>
+    <p class="pipeline-subtle">When a report execution runs out of calls or time with its work saved, Core starts the next execution from that exact report, inside the grant and campaign window you already approved. It never extends a grant, never retries another kind of stop, and alerts you when a report is blocked, makes no progress or needs a new grant or window.</p>
+    <p id="reportContinuationStatus" role="status" aria-live="polite">Reading the continuation switch…</p>
+    <label class="pipeline-autonomy-confirm"><input type="checkbox" id="reportContinuationConfirm"> I approve continuing saved reports within their existing grants</label>
+    <div class="pipeline-autonomy-actions">
+      <button type="button" class="pipeline-btn compact" data-report-continuation="true">Continue reports automatically</button>
+      <button type="button" class="pipeline-btn compact" data-report-continuation="false">Pause automatic continuation</button>
+    </div>
+  </section>
   <details id="codingAutonomySetup">
     <summary>Set up a campaign and authorize a task</summary>
     <p>Only low-risk public engineering work routed to agentx-coding is eligible. Review the files and budgets before approving. Ideas and private/family tasks stay outside this control.</p>
@@ -46,3 +56,4 @@
   </div>
 </section>
 <script src="/js/pipeline-coding-autonomy.js" defer></script>
+<script src="/js/pipeline-report-continuation.js" defer></script>

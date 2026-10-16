@@ -98,6 +98,23 @@ When calls or time run short with documents left, the execution stops with
 `model_call_limit` or `hard_budget` and archives the partial report for a
 continuation. The Pipeline worker monitor shows merged and failed steps,
 ledger totals and the step size with its basis.
+### Automatic continuation and alerts
+
+With **Private reports continue automatically** switched on (Pipeline, Coding
+Team autonomy panel; off by default), Core starts the next execution of a report
+that stopped with `model_call_limit` or `hard_budget` and archived a changed
+partial report (#835). It performs the same requeue an operator does, from that
+exact checkpoint and under the existing grant and campaign window; Core's report
+authority still binds the run when the worker starts. One continuation exists
+per parent outcome, under a request id derived from it and saved before any host
+call; an unknown outcome blocks the task and alerts instead of relaunching.
+
+Whether or not the switch is on, Core alerts the owner (Core alert feed, morning
+brief, Nestor's work-queue notifications) when documents are blocked, an
+execution stops for another reason, two executions end with the same saved
+report, a continuation needs a new grant or window, or a report is ready for
+review.
+
 `AGENTX_REPORT_MODE=single` restores the previous single-session worker, whose
 prompt asks the model to choose groups, save, and keep the table and totals
 consistent itself. A partial report is a reviewable checkpoint, not completion
