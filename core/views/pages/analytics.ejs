@@ -414,11 +414,15 @@
                     document.getElementById('effectivenessRuntimeBody').innerHTML = '<tr><td colspan="7" style="padding:12px;text-align:center;color:var(--muted);">Unable to load effectiveness telemetry.</td></tr>';
                 }
             }
+            function loadEffectivenessWhenOpen(){
+                var gate = window.AgentXAnalyticsCockpit && window.AgentXAnalyticsCockpit.whenOpen;
+                return gate ? gate('effectiveness', loadEffectiveness) : loadEffectiveness();
+            }
             document.getElementById('effectivenessRefreshBtn')?.addEventListener('click', loadEffectiveness);
-            document.getElementById('analyticsWindow')?.addEventListener('change', loadEffectiveness);
+            document.getElementById('analyticsWindow')?.addEventListener('change', loadEffectivenessWhenOpen);
             document.getElementById('refreshBtn')?.addEventListener('click', loadEffectiveness);
-            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadEffectiveness);
-            else loadEffectiveness();
+            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadEffectivenessWhenOpen);
+            else loadEffectivenessWhenOpen();
         })();
         </script>
 
@@ -925,13 +929,17 @@
                     mbody.innerHTML = '<tr><td colspan="5" style="padding:12px;text-align:center;color:var(--muted);">Provider telemetry unavailable.</td></tr>';
                 }
             }
+            function loadFederatedWhenOpen(){
+                const gate = window.AgentXAnalyticsCockpit && window.AgentXAnalyticsCockpit.whenOpen;
+                return gate ? gate('federated', loadFederated) : loadFederated();
+            }
             document.getElementById('federatedRefreshBtn').addEventListener('click', loadFederated);
-            document.getElementById('analyticsWindow')?.addEventListener('change', loadFederated);
-            // Kick off on load.
+            document.getElementById('analyticsWindow')?.addEventListener('change', loadFederatedWhenOpen);
+            // Loads once the workbench is opened.
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', loadFederated);
+                document.addEventListener('DOMContentLoaded', loadFederatedWhenOpen);
             } else {
-                loadFederated();
+                loadFederatedWhenOpen();
             }
         })();
         </script>

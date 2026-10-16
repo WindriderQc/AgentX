@@ -8,7 +8,7 @@
 
 import {
   elements, charts,
-  beginRequest, periodDays, buildRangeQuery, checkAuth, fetchJSON,
+  beginRequest, periodDays, whenCockpitOpen, buildRangeQuery, checkAuth, fetchJSON,
   formatNumber, refreshProduct
 } from './analytics.js';
 import { COMPARISON_STATES, parseSignal, rankingSignal } from '/dist/signal-evidence.js';
@@ -764,10 +764,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('closeRagHelp')?.addEventListener('click', () => { ragHelpPanel.style.display = 'none'; });
   }
   if (elements.analyticsWindow) {
-    elements.analyticsWindow.addEventListener('change', () => {
-      refreshProduct();
-      refreshAllCostTracking();
-    });
+    elements.analyticsWindow.addEventListener('change', () => whenCockpitOpen('workbench', refreshAll));
   }
   if (elements.usageGroupSelect) elements.usageGroupSelect.addEventListener('change', refreshProduct);
   if (elements.feedbackGroupSelect) elements.feedbackGroupSelect.addEventListener('change', refreshProduct);
@@ -795,7 +792,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     elements.costBreakdownDonut.addEventListener('change', refreshCostBreakdown);
   }
 
-  // Initial Load
-  refreshAll();
+  // Initial load waits until the workbench is opened.
+  whenCockpitOpen('workbench', refreshAll);
 
 });

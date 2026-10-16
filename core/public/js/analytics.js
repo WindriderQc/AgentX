@@ -151,6 +151,25 @@ function sampleNote(signal, noun, observedText) {
   return [counts, view.detail].filter(Boolean).join(' · ');
 }
 
+// The detail workbench ("Explore the details") loads only once opened. A
+// Period change while it is closed waits for the next open; the newest
+// request per panel wins.
+const cockpit = document.getElementById('analytics-cockpit');
+const deferredLoads = new Map();
+function whenCockpitOpen(key, load) {
+  if (!cockpit || cockpit.open) return load();
+  deferredLoads.set(key, load);
+  return undefined;
+}
+cockpit?.addEventListener('toggle', () => {
+  if (!cockpit.open) return;
+  const pending = [...deferredLoads.values()];
+  deferredLoads.clear();
+  pending.forEach((load) => load());
+});
+// Classic inline scripts on the page use the same gate.
+window.AgentXAnalyticsCockpit = { whenOpen: whenCockpitOpen };
+
 // One page-wide Period drives every panel (see the overview header).
 const WINDOW_DAYS = { '24h': 1, '7d': 7, '30d': 30 };
 
@@ -516,4 +535,4 @@ async function refreshProduct() {
 }
 
 
-export { elements, charts, beginRequest, periodDays, buildRangeQuery, checkAuth, fetchJSON, formatNumber, refreshProduct };
+export { elements, charts, beginRequest, periodDays, whenCockpitOpen, buildRangeQuery, checkAuth, fetchJSON, formatNumber, refreshProduct };

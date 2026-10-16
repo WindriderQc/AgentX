@@ -130,6 +130,8 @@ const server = http.createServer(async (req, res) => {
     });
     assert.equal(plotted.calls, 1481, 'plotted volume reconciles with the headline');
     assert.equal(await page.locator('#analytics-cockpit').getAttribute('open'), null);
+    const workbenchPaths = ['/api/analytics/costs', '/api/analytics/usage', '/api/analytics/feedback', '/api/analytics/rag-stats', '/api/analytics/effectiveness', '/api/analytics/federated', '/api/rag/'];
+    assert.deepEqual(requests.filter(p => workbenchPaths.some(prefix => p.startsWith(prefix))), [], 'the closed workbench loads nothing');
     await page.evaluate(() => document.fonts.ready);
     for (const [width, height] of [[1920, 1080], [1440, 900], [1366, 768], [1280, 720], [820, 1000], [390, 844], [320, 800]]) {
       await page.setViewportSize({ width, height });
@@ -159,7 +161,8 @@ const server = http.createServer(async (req, res) => {
     await page.screenshot({ path: path.join(report, 'overview-latency-1440.png'), fullPage: true });
     await page.locator('[data-ao-overlay="errors"]').click();
     assert.equal(await page.evaluate(() => Chart.getChart(document.getElementById('ao-trend-chart')).options.scales.rate.ticks.callback(2)), '2%');
-    // One page-wide Period: the Playground lane follows the overview window.
+    // Opening the workbench loads it; the Playground lane follows the page-wide Period.
+    await page.locator('#analytics-cockpit > summary').click();
     await page.waitForFunction(() => document.getElementById('chatLaneEmptyNote').textContent.includes('last 24 hours'));
     assert.equal(await page.locator('#periodSelect, #infWindow, #federatedWindowSelect').count(), 0, 'no competing period selectors');
     await page.locator('[data-ao-group="byConsumerContract"]').click();
@@ -218,6 +221,6 @@ const server = http.createServer(async (req, res) => {
     assert.deepEqual(errors, []);
     assert.ok(requests.some(p => p.includes('/summary?window=24h')));
     assert.ok(bucketFacet('24h', {})[0].$group._id.$dateToString.format.includes('%H'));
-    console.log(JSON.stringify({ ok: true, report, viewports: 7, scenarios: ['initial', 'comparison', 'volume/latency overlay', 'visual evidence reset', 'window race', 'retention', 'failed read', 'empty', 'stale GPU', 'live failure', 'detail focus', 'demo profile', 'independent Playground window', 'persistent Playground disclosure'], requests: requests.length }, null, 2));
+    console.log(JSON.stringify({ ok: true, report, viewports: 7, scenarios: ['initial', 'comparison', 'volume/latency overlay', 'visual evidence reset', 'window race', 'retention', 'failed read', 'empty', 'stale GPU', 'live failure', 'detail focus', 'demo profile', 'page-wide Period', 'lazy workbench', 'persistent Playground disclosure'], requests: requests.length }, null, 2));
   } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

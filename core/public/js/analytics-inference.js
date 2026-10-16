@@ -438,8 +438,9 @@ async function load() {
     setText('infScope', `Could not load inference analytics: ${err.message}`);
   }
   if (version !== loadVersion) return;
-  renderCodex(windowKey);
-  applyChatLaneCollapse();
+  const gate = window.AgentXAnalyticsCockpit?.whenOpen || ((_key, run) => run());
+  gate('codex', () => renderCodex(windowKey));
+  gate('chatLane', applyChatLaneCollapse);
 }
 
 function init() {
