@@ -188,53 +188,37 @@ Object.assign(PerformanceDashboard, {
 
             // Open create baseline modal
             openCreateBaselineModal() {
-                // Populate load test dropdown
-                fetch('/api/performance/load-tests?limit=10')
-                    .then(res => res.json())
-                    .then(result => {
-                        const tests = result?.data?.tests || [];
-                        if (result.status === 'success' && tests.length > 0) {
-                            const select = document.getElementById('baselineLoadTest');
-                            select.innerHTML = '<option value="">Select a load test...</option>';
-                            tests.forEach(test => {
-                                const option = document.createElement('option');
-                                option.value = test._id;
-                                option.textContent = `${test.scenario} - ${new Date(test.timestamp).toLocaleDateString()}`;
-                                select.appendChild(option);
-                            });
-                        }
-                    });
-
+                // Default to the window the page is showing.
+                const hours = document.getElementById('baselineHours');
+                if ([...hours.options].some(o => Number(o.value) === this.currentTimeRange)) {
+                    hours.value = String(this.currentTimeRange);
+                }
                 document.getElementById('createBaselineModal').classList.add('active');
+                document.getElementById('baselineName').focus();
             },
 
-            // Create baseline
+            // Create baseline from measured production traffic
             async createBaseline() {
+                const submit = document.getElementById('createBaselineSubmit');
+                if (submit.disabled) return;
+                submit.disabled = true;
                 try {
-                    const name = document.getElementById('baselineName').value;
-                    const description = document.getElementById('baselineDescription').value;
-                    const source = document.getElementById('baselineSource').value;
-                    const loadTestId = document.getElementById('baselineLoadTest').value;
-
-                    const data = { name, description };
-
-                    if (source === 'loadtest' && loadTestId) {
-                        data.source = 'load_test';
-                        data.loadTestId = loadTestId;
-                    } else {
-                        data.source = 'manual';
-                    }
+                    const data = {
+                        name: document.getElementById('baselineName').value,
+                        description: document.getElementById('baselineDescription').value,
+                        hours: Number(document.getElementById('baselineHours').value)
+                    };
 
                     const response = await fetch('/api/performance/baselines', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(data)
+                        body: JSON.stringify(data),
+                        signal: AbortSignal.timeout(30000)
                     });
 
                     const result = await response.json();
 
                     if (result.status === 'success') {
-                        alert('Baseline created successfully!');
                         document.getElementById('createBaselineModal').classList.remove('active');
                         document.getElementById('createBaselineForm').reset();
                         await this.loadBaselines();
@@ -244,15 +228,9 @@ Object.assign(PerformanceDashboard, {
                 } catch (err) {
                     console.error('Create baseline failed:', err);
                     alert('Failed to create baseline: ' + err.message);
+                } finally {
+                    submit.disabled = false;
                 }
-            },
-
-            // Set baseline from test
-            setBaselineFromTest(testId) {
-                document.getElementById('baselineSource').value = 'loadtest';
-                document.getElementById('loadTestSelectGroup').style.display = 'block';
-                document.getElementById('baselineLoadTest').value = testId;
-                this.openCreateBaselineModal();
             },
 
             // Activate baseline

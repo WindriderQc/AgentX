@@ -241,21 +241,18 @@
                     <textarea id="baselineDescription" placeholder="Optional description of this baseline..."></textarea>
                 </div>
                 <div class="form-group">
-                    <label for="baselineSource">Source</label>
-                    <select id="baselineSource">
-                        <option value="current">Current Metrics</option>
-                        <option value="loadtest">Load Test Result</option>
+                    <label for="baselineHours">Production traffic window</label>
+                    <select id="baselineHours">
+                        <option value="1">Last hour</option>
+                        <option value="6">Last 6 hours</option>
+                        <option value="24" selected>Last 24 hours</option>
+                        <option value="168">Last 7 days</option>
                     </select>
-                </div>
-                <div class="form-group" id="loadTestSelectGroup" style="display: none;">
-                    <label for="baselineLoadTest">Load Test</label>
-                    <select id="baselineLoadTest">
-                        <option value="">Select a load test...</option>
-                    </select>
+                    <small style="color: var(--muted);">Baselines record measured production traffic. Load tests are compared with each other in their table.</small>
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn-secondary" id="cancelBaselineBtn">Cancel</button>
-                    <button type="submit" class="btn-primary">Create Baseline</button>
+                    <button type="submit" class="btn-primary" id="createBaselineSubmit">Create Baseline</button>
                 </div>
             </form>
         </div>

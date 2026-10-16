@@ -62,9 +62,6 @@ Object.assign(PerformanceDashboard, {
                             <button class="action-btn view-details-btn" data-test-id="${escapeHtml(test._id)}">
                                 <i class="fas fa-eye"></i> Details
                             </button>
-                            <button class="action-btn set-baseline-btn" data-test-id="${escapeHtml(test._id)}">
-                                <i class="fas fa-flag"></i> Baseline
-                            </button>
                         </td>
                     `;
 
@@ -74,11 +71,6 @@ Object.assign(PerformanceDashboard, {
                     row.querySelector('.view-details-btn').addEventListener('click', (e) => {
                         e.stopPropagation();
                         this.toggleTestDetails(test._id, test);
-                    });
-
-                    row.querySelector('.set-baseline-btn').addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        this.setBaselineFromTest(test._id);
                     });
                 });
 

@@ -105,10 +105,6 @@
                     e.preventDefault();
                     this.createBaseline();
                 });
-                document.getElementById('baselineSource').addEventListener('change', (e) => {
-                    const loadTestGroup = document.getElementById('loadTestSelectGroup');
-                    loadTestGroup.style.display = e.target.value === 'loadtest' ? 'block' : 'none';
-                });
 
                 // Close modals on overlay click
                 document.querySelectorAll('.modal-overlay').forEach(overlay => {
