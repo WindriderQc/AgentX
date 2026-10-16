@@ -202,8 +202,27 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
     }
     const snapshot = await runtimeServices.routing.getEffectiveSnapshot({ includeCatalog: false });
     const principalTarget = resolvePrincipalAlias(snapshot, body.model);
-    const model = requireApprovedModel(snapshot, principalTarget?.model || body.model);
+    // A report escalation call is authorized by its report execution's own
+    // recorded models (#835), checked in prepare(); not by the routing table.
+    const escalating = req.headers['x-agentx-report-escalation'] !== undefined && req.headers['x-agentx-report-request'] !== undefined;
+    const model = escalating ? String(body.model || '') : requireApprovedModel(snapshot, principalTarget?.model || body.model);
     coding = await require('../../../src/services/pipelineCodingInferenceService').prepare(req.headers, model, abort.signal);
+    if (coding?.options?.reportEscalation) {
+      const escalation = coding.options.reportEscalation;
+      let answered;
+      try {
+        answered = await require('../../../src/services/pipelineReportEscalation').execute({ identity: escalation,
+          messages: ollamaMessages(body.messages), maxTokens: Number(body.max_tokens) || 8192, requestId: escalation.callId,
+          remainingNanodollars: escalation.remainingNanodollars, signal: coding.options.signal,
+          timeoutMs: Math.max(1, coding.options.reportDeadlineAt - Date.now()) });
+      } catch (error) {
+        await settleCoding('refused');
+        return res.status(error.statusCode || 502).json({ error: { message: error.message, type: 'upstream_error', code: error.code } });
+      }
+      await settleCoding('completed');
+      res.set('X-AgentX-Resolved-Model-Version', answered.model);
+      return res.status(200).json(render.json(openAiCompletion(answered.body, answered.model), answered.model));
+    }
     inferenceOptions = {
       signal: abort.signal,
       consumerContract: client.consumerContract,

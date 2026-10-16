@@ -10,7 +10,12 @@ async function prepare(headers, model, signal) {
     throw claim.fail('Invalid report inference identity', 'REPORT_INFERENCE_INVALID', 400);
   const value = await reports.run(id, key), owner = await reports.task(id);
   const guard = claim.query(owner, value);
-  if (value.model !== model || value.state !== 'active' || value.finalKind || value.deadlineAt.getTime() <= Date.now())
+  // A cloud escalation call (#835) names its step and one of the models this
+  // execution allowed at start; every other call must use the run's model.
+  const step = headers['x-agentx-report-escalation'];
+  if (step !== undefined && !/^\d{1,4}$/.test(step)) throw claim.fail('Invalid report escalation step', 'REPORT_INFERENCE_INVALID', 400);
+  const remainingNanodollars = step !== undefined ? require('./pipelineReportEscalation').assertCall(value, model) : null;
+  if ((step === undefined && value.model !== model) || value.state !== 'active' || value.finalKind || value.deadlineAt.getTime() <= Date.now())
     throw claim.fail('Report model or execution window changed', 'REPORT_INFERENCE_CONFLICT');
   if (value.pendingInferences.length || value.modelReceipts.some(row => row.callId === callId))
     throw claim.fail('Reconcile the prior receipt; model requests cannot be replayed', 'REPORT_INFERENCE_PENDING');
@@ -51,7 +56,14 @@ async function prepare(headers, model, signal) {
     }, { arrayFilters: [{ 'call.callId': callId, 'call.prepareId': prepareId, 'call.state': 'unknown', 'call.settlement.state': state, 'call.settlement.finishedAt': finishedAt }], writeConcern: WC }); }
     catch (_) { /* Keep pending if cleanup fails; never clear an unverified receipt. */ }
   }
-  return { options: { signal: signal ? AbortSignal.any([signal, abort.signal]) : abort.signal,
+  const callSignal = signal ? AbortSignal.any([signal, abort.signal]) : abort.signal;
+  if (step !== undefined) {
+    // Executed by the cloud escalation path, never by the local host runtime.
+    return { options: { signal: callSignal, reportDeadlineAt: value.deadlineAt.getTime(),
+      reportEscalation: { requestId: key, pipelineId: id, callId, prepareId, step: Number(step), model, remainingNanodollars },
+      attribution: { workItemId: id, correlationId: key, runtime: 'agentx' } }, finish };
+  }
+  return { options: { signal: callSignal,
     reportDeadlineAt: value.deadlineAt.getTime(), hostUrl: value.host,
     reportAuthority: { requestId: key, pipelineId: id, callId, prepareId },
     attribution: { workItemId: id, correlationId: key, runtime: 'agentx' } }, finish };

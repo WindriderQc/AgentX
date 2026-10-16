@@ -239,6 +239,9 @@ describe('runner-owned report steps in the worker monitor (#834)', () => {
       counts: { reviewed: 62, partial: 5, blocked: 0, pending: 9 } } }).controller, null, NOW);
     expect(observed.details).toContain('Report steps');
     expect(observed.details).toContain('4 merged · 1 failed · 62 reviewed, 5 partial, 0 blocked, 9 pending · 3 new findings · 16k-token steps (measured agent work)');
+    expect(observed.details).not.toContain('escalated');
+    const escalated = Monitor.observation(fixture({ phase: 'running', stage: 'model_wait', reportSteps: { done: 1, escalated: 2, counts: {} } }).controller, null, NOW);
+    expect(escalated.details).toContain('2 escalated to the cloud');
   });
 
   it('omits the row for a worker without report steps', () => {
