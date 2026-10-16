@@ -129,6 +129,9 @@ describe('Agent X Knowledge progressive-disclosure experience', () => {
     expect(documents).toContain('value="exclude" disabled>Delete</button>');
     expect(documents).toContain('value="delete" disabled>Delete, re-index at next scan</button>');
     expect(documents).toContain('id="excluded-files"');
+    // Owner decision: a separate Export keeps deletion simple.
+    expect(documentsJs).toContain("'.btn-export'");
+    expect(documentsJs).toContain('window.RAG.getDocumentChunks(docId)');
     expect(documentsJs).toContain('showDeleteReceipt(documentData)');
     expect(documentsJs).toContain('Other indexed documents may remain.');
     expect(documentsJs).toContain('showDeleteFailure(err, opener)');

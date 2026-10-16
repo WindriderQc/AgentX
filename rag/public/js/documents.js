@@ -384,13 +384,19 @@
       '<td class="center">' + (doc.chunkCount || 0) + '</td>' +
       '<td>' + escapeHtml(tagsStr) + '</td>' +
       '<td class="actions">' +
+        '<button class="btn btn-secondary btn-sm btn-export" type="button" title="Download this document and its indexed passages as JSON"><i class="fa-solid fa-file-export" aria-hidden="true"></i> Export</button> ' +
         '<button class="btn btn-danger btn-sm btn-delete" type="button" title="Delete this indexed document"><i class="fa-regular fa-trash-can" aria-hidden="true"></i> Delete</button>' +
       '</td>';
 
     // Click row to expand (but not on delete button)
     tr.addEventListener('click', function (e) {
-      if (e.target.closest('.btn-delete')) return;
+      if (e.target.closest('.btn-delete, .btn-export')) return;
       toggleExpand(doc.documentId, tr);
+    });
+
+    tr.querySelector('.btn-export').addEventListener('click', function (e) {
+      e.stopPropagation();
+      exportDocument(doc.documentId, e.currentTarget);
     });
 
     // Delete handler
@@ -400,6 +406,36 @@
     });
 
     return tr;
+  }
+
+  /**
+   * Download the document's metadata and every indexed passage as JSON. The
+   * passages may overlap, so they are kept as indexed rather than stitched
+   * into a text that never existed.
+   */
+  async function exportDocument(docId, button) {
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      var results = await Promise.all([window.RAG.getDocument(docId), window.RAG.getDocumentChunks(docId)]);
+      var payload = {
+        exportedAt: new Date().toISOString(),
+        document: results[0] && results[0].data !== undefined ? results[0].data : results[0],
+        chunks: (results[1] && results[1].data ? results[1].data.chunks : results[1] && results[1].chunks) || []
+      };
+      var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      var link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = String(docId).replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 120) + '.json';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(function () { URL.revokeObjectURL(link.href); }, 1000);
+    } catch (err) {
+      setDocumentsStatus('error', 'Export failed', 'Could not export ' + docId + ': ' + (err && err.message ? err.message : 'unknown error'));
+    } finally {
+      button.disabled = false;
+    }
   }
 
   function findExpandRow(docId) {
