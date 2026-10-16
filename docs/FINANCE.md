@@ -75,9 +75,14 @@ purchases as income.
   or report once), `finance_plan` (read, owner-stated operations, `done` to settle
   a deadline). Visible only to the configured finance agent.
 - `GET /api/finance/brief`: the finance line of the daily brief for other
-  surfaces. It returns labels and counts only (overdue and soon-due deadlines,
-  late series by issuer name, missing statements, proposals to confirm), never an
-  amount, an account number or a path. Labels keep no digits.
+  surfaces, for example "Finances : Payer le T2 corp en retard · Odyssée à payer
+  dans 7 jours · relevés à déposer : Desjardins · 109 liens à confirmer". It
+  carries short labels, late series by issuer name, and the proposals to confirm.
+  It never carries an amount, an account number or a path: amounts, arrows
+  between amounts, long digit runs and four-digit non-years are removed from every
+  label. A watch or open item may set `briefLabel` to choose its wording; without
+  it, the label is cut before a dash, parenthesis or colon, then at 50 characters
+  on a word boundary. The missing-history count is not in the brief.
 - Scheduled agent jobs (instance configuration): daily alert check (silent
   with `NO_REPLY` when nothing is new) and a weekly review.
 

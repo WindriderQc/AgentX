@@ -745,10 +745,29 @@ describe('finance line for the daily brief', () => {
       openItems: [{ title: 'Odyssée 150 $', dueDate: '2026-10-08' }, { title: 'Impôt corp', dueDate: '2026-09-30' }]
     });
     const line = await brief.summary({ now: new Date('2026-10-01T12:00:00Z') });
-    expect(line.summary).toBe('Finances : Impôt corp en retard · Odyssée à payer dans 7 jours · relevés en retard : Caisse Exemple · 1 relevé attendu');
+    expect(line.summary).toBe('Finances : Impôt corp en retard · Odyssée à payer dans 7 jours · relevés à déposer : Caisse Exemple');
     // Counts may be written; no amount ($ or cents) and no account-like number.
     expect(line.summary).not.toMatch(/\$|\d{3,}/);
     expect(line.counts).toMatchObject({ overdue: 1, dueSoon: 1, lateSeries: 1, missingStatements: 1 });
+  });
+
+  test('keeps the words and years of a label, removes amounts and account-like numbers, and prefers briefLabel', async () => {
+    const { shortLabel } = brief;
+    expect(shortLabel({ label: 'Payer le T2 corp, (échu le 11 août) via le VMD corp' })).toBe('Payer le T2 corp');
+    expect(shortLabel({ label: 'Hydro: 9 100,83 $ à payer' })).toBe('Hydro');
+    expect(shortLabel({ label: 'Loyer 500 → 550 $/mois' })).toBe('Loyer');
+    expect(shortLabel({ label: 'compte 1234567 pour 2027' })).toBe('compte pour 2027');
+    expect(shortLabel({ label: "Payer l'Odyssée AU COMPLET au relevé pour garder le délai de grâce" }).length).toBeLessThanOrEqual(50);
+    expect(shortLabel({ label: 'ignored long text', briefLabel: 'Payer le T2 corp' })).toBe('Payer le T2 corp');
+  });
+
+  test('the brief lists late series to file, without the count of missing history', async () => {
+    await eop(['2026-06-01', '2026-06-30'], 'PAIE');
+    await eop(['2026-07-15', '2026-07-31'], 'PAIE');
+    await plan.savePlan({ openItems: [{ title: 'Impôt corp', briefLabel: 'Payer le T2 corp', dueDate: '2026-09-30' }] });
+    const line = await brief.summary({ now: new Date('2026-10-01T12:00:00Z') });
+    expect(line.summary).toBe('Finances : Payer le T2 corp en retard · relevés à déposer : Caisse Exemple');
+    expect(line.counts.missingStatements).toBe(1);
   });
 
   test('says nothing when there is nothing to say', async () => {
@@ -875,7 +894,7 @@ describe('financial plan and situation', () => {
     expect(s.budget.map((b) => [b.label, b.actualMonthlyCents])).toEqual([['Paye', 250000], ['Café', 900], ['Restos', 0]]);
     expect(s.monthly).toEqual({ inCents: 250000, outCents: -900, netCents: 249100 });
     expect(s).toMatchObject({ provisionsMonthlyCents: 30000, taxRoomCents: 1000000, phase: 'Reconstruction' });
-    expect(s.openItems).toEqual([{ title: 'Relevé manquant', detail: '', severity: 'warning', dueDate: null, recurrence: null }]);
+    expect(s.openItems).toEqual([{ title: 'Relevé manquant', detail: '', severity: 'warning', briefLabel: null, dueDate: null, recurrence: null }]);
     expect(s.excludeTags).toEqual(['refi']);
     await categories.saveRules({ pattern: 'cafe du coin', category: 'Restaurants', tags: ['cafe', 'refi'] });
     expect((await plan.situation({ months: 1 })).monthly).toEqual({ inCents: 250000, outCents: 0, netCents: 250000 });

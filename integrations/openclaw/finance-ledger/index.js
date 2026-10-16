@@ -173,6 +173,7 @@ export default definePluginEntry({
           + "Amounts are integer cents (monthlyCents, balanceCents, valueCents, annualCents...), rates in basis points (rateBp). "
           + "op done settles a watch or open item the owner says is paid ('Odyssée payée' → done, match 'Odyssée'): a recurring item "
           + "moves its dueDate to the next period (monthly, quarterly, yearly); any other item is removed and kept as a settled milestone. "
+          + "An open item or watch line can carry briefLabel: the short wording the morning brief uses. "
           + "seriesStatus names a statement series (issuer ··· last four) with label, and closed=true for a closed account or card "
           + "(no stale alert then). "
           + "Confirm what changed in one line.",
