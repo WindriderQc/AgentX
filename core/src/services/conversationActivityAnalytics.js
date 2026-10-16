@@ -30,6 +30,25 @@ function activeMessagesExpression(fromDate, toDate) {
   };
 }
 
+/**
+ * Aggregation stages that keep one row per message observed in the window
+ * (`$messages` after the unwind). Chat-lane costs, feedback and RAG cohorts
+ * use them so they count the same activity as the Conversations tile, not
+ * only conversations created inside the window.
+ */
+function activeMessageStages(fromDate, toDate, conversationMatch = null) {
+  const activity = conversationActivityFilter(fromDate, toDate);
+  const observedAt = { $ifNull: ['$messages.timestamp', '$messages.createdAt'] };
+  return [
+    { $match: conversationMatch ? { $and: [conversationMatch, activity] } : activity },
+    { $unwind: '$messages' },
+    { $match: { $expr: { $and: [
+      { $gte: [observedAt, fromDate] },
+      { $lte: [observedAt, toDate] }
+    ] } } }
+  ];
+}
+
 function activeMessageCostExpression(input = '$activeMessages') {
   return {
     $sum: {
@@ -91,6 +110,7 @@ function activityDayPipeline(fromDate, toDate) {
 
 module.exports = {
   activeMessageCostExpression,
+  activeMessageStages,
   activeMessagesExpression,
   activityDayPipeline,
   conversationActivityFilter,

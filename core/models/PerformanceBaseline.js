@@ -16,11 +16,13 @@ const PerformanceBaselineSchema = new mongoose.Schema({
     required: true,
     unique: true,
     trim: true,
+    maxlength: 120,
     description: 'Baseline version identifier (e.g., "v1.0-baseline", "2026-01-production")'
   },
   description: {
     type: String,
     trim: true,
+    maxlength: 500,
     description: 'Human-readable description of baseline purpose'
   },
 

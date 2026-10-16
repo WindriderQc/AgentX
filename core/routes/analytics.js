@@ -11,12 +11,12 @@ const logger = require('../config/logger');
 const {
   activeMessageCostExpression,
   activeMessagesExpression,
+  activeMessageStages,
   activityDayPipeline,
   conversationActivityFilter
 } = require('../src/services/conversationActivityAnalytics');
 const {
   differenceSignal,
-  rankingSignal,
   ratioSignal,
   serializeSignal
 } = require('../../shared/signalEvidence');
@@ -170,14 +170,12 @@ router.get('/feedback', async (req, res) => {
     const toDate = to ? new Date(to) : new Date();
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    const dateFilter = {
-      createdAt: { $gte: fromDate, $lte: toDate }
-    };
+    // Votes on messages observed in the window (the page-wide activity basis).
+    const windowMessages = activeMessageStages(fromDate, toDate);
 
     // Total feedback counts
     const feedbackAgg = await Conversation.aggregate([
-      { $match: dateFilter },
-      { $unwind: '$messages' },
+      ...windowMessages,
       { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
       { $group: {
           _id: null,
@@ -197,8 +195,7 @@ router.get('/feedback', async (req, res) => {
     let breakdown = [];
     if (groupBy === 'promptVersion') {
       breakdown = await Conversation.aggregate([
-        { $match: dateFilter },
-        { $unwind: '$messages' },
+        ...windowMessages,
         { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
         { $group: {
             _id: { name: '$promptName', version: '$promptVersion' },
@@ -221,8 +218,7 @@ router.get('/feedback', async (req, res) => {
       ]);
     } else if (groupBy === 'model') {
       breakdown = await Conversation.aggregate([
-        { $match: dateFilter },
-        { $unwind: '$messages' },
+        ...windowMessages,
         { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
         { $group: {
             _id: '$model',
@@ -245,8 +241,7 @@ router.get('/feedback', async (req, res) => {
     } else if (groupBy === 'promptAndModel') {
       // Combined grouping: shows performance of each prompt version on each model
       breakdown = await Conversation.aggregate([
-        { $match: dateFilter },
-        { $unwind: '$messages' },
+        ...windowMessages,
         { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
         { $group: {
             _id: {
@@ -308,17 +303,16 @@ router.get('/rag-stats', async (req, res) => {
     const toDate = to ? new Date(to) : new Date();
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    const dateFilter = {
-      createdAt: { $gte: fromDate, $lte: toDate }
-    };
+    // Conversations with a message in the window: the same basis as the
+    // Conversations tile, so adoption shares its denominator.
+    const dateFilter = conversationActivityFilter(fromDate, toDate);
 
     // RAG usage counts
     const totalConversations = await Conversation.countDocuments(dateFilter);
     // Backward compatible: older data may not have `ragRequested` persisted.
     // In that case, `ragUsed: true` implies it was requested/enabled.
     const ragRequestedConversations = await Conversation.countDocuments({
-      ...dateFilter,
-      $or: [{ ragRequested: true }, { ragUsed: true }]
+      $and: [dateFilter, { $or: [{ ragRequested: true }, { ragUsed: true }] }]
     });
     const ragConversations = await Conversation.countDocuments({ ...dateFilter, ragUsed: true });
     const noRagConversations = totalConversations - ragConversations;
@@ -327,8 +321,7 @@ router.get('/rag-stats', async (req, res) => {
 
     // Feedback for RAG vs non-RAG conversations
     const ragFeedback = await Conversation.aggregate([
-      { $match: { ...dateFilter, ragUsed: true } },
-      { $unwind: '$messages' },
+      ...activeMessageStages(fromDate, toDate, { ragUsed: true }),
       { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
       { $group: {
           _id: null,
@@ -339,8 +332,7 @@ router.get('/rag-stats', async (req, res) => {
     ]);
 
     const noRagFeedback = await Conversation.aggregate([
-      { $match: { ...dateFilter, ragUsed: { $ne: true } } },
-      { $unwind: '$messages' },
+      ...activeMessageStages(fromDate, toDate, { ragUsed: { $ne: true } }),
       { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
       { $group: {
           _id: null,
@@ -564,194 +556,8 @@ router.get('/stats', async (req, res) => {
   }
 });
 
-/**
- * GET /api/analytics/costs
- * Dedicated cost analytics endpoint with flexible grouping
- * Query params:
- *   - from (ISO date, default: 7 days ago)
- *   - to (ISO date, default: now)
- *   - groupBy (optional: 'model' | 'day' | 'promptVersion', default: 'model')
- *   - minCost (number, default: 0) - Filter out entries below this cost
- * Response: { summary: {...}, breakdown: [...] }
- */
-router.get('/costs', async (req, res) => {
-  try {
-    const { from, to, groupBy = 'model', minCost = 0 } = req.query;
-
-    // Parse date range
-    const toDate = to ? new Date(to) : new Date();
-    const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-    const dateFilter = { createdAt: { $gte: fromDate, $lte: toDate } };
-
-    // Determine grouping key
-    let groupKey;
-    if (groupBy === 'day') {
-      groupKey = { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } };
-    } else if (groupBy === 'promptVersion') {
-      groupKey = { name: '$promptName', version: '$promptVersion' };
-    } else {
-      groupKey = '$model';
-    }
-
-    // Aggregate cost data
-    const costAgg = await Conversation.aggregate([
-      { $match: dateFilter },
-      { $unwind: '$messages' },
-      { $match: { 'messages.role': 'assistant' } },
-      { $group: {
-          _id: groupKey,
-          messageCount: { $sum: 1 },
-          conversationCount: { $addToSet: '$_id' },
-          totalPromptTokens: { $sum: { $ifNull: ['$messages.stats.usage.promptTokens', 0] } },
-          totalCompletionTokens: { $sum: { $ifNull: ['$messages.stats.usage.completionTokens', 0] } },
-          totalTokens: { $sum: { $ifNull: ['$messages.stats.usage.totalTokens', 0] } },
-          totalCost: { $sum: '$messages.cost.totalCost' },
-          promptTokenCost: { $sum: { $ifNull: ['$messages.cost.promptTokenCost', 0] } },
-          completionTokenCost: { $sum: { $ifNull: ['$messages.cost.completionTokenCost', 0] } }
-        }
-      },
-      { $project: {
-          _id: 0,
-          key: '$_id',
-          messageCount: 1,
-          conversationCount: { $size: '$conversationCount' },
-          tokens: {
-            prompt: '$totalPromptTokens',
-            completion: '$totalCompletionTokens',
-            total: '$totalTokens'
-          },
-          cost: {
-            total: '$totalCost',
-            prompt: '$promptTokenCost',
-            completion: '$completionTokenCost',
-            avgPerMessage: {
-              $cond: [
-                { $gt: ['$messageCount', 0] },
-                { $divide: ['$totalCost', '$messageCount'] },
-                0
-              ]
-            },
-            avgPerConversation: {
-              $cond: [
-                { $gt: [{ $size: '$conversationCount' }, 0] },
-                { $divide: ['$totalCost', { $size: '$conversationCount' }] },
-                0
-              ]
-            },
-            per1kTokens: {
-              $cond: [
-                { $gt: ['$totalTokens', 0] },
-                { $divide: ['$totalCost', { $divide: ['$totalTokens', 1000] }] },
-                0
-              ]
-            }
-          }
-        }
-      },
-      { $match: { 'cost.total': { $gte: parseFloat(minCost) } } },
-      { $sort: { 'cost.total': -1 } }
-    ]);
-
-    // Calculate summary statistics
-    const summary = costAgg.reduce((acc, curr) => {
-      acc.totalCost += curr.cost.total;
-      acc.totalMessages += curr.messageCount;
-      acc.totalConversations += curr.conversationCount;
-      acc.totalTokens += curr.tokens.total;
-      acc.promptTokenCost += curr.cost.prompt;
-      acc.completionTokenCost += curr.cost.completion;
-      return acc;
-    }, {
-      totalCost: 0,
-      totalMessages: 0,
-      totalConversations: 0,
-      totalTokens: 0,
-      promptTokenCost: 0,
-      completionTokenCost: 0
-    });
-
-    // Calculate averages
-    summary.avgCostPerMessage = summary.totalMessages > 0
-      ? summary.totalCost / summary.totalMessages
-      : 0;
-    summary.avgCostPerConversation = summary.totalConversations > 0
-      ? summary.totalCost / summary.totalConversations
-      : 0;
-    summary.costPer1kTokens = summary.totalTokens > 0
-      ? summary.totalCost / (summary.totalTokens / 1000)
-      : 0;
-
-    // Format all cost values to 6 decimal places
-    const formatCost = (cost) => parseFloat((cost || 0).toFixed(6));
-
-    summary.totalCost = formatCost(summary.totalCost);
-    summary.promptTokenCost = formatCost(summary.promptTokenCost);
-    summary.completionTokenCost = formatCost(summary.completionTokenCost);
-    summary.avgCostPerMessage = formatCost(summary.avgCostPerMessage);
-    summary.avgCostPerConversation = formatCost(summary.avgCostPerConversation);
-    summary.costPer1kTokens = formatCost(summary.costPer1kTokens);
-
-    // Format breakdown items. A row is `priced` only when it carries a real
-    // cost over real tokens; local models have no per-token price and must
-    // never be ranked as the cheapest just because their cost is 0.
-    const formattedBreakdown = costAgg.map(item => ({
-      ...item,
-      priced: (item.cost?.total || 0) > 0 && (item.tokens?.total || 0) > 0,
-      cost: {
-        ...item.cost,
-        total: formatCost(item.cost.total),
-        prompt: formatCost(item.cost.prompt),
-        completion: formatCost(item.cost.completion),
-        avgPerMessage: formatCost(item.cost.avgPerMessage),
-        avgPerConversation: formatCost(item.cost.avgPerConversation),
-        per1kTokens: formatCost(item.cost.per1kTokens)
-      }
-    }));
-
-    // Signal Evidence Contract: a "Best" needs at least two priced rows and
-    // no tie; otherwise the ranking reports why no winner can be named.
-    const groupLabel = (key) => (key && typeof key === 'object'
-      ? `${key.name || 'prompt'}@${key.version ?? '-'}`
-      : String(key ?? 'unknown'));
-    const costEfficiencyRanking = rankingSignal({
-      id: 'analytics.cost.efficiency_ranking',
-      scope: { from: fromDate.toISOString(), to: toDate.toISOString(), groupBy },
-      source: 'conversations',
-      observedAt: toDate,
-      ttlMs: CHAT_LANE_TTL_MS,
-      unit: 'usd_per_1k_tokens',
-      direction: 'asc',
-      candidates: formattedBreakdown.map((row) => ({
-        key: groupLabel(row.key),
-        value: row.cost.per1kTokens,
-        comparable: row.priced,
-        reason: row.priced ? null : 'no_price'
-      }))
-    });
-
-    res.json({
-      status: 'success',
-      data: {
-        from: fromDate.toISOString(),
-        to: toDate.toISOString(),
-        currency: process.env.COST_CURRENCY || 'USD',
-        groupBy,
-        minCost: parseFloat(minCost),
-        summary,
-        signals: {
-          costEfficiencyRanking: serializeSignal(costEfficiencyRanking)
-        },
-        breakdown: formattedBreakdown
-      }
-    });
-  } catch (err) {
-    logger.error('Analytics costs error', { error: err.message, stack: err.stack });
-    res.status(500).json({ status: 'error', message: err.message });
-  }
-});
-
-// Sub-routers: prompt/feedback and cross-runtime effectiveness analytics
+// Sub-routers: chat-lane costs, prompt/feedback and cross-runtime effectiveness analytics
+router.use('/', require('./analytics-costs'));
 router.use('/', require('./analytics-prompt'));
 router.use('/', require('./analytics-effectiveness'));
 // Inference-log analytics: the lane that actually carries platform traffic.

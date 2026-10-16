@@ -2,8 +2,8 @@
   <header class="ao-header">
     <div><span class="ao-eyebrow">Intelligence / Overview</span><h1 id="analytics-experience-title">Every call. The whole picture.</h1></div>
     <div class="ao-controls">
-      <label for="analyticsWindow">Recorded activity</label>
-      <select id="analyticsWindow"><option value="24h" selected>Last 24 hours</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="90d">Last 90 days</option></select>
+      <label for="analyticsWindow">Period for the whole page</label>
+      <select id="analyticsWindow"><option value="24h" selected>Last 24 hours</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option></select>
       <button id="analytics-experience-refresh" type="button" aria-label="Refresh analytics"><i class="fas fa-rotate" aria-hidden="true"></i></button>
     </div>
   </header>
@@ -53,7 +53,7 @@
   </div>
   <p id="ao-coverage" class="ao-coverage">Recorded AgentX calls only. Native calls that bypass Core are outside this view. Elapsed call time is not GPU busy time.</p>
   <nav class="ao-links" aria-label="Related activity">
-    <button type="button" data-analytics-target="chatLaneHeading"><i class="fas fa-comments" aria-hidden="true"></i> Playground conversations <small id="analytics-chat-detail">Separate conversation scope</small></button>
+    <button type="button" data-analytics-target="chatLaneHeading"><i class="fas fa-comments" aria-hidden="true"></i> Playground conversations <small id="analytics-chat-detail">Conversations in this period</small></button>
     <a href="<%= publicUrls.rag %>/"><i class="fas fa-book-open" aria-hidden="true"></i> Knowledge <small id="analytics-knowledge-detail">Corpus and retrieval</small></a>
     <a href="/performance"><i class="fas fa-gauge-high" aria-hidden="true"></i> Server performance <small>Page and API response times</small></a>
   </nav>

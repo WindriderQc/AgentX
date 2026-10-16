@@ -10,7 +10,7 @@ import { differenceSignal, formatSignal, parseSignal, ratioSignal } from '/dist/
 
 const elements = {
   // Product Analytics Elements
-  periodSelect: document.getElementById('periodSelect'),
+  analyticsWindow: document.getElementById('analyticsWindow'),
   usageGroupSelect: document.getElementById('usageGroupSelect'),
   feedbackGroupSelect: document.getElementById('feedbackGroupSelect'),
   refreshBtn: document.getElementById('refreshBtn'),
@@ -40,8 +40,6 @@ const elements = {
   ragAvgChunks: document.getElementById('ragAvgChunks'),
   ragHealth: document.getElementById('ragHealth'),
   ragSourcesBody: document.getElementById('ragSourcesBody'),
-  ragOldest: document.getElementById('ragOldest'),
-  ragNewest: document.getElementById('ragNewest'),
   ragLastIngest: document.getElementById('ragLastIngest'),
   ragEmpty: document.getElementById('ragEmpty'),
 
@@ -151,6 +149,32 @@ function sampleNote(signal, noun, observedText) {
     : null;
   if (view.state === 'observed') return [counts, observedText].filter(Boolean).join(' · ');
   return [counts, view.detail].filter(Boolean).join(' · ');
+}
+
+// The detail workbench ("Explore the details") loads only once opened. A
+// Period change while it is closed waits for the next open; the newest
+// request per panel wins.
+const cockpit = document.getElementById('analytics-cockpit');
+const deferredLoads = new Map();
+function whenCockpitOpen(key, load) {
+  if (!cockpit || cockpit.open) return load();
+  deferredLoads.set(key, load);
+  return undefined;
+}
+cockpit?.addEventListener('toggle', () => {
+  if (!cockpit.open) return;
+  const pending = [...deferredLoads.values()];
+  deferredLoads.clear();
+  pending.forEach((load) => load());
+});
+// Classic inline scripts on the page use the same gate.
+window.AgentXAnalyticsCockpit = { whenOpen: whenCockpitOpen };
+
+// One page-wide Period drives every panel (see the overview header).
+const WINDOW_DAYS = { '24h': 1, '7d': 7, '30d': 30 };
+
+function periodDays() {
+  return WINDOW_DAYS[elements.analyticsWindow?.value] || 1;
 }
 
 function periodRange(days) {
@@ -464,7 +488,7 @@ function toggleEmptyState(container, emptyEl, hasData) {
 }
 
 async function refreshProduct() {
-  const days = elements.periodSelect.value;
+  const days = periodDays();
   const usageGroup = elements.usageGroupSelect.value;
   const feedbackGroup = elements.feedbackGroupSelect.value;
 
@@ -511,4 +535,4 @@ async function refreshProduct() {
 }
 
 
-export { elements, charts, beginRequest, buildRangeQuery, checkAuth, fetchJSON, formatNumber, refreshProduct };
+export { elements, charts, beginRequest, periodDays, whenCockpitOpen, buildRangeQuery, checkAuth, fetchJSON, formatNumber, refreshProduct };

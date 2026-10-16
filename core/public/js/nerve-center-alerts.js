@@ -118,7 +118,7 @@
             html += `<h4 style="color:var(--text-bright);margin:20px 0 8px;display:flex;align-items:center;gap:12px">
                 <span><i class="fa-solid fa-shield-halved"></i> Alert Rules</span>
                 <button class="nc-btn" id="nc-add-rule-btn" style="font-size:10px;padding:3px 10px;margin-left:auto"><i class="fas fa-plus"></i> Add Rule</button>
-                <button class="nc-btn" id="nc-bulk-resolve-btn" style="font-size:10px;padding:3px 10px;border-color:rgba(248,113,113,0.3);color:#f87171"><i class="fas fa-broom"></i> Resolve Old</button>
+                <button class="nc-btn" id="nc-bulk-resolve-btn" title="Resolve active alerts with no occurrence in the last 7 days" style="font-size:10px;padding:3px 10px;border-color:rgba(248,113,113,0.3);color:#f87171"><i class="fas fa-broom" aria-hidden="true"></i> Resolve Old</button>
             </h4>`;
             html += buildRulesTable(rules);
 
@@ -317,15 +317,23 @@
         // Bulk-resolve old alerts
         const bulkButton = document.getElementById('nc-bulk-resolve-btn');
         bulkButton?.addEventListener('click', () => {
-            if (!confirm('Resolve all active alerts older than 7 days?')) return;
             act(bulkButton, async () => {
-                const result = await shared.fetchJson('/api/alerts/bulk-resolve', {
+                const post = (body) => shared.fetchJson('/api/alerts/bulk-resolve', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ olderThanDays: 7 }),
+                    body: JSON.stringify(body),
                 });
+                // Count first so the confirmation names exactly what will be resolved.
+                const preview = await post({ olderThanDays: 7, dryRun: true });
+                const matching = preview?.data?.matching || 0;
+                if (matching === 0) {
+                    window.AgentXUtils?.showToast?.('No active alert has been quiet for 7 days.', 'info');
+                    return;
+                }
+                if (!confirm(`Resolve ${matching} active alert${matching === 1 ? '' : 's'} with no occurrence in the last 7 days?`)) return;
+                const result = await post({ olderThanDays: 7 });
                 const count = result?.data?.resolved || 0;
-                window.AgentXUtils?.showToast?.(count > 0 ? `Resolved ${count} old alert(s).` : 'No alert older than 7 days.', 'info');
+                window.AgentXUtils?.showToast?.(`Resolved ${count} quiet alert${count === 1 ? '' : 's'}.`, 'info');
                 loadAlerts();
             });
         });

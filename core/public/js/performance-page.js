@@ -3,6 +3,14 @@
             return { 'Content-Type': 'application/json' };
         }
 
+        // Helper: escape stored text (names, scenarios, request paths) before
+        // it is written into markup; any LAN client can store these values.
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, (c) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            })[c]);
+        }
+
         // Performance Dashboard Controller
         const PerformanceDashboard = {
             // State
@@ -13,43 +21,86 @@
             refreshCountdown: 60,
             currentTimeRange: 24,
             currentEndpoint: '',
-            sortColumn: null,
+            sortColumn: 'date',
             sortDirection: 'desc',
+            requestSeq: {},
+            loadingAll: false,
 
             // Initialization
             async init() {
-                console.log('Initializing Performance Dashboard...');
                 this.bindEvents();
                 await this.loadAll();
                 this.startRefreshCountdown();
             },
 
+            // Fetch JSON with a timeout; an HTTP error or a non-success envelope throws.
+            async fetchJson(url, options = {}) {
+                const response = await fetch(url, { headers: jsonHeaders(), ...options, signal: AbortSignal.timeout(30000) });
+                let result = null;
+                try { result = await response.json(); } catch (_) { /* non-JSON error page */ }
+                if (!response.ok || !result || result.status !== 'success') {
+                    throw new Error(result?.message || `HTTP ${response.status}`);
+                }
+                return result;
+            },
+
+            // Each panel keeps only its newest response: a slow 7-day query that
+            // lands after a 1-hour one must not repaint the panel.
+            beginRequest(key) {
+                const id = (this.requestSeq[key] || 0) + 1;
+                this.requestSeq[key] = id;
+                return () => this.requestSeq[key] === id;
+            },
+
+            // Hide a chart and show its message; the previous range's chart must not stay visible.
+            showChartEmpty(chartKey, canvasId, emptyId, message) {
+                if (this.charts[chartKey]) {
+                    this.charts[chartKey].destroy();
+                    this.charts[chartKey] = null;
+                }
+                document.getElementById(canvasId).parentElement.hidden = true;
+                const empty = document.getElementById(emptyId);
+                empty.textContent = message;
+                empty.classList.add('visible');
+            },
+
+            showChart(canvasId, emptyId) {
+                document.getElementById(canvasId).parentElement.hidden = false;
+                document.getElementById(emptyId).classList.remove('visible');
+            },
+
             // Load dashboard stats
             async loadDashboard() {
+                const isCurrent = this.beginRequest('dashboard');
                 try {
-                    const response = await fetch(`/api/performance/dashboard?hours=${this.currentTimeRange}`, {
-                        headers: jsonHeaders()
-                    });
-                    const result = await response.json();
-                    if (result.status === 'success' && result.data) {
-                        this.updateStatsCards(result.data);
-                    }
+                    const result = await this.fetchJson(`/api/performance/dashboard?hours=${this.currentTimeRange}`);
+                    if (isCurrent() && result.data) this.updateStatsCards(result.data);
                 } catch (err) {
+                    if (!isCurrent()) return;
                     console.error('Failed to load dashboard:', err);
+                    const status = document.getElementById('systemStatus');
+                    status.className = 'badge unknown';
+                    status.textContent = 'Unavailable';
                 }
             },
 
-            // Load all data
-            async loadAll() {
-                await Promise.all([
+            // Load all data. An auto-refresh tick skips while a load is running;
+            // user actions always reload (stale responses are dropped per panel).
+            async loadAll({ fromTimer = false } = {}) {
+                if (fromTimer && this.loadingAll) return;
+                this.loadingAll = true;
+                try {
+                    await Promise.all([
                     this.loadDashboard(),
                     this.loadLatencyTrends(),
-                    this.loadPercentiles(),
                     this.loadThroughput(),
                     this.loadLoadTests(),
                     this.loadBaselines(),
                     this.populateEndpointFilter()
-                ]);
+                    ]);
+                } finally {
+                    this.loadingAll = false;
+                }
             },
 
             // Bind event listeners
@@ -60,10 +111,22 @@
                     this.currentTimeRange = parseInt(e.target.value);
                     this.loadAll();
                 });
+                // Only the latency trend has per-endpoint data.
                 document.getElementById('endpointFilter').addEventListener('change', (e) => {
                     this.currentEndpoint = e.target.value;
                     this.loadLatencyTrends();
-                    this.loadThroughput();
+                });
+                document.querySelectorAll('#loadTestsTable th.sortable').forEach(th => {
+                    th.addEventListener('click', () => this.sortLoadTests(th.dataset.sort));
+                    th.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            this.sortLoadTests(th.dataset.sort);
+                        }
+                    });
+                });
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden && this.autoRefreshEnabled) this.loadAll();
                 });
                 document.getElementById('autoRefreshToggle').addEventListener('change', (e) => {
                     this.autoRefreshEnabled = e.target.checked;
@@ -97,9 +160,11 @@
                     e.preventDefault();
                     this.createBaseline();
                 });
-                document.getElementById('baselineSource').addEventListener('change', (e) => {
-                    const loadTestGroup = document.getElementById('loadTestSelectGroup');
-                    loadTestGroup.style.display = e.target.value === 'loadtest' ? 'block' : 'none';
+
+                // Escape closes an open dialog
+                document.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Escape') return;
+                    document.querySelectorAll('.modal-overlay.active').forEach(overlay => overlay.classList.remove('active'));
                 });
 
                 // Close modals on overlay click
@@ -210,7 +275,7 @@
                                 const extras = [];
                                 if (Number.isFinite(err) && err > 0) extras.push(`${err.toFixed(2)}% err`);
                                 if (Number.isFinite(lat) && lat > 0) extras.push(`${lat.toFixed(0)}ms avg`);
-                                return `${categoryLabel(r.category)} ${count}${extras.length ? ` (${extras.join(', ')})` : ''}`;
+                                return `${escapeHtml(categoryLabel(r.category))} ${count}${extras.length ? ` (${extras.join(', ')})` : ''}`;
                             })
                             .join(' • ')}`
                         : '';
@@ -226,7 +291,7 @@
                             const parts = [];
                             if (Number.isFinite(err) && err >= 2) parts.push(`${err.toFixed(2)}% err`);
                             if (Number.isFinite(lat) && lat >= 250) parts.push(`${lat.toFixed(0)}ms avg`);
-                            hotspots.push(`${categoryLabel(r.category)} (${parts.join(', ')})`);
+                            hotspots.push(`${escapeHtml(categoryLabel(r.category))} (${parts.join(', ')})`);
                         }
                     }
 
@@ -238,7 +303,7 @@
                             const extras = [];
                             if (Number.isFinite(err) && err > 0) extras.push(`${err.toFixed(2)}% err`);
                             if (Number.isFinite(lat) && lat > 0) extras.push(`${lat.toFixed(0)}ms avg`);
-                            return `${e.method} ${e.path} (${e.count}${extras.length ? `, ${extras.join(', ')}` : ''})`;
+                            return `${escapeHtml(e.method)} ${escapeHtml(e.path)} (${escapeHtml(e.count)}${extras.length ? `, ${extras.join(', ')}` : ''})`;
                         }).join(' • ')}`
                         : '';
 
@@ -248,7 +313,7 @@
                             const err = Number(e.error_rate || 0);
                             const count = Number(e.count || 0);
                             const extra = Number.isFinite(err) ? `${err.toFixed(2)}%` : '0%';
-                            return `${e.method} ${e.path} (${extra}, ${count})`;
+                            return `${escapeHtml(e.method)} ${escapeHtml(e.path)} (${extra}, ${count})`;
                         }).join(' • ')}`
                         : '';
 
@@ -257,7 +322,7 @@
                         ? `Top slow: ${topSlow.map(e => {
                             const lat = Number(e.avg_latency || 0);
                             const count = Number(e.count || 0);
-                            return `${e.method} ${e.path} (${lat.toFixed(0)}ms, ${count})`;
+                            return `${escapeHtml(e.method)} ${escapeHtml(e.path)} (${lat.toFixed(0)}ms, ${count})`;
                         }).join(' • ')}`
                         : '';
 
@@ -273,16 +338,16 @@
 
                     const loadTest = src.latest_load_test;
                     const loadTestText = loadTest
-                        ? `Latest load test: ${loadTest.scenario || loadTest.name || '—'} (${new Date(loadTest.timestamp).toLocaleString()})`
+                        ? `Latest load test: ${escapeHtml(loadTest.scenario || loadTest.name || '—')} (${new Date(loadTest.timestamp).toLocaleString()})`
                         : 'Latest load test: none';
 
                     const baseline = src.active_baseline;
                     const baselineText = baseline
-                        ? `Active baseline: ${baseline.name}`
+                        ? `Active baseline: ${escapeHtml(baseline.name)}`
                         : 'Active baseline: none';
 
                     const scopeText = src.tracking_scope
-                        ? `Tracking scope: ${src.tracking_scope}`
+                        ? `Tracking scope: ${escapeHtml(src.tracking_scope)}`
                         : 'Tracking scope: non-static, non-health HTTP requests';
 
                     const extraLines = [breakdownText, categoryText, hotspotText, topText, topErrorsText, topSlowText, legendText].filter(Boolean);
@@ -317,116 +382,66 @@
 
             // Load latency trends
             async loadLatencyTrends() {
+                const isCurrent = this.beginRequest('latency');
                 try {
-                    const params = new URLSearchParams({
-                        hours: this.currentTimeRange
-                    });
-                    if (this.currentEndpoint) {
-                        params.append('endpoint', this.currentEndpoint);
-                    }
+                    const params = new URLSearchParams({ hours: this.currentTimeRange });
+                    if (this.currentEndpoint) params.append('endpoint', this.currentEndpoint);
+                    const result = await this.fetchJson(`/api/performance/latency-trends?${params}`);
+                    if (!isCurrent()) return;
 
-                    const response = await fetch(`/api/performance/latency-trends?${params}`, {
-                        headers: jsonHeaders()
-                    });
-                    const result = await response.json();
-
-                    const trends = result?.data?.trends || [];
-                    if (result.status === 'success' && Array.isArray(trends) && trends.length > 0) {
+                    const trends = Array.isArray(result?.data?.trends) ? result.data.trends : [];
+                    if (trends.length > 0) {
+                        this.showChart('latencyTrendsChart', 'latencyTrendsEmpty');
                         this.renderLatencyTrendChart(trends);
-                        document.getElementById('latencyTrendsEmpty').classList.remove('visible');
                     } else {
-                        document.getElementById('latencyTrendsEmpty').classList.add('visible');
+                        this.showChartEmpty('latencyTrends', 'latencyTrendsChart', 'latencyTrendsEmpty', 'No latency data available for this time range.');
                     }
                 } catch (err) {
+                    if (!isCurrent()) return;
                     console.error('Failed to load latency trends:', err);
-                    document.getElementById('latencyTrendsEmpty').classList.add('visible');
+                    this.showChartEmpty('latencyTrends', 'latencyTrendsChart', 'latencyTrendsEmpty', 'Could not load latency trends. Try Refresh.');
                 }
             },
 
-
-            // Load percentiles
-            async loadPercentiles() {
-                try {
-                    const params = new URLSearchParams({
-                        hours: this.currentTimeRange
-                    });
-                    if (this.currentEndpoint) {
-                        params.append('endpoint', this.currentEndpoint);
-                    }
-
-                    const response = await fetch(`/api/performance/percentiles?${params}`, {
-                        headers: jsonHeaders()
-                    });
-                    const result = await response.json();
-
-                    const percentiles = result?.data?.percentiles || result?.data;
-                    if (result.status === 'success' && percentiles) {
-                        this.renderPercentileChart(percentiles);
-                        document.getElementById('percentileEmpty').classList.remove('visible');
-                    } else {
-                        document.getElementById('percentileEmpty').classList.add('visible');
-                    }
-                } catch (err) {
-                    console.error('Failed to load percentiles:', err);
-                    document.getElementById('percentileEmpty').classList.add('visible');
-                }
-            },
-
-
-            // Load throughput
+            // Load throughput (all endpoints; the route has no per-endpoint data)
             async loadThroughput() {
+                const isCurrent = this.beginRequest('throughput');
                 try {
-                    const params = new URLSearchParams({
-                        hours: this.currentTimeRange
-                    });
-                    if (this.currentEndpoint) {
-                        params.append('endpoint', this.currentEndpoint);
-                    }
+                    const result = await this.fetchJson(`/api/performance/throughput?hours=${this.currentTimeRange}`);
+                    if (!isCurrent()) return;
 
-                    const response = await fetch(`/api/performance/throughput?${params}`, {
-                        headers: jsonHeaders()
-                    });
-                    const result = await response.json();
-
-                    const throughput = result?.data?.throughput || [];
-                    if (result.status === 'success' && Array.isArray(throughput) && throughput.length > 0) {
+                    const throughput = Array.isArray(result?.data?.throughput) ? result.data.throughput : [];
+                    if (throughput.length > 0) {
+                        this.showChart('throughputChart', 'throughputEmpty');
                         this.renderThroughputChart(throughput);
-                        document.getElementById('throughputEmpty').classList.remove('visible');
                     } else {
-                        document.getElementById('throughputEmpty').classList.add('visible');
+                        this.showChartEmpty('throughput', 'throughputChart', 'throughputEmpty', 'No throughput data available for this time range.');
                     }
                 } catch (err) {
+                    if (!isCurrent()) return;
                     console.error('Failed to load throughput:', err);
-                    document.getElementById('throughputEmpty').classList.add('visible');
+                    this.showChartEmpty('throughput', 'throughputChart', 'throughputEmpty', 'Could not load throughput. Try Refresh.');
                 }
             },
 
-
-            // Populate endpoint filter
+            // Populate endpoint filter for the selected range, keeping the current choice.
             async populateEndpointFilter() {
+                const isCurrent = this.beginRequest('endpoints');
                 try {
-                    const response = await fetch('/api/performance/endpoints');
-                    const contentType = response.headers.get('content-type') || '';
-                    if (!response.ok) {
-                        const body = await response.text();
-                        throw new Error(`HTTP ${response.status} ${response.statusText}: ${body.slice(0, 200)}`);
-                    }
-                    if (!contentType.includes('application/json')) {
-                        const body = await response.text();
-                        throw new Error(`Expected JSON but got ${contentType || 'unknown content-type'}: ${body.slice(0, 200)}`);
-                    }
+                    const result = await this.fetchJson(`/api/performance/endpoints?hours=${this.currentTimeRange}`);
+                    if (!isCurrent() || !Array.isArray(result.data)) return;
 
-                    const result = await response.json();
-
-                    if (result.status === 'success' && result.data) {
-                        const select = document.getElementById('endpointFilter');
-                        result.data.forEach(endpoint => {
-                            const option = document.createElement('option');
-                            option.value = endpoint;
-                            option.textContent = endpoint;
-                            select.appendChild(option);
-                        });
-                    }
+                    const select = document.getElementById('endpointFilter');
+                    const selected = this.currentEndpoint;
+                    select.length = 1; // keep "All Endpoints"
+                    const endpoints = selected && !result.data.includes(selected) ? [selected, ...result.data] : result.data;
+                    endpoints.forEach(endpoint => {
+                        const option = document.createElement('option');
+                        option.value = endpoint;
+                        option.textContent = endpoint;
+                        select.appendChild(option);
+                    });
+                    select.value = selected;
                 } catch (err) {
                     console.error('Failed to load endpoints:', err);
                 }
@@ -435,9 +450,12 @@
             // Auto-refresh
             startAutoRefresh() {
                 this.stopAutoRefresh();
+                this.refreshCountdown = 60;
                 this.refreshInterval = setInterval(() => {
-                    this.loadAll();
                     this.refreshCountdown = 60;
+                    // A hidden tab does not need fresh numbers; refresh when it is shown.
+                    if (document.hidden) return;
+                    this.loadAll({ fromTimer: true });
                 }, 60000); // Refresh every 60 seconds
             },
 

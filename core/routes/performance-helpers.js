@@ -8,7 +8,6 @@
  * Exports:
  *   calculateSystemHealth(metrics, baseline) — returns health string
  *   calculateDiff(current, baseline)         — % difference string
- *   buildHistogram(latencies)                — ms-bucket histogram
  */
 
 /**
@@ -18,7 +17,8 @@
  * @returns {string} 'healthy' | 'degraded' | 'unhealthy' | 'unknown'
  */
 function calculateSystemHealth(metrics, baseline) {
-  if (!metrics) {
+  // No measured request (only model-bound traffic, or none) is unknown, not healthy.
+  if (!metrics || metrics.total_requests === 0) {
     return 'unknown';
   }
 
@@ -65,30 +65,4 @@ function calculateDiff(current, baseline) {
   return ((current / baseline - 1) * 100).toFixed(2);
 }
 
-/**
- * Build histogram buckets from an array of latency values (ms).
- * @param {number[]} latencies - Array of latency values
- * @returns {Array<{label: string, count: number}>}
- */
-function buildHistogram(latencies) {
-  if (!latencies || latencies.length === 0) {
-    return [];
-  }
-
-  const buckets = [
-    { label: '0-50ms',     min: 0,    max: 50 },
-    { label: '50-100ms',   min: 50,   max: 100 },
-    { label: '100-200ms',  min: 100,  max: 200 },
-    { label: '200-500ms',  min: 200,  max: 500 },
-    { label: '500-1000ms', min: 500,  max: 1000 },
-    { label: '1000-2000ms',min: 1000, max: 2000 },
-    { label: '2000ms+',    min: 2000, max: Infinity }
-  ];
-
-  return buckets.map(bucket => ({
-    label: bucket.label,
-    count: latencies.filter(l => l >= bucket.min && l < bucket.max).length
-  }));
-}
-
-module.exports = { calculateSystemHealth, calculateDiff, buildHistogram };
+module.exports = { calculateSystemHealth, calculateDiff };
