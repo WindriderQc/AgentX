@@ -666,14 +666,6 @@ async function refreshRagMetrics() {
             }
         }
 
-        // Update date info
-        if (elements.ragOldest) {
-            elements.ragOldest.textContent = 'not recorded';
-        }
-        if (elements.ragNewest) {
-            elements.ragNewest.textContent = 'not recorded';
-        }
-
         // Update timestamp
         const timestampEl = document.getElementById('ragMetricsTimestamp');
         if (timestampEl) {

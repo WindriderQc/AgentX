@@ -637,14 +637,6 @@
                                         <span style="color: var(--muted);">Typical: 12-20 per doc (~800 chars/chunk)<br>More chunks = more granular search</span>
                                     </div>
                                     <div>
-                                        <strong style="color: var(--text);">Processing Time</strong><br>
-                                        <span style="color: var(--muted);">Normal: &lt;500ms per doc<br>Slow: &gt;1s indicates Ollama issues</span>
-                                    </div>
-                                    <div>
-                                        <strong style="color: var(--text);">Status Types</strong><br>
-                                        <span style="color: var(--muted);"><span style="color: #10b981;">created</span> = new, <span style="color: #3b82f6;">updated</span> = changed, <span style="color: #6b7280;">unchanged</span> = same</span>
-                                    </div>
-                                    <div>
                                         <strong style="color: var(--text);">Health Status</strong><br>
                                         <span style="color: var(--muted);"><span style="color: #10b981;">&#10003;</span> = Qdrant connected<br><span style="color: #ef4444;">&#10007;</span> = Qdrant offline</span>
                                     </div>
@@ -718,14 +710,6 @@
                     </div>
 
                     <div style="margin-top: 20px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px; font-size: 12px; color: var(--muted);">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                            <span><i class="fas fa-clock"></i> Oldest Document:</span>
-                            <span id="ragOldest">—</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                            <span><i class="fas fa-clock"></i> Newest Document:</span>
-                            <span id="ragNewest">—</span>
-                        </div>
                         <div style="display: flex; justify-content: space-between;" title="From the RAG ingest job history; the corpus freshness rule is evaluated against this instant.">
                             <span><i class="fas fa-file-import"></i> Last successful ingest:</span>
                             <span id="ragLastIngest">—</span>
