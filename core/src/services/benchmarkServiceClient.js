@@ -71,6 +71,18 @@ class BenchmarkServiceClient {
     return json?.data || null;
   }
 
+  /**
+   * Lane capability profile (#832) for one model on one host, built by the
+   * Benchmark from evidence for the exact artifact when Core supplies it.
+   */
+  async getLaneCapability(modelName, { hostUrl, artifactDigest, runtimeFingerprint } = {}) {
+    if (!modelName || !hostUrl) return null;
+    const query = { hostUrl };
+    if (artifactDigest && runtimeFingerprint) Object.assign(query, { artifactDigest, runtimeFingerprint });
+    const json = await this._getEvidence(`/api/profiler/evidence/capability/${encodeURIComponent(modelName)}`, query);
+    return json?.data?.capability || null;
+  }
+
   /** Resolve a Benchmark-owned host identity for exact-artifact qualification. */
   async getHostProfile(hostUrl) {
     if (!hostUrl) return null;

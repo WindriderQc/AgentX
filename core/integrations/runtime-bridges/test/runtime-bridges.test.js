@@ -1101,6 +1101,30 @@ test('OpenClaw provider base URL is exact, credential-free, and independently co
   }
 });
 
+test('runtime export attaches lane capability evidence only when asked, without changing lanes', async () => {
+  const services = runtimeServices(async () => {});
+  services.routing.getEffectiveSnapshot = async () => snapshot();
+  const plain = await buildRuntimeConfigExport(services, { coreBaseUrl: 'http://core.test:3080' });
+  assert.equal('capability' in plain.lanes.daily, false);
+  const reads = [];
+  const exported = await buildRuntimeConfigExport(services, {
+    coreBaseUrl: 'http://core.test:3080',
+    includeCapability: true,
+    capabilityReader: async (model, query) => {
+      reads.push([model, query.hostUrl]);
+      if (model === 'model-a') return { schema: 'agentx.lane-capability/v1', context: { knee: 32768 } };
+      throw new Error('benchmark unavailable');
+    }
+  });
+  assert.ok(reads.some(([model]) => model === 'model-a'));
+  assert.equal(exported.lanes.daily.capability.context.knee, 32768);
+  for (const lane of Object.values(exported.lanes)) {
+    assert.ok(lane.capability === null || lane.capability.schema === 'agentx.lane-capability/v1');
+  }
+  assert.equal(exported.lanes.daily.contextSize, plain.lanes.daily.contextSize);
+  assert.deepEqual(exported.openclaw.provider.models, plain.openclaw.provider.models);
+});
+
 test('OpenClaw validation distinguishes ordinary cloud agents from configured guarded dispatch', async () => {
   const services = runtimeServices(async () => {});
   services.routing.getEffectiveSnapshot = async () => snapshot();

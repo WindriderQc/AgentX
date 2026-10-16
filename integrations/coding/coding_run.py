@@ -326,6 +326,31 @@ def terminate(process):
         process.wait()
 
 
+def record_lane_capability(progress, model, lanes=None):
+    """Keep the lane capability evidence this execution ran with (#832).
+
+    Evidence only: a missing or unreadable profile changes nothing about the
+    run, and an existing receipt for the same request is never rewritten."""
+    request_id = getattr(progress, "request_id", None) if progress else None
+    if not request_id:
+        return None
+    path = RECEIPTS / f"{request_id}.capability.json"
+    if path.exists():
+        return None
+    if lanes is None:
+        try:
+            lanes = request(f"{CORE}/api/nerve-center/agent-runtime-config/export"
+                            "?includeCandidates=false&includeCapability=true").get("data", {}).get("lanes", {})
+        except (OSError, RuntimeError, ValueError):
+            return None
+    capability = next((lane.get("capability") for lane in (lanes or {}).values()
+                       if isinstance(lane, dict) and lane.get("model") == model and isinstance(lane.get("capability"), dict)), None)
+    if capability:
+        coding_dispatch_control.atomic_json(path, {"requestId": request_id, "model": model,
+                                                   "recordedAt": coding_progress.utc_now(), "capability": capability})
+    return capability
+
+
 def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None, model=None, *, read_only=False) -> subprocess.CompletedProcess:
     if read_only and (not progress or not getattr(progress, "report_mode", False) or not coding_progress.REQUEST_ID.fullmatch(progress.request_id)):
         raise ValueError("A report worker requires its original native request")
@@ -333,10 +358,12 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
     (home / ".dsh").mkdir(exist_ok=True)
     selected_model = model or MODEL
     context_size = getattr(progress, "model_context_size", None)
+    lanes = None
     if context_size is None:
-        lanes = request(f"{CORE}/api/nerve-center/agent-runtime-config/export").get("data", {}).get("lanes", {})
+        lanes = request(f"{CORE}/api/nerve-center/agent-runtime-config/export?includeCapability=true").get("data", {}).get("lanes", {})
         context_size = next((lane.get("contextSize") for lane in lanes.values()
                              if lane.get("model") == selected_model), None)
+    record_lane_capability(progress, selected_model, lanes)
     (home / ".dsh/agentx.patch.json").write_text(json.dumps(worker_patch(selected_model, context_size)))
     if progress:
         progress.model_worker_active = True

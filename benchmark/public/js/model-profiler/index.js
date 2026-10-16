@@ -1,6 +1,6 @@
 import * as api from './api.js';
 
-const MODULE_VERSION = 'host-telemetry-20260622b';
+const MODULE_VERSION = 'lane-capability-20261016';
 const state = { data: {} };
 
 function normalizeModelName(name) {
@@ -80,6 +80,8 @@ async function init() {
   if (guideEl) renderGuide(guideEl);
 
   // Render all sections in parallel
+  import(`./lanes.js?v=${MODULE_VERSION}`).then(module => module.initLanes()).catch(() => null);
+
   const hostsEl = document.getElementById('mp-hosts');
   const modelsEl = document.getElementById('mp-models');
   const [hostsModule, modelsModule] = await Promise.all([

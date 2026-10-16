@@ -214,7 +214,8 @@ function register(api) {
     try {
       const data = await buildRuntimeConfigExport(runtimeServices, {
         coreBaseUrl: requestCoreBaseUrl(req),
-        includeCandidates: req.query.includeCandidates !== 'false'
+        includeCandidates: req.query.includeCandidates !== 'false',
+        includeCapability: req.query.includeCapability === 'true'
       });
       return res.json({ status: 'success', data });
     } catch (error) { return next(error); }

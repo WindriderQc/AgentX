@@ -7,6 +7,7 @@ const ModelProfile = require('../../models/ModelProfile');
 const performanceProfiles = require('../../src/services/profiler/modelPerformanceProfileService');
 const contextProfiles = require('../../src/services/modelContextProfileService');
 const { resolveRuntimeArtifactReceipt } = require('../../src/services/profiler/artifactIdentityService');
+const laneCapabilities = require('../../src/services/profiler/laneCapabilityService');
 const toolQualifications = require('../../src/services/qualification/toolCapabilityQualificationService');
 const ModelPerformanceProfile = require('../../models/ModelPerformanceProfile');
 const {
@@ -138,6 +139,44 @@ router.get('/inference/:modelName', async (req, res) => {
         toolQualification
       }
     });
+  } catch (err) {
+    return res.status(500).json({ status: 'error', error: err.message });
+  }
+});
+
+// Lane capability profiles (#832): what each pinned or routed model can do on
+// its host, from existing evidence only. Read-only; starts no measurement.
+router.get('/lanes', async (_req, res) => {
+  try {
+    return res.json({ status: 'success', data: await laneCapabilities.listLaneCapabilities() });
+  } catch (err) {
+    return res.status(500).json({ status: 'error', error: err.message });
+  }
+});
+
+router.post('/lanes/measure', async (req, res) => {
+  try {
+    const data = await laneCapabilities.requestLaneMeasurement(req.body || {});
+    return res.status(201).json({ status: 'success', data });
+  } catch (err) {
+    const status = err.statusCode || (err.status >= 400 && err.status < 500 ? 409 : 502);
+    return res.status(status).json({ status: 'error', error: err.statusCode ? err.message : 'The request could not be recorded in the heavy-work queue; nothing was started' });
+  }
+});
+
+router.get('/capability/:modelName', async (req, res) => {
+  try {
+    const model = normalizeModelTag(req.params.modelName);
+    const hostUrl = normalizeHostUrl(req.query.hostUrl);
+    if (!model || !hostUrl) {
+      return res.status(400).json({ status: 'error', error: 'modelName and hostUrl are required' });
+    }
+    const digest = String(req.query.artifactDigest || '').trim();
+    const runtimeFingerprint = String(req.query.runtimeFingerprint || '').trim();
+    const capability = await laneCapabilities.capabilityFor({
+      model, hostUrl, artifact: digest && runtimeFingerprint ? { digest, runtimeFingerprint } : null
+    });
+    return res.json({ status: 'success', data: { capability } });
   } catch (err) {
     return res.status(500).json({ status: 'error', error: err.message });
   }

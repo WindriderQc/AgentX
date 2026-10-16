@@ -344,6 +344,7 @@ describe('Core API client scoped outbound execution', () => {
       ['POST', '/api/nerve-center/workload-admissions/admission-1/yield-point', CORE_OPERATIONS.WORKLOAD_YIELD_POINT],
       ['POST', '/api/inference/generate', CORE_OPERATIONS.INFERENCE_GENERATE],
       ['POST', '/api/inference/contract/resolve', CORE_OPERATIONS.INFERENCE_CONTRACT],
+      ['POST', '/api/cluster/schedule/work-queue', CORE_OPERATIONS.HEAVY_QUEUE_SUBMIT],
     ].map(([method, path, operationId]) => classifyCoreOperation(path, method)))
       .toEqual(Object.values(CORE_OPERATIONS));
     expect(() => classifyCoreOperation('/api/nerve-center/host-preferences', 'POST'))
