@@ -55,9 +55,9 @@
       const report = task.codingResult ? task.codingResult.profile === 'report' : Boolean(previous || task.reportName || task.reportCheckpointArchive);
       const saved = previous?.partial || previous;
       const selected = task.codingResult?.parentRequestId ? task.codingResult : null;
-      let checkpoint = selected && !task.codingReportAuthority?.bindings?.some(row => row.requestId === previous?.requestId && row.grantKey === task.codingReportAuthority.grants.at(-1)?.key) ? selected
+      let checkpoint = task.reportCheckpoint || (selected && !task.codingReportAuthority?.bindings?.some(row => row.requestId === previous?.requestId && row.grantKey === task.codingReportAuthority.grants.at(-1)?.key) ? selected
         : task.reportCheckpointArchive && !task.codingResult ? task.reportCheckpointArchive
-        : task.reportCheckpoint || (previous?.requestId ? { parentRequestId: previous.requestId, parentSha256: saved?.sha256 || null } : null);
+        : previous?.requestId ? { parentRequestId: previous.requestId, parentSha256: saved?.sha256 || null } : null);
       try { if (checkpoint) this.profile({ reportName: name, ...checkpoint }); } catch { checkpoint = null; }
       return `<label><span>Result to produce</span><select name="reportName" data-worker-profile>
         <option value=""${report ? '' : ' selected'}>Code change</option>

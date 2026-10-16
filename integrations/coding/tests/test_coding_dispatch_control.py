@@ -323,5 +323,31 @@ class ControlTest(unittest.TestCase):
         run.assert_not_called()
 
 
+
+
+class ReportProfileTest(unittest.TestCase):
+    def test_newer_legacy_archive_wins_over_an_older_report_but_not_a_later_continuation(self):
+        latest={'requestId':KEY,'claimSeq':2,'reportName':'REVIEW.md','kind':'blocked',
+                'partial':{'deliverableId':'file-old','sha256':'a'*64}}
+        archive={'parentRequestId':FRESH,'parentSha256':'b'*64,'reportName':'REVIEW.md'}
+        task={'feedback':[{'reportOutcome':latest},{'workerOutcome':{'requestId':FRESH,'claimSeq':4}}],
+              'reportCheckpointArchive':archive}
+        self.assertEqual(control.report_profile(task)['reportCheckpoint'],archive)
+        continued={'requestId':'33333333-2222-4333-8444-555555555555','claimSeq':6,'reportName':'REVIEW.md',
+                   'deliverableId':'file-new','sha256':'c'*64}
+        task['feedback'].append({'reportOutcome':continued})
+        self.assertEqual(control.report_profile(task)['reportCheckpoint'],
+                         {'parentRequestId':continued['requestId'],'parentSha256':'c'*64})
+
+    def test_terminal_report_without_new_file_preserves_its_parent_identity_for_inheritance(self):
+        task={'feedback':[{'reportOutcome':{'requestId':KEY,'claimSeq':2,'kind':'blocked','reportName':'REVIEW.md'}}]}
+        self.assertEqual(control.report_profile(task)['reportCheckpoint'],{'parentRequestId':KEY,'parentSha256':None})
+
+    def test_prepared_durable_parent_is_retained_before_its_new_worker_binding(self):
+        selected={'profile':'report','reportName':'REVIEW.md','parentRequestId':FRESH,'parentSha256':'b'*64}
+        task={'codingResult':selected,'codingReportAuthority':{'grants':[{'key':'new-grant'}],'bindings':[]},
+              'feedback':[{'reportOutcome':{'requestId':KEY,'claimSeq':2,'reportName':'REVIEW.md','deliverableId':'old','sha256':'a'*64}}]}
+        self.assertEqual(control.report_profile(task)['reportCheckpoint'],{'parentRequestId':FRESH,'parentSha256':'b'*64})
+
 if __name__ == "__main__":
     unittest.main()
