@@ -472,6 +472,12 @@ const NerveCenter = (() => {
                 }
 
                 section.scrollIntoView({ behavior: motionSafeScrollBehavior(), block: 'start' });
+                // Move keyboard focus with the view, to the section heading.
+                const heading = section.querySelector('h2');
+                if (heading) {
+                    heading.tabIndex = -1;
+                    heading.focus({ preventScroll: true });
+                }
             });
         });
     }
