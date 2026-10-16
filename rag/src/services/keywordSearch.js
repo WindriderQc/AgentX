@@ -73,6 +73,7 @@ const CANDIDATE_LIMIT = 500;
 async function keywordSearch(vectorStore, query, options = {}) {
   const topK = options.topK || 10;
   const filters = options.filters || {};
+  const minScore = Number.isFinite(options.minScore) ? options.minScore : 0;
 
   if (typeof vectorStore.findKeywordCandidates !== 'function') {
     logger.warn('Keyword search not supported by current vector store adapter');
@@ -93,7 +94,7 @@ async function keywordSearch(vectorStore, query, options = {}) {
     if (!meta.documentId) continue;
 
     const rawScore = scoreChunk(chunk.text.normalize('NFC').toLowerCase(), queryTerms);
-    if (rawScore > 0) {
+    if (rawScore > 0 && Math.min(rawScore / 10, 1.0) >= minScore) {
       results.push({
         text: chunk.text,
         score: Math.min(rawScore / 10, 1.0), // Normalize to 0-1
