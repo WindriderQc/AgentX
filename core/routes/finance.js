@@ -17,6 +17,7 @@ const { suggest } = require('../src/services/finance/financeSuggestions');
 const plan = require('../src/services/finance/financePlan');
 const simulation = require('../src/services/finance/financeSimulation');
 const documentLinks = require('../src/services/finance/financeDocumentLinks');
+const brief = require('../src/services/finance/financeBrief');
 
 function sendError(res, error) {
   const status = Number.isInteger(error.status) && error.status >= 400 && error.status < 600 ? error.status : 500;
@@ -61,6 +62,7 @@ function createFinanceRoutes({ inbox = financeInbox } = {}) {
   router.post('/alerts/report', handle(() => alerts.report()));
   router.post('/alerts/ack', handle((req) => alerts.acknowledge(req.body?.ids)));
   router.get('/documents', handle((req) => documentLinks.documents(req.query)));
+  router.get('/brief', handle(() => brief.summary()));
   router.post('/documents/links/decide', handle((req) => documentLinks.decide(req.body?.ids, req.body?.status, req.body?.createdBy || 'owner')));
   router.get('/export.csv', async (req, res) => {
     let exported;

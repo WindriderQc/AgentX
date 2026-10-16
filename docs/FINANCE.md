@@ -74,6 +74,10 @@ purchases as income.
   proposed document match, only after the owner's yes), `finance_alerts` (list
   or report once), `finance_plan` (read, owner-stated operations, `done` to settle
   a deadline). Visible only to the configured finance agent.
+- `GET /api/finance/brief`: the finance line of the daily brief for other
+  surfaces. It returns labels and counts only (overdue and soon-due deadlines,
+  late series by issuer name, missing statements, proposals to confirm), never an
+  amount, an account number or a path. Labels keep no digits.
 - Scheduled agent jobs (instance configuration): daily alert check (silent
   with `NO_REPLY` when nothing is new) and a weekly review.
 
