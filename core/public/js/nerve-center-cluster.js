@@ -735,6 +735,12 @@
         });
     }
 
+    // Pin and swap actions unload and reload models on a GPU right away; the
+    // operator confirms the host and model before anything is evicted.
+    function confirmModelChange(hostUrl, verb, model) {
+        return window.confirm(`${verb} ${model ? `"${model}" ` : ''}on ${hostUrl}? Models in VRAM on this host may be unloaded while it loads; requests to it wait meanwhile.`);
+    }
+
     function attachPinHandlers() {
         document.querySelectorAll('.nc-pin-set').forEach(button => {
             button.addEventListener('click', async () => {
@@ -742,6 +748,7 @@
                 const select = document.querySelector(`.nc-pin-model-select[data-host-url="${CSS.escape(hostUrl)}"]`);
                 const model = select?.value;
                 if (!model) return;
+                if (!confirmModelChange(hostUrl, 'Pin and load', model)) return;
                 button.disabled = true;
                 try {
                     await shared.fetchJson(`/api/nerve-center/host-preferences/${encodeURIComponent(hostUrl)}/pin`, {
@@ -761,6 +768,7 @@
         document.querySelectorAll('.nc-pin-restore').forEach(button => {
             button.addEventListener('click', async () => {
                 const hostUrl = button.dataset.hostUrl;
+                if (!confirmModelChange(hostUrl, 'Restore the pinned model', null)) return;
                 button.disabled = true;
                 const origHtml = button.innerHTML;
                 button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
@@ -810,6 +818,7 @@
                 const select = document.querySelector(`.nc-pin-swap-select[data-host-url="${CSS.escape(hostUrl)}"]`);
                 const model = select?.value;
                 if (!model) return;
+                if (!confirmModelChange(hostUrl, 'Temporarily swap to', model)) return;
                 button.disabled = true;
                 const origHtml = button.innerHTML;
                 button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';

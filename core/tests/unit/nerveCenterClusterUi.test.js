@@ -25,7 +25,7 @@ describe('Nerve Center individual pin controls', () => {
   const primary = { model: 'gemma:latest', keepAlive: 300, contextSize: 32768, autoRestore: false };
   const embedding = { model: 'qllama/bge-m3:f16', keepAlive: -1, contextSize: 0, autoRestore: true };
 
-  async function controlHarness(selector, { model, value, checked, removing = false, ollamaConcurrency = null, gpuRows = [], modelParallelism } = {}) {
+  async function controlHarness(selector, { model, value, checked, removing = false, ollamaConcurrency = null, gpuRows = [], modelParallelism, confirm = () => true } = {}) {
     const body = { innerHTML: '' };
     const listeners = {};
     const control = {
@@ -41,7 +41,7 @@ describe('Nerve Center individual pin controls', () => {
       '/api/nerve-center/inference/gpu-status': { data: gpuRows }
     };
     const fetchJson = jest.fn(async (url, options) => options ? { status: 'success' } : responses[url]);
-    const window = { NerveCenterShared: {
+    const window = { confirm: jest.fn(confirm), NerveCenterShared: {
       fetchJson, escapeHtml: value => String(value ?? '').replace(/[&<>"']/g, ''), shortModel: value => value,
       renderSectionLoading() {}, renderSectionError(_element, error) { throw new Error(error); }, finishSectionLoad() {},
       timeAgo: () => '', formatUptime: () => ''
@@ -51,11 +51,24 @@ describe('Nerve Center individual pin controls', () => {
       querySelectorAll: query => query === selector ? [control] : [],
       querySelector: () => ({ value: 'another-model:latest' })
     };
-    vm.runInNewContext(source, { window, document, console, URL, Map, Set, CSS: { escape: value => value } });
+    vm.runInNewContext(source, { window, document, console, URL, Map, Set, setTimeout: () => {}, CSS: { escape: value => value } });
     await window.NerveCenterCluster.loadCluster();
     window.NerveCenterCluster.loadCluster = jest.fn();
-    return { body, listeners, fetchJson, control };
+    return { body, listeners, fetchJson, control, window };
   }
+
+  it('asks before swapping the loaded model and sends nothing when declined', async () => {
+    const declined = await controlHarness('.nc-pin-swap', { confirm: () => false });
+    await declined.listeners.click();
+    expect(declined.window.confirm).toHaveBeenCalledWith(expect.stringContaining('"another-model:latest" on http://host:11434'));
+    expect(declined.fetchJson.mock.calls.filter(([, options]) => options)).toEqual([]);
+
+    const accepted = await controlHarness('.nc-pin-swap');
+    await accepted.listeners.click();
+    const [url, options] = accepted.fetchJson.mock.calls.find(([, options]) => options);
+    expect(url).toContain('/swap');
+    expect(JSON.parse(options.body)).toEqual({ model: 'another-model:latest' });
+  });
 
   it('shows both residents and independent keep-alive and auto-restore options', async () => {
     const { body } = await controlHarness('unused');
