@@ -344,13 +344,14 @@ router.get('/baseline-compare', async (req, res) => {
     const comparison = {
       baseline: {
         name: baseline.name,
+        created_at: baseline.created_at || baseline.createdAt || null,
         metrics: baseline.metrics
       },
       current: {
         avg_response_time: currentMetrics.avg_latency,
         p95_latency: currentMetrics.avg_p95,
         error_rate: currentMetrics.error_rate,
-        throughput_rps: (currentMetrics.total_requests / (hours * 3600)).toFixed(2)
+        throughput_rps: Number((currentMetrics.total_requests / (hours * 3600)).toFixed(2))
       },
       diff_percentage: {
         avg_response_time: calculateDiff(currentMetrics.avg_latency, baseline.metrics.avg_response_time),

@@ -1,31 +1,46 @@
 Object.assign(PerformanceDashboard, {
             // Load baselines
             async loadBaselines() {
+                const loading = document.getElementById('baselineLoading');
+                const empty = document.getElementById('baselinesEmpty');
                 try {
-                    document.getElementById('baselineLoading').classList.add('active');
-
-                    const response = await fetch('/api/performance/baselines');
+                    loading.classList.add('active');
+                    const response = await fetch('/api/performance/baselines', { signal: AbortSignal.timeout(30000) });
                     const result = await response.json();
+                    loading.classList.remove('active');
+                    if (!response.ok || result.status !== 'success') throw new Error(result.message || `HTTP ${response.status}`);
 
-                    document.getElementById('baselineLoading').classList.remove('active');
+                    const baselines = Array.isArray(result?.data?.baselines) ? result.data.baselines : [];
+                    this.renderBaselines(baselines);
+                    this.setBaselinesEmpty('No Baselines Created', 'Create a baseline to track performance over time');
+                    empty.style.display = baselines.length ? 'none' : 'block';
 
-                    const baselines = result?.data?.baselines || [];
-                    if (result.status === 'success' && Array.isArray(baselines) && baselines.length > 0) {
-                        this.renderBaselines(baselines);
-                        document.getElementById('baselinesEmpty').style.display = 'none';
-
-                        // Load baseline comparison if there's an active one
-                        const activeBaseline = baselines.find(b => b.active);
-                        if (activeBaseline) {
-                            await this.loadBaselineComparison();
-                        }
+                    // The comparison card and alerts only exist while a baseline is active.
+                    if (baselines.some(b => b.active)) {
+                        await this.loadBaselineComparison();
                     } else {
-                        document.getElementById('baselinesEmpty').style.display = 'block';
+                        this.clearBaselineComparison();
                     }
                 } catch (err) {
                     console.error('Failed to load baselines:', err);
-                    document.getElementById('baselineLoading').classList.remove('active');
+                    loading.classList.remove('active');
+                    this.renderBaselines([]);
+                    this.clearBaselineComparison();
+                    this.setBaselinesEmpty('Baselines unavailable', 'Could not load baselines. Try Refresh.');
+                    empty.style.display = 'block';
                 }
+            },
+
+            setBaselinesEmpty(title, detail) {
+                const empty = document.getElementById('baselinesEmpty');
+                empty.querySelector('h3').textContent = title;
+                empty.querySelector('p').textContent = detail;
+            },
+
+            clearBaselineComparison() {
+                document.getElementById('activeBaselineCard').style.display = 'none';
+                document.getElementById('comparisonGrid').innerHTML = '';
+                document.getElementById('regressionAlerts').innerHTML = '';
             },
 
             // Render baselines list
@@ -40,7 +55,8 @@ Object.assign(PerformanceDashboard, {
                         item.classList.add('active');
                     }
 
-                    const date = new Date(baseline.created_at || baseline.createdAt || Date.now()).toLocaleDateString();
+                    const created = baseline.created_at || baseline.createdAt;
+                    const date = created ? new Date(created).toLocaleDateString() : '—';
 
                     item.innerHTML = `
                         <div class="baseline-info">
@@ -51,44 +67,45 @@ Object.assign(PerformanceDashboard, {
                         </div>
                         <div class="baseline-actions">
                             ${!baseline.active ? `
-                                <button class="action-btn activate-baseline-btn" data-id="${escapeHtml(baseline._id)}">
-                                    <i class="fas fa-check"></i> Activate
+                                <button type="button" class="action-btn activate-baseline-btn">
+                                    <i class="fas fa-check" aria-hidden="true"></i> Activate
                                 </button>
                             ` : ''}
-                            <button class="action-btn delete-baseline-btn" data-id="${escapeHtml(baseline._id)}">
-                                <i class="fas fa-trash"></i> Delete
+                            <button type="button" class="action-btn delete-baseline-btn">
+                                <i class="fas fa-trash" aria-hidden="true"></i> Delete
                             </button>
                         </div>
                     `;
 
                     list.appendChild(item);
 
-                    // Attach event listeners
                     const activateBtn = item.querySelector('.activate-baseline-btn');
                     if (activateBtn) {
                         activateBtn.addEventListener('click', () => this.activateBaseline(baseline._id));
                     }
-
-                    item.querySelector('.delete-baseline-btn').addEventListener('click', () => {
-                        if (confirm(`Delete baseline "${baseline.name}"?`)) {
-                            this.deleteBaseline(baseline._id);
-                        }
-                    });
+                    // The typed confirmation in deleteBaseline is the only prompt.
+                    item.querySelector('.delete-baseline-btn').addEventListener('click', () => this.deleteBaseline(baseline._id));
                 });
             },
 
             // Load baseline comparison
             async loadBaselineComparison() {
+                const hours = this.currentTimeRange;
                 try {
-                    const response = await fetch(`/api/performance/baseline-compare?hours=${this.currentTimeRange}`);
+                    const response = await fetch(`/api/performance/baseline-compare?hours=${hours}`, { signal: AbortSignal.timeout(30000) });
                     const result = await response.json();
+                    if (hours !== this.currentTimeRange) return;
 
-                    if (result.status === 'success' && result.data) {
+                    if (response.ok && result.status === 'success' && result.data) {
                         this.renderBaselineComparison(result.data);
-                        this.checkForRegressions(result.data);
+                        this.renderRegressions(result.data.regressions);
+                    } else {
+                        // 404: the active baseline has nothing to compare against in this window.
+                        this.clearBaselineComparison();
                     }
                 } catch (err) {
                     console.error('Failed to load baseline comparison:', err);
+                    this.clearBaselineComparison();
                 }
             },
 
@@ -98,7 +115,9 @@ Object.assign(PerformanceDashboard, {
                 card.style.display = 'block';
 
                 document.getElementById('activeBaselineName').textContent = data.baseline.name;
-                document.getElementById('activeBaselineDate').textContent = new Date().toLocaleDateString();
+                document.getElementById('activeBaselineDate').textContent = data.baseline.created_at
+                    ? new Date(data.baseline.created_at).toLocaleDateString()
+                    : '—';
 
                 const grid = document.getElementById('comparisonGrid');
                 grid.innerHTML = '';
@@ -110,66 +129,61 @@ Object.assign(PerformanceDashboard, {
                     { key: 'error_rate', label: 'Error Rate', unit: '%', lowerIsBetter: true }
                 ];
 
-                metrics.forEach(metric => {
-                    const baselineValue = data.baseline.metrics[metric.key] || 0;
-                    const currentValue = data.current[metric.key] || 0;
-                    const diff = ((currentValue - baselineValue) / baselineValue) * 100;
+                const format = (value, unit) => (value === null || value === undefined || !Number.isFinite(Number(value))
+                    ? '—'
+                    : `${Number(value).toFixed(unit === '%' ? 2 : 1)}${unit}`);
 
-                    const isImprovement = metric.lowerIsBetter ? diff < 0 : diff > 0;
+                metrics.forEach(metric => {
+                    const rawBaseline = data.baseline.metrics?.[metric.key];
+                    const rawCurrent = data.current?.[metric.key];
+                    const baselineValue = Number(rawBaseline);
+                    const currentValue = Number(rawCurrent);
+                    // A zero or missing side has no meaningful percentage change.
+                    const comparable = rawBaseline != null && rawCurrent != null
+                        && Number.isFinite(baselineValue) && Number.isFinite(currentValue) && baselineValue !== 0;
+                    const diff = comparable ? ((currentValue - baselineValue) / baselineValue) * 100 : null;
+                    const isImprovement = diff !== null && (metric.lowerIsBetter ? diff < 0 : diff > 0);
+                    const diffText = diff === null ? 'n/a' : `${diff > 0 ? '+' : ''}${diff.toFixed(1)}%`;
+                    const diffClass = diff === null || diff === 0 ? '' : (isImprovement ? 'positive' : 'negative');
 
                     const item = document.createElement('div');
                     item.classList.add('comparison-item');
                     item.innerHTML = `
                         <div class="metric-label">${metric.label}</div>
                         <div class="metric-values">
-                            <span class="baseline-value">${baselineValue.toFixed(metric.unit === '%' ? 2 : 1)}${metric.unit}</span>
-                            <span style="color: var(--muted);">→</span>
-                            <span class="current-value">${currentValue.toFixed(metric.unit === '%' ? 2 : 1)}${metric.unit}</span>
-                            <span class="diff ${isImprovement ? 'positive' : 'negative'}">
-                                ${diff > 0 ? '+' : ''}${diff.toFixed(1)}%
-                            </span>
+                            <span class="baseline-value">${format(rawBaseline, metric.unit)}</span>
+                            <span style="color: var(--muted);" aria-label="compared with">→</span>
+                            <span class="current-value">${format(rawCurrent, metric.unit)}</span>
+                            <span class="diff ${diffClass}">${diffText}</span>
                         </div>
                     `;
                     grid.appendChild(item);
                 });
             },
 
-            // Check for regressions
-            checkForRegressions(comparison) {
+            // Render the regressions the server detected; the client does not
+            // recompute them with its own thresholds.
+            renderRegressions(regressions) {
                 const alertsContainer = document.getElementById('regressionAlerts');
                 alertsContainer.innerHTML = '';
+                const labels = { p95_latency: 'P95 latency', error_rate: 'Error rate' };
+                const units = { p95_latency: 'ms', error_rate: '%' };
 
-                const regressions = [];
-
-                // Check thresholds
-                const baselineP95 = comparison.baseline.metrics.p95_latency || 0;
-                const currentP95 = comparison.current.p95_latency || 0;
-                const p95Increase = ((currentP95 - baselineP95) / baselineP95) * 100;
-
-                if (p95Increase > 20) {
-                    regressions.push(`P95 latency increased by ${p95Increase.toFixed(1)}% (${baselineP95.toFixed(0)}ms → ${currentP95.toFixed(0)}ms)`);
-                }
-
-                const baselineErrorRate = comparison.baseline.metrics.error_rate || 0;
-                const currentErrorRate = comparison.current.error_rate || 0;
-                if (currentErrorRate > baselineErrorRate * 1.5) {
-                    regressions.push(`Error rate increased by ${((currentErrorRate / baselineErrorRate - 1) * 100).toFixed(1)}%`);
-                }
-
-                if (regressions.length > 0) {
-                    regressions.forEach(regression => {
-                        const alert = document.createElement('div');
-                        alert.classList.add('alert-banner');
-                        alert.innerHTML = `
-                            <i class="fas fa-exclamation-triangle"></i>
-                            <div class="alert-content">
-                                <h4>Performance Regression Detected</h4>
-                                <p>${regression}</p>
-                            </div>
-                        `;
-                        alertsContainer.appendChild(alert);
-                    });
-                }
+                (Array.isArray(regressions) ? regressions : []).forEach(regression => {
+                    const unit = units[regression.metric] || '';
+                    const value = (v) => (Number.isFinite(Number(v)) ? `${Number(v).toFixed(unit === '%' ? 2 : 0)}${unit}` : '—');
+                    const alert = document.createElement('div');
+                    alert.classList.add('alert-banner');
+                    alert.setAttribute('role', 'alert');
+                    alert.innerHTML = `
+                        <i class="fas fa-exclamation-triangle" aria-hidden="true"></i>
+                        <div class="alert-content">
+                            <h4>Performance Regression Detected</h4>
+                            <p>${escapeHtml(labels[regression.metric] || regression.metric)} above its ${escapeHtml(regression.threshold || 'threshold')}: ${value(regression.baseline)} → ${value(regression.current)}</p>
+                        </div>
+                    `;
+                    alertsContainer.appendChild(alert);
+                });
             },
 
             // Open create baseline modal
