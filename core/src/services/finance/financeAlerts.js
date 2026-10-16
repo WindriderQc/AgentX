@@ -1,20 +1,25 @@
 'use strict';
 
 // Deterministic finance alerts. Rules decide whether to alert; the persona only
-// phrases the message. Each fact gets a stable key, so it is raised once and
-// stays quiet after it is acknowledged.
+// phrases the message. Each fact gets a stable key. A pending alert is reported
+// once (acknowledgement). A standing condition (stale data, deadlines, low balance)
+// stays listed while it holds, even after it was reported.
 
+const { createHash } = require('crypto');
 const FinanceAlert = require('../../../models/FinanceAlert');
 const FinanceStatement = require('../../../models/FinanceStatement');
 const FinanceTransaction = require('../../../models/FinanceTransaction');
 const { balances } = require('./financeQueryService');
 const { insights } = require('./financeInsights');
+const { getPlan } = require('./financePlan');
 const { ledgerFilter } = require('./ledgers');
 
 const PERSO = ledgerFilter('perso');
 
 const TRANSFERS = 'Virements internes';
 const DAY_MS = 24 * 60 * 60 * 1000;
+const DEADLINE_WINDOW_DAYS = 7;
+const STANDING = ['stale_data', 'low_balance', 'deadline_upcoming', 'deadline_due', 'deadline_overdue'];
 
 function cents(value, fallback) {
   const parsed = Number.parseInt(value, 10);
@@ -31,6 +36,29 @@ function settings(env = process.env) {
   };
 }
 
+// Deadlines from the plan (watch and open items with a dueDate). J-7 to J-2 is
+// "upcoming", J-1 and J (day included) is "due", a past date is "overdue".
+// The day is part of the key, so an item still open is reported again each day.
+function deadlineAlerts(items, today) {
+  const found = [];
+  for (const item of items) {
+    if (!item.dueDate || !item.label) continue;
+    const daysUntil = Math.round((Date.parse(`${item.dueDate}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / DAY_MS);
+    if (daysUntil > DEADLINE_WINDOW_DAYS) continue;
+    const id = createHash('sha1').update(`${item.section}|${item.label}|${item.dueDate}`).digest('hex').slice(0, 12);
+    const facts = { section: item.section, label: item.label, dueDate: item.dueDate, daysUntil, recurrence: item.recurrence || null };
+    const key = `deadline:${id}:${today}`;
+    if (daysUntil < 0) {
+      found.push({ key, kind: 'deadline_overdue', severity: 'critical', title: `Overdue: ${item.label} (due ${item.dueDate})`, facts });
+    } else if (daysUntil <= 1) {
+      found.push({ key, kind: 'deadline_due', severity: 'warning', title: `Due ${daysUntil === 0 ? 'today' : 'tomorrow'}: ${item.label}`, facts });
+    } else {
+      found.push({ key, kind: 'deadline_upcoming', severity: 'info', title: `Due in ${daysUntil} days: ${item.label} (${item.dueDate})`, facts });
+    }
+  }
+  return found;
+}
+
 // Computes the alerts that hold right now, without storing them.
 async function evaluate({ now = new Date(), env = process.env } = {}) {
   const config = settings(env);
@@ -42,14 +70,25 @@ async function evaluate({ now = new Date(), env = process.env } = {}) {
       title: `Statement to review: ${statement.fileName}`, facts: { fileName: statement.fileName, problems: statement.problems } });
   }
 
-  const latest = await FinanceStatement.findOne({ status: 'reconciled', ...PERSO }).sort({ periodEnd: -1 }).select('periodEnd').lean();
-  if (latest?.periodEnd) {
-    const ageDays = Math.floor((now - new Date(`${latest.periodEnd}T00:00:00Z`)) / DAY_MS);
+  // Staleness is judged per account series: the latest reconciled period end of each account.
+  const series = await FinanceStatement.aggregate([
+    { $match: { status: 'reconciled', ...PERSO } },
+    { $unwind: '$accounts' },
+    { $group: { _id: '$accounts.accountKey', code: { $first: '$accounts.code' }, issuer: { $first: '$issuer' },
+      lastPeriodEnd: { $max: '$periodEnd' } } }
+  ]);
+  for (const account of series) {
+    if (!account.lastPeriodEnd) continue;
+    const ageDays = Math.floor((now - new Date(`${account.lastPeriodEnd}T00:00:00Z`)) / DAY_MS);
     if (ageDays > config.staleDays) {
-      found.push({ key: `stale:${latest.periodEnd}`, kind: 'stale_data', severity: 'info',
-        title: `No statement since ${latest.periodEnd} (${ageDays} days)`, facts: { lastPeriodEnd: latest.periodEnd, ageDays } });
+      found.push({ key: `stale:${account._id}`, kind: 'stale_data', severity: 'info',
+        title: `No ${account.code} statement since ${account.lastPeriodEnd} (${ageDays} days)`,
+        facts: { accountKey: account._id, account: account.code, issuer: account.issuer,
+          lastPeriodEnd: account.lastPeriodEnd, ageDays } });
     }
   }
+
+  const latest = await FinanceStatement.findOne({ status: 'reconciled', ...PERSO }).sort({ periodEnd: -1 }).select('periodEnd').lean();
 
   if (config.minBalanceCents) {
     for (const account of (await balances({ ledger: 'perso' })).accounts) {
@@ -89,30 +128,53 @@ async function evaluate({ now = new Date(), env = process.env } = {}) {
       }
     }
   }
+
+  const plan = await getPlan();
+  const items = [
+    ...plan.watch.map((item) => ({ ...item, section: 'watch', label: item.what })),
+    ...plan.openItems.map((item) => ({ ...item, section: 'openItems', label: item.title }))
+  ];
+  found.push(...deadlineAlerts(items, now.toISOString().slice(0, 10)));
   return found;
 }
 
-// Stores newly true alerts and returns those not yet acknowledged.
-async function refresh(options = {}) {
-  const found = await evaluate(options);
+// Stores the alerts that hold now. Known keys are refreshed, acknowledgement is kept.
+async function store(found) {
   for (const alert of found) {
-    await FinanceAlert.updateOne({ key: alert.key }, { $setOnInsert: alert }, { upsert: true });
+    await FinanceAlert.updateOne({ key: alert.key }, { $set: alert }, { upsert: true });
   }
-  return list();
 }
 
-async function list({ includeAcknowledged = false } = {}) {
-  const filter = includeAcknowledged ? {} : { acknowledgedAt: null };
+// Lists alerts. Without `current`: pending ones (not acknowledged). With `current`
+// (the keys holding now): pending ones plus standing conditions that still hold,
+// acknowledged or not, so a stale account stays visible until its data comes in.
+async function list({ includeAcknowledged = false, current = null } = {}) {
+  let filter = {};
+  if (!includeAcknowledged) {
+    filter = current
+      ? { $or: [{ acknowledgedAt: null, kind: { $nin: STANDING } }, { kind: { $in: STANDING }, key: { $in: current } }] }
+      : { acknowledgedAt: null };
+  }
   const rows = await FinanceAlert.find(filter).sort({ createdAt: -1 }).limit(100).lean();
   return { alerts: rows.map(({ _id, key, kind, severity, title, facts, createdAt, acknowledgedAt }) => ({
     id: String(_id), key, kind, severity, title, facts, createdAt, acknowledgedAt })) };
 }
 
+// Stores the current alerts and returns those listed now.
+async function refresh(options = {}) {
+  const found = await evaluate(options);
+  await store(found);
+  return list({ current: found.map((alert) => alert.key) });
+}
+
 // Returns the pending alerts and marks them reported, for a delivery job.
 async function report(options = {}) {
-  const { alerts } = await refresh(options);
-  await acknowledge(alerts.map((alert) => alert.id));
-  return { alerts };
+  const found = await evaluate(options);
+  await store(found);
+  const { alerts } = await list({ current: found.map((alert) => alert.key) });
+  const pending = alerts.filter((alert) => !alert.acknowledgedAt);
+  await acknowledge(pending.map((alert) => alert.id));
+  return { alerts: pending };
 }
 
 async function acknowledge(ids = []) {
@@ -121,4 +183,4 @@ async function acknowledge(ids = []) {
   return { acknowledged: result.modifiedCount };
 }
 
-module.exports = { evaluate, refresh, report, list, acknowledge, settings };
+module.exports = { evaluate, refresh, report, list, acknowledge, settings, deadlineAlerts };

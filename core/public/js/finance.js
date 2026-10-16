@@ -82,10 +82,15 @@
     const colors = { in: css.getPropertyValue('--series-in').trim(), out: css.getPropertyValue('--series-out').trim(),
       grid: css.getPropertyValue('--finance-grid').trim(), text: css.getPropertyValue('--finance-muted').trim() };
     const labels = months.map((m) => monthLabel(m.month));
+    // An incomplete month (no payroll statement) is drawn in the muted colour, not as a real month.
+    const fill = (color) => months.map((m) => (m.complete === false ? colors.text : color));
     const datasets = [
-      { label: 'In', data: months.map((m) => m.inCents / 100), backgroundColor: colors.in },
-      { label: 'Out', data: months.map((m) => -m.outCents / 100), backgroundColor: colors.out }
+      { label: 'In', data: months.map((m) => m.inCents / 100), backgroundColor: fill(colors.in) },
+      { label: 'Out', data: months.map((m) => -m.outCents / 100), backgroundColor: fill(colors.out) }
     ].map((set) => ({ ...set, borderRadius: 4, borderSkipped: 'start', maxBarThickness: 28, borderWidth: 0 }));
+    const asOf = $('financeDataAsOf');
+    asOf.hidden = !data.dataAsOf;
+    asOf.textContent = data.dataAsOf ? `Données au ${data.dataAsOf}` : '';
     if (monthlyChart) monthlyChart.destroy();
     if (window.Chart) {
       monthlyChart = new window.Chart($('monthlyChart'), {
@@ -109,11 +114,15 @@
         }
       });
     }
-    $('monthlyTable').tBodies[0].replaceChildren(...months.map((m) => el('tr', {},
-      el('td', {}, monthLabel(m.month)), el('td', {}, money(m.inCents)), el('td', {}, money(m.outCents)),
+    $('monthlyTable').tBodies[0].replaceChildren(...months.map((m) => el('tr', { class: m.complete === false ? 'finance-row-incomplete' : '' },
+      el('td', {}, monthLabel(m.month) + (m.complete === false ? ' · mois incomplet, sans relevé EOP' : '')),
+      el('td', {}, money(m.inCents)), el('td', {}, money(m.outCents)),
       el('td', {}, money(m.netCents)), el('td', {}, m.count))));
+    const complete = months.filter((m) => m.complete !== false).length;
+    const average = data.averageNetCents == null ? '—' : money(data.averageNetCents);
     $('monthlyNote').textContent = months.length
-      ? `Average net: ${money(data.averageNetCents)} per month over ${months.length} months`
+      ? `Average net: ${average} per month over ${complete} complete months`
+        + (data.incompleteMonths?.length ? ` · ${data.incompleteMonths.length} incomplete month(s) left out` : '')
         + (filters().account || filters().excludeCategory ? '' : ' · all accounts combined, internal transfers included')
       : 'No transactions for these filters.';
   }
@@ -187,8 +196,9 @@
 
   async function renderYearly() {
     const data = await api('summary/yearly', searchParams());
-    $('yearlyTable').tBodies[0].replaceChildren(...data.years.map((y) => el('tr', {},
-      el('td', {}, y.year), el('td', {}, money(y.inCents)), el('td', {}, money(y.outCents)), el('td', {}, money(y.netCents)),
+    $('yearlyTable').tBodies[0].replaceChildren(...data.years.map((y) => el('tr', { class: y.complete === false ? 'finance-row-incomplete' : '' },
+      el('td', {}, y.year + (y.complete === false ? ` · ${y.incompleteMonths.length} mois incomplet(s)` : '')),
+      el('td', {}, money(y.inCents)), el('td', {}, money(y.outCents)), el('td', {}, money(y.netCents)),
       el('td', {}, y.count), el('td', {}, `${y.firstDate} → ${y.lastDate}`))));
   }
 

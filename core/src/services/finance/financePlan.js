@@ -9,6 +9,7 @@ const FinanceTransaction = require('../../../models/FinanceTransaction');
 const { balances } = require('./financeQueryService');
 const { CATEGORIES } = require('./financeCategories');
 const { ledgerFilter } = require('./ledgers');
+const { payrollCoverage } = require('./financeCompleteness');
 
 const PERSO = ledgerFilter('perso');
 
@@ -40,6 +41,25 @@ function list(value, field, max, map) {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > max) throw new FinancePlanError(`${field} must be a list of at most ${max}`);
   return value.map((item, index) => map(item || {}, `${field}[${index}]`));
+}
+
+// Optional structured deadline: `dueDate` (YYYY-MM-DD) and `recurrence`. Core alerts
+// from dueDate; an item stays on the alerts until its dueDate is moved forward.
+const RECURRENCES = ['monthly', 'quarterly', 'yearly'];
+
+function dueDate(value, field) {
+  const date = String(value ?? '').trim();
+  if (!date) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) {
+    throw new FinancePlanError(`${field} must be a YYYY-MM-DD date`);
+  }
+  return date;
+}
+
+function recurrence(value, field) {
+  if (value === null || value === undefined || value === '') return null;
+  if (!RECURRENCES.includes(value)) throw new FinancePlanError(`${field} must be one of ${RECURRENCES.join(', ')}`);
+  return value;
 }
 
 function accountCode(value) {
@@ -80,12 +100,14 @@ function cleanPlan(input = {}) {
       asOf: text(asset.asOf, 10) || null, note: text(asset.note, 200)
     })),
     milestones: list(input.milestones, 'milestones', 60, (item) => ({ text: text(item.text, 240), done: item.done === true })),
-    openItems: list(input.openItems, 'openItems', 40, (item) => ({ title: text(item.title, 120), detail: text(item.detail, 400),
-      severity: ['critical', 'warning', 'info'].includes(item.severity) ? item.severity : 'info' })),
+    openItems: list(input.openItems, 'openItems', 40, (item, field) => ({ title: text(item.title, 120), detail: text(item.detail, 400),
+      severity: ['critical', 'warning', 'info'].includes(item.severity) ? item.severity : 'info',
+      dueDate: dueDate(item.dueDate, `${field}.dueDate`), recurrence: recurrence(item.recurrence, `${field}.recurrence`) })),
     allocations: list(input.allocations, 'allocations', 20, (item, field) => ({ step: text(item.step, 120),
       amountCents: cents(item.amountCents, `${field}.amountCents`), amountText: text(item.amountText, 60),
       status: text(item.status, 30), effect: text(item.effect, 240) })),
-    watch: list(input.watch, 'watch', 40, (item) => ({ date: text(item.date, 40), what: text(item.what, 300), status: text(item.status, 30) })),
+    watch: list(input.watch, 'watch', 40, (item, field) => ({ date: text(item.date, 40), what: text(item.what, 300), status: text(item.status, 30),
+      dueDate: dueDate(item.dueDate, `${field}.dueDate`), recurrence: recurrence(item.recurrence, `${field}.recurrence`) })),
     taxRoom: list(input.taxRoom, 'taxRoom', 10, (item, field) => ({ name: text(item.name, 40),
       roomCents: cents(item.roomCents, `${field}.roomCents`, { optional: false }), asOf: text(item.asOf, 10) || null }))
   };
@@ -190,15 +212,20 @@ async function situation({ months } = {}) {
   // transaction is earlier; otherwise the newest transaction's month is partial.
   const statementEnd = accounts.map((account) => account.asOf).filter(Boolean).sort().at(-1) || '';
   const monthsWindow = latest ? lastMonths(lastFullMonth(statementEnd > latest.date ? statementEnd : latest.date), window) : [];
-  const rows = monthsWindow.length ? await FinanceTransaction.find({
+  const fetched = monthsWindow.length ? await FinanceTransaction.find({
     ...PERSO, date: { $gte: `${monthsWindow[0]}-01`, $lte: `${monthsWindow.at(-1)}-31` }, category: { $ne: TRANSFERS },
     ...(plan.excludeTags.length && { tags: { $nin: plan.excludeTags } })
   }).select('date flowCents category tags').lean() : [];
+  // Averages count only months the payroll statements fully cover; the others are listed apart.
+  const payroll = await payrollCoverage({ ledger: 'perso' });
+  const averageMonths = monthsWindow.filter((month) => payroll.isComplete(month));
+  const counted = new Set(averageMonths);
+  const rows = fetched.filter((row) => counted.has(row.date.slice(0, 7)));
 
   let inCents = 0;
   let outCents = 0;
   for (const row of rows) { if (row.flowCents > 0) inCents += row.flowCents; else outCents += row.flowCents; }
-  const perMonth = (total) => (monthsWindow.length ? Math.round(total / monthsWindow.length) : 0);
+  const perMonth = (total) => (averageMonths.length ? Math.round(total / averageMonths.length) : 0);
 
   // Budget lines grouped by (category, tag): a tagged group takes its tagged
   // rows; the untagged group of a category takes the rest, so nothing counts twice.
@@ -229,7 +256,8 @@ async function situation({ months } = {}) {
     phase: plan.phase,
     excludeTags: plan.excludeTags,
     planUpdatedAt: plan.updatedAt,
-    window: { months: monthsWindow, from: monthsWindow[0] || null, to: latest?.date || null },
+    window: { months: monthsWindow, averageMonths, incompleteMonths: monthsWindow.filter((m) => !counted.has(m)),
+      from: monthsWindow[0] || null, to: latest?.date || null, dataAsOf: payroll.asOf },
     cash: cash ? { balanceCents: cash.balanceCents, asOf: cash.asOf } : null,
     monthly: { inCents: perMonth(inCents), outCents: perMonth(outCents), netCents: perMonth(inCents + outCents) },
     totalDebtCents,

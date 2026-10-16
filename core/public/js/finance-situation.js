@@ -91,7 +91,8 @@
   function render(s) {
     $('financePhase').textContent = s.phase || '';
     const asOf = s.cash?.asOf ? `as of ${s.cash.asOf}` : '';
-    const window = s.window?.months?.length ? `average ${s.window.months[0]} → ${s.window.months.at(-1)}` : '';
+    const averaged = s.window?.averageMonths || [];
+    const window = averaged.length ? `average ${averaged[0]} → ${averaged.at(-1)}, complete months only` : '';
     $('financeSituation').replaceChildren(
       tile('Cash (EOP account)', s.cash ? money(s.cash.balanceCents) : '—', asOf),
       tile('Total debt', money(s.totalDebtCents), `${s.debts.length} tracked debt(s)`),
@@ -148,8 +149,9 @@
           el('span', { class: 'finance-budget-plan', style: `width:${width(b.monthlyCents)}` }),
           el('span', { class: `finance-budget-actual${over ? ' finance-budget-actual-over' : ''}`, style: `width:${width(b.actualMonthlyCents)}` }))));
     }));
-    $('financeBudgetNote').textContent = s.window?.months?.length
-      ? `Actual = average of ${s.window.months.length} months (${s.window.months[0]} → ${s.window.months.at(-1)}) · total budget spending ${money(s.budgetTotals.monthlyCents)} vs actual ${money(s.budgetTotals.actualMonthlyCents)}`
+    const budgetAveraged = s.window?.averageMonths || [];
+    $('financeBudgetNote').textContent = budgetAveraged.length
+      ? `Actual = average of ${budgetAveraged.length} complete months (${budgetAveraged[0]} → ${budgetAveraged.at(-1)}) · total budget spending ${money(s.budgetTotals.monthlyCents)} vs actual ${money(s.budgetTotals.actualMonthlyCents)}`
       : '';
     show('financeBudgetCard', s.budget.length > 0);
 

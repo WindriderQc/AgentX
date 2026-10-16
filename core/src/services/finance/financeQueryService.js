@@ -6,6 +6,7 @@
 const FinanceStatement = require('../../../models/FinanceStatement');
 const FinanceTransaction = require('../../../models/FinanceTransaction');
 const { ledgerFilter, isLiability } = require('./ledgers');
+const { payrollCoverage } = require('./financeCompleteness');
 
 const MAX_ROWS = 500;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -76,16 +77,25 @@ async function transactions(query = {}) {
   return { rows: rows.map(({ _id, ...row }) => ({ id: String(_id), ...row })), totals: summary, truncated: summary.count > rows.length };
 }
 
+// A month without a payroll statement is incomplete: it is listed with its totals
+// but left out of the average. An account filter selects a series, so no check applies.
 async function monthly(query = {}) {
   const filter = transactionFilter(query);
-  const months = await FinanceTransaction.aggregate([
-    { $match: filter },
-    { $group: { ...totalsStage(), _id: { $substrBytes: ['$date', 0, 7] } } },
-    { $sort: { _id: 1 } }
+  const [months, payroll] = await Promise.all([
+    FinanceTransaction.aggregate([
+      { $match: filter },
+      { $group: { ...totalsStage(), _id: { $substrBytes: ['$date', 0, 7] } } },
+      { $sort: { _id: 1 } }
+    ]),
+    query.account ? null : payrollCoverage({ ledger: query.ledger })
   ]);
+  const rows = months.map(({ _id, ...rest }) => ({ month: _id, ...rest, complete: payroll ? payroll.isComplete(_id) : true }));
+  const complete = rows.filter((m) => m.complete);
   return {
-    months: months.map(({ _id, ...rest }) => ({ month: _id, ...rest })),
-    averageNetCents: months.length ? Math.round(months.reduce((sum, m) => sum + m.netCents, 0) / months.length) : 0
+    months: rows,
+    averageNetCents: complete.length ? Math.round(complete.reduce((sum, m) => sum + m.netCents, 0) / complete.length) : null,
+    incompleteMonths: rows.filter((m) => !m.complete).map((m) => m.month),
+    dataAsOf: payroll?.asOf || null
   };
 }
 
