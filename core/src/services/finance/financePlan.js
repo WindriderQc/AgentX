@@ -71,6 +71,18 @@ function recurrence(value, field) {
   return value;
 }
 
+function last4Field(value, field) {
+  if (value === null || value === undefined || value === '') return null;
+  if (!/^\d{4}$/.test(String(value))) throw new FinancePlanError(`${field} must be exactly four digits`);
+  return String(value);
+}
+
+function ledgerField(value, field) {
+  if (value === null || value === undefined || value === '') return null;
+  if (!['perso', 'corp'].includes(value)) throw new FinancePlanError(`${field} must be perso or corp`);
+  return value;
+}
+
 function accountCode(value) {
   const code = text(value, 16).replace(/\s+/g, '').toUpperCase();
   return code || null;
@@ -124,8 +136,10 @@ function cleanPlan(input = {}) {
     goals: list(input.goals, 'goals', 20, (item, field) => ({ name: text(item.name, 80), targetCents: cents(item.targetCents, `${field}.targetCents`, { optional: false }),
       targetDate: dueDate(item.targetDate, `${field}.targetDate`), priority: ['high', 'medium', 'low'].includes(item.priority) ? item.priority : 'medium',
       source: { kind: goalSource(item.source?.kind, `${field}.source.kind`), ref: text(item.source?.ref, 80) } })),
-    seriesStatus: list(input.seriesStatus, 'seriesStatus', 60, (item) => ({ series: text(item.series, 80), label: text(item.label, 80),
-      closed: item.closed === true, note: text(item.note, 200) })),
+    // last4 and ledger let a Secretary statement find its series: the issuer has no last four in the ledger.
+    seriesStatus: list(input.seriesStatus, 'seriesStatus', 60, (item, field) => ({ series: text(item.series, 80), label: text(item.label, 80),
+      closed: item.closed === true, note: text(item.note, 200), last4: last4Field(item.last4, `${field}.last4`),
+      ledger: ledgerField(item.ledger, `${field}.ledger`) })),
     taxRoom: list(input.taxRoom, 'taxRoom', 10, (item, field) => ({ name: text(item.name, 40),
       roomCents: cents(item.roomCents, `${field}.roomCents`, { optional: false }), asOf: text(item.asOf, 10) || null }))
   };
