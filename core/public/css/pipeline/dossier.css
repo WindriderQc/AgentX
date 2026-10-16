@@ -42,6 +42,7 @@
 .pipeline-drawer-correction > summary { min-height: 44px; align-content: center; cursor: pointer; font-weight: 600; }
 .pipeline-drawer-correction[open] > summary { margin-bottom: 12px; }
 
+.pipeline-result-files { min-width: 0; overflow-wrap: anywhere; }
 .pipeline-result-files h3 { margin: 0 0 12px; color: #cbd5e1; font-size: .95rem; font-weight: 600; }
 .pipeline-result-file { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid rgba(255, 255, 255, .1); }
 .pipeline-result-file > div { min-width: 0; }
