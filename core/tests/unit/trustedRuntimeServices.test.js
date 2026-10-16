@@ -36,8 +36,11 @@ function inferenceDeps(overrides = {}) {
     assertHostAvailableForConsumer: jest.fn(async () => null),
     validateHostUrl: jest.fn((host) => ({ valid: true, host })),
     hostPreferenceService: {
-      getByHost: jest.fn(async () => ({
-        pinnedModels: [{ model: 'model-a', contextSize: 32768, keepAlive: -1 }]
+      // Each test host pins the models its tests route there (#829 pin rule).
+      getByHost: jest.fn(async (hostUrl) => ({
+        pinnedModels: String(hostUrl).includes('primary.test')
+          ? [{ model: 'model-big', contextSize: 65536, keepAlive: -1 }]
+          : [{ model: 'model-a', contextSize: 32768, keepAlive: -1 }, { model: 'model-b', contextSize: 32768, keepAlive: -1 }]
       })),
       prepareExclusiveModel: jest.fn(async () => ({ status: 'ready', unloaded: [] }))
     },
@@ -655,6 +658,17 @@ describe('trusted runtime services', () => {
     await expect(executeRoutedInference(dispatched, { mode: 'generate', taskType: 'quick_chat', prompt: 'hi' }))
       .rejects.toMatchObject({ code: 'INFERENCE_UPSTREAM_UNAVAILABLE' });
     expect(fallbackAfterRefusal).not.toHaveBeenCalled();
+  });
+
+  test('a gateway model or context the host pin does not own is refused before dispatch', async () => {
+    const unpinned = inferenceDeps();
+    await expect(executeRoutedInference(unpinned, { mode: 'generate', model: 'model-c', prompt: 'hi' }))
+      .rejects.toMatchObject({ code: 'HOST_PIN_MISMATCH', statusCode: 409 });
+    expect(unpinned.fetch).not.toHaveBeenCalled();
+    const context = inferenceDeps();
+    await expect(executeRoutedInference(context, { mode: 'generate', model: 'model-a', prompt: 'hi', options: { num_ctx: 8192 } }))
+      .rejects.toMatchObject({ code: 'HOST_PIN_MISMATCH', pin: expect.objectContaining({ field: 'num_ctx', pinned: 32768 }) });
+    expect(context.fetch).not.toHaveBeenCalled();
   });
 
   test('a host override never reports a fallback ladder marker', async () => {

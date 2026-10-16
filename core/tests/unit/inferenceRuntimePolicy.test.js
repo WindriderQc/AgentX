@@ -74,12 +74,12 @@ describe('caller runtime compatibility', () => {
 
   test.each([
     ['generate', 'example:latest', -1, 8192, 512, false],
-    ['generate', 'example', 0, undefined, 512, false],
-    ['direct', 'example:latest', 0, undefined, undefined, false],
-    ['chat', 'example', 0, 8192, undefined, false],
+    ['generate', 'example', -1, 8192, 512, false],
+    ['direct', 'example:latest', -1, 8192, undefined, false],
+    ['chat', 'example', -1, 8192, undefined, false],
     ['extension', 'example', -1, 8192, 512, true],
     ['embed', 'example', -1, 8192, undefined, true],
-  ])('%s preserves pin matching, caller residency, output and thinking for %s', async (
+  ])('%s applies the host pin, output and thinking for %s', async (
     policy, model, keepAlive, numCtx, numPredict, think
   ) => {
     const deps = makeDeps();
@@ -90,13 +90,28 @@ describe('caller runtime compatibility', () => {
     expect(result.options.num_predict).toBe(numPredict);
     expect(result.think).toBe(think);
     expect(input.options).toEqual({});
-    if (policy === 'direct') expect(deps.hostPreferenceService.getByHost).not.toHaveBeenCalled();
   });
 
-  test.each(['generate', 'direct', 'chat', 'extension', 'embed'])('%s keeps exact caller context and output limits', async policy => {
+  test.each(['generate', 'direct', 'extension', 'embed'])('%s refuses load options that differ from the pin', async policy => {
     const deps = makeDeps();
+    await expect(prepareInferenceRuntime({ model: 'example:latest', options: { num_ctx: 2048 } }, policy, deps))
+      .rejects.toMatchObject({ code: 'HOST_PIN_MISMATCH', statusCode: 409 });
+    await expect(prepareInferenceRuntime({ model: 'other:latest', options: {} }, policy, deps))
+      .rejects.toMatchObject({ code: 'HOST_PIN_MISMATCH', pin: expect.objectContaining({ field: 'model' }) });
+  });
+
+  test('chat shows the pin instead of failing an ordinary turn', async () => {
+    const result = await prepareInferenceRuntime({ model: 'example:latest', options: { num_ctx: 2048, keep_alive: 0 } }, 'chat', makeDeps());
+    expect(result.options).toEqual({ num_ctx: 8192 });
+    expect(result.keepAlive).toBe(-1);
+    expect(result.numCtxSource).toBe('host_preference_pin');
+    expect(result.ignoredPinOptions).toEqual(['num_ctx']);
+  });
+
+  test.each(['generate', 'direct', 'chat', 'extension', 'embed'])('%s keeps exact caller context and output limits under a claim', async policy => {
+    const deps = { ...makeDeps(), pinNumThread: jest.fn(async () => 0) };
     const options = { num_ctx: 2048, num_predict: 13, temperature: 0 };
-    const result = await prepareInferenceRuntime({ model: 'example:latest', options }, policy, deps);
+    const result = await prepareInferenceRuntime({ model: 'example:latest', options, claimed: true }, policy, deps);
     expect(result.options).toEqual(options);
     expect(result.numCtxSource).toBe('caller');
   });
@@ -108,22 +123,23 @@ describe('caller runtime compatibility', () => {
     }));
     const pinned = await prepareInferenceRuntime({ model: 'example:latest', host: 'http://ollama.test:11435', options: {} }, policy, deps);
     expect(pinned.options).toEqual(expect.objectContaining({ num_ctx: 8192, num_thread: 6 }));
-    const caller = await prepareInferenceRuntime({ model: 'example:latest', host: 'http://ollama.test:11435', options: { num_thread: 2 } }, policy, deps);
-    expect(caller.options.num_thread).toBe(2);
+    const caller = prepareInferenceRuntime({ model: 'example:latest', host: 'http://ollama.test:11435', options: { num_thread: 2 } }, policy, deps);
+    if (policy === 'chat') expect((await caller).options.num_thread).toBe(6);
+    else await expect(caller).rejects.toMatchObject({ code: 'HOST_PIN_MISMATCH' });
   });
 
-  test('direct evaluation runs at the CPU threads of the pin and keeps every other option exact', async () => {
+  test('claimed direct evaluation runs at the CPU threads of the pin and keeps every other option exact', async () => {
     const deps = { ...makeDeps(), pinNumThread: jest.fn(async () => 4) };
     const options = { num_ctx: 2048, num_predict: 13, temperature: 0 };
-    const result = await prepareInferenceRuntime({ model: 'example:latest', host: 'http://ollama.test:11435', options }, 'direct', deps);
+    const result = await prepareInferenceRuntime({ model: 'example:latest', host: 'http://ollama.test:11435', options, claimed: true }, 'direct', deps);
     expect(result.options).toEqual({ ...options, num_thread: 4 });
     expect(deps.pinNumThread).toHaveBeenCalledWith('http://ollama.test:11435', 'example:latest');
     expect(deps.hostPreferenceService.getByHost).not.toHaveBeenCalled();
 
     const explicit = await prepareInferenceRuntime({ model: 'example:latest', host: 'http://ollama.test:11435',
-      options: { num_thread: 2 } }, 'direct', deps);
+      options: { num_thread: 2 }, claimed: true }, 'direct', deps);
     expect(explicit.options.num_thread).toBe(2);
-    const unpinned = await prepareInferenceRuntime({ model: 'example:latest', host: 'http://ollama.test:11434', options: {} },
+    const unpinned = await prepareInferenceRuntime({ model: 'example:latest', host: 'http://ollama.test:11434', options: {}, claimed: true },
       'direct', { ...makeDeps(), pinNumThread: async () => 0 });
     expect(unpinned.options.num_thread).toBeUndefined();
   });
@@ -132,7 +148,7 @@ describe('caller runtime compatibility', () => {
     const deps = makeDeps();
     const tools = [{ type: 'function', function: { name: 'read', description: 'Full schema' } }];
     await prepareInferenceRuntime({ model: 'example:latest', tools,
-      messages: [{ role: 'user', content: 'hello' }], options: { num_ctx: 2048 } }, policy, deps);
+      messages: [{ role: 'user', content: 'hello' }], options: { num_ctx: 8192 } }, policy, deps);
     expect(deps.resolveInferenceContract).toHaveBeenCalledWith(expect.objectContaining({ tools }));
   });
 });

@@ -12,6 +12,7 @@ const { getFetchOptions } = require('../helpers/httpAgent');
 const { assertHostAvailableForConsumer } = require('./benchmarkClaimGuard');
 const { characterizeRouteRequest } = require('./routing/routeDecision');
 const { executeAdmittedOllamaAttempt } = require('./routing/inferenceAttemptExecutor');
+const { enforceHostPin } = require('./hostPinGuard');
 // Telemetry lives in routing/inferenceTelemetry.js; re-exported below
 // for symbol stability, matching the benchmarkClaimService precedent.
 const { recordInference } = require('./routing/inferenceTelemetry');
@@ -43,25 +44,20 @@ async function getHostPinStatus(hostUrl) {
 }
 
 async function resolveClassificationRuntime(classificationHost, classificationModel) {
-    if ((process.env.AGENTX_CLASSIFIER_RESPECT_PRIMARY_PIN || 'true').toLowerCase() === 'false') {
-        return { model: classificationModel, source: 'configured' };
-    }
-
+    let pref = null;
     try {
-        const hostPrefService = require('./hostPreferenceService');
-        const pref = await hostPrefService.getByHost(classificationHost);
-        const primaryPin = hostPrefService.getPinnedEntries(pref)?.[0]?.model || null;
-        if (primaryPin) {
-            return { model: primaryPin, source: 'host_preference_pin' };
-        }
+        pref = await require('./hostPreferenceService').getByHost(classificationHost);
     } catch (err) {
         logger.debug('Classifier pin lookup skipped', {
             host: classificationHost,
             error: err.message
         });
     }
-
-    return { model: classificationModel, source: 'configured' };
+    const primaryPin = require('./hostPinPrimitives').getPinnedEntries(pref)?.[0]?.model || null;
+    if (primaryPin && (process.env.AGENTX_CLASSIFIER_RESPECT_PRIMARY_PIN || 'true').toLowerCase() !== 'false') {
+        return { model: primaryPin, source: 'host_preference_pin', pref };
+    }
+    return { model: classificationModel, source: 'configured', pref };
 }
 
 // ---------------------------------------------------------------------------
@@ -170,7 +166,7 @@ async function classifyAndRoute(message, options = {}) {
 async function classifyQuery(message, timeout = 10000) {
     refreshHosts();
     const classificationHost = HOSTS[CLASSIFICATION_HOST] || HOSTS.secondary || HOSTS.primary;
-    const { model: classificationModel, source: classificationModelSource } =
+    const { model: classificationModel, source: classificationModelSource, pref } =
         await resolveClassificationRuntime(classificationHost, CLASSIFICATION_MODEL);
 
     const controller = new AbortController();
@@ -185,14 +181,16 @@ async function classifyQuery(message, timeout = 10000) {
             path: '/api/generate'
         });
 
+        // On a pinned host the classifier loads exactly what the pin loads, or
+        // is refused (and the turn defaults to general_chat) instead of evicting it.
+        const options = { temperature: 0.1, num_predict: 20 };
+        const pinned = enforceHostPin(pref, { hostUrl: classificationHost, model: classificationModel, options });
         const payload = {
             model: classificationModel,
             prompt: CLASSIFICATION_PROMPT + message,
             stream: false,
-            options: {
-                temperature: 0.1,
-                num_predict: 20
-            }
+            options: pinned.unpinned ? options : pinned.options,
+            ...(!pinned.unpinned && { keep_alive: pinned.keepAlive })
         };
         const attempt = await executeAdmittedOllamaAttempt({
             hostUrl: classificationHost,
