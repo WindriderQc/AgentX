@@ -1,4 +1,12 @@
 Object.assign(PerformanceDashboard, {
+            // Windows longer than a day need the date, or hours repeat across days.
+            formatChartTime(timestamp) {
+                const date = new Date(timestamp);
+                return this.currentTimeRange > 24
+                    ? date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            },
+
             // Render latency trend chart
             renderLatencyTrendChart(data) {
                 const ctx = document.getElementById('latencyTrendsChart').getContext('2d');
@@ -7,10 +15,15 @@ Object.assign(PerformanceDashboard, {
                     this.charts.latencyTrends.destroy();
                 }
 
-                const timestamps = data.map(d => new Date(d.timestamp).toLocaleTimeString());
+                const timestamps = data.map(d => this.formatChartTime(d.timestamp));
                 const p50Data = data.map(d => d.p50);
                 const p95Data = data.map(d => d.p95);
                 const p99Data = data.map(d => d.p99);
+                // Per-endpoint rollups only keep an hourly average, so P95/P99
+                // would repeat it under a percentile label.
+                const endpointOnly = Boolean(this.currentEndpoint);
+                document.getElementById('latencyLegendPercentiles').hidden = endpointOnly;
+                document.getElementById('latencyLegendEndpointNote').hidden = !endpointOnly;
 
                 this.charts.latencyTrends = new Chart(ctx, {
                     type: 'line',
@@ -18,7 +31,7 @@ Object.assign(PerformanceDashboard, {
                         labels: timestamps,
                         datasets: [
                             {
-                                label: 'P50 (Median)',
+                                label: 'Average',
                                 data: p50Data,
                                 borderColor: 'rgb(34, 197, 94)',
                                 backgroundColor: 'rgba(34, 197, 94, 0.1)',
@@ -29,6 +42,7 @@ Object.assign(PerformanceDashboard, {
                             {
                                 label: 'P95',
                                 data: p95Data,
+                                hidden: endpointOnly,
                                 borderColor: 'rgb(251, 191, 36)',
                                 backgroundColor: 'rgba(251, 191, 36, 0.1)',
                                 tension: 0.4,
@@ -38,6 +52,7 @@ Object.assign(PerformanceDashboard, {
                             {
                                 label: 'P99',
                                 data: p99Data,
+                                hidden: endpointOnly,
                                 borderColor: 'rgb(239, 68, 68)',
                                 backgroundColor: 'rgba(239, 68, 68, 0.1)',
                                 tension: 0.4,
@@ -103,7 +118,7 @@ Object.assign(PerformanceDashboard, {
                     this.charts.throughput.destroy();
                 }
 
-                const timestamps = data.map(d => new Date(d.timestamp).toLocaleTimeString());
+                const timestamps = data.map(d => this.formatChartTime(d.timestamp));
                 const rps = data.map(d => parseFloat(d.rps || 0));
                 const total = data.map(d => Number(d.requests_total || 0));
 
