@@ -63,11 +63,45 @@ The runner uses four protections:
 
 Documentation audits follow the shared
 [review procedure](../../skills/agentx/references/documentation-review.md).
-The report prompt includes its essential checkpoint rules; the operator skill
-and repository instructions point to the same procedure. Choose document groups
-within the current budget, save and read back each group's findings and coverage,
-derive summary totals from that table, and record the next pending group. A
-partial report is a reviewable checkpoint, not completion of the requested audit.
+
+### Runner-owned steps (default)
+
+The runner, not the model, owns the plan and the report (#834). One execution
+keeps its single Core authority (claim, call limit, deadline, campaign window)
+and runs several short worker sessions in fresh context:
+
+- **Plan.** `coding_report_steps.py` groups pending and partial documents by
+  directory. Each group fits a share of the step context, which comes from the
+  lane capability profile: the measured agent step, else the measured speed
+  knee, else 24k tokens. A document larger than that is reviewed in line
+  ranges, one range per step.
+- **Step.** The worker receives only its group, the claims already checked and
+  the earlier findings for those documents. It writes one JSON result
+  (`step-NN.json`) in its private output directory. A step has its own call
+  and time limits; reaching them ends that session only.
+- **Verify and merge.** `coding_report_ledger.py` checks every cited path and
+  line against the frozen snapshot, computes source digests itself and merges
+  the step whole or not at all. A group that fails twice marks its documents
+  `blocked` with the reason. A document still partial after three steps
+  without new evidence stays partial and is reported as remaining scope.
+- **Render.** After every step the runner regenerates the Markdown report and
+  `coverage.json` from the ledger, so findings, tables and totals cannot
+  drift, and each step counts as saved progress.
+- **Writer.** A last short session receives only the verified findings and
+  writes the summary and explanations.
+- **Resume.** The ledger is embedded in the report as an HTML comment. A
+  continuation restored from Core's checkpoint resumes it exactly. A report
+  written before steps keeps its findings verbatim in an "earlier executions"
+  section; reviewer corrections apply to it only as exact text replacements.
+
+When calls or time run short with documents left, the execution stops with
+`model_call_limit` or `hard_budget` and archives the partial report for a
+continuation. The Pipeline worker monitor shows merged and failed steps,
+ledger totals and the step size with its basis.
+`AGENTX_REPORT_MODE=single` restores the previous single-session worker, whose
+prompt asks the model to choose groups, save, and keep the table and totals
+consistent itself. A partial report is a reviewable checkpoint, not completion
+of the requested audit.
 
 Pipeline records an explicit **Code change** or **Private Markdown report** result
 before launch. The dossier and global one-task form use the same preparation.

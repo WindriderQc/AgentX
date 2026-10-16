@@ -231,3 +231,18 @@ test('Follow and decide contains one monitor and the original Stop control, sepa
   expect(view).toContain('aria-live="polite"');
   expect(readPipelineScript('pipeline-delivery.js')).not.toContain('stop.addEventListener');
 });
+
+describe('runner-owned report steps in the worker monitor (#834)', () => {
+  it('shows merged and failed steps, ledger totals and the measured step size', () => {
+    const observed = Monitor.observation(fixture({ phase: 'running', stage: 'model_wait', reportSteps: {
+      done: 4, failed: 1, findings: 3, stepContext: 16384, budgetSource: 'agent_workload',
+      counts: { reviewed: 62, partial: 5, blocked: 0, pending: 9 } } }).controller, null, NOW);
+    expect(observed.details).toContain('Report steps');
+    expect(observed.details).toContain('4 merged · 1 failed · 62 reviewed, 5 partial, 0 blocked, 9 pending · 3 new findings · 16k-token steps (measured agent work)');
+  });
+
+  it('omits the row for a worker without report steps', () => {
+    const observed = Monitor.observation(fixture({ phase: 'running', stage: 'model_wait' }).controller, null, NOW);
+    expect(observed.details).not.toContain('Report steps');
+  });
+});
