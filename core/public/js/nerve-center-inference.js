@@ -100,7 +100,7 @@
                         <th>Model</th>
                         <th>Host</th>
                         <th>Status</th>
-                        <th style="text-align:center;width:80px;"></th>
+                        <th style="text-align:center;width:80px;"><span class="nc-sr-only">Actions</span></th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
@@ -142,7 +142,7 @@
                         <td class="nc-td-sm"><span class="nc-model-tag">${shared.escapeHtml(shared.shortModel(log.model))}</span></td>
                         <td style="padding:6px 10px;font-weight:600;">${shared.escapeHtml(primaryHostLabel)}${secondaryHostLabel ? `<div class="nc-muted" style="font-size:0.68rem;font-weight:400;">${shared.escapeHtml(secondaryHostLabel)}</div>` : ''}</td>
                         <td style="padding:6px 10px;text-align:right;font-variant-numeric:tabular-nums;">${latencyStr}</td>
-                        <td style="padding:6px 10px;text-align:center;"><span style="color:${statusColor}">●</span></td>
+                        <td style="padding:6px 10px;text-align:center;"><span style="color:${statusColor}" aria-hidden="true">●</span><span class="nc-sr-only">${shared.escapeHtml(log.status || 'success')}</span></td>
                     </tr>`;
             }).join('')
             : '<tr><td colspan="6" class="nc-td-empty">No recent inference activity</td></tr>';
@@ -226,13 +226,13 @@
                     <div>
                         <h5 class="nc-section-heading">Throughput by Host</h5>
                         <div style="position:relative;height:200px;">
-                            <canvas id="nc-throughput-chart" height="200"></canvas>
+                            <canvas id="nc-throughput-chart" height="200" role="img" aria-label="Calls per hour by host over the last 24 hours"></canvas>
                         </div>
                     </div>
                     <div>
                         <h5 class="nc-section-heading">Latency (Avg / P95)</h5>
                         <div style="position:relative;height:200px;">
-                            <canvas id="nc-latency-chart" height="200"></canvas>
+                            <canvas id="nc-latency-chart" height="200" role="img" aria-label="Average and P95 latency per hour over the last 24 hours"></canvas>
                         </div>
                         <div class="nc-muted" style="font-size:0.72rem;margin-top:5px;">
                             ${coldStartCount > 0
@@ -457,7 +457,7 @@
                     return `<td title="${pct}% absolute utilization · relative color scale max ${observedMax}%" style="background:${bg};text-align:center;padding:4px 2px;font-size:0.7rem;">${pct}%</td>`;
                 }).join('');
                 const secondary = identitySecondary(host);
-                return `<tr><td style="padding:4px 8px;font-weight:600;white-space:nowrap;">${shared.escapeHtml(host.displayName || host.key)}${secondary ? `<div class="nc-muted" style="font-size:0.64rem;font-weight:400;">${shared.escapeHtml(secondary)}</div>` : ''}</td>${cells}</tr>`;
+                return `<tr><th scope="row" style="padding:4px 8px;font-weight:600;white-space:nowrap;text-align:left;">${shared.escapeHtml(host.displayName || host.key)}${secondary ? `<div class="nc-muted" style="font-size:0.64rem;font-weight:400;">${shared.escapeHtml(secondary)}</div>` : ''}</th>${cells}</tr>`;
             }).join('');
 
             container.innerHTML = `

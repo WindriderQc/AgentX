@@ -107,11 +107,11 @@
                         </select>
                     </td>
                     <td style="padding:8px 10px;text-align:center;white-space:nowrap;">
-                        <button class="nc-btn nc-task-save" data-task="${task}" style="font-size:10px;padding:3px 10px;margin-right:4px;">
-                            <i class="fas fa-check"></i> Save
+                        <button class="nc-btn nc-task-save" data-task="${task}" aria-label="Save routing for ${shared.escapeHtml(task)}" style="font-size:10px;padding:3px 10px;margin-right:4px;">
+                            <i class="fas fa-check" aria-hidden="true"></i> Save
                         </button>
-                        <button class="nc-btn nc-task-reset" data-task="${task}" ${state.isOverride ? '' : 'disabled'} style="font-size:10px;padding:3px 10px;border-color:rgba(248,113,113,0.3);color:#f87171;background:rgba(248,113,113,0.08);">
-                            <i class="fas fa-rotate-left"></i> Use default
+                        <button class="nc-btn nc-task-reset" data-task="${task}" aria-label="Use default routing for ${shared.escapeHtml(task)}" ${state.isOverride ? '' : 'disabled'} style="font-size:10px;padding:3px 10px;border-color:rgba(248,113,113,0.3);color:#f87171;background:rgba(248,113,113,0.08);">
+                            <i class="fas fa-rotate-left" aria-hidden="true"></i> Use default
                         </button>
                     </td>
                 </tr>`;
