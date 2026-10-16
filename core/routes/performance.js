@@ -365,10 +365,9 @@ router.get('/dashboard', async (req, res) => {
     const systemHealth = calculateSystemHealth(metrics, activeBaseline);
 
     // Get throughput trend
-    const throughputTrend = await PerformanceSnapshot.getThroughputTrend(hours);
-    const avgRps = throughputTrend.length > 0
-      ? throughputTrend.reduce((sum, t) => sum + parseFloat(t.rps), 0) / throughputTrend.length
-      : 0;
+    // Total requests over the window's seconds: the same basis as the trend
+    // and the baseline comparison. Averaging per-hour rates skipped empty hours.
+    const avgRps = metrics && hours > 0 ? (metrics.total_requests || 0) / (hours * 3600) : 0;
 
     // Calculate uptime (percentage of successful requests)
     // No recorded request means unknown, not 0 ms latency or 100% success.
