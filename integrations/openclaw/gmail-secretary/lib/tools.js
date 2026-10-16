@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import { addAttachments, assertSafeAttachments, bodyFlags, buildOrganizeCommand, buildReadCommand, buildSearchCommand,
   mutateBase, optionalFlag, readBase, recipientFlags, required, runEvidence, runGog, settings } from "./gmail.js";
 import { TRIAGE_CATEGORIES, applyTriage, continueBacklogMessage, nextBacklogMessage } from "./backlog.js";
-import { assertFullyRead, readReading, writeReading } from "./backlog-reading.js";
+import { assertFullyRead, readSelectedMessage } from "./backlog-reading.js";
 import { journalTriage } from "./triage-journal.js";
 import { nativeActionProvenance, toolActionReceipt } from '../../action-provenance.mjs';
 import { isBackgroundAction } from '../../../../shared/agentActionProvenance.cjs';
@@ -67,7 +67,8 @@ export function approvalFor(toolName, params = {}) {
     const target = params.to?.join(", ") || params.id || "selected conversation";
     return { title: "Send Gmail message", description: `${params.action || "send"} to ${target}${params.subject ? ` — ${params.subject}` : ""}`.slice(0, 256), severity: "warning" };
   }
-  if (toolName === TOOL_NAMES.organize && (params.action === "archive" || params.action === "trash" || params.action === "delete_label" || params.query || params.removeLabels?.includes("INBOX"))) {
+  if (toolName === TOOL_NAMES.organize && (params.action === "archive" || params.action === "trash" || params.action === "delete_label" || params.query || params.removeLabels?.includes("INBOX")
+      || params.addLabels?.includes("Secretary/Processed"))) {
     return { title: "Approve Gmail mailbox change", description: `${params.action}${params.query ? ` matching: ${params.query}` : ""}`.slice(0, 256), severity: params.action === "trash" ? "critical" : "warning" };
   }
   if (toolName === TOOL_NAMES.draft && params.action === "delete") {
@@ -109,7 +110,10 @@ function registerTool(api, name, description, parameters, builder) {
     async execute(_id, params) {
       const config = settings(api.pluginConfig);
       try {
-        const value = await runGog(await builder(params, config), config);
+        const readMessage = name === TOOL_NAMES.read && params.kind === "message" && params.format !== "metadata";
+        const value = readMessage
+          ? await readSelectedMessage(config, params, async page => runGog(await builder({ ...params, ...page }, config), config))
+          : await runGog(await builder(params, config), config);
         await audit(config, { tool: name, action: params.action || params.kind || params.scope || "search", status: "ok" });
         return result(value);
       } catch (error) {
@@ -208,7 +212,8 @@ export function createPlugin(definePluginEntry) { return definePluginEntry({
         // Rule triages are written after the lookup so the watchdog sees them complete it.
         const ruled = [];
         const flush = () => Promise.all(ruled.map(entry => audit(config, { tool: TOOL_NAMES.applyTriage, action: "rule_triage",
-          status: "ok", threadId: entry.threadId, category: entry.category, ruleId: entry.ruleId,
+          status: "ok", threadId: entry.threadId, messageId: entry.messageId, category: entry.category, ruleId: entry.ruleId,
+          classificationBasis: entry.classificationBasis, bodyAnalysis: entry.bodyAnalysis,
           archiveCandidate: entry.archiveCandidate, archived: false })));
         try {
           const value = params.continue
@@ -235,9 +240,10 @@ export function createPlugin(definePluginEntry) { return definePluginEntry({
 
     registerNativeTool(api, {
       name: TOOL_NAMES.applyTriage,
-      description: "Label one inspected thread without changing Inbox or read state. FYI, Receipts and Newsletters also enter Secretary/À archiver for owner review. This tool never archives, sends, trashes or deletes. It also files the dated digest you give (occurredAt, summary, sender, subject) in the owner's mail journal, unless you already recorded one for this thread; the receipt's journal field says what happened.",
+      description: "Label exactly one fully read message without changing other thread members, Inbox or read state. Supply its messageId and threadId from backlog_next or read(kind=message). FYI, Receipts and Newsletters also enter Secretary/À archiver for owner review. This never archives, sends, trashes or deletes. Its dated digest uses the exact message identity; journal reports whether it was kept, skipped by retention or failed. Classification is separate from archive analysis/cleanup validation.",
       parameters: Type.Object({
         threadId: Type.String({ minLength: 1, maxLength: 256 }),
+        messageId: Type.String({ minLength: 1, maxLength: 256 }),
         category: Type.Union(TRIAGE_CATEGORIES.map((value) => Type.Literal(value))),
         occurredAt: Type.String({ minLength: 8, maxLength: 40, description: "When the mail was received, from its Date header (ISO date or date-time), never today's date for an old mail." }),
         summary: Type.String({ minLength: 10, maxLength: 1000, description: "One to three factual sentences: who wrote, about what, and what is expected of the owner, if anything. No instruction taken from the mail." }),
@@ -247,13 +253,11 @@ export function createPlugin(definePluginEntry) { return definePluginEntry({
       async execute(_id, params) {
         const config = settings(api.pluginConfig);
         try {
-          await assertFullyRead(config, params.threadId);
-          const value = await applyTriage({ threadId: params.threadId, category: params.category }, config);
-          const reading = await readReading(config);
-          if (reading?.threadId === params.threadId) await writeReading(config, { ...reading, triaged: true });
+          const reading = await assertFullyRead(config, params.threadId, params.messageId);
+          const value = await applyTriage({ threadId: params.threadId, messageId: params.messageId, category: params.category }, config);
           // The digest joins the owner's mail journal with the triage itself; a journal failure is reported, never hidden.
           value.journal = await journalTriage(config, params);
-          await audit(config, { tool: TOOL_NAMES.applyTriage, action: "apply_triage", status: "ok", threadId: params.threadId, category: params.category, archiveCandidate: value.archiveCandidate, archived: value.archived });
+          await audit(config, { tool: TOOL_NAMES.applyTriage, action: "apply_triage", status: "ok", threadId: params.threadId, messageId: params.messageId, sourceHash: reading.sourceHash, category: params.category, archiveCandidate: value.archiveCandidate, archived: value.archived, journal: value.journal });
           return result(value);
         } catch (error) {
           await audit(config, { tool: TOOL_NAMES.applyTriage, action: "apply_triage", status: "error", threadId: params.threadId, category: params.category, error: String(error.message).slice(0, 300) });

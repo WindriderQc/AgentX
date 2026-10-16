@@ -41,11 +41,19 @@
   const servable = row => ['available', 'present_unverified'].includes(row.availability?.status);
   const validRecord = row => ID_RE.test(String(row.id || '')) && SHA_RE.test(String(row.sha256 || ''));
 
+  function reportLabel(pipelineId, row) {
+    const review = entry(pipelineId).reportReviews?.find(item => item.reportAcceptance.requestId === row.reportOrigin?.requestId
+      && item.reportAcceptance.sha256 === row.sha256);
+    return row.reportOrigin?.state === 'partial' ? 'Partial draft · scope incomplete'
+      : row.reportOrigin?.state === 'candidate' ? review ? `Report candidate · scope confirmed by ${review.by || 'reviewer'}`
+        : 'Report candidate · coverage unverified' : '';
+  }
+
   function fileRow(pipelineId, row) {
     if (!validRecord(row)) return '<p class="pipeline-drawer-context">This file record is incomplete and cannot be downloaded.</p>';
     const availability = { available: 'Verified file', present_unverified: 'Checked on download', missing: 'File missing', corrupt: 'File altered' }[row.availability?.status] || 'Availability unknown';
     return `<article class="pipeline-result-file">
-      <div><strong>${esc(row.name)}</strong><p>${esc(formatSize(row.size))}${row.attempt ? ` · Attempt ${esc(row.attempt)}` : ''} · ${esc(availability)}</p></div>
+      <div><strong>${esc(row.name)}</strong><p>${esc(formatSize(row.size))}${reportLabel(pipelineId, row) ? ` · ${esc(reportLabel(pipelineId, row))}` : ''}${row.attempt ? ` · Attempt ${esc(row.attempt)}` : ''} · ${esc(availability)}</p></div>
       ${servable(row) ? `<button type="button" class="pipeline-btn compact" data-download-deliverable="${esc(row.id)}" data-deliverable-task="${esc(pipelineId)}" aria-label="Download ${esc(row.name)}"><i class="fas fa-download" aria-hidden="true"></i><span>Download</span></button>` : ''}
     </article>`;
   }
@@ -54,7 +62,7 @@
     if (!validRecord(row)) {
       return '<article class="pipeline-evidence-attempt"><p class="pipeline-evidence-unknown">Unknown deliverable · the record is malformed and is not offered.</p></article>';
     }
-    const origin = row.attempt ? `Attempt ${esc(row.attempt)} · ${esc(row.producer?.declared || 'unknown worker')}` : `Operator upload · ${esc(row.producer?.declared || 'unknown')}`;
+    const origin = row.reportOrigin ? `Native report · ${esc(reportLabel(pipelineId, row))}` : row.attempt ? `Attempt ${esc(row.attempt)} · ${esc(row.producer?.declared || 'unknown worker')}` : `Operator upload · ${esc(row.producer?.declared || 'unknown')}`;
     return `<article class="pipeline-evidence-attempt pipeline-deliverable" data-deliverable="${esc(row.id)}">
       <header><strong>${esc(row.name)}</strong><span>${esc(row.mimeType)} · ${esc(formatSize(row.size))} · ${origin}</span></header>
       <dl>
@@ -106,16 +114,19 @@
     return payload.data;
   }
 
-  async function load(pipelineId) {
+  async function load(pipelineId, { force = false } = {}) {
     const state = entry(pipelineId);
-    if (state.status === 'loading') return;
+    if (state.status === 'loading' && !force) return;
+    const version = state.version = (state.version || 0) + 1;
     state.status = 'loading';
     try {
       const data = await readJson(`/api/pipeline/tasks/${encodeURIComponent(pipelineId)}/deliverables`);
+      if (version !== state.version) return;
       state.rows = Array.isArray(data?.deliverables) ? data.deliverables : [];
       state.status = 'ready';
       state.error = null;
     } catch (error) {
+      if (version !== state.version) return;
       state.status = 'error';
       state.error = String(error.message || error);
     }
@@ -196,7 +207,15 @@
     const pipelineId = String(task?.pipelineId || '');
     if (!/^[0-9A-Za-z_-]{1,16}$/.test(pipelineId)) return '';
     const state = entry(pipelineId);
-    if (state.status !== 'loading' && Date.now() - state.at > STALE_MS) setTimeout(() => load(pipelineId), 0);
+    state.reportReviews = (task.feedback || []).filter(row => row.reportAcceptance?.scopeComplete === true);
+    const report = (task.feedback || []).slice().reverse().find(row => row.reportOutcome)?.reportOutcome;
+    const signature = report ? JSON.stringify([report.requestId, report.deliverableId, report.sha256, report.partial]) : '';
+    const changed = state.reportSignature !== signature; state.reportSignature = signature;
+    if (changed) state.forceScheduled = true;
+    if (!state.scheduled && (changed || (state.status !== 'loading' && Date.now() - state.at > STALE_MS))) {
+      state.scheduled = true;
+      setTimeout(() => { const force = state.forceScheduled; state.scheduled = state.forceScheduled = false; return load(pipelineId, { force }); }, 0);
+    }
     const count = state.status === 'ready' ? String(state.rows.length) : '…';
     if (compact) return `<section class="pipeline-result-files" data-pipeline-deliverables="${esc(pipelineId)}" data-deliverables-view="files" aria-label="Files from this task">
       <h3>Files from this task <span class="pipeline-drawer-count">${count}</span></h3>

@@ -12,7 +12,7 @@
     const draft = preserveDraft ? preserveDrawerDraft(body) : null;
     if (draft) {
       const currentKeys = new Set(draft.fields.map(field => field.key));
-      draft.fields.push(...(state.drawer.draft?.fields || []).filter(field => !currentKeys.has(field.key)));
+      draft.fields.push(...(state.drawer.draft?.fields || []).filter(field => !field.contextBound && !currentKeys.has(field.key)));
     }
     state.drawer.draft = draft;
 
@@ -21,6 +21,8 @@
     const reviewer = readStorage(STORAGE_REVIEWER) || '';
     const review = reviewContext(task);
     const activity = window.PipelineDossierActivity.read(task);
+    const report = window.PipelineLaunchController?.currentReport(task);
+    const profileContext = escapeHtml(window.PipelineLaunchController?.profileContext(task) || '');
     const deliveryItem = Array.isArray(state.delivery?.items)
       ? state.delivery.items.find((item) => item?.pipelineId === task.pipelineId)
       : null;
@@ -30,6 +32,11 @@
 
     const actions = [];
     const secondaryActions = [];
+    const reportRun = state.launchController?.control?.run;
+    if (reportRun?.pipelineId === task.pipelineId && reportRun.reportName && reportRun.phase === 'unknown') {
+      actions.push(`<div class="pipeline-drawer-action"><p>The original report outcome needs reconciliation before another execution.</p>
+        <button type="button" class="pipeline-btn compact" data-drawer-action="reconcile-report"${state.launchController.canReconcile?.() ? '' : ' disabled'}>Reconcile saved report</button></div>`);
+    }
     const qualification = task.codingAutonomy?.disposition?.kind === 'qualification' ? task.codingAutonomy.disposition : null;
     const codingTask = !/^\s*(personal|family|household|secretary)\s*$/i.test(String(task.service || ''))
       && !/^\s*(idea-drop\s*$|household-)/i.test(String(task.source || ''));
@@ -38,13 +45,19 @@
     const workerOutcome = !qualification && (outcomeApi?.latest(task) || outcomeApi?.native(task, workerControl));
     const stopped = task.status === 'blocked' ? outcomeApi?.describe(workerOutcome) : null;
     const resumeWorker = outcomeApi?.canResume(task, workerControl);
-    const canReply = !qualification && task.status === 'blocked' && codingTask && (!task.assignee || task.automation?.mode === 'review_only' || resumeWorker);
-    if (!qualification && task.status === 'queued' && !task.assignee && codingTask) {
-      actions.push(`<form class="pipeline-drawer-action" data-drawer-action="give-to-team">
+    const managed = Boolean(task.codingAutonomy || task.automation?.mode === 'review_only' || task.automationAttemptCount > 0 || task.automationAttempts?.length);
+    const canReply = !managed && !qualification && task.status === 'blocked' && codingTask && (!task.assignee || resumeWorker);
+    if (!qualification && managed && ['queued', 'blocked'].includes(task.status)) {
+      actions.push('<p class="pipeline-drawer-context">This task uses the existing Coding Team correction loop. Review its authorization and resume through the Coding Team controls.</p>');
+    }
+    if (!managed && !qualification && task.status === 'queued' && !task.assignee && codingTask) {
+      actions.push(`<form class="pipeline-drawer-action" data-drawer-action="give-to-team" data-profile-context="${profileContext}">
+        ${window.PipelineLaunchController?.profileFields(task) || ''}
         <button type="submit" class="pipeline-btn primary">Give to the team</button></form>`);
     }
     if (canReply) {
-      actions.unshift(`<form class="pipeline-drawer-action" data-drawer-action="reply-resume">
+      actions.unshift(`<form class="pipeline-drawer-action" data-drawer-action="reply-resume" data-profile-context="${profileContext}">
+        ${window.PipelineLaunchController?.profileFields(task) || ''}
         <label><span>Updated instructions or your answer</span><textarea name="answer" rows="4" maxlength="3000" required placeholder="Describe what the next pass must do and save."></textarea></label>
         <button type="submit" class="pipeline-btn primary">Update instructions and resume</button>
       </form>`);
@@ -54,11 +67,12 @@
     }
     if (!qualification && task.status === 'review') {
       actions.push(`
-        <form class="pipeline-drawer-action" data-drawer-action="confirm-done">
+        <form class="pipeline-drawer-action" data-drawer-action="confirm-done" data-report-context="${escapeHtml(report ? `${report.requestId}:${report.sha256}` : '')}">
           <label>
             <span>Accept result as (must differ from worker <code>${escapeHtml(task.assignee || 'unassigned')}</code>)</span>
             <input type="text" name="by" required maxlength="80" placeholder="your identity, e.g. reviewer" value="${escapeHtml(reviewer)}">
           </label>
+          ${report && report.kind !== 'blocked' ? '<label><input type="checkbox" name="reportScopeComplete" required> I reviewed this report and confirm it covers the complete requested scope.</label>' : ''}
           <button type="submit" class="pipeline-btn primary compact"><i class="fas fa-check-double"></i><span>Accept result</span></button>
         </form>
       `);

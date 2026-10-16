@@ -132,6 +132,34 @@ These are human Studio capabilities. Automatic Coding Team workers retain their
 existing network boundary and task-local evidence. Disabling the Studio setting
 and restarting removes the optional tools without deleting notes or histories.
 
+### Retained legacy-session compatibility
+
+DSH 0.2.0-rc.2's session reader can reject retained v0 histories containing a
+released subagent descriptor-v2 shape. Session search cold-reads persisted
+sessions before applying its workspace filter, so one such archive can make
+every search report that session history storage is unavailable. Resetting the
+derived index does not repair that reader.
+
+The optional [pinned compatibility installer](../integrations/coding/dsh-session-compat.md)
+admits the released descriptor shape in the migration reader, preserving its
+version, fields and original archives. It does not make those historical
+subagents resumable. Unknown or malformed descriptors still refuse. The
+installer accepts only the reviewed package version and exact source hashes;
+launchers never apply it automatically. It requires a POSIX operator host.
+
+Run its read-only `--check` with the explicit installed package directory first.
+Before `--apply`, retain the original package file and hash outside Git, follow
+the instance's queue and maintenance procedure, and observe Studio and any
+worker sharing the runtime idle. Stop those package consumers under their
+native owner. Apply once, then restart only the stopped services and verify
+authenticated readiness. Never interrupt a running session to install it.
+
+Record cold-read and bounded search results separately from installer tests,
+with no model invocation. Verify original history bytes and protected settings
+remain unchanged. An uncertain installation requires reconciliation of the same
+operation and source hash before another action. An upstream reinstall or
+upgrade needs a fresh compatibility review; retain no automatic patch hook.
+
 ## Qualification
 
 Source/unit tests do not prove installation. Before live qualification, enroll

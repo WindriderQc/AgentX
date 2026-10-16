@@ -101,6 +101,7 @@ async function search(input = {}) {
     filter.$or = [{ summary: pattern }, { subject: pattern }, { counterpart: pattern }, { tags: query.toLowerCase() }];
   }
   if (input.threadId !== undefined) filter.threadId = text(input.threadId, 'threadId', 200, { required: true });
+  if (input.messageId !== undefined) filter.messageId = identifier(input.messageId, 'messageId', { required: true });
   if (input.since !== undefined || input.until !== undefined) {
     filter.occurredAt = {};
     if (input.since !== undefined) filter.occurredAt.$gte = dateOf(input.since, 'since');

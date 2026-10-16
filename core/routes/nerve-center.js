@@ -543,7 +543,7 @@ router.get('/inference/gpu-status', async (req, res) => {
       const { telemetry, gpus, ollamaEnvironment = null } = live.get(host.id) || { telemetry: { status: 'unavailable' }, gpus: [] };
       const total = gpus.reduce((sum, gpu) => sum + (gpu.vramTotal || 0), 0);
       return {
-        hostId: host.id, hostname: host.name || host.id, ip: '', ollamaHostKey: host.id,
+        hostId: host.id, hostname: host.name || host.id, ip: '', ollamaHostKey: host.id, residency: configured.find((entry) => entry.id === host.id)?.residency || 'gpu',
         gpuName: gpus[0]?.name || '', temperature: gpus[0]?.temperature ?? null, utilization: gpus[0]?.utilization ?? null,
         gpuCount: gpus.length, gpus, telemetry, ollamaEnvironment,
         vramTotalMiB: total || host.memoryTotalMiBTotal || 0,

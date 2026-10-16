@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { buildOrganizeCommand, buildReadCommand, buildSearchCommand, defaults, evidenceArgs, required, runGog, unwrapExternalText } from "./gmail.js";
+import { buildOrganizeCommand, buildReadCommand, buildSearchCommand, defaults, evidenceArgs, mutateBase, required, runGog, unwrapExternalText } from "./gmail.js";
 import { loadRules, matchRule, reportRuleHit } from "./triage-rules.js";
 import { continueReading, readingFrom, writeReading } from "./backlog-reading.js";
 
@@ -162,8 +162,9 @@ export async function nextBacklogMessage(config, mode = "oldest", run = runGog, 
       return { ...value, autoTriaged };
     }
     seen.add(selected.id);
-    const receipt = await triage({ threadId: selected.threadId, category: rule.category }, config, run);
-    const entry = { date: selected.date, from, subject, category: rule.category, ruleId: rule.id,
+    const receipt = await triage({ threadId: selected.threadId, messageId: selected.id, category: rule.category }, config, run);
+    const entry = { messageId: selected.id, date: selected.date, from, subject, category: rule.category, ruleId: rule.id,
+      classificationBasis: "sender_rule", bodyAnalysis: "not_read",
       archiveCandidate: receipt.archiveCandidate, archived: false };
     autoTriaged.push(entry);
     await onRule({ ...entry, threadId: selected.threadId });
@@ -184,6 +185,8 @@ export async function continueBacklogMessage(params, config, run = runGog) {
 // remains. Only labels that exist in the mailbox can be removed.
 export function buildTriageCommands(params, config = defaults, existingLabels = []) {
   const threadId = required(params.threadId, "threadId");
+  const messageId = required(params.messageId, "messageId");
+  if (![threadId, messageId].every(id => /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(id))) throw new Error("Exact messageId and threadId are required");
   const category = required(params.category, "category");
   if (!TRIAGE_CATEGORIES.includes(category)) throw new Error(`unsupported triage category: ${category}`);
   const label = `Secretary/${category}`;
@@ -192,15 +195,11 @@ export function buildTriageCommands(params, config = defaults, existingLabels = 
   const existing = new Set(existingLabels);
   const removeLabels = [
     ...TRIAGE_CATEGORIES.map(name => `Secretary/${name}`).filter(name => name !== label && existing.has(name)),
-    ...(!archiveCandidate ? [ARCHIVE_REVIEW_LABEL] : []),
+    ...(!archiveCandidate && existing.has(ARCHIVE_REVIEW_LABEL) ? [ARCHIVE_REVIEW_LABEL] : []),
   ];
-  const commands = [buildOrganizeCommand({
-    action: "label_threads",
-    ids: [threadId],
-    addLabels: labels,
-    ...(removeLabels.length ? { removeLabels } : {}),
-  }, config)];
-  return { category, label, labels, removeLabels, archiveCandidate, archived: false, commands };
+  const commands = [{ args: [...mutateBase(config, "gmail.messages.modify"), "gmail", "messages", "modify", messageId,
+    `--add=${labels.join(",")}`, ...(removeLabels.length ? [`--remove=${removeLabels.join(",")}`] : [])] }];
+  return { threadId, messageId, category, label, labels, removeLabels, archiveCandidate, archived: false, commands };
 }
 
 async function labelIdsByName(run, config) {
@@ -216,24 +215,32 @@ export async function applyTriage(params, config, run = runGog) {
   const before = await run(stateCommand, config);
   const beforeMessages = before?.thread?.messages;
   if (!Array.isArray(beforeMessages) || !beforeMessages.length) throw new Error("Gmail thread state is unavailable before triage");
+  if (!beforeMessages.some(message => message.id === plan.messageId)) throw new Error("The selected message is not in this thread; no label changed");
   const stateBefore = new Map(beforeMessages.map(message => [message.id, {
     inbox: message.labelIds?.includes("INBOX") === true,
     unread: message.labelIds?.includes("UNREAD") === true,
+    labels: [...(message.labelIds || [])].sort(),
   }]));
   const results = [];
+  const existing = await labelIdsByName(run, config);
+  for (const label of plan.labels.filter(label => !existing.has(label))) {
+    results.push(await run(buildOrganizeCommand({ action: "create_label", label }, config), config));
+  }
   for (const command of plan.commands) results.push(await run(command, config));
   const labelIds = await labelIdsByName(run, config);
   const thread = await run(stateCommand, config);
   const wanted = plan.labels.map(label => labelIds.get(label));
   const removed = plan.removeLabels.filter(label => label !== ARCHIVE_REVIEW_LABEL).map(label => labelIds.get(label)).filter(Boolean);
-  const messages = thread?.thread?.messages || [];
+  const threadMessages = thread?.thread?.messages || [];
+  const messages = threadMessages.filter(message => message.id === plan.messageId);
   const allLabelsPresent = wanted.every(Boolean) && messages.length > 0
     && messages.every((message) => wanted.every((id) => message.labelIds?.includes(id)))
     && messages.every((message) => !removed.some((id) => message.labelIds?.includes(id)));
   const stateUnchanged = [...stateBefore].every(([id, before]) => {
-    const message = messages.find(message => message.id === id);
+    const message = threadMessages.find(message => message.id === id);
     return message && (message.labelIds?.includes("INBOX") === true) === before.inbox
-      && (message.labelIds?.includes("UNREAD") === true) === before.unread;
+      && (message.labelIds?.includes("UNREAD") === true) === before.unread
+      && (id === plan.messageId || JSON.stringify([...(message.labelIds || [])].sort()) === JSON.stringify(before.labels));
   });
   const candidateRemoved = plan.archiveCandidate || messages.every(message => !message.labelIds?.includes(labelIds.get(ARCHIVE_REVIEW_LABEL)));
   if (!allLabelsPresent || !stateUnchanged || !candidateRemoved) {
@@ -242,6 +249,8 @@ export async function applyTriage(params, config, run = runGog) {
   return {
     ok: true,
     threadId: params.threadId,
+    messageId: plan.messageId,
+    scope: "message",
     category: plan.category,
     labels: plan.labels,
     archiveCandidate: plan.archiveCandidate,

@@ -131,6 +131,13 @@ Instance configuration, data and deployment receipts remain outside Git.
   on `/mcp` share the same owner notes; sensitive identifiers leave note and
   journal text for the vault when its key is set. Agents file Markdown notes
   into the owner's vault inbox when the instance names one.
+  Historical source assertions have a separate review at `/dad/history`: source
+  dates, event dates, attribution and revision-fenced decisions stay explicit.
+  Retaining an action keeps it open; source review creates neither a personal
+  commitment nor selected memory. The native archive reader verifies pinned
+  originals independently of Gmail. Instance import, process qualification and
+  evidence-gated mailbox cleanup are tracked in
+  [#795](https://github.com/WindriderQc/AgentX/issues/795).
 - **Voice.** Household and PsyX share Core's browser conversation engine, VoiX
   transport, synthesis validation, stream relay and spoken-text cleanup. Native
   voice replies use the same speech boundary; physical device adapters retain
@@ -217,6 +224,12 @@ Instance configuration, data and deployment receipts remain outside Git.
   or test progress, remaining budgets, test outcomes and the stop checkpoint.
   A controlled stop preserves source changes locally without an automatic retry;
   an inactive host without a terminal receipt stays unknown and blocks new work.
+  Manual private reports keep source read-only, archive verified partial files
+  on controlled stops and support explicit continuation of the same scope and
+  source from a digest-bound checkpoint. Lost outcomes reconcile the original
+  request without relaunch; candidate acceptance requires independent review and
+  explicit complete-scope confirmation. Archive selections agree across status
+  cards and board, with unknown or incomplete count evidence labelled explicitly.
   Review of that pull request and its CI is
   the gate; nothing merges or deploys by itself. See
   [the coding worker](../integrations/coding/README.md). The disabled-by-default

@@ -31,7 +31,7 @@ SENDER_TOP = 25
 ADDRESS = re.compile(r"[^\s<>\"',;]+@[^\s<>\"',;]+")
 EVIDENCE_ROOT = Path(os.environ.get("GMAIL_SECRETARY_ROOT") or Path.home() / ".local/share/agentx/secretary-evidence")
 CATCHUP_FIELDS = ("phase", "startedAt", "updatedAt", "finishedAt", "pending", "reviewed", "failed",
-                  "remaining", "pagesPerHour", "etaHours", "lane")
+                  "remaining", "pagesPerHour", "etaHours", "lane", "unresolvedInferenceAttempts")
 CATCHUP_LOCK_FRESH_SECONDS = 1800
 
 
@@ -60,6 +60,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--gog", default=os.environ.get("GMAIL_SECRETARY_GOG") or settings.get("gogPath") or "gog")
     parser.add_argument("--keyring-password-file", default=os.environ.get("GMAIL_SECRETARY_KEYRING_FILE") or settings.get("keyringPasswordFile"))
     parser.add_argument("--timezone", default=os.environ.get("GMAIL_SECRETARY_TIMEZONE") or settings.get("timezone") or "UTC")
+    parser.add_argument("--evidence-root", type=Path, default=os.environ.get("GMAIL_SECRETARY_ROOT") or settings.get("evidenceRoot") or EVIDENCE_ROOT)
     parser.add_argument("--timeout-seconds", type=int, default=25)
     commands = parser.add_subparsers(dest="command", required=True)
     threads = commands.add_parser("threads")
@@ -73,6 +74,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     senders = commands.add_parser("senders")
     senders.add_argument("--max", type=int, default=SENDER_SAMPLE)
     commands.add_parser("catchup")
+    archived = commands.add_parser("archived")
+    archived.add_argument("--message", required=True)
+    archived.add_argument("--sha256", required=True)
+    archived.add_argument("--offset", type=int, default=0)
+    archived.add_argument("--part", type=int)
     return parser.parse_args(argv)
 
 
@@ -281,6 +287,16 @@ def main(argv: list[str] | None = None) -> int:
                           "message": "the Secretary mail request is not valid"}))
         return 0
     try:
+        if args.command == "archived":
+            from archive_read import ArchiveReadError, read_original
+            try:
+                data = read_original(args.evidence_root, args.message, args.sha256, args.offset, part_index=args.part)
+            except ArchiveReadError as error:
+                raise MailDeskError(str(error), error.code, error.status) from error
+            except (OSError, ValueError, LookupError):
+                raise MailDeskError("The archived original could not be read", "SECRETARY_ARCHIVE_UNAVAILABLE")
+            print(json.dumps({"status": "success", "data": data}, ensure_ascii=False))
+            return 0
         if args.command == "catchup":
             # Reads the private archive status only; no Gmail account is involved.
             print(json.dumps({"status": "success", "data": catchup(args)}, ensure_ascii=False))

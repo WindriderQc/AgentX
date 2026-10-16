@@ -66,7 +66,7 @@ test('engineering history applies its scope before pagination, counts and explic
   const response = await harness.request.get('/api/pipeline/tasks?scope=engineering&includeDone=true&view=summary&limit=2').expect(200);
   const data = response.body.data;
   expect(data.tasks.map(task => task.pipelineId)).toEqual(['0901', '0902']);
-  expect(data.summary).toEqual({ byStatus: { queued: 1, in_progress: 0, review: 0, blocked: 0, done: 2 }, matchedCount: 3, openCount: 1, doneCount: 2 });
+  expect(data.summary).toMatchObject({ byStatus: { queued: 1, in_progress: 0, review: 0, blocked: 0, done: 2 }, matchedCount: 3, openCount: 1, doneCount: 2 });
   expect(data.evidence).toMatchObject({ scope: { taskScope: 'engineering', includesDone: true }, rows: { returnedCount: 2, matchedCount: 3, truncated: true } });
   const filtered = await harness.request.get('/api/pipeline/tasks?scope=engineering&status=done&service=core').expect(200);
   expect(filtered.body.data.tasks.map(task => task.pipelineId)).toEqual(['0901']);
@@ -106,4 +106,25 @@ test('a task becoming private between selection and atomic claim is not claimed'
     await harness.request.post('/api/pipeline/tasks/0900/claim').send({ assignee: 'worker-a' }).expect(409);
     expect(await PipelineTask.findOne({ pipelineId: '0900' }).lean()).toMatchObject({ service: 'family', status: 'queued', assignee: null });
   } finally { spy.mockRestore(); }
+});
+
+test('archive counts cover the full engineering scope beyond the loaded page without changing task statuses', async () => {
+  const qualification = { disposition: { kind: 'qualification', outcome: 'abandoned' } };
+  await PipelineTask.create([
+    { pipelineId: '0100', title: 'Current queued work', status: 'queued' },
+    { pipelineId: '0101', title: 'Current blocked work', status: 'blocked' },
+    { pipelineId: '0102', title: 'Archived blocked fixture', status: 'blocked', codingAutonomy: qualification },
+    { pipelineId: '0103', title: 'Archived review fixture', status: 'review', codingAutonomy: qualification },
+    { pipelineId: '0104', title: 'Archived queued fixture', status: 'queued', codingAutonomy: qualification },
+    { pipelineId: '0105', title: 'Closed engineering work', status: 'done' },
+    { pipelineId: '0106', title: 'Private fixture', service: 'family', status: 'blocked', codingAutonomy: qualification },
+  ]);
+  const before = await PipelineTask.find({}).sort({ pipelineId: 1 }).lean();
+  const { body: { data } } = await harness.request.get('/api/pipeline/tasks?scope=engineering&includeDone=true&view=summary&limit=1').expect(200);
+  expect(data.tasks).toHaveLength(1);
+  expect(data.summary.byStatus).toEqual({ queued: 2, in_progress: 0, review: 1, blocked: 2, done: 1 });
+  expect(data.summary.archivedQualifications).toEqual({ matchedCount: 3,
+    byStatus: { queued: 1, in_progress: 0, review: 1, blocked: 1, done: 0 } });
+  expect(data.evidence.rows).toMatchObject({ matchedCount: 6, returnedCount: 1, truncated: true });
+  expect(await PipelineTask.find({}).sort({ pipelineId: 1 }).lean()).toEqual(before);
 });

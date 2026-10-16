@@ -114,6 +114,41 @@ class VerifyArchiveTests(unittest.TestCase):
         report["restoreSample"] = module.restore_sample(self.copy, receipts, 2, seed=1)
         self.assertNotIn("Synthetic", json.dumps(report))
 
+    def test_a_missing_raw_receipt_never_produces_an_intact_report(self):
+        (self.copy / "raw-receipts/message1.json").unlink()
+        report, _ = module.verify(self.copy)
+        self.assertFalse(report["intact"])
+        self.assertEqual(report["raw"]["withoutOriginal"], 1)
+
+    def test_optional_proof_names_only_sources_actually_verified(self):
+        receipt = json.loads((self.copy / "raw-receipts/message1.json").read_text())
+        (self.copy / receipt["path"]).write_bytes(b"X" * receipt["bytes"])
+        report, _ = module.verify(self.copy, with_sources=True)
+        proof = report["verificationProof"]
+        self.assertFalse(proof["intact"])
+        self.assertNotIn("message1", proof["raw"])
+        self.assertIn("message2", proof["raw"])
+        self.assertNotIn("Synthetic", json.dumps(proof))
+
+    def test_tree_verification_rehashes_metadata_even_when_size_and_mtime_match(self):
+        index = {"files": {p.relative_to(self.root).as_posix(): {
+            "sha256": module.sha_file(p), "bytes": p.stat().st_size, "mtime": str(p.stat().st_mtime)}
+            for p in self.root.rglob("*") if p.is_file()}}
+        report, _ = module.verify(self.copy, with_sources=True, tree_index=index)
+        self.assertTrue(report["intact"])
+        path = self.copy / "threads/thread01/original.json"
+        data = path.read_bytes()
+        path.write_bytes(data.replace(b'"body": "x"', b'"body": "y"'))
+        report, _ = module.verify(self.copy, with_sources=True, tree_index=index)
+        self.assertFalse(report["intact"])
+        self.assertEqual(report["archiveTree"]["mismatchedIds"], ["threads/thread01/original.json"])
+        self.assertNotIn("threads/thread01/original.json", report["verificationProof"]["archiveTreeFiles"])
+
+    def test_invalid_empty_or_escaping_tree_index_cannot_certify_an_archive(self):
+        for index in ({"files": {}}, {"files": {"../outside": {"sha256": "a" * 64, "bytes": 1}}},
+                      {"files": {"raw/file": {"sha256": "a" * 64, "bytes": True}}}):
+            self.assertFalse(module.verify(self.copy, tree_index=index)[0]["intact"])
+
 
 if __name__ == "__main__":
     unittest.main()

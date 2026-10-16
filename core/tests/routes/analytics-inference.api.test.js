@@ -109,6 +109,34 @@ describe('inference analytics summary', () => {
     });
   });
 
+  test('accounts for every model before limiting the displayed list', async () => {
+    const models = Array.from({ length: 45 }, (_, i) => ({
+      _id: i < 40 ? `local/model-${i}` : `openrouter/cloud-${i}`,
+      calls: 1, errors: 0, tokensIn: 100, tokensOut: 50, durationMs: 1000,
+      hosts: i < 40 ? ['http://192.0.2.1:11434'] : ['https://openrouter.ai/api/v1']
+    }));
+    resolvePricing.mockResolvedValue({ promptTokenCost: 1, completionTokenCost: 1 });
+    InferenceLog.aggregate.mockResolvedValue(facet({ byModel: models }));
+    const res = await request(server).get('/api/analytics/inference/summary?window=90d');
+    expect(res.body.data.byModel).toHaveLength(40);
+    expect(res.body.data.local.calls).toBe(40);
+    expect(res.body.data.cloud.calls).toBe(5);
+    expect(res.body.data.cloud.estimatedCostUsd).toBeGreaterThan(0);
+    expect(res.body.data.coverage).toMatchObject({ modelCount: 45, listedModelCount: 40, listedModelCalls: 40, requestedDays: 90, retentionDays: 30 });
+    const modelStages = InferenceLog.aggregate.mock.calls[0][0].find(stage => stage.$facet).$facet.byModel;
+    expect(modelStages.some(stage => stage.$limit)).toBe(false);
+  });
+
+  test('returns hourly buckets for 24h without claiming they measure GPU time', async () => {
+    InferenceLog.aggregate.mockResolvedValue(facet({ byBucket: [{ _id: '2026-01-01T01:00:00.000Z', calls: 10, errors: 2 }] }));
+    const res = await request(server).get('/api/analytics/inference/summary?window=24h');
+    expect(res.body.data.bucketHours).toBe(1);
+    expect(res.body.data.byBucket[0]).toMatchObject({ date: '2026-01-01T01:00:00.000Z', calls: 10, errors: 2 });
+    expect(res.body.data.coverage.durationBasis).toMatch(/not GPU busy time/);
+    const pipeline = InferenceLog.aggregate.mock.calls[0][0];
+    expect(pipeline.find(stage => stage.$facet).$facet.byBucket[0].$group._id.$dateToString).toMatchObject({ timezone: 'UTC', format: '%Y-%m-%dT%H:00:00.000Z' });
+  });
+
   test('falls back to a 7d window for an unknown window key', async () => {
     InferenceLog.aggregate.mockResolvedValue(facet());
     const res = await request(server).get('/api/analytics/inference/summary?window=nonsense');
@@ -202,7 +230,7 @@ describe('inference analytics summary', () => {
     expect(res.body.data.local.calls).toBe(7);
   });
 
-  test('computes generation throughput from time actually spent', async () => {
+  test('computes effective output throughput from end-to-end call time', async () => {
     InferenceLog.aggregate.mockResolvedValue(facet({
       byModel: [{
         _id: 'qwen3-coder:30b', calls: 2, errors: 0, tokensIn: 0,

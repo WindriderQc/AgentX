@@ -901,6 +901,21 @@ without relaunch. Exact-commit GitHub observations produce bounded corrections
 or ready-for-human-review; native model completion and capacity release remain
 separate gates. See [the coding worker](../integrations/coding/README.md).
 
+Manual private reports reuse the native worker, Core claim and inference
+journals with read-only source and a private per-request output directory.
+`PipelineReportRun` freezes the filename, budget and optional parent request and
+digest. New journals use `executionVersion: 1` with a partial unique index on
+task/claim, leaving legacy journals unchanged. Proven native completion permits
+either a candidate for review or an archived partial file with a blocked task.
+Deliverable provenance binds the exact request, claim, source and specification;
+clients cannot supply that internal provenance through a file upload. Explicit
+continuation verifies a prior terminal checkpoint's bytes and unchanged scope
+before restoration. Lost stop/publication replies replay the frozen intent under
+the same identity. Acceptance binds an independent reviewer's complete-scope
+confirmation to the current candidate and its verified digest. Core and native
+scripts must be installed together for the continuation and partial-stop
+protocol; old receipts retain their existing reconciliation path.
+
 Nerve Center reads `live.gpuHealth` from the existing host-preference endpoint;
 HTTP reachability stays separate from pin GPU residency. Benchmark's bounded
 `GET /api/profiler/recovery` projects existing HostProfile journals without

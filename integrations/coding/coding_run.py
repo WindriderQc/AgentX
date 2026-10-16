@@ -85,11 +85,11 @@ focused tests before expanding your investigation. New source or test progress
 can extend the soft budget; the hard ceiling never moves. If you cannot finish,
 explain the remaining work and stop with a useful source checkpoint.
 
-For a review or documentation report, save the requested report in /workspace
-early, after the first verified findings. Extend and correct that deliverable as
-you inspect the remaining material. State what you checked and what remains;
-do not claim complete coverage before checking it. Follow the repository's rules
-for private information and public documents.
+This is the code-change profile. Product documentation edits requested for the
+repository follow its source rules. A standalone review or audit report requires
+the private report profile. If the requested result is only such a report, stop
+without changing source and tell the operator to select that profile. Keep private
+reports, logs and runtime artifacts outside the source checkpoint and public PR.
 
 You have no network. The dependencies of core, benchmark, rag and data are already
 installed, and the test database is ready. Do not try to download anything. If the
@@ -379,6 +379,11 @@ def feedback(task_id: str, text: str, status: str | None = None, *, progress=Non
     body = {"by": WORKER, "assignee": WORKER, "text": text}
     if status:
         body["status"] = status
+    if progress is not None and not getattr(progress, 'report_mode', False):
+        if not getattr(progress, 'task_claim_seq', None) or not getattr(progress, 'task_spec_sha256', None):
+            print('No original worker claim: task feedback was not written.', file=sys.stderr)
+            return
+        body['manualWorkerClaim'] = {'claimSeq': progress.task_claim_seq, 'specSha256': progress.task_spec_sha256}
     if getattr(progress, 'report_mode', False):
         if not getattr(progress, 'report_spec_sha256', None) or not getattr(progress, 'task_claim_seq', None):
             return
@@ -446,6 +451,9 @@ def main() -> int:
     parser.add_argument("--request-id", default="")
     parser.add_argument("--autonomous", action="store_true")
     parser.add_argument("--report-name", default=None)
+    parser.add_argument("--model-call-limit", type=int, default=None)
+    parser.add_argument("--parent-request-id", default=None)
+    parser.add_argument("--parent-sha256", default=None)
     args = parser.parse_args()
     if not TASK_ID.fullmatch(args.task_id):
         parser.error("task id is four digits")
@@ -458,10 +466,22 @@ def main() -> int:
     if args.report_name is not None:
         if args.autonomous or not args.request_id or not coding_dispatch_control.report_name(args.report_name):
             parser.error("report mode needs a manual request UUID and a plain Markdown file name")
+    if args.model_call_limit is not None:
+        if not args.report_name:
+            parser.error("model call override requires report mode")
+        try:
+            coding_progress.report_call_limit(args.model_call_limit)
+        except ValueError as error:
+            parser.error(str(error))
+
+    if args.parent_request_id is not None or args.parent_sha256 is not None:
+        if not args.report_name or not coding_progress.REQUEST_ID.fullmatch(args.parent_request_id or '') or not re.fullmatch(r'[a-f0-9]{64}', args.parent_sha256 or '') or args.parent_request_id == args.request_id:
+            parser.error('report continuation needs its original request and SHA-256')
 
     progress = coding_progress.Progress(args.task_id, args.request_id, args.timeout_seconds, receipts=RECEIPTS,
         heartbeat=None if args.report_name else lambda: request(f"{CORE}/api/pipeline/tasks/{args.task_id}/heartbeat", {"assignee": WORKER}))
     progress.report_mode = progress.preflight = bool(args.report_name)
+    progress.report_model_call_limit = coding_progress.report_call_limit(args.model_call_limit)
     previous_handlers = {signum: signal.getsignal(signum) for signum in (signal.SIGTERM, signal.SIGINT)}
     def stop_worker(_signum, _frame):
         progress.stop_reason = "operator_stop"
@@ -521,6 +541,7 @@ def execute(args, progress) -> int:
     task = request(f"{CORE}/api/pipeline/tasks/{args.task_id}/worker?agent={WORKER}")["data"]["task"]
     claim = next((entry for entry in reversed(task.get("transitions") or []) if entry.get("kind") == "claimed"), {})
     progress.task_claim_seq = claim.get("seq")
+    progress.task_spec_sha256 = hashlib.sha256(str(task.get('spec', '')).encode()).hexdigest()
     if getattr(progress, "report_mode", False):
         progress.report_spec_sha256 = hashlib.sha256(str(task.get("spec", "")).encode()).hexdigest()
     name = f"task-{args.task_id}"
@@ -634,7 +655,7 @@ def execute(args, progress) -> int:
         where = push_and_open_pr(workspace, branch, args.task_id, task.get("title", "Coding task"), summary, token)
     else:
         where = f"local branch {branch} in {workspace} (no GH_TOKEN: not pushed)"
-    feedback(args.task_id, f"Coding worker finished. Result: {where}\n\n{summary[-4000:]}", "done" if token else "blocked")
+    feedback(args.task_id, f"Coding worker finished. Result: {where}\n\n{summary[-4000:]}", "done" if token else "blocked", progress=progress)
     progress.finish("review" if token else "local_only", checkpoint=progress.checkpoint)
     print(summary)
     print(where)

@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import sys
 
 MAX_BYTES = 2 * 1024 * 1024
 # Only reasons accepted by Core\'s shared worker-outcome observation contract.
@@ -88,23 +89,59 @@ def publish(r, task_id, key):
     return result
 
 
+def freeze_partial(r, task_id, key, report_name):
+    """Freeze only this execution's saved file; later reconciliation replays it unchanged."""
+    root = r.WORKSPACES / f'.home-task-{task_id}' / 'deliverables' / key
+    try:
+        data = report_bytes(root / report_name, root)
+    except (OSError, ValueError):
+        return None
+    frozen = r.RECEIPTS / f'{key}.report-partial.md'
+    if frozen.exists():
+        if frozen.read_bytes() != data:
+            raise ValueError('Original frozen partial report bytes changed')
+    else:
+        with frozen.open('xb') as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            stream.write(data); stream.flush(); os.fsync(stream.fileno())
+    return {'sha256': hashlib.sha256(data).hexdigest(),
+            'dataUrl': 'data:text/markdown;base64,' + base64.b64encode(data).decode('ascii')}
+
+
+def stop_body(r, task_id, key, report_name, worker_outcome):
+    path = r.RECEIPTS / f'{key}.report-stop.json'
+    if path.exists():
+        return json.loads(path.read_text())
+    body = {'workerOutcome': worker_outcome}
+    partial = freeze_partial(r, task_id, key, report_name)
+    if partial:
+        body['partial'] = partial
+    immutable_json(r, path, body)
+    return body
+
+
+def verify_stop(response, body, key):
+    outcome = response.get('outcome', {})
+    if not response.get('blocked') or outcome.get('requestId') != key:
+        raise ValueError('Original report stop is unverified')
+    if body.get('partial') and not response.get('superseded'):
+        archived = outcome.get('partial', {})
+        if archived.get('sha256') != body['partial']['sha256'] or not archived.get('deliverableId'):
+            raise ValueError('Core did not verify the original partial report')
+
+
 def stop(r, args, progress, reason):
     status = r.request(endpoint(r,args.task_id,args.request_id))['data']
     if not status.get('terminationVerified') or not getattr(progress,'report_drained',True):
         progress.stop_reason='model_termination_unverified';progress.write()
         return 2
-    path=r.RECEIPTS/f'{args.request_id}.report-stop.json'
-    if path.exists():
-        body=json.loads(path.read_text())
-    else:
-        body={'workerOutcome':{'schema':'agentx.pipeline-worker-outcome/v1','requestId':args.request_id,'pipelineId':args.task_id,
-            'claimSeq':progress.task_claim_seq,'result':'blocked','reason':stop_reason(reason),'source':'worker_report',
-            'startedAt':progress.started_at,'finishedAt':r.coding_progress.utc_now(),
-            'usage':{name:progress.usage()[name] for name in ('workSeconds','modelCalls')}}}
-        immutable_json(r,path,body)
+    body = stop_body(r, args.task_id, args.request_id, args.report_name,
+        {'schema':'agentx.pipeline-worker-outcome/v1','requestId':args.request_id,'pipelineId':args.task_id,
+         'claimSeq':progress.task_claim_seq,'result':'blocked','reason':stop_reason(reason),'source':'worker_report',
+         'startedAt':progress.started_at,'finishedAt':r.coding_progress.utc_now(),
+         'usage':{name:progress.usage()[name] for name in ('workSeconds','modelCalls')}})
     response=r.request(endpoint(r,args.task_id,args.request_id)+'/stop-result',body)['data']
-    if not response.get('blocked') or response.get('outcome',{}).get('requestId')!=args.request_id:
-        raise ValueError('Original report stop is unverified')
+    verify_stop(response, body, args.request_id)
     progress.core_recorded=True
     progress.finish('blocked','authorization_removed' if response.get('superseded') else reason,progress.checkpoint)
     return 1
@@ -112,7 +149,9 @@ def stop(r, args, progress, reason):
 
 def failure(r,args,progress,error):
     if (r.RECEIPTS/f'{args.request_id}.report-intent.json').exists() or getattr(progress,'report_started',False):
+        progress.stop_reason = progress.stop_reason or 'runner_error'
         progress.write()
+        print(f'Report runner requires reconciliation ({type(error).__name__})', file=sys.stderr)
         return 2
     progress.preflight=True
     if getattr(progress,'task_claim_seq',None) and getattr(progress,'report_spec_sha256',None):
@@ -126,10 +165,29 @@ def failure(r,args,progress,error):
     return 1
 
 
+def restore_checkpoint(r, args, path, baseline):
+    if not getattr(args, 'parent_request_id', None):
+        return
+    saved = r.request(endpoint(r, args.task_id, args.request_id) + '/checkpoint')['data']
+    prefix = 'data:text/markdown;base64,'
+    if (saved.get('requestId') != args.request_id or saved.get('parentRequestId') != args.parent_request_id
+            or saved.get('sha256') != args.parent_sha256 or saved.get('sourceCommit') != baseline
+            or not isinstance(saved.get('dataUrl'), str) or not saved['dataUrl'].startswith(prefix)):
+        raise ValueError('Core checkpoint identity or source changed')
+    data = base64.b64decode(saved['dataUrl'][len(prefix):], validate=True)
+    if not 0 < len(data) <= MAX_BYTES or hashlib.sha256(data).hexdigest() != args.parent_sha256:
+        raise ValueError('Core checkpoint bytes changed')
+    with path.open('xb') as stream:
+        os.fchmod(stream.fileno(), 0o600)
+        stream.write(data); stream.flush(); os.fsync(stream.fileno())
+    report_bytes(path, path.parent)
+
+
 def execute(r,args,progress,task,workspace):
     if not r.coding_dispatch_control.report_name(args.report_name) or not r.coding_progress.REQUEST_ID.fullmatch(args.request_id):
         raise ValueError('Report needs its exact request and plain Markdown name')
     progress.report_mode=True;progress.preflight=True
+    progress.report_model_call_limit=r.coding_progress.report_call_limit(getattr(args,'model_call_limit',None))
     progress.report_spec_sha256=hashlib.sha256(str(task.get('spec','')).encode()).hexdigest()
     home=r.worker_home(workspace)
     if home.is_symlink() or (home/'deliverables').is_symlink():
@@ -146,11 +204,19 @@ def execute(r,args,progress,task,workspace):
     source=r.coding_progress.source_state(workspace);progress.checkpoint=baseline
     progress.report_observer=lambda:report_signature(path,root)
     intent={'claimSeq':progress.task_claim_seq,'specSha256':progress.report_spec_sha256,'sourceCommit':baseline,
-            'reportName':args.report_name,'model':r.MODEL,'hardRemainingSeconds':max(1,int(progress.hard_deadline-progress.now()))}
+            'reportName':args.report_name,'model':r.MODEL,'hardRemainingSeconds':max(1,int(progress.hard_deadline-progress.now())),
+            'modelCallLimit':progress.call_limit(), 'parentRequestId':getattr(args,'parent_request_id',None),
+            'parentSha256':getattr(args,'parent_sha256',None)}
     started=r.request(endpoint(r,args.task_id,args.request_id)+'/start',intent)['data']
     if started.get('requestId')!=args.request_id or started.get('claimSeq')!=progress.task_claim_seq:
         raise ValueError('Core did not acknowledge the original report claim')
     progress.report_started=True
+    if started.get('modelCallLimit',r.coding_progress.MANUAL_MODEL_CALL_LIMIT)!=progress.call_limit():
+        return stop(r,args,progress,'runner_error')
+    if getattr(args,'parent_request_id',None):
+        if started.get('parentRequestId') != args.parent_request_id or started.get('parentSha256') != args.parent_sha256:
+            return stop(r,args,progress,'runner_error')
+        restore_checkpoint(r,args,path,baseline)
     progress.heartbeat=lambda:r.request(endpoint(r,args.task_id,args.request_id)+'/heartbeat',{})
     progress.relay_headers={'x-agentx-report-request':args.request_id,'x-agentx-report-task':args.task_id}
     discussion='\n\n'.join(f"{row.get('by','someone')}: {row.get('text','')}" for row in task.get('feedback',[]))
@@ -159,14 +225,31 @@ def execute(r,args,progress,task,workspace):
             f'Your working directory is the private report output directory. Read /workspace/AGENTS.md explicitly. '
             f'/workspace is the read-only source snapshot at {baseline}; use absolute source paths or git -C /workspace. '
             'Do not edit, commit, push or deploy source. '
-            f'Save the requested Markdown report only at {output}, outside Git. Save first verified findings early, '
+            f'Save the requested Markdown report only at {output}, outside Git. '
+            'Paths and budgets in earlier ticket discussion describe previous executions; the current runner output path and budget above govern this execution. '
+            'Save first verified findings early, '
             'then extend and save the report as you inspect remaining documents. State reviewed and pending scope honestly. '
+            'For documentation audits, inventory the requested files once and review small related document groups, '
+            'batching relevant source reads. Before opening the next group, save and read back the findings and a '
+            'per-file coverage table with pending, partial or reviewed status and concrete source evidence. '
+            'Recompute every summary count from that table at each save; record the next group and unresolved checks. '
+            'Merge duplicate findings. If a targeted check remains unresolved, record the uncertainty rather than '
+            'repeating the same search without new evidence. Resume a supplied checkpoint instead of rebuilding '
+            'completed work; revalidate affected claims when its source revision differs. '
+            'If saving fails, report the exact error and stop. '
             'Do not claim complete coverage before checking it. No network exists except the existing model relay. '
             'Do not run live models, benchmarks or GPU jobs. Keep private data, secrets and runtime logs out of the report. '
             f'Remaining soft budget: {max(0,int(progress.soft_deadline-progress.now()))} seconds; '
             f'hard ceiling: {max(0,int(progress.hard_deadline-progress.now()))} seconds. '
+            f'Core also enforces {progress.call_limit()} model requests for this execution. '
+            'Each request consumes that budget; finish before exhaustion, with pending scope explicit if necessary. '
+            'Reserve enough calls to save, verify and summarize the report. When few calls remain, start no new group; '
+            'finish with an honest partial checkpoint and next group. Partial delivery does not complete the full task '
+            'or authorize another execution. '
             'Saved report changes count as progress; the hard ceiling never moves. End with coverage and validation. '
             'The harness stores the report in Core task deliverables for independent review.\n\n'
+            f'Prior checkpoint: {getattr(args, "parent_request_id", None) or "none"}. '
+            'If a checkpoint was supplied, the current output file already contains its exact saved bytes. Read it first and extend it; preserve verified findings and pending coverage.\n\n'
             f'Requested result:\n{task.get("spec","")}\n\nDiscussion:\n{discussion}')
     progress.phase='running';progress.preflight=False
     if progress.check_stop():return stop(r,args,progress,'operator_stop')
@@ -206,15 +289,16 @@ def reconcile(r,task_id,key):
         delivered=publish(r,task_id,key)
         result='blocked' if delivered.get('superseded') else 'review';reason='authorization_removed' if delivered.get('superseded') else None
     else:
-        stop_path=r.RECEIPTS/f'{key}.report-stop.json'
-        if not stop_path.exists():
-            body={'workerOutcome':{'schema':'agentx.pipeline-worker-outcome/v1','requestId':key,'pipelineId':task_id,
-                'claimSeq':status['claimSeq'],'result':'blocked','reason':stop_reason(progress.get('stopReason')),
-                'source':'worker_report','startedAt':progress['startedAt'],'finishedAt':r.coding_progress.utc_now(),
-                'usage':{name:progress['usage'][name] for name in ('workSeconds','modelCalls')}}}
-            immutable_json(r,stop_path,body)
-        body=json.loads(stop_path.read_text());response=r.request(endpoint(r,task_id,key)+'/stop-result',body)['data']
-        if not response.get('blocked'):raise ValueError('Original report stop is unverified')
+        original = control.read_receipt(key)
+        if not original or original.get('pipelineId') != task_id or not control.report_name(original.get('reportName')):
+            raise ValueError('Original report selection is unverified')
+        body = stop_body(r, task_id, key, original['reportName'],
+            {'schema':'agentx.pipeline-worker-outcome/v1','requestId':key,'pipelineId':task_id,
+             'claimSeq':status['claimSeq'],'result':'blocked','reason':stop_reason(progress.get('stopReason')),
+             'source':'worker_report','startedAt':progress['startedAt'],'finishedAt':r.coding_progress.utc_now(),
+             'usage':{name:progress['usage'][name] for name in ('workSeconds','modelCalls')}})
+        response=r.request(endpoint(r,task_id,key)+'/stop-result',body)['data']
+        verify_stop(response, body, key)
         result='blocked';reason='authorization_removed' if response.get('superseded') else body['workerOutcome']['reason']
     progress.update(phase='finished',result=result,stopReason=reason,coreRecorded=True)
     control.atomic_json(path,progress)

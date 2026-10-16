@@ -155,7 +155,26 @@ class ControlTest(unittest.TestCase):
         status = control.status()
         self.assertEqual([item["pipelineId"] for item in status["candidates"]], ["0001", "0009"])
         self.assertEqual((status["contractVersion"], status["busy"], status["run"]), (2, False, None))
-        self.assertEqual(status["summary"], {"queuedTasks": 10, "eligibleTasks": 2, "privateQueuedTasks": 6})
+        self.assertEqual(status["summary"], {"queuedTasks": 10, "eligibleTasks": 2, "privateQueuedTasks": 6, 'scope': 'loaded_tasks', 'eligibleCountExact': False})
+
+    def test_manual_candidates_exclude_deferred_dependencies_and_managed_attempts(self):
+        base={'pipelineId':'0011','status':'queued','service':'agentx-coding'}
+        for extra in [{'notBefore':'9999-01-01T00:00:00Z'},{'dependsOn':['0010']},
+                      {'dependsOn':['0010'],'nextAction':{'code':'inspect_dependencies'}},
+                      {'automation':{'mode':'review_only'}},{'codingAutonomy':{'authorized':True}},
+                      {'automationAttemptCount':1},{'codingCapacity':{'requestId':KEY}}]:
+            with self.subTest(extra=extra):self.assertFalse(control.can_start({**base,**extra}))
+        self.assertTrue(control.can_start({**base,'dependsOn':['0010'],'nextAction':{'code':'await_claim'}}))
+        self.assertTrue(control.can_start({**base,'codingAutonomy':{'authorized':True}},autonomous=True))
+
+    def test_finished_report_without_core_result_stays_unknown_and_cannot_unlock_a_replacement(self):
+        control.save_receipt({'requestId':KEY,'pipelineId':'0001','phase':'accepted','reportName':'review.md'})
+        self.write_progress(self.terminal(coreRecorded=False))
+        with mock.patch.object(control,'unit_active',return_value=False):
+            observed=control.status(KEY)['run']
+            self.assertEqual(observed['phase'],'unknown');self.assertTrue(observed['canReconcile'])
+            with self.assertRaises(control.ControlError) as result:control.launch('0009',FRESH,0)
+        self.assertEqual(result.exception.code,'CODING_DISPATCH_OUTCOME_UNKNOWN')
 
     def test_private_lane_follows_the_core_scope_boundary(self):
         by_id = {item["pipelineId"]: item for item in TASKS}

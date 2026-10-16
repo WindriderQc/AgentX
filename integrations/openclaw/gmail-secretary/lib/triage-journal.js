@@ -1,4 +1,4 @@
-// Every triaged thread leaves a dated digest in the owner's mail journal (AgentX
+// Every triaged message leaves a dated digest in the owner's mail journal (AgentX
 // Core), so the main agent can read what happened in the mail without opening
 // the mailbox. The journal entry is written here, with the triage, and not
 // left to a later step of the model: a classified mail without its digest was
@@ -23,9 +23,12 @@ export async function journalTriage(config, entry, fetchImpl = globalThis.fetch)
     return body.data;
   };
   try {
-    const existing = await post({ action: "search", threadId: entry.threadId, limit: 1 });
-    if (Array.isArray(existing.entries) && existing.entries.length) return { recorded: false, reason: "already journaled" };
-    const saved = await post({ action: "record", threadId: entry.threadId, occurredAt: entry.occurredAt, summary: entry.summary,
+    if (!entry.messageId) throw new Error("An exact messageId is required for the triage journal");
+    const existing = await post({ action: "search", threadId: entry.threadId, messageId: entry.messageId, limit: 1 });
+    if (Array.isArray(existing.entries) && existing.entries.some(row => row.threadId === entry.threadId && row.messageId === entry.messageId)) {
+      return { recorded: false, reason: "already journaled" };
+    }
+    const saved = await post({ action: "record", threadId: entry.threadId, messageId: entry.messageId, occurredAt: entry.occurredAt, summary: entry.summary,
       ...(entry.subject && { subject: entry.subject }), ...(entry.counterpart && { counterpart: entry.counterpart }),
       tags: ["triage", triageTag(entry.category)].filter(Boolean) });
     return saved.recorded === true ? { recorded: true } : { recorded: false, reason: String(saved.reason || "not recorded").slice(0, 200) };

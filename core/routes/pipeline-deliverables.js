@@ -35,6 +35,10 @@ router.get('/tasks/:id/reports/:requestId', validId, async (req, res) => {
   try { return envelope.success(res, await reports.status(req.params.id, req.params.requestId)); }
   catch (error) { return sendError(res, error); }
 });
+router.get('/tasks/:id/reports/:requestId/checkpoint', validId, async (req, res) => {
+  try { return envelope.success(res, await reports.checkpoint(req.params.id, req.params.requestId)); }
+  catch (error) { return sendError(res, error); }
+});
 router.post('/tasks/:id/reports/:requestId/result', validId, async (req, res) => {
   try { return envelope.success(res, await reports.submit(req.params.id, req.params.requestId, req.body || {})); }
   catch (error) { return sendError(res, error); }

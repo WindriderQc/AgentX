@@ -562,17 +562,15 @@ class Archive:
                                 sha=sha, json=json, page_chars=REVIEW_PAGE_CHARS)
 
     def native_status(self):
-        manifests = self.manifests()
-        read = set(file.stem for file in (self.root / "page-reviews").glob("*.json"))
-        pending = sum(page["pageId"] not in read for m in manifests for page in self.review_pages(m))
-        collection = collection_status(self, QUERIES, manifests)
-        state = {"at": now(), "pendingTextPages": pending, "reviewedPages": len(read),
-                 **collection, "pending": bool(pending or collection["uncollectedThreads"] or collection["discoveringScopes"])}
-        save(self.root / "native-status.json", state)
-        return state
+        from evidence_status import native_status
+        return native_status(self, QUERIES)
 
     def native_next(self):
         """One resumable work item in the existing Secretary agent turn, no scheduler."""
+        from review_attempts import unsettled
+        held = unsettled(self.root)
+        if held:
+            return {"outcome": "uncertain", "unresolvedInferenceAttempts": len(held), "requests": held}
         state_file = self.root / "native-worker.json"
         state = load(state_file, {"lane": 0})
         issued = state.get("issued")
@@ -583,7 +581,7 @@ class Archive:
             current = load(self.root / "threads" / issued["threadId"] / "manifest.json", {})
             if current.get("evidenceHash") == issued["evidenceHash"]:
                 # Enrich an old issued page without replacing its identity or text.
-                if "sourceContext" not in issued:
+                if not (issued.get("sourceContext") or {}).get("mimeOverview"):
                     fresh = next((p for p in self.review_pages(current) if p["pageId"] == issued["pageId"]), None)
                     if fresh and fresh["externalUntrustedContent"] == issued["externalUntrustedContent"]:
                         issued["sourceContext"] = fresh["sourceContext"]
@@ -756,7 +754,7 @@ class Archive:
                    "<h1>Secretary — communications et pièces justificatives</h1>",
                    "<p>Dossier privé. Récupération, lecture et analyse sont distinctes. Les pièces ci-dessous ne sont pas toutes des factures. Aucun solde, paiement ou partage des frais n’est présumé.</p>",
                    f"<p><b>{status['collectedMessages']} messages récupérés</b> · {status['collectedThreads']} conversations · {status['uniqueFiles']} fichiers distincts · {len(invoice_rows)} factures ou reçus identifiés.</p>",
-                   f"<p>Analyse en cours : {partial} conversations partiellement analysées, {status['fullyReviewedThreads']} entièrement validées. Les autres restent à examiner. Mise à jour : {esc(now())}.</p>"]
+                   f"<p>Lecture : {partial} conversations avec des points ouverts, {status['fullyReviewedThreads']} avec toutes les pages du flux de lecture traitées. Les variantes MIME peuvent demander une revue complémentaire. Classement, validation des conclusions et traitement des informations sont distincts. Mise à jour : {esc(now())}.</p>"]
         if invoice_rows:
             content.append("<h2>Factures et reçus identifiés</h2><p>Registre en cours. Montant payé au fournisseur et remboursement entre parents sont distincts.</p><table><tr><th>Date / personne</th><th>Document / fournisseur</th><th>Honoraires</th><th>Payé par le patient</th><th>Payé par un assureur</th><th>Preuve et rapprochement</th></tr>")
             for invoice in invoice_rows:
