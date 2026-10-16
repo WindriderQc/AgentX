@@ -14,7 +14,7 @@ const {
   sendRuntimeError,
   uniqueEffectiveModels
 } = require('../common');
-const { ollamaMessages } = require('../hermes/messages');
+const { imageMediaType, ollamaMessages } = require('../hermes/messages');
 const { settledStream } = require('../openclaw/settled-stream');
 const { isPreRoutingValidationRefusal } = require('../../../src/extensions/trustedRuntimeServices');
 const { PRINCIPAL_MODEL_ALIAS, resolvePrincipalAlias } = require('../principal-model');
@@ -174,6 +174,42 @@ async function whenAdmitted(run, { waitMs = 0, retryMs = PATIENT_RETRY_MS, signa
   }
 }
 
+// A model that does not read images receives a description instead: OpenClaw
+// Main, which reads images, describes each message's images (four at a time,
+// its analysis limit) and the text replaces them. The refusal that triggers
+// this happens before routing, so nothing has been dispatched yet.
+const VISION_REQUIRED = 'INFERENCE_VISION_REQUIRED';
+const DESCRIBE_BATCH = 4;
+const DESCRIBE_CONTEXT_CHARS = 2000;
+
+function describePrompt(context) {
+  return 'Describe these images precisely and completely for an assistant that cannot see them: '
+    + 'visible text verbatim, layout, objects, people, colors, charts and any error messages. '
+    + (context ? `The user's message that accompanies them:\n${context.slice(0, DESCRIBE_CONTEXT_CHARS)}` : '');
+}
+
+async function describedMessages(messages, { runtimeServices, model, signal }) {
+  const { analyzeImages } = require('../../../src/services/imageAnalysisService');
+  const described = [];
+  for (const message of messages) {
+    if (!message.images?.length) { described.push(message); continue; }
+    const notes = [];
+    for (let start = 0; start < message.images.length; start += DESCRIBE_BATCH) {
+      const batch = message.images.slice(start, start + DESCRIBE_BATCH);
+      const { text } = await analyzeImages({
+        messages: [{ role: 'user', content: [{ type: 'text', text: describePrompt(message.content) },
+          ...batch.map(data => ({ type: 'image_url', image_url: { url: `data:${imageMediaType(data) || 'image/png'};base64,${data}` } }))] }],
+        signal, runtimeServices, callerDetail: 'llm-gateway-image-description', consumerContract: 'llm-gateway-vision-v1'
+      });
+      const range = batch.length === 1 ? `Image ${start + 1}` : `Images ${start + 1}-${start + batch.length}`;
+      notes.push(`[${range}, described by AgentX because ${model} does not read images]\n${text}`);
+    }
+    const { images: _images, ...rest } = message;
+    described.push({ ...rest, content: [message.content, ...notes].filter(Boolean).join('\n\n') });
+  }
+  return described;
+}
+
 const CHAT_RENDER = Object.freeze({ json: body => body, stream: stream => stream });
 
 // `body` is an OpenAI chat-completions request. `render` turns the chat-shaped
@@ -203,6 +239,7 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
     const snapshot = await runtimeServices.routing.getEffectiveSnapshot({ includeCatalog: false });
     const principalTarget = resolvePrincipalAlias(snapshot, body.model);
     const model = requireApprovedModel(snapshot, principalTarget?.model || body.model);
+    let messages = ollamaMessages(body.messages);
     coding = await require('../../../src/services/pipelineCodingInferenceService').prepare(req.headers, model, abort.signal);
     inferenceOptions = {
       signal: abort.signal,
@@ -211,11 +248,11 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
       ...(principalTarget && { hostUrl: principalTarget.hostUrl }),
       ...(coding?.options || {})
     };
-    const result = await whenAdmitted(() => runtimeServices.inference.execute({
+    const execute = () => runtimeServices.inference.execute({
       mode: 'chat',
       model,
       ...(principalTarget && { options: { num_ctx: principalTarget.numCtx } }),
-      messages: ollamaMessages(body.messages),
+      messages,
       stream: body.stream === true,
       tools: body.tools,
       tool_choice: body.tool_choice,
@@ -233,7 +270,16 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
       user: body.user,
       callerDetail: client.callerDetail,
       timeoutMs: Number(process.env.HERMES_OPENAI_TIMEOUT_MS || 0) || undefined
-    }, inferenceOptions), { waitMs, signal: coding?.options.signal || abort.signal });
+    }, inferenceOptions);
+    const result = await whenAdmitted(async () => {
+      try { return await execute(); }
+      catch (error) {
+        if (error?.code !== VISION_REQUIRED || !messages.some(message => message.images?.length)) throw error;
+        messages = await describedMessages(messages, { runtimeServices, model, signal: abort.signal });
+        res.set('X-AgentX-Images-Described', 'true');
+        return execute();
+      }
+    }, { waitMs, signal: coding?.options.signal || abort.signal });
     let codingCompletion;
     if (coding) {
       if (result.completion) {

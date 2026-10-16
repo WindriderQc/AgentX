@@ -37,7 +37,8 @@ its own address, `/api/hermes-openai`, unchanged.
 Function tools are offered as is, tools in a `namespace` as `<namespace>__<name>`
 and freeform `custom` tools as a function taking `input`; answers are mapped
 back to the names Codex declared. Hosted tools such as `web_search` have no
-local executor and are not offered. Images are replaced by a short notice.
+local executor and are not offered. Images (`input_image` data URLs, also in
+tool results) are sent to the model; other files are replaced by a short notice.
 Reasoning streams as a reasoning summary. Core accepts at most 512 messages,
 so a longer history folds its oldest turns into one text message.
 
@@ -60,12 +61,18 @@ env_key = "AGENTX_LLM_CODEX_TOKEN"
 Set `model_context_window` to the principal route's context. Codex warns that
 it has no metadata for `agentx-primary`; the warning is harmless.
 
-Hermes image analysis uses `/api/hermes-openai/vision/v1` with model
+Every door sends inline images to a model that reads them. When the routed
+model does not, Core refuses before admission and the gateway asks OpenClaw
+Main (below) to describe the images, then runs the request with that text in
+their place (`X-AgentX-Images-Described: true`). Remote image URLs are refused.
+
+Hermes can therefore send images directly to `/api/hermes-openai/v1`. Its
+earlier image analysis route remains: `/api/hermes-openai/vision/v1` with model
 `openclaw:agent:main`. The adapter sends inline image bytes to OpenClaw Main
 through Core's existing agent execution source and returns only a verified
 completed answer. Main's local model requests retain the OpenClaw-to-Core
 admission and telemetry path. Vision requests never invoke the local Hermes
-reasoning route, which explicitly refuses image parts instead of dropping them.
+reasoning route.
 The bounded worker exposes the `skills,vision` toolsets.
 
 Configure the external Hermes profile's `auxiliary.vision` with this custom

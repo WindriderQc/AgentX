@@ -8,9 +8,10 @@
 // and are not offered.
 const { randomUUID } = require('crypto');
 const { Transform } = require('stream');
+const { isImagePart } = require('../hermes/messages');
 
 const NAMESPACE_SEPARATOR = '__';
-const IMAGE_OMITTED = '[image omitted: the AgentX gateway does not send images to this model]';
+const FILE_OMITTED = '[file omitted: the AgentX gateway sends text and images only]';
 const IGNORED_INPUT_ITEMS = new Set(['reasoning', 'item_reference', 'web_search_call', 'file_search_call', 'compaction']);
 
 function invalidRequest(message) {
@@ -20,7 +21,7 @@ function invalidRequest(message) {
 function partText(part) {
   if (typeof part === 'string') return part;
   if (['input_text', 'output_text', 'text', 'summary_text', 'refusal'].includes(part?.type)) return String(part.text ?? part.refusal ?? '');
-  if (['input_image', 'image_url', 'image', 'input_file'].includes(part?.type)) return IMAGE_OMITTED;
+  if (part?.type === 'input_file') return FILE_OMITTED;
   return '';
 }
 
@@ -28,6 +29,23 @@ function contentText(content) {
   if (content == null) return '';
   if (!Array.isArray(content)) return typeof content === 'string' ? content : partText(content);
   return content.map(partText).filter(Boolean).join('\n');
+}
+
+// Chat content for an input item: plain text, or text and image parts when
+// the item carries images. The chat path sends the image bytes to the model.
+function chatContent(content) {
+  const parts = Array.isArray(content) ? content : [content];
+  if (!parts.some(isImagePart)) return contentText(content);
+  return parts.map(part => {
+    if (!isImagePart(part)) return { type: 'text', text: partText(part) };
+    const url = typeof part.image_url === 'string' ? part.image_url : part.image_url?.url;
+    return { type: 'image_url', image_url: { url } };
+  }).filter(part => part.type !== 'text' || part.text);
+}
+
+function messageText(content) {
+  if (!Array.isArray(content)) return content;
+  return content.map(part => part.type === 'text' ? part.text : '[image]').join('\n');
 }
 
 function chatRole(role) {
@@ -93,7 +111,7 @@ function chatMessages(body) {
   for (const item of input) {
     const type = item?.type || (item?.role ? 'message' : null);
     if (type === 'message') {
-      messages.push({ role: chatRole(item.role), content: contentText(item.content) });
+      messages.push({ role: chatRole(item.role), content: chatContent(item.content) });
     } else if (type === 'function_call' || type === 'custom_tool_call') {
       const name = chatName(item);
       const callId = String(item.call_id || item.id || '');
@@ -107,7 +125,7 @@ function chatMessages(body) {
     } else if (type === 'function_call_output' || type === 'custom_tool_call_output') {
       const callId = String(item.call_id || '');
       messages.push({ role: 'tool', tool_call_id: callId, ...(toolNames.has(callId) && { tool_name: toolNames.get(callId) }),
-        content: contentText(item.output) });
+        content: chatContent(item.output) });
     } else if (!IGNORED_INPUT_ITEMS.has(type)) {
       throw invalidRequest(`unsupported Responses input item: ${type || 'unknown'}`);
     }
@@ -124,7 +142,8 @@ const CORE_MESSAGE_LIMIT = 512;
 function transcriptLine(message) {
   const calls = (message.tool_calls || []).map(call => `[${message.role} called ${call.function?.name}(${call.function?.arguments || ''})]`);
   const label = message.role === 'tool' ? `[tool result${message.tool_name ? ` ${message.tool_name}` : ''}]` : `[${message.role}]`;
-  return [message.content ? `${label} ${message.content}` : '', ...calls].filter(Boolean).join('\n');
+  const text = messageText(message.content);
+  return [text ? `${label} ${text}` : '', ...calls].filter(Boolean).join('\n');
 }
 
 function foldHistory(messages, limit = CORE_MESSAGE_LIMIT) {

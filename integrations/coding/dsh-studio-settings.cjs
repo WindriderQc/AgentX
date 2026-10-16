@@ -4,7 +4,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { settingsPatch } = require('./dsh-settings-patch.cjs');
 
-function studioSettings(settings, coreUrl, contextSize) {
+// With its own gateway token Studio uses Core's OpenAI door under its own
+// client name; without one it keeps Hermes's address. Both send images.
+function studioSettings(settings, coreUrl, contextSize, gateway = false) {
   const origin = new URL(coreUrl);
   if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password) throw new Error('Invalid Core origin');
   if (!(Number.isSafeInteger(contextSize) && contextSize > 0)) throw new Error('Principal context is unavailable');
@@ -14,16 +16,16 @@ function studioSettings(settings, coreUrl, contextSize) {
       // is retained; only the private Studio copy changes its local provider.
       'agentx-core': { displayName: 'AgentX principal model', api: 'openai-completions',
         apiKeyEnv: 'AGENTX_CORE_API_KEY', compat: { supportsDeveloperRole: false, maxTokensField: 'max_tokens', thinkingFormat: 'deepseek' },
-        baseURL: `${origin.origin}/api/hermes-openai/v1`,
-        models: [{ id: 'agentx-primary', contextWindow: contextSize, maxTokens: 32768,
+        baseURL: `${origin.origin}${gateway ? '/api/llm/v1' : '/api/hermes-openai/v1'}`,
+        models: [{ id: 'agentx-primary', input: ['text', 'image'], contextWindow: contextSize, maxTokens: 32768,
           reasoningEfforts: { off: null, high: 'high' } }] }
     } },
     'agent-default-model': { provider: 'agentx-core', model: 'agentx-primary' }
   };
 }
 
-function studioPatch(settings, coreUrl, contextSize, browserExecutable, memoryEnabled = false) {
-  const managed = studioSettings(settings, coreUrl, contextSize);
+function studioPatch(settings, coreUrl, contextSize, browserExecutable, memoryEnabled = false, gateway = false) {
+  const managed = studioSettings(settings, coreUrl, contextSize, gateway);
   const patch = settingsPatch(Object.fromEntries(['llm-pi-ai', 'agent-default-model'].map(id => [id, managed[id]])));
   if (browserExecutable) patch.push({ insert: [
     { id: 'agentx-browser-use', name: '@deepseek-ai/dsh-browser-use' },
@@ -57,7 +59,8 @@ async function main() {
   if (memory === 'true') require.resolve('@deepseek-ai/dsh-tool-session-query', {
     paths: [path.join(path.dirname(destination), 'profiles/web')],
   });
-  const patch = studioPatch(settings, coreUrl, reply.data.contextSize, process.env.DSH_STUDIO_BROWSER_EXECUTABLE, memory === 'true');
+  const gateway = Boolean(process.env.AGENTX_LLM_DSH_STUDIO_TOKEN);
+  const patch = studioPatch(settings, coreUrl, reply.data.contextSize, process.env.DSH_STUDIO_BROWSER_EXECUTABLE, memory === 'true', gateway);
   fs.writeFileSync(destination, JSON.stringify(patch, null, 2) + '\n', { mode: 0o600 });
 }
 if (require.main === module) main().catch(error => { process.stderr.write(`${error.message}\n`); process.exitCode = 1; });
