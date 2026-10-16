@@ -606,6 +606,82 @@ describe('closing a series and settling deadlines', () => {
   });
 });
 
+describe('Secretary documents matched to ledger rows', () => {
+  const links = require('../../src/services/finance/financeDocumentLinks');
+  const FinanceDocumentLink = require('../../models/FinanceDocumentLink');
+  const previous = process.env.FINANCE_SECRETARY_REGISTER;
+
+  // Synthetic register (schema v2): one invoice per case, all invented.
+  const invoices = [
+    { supplier: 'Clinique Exemple', documentNumber: 'F-1', documentDate: '2026-06-10', documentKind: 'invoice', grossAmountCents: 15000, messageId: 'm1' },
+    { supplier: 'Pharmacie Exemple', documentNumber: 'F-2', documentDate: '2026-06-20', documentKind: 'receipt', grossAmountCents: 4200, messageId: 'm2' },
+    { supplier: 'Boutique Exemple', documentNumber: 'F-3', documentDate: '2026-06-25', documentKind: 'invoice', grossAmountCents: 9000, messageId: 'm3' },
+    { supplier: 'Vrac Exemple', documentNumber: 'F-4', documentDate: '2026-06-01', documentKind: 'invoice', grossAmountCents: 123, messageId: 'm4' },
+    { supplier: 'Banque Exemple', documentNumber: 'R-6', documentDate: '2026-06-30', documentKind: 'relevé mensuel bancaire', messageId: 'm5', originalFilename: 'releve-juin.pdf' },
+    { supplier: 'Assureur Exemple', documentNumber: 'C-7', documentDate: '2026-06-15', documentKind: 'claim', patientPaidCents: 5000, messageId: 'm6' }
+  ];
+
+  beforeEach(async () => {
+    await Promise.all([FinanceDocumentLink.deleteMany({})]);
+    const rows = [['2026-06-12', 'CLINIQUE EXEMPLE PAIEMENT', -15000], ['2026-06-21', 'PHARMACIE XYZ', -4200],
+      ['2026-06-22', 'EPICERIE', -4200], ['2026-06-26', 'MARCHE A', -9000], ['2026-06-27', 'MARCHE B', -9000],
+      ['2026-06-15', 'GROS ACHAT', -30000]];
+    let balance = 100000;
+    const transactions = rows.map(([date, description, cents]) => { balance += cents; return { date, description, amount_cents: cents, balance_after_cents: balance }; });
+    await ingestDocument(await writeDoc('june-eop.pdf'), { readText, extract: extractWith({
+      issuer: 'Caisse Exemple', account_last4: '0000', period_start: '2026-06-01', period_end: '2026-06-30',
+      accounts: [{ code: 'EOP', opening_cents: 100000, closing_cents: balance, transactions }] }) });
+    const file = await writeDoc('register.json', JSON.stringify({ schemaVersion: 2, generatedAt: '2026-10-16T08:00:00Z', complete: true, coverage: {}, invoices }));
+    process.env.FINANCE_SECRETARY_REGISTER = file;
+  });
+
+  afterEach(() => {
+    if (previous === undefined) delete process.env.FINANCE_SECRETARY_REGISTER; else process.env.FINANCE_SECRETARY_REGISTER = previous;
+  });
+
+  test('proposes one confident match, flags the ambiguous one, and keeps statements and claims apart', async () => {
+    const view = await links.documents({ minCents: 10000 });
+    expect(view.status).toBe('ok');
+    const byDoc = (name) => view.proposals.filter((p) => p.document.supplier === name);
+    expect(byDoc('Clinique Exemple').map((p) => [p.transaction.description, p.ambiguous])).toEqual([['CLINIQUE EXEMPLE PAIEMENT', false]]);
+    expect(byDoc('Pharmacie Exemple').map((p) => [p.transaction.description, p.ambiguous])).toEqual([['PHARMACIE XYZ', false]]);
+    expect(byDoc('Boutique Exemple').map((p) => p.ambiguous)).toEqual([true, true]);
+    expect(view.unmatchedDocuments.items.map((d) => d.supplier).sort()).toEqual(['Assureur Exemple', 'Vrac Exemple']);
+    expect(view.toClaim).toMatchObject({ count: 1, totalCents: 5000 });
+    expect(view.statements.items.map((d) => d.originalFilename)).toEqual(['releve-juin.pdf']);
+    expect(view.unlinkedTransactions.items.map((t) => t.description)).toEqual(['GROS ACHAT']);
+  });
+
+  test('confirming a match shows it on the transaction; a second proposal for the same document is rejected', async () => {
+    const view = await links.documents({ minCents: 10000 });
+    const clinic = view.proposals.find((p) => p.document.supplier === 'Clinique Exemple');
+    const boutique = view.proposals.filter((p) => p.document.supplier === 'Boutique Exemple');
+    await links.decide([clinic.id], 'confirmed', 'owner');
+    await links.decide([boutique[0].id], 'confirmed', 'owner');
+    const after = await links.documents({ minCents: 10000 });
+    expect(after.confirmed.map((c) => c.document.supplier).sort()).toEqual(['Boutique Exemple', 'Clinique Exemple']);
+    expect(after.proposals.filter((p) => p.document.supplier === 'Boutique Exemple')).toEqual([]);
+    const search = await query.transactions({ q: 'clinique' });
+    expect(search.rows[0].document).toMatchObject({ supplier: 'Clinique Exemple', documentNumber: 'F-1' });
+  });
+
+  test('rejecting a proposal is kept on the next sync, and the document then lacks a transaction', async () => {
+    const view = await links.documents({ minCents: 10000 });
+    const pharmacy = view.proposals.find((p) => p.document.supplier === 'Pharmacie Exemple');
+    await links.decide([pharmacy.id], 'rejected', 'owner');
+    const again = await links.documents({ minCents: 10000 });
+    expect(again.proposals.some((p) => p.document.supplier === 'Pharmacie Exemple')).toBe(false);
+    expect(again.unmatchedDocuments.items.map((d) => d.supplier)).toContain('Pharmacie Exemple');
+  });
+
+  test('reports a missing or unconfigured register without guessing', async () => {
+    process.env.FINANCE_SECRETARY_REGISTER = path.join(tmp, 'absent.json');
+    expect(await links.documents({})).toMatchObject({ status: 'unavailable' });
+    delete process.env.FINANCE_SECRETARY_REGISTER;
+    expect(await links.documents({})).toMatchObject({ status: 'unconfigured' });
+  });
+});
+
 describe('statement coverage', () => {
   test('lists the months each statement series covers and the gaps between', async () => {
     for (const [name, period] of [['a.pdf', ['2026-01-01', '2026-01-31']], ['b.pdf', ['2026-04-01', '2026-04-30']]]) {

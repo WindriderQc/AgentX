@@ -7,6 +7,7 @@ const FinanceStatement = require('../../../models/FinanceStatement');
 const FinanceTransaction = require('../../../models/FinanceTransaction');
 const { ledgerFilter, isLiability } = require('./ledgers');
 const { payrollCoverage } = require('./financeCompleteness');
+const { confirmedFor, transactionKey } = require('./financeDocumentLinks');
 
 const MAX_ROWS = 500;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -69,12 +70,17 @@ async function transactions(query = {}) {
   const limit = Math.min(Math.max(Number.parseInt(query.limit, 10) || 100, 1), MAX_ROWS);
   const [rows, totals] = await Promise.all([
     FinanceTransaction.find(filter).sort({ date: -1, _id: -1 }).limit(limit)
-      .select('accountKey accountCode date description amountCents flowCents category tags manual').lean(),
+      .select('accountKey accountCode date description amountCents flowCents category tags manual fingerprint occurrence').lean(),
     FinanceTransaction.aggregate([{ $match: filter }, { $group: totalsStage() }])
   ]);
   const summary = totals[0] || { count: 0, inCents: 0, outCents: 0, netCents: 0 };
   delete summary._id;
-  return { rows: rows.map(({ _id, ...row }) => ({ id: String(_id), ...row })), totals: summary, truncated: summary.count > rows.length };
+  // A row with a confirmed Secretary document carries it, so the list can show the receipt icon.
+  const documents = await confirmedFor(rows.map(transactionKey));
+  return { rows: rows.map(({ _id, fingerprint, occurrence, ...row }) => {
+    const key = transactionKey({ ...row, fingerprint, occurrence });
+    return { id: String(_id), ...row, document: documents.get(key) || null };
+  }), totals: summary, truncated: summary.count > rows.length };
 }
 
 // A month without a payroll statement is incomplete: it is listed with its totals

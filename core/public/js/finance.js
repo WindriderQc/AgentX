@@ -239,6 +239,41 @@
   let refreshRun = 0;
   let searchRun = 0;
 
+  // Secretary documents: proposals to confirm or reject, documents and outflows without a match, claims, statements in mail.
+  function documentItem(link) {
+    const d = link.document || {};
+    const t = link.transaction || {};
+    return el('li', {}, `${d.documentDate || ''} · ${d.supplier || ''} ${d.documentNumber || ''} · ${money(d.amountCents)} → ${t.date || ''} ${t.description || ''}${link.ambiguous ? ' (ambiguous)' : ''} `,
+      link.status === 'proposed' ? el('button', { type: 'button', class: 'finance-link', 'data-decide': link.id, 'data-status': 'confirmed' }, 'Confirm') : '',
+      link.status === 'proposed' ? el('button', { type: 'button', class: 'finance-link', 'data-decide': link.id, 'data-status': 'rejected' }, 'Reject') : '');
+  }
+  function documentLine(doc) {
+    return el('li', {}, `${doc.documentDate || '—'} · ${doc.supplier || ''} ${doc.documentNumber || ''} · ${money(doc.amountCents)}${doc.originalFilename ? ` · ${doc.originalFilename}` : ''}`);
+  }
+  async function renderDocuments() {
+    const data = await api('documents', {}).catch(() => null);
+    const card = $('financeDocumentsCard');
+    if (!data || data.status !== 'ok') {
+      card.hidden = !(LEDGER === '');
+      $('documentsNote').textContent = data ? `Secretary register unavailable (${data.status}).` : 'Secretary register unavailable.';
+      return;
+    }
+    card.hidden = false;
+    $('documentsNote').textContent = `Read-only register${data.generatedAt ? `, generated ${data.generatedAt}` : ''}${data.complete ? '' : ' · incomplete'}.`;
+    $('documentsProposals').replaceChildren(...(data.proposals.length ? data.proposals.map(documentItem) : [el('li', { class: 'finance-note' }, 'Nothing to confirm.')]));
+    $('documentsUnmatched').replaceChildren(...data.unmatchedDocuments.items.map(documentLine));
+    $('documentsUnlinked').replaceChildren(...data.unlinkedTransactions.items.map((row) => el('li', {}, `${row.date} · ${row.description} · ${money(row.flowCents)}`)));
+    $('documentsClaimTotal').textContent = `${data.toClaim.count} document(s) · ${money(data.toClaim.totalCents)} still to claim`;
+    $('documentsClaims').replaceChildren(...data.toClaim.items.map(documentLine));
+    $('documentsStatements').replaceChildren(...data.statements.items.map(documentLine));
+  }
+  $('financeDocumentsCard').addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-decide]');
+    if (!button) return;
+    await post('documents/links/decide', { ids: [button.dataset.decide], status: button.dataset.status }).catch(showError);
+    await renderDocuments();
+  });
+
   async function search(event) {
     event?.preventDefault();
     const run = ++searchRun;
@@ -257,7 +292,9 @@
           el('thead', {}, el('tr', {}, ...['Date', 'Description', 'Account', 'Category', 'Amount', ''].map((label) => el('th', { scope: 'col' }, label)))),
           el('tbody', {}, ...data.rows.map((row) => el('tr', { 'data-id': row.id, 'data-category': row.manual ? row.category || '' : '',
             'data-tags': row.manual ? (row.tags || []).join(', ') : '' },
-            el('td', {}, row.date), el('td', {}, row.description), el('td', {}, row.accountCode),
+            el('td', {}, row.date), el('td', {}, row.description,
+              row.document ? el('span', { class: 'finance-doc-icon', title: `Secretary document: ${row.document.supplier || ''} ${row.document.documentNumber || ''}`.trim(), role: 'img', 'aria-label': 'Linked document' }, ' 🧾') : ''),
+            el('td', {}, row.accountCode),
             el('td', { class: 'finance-cat-cell' }, `${row.category || '—'}${row.tags?.length ? ` #${row.tags.join(' #')}` : ''}${row.manual ? ' ✎' : ''}`),
             el('td', { class: 'num' }, money(row.flowCents ?? row.amountCents)),
             el('td', {}, el('button', { type: 'button', class: 'finance-link', 'data-edit': row.id, 'aria-label': `Categorize ${row.description} (${row.date})` }, 'Categorize')))))),
@@ -336,6 +373,7 @@
       renderMerchants(merchants.merchants || []);
       renderCategories(byCategory.categories || [], pending);
       await search();
+      await renderDocuments();
       showError(null);
     } catch (error) {
       if (run === refreshRun) showError(error);

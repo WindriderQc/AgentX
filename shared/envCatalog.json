@@ -1159,6 +1159,16 @@
       "secret": false,
       "description": "Balance in cents under which the listed accounts raise a finance alert. Unset: 0, so the minimum-balance alert is off."
     },
+    "FINANCE_SECRETARY_REGISTER": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "finance",
+      "secret": false,
+      "description": "Path to the Secretary invoice register (schema v2), read-only. Unset: no document matching."
+    },
     "FINANCE_ALERT_DORMANT_DAYS": {
       "services": [
         "core"

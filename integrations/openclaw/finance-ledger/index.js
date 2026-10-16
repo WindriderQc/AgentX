@@ -1,5 +1,5 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
-import { createCoreAlertsClient, createCoreFinanceClient, createCorePlanClient, createCoreRulesClient, financeContext } from "./core-finance.js";
+import { createCoreAlertsClient, createCoreDocumentLinkClient, createCoreFinanceClient, createCorePlanClient, createCoreRulesClient, financeContext } from "./core-finance.js";
 
 const receipt = value => ({ content: [{ type: "text", text: JSON.stringify(value) }], details: value });
 
@@ -12,6 +12,7 @@ export default definePluginEntry({
     const teach = createCoreRulesClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const alertsClient = createCoreAlertsClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const planClient = createCorePlanClient({ baseUrl: api.pluginConfig?.agentxUrl });
+    const documentLinkClient = createCoreDocumentLinkClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const agentIds = Array.isArray(api.pluginConfig?.agentIds) && api.pluginConfig.agentIds.length
       ? api.pluginConfig.agentIds : ["comptable"];
 
@@ -34,11 +35,14 @@ export default definePluginEntry({
           + "categories = totals per category (null = not categorized yet); uncategorized = descriptions still "
           + "to classify, biggest first, with a suggestedPattern; rules = the category list and learned rules; "
           + "excludeCategory 'Virements internes' removes transfers between the owner's accounts; "
-          + "statements = ingested statements and any that need review. If nothing matches, say so; never estimate.",
+          + "statements = ingested statements and any that need review; "
+          + "documents = the Secretary's invoices matched to ledger rows: proposals (to confirm), confirmed pairs, documents without "
+          + "a transaction, big outflows without a document (thresholdCents), claims still to file (toClaim, quote its totals as given), "
+          + "and bank statements found in mail (statements, to be filed by the owner, never ingested). If nothing matches, say so; never estimate.",
         parameters: {
           type: "object",
           properties: {
-            action: { type: "string", enum: ["balances", "transactions", "monthly", "yearly", "insights", "categories", "uncategorized", "rules", "statements"] },
+            action: { type: "string", enum: ["balances", "transactions", "monthly", "yearly", "insights", "categories", "uncategorized", "rules", "statements", "documents"] },
             account: { type: "string", maxLength: 80 },
             from: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
             to: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
@@ -107,6 +111,29 @@ export default definePluginEntry({
         },
       };
     }, { name: "finance_categorize", optional: true });
+
+    api.registerTool(context => {
+      if (!financeContext(context, agentIds)) return null;
+      return {
+        name: "finance_document_link",
+        label: "Finance Document Link",
+        description: "Confirm or reject a proposed link between a Secretary document and a ledger row (ids from finance_ledger "
+          + "action documents). Use it ONLY after the owner said yes in this conversation to that exact match; never on your own "
+          + "judgement. Confirming one proposal rejects the other proposals for the same document. Say which pair was saved.",
+        parameters: {
+          type: "object",
+          properties: {
+            decision: { type: "string", enum: ["confirm", "reject"] },
+            ids: { type: "array", minItems: 1, maxItems: 20, items: { type: "string", pattern: "^[a-f0-9]{24}$" } },
+          },
+          required: ["decision", "ids"],
+          additionalProperties: false,
+        },
+        async execute(_callId, params) {
+          return receipt(await documentLinkClient(params));
+        },
+      };
+    }, { name: "finance_document_link", optional: true });
 
     api.registerTool(context => {
       if (!financeContext(context, agentIds)) return null;
