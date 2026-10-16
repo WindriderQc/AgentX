@@ -23,6 +23,7 @@ const DEMO_DISABLED_PREFIXES = Object.freeze([
   '/api/images',
   '/api/hermes',
   '/api/hermes-openai',
+  '/api/llm',
   '/api/llmx',
   '/api/mcp',
   '/api/memory-review',

@@ -1,0 +1,277 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const { EventEmitter, once } = require('node:events');
+const { PassThrough } = require('node:stream');
+const test = require('node:test');
+
+const { authorizeClient, gatewayTokens, parseGatewayClients } = require('../llm-gateway/clients');
+const { ChatSseToResponsesSse, chatRequest, foldHistory } = require('../llm-gateway/responses');
+const { registerLlmGateway } = require('../llm-gateway/router');
+
+function fakeExpress() {
+  return {
+    Router() {
+      const routes = [];
+      const add = method => (path, ...handlers) => routes.push({ method, path, handlers });
+      return { routes, get: add('get'), post: add('post'), all: add('all'), use: add('use') };
+    }
+  };
+}
+
+class Request extends EventEmitter {
+  constructor({ body = {}, headers = {}, params = {} } = {}) {
+    super();
+    this.body = body;
+    this.headers = Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]));
+    this.params = params;
+    this.method = 'POST';
+    this.path = '/';
+  }
+  get(name) { return this.headers[String(name).toLowerCase()] || ''; }
+}
+
+class Response extends PassThrough {
+  constructor() {
+    super();
+    this.statusCode = 200;
+    this.headers = {};
+    this.jsonBody = undefined;
+    this.text = '';
+    this.on('data', chunk => { this.text += chunk.toString('utf8'); });
+  }
+  status(code) { this.statusCode = code; return this; }
+  set(name, value) {
+    if (typeof name === 'object') Object.assign(this.headers, name);
+    else this.headers[name] = value;
+    return this;
+  }
+  json(value) { this.jsonBody = value; this.end(JSON.stringify(value)); return this; }
+}
+
+function snapshot() {
+  const task = { taskType: 'daily_operator', model: 'model-a', hostUrl: 'http://model-host.test:11434', contextSize: 196608 };
+  return { generatedAt: '2026-10-16T00:00:00.000Z', tasks: { daily_operator: task } };
+}
+
+function gateway(execute, clients = parseGatewayClients('{"codex":{"admission":"immediate"}}')) {
+  const calls = [];
+  const router = registerLlmGateway({
+    express: fakeExpress(),
+    logger: {},
+    clients,
+    runtimeServices: {
+      routing: { getEffectiveSnapshot: async () => snapshot() },
+      inference: { execute: async (request, options) => { calls.push({ request, options }); return execute(request, options); } }
+    }
+  });
+  const handler = (method, path) => router.routes.find(entry => entry.method === method && entry.path === path).handlers[0];
+  return { calls, handler };
+}
+
+function events(text) {
+  return text.split('\n\n').filter(Boolean).map(block => {
+    const [eventLine, dataLine] = block.split('\n');
+    const data = JSON.parse(dataLine.slice('data: '.length));
+    assert.equal(eventLine, `event: ${data.type}`);
+    return data;
+  });
+}
+
+const CODEX_TOOLS = [
+  { type: 'function', name: 'exec_command', description: 'Run a command', strict: false,
+    parameters: { type: 'object', properties: { cmd: { type: 'string' } }, required: ['cmd'] } },
+  { type: 'namespace', name: 'multi_agent_v1', description: 'Sub-agents', tools: [
+    { type: 'function', name: 'wait_agent', parameters: { type: 'object', properties: {} } }
+  ] },
+  { type: 'custom', name: 'apply_patch', description: 'Edit files' },
+  { type: 'web_search', external_web_access: false }
+];
+
+test('gateway clients: Hermes is built in and declared clients are validated', () => {
+  const clients = parseGatewayClients('{"codex":{"token":true}}');
+  assert.equal(clients.get('hermes').consumerContract, 'hermes-runtime-v1');
+  assert.deepEqual({ ...clients.get('codex') }, {
+    id: 'codex', label: 'Gateway client codex', callerDetail: 'llm-gateway/codex',
+    consumerContract: 'codex-gateway-v1', admission: 'patient', token: true
+  });
+  assert.equal(parseGatewayClients('').size, 1);
+  for (const raw of ['[1]', 'nope', '{"Codex":{}}', '{"hermes":{}}', '{"codex":{"priority":1}}',
+    '{"codex":{"admission":"later"}}', '{"codex":{"token":"yes"}}']) {
+    assert.throws(() => parseGatewayClients(raw), { code: 'LLM_GATEWAY_CLIENTS_INVALID' }, raw);
+  }
+});
+
+test('a client token is required when declared and fails closed when unset', () => {
+  const client = parseGatewayClients('{"codex":{"token":true}}').get('codex');
+  const request = authorization => ({ headers: authorization ? { authorization } : {} });
+  const env = { AGENTX_LLM_GATEWAY_TOKENS: '{"codex":"s3cret"}' };
+  assert.equal(authorizeClient(client, request('Bearer s3cret'), env), null);
+  assert.equal(authorizeClient(client, request('Bearer wrong'), env).status, 401);
+  assert.equal(authorizeClient(client, request(), env).status, 401);
+  assert.equal(authorizeClient(client, request('Bearer s3cret'), {}).status, 503);
+  assert.equal(authorizeClient(client, request('Bearer s3cret'), { AGENTX_LLM_GATEWAY_TOKENS: 'not json' }).status, 503);
+  assert.throws(() => gatewayTokens('{"codex":1}'), { code: 'LLM_GATEWAY_CLIENTS_INVALID' });
+  assert.equal(authorizeClient(parseGatewayClients('{"open":{}}').get('open'), request(), {}), null);
+});
+
+test('unknown clients and missing tokens are refused before inference', async () => {
+  const { calls, handler } = gateway(async () => assert.fail('no inference'),
+    parseGatewayClients('{"codex":{"token":true}}'));
+  const body = { model: 'model-a', messages: [{ role: 'user', content: 'hi' }] };
+  const unknown = new Response();
+  await handler('post', '/:client/v1/chat/completions')(new Request({ body, params: { client: 'stranger' } }), unknown);
+  assert.equal(unknown.statusCode, 404);
+  const locked = new Response();
+  await handler('post', '/:client/v1/responses')(new Request({ body, params: { client: 'codex' } }), locked);
+  assert.equal(locked.statusCode, 503);
+  assert.equal(calls.length, 0);
+});
+
+test('chat completions run under the client identity and the principal alias context', async () => {
+  const { calls, handler } = gateway(async () => ({
+    ok: true, status: 200, metadata: { model: 'model-a', upstreamProtocol: 'ollama' },
+    body: { model: 'model-a', message: { role: 'assistant', content: 'bonjour' }, done: true, prompt_eval_count: 3, eval_count: 1 }
+  }));
+  const res = new Response();
+  await handler('post', '/:client/v1/chat/completions')(new Request({
+    params: { client: 'codex' }, body: { model: 'agentx-primary', messages: [{ role: 'user', content: 'salut' }] }
+  }), res);
+  assert.equal(res.jsonBody.choices[0].message.content, 'bonjour');
+  const [{ request, options }] = calls;
+  assert.equal(request.model, 'model-a');
+  assert.deepEqual(request.options, { num_ctx: 196608 });
+  assert.equal(request.callerDetail, 'llm-gateway/codex');
+  assert.equal(options.consumerContract, 'codex-gateway-v1');
+  assert.equal(options.hostUrl, 'http://model-host.test:11434');
+});
+
+test('a Codex Responses request becomes chat messages and plain function tools', () => {
+  const { chat, names } = chatRequest({
+    model: 'agentx-primary', instructions: 'You are Codex.', stream: true, store: false,
+    tool_choice: 'auto', parallel_tool_calls: true, reasoning: { summary: 'auto' }, include: ['reasoning.encrypted_content'],
+    tools: CODEX_TOOLS,
+    input: [
+      { type: 'message', role: 'developer', content: [{ type: 'input_text', text: 'Sandbox: read-only' }] },
+      { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'list files' }, { type: 'input_image', image_url: 'data:' }] },
+      { type: 'reasoning', id: 'rs_1', summary: [] },
+      { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'exec_command', arguments: '{"cmd":"ls"}' },
+      { type: 'function_call', id: 'fc_2', call_id: 'call_2', name: 'wait_agent', namespace: 'multi_agent_v1', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'call_1', output: 'a.txt' },
+      { type: 'function_call_output', call_id: 'call_2', output: [{ type: 'input_text', text: 'no agents' }] }
+    ]
+  });
+  assert.deepEqual(chat.tools.map(tool => tool.function.name), ['exec_command', 'multi_agent_v1__wait_agent', 'apply_patch']);
+  assert.deepEqual(chat.tools[2].function.parameters.required, ['input']);
+  assert.equal(chat.tool_choice, 'auto');
+  assert.equal(names.get('multi_agent_v1__wait_agent').namespace, 'multi_agent_v1');
+  assert.deepEqual(chat.messages.map(message => message.role), ['system', 'system', 'user', 'assistant', 'tool', 'tool']);
+  assert.match(chat.messages[2].content, /list files\n\[image omitted/);
+  assert.deepEqual(chat.messages[3].tool_calls.map(call => [call.id, call.function.name]),
+    [['call_1', 'exec_command'], ['call_2', 'multi_agent_v1__wait_agent']]);
+  assert.deepEqual(chat.messages[5], { role: 'tool', tool_call_id: 'call_2', tool_name: 'multi_agent_v1__wait_agent', content: 'no agents' });
+});
+
+test('Responses requests that need server state or unknown items are refused', () => {
+  assert.throws(() => chatRequest({ model: 'm', previous_response_id: 'resp_1', input: 'hi' }), { statusCode: 400 });
+  assert.throws(() => chatRequest({ model: 'm', input: [{ type: 'mystery' }] }), { code: 'RESPONSES_REQUEST_INVALID' });
+  assert.throws(() => chatRequest({ model: 'm', input: [] }), { statusCode: 400 });
+  assert.deepEqual(chatRequest({ model: 'm', input: 'hi' }).chat.messages, [{ role: 'user', content: 'hi' }]);
+});
+
+test('a non-streaming answer becomes reasoning, message and namespaced call items', async () => {
+  const { handler } = gateway(async () => ({
+    ok: true, status: 200, metadata: { model: 'model-a', upstreamProtocol: 'ollama' },
+    body: {
+      model: 'model-a', done: true, prompt_eval_count: 20, eval_count: 7,
+      message: { role: 'assistant', thinking: 'need agent', content: 'Waiting.',
+        tool_calls: [{ function: { name: 'multi_agent_v1__wait_agent', arguments: { targets: ['a'] } } }] }
+    }
+  }));
+  const res = new Response();
+  await handler('post', '/:client/v1/responses')(new Request({ params: { client: 'codex' },
+    body: { model: 'agentx-primary', input: 'go', tools: CODEX_TOOLS } }), res);
+  const response = res.jsonBody;
+  assert.equal(response.object, 'response');
+  assert.equal(response.status, 'completed');
+  assert.deepEqual(response.output.map(item => item.type), ['reasoning', 'message', 'function_call']);
+  assert.equal(response.output[0].summary[0].text, 'need agent');
+  assert.equal(response.output[1].content[0].text, 'Waiting.');
+  const call = response.output[2];
+  assert.deepEqual([call.name, call.namespace, call.arguments], ['wait_agent', 'multi_agent_v1', '{"targets":["a"]}']);
+  assert.match(call.call_id, /^call_agentx_/);
+  assert.deepEqual([response.usage.input_tokens, response.usage.output_tokens, response.usage.total_tokens], [20, 7, 27]);
+});
+
+test('a streamed Ollama answer becomes the Responses event sequence Codex reads', async () => {
+  const upstream = new PassThrough();
+  const { handler } = gateway(async () => ({ ok: true, status: 200, stream: upstream, metadata: { model: 'model-a', upstreamProtocol: 'ollama' } }));
+  const res = new Response();
+  await handler('post', '/:client/v1/responses')(new Request({ params: { client: 'codex' },
+    body: { model: 'agentx-primary', stream: true, input: 'go', tools: CODEX_TOOLS } }), res);
+  upstream.end([
+    { message: { role: 'assistant', thinking: 'plan ' }, done: false },
+    { message: { thinking: 'it' }, done: false },
+    { message: { content: 'Running ' }, done: false },
+    { message: { content: 'ls.' }, done: false },
+    { message: { tool_calls: [{ function: { name: 'apply_patch', arguments: { input: '*** Begin Patch' } } }] }, done: false },
+    { message: { tool_calls: [{ function: { name: 'exec_command', arguments: { cmd: 'ls' } } }] },
+      done: true, prompt_eval_count: 11, eval_count: 5 }
+  ].map(line => JSON.stringify(line)).join('\n') + '\n');
+  await once(res, 'finish');
+  assert.equal(res.headers['Content-Type'], 'text/event-stream; charset=utf-8');
+  const seen = events(res.text);
+  assert.equal(seen[0].type, 'response.created');
+  assert.deepEqual(seen.map(event => event.sequence_number), seen.map((_event, index) => index));
+  const deltas = type => seen.filter(event => event.type === type).map(event => event.delta).join('');
+  assert.equal(deltas('response.reasoning_summary_text.delta'), 'plan it');
+  assert.equal(deltas('response.output_text.delta'), 'Running ls.');
+  assert.equal(deltas('response.function_call_arguments.delta'), '{"cmd":"ls"}');
+  const last = seen[seen.length - 1];
+  assert.equal(last.type, 'response.completed');
+  assert.deepEqual(last.response.output.map(item => item.type), ['reasoning', 'message', 'custom_tool_call', 'function_call']);
+  assert.equal(last.response.output[2].input, '*** Begin Patch');
+  assert.equal(last.response.output[3].arguments, '{"cmd":"ls"}');
+  assert.equal(last.response.usage.total_tokens, 16);
+  const added = seen.filter(event => event.type === 'response.output_item.added').map(event => event.output_index);
+  const done = seen.filter(event => event.type === 'response.output_item.done').map(event => event.output_index);
+  assert.deepEqual(added, [0, 1, 2, 3]);
+  assert.deepEqual(done.sort(), [0, 1, 2, 3]);
+});
+
+test('fragmented OpenAI tool calls are joined and a length stop is incomplete', async () => {
+  const names = chatRequest({ model: 'm', input: 'x', tools: CODEX_TOOLS }).names;
+  const transform = new ChatSseToResponsesSse('model-a', names);
+  let text = '';
+  transform.on('data', chunk => { text += chunk.toString('utf8'); });
+  const chunk = (delta, finish = null) => `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
+  transform.end([
+    chunk({ tool_calls: [{ index: 0, id: 'call_x', function: { name: 'exec_command', arguments: '{"cmd":' } }] }),
+    chunk({ tool_calls: [{ index: 0, function: { arguments: '"pwd"}' } }] }),
+    chunk({}, 'length'),
+    'data: [DONE]\n\n'
+  ].join(''));
+  await once(transform, 'end');
+  const seen = events(text);
+  const last = seen[seen.length - 1];
+  assert.equal(last.type, 'response.incomplete');
+  assert.deepEqual(last.response.incomplete_details, { reason: 'max_output_tokens' });
+  assert.deepEqual(last.response.output.map(item => [item.call_id, item.arguments]), [['call_x', '{"cmd":"pwd"}']]);
+  assert.equal(seen.filter(event => event.type === 'response.output_item.added').length, 1);
+});
+
+test('a history over Core\'s message limit folds its oldest turns into text', () => {
+  const messages = [{ role: 'system', content: 'rules' }];
+  for (let turn = 0; turn < 300; turn += 1) {
+    messages.push({ role: 'assistant', content: '', tool_calls: [{ id: `c${turn}`, function: { name: 'ls', arguments: '{}' } }] });
+    messages.push({ role: 'tool', tool_call_id: `c${turn}`, content: `out ${turn}` });
+  }
+  const folded = foldHistory(messages);
+  assert.ok(folded.length <= 512);
+  assert.equal(folded[0].content, 'rules');
+  assert.equal(folded[1].role, 'user');
+  assert.match(folded[1].content, /\[assistant called ls\(\{\}\)\]\n\n\[tool result\] out 0/);
+  assert.equal(folded[2].role, 'assistant');
+  assert.equal(folded[folded.length - 1].content, 'out 299');
+  assert.equal(foldHistory(messages.slice(0, 10)).length, 10);
+});

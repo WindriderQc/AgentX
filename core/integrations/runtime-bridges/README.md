@@ -10,6 +10,55 @@ host settlement to Core. The benchmark broker supplies exact claim metadata;
 pipeline requests use Core task records and expiring attribution leases. Native
 runtime configuration, accounts, histories and catalog files stay external.
 
+## OpenAI-compatible gateway
+
+`/api/llm/<client>/v1` is one OpenAI-compatible door for any client: `models`,
+`chat/completions` and `responses`. Every request takes Hermes's path through
+Core: the effective model policy, the `agentx-primary` alias (the principal
+model with its host and pinned context, so a client never loads a second copy),
+admission and InferenceLog. The client id is the caller (`llm-gateway/<id>`) and
+the consumer contract (`<id>-gateway-v1`) that analytics group by. Gateway
+clients never request household priority: Nestor's conversations go first.
+
+Hermes is the built-in client `hermes`; `/api/hermes-openai` remains its
+address, unchanged. Other clients are declared in
+`AGENTX_LLM_GATEWAY_CLIENTS`, a JSON object such as
+`{"codex":{"admission":"patient","token":true}}`. `patient` (the default)
+waits up to eight minutes for a busy host, like Hermes's patient route;
+`immediate` is refused at once. With `token: true` the client must send
+`Authorization: Bearer` with its entry from the secret
+`AGENTX_LLM_GATEWAY_TOKENS` (`{"codex":"<random>"}`); a missing entry refuses
+the client. An unknown client gets 404. Invalid JSON in either variable fails
+startup.
+
+`responses` serves the stateless Responses API that OpenAI Codex uses
+(`store: false`, full history in `input`); `previous_response_id` is refused.
+Function tools are offered as is, tools in a `namespace` as `<namespace>__<name>`
+and freeform `custom` tools as a function taking `input`; answers are mapped
+back to the names Codex declared. Hosted tools such as `web_search` have no
+local executor and are not offered. Images are replaced by a short notice.
+Reasoning streams as a reasoning summary. Core accepts at most 512 messages,
+so a longer history folds its oldest turns into one text message.
+
+Codex configuration (`~/.codex/config.toml`), with the token in the
+environment variable named by `env_key`:
+
+```toml
+model_provider = "agentx"
+model = "agentx-primary"
+model_context_window = 196608
+model_auto_compact_token_limit = 180000
+
+[model_providers.agentx]
+name = "AgentX"
+base_url = "https://<core-address>/api/llm/codex/v1"
+wire_api = "responses"
+env_key = "AGENTX_LLM_CODEX_TOKEN"
+```
+
+Set `model_context_window` to the principal route's context. Codex warns that
+it has no metadata for `agentx-primary`; the warning is harmless.
+
 Hermes image analysis uses `/api/hermes-openai/vision/v1` with model
 `openclaw:agent:main`. The adapter sends inline image bytes to OpenClaw Main
 through Core's existing agent execution source and returns only a verified
