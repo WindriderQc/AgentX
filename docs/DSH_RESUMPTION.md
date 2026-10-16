@@ -1,7 +1,12 @@
 # DSH Studio setup and qualification
 
-DSH Studio uses Core's existing OpenAI gateway, `/api/hermes-openai/v1`, with
-the following-model alias `agentx-primary`. Core resolves that name to its
+DSH Studio uses Core's OpenAI gateway, `/api/llm/v1`, as gateway client
+`dsh-studio` when `AGENTX_LLM_DSH_STUDIO_TOKEN` is set in its service
+environment (declare the same token for `dsh-studio` in Core's
+`AGENTX_LLM_GATEWAY_CLIENTS`, with `"admission": "immediate"` for a person at
+the keyboard). Without that token it keeps Hermes's address,
+`/api/hermes-openai/v1`. Either way it declares image input and uses the
+following-model alias `agentx-primary`. Core resolves that name to its
 `daily_operator` route on every request. Concrete model names keep explicit
 selection. The isolated Coding Team worker also uses DSH, with its own task
 claim, frozen concrete model and native capacity receipts.

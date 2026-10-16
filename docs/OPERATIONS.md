@@ -1125,6 +1125,20 @@ header; its token, declared in the secret `AGENTX_LLM_GATEWAY_CLIENTS`, names
 it. Model `agentx-primary` follows the principal route with its pinned
 context. Hermes keeps `/api/hermes-openai`. OpenAI Codex uses the `responses`
 door; its configuration is in `core/integrations/runtime-bridges/README.md`.
+Inline images go to a model that reads them; a model that does not receives
+a description written by OpenClaw Main instead.
+
+## Images through the gateway
+
+Both OpenAI doors (`/api/llm/v1` and `/api/hermes-openai/v1`) send inline PNG,
+JPEG, WebP or GIF data URLs to the model as image bytes. Core's inference path
+checks the routed model on its host (`/api/show` reports `vision`) before
+admission. When it does not read images, the gateway asks OpenClaw Main to
+describe each message's images, four at a time, replaces them with that text
+and runs the request once more; the answer carries
+`X-AgentX-Images-Described: true`. Remote image URLs are refused, never
+fetched. These doors accept request bodies up to 32 MB because clients resend
+a conversation's images with each turn.
 
 ## Light-task fallback ladder
 

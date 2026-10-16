@@ -168,7 +168,7 @@ test('a Codex Responses request becomes chat messages and plain function tools',
   assert.equal(chat.tool_choice, 'auto');
   assert.equal(names.get('multi_agent_v1__wait_agent').namespace, 'multi_agent_v1');
   assert.deepEqual(chat.messages.map(message => message.role), ['system', 'system', 'user', 'assistant', 'tool', 'tool']);
-  assert.match(chat.messages[2].content, /list files\n\[image omitted/);
+  assert.deepEqual(chat.messages[2].content, [{ type: 'text', text: 'list files' }, { type: 'image_url', image_url: { url: 'data:' } }]);
   assert.deepEqual(chat.messages[3].tool_calls.map(call => [call.id, call.function.name]),
     [['call_1', 'exec_command'], ['call_2', 'multi_agent_v1__wait_agent']]);
   assert.deepEqual(chat.messages[5], { role: 'tool', tool_call_id: 'call_2', tool_name: 'multi_agent_v1__wait_agent', content: 'no agents' });
@@ -276,4 +276,57 @@ test('a history over Core\'s message limit folds its oldest turns into text', ()
   assert.equal(folded[2].role, 'assistant');
   assert.equal(folded[folded.length - 1].content, 'out 299');
   assert.equal(foldHistory(messages.slice(0, 10)).length, 10);
+});
+
+const PIXELS = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]).toString('base64');
+const IMAGE_URL = `data:image/png;base64,${PIXELS}`;
+const visionRequired = () => Object.assign(new Error('This model does not confirm image support.'),
+  { statusCode: 400, code: 'INFERENCE_VISION_REQUIRED' });
+const answer = text => ({ ok: true, status: 200, metadata: { model: 'model-a', upstreamProtocol: 'ollama' },
+  body: { model: 'model-a', done: true, message: { role: 'assistant', content: text } } });
+
+test('images reach a model that reads them as Ollama image bytes', async () => {
+  const { calls, handler } = gateway(async () => answer('A chart.'));
+  const res = new Response();
+  await handler('post', '/v1/chat/completions')(new Request({ headers: AUTH, body: { model: 'agentx-primary', messages: [
+    { role: 'user', content: [{ type: 'text', text: 'What is this?' }, { type: 'image_url', image_url: { url: IMAGE_URL } }] }
+  ] } }), res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].request.messages, [{ role: 'user', content: 'What is this?', images: [PIXELS] }]);
+  assert.equal(res.headers['X-AgentX-Images-Described'], undefined);
+});
+
+test('a model that does not read images receives a description from Main instead', async () => {
+  const { calls, handler } = gateway(async request => {
+    if (request.execution?.agentId === 'main') {
+      return { ok: true, status: 200, body: { message: { content: 'A red bar chart.' },
+        executionReceipt: { source: 'openclaw', mode: 'agent', requested: { agentId: 'main' }, completion: 'completed', runId: 'run-1' } } };
+    }
+    if (request.messages.some(message => message.images)) throw visionRequired();
+    return answer('It shows sales.');
+  });
+  const res = new Response();
+  await handler('post', '/v1/chat/completions')(new Request({ headers: AUTH, body: { model: 'agentx-primary', messages: [
+    { role: 'user', content: [{ type: 'text', text: 'What is this?' }, { type: 'image_url', image_url: { url: IMAGE_URL } }] }
+  ] } }), res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.jsonBody.choices[0].message.content, 'It shows sales.');
+  assert.equal(res.headers['X-AgentX-Images-Described'], 'true');
+  const [refused, analysis, described] = calls.map(call => call.request);
+  assert.deepEqual(refused.messages[0].images, [PIXELS]);
+  assert.equal(analysis.callerDetail, 'llm-gateway-image-description');
+  assert.equal(analysis.messages[1].content[1].source.data, PIXELS);
+  assert.equal(described.messages[0].images, undefined);
+  assert.match(described.messages[0].content, /^What is this\?\n\n\[Image 1, described by AgentX because model-a does not read images\]\nA red bar chart\.$/);
+});
+
+test('other refusals with images are not retried as descriptions', async () => {
+  const { calls, handler } = gateway(async () => { throw Object.assign(new Error('bad'), { statusCode: 400, code: 'OTHER' }); });
+  const res = new Response();
+  await handler('post', '/v1/chat/completions')(new Request({ headers: AUTH, body: { model: 'agentx-primary', messages: [
+    { role: 'user', content: [{ type: 'image_url', image_url: { url: IMAGE_URL } }] }
+  ] } }), res);
+  assert.equal(res.statusCode, 400);
+  assert.equal(calls.length, 1);
 });
