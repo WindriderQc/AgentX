@@ -159,6 +159,20 @@
         "description": "A pinned resident reports size_vram below size, or fresh host telemetry reports no GPU."
     },
     {
+        "id": "pin-drift",
+        "name": "Host pin drift",
+        "enabled": true,
+        "severity": "warning",
+        "title": "Host pin drift",
+        "message": "{{summary}}. The host pin owns what its host loads; align the route, export or installed OpenClaw config with it.",
+        "conditions": { "all": [
+            { "fact": "metric", "operator": "equal", "value": "pin_drift" }
+        ]},
+        "channels": ["local_log"],
+        "renotifyMs": 3600000,
+        "description": "Scheduled read-only comparison of routes, the runtime export and the installed OpenClaw config against the HostPreference pins."
+    },
+    {
         "id": "lane-latency-drift",
         "name": "Inference lane latency drift",
         "enabled": true,

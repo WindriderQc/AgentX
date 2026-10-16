@@ -2650,6 +2650,16 @@
       "secret": false,
       "description": "Allowed speed loss, 0 to 50 percent, when applying a pin context. Unset: 10."
     },
+    "PIN_DRIFT_CHECK_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Interval at which Core compares routes, the runtime export and the installed OpenClaw config with the host pins and raises the pin-drift alert, minimum 60000; 0 disables. Unset: 900000."
+    },
     "PIN_RESTORE_GRACE_MS": {
       "services": [
         "core"

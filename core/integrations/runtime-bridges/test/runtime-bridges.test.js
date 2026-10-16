@@ -1002,6 +1002,9 @@ test('runtime export and validation retain exact effective model/context without
     assert.equal(exported.lanes.daily.model, 'model-a');
     assert.equal(exported.lanes.daily.contextSize, 32768);
     assert.equal(exported.openclaw.provider.models[0].params.num_ctx, 32768);
+    // The installed OpenClaw config names the pinned principal by its alias.
+    assert.equal(exported.openclaw.provider.models[0].id, 'agentx-primary');
+    assert.equal(exported.openclaw.defaults.primary, 'ollama/agentx-primary');
     assert.equal(exported.coreBaseUrl, 'https://browser.test');
     assert.equal(exported.hermes.proxyBaseUrl, 'https://browser.test/api/hermes-openai/v1');
     assert.equal(exported.openclaw.provider.apiBase, 'http://machine.test:3080/api/openclaw-ollama');
@@ -1035,8 +1038,8 @@ test('runtime export and validation retain exact effective model/context without
       openclawConfig: {
         models: { providers: { ollama: exported.openclaw.provider } },
         agents: {
-          defaults: { model: { primary: 'ollama/model-a', fallbacks: [] } },
-          list: [{ id: 'main', model: { primary: 'ollama/model-a', fallbacks: [] } }]
+          defaults: { model: { primary: 'ollama/agentx-primary', fallbacks: [] } },
+          list: [{ id: 'main', model: { primary: 'ollama/agentx-primary', fallbacks: [] } }]
         }
       }
     });
@@ -1050,7 +1053,7 @@ test('runtime export and validation retain exact effective model/context without
       const result = validateRuntimeConfigs(exported, {
         openclawConfig: {
           models: { providers: { ollama: provider } },
-          agents: { entries: { main: { model: { primary: 'ollama/model-a', fallbacks: [] } } } }
+          agents: { entries: { main: { model: { primary: 'ollama/agentx-primary', fallbacks: [] } } } }
         }
       });
       assert.equal(result.openclaw.status, 'ok');

@@ -476,6 +476,15 @@ the `ops_watch` task's model with the vendor, hostname and address; it is a
 hint, never applied by itself, and a missing answer never delays the alert
 beyond three minutes.
 
+Core compares the routes, the runtime export and the installed OpenClaw
+config with the host pins every 15 minutes (`PIN_DRIFT_CHECK_MS`, `0`
+disables) and raises the `pin-drift` alert when one names a model or context
+the pin does not own. `GET /api/nerve-center/agent-runtime-config/drift` shows
+the last result (`?refresh=true` checks now). The installed OpenClaw config is
+read through the inventory SSH target, projected on the host to provider
+endpoints, model ids and agent model references. The export names the pinned
+principal `agentx-primary`, as the installed config does.
+
 Switch the operations watch on in the Nerve Center, section "Operations
 watch", which also shows the latest report, checks on demand and sets the
 interval and the report language. Core stores these settings; `OPS_WATCH_MS`
