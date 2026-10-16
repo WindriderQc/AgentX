@@ -84,39 +84,23 @@
             </div>
         </div>
 
-        <!-- Latency Analysis Charts -->
-        <div class="two-column">
-            <!-- Latency Trends -->
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-wave-square"></i> Latency Trends</h2>
-                    <div class="controls">
-                        <span style="font-size: 11px; color: var(--muted); margin-right: 8px;">
-                            <span style="color: #22c55e;">&#9632;</span> P50
-                            <span style="color: #fbbf24; margin-left: 8px;">&#9632;</span> P95
-                            <span style="color: #ef4444; margin-left: 8px;">&#9632;</span> P99
-                        </span>
-                    </div>
-                </div>
-                <div class="section-body">
-                    <div class="chart-container">
-                        <canvas id="latencyTrendsChart"></canvas>
-                    </div>
-                    <div class="chart-empty" id="latencyTrendsEmpty">No latency data available for this time range.</div>
+        <!-- Latency Trends -->
+        <div class="section-card">
+            <div class="section-header">
+                <h2><i class="fas fa-wave-square"></i> Latency Trends</h2>
+                <div class="controls">
+                    <span style="font-size: 11px; color: var(--muted); margin-right: 8px;">
+                        <span style="color: #22c55e;">&#9632;</span> P50
+                        <span style="color: #fbbf24; margin-left: 8px;">&#9632;</span> P95
+                        <span style="color: #ef4444; margin-left: 8px;">&#9632;</span> P99
+                    </span>
                 </div>
             </div>
-
-            <!-- Percentile Distribution -->
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-chart-bar"></i> Percentile Distribution</h2>
+            <div class="section-body">
+                <div class="chart-container">
+                    <canvas id="latencyTrendsChart"></canvas>
                 </div>
-                <div class="section-body">
-                    <div class="chart-container">
-                        <canvas id="percentileChart"></canvas>
-                    </div>
-                    <div class="chart-empty" id="percentileEmpty">No percentile data available.</div>
-                </div>
+                <div class="chart-empty" id="latencyTrendsEmpty">No latency data available for this time range.</div>
             </div>
         </div>
 

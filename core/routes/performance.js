@@ -5,7 +5,7 @@ const PerformanceLoadTest = require('../models/PerformanceLoadTest');
 const PerformanceBaseline = require('../models/PerformanceBaseline');
 const PerformanceSnapshot = require('../models/PerformanceSnapshot');
 const artilleryParser = require('../src/services/artilleryParser');
-const { calculateSystemHealth, buildHistogram } = require('./performance-helpers');
+const { calculateSystemHealth } = require('./performance-helpers');
 const envelope = require('../src/helpers/responseEnvelope');
 const {
   normalizeObservedPath,
@@ -532,56 +532,6 @@ router.get('/throughput', async (req, res) => {
     });
   } catch (err) {
     logger.error('Throughput fetch failed', { error: err.message });
-    res.status(500).json({
-      status: 'error',
-      message: err.message
-    });
-  }
-});
-
-/**
- * GET /api/performance/percentiles
- *
- * Get percentile breakdown for endpoint
- *
- * Query params:
- * - endpoint: Endpoint path (optional, default: system-wide)
- * - hours: Lookback period (default: 24)
- *
- * @returns {Object} Percentile breakdown with histogram data
- */
-router.get('/percentiles', async (req, res) => {
-  try {
-    const endpoint = req.query.endpoint;
-    const hours = parseInt(req.query.hours, 10) || 24;
-
-    logger.info('Fetching percentile breakdown', { endpoint, hours });
-
-    const trends = await PerformanceSnapshot.getLatencyTrend(hours, endpoint);
-
-    // Extract all latency values for percentile calculation
-    const latencies = trends
-      .map(t => [t.p50, t.p95, t.p99])
-      .flat()
-      .filter(v => v > 0);
-
-    const percentiles = PerformanceSnapshot.calculatePercentiles(latencies);
-
-    // Build histogram buckets
-    const histogram = buildHistogram(latencies);
-
-    res.json({
-      status: 'success',
-      data: {
-        percentiles,
-        histogram,
-        sample_size: latencies.length,
-        endpoint: endpoint || 'all',
-        hours
-      }
-    });
-  } catch (err) {
-    logger.error('Percentiles fetch failed', { error: err.message });
     res.status(500).json({
       status: 'error',
       message: err.message

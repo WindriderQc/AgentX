@@ -52,7 +52,6 @@
                 await Promise.all([
                     this.loadDashboard(),
                     this.loadLatencyTrends(),
-                    this.loadPercentiles(),
                     this.loadThroughput(),
                     this.loadLoadTests(),
                     this.loadBaselines(),
@@ -344,35 +343,6 @@
                 } catch (err) {
                     console.error('Failed to load latency trends:', err);
                     document.getElementById('latencyTrendsEmpty').classList.add('visible');
-                }
-            },
-
-
-            // Load percentiles
-            async loadPercentiles() {
-                try {
-                    const params = new URLSearchParams({
-                        hours: this.currentTimeRange
-                    });
-                    if (this.currentEndpoint) {
-                        params.append('endpoint', this.currentEndpoint);
-                    }
-
-                    const response = await fetch(`/api/performance/percentiles?${params}`, {
-                        headers: jsonHeaders()
-                    });
-                    const result = await response.json();
-
-                    const percentiles = result?.data?.percentiles || result?.data;
-                    if (result.status === 'success' && percentiles) {
-                        this.renderPercentileChart(percentiles);
-                        document.getElementById('percentileEmpty').classList.remove('visible');
-                    } else {
-                        document.getElementById('percentileEmpty').classList.add('visible');
-                    }
-                } catch (err) {
-                    console.error('Failed to load percentiles:', err);
-                    document.getElementById('percentileEmpty').classList.add('visible');
                 }
             },
 
