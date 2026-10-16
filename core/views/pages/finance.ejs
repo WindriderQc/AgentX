@@ -233,6 +233,24 @@
     <p class="finance-note"><a id="financeExport" href="/api/finance/export.csv" download>Export as CSV (Excel)</a> — follows the filters and the search.</p>
   </section>
 
+  <section class="finance-card finance-perso-only" id="financeDocumentsCard" aria-labelledby="documentsTitle">
+    <div class="finance-card-head">
+      <h2 id="documentsTitle">Secretary documents</h2>
+      <p class="finance-note" id="documentsNote">Read-only register; nothing is written to it.</p>
+    </div>
+    <h3 class="finance-subtitle">To confirm — proposed matches</h3>
+    <ul class="finance-alert-list" id="documentsProposals"></ul>
+    <h3 class="finance-subtitle">Documents without a transaction</h3>
+    <ul class="finance-alert-list" id="documentsUnmatched"></ul>
+    <h3 class="finance-subtitle">Large outflows without a document</h3>
+    <ul class="finance-alert-list" id="documentsUnlinked"></ul>
+    <h3 class="finance-subtitle">To claim from insurers</h3>
+    <p class="finance-note" id="documentsClaimTotal"></p>
+    <ul class="finance-alert-list" id="documentsClaims"></ul>
+    <h3 class="finance-subtitle">Bank statements found in mail — to file yourself, not ingested</h3>
+    <ul class="finance-alert-list" id="documentsStatements"></ul>
+  </section>
+
   <section class="finance-card" aria-labelledby="yearlyTitle">
     <h2 id="yearlyTitle">Yearly totals</h2>
     <p class="finance-note">Follows the analysis filters and the search: for example the tag <code>nathalie</code> gives what

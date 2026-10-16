@@ -51,6 +51,7 @@ guard answers `/api/finance/*` and `/finance` with 404
 | `finance_overrides` | Owner decision for one transaction, keyed like the row so it survives re-ingestion; wins over rules |
 | `finance_plan` | Budget lines, debts, credit, provisions, assets, tax room, open items, cash allocation, deadlines, milestones, phase, exceptional tags |
 | `finance_alerts` | Deterministic alerts with stable keys (raised once) |
+| `finance_document_links` | Proposed, confirmed or rejected links between a Secretary document and a ledger row, keyed by the document id and the row's stable key (account, date, fingerprint, occurrence); survives re-ingestion |
 
 **Every total uses `flowCents`.** Using `amountCents` for spending counts card
 purchases as income.
@@ -65,10 +66,14 @@ purchases as income.
   CSV export, inbox status and scan. Every query takes `ledger=corp`.
 - `/finance`: the Wallet Beefer dashboard (situation and plan first, then the
   history analysis), a Personnel | Corporation switch and a plan editor.
+- `/api/finance/documents` (read-only view of the Secretary register) and
+  `POST /api/finance/documents/links/decide` (confirm or reject proposals).
 - OpenClaw plugin `integrations/openclaw/finance-ledger`: `finance_ledger`
-  (read), `finance_categorize` (owner-confirmed rules and single-row
-  decisions), `finance_alerts` (list or report once), `finance_plan` (read,
-  owner-stated operations). Visible only to the configured finance agent.
+  (read, including `action: documents`), `finance_categorize` (owner-confirmed
+  rules and single-row decisions), `finance_document_link` (confirm or reject a
+  proposed document match, only after the owner's yes), `finance_alerts` (list
+  or report once), `finance_plan` (read, owner-stated operations, `done` to settle
+  a deadline). Visible only to the configured finance agent.
 - Scheduled agent jobs (instance configuration): daily alert check (silent
   with `NO_REPLY` when nothing is new) and a weekly review.
 
@@ -90,6 +95,31 @@ purchases as income.
   alerts daily (J-7, J-1, overdue). The plan operation `done` settles an item:
   a recurring one moves its `dueDate` to the next period (month-end safe), any
   other one is removed and kept as a settled milestone.
+
+## Secretary documents
+
+The Secretary's invoice register (`FINANCE_SECRETARY_REGISTER`, schema v2, a
+file Core only reads, rewritten hourly by the Secretary) is matched to the
+personal ledger. Core never writes to it.
+
+- A document has an amount (the patient's share when the register has one,
+  else the gross amount), a date and a kind. Statements (`relevé` kinds) are
+  never matched and never ingested: they are listed as found in mail, for the
+  owner to file.
+- A row is a candidate when its amount is exactly the document's amount in
+  cents and it is dated from 3 days before to 10 days after the document.
+  A candidate whose description contains a word of the supplier is strong.
+- One strong candidate is a confident proposal. Any other case is an ambiguous
+  proposal (up to 5), for the owner to confirm. Nothing is confirmed by Core.
+- Confirming a proposal rejects the other proposals for the same document.
+  Rejected links are never proposed again. Confirmed and rejected links survive
+  a sync; proposals that no longer match are removed.
+- The views: proposals to confirm, documents without a transaction, outflows
+  above a threshold without a document, claims still to file (kinds `claim` and
+  `remit_advice`, or a patient share, where the insurer has not paid or the status
+  is not settled), and bank statements found in mail. Totals are computed by Core.
+- The statuses that count as settled for a reimbursement are `paid`, `reimbursed`,
+  `settled` and `regle` (accents folded). Check them against the real register.
 
 ## Known traps (each found on real statements)
 

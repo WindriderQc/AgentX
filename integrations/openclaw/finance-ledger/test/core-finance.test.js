@@ -117,3 +117,27 @@ test('reads the plan and applies owner-stated operations', async () => {
   assert.deepEqual(calls[1][2], { ops: [{ op: 'remove', section: 'openItems', match: 'T2 corp' }] });
   await assert.rejects(client({ action: 'apply', ops: [] }), /at least one/);
 });
+
+test('reads Secretary documents and confirms only the links it is given', async () => {
+  const { createCoreDocumentLinkClient } = await import('../core-finance.js');
+  const { createCoreFinanceClient: readClient } = await import('../core-finance.js');
+  const calls = [];
+  const read = readClient({ baseUrl: 'http://127.0.0.1:3180', fetchImpl: async (url) => {
+    calls.push(String(url));
+    return { ok: true, json: async () => ({ status: 'success', data: { toClaim: { count: 1, totalCents: 5000 } } }) };
+  } });
+  const docs = await read({ action: 'documents', minCents: 10000 });
+  assert.equal(calls[0], 'http://127.0.0.1:3180/api/finance/documents?minCents=10000');
+  assert.equal(docs.toClaim.totalDisplay, '50,00 $');
+
+  const decide = createCoreDocumentLinkClient({ baseUrl: 'http://127.0.0.1:3180', fetchImpl: async (url, options) => {
+    calls.push([String(url), JSON.parse(options.body)]);
+    return { ok: true, json: async () => ({ status: 'success', data: { decided: 1, status: 'confirmed' } }) };
+  } });
+  const result = await decide({ decision: 'confirm', ids: ['0123456789abcdef01234567'] });
+  assert.deepEqual(calls[1], ['http://127.0.0.1:3180/api/finance/documents/links/decide',
+    { ids: ['0123456789abcdef01234567'], status: 'confirmed', createdBy: 'comptable' }]);
+  assert.equal(result.decided, 1);
+  await assert.rejects(decide({ decision: 'maybe', ids: ['0123456789abcdef01234567'] }), /confirm or reject/);
+  await assert.rejects(decide({ decision: 'confirm', ids: [] }), /at least one link id/);
+});
