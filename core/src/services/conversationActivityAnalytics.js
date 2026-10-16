@@ -1,5 +1,18 @@
 'use strict';
 
+/**
+ * The window of a chat-lane analytics request: `to` defaults to now and `from`
+ * to seven days earlier. An unparseable or reversed range is refused instead of
+ * reaching MongoDB as an Invalid Date.
+ */
+function parseAnalyticsRange({ from, to } = {}) {
+  const toDate = to ? new Date(to) : new Date();
+  const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+  if (Number.isNaN(toDate.getTime()) || Number.isNaN(fromDate.getTime())) return { error: 'from and to must be valid dates.' };
+  if (fromDate > toDate) return { error: 'from must be before to.' };
+  return { fromDate, toDate };
+}
+
 function messageObservedAtExpression(variable = '$$message') {
   return { $ifNull: [`${variable}.timestamp`, `${variable}.createdAt`] };
 }
@@ -109,6 +122,7 @@ function activityDayPipeline(fromDate, toDate) {
 }
 
 module.exports = {
+  parseAnalyticsRange,
   activeMessageCostExpression,
   activeMessageStages,
   activeMessagesExpression,
