@@ -1,30 +1,61 @@
 Object.assign(PerformanceDashboard, {
             // Load load tests
             async loadLoadTests() {
+                const isCurrent = this.beginRequest('loadTests');
+                const loading = document.getElementById('loadTestsLoading');
+                const empty = document.getElementById('loadTestsEmpty');
                 try {
-                    document.getElementById('loadTestsLoading').classList.add('active');
-
-                    const response = await fetch('/api/performance/load-tests?limit=50', {
-                        headers: jsonHeaders()
-                    });
-                    const result = await response.json();
-
-                    document.getElementById('loadTestsLoading').classList.remove('active');
-
-                    const tests = result?.data?.tests || [];
-                    if (result.status === 'success' && Array.isArray(tests) && tests.length > 0) {
-                        this.renderLoadTestsTable(tests);
-                        document.getElementById('loadTestsTableContainer').style.display = 'block';
-                        document.getElementById('loadTestsEmpty').style.display = 'none';
-                    } else {
-                        document.getElementById('loadTestsTableContainer').style.display = 'none';
-                        document.getElementById('loadTestsEmpty').style.display = 'block';
-                    }
+                    loading.classList.add('active');
+                    const result = await this.fetchJson('/api/performance/load-tests?limit=50');
+                    if (!isCurrent()) return;
+                    this.loadTests = Array.isArray(result?.data?.tests) ? result.data.tests : [];
+                    this.setLoadTestsEmpty('No Load Tests Found', null);
+                    this.renderSortedLoadTests();
                 } catch (err) {
+                    if (!isCurrent()) return;
                     console.error('Failed to load load tests:', err);
-                    document.getElementById('loadTestsLoading').classList.remove('active');
-                    document.getElementById('loadTestsEmpty').style.display = 'block';
+                    this.loadTests = [];
+                    this.setLoadTestsEmpty('Load tests unavailable', 'Could not load load tests. Try Refresh.');
+                    this.renderSortedLoadTests();
+                } finally {
+                    if (isCurrent()) loading.classList.remove('active');
                 }
+            },
+
+            setLoadTestsEmpty(title, detail) {
+                const empty = document.getElementById('loadTestsEmpty');
+                const heading = empty.querySelector('h3');
+                const text = empty.querySelector('p');
+                if (!this.loadTestsEmptyDefault && text) this.loadTestsEmptyDefault = text.textContent;
+                if (heading) heading.textContent = title;
+                if (text) text.textContent = detail || this.loadTestsEmptyDefault || '';
+            },
+
+            renderSortedLoadTests() {
+                const tests = this.sortedLoadTests(this.loadTests || []);
+                const hasTests = tests.length > 0;
+                if (hasTests) this.renderLoadTestsTable(tests);
+                document.getElementById('loadTestsTableContainer').style.display = hasTests ? 'block' : 'none';
+                document.getElementById('loadTestsEmpty').style.display = hasTests ? 'none' : 'block';
+            },
+
+            sortedLoadTests(tests) {
+                const value = (test) => {
+                    switch (this.sortColumn) {
+                        case 'scenario': return String(test.scenario || '').toLowerCase();
+                        case 'duration': return Number(test.summary?.duration) || 0;
+                        case 'rps': return Number(test.summary?.rps_max ?? test.summary?.rps_mean) || 0;
+                        case 'success': return 100 - (Number(test.summary?.error_rate) || 0);
+                        case 'p95': return Number(test.latency?.p95) || 0;
+                        default: return new Date(test.timestamp).getTime() || 0;
+                    }
+                };
+                const direction = this.sortDirection === 'asc' ? 1 : -1;
+                return [...tests].sort((a, b) => {
+                    const left = value(a);
+                    const right = value(b);
+                    return left < right ? -direction : left > right ? direction : 0;
+                });
             },
 
             // Render load tests table
@@ -71,14 +102,6 @@ Object.assign(PerformanceDashboard, {
                     row.querySelector('.view-details-btn').addEventListener('click', (e) => {
                         e.stopPropagation();
                         this.toggleTestDetails(test._id, test);
-                    });
-                });
-
-                // Add sort handlers
-                document.querySelectorAll('#loadTestsTable th.sortable').forEach(th => {
-                    th.addEventListener('click', () => {
-                        const sortKey = th.dataset.sort;
-                        this.sortLoadTests(sortKey);
                     });
                 });
             },
@@ -157,20 +180,21 @@ Object.assign(PerformanceDashboard, {
                     this.sortDirection = 'desc';
                 }
 
-                // Update header classes
                 document.querySelectorAll('#loadTestsTable th.sortable').forEach(th => {
                     th.classList.remove('sorted-asc', 'sorted-desc');
-                    if (th.dataset.sort === key) {
-                        th.classList.add(this.sortDirection === 'asc' ? 'sorted-asc' : 'sorted-desc');
-                    }
+                    const active = th.dataset.sort === key;
+                    if (active) th.classList.add(this.sortDirection === 'asc' ? 'sorted-asc' : 'sorted-desc');
+                    th.setAttribute('aria-sort', active ? (this.sortDirection === 'asc' ? 'ascending' : 'descending') : 'none');
                 });
 
-                // Re-fetch and sort (in real implementation, would sort client-side)
-                this.loadLoadTests();
+                this.renderSortedLoadTests();
             },
 
             // Import load test
             async importLoadTest() {
+                const submit = document.getElementById('importTestSubmit');
+                if (submit.disabled) return;
+                submit.disabled = true;
                 try {
                     const fileInput = document.getElementById('testFile');
                     const scenario = document.getElementById('testScenario').value;
@@ -212,6 +236,8 @@ Object.assign(PerformanceDashboard, {
                 } catch (err) {
                     console.error('Import failed:', err);
                     alert('Failed to import load test: ' + err.message);
+                } finally {
+                    submit.disabled = false;
                 }
             }
 });

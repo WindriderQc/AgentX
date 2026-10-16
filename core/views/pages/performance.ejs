@@ -143,12 +143,12 @@
                     <table class="data-table" id="loadTestsTable">
                         <thead>
                             <tr>
-                                <th class="sortable" data-sort="date">Date</th>
-                                <th class="sortable" data-sort="scenario">Scenario</th>
-                                <th class="sortable text-right" data-sort="duration">Duration</th>
-                                <th class="sortable text-right" data-sort="rps">RPS Peak</th>
-                                <th class="sortable text-right" data-sort="success">Success Rate</th>
-                                <th class="sortable text-right" data-sort="p95">P95 Latency</th>
+                                <th class="sortable" data-sort="date" tabindex="0" aria-sort="descending">Date</th>
+                                <th class="sortable" data-sort="scenario" tabindex="0" aria-sort="none">Scenario</th>
+                                <th class="sortable text-right" data-sort="duration" tabindex="0" aria-sort="none">Duration</th>
+                                <th class="sortable text-right" data-sort="rps" tabindex="0" aria-sort="none">RPS Peak</th>
+                                <th class="sortable text-right" data-sort="success" tabindex="0" aria-sort="none">Success Rate</th>
+                                <th class="sortable text-right" data-sort="p95" tabindex="0" aria-sort="none">P95 Latency</th>
                                 <th class="text-center">Status</th>
                                 <th class="text-center">Actions</th>
                             </tr>
@@ -267,7 +267,7 @@
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn-secondary" id="cancelImportBtn">Cancel</button>
-                    <button type="submit" class="btn-primary">Import Test</button>
+                    <button type="submit" class="btn-primary" id="importTestSubmit">Import Test</button>
                 </div>
             </form>
         </div>
