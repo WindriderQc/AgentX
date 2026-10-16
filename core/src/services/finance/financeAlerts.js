@@ -48,7 +48,7 @@ function deadlineAlerts(items, today) {
     const daysUntil = Math.round((Date.parse(`${item.dueDate}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / DAY_MS);
     if (daysUntil > DEADLINE_WINDOW_DAYS) continue;
     const id = createHash('sha1').update(`${item.section}|${item.label}|${item.dueDate}`).digest('hex').slice(0, 12);
-    const facts = { section: item.section, label: item.label, briefLabel: item.briefLabel || null, dueDate: item.dueDate, daysUntil,
+    const facts = { section: item.section, label: item.label, briefLabel: item.briefLabel || null, itemKind: item.kind || null, dueDate: item.dueDate, daysUntil,
       recurrence: item.recurrence || null };
     const key = `deadline:${id}:${today}`;
     if (daysUntil < 0) {
