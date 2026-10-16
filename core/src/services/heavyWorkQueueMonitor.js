@@ -15,6 +15,8 @@ async function sweep() {
   if (busy || mongoose.connection.readyState !== 1) return;
   busy = true;
   try {
+    try { await require('./pipelineReportModelRecovery').observe(); }
+    catch (error) { logger.warn('Report native receipts await reconciliation', { code: error.code || 'REPORT_RECEIPTS_UNAVAILABLE' }); }
     try { await require('./images/imageService').dispatchQueued(); }
     catch (error) { logger.warn('Image dispatcher unavailable; other queue receipts remain observable', { code: error.code || 'IMAGE_QUEUE_UNAVAILABLE' }); }
     const current = await queue.list();

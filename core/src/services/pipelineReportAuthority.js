@@ -11,7 +11,10 @@ const WC = { w: 1, j: true };
 const digest = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const latestOutcome = task => (task.feedback || []).slice().reverse().map(row => row.workerOutcome || row.reportOutcome).find(Boolean);
 let control;
-function configureControl(value) { control = value; require('./pipelineReportCheckpointArchive').configureControl(value); }
+function configureControl(value) {
+  control = value; require('./pipelineReportCheckpointArchive').configureControl(value);
+  require('./pipelineReportModelRecovery').configureControl(value);
+}
 function received(result) {
   if (result.acknowledged !== true) throw fail('Reconcile the original report authority write', 'REPORT_AUTHORITY_UNVERIFIED', 503);
 }

@@ -283,3 +283,20 @@ launch the replacement worker with the same request id.
 `agentx-primary` model at Core. It preserves the configured workspace and
 isolation boundary. `dsh-headless.sh` retains its bounded-session claim wrapper;
 the isolated Coding Team worker has its own native task/capacity lifecycle.
+
+Report inference binds each native admission and generation before provider
+dispatch. Core's existing queue observer retains matching native release receipts
+and can reconcile an interrupted call without another model request. The report's
+original UNKNOWN observation, timestamps and costs stay in its termination audit;
+termination recovery does not assert model success or documentary acceptance.
+The dossier's **Reconcile saved report** action then receives the original result.
+
+A legacy call without that binding requires explicit operator mapping through
+`POST /api/pipeline/tasks/:id/reports/:requestId/map-native-termination` with the
+original call/prepare IDs, claim/spec/source, UNKNOWN digest and independent
+mapping evidence. Its native admission is unique to that call. An operator may
+archive the original native JSON receipt in the same task before the recent
+runtime journal rotates; Core verifies those exact stored bytes and labels that
+custody as an operator attestation. This private-LAN operation requires explicit
+operator attribution and confirmation, retains the unknown observation and never
+modifies runtime coordination or launches work.

@@ -411,13 +411,14 @@ async function executeRoutedInference(deps, request, options = {}) {
         workloadAdmissionId: benchmarkClaim.workloadAdmissionId,
         workloadGeneration: benchmarkClaim.workloadGeneration
       }),
-      afterAdmission: async () => {
+      afterAdmission: async (admission) => {
         // Recheck the same Core-owned reservation after admission, just as
         // direct Benchmark inference does. No discovery or reacquisition here.
         if (benchmarkClaim) await assertClaim();
         if (capacity) await require('../services/pipelineCodingCapacity').authorizeInference(options.codingCapacity,
           { model, hostUrl, inferenceContract, numCtx: runtimeOptions.num_ctx });
         await require('../services/pipelineReportInference').assertDispatch(options.reportAuthority);
+        await require('../services/pipelineReportModelRecovery').bind(options.reportAuthority, admission);
         options.signal?.throwIfAborted();
         // Compared once, in admission order: the order Ollama receives prompts.
         if (observePrefix) promptPrefix ??= observePrefix({ hostUrl, model, messages: request.messages, tools: request.tools });

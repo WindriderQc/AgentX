@@ -34,7 +34,7 @@ beforeAll(async () => {
 });
 afterAll(async () => { await harness?.close(); });
 beforeEach(async () => {
-  await Promise.all([Task.deleteMany({}), Run.deleteMany({}), File.deleteMany({})]);
+  await Promise.all([Task.deleteMany({}), Run.deleteMany({}), File.deleteMany({}), require('../../models/PipelineReportAdmission').deleteMany({})]);
   authority.configureControl({status: async () => ({busy:false})});
   jest.spyOn(queue, 'get').mockResolvedValue({id:NEXT,dispatchId:CALL,state:'running',executor:{mode:'operator'},source:{type:'coding',ref:'synthetic-session',taskId:'0001'},hosts:['http://ollama.invalid:11434'],reservation:{start:new Date(Date.now()-60000).toISOString(),end:new Date(Date.now()+14400000).toISOString()}});
   jest.spyOn(config, 'ensureTaskModelOverridesLoaded').mockResolvedValue();
@@ -238,7 +238,8 @@ test('a concurrent change to review_only vetoes report inference at the task CAS
 });
 
 function runtimeDeps(upstream) {
-  return { beginInferenceAdmission: jest.fn(async ({ signal }) => ({ signal, markDispatched() {}, assertActive() {},
+  return { beginInferenceAdmission: jest.fn(async ({ signal }) => ({ signal, admissionId: require('crypto').randomUUID(),
+    generation: require('crypto').randomUUID(), principal: 'core-trusted-runtime', markDispatched() {}, assertActive() {},
     complete: jest.fn(async () => ({ released: true })), abandon: jest.fn(async () => ({ released: true })) })),
   getAdvisoryModelForTask: jest.fn(), getTargetForModel: () => 'http://ollama.invalid:11434', resolveHostKey: () => 'synthetic',
   validateHostUrl: host => ({ valid: true, host }), assertHostAvailableForConsumer: async () => null,
@@ -259,6 +260,7 @@ test.each([true, false])('the real Hermes report path preserves native stream se
     expect(error.message).toMatch(/aborted|closed|reset/i); return { text: '' };
   });
   expect(nativeDeps.fetch).toHaveBeenCalledTimes(1);
+  expect(await require('../../models/PipelineReportAdmission').countDocuments({ requestId: KEY, callId: CALL })).toBeGreaterThan(0);
   const stored = await Run.findById(KEY).lean();
   expect(stored.modelReceipts[0].state).toBe(clean ? 'completed' : 'unknown');
   expect((await reports.status('0001', KEY)).terminationVerified).toBe(clean);
@@ -268,6 +270,23 @@ test.each([true, false])('the real Hermes report path preserves native stream se
     await result(bytes()).expect(409); await expect(call(NEXT)).rejects.toMatchObject({ code: 'REPORT_INFERENCE_PENDING' });
     expect(await File.countDocuments({})).toBe(0);
   }
+});
+test('a lost native binding acknowledgement prevents provider dispatch', async () => {
+  const f = await fixture(); await start(f.intent).expect(200);
+  nativeDeps = runtimeDeps(new PassThrough());
+  const original = Run.updateOne.bind(Run); let lost = false;
+  jest.spyOn(Run, 'updateOne').mockImplementation(async (...args) => {
+    const saved = await original(...args);
+    if (!lost && args[0].modelReceipts && args[1].$inc?.revision === 1 && Object.keys(args[1]).length === 1) {
+      lost = true; throw new Error('Synthetic lost native binding acknowledgement');
+    }
+    return saved;
+  });
+  await harness.request.post('/v1/chat/completions').set({ 'x-agentx-report-request': KEY,
+    'x-agentx-report-task': '0001', 'x-agentx-coding-call': CALL }).send({ model: 'synthetic-local-model',
+    stream: true, messages: [{ role: 'user', content: 'Synthetic binding acknowledgement fixture' }] });
+  expect(lost).toBe(true); expect(nativeDeps.fetch).not.toHaveBeenCalled();
+  expect(await require('../../models/PipelineReportAdmission').countDocuments({ requestId: KEY, callId: CALL })).toBeGreaterThan(0);
 });
 test('revoking the campaign during native admission refuses before any model dispatch', async () => {
   const f = await fixture(); await start(f.intent).expect(200);
