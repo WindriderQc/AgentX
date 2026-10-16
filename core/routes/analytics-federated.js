@@ -33,15 +33,18 @@ function resolveFederatedWindow(raw) {
   return FEDERATED_WINDOWS[key] ? { key, ...FEDERATED_WINDOWS[key] } : { key: '7d', ...FEDERATED_WINDOWS['7d'] };
 }
 
+// Agents are grouped by the server-attested consumer contract. callerDetail is
+// caller-controlled legacy text that may hold a token-shaped payload, so it is
+// never grouped on, filtered on or returned here.
 async function aggregateProviderBucket(window, agentId) {
   const toDate = new Date();
   const fromDate = window.ms ? new Date(toDate.getTime() - window.ms) : new Date(0);
   const match = { timestamp: { $gte: fromDate, $lte: toDate } };
-  if (agentId) match.callerDetail = agentId;
+  if (agentId) match.consumerContract = agentId;
   const rows = await InferenceLog.aggregate([
     { $match: match },
     { $group: {
-      _id: { model: '$model', agentId: '$callerDetail' },
+      _id: { model: '$model', agentId: { $ifNull: ['$consumerContract', 'unknown'] } },
       requests: { $sum: 1 },
       promptTokens: { $sum: { $ifNull: ['$tokensIn', 0] } },
       completionTokens: { $sum: { $ifNull: ['$tokensOut', 0] } },
@@ -141,7 +144,7 @@ async function aggregateLocalBucket(window, agentId) {
   const toDate = new Date();
   const fromDate = window.ms ? new Date(toDate.getTime() - window.ms) : new Date(0);
   const match = { timestamp: { $gte: fromDate, $lte: toDate } };
-  if (agentId) match.callerDetail = agentId;
+  if (agentId) match.consumerContract = agentId;
 
   const rows = await InferenceLog.aggregate([
     { $match: match },
@@ -203,7 +206,7 @@ async function aggregateLocalBucket(window, agentId) {
  *
  * Query params:
  *   - window  ('1h' | '24h' | '7d' | '30d' | 'all', default '7d')
- *   - agentId (optional, filters both AgentX-owned buckets)
+ *   - agentId (optional consumer contract, filters both AgentX-owned buckets)
  *
  * Response shape:
  *   {
