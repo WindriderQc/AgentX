@@ -150,7 +150,7 @@ test('deposits chosen statements through Core and refuses more than ten', async 
     return { ok: true, json: async () => ({ status: 'success', data: { copied: [{ id: '0123456789abcdef' }], refused: [] } }) };
   } });
   const result = await deposit({ ids: ['0123456789abcdef'] });
-  assert.deepEqual(calls[0], ['http://127.0.0.1:3180/api/finance/documents/statements/deposit', { ids: ['0123456789abcdef'], ledger: 'perso' }]);
+  assert.deepEqual(calls[0], ['http://127.0.0.1:3180/api/finance/documents/statements/deposit', { ids: ['0123456789abcdef'] }]);
   assert.equal(result.copied.length, 1);
   await assert.rejects(deposit({ ids: [] }), /1 to 10/);
 });

@@ -53,6 +53,9 @@ function goalSource(value, field) {
   return value;
 }
 
+// `payment` items are worded "à payer" in the brief; any other item keeps a neutral wording.
+const ITEM_KINDS = ['payment', 'task'];
+
 function dueDate(value, field) {
   const date = String(value ?? '').trim();
   if (!date) return null;
@@ -108,12 +111,13 @@ function cleanPlan(input = {}) {
     milestones: list(input.milestones, 'milestones', 60, (item) => ({ text: text(item.text, 240), done: item.done === true })),
     openItems: list(input.openItems, 'openItems', 40, (item, field) => ({ title: text(item.title, 120), detail: text(item.detail, 400),
       severity: ['critical', 'warning', 'info'].includes(item.severity) ? item.severity : 'info', briefLabel: text(item.briefLabel, 60) || null,
+      kind: ITEM_KINDS.includes(item.kind) ? item.kind : null,
       dueDate: dueDate(item.dueDate, `${field}.dueDate`), recurrence: recurrence(item.recurrence, `${field}.recurrence`) })),
     allocations: list(input.allocations, 'allocations', 20, (item, field) => ({ step: text(item.step, 120),
       amountCents: cents(item.amountCents, `${field}.amountCents`), amountText: text(item.amountText, 60),
       status: text(item.status, 30), effect: text(item.effect, 240) })),
     watch: list(input.watch, 'watch', 40, (item, field) => ({ date: text(item.date, 40), what: text(item.what, 300), status: text(item.status, 30),
-      briefLabel: text(item.briefLabel, 60) || null,
+      briefLabel: text(item.briefLabel, 60) || null, kind: ITEM_KINDS.includes(item.kind) ? item.kind : null,
       dueDate: dueDate(item.dueDate, `${field}.dueDate`), recurrence: recurrence(item.recurrence, `${field}.recurrence`) })),
     // Statement series (issuer and last four) named for the alerts; `closed` series raise no stale or dormant alert.
     // A goal's progress comes from a ledger account, a plan asset, or the sum of a tag; `ref` names it.

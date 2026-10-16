@@ -249,7 +249,7 @@
   }
   const STATEMENT_STATUS = { fillsGap: 'comble un trou', alreadyIngested: 'déjà couvert', unknown: 'à classer' };
   function statementLine(item) {
-    return el('li', {}, `${item.documentDate || '—'} · ${item.supplier || ''} ${item.documentNumber || ''}${item.series ? ` · ${item.series}` : ''} · ${STATEMENT_STATUS[item.status] || item.status} `,
+    return el('li', {}, `${item.documentDate || '—'} · ${item.supplier || ''} ${item.documentNumber || ''}${item.series ? ` · ${item.series}` : ''}${item.ledger === 'corp' ? ' · corporation' : ''} · ${STATEMENT_STATUS[item.status] || item.status} `,
       item.status === 'alreadyIngested' ? '' : el('button', { type: 'button', class: 'finance-link', 'data-deposit': item.id }, "Déposer dans l'inbox"));
   }
   function documentLine(doc) {
@@ -286,7 +286,7 @@
   $('financeDocumentsCard').addEventListener('click', async (event) => {
     const deposit = event.target.closest('[data-deposit]');
     if (deposit) {
-      await post('documents/statements/deposit', { ids: [deposit.dataset.deposit], ledger: LEDGER || 'perso' }).catch(showError);
+      await post('documents/statements/deposit', { ids: [deposit.dataset.deposit] }).catch(showError);
       await renderDocuments();
       return;
     }

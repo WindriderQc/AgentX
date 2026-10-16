@@ -151,7 +151,6 @@ export default definePluginEntry({
           type: "object",
           properties: {
             ids: { type: "array", minItems: 1, maxItems: 10, items: { type: "string", pattern: "^[a-f0-9]{16}$" } },
-            ledger: { type: "string", enum: ["perso", "corp"] },
           },
           required: ["ids"],
           additionalProperties: false,
@@ -198,7 +197,8 @@ export default definePluginEntry({
           + "Amounts are integer cents (monthlyCents, balanceCents, valueCents, annualCents...), rates in basis points (rateBp). "
           + "op done settles a watch or open item the owner says is paid ('Odyssée payée' → done, match 'Odyssée'): a recurring item "
           + "moves its dueDate to the next period (monthly, quarterly, yearly); any other item is removed and kept as a settled milestone. "
-          + "An open item or watch line can carry briefLabel: the short wording the morning brief uses. "
+          + "An open item or watch line can carry briefLabel: the short wording the morning brief uses, and kind: payment (worded "
+          + "'à payer' in the brief) or task (neutral wording, the default). "
           + "goals = savings goals: progress from an account, an asset or a tag, the pace of the last three complete months, the projected "
           + "month and the monthly amount the target date needs (quote the *Display strings; a goal with no pace says so). "
           + "review = the last complete month planned against actual by category, the three largest overspends and the goals. "

@@ -160,7 +160,8 @@ async function documents({ minCents, ledger } = {}) {
     && (doc.insurancePaidCents == null || !isSettled(doc))).sort(newestFirst) : [];
   const claims = claimable.filter((doc) => !suspicious(doc));
   const toVerify = claimable.filter(suspicious);
-  const statements = await classifyStatements(invoices.filter((doc) => doc.kind === 'bank_statement').sort(newestFirst), scope);
+  // Statements come from the whole register: each one belongs to the ledger of its matched series.
+  const statements = await classifyStatements(register.invoices.filter((doc) => doc.kind === 'bank_statement').sort(newestFirst));
 
   return {
     status: 'ok',

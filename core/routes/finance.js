@@ -65,7 +65,7 @@ function createFinanceRoutes({ inbox = financeInbox } = {}) {
   router.post('/alerts/ack', handle((req) => alerts.acknowledge(req.body?.ids)));
   router.get('/documents', handle((req) => documentLinks.documents(req.query)));
   router.get('/brief', handle(() => brief.summary()));
-  router.post('/documents/statements/deposit', handle((req) => statementDeposit.deposit(req.body?.ids, req.body?.ledger)));
+  router.post('/documents/statements/deposit', handle((req) => statementDeposit.deposit(req.body?.ids)));
   router.get('/goals', handle(() => goals.goals()));
   router.get('/review/monthly', handle(() => goals.monthlyReview()));
   router.post('/documents/links/decide', handle((req) => documentLinks.decide(req.body?.ids, req.body?.status, req.body?.createdBy || 'owner')));

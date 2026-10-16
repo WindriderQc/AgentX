@@ -74,6 +74,9 @@ purchases as income.
   proposed document match, only after the owner's yes), `finance_alerts` (list
   or report once), `finance_plan` (read, owner-stated operations, `done` to settle
   a deadline). Visible only to the configured finance agent.
+- A watch or open item may set `kind`: `payment` (the brief says "à payer dans N
+  jours") or `task` (neutral, the default: "dans N jours", "demain",
+  "aujourd'hui", "en retard"). Alert texts do not change.
 - `GET /api/finance/brief`: the finance line of the daily brief for other
   surfaces, for example "Finances : Payer le T2 corp en retard · Odyssée à payer
   dans 7 jours · relevés à déposer : Desjardins · 109 liens à confirmer". It
@@ -140,12 +143,16 @@ personal ledger. Core never writes to it.
   when the register does not carry `kind`; the Secretary producer writes `kind`
   from schema 3. Schemas 2 and 3 are both read.
 - Statements of kind `insurance_statement` and `bank_statement` are never
-  matched. Bank statements are listed under "Relevés trouvés dans Gmail" with a
-  status: `fillsGap` (its month is a gap of the series coverage), `alreadyIngested`
-  (its month is covered) or `unknown` (no series matches, or no date).
-- Deposit (`POST /api/finance/documents/statements/deposit`, up to 10 ids, `ledger`):
-  Core copies the file from `FINANCE_SECRETARY_FILES` into `FINANCE_INBOX_PATH`
-  (`corp/` for the corporate ledger). It copies only: nothing is deleted, the
+  matched. Bank statements are listed under "Relevés trouvés dans Gmail". Each one
+  is matched to an account series of either ledger: the last four digits of its
+  document number and a tolerant issuer name (accents and small misspellings
+  allowed; "caisse" stands for Desjardins). The ledger follows from the series, so
+  a corporate statement is a corporate one. Its status: `fillsGap` (its month is a
+  gap of that series), `alreadyIngested` (its month is covered) or `unknown` (no
+  single series matches, or no date).
+- Deposit (`POST /api/finance/documents/statements/deposit`, up to 10 ids): Core
+  copies the file from `FINANCE_SECRETARY_FILES` into `FINANCE_INBOX_PATH`, or into
+  its `corp/` folder when the matched series is corporate. It copies only: nothing is deleted, the
   name keeps the Secretary id and date, a file whose hash is already ingested or
   already in the inbox is refused, and the normal reconciliation decides. The
   plugin tool `finance_statement_deposit` runs only after the owner's yes.

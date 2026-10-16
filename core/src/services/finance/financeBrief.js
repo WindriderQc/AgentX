@@ -40,11 +40,13 @@ function shortLabel(item) {
 // A series named by its issuer, without its last four digits.
 const seriesLabel = (value) => clean(String(value || '').replace(/\s*···.*$/, ''));
 
-function phrase(days) {
+// Neutral wording by default; only a payment is said "à payer".
+function phrase(days, kind) {
   if (days < 0) return 'en retard';
-  if (days === 0) return "à payer aujourd'hui";
-  if (days === 1) return 'à payer demain';
-  return `à payer dans ${days} jours`;
+  const payment = kind === 'payment';
+  if (days === 0) return payment ? "à payer aujourd'hui" : "aujourd'hui";
+  if (days === 1) return payment ? 'à payer demain' : 'demain';
+  return payment ? `à payer dans ${days} jours` : `dans ${days} jours`;
 }
 
 async function summary({ now = new Date() } = {}) {
@@ -52,7 +54,7 @@ async function summary({ now = new Date() } = {}) {
   const overdue = found.filter((alert) => alert.kind === 'deadline_overdue').map((alert) => shortLabel(alert.facts))
     .filter(Boolean);
   const soon = found.filter((alert) => ['deadline_due', 'deadline_upcoming'].includes(alert.kind))
-    .map((alert) => ({ text: shortLabel(alert.facts), days: alert.facts.daysUntil })).filter((item) => item.text);
+    .map((alert) => ({ text: shortLabel(alert.facts), days: alert.facts.daysUntil, kind: alert.facts.itemKind })).filter((item) => item.text);
   const late = [...new Set(found.filter((alert) => alert.kind === 'stale_data').map((alert) => seriesLabel(alert.facts.label))
     .filter(Boolean))];
   const { series } = await require('./financeQueryService').coverage({ ledger: 'perso' });
@@ -61,7 +63,7 @@ async function summary({ now = new Date() } = {}) {
 
   const parts = [];
   for (const name of overdue.slice(0, MAX_LABELS)) parts.push(`${name} en retard`);
-  for (const item of soon.slice(0, MAX_LABELS)) parts.push(`${item.text} ${phrase(item.days)}`);
+  for (const item of soon.slice(0, MAX_LABELS)) parts.push(`${item.text} ${phrase(item.days, item.kind)}`);
   if (late.length) parts.push(`relevés à déposer : ${late.slice(0, MAX_LABELS).join(', ')}`);
   if (proposals) parts.push(`${proposals} lien${proposals > 1 ? 's' : ''} à confirmer`);
   return {

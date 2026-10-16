@@ -742,7 +742,7 @@ describe('finance line for the daily brief', () => {
     await eop(['2026-06-01', '2026-06-30'], 'PAIE');
     await eop(['2026-07-15', '2026-07-31'], 'PAIE');
     await plan.savePlan({
-      openItems: [{ title: 'Odyssée 150 $', dueDate: '2026-10-08' }, { title: 'Impôt corp', dueDate: '2026-09-30' }]
+      openItems: [{ title: 'Odyssée 150 $', dueDate: '2026-10-08', kind: 'payment' }, { title: 'Impôt corp', dueDate: '2026-09-30' }]
     });
     const line = await brief.summary({ now: new Date('2026-10-01T12:00:00Z') });
     expect(line.summary).toBe('Finances : Impôt corp en retard · Odyssée à payer dans 7 jours · relevés à déposer : Caisse Exemple');
@@ -770,6 +770,12 @@ describe('finance line for the daily brief', () => {
     expect(line.counts.missingStatements).toBe(1);
   });
 
+  test('a task is worded neutrally; only a payment says à payer', async () => {
+    await plan.savePlan({ watch: [{ what: 'Relevés du mois', dueDate: '2026-10-08', status: '', kind: 'task' }] });
+    const line = await brief.summary({ now: new Date('2026-10-01T12:00:00Z') });
+    expect(line.summary).toBe('Finances : Relevés du mois dans 7 jours');
+  });
+
   test('says nothing when there is nothing to say', async () => {
     await plan.savePlan({});
     const line = await brief.summary({ now: new Date('2026-09-01T12:00:00Z') });
@@ -779,76 +785,89 @@ describe('finance line for the daily brief', () => {
 
 const FinanceDocumentLinkModel = () => require('../../models/FinanceDocumentLink');
 
-describe('bank statements from mail: coverage status and deposit into the inbox', () => {
+describe('bank statements from mail: series, ledger and deposit into the inbox', () => {
   const crypto = require('crypto');
   const links = require('../../src/services/finance/financeDocumentLinks');
   const deposit = require('../../src/services/finance/financeStatementDeposit');
   const FinanceStatement = require('../../models/FinanceStatement');
-  const keys = ['FINANCE_SECRETARY_REGISTER', 'FINANCE_INBOX_PATH', 'FINANCE_SECRETARY_FILES', 'FINANCE_CORP_NAMES'];
+  const keys = ['FINANCE_SECRETARY_REGISTER', 'FINANCE_INBOX_PATH', 'FINANCE_SECRETARY_FILES'];
   const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
   const sha = (text) => crypto.createHash('sha256').update(text).digest('hex');
 
-  async function eop(period, rows) {
+  async function statementOf(period, issuer, last4, rows, ledger) {
     let balance = 100000;
     const transactions = rows.map(([date, description, cents]) => { balance += cents; return { date, description, amount_cents: cents, balance_after_cents: balance }; });
-    await ingestDocument(await writeDoc(`eop-${period[0]}.pdf`), { readText, extract: extractWith({
-      issuer: 'Caisse Exemple', account_last4: '0000', period_start: period[0], period_end: period[1],
+    await ingestDocument(await writeDoc(`${issuer}-${period[0]}-${ledger || 'perso'}.pdf`), { readText, ledger, extract: extractWith({
+      issuer, account_last4: last4, period_start: period[0], period_end: period[1],
       accounts: [{ code: 'EOP', opening_cents: 100000, closing_cents: balance, transactions }] }) });
   }
 
   beforeEach(async () => {
     await FinanceDocumentLinkModel().deleteMany({});
-    // June is complete, July starts on the 15th: July 1 to 14 is a gap.
-    await eop(['2026-06-01', '2026-06-30'], [['2026-06-02', 'PAIE', 100]]);
-    await eop(['2026-07-15', '2026-07-31'], [['2026-07-16', 'PAIE', 100]]);
+    // Personal: June is complete, July starts on the 15th, so July 1 to 14 is a gap.
+    await statementOf(['2026-06-01', '2026-06-30'], 'Caisse Exemple', '0000', [['2026-06-02', 'PAIE', 100]]);
+    await statementOf(['2026-07-15', '2026-07-31'], 'Caisse Exemple', '0000', [['2026-07-16', 'PAIE', 100]]);
+    // Corporate: January to April and June are covered, May 2023 is a gap.
+    await statementOf(['2023-01-01', '2023-04-30'], 'Desjardins', '1449', [['2023-01-05', 'CLIENT', 100]], 'corp');
+    await statementOf(['2023-06-01', '2023-06-30'], 'Desjardins', '1449', [['2023-06-05', 'CLIENT', 100]], 'corp');
     const inbox = path.join(tmp, 'inbox');
     const files = path.join(tmp, 'secretary-files');
     await fs.mkdir(files, { recursive: true });
     await fs.writeFile(path.join(files, 'juillet.pdf'), 'synthetic july statement');
     await fs.writeFile(path.join(files, 'ingere.pdf'), 'synthetic ingested statement');
+    await fs.writeFile(path.join(files, '2023.05.pdf'), 'synthetic corporate may statement');
     await FinanceStatement.create({ status: 'reconciled', fileName: 'previous.pdf', fileSha256: sha('synthetic ingested statement') });
-    const statement = (id, date, supplier, file) => ({ supplier, documentNumber: id, documentDate: date, documentKind: 'relevé mensuel bancaire',
-      messageId: `m-${id}`, originalFilename: file, sources: file ? [{ path: `files/${file}` }] : [] });
+    const statement = (number, date, supplier, file) => ({ supplier, documentNumber: number, documentDate: date, documentKind: 'relevé mensuel bancaire',
+      messageId: `m-${number}`, originalFilename: file, sources: file ? [{ path: `files/${file}` }] : [] });
     await fs.writeFile(path.join(tmp, 'register.json'), JSON.stringify({ schemaVersion: 3, generatedAt: '2026-10-16T08:00:00Z', complete: true, coverage: {},
-      invoices: [statement('J-07', '2026-07-31', 'Caisse Exemple', 'juillet.pdf'), statement('J-06', '2026-06-30', 'Caisse Exemple', 'juillet.pdf'),
-        statement('X-03', '2026-03-31', 'Banque Inconnue', 'absent.pdf'), statement('I-05', '2026-07-31', 'Caisse Exemple', 'ingere.pdf')] }));
+      invoices: [statement('J-07/0000', '2026-07-31', 'Caisse Exemple', 'juillet.pdf'), statement('J-06/0000', '2026-06-30', 'Caisse Exemple', 'juillet.pdf'),
+        statement('X-03/0000', '2026-03-31', 'Banque Inconnue', 'absent.pdf'), statement('I-05/0000', '2026-07-31', 'Caisse Exemple', 'ingere.pdf'),
+        statement('131449', '2023-05-31', 'Caisse Déserjardins des Rivières du Québec', '2023.05.pdf')] }));
     process.env.FINANCE_SECRETARY_REGISTER = path.join(tmp, 'register.json');
     process.env.FINANCE_INBOX_PATH = inbox;
     process.env.FINANCE_SECRETARY_FILES = files;
-    delete process.env.FINANCE_CORP_NAMES;
   });
 
   afterEach(() => {
     for (const key of keys) { if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key]; }
   });
 
-  test('marks each statement against the coverage: fills a gap, already ingested, or unknown', async () => {
+  test('finds each statement series by its last four digits and tolerant issuer, then its ledger and status', async () => {
     const view = await links.documents({});
-    const status = Object.fromEntries(view.statements.items.map((item) => [item.documentNumber, item.status]));
-    expect(status).toEqual({ 'J-07': 'fillsGap', 'J-06': 'alreadyIngested', 'X-03': 'unknown', 'I-05': 'fillsGap' });
+    const found = Object.fromEntries(view.statements.items.map((item) => [item.documentNumber, [item.ledger, item.status]]));
+    expect(found).toEqual({
+      'J-07/0000': ['perso', 'fillsGap'], 'J-06/0000': ['perso', 'alreadyIngested'], 'X-03/0000': [null, 'unknown'],
+      'I-05/0000': ['perso', 'fillsGap'], '131449': ['corp', 'fillsGap']
+    });
+    expect(view.statements.items.find((item) => item.documentNumber === '131449').series).toBe('Desjardins ···1449');
   });
 
-  test('copies a chosen statement into the inbox, never twice, and refuses a file already ingested', async () => {
+  test('a corporate statement is copied into the corp folder; a personal one into the inbox', async () => {
     const view = await links.documents({});
-    const july = view.statements.items.find((item) => item.documentNumber === 'J-07').id;
-    const ingested = view.statements.items.find((item) => item.documentNumber === 'I-05').id;
-    const unknown = view.statements.items.find((item) => item.documentNumber === 'X-03').id;
-    const first = await deposit.deposit([july, ingested, unknown], 'perso');
-    expect(first.copied).toEqual([{ id: july }]);
-    expect(first.refused.map((r) => r.reason).sort()).toEqual(['already ingested', 'file not found']);
-    const copies = await fs.readdir(path.join(tmp, 'inbox'));
-    expect(copies).toEqual([`secretary-${july}-2026-07-31-juillet.pdf`]);
-    expect((await deposit.deposit([july], 'perso')).refused).toEqual([{ id: july, reason: 'already in inbox' }]);
+    const ids = Object.fromEntries(view.statements.items.map((item) => [item.documentNumber, item.id]));
+    const result = await deposit.deposit([ids['131449'], ids['J-07/0000']]);
+    expect(result.copied).toEqual([{ id: ids['131449'], ledger: 'corp' }, { id: ids['J-07/0000'], ledger: 'perso' }]);
+    expect(await fs.readdir(path.join(tmp, 'inbox', 'corp'))).toEqual([`secretary-${ids['131449']}-2023-05-31-2023.05.pdf`]);
+    expect(await fs.readdir(path.join(tmp, 'inbox')).then((names) => names.filter((n) => n !== 'corp'))).toEqual([`secretary-${ids['J-07/0000']}-2026-07-31-juillet.pdf`]);
+    expect((await deposit.deposit([ids['J-07/0000']])).refused).toEqual([{ id: ids['J-07/0000'], reason: 'already in inbox' }]);
+  });
+
+  test('refuses a file already ingested, a statement with no series, and bad input; a missing configuration is refused', async () => {
+    const view = await links.documents({});
+    const ids = Object.fromEntries(view.statements.items.map((item) => [item.documentNumber, item.id]));
+    const result = await deposit.deposit([ids['I-05/0000'], ids['X-03/0000']]);
+    expect(result.copied).toEqual([]);
+    expect(result.refused.map((r) => r.reason).sort()).toEqual(['already ingested', 'no account series matches']);
     await expect(deposit.deposit([], 'perso')).rejects.toMatchObject({ code: 'FINANCE_DEPOSIT_INVALID' });
+    delete process.env.FINANCE_INBOX_PATH;
+    await expect(deposit.deposit([ids['J-07/0000']])).rejects.toMatchObject({ code: 'FINANCE_DEPOSIT_UNCONFIGURED' });
   });
 
-  test('a corporate deposit goes to the corp folder, and a missing configuration is refused', async () => {
-    process.env.FINANCE_CORP_NAMES = 'Corp Exemple';
-    const view = await links.documents({ ledger: 'corp' });
-    expect(view.statements.items).toEqual([]);
-    await expect(deposit.deposit(['0123456789abcdef'], 'perso')).resolves.toMatchObject({ refused: [{ reason: 'not a bank statement of this ledger' }] });
-    delete process.env.FINANCE_INBOX_PATH;
-    await expect(deposit.deposit(['0123456789abcdef'], 'perso')).rejects.toMatchObject({ code: 'FINANCE_DEPOSIT_UNCONFIGURED' });
+  test('reads the issuer tolerantly and the last four digits of a document number', () => {
+    expect(deposit.issuerMatches('Caisse Déserjardins des Rivières du Québec', 'Desjardins')).toBe(true);
+    expect(deposit.issuerMatches('Banque Inconnue', 'Desjardins')).toBe(false);
+    expect(deposit.last4Of('131449')).toBe('1449');
+    expect(deposit.last4Of('J-07')).toBeNull();
   });
 });
 
@@ -1027,7 +1046,7 @@ describe('financial plan and situation', () => {
     expect(s.budget.map((b) => [b.label, b.actualMonthlyCents])).toEqual([['Paye', 250000], ['Café', 900], ['Restos', 0]]);
     expect(s.monthly).toEqual({ inCents: 250000, outCents: -900, netCents: 249100 });
     expect(s).toMatchObject({ provisionsMonthlyCents: 30000, taxRoomCents: 1000000, phase: 'Reconstruction' });
-    expect(s.openItems).toEqual([{ title: 'Relevé manquant', detail: '', severity: 'warning', briefLabel: null, dueDate: null, recurrence: null }]);
+    expect(s.openItems).toEqual([{ title: 'Relevé manquant', detail: '', severity: 'warning', briefLabel: null, kind: null, dueDate: null, recurrence: null }]);
     expect(s.excludeTags).toEqual(['refi']);
     await categories.saveRules({ pattern: 'cafe du coin', category: 'Restaurants', tags: ['cafe', 'refi'] });
     expect((await plan.situation({ months: 1 })).monthly).toEqual({ inCents: 250000, outCents: 0, netCents: 250000 });
