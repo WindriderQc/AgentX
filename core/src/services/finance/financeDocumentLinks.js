@@ -9,7 +9,8 @@
 
 const FinanceDocumentLink = require('../../../models/FinanceDocumentLink');
 const FinanceTransaction = require('../../../models/FinanceTransaction');
-const { loadRegister } = require('./financeDocumentRegister');
+const { loadRegister, documentLedger } = require('./financeDocumentRegister');
+const { classifyStatements } = require('./financeStatementDeposit');
 const { ledgerFilter, ledgerOf } = require('./ledgers');
 
 const DAY_MS = 86400000;
@@ -33,9 +34,6 @@ const dayString = (day) => new Date(day * DAY_MS).toISOString().slice(0, 10);
 const fold = (value) => String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const transactionKey = (row) => [row.accountKey, row.date, row.fingerprint, row.occurrence].join('|');
 const includesAny = (text, words) => words.some((word) => fold(text).includes(word));
-// Names of the owner's corporations, from configuration: a document addressed to one of them belongs to the corporate ledger.
-const corpNames = () => String(process.env.FINANCE_CORP_NAMES || '').split(',').map((name) => fold(name).trim()).filter(Boolean);
-const documentLedger = (doc) => (corpNames().some((name) => fold(doc.person).includes(name)) ? 'corp' : 'perso');
 const claimMaxCents = () => Number.parseInt(process.env.FINANCE_DOCUMENT_CLAIM_MAX_CENTS, 10) || DEFAULT_CLAIM_MAX_CENTS;
 
 function supplierTokens(supplier) {
@@ -162,7 +160,7 @@ async function documents({ minCents, ledger } = {}) {
     && (doc.insurancePaidCents == null || !isSettled(doc))).sort(newestFirst) : [];
   const claims = claimable.filter((doc) => !suspicious(doc));
   const toVerify = claimable.filter(suspicious);
-  const statements = invoices.filter((doc) => doc.kind === 'bank_statement').sort(newestFirst);
+  const statements = await classifyStatements(invoices.filter((doc) => doc.kind === 'bank_statement').sort(newestFirst), scope);
 
   return {
     status: 'ok',
@@ -177,7 +175,7 @@ async function documents({ minCents, ledger } = {}) {
       .slice(0, 100).map(({ _id, ...row }) => ({ id: String(_id), ...row, transactionKey: transactionKey(row) })) },
     toClaim: { ...summarize(claims), maxCents: claimMaxCents(), items: claims.slice(0, 100) },
     toVerify: { count: toVerify.length, maxCents: claimMaxCents(), items: toVerify.slice(0, 100) },
-    statements: { count: scope === 'perso' ? statements.length : 0, items: scope === 'perso' ? statements.slice(0, 100) : [] }
+    statements: { count: statements.length, items: statements.slice(0, 100) }
   };
 }
 

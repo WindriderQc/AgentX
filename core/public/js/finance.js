@@ -247,6 +247,11 @@
       link.status === 'proposed' ? el('button', { type: 'button', class: 'finance-link', 'data-decide': link.id, 'data-status': 'confirmed' }, 'Confirm') : '',
       link.status === 'proposed' ? el('button', { type: 'button', class: 'finance-link', 'data-decide': link.id, 'data-status': 'rejected' }, 'Reject') : '');
   }
+  const STATEMENT_STATUS = { fillsGap: 'comble un trou', alreadyIngested: 'déjà couvert', unknown: 'à classer' };
+  function statementLine(item) {
+    return el('li', {}, `${item.documentDate || '—'} · ${item.supplier || ''} ${item.documentNumber || ''}${item.series ? ` · ${item.series}` : ''} · ${STATEMENT_STATUS[item.status] || item.status} `,
+      item.status === 'alreadyIngested' ? '' : el('button', { type: 'button', class: 'finance-link', 'data-deposit': item.id }, "Déposer dans l'inbox"));
+  }
   function documentLine(doc) {
     return el('li', {}, `${doc.documentDate || '—'} · ${doc.supplier || ''} ${doc.documentNumber || ''} · ${money(doc.amountCents)}${doc.originalFilename ? ` · ${doc.originalFilename}` : ''}`);
   }
@@ -276,9 +281,15 @@
     $('documentsClaims').replaceChildren(...data.toClaim.items.map(documentLine));
     $('documentsVerifyNote').textContent = `${data.toVerify.count} document(s) left out of the total: above ${money(data.toVerify.maxCents)} or inconsistent with the gross amount.`;
     $('documentsToVerify').replaceChildren(...data.toVerify.items.map(documentLine));
-    $('documentsStatements').replaceChildren(...data.statements.items.map(documentLine));
+    $('documentsStatements').replaceChildren(...data.statements.items.map(statementLine));
   }
   $('financeDocumentsCard').addEventListener('click', async (event) => {
+    const deposit = event.target.closest('[data-deposit]');
+    if (deposit) {
+      await post('documents/statements/deposit', { ids: [deposit.dataset.deposit], ledger: LEDGER || 'perso' }).catch(showError);
+      await renderDocuments();
+      return;
+    }
     const button = event.target.closest('[data-decide]');
     if (!button) return;
     await post('documents/links/decide', { ids: [button.dataset.decide], status: button.dataset.status }).catch(showError);

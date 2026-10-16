@@ -115,6 +115,23 @@ export function createCoreDocumentLinkClient({ baseUrl, fetchImpl = fetch } = {}
   };
 }
 
+// Copies chosen bank statements from the Secretary into the finance inbox. Core copies only; it never deletes,
+// and the normal ingestion reconciles them.
+export function createCoreStatementDepositClient({ baseUrl, fetchImpl = fetch } = {}) {
+  if (!baseUrl) throw new Error('Configure the canonical AgentX URL for this OpenClaw instance');
+  const url = new URL('/api/finance/documents/statements/deposit', baseUrl);
+  return async (input = {}) => {
+    const ids = (Array.isArray(input.ids) ? input.ids : []).map((id) => String(id)).slice(0, 10);
+    if (!ids.length) throw new Error('Give 1 to 10 statement ids from finance_ledger action documents');
+    const ledger = input.ledger === 'corp' ? 'corp' : 'perso';
+    const response = await fetchImpl(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30000),
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids, ledger }) });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || body?.status !== 'success') throw new Error(body?.message || `Core statement deposit unavailable (${response.status})`);
+    return { authority: 'agentx.core', ...body.data };
+  };
+}
+
 // Deterministic alerts from Core. `report` returns the pending ones and marks
 // them reported, so a delivery job never repeats a fact.
 export function createCoreAlertsClient({ baseUrl, fetchImpl = fetch } = {}) {

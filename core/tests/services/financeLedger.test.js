@@ -758,6 +758,81 @@ describe('finance line for the daily brief', () => {
   });
 });
 
+const FinanceDocumentLinkModel = () => require('../../models/FinanceDocumentLink');
+
+describe('bank statements from mail: coverage status and deposit into the inbox', () => {
+  const crypto = require('crypto');
+  const links = require('../../src/services/finance/financeDocumentLinks');
+  const deposit = require('../../src/services/finance/financeStatementDeposit');
+  const FinanceStatement = require('../../models/FinanceStatement');
+  const keys = ['FINANCE_SECRETARY_REGISTER', 'FINANCE_INBOX_PATH', 'FINANCE_SECRETARY_FILES', 'FINANCE_CORP_NAMES'];
+  const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  const sha = (text) => crypto.createHash('sha256').update(text).digest('hex');
+
+  async function eop(period, rows) {
+    let balance = 100000;
+    const transactions = rows.map(([date, description, cents]) => { balance += cents; return { date, description, amount_cents: cents, balance_after_cents: balance }; });
+    await ingestDocument(await writeDoc(`eop-${period[0]}.pdf`), { readText, extract: extractWith({
+      issuer: 'Caisse Exemple', account_last4: '0000', period_start: period[0], period_end: period[1],
+      accounts: [{ code: 'EOP', opening_cents: 100000, closing_cents: balance, transactions }] }) });
+  }
+
+  beforeEach(async () => {
+    await FinanceDocumentLinkModel().deleteMany({});
+    // June is complete, July starts on the 15th: July 1 to 14 is a gap.
+    await eop(['2026-06-01', '2026-06-30'], [['2026-06-02', 'PAIE', 100]]);
+    await eop(['2026-07-15', '2026-07-31'], [['2026-07-16', 'PAIE', 100]]);
+    const inbox = path.join(tmp, 'inbox');
+    const files = path.join(tmp, 'secretary-files');
+    await fs.mkdir(files, { recursive: true });
+    await fs.writeFile(path.join(files, 'juillet.pdf'), 'synthetic july statement');
+    await fs.writeFile(path.join(files, 'ingere.pdf'), 'synthetic ingested statement');
+    await FinanceStatement.create({ status: 'reconciled', fileName: 'previous.pdf', fileSha256: sha('synthetic ingested statement') });
+    const statement = (id, date, supplier, file) => ({ supplier, documentNumber: id, documentDate: date, documentKind: 'relevé mensuel bancaire',
+      messageId: `m-${id}`, originalFilename: file, sources: file ? [{ path: `files/${file}` }] : [] });
+    await fs.writeFile(path.join(tmp, 'register.json'), JSON.stringify({ schemaVersion: 3, generatedAt: '2026-10-16T08:00:00Z', complete: true, coverage: {},
+      invoices: [statement('J-07', '2026-07-31', 'Caisse Exemple', 'juillet.pdf'), statement('J-06', '2026-06-30', 'Caisse Exemple', 'juillet.pdf'),
+        statement('X-03', '2026-03-31', 'Banque Inconnue', 'absent.pdf'), statement('I-05', '2026-07-31', 'Caisse Exemple', 'ingere.pdf')] }));
+    process.env.FINANCE_SECRETARY_REGISTER = path.join(tmp, 'register.json');
+    process.env.FINANCE_INBOX_PATH = inbox;
+    process.env.FINANCE_SECRETARY_FILES = files;
+    delete process.env.FINANCE_CORP_NAMES;
+  });
+
+  afterEach(() => {
+    for (const key of keys) { if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key]; }
+  });
+
+  test('marks each statement against the coverage: fills a gap, already ingested, or unknown', async () => {
+    const view = await links.documents({});
+    const status = Object.fromEntries(view.statements.items.map((item) => [item.documentNumber, item.status]));
+    expect(status).toEqual({ 'J-07': 'fillsGap', 'J-06': 'alreadyIngested', 'X-03': 'unknown', 'I-05': 'fillsGap' });
+  });
+
+  test('copies a chosen statement into the inbox, never twice, and refuses a file already ingested', async () => {
+    const view = await links.documents({});
+    const july = view.statements.items.find((item) => item.documentNumber === 'J-07').id;
+    const ingested = view.statements.items.find((item) => item.documentNumber === 'I-05').id;
+    const unknown = view.statements.items.find((item) => item.documentNumber === 'X-03').id;
+    const first = await deposit.deposit([july, ingested, unknown], 'perso');
+    expect(first.copied).toEqual([{ id: july }]);
+    expect(first.refused.map((r) => r.reason).sort()).toEqual(['already ingested', 'file not found']);
+    const copies = await fs.readdir(path.join(tmp, 'inbox'));
+    expect(copies).toEqual([`secretary-${july}-2026-07-31-juillet.pdf`]);
+    expect((await deposit.deposit([july], 'perso')).refused).toEqual([{ id: july, reason: 'already in inbox' }]);
+    await expect(deposit.deposit([], 'perso')).rejects.toMatchObject({ code: 'FINANCE_DEPOSIT_INVALID' });
+  });
+
+  test('a corporate deposit goes to the corp folder, and a missing configuration is refused', async () => {
+    process.env.FINANCE_CORP_NAMES = 'Corp Exemple';
+    const view = await links.documents({ ledger: 'corp' });
+    expect(view.statements.items).toEqual([]);
+    await expect(deposit.deposit(['0123456789abcdef'], 'perso')).resolves.toMatchObject({ refused: [{ reason: 'not a bank statement of this ledger' }] });
+    delete process.env.FINANCE_INBOX_PATH;
+    await expect(deposit.deposit(['0123456789abcdef'], 'perso')).rejects.toMatchObject({ code: 'FINANCE_DEPOSIT_UNCONFIGURED' });
+  });
+});
+
 describe('statement coverage', () => {
   test('lists the months each statement series covers and the gaps between', async () => {
     for (const [name, period] of [['a.pdf', ['2026-01-01', '2026-01-31']], ['b.pdf', ['2026-04-01', '2026-04-30']]]) {

@@ -141,3 +141,16 @@ test('reads Secretary documents and confirms only the links it is given', async 
   await assert.rejects(decide({ decision: 'maybe', ids: ['0123456789abcdef01234567'] }), /confirm or reject/);
   await assert.rejects(decide({ decision: 'confirm', ids: [] }), /at least one link id/);
 });
+
+test('deposits chosen statements through Core and refuses more than ten', async () => {
+  const { createCoreStatementDepositClient } = await import('../core-finance.js');
+  const calls = [];
+  const deposit = createCoreStatementDepositClient({ baseUrl: 'http://127.0.0.1:3180', fetchImpl: async (url, options) => {
+    calls.push([String(url), JSON.parse(options.body)]);
+    return { ok: true, json: async () => ({ status: 'success', data: { copied: [{ id: '0123456789abcdef' }], refused: [] } }) };
+  } });
+  const result = await deposit({ ids: ['0123456789abcdef'] });
+  assert.deepEqual(calls[0], ['http://127.0.0.1:3180/api/finance/documents/statements/deposit', { ids: ['0123456789abcdef'], ledger: 'perso' }]);
+  assert.equal(result.copied.length, 1);
+  await assert.rejects(deposit({ ids: [] }), /1 to 10/);
+});
