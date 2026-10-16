@@ -78,8 +78,11 @@ purchases as income.
   every day of it (`financeCompleteness.js`). Incomplete months keep their
   totals, are flagged `complete: false` and are excluded from averages and
   savings rates. A ledger with no payroll statement at all flags nothing.
-- Staleness is judged per account series, not on the newest statement of all
-  accounts: a card that is still fed does not hide a payroll account that stopped.
+- Staleness is judged per statement series (issuer and account or card last
+  four), not on the newest statement of all accounts: a card that is still fed
+  does not hide a payroll account that stopped. One alert per series. A series
+  silent beyond `FINANCE_ALERT_DORMANT_DAYS` is dormant (one info alert). The plan
+  section `seriesStatus` names a series and marks it `closed` to silence it.
 - `watch` and `openItems` accept optional `dueDate` (YYYY-MM-DD) and
   `recurrence` (`monthly`, `quarterly`, `yearly`). The free-text `date` stays
   valid. Settling an item means moving its `dueDate` forward; until then Core

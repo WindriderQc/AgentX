@@ -1159,6 +1159,16 @@
       "secret": false,
       "description": "Balance in cents under which the listed accounts raise a finance alert. Unset: 0, so the minimum-balance alert is off."
     },
+    "FINANCE_ALERT_DORMANT_DAYS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "180",
+      "category": "finance",
+      "secret": false,
+      "description": "Days without a new statement after which a statement series is dormant: one info alert instead of a stale one. Unset: 180."
+    },
     "FINANCE_ALERT_STALE_DAYS": {
       "services": [
         "core"

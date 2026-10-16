@@ -12,13 +12,14 @@ const FinanceTransaction = require('../../../models/FinanceTransaction');
 const { balances } = require('./financeQueryService');
 const { insights } = require('./financeInsights');
 const { getPlan } = require('./financePlan');
-const { ledgerFilter } = require('./ledgers');
+const { ledgerFilter, seriesName } = require('./ledgers');
 
 const PERSO = ledgerFilter('perso');
 
 const TRANSFERS = 'Virements internes';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEADLINE_WINDOW_DAYS = 7;
+// `dormant_account` is one info alert per series, delivered once and not listed afterwards.
 const STANDING = ['stale_data', 'low_balance', 'deadline_upcoming', 'deadline_due', 'deadline_overdue'];
 
 function cents(value, fallback) {
@@ -32,7 +33,8 @@ function settings(env = process.env) {
     categorySpikeCents: cents(env.FINANCE_ALERT_CATEGORY_SPIKE_CENTS, 10000),
     minBalanceCents: cents(env.FINANCE_ALERT_MIN_BALANCE_CENTS, 0),
     minBalanceAccounts: String(env.FINANCE_ALERT_MIN_BALANCE_ACCOUNTS || 'EOP').split(',').map((s) => s.trim()).filter(Boolean),
-    staleDays: cents(env.FINANCE_ALERT_STALE_DAYS, 45)
+    staleDays: cents(env.FINANCE_ALERT_STALE_DAYS, 45),
+    dormantDays: cents(env.FINANCE_ALERT_DORMANT_DAYS, 180)
   };
 }
 
@@ -70,21 +72,29 @@ async function evaluate({ now = new Date(), env = process.env } = {}) {
       title: `Statement to review: ${statement.fileName}`, facts: { fileName: statement.fileName, problems: statement.problems } });
   }
 
-  // Staleness is judged per account series: the latest reconciled period end of each account.
+  // One alert per statement series (issuer and account or card), not per sub-account.
+  // A closed series (plan seriesStatus) raises nothing; a series older than the dormant
+  // threshold raises one info alert; in between it is stale.
+  const plan = await getPlan();
+  const named = new Map(plan.seriesStatus.map((item) => [item.series, item]));
   const series = await FinanceStatement.aggregate([
     { $match: { status: 'reconciled', ...PERSO } },
-    { $unwind: '$accounts' },
-    { $group: { _id: '$accounts.accountKey', code: { $first: '$accounts.code' }, issuer: { $first: '$issuer' },
-      lastPeriodEnd: { $max: '$periodEnd' } } }
+    { $group: { _id: { issuer: '$issuer', last4: '$accountLast4' }, lastPeriodEnd: { $max: '$periodEnd' } } }
   ]);
-  for (const account of series) {
-    if (!account.lastPeriodEnd) continue;
-    const ageDays = Math.floor((now - new Date(`${account.lastPeriodEnd}T00:00:00Z`)) / DAY_MS);
-    if (ageDays > config.staleDays) {
-      found.push({ key: `stale:${account._id}`, kind: 'stale_data', severity: 'info',
-        title: `No ${account.code} statement since ${account.lastPeriodEnd} (${ageDays} days)`,
-        facts: { accountKey: account._id, account: account.code, issuer: account.issuer,
-          lastPeriodEnd: account.lastPeriodEnd, ageDays } });
+  for (const row of series) {
+    const name = seriesName(row._id.issuer, row._id.last4);
+    const configured = named.get(name);
+    if (configured?.closed || !row.lastPeriodEnd) continue;
+    const label = configured?.label || name;
+    const ageDays = Math.floor((now - new Date(`${row.lastPeriodEnd}T00:00:00Z`)) / DAY_MS);
+    if (ageDays > config.dormantDays) {
+      found.push({ key: `dormant:${name}`, kind: 'dormant_account', severity: 'info',
+        title: `Dormant: ${label}, last statement ${row.lastPeriodEnd} (${ageDays} days)`,
+        facts: { series: name, label, lastPeriodEnd: row.lastPeriodEnd, ageDays } });
+    } else if (ageDays > config.staleDays) {
+      found.push({ key: `stale:${name}`, kind: 'stale_data', severity: 'info',
+        title: `No statement from ${label} since ${row.lastPeriodEnd} (${ageDays} days)`,
+        facts: { series: name, label, lastPeriodEnd: row.lastPeriodEnd, ageDays } });
     }
   }
 
@@ -129,7 +139,6 @@ async function evaluate({ now = new Date(), env = process.env } = {}) {
     }
   }
 
-  const plan = await getPlan();
   const items = [
     ...plan.watch.map((item) => ({ ...item, section: 'watch', label: item.what })),
     ...plan.openItems.map((item) => ({ ...item, section: 'openItems', label: item.title }))

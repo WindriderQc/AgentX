@@ -108,6 +108,9 @@ function cleanPlan(input = {}) {
       status: text(item.status, 30), effect: text(item.effect, 240) })),
     watch: list(input.watch, 'watch', 40, (item, field) => ({ date: text(item.date, 40), what: text(item.what, 300), status: text(item.status, 30),
       dueDate: dueDate(item.dueDate, `${field}.dueDate`), recurrence: recurrence(item.recurrence, `${field}.recurrence`) })),
+    // Statement series (issuer and last four) named for the alerts; `closed` series raise no stale or dormant alert.
+    seriesStatus: list(input.seriesStatus, 'seriesStatus', 60, (item) => ({ series: text(item.series, 80), label: text(item.label, 80),
+      closed: item.closed === true, note: text(item.note, 200) })),
     taxRoom: list(input.taxRoom, 'taxRoom', 10, (item, field) => ({ name: text(item.name, 40),
       roomCents: cents(item.roomCents, `${field}.roomCents`, { optional: false }), asOf: text(item.asOf, 10) || null }))
   };
@@ -125,7 +128,7 @@ async function savePlan(input) {
 }
 
 const SECTIONS = ['phase', 'excludeTags', 'budget', 'debts', 'credit', 'provisions', 'assets', 'milestones',
-  'openItems', 'allocations', 'watch', 'taxRoom'];
+  'openItems', 'allocations', 'watch', 'taxRoom', 'seriesStatus'];
 
 // Replaces one section (the page editor saves a whole table at once).
 async function saveSection(section, value) {
@@ -279,6 +282,7 @@ async function situation({ months } = {}) {
     allocations: plan.allocations,
     watch: plan.watch,
     taxRoom: plan.taxRoom,
+    seriesStatus: plan.seriesStatus,
     taxRoomCents: plan.taxRoom.reduce((sum, item) => sum + item.roomCents, 0)
   };
 }
