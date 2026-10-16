@@ -357,6 +357,8 @@ describe('POST /api/inference/generate', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // An unpinned host: the pin rule (#829) has its own tests.
+    hostPreferenceService.getByHost.mockResolvedValue(null);
     delete process.env.REQUIRE_PROFILED_MODELS;
   });
 

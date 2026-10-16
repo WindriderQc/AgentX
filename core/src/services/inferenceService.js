@@ -72,8 +72,7 @@ async function executeInferenceOnce(body = {}, {
     const responseMode = typeof body.responseMode === 'string' ? body.responseMode.trim().toLowerCase() : '';
     const rawResponseRequested = body.rawResponse === true || responseMode === 'raw';
     // num_ctx policy:
-    // - explicit caller options always win (benchmark/profiler/direct sweeps)
-    // - routed daily lanes may inherit HostPreference.pinnedModels[*].contextSize
+    // - a pinned host's pin owns load options; a host claim or Benchmark admission keeps its own
     // - routed daily lanes enforce the inference contract's output reserve as
     //   num_predict so Modelfile defaults cannot silently cap replies at 512
     let options = { ...(body.options || {}) };
@@ -266,8 +265,9 @@ async function executeInferenceOnce(body = {}, {
         });
     }
 
+    let claimed = benchmarkClaimAuthorized && Boolean(body.workloadAdmissionId && body.workloadGeneration);
     try {
-        await assertHostAvailableForConsumer(target, {
+        claimed = Boolean(await assertHostAvailableForConsumer(target, {
             callerDetail: body.callerDetail || null,
             claimBatchId: body.claimBatchId || null,
             claimGeneration: body.claimGeneration || null,
@@ -276,7 +276,7 @@ async function executeInferenceOnce(body = {}, {
             benchmarkAuthorized: benchmarkClaimAuthorized,
             model,
             path: '/api/inference/generate'
-        });
+        })) || claimed;
     } catch (err) {
         return refusedResult(err, rejectRoute(buildClaimAdmissionRejection(err, {
             headers, target, routedHostKey, model, laneName,
@@ -338,7 +338,7 @@ async function executeInferenceOnce(body = {}, {
 
     const runtime = await prepareInferenceRuntime({
         model, host: target, prompt, messages, system, tools: requestedTools, options, keepAlive,
-        think, thinkingMode, taskType, callerDetail: body.callerDetail,
+        think, thinkingMode, taskType, callerDetail: body.callerDetail, claimed,
         laneName, rawResponseRequested, stream,
         includeArtifactIdentity: requireProfiledModels() || body.includeArtifactIdentity === true,
     }, lane.route ? 'generate' : 'direct');
@@ -689,7 +689,7 @@ async function executeInferenceOnce(body = {}, {
         });
         setRouteOutcomeHeader(headers, ROUTE_OUTCOME_CODES.PRE_DISPATCH_ERROR);
         return result(Number.isInteger(err?.statusCode) ? err.statusCode : 500, {
-            status: 'error',
+            status: 'error', ...(err?.code === 'HOST_PIN_MISMATCH' && { code: err.code, data: { pin: err.pin } }),
             message: err?.message || 'Internal server error',
         });
     }

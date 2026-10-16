@@ -108,6 +108,21 @@
     if (!info) return;
     applyLimit(info.num_ctx);
     applyBadge(info.source);
+    applyPinnedField(info.source === 'host_preference_pin' ? info.num_ctx : null);
+  }
+
+  /**
+   * On a pinned host the pin owns the context (#829): the override field is
+   * greyed and shows the pin, and the server ignores a value sent anyway.
+   */
+  function applyPinnedField(pinnedCtx) {
+    const input = document.getElementById('numCtx');
+    if (!input) return;
+    const pinned = Number(pinnedCtx) > 0;
+    if (pinned) input.value = '';
+    input.disabled = pinned;
+    input.placeholder = pinned ? `Pinned: ${Number(pinnedCtx).toLocaleString()}` : 'Modelfile default';
+    input.title = pinned ? 'The host pin owns this context. Change it in the Nerve Center pin.' : '';
   }
 
   /**

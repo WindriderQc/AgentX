@@ -289,3 +289,10 @@ test('generate turns carry the brain context in the system prompt', () => {
   assert.equal(bare.messages[0].role, 'system');
   assert.equal(bare.messages.length, 2);
 });
+
+test('the degraded turn leaves the principal load options behind for the fallback pin', () => {
+  const degraded = degradeRequest({ mode: 'chat', model: PRIMARY, keepAlive: -1, messages: [],
+    options: { num_ctx: 196608, num_thread: 8, temperature: 0.2 } }, PLAN);
+  assert.deepEqual(degraded.options, { temperature: 0.2 });
+  assert.equal('keepAlive' in degraded, false);
+});

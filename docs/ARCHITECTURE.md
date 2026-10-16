@@ -99,6 +99,18 @@ the existing Core bridges. Concrete model selections remain explicit. Studio
 has request-scoped admission; Coding Team freezes the native capacity model
 for each attempt. See [Studio setup](DSH_RESUMPTION.md).
 
+On a host with a pin, the pin owns what Ollama loads there
+(`core/src/services/hostPinGuard.js`). Ollama reloads a runner for another
+model or other load options, so Core refuses with 409 `HOST_PIN_MISMATCH` a
+request naming an unpinned model, or a `num_ctx`, `num_gpu`, `num_batch`,
+`num_thread`, `use_mmap` or `main_gpu` that differs from the pin; a request
+omitting them inherits the pin's values and keep-alive. A Benchmark or Profiler
+claim (host claim or Core-minted workload admission) and a session hold on its
+model keep their exact options. The chat UI shows the pinned context instead
+of refusing an ordinary turn. Classification, `POST /api/models/ollama/start`
+and the conversation fallback (which leaves the principal's load options
+behind) follow the same rule. Core sends no `/api/create`.
+
 Task routing sends each task type to its configured model and host. Light
 tasks (quick reactions, short Nestor answers, RAG helpers, the janitor) may
 carry an instance-configured fallback ladder: when the primary is unavailable

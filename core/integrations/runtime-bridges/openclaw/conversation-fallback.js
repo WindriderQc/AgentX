@@ -6,6 +6,8 @@
 // degraded turn is local only, carries no tools (#92: tool and memory use with
 // the smaller model needs its own evidence), tells the model which brain is
 // speaking and shows the user a one-line notice.
+const { stripLoadOptions } = require('../../../src/services/hostPinGuard');
+
 const FALLBACK_TASK_ENV = 'OPENCLAW_CONVERSATION_FALLBACK_TASK';
 // With a fallback configured, the primary wait for a yielding workload stays
 // short enough for the fallback answer to fit under the gateway timeout.
@@ -51,12 +53,15 @@ function brainContext(routing) {
 }
 
 // The same logical turn, addressed to the fallback rung. OpenClaw's tool
-// history stays readable; new tool calls and thinking are not offered.
+// history stays readable; new tool calls and thinking are not offered. The
+// principal's load options and residency stay behind: the fallback host's own
+// pin decides how its model loads.
 function degradeRequest(request, plan) {
   const context = brainContext(plan.routing);
-  const { tools: _tools, ...rest } = request;
+  const { tools: _tools, keepAlive: _keepAlive, ...rest } = request;
   const degraded = {
     ...rest,
+    options: stripLoadOptions(request.options),
     model: plan.model,
     think: false,
     exclusiveHost: false,

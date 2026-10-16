@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const fetch = require('node-fetch');
 const { getFetchOptions } = require('../helpers/httpAgent');
 const { beginRuntimeMutation } = require('./runtimeMutationLeaseService');
+const { enforceHostPin } = require('./hostPinGuard');
 
 const DEFAULT_PULL_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_RUNTIME_TIMEOUT_MS = 10 * 60 * 1000;
@@ -103,11 +104,17 @@ async function pullModel(host, name, options = {}) {
   });
 }
 
+// On a pinned host a start loads the pinned model exactly as the pin does
+// (context, threads, residency); another model is refused (HOST_PIN_MISMATCH).
 async function startModel(host, name, keepAlive = '10m', options = {}) {
   const timeoutMs = positiveTimeout(process.env.OLLAMA_MODEL_START_TIMEOUT_MS, DEFAULT_RUNTIME_TIMEOUT_MS);
+  const pref = await (options.hostPreferenceService || require('./hostPreferenceService')).getByHost(host);
+  const pinned = enforceHostPin(pref, { hostUrl: host, model: name });
+  if (!pinned.unpinned) keepAlive = pinned.keepAlive;
   return runRuntimeMutation({ host, name, action: 'start', principal: options.principal, signal: options.signal, timeoutMs }, async signal => {
     await requestOllama(host, '/api/generate', {
-      body: withContextRefusal({ model: name, prompt: '', stream: false, keep_alive: keepAlive }),
+      body: withContextRefusal({ model: name, prompt: '', stream: false, keep_alive: keepAlive,
+        ...(!pinned.unpinned && Object.keys(pinned.options).length > 0 && { options: pinned.options }) }),
       timeoutMs,
       signal,
       terminal: 'generate'
