@@ -124,7 +124,7 @@
             <table class="nc-table">
                 <thead>
                     <tr>
-                        <th>Task Type</th>
+                        <th scope="col">Task Type</th>
                         <th>Model</th>
                         <th>Host</th>
                         <th style="text-align:center;width:180px;">Actions</th>
@@ -444,7 +444,7 @@
                 const rowId = shared.escapeHtml(String(log._id || index));
                 return `
                 <tr class="nc-routing-log-row" data-routing-log-id="${rowId}" style="cursor:pointer;">
-                    <td style="padding:6px 10px;font-size:0.8rem;color:var(--muted);" title="${log.timestamp ? new Date(log.timestamp).toLocaleString() : ''}">${shared.timeAgo(log.timestamp)}</td>
+                    <td style="padding:6px 10px;font-size:0.8rem;color:var(--muted);" title="${log.timestamp ? new Date(log.timestamp).toLocaleString() : ''}"><button type="button" class="nc-routing-inspect" aria-controls="routingLogDetail" aria-label="Inspect ${shared.escapeHtml((log.taskType || 'route').replace(/_/g, ' '))} route from ${shared.timeAgo(log.timestamp)}">${shared.timeAgo(log.timestamp)}</button></td>
                     <td class="nc-td-sm">${shared.escapeHtml((log.taskType || '--').replace(/_/g, ' '))}</td>
                     <td class="nc-td-sm">${shared.escapeHtml(log.callerDetail || log.caller || '--')}</td>
                     <td class="nc-td-sm">${recommendation ? formatRouteCell(recommendation.model, recommendation.host, recommendation.hostUrl, recommendation.reason) : '<span style="color:var(--muted);">--</span>'}</td>
@@ -462,19 +462,19 @@
             <table class="nc-table">
                 <thead>
                     <tr>
-                        <th>Time</th>
+                        <th scope="col">Time</th>
                         <th>Task Type</th>
-                        <th>Caller</th>
-                        <th>Router Recommendation</th>
-                        <th>Real Path Used</th>
-                        <th>Why</th>
-                        <th class="nc-td-right">Latency</th>
+                        <th scope="col">Caller</th>
+                        <th scope="col">Router Recommendation</th>
+                        <th scope="col">Real Path Used</th>
+                        <th scope="col">Why</th>
+                        <th scope="col" class="nc-td-right">Latency</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
             </table>
-            <div id="routingLogDetail" style="margin-top:12px;">
-                <div class="nc-section-placeholder" style="padding:18px 12px;">Click a routing row to inspect the payload-free route decision, final path, request shape, and scheduler candidates.</div>
+            <div id="routingLogDetail" style="margin-top:12px;" aria-live="polite">
+                <div class="nc-section-placeholder" style="padding:18px 12px;">Select a routing row to inspect the payload-free route decision, final path, request shape, and scheduler candidates.</div>
             </div>`;
     }
 
@@ -589,7 +589,7 @@
             ${buildRoutingAnalyticsSection(analytics)}
             <div class="nc-collapsible nc-mb-16">
                 <div class="nc-collapsible-header" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 0;color:var(--muted);font-size:0.85rem;">
-                    <i class="fas fa-chevron-right nc-collapse-icon nc-collapse-icon"></i>
+                    <i class="fas fa-chevron-right nc-collapse-icon" aria-hidden="true"></i>
                     <span>How Routing Decisions Work</span>
                 </div>
                 <div class="nc-collapsible-body">
@@ -598,19 +598,19 @@
             </div>
             <div class="nc-collapsible nc-mb-16">
                 <div class="nc-collapsible-header nc-row-click">
-                    <i class="fas fa-chevron-right nc-collapse-icon nc-collapse-icon"></i>
+                    <i class="fas fa-chevron-right nc-collapse-icon" aria-hidden="true"></i>
                     <h4 class="nc-title">Task &rarr; Model Routing</h4>
-                    <span style="font-size:0.72rem;color:var(--muted);margin-left:auto;" title="Each task type routes to a model+host pair. Override defaults with the dropdowns. Task types are defined in server config and cannot be added from the UI."><i class="fas fa-circle-info"></i> What is this?</span>
                 </div>
                 <div class="nc-collapsible-body">
+                    <p class="nc-muted" style="font-size:0.75rem;margin:0 0 8px;">Each task type routes to a model and host pair. Override the defaults with the dropdowns. Task types are defined in server configuration and cannot be added here.</p>
                     ${buildTaskRoutingTable(config)}
                 </div>
             </div>
             <div class="nc-collapsible nc-mb-16">
                 <div class="nc-collapsible-header nc-row-click">
-                    <i class="fas fa-chevron-right nc-collapse-icon nc-collapse-icon"></i>
+                    <i class="fas fa-chevron-right nc-collapse-icon" aria-hidden="true"></i>
                     <h4 class="nc-title">Routing Decision Log</h4>
-                    <span style="font-size:0.72rem;color:var(--muted);margin-left:auto;">Recommendation vs actual Ollama path</span>
+                    <p class="nc-muted" style="font-size:0.72rem;margin:0 0 0 auto;">Recommendation vs actual Ollama path</p>
                 </div>
                 <div class="nc-collapsible-body">
                     ${buildLogTable(logs)}
@@ -686,7 +686,9 @@
                 document.querySelectorAll('.nc-routing-log-row').forEach(existing => {
                     existing.style.outline = '';
                     existing.style.background = '';
+                    existing.removeAttribute('aria-current');
                 });
+                row.setAttribute('aria-current', 'true');
                 row.style.outline = '1px solid rgba(124,240,255,0.35)';
                 row.style.background = 'rgba(124,240,255,0.04)';
                 detail.innerHTML = buildRoutingDetail(log);

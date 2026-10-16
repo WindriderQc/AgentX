@@ -234,28 +234,33 @@ const NerveCenter = (() => {
         return Promise.resolve();
     }
 
+    let collapsibleSeq = 0;
+
+    // A collapsible header keeps its heading for heading navigation and gains a
+    // native toggle button inside it that announces the open or closed state.
     function attachCollapsibleHandlers(root = document) {
         root.querySelectorAll('.nc-collapsible-header').forEach(header => {
             if (header.dataset.boundCollapse === 'true') return;
             header.dataset.boundCollapse = 'true';
-            header.setAttribute('role', 'button');
-            header.setAttribute('tabindex', '0');
+            const container = header.closest('.nc-collapsible');
+            const panel = container?.querySelector('.nc-collapsible-body');
+            if (!container || !panel) return;
+            if (!panel.id) panel.id = `nc-collapsible-${++collapsibleSeq}`;
 
-            const toggle = () => {
-                const container = header.closest('.nc-collapsible');
-                if (!container) return;
-                container.classList.toggle('open');
-            };
+            const label = header.querySelector('h4, span') || header;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'nc-collapsible-toggle';
+            button.setAttribute('aria-controls', panel.id);
+            button.setAttribute('aria-expanded', String(container.classList.contains('open')));
+            while (label.firstChild) button.appendChild(label.firstChild);
+            label.appendChild(button);
 
             header.addEventListener('click', event => {
-                if (event.target.closest('button, a, select, input')) return;
-                toggle();
-            });
-
-            header.addEventListener('keydown', event => {
-                if (event.key !== 'Enter' && event.key !== ' ') return;
-                event.preventDefault();
-                toggle();
+                const control = event.target.closest('button, a, select, input');
+                if (control && control !== button) return;
+                container.classList.toggle('open');
+                button.setAttribute('aria-expanded', String(container.classList.contains('open')));
             });
         });
     }

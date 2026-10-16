@@ -507,8 +507,8 @@
                 </div>
                 <div class="nc-collapsible" style="margin-top:24px;margin-bottom:16px;">
                     <div class="nc-collapsible-header nc-row-click">
-                        <i class="fas fa-chevron-right nc-collapse-icon nc-collapse-icon"></i>
-                        <h4 class="nc-title"><i class="fas fa-microchip nc-icon-accent"></i>GPU Fleet Status &amp; Task Routing</h4>
+                        <i class="fas fa-chevron-right nc-collapse-icon" aria-hidden="true"></i>
+                        <h4 class="nc-title"><i class="fas fa-microchip nc-icon-accent" aria-hidden="true"></i>GPU Fleet Status &amp; Task Routing</h4>
                     </div>
                     <div class="nc-collapsible-body">
                         ${routingHtml}
@@ -516,8 +516,8 @@
                 </div>
                 <div class="nc-collapsible nc-mb-16">
                     <div class="nc-collapsible-header nc-row-click">
-                        <i class="fas fa-chevron-right nc-collapse-icon nc-collapse-icon"></i>
-                        <h4 class="nc-title"><i class="fas fa-wave-square nc-icon-accent"></i>Inference Activity</h4>
+                        <i class="fas fa-chevron-right nc-collapse-icon" aria-hidden="true"></i>
+                        <h4 class="nc-title"><i class="fas fa-wave-square nc-icon-accent" aria-hidden="true"></i>Inference Activity</h4>
                     </div>
                     <div class="nc-collapsible-body">
                         ${statsHtml}
