@@ -149,7 +149,14 @@ personal ledger. Core never writes to it.
   allowed; "caisse" stands for Desjardins). The ledger follows from the series, so
   a corporate statement is a corporate one. Its status: `fillsGap` (its month is a
   gap of that series), `alreadyIngested` (its month is covered) or `unknown` (no
-  single series matches, or no date).
+  single series matches, or no date). Every unknown statement carries its reason.
+- The plan section `seriesStatus` may declare a series the statements do not
+  carry a last four for: `series` (issuer), `last4` (exactly four digits) and
+  `ledger` (`perso` or `corp`). A declared series is used first. Without a
+  declaration, a statement whose issuer matches a single series in a single
+  ledger is matched to it; when the same issuer exists in both ledgers the
+  statement stays unknown, with the reason "series in both ledgers, add last4 in
+  seriesStatus".
 - Deposit (`POST /api/finance/documents/statements/deposit`, up to 10 ids): Core
   copies the file from `FINANCE_SECRETARY_FILES` into `FINANCE_INBOX_PATH`, or into
   its `corp/` folder when the matched series is corporate. It copies only: nothing is deleted, the

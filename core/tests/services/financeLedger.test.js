@@ -929,6 +929,76 @@ describe('savings goals and the monthly review', () => {
   });
 });
 
+describe('declared statement series and the reasons for unknown statements', () => {
+  const links = require('../../src/services/finance/financeDocumentLinks');
+  const deposit = require('../../src/services/finance/financeStatementDeposit');
+  const plan = require('../../src/services/finance/financePlan');
+  const keys = ['FINANCE_SECRETARY_REGISTER', 'FINANCE_INBOX_PATH', 'FINANCE_SECRETARY_FILES'];
+  const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+
+  // Statements whose issuer carries no last four in the ledger, as Desjardins' do.
+  async function statementOf(period, ledger) {
+    await ingestDocument(await writeDoc(`desjardins-${ledger}-${period[0]}.pdf`), { readText, ledger, extract: extractWith({
+      issuer: 'Desjardins', account_last4: null, period_start: period[0], period_end: period[1],
+      accounts: [{ code: 'EOP', opening_cents: 100000, closing_cents: 100100,
+        transactions: [{ date: period[0], description: 'FRAIS', amount_cents: 100, balance_after_cents: 100100 }] }] }) });
+  }
+
+  beforeEach(async () => {
+    // Corporate: May 2023 is a gap. Personal: the whole year is covered.
+    await statementOf(['2023-01-01', '2023-04-30'], 'corp');
+    await statementOf(['2023-06-01', '2023-06-30'], 'corp');
+    await statementOf(['2023-01-01', '2023-12-31'], 'perso');
+    const files = path.join(tmp, 'secretary-files');
+    await fs.mkdir(files, { recursive: true });
+    await fs.writeFile(path.join(files, '2023.05.pdf'), 'synthetic corporate may statement');
+    const statement = (number, supplier, file) => ({ supplier, documentNumber: number, documentDate: '2023-05-31', documentKind: 'relevé mensuel bancaire',
+      messageId: `m-${number}`, originalFilename: file, sources: file ? [{ path: `files/${file}` }] : [] });
+    await fs.writeFile(path.join(tmp, 'register.json'), JSON.stringify({ schemaVersion: 3, generatedAt: '2026-10-16T08:00:00Z', complete: true, coverage: {},
+      invoices: [statement('131449', 'Caisse Déserjardins des Rivières du Québec', '2023.05.pdf'), statement('SANS-CHIFFRE', 'Desjardins', null)] }));
+    process.env.FINANCE_SECRETARY_REGISTER = path.join(tmp, 'register.json');
+    process.env.FINANCE_INBOX_PATH = path.join(tmp, 'inbox');
+    process.env.FINANCE_SECRETARY_FILES = files;
+    await plan.savePlan({});
+  });
+
+  afterEach(() => {
+    for (const key of keys) { if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key]; }
+  });
+
+  test('without a declaration, an issuer in both ledgers is unknown, with the reason', async () => {
+    const view = await links.documents({});
+    const byNumber = Object.fromEntries(view.statements.items.map((item) => [item.documentNumber, item]));
+    expect(byNumber['131449']).toMatchObject({ ledger: null, status: 'unknown', reason: 'series in both ledgers, add last4 in seriesStatus' });
+    expect(byNumber['SANS-CHIFFRE'].reason).toBe('series in both ledgers, add last4 in seriesStatus');
+  });
+
+  test('a declared series with its last four and ledger is used first', async () => {
+    await plan.savePlan({ seriesStatus: [{ series: 'Desjardins', last4: '1449', ledger: 'corp' }] });
+    const view = await links.documents({});
+    const byNumber = Object.fromEntries(view.statements.items.map((item) => [item.documentNumber, item]));
+    expect(byNumber['131449']).toMatchObject({ ledger: 'corp', status: 'fillsGap', reason: null });
+    expect(byNumber['SANS-CHIFFRE'].ledger).toBeNull();
+    const deposited = await deposit.deposit([byNumber['131449'].id]);
+    expect(deposited.copied).toEqual([{ id: byNumber['131449'].id, ledger: 'corp' }]);
+    expect(await fs.readdir(path.join(tmp, 'inbox', 'corp'))).toEqual([`secretary-${byNumber['131449'].id}-2023-05-31-2023.05.pdf`]);
+  });
+
+  test('a single declared ledger without a last four decides for the issuer', async () => {
+    await plan.savePlan({ seriesStatus: [{ series: 'Desjardins', ledger: 'perso' }] });
+    const view = await links.documents({});
+    const byNumber = Object.fromEntries(view.statements.items.map((item) => [item.documentNumber, item]));
+    expect(byNumber['SANS-CHIFFRE']).toMatchObject({ ledger: 'perso', status: 'alreadyIngested' });
+  });
+
+  test('the plan refuses a last four that is not four digits and an unknown ledger', async () => {
+    await expect(plan.savePlan({ seriesStatus: [{ series: 'Desjardins', last4: '12' }] })).rejects.toMatchObject({ code: 'FINANCE_PLAN_INVALID' });
+    await expect(plan.savePlan({ seriesStatus: [{ series: 'Desjardins', ledger: 'banque' }] })).rejects.toMatchObject({ code: 'FINANCE_PLAN_INVALID' });
+    const saved = await plan.savePlan({ seriesStatus: [{ series: 'Desjardins', last4: '1449', ledger: 'corp' }] });
+    expect(saved.seriesStatus[0]).toMatchObject({ series: 'Desjardins', last4: '1449', ledger: 'corp' });
+  });
+});
+
 describe('statement coverage', () => {
   test('lists the months each statement series covers and the gaps between', async () => {
     for (const [name, period] of [['a.pdf', ['2026-01-01', '2026-01-31']], ['b.pdf', ['2026-04-01', '2026-04-30']]]) {

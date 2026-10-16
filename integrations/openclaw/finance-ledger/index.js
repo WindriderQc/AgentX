@@ -203,8 +203,8 @@ export default definePluginEntry({
           + "month and the monthly amount the target date needs (quote the *Display strings; a goal with no pace says so). "
           + "review = the last complete month planned against actual by category, the three largest overspends and the goals. "
           + "A goal is set with finance_plan section goals: {name, targetCents, targetDate, priority, source: {kind: account|asset|tag, ref}}. "
-          + "seriesStatus names a statement series (issuer ··· last four) with label, and closed=true for a closed account or card "
-          + "(no stale alert then). "
+          + "seriesStatus names a statement series (issuer, with last4 and ledger when known) with label, and closed=true for a closed "
+          + "account or card (no stale alert then); last4 and ledger let the Secretary's statements find their series. "
           + "Confirm what changed in one line.",
         parameters: {
           type: "object",
