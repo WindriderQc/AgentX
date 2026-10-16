@@ -8,7 +8,7 @@
 
 import {
   elements, charts,
-  beginRequest, buildRangeQuery, checkAuth, fetchJSON,
+  beginRequest, periodDays, buildRangeQuery, checkAuth, fetchJSON,
   formatNumber, refreshProduct
 } from './analytics.js';
 import { COMPARISON_STATES, parseSignal, rankingSignal } from '/dist/signal-evidence.js';
@@ -52,7 +52,7 @@ async function requestCosts(days, groupBy = null, breakdown = null) {
 
 async function refreshCostStats() {
   const isCurrent = beginRequest('costStats');
-  const days = elements.periodSelect.value;
+  const days = periodDays();
 
   try {
     const data = await loadCosts(days);
@@ -98,7 +98,7 @@ async function refreshCostStats() {
 
 async function refreshCostTrend() {
   const isCurrent = beginRequest('costTrend');
-  const days = elements.periodSelect.value;
+  const days = periodDays();
   const groupBy = elements.costTrendGroupSelect.value;
 
   try {
@@ -332,7 +332,7 @@ function efficiencyBadge(row, ranking) {
 
 async function refreshEfficiencyTable() {
   const isCurrent = beginRequest('efficiency');
-  const days = elements.periodSelect.value;
+  const days = periodDays();
 
   try {
     const data = await loadCosts(days, 'model');
@@ -406,7 +406,7 @@ async function refreshEfficiencyTable() {
 
 async function refreshCostBreakdown() {
   const isCurrent = beginRequest('costBreakdown');
-  const days = elements.periodSelect.value;
+  const days = periodDays();
 
   try {
     const data = await loadCosts(days, 'model');
@@ -771,8 +771,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     document.getElementById('closeRagHelp')?.addEventListener('click', () => { ragHelpPanel.style.display = 'none'; });
   }
-  if (elements.periodSelect) {
-    elements.periodSelect.addEventListener('change', () => {
+  if (elements.analyticsWindow) {
+    elements.analyticsWindow.addEventListener('change', () => {
       refreshProduct();
       refreshAllCostTracking();
     });

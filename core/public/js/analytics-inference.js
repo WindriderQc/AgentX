@@ -370,7 +370,7 @@ async function applyChatLaneCollapse() {
   const heading = $('chatLaneHeading');
   if (!note || chatLaneForced) return;
 
-  const days = Number($('periodSelect')?.value) || 7;
+  const days = { '24h': 1, '7d': 7, '30d': 30 }[$('analyticsWindow')?.value] || 1;
   const to = new Date();
   const from = new Date(to.getTime() - days * 86400000);
 
@@ -401,7 +401,7 @@ async function applyChatLaneCollapse() {
   setChatLaneVisible(false);
   if (heading) heading.style.display = 'none';
   note.style.display = '';
-  note.innerHTML = `<strong>Chat lane: no conversations in the last ${days} days.</strong>
+  note.innerHTML = `<strong>Chat lane: no conversations in the last ${days === 1 ? '24 hours' : `${days} days`}.</strong>
     The usage, feedback, RAG-adoption and cost panels below read the
     <code>conversations</code> collection, which only the chat UI writes — agent,
     pipeline and proxy traffic is in Platform Inference above.
@@ -419,7 +419,7 @@ async function applyChatLaneCollapse() {
 let loadVersion = 0;
 async function load() {
   const version = ++loadVersion;
-  const windowKey = $('infWindow')?.value || '7d';
+  const windowKey = $('analyticsWindow')?.value || '24h';
   document.dispatchEvent(new CustomEvent('analytics:inference', { detail: { state: 'loading', windowKey } }));
   try {
     const data = await fetchSummary(windowKey);
@@ -444,8 +444,8 @@ async function load() {
 
 function init() {
   $('infRefreshBtn')?.addEventListener('click', load);
-  $('infWindow')?.addEventListener('change', load);
-  $('periodSelect')?.addEventListener('change', applyChatLaneCollapse);
+  // load() also re-probes the chat lane for the new Period.
+  $('analyticsWindow')?.addEventListener('change', load);
   $('refreshBtn')?.addEventListener('click', applyChatLaneCollapse);
   document.addEventListener('analytics:show-chat-lane', showChatLane);
   load();

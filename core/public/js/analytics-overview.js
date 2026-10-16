@@ -308,10 +308,6 @@
       if (state === 'ready') renderSummary(data);
       else clearSummary(state);
     });
-    $('analyticsWindow').addEventListener('change', event => {
-      $('infWindow').value = event.target.value;
-      $('infWindow').dispatchEvent(new Event('change'));
-    });
     document.querySelectorAll('[data-ao-group]').forEach(button => button.addEventListener('click', () => {
       groupBy = button.dataset.aoGroup;
       document.querySelectorAll('[data-ao-group]').forEach(other => other.setAttribute('aria-pressed', String(other === button)));

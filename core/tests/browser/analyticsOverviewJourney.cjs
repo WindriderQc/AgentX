@@ -159,10 +159,9 @@ const server = http.createServer(async (req, res) => {
     await page.screenshot({ path: path.join(report, 'overview-latency-1440.png'), fullPage: true });
     await page.locator('[data-ao-overlay="errors"]').click();
     assert.equal(await page.evaluate(() => Chart.getChart(document.getElementById('ao-trend-chart')).options.scales.rate.ticks.callback(2)), '2%');
-    await page.waitForFunction(() => document.getElementById('chatLaneEmptyNote').textContent.includes('last 7 days'));
-    await page.evaluate(() => { const period = document.getElementById('periodSelect'); period.value = '14'; period.dispatchEvent(new Event('change')); });
-    await page.waitForFunction(() => document.getElementById('chatLaneEmptyNote').textContent.includes('last 14 days'));
-    assert.equal(await page.inputValue('#analyticsWindow'), '24h', 'Playground period stays separate from platform activity');
+    // One page-wide Period: the Playground lane follows the overview window.
+    await page.waitForFunction(() => document.getElementById('chatLaneEmptyNote').textContent.includes('last 24 hours'));
+    assert.equal(await page.locator('#periodSelect, #infWindow, #federatedWindowSelect').count(), 0, 'no competing period selectors');
     await page.locator('[data-ao-group="byConsumerContract"]').click();
     assert.match(await page.locator('#ao-comparison').textContent(), /native-conversation-v1/);
     // Last selection wins even when an earlier window responds later.
@@ -172,10 +171,8 @@ const server = http.createServer(async (req, res) => {
     await page.waitForFunction(() => document.querySelector('.analytics-overview').dataset.state === 'ready');
     await page.waitForTimeout(400);
     assert.equal(await page.inputValue('#analyticsWindow'), '30d');
-    assert.equal(await page.inputValue('#infWindow'), '30d');
-    assert.match(await page.locator('#chatLaneEmptyNote').textContent(), /last 14 days/);
-    await page.selectOption('#analyticsWindow', '90d');
-    await page.waitForFunction(() => document.getElementById('ao-coverage').textContent.includes('limits this 90-day window'));
+    await page.waitForFunction(() => document.getElementById('chatLaneEmptyNote').textContent.includes('last 30 days'));
+    assert.equal(await page.locator('#analyticsWindow option[value="90d"]').count(), 0, 'no window beyond log retention');
     failSummary = true;
     await page.locator('#analytics-experience-refresh').click();
     await page.waitForFunction(() => document.querySelector('.analytics-overview').dataset.state === 'error');
@@ -206,8 +203,10 @@ const server = http.createServer(async (req, res) => {
     assert.equal(await page.locator('#analytics-platform-inference').evaluate(el => document.activeElement === el), true);
     await page.locator('[data-analytics-target="chatLaneHeading"]').click();
     assert.equal(await page.locator('#chatLaneHeading').isVisible(), true, 'the shortcut reveals the collapsed Playground lane');
-    await page.selectOption('#periodSelect', '7');
-    await page.waitForTimeout(50);
+    await page.selectOption('#analyticsWindow', '7d');
+    // The page-wide Period also reloads federated and Codex data; let every
+    // request land before the demo check counts new ones.
+    for (let seen = -1; seen !== requests.length;) { seen = requests.length; await wait(300); }
     assert.equal(await page.locator('#chatLaneHeading').isVisible(), true, 'explicitly expanded Playground lane stays open across period changes');
     const requestStart = requests.length;
     failSummary = false; empty = false;
