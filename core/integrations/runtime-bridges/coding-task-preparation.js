@@ -10,7 +10,7 @@ function failure(message, statusCode = 409) { return Object.assign(new Error(mes
 class CodingTaskPreparation {
   constructor({ pipeline }) { this.pipeline = pipeline; }
   async prepare(input) {
-    require('../../../shared/pipelineReportSelection').normalize(input);
+    const result = require('../../../shared/pipelineReportSelection').normalize(input);
     const pipelineId = String(input.pipelineId || '');
     if (!/^\d{4}$/.test(pipelineId)) throw failure('Choose an exact task.', 400);
     const answer = String(input.answer || '').trim();
@@ -21,9 +21,8 @@ class CodingTaskPreparation {
     if (!workerTaskScope.contains(task)) throw failure('This task belongs to its personal or household workflow.');
     if (!['queued', 'blocked'].includes(task.status) || task.automationLease?.leaseId) throw failure('The task is already running or awaiting review.');
     if (task.assignee && !(task.status === 'blocked' && (task.automation?.mode === 'review_only' || task.assignee === 'coding-team'))) throw failure('Another worker owns this task.');
-    if (answer || task.status === 'blocked' || task.service !== 'agentx-coding') {
-      await this.pipeline.apply({ pipelineId, expectedUpdatedAt: new Date(task.updatedAt).toISOString(), answer, handoff: true });
-    }
+    await this.pipeline.apply({ pipelineId, expectedUpdatedAt: new Date(task.updatedAt).toISOString(), answer, handoff: true,
+      result: { profile: result.reportName ? 'report' : 'code', ...result }, reportGrant: input.reportGrant });
     return { ready: true };
   }
 }

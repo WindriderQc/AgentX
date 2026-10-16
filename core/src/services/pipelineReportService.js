@@ -5,6 +5,7 @@ const claim = require('./pipelineManualReportClaim');
 const files = require('./pipelineTaskDeliverableService');
 const routerConfig = require('./modelRouterConfig');
 const checkpoints = require('./pipelineReportCheckpoint');
+const authority = require('./pipelineReportAuthority');
 const { isDeepStrictEqual } = require('util');
 const { feedbackTransition } = require('./pipelineTaskTransitionPaths');
 const content = require('../helpers/fileContentChecks');
@@ -13,7 +14,7 @@ const WC = { w: 1, j: true };
 function acknowledged(result) {
   if (result.acknowledged !== true) throw claim.fail('Report persistence acknowledgement is unverified', 'REPORT_PERSISTENCE_UNVERIFIED', 503);
 }
-const FIELDS = ['pipelineId', 'taskId', 'claimSeq', 'specSha256', 'sourceCommit', 'reportName', 'model', 'modelCallLimit', 'parentRequestId', 'parentSha256'];
+const FIELDS = ['pipelineId', 'taskId', 'claimSeq', 'specSha256', 'sourceCommit', 'reportName', 'model', 'modelCallLimit', 'parentRequestId', 'parentSha256', 'inventorySha256', 'runnerStartedAt'];
 function modelCallLimit(value = 128) {
   if (!Number.isSafeInteger(value) || value < 128 || value > 256)
     throw claim.fail('Report model call limit must be an integer from 128 to 256', 'REPORT_BUDGET_INVALID', 400);
@@ -40,15 +41,24 @@ function completed(value) { return termination(value) && value.modelReceipts.len
 async function status(id, key) {
   // Read only this accepted execution's receipts. Later task edits/deletion do
   // not erase custody of an outstanding inference; no task content is exposed.
+  const refused = await require('./pipelineReportPreflight').lookup(id, key);
+  if (refused) return { ...refused, modelCallsRemaining: 0, pendingInferences: [], modelReceipts: [], terminationVerified: true,
+    allCallsCompleted: false, cumulativeUsage: await authority.projection(await task(id)) };
   const value = await run(id, key);
   return { requestId: key, pipelineId: id, claimSeq: value.claimSeq, state: value.state, model: value.model,
     modelCallLimit: modelCallLimit(value.modelCallLimit), modelCallsRemaining: Math.max(0, modelCallLimit(value.modelCallLimit) - value.modelReceipts.length),
     pendingInferences: value.pendingInferences, modelReceipts: value.modelReceipts, terminationVerified: termination(value),
     allCallsCompleted: completed(value), result: value.result || null,
     reportName: value.reportName, sourceCommit: value.sourceCommit, parentRequestId: value.parentRequestId || null, parentSha256: value.parentSha256 || null,
-    cumulativeUsage: await checkpoints.lineage(value) };
+    authority: value.authority || null, inventory: value.inventory || null, coverage: value.coverage || null,
+    cumulativeUsage: await authority.projection(await ownerOrNull(id) || { _id: value.taskId, feedback: [] }) };
 }
 async function start(id, key, body) {
+  const refused = await require('./pipelineReportPreflight').lookup(id, key);
+  if (refused) {
+    if (refused.intentHash !== require('./pipelineReportPreflight').hash(body)) throw claim.fail('This refused request has another intent', 'REPORT_REQUEST_CONFLICT');
+    return status(id, key);
+  }
   const limit = modelCallLimit(body.modelCallLimit);
   const parent = checkpoints.selection(body);
   if (!/^\d{4}$/.test(id) || !UUID.test(key) || !/^[a-f0-9]{40}$/.test(body.sourceCommit || '') || typeof body.reportName !== 'string'
@@ -56,13 +66,27 @@ async function start(id, key, body) {
     || !Number.isSafeInteger(body.hardRemainingSeconds) || body.hardRemainingSeconds < 1 || body.hardRemainingSeconds > 14400)
     throw claim.fail('Invalid native report request', 'REPORT_REQUEST_INVALID', 400);
   const owner = await task(id);
-  const guard = claim.query(owner, body);
+  const held = owner.codingReportAuthority?.bindings.find(row => row.requestId === key);
+  // A durable allocation is custody of this exact start, including after a
+  // changed claim or routing setting. Reconciliation creates no new credit.
+  const guard = held ? null : claim.query(owner, body);
+  const inventory = require('./pipelineReportCoverage').inventory(body.inventory, body.sourceCommit);
+  if (!held && body.runnerStartedAt != null) {
+    const claimedAt = new Date((owner.transitions || []).find(row => row.kind === 'claimed' && row.seq === body.claimSeq)?.at).getTime();
+    const startedAt = Date.parse(body.runnerStartedAt);
+    if (!Number.isFinite(startedAt) || !Number.isFinite(claimedAt) || startedAt > claimedAt || startedAt < claimedAt - 60000)
+      throw claim.fail('Native start must be bound to the original Core claim time', 'REPORT_START_TIME_INVALID', 400);
+  }
+  if (!held && owner.codingResult?.documentPaths && authority.digest([...owner.codingResult.documentPaths].sort())
+    !== authority.digest(inventory.documents.map(row => row.path).sort()))
+    throw claim.fail('Report inventory differs from the selected document scope', 'REPORT_INVENTORY_CHANGED');
   await routerConfig.ensureTaskModelOverridesLoaded();
-  const target = routerConfig.getModelForTask('code_generation');
+  const target = held ? { model: body.model, url: held.host } : routerConfig.getModelForTask('code_generation');
   if (body.model !== target.model || !target.url || String(body.model).startsWith('openrouter/'))
     throw claim.fail('Report must use the qualified local coding route', 'REPORT_MODEL_CHANGED');
   const intent = Object.fromEntries(FIELDS.map(name => [name, name === 'pipelineId' ? id : name === 'taskId' ? String(owner._id)
-    : name === 'modelCallLimit' ? limit : name.startsWith('parent') ? parent[name] : body[name]]));
+    : name === 'modelCallLimit' ? limit : name === 'inventorySha256' ? inventory.sha256 : name.startsWith('parent') ? parent[name] : body[name]]));
+  if (held && held.intentFingerprint !== authority.digest(intent)) throw claim.fail('This report allocation has another intent', 'REPORT_REQUEST_CONFLICT');
   const existing = await Run.findById(key).lean();
   if (existing) {
     if (!sameIntent(existing, intent)) throw claim.fail('This report request has a different intent', 'REPORT_REQUEST_CONFLICT');
@@ -73,15 +97,20 @@ async function start(id, key, body) {
     { unique: true, partialFilterExpression: { executionVersion: 1 } });
   if (await Run.exists({ taskId: intent.taskId, claimSeq: intent.claimSeq, _id: { $ne: key } }))
     throw claim.fail('This task claim already belongs to another report execution', 'REPORT_CLAIM_EXECUTION_CONFLICT');
-  if (parent.parentRequestId) {
+  if (parent.parentRequestId && !held) {
     const { parent: prior } = await checkpoints.load(intent);
     if ((await checkpoints.lineage(prior)).executions >= 32)
       throw claim.fail('The report continuation chain reached its bounded limit; review the saved work before a fresh execution', 'REPORT_LINEAGE_LIMIT');
   }
-  const permit = await Task.updateOne(guard, { $inc: { manualReportPermitSeq: 1 } }, { timestamps: false, writeConcern: WC });
-  acknowledged(permit);
-  if (permit.modifiedCount !== 1) throw claim.fail('Report claim changed before authorization');
-  try { await Run.create([{ _id: key, ...intent, executionVersion: 1, host: target.url, deadlineAt: new Date(Date.now() + body.hardRemainingSeconds * 1000) }], { writeConcern: WC }); }
+  if (guard) {
+    const permit = await Task.updateOne(guard, { $inc: { manualReportPermitSeq: 1 } }, { timestamps: false, writeConcern: WC });
+    acknowledged(permit);
+    if (permit.modifiedCount !== 1) throw claim.fail('Report claim changed before authorization');
+  }
+  const binding = held || await authority.bind(owner, key, intent, target.url, body.hardRemainingSeconds);
+  const deadlineAt = new Date(binding.deadlineAt);
+  try { await Run.create([{ _id: key, ...intent, executionVersion: 1, authority: binding, inventory,
+    startedAt: new Date(binding.startedAt), host: target.url, deadlineAt }], { writeConcern: WC }); }
   catch (error) {
     if (error.code !== 11000) throw error;
     if (!await Run.exists({ _id: key })) throw claim.fail('This task claim already belongs to another report execution', 'REPORT_CLAIM_EXECUTION_CONFLICT');
@@ -98,7 +127,8 @@ function decodeReport(body) {
   return decoded.data;
 }
 function reportOrigin(value, state) {
-  return { requestId: value._id, claimSeq: value.claimSeq, sourceCommit: value.sourceCommit, specSha256: value.specSha256, state };
+  return { requestId: value._id, claimSeq: value.claimSeq, sourceCommit: value.sourceCommit, specSha256: value.specSha256,
+    state, contentAuthor: 'coding-team', depositChannel: 'native_worker' };
 }
 function outcome(value, receipt) {
   return { schema: 'agentx.pipeline-report-result/v1', requestId: value._id, claimSeq: value.claimSeq,
@@ -109,7 +139,7 @@ function outcome(value, receipt) {
 async function record(value, result, state) {
   const saved = await Run.updateOne({ _id: value._id, finalKind: value.finalKind, finalHash: value.finalHash,
     state: 'active', result: { $exists: false } },
-  { $set: { state, result }, $inc: { revision: 1 } }, { writeConcern: WC });
+  { $set: { state, result, finishedAt: new Date() }, $inc: { revision: 1 } }, { writeConcern: WC });
   acknowledged(saved);
   const stored = await run(value.pipelineId, value._id);
   if (stored.state !== state || !isDeepStrictEqual(stored.result, result))
@@ -126,10 +156,10 @@ async function replay(owner, value, body) {
   const outcome = await record(value, entry.reportOutcome, 'review');
   return { reportReadyForReview: true, alreadyRecorded: true, receipt, outcome };
 }
-async function finalize(value, kind, hash) {
+async function finalize(value, kind, hash, extra = {}) {
   if (!value.finalKind) {
     const saved = await Run.updateOne({ _id: value._id, revision: value.revision, state: 'active', finalKind: { $exists: false }, pendingInferences: { $size: 0 } },
-      { $set: { finalKind: kind, finalHash: hash }, $inc: { revision: 1 } }, { writeConcern: WC });
+      { $set: { finalKind: kind, finalHash: hash, terminalAt: new Date(), ...extra }, $inc: { revision: 1 } }, { writeConcern: WC });
     acknowledged(saved);
   }
   const current = await run(value.pipelineId, value._id);
@@ -175,7 +205,9 @@ async function submit(id, key, body) {
   decodeReport(body);
   let value = await run(id, key);
   if (!completed(value)) throw claim.fail('Native model termination must be proven before report delivery', 'REPORT_MODEL_TERMINATION_UNVERIFIED');
-  value = await finalize(value, 'review', body.sha256);
+  const coverage = value.inventory ? require('./pipelineReportCoverage').coverage(body.coverage, value.inventory) : null;
+  value = await finalize(value, 'review', coverage ? authority.digest({ sha256: body.sha256, coverage }) : body.sha256,
+    coverage ? { coverage } : {});
   if (value.result?.kind === 'superseded') return { superseded: true, outcome: value.result };
   let owner = await ownerOrNull(id);
   const previous = await replay(owner, value, body);
@@ -214,8 +246,9 @@ async function stop(id, key, body) {
   if (workerOutcome.requestId !== key || workerOutcome.claimSeq !== value.claimSeq || workerOutcome.source !== 'worker_report')
     throw claim.fail('Stop does not match its native report claim', 'REPORT_CLAIM_INVALID', 400);
   const partial = body.partial == null ? null : { sha256: body.partial.sha256, size: decodeReport(body.partial).length };
-  const finalIntent = partial ? { workerOutcome, partialSha256: partial.sha256 } : workerOutcome;
-  value = await finalize(value, 'blocked', require('crypto').createHash('sha256').update(JSON.stringify(finalIntent)).digest('hex'));
+  const coverage = value.inventory ? require('./pipelineReportCoverage').coverage(body.coverage, value.inventory) : null;
+  const finalIntent = partial ? { workerOutcome, partialSha256: partial.sha256, ...(coverage ? { coverage } : {}) } : workerOutcome;
+  value = await finalize(value, 'blocked', authority.digest(finalIntent), coverage ? { coverage } : {});
   if (value.result?.kind === 'superseded') return { blocked: true, superseded: true, outcome: value.result };
   async function replayStop(owner) {
     const old = (owner?.feedback || []).find(row => row.reportOutcome?.requestId === key);

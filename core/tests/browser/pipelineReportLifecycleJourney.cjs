@@ -16,6 +16,7 @@ const { CodingDispatchControl, registerCodingDispatchControlRoutes } = require('
 const { CodingTaskPreparation } = require('../../integrations/runtime-bridges/coding-task-preparation');
 let mongo, server, browser;
 let lostResult = false, syntheticCalls = 0;
+let campaign;
 const nativeCommands = [], errors = [], results = [], fixtureRoots = [];
 (async () => {
   process.env.NODE_ENV = 'test';
@@ -56,6 +57,8 @@ const nativeCommands = [], errors = [], results = [], fixtureRoots = [];
     return result;
   } });
   const preparation = new CodingTaskPreparation({ pipeline: require('../../src/services/pipelineTaskPreparationService') });
+  require('../../src/services/pipelineReportAuthority').configureControl(control);
+  require('../../src/services/heavyWorkQueueService').get = async () => campaign;
   app.use('/api/runtime-bridges/coding-dispatch', registerCodingDispatchControlRoutes({ express, control, preparation }));
   // Read-only auxiliary panels are not under test here.
   app.use('/api', (_q, r) => r.json({ ok: true, data: { items: [], tasks: [], counts: {}, enabled: false } }));
@@ -65,7 +68,7 @@ const nativeCommands = [], errors = [], results = [], fixtureRoots = [];
   app.get('/', (_q, r) => r.send(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/css/pipeline.css"><body>${html}${scripts.map(name => `<script src="/js/${name}.js"></script>`).join('')}</body></html>`));
   server = await new Promise(resolve => { const current = app.listen(0, '127.0.0.1', () => resolve(current)); });
   base = 'http://127.0.0.1:' + server.address().port;
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
   for (const [device, viewport, pipelineId] of [['desktop', { width: 1440, height: 1050 }, '0100'], ['mobile', { width: 390, height: 844 }, '0101']]) {
     await Promise.all([Task.deleteMany({}), Report.deleteMany({}), File.deleteMany({})]);
     fixtureRoot = fs.mkdtempSync(path.join(reportDir, device + '-')); fixtureRoots.push(fixtureRoot);
@@ -76,11 +79,15 @@ const nativeCommands = [], errors = [], results = [], fixtureRoots = [];
     await run('git', ['-C', workspace, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@invalid', 'commit', '-qm', 'Fixture source']);
     const source = (await run('git', ['-C', workspace, 'rev-parse', 'HEAD'])).stdout.trim();
     await Task.create({ pipelineId, title: 'Synthetic documentation review', spec: 'Review README.md and OPERATIONS.md against this frozen source.', status: 'queued', service: 'agentx-coding' });
+    campaign = { id: require('node:crypto').randomUUID(), dispatchId: require('node:crypto').randomUUID(), state: 'running',
+      executor: { mode: 'operator' }, source: { type: 'coding', ref: 'synthetic-browser-session', taskId: pipelineId }, hosts: ['http://ollama.invalid:11434'],
+      reservation: { start: new Date(Date.now() - 60000).toISOString(), end: new Date(Date.now() + 14400000).toISOString() } };
     lostResult = false; const before = syntheticCalls;
     const page = await browser.newPage({ viewport }); page.on('pageerror', error => errors.push(error.message));
     await page.goto(base);
     await page.locator('#pipelineTeamLaunchTask').selectOption(pipelineId);
     await page.locator('#pipelineTeamLaunchForm [name=reportName]').selectOption('REVIEW.md');
+    await page.locator('#pipelineTeamLaunchForm [name=reportCampaign]').fill(campaign.id);
     await page.locator('#pipelineTeamLaunchConfirm').check();
     await page.locator('#pipelineTeamLaunchButton').click();
     await page.waitForFunction(() => document.getElementById('pipelineCountBlocked').textContent === '1');
@@ -95,6 +102,7 @@ const nativeCommands = [], errors = [], results = [], fixtureRoots = [];
     assert.equal(await resume.locator('[name=resumeReport]').isChecked(), true);
     await resume.locator('[name=answer]').fill('Continue the saved checkpoint and finish the remaining operations document.');
     await resume.locator('[name=modelCallLimit]').selectOption('256');
+    await resume.locator('[name=reportCampaign]').fill(campaign.id);
     await resume.locator('button[type=submit]').click();
     await page.waitForFunction(() => { const button = document.getElementById('pipelineTeamLaunchReconcile'); return button && !button.hidden && !button.disabled; });
     const current = await Report.findOne({ _id: { $ne: first.requestId } }).lean();
@@ -110,6 +118,8 @@ const nativeCommands = [], errors = [], results = [], fixtureRoots = [];
     await accept.locator('[name=by]').fill('fixture-reviewer');
     assert.equal(await accept.locator('[name=reportScopeComplete]').isChecked(), false);
     await accept.locator('[name=reportScopeComplete]').check();
+    await accept.locator('[name=reportReviewRef]').fill('synthetic-independent-review-receipt');
+    await accept.locator('[name=reportReviewSha256]').fill(require('node:crypto').createHash('sha256').update('synthetic review').digest('hex'));
     await page.screenshot({ path: path.join(reportDir, device + '-report-review.png') });
     assert.equal(await page.locator('#pipelineDrawerBody').evaluate(node => node.scrollWidth > node.clientWidth + 1), false);
     await accept.locator('button[type=submit]').click();
@@ -120,7 +130,7 @@ const nativeCommands = [], errors = [], results = [], fixtureRoots = [];
     assert.equal(await File.countDocuments({}), 2); assert.equal(syntheticCalls - before, 2);
     assert.equal((await run('git', ['-C', workspace, 'rev-parse', 'HEAD'])).stdout.trim(), source);
     assert.equal((await run('git', ['-C', workspace, 'status', '--porcelain'])).stdout, '');
-    assert.equal((await reports.status(pipelineId, current._id)).cumulativeUsage.modelCalls, 2);
+    assert.equal((await reports.status(pipelineId, current._id)).cumulativeUsage.spent.modelCalls, 2);
     results.push({ device, partialArchived: true, checkpointRestored: true, lostResultReconciled: true, independentReview: true, sourceUnchanged: true });
     await page.close();
   }

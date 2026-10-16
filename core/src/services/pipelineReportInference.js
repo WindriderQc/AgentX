@@ -16,6 +16,7 @@ async function prepare(headers, model, signal) {
     throw claim.fail('Reconcile the prior receipt; model requests cannot be replayed', 'REPORT_INFERENCE_PENDING');
   if (value.modelReceipts.length >= reports.modelCallLimit(value.modelCallLimit))
     throw claim.fail('Report model call budget exhausted', 'REPORT_MODEL_CALL_LIMIT');
+  await require('./pipelineReportAuthority').inference(owner, value);
   const permitted = await Task.updateOne(guard, { $inc: { manualReportPermitSeq: 1 } }, { timestamps: false, writeConcern: WC });
   reports.acknowledged(permitted);
   if (permitted.modifiedCount !== 1) throw claim.fail('Report claim changed before inference');
@@ -52,6 +53,22 @@ async function prepare(headers, model, signal) {
   }
   return { options: { signal: signal ? AbortSignal.any([signal, abort.signal]) : abort.signal,
     reportDeadlineAt: value.deadlineAt.getTime(), hostUrl: value.host,
+    reportAuthority: { requestId: key, pipelineId: id, callId, prepareId },
     attribution: { workItemId: id, correlationId: key, runtime: 'agentx' } }, finish };
 }
-module.exports = { prepare };
+async function assertDispatch(identity) {
+  if (!identity) return;
+  const value = await reports.run(identity.pipelineId, identity.requestId), owner = await reports.task(identity.pipelineId);
+  claim.query(owner, value);
+  const call = value.modelReceipts.find(row => row.callId === identity.callId && row.prepareId === identity.prepareId);
+  if (!call || call.state !== 'pending' || value.state !== 'active' || value.finalKind || value.deadlineAt.getTime() <= Date.now())
+    throw claim.fail('The original report inference no longer has dispatch authority', 'REPORT_INFERENCE_CONFLICT');
+  // This call is already charged. Revalidate the campaign without charging it
+  // again or requiring one extra call beyond the remaining task envelope.
+  await require('./pipelineReportAuthority').campaign(value.authority.queueRequestId, value.host, identity.pipelineId)
+    .then(job => {
+      if (job.dispatchId !== value.authority.dispatchId || job.reservation.end !== value.authority.queueEndAt)
+        throw claim.fail('The report campaign changed before dispatch', 'REPORT_CAMPAIGN_UNVERIFIED');
+    });
+}
+module.exports = { prepare, assertDispatch };

@@ -129,7 +129,8 @@ def request(url: str, body: dict | None = None, token: str = "", method: str | N
         raw = error.read(4096).decode(errors='replace')
         failure = RuntimeError(f'{url}: HTTP {error.code}')
         try:
-            failure.code = json.loads(raw).get('code')
+            payload = json.loads(raw)
+            failure.code, failure.data = payload.get('code'), payload.get('data')
         except ValueError:
             failure.code = None
         raise failure from error
@@ -475,7 +476,7 @@ def main() -> int:
             parser.error(str(error))
 
     if args.parent_request_id is not None or args.parent_sha256 is not None:
-        if not args.report_name or not coding_progress.REQUEST_ID.fullmatch(args.parent_request_id or '') or not re.fullmatch(r'[a-f0-9]{64}', args.parent_sha256 or '') or args.parent_request_id == args.request_id:
+        if not args.report_name or not coding_progress.REQUEST_ID.fullmatch(args.parent_request_id or '') or args.parent_sha256 is not None and not re.fullmatch(r'[a-f0-9]{64}', args.parent_sha256) or args.parent_request_id == args.request_id:
             parser.error('report continuation needs its original request and SHA-256')
 
     progress = coding_progress.Progress(args.task_id, args.request_id, args.timeout_seconds, receipts=RECEIPTS,
@@ -530,6 +531,11 @@ def execute(args, progress) -> int:
         print(f"task {args.task_id} is not a queued, unowned, non-private agentx-coding task; not started", file=sys.stderr)
         return 2
 
+    durable = task.get('codingResult')
+    if durable and (durable.get('profile') != ('report' if args.report_name else 'code')
+            or args.report_name and durable.get('reportName') != args.report_name):
+        raise ValueError('The runner must retain the Core result profile; prepare the exact selection first')
+
     if MODEL in ("auto", "agentx-primary"):
         route = request(f"{CORE}/api/router/config")["data"]["taskModels"]["code_generation"]
         MODEL = route["model"]
@@ -555,6 +561,8 @@ def execute(args, progress) -> int:
                             "git", "clone", "--quiet", "--branch", BASE_BRANCH,
                             f"https://github.com/{REPOSITORY}.git", str(workspace)], progress))
         if clone.returncode or progress.check_stop():
+            if args.report_name:
+                raise ValueError("Repository preparation stopped before model dispatch")
             feedback(args.task_id, "Repository preparation stopped before dependencies or model dispatch. "
                                    f"Any partial clone remains in {workspace}; inspect it before handing the task back. "
                                    "No automatic retry or publication was started.", "blocked", progress=progress, reason="runner_error")

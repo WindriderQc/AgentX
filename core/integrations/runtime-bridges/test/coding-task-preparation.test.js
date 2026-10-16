@@ -12,18 +12,19 @@ function fixture(overrides = {}) {
 test('a queued task is ready for the worker without a plan or a declared scope', async () => {
   const f = fixture();
   assert.deepEqual(await f.preparation.prepare({ pipelineId: '0700' }), { ready: true });
-  assert.equal(f.writes.length, 0);
+  assert.equal(f.writes.length, 1);
+  assert.deepEqual(f.writes[0].result,{profile:'code'});
 });
 test('the operator answer is recorded and a blocked task returns to the queue', async () => {
   const f = fixture({ status: 'blocked' });
   assert.deepEqual(await f.preparation.prepare({ pipelineId: '0700', answer: 'Use compact layout.' }), { ready: true });
-  assert.deepEqual(f.writes, [{ pipelineId: '0700', expectedUpdatedAt: '2026-09-12T10:00:00.000Z', answer: 'Use compact layout.', handoff: true }]);
+  assert.deepEqual(f.writes, [{ pipelineId: '0700', expectedUpdatedAt: '2026-09-12T10:00:00.000Z', answer: 'Use compact layout.', handoff: true, result:{profile:'code'},reportGrant:undefined }]);
 });
 test('an ordinary UI ticket without a coding route records the explicit handoff before declaring ready', async () => {
   for (const service of ['', 'core']) {
     const f = fixture({ service });
     assert.deepEqual(await f.preparation.prepare({ pipelineId: '0700' }), { ready: true });
-    assert.deepEqual(f.writes, [{ pipelineId: '0700', expectedUpdatedAt: '2026-09-12T10:00:00.000Z', answer: '', handoff: true }]);
+    assert.deepEqual(f.writes, [{ pipelineId: '0700', expectedUpdatedAt: '2026-09-12T10:00:00.000Z', answer: '', handoff: true, result:{profile:'code'},reportGrant:undefined }]);
   }
 });
 test('private source lanes, personal services and an existing owner are refused without a write', async () => {

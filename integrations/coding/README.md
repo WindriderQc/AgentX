@@ -69,24 +69,28 @@ within the current budget, save and read back each group's findings and coverage
 derive summary totals from that table, and record the next pending group. A
 partial report is a reviewable checkpoint, not completion of the requested audit.
 
-An approved manual task whose result is a report can use the native report
-profile instead of opening a source PR. Queue the campaign through the instance
-operator entrance first, linking the coding session, task, required hosts and
-permitted window. Cover the unchanged four-hour hard ceiling and native drain
-with the reservation; ordinary admission still applies. Then use the installed
-`coding_dispatch_control.py launch-report TASK REQUEST_UUID ATTEMPT_COUNT review.md`
-control after the normal explicit task handoff. An empty or invalid name is
-refused. This profile cannot replace an automated lease or claim.
+Pipeline records an explicit **Code change** or **Private Markdown report** result
+before launch. The dossier and global one-task form use the same preparation.
+A report selection cannot silently become a source-writing Git run. The worker
+keeps its read-only source and private output sandbox.
 
-Pipeline's one-task form and dossier offer **Private Markdown report** and its
-call limit; the same selection reaches native preparation and launch. The
-model-call budget defaults to 128 for each report execution. For an authorized
-extended review, select 256 in Pipeline or append `--model-call-limit 256` to
-that command (integer range 128–256). The native launch receipt and Core report journal bind that choice to
-the exact task/request. The runner verifies Core's acknowledged limit before
-model dispatch. Replaying the same UUID cannot change its budget; older receipts
-without the field retain 128. This option applies only to manual private reports.
-Ordinary coding and autonomous cumulative budgets retain their existing rules.
+Queue and begin the approved campaign through the instance operator entrance,
+linking the coding session, original task, required hosts and permitted window.
+In the report form, name that active campaign, the per-worker call limit
+(128 or 256), additional cumulative call/work credits and the maximum workers
+(one to four). Giving the task records this explicit grant in Core. A repeated
+grant key reconciles the same intent and never adds credit. Historical code and
+report executions remain charged; an extension does not erase their costs.
+The campaign window and remaining task envelope bound every native deadline.
+Core revalidates campaign identity, task, host and window before dispatch and
+after native admission. A planned reservation alone never permits inference.
+
+Native callers prepare the same Core-owned selection and grant before using
+`coding_dispatch_control.py launch-report TASK REQUEST_UUID ATTEMPT_COUNT review.md`.
+Optional `--model-call-limit 256` selects the accepted per-worker limit; it
+cannot exceed the cumulative grant. The native receipt and Core journal retain
+that selection. Preparation does not launch a worker. Ordinary code and the
+existing autonomous correction loop retain their own authority contracts.
 
 The complete source snapshot is mounted read-only at `/workspace`. The report
 session starts in its private per-request output directory: DSH's existing
@@ -119,19 +123,45 @@ files carry their request, claim, source revision and specification provenance.
 If there is no valid file or termination remains unknown, do not infer a saved
 checkpoint from model activity or a stopped process.
 
-A subsequent explicit handoff can continue a saved checkpoint. Pipeline offers
-**Continue the saved report at the same source revision**; native callers pass
-`--parent-request-id UUID --parent-sha256 SHA256` to `launch-report`. Core checks
-the original task, specification, source commit, earlier terminal claim and
-verified bytes before the runner restores them into the new private output.
-Changed scope or source requires a new review rather than silently reusing that
-checkpoint. Each claim has one new execution identity; replay retains its exact
-selection. Core exposes cumulative calls and execution count for the selected
-lineage, while each authorized execution keeps its own fixed budget. No restart
-or budget increase happens automatically.
+A subsequent explicit handoff continues the latest terminal execution on the
+same task, at the same source and specification. Pipeline restores its exact
+private checkpoint and coverage. Native callers name `--parent-request-id UUID`
+and `--parent-sha256 SHA256`. When the original terminal run never produced any
+file, its parent identity can be retained without a digest; an expected missing
+or altered checkpoint still refuses. A terminal continuation with no new file
+inherits the earlier verified bytes and coverage through its recorded parent. A fresh explicit grant is required after
+an operator stop. No restart or budget increase happens automatically.
+
+Core freezes the selected Markdown inventory and file hashes at the source
+commit. The runner supplies `source-inventory.json` and an initially pending
+`coverage.json`; the model records checked documents and source references as
+it works. The runner checks evidence file digests and lines against the frozen
+Git objects. Core stores these declarations with the result, separate from
+independent review. An inventory or a changed report hash proves neither
+complete coverage nor accuracy. Acceptance requires every document reviewed,
+the exact candidate digest and a separate review receipt reference and digest.
+The dossier exposes the whole task budget, saved files, source and coverage.
+
+All file deposits share task-owned capacity reservations. A report grant is
+refused if its workers cannot retain their checkpoints within the file limit;
+ordinary uploads cannot consume promised report slots. Partial files remain
+immutable, and a terminal execution with no file does not reserve space forever.
+
+Legacy code checkpoints can be received through the Core archive endpoint
+`POST /api/pipeline/tasks/:id/reports/:requestId/archive-checkpoint` with the
+exact terminal transition, source revision, private `.review-work/*.md` path,
+file digest, original specification digest, scope evidence and explicit native
+termination/release evidence. Scope evidence is an explicit operator attestation;
+Core refuses a specification that differs from the attested original. Core reads the
+bytes directly through the native control and reconciles original native costs.
+It retains the original worker result, labels model content and operator archive
+separately, and records an operator attestation rather than inventing a successful
+report execution. This archival step grants no model work or acceptance.
 
 After a lost acknowledgement, use **Reconcile saved report** in Pipeline or the
-same native `reconcile TASK REQUEST_UUID` control. It repairs only the original durable model settlement and frozen result;
+same native `reconcile TASK REQUEST_UUID` control. Known refusals before model
+dispatch retain the original claim, native start and zero-call preparation costs
+on the task; a lost refusal acknowledgement reconciles the same identity. It replays a saved start allocation when needed and repairs only the original durable model settlement and frozen result;
 it never reruns the worker or invents completion from an inactive unit. Inspect
 partial private output after a stop. The original request, result and native
 release evidence remain required before another launch. Accepting a candidate

@@ -305,3 +305,13 @@ test('a continuation selection survives an unknown response and browser recovery
     } finally { second.dispose(); }
   } finally { first.dispose(); }
 });
+
+test('reloading a prepared archive continuation retains its durable parent until a newer run produces an outcome', () => {
+  const archive = '30000000-0000-4000-8000-000000000003', older = '20000000-0000-4000-8000-000000000002';
+  const task = { codingResult: { profile: 'report', reportName: 'REVIEW.md', parentRequestId: archive, parentSha256: 'a'.repeat(64) },
+    codingReportAuthority: { grants: [{ key: 'grant' }], bindings: [] },
+    feedback: [{ reportOutcome: { requestId: older, reportName: 'REVIEW.md', partial: { sha256: 'b'.repeat(64) } } }] };
+  expect(Controller.profileFields(task)).toContain(`value="${archive}:${'a'.repeat(64)}"`);
+  task.codingReportAuthority.bindings.push({ requestId: older, grantKey: 'grant' });
+  expect(Controller.profileFields(task)).toContain(`value="${older}:${'b'.repeat(64)}"`);
+});

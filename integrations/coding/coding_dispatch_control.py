@@ -13,6 +13,8 @@ import subprocess
 import sys
 import tempfile
 import shlex
+import base64
+import hashlib
 from datetime import datetime, timezone
 from urllib.request import urlopen
 
@@ -144,12 +146,22 @@ def report_profile(task):
                    or task.get('automationAttempts') or (task.get('automation') or {}).get('mode') == 'review_only')
     latest = next((row.get('reportOutcome') for row in reversed(task.get('feedback') or []) if row.get('reportOutcome')), None)
     result = {'canReport': allowed}
+    if task.get('codingResult'):
+        result.update(codingResult=task['codingResult'])
+        if task['codingResult'].get('profile') == 'report':
+            result.update(reportName=task['codingResult']['reportName'])
+    if task.get('reportCheckpointArchive') and not task.get('codingResult'):
+        result.update(reportName=task['reportCheckpointArchive']['reportName'], reportCheckpoint=task['reportCheckpointArchive'])
     if latest:
         result['reportName'] = latest['reportName'] if report_name(latest.get('reportName')) else 'REVIEW.md'
         saved = latest.get('partial') or latest
         if (isinstance(latest.get('requestId'), str) and REQUEST_ID.fullmatch(latest['requestId'])
                 and saved.get('deliverableId') and isinstance(saved.get('sha256'), str) and re.fullmatch(r'[a-f0-9]{64}', saved['sha256'])):
             result['reportCheckpoint'] = {'parentRequestId': latest['requestId'], 'parentSha256': saved['sha256']}
+    selected = task.get('codingResult') or {}
+    grants = (task.get('codingReportAuthority') or {}).get('grants') or []
+    if selected.get('parentRequestId') and not any(row.get('requestId') == (latest or {}).get('requestId') and grants and row.get('grantKey') == grants[-1]['key'] for row in (task.get('codingReportAuthority') or {}).get('bindings', [])):
+        result.update(reportName=selected['reportName'], reportCheckpoint={name: selected.get(name) for name in ('parentRequestId', 'parentSha256')})
     return result
 
 
@@ -167,7 +179,9 @@ def status(key: str | None = None) -> dict:
         run["message"] = ("The coding worker is running." if run["phase"] == "running"
                           else "The coding worker stopped. Read its recorded result." if run["phase"] == "finished"
                           else "The host unit stopped without a terminal receipt. Inspect the task and checkpoint.")
-    if run and run.get('reportName') and progress and progress['phase'] == 'finished' and not progress.get('coreRecorded') and not (progress.get('preflight') and progress.get('modelCalls') == 0):
+    if run and run.get('reportName') and progress and not progress.get('coreRecorded') and (progress['phase'] == 'finished'
+            or any((RECEIPTS/f"{run['requestId']}.{suffix}.json").exists() for suffix in ('report-start', 'report-preflight')) and not busy) and not (
+            progress.get('preflight') and progress.get('modelCalls') == 0 and not any((RECEIPTS/f"{run['requestId']}.{suffix}.json").exists() for suffix in ('report-start', 'report-preflight'))):
         run.update(phase='unknown', message='The local report worker stopped; reconcile its original Core result before another launch.')
     if run and run.get('reportName'):
         run['canReconcile'] = not busy and run['phase'] == 'unknown'
@@ -211,7 +225,7 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
     except ValueError as error:
         raise ControlError('CODING_DISPATCH_INVALID_REQUEST', str(error), 400) from error
     if parent_request_id is not None or parent_sha256 is not None:
-        if not report or not isinstance(parent_request_id, str) or not REQUEST_ID.fullmatch(parent_request_id) or not isinstance(parent_sha256, str) or not re.fullmatch(r'[a-f0-9]{64}', parent_sha256) or parent_request_id == key:
+        if not report or not isinstance(parent_request_id, str) or not REQUEST_ID.fullmatch(parent_request_id) or parent_sha256 is not None and (not isinstance(parent_sha256, str) or not re.fullmatch(r'[a-f0-9]{64}', parent_sha256)) or parent_request_id == key:
             raise ControlError('CODING_DISPATCH_INVALID_REQUEST', 'A report continuation needs its original request and file digest.', 400)
     STATE.mkdir(parents=True, exist_ok=True)
     with (STATE / "coding-dispatcher-control.lock").open("a") as lock:
@@ -238,11 +252,17 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
         if pending and pending["phase"] in {"accepted", "uncertain"} and not (
                 terminal and terminal["phase"] == "finished" and
                 (not (pending.get("autonomous") or pending.get('reportName')) or terminal["coreRecorded"]
-                 or pending.get('reportName') and terminal.get('preflight') and terminal.get('modelCalls') == 0)):
+                 or pending.get('reportName') and terminal.get('preflight') and terminal.get('modelCalls') == 0
+                 and not any((RECEIPTS/f"{pending['requestId']}.{suffix}.json").exists() for suffix in ('report-start', 'report-preflight')))):
             raise ControlError("CODING_DISPATCH_OUTCOME_UNKNOWN", "Reconcile the previous launch before starting another task.")
         selected = next((task for task in queued_tasks() if task["pipelineId"] == pipeline_id and can_start(task, autonomous=autonomous)), None)
         if not selected:
             raise ControlError("CODING_DISPATCH_INELIGIBLE", "Only unowned, queued, non-private agentx-coding tasks can start.")
+        durable = selected.get('codingResult')
+        if durable and (durable.get('profile') != ('report' if report else 'code')
+                or report and any(durable.get(name) != value for name, value in (
+                    ('reportName', report), ('modelCallLimit', limit), ('parentRequestId', parent_request_id), ('parentSha256', parent_sha256)))):
+            raise ControlError('REPORT_PROFILE_CONFLICT', 'Launch must retain the result selection saved by Core.')
         if report and ((selected.get('automation') or {}).get('mode') == 'review_only' or selected.get('codingAutonomy') or selected.get('automationLease') or selected.get('automationAttemptCount') or selected.get('automationAttempts')):
             raise ControlError('CODING_DISPATCH_INELIGIBLE', 'Report mode cannot replace an automated attempt.')
         if int(selected.get("automationAttemptCount") or 0) != expected_attempt_count:
@@ -269,7 +289,8 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
                         sys.executable, str(HERE / "coding_run.py"), pipeline_id, "--request-id", key,
                         *(["--autonomous"] if autonomous else []), *(["--report-name", report] if report else []),
                         *(["--model-call-limit", str(limit)] if report and limit != progress_module.MANUAL_MODEL_CALL_LIMIT else []),
-                        *(["--parent-request-id", parent_request_id, "--parent-sha256", parent_sha256] if parent_request_id else [])],
+                        *(["--parent-request-id", parent_request_id] if parent_request_id else []),
+                        *(["--parent-sha256", parent_sha256] if parent_sha256 else [])],
                        check=True, capture_output=True, text=True, timeout=10)
         run.update(phase="accepted", message="The coding worker started on this task.")
         save_receipt(run)
@@ -350,6 +371,27 @@ def observe(pipeline_id, key):
     return module.observe(runner.request, repository, pipeline_id, progress["pr"], token)
 
 
+def read_checkpoint(pipeline_id, key, path):
+    """Read original legacy model bytes at its recorded checkpoint; never publish it."""
+    if not re.fullmatch(r'\.review-work/[A-Za-z0-9_./-]+\.md', path) or '..' in Path(path).parts:
+        raise ControlError('REPORT_ARCHIVE_INVALID', 'Choose a Markdown artifact inside the private review checkpoint.', 400)
+    run = read_receipt(key); progress = read_progress(run) if run else None
+    if unit_active() or not run or run.get('pipelineId') != pipeline_id or not progress or progress.get('phase') != 'finished':
+        raise ControlError('REPORT_NATIVE_RELEASE_UNVERIFIED', 'The original worker is not received as terminal.')
+    commit = progress.get('checkpoint')
+    if not isinstance(commit, str) or not re.fullmatch(r'[a-f0-9]{40}', commit):
+        raise ControlError('REPORT_ARCHIVE_INVALID', 'The native source checkpoint is unverified.')
+    workspace = Path.home() / 'dsh-workspaces' / f'task-{pipeline_id}'
+    prefix = ['git', '-C', str(workspace), '-c', 'core.hooksPath=/dev/null']
+    size = int(subprocess.check_output([*prefix, 'cat-file', '-s', f'{commit}:{path}'], timeout=15))
+    if not 0 < size <= 2 * 1024 * 1024:
+        raise ControlError('REPORT_ARCHIVE_INVALID', 'The native Markdown checkpoint exceeds its file budget.')
+    data = subprocess.check_output([*prefix, 'show', f'{commit}:{path}'], timeout=15)
+    data.decode('utf-8', errors='strict')
+    return {'pipelineId': pipeline_id, 'requestId': key, 'sourceCommit': commit, 'path': path,
+            'sha256': hashlib.sha256(data).hexdigest(), 'dataUrl': 'data:text/markdown;base64,' + base64.b64encode(data).decode()}
+
+
 def reconcile(pipeline_id, key):
     # Only replay the exact saved native verdict. Never restart the worker or
     # its model, and never manufacture a receipt from an absent process.
@@ -413,6 +455,8 @@ def main() -> int:
                           parent_request_id=options.get('--parent-request-id'), parent_sha256=options.get('--parent-sha256'))
         elif action == "observe" and len(values) == 2 and re.fullmatch(r"\d{4}", values[0]):
             data = observe(values[0], values[1])
+        elif action == 'read-checkpoint' and len(values) == 3 and re.fullmatch(r'\d{4}', values[0]):
+            data = read_checkpoint(values[0], values[1], values[2])
         elif action == "reconcile" and len(values) == 2 and re.fullmatch(r"\d{4}", values[0]):
             data = reconcile(values[0], values[1])
         elif action == "stop" and len(values) == 2 and re.fullmatch(r"\d{4}", values[0]):

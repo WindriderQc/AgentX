@@ -317,7 +317,8 @@
     let profile;
     try { profile = window.PipelineLaunchController.fromForm($('pipelineTeamLaunchForm')); }
     catch (error) { toast('error', error.message); return; }
-    const launch = state.launchController.launch(pipelineId, profile);
+    const launch = window.PipelineLaunchController.handoff({ pipelineId, profile, controller: state.launchController,
+      fetchJson, toast }).catch(error => { toast('error', error.message); });
     const monitor = $('pipelineExecution');
     monitor?.scrollIntoView({ block: 'start', behavior: 'auto' });
     monitor?.focus({ preventScroll: true });

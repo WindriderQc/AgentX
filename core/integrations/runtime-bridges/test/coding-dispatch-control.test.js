@@ -112,7 +112,7 @@ test('report continuations preserve the exact parent and cannot mutate it under 
   const pending = control.launch(input);
   await assert.rejects(control.launch({ ...input, parentSha256: 'b'.repeat(64) }), error => error.code === 'CODING_DISPATCH_REQUEST_CONFLICT');
   finish(envelope(accepted)); await pending;
-  for (const extra of [{ parentRequestId: '../other', parentSha256: sha }, { parentRequestId: parent },
+  for (const extra of [{ parentRequestId: '../other', parentSha256: sha }, { parentSha256: sha },
     { parentRequestId: [parent], parentSha256: sha }, { parentRequestId: parent, parentSha256: sha, autonomous: true }]) {
     await assert.rejects(configured(() => assert.fail('invalid checkpoint reached host')).launch({ ...request, reportName: 'REVIEW.md', ...extra }), error => error.statusCode === 400);
   }
@@ -129,4 +129,22 @@ test('reconciliation requires confirmation and reaches only the original native 
   const response = { status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };
   await routes['/runs/:requestId/reconcile']({ params: { requestId: request.requestId }, body: { pipelineId: '0700' } }, response);
   assert.equal(response.code, 400);
+});
+
+test('a terminal execution without a saved file retains its parent id without fabricating a digest', async () => {
+  const parent = '20000000-0000-4000-8000-000000000002';
+  const control = configured(async (_target, command) => {
+    assert.ok(command.endsWith(` --parent-request-id ${parent}`));
+    assert.ok(!command.includes('--parent-sha256'));
+    return envelope(accepted);
+  });
+  await control.launch({ ...request, reportName: 'REVIEW.md', parentRequestId: parent, parentSha256: null });
+});
+test('legacy checkpoint reads use the exact bounded native path without starting a worker', async () => {
+  const control = configured(async (_target, command) => {
+    assert.equal(command, `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py read-checkpoint 0700 ${request.requestId} .review-work/REVIEW.md`);
+    return envelope({ sha256: 'a'.repeat(64) });
+  });
+  assert.equal((await control.checkpoint({ ...request, path: '.review-work/REVIEW.md' })).sha256, 'a'.repeat(64));
+  await assert.rejects(control.checkpoint({ ...request, path: '.review-work/../secret.md' }));
 });

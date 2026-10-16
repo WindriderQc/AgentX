@@ -21,7 +21,7 @@ async function read(pipelineId) {
 }
 
 // The deployment owns planning; Core owns every write to the canonical task.
-async function apply({ pipelineId, expectedUpdatedAt, automation, question, answer, plan, contextNotice, handoff = false }) {
+async function apply({ pipelineId, expectedUpdatedAt, automation, question, answer, plan, contextNotice, handoff = false, result, reportGrant }) {
   const task = await load(pipelineId);
   if (!['queued', 'blocked'].includes(task.status) || task.automationLease?.leaseId) throw conflict('The task is already running or awaiting review.');
   // A ticket the coding worker left blocked returns to the queue with the operator's answer.
@@ -36,6 +36,13 @@ async function apply({ pipelineId, expectedUpdatedAt, automation, question, answ
   if (question) feedback.push({ by: 'coding-team', text: String(question), at });
   if (plan) feedback.push({ by: 'coding-team', text: `Execution plan: ${String(plan)}`, at });
   const changes = question ? { status: 'blocked' } : { status: 'queued', assignee: null, heartbeatAt: null };
+  if (result) {
+    const selected = require('../../../shared/pipelineReportSelection').normalize(result);
+    if (result.profile !== (selected.reportName ? 'report' : 'code')) throw conflict('The result profile is inconsistent.');
+    changes.codingResult = { profile: result.profile, ...selected };
+    if (result.profile === 'report') changes.codingReportAuthority = await require('./pipelineReportAuthority').prepare(task, selected, reportGrant);
+    else if (task.codingReportAuthority) throw conflict('This task retains report authority; review its saved report before changing its result.');
+  }
   if (handoff && task.service !== 'agentx-coding') {
     changes.service = 'agentx-coding';
     feedback.push({ by: 'operator', text: 'Task handed to the Coding Team for one worker execution.', at });
@@ -46,7 +53,7 @@ async function apply({ pipelineId, expectedUpdatedAt, automation, question, answ
     changes.risk = 'low';
   }
   const update = { $set: changes, ...(feedback.length && { $push: { feedback: { $each: feedback } } }) };
-  const options = { new: true, runValidators: true };
+  const options = { new: true, runValidators: true, writeConcern: { w: 1, j: true } };
   const latest = (task.automationAttempts || []).at(-1);
   if (!question && latest) {
     update.$set['automationAttempts.$[attempt].reviewOutcome'] = 'requeued';
@@ -54,6 +61,8 @@ async function apply({ pipelineId, expectedUpdatedAt, automation, question, answ
     options.arrayFilters = [{ 'attempt.attempt': latest.attempt }];
   }
   const query = { pipelineId, updatedAt: task.updatedAt, status: task.status, assignee: task.assignee ?? null,
+    'codingReportAuthority.revision': task.codingReportAuthority?.revision ?? null,
+    deliverableRegistryRevision: task.deliverableRegistryRevision ?? { $in: [0, null] },
     'automationLease.leaseId': null,
     $and: [workerTaskScope(), { service: task.service ?? null, source: task.source ?? null }] };
   preparationTransition(query, update, task, { question: Boolean(question), at });

@@ -43,11 +43,12 @@ function launchCommand(input) {
   const action = report.reportName ? 'launch-report' : autonomous === true ? 'launch-autonomous' : 'launch';
   return `/usr/bin/python3 ${remoteRoot(root)}/integrations/coding/coding_dispatch_control.py ${action} ${exactPipelineId(pipelineId)} ${exactRequestId(requestId)} ${observedAttemptCount(expectedAttemptCount)}`
     + (report.reportName ? ` ${report.reportName} --model-call-limit ${report.modelCallLimit}` : '')
-    + (report.parentRequestId ? ` --parent-request-id ${report.parentRequestId} --parent-sha256 ${report.parentSha256}` : '');
+    + (report.parentRequestId ? ` --parent-request-id ${report.parentRequestId}` : '')
+    + (report.parentSha256 ? ` --parent-sha256 ${report.parentSha256}` : '');
 }
 async function defaultSshRunner(target, command, options = {}) {
   return execFileAsync(options.sshBin || process.env.OPENCLAW_INVENTORY_SSH_BIN || 'ssh', buildSshArgs(target, command, options), {
-    timeout: Number(options.timeoutMs) || DEFAULT_TIMEOUT_MS, maxBuffer: 1024 * 1024, windowsHide: true
+    timeout: Number(options.timeoutMs) || DEFAULT_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024, windowsHide: true
   });
 }
 class CodingDispatchControl {
@@ -104,6 +105,11 @@ class CodingDispatchControl {
   }
   async reconcile(input = {}) {
     return this.call(`/usr/bin/python3 ${this.root}/integrations/coding/coding_dispatch_control.py reconcile ${exactPipelineId(input.pipelineId)} ${exactRequestId(input.requestId)}`);
+  }
+  async checkpoint(input = {}) {
+    if (typeof input.path !== 'string' || input.path.length > 300 || !/^\.review-work\/[A-Za-z0-9_./-]+\.md$/.test(input.path)
+      || input.path.split('/').includes('..')) throw new CodingDispatchControlError('Choose the exact private review artifact.', { statusCode: 400 });
+    return this.call(`/usr/bin/python3 ${this.root}/integrations/coding/coding_dispatch_control.py read-checkpoint ${exactPipelineId(input.pipelineId)} ${exactRequestId(input.requestId)} ${input.path}`);
   }
   async stop(input = {}) {
     const pipelineId = exactPipelineId(input.pipelineId);
