@@ -38,7 +38,7 @@ describe('bounded corpus traversal payloads', () => {
   test('inventory and metadata reads omit all source text while preserving document identity', async () => {
     const result = await store.listDocuments();
     const { hash, ...listedMetadata } = metadata;
-    expect(result).toEqual({ total: 1, documents: [{ ...listedMetadata, chunkCount: 1 }] });
+    expect(result).toEqual({ total: 1, documents: [{ ...listedMetadata, chunkCount: 1 }], sources: [listedMetadata.source] });
     expect(await store.getDocument('doc-1')).toMatchObject(metadata);
     for (const body of requests) {
       expect(body.with_payload.include).not.toEqual(expect.arrayContaining(['text']));
@@ -710,7 +710,7 @@ describe('QdrantVectorStore.listDocuments', () => {
       '{"status":{"error":"Not found: Collection `test` doesn\'t exist!"}}'
     ));
 
-    await expect(store.listDocuments()).resolves.toEqual({ documents: [], total: 0 });
+    await expect(store.listDocuments()).resolves.toEqual({ documents: [], total: 0, sources: [] });
   });
 
   it('does not hide unrelated Qdrant 404 responses', async () => {

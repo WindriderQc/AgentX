@@ -3,6 +3,7 @@
  */
 
 const VectorStoreAdapter = require('./VectorStoreAdapter');
+const { distinctSources, sortDocuments } = require('./documentListing');
 const fetchWithTimeout = require('../../utils/fetchWithTimeout');
 const {
   SERVICE_OUTBOUND_OPERATION_IDS,
@@ -342,13 +343,15 @@ class QdrantVectorStore extends VectorStoreAdapter {
       }
     }
 
-    const allDocs = Array.from(docMap.values());
+    // Point order follows revision-derived IDs, so a re-ingested document would
+    // move between pages; a stable key keeps offsets from skipping documents.
+    const allDocs = sortDocuments(Array.from(docMap.values()));
     const total = allDocs.length;
     const offset = pagination.offset || 0;
     const limit = pagination.limit || total;
     const paged = allDocs.slice(offset, offset + limit);
 
-    return { documents: paged, total };
+    return { documents: paged, total, sources: distinctSources(allDocs) };
   }
 
   async getDocumentChunks(documentId) {

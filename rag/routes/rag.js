@@ -407,8 +407,8 @@ router.get('/documents', async (req, res) => {
     if (!Number.isFinite(offset) || offset < 0) offset = 0;
 
     const ragStore = getRagStore();
-    const { documents, total } = await ragStore.listDocuments(filters, { limit, offset });
-    res.json({ ok: true, data: { documents, total, limit, offset } });
+    const { documents, total, sources } = await ragStore.listDocuments(filters, { limit, offset });
+    res.json({ ok: true, data: { documents, total, limit, offset, ...(Array.isArray(sources) ? { sources } : {}) } });
   } catch (err) {
     logger.error('List documents error:', err);
     sendError(res, 500, 'Failed to list documents', err.message);

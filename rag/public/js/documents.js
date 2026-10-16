@@ -184,8 +184,12 @@
 
   // ── Populate source dropdown ──────────────────────────────
 
+  // Every source label seen so far: a filtered or paged view must not shrink the
+  // dropdown to its own rows (switching from source A to B would need Clear).
+  var knownSources = {};
+
   function populateSourceFilter(documents, preferredSource) {
-    var sources = {};
+    var sources = knownSources;
     documents.forEach(function (d) {
       if (d.source) sources[d.source] = true;
     });
@@ -230,6 +234,7 @@
       if (version !== loadVersion) return;
       var data = resp.data;
       var page = data.documents || [];
+      (Array.isArray(data.sources) ? data.sources : []).forEach(function (source) { knownSources[source] = true; });
       documentTotal = Number.isInteger(data.total) && data.total >= 0 ? data.total : null;
       var followingOffset = params.offset + page.length;
       var hasMore = documentTotal === null ? page.length === params.limit : followingOffset < documentTotal;
