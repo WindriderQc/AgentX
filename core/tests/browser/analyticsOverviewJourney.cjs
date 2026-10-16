@@ -204,6 +204,11 @@ const server = http.createServer(async (req, res) => {
     await page.locator('.ao-kpi').first().click();
     assert.equal(await page.locator('#analytics-cockpit').evaluate(el => el.open), true);
     assert.equal(await page.locator('#analytics-platform-inference').evaluate(el => document.activeElement === el), true);
+    await page.locator('[data-analytics-target="chatLaneHeading"]').click();
+    assert.equal(await page.locator('#chatLaneHeading').isVisible(), true, 'the shortcut reveals the collapsed Playground lane');
+    await page.selectOption('#periodSelect', '7');
+    await page.waitForTimeout(50);
+    assert.equal(await page.locator('#chatLaneHeading').isVisible(), true, 'explicitly expanded Playground lane stays open across period changes');
     const requestStart = requests.length;
     failSummary = false; empty = false;
     await page.goto(`http://127.0.0.1:${server.address().port}/analytics?profile=demo`);
@@ -214,6 +219,6 @@ const server = http.createServer(async (req, res) => {
     assert.deepEqual(errors, []);
     assert.ok(requests.some(p => p.includes('/summary?window=24h')));
     assert.ok(bucketFacet('24h', {})[0].$group._id.$dateToString.format.includes('%H'));
-    console.log(JSON.stringify({ ok: true, report, viewports: 7, scenarios: ['initial', 'comparison', 'volume/latency overlay', 'visual evidence reset', 'window race', 'retention', 'failed read', 'empty', 'stale GPU', 'live failure', 'detail focus', 'demo profile', 'independent Playground window'], requests: requests.length }, null, 2));
+    console.log(JSON.stringify({ ok: true, report, viewports: 7, scenarios: ['initial', 'comparison', 'volume/latency overlay', 'visual evidence reset', 'window race', 'retention', 'failed read', 'empty', 'stale GPU', 'live failure', 'detail focus', 'demo profile', 'independent Playground window', 'persistent Playground disclosure'], requests: requests.length }, null, 2));
   } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

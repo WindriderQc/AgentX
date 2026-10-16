@@ -8,7 +8,7 @@
 
 import {
   elements, charts,
-  buildRangeQuery, checkAuth, fetchJSON,
+  beginRequest, buildRangeQuery, checkAuth, fetchJSON,
   formatNumber, refreshProduct
 } from './analytics.js';
 import { COMPARISON_STATES, parseSignal, rankingSignal } from '/dist/signal-evidence.js';
@@ -18,7 +18,21 @@ import { COMPARISON_STATES, parseSignal, rankingSignal } from '/dist/signal-evid
 /*                          Cost Tracking Logic                               */
 /* -------------------------------------------------------------------------- */
 
-async function loadCosts(days, groupBy = null, breakdown = null) {
+// The stats tiles, efficiency table and breakdown chart all read the same
+// per-model aggregation; panels refreshed together share one request.
+const inflightCosts = new Map();
+
+function loadCosts(days, groupBy = null, breakdown = null) {
+  const key = `${days}|${groupBy || breakdown || 'model'}`;
+  if (!inflightCosts.has(key)) {
+    const request = requestCosts(days, groupBy || breakdown || 'model')
+      .finally(() => inflightCosts.delete(key));
+    inflightCosts.set(key, request);
+  }
+  return inflightCosts.get(key);
+}
+
+async function requestCosts(days, groupBy = null, breakdown = null) {
   const query = buildRangeQuery(days);
   const params = new URLSearchParams(query);
 
@@ -37,10 +51,12 @@ async function loadCosts(days, groupBy = null, breakdown = null) {
 }
 
 async function refreshCostStats() {
+  const isCurrent = beginRequest('costStats');
   const days = elements.periodSelect.value;
 
   try {
     const data = await loadCosts(days);
+    if (!isCurrent()) return;
 
     if (!data) {
       elements.totalCost.textContent = '—';
@@ -68,23 +84,26 @@ async function refreshCostStats() {
       elements.costPerConvMessages.textContent = avgMsgs;
     }
 
-    elements.costPer1kTokens.textContent = `$${(summary.costPer1kTokens || 0).toFixed(4)}`;
+    elements.costPer1kTokens.textContent = totalCost > 0 ? `$${(summary.costPer1kTokens || 0).toFixed(4)}` : '—';
     if (elements.costTotalTokens) {
       elements.costTotalTokens.textContent = formatNumber(totalTokens);
     }
 
-    elements.tokensPerDollar.textContent = Math.round(tokensPerDollar || 0).toLocaleString();
+    // No spend means no ratio, not zero tokens per dollar.
+    elements.tokensPerDollar.textContent = totalCost > 0 ? Math.round(tokensPerDollar).toLocaleString('en-US') : '—';
   } catch (err) {
     console.error('Cost stats refresh error:', err);
   }
 }
 
 async function refreshCostTrend() {
+  const isCurrent = beginRequest('costTrend');
   const days = elements.periodSelect.value;
   const groupBy = elements.costTrendGroupSelect.value;
 
   try {
     const data = await loadCosts(days, groupBy);
+    if (!isCurrent()) return;
 
     const breakdown = data?.breakdown || [];
     if (!data || breakdown.length === 0) {
@@ -312,10 +331,12 @@ function efficiencyBadge(row, ranking) {
 }
 
 async function refreshEfficiencyTable() {
+  const isCurrent = beginRequest('efficiency');
   const days = elements.periodSelect.value;
 
   try {
     const data = await loadCosts(days, 'model');
+    if (!isCurrent()) return;
     const breakdown = data?.breakdown || [];
 
     if (!data || breakdown.length === 0) {
@@ -364,7 +385,7 @@ async function refreshEfficiencyTable() {
             ${priced ? `$${(row.cost?.per1kTokens || 0).toFixed(4)}` : '—'}
           </td>
           <td style="padding: 8px; text-align: right; color: ${priced ? '#4ade80' : 'var(--muted)'};">
-            <strong>${priced ? Math.round((row.tokens?.total || 0) / row.cost.total).toLocaleString() : '—'}</strong>
+            <strong>${priced ? Math.round((row.tokens?.total || 0) / row.cost.total).toLocaleString('en-US') : '—'}</strong>
           </td>
           <td style="padding: 8px; text-align: right; color: var(--text);">
             ${priced ? `$${(row.cost?.avgPerConversation || 0).toFixed(3)}` : '—'}
@@ -384,17 +405,30 @@ async function refreshEfficiencyTable() {
 }
 
 async function refreshCostBreakdown() {
+  const isCurrent = beginRequest('costBreakdown');
   const days = elements.periodSelect.value;
 
   try {
     const data = await loadCosts(days, 'model');
+    if (!isCurrent()) return;
 
-    if (!data || !data.breakdown || data.breakdown.length === 0) {
+    const grid = document.getElementById('costBreakdownGrid');
+    const pricedSpend = (data?.breakdown || []).reduce((sum, item) => sum + (item.cost?.total || 0), 0);
+    if (!data || !data.breakdown || data.breakdown.length === 0 || pricedSpend <= 0) {
+      // Clear the previous period's chart and list; an all-local period has
+      // rows but nothing to split by spend.
       if (charts.costBreakdown) charts.costBreakdown.destroy();
+      charts.costBreakdown = null;
+      elements.costBreakdownStats.innerHTML = '';
+      if (grid) grid.style.display = 'none';
+      elements.costBreakdownEmpty.textContent = data?.breakdown?.length
+        ? 'No priced spend in this period. Local models have no per-token price.'
+        : 'No cost breakdown data available.';
       elements.costBreakdownEmpty.style.display = 'block';
       return;
     }
 
+    if (grid) grid.style.display = 'grid';
     elements.costBreakdownEmpty.style.display = 'none';
 
     // Generate colors
@@ -473,7 +507,7 @@ async function refreshCostBreakdown() {
         return `
           <div style="padding: 12px; background: rgba(255, 255, 255, 0.02); border-left: 3px solid ${color}; border-radius: 4px;">
             <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
-              <strong style="color: var(--text);">${item.label}</strong>
+              <strong style="color: var(--text);">${escapeHtml(item.label)}</strong>
               <span style="color: var(--accent); font-weight: 600;">$${(item.cost || 0).toFixed(2)}</span>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
@@ -656,7 +690,7 @@ async function refreshRagMetrics() {
                 <div style="color: var(--danger); padding: 20px; text-align: center;">
                     <i class="fas fa-exclamation-triangle"></i><br>
                     <strong>Failed to load RAG metrics</strong><br>
-                    <small style="color: var(--muted);">${error.message}</small>
+                    <small style="color: var(--muted);">${escapeHtml(error.message)}</small>
                 </div>
             `;
             elements.ragEmpty.style.display = 'block';

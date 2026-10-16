@@ -12,10 +12,11 @@
   function parseCompactNumber(value) {
     var match = String(value || '')
       .trim()
-      .match(/-?[\d,.]+\s*[kmb]?/i);
+      .match(/-?\d{1,3}(?:[,\s\u00a0\u202f]\d{3})+(?:\.\d+)?(?:\s*[kmb](?![a-z]))?|-?\d+(?:\.\d+)?(?:\s*[kmb](?![a-z]))?/i);
     if (!match) return null;
 
-    var compact = match[0].replace(/,/g, '').replace(/\s+/g, '');
+    // Accept locale group separators (1 234, 1,234) as well as compact units.
+    var compact = match[0].replace(/[,\s\u00a0\u202f]/g, '');
     var suffix = compact.slice(-1).toLowerCase();
     var multiplier = { k: 1e3, m: 1e6, b: 1e9 }[suffix] || 1;
     var numericText = multiplier === 1 ? compact : compact.slice(0, -1);
@@ -65,7 +66,7 @@
       : formatCount(conversations) + ' conversation' + (conversations === 1 ? '' : 's') + ' · ' + formatCount(messages || 0) + ' messages';
     document.getElementById('analytics-knowledge-detail').textContent = documents == null
       ? (ragUsage ? ragUsage + ' · ' + windowLabel : 'Knowledge usage is not observed yet')
-      : formatCount(documents) + ' source' + (documents === 1 ? '' : 's') + ' · ' + (ragUsage || 'usage not observed') + ' · ' + windowLabel;
+      : formatCount(documents) + ' document' + (documents === 1 ? '' : 's') + ' indexed · ' + (ragUsage || 'usage not observed') + ' · ' + windowLabel;
   }
 
   function syncCockpitAccessibility() {
@@ -75,6 +76,7 @@
   }
 
   function openTo(targetId) {
+    if (targetId === 'chatLaneHeading') document.dispatchEvent(new CustomEvent('analytics:show-chat-lane'));
     cockpit.open = true;
     syncCockpitAccessibility();
     requestAnimationFrame(function () {

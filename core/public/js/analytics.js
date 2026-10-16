@@ -78,7 +78,9 @@ const charts = {
 
 function formatNumber(num) {
   if (num === null || num === undefined) return '–';
-  return num.toLocaleString();
+  // The page is English; a browser locale would print 1 234 and the hero
+  // summary reads these tiles back as numbers.
+  return num.toLocaleString('en-US');
 }
 
 function formatPercent(value) {
@@ -158,10 +160,14 @@ function periodRange(days) {
   return { from, to };
 }
 
+// Analytics aggregations scan the message history; a hung query must not
+// leave panels on "Loading…" or the Refresh button disabled forever.
+const ANALYTICS_TIMEOUT_MS = 30000;
+
 async function fetchJSON(url, method = 'GET') {
   const headers = { 'Content-Type': 'application/json' };
 
-  const res = await fetch(url, { method, credentials: 'include', headers });
+  const res = await fetch(url, { method, credentials: 'include', headers, signal: AbortSignal.timeout(ANALYTICS_TIMEOUT_MS) });
   if (res.status === 401) {
     throw new Error('Unauthorized');
   }
@@ -191,6 +197,15 @@ async function fetchJSON(url, method = 'GET') {
   }
 
   return res.json();
+}
+
+// Each panel keeps only its newest response: a slow 30-day query that lands
+// after a fast 7-day one must not repaint the panel under the wrong period.
+const requestSeq = {};
+function beginRequest(key) {
+  const id = (requestSeq[key] || 0) + 1;
+  requestSeq[key] = id;
+  return () => requestSeq[key] === id;
 }
 
 async function checkAuth() {
@@ -453,12 +468,14 @@ async function refreshProduct() {
   const usageGroup = elements.usageGroupSelect.value;
   const feedbackGroup = elements.feedbackGroupSelect.value;
 
+  const isCurrent = beginRequest('product');
   try {
     const [usageResult, feedbackResult, ragResult] = await Promise.allSettled([
       loadUsage(days, usageGroup),
       loadFeedback(days, feedbackGroup),
       loadRag(days),
     ]);
+    if (!isCurrent()) return;
 
     const usage = usageResult.status === 'fulfilled' ? usageResult.value : null;
     const feedback = feedbackResult.status === 'fulfilled' ? feedbackResult.value : null;
@@ -467,10 +484,16 @@ async function refreshProduct() {
     updateProductSummary(usage || {}, feedback || {}, rag || {});
 
     const usageHasData = !!(usage && usage.breakdown && usage.breakdown.length > 0);
+    elements.usageEmpty.textContent = usageResult.status === 'rejected'
+      ? 'Could not load usage. Try Refresh.'
+      : 'No usage data for this period.';
     toggleEmptyState(document.getElementById('usageChart'), elements.usageEmpty, usageHasData);
     if (usageHasData) renderUsageChart(usage, usageGroup);
 
     const feedbackHasData = !!(feedback && feedback.breakdown && feedback.breakdown.length > 0);
+    elements.feedbackEmpty.textContent = feedbackResult.status === 'rejected'
+      ? 'Could not load feedback. Try Refresh.'
+      : 'No feedback captured in this window.';
     toggleEmptyState(document.getElementById('feedbackChart'), elements.feedbackEmpty, feedbackHasData);
     if (feedbackHasData) renderFeedbackChart(feedback, feedbackGroup);
 
@@ -488,4 +511,4 @@ async function refreshProduct() {
 }
 
 
-export { elements, charts, buildRangeQuery, checkAuth, fetchJSON, formatNumber, refreshProduct };
+export { elements, charts, beginRequest, buildRangeQuery, checkAuth, fetchJSON, formatNumber, refreshProduct };

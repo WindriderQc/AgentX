@@ -99,7 +99,7 @@ function escapeHtml(value) {
 
 async function fetchSummary(windowKey) {
   const res = await fetch(`/api/analytics/inference/summary?window=${encodeURIComponent(windowKey)}`, {
-    headers: { Accept: 'application/json' }, cache: 'no-store', signal: AbortSignal.timeout(15000)
+    headers: { Accept: 'application/json' }, cache: 'no-store', signal: AbortSignal.timeout(30000)
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const body = await res.json();
@@ -114,15 +114,16 @@ function renderTiles(d) {
   setText('infCallsPerDay', compact(t.callsPerDay));
   setText('infTokensOut', compact(t.tokensOut));
   setText('infTokensIn', compact(t.tokensIn));
-  setText('infErrorRate', `${(t.errorRate ?? 0).toFixed(2)}%`);
+  const observed = Number(t.calls) > 0;
+  setText('infErrorRate', observed ? `${(t.errorRate ?? 0).toFixed(2)}%` : '—');
   setText('infErrors', compact(t.errors));
   setText('infCancellations', compact(t.cancellations));
   setText('infHours', `${(t.inferenceHours ?? 0).toFixed(1)}h`);
-  setText('infTokPerSec', (t.tokensOutPerSecond ?? 0).toFixed(1));
+  setText('infTokPerSec', observed ? (t.tokensOutPerSecond ?? 0).toFixed(1) : '—');
 
-  setText('infFallbackRate', `${(t.fallbackRate ?? 0).toFixed(2)}%`);
+  setText('infFallbackRate', observed ? `${(t.fallbackRate ?? 0).toFixed(2)}%` : '—');
   setText('infFallbacks', compact(t.fallbackCalls));
-  setText('infAvgLatency', ms(t.avgLatencyMs));
+  setText('infAvgLatency', observed ? ms(t.avgLatencyMs) : '—');
   const classifier = classifierSignals(d);
   renderSignal('infAvgClassification', classifier.avg, 'infAvgClassificationNote');
   setText('infClassifiedCalls', compact(t.classifiedCalls ?? 0));
@@ -198,10 +199,10 @@ function renderModelTable(d) {
     return `<tr>
       <td style="${cell}text-align:left;">${model}${m.isCloud ? ' <span style="font-size:11px;color:var(--muted);">cloud</span>' : ''}</td>
       <td style="${cell}text-align:right;">${compact(m.calls)}</td>
-      <td style="${cell}text-align:right;color:${errColor};">${m.errorRate.toFixed(1)}% err<br><span style="color:var(--muted);">${(m.cancellationRate || 0).toFixed(1)}% cancel</span></td>
+      <td style="${cell}text-align:right;color:${errColor};">${(m.errorRate || 0).toFixed(1)}% err<br><span style="color:var(--muted);">${(m.cancellationRate || 0).toFixed(1)}% cancel</span></td>
       <td style="${cell}text-align:right;">${compact(m.tokensOut)}</td>
       <td style="${cell}text-align:right;">${ms(m.avgLatencyMs)}</td>
-      <td style="${cell}text-align:right;">${m.tokensOutPerSecond.toFixed(1)}</td>
+      <td style="${cell}text-align:right;">${Number.isFinite(m.tokensOutPerSecond) ? m.tokensOutPerSecond.toFixed(1) : '—'}</td>
       <td style="${cell}text-align:right;">${cost}</td>
     </tr>`;
   }).join('');
@@ -288,6 +289,7 @@ function renderDailyChart(d) {
  * the page simply never rendered it.
  */
 async function renderCodex(windowKey) {
+  const version = loadVersion;
   const section = $('infCodexSection');
   if (!section) return;
   // Federated provider/Codex telemetry is intentionally outside the
@@ -298,10 +300,13 @@ async function renderCodex(windowKey) {
   }
   try {
     const res = await fetch(`/api/analytics/federated?window=${encodeURIComponent(windowKey)}`, {
-      headers: { Accept: 'application/json' }
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(30000)
     });
-    if (!res.ok) return;
+    if (version !== loadVersion) return;
+    if (!res.ok) { section.style.display = 'none'; return; }
     const body = await res.json();
+    if (version !== loadVersion) return;
     const c = body?.codexSubscription;
     if (!c || !c.available) { section.style.display = 'none'; return; }
 
@@ -325,8 +330,9 @@ async function renderCodex(windowKey) {
       : '—');
     setText('infCodexMessage', c.valueMessage || '');
   } catch (err) {
-    console.error('Codex entitlement fetch failed:', err);
+    if (version !== loadVersion) return;
     section.style.display = 'none';
+    console.error('Codex entitlement fetch failed:', err);
   }
 }
 
@@ -342,6 +348,7 @@ async function renderCodex(windowKey) {
  * someone uses the chat UI.
  */
 let chatLoadVersion = 0;
+let chatLaneForced = false;
 
 function setChatLaneVisible(visible) {
   document.querySelectorAll('.chat-lane').forEach((el) => {
@@ -349,11 +356,19 @@ function setChatLaneVisible(visible) {
   });
 }
 
+function showChatLane() {
+  chatLaneForced = true;
+  ++chatLoadVersion;
+  setChatLaneVisible(true);
+  if ($('chatLaneHeading')) $('chatLaneHeading').style.display = '';
+  if ($('chatLaneEmptyNote')) $('chatLaneEmptyNote').style.display = 'none';
+}
+
 async function applyChatLaneCollapse() {
   const version = ++chatLoadVersion;
   const note = $('chatLaneEmptyNote');
   const heading = $('chatLaneHeading');
-  if (!note) return;
+  if (!note || chatLaneForced) return;
 
   const days = Number($('periodSelect')?.value) || 7;
   const to = new Date();
@@ -362,7 +377,8 @@ async function applyChatLaneCollapse() {
   let conversations = null;
   try {
     const res = await fetch(`/api/analytics/usage?from=${from.toISOString()}&to=${to.toISOString()}`, {
-      headers: { Accept: 'application/json' }
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(30000)
     });
     if (res.ok) {
       const body = await res.json();
@@ -395,9 +411,7 @@ async function applyChatLaneCollapse() {
   if (link) {
     link.addEventListener('click', (e) => {
       e.preventDefault();
-      setChatLaneVisible(true);
-      if (heading) heading.style.display = '';
-      note.style.display = 'none';
+      showChatLane();
     });
   }
 }
@@ -419,6 +433,8 @@ async function load() {
     if (version !== loadVersion) return;
     document.dispatchEvent(new CustomEvent('analytics:inference', { detail: { state: 'error', windowKey } }));
     console.error('Inference analytics failed:', err);
+    ['infCalls', 'infCallsPerDay', 'infTokensOut', 'infTokensIn', 'infErrorRate', 'infErrors', 'infCancellations',
+      'infHours', 'infTokPerSec', 'infFallbackRate', 'infFallbacks', 'infAvgLatency', 'infLocalHours', 'infLocalCalls', 'infCloudSpend'].forEach((id) => setText(id, '—'));
     setText('infScope', `Could not load inference analytics: ${err.message}`);
   }
   if (version !== loadVersion) return;
@@ -430,6 +446,8 @@ function init() {
   $('infRefreshBtn')?.addEventListener('click', load);
   $('infWindow')?.addEventListener('change', load);
   $('periodSelect')?.addEventListener('change', applyChatLaneCollapse);
+  $('refreshBtn')?.addEventListener('click', applyChatLaneCollapse);
+  document.addEventListener('analytics:show-chat-lane', showChatLane);
   load();
 }
 

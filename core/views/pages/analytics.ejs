@@ -24,7 +24,7 @@
                     <option value="14">Last 14 days</option>
                     <option value="30">Last 30 days</option>
                 </select>
-                <button id="refreshBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
+                <button type="button" id="refreshBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
             </div>
         </header>
 
@@ -45,7 +45,7 @@
                             <option value="30d">Last 30 days</option>
                             <option value="90d">Last 90 days</option>
                         </select>
-                        <button id="infRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
+                        <button type="button" id="infRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
                     </div>
@@ -135,7 +135,7 @@
                 </div>
                 <div class="section-body">
                     <div class="chart-container">
-                        <canvas id="infDailyChart"></canvas>
+                        <canvas id="infDailyChart" role="img" aria-label="Daily inference calls chart"></canvas>
                     </div>
                     <div class="chart-empty" id="infDailyEmpty" style="display: none;">No inference recorded in this window.</div>
                 </div>
@@ -226,10 +226,10 @@
                 <div class="value" id="totalMessages">—</div>
                 <div class="sub">Messages observed in this window</div>
             </div>
-            <div class="stat-card" data-tooltip="Number and percentage of conversations that received positive feedback (thumbs up). Sample size matters for confidence.">
+            <div class="stat-card" data-tooltip="Thumbs-up message votes and their share of all message votes in this period. Sample size matters for confidence.">
                 <div class="label">Positive Feedback</div>
                 <div class="value"><span id="positiveFeedback">—</span> <small id="positiveRate" style="font-size: 14px; color: var(--muted);"></small></div>
-                <div class="sub"><span id="feedbackSampleSize">—</span> total feedback</div>
+                <div class="sub"><span id="feedbackSampleSize">—</span> message votes</div>
             </div>
             <div class="stat-card" data-tooltip="Share of conversations that used RAG (Retrieval-Augmented Generation). Shown with its sample size; fewer than 5 conversations is flagged as a low sample, and no conversation means Not observed rather than 0%.">
                 <div class="label">RAG Adoption</div>
@@ -272,7 +272,7 @@
                             Verified outcomes per unit of tokens, inference time, cost, and human intervention.
                         </div>
                     </div>
-                    <button id="effectivenessRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
+                    <button type="button" id="effectivenessRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
                         <i class="fas fa-sync-alt"></i> Refresh
                     </button>
                 </div>
@@ -346,16 +346,20 @@
             function number(value){ return value == null ? '—' : Number(value).toLocaleString(undefined, { maximumFractionDigits: 1 }); }
             function pct(value){ return value == null ? '—' : Number(value).toFixed(1) + '%'; }
             function usd(value){ return value == null ? '—' : '$' + Number(value).toFixed(value < 0.01 ? 4 : 2); }
-            function label(value){ return String(value || 'other').replace(/-/g, ' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); }); }
+            function esc(value){ return String(value == null ? '' : value).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
+            function label(value){ return esc(String(value || 'other').replace(/-/g, ' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); })); }
             function effectivenessWindow(){
                 var days = document.getElementById('periodSelect')?.value || '7';
                 return ['7','14','30'].includes(days) ? days + 'd' : '7d';
             }
+            var effectivenessSeq = 0;
             async function loadEffectiveness(){
                 var signal = document.getElementById('effectivenessSignal');
+                var seq = ++effectivenessSeq;
                 try {
-                    var response = await fetch('/api/analytics/effectiveness?window=' + encodeURIComponent(effectivenessWindow()));
+                    var response = await fetch('/api/analytics/effectiveness?window=' + encodeURIComponent(effectivenessWindow()), { signal: AbortSignal.timeout(30000) });
                     var data = await response.json();
+                    if (seq !== effectivenessSeq) return;
                     if (!response.ok || !data.ok) throw new Error(data.message || 'Effectiveness API unavailable');
                     var summary = data.summary || {};
                     var waste = data.waste || {};
@@ -368,7 +372,7 @@
                     };
                     signal.innerHTML = '<strong>' + (signalLabels[data.signal?.signal] || label(data.signal?.signal)) + '</strong>' +
                         ' <span style="color:var(--muted);">(' + label(data.signal?.confidence) + ' confidence)</span> — ' +
-                        (data.signal?.message || '');
+                        esc(data.signal?.message || '');
                     document.getElementById('effProductive').textContent = number(summary.productiveOutcomes);
                     document.getElementById('effVerifiedSub').textContent = number(summary.verifiedOutcomes) + ' verified / ' + number(summary.reportedOutcomes) + ' reported';
                     document.getElementById('effAttribution').textContent = pct(summary.attributionCoveragePct);
@@ -412,12 +416,13 @@
                         number(waste.reworkedOutcomes) + ' reworked outcomes, and ' + number(waste.unattributedTokens) +
                         ' inference tokens not linked to an outcome (' + pct(waste.unattributedTokenPct) + ').';
                     document.getElementById('effectivenessCoverage').textContent =
-                        coverage.explicitOutcomes + ' explicit outcome reports + ' + coverage.pipelineDerivedOutcomes +
-                        ' operator-verified pipeline outcomes. Samples — first pass: ' + coverage.firstPassSampleSize +
-                        ', rework: ' + coverage.reworkSampleSize + ', cost: ' + coverage.costSampleSize +
-                        ', human intervention: ' + coverage.humanInterventionSampleSize + '. ' + coverage.usageAttribution;
+                        number(coverage.explicitOutcomes) + ' explicit outcome reports + ' + number(coverage.pipelineDerivedOutcomes) +
+                        ' operator-verified pipeline outcomes. Samples — first pass: ' + number(coverage.firstPassSampleSize) +
+                        ', rework: ' + number(coverage.reworkSampleSize) + ', cost: ' + number(coverage.costSampleSize) +
+                        ', human intervention: ' + number(coverage.humanInterventionSampleSize) + '. ' + (coverage.usageAttribution || '');
                 } catch (error) {
-                    signal.innerHTML = '<strong>Effectiveness unavailable</strong> — ' + error.message;
+                    if (seq !== effectivenessSeq) return;
+                    signal.innerHTML = '<strong>Effectiveness unavailable</strong> — ' + esc(error.message);
                     document.getElementById('effectivenessRuntimeBody').innerHTML = '<tr><td colspan="7" style="padding:12px;text-align:center;color:var(--muted);">Unable to load effectiveness telemetry.</td></tr>';
                 }
             }
@@ -442,7 +447,7 @@
                 </div>
                 <div class="section-body">
                     <div class="chart-container">
-                        <canvas id="usageChart"></canvas>
+                        <canvas id="usageChart" role="img" aria-label="Usage chart"></canvas>
                     </div>
                     <div class="chart-empty" id="usageEmpty">No usage data for this period.</div>
                 </div>
@@ -455,7 +460,7 @@
                 <div class="section-body">
                     <div class="rag-grid">
                         <div class="rag-donut-wrap">
-                            <canvas id="ragDonut"></canvas>
+                            <canvas id="ragDonut" role="img" aria-label="RAG adoption chart"></canvas>
                             <div class="donut-center" id="ragDonutLabel">—</div>
                         </div>
                         <div class="rag-stats">
@@ -497,7 +502,7 @@
                 </div>
                 <div class="section-body">
                     <div class="chart-container">
-                        <canvas id="feedbackChart"></canvas>
+                        <canvas id="feedbackChart" role="img" aria-label="Feedback chart"></canvas>
                     </div>
                     <div class="chart-empty" id="feedbackEmpty">No feedback captured in this window.</div>
                 </div>
@@ -517,7 +522,7 @@
                 </div>
                 <div class="section-body">
                     <div class="chart-container">
-                        <canvas id="costTrendChart"></canvas>
+                        <canvas id="costTrendChart" role="img" aria-label="Cost trend chart"></canvas>
                     </div>
                     <div class="chart-empty" id="costTrendEmpty" style="display: none;">No cost data for this period.</div>
                 </div>
@@ -530,7 +535,7 @@
                 <div class="section-header">
                     <h2><i class="fas fa-table"></i> Cost Efficiency by Model</h2>
                     <div style="display: flex; gap: 8px;">
-                        <button id="efficiencyRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
+                        <button type="button" id="efficiencyRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
                     </div>
@@ -598,10 +603,10 @@
                     </div>
                 </div>
                 <div class="section-body">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start;">
+                    <div id="costBreakdownGrid" class="analytics-split" style="gap: 20px; align-items: start;">
                         <div style="position: relative;">
                             <div class="chart-container" style="position: relative; height: 300px;">
-                                <canvas id="costBreakdownChart"></canvas>
+                                <canvas id="costBreakdownChart" role="img" aria-label="Cost breakdown chart"></canvas>
                             </div>
                         </div>
                         <div id="costBreakdownStats" style="display: flex; flex-direction: column; gap: 8px;">
@@ -621,10 +626,10 @@
                 <div class="section-header">
                     <h2><i class="fas fa-cubes"></i> RAG Vector Store Metrics</h2>
                     <div style="display: flex; gap: 8px;">
-                        <button id="toggleRagHelp" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
+                        <button type="button" id="toggleRagHelp" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
                             <i class="fas fa-question-circle"></i> Help
                         </button>
-                        <button id="refreshRagBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
+                        <button type="button" id="refreshRagBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
                     </div>
@@ -657,7 +662,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <button type="button" id="closeRagHelp" aria-label="Close RAG help" style="background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 0; width: 24px; height: 24px;">x</button>
+                            <button type="button" id="closeRagHelp" aria-label="Close RAG help" style="background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 0; width: 24px; height: 24px;"><span aria-hidden="true">&times;</span></button>
                         </div>
                     </div>
 
@@ -763,7 +768,7 @@
                             <option value="30d">Last 30d</option>
                             <option value="all">All time</option>
                         </select>
-                        <button id="federatedRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
+                        <button type="button" id="federatedRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
                     </div>
@@ -777,7 +782,7 @@
                     </div>
 
                     <!-- Two columns: local (left) + providers (right) -->
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="analytics-split" style="gap: 16px;">
                         <!-- Local bucket -->
                         <div style="border: 1px solid var(--panel-border); border-radius: 8px; padding: 14px; background: rgba(124, 240, 255, 0.04);">
                             <h3 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px;">
@@ -827,7 +832,7 @@
                                         <tr>
                                             <th style="padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--panel-border);">Model</th>
                                             <th style="padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--panel-border);">Provider</th>
-                                            <th style="padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Sessions</th>
+                                            <th style="padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Calls</th>
                                             <th style="padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Tokens</th>
                                             <th style="padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Cost</th>
                                         </tr>
@@ -861,25 +866,50 @@
                 }
                 return;
             }
+            function esc(v){ return String(v).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
             function fmtNum(n){ if(n==null) return '—'; return Number(n).toLocaleString(); }
             function fmtUsdOrUnpriced(v){ return Number.isFinite(v) ? fmtUsd(v) : 'unpriced'; }
                 function fmtUsd(n){ if(n==null) return '—'; return '$' + Number(n).toFixed(4); }
+            let federatedSeq = 0;
+            function errorRow(cols, text){
+                return '<tr><td colspan="' + cols + '" style="padding:12px;text-align:center;color:var(--danger);">' + text + '</td></tr>';
+            }
+            function showFederatedError(){
+                ['fedLocalConvs', 'fedLocalMsgs', 'fedLocalTokens', 'fedLocalCost', 'fedMcSessions', 'fedMcTokens', 'fedMcSpend', 'fedMcAsOf'].forEach(function(id){
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = '—';
+                });
+                document.getElementById('fedLocalTableBody').innerHTML = errorRow(4, 'Could not load local inference. Try Refresh.');
+                document.getElementById('fedMcTableBody').innerHTML = errorRow(5, 'Could not load provider telemetry. Try Refresh.');
+            }
             async function loadFederated(){
                 const win = document.getElementById('federatedWindowSelect').value;
+                const seq = ++federatedSeq;
                 let payload;
                 try {
-                    const r = await fetch('/api/analytics/federated?window=' + encodeURIComponent(win));
+                    const r = await fetch('/api/analytics/federated?window=' + encodeURIComponent(win), { signal: AbortSignal.timeout(30000) });
+                    if (!r.ok) throw new Error('Request failed: ' + r.status);
                     payload = await r.json();
                 } catch(err){
+                    if (seq !== federatedSeq) return;
                     console.error('Federated fetch failed', err);
+                    showFederatedError();
                     return;
                 }
+                if (seq !== federatedSeq) return;
                 const banner = document.getElementById('federatedMcBanner');
                 if (payload.provider_status !== 'ok') { banner.style.display = 'block'; }
                 else { banner.style.display = 'none'; }
 
-                // Local
+                // Local: a failed aggregation is unknown, not zero inference.
+                if (!payload.local && payload.local_error) {
+                    ['fedLocalConvs', 'fedLocalMsgs', 'fedLocalTokens', 'fedLocalCost'].forEach(function(id){
+                        document.getElementById(id).textContent = '—';
+                    });
+                    document.getElementById('fedLocalTableBody').innerHTML = errorRow(4, 'Local inference telemetry unavailable.');
+                }
                 const local = payload.local || { totals: {}, byModel: [] };
+                if (payload.local || !payload.local_error) {
                 const lt = local.totals || {};
                 document.getElementById('fedLocalConvs').textContent = fmtNum(lt.calls);
                 document.getElementById('fedLocalMsgs').textContent = fmtNum(lt.models);
@@ -890,7 +920,7 @@
                 if (Array.isArray(local.byModel) && local.byModel.length){
                     lbody.innerHTML = local.byModel.slice(0, 20).map(function(r){
                         return '<tr>' +
-                            '<td style="padding:6px 8px;border-bottom:1px solid var(--panel-border);">' + (r.model||'—') + '</td>' +
+                            '<td style="padding:6px 8px;border-bottom:1px solid var(--panel-border);">' + esc(r.model||'—') + '</td>' +
                             '<td style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + fmtNum(r.calls) + '</td>' +
                             '<td style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + fmtNum(r.totalTokens) + '</td>' +
                             '<td style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + ((r.inferenceSeconds || 0) / 3600).toFixed(2) + 'h</td>' +
@@ -898,6 +928,7 @@
                     }).join('');
                 } else {
                     lbody.innerHTML = '<tr><td colspan="4" style="padding:12px;text-align:center;color:var(--muted);">No local inference in this window.</td></tr>';
+                }
                 }
 
                 // Providers routed through AgentX
@@ -911,8 +942,8 @@
                     if (Array.isArray(provider.byModel) && provider.byModel.length){
                         mbody.innerHTML = provider.byModel.slice(0, 20).map(function(r){
                             return '<tr>' +
-                                '<td style="padding:6px 8px;border-bottom:1px solid var(--panel-border);">' + (r.model||'—') + '</td>' +
-                                '<td style="padding:6px 8px;border-bottom:1px solid var(--panel-border);">' + (r.provider||'—') + '</td>' +
+                                '<td style="padding:6px 8px;border-bottom:1px solid var(--panel-border);">' + esc(r.model||'—') + '</td>' +
+                                '<td style="padding:6px 8px;border-bottom:1px solid var(--panel-border);">' + esc(r.provider||'—') + '</td>' +
                                 '<td style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + fmtNum(r.sessions) + '</td>' +
                                 '<td style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + fmtNum(r.totalTokens) + '</td>' +
                                 '<td style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + fmtUsdOrUnpriced(r.estimatedSpendUsd) + '</td>' +
