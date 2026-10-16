@@ -101,7 +101,7 @@
             </div>
             <div class="section-body">
                 <div class="chart-container">
-                    <canvas id="latencyTrendsChart"></canvas>
+                    <canvas id="latencyTrendsChart" role="img" aria-label="Latency trend chart"></canvas>
                 </div>
                 <div class="chart-empty" id="latencyTrendsEmpty">No latency data available for this time range.</div>
             </div>
@@ -120,7 +120,7 @@
             </div>
             <div class="section-body">
                 <div class="chart-container">
-                    <canvas id="throughputChart"></canvas>
+                    <canvas id="throughputChart" role="img" aria-label="Throughput trend chart"></canvas>
                 </div>
                 <div class="chart-empty" id="throughputEmpty">No throughput data available for this time range.</div>
             </div>
@@ -216,8 +216,8 @@
 
     <!-- Create Baseline Modal -->
     <div class="modal-overlay" id="createBaselineModal">
-        <div class="modal">
-            <h2>Create Performance Baseline</h2>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="createBaselineTitle">
+            <h2 id="createBaselineTitle">Create Performance Baseline</h2>
             <form id="createBaselineForm">
                 <div class="form-group">
                     <label for="baselineName">Baseline Name *</label>
@@ -247,8 +247,8 @@
 
     <!-- Import Load Test Modal -->
     <div class="modal-overlay" id="importTestModal">
-        <div class="modal">
-            <h2>Import Load Test Results</h2>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="importTestTitle">
+            <h2 id="importTestTitle">Import Load Test Results</h2>
             <form id="importTestForm">
                 <div class="form-group">
                     <label for="testFile">Artillery JSON Report *</label>

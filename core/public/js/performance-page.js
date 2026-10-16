@@ -161,6 +161,12 @@
                     this.createBaseline();
                 });
 
+                // Escape closes an open dialog
+                document.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Escape') return;
+                    document.querySelectorAll('.modal-overlay.active').forEach(overlay => overlay.classList.remove('active'));
+                });
+
                 // Close modals on overlay click
                 document.querySelectorAll('.modal-overlay').forEach(overlay => {
                     overlay.addEventListener('click', (e) => {
