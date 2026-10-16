@@ -46,6 +46,12 @@ function list(value, field, max, map) {
 // Optional structured deadline: `dueDate` (YYYY-MM-DD) and `recurrence`. Core alerts
 // from dueDate; an item stays on the alerts until its dueDate is moved forward.
 const RECURRENCES = ['monthly', 'quarterly', 'yearly'];
+const GOAL_SOURCES = ['account', 'asset', 'tag'];
+
+function goalSource(value, field) {
+  if (!GOAL_SOURCES.includes(value)) throw new FinancePlanError(`${field} must be one of ${GOAL_SOURCES.join(', ')}`);
+  return value;
+}
 
 function dueDate(value, field) {
   const date = String(value ?? '').trim();
@@ -110,6 +116,10 @@ function cleanPlan(input = {}) {
       briefLabel: text(item.briefLabel, 60) || null,
       dueDate: dueDate(item.dueDate, `${field}.dueDate`), recurrence: recurrence(item.recurrence, `${field}.recurrence`) })),
     // Statement series (issuer and last four) named for the alerts; `closed` series raise no stale or dormant alert.
+    // A goal's progress comes from a ledger account, a plan asset, or the sum of a tag; `ref` names it.
+    goals: list(input.goals, 'goals', 20, (item, field) => ({ name: text(item.name, 80), targetCents: cents(item.targetCents, `${field}.targetCents`, { optional: false }),
+      targetDate: dueDate(item.targetDate, `${field}.targetDate`), priority: ['high', 'medium', 'low'].includes(item.priority) ? item.priority : 'medium',
+      source: { kind: goalSource(item.source?.kind, `${field}.source.kind`), ref: text(item.source?.ref, 80) } })),
     seriesStatus: list(input.seriesStatus, 'seriesStatus', 60, (item) => ({ series: text(item.series, 80), label: text(item.label, 80),
       closed: item.closed === true, note: text(item.note, 200) })),
     taxRoom: list(input.taxRoom, 'taxRoom', 10, (item, field) => ({ name: text(item.name, 40),
@@ -129,7 +139,7 @@ async function savePlan(input) {
 }
 
 const SECTIONS = ['phase', 'excludeTags', 'budget', 'debts', 'credit', 'provisions', 'assets', 'milestones',
-  'openItems', 'allocations', 'watch', 'taxRoom', 'seriesStatus'];
+  'openItems', 'allocations', 'watch', 'taxRoom', 'seriesStatus', 'goals'];
 
 // Replaces one section (the page editor saves a whole table at once).
 async function saveSection(section, value) {

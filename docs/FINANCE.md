@@ -83,6 +83,17 @@ purchases as income.
   label. A watch or open item may set `briefLabel` to choose its wording; without
   it, the label is cut before a dash, parenthesis or colon, then at 50 characters
   on a word boundary. The missing-history count is not in the brief.
+- `GET /api/finance/goals`: savings goals from the plan section `goals`. Progress
+  comes from a ledger account (`source.kind: account`, its balance), an asset of
+  the plan (`asset`), or the sum of a tag (`tag`, money set aside counts as
+  progress). The pace is the average of the last three complete months (a month
+  without a payroll statement is left out); the projected month, the monthly
+  amount the target date needs, and a status (`reached`, `on_track`, `behind`,
+  `no_pace`) are computed by Core. Goals are shown as bars at the top of
+  "My situation".
+- `GET /api/finance/review/monthly`: the last complete month planned against
+  actual by category, the three largest overspends, and the goals. The Comptable
+  uses it for the monthly review.
 - Scheduled agent jobs (instance configuration): daily alert check (silent
   with `NO_REPLY` when nothing is new) and a weekly review.
 
