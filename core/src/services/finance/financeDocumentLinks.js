@@ -17,31 +17,47 @@ const BEFORE_DAYS = 3;
 const AFTER_DAYS = 10;
 const MAX_CANDIDATES = 5;
 const DEFAULT_THRESHOLD_CENTS = 10000;
-const STATEMENT_KIND = /relev/i;
 const CLAIM_KINDS = ['claim', 'remit_advice'];
+// Statements are read by the owner, never matched to rows.
+const NOT_MATCHED_KINDS = ['bank_statement', 'insurance_statement'];
 const SETTLED = new Set(['paid', 'reimbursed', 'settled', 'regle']);
 const GENERIC = new Set(['inc', 'ltee', 'ltd', 'canada', 'services', 'compagnie', 'groupe', 'magasin']);
+const GOVERNMENT = ['revenu quebec', 'agence du revenu', 'canada revenue', 'gouvernement', 'ministere', 'retraite quebec'];
+const HEALTH = ['clinique', 'pharmac', 'dentaire', 'dentist', 'optom', 'physio', 'medic', 'hopital', 'laboratoire', 'chiro', 'psycho', 'orthophon'];
+const HEALTH_CATEGORY = 'Santé';
+const DEFAULT_CLAIM_MAX_CENTS = 500000;
 const TRANSFERS = 'Virements internes';
 
 const dayOf = (date) => Date.parse(`${date}T00:00:00Z`) / DAY_MS;
 const dayString = (day) => new Date(day * DAY_MS).toISOString().slice(0, 10);
 const fold = (value) => String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const transactionKey = (row) => [row.accountKey, row.date, row.fingerprint, row.occurrence].join('|');
+const includesAny = (text, words) => words.some((word) => fold(text).includes(word));
+const claimMaxCents = () => Number.parseInt(process.env.FINANCE_DOCUMENT_CLAIM_MAX_CENTS, 10) || DEFAULT_CLAIM_MAX_CENTS;
 
 function supplierTokens(supplier) {
   return fold(supplier).split(/[^a-z0-9]+/).filter((token) => token.length >= 4 && !GENERIC.has(token));
 }
 
-const isStatement = (doc) => STATEMENT_KIND.test(doc.documentKind);
-const isMatchable = (doc) => doc.amountCents != null && Boolean(doc.documentDate) && !isStatement(doc);
-const isClaim = (doc) => !isStatement(doc) && (CLAIM_KINDS.includes(doc.documentKind) || doc.patientPaidCents != null);
+const isMatchable = (doc) => doc.amountCents != null && Boolean(doc.documentDate) && !NOT_MATCHED_KINDS.includes(doc.kind);
+const isSettled = (doc) => SETTLED.has(fold(doc.reimbursementStatus));
+const isGovernment = (doc) => doc.kind === 'tax' || includesAny(doc.supplier, GOVERNMENT);
+// Health and insurance only: an insurer, a claim or remittance, a health supplier, or a row categorized as health.
+const isHealthOrInsurance = (doc, category) => Boolean(doc.insurer) || CLAIM_KINDS.includes(doc.kind)
+  || includesAny(doc.supplier, HEALTH) || category === HEALTH_CATEGORY;
+// A figure the register cannot be trusted with: above the ceiling, or inconsistent with the gross amount.
+function suspicious(doc) {
+  const { amountCents: amount, grossAmountCents: gross, patientPaidCents: patient } = doc;
+  if (amount > claimMaxCents()) return true;
+  return gross != null && gross > 0 && (amount > gross * 2 || (patient != null && patient > gross));
+}
 
 // Outgoing personal rows of the document window, indexed by amount in cents.
 async function rowsByAmount(documents) {
   const days = documents.map((doc) => dayOf(doc.documentDate));
   const rows = await FinanceTransaction.find({ ...ledgerFilter('perso'), flowCents: { $lt: 0 },
     date: { $gte: dayString(Math.min(...days) - BEFORE_DAYS), $lte: dayString(Math.max(...days) + AFTER_DAYS) } })
-    .select('accountKey date description flowCents fingerprint occurrence').lean();
+    .select('accountKey date description flowCents fingerprint occurrence category').lean();
   const byAmount = new Map();
   for (const row of rows) {
     const list = byAmount.get(-row.flowCents) || [];
@@ -70,8 +86,8 @@ function desiredLinks(documents, byAmount, confirmedDocs) {
       links.set(`${doc.id}|${transactionKey(row)}`, {
         documentId: doc.id, transactionKey: transactionKey(row), ambiguous: !confident,
         document: { supplier: doc.supplier, documentNumber: doc.documentNumber, documentDate: doc.documentDate,
-          documentKind: doc.documentKind, amountCents: doc.amountCents, originalFilename: doc.originalFilename },
-        transaction: { accountKey: row.accountKey, date: row.date, description: row.description, flowCents: row.flowCents }
+          kind: doc.kind, amountCents: doc.amountCents, originalFilename: doc.originalFilename },
+        transaction: { accountKey: row.accountKey, date: row.date, description: row.description, flowCents: row.flowCents, category: row.category || null }
       });
     }
   }
@@ -97,9 +113,20 @@ async function syncLinks(documents) {
 
 const summarize = (docs) => ({ count: docs.length, totalCents: docs.reduce((sum, doc) => sum + (doc.amountCents || 0), 0) });
 
-// What the owner sees: proposals to confirm, confirmed pairs, documents without a
-// transaction, big outflows without a document, the claims still to file, and the
-// bank statements found in mail (listed, never ingested).
+// Proposals the match left ambiguous, grouped by document, each with its candidate rows.
+function groupAmbiguous(links) {
+  const groups = new Map();
+  for (const link of links.filter((item) => item.status === 'proposed' && item.ambiguous)) {
+    const group = groups.get(link.documentId) || { documentId: link.documentId, document: link.document, candidates: [] };
+    group.candidates.push({ id: String(link._id), transaction: link.transaction });
+    groups.set(link.documentId, group);
+  }
+  return [...groups.values()];
+}
+
+// What the owner sees: confident proposals, ambiguous ones grouped by document, confirmed pairs,
+// documents without a transaction, big outflows without a document, health and insurance claims still
+// to file (figures that look wrong go to toVerify and out of the totals), and bank statements found in mail.
 async function documents({ minCents } = {}) {
   const register = await loadRegister();
   if (register.status !== 'ok') return { status: register.status, generatedAt: null };
@@ -110,27 +137,33 @@ async function documents({ minCents } = {}) {
   const links = await FinanceDocumentLink.find({ status: { $in: ['proposed', 'confirmed'] } }).sort({ createdAt: -1 }).limit(500).lean();
   const linkedDocs = new Set(links.map((link) => link.documentId));
   const linkedRows = new Set(links.map((link) => link.transactionKey));
+  const categoryOf = new Map(links.map((link) => [link.documentId, link.transaction?.category || null]));
   const present = (link) => ({ id: String(link._id), status: link.status, ambiguous: link.ambiguous,
     document: link.document, transaction: link.transaction });
+  const newestFirst = (a, b) => (b.documentDate || '').localeCompare(a.documentDate || '');
 
-  const documentsToLink = invoices.filter((doc) => isMatchable(doc) && !linkedDocs.has(doc.id))
-    .sort((a, b) => b.documentDate.localeCompare(a.documentDate));
+  const documentsToLink = invoices.filter((doc) => isMatchable(doc) && !linkedDocs.has(doc.id)).sort(newestFirst);
   const unlinked = await FinanceTransaction.find({ ...ledgerFilter('perso'), flowCents: { $lte: -threshold }, category: { $ne: TRANSFERS } })
     .sort({ date: -1 }).limit(300).select('accountKey date description flowCents fingerprint occurrence').lean();
-  const claims = invoices.filter((doc) => isClaim(doc) && (doc.insurancePaidCents == null || !SETTLED.has(fold(doc.reimbursementStatus))))
-    .sort((a, b) => (b.documentDate || '').localeCompare(a.documentDate || ''));
-  const statements = invoices.filter(isStatement).sort((a, b) => (b.documentDate || '').localeCompare(a.documentDate || ''));
+  const claimable = invoices.filter((doc) => !isGovernment(doc) && isHealthOrInsurance(doc, categoryOf.get(doc.id))
+    && (CLAIM_KINDS.includes(doc.kind) || doc.patientPaidCents != null || doc.insurer)
+    && (doc.insurancePaidCents == null || !isSettled(doc))).sort(newestFirst);
+  const claims = claimable.filter((doc) => !suspicious(doc));
+  const toVerify = claimable.filter(suspicious);
+  const statements = invoices.filter((doc) => doc.kind === 'bank_statement').sort(newestFirst);
 
   return {
     status: 'ok',
     generatedAt: register.generatedAt,
     complete: register.complete,
-    proposals: links.filter((link) => link.status === 'proposed').map(present),
+    proposals: links.filter((link) => link.status === 'proposed' && !link.ambiguous).map(present),
+    ambiguous: groupAmbiguous(links),
     confirmed: links.filter((link) => link.status === 'confirmed').map(present),
     unmatchedDocuments: { ...summarize(documentsToLink), items: documentsToLink.slice(0, 100) },
     unlinkedTransactions: { thresholdCents: threshold, items: unlinked.filter((row) => !linkedRows.has(transactionKey(row)))
       .slice(0, 100).map(({ _id, ...row }) => ({ id: String(_id), ...row, transactionKey: transactionKey(row) })) },
-    toClaim: { ...summarize(claims), items: claims.slice(0, 100) },
+    toClaim: { ...summarize(claims), maxCents: claimMaxCents(), items: claims.slice(0, 100) },
+    toVerify: { count: toVerify.length, maxCents: claimMaxCents(), items: toVerify.slice(0, 100) },
     statements: { count: statements.length, items: statements.slice(0, 100) }
   };
 }

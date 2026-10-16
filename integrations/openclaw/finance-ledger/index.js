@@ -37,8 +37,10 @@ export default definePluginEntry({
           + "excludeCategory 'Virements internes' removes transfers between the owner's accounts; "
           + "statements = ingested statements and any that need review; "
           + "documents = the Secretary's invoices matched to ledger rows: proposals (to confirm), confirmed pairs, documents without "
-          + "a transaction, big outflows without a document (thresholdCents), claims still to file (toClaim, quote its totals as given), "
-          + "and bank statements found in mail (statements, to be filed by the owner, never ingested). If nothing matches, say so; never estimate.",
+          + "a transaction, big outflows without a document (thresholdCents), ambiguous matches (grouped: one document, several candidate rows, "
+          + "the owner picks one), health and insurance claims still to file (toClaim, quote its totals as given), figures that look wrong "
+          + "(toVerify, outside every total: say they need checking), and bank statements found in mail (statements, to be filed by the owner, "
+          + "never ingested). If nothing matches, say so; never estimate.",
         parameters: {
           type: "object",
           properties: {

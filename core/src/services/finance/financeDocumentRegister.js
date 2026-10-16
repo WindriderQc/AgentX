@@ -7,9 +7,34 @@
 const { createHash } = require('crypto');
 const fs = require('fs/promises');
 
-const SUPPORTED_SCHEMA = 2;
+// Schema 2 has no `kind`: Core classifies the free-text documentKind itself. Schema 3 adds it from the producer.
+const SUPPORTED_SCHEMAS = [2, 3];
+const KINDS = ['invoice', 'receipt', 'payment_proof', 'claim', 'remit_advice', 'quote', 'bank_statement', 'insurance_statement', 'tax', 'other'];
 const MAX_BYTES = 20 * 1024 * 1024;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+const fold = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const hasAny = (text, words) => words.some((word) => text.includes(word));
+
+// Same rules as the Secretary producer (document_kind): statements first, since their labels name invoices.
+function documentKindOf(label) {
+  const t = fold(label);
+  if (t.includes('relev') || t.includes('statement')) {
+    if (hasAny(t, ['assur', 'insur'])) return 'insurance_statement';
+    if (hasAny(t, ['fiscal', 'tax', 'impot', 'revenu'])) return 'tax';
+    if (hasAny(t, ['bancaire', 'bank', 'compte', 'account', 'carte', 'card'])) return 'bank_statement';
+    return 'other';
+  }
+  if (hasAny(t, ['remit', 'avis de paiement'])) return 'remit_advice';
+  if (hasAny(t, ['claim', 'reclamation'])) return 'claim';
+  if (hasAny(t, ['preuve', 'payment proof', 'virement', 'interac'])) return 'payment_proof';
+  if (hasAny(t, ['soumission', 'devis', 'quote', 'estimate'])) return 'quote';
+  if (hasAny(t, ['fiscal', 'tax', 'impot', 'annexe'])) return 'tax';
+  if (hasAny(t, ['assurance', 'insurance'])) return 'insurance_statement';
+  if (hasAny(t, ['recu', 'receipt'])) return 'receipt';
+  if (hasAny(t, ['facture', 'invoice'])) return 'invoice';
+  return 'other';
+}
 
 function text(value, max = 160) {
   return String(value ?? '').replace(/[\p{Cc}\p{Cf}]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -30,7 +55,9 @@ function normalize(raw) {
     supplier: text(raw.supplier, 120),
     documentNumber: text(raw.documentNumber, 80) || null,
     documentDate,
-    documentKind: text(raw.documentKind, 60).toLowerCase() || 'unknown',
+    // The closed kind; the producer's kind when valid, else Core's reading of the original label.
+    kind: KINDS.includes(raw.kind) ? raw.kind : documentKindOf(raw.documentKind),
+    documentKindRaw: text(raw.documentKind, 80) || null,
     person: text(raw.person, 60) || null,
     // What left the owner's pocket: the patient's share when the register has it, else the gross amount.
     amountCents: patientPaidCents ?? grossAmountCents,
@@ -59,7 +86,7 @@ async function loadRegister(file = process.env.FINANCE_SECRETARY_REGISTER) {
   } catch {
     return { status: 'invalid', invoices: [] };
   }
-  if (data?.schemaVersion !== SUPPORTED_SCHEMA || !Array.isArray(data.invoices)) return { status: 'invalid', invoices: [] };
+  if (!SUPPORTED_SCHEMAS.includes(data?.schemaVersion) || !Array.isArray(data.invoices)) return { status: 'invalid', invoices: [] };
   return {
     status: 'ok',
     generatedAt: text(data.generatedAt, 40) || null,
@@ -68,4 +95,4 @@ async function loadRegister(file = process.env.FINANCE_SECRETARY_REGISTER) {
   };
 }
 
-module.exports = { loadRegister, normalize, SUPPORTED_SCHEMA };
+module.exports = { loadRegister, normalize, documentKindOf, KINDS, SUPPORTED_SCHEMAS };

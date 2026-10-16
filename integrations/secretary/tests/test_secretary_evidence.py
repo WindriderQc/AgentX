@@ -185,7 +185,7 @@ class EvidenceTests(unittest.TestCase):
     def test_register_gives_accounting_iso_currency_cents_and_unexplained_difference(self):
         archive, _ = self.invoice_archive([{"documentNumber": "A1", "grossAmount": 142.5, "patientPaid": 62, "currency": "$"}])
         register = module.load(archive.root / "invoice-register.json")
-        self.assertEqual(register["schemaVersion"], 2)
+        self.assertEqual(register["schemaVersion"], 3)
         self.assertFalse(register["complete"])
         self.assertEqual(register["coverage"]["collectedThreads"], 1)
         row = register["invoices"][0]
@@ -425,6 +425,18 @@ class EvidenceTests(unittest.TestCase):
             archive.collect_thread("thread01")
             self.assertEqual(archive.native_next()["page"]["messageId"], "message2")
             self.assertEqual(archive.native_status()["pendingTextPages"], 1)
+
+
+class DocumentKindTests(unittest.TestCase):
+    def test_free_text_labels_map_to_the_closed_set(self):
+        cases = {"reçu": "receipt", "facture dentaire": "invoice",
+                 "preuve de paiement (virement interac accepté)": "payment_proof",
+                 "relevé bancaire (pas une facture...)": "bank_statement",
+                 "bank statement (relevé de compte)": "bank_statement",
+                 "relevé d'assurance": "insurance_statement", "annexe fiscale": "tax",
+                 "Remit advice": "remit_advice", "claim": "claim", "mystère": "other"}
+        for text, kind in cases.items():
+            self.assertEqual(module.document_kind(text), kind, text)
 
 
 if __name__ == "__main__":

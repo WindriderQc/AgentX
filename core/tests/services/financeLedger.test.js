@@ -610,15 +610,20 @@ describe('Secretary documents matched to ledger rows', () => {
   const links = require('../../src/services/finance/financeDocumentLinks');
   const FinanceDocumentLink = require('../../models/FinanceDocumentLink');
   const previous = process.env.FINANCE_SECRETARY_REGISTER;
+  const previousMax = process.env.FINANCE_DOCUMENT_CLAIM_MAX_CENTS;
 
-  // Synthetic register (schema v2): one invoice per case, all invented.
+  // Synthetic register (schema v2, free-text kinds): every name and figure is invented.
   const invoices = [
-    { supplier: 'Clinique Exemple', documentNumber: 'F-1', documentDate: '2026-06-10', documentKind: 'invoice', grossAmountCents: 15000, messageId: 'm1' },
-    { supplier: 'Pharmacie Exemple', documentNumber: 'F-2', documentDate: '2026-06-20', documentKind: 'receipt', grossAmountCents: 4200, messageId: 'm2' },
-    { supplier: 'Boutique Exemple', documentNumber: 'F-3', documentDate: '2026-06-25', documentKind: 'invoice', grossAmountCents: 9000, messageId: 'm3' },
-    { supplier: 'Vrac Exemple', documentNumber: 'F-4', documentDate: '2026-06-01', documentKind: 'invoice', grossAmountCents: 123, messageId: 'm4' },
+    { supplier: 'Clinique Exemple', documentNumber: 'F-1', documentDate: '2026-06-10', documentKind: 'facture dentaire', grossAmountCents: 15000, messageId: 'm1' },
+    { supplier: 'Pharmacie Exemple', documentNumber: 'F-2', documentDate: '2026-06-20', documentKind: 'reçu', grossAmountCents: 4200, messageId: 'm2' },
+    { supplier: 'Boutique Exemple', documentNumber: 'F-3', documentDate: '2026-06-25', documentKind: 'facture', grossAmountCents: 9000, messageId: 'm3' },
+    { supplier: 'Vrac Exemple', documentNumber: 'F-4', documentDate: '2026-06-01', documentKind: 'facture', grossAmountCents: 123, messageId: 'm4' },
     { supplier: 'Banque Exemple', documentNumber: 'R-6', documentDate: '2026-06-30', documentKind: 'relevé mensuel bancaire', messageId: 'm5', originalFilename: 'releve-juin.pdf' },
-    { supplier: 'Assureur Exemple', documentNumber: 'C-7', documentDate: '2026-06-15', documentKind: 'claim', patientPaidCents: 5000, messageId: 'm6' }
+    { supplier: 'Assureur Exemple', documentNumber: 'C-7', documentDate: '2026-06-15', documentKind: 'claim', patientPaidCents: 5000, messageId: 'm6' },
+    { supplier: 'PlayStation Exemple', documentNumber: 'P-8', documentDate: '2026-06-05', documentKind: 'reçu', grossAmountCents: 7000, messageId: 'm7' },
+    { supplier: 'Revenu Exemple', documentNumber: 'T-9', documentDate: '2026-06-03', documentKind: 'annexe fiscale', grossAmountCents: 7000, messageId: 'm8' },
+    { supplier: 'Assureur Exemple', documentNumber: 'C-10', documentDate: '2026-06-16', documentKind: 'claim', patientPaidCents: 600000, messageId: 'm9' },
+    { supplier: 'Assurance Exemple', documentNumber: 'S-11', documentDate: '2026-06-28', documentKind: "relevé d'assurance", messageId: 'm10' }
   ];
 
   beforeEach(async () => {
@@ -633,34 +638,58 @@ describe('Secretary documents matched to ledger rows', () => {
       accounts: [{ code: 'EOP', opening_cents: 100000, closing_cents: balance, transactions }] }) });
     const file = await writeDoc('register.json', JSON.stringify({ schemaVersion: 2, generatedAt: '2026-10-16T08:00:00Z', complete: true, coverage: {}, invoices }));
     process.env.FINANCE_SECRETARY_REGISTER = file;
+    delete process.env.FINANCE_DOCUMENT_CLAIM_MAX_CENTS;
   });
 
   afterEach(() => {
     if (previous === undefined) delete process.env.FINANCE_SECRETARY_REGISTER; else process.env.FINANCE_SECRETARY_REGISTER = previous;
+    if (previousMax === undefined) delete process.env.FINANCE_DOCUMENT_CLAIM_MAX_CENTS; else process.env.FINANCE_DOCUMENT_CLAIM_MAX_CENTS = previousMax;
   });
 
-  test('proposes one confident match, flags the ambiguous one, and keeps statements and claims apart', async () => {
+  test('reads free-text kinds into the closed set and keeps the original label', async () => {
+    const register = require('../../src/services/finance/financeDocumentRegister');
+    expect(register.normalize(invoices[0])).toMatchObject({ kind: 'invoice', documentKindRaw: 'facture dentaire' });
+    expect(register.normalize(invoices[4]).kind).toBe('bank_statement');
+    expect(register.normalize({ ...invoices[0], kind: 'claim' }).kind).toBe('claim');
+  });
+
+  test('proposes confident matches, groups ambiguous ones with their candidates, and keeps statements apart', async () => {
     const view = await links.documents({ minCents: 10000 });
     expect(view.status).toBe('ok');
-    const byDoc = (name) => view.proposals.filter((p) => p.document.supplier === name);
-    expect(byDoc('Clinique Exemple').map((p) => [p.transaction.description, p.ambiguous])).toEqual([['CLINIQUE EXEMPLE PAIEMENT', false]]);
-    expect(byDoc('Pharmacie Exemple').map((p) => [p.transaction.description, p.ambiguous])).toEqual([['PHARMACIE XYZ', false]]);
-    expect(byDoc('Boutique Exemple').map((p) => p.ambiguous)).toEqual([true, true]);
-    expect(view.unmatchedDocuments.items.map((d) => d.supplier).sort()).toEqual(['Assureur Exemple', 'Vrac Exemple']);
-    expect(view.toClaim).toMatchObject({ count: 1, totalCents: 5000 });
+    expect(view.proposals.map((p) => [p.document.supplier, p.transaction.description, p.ambiguous]).sort()).toEqual([
+      ['Clinique Exemple', 'CLINIQUE EXEMPLE PAIEMENT', false], ['Pharmacie Exemple', 'PHARMACIE XYZ', false]]);
+    const boutique = view.ambiguous.find((group) => group.document.supplier === 'Boutique Exemple');
+    expect(boutique.candidates.map((c) => c.transaction.description).sort()).toEqual(['MARCHE A', 'MARCHE B']);
+    expect(view.unmatchedDocuments.items.map((d) => d.supplier).sort())
+      .toEqual(['Assureur Exemple', 'Assureur Exemple', 'PlayStation Exemple', 'Revenu Exemple', 'Vrac Exemple']);
     expect(view.statements.items.map((d) => d.originalFilename)).toEqual(['releve-juin.pdf']);
     expect(view.unlinkedTransactions.items.map((t) => t.description)).toEqual(['GROS ACHAT']);
   });
 
-  test('confirming a match shows it on the transaction; a second proposal for the same document is rejected', async () => {
+  test('claims keep health and insurance only; a suspicious figure goes to toVerify and out of the totals', async () => {
+    const view = await links.documents({ minCents: 10000 });
+    expect(view.toClaim).toMatchObject({ count: 1, totalCents: 5000 });
+    expect(view.toClaim.items.map((d) => d.documentNumber)).toEqual(['C-7']);
+    expect(view.toVerify).toMatchObject({ count: 1 });
+    expect(view.toVerify.items.map((d) => d.documentNumber)).toEqual(['C-10']);
+  });
+
+  test('the claim ceiling is configurable', async () => {
+    process.env.FINANCE_DOCUMENT_CLAIM_MAX_CENTS = '700000';
+    const view = await links.documents({ minCents: 10000 });
+    expect(view.toClaim).toMatchObject({ count: 2, totalCents: 605000 });
+    expect(view.toVerify.count).toBe(0);
+  });
+
+  test('confirming a match shows it on the transaction; the other ambiguous candidates are rejected', async () => {
     const view = await links.documents({ minCents: 10000 });
     const clinic = view.proposals.find((p) => p.document.supplier === 'Clinique Exemple');
-    const boutique = view.proposals.filter((p) => p.document.supplier === 'Boutique Exemple');
+    const boutique = view.ambiguous.find((group) => group.document.supplier === 'Boutique Exemple');
     await links.decide([clinic.id], 'confirmed', 'owner');
-    await links.decide([boutique[0].id], 'confirmed', 'owner');
+    await links.decide([boutique.candidates[0].id], 'confirmed', 'owner');
     const after = await links.documents({ minCents: 10000 });
     expect(after.confirmed.map((c) => c.document.supplier).sort()).toEqual(['Boutique Exemple', 'Clinique Exemple']);
-    expect(after.proposals.filter((p) => p.document.supplier === 'Boutique Exemple')).toEqual([]);
+    expect(after.ambiguous.find((group) => group.document.supplier === 'Boutique Exemple')).toBeUndefined();
     const search = await query.transactions({ q: 'clinique' });
     expect(search.rows[0].document).toMatchObject({ supplier: 'Clinique Exemple', documentNumber: 'F-1' });
   });
