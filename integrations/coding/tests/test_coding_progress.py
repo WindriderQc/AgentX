@@ -573,3 +573,30 @@ class ProgressTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReportStepProgressTest(unittest.TestCase):
+    def test_a_step_limit_ends_the_session_without_a_stop_reason(self):
+        clock = [100.0]
+        progress = module.Progress('0001', '11111111-2222-4333-8444-555555555555', now=lambda: clock[0])
+        progress.phase = 'running'
+        progress.begin_step(4, 60, '/home/agent/deliverables/x/step-01.json')
+        self.assertIsNone(progress.tick())
+        progress.model_calls += 4
+        self.assertEqual(progress.tick(), 'step_limit')
+        self.assertIsNone(progress.stop_reason)
+        progress.end_step()
+        self.assertIsNone(progress.tick())
+        progress.begin_step(10, 60, '/out/step-02.json')
+        clock[0] += 61
+        self.assertEqual(progress.step_due(), 'step_limit')
+
+    def test_report_steps_reach_core_only_through_the_whitelist(self):
+        value = {'requestId': 'r', 'pipelineId': '0001', 'phase': 'running', 'stage': 'model_wait',
+                 'reportSteps': {'done': 3, 'failed': 1, 'findings': 2, 'stepContext': 16384, 'budgetSource': 'agent_workload',
+                                 'counts': {'reviewed': 5, 'partial': 1, 'blocked': 0, 'pending': 9, 'secret': 'x'}, 'extra': 'drop'}}
+        safe = module.safe_progress(value, 'r', '0001')
+        self.assertEqual(safe['reportSteps'], {'done': 3, 'failed': 1, 'findings': 2, 'escalated': None, 'stepContext': 16384,
+            'budgetSource': 'agent_workload', 'counts': {'reviewed': 5, 'partial': 1, 'blocked': 0, 'pending': 9}})
+        value['reportSteps']['budgetSource'] = 'invented'
+        self.assertIsNone(module.safe_progress(value, 'r', '0001')['reportSteps']['budgetSource'])

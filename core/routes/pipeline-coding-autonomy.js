@@ -19,4 +19,9 @@ router.post('/coding-autonomy/tasks/:id/runs/:requestId/stop', route(req => serv
 router.post('/coding-autonomy/tasks/:id/runs/:requestId/recover', route(req => service.recover(req.params.id, req.params.requestId, req.body || {})));
 router.post('/coding-autonomy/tasks/:id/runs/:requestId/continuation', route(req => service.continueRecovered(req.params.id, req.params.requestId, req.body || {})));
 router.get('/coding-autonomy/tasks/:id/runs/:requestId/manifest', route(req => service.workerManifest(req.params.id, req.params.requestId)));
+// Automatic continuation of private reports (#835): switch and status.
+const continuation = require('../src/services/pipelineReportContinuationService');
+router.get('/report-continuation', route(() => continuation.status()));
+router.post('/report-continuation/config', route(req => continuation.configureSwitch(req.body || {})));
+router.post('/report-continuation/escalation', route(req => require('../src/services/pipelineReportEscalation').configure(req.body || {})));
 module.exports = router;

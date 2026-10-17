@@ -7,10 +7,17 @@ import os
 from pathlib import Path
 import stat
 import sys
+import time
 import importlib.util
 _scope_spec = importlib.util.spec_from_file_location('coding_report_scope', __import__('pathlib').Path(__file__).with_name('coding_report_scope.py'))
 scope = importlib.util.module_from_spec(_scope_spec)
 _scope_spec.loader.exec_module(scope)
+_ledger_spec = importlib.util.spec_from_file_location('coding_report_ledger', __import__('pathlib').Path(__file__).with_name('coding_report_ledger.py'))
+ledgers = importlib.util.module_from_spec(_ledger_spec)
+_ledger_spec.loader.exec_module(ledgers)
+_steps_spec = importlib.util.spec_from_file_location('coding_report_steps', __import__('pathlib').Path(__file__).with_name('coding_report_steps.py'))
+steps = importlib.util.module_from_spec(_steps_spec)
+_steps_spec.loader.exec_module(steps)
 
 MAX_BYTES = 2 * 1024 * 1024
 # Only reasons accepted by Core\'s shared worker-outcome observation contract.
@@ -142,8 +149,23 @@ def verify_stop(response, body, key):
             raise ValueError('Core did not verify the original partial report')
 
 
+def settled_status(r, args, progress):
+    """Read Core's view of this execution's own calls, allowing a short settlement lag.
+
+    A drained relay proves EOF, not Core's receipt; the bounded poll never
+    replays or starts a model call."""
+    url = endpoint(r, args.task_id, args.request_id)
+    status = r.request(url)['data']
+    for _ in range(int(getattr(r, 'REPORT_SETTLE_GRACE_SECONDS', 30) // 2)):
+        if status.get('terminationVerified') or not getattr(progress, 'report_drained', True):
+            break
+        time.sleep(2)
+        status = r.request(url)['data']
+    return status
+
+
 def stop(r, args, progress, reason):
-    status = r.request(endpoint(r,args.task_id,args.request_id))['data']
+    status = settled_status(r, args, progress)
     if not status.get('terminationVerified') or not getattr(progress,'report_drained',True):
         progress.stop_reason='model_termination_unverified';progress.write()
         return 2
@@ -273,6 +295,7 @@ def execute(r,args,progress,task,workspace):
             if previous_coverage.get('inventorySha256') != snapshot['sha256']:
                 raise ValueError('Checkpoint coverage belongs to a different source inventory')
             scope.seed(root, snapshot, previous_coverage)
+    progress.report_escalation = started.get('escalation') if isinstance(started.get('escalation'), dict) else None
     progress.heartbeat=lambda:r.request(endpoint(r,args.task_id,args.request_id)+'/heartbeat',{})
     progress.relay_headers={'x-agentx-report-request':args.request_id,'x-agentx-report-task':args.task_id}
     discussion='\n\n'.join(f"{row.get('by','someone')}: {row.get('text','')}" for row in task.get('feedback',[]))
@@ -315,12 +338,21 @@ def execute(r,args,progress,task,workspace):
             f'Requested result:\n{task.get("spec","")}\n\nDiscussion:\n{discussion}')
     progress.phase='running';progress.preflight=False
     if progress.check_stop():return stop(r,args,progress,'operator_stop')
-    run=r.run_worker(workspace,prompt,max(1,int(progress.hard_deadline-progress.now())),progress,read_only=True)
-    progress.check_stop();progress.phase='delivering';progress.set_stage('checkpoint')
-    status=r.request(endpoint(r,args.task_id,args.request_id))['data']
-    if not status.get('terminationVerified') or not getattr(progress,'report_drained',True):
-        progress.stop_reason='model_termination_unverified';progress.write();return 2
-    if run.returncode or progress.stop_reason:return stop(r,args,progress,progress.stop_reason or 'worker_exit')
+    if os.environ.get('AGENTX_REPORT_MODE', 'steps') == 'steps':
+        outcome=run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline)
+        progress.check_stop();progress.phase='delivering';progress.set_stage('checkpoint')
+        status=settled_status(r,args,progress)
+        if outcome=='unverified' or not status.get('terminationVerified') or not getattr(progress,'report_drained',True):
+            progress.stop_reason='model_termination_unverified';progress.write();return 2
+        if progress.stop_reason:return stop(r,args,progress,progress.stop_reason)
+        if outcome!='complete':return stop(r,args,progress,outcome)
+    else:
+        run=r.run_worker(workspace,prompt,max(1,int(progress.hard_deadline-progress.now())),progress,read_only=True)
+        progress.check_stop();progress.phase='delivering';progress.set_stage('checkpoint')
+        status=settled_status(r,args,progress)
+        if not status.get('terminationVerified') or not getattr(progress,'report_drained',True):
+            progress.stop_reason='model_termination_unverified';progress.write();return 2
+        if run.returncode or progress.stop_reason:return stop(r,args,progress,progress.stop_reason or 'worker_exit')
     if not status.get('allCallsCompleted'):return stop(r,args,progress,'worker_exit')
     if r.git(workspace,'rev-parse','HEAD')!=baseline or r.coding_progress.source_state(workspace)!=source or r.git(workspace,'status','--porcelain'):
         return stop(r,args,progress,'runner_error')
@@ -340,6 +372,225 @@ def execute(r,args,progress,task,workspace):
     progress.core_recorded=True;progress.finish('review',checkpoint=baseline)
     print(json.dumps({'reportReadyForReview':True,'deliverableRef':result['receipt']['ref'],'sourceUnchanged':True}))
     return 0
+
+
+def lane_capability(r):
+    """The coding lane's capability profile (#832), or None: sizing evidence only."""
+    try:
+        lanes = r.request(f'{r.CORE}/api/nerve-center/agent-runtime-config/export'
+                          '?includeCandidates=false&includeCapability=true').get('data', {}).get('lanes', {})
+    except (OSError, RuntimeError, ValueError):
+        return None
+    model = getattr(r, 'MODEL', None)
+    for lane in (lanes or {}).values():
+        if isinstance(lane, dict) and isinstance(lane.get('capability'), dict) and (model in (None, 'auto') or lane.get('model') == model):
+            if model not in (None, 'auto') or lane.get('role') == 'codingSpecialist':
+                return lane['capability']
+    return None
+
+
+def initial_ledger(root, path, snapshot, baseline):
+    """Resume the ledger embedded in a restored report, or start one from its coverage."""
+    restored = path.read_text(encoding='utf-8') if path.is_file() else None
+    ledger = ledgers.embedded(restored) if restored else None
+    if ledger:
+        if ledger.get('inventorySha256') != snapshot['sha256'] or ledger.get('sourceCommit') != baseline:
+            raise ValueError('Restored report ledger belongs to another inventory or source')
+        return ledger
+    coverage = json.loads((root/'coverage.json').read_text(encoding='utf-8')) if (root/'coverage.json').is_file() else None
+    return ledgers.new_ledger(snapshot, coverage, ledgers.legacy_narrative(restored) if restored else None)
+
+
+def escalation_allowed(progress, ledger, group):
+    """Escalate a group once, after its first local failure, if this run may (#835)."""
+    escalation = getattr(progress, 'report_escalation', None)
+    if not escalation or not escalation.get('models'):
+        return False
+    calls, seconds = steps.remaining(progress)
+    return (calls >= 1 + steps.WRITER_CALLS and seconds >= 300
+            and all(ledger['documents'][path].get('attempts', 0) == 1 for path in group)
+            and not any(row.get('escalated') and set(row.get('documents', [])) == set(group) for row in ledger['steps']))
+
+
+def escalation_call(r, args, progress, model, messages, step):
+    """One escalated request through Core, keeping progress heartbeats alive."""
+    import threading, uuid
+    from urllib.request import Request, urlopen
+    from urllib.error import HTTPError
+    body = json.dumps({'model': model, 'messages': messages, 'max_tokens': steps.ESCALATION_MAX_TOKENS,
+                       'temperature': 0, 'stream': False}).encode()
+    headers = {'Content-Type': 'application/json', 'Accept': 'application/json', 'x-service-caller': 'coding-run',
+               'x-agentx-report-request': args.request_id, 'x-agentx-report-task': args.task_id,
+               'x-agentx-coding-call': str(uuid.uuid4()), 'x-agentx-report-escalation': str(step)}
+    # The gateway door needs the Coding Team's token, as the relay adds it for workers.
+    if getattr(r, 'GATEWAY_TOKEN', ''):
+        headers['Authorization'] = f'Bearer {r.GATEWAY_TOKEN}'
+    timeout = max(60, min(900, steps.remaining(progress)[1] - steps.WRITER_SECONDS))
+    outcome = {}
+
+    def send():
+        try:
+            with urlopen(Request(f'{r.MODEL_URL}/chat/completions', data=body, headers=headers, method='POST'), timeout=timeout) as response:
+                outcome['value'] = json.load(response)
+        except HTTPError as error:
+            outcome['error'] = f'HTTP {error.code}'
+        except (OSError, ValueError) as error:
+            outcome['error'] = type(error).__name__
+    worker = threading.Thread(target=send, daemon=True)
+    worker.start()
+    while worker.is_alive():
+        progress.tick()
+        worker.join(2)
+    progress.model_calls += 1
+    if 'error' in outcome:
+        return None, None, f'escalation unavailable ({outcome["error"]})'
+    choice = (outcome['value'].get('choices') or [{}])[0]
+    return choice.get('message', {}).get('content'), outcome['value'].get('model') or model, None
+
+
+def escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source):
+    escalation = progress.report_escalation
+    files = r.git(workspace, 'ls-tree', '-r', '--name-only', baseline).splitlines()
+    doc_texts = {path: sources[path].decode('utf-8', errors='replace') for path in group}
+    cited_files = steps.referenced_sources(ledger, group, doc_texts, files)
+    if not cited_files:
+        # No path cited and no earlier evidence: find the files that define the
+        # identifiers the documents name, in the frozen snapshot only.
+        hits = {}
+        for term in steps.code_terms(doc_texts):
+            try:
+                found = r.git(workspace, 'grep', '-l', '-F', '-e', term, baseline, '--').splitlines()
+            except Exception:
+                continue
+            for line in found:
+                name = line.split(':', 1)[1] if ':' in line else line
+                if name not in group:
+                    hits[name] = hits.get(name, 0) + 1
+        cited_files = sorted(hits, key=lambda name: (-hits[name], name))[:20]
+    texts, used = {}, 0
+    for cited in cited_files:
+        try:
+            text = scope.source_bytes(workspace, baseline, cited).decode('utf-8', errors='replace')[:steps.ESCALATION_FILE_CHARS]
+        except ValueError:
+            continue
+        if used + len(text) > steps.ESCALATION_SOURCE_CHARS:
+            break
+        texts[cited] = text
+        used += len(text)
+    content, model, reason = escalation_call(r, args, progress, escalation['models'][0],
+                                             steps.escalation_prompt(ledger, group, doc_texts, texts, line_range), number)
+    value = None
+    if content is not None:
+        value, reason = steps.parse_json_object(content)
+    try:
+        if value is None:
+            raise ledgers.LedgerError(reason)
+        ledgers.merge_step(ledger, group, value, source, number, line_range=line_range)
+        ledger['steps'][-1].update(escalated=True, model=model)
+        for finding in ledger['findings']:
+            if finding['step'] == number:
+                finding['escalatedModel'] = model
+    except ledgers.LedgerError as error:
+        ledgers.record_failure(ledger, group, number, f'cloud escalation: {error}')
+        ledger['steps'][-1].update(escalated=True, model=model)
+
+
+def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
+    """Run the report as verified steps. Returns 'complete', 'unverified' or a stop reason."""
+    ledger = initial_ledger(root, path, snapshot, baseline)
+    capability = lane_capability(r)
+    budget = steps.step_budget(capability)
+    sources = {name: scope.source_bytes(workspace, baseline, name) for name in ledger['documents']}
+    sizes = {name: len(data) for name, data in sources.items()}
+    line_counts = {name: len(data.splitlines()) for name, data in sources.items()}
+    title = f'{task.get("title") or "Documentation review"} — task {args.task_id}'
+    sandbox_root = f'/home/agent/deliverables/{args.request_id}'
+    note = (f'Your working directory is the private output directory {sandbox_root}. /workspace is the read-only source '
+            f'snapshot at {baseline}; use absolute paths or git -C /workspace. Network is unavailable.')
+    immutable_json(r, r.RECEIPTS/f'{args.request_id}.report-steps-plan.json',
+                   {'requestId': args.request_id, 'budget': budget,
+                    'capabilitySource': (capability or {}).get('provenance') if capability else None})
+
+    def save():
+        groups = steps.plan_groups(ledger, sizes, budget, limit=3, line_counts=line_counts)
+        steps.write_atomic(path, ledgers.render(ledger, title, [group['documents'] for group in groups]))
+        steps.write_atomic(root/'coverage.json', json.dumps(ledgers.coverage(ledger), indent=2) + '\n')
+        progress.report_steps = {'escalated': sum(1 for row in ledger['steps'] if row.get('escalated')),
+                                 'done': sum(1 for row in ledger['steps'] if row['result'] == 'merged'),
+                                 'failed': sum(1 for row in ledger['steps'] if row['result'] == 'failed'),
+                                 'counts': ledgers.counts(ledger), 'findings': len(ledger['findings']),
+                                 'stepContext': budget['stepContext'], 'budgetSource': budget['source']}
+
+    def one(number, prompt, calls, seconds):
+        name = f'step-{number:02d}.json'
+        progress.begin_step(calls, seconds, f'{sandbox_root}/{name}')
+        try:
+            run = r.run_worker(workspace, prompt, seconds, progress, read_only=True)
+        finally:
+            progress.end_step()
+        if not getattr(progress, 'report_drained', True):
+            return None, 'unverified'
+        value, reason = steps.read_result(root/name)
+        if value is None and run.returncode and not reason:
+            reason = 'the worker exited without a result'
+        return value, reason
+
+    save()
+    number = 0
+    source = lambda name: scope.source_bytes(workspace, baseline, name)
+    if ledger.get('legacy') and not ledger.get('legacyReviewed') and steps.latest_operator_notes(task):
+        number += 1
+        value, reason = one(number, steps.legacy_prompt(ledger, f'{sandbox_root}/step-{number:02d}.json', task, note),
+                            steps.LEGACY_CALLS, budget['seconds'])
+        if reason == 'unverified':
+            return 'unverified'
+        if value is not None:
+            try:
+                ledgers.merge_step(ledger, [], {'documents': [], **value}, source, number, allow_empty=True)
+            except ledgers.LedgerError as error:
+                ledger['steps'].append({'step': number, 'documents': [], 'result': 'failed', 'reason': str(error)[:300]})
+        ledger['legacyReviewed'] = True
+        save()
+    while True:
+        if progress.check_stop() or progress.stop_reason:
+            return progress.stop_reason or 'operator_stop'
+        groups = steps.plan_groups(ledger, sizes, budget, limit=1, line_counts=line_counts)
+        if not groups:
+            break
+        calls, seconds = steps.remaining(progress)
+        if calls < budget['calls'] + steps.WRITER_CALLS:
+            save()
+            return 'model_call_limit'
+        if seconds < min(budget['seconds'], 600) + steps.WRITER_SECONDS:
+            save()
+            return 'hard_budget'
+        number += 1
+        group, line_range = groups[0]['documents'], groups[0]['range']
+        value, reason = one(number, steps.group_prompt(ledger, group, f'{sandbox_root}/step-{number:02d}.json', task, note, line_range),
+                            budget['calls'], min(budget['seconds'], seconds - steps.WRITER_SECONDS))
+        if reason == 'unverified':
+            return 'unverified'
+        try:
+            if value is None:
+                raise ledgers.LedgerError(reason)
+            ledgers.merge_step(ledger, group, value, source, number, line_range=line_range)
+        except ledgers.LedgerError as error:
+            ledgers.record_failure(ledger, group, number, str(error))
+            if escalation_allowed(progress, ledger, group):
+                number += 1
+                escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source)
+        save()
+    calls, seconds = steps.remaining(progress)
+    if ledger['findings'] and calls >= steps.WRITER_CALLS and seconds >= steps.WRITER_SECONDS:
+        number += 1
+        value, reason = one(number, steps.writer_prompt(ledger, f'{sandbox_root}/step-{number:02d}.json'),
+                            steps.WRITER_CALLS, steps.WRITER_SECONDS)
+        if reason == 'unverified':
+            return 'unverified'
+        if value is not None:
+            steps.apply_writer(ledger, value)
+    save()
+    return 'complete'
 
 
 def reconcile(r,task_id,key):

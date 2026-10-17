@@ -67,11 +67,83 @@ The runner uses four protections:
 
 Documentation audits follow the shared
 [review procedure](../../skills/agentx/references/documentation-review.md).
-The report prompt includes its essential checkpoint rules; the operator skill
-and repository instructions point to the same procedure. Choose document groups
-within the current budget, save and read back each group's findings and coverage,
-derive summary totals from that table, and record the next pending group. A
-partial report is a reviewable checkpoint, not completion of the requested audit.
+
+### Runner-owned steps (default)
+
+The runner, not the model, owns the plan and the report (#834). One execution
+keeps its single Core authority (claim, call limit, deadline, campaign window)
+and runs several short worker sessions in fresh context:
+
+- **Plan.** `coding_report_steps.py` groups pending and partial documents by
+  directory. Each group fits a share of the step context, which comes from the
+  lane capability profile: the measured agent step, else the measured speed
+  knee, else 24k tokens. A document larger than that is reviewed in line
+  ranges, one range per step.
+- **Step.** The worker receives only its group, the claims already checked and
+  the earlier findings for those documents. It writes one JSON result
+  (`step-NN.json`) in its private output directory. A step has its own call
+  and time limits; reaching them ends that session only.
+- **Verify and merge.** `coding_report_ledger.py` checks every cited path and
+  line against the frozen snapshot, computes source digests itself and merges
+  the step whole or not at all. A group that fails twice marks its documents
+  `blocked` with the reason. A document still partial after three steps
+  without new evidence stays partial and is reported as remaining scope.
+- **Render.** After every step the runner regenerates the Markdown report and
+  `coverage.json` from the ledger, so findings, tables and totals cannot
+  drift, and each step counts as saved progress.
+- **Writer.** A last short session receives only the verified findings and
+  writes the summary and explanations.
+- **Resume.** The ledger is embedded in the report as an HTML comment. A
+  continuation restored from Core's checkpoint resumes it exactly. A report
+  written before steps keeps its findings verbatim in an "earlier executions"
+  section; reviewer corrections apply to it only as exact text replacements.
+
+When calls or time run short with documents left, the execution stops with
+`model_call_limit` or `hard_budget` and archives the partial report for a
+continuation. The Pipeline worker monitor shows merged and failed steps,
+ledger totals and the step size with its basis.
+### Automatic continuation and alerts
+
+With **Private reports continue automatically** switched on (Pipeline, Coding
+Team autonomy panel; off by default), Core starts the next execution of a report
+that stopped with `model_call_limit` or `hard_budget` and archived a changed
+partial report (#835). It performs the same requeue an operator does, from that
+exact checkpoint and under the existing grant and campaign window; Core's report
+authority still binds the run when the worker starts. One continuation exists
+per parent outcome, under a request id derived from it and saved before any host
+call; an unknown outcome blocks the task and alerts instead of relaunching.
+
+Whether or not the switch is on, Core alerts the owner (Core alert feed, morning
+brief, Nestor's work-queue notifications) when documents are blocked, an
+execution stops for another reason, two executions end with the same saved
+report, a continuation needs a new grant or window, or a report is ready for
+review.
+
+### Cloud escalation of a failed step
+
+Off by default. The owner sets the ordered models and a cost cap per task in the
+same panel (default: `openai/gpt-5.6-sol`, then
+`openrouter/nvidia/nemotron-3-super-120b-a12b:free`, $10), and each task must
+allow it on its explicit report grant ("Allow cloud escalation of failed
+steps"). An execution started with both records the models and the task's
+remaining allowance, fixed for that run.
+
+After a group fails once on the local model, the runner sends one self-contained
+request: the group's documents and the source files they cite (or that define
+the identifiers they name), with line numbers, plus the result schema. Core
+executes it through OpenClaw's single-call model mode, trying the models in order
+and skipping one OpenClaw cannot call directly; OpenClaw's own cost reservation
+is capped by what the task has left, and every call is journalled on the
+execution with its model and cost. The answer goes through the same ledger
+verification as a local step; a second failure blocks the group. Escalated
+findings are marked in the report, the Pipeline monitor counts escalated steps
+and an alert records each escalation. A multi-turn tool session is not used:
+OpenClaw's model mode accepts plain messages only.
+
+`AGENTX_REPORT_MODE=single` restores the previous single-session worker, whose
+prompt asks the model to choose groups, save, and keep the table and totals
+consistent itself. A partial report is a reviewable checkpoint, not completion
+of the requested audit.
 
 Pipeline records an explicit **Code change** or **Private Markdown report** result
 before launch. The dossier and global one-task form use the same preparation.

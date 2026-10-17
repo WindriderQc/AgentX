@@ -40,6 +40,8 @@ function start() {
   codingTimer = setInterval(() => {
     require('./pipelineCodingAutonomyService').tick().catch(error =>
       logger.warn('Coding autonomy awaits reconciliation', { code: error.code || 'CODING_AUTONOMY_UNAVAILABLE' }));
+    require('./pipelineReportContinuationService').tick().catch(error =>
+      logger.warn('Report continuation awaits reconciliation', { code: error.code || 'REPORT_CONTINUATION_UNAVAILABLE' }));
   }, 15000);
   codingTimer.unref();
 }

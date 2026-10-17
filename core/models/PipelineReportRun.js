@@ -33,6 +33,10 @@ const schema = new mongoose.Schema({
   pendingInferences: { type: [String], default: [] },
   modelReceipts: { type: [mongoose.Schema.Types.Mixed], default: [] },
   result: { type: mongoose.Schema.Types.Mixed, default: undefined },
+  // Cloud escalation allowed for this execution (#835): ordered models and the
+  // task's remaining cost cap at start, fixed for the execution.
+  escalation: { type: mongoose.Schema.Types.Mixed, default: undefined, immutable: true },
+  escalationCalls: { type: [mongoose.Schema.Types.Mixed], default: [] },
 }, { collection: 'pipeline_report_runs' });
 // Preserve historical journals; new executions enforce one immutable identity per task claim.
 schema.index({ taskId: 1, claimSeq: 1 }, { unique: true, partialFilterExpression: { executionVersion: 1 } });
