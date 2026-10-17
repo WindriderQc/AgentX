@@ -43,6 +43,7 @@ const CORE_OPERATIONS = Object.freeze({
   WORKLOAD_YIELD_POINT: 'benchmark.core-api.workload-yield-point',
   INFERENCE_GENERATE: 'benchmark.core-api.inference-generate',
   INFERENCE_CONTRACT: 'benchmark.core-api.inference-contract',
+  HEAVY_QUEUE_SUBMIT: 'benchmark.core-api.heavy-queue-submit',
 });
 
 function operation(method, pathPattern, {
@@ -65,6 +66,11 @@ function operation(method, pathPattern, {
 }
 
 const CORE_OPERATION_SPECS = Object.freeze({
+  // Records an owner-reviewed request only; Core reservation and admission
+  // still govern execution (#832 lane capability "Measure tonight").
+  [CORE_OPERATIONS.HEAVY_QUEUE_SUBMIT]: operation('POST', '^/api/cluster/schedule/work-queue$', {
+    maxRequestBytes: 16 * 1024, maxResponseBytes: 256 * 1024,
+  }),
   [CORE_OPERATIONS.INFERENCE_CONTRACT]: operation('POST', '^/api/inference/contract/resolve$', {
     maxRequestBytes: 4 * 1024, maxResponseBytes: 256 * 1024,
   }),

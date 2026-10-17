@@ -31,6 +31,30 @@
     </a>
   </section>
 
+  <section id="profiler-lanes" class="profiler-lanes" aria-labelledby="profiler-lanes-title">
+    <header class="profiler-lanes-head">
+      <div>
+        <span class="profiler-experience-eyebrow">Lane capability</span>
+        <h2 id="profiler-lanes-title">What each lane is ready for</h2>
+        <p>Every pinned or routed model on its host, measured for its exact installed artifact. Workers size their work from these values; missing measurements stay visible instead of being guessed.</p>
+      </div>
+      <div class="profiler-lanes-actions">
+        <button id="profiler-lanes-campaign" class="profiler-lanes-refresh" type="button" aria-controls="profiler-lanes-campaign-panel" aria-expanded="false"><i class="fas fa-moon" aria-hidden="true"></i> Measure lanes tonight</button>
+        <button id="profiler-lanes-refresh" class="profiler-lanes-refresh" type="button"><i class="fas fa-rotate" aria-hidden="true"></i> Refresh</button>
+      </div>
+    </header>
+    <div id="profiler-lanes-campaign-panel" class="lc-campaign" hidden>
+      <p id="profiler-lanes-campaign-text"></p>
+      <button id="profiler-lanes-campaign-confirm" class="lc-measure" type="button">Queue requests</button>
+      <button id="profiler-lanes-campaign-cancel" class="lc-quiet" type="button">Cancel</button>
+      <span id="profiler-lanes-campaign-status" class="lc-campaign-status" role="status" aria-live="polite"></span>
+    </div>
+    <div id="profiler-lanes-summary" class="lc-summary" aria-live="polite"></div>
+    <div id="profiler-lanes-grid" class="lc-grid" aria-busy="true">
+      <p class="lc-empty">Reading lane measurements…</p>
+    </div>
+  </section>
+
   <details id="profiler-cockpit" class="profiler-cockpit">
     <summary>
       <span class="profiler-experience-icon" aria-hidden="true"><i class="fas fa-sliders"></i></span>
