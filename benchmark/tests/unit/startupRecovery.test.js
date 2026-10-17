@@ -85,7 +85,7 @@ describe('startup recovery', () => {
 // no Nerve Center, and coverage then covers the pinned models only. Rebuilding
 // a record-less quarantine reads the same coordination state, so it is full-only.
 const FULL_ONLY_OPERATIONS = ['PIN_CONTEXT_APPLY', 'ROUTING_CONFIG', 'RUNTIME_ACTIVE', 'HOUSEHOLD_IDLE',
-  'WORKLOAD_RECOVERY_LOOKUP'];
+  'WORKLOAD_RECOVERY_LOOKUP', 'HEAVY_QUEUE_SUBMIT'];
 const DEMO_OPERATIONS = Object.keys(CORE_OPERATIONS).filter(name => !FULL_ONLY_OPERATIONS.includes(name));
 
 function samplePath(pattern) {

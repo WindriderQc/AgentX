@@ -504,5 +504,36 @@ print(json.dumps({
             self.assertTrue(closed.wait(2), "Core's model request must close when its worker stops")
 
 
+class LaneCapabilityReceiptTest(unittest.TestCase):
+    KEY = '11111111-2222-4333-8444-555555555555'
+
+    def setUp(self):
+        root = tempfile.TemporaryDirectory()
+        self.addCleanup(root.cleanup)
+        patch = mock.patch.object(runner, 'RECEIPTS', Path(root.name))
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.progress = mock.Mock(request_id=self.KEY)
+
+    def test_records_the_capability_of_the_selected_lane_once(self):
+        capability = {'schema': 'agentx.lane-capability/v1', 'context': {'knee': 32768}}
+        lanes = {'daily': {'model': 'chat', 'capability': {'schema': 'other'}},
+                 'codingSpecialist': {'model': 'coder', 'capability': capability}}
+        self.assertEqual(runner.record_lane_capability(self.progress, 'coder', lanes), capability)
+        path = runner.RECEIPTS / f'{self.KEY}.capability.json'
+        saved = json.loads(path.read_text())
+        self.assertEqual(saved['capability'], capability)
+        self.assertEqual(saved['model'], 'coder')
+        self.assertIsNone(runner.record_lane_capability(self.progress, 'coder', {'x': {'model': 'coder', 'capability': {'new': 1}}}))
+        self.assertEqual(json.loads(path.read_text())['capability'], capability)
+
+    def test_unreadable_evidence_changes_nothing(self):
+        with mock.patch.object(runner, 'request', side_effect=OSError('core down')):
+            self.assertIsNone(runner.record_lane_capability(self.progress, 'coder'))
+        self.assertIsNone(runner.record_lane_capability(self.progress, 'coder', {'a': {'model': 'coder', 'capability': None}}))
+        self.assertIsNone(runner.record_lane_capability(None, 'coder', {}))
+        self.assertEqual(list(runner.RECEIPTS.iterdir()), [])
+
+
 if __name__ == "__main__":
     unittest.main()

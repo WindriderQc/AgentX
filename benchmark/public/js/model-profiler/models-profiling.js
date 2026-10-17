@@ -51,7 +51,7 @@ export function _showFeedback(container, modelName, html) {
 const STEPS_BY_DEPTH = {
   quick:    ['Warmup', 'Throughput', 'Spill detection', 'Thinking behavior', 'Save'],
   standard: ['Warmup', 'Throughput', 'Spill detection', 'Thinking behavior', 'Context probe', 'Save'],
-  full:     ['Warmup', 'Throughput', 'Spill detection', 'Thinking behavior', 'Context probe', 'Throughput curve', 'Generation stability', 'Prefill / decode matrix', 'Long-context quality', 'Load timing', 'Save'],
+  full:     ['Warmup', 'Throughput', 'Spill detection', 'Thinking behavior', 'Context probe', 'Throughput curve', 'Generation stability', 'Prefill / decode matrix', 'Long-context quality', 'Agent workload', 'Concurrency', 'Load timing', 'Save'],
 };
 
 // Nominal wall-clock estimate per depth (seconds) — matches UI hint text
@@ -268,7 +268,66 @@ function _renderAgentSizedEvidence(profile) {
       }).join('')}</tbody>
     </table>`;
   }
+  html += _renderAgentWorkloadEvidence(profile?.agentWorkload);
+  html += _renderConcurrencyEvidence(profile?.concurrency);
   return html;
+}
+
+// Agent workload probe (#833): a growing session, structured output,
+// verification at size and tool turns, all scored exactly.
+function _renderAgentWorkloadEvidence(workload) {
+  if (!workload?.summary) return '';
+  const s = workload.summary;
+  const session = workload.session || {};
+  const turns = (session.turns || []).filter(row => row.status === 'pass');
+  const sec = value => (value != null ? `${(value / 1000).toFixed(1)} s` : '—');
+  const ctx = value => (value ? _ctxLabel(value) : '—');
+  let html = `<table class="mp-extras-table">
+    <caption>Agent workload (session stopped: ${session.stopReason || 'unknown'})</caption>
+    <thead><tr><th>Measure</th><th>Result</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>Session speed knee</td><td>${ctx(s.sessionLatencyKneeContext)}</td><td>Largest session size while each call stayed under twice the opening ${sec(session.baselineLatencyMs)}</td></tr>
+      <tr><td>Session accuracy</td><td>${ctx(s.sessionAccuracyContext)}</td><td>Largest session size with every answer exact (${session.correctTurns ?? 0}/${turns.length} turns)</td></tr>
+      <tr><td>Structured output</td><td>${s.reliableOutputItems ? `${s.reliableOutputItems} items · ${s.reliableOutputTokens} tok` : 'none complete'}</td><td>Largest JSON answer returned complete and exact</td></tr>
+      <tr><td>Verification</td><td>${ctx(s.verificationVerifiedContext)}</td><td>Largest context where every planted documentation mismatch was found</td></tr>
+      <tr><td>Tool turns</td><td>${s.reliableToolTurns ?? 0} valid · ${s.toolChecksCorrect ?? 0}/${s.toolChecksTotal ?? 0} checks right</td><td>Consecutive valid tool calls (${workload.tools?.stopReason || 'unknown'})</td></tr>
+    </tbody>
+  </table>`;
+  if (turns.length) {
+    html += `<table class="mp-extras-table">
+      <caption>Growing session, turn by turn</caption>
+      <thead><tr><th>Turn</th><th>Session</th><th>Call</th><th>Answer</th></tr></thead>
+      <tbody>${turns.map(row => `<tr><td>${row.turn}</td><td>${ctx(row.contextTokens)}</td><td>${sec(row.latencyMs)}</td><td>${row.correct ? 'exact' : 'wrong'}</td></tr>`).join('')}</tbody>
+    </table>`;
+  }
+  return html;
+}
+
+// Concurrency probe (#833): speed with each co-resident answering at once.
+function _renderConcurrencyEvidence(concurrency) {
+  if (!concurrency?.status) return '';
+  const pairs = Array.isArray(concurrency.pairs) ? concurrency.pairs : [];
+  const rate = value => (value != null ? `${value} tok/s` : '—');
+  const pct = value => (value != null ? `${value} %` : '—');
+  const status = {
+    no_co_resident: 'No other model was resident on this endpoint.',
+    not_resident: 'The model was not resident when the probe ran.',
+    inventory_unavailable: 'The resident models could not be read.',
+    evicted: 'The models did not stay resident together: one evicted the other.'
+  }[concurrency.status];
+  if (!pairs.length) {
+    return `<table class="mp-extras-table"><caption>Concurrency</caption><tbody><tr><td>${escAttr(status || concurrency.status)}</td></tr></tbody></table>`;
+  }
+  return `<table class="mp-extras-table">
+    <caption>Concurrency on this endpoint (${status || 'both answering at once'})</caption>
+    <thead><tr><th>Co-resident</th><th>This model alone → together</th><th>Slower</th><th>Co-resident alone → together</th><th>Slower</th><th>Status</th></tr></thead>
+    <tbody>${pairs.map(pair => `<tr>
+      <td>${escAttr(pair.model)}</td>
+      <td>${rate(pair.selfSoloTokensPerSec)} → ${rate(pair.selfTogetherTokensPerSec)}</td><td>${pct(pair.selfSlowdownPct)}</td>
+      <td>${rate(pair.otherSoloTokensPerSec)} → ${rate(pair.otherTogetherTokensPerSec)}</td><td>${pct(pair.otherSlowdownPct)}</td>
+      <td>${escAttr(pair.status)}</td>
+    </tr>`).join('')}</tbody>
+  </table>`;
 }
 
 function _renderFullDepthExtras(profile) {

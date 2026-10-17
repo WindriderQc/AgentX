@@ -88,6 +88,24 @@ describe('BenchmarkServiceClient', () => {
       })).resolves.toMatchObject({ verifiedMaxContext: 32768 });
     });
 
+    it('reads one lane capability profile for the exact artifact Core supplies', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({
+          status: 'success',
+          data: { capability: { schema: 'agentx.lane-capability/v1', context: { knee: 32768 } } }
+        })
+      });
+      await expect(client.getLaneCapability('model-a', {
+        hostUrl: 'http://host-a:11434', artifactDigest: 'sha256:a', runtimeFingerprint: 'runtime-a'
+      })).resolves.toMatchObject({ context: { knee: 32768 } });
+      const url = new URL(mockFetch.mock.calls[0][0]);
+      expect(url.pathname).toBe('/api/profiler/evidence/capability/model-a');
+      expect(url.searchParams.get('artifactDigest')).toBe('sha256:a');
+      expect(url.searchParams.get('runtimeFingerprint')).toBe('runtime-a');
+      await expect(client.getLaneCapability('model-a', {})).resolves.toBeNull();
+    });
+
     it('degrades evidence reads to null or an empty roster when Benchmark is offline', async () => {
       mockFetch.mockRejectedValue(new Error('offline'));
 

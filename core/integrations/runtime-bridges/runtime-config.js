@@ -280,6 +280,27 @@ function masterBrainCandidates(snapshot, lanes) {
     .slice(0, 12);
 }
 
+// Workers size their work from the lane capability profile (#832). It is
+// evidence, never configuration: a missing profile leaves `capability` null
+// and changes no routing, context or execution policy.
+async function attachCapabilities(lanes, reader) {
+  const read = reader || ((model, query) => require('../../src/services/benchmarkServiceClient')
+    .getBenchmarkServiceClient().getLaneCapability(model, query));
+  await Promise.all(Object.values(lanes).map(async (lane) => {
+    lane.capability = null;
+    if (!lane.model || !lane.hostUrl) return;
+    try {
+      lane.capability = await read(lane.model, {
+        hostUrl: lane.hostUrl,
+        artifactDigest: lane.contextInfo?.artifactDigest || null,
+        runtimeFingerprint: lane.contextInfo?.runtimeFingerprint || null
+      }) || null;
+    } catch {
+      lane.capability = null;
+    }
+  }));
+}
+
 async function buildRuntimeConfigExport(runtimeServices, options = {}) {
   const snapshot = await runtimeServices.routing.getEffectiveSnapshot({
     includeCatalog: options.includeCandidates !== false,
@@ -298,6 +319,7 @@ async function buildRuntimeConfigExport(runtimeServices, options = {}) {
     codingSpecialist: laneFromTask('codingSpecialist', 'code_generation', snapshot),
     masterBrain: laneFromTask('masterBrain', 'master_brain', snapshot)
   };
+  if (options.includeCapability) await attachCapabilities(lanes, options.capabilityReader);
   const result = {
     generatedAt: snapshot.generatedAt,
     sourceOfTruth: {
