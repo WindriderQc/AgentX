@@ -27,7 +27,7 @@ describe('request sanitizer', () => {
 
   test.each([
     '/api/openclaw-ollama/api/chat',
-    '/api/hermes-openai/v1/chat/completions'
+    '/api/llm/v1/chat/completions'
   ])('forwards inference proxy bodies unchanged on %s', async (path) => {
     const response = await request(buildApp(logger)).post(path).send(toolBody).expect(200);
     expect(response.body).toEqual(toolBody);

@@ -51,18 +51,15 @@ test('Studio settings keep native preferences and use the existing Core gateway'
   const result = studioSettings(original, 'http://core-host:3180', 196608);
   assert.equal(result.theme, 'dark');
   assert.equal(result['llm-pi-ai'].setting, true);
-  assert.equal(result['llm-pi-ai'].providers['agentx-core'].baseURL, 'http://core-host:3180/api/hermes-openai/v1');
+  assert.equal(result['llm-pi-ai'].providers['agentx-core'].baseURL, 'http://core-host:3180/api/llm/v1');
   assert.deepEqual(result['agent-default-model'], { provider: 'agentx-core', model: 'agentx-primary' });
   assert.equal(original['agent-default-model'].provider, 'old');
   assert.throws(() => studioSettings(original, 'http://core-host', null), /context/);
 });
 
-test('Studio declares image input and, with its own token, uses the OpenAI gateway', () => {
-  const hermes = studioSettings({}, 'http://core-host:3180', 196608)['llm-pi-ai'].providers['agentx-core'];
-  const gateway = studioSettings({}, 'http://core-host:3180', 196608, true)['llm-pi-ai'].providers['agentx-core'];
-  assert.deepEqual(hermes.models[0].input, ['text', 'image']);
-  assert.equal(gateway.baseURL, 'http://core-host:3180/api/llm/v1');
-  assert.deepEqual(gateway.models[0].input, ['text', 'image']);
-  const patched = studioPatch({}, 'http://core-host:3180', 196608, undefined, false, true);
-  assert.equal(JSON.stringify(patched).includes('/api/llm/v1'), true);
+test('Studio declares image input on the OpenAI gateway', () => {
+  const provider = studioSettings({}, 'http://core-host:3180', 196608)['llm-pi-ai'].providers['agentx-core'];
+  assert.equal(provider.baseURL, 'http://core-host:3180/api/llm/v1');
+  assert.deepEqual(provider.models[0].input, ['text', 'image']);
+  assert.equal(JSON.stringify(studioPatch({}, 'http://core-host:3180', 196608)).includes('/api/llm/v1'), true);
 });

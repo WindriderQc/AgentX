@@ -58,8 +58,7 @@ The runner uses four protections:
   `patient` admission, which waits up to eight minutes for a busy host instead
   of refusing. The runner reads that client's token from
   `AGENTX_LLM_CODING_TEAM_TOKEN` and the relay adds it; the worker never holds
-  it. Without the token the relay keeps the legacy patient route
-  (`/api/hermes-openai/patient/v1`), which is being retired. A nonzero exit or a budget
+  it; a run without the token refuses before the worker starts. A nonzero exit or a budget
   stop ends the attempt without an automatic retry. An explicit handoff can
   resume its local source checkpoint.
 

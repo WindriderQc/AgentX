@@ -12,6 +12,22 @@ from memory_review.client import MemoryReviewClient, AgentXUnavailable
 from memory_review.synthesis import http_chat_completion, SynthesisError
 
 
+
+_PRIOR_TOKEN = None
+
+
+def setUpModule():
+    global _PRIOR_TOKEN
+    _PRIOR_TOKEN = os.environ.get("AGENTX_LLM_MEMORY_REVIEW_TOKEN")
+    os.environ["AGENTX_LLM_MEMORY_REVIEW_TOKEN"] = "memory-review-token-0123"
+
+
+def tearDownModule():
+    if _PRIOR_TOKEN is None:
+        os.environ.pop("AGENTX_LLM_MEMORY_REVIEW_TOKEN", None)
+    else:
+        os.environ["AGENTX_LLM_MEMORY_REVIEW_TOKEN"] = _PRIOR_TOKEN
+
 class NativeAccessTests(unittest.TestCase):
     def setUp(self):
         self.seen = []
@@ -51,18 +67,19 @@ class NativeAccessTests(unittest.TestCase):
         self.server.server_close()
         self.thread.join(timeout=2)
 
-    def test_review_and_synthesis_use_lan_without_credentials(self):
+    def test_review_needs_no_credential_and_synthesis_sends_its_gateway_token(self):
         self.assertTrue(MemoryReviewClient(self.base).digest()["accepted"])
         self.assertEqual(http_chat_completion(self.base, {}), "synthetic answer")
         self.assertEqual(self.seen, [
             ("/api/memory-review/digest", None),
-            ("/api/hermes-openai/v1/chat/completions", None),
+            ("/api/llm/v1/chat/completions", "Bearer memory-review-token-0123"),
         ])
 
-    def test_synthesis_uses_the_gateway_with_its_own_token(self):
-        with mock.patch.dict(os.environ, {"AGENTX_LLM_MEMORY_REVIEW_TOKEN": "memory-review-token-0123"}):
-            self.assertEqual(http_chat_completion(self.base, {}), "synthetic answer")
-        self.assertEqual(self.seen, [("/api/llm/v1/chat/completions", "Bearer memory-review-token-0123")])
+    def test_synthesis_without_its_token_refuses_before_sending(self):
+        with mock.patch.dict(os.environ, {"AGENTX_LLM_MEMORY_REVIEW_TOKEN": ""}):
+            with self.assertRaises(SynthesisError):
+                http_chat_completion(self.base, {})
+        self.assertEqual(self.seen, [])
 
     def test_redirects_never_forward_observations(self):
         for status in (301, 302, 303, 307, 308):

@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { ollamaMessages } = require('../hermes/messages');
+const { ollamaMessages } = require('../llm-gateway/messages');
 
 test('OpenAI tool history and content parts become Ollama chat messages', () => {
   const converted = ollamaMessages([
@@ -20,7 +20,7 @@ test('unreadable tool arguments become an empty object instead of failing the re
   assert.deepEqual(message.tool_calls[0].function.arguments, {});
 });
 
-const { whenAdmitted } = require('../hermes/protocol');
+const { whenAdmitted } = require('../llm-gateway/chat');
 const denied = () => Object.assign(new Error('busy'), { code: 'RUNTIME_INFERENCE_ADMISSION_DENIED', statusCode: 503 });
 
 test('the patient route waits for a busy host and then runs the inference once', async () => {
