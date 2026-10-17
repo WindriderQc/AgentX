@@ -13,8 +13,11 @@ From this directory, `python -m memory_review --help` lists the existing collect
 run, report, digest and watermarks commands. Start with an explicit source and
 `collect --dry-run`. Nothing installs a scheduler. The default Core target is
 loopback port 3180; set `--agentx-url` for the intended instance. Synthesis needs an
-explicit accepted model and the enabled Core Hermes bridge; shadow mode is the
-default and this CLI has no apply/approve command.
+explicit accepted model and Core's OpenAI gateway: set
+`AGENTX_LLM_MEMORY_REVIEW_TOKEN` to the token of gateway client `memory-review`
+(without it, synthesis falls back to the legacy `/api/hermes-openai`, which is
+being retired). Shadow mode is the default and this CLI has no apply/approve
+command.
 
 Windows consumers may use the private HTTPS LAN entry without a human code.
 Review calls and synthesis send no parental credential. Remove obsolete code-file
