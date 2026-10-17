@@ -18,6 +18,9 @@ core_url="${AGENTX_CORE_URL:-http://127.0.0.1:3180}"
 settings_helper="${integration_root}/dsh-studio-settings.cjs"
 node_bin="${AGENTX_NODE_BIN:-/usr/local/bin/node}"
 browser_bin="${DSH_STUDIO_BROWSER_EXECUTABLE:-}"
+# Studio's own token for Core's OpenAI gateway (client `dsh-studio`). Unset,
+# Studio keeps Hermes's address, which needs no key.
+gateway_token="${AGENTX_LLM_DSH_STUDIO_TOKEN:-}"
 launch=()
 if [[ -n "${DSH_STUDIO_LAUNCH_FILE:-}" ]]; then
   [[ "$DSH_STUDIO_LAUNCH_FILE" == /* ]] || fail 'Native launch file must be absolute'
@@ -33,6 +36,9 @@ fi
 [[ ! -L "$workspace_root" && ! -L "$state_root" ]] || fail 'DSH Studio roots must not be symbolic links'
 [[ "$node_bin" == /* && -x "$node_bin" ]] || fail "Node runtime is unavailable at ${node_bin}"
 [[ -r "$settings_helper" ]] || fail 'DSH Studio settings helper is unavailable'
+if [[ -n "$gateway_token" ]]; then
+  [[ "$gateway_token" =~ ^[A-Za-z0-9._~+/=-]{16,}$ ]] || fail 'AGENTX_LLM_DSH_STUDIO_TOKEN is invalid'
+fi
 if [[ -n "$browser_bin" ]]; then
   [[ "$browser_bin" == /* && -x "$browser_bin" ]] || fail 'Chromium executable is unavailable'
   browser_bin="$(realpath -e -- "$browser_bin")"
@@ -45,7 +51,8 @@ if [[ "${1:-}" == '--check' ]]; then
   if [[ "$isolation" == 'bubblewrap' ]]; then
     [[ -x /usr/bin/bwrap ]] || fail 'Bubblewrap is unavailable'
   fi
-  printf 'status=ready isolation=%s bind=127.0.0.1:%s workspace=%s admission=per-request\n' "$isolation" "$port" "$workspace_root"
+  printf 'status=ready isolation=%s bind=127.0.0.1:%s workspace=%s admission=per-request route=%s\n' \
+    "$isolation" "$port" "$workspace_root" "$([[ -n "$gateway_token" ]] && echo gateway || echo hermes)"
   exit 0
 fi
 [[ $# -eq 0 ]] || fail 'DSH Studio accepts no command arguments'
@@ -65,14 +72,17 @@ if [[ -n "$browser_bin" && "$isolation" == 'bubblewrap' ]]; then
   browser_mount=(--ro-bind "$(dirname -- "$browser_bin")" /opt/agentx-chromium)
   browser_bin="/opt/agentx-chromium/$(basename -- "$browser_bin")"
 fi
-DSH_STUDIO_BROWSER_EXECUTABLE="$browser_bin" "$node_bin" "$settings_helper" "$settings" "$studio_home/.dsh/agentx.patch.json" "$core_url"
+DSH_STUDIO_BROWSER_EXECUTABLE="$browser_bin" AGENTX_LLM_DSH_STUDIO_TOKEN="$gateway_token" \
+  "$node_bin" "$settings_helper" "$settings" "$studio_home/.dsh/agentx.patch.json" "$core_url"
+api_key="${gateway_token:-local-no-auth}"
+unset AGENTX_LLM_DSH_STUDIO_TOKEN
 
 export DSH_PERMISSION_MODE=workspace-write
 export DSH_TELEMETRY_MODE=DISABLED
-export AGENTX_CORE_API_KEY=local-no-auth
 export PATH="$(dirname -- "$node_bin"):${dsh_root}/node_modules/.bin:${PATH}"
 
 if [[ "$isolation" == 'host' ]]; then
+  export AGENTX_CORE_API_KEY="$api_key"
   export DSH_HOME="${studio_home}/.dsh"
   cd -- "$workspace_root"
   exec "${launch[@]}" "$dsh_bin" web --patch "$DSH_HOME/agentx.patch.json" --host 127.0.0.1 --port "$port" --no-open --trusted-host "$trusted_host"
@@ -82,6 +92,9 @@ fi
 node_bin="$(realpath -e -- "$node_bin")"
 node_root="$(cd -- "$(dirname -- "$node_bin")/.." && pwd -P)"
 private_home="$studio_home"
+# The key reaches the sandbox through its private home, never a command line.
+key_file="$studio_home/.dsh/agentx-core.key"
+( umask 077; printf '%s' "$api_key" > "$key_file.tmp" && mv -f -- "$key_file.tmp" "$key_file" )
 
 exec "${launch[@]}" /usr/bin/bwrap \
   --unshare-all \
@@ -97,7 +110,6 @@ exec "${launch[@]}" /usr/bin/bwrap \
   --setenv DSH_HOME /home/agent/.dsh \
   --setenv DSH_PERMISSION_MODE workspace-write \
   --setenv DSH_TELEMETRY_MODE DISABLED \
-  --setenv AGENTX_CORE_API_KEY local-no-auth \
   --ro-bind /usr /usr \
   --ro-bind /lib /lib \
   --ro-bind /lib64 /lib64 \
@@ -117,6 +129,7 @@ exec "${launch[@]}" /usr/bin/bwrap \
   "${browser_mount[@]}" \
   --bind "$workspace_root" /workspaces \
   --chdir /workspaces \
+  /usr/bin/bash -c 'export AGENTX_CORE_API_KEY="$(< /home/agent/.dsh/agentx-core.key)"; exec "$@"' dsh \
   /opt/dsh/node_modules/.bin/dsh web \
     --patch /home/agent/.dsh/agentx.patch.json \
     --host 127.0.0.1 \

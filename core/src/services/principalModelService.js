@@ -10,13 +10,9 @@ const { runRuntimeMutation } = require('./runtimeMutationLeaseService');
 const { hasActiveSessionHold } = require('./hostSessionHoldService');
 const { invalidateRoutingSnapshots } = require('./routing/routingSnapshotCache');
 const { PRODUCT_PERMISSIVE_MODEL } = require('./modelRouterDefaults');
+const { modelsMatch } = require('../helpers/modelNameNormalization');
 
 const { PRINCIPAL_MODEL_ALIAS, resolvePrincipalAlias } = require('../../integrations/runtime-bridges/principal-model');
-const FOLLOW_TASKS = new Set([
-  ...Object.keys(routerConfig.CLASSIFIABLE_TASKS), 'daily_operator', 'household_review',
-  'rag_query_expansion', 'rag_reranking', 'rag_compression', 'buddy_chat', 'buddy_reaction', 'mail_review'
-]);
-
 function refusal(message, code = 'PRINCIPAL_MODEL_UNAVAILABLE') {
   return Object.assign(new Error(message), { code, statusCode: 409 });
 }
@@ -32,15 +28,23 @@ async function getPrincipalModel() {
     { value: 'abliterated', label: 'Abliterated', model: process.env.HOUSEHOLD_PERMISSIVE_PRIMARY_MODEL || PRODUCT_PERMISSIVE_MODEL }
   ];
   const selected = options.find(option => option.model === pins[0]?.model);
-  return { available: Boolean(selected && pins[0]?.contextSize > 0),
+  const divergent = divergentRoutes(routerConfig.getEffectiveTaskModels(), { hostKey: defaults?.host, pinnedModels: pins });
+  return { available: Boolean(selected && pins[0]?.contextSize > 0), divergentRoutes: divergent,
     selected: selected?.value || null, model: pins[0]?.model || null,
     contextSize: pins[0]?.contextSize || null, hostUrl, hostKey: defaults?.host,
     alias: PRINCIPAL_MODEL_ALIAS, options, pinnedModels: pins, status: pref?.status || 'unconfigured' };
 }
 
+// The host pin owns what its host loads (#829): every route the principal
+// host serves with the principal model follows it, and a route there naming
+// an unpinned model would evict the pin, so it blocks the switch.
 function followedRoutes(config, current) {
-  return Object.entries(config).filter(([task, entry]) => FOLLOW_TASKS.has(task)
-    && entry.model === current.model && entry.host === current.hostKey);
+  return Object.entries(config).filter(([, entry]) => entry.model === current.model && entry.host === current.hostKey);
+}
+
+function divergentRoutes(config, current) {
+  return Object.entries(config || {}).filter(([, entry]) => entry?.host === current.hostKey && entry.model
+    && !(current.pinnedModels || []).some(pin => modelsMatch(pin.model, entry.model))).map(([task]) => task);
 }
 
 async function selectPrincipalModel({ selected, expectedModel, principal, requestId } = {}) {
@@ -58,6 +62,9 @@ async function selectPrincipalModel({ selected, expectedModel, principal, reques
       return { error: refusal('The principal host has an active session or workload; retry when it finishes', 'PRINCIPAL_HOST_BUSY') };
     }
     const configs = routerConfig.getEffectiveTaskModels();
+    if (current.divergentRoutes.length) {
+      return { error: refusal(`Routes on the principal host name an unpinned model: ${current.divergentRoutes.join(', ')}`, 'PRINCIPAL_ROUTES_DIVERGE') };
+    }
     const routes = followedRoutes(configs, current);
     if (!routes.some(([task]) => task === 'daily_operator')) return { error: refusal('The principal route has a dedicated override') };
     const documents = await RouterTaskConfig.find({ taskType: { $in: routes.map(([task]) => task) } }).lean();
@@ -103,4 +110,4 @@ async function selectPrincipalModel({ selected, expectedModel, principal, reques
   return outcome;
 }
 
-module.exports = { PRINCIPAL_MODEL_ALIAS, getPrincipalModel, selectPrincipalModel, resolvePrincipalAlias, followedRoutes };
+module.exports = { PRINCIPAL_MODEL_ALIAS, getPrincipalModel, selectPrincipalModel, resolvePrincipalAlias, followedRoutes, divergentRoutes };

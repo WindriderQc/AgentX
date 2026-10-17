@@ -51,6 +51,7 @@ guard answers `/api/finance/*` and `/finance` with 404
 | `finance_overrides` | Owner decision for one transaction, keyed like the row so it survives re-ingestion; wins over rules |
 | `finance_plan` | Budget lines, debts, credit, provisions, assets, tax room, open items, cash allocation, deadlines, milestones, phase, exceptional tags |
 | `finance_alerts` | Deterministic alerts with stable keys (raised once) |
+| `finance_document_links` | Proposed, confirmed or rejected links between a Secretary document and a ledger row, keyed by the document id and the row's stable key (account, date, fingerprint, occurrence); survives re-ingestion |
 
 **Every total uses `flowCents`.** Using `amountCents` for spending counts card
 purchases as income.
@@ -65,12 +66,119 @@ purchases as income.
   CSV export, inbox status and scan. Every query takes `ledger=corp`.
 - `/finance`: the Wallet Beefer dashboard (situation and plan first, then the
   history analysis), a Personnel | Corporation switch and a plan editor.
+- `/api/finance/documents` (read-only view of the Secretary register) and
+  `POST /api/finance/documents/links/decide` (confirm or reject proposals).
 - OpenClaw plugin `integrations/openclaw/finance-ledger`: `finance_ledger`
-  (read), `finance_categorize` (owner-confirmed rules and single-row
-  decisions), `finance_alerts` (list or report once), `finance_plan` (read,
-  owner-stated operations). Visible only to the configured finance agent.
+  (read, including `action: documents`), `finance_categorize` (owner-confirmed
+  rules and single-row decisions), `finance_document_link` (confirm or reject a
+  proposed document match, only after the owner's yes), `finance_alerts` (list
+  or report once), `finance_plan` (read, owner-stated operations, `done` to settle
+  a deadline). Visible only to the configured finance agent.
+- A watch or open item may set `kind`: `payment` (the brief says "à payer dans N
+  jours") or `task` (neutral, the default: "dans N jours", "demain",
+  "aujourd'hui", "en retard"). Alert texts do not change.
+- `GET /api/finance/brief`: the finance line of the daily brief for other
+  surfaces, for example "Finances : Payer le T2 corp en retard · Odyssée à payer
+  dans 7 jours · relevés à déposer : Desjardins · 109 liens à confirmer". It
+  carries short labels, late series by issuer name, and the proposals to confirm.
+  It never carries an amount, an account number or a path: amounts, arrows
+  between amounts, long digit runs and four-digit non-years are removed from every
+  label. A watch or open item may set `briefLabel` to choose its wording; without
+  it, the label is cut before a dash, parenthesis or colon, then at 50 characters
+  on a word boundary. The missing-history count is not in the brief.
+- `GET /api/finance/goals`: savings goals from the plan section `goals`. Progress
+  comes from a ledger account (`source.kind: account`, its balance), an asset of
+  the plan (`asset`), or the sum of a tag (`tag`, money set aside counts as
+  progress). The pace is the average of the last three complete months (a month
+  without a payroll statement is left out); the projected month, the monthly
+  amount the target date needs, and a status (`reached`, `on_track`, `behind`,
+  `no_pace`) are computed by Core. Goals are shown as bars at the top of
+  "My situation".
+- `GET /api/finance/review/monthly`: the last complete month planned against
+  actual by category, the three largest overspends, and the goals. The Comptable
+  uses it for the monthly review.
 - Scheduled agent jobs (instance configuration): daily alert check (silent
   with `NO_REPLY` when nothing is new) and a weekly review.
+
+## Completeness and deadlines
+
+- A month is complete only when the payroll account (`EOP`) statements cover
+  every day of it (`financeCompleteness.js`). Incomplete months keep their
+  totals, are flagged `complete: false` and are excluded from averages and
+  savings rates. A ledger with no payroll statement at all flags nothing.
+- Staleness is judged per statement series (issuer and account or card last
+  four), not on the newest statement of all accounts: a card that is still fed
+  does not hide a payroll account that stopped. One alert per series. A series
+  silent beyond `FINANCE_ALERT_DORMANT_DAYS` is dormant (one info alert). The plan
+  section `seriesStatus` names a series and marks it `closed` to silence it;
+  a closed series' pending alerts are acknowledged at the next refresh.
+- `watch` and `openItems` accept optional `dueDate` (YYYY-MM-DD) and
+  `recurrence` (`monthly`, `quarterly`, `yearly`). The free-text `date` stays
+  valid. Settling an item means moving its `dueDate` forward; until then Core
+  alerts daily (J-7, J-1, overdue). The plan operation `done` settles an item:
+  a recurring one moves its `dueDate` to the next period (month-end safe), any
+  other one is removed and kept as a settled milestone.
+
+## Secretary documents
+
+The Secretary's invoice register (`FINANCE_SECRETARY_REGISTER`, schema v2, a
+file Core only reads, rewritten hourly by the Secretary) is matched to the
+personal ledger. Core never writes to it.
+
+- A document has an amount (the patient's share when the register has one,
+  else the gross amount), a date and a kind. Statements (`relevé` kinds) are
+  never matched and never ingested: they are listed as found in mail, for the
+  owner to file.
+- A row is a candidate when its amount is exactly the document's amount in
+  cents and it is dated from 3 days before to 10 days after the document.
+  A candidate whose description contains a word of the supplier is strong.
+- One strong candidate is a confident proposal. Any other case is an ambiguous
+  proposal (up to 5), for the owner to confirm. Nothing is confirmed by Core.
+- Confirming a proposal rejects the other proposals for the same document.
+  Rejected links are never proposed again. Confirmed and rejected links survive
+  a sync; proposals that no longer match are removed.
+- Document kinds are a closed set: `invoice`, `receipt`, `payment_proof`,
+  `claim`, `remit_advice`, `quote`, `bank_statement`, `insurance_statement`,
+  `tax`, `other`. Core reads the free-text label (kept as `documentKindRaw`)
+  when the register does not carry `kind`; the Secretary producer writes `kind`
+  from schema 3. Schemas 2 and 3 are both read.
+- Statements of kind `insurance_statement` and `bank_statement` are never
+  matched. Bank statements are listed under "Relevés trouvés dans Gmail". Each one
+  is matched to an account series of either ledger: the last four digits of its
+  document number and a tolerant issuer name (accents and small misspellings
+  allowed; "caisse" stands for Desjardins). The ledger follows from the series, so
+  a corporate statement is a corporate one. Its status: `fillsGap` (its month is a
+  gap of that series), `alreadyIngested` (its month is covered) or `unknown` (no
+  single series matches, or no date). Every unknown statement carries its reason.
+- The plan section `seriesStatus` may declare a series the statements do not
+  carry a last four for: `series` (issuer), `last4` (exactly four digits) and
+  `ledger` (`perso` or `corp`). A declared series is used first. Without a
+  declaration, a statement whose issuer matches a single series in a single
+  ledger is matched to it; when the same issuer exists in both ledgers the
+  statement stays unknown, with the reason "series in both ledgers, add last4 in
+  seriesStatus".
+- Deposit (`POST /api/finance/documents/statements/deposit`, up to 10 ids): Core
+  copies the file from `FINANCE_SECRETARY_FILES` into `FINANCE_INBOX_PATH`, or into
+  its `corp/` folder when the matched series is corporate. It copies only: nothing is deleted, the
+  name keeps the Secretary id and date, a file whose hash is already ingested or
+  already in the inbox is refused, and the normal reconciliation decides. The
+  plugin tool `finance_statement_deposit` runs only after the owner's yes.
+- The views: confident proposals; ambiguous matches grouped by document with
+  their candidate rows, for the owner to pick one; documents without a
+  transaction; outflows above a threshold without a document; claims still to
+  file; figures to verify; bank statements found in mail. Totals are computed by Core.
+- Claims keep health and insurance only: an insurer, a health or insurance
+  supplier word (clinic, pharmacy, dental, insurer...), or a linked row in the
+  Santé category. A claim or remittance kind alone is not enough: a client's
+  payment advice is not an insurer's. Tax and government documents are excluded.
+- A document whose `person` names one of the corporations (`FINANCE_CORP_NAMES`)
+  belongs to the corporate ledger: it matches corporate rows only, is never a
+  personal claim, and is listed by `GET /api/finance/documents?ledger=corp`.
+- A claim goes to `toVerify`, out of the totals, when it is above
+  `FINANCE_DOCUMENT_CLAIM_MAX_CENTS` (500 000 cents by default) or when its amount
+  is more than twice its gross amount, or its patient share exceeds the gross.
+- The statuses that count as settled for a reimbursement are `paid`, `reimbursed`,
+  `settled` and `regle` (accents folded). Check them against the real register.
 
 ## Known traps (each found on real statements)
 

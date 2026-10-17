@@ -3,6 +3,7 @@
 const { normalizeAgentsSection } = require('./openclaw/remoteConfigProjection');
 const { loadGuardedAgentPolicies } = require('./openclaw/modelPolicy');
 const { OPENCLAW_ROUTE_SCOPE, coreRoutedProviderIds } = require('./openclaw/localProviders');
+const { PRINCIPAL_MODEL_ALIAS } = require('./principal-model');
 
 const EXECUTION_POLICIES = Object.freeze({
   daily: Object.freeze({ responseMode: 'native', thinkingMode: 'auto', visibleFinalRequired: true }),
@@ -202,14 +203,22 @@ function buildHermesExport(lanes, coreBaseUrl) {
   };
 }
 
+// OpenClaw names the pinned principal by its stable alias: Core resolves it to
+// the pin, so a principal switch never leaves a stale model id installed.
+function openClawModelId(lane, lanes) {
+  return lane?.model && lanes.daily.pinAligned && lane.model === lanes.daily.model ? PRINCIPAL_MODEL_ALIAS : lane?.model;
+}
+
 function buildOpenClawExport(lanes, apiBase) {
   const models = [];
   const seen = new Set();
   for (const lane of [lanes.daily, lanes.codingSpecialist, lanes.masterBrain]) {
-    if (!lane?.model || seen.has(lane.model)) continue;
-    seen.add(lane.model);
-    models.push(toOpenClawModel(lane));
+    const id = openClawModelId(lane, lanes);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    models.push({ ...toOpenClawModel(lane), id });
   }
+  const ref = lane => (openClawModelId(lane, lanes) ? `ollama/${openClawModelId(lane, lanes)}` : null);
   return {
     providerId: 'ollama',
     provider: { apiBase, api: 'ollama', authHeader: false, apiKey: 'ollama-local', models },
@@ -221,9 +230,9 @@ function buildOpenClawExport(lanes, apiBase) {
       valueExported: false
     },
     defaults: {
-      primary: lanes.daily.model ? `ollama/${lanes.daily.model}` : null,
-      codingSpecialist: lanes.codingSpecialist.model ? `ollama/${lanes.codingSpecialist.model}` : null,
-      masterBrain: lanes.masterBrain.model ? `ollama/${lanes.masterBrain.model}` : null
+      primary: ref(lanes.daily),
+      codingSpecialist: ref(lanes.codingSpecialist),
+      masterBrain: ref(lanes.masterBrain)
     },
     agentModelPolicy: {
       source: 'supplied sanitized OpenClaw agents configuration',

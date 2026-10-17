@@ -50,7 +50,7 @@
             const badgeColor = tone === 'warn' ? '#fbbf24' : tone === 'active' ? '#4ade80' : '#94a3b8';
             return `
                 <tr>
-                    <td style="color:${badgeColor};font-weight:600">${shared.escapeHtml(hostLabel(e.host))}</td>
+                    <td style="color:${badgeColor};font-weight:600">${shared.escapeHtml(hostLabel(e.host))}<span class="nc-sr-only"> (${tone === 'warn' ? 'requests waiting' : tone === 'active' ? 'at capacity' : 'available'})</span></td>
                     <td style="color:#cbd5e1">${shared.escapeHtml(shared.shortModel ? shared.shortModel(e.model) : e.model)}</td>
                     <td style="text-align:right">${e.inFlight}/${gate.maxInflight}</td>
                     <td style="text-align:right">${e.waiters > 0 ? `<span style="color:#fbbf24">${e.waiters}</span>` : '0'}</td>

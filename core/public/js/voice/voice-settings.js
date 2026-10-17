@@ -55,8 +55,11 @@
     const language = profile.language === 'en' ? 'en' : 'fr';
     return { language, personaId, voice: validVoice(profile.selections?.[language]) ? profile.selections[language] : '', inputDeviceId: inputDevice(context, store),
       wakeWord: ['wake', 'open'].includes(listening) ? listening === 'wake' : context === 'family', interruption: prefs.interruption !== false,
+      linksClickable: context === 'family' ? familyLinks(store) === 'clickable' : true,
       owner: 'Présentation Nestor · ce navigateur · partagée entre Personnel et Famille', capture: capture(context, store) };
   }
+  const FAMILY_LINKS_KEY = 'household.space.family.links';
+  function familyLinks(store) { try { return store?.getItem(FAMILY_LINKS_KEY); } catch { return null; } }
   function validVoice(value) { return typeof value === 'string' && /^(kokoro|windows_sapi|voxcpm)\|[^\r\n]{1,120}$/.test(value); }
   function write(context, patch, personas = [], store = storage()) {
     context = scope(context);
@@ -87,6 +90,8 @@
       prefs.interruption = patch.interruption !== false;
       if (!P.save(store, prefs)) throw new Error('This browser could not save Nestor preferences.');
       store.setItem('household.space.' + context + '.listening', patch.wakeWord ? 'wake' : 'open');
+      // Famille shows external links as plain text unless this is turned on.
+      if (context === 'family') store.setItem(FAMILY_LINKS_KEY, patch.linksClickable ? 'clickable' : 'text');
     }
     return read(context, personas, store);
   }

@@ -1,7 +1,8 @@
 jest.mock('../../models/Roundtable', () => ({
   create: jest.fn(async (doc) => doc),
   updateOne: jest.fn(async () => ({ acknowledged: true })),
-  findById: jest.fn()
+  findById: jest.fn(),
+  findOneAndUpdate: jest.fn()
 }));
 
 jest.mock('../../src/services/hostPreferenceService', () => ({
@@ -22,7 +23,8 @@ const {
   buildPinnedAgentPayload,
   executeRound,
   assessModelParticipantReadiness,
-  isSystemicParticipantFailure
+  isSystemicParticipantFailure,
+  cancelRoundtable
 } = require('../../src/services/roundtable/orchestrator');
 
 describe('Roundtable v2 orchestrator', () => {
@@ -168,6 +170,35 @@ describe('Roundtable v2 orchestrator', () => {
       ready: false,
       error: expect.stringContaining('inference-a is restoring')
     }));
+  });
+
+  test('a cancelled council stops before the next panelist and hands the signal to the one speaking', async () => {
+    const controller = new AbortController();
+    const participant = jest.fn(async (_agent, _messages, _timeout, _emitter, _prefix, context) => {
+      expect(context.signal).toBe(controller.signal);
+      controller.abort();
+      return { response: '', error: 'Cancelled', stats: {}, startedAt: new Date(), completedAt: new Date() };
+    });
+    const agents = ['one', 'two', 'three'].map(agentId => ({ agentId, role: agentId, runtime: 'model', model: `m/${agentId}`, enableWebSearch: false }));
+
+    const results = await executeRound({ _id: 'rt-cancel' }, 1, agents, () => [{ role: 'user', content: 'Discuss.' }], 5000, null,
+      { callParticipantImpl: participant, signal: controller.signal });
+
+    expect(participant).toHaveBeenCalledTimes(1);
+    expect(Object.keys(results)).toEqual(['one']);
+  });
+
+  test('cancelling refuses a council that is no longer running', async () => {
+    Roundtable.findOneAndUpdate.mockResolvedValueOnce(null);
+    await expect(cancelRoundtable('rt-done')).rejects.toMatchObject({ status: 409 });
+
+    Roundtable.findOneAndUpdate.mockResolvedValueOnce({ _id: 'rt-live', status: 'cancelled' });
+    await expect(cancelRoundtable('rt-live')).resolves.toMatchObject({ status: 'cancelled' });
+    expect(Roundtable.findOneAndUpdate).toHaveBeenLastCalledWith(
+      { _id: 'rt-live', status: { $in: ['pending', 'running'] } },
+      { $set: expect.objectContaining({ status: 'cancelled' }) },
+      { new: true }
+    );
   });
 
   test('skips later panelists on the same route after a systemic failure', async () => {

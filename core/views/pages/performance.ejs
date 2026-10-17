@@ -74,49 +74,36 @@
                 <div class="value" id="uptime">—</div>
                 <div class="sub">Selected period</div>
             </div>
-            <div class="stat-card" data-tooltip="95th percentile latency - 95% of requests completed faster than this">
+            <div class="stat-card" data-tooltip="Mean of the hourly 95th-percentile latencies in the selected period. Each hour, 95% of its requests completed faster than that hour's value.">
                 <div class="label">P95 Latency</div>
                 <div class="value">
                     <span id="p95Latency">—</span>
                     <span class="trend" id="p95Trend"></span>
                 </div>
-                <div class="sub">95th percentile</div>
+                <div class="sub">Mean of hourly P95</div>
             </div>
         </div>
 
-        <!-- Latency Analysis Charts -->
-        <div class="two-column">
-            <!-- Latency Trends -->
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-wave-square"></i> Latency Trends</h2>
-                    <div class="controls">
-                        <span style="font-size: 11px; color: var(--muted); margin-right: 8px;">
-                            <span style="color: #22c55e;">&#9632;</span> P50
-                            <span style="color: #fbbf24; margin-left: 8px;">&#9632;</span> P95
-                            <span style="color: #ef4444; margin-left: 8px;">&#9632;</span> P99
+        <!-- Latency Trends -->
+        <div class="section-card">
+            <div class="section-header">
+                <h2><i class="fas fa-wave-square"></i> Latency Trends</h2>
+                <div class="controls">
+                    <span style="font-size: 11px; color: var(--muted); margin-right: 8px;">
+                        <span style="color: #22c55e;" aria-hidden="true">&#9632;</span> Average
+                        <span id="latencyLegendPercentiles">
+                            <span style="color: #fbbf24; margin-left: 8px;" aria-hidden="true">&#9632;</span> P95
+                            <span style="color: #ef4444; margin-left: 8px;" aria-hidden="true">&#9632;</span> P99
                         </span>
-                    </div>
-                </div>
-                <div class="section-body">
-                    <div class="chart-container">
-                        <canvas id="latencyTrendsChart"></canvas>
-                    </div>
-                    <div class="chart-empty" id="latencyTrendsEmpty">No latency data available for this time range.</div>
+                        <span id="latencyLegendEndpointNote" hidden>· one endpoint: hourly average only</span>
+                    </span>
                 </div>
             </div>
-
-            <!-- Percentile Distribution -->
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-chart-bar"></i> Percentile Distribution</h2>
+            <div class="section-body">
+                <div class="chart-container">
+                    <canvas id="latencyTrendsChart" role="img" aria-label="Latency trend chart"></canvas>
                 </div>
-                <div class="section-body">
-                    <div class="chart-container">
-                        <canvas id="percentileChart"></canvas>
-                    </div>
-                    <div class="chart-empty" id="percentileEmpty">No percentile data available.</div>
-                </div>
+                <div class="chart-empty" id="latencyTrendsEmpty">No latency data available for this time range.</div>
             </div>
         </div>
 
@@ -133,7 +120,7 @@
             </div>
             <div class="section-body">
                 <div class="chart-container">
-                    <canvas id="throughputChart"></canvas>
+                    <canvas id="throughputChart" role="img" aria-label="Throughput trend chart"></canvas>
                 </div>
                 <div class="chart-empty" id="throughputEmpty">No throughput data available for this time range.</div>
             </div>
@@ -156,12 +143,12 @@
                     <table class="data-table" id="loadTestsTable">
                         <thead>
                             <tr>
-                                <th class="sortable" data-sort="date">Date</th>
-                                <th class="sortable" data-sort="scenario">Scenario</th>
-                                <th class="sortable text-right" data-sort="duration">Duration</th>
-                                <th class="sortable text-right" data-sort="rps">RPS Peak</th>
-                                <th class="sortable text-right" data-sort="success">Success Rate</th>
-                                <th class="sortable text-right" data-sort="p95">P95 Latency</th>
+                                <th class="sortable" data-sort="date" tabindex="0" aria-sort="descending">Date</th>
+                                <th class="sortable" data-sort="scenario" tabindex="0" aria-sort="none">Scenario</th>
+                                <th class="sortable text-right" data-sort="duration" tabindex="0" aria-sort="none">Duration</th>
+                                <th class="sortable text-right" data-sort="rps" tabindex="0" aria-sort="none">RPS Peak</th>
+                                <th class="sortable text-right" data-sort="success" tabindex="0" aria-sort="none">Success Rate</th>
+                                <th class="sortable text-right" data-sort="p95" tabindex="0" aria-sort="none">P95 Latency</th>
                                 <th class="text-center">Status</th>
                                 <th class="text-center">Actions</th>
                             </tr>
@@ -229,8 +216,8 @@
 
     <!-- Create Baseline Modal -->
     <div class="modal-overlay" id="createBaselineModal">
-        <div class="modal">
-            <h2>Create Performance Baseline</h2>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="createBaselineTitle">
+            <h2 id="createBaselineTitle">Create Performance Baseline</h2>
             <form id="createBaselineForm">
                 <div class="form-group">
                     <label for="baselineName">Baseline Name *</label>
@@ -241,21 +228,18 @@
                     <textarea id="baselineDescription" placeholder="Optional description of this baseline..."></textarea>
                 </div>
                 <div class="form-group">
-                    <label for="baselineSource">Source</label>
-                    <select id="baselineSource">
-                        <option value="current">Current Metrics</option>
-                        <option value="loadtest">Load Test Result</option>
+                    <label for="baselineHours">Production traffic window</label>
+                    <select id="baselineHours">
+                        <option value="1">Last hour</option>
+                        <option value="6">Last 6 hours</option>
+                        <option value="24" selected>Last 24 hours</option>
+                        <option value="168">Last 7 days</option>
                     </select>
-                </div>
-                <div class="form-group" id="loadTestSelectGroup" style="display: none;">
-                    <label for="baselineLoadTest">Load Test</label>
-                    <select id="baselineLoadTest">
-                        <option value="">Select a load test...</option>
-                    </select>
+                    <small style="color: var(--muted);">Baselines record measured production traffic. Load tests are compared with each other in their table.</small>
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn-secondary" id="cancelBaselineBtn">Cancel</button>
-                    <button type="submit" class="btn-primary">Create Baseline</button>
+                    <button type="submit" class="btn-primary" id="createBaselineSubmit">Create Baseline</button>
                 </div>
             </form>
         </div>
@@ -263,8 +247,8 @@
 
     <!-- Import Load Test Modal -->
     <div class="modal-overlay" id="importTestModal">
-        <div class="modal">
-            <h2>Import Load Test Results</h2>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="importTestTitle">
+            <h2 id="importTestTitle">Import Load Test Results</h2>
             <form id="importTestForm">
                 <div class="form-group">
                     <label for="testFile">Artillery JSON Report *</label>
@@ -283,7 +267,7 @@
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn-secondary" id="cancelImportBtn">Cancel</button>
-                    <button type="submit" class="btn-primary">Import Test</button>
+                    <button type="submit" class="btn-primary" id="importTestSubmit">Import Test</button>
                 </div>
             </form>
         </div>

@@ -18,7 +18,9 @@ const financePlanSchema = new mongoose.Schema({
   openItems: { type: [mongoose.Schema.Types.Mixed], default: [] },
   allocations: { type: [mongoose.Schema.Types.Mixed], default: [] },
   watch: { type: [mongoose.Schema.Types.Mixed], default: [] },
-  taxRoom: { type: [mongoose.Schema.Types.Mixed], default: [] }
+  taxRoom: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  seriesStatus: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  goals: { type: [mongoose.Schema.Types.Mixed], default: [] }
 }, { timestamps: true, minimize: false });
 
 module.exports = mongoose.models.FinancePlan

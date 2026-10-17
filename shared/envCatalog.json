@@ -1159,6 +1159,56 @@
       "secret": false,
       "description": "Balance in cents under which the listed accounts raise a finance alert. Unset: 0, so the minimum-balance alert is off."
     },
+    "FINANCE_DOCUMENT_CLAIM_MAX_CENTS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "500000",
+      "category": "finance",
+      "secret": false,
+      "description": "Ceiling in cents for a document in the claims view; above it, or when it is more than twice its gross amount, the document goes to toVerify. Unset: 500000 (5 000 $)."
+    },
+    "FINANCE_CORP_NAMES": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "finance",
+      "secret": false,
+      "description": "Comma-separated names of the owner's corporations. A Secretary document whose person names one of them belongs to the corporate ledger and is never a personal claim. Unset: none."
+    },
+    "FINANCE_SECRETARY_FILES": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "finance",
+      "secret": false,
+      "description": "Folder where the Secretary keeps the files its register refers to. Core copies chosen bank statements from it into the finance inbox; it never writes there. Unset: no deposit."
+    },
+    "FINANCE_SECRETARY_REGISTER": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "finance",
+      "secret": false,
+      "description": "Path to the Secretary invoice register (schema v2), read-only. Unset: no document matching."
+    },
+    "FINANCE_ALERT_DORMANT_DAYS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "180",
+      "category": "finance",
+      "secret": false,
+      "description": "Days without a new statement after which a statement series is dormant: one info alert instead of a stale one. Unset: 180."
+    },
     "FINANCE_ALERT_STALE_DAYS": {
       "services": [
         "core"
@@ -2599,6 +2649,16 @@
       "category": "inference",
       "secret": false,
       "description": "Allowed speed loss, 0 to 50 percent, when applying a pin context. Unset: 10."
+    },
+    "PIN_DRIFT_CHECK_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Interval at which Core compares routes, the runtime export and the installed OpenClaw config with the host pins and raises the pin-drift alert, minimum 60000; 0 disables. Unset: 900000."
     },
     "PIN_RESTORE_GRACE_MS": {
       "services": [

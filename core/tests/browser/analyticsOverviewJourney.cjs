@@ -130,6 +130,8 @@ const server = http.createServer(async (req, res) => {
     });
     assert.equal(plotted.calls, 1481, 'plotted volume reconciles with the headline');
     assert.equal(await page.locator('#analytics-cockpit').getAttribute('open'), null);
+    const workbenchPaths = ['/api/analytics/costs', '/api/analytics/usage', '/api/analytics/feedback', '/api/analytics/rag-stats', '/api/analytics/effectiveness', '/api/analytics/federated', '/api/rag/'];
+    assert.deepEqual(requests.filter(p => workbenchPaths.some(prefix => p.startsWith(prefix))), [], 'the closed workbench loads nothing');
     await page.evaluate(() => document.fonts.ready);
     for (const [width, height] of [[1920, 1080], [1440, 900], [1366, 768], [1280, 720], [820, 1000], [390, 844], [320, 800]]) {
       await page.setViewportSize({ width, height });
@@ -159,10 +161,10 @@ const server = http.createServer(async (req, res) => {
     await page.screenshot({ path: path.join(report, 'overview-latency-1440.png'), fullPage: true });
     await page.locator('[data-ao-overlay="errors"]').click();
     assert.equal(await page.evaluate(() => Chart.getChart(document.getElementById('ao-trend-chart')).options.scales.rate.ticks.callback(2)), '2%');
-    await page.waitForFunction(() => document.getElementById('chatLaneEmptyNote').textContent.includes('last 7 days'));
-    await page.evaluate(() => { const period = document.getElementById('periodSelect'); period.value = '14'; period.dispatchEvent(new Event('change')); });
-    await page.waitForFunction(() => document.getElementById('chatLaneEmptyNote').textContent.includes('last 14 days'));
-    assert.equal(await page.inputValue('#analyticsWindow'), '24h', 'Playground period stays separate from platform activity');
+    // Opening the workbench loads it; the Playground lane follows the page-wide Period.
+    await page.locator('#analytics-cockpit > summary').click();
+    await page.waitForFunction(() => document.getElementById('chatLaneEmptyNote').textContent.includes('last 24 hours'));
+    assert.equal(await page.locator('#periodSelect, #infWindow, #federatedWindowSelect').count(), 0, 'no competing period selectors');
     await page.locator('[data-ao-group="byConsumerContract"]').click();
     assert.match(await page.locator('#ao-comparison').textContent(), /native-conversation-v1/);
     // Last selection wins even when an earlier window responds later.
@@ -172,10 +174,8 @@ const server = http.createServer(async (req, res) => {
     await page.waitForFunction(() => document.querySelector('.analytics-overview').dataset.state === 'ready');
     await page.waitForTimeout(400);
     assert.equal(await page.inputValue('#analyticsWindow'), '30d');
-    assert.equal(await page.inputValue('#infWindow'), '30d');
-    assert.match(await page.locator('#chatLaneEmptyNote').textContent(), /last 14 days/);
-    await page.selectOption('#analyticsWindow', '90d');
-    await page.waitForFunction(() => document.getElementById('ao-coverage').textContent.includes('limits this 90-day window'));
+    await page.waitForFunction(() => document.getElementById('chatLaneEmptyNote').textContent.includes('last 30 days'));
+    assert.equal(await page.locator('#analyticsWindow option[value="90d"]').count(), 0, 'no window beyond log retention');
     failSummary = true;
     await page.locator('#analytics-experience-refresh').click();
     await page.waitForFunction(() => document.querySelector('.analytics-overview').dataset.state === 'error');
@@ -203,11 +203,14 @@ const server = http.createServer(async (req, res) => {
     // Detail remains reachable with keyboard focus and the existing controls.
     await page.locator('.ao-kpi').first().click();
     assert.equal(await page.locator('#analytics-cockpit').evaluate(el => el.open), true);
-    assert.equal(await page.locator('#analytics-platform-inference').evaluate(el => document.activeElement === el), true);
+    // openTo() moves focus on the next animation frame.
+    await page.waitForFunction(() => document.activeElement === document.getElementById('analytics-platform-inference'), null, { timeout: 5000 });
     await page.locator('[data-analytics-target="chatLaneHeading"]').click();
     assert.equal(await page.locator('#chatLaneHeading').isVisible(), true, 'the shortcut reveals the collapsed Playground lane');
-    await page.selectOption('#periodSelect', '7');
-    await page.waitForTimeout(50);
+    await page.selectOption('#analyticsWindow', '7d');
+    // The page-wide Period also reloads federated and Codex data; let every
+    // request land before the demo check counts new ones.
+    for (let seen = -1; seen !== requests.length;) { seen = requests.length; await wait(300); }
     assert.equal(await page.locator('#chatLaneHeading').isVisible(), true, 'explicitly expanded Playground lane stays open across period changes');
     const requestStart = requests.length;
     failSummary = false; empty = false;
@@ -219,6 +222,6 @@ const server = http.createServer(async (req, res) => {
     assert.deepEqual(errors, []);
     assert.ok(requests.some(p => p.includes('/summary?window=24h')));
     assert.ok(bucketFacet('24h', {})[0].$group._id.$dateToString.format.includes('%H'));
-    console.log(JSON.stringify({ ok: true, report, viewports: 7, scenarios: ['initial', 'comparison', 'volume/latency overlay', 'visual evidence reset', 'window race', 'retention', 'failed read', 'empty', 'stale GPU', 'live failure', 'detail focus', 'demo profile', 'independent Playground window', 'persistent Playground disclosure'], requests: requests.length }, null, 2));
+    console.log(JSON.stringify({ ok: true, report, viewports: 7, scenarios: ['initial', 'comparison', 'volume/latency overlay', 'visual evidence reset', 'window race', 'retention', 'failed read', 'empty', 'stale GPU', 'live failure', 'detail focus', 'demo profile', 'page-wide Period', 'lazy workbench', 'persistent Playground disclosure'], requests: requests.length }, null, 2));
   } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

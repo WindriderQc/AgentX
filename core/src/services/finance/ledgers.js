@@ -30,4 +30,9 @@ function flowOf(code, amountCents) {
   return isLiability(code) ? -amountCents : amountCents;
 }
 
-module.exports = { LEDGERS, ledgerOf, ledgerFilter, ledgerPrefix, isLiability, flowOf, LIABILITY_CODE };
+// A statement series as the owner names it: issuer and the account or card last four.
+function seriesName(issuer, last4) {
+  return `${issuer || 'Unknown'}${last4 ? ` ···${last4}` : ''}`;
+}
+
+module.exports = { LEDGERS, ledgerOf, ledgerFilter, ledgerPrefix, isLiability, flowOf, LIABILITY_CODE, seriesName };

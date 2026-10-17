@@ -60,6 +60,7 @@ const {
  * so the freshness rule travels with the signal instead of hiding in a page.
  */
 const SUMMARY_TTL_MS = 5 * 60 * 1000;
+const RECENT_MS = 60 * 60 * 1000;
 
 const WINDOWS = {
   '24h': 24,
@@ -407,6 +408,8 @@ router.get('/summary', async (req, res) => {
       {
         $facet: {
           totals: [{ $group: { _id: null, ...groupMetrics } }],
+          // Last hour, whatever the window: a fresh outage must not be diluted by 30 days.
+          recent: [{ $match: { timestamp: { $gte: new Date(to.getTime() - RECENT_MS) } } }, { $group: { _id: null, ...groupMetrics } }],
           byModel: [
             { $group: { _id: '$model', ...groupMetrics, hosts: { $addToSet: '$host' } } },
             { $sort: { calls: -1 } }
@@ -619,6 +622,7 @@ router.get('/summary', async (req, res) => {
       },
       byModel: byModel.slice(0, 40),
       coverage: summaryCoverage({ models: byModel, listedModels: byModel.slice(0, 40), calls: t.calls, windowKey: key }),
+      recent: { since: new Date(to.getTime() - RECENT_MS), calls: facet?.recent?.[0]?.calls || 0, errors: facet?.recent?.[0]?.errors || 0 },
       bucketHours: key === '24h' ? 1 : 24,
       byBucket: (facet?.byBucket || []).map((row) => shape(row, 'date')),
       byCaller: (facet?.byCaller || []).map((r) => shape(r, 'caller')),

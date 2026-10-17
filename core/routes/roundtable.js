@@ -283,6 +283,18 @@ router.post('/:id/interjections', express.json({ limit: '16kb' }), async (req, r
   }
 });
 
+// Stop a pending or running council; the agent in flight is aborted.
+router.post('/:id/cancel', async (req, res) => {
+  if (!requireChairToken(req, res)) return;
+  try {
+    const doc = await roundtableService.cancelRoundtable(req.params.id);
+    res.json({ status: 'ok', data: { id: String(doc._id), status: doc.status } });
+  } catch (err) {
+    logger.warn('POST /api/roundtable/:id/cancel failed', { error: err.message });
+    res.status(err.status || 400).json({ status: 'error', message: err.message });
+  }
+});
+
 router.post('/:id/decision', express.json({ limit: '16kb' }), async (req, res) => {
   if (!requireChairToken(req, res)) return;
   try {

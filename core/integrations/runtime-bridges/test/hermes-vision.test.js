@@ -108,9 +108,19 @@ test('the native Responses transport receives actual pixels, not an image descri
   assert.equal(telemetry.at(-1).executionSource, 'openclaw');
 });
 
-test('reasoning refuses image parts rather than silently removing them', () => {
-  assert.throws(() => ollamaMessages(messages), error => error.code === 'HERMES_IMAGE_ROUTE_REQUIRED');
-  assert.throws(() => ollamaMessages([{ role: 'user', content: 'image', images: ['base64'] }]), /vision endpoint/);
+test('reasoning sends inline image bytes to the model instead of removing them', () => {
+  assert.deepEqual(ollamaMessages(messages), [{ role: 'user', content: 'Describe the colored shapes.', images: [image.split(',')[1]] }]);
+  assert.deepEqual(ollamaMessages([{ role: 'user', content: 'image', images: ['base64'] }]), [{ role: 'user', content: 'image', images: ['base64'] }]);
+  assert.deepEqual(ollamaMessages([{ role: 'tool', tool_call_id: 'c1', content: [{ type: 'input_image', image_url: image }] }])[0].images,
+    [image.split(',')[1]]);
+});
+
+test('remote, malformed and system images are refused rather than fetched or dropped', () => {
+  const refused = error => error.code === 'GATEWAY_IMAGE_INVALID' && error.statusCode === 400;
+  assert.throws(() => ollamaMessages([{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'http://private.test/a.png' } }] }]), refused);
+  assert.throws(() => ollamaMessages([{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/svg+xml;base64,PHN2Zz4=' } }] }]), refused);
+  assert.throws(() => ollamaMessages([{ role: 'user', content: 'x', images: [42] }]), refused);
+  assert.throws(() => ollamaMessages([{ role: 'system', content: [{ type: 'image_url', image_url: { url: image } }] }]), refused);
 });
 
 test('the shared advisory helper binds completed receipts to the saved request and preserves unknown native outcomes', async () => {

@@ -9,6 +9,7 @@
     </div>
     <p class="finance-phase" id="financePhase"></p>
     <p class="finance-sub" id="financeCoverage">Ledger reconciled to the cent · loading…</p>
+    <p class="finance-sub finance-data-asof" id="financeDataAsOf" hidden></p>
   </header>
 
   <p class="finance-error" id="financeError" role="alert" hidden></p>
@@ -20,6 +21,7 @@
 
   <section class="finance-perso-only" aria-labelledby="situationTitle">
     <h2 id="situationTitle">My situation</h2>
+    <div class="finance-goals" id="financeGoals" aria-label="Savings goals"></div>
     <div class="finance-tiles finance-tiles-wide" id="financeSituation"></div>
     <p class="finance-note" id="financeSituationNote"></p>
   </section>
@@ -230,6 +232,30 @@
     </form>
     <div class="finance-search-result" id="financeSearchResult" aria-live="polite"></div>
     <p class="finance-note"><a id="financeExport" href="/api/finance/export.csv" download>Export as CSV (Excel)</a> — follows the filters and the search.</p>
+  </section>
+
+  <section class="finance-card finance-perso-only" id="financeDocumentsCard" aria-labelledby="documentsTitle">
+    <div class="finance-card-head">
+      <h2 id="documentsTitle">Secretary documents</h2>
+      <p class="finance-note" id="documentsNote">Read-only register; nothing is written to it.</p>
+    </div>
+    <h3 class="finance-subtitle">To confirm — proposed matches</h3>
+    <ul class="finance-alert-list" id="documentsProposals"></ul>
+    <h3 class="finance-subtitle">Ambiguous — several rows fit, pick one</h3>
+    <ul class="finance-alert-list" id="documentsAmbiguous"></ul>
+    <h3 class="finance-subtitle">Documents without a transaction</h3>
+    <ul class="finance-alert-list" id="documentsUnmatched"></ul>
+    <h3 class="finance-subtitle">Large outflows without a document</h3>
+    <ul class="finance-alert-list" id="documentsUnlinked"></ul>
+    <h3 class="finance-subtitle">To claim from insurers</h3>
+    <p class="finance-note" id="documentsClaimTotal"></p>
+    <ul class="finance-alert-list" id="documentsClaims"></ul>
+    <h3 class="finance-subtitle">To verify — figure looks wrong, outside the totals</h3>
+    <p class="finance-note" id="documentsVerifyNote"></p>
+    <ul class="finance-alert-list" id="documentsToVerify"></ul>
+    <h3 class="finance-subtitle">Relevés trouvés dans Gmail</h3>
+    <p class="finance-note">Copied to the inbox only on your say-so; the normal reconciliation decides.</p>
+    <ul class="finance-alert-list" id="documentsStatements"></ul>
   </section>
 
   <section class="finance-card" aria-labelledby="yearlyTitle">

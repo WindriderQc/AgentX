@@ -433,23 +433,38 @@ router.post('/notifications/verify', async (req, res) => {
 
 /**
  * POST /api/alerts/bulk-resolve
- * Resolve all active alerts older than a given age
- * Body: { olderThanDays: 7 } (default: 7)
+ * Resolve active alerts that have not recurred for a given age. The age is
+ * measured from the last occurrence, not creation: an alert first raised
+ * weeks ago that still fires today stays active.
+ * Body: { olderThanDays: 7 (default), dryRun: false } — dryRun only counts.
  */
 router.post('/bulk-resolve', async (req, res) => {
   try {
     const days = Math.max(1, parseInt(req.body.olderThanDays, 10) || 7);
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const filter = {
+      status: 'active',
+      $or: [
+        { lastOccurrence: { $lt: cutoff } },
+        // Legacy rows without lastOccurrence fall back to their creation date.
+        { lastOccurrence: { $exists: false }, createdAt: { $lt: cutoff } }
+      ]
+    };
+
+    if (req.body.dryRun === true) {
+      const matching = await Alert.countDocuments(filter);
+      return res.json({ status: 'success', data: { matching, days } });
+    }
 
     const result = await Alert.updateMany(
-      { status: 'active', createdAt: { $lt: cutoff } },
+      filter,
       { $set: {
         status: 'resolved',
         'resolution.resolved': true,
         'resolution.resolvedAt': new Date(),
         'resolution.resolvedBy': 'bulk-cleanup',
         'resolution.method': 'auto',
-        'resolution.comment': `Bulk-resolved: active alerts older than ${days} days`,
+        'resolution.comment': `Bulk-resolved: no occurrence for ${days} days`,
       } }
     );
 

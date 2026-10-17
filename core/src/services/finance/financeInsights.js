@@ -7,6 +7,7 @@
 const FinanceTransaction = require('../../../models/FinanceTransaction');
 const { transactionFilter } = require('./financeQueryService');
 const { descriptionKey } = require('./financeCategories');
+const { payrollCoverage } = require('./financeCompleteness');
 
 const TRANSFERS = 'Virements internes';
 
@@ -21,22 +22,34 @@ function monthsBack(lastMonth, count) {
 }
 
 // In/out/net per calendar year, optionally for one tag, category or search.
+// A year lists the months without a payroll statement so the owner sees which
+// totals are partial. Totals still count every row Core has.
 async function yearly(query = {}) {
   const filter = transactionFilter(query);
-  const rows = await FinanceTransaction.aggregate([
-    { $match: filter },
-    { $group: {
-      _id: { $substrBytes: ['$date', 0, 4] },
-      count: { $sum: 1 },
-      inCents: { $sum: { $cond: [{ $gt: ['$flowCents', 0] }, '$flowCents', 0] } },
-      outCents: { $sum: { $cond: [{ $lt: ['$flowCents', 0] }, '$flowCents', 0] } },
-      netCents: { $sum: '$flowCents' },
-      firstDate: { $min: '$date' },
-      lastDate: { $max: '$date' }
-    } },
-    { $sort: { _id: 1 } }
+  const [rows, payroll] = await Promise.all([
+    FinanceTransaction.aggregate([
+      { $match: filter },
+      { $group: {
+        _id: { $substrBytes: ['$date', 0, 4] },
+        count: { $sum: 1 },
+        inCents: { $sum: { $cond: [{ $gt: ['$flowCents', 0] }, '$flowCents', 0] } },
+        outCents: { $sum: { $cond: [{ $lt: ['$flowCents', 0] }, '$flowCents', 0] } },
+        netCents: { $sum: '$flowCents' },
+        firstDate: { $min: '$date' },
+        lastDate: { $max: '$date' },
+        months: { $addToSet: { $substrBytes: ['$date', 0, 7] } }
+      } },
+      { $sort: { _id: 1 } }
+    ]),
+    query.account ? null : payrollCoverage({ ledger: query.ledger })
   ]);
-  return { years: rows.map(({ _id, ...rest }) => ({ year: _id, ...rest })) };
+  return {
+    years: rows.map(({ _id, months, ...rest }) => {
+      const incompleteMonths = payroll ? months.filter((m) => !payroll.isComplete(m)).sort() : [];
+      return { year: _id, ...rest, complete: incompleteMonths.length === 0, incompleteMonths };
+    }),
+    dataAsOf: payroll?.asOf || null
+  };
 }
 
 // Same description in at least `minMonths` distinct months with a stable
@@ -80,7 +93,11 @@ async function insights(query = {}) {
   const filter = { ...transactionFilter({ ...query, excludeCategory: query.category ? undefined : TRANSFERS,
     excludeTag: query.tag ? undefined : excludeTags.join(',') }),
     date: { $gte: `${window[0]}-01`, $lte: latest.date } };
-  const rows = await FinanceTransaction.find(filter).select('date description flowCents category tags').lean();
+  const [rows, payroll] = await Promise.all([
+    FinanceTransaction.find(filter).select('date description flowCents category tags').lean(),
+    query.account ? null : payrollCoverage({ ledger: query.ledger })
+  ]);
+  const complete = (month) => !payroll || payroll.isComplete(month);
 
   const perMonth = new Map(window.map((month) => [month, { inCents: 0, outCents: 0 }]));
   const perCategory = new Map();
@@ -96,17 +113,20 @@ async function insights(query = {}) {
     }
   }
 
+  // An incomplete month keeps its totals but has no savings rate.
   const savings = window.map((month) => {
     const { inCents, outCents } = perMonth.get(month);
-    return { month, inCents, outCents, netCents: inCents + outCents,
-      savingsRatePercent: inCents > 0 ? Math.round(((inCents + outCents) / inCents) * 1000) / 10 : null };
+    const counted = complete(month);
+    return { month, inCents, outCents, netCents: inCents + outCents, complete: counted,
+      savingsRatePercent: counted && inCents > 0 ? Math.round(((inCents + outCents) / inCents) * 1000) / 10 : null };
   });
 
-  // Last 3 months vs the months before, per category (monthly averages).
-  const recent = window.slice(-3);
-  const before = window.slice(0, -3);
+  // Last 3 months vs the months before, per category (monthly averages over complete months).
+  const recent = window.slice(-3).filter(complete);
+  const before = window.slice(0, -3).filter(complete);
   const categoryTrends = [];
   for (const [category, series] of perCategory) {
+    if (!recent.length) break;
     const recentAvg = Math.round(recent.reduce((sum, m) => sum + (series.get(m) || 0), 0) / recent.length);
     const beforeAvg = before.length ? Math.round(before.reduce((sum, m) => sum + (series.get(m) || 0), 0) / before.length) : 0;
     const change = recentAvg - beforeAvg;
@@ -122,6 +142,8 @@ async function insights(query = {}) {
 
   return {
     period: { from: `${window[0]}-01`, to: latest.date, months },
+    dataAsOf: payroll?.asOf || null,
+    incompleteMonths: savings.filter((s) => !s.complete).map((s) => s.month),
     savings,
     recurring: recurringCharges(rows),
     categoryTrends: categoryTrends.slice(0, 12),

@@ -6,6 +6,8 @@ module.exports = function productRequestParsers(app, express) {
   app.use('/api/images/expert', express.json({ limit: '512kb' }));
   app.use('/api/images', express.json({ limit: '8mb' }));
   app.use(/^\/api\/voice-personas\/private\/sessions\/[a-f0-9-]{36}\/images\/?$/, express.json({ limit: '8mb' }));
+  // OpenAI clients resend every image of a conversation with each request.
+  app.use(['/api/llm', '/api/hermes-openai'], express.json({ limit: '32mb' }));
   app.use(express.json({ limit: '5mb' }));
   app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 };

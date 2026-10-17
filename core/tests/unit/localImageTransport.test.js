@@ -15,3 +15,15 @@ test('the image reference envelope has its own bound without widening other rout
   expect((await request(app).post('/api/other').send(body)).status).toBe(413);
   expect((await request(app).post('/api/images/operations').send({ reference: 'A'.repeat(9 * 1024 * 1024) })).status).toBe(413);
 });
+
+test('the OpenAI gateway doors accept conversations that carry images', async () => {
+  const app = express();
+  parsers(app, express);
+  app.post(['/api/llm/v1/chat/completions', '/api/hermes-openai/v1/chat/completions', '/api/other'], (req, res) => res.json({ received: req.body.image.length }));
+  app.use((error, _req, res, _next) => res.status(error.status || 500).json({ error: error.type }));
+  const body = { image: 'A'.repeat(20 * 1024 * 1024) };
+  expect((await request(app).post('/api/llm/v1/chat/completions').send(body)).body.received).toBe(body.image.length);
+  expect((await request(app).post('/api/hermes-openai/v1/chat/completions').send(body)).body.received).toBe(body.image.length);
+  expect((await request(app).post('/api/other').send(body)).status).toBe(413);
+  expect((await request(app).post('/api/llm/v1/chat/completions').send({ image: 'A'.repeat(33 * 1024 * 1024) })).status).toBe(413);
+});

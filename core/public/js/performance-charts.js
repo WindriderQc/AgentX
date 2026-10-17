@@ -1,4 +1,12 @@
 Object.assign(PerformanceDashboard, {
+            // Windows longer than a day need the date, or hours repeat across days.
+            formatChartTime(timestamp) {
+                const date = new Date(timestamp);
+                return this.currentTimeRange > 24
+                    ? date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            },
+
             // Render latency trend chart
             renderLatencyTrendChart(data) {
                 const ctx = document.getElementById('latencyTrendsChart').getContext('2d');
@@ -7,10 +15,15 @@ Object.assign(PerformanceDashboard, {
                     this.charts.latencyTrends.destroy();
                 }
 
-                const timestamps = data.map(d => new Date(d.timestamp).toLocaleTimeString());
+                const timestamps = data.map(d => this.formatChartTime(d.timestamp));
                 const p50Data = data.map(d => d.p50);
                 const p95Data = data.map(d => d.p95);
                 const p99Data = data.map(d => d.p99);
+                // Per-endpoint rollups only keep an hourly average, so P95/P99
+                // would repeat it under a percentile label.
+                const endpointOnly = Boolean(this.currentEndpoint);
+                document.getElementById('latencyLegendPercentiles').hidden = endpointOnly;
+                document.getElementById('latencyLegendEndpointNote').hidden = !endpointOnly;
 
                 this.charts.latencyTrends = new Chart(ctx, {
                     type: 'line',
@@ -18,7 +31,7 @@ Object.assign(PerformanceDashboard, {
                         labels: timestamps,
                         datasets: [
                             {
-                                label: 'P50 (Median)',
+                                label: 'Average',
                                 data: p50Data,
                                 borderColor: 'rgb(34, 197, 94)',
                                 backgroundColor: 'rgba(34, 197, 94, 0.1)',
@@ -29,6 +42,7 @@ Object.assign(PerformanceDashboard, {
                             {
                                 label: 'P95',
                                 data: p95Data,
+                                hidden: endpointOnly,
                                 borderColor: 'rgb(251, 191, 36)',
                                 backgroundColor: 'rgba(251, 191, 36, 0.1)',
                                 tension: 0.4,
@@ -38,6 +52,7 @@ Object.assign(PerformanceDashboard, {
                             {
                                 label: 'P99',
                                 data: p99Data,
+                                hidden: endpointOnly,
                                 borderColor: 'rgb(239, 68, 68)',
                                 backgroundColor: 'rgba(239, 68, 68, 0.1)',
                                 tension: 0.4,
@@ -95,79 +110,6 @@ Object.assign(PerformanceDashboard, {
                 });
             },
 
-            // Render percentile chart
-            renderPercentileChart(data) {
-                const ctx = document.getElementById('percentileChart').getContext('2d');
-
-                if (this.charts.percentile) {
-                    this.charts.percentile.destroy();
-                }
-
-                const labels = ['P50', 'P75', 'P90', 'P95', 'P99', 'P999'];
-                const values = [
-                    data.p50 || 0,
-                    data.p75 || 0,
-                    data.p90 || 0,
-                    data.p95 || 0,
-                    data.p99 || 0,
-                    data.p999 || 0
-                ];
-
-                const colors = [
-                    'rgba(34, 197, 94, 0.8)',
-                    'rgba(34, 197, 94, 0.6)',
-                    'rgba(251, 191, 36, 0.8)',
-                    'rgba(251, 191, 36, 0.6)',
-                    'rgba(239, 68, 68, 0.8)',
-                    'rgba(239, 68, 68, 0.6)'
-                ];
-
-                this.charts.percentile = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: 'Latency (ms)',
-                            data: values,
-                            backgroundColor: colors,
-                            borderColor: colors.map(c => c.replace('0.8', '1').replace('0.6', '1')),
-                            borderWidth: 1
-                        }]
-                    },
-                    options: {
-                        indexAxis: 'y',
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                backgroundColor: 'rgba(0, 0, 0, 0.9)',
-                                titleColor: '#7cf0ff',
-                                bodyColor: '#e8edf5',
-                                borderColor: 'rgba(255, 255, 255, 0.1)',
-                                borderWidth: 1
-                            }
-                        },
-                        scales: {
-                            x: {
-                                beginAtZero: true,
-                                title: {
-                                    display: true,
-                                    text: 'Latency (ms)',
-                                    color: '#93a0b5'
-                                },
-                                ticks: { color: '#93a0b5' },
-                                grid: { color: 'rgba(255, 255, 255, 0.05)' }
-                            },
-                            y: {
-                                ticks: { color: '#93a0b5' },
-                                grid: { color: 'rgba(255, 255, 255, 0.05)' }
-                            }
-                        }
-                    }
-                });
-            },
-
             // Render throughput chart
             renderThroughputChart(data) {
                 const ctx = document.getElementById('throughputChart').getContext('2d');
@@ -176,7 +118,7 @@ Object.assign(PerformanceDashboard, {
                     this.charts.throughput.destroy();
                 }
 
-                const timestamps = data.map(d => new Date(d.timestamp).toLocaleTimeString());
+                const timestamps = data.map(d => this.formatChartTime(d.timestamp));
                 const rps = data.map(d => parseFloat(d.rps || 0));
                 const total = data.map(d => Number(d.requests_total || 0));
 

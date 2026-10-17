@@ -357,7 +357,7 @@ async function executeRoutedInference(deps, request, options = {}) {
   });
   payload = buildLocalPayload(request, model, runtimeOptions, keepAlive);
   const runtime = await prepareInferenceRuntime({
-    ...payload, host: hostUrl,
+    ...payload, host: hostUrl, claimed: Boolean(benchmarkClaim),
     options: runtimeOptions, keepAlive, think: request.think,
     ...(options.codingCapacity && { includeArtifactIdentity: true }),
   }, request.mode === 'embed' ? 'embed' : 'extension', deps);

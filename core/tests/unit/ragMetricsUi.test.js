@@ -8,7 +8,7 @@ const renderer = source.slice(source.indexOf('function ragFreshnessView('), sour
 
 function page(metrics, health) {
   const elements = Object.fromEntries(['ragEmpty', 'ragTotalDocs', 'ragTotalChunks', 'ragAvgChunks',
-    'ragHealth', 'ragLastIngest', 'ragSourcesBody', 'ragOldest', 'ragNewest'].map(key => [key,
+    'ragHealth', 'ragLastIngest', 'ragSourcesBody'].map(key => [key,
     { style: {}, dataset: {}, textContent: '', innerHTML: '' }]));
   const fetchJSON = jest.fn(url => {
     const value = url.endsWith('/metrics') ? metrics : health;

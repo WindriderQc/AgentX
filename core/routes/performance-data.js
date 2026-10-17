@@ -214,7 +214,8 @@ router.delete('/baselines/:id', async (req, res) => {
  * POST /api/performance/baselines
  *
  * Create new performance baseline.
- * Body: { name, description, metrics, endpoints, source, source_test_id, activate, loadTestId }
+ * Body: { name, description, hours, metrics, endpoints, activate }
+ * Without metrics, the baseline is sampled from production snapshots over `hours` (1-720, default 24).
  */
 router.post('/baselines', async (req, res) => {
   try {
@@ -227,30 +228,36 @@ router.post('/baselines', async (req, res) => {
       });
     }
 
+    // A baseline describes real production traffic. Load tests are synthetic
+    // and are compared with each other in their own table, not used here.
+    if (source_test_id || loadTestId || source === 'load_test') {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Baselines are taken from production traffic; compare load tests with each other instead.'
+      });
+    }
+
     let resolvedMetrics = metrics;
-    let resolvedSourceTestId = source_test_id || loadTestId;
+    let resolvedSource = source || 'manual';
 
     if (!resolvedMetrics) {
-      if (resolvedSourceTestId) {
-        const loadTest = await PerformanceLoadTest.findById(resolvedSourceTestId);
-        if (!loadTest) {
-          return res.status(404).json({
-            status: 'error',
-            message: 'Load test not found'
-          });
-        }
-        resolvedMetrics = {
-          avg_response_time: loadTest.latency?.median || 0,
-          p95_latency: loadTest.latency?.p95 || 0,
-          error_rate: loadTest.summary?.error_rate || 0,
-          throughput_rps: loadTest.summary?.rps_mean || 0
-        };
-      } else {
+      const hours = Math.min(Math.max(parseInt(req.body.hours, 10) || 24, 1), 720);
+      const startDate = new Date(Date.now() - hours * 60 * 60 * 1000);
+      const sample = await PerformanceSnapshot.getAggregatedMetrics(startDate, new Date());
+      if (!sample || !(sample.total_requests > 0) || sample.avg_latency === null) {
         return res.status(400).json({
           status: 'error',
-          message: 'Missing required metrics or loadTestId'
+          message: `No measured production traffic in the last ${hours} hours to build a baseline from.`
         });
       }
+      resolvedMetrics = {
+        avg_response_time: sample.avg_latency,
+        p95_latency: sample.avg_p95,
+        error_rate: sample.error_rate,
+        // Same basis as the comparison: total requests over the window.
+        throughput_rps: Number((sample.total_requests / (hours * 3600)).toFixed(2))
+      };
+      resolvedSource = 'production_sample';
     }
 
     if (
@@ -272,8 +279,7 @@ router.post('/baselines', async (req, res) => {
       description,
       metrics: resolvedMetrics,
       endpoints: endpoints || [],
-      source: source || (resolvedSourceTestId ? 'load_test' : 'manual'),
-      source_test_id: resolvedSourceTestId
+      source: resolvedSource
     });
 
     await baseline.save();
@@ -294,6 +300,12 @@ router.post('/baselines', async (req, res) => {
       data: baseline
     });
   } catch (err) {
+    if (err?.code === 11000) {
+      return res.status(409).json({ status: 'error', message: 'A baseline with this name already exists.' });
+    }
+    if (err?.name === 'ValidationError') {
+      return res.status(400).json({ status: 'error', message: 'Baseline name or description is too long.' });
+    }
     logger.error('Baseline creation failed', { error: err.message });
     res.status(500).json({
       status: 'error',
@@ -344,13 +356,14 @@ router.get('/baseline-compare', async (req, res) => {
     const comparison = {
       baseline: {
         name: baseline.name,
+        created_at: baseline.created_at || baseline.createdAt || null,
         metrics: baseline.metrics
       },
       current: {
         avg_response_time: currentMetrics.avg_latency,
         p95_latency: currentMetrics.avg_p95,
         error_rate: currentMetrics.error_rate,
-        throughput_rps: (currentMetrics.total_requests / (hours * 3600)).toFixed(2)
+        throughput_rps: Number((currentMetrics.total_requests / (hours * 3600)).toFixed(2))
       },
       diff_percentage: {
         avg_response_time: calculateDiff(currentMetrics.avg_latency, baseline.metrics.avg_response_time),

@@ -9,6 +9,7 @@ import { createCoreNotesClient, configuredJobContext } from "./core-notes.js";
 import { createCoreVaultClient } from "./core-vault.js";
 import { createCoreJournalClient } from "./core-journal.js";
 import { createCoreBriefClient } from "./core-brief.js";
+import { createCoreFinanceBriefClient } from "./core-finance-brief.js";
 import { createCoreIdentifiersClient, householdOwnerSession } from "./core-identifiers.js";
 import { registerLocalImages } from "./local-images.js";
 import { registerDataTools } from "./data-tools.js";
@@ -32,6 +33,7 @@ export default definePluginEntry({
     const writeVaultNote = createCoreVaultClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const mailJournal = createCoreJournalClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const teamBrief = createCoreBriefClient({ baseUrl: api.pluginConfig?.agentxUrl });
+    const financeBrief = createCoreFinanceBriefClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const identifiers = createCoreIdentifiersClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const secretaryContext = context => configuredJobContext(context, api.pluginConfig?.secretarySessionKeys);
     const morningContext = context => configuredJobContext(context, api.pluginConfig?.briefingSessionKeys);
@@ -162,12 +164,15 @@ export default definePluginEntry({
       if (!privateOwnerContext(context, api.config) && !morningContext(context)) return null;
       return {
         name: "nestor_briefing", label: "Nestor Personal Briefing",
-        description: "Get the French morning brief composed by AgentX Core from all open personal tasks (at most six lines), plus pending heavy-work outcomes from Core alerts. Relay the personal text as is, then mention up to two verified queue outcomes if present. Read-only; does not acknowledge results, deliver a message or imply calendar access.",
+        description: "Get the French morning brief composed by AgentX Core from all open personal tasks (at most six lines), plus pending heavy-work outcomes from Core alerts. Relay the personal text as is, then mention up to two verified queue outcomes if present. If finance.text is present, relay it as the Finances line (labels and counts only, never amounts). Read-only; does not acknowledge results, deliver a message or imply calendar access.",
         parameters: { type: "object", properties: {}, additionalProperties: false },
         async execute() {
           const brief = briefingFromCore(await agentxRead(api.pluginConfig?.agentxUrl, "personal_briefing", {}));
           try { brief.workQueue = await createWorkQueueClient({ baseUrl: api.pluginConfig?.agentxUrl })({ action: 'notifications', limit: 5 }); }
           catch (error) { brief.workQueue = { available: false, warning: error.message }; }
+          // The finance line is optional: when Core has nothing or does not answer, the brief goes on without it.
+          const finance = await financeBrief().catch(() => null);
+          if (finance) brief.finance = finance;
           return receipt(brief);
         },
       };

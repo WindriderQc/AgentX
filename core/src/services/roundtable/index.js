@@ -12,6 +12,7 @@ const Roundtable = require('../../../models/Roundtable');
 const {
   runRoundtable,
   createRoundtable,
+  cancelRoundtable,
   getRoundtable,
   listRoundtables,
   reconcileStaleRoundtables,
@@ -146,5 +147,6 @@ module.exports = {
   getEmitter,
   analyzeQuality,
   addInterjection,
-  setDecision
+  setDecision,
+  cancelRoundtable
 };

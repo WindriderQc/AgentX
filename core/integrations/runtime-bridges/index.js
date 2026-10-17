@@ -19,6 +19,7 @@ const {
   validateRuntimeConfigs
 } = require('./runtime-config');
 const { registerAgentOps } = require('./agent-ops/routes');
+const { createPinDriftWatch } = require('./pin-drift');
 const {
   PipelineAttributionLeaseManager,
   registerPipelineAttributionRoutes
@@ -230,6 +231,15 @@ function register(api) {
         status: 'success',
         data: { expected, validation: validateRuntimeConfigs(expected, req.body || {}) }
       });
+    } catch (error) { return next(error); }
+  });
+  // Routes, export and installed OpenClaw config checked against the pins (#829).
+  const pinDrift = createPinDriftWatch({ runtimeServices, logger, alertService: require('../../src/services/alertService') });
+  if (process.env.NODE_ENV !== 'test') pinDrift.start();
+  runtimeConfig.get('/drift', async (req, res, next) => {
+    try {
+      const data = req.query.refresh === 'true' || !pinDrift.last() ? await pinDrift.run() : pinDrift.last();
+      return res.json({ status: 'success', data });
     } catch (error) { return next(error); }
   });
   app.use('/api/nerve-center/agent-runtime-config', runtimeConfig);

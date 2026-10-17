@@ -108,20 +108,23 @@ async function rerankResults(query, results, topK = 5) {
 
         if (!response.ok) {
           logger.warn(`Re-ranking failed for result ${idx}`, { status: response.status });
-          return { ...result, llmScore: result.score, vectorScore: result.score };
+          return { ...result, llmScore: result.score, vectorScore: result.score, rerankFailed: true };
         }
 
         const data = await response.json();
-        const llmScore = parseScore(data.response, result.score);
+        const parsed = parseScore(data.response, null);
+        const llmScore = parsed === null ? result.score : parsed;
 
         return {
           ...result,
           llmScore,
+          // An unreadable verdict keeps the retrieval score; say so instead of calling it a judgement.
+          ...(parsed === null ? { rerankFailed: true } : {}),
           vectorScore: result.score // Preserve original vector score
         };
       } catch (error) {
         logger.warn(`Re-ranking error for result ${idx}`, { error: error.message });
-        return { ...result, llmScore: result.score, vectorScore: result.score };
+        return { ...result, llmScore: result.score, vectorScore: result.score, rerankFailed: true };
       }
     }, RERANK_CONCURRENCY);
 

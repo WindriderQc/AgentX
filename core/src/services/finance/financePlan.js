@@ -9,6 +9,7 @@ const FinanceTransaction = require('../../../models/FinanceTransaction');
 const { balances } = require('./financeQueryService');
 const { CATEGORIES } = require('./financeCategories');
 const { ledgerFilter } = require('./ledgers');
+const { payrollCoverage } = require('./financeCompleteness');
 
 const PERSO = ledgerFilter('perso');
 
@@ -40,6 +41,46 @@ function list(value, field, max, map) {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > max) throw new FinancePlanError(`${field} must be a list of at most ${max}`);
   return value.map((item, index) => map(item || {}, `${field}[${index}]`));
+}
+
+// Optional structured deadline: `dueDate` (YYYY-MM-DD) and `recurrence`. Core alerts
+// from dueDate; an item stays on the alerts until its dueDate is moved forward.
+const RECURRENCES = ['monthly', 'quarterly', 'yearly'];
+const GOAL_SOURCES = ['account', 'asset', 'tag'];
+
+function goalSource(value, field) {
+  if (!GOAL_SOURCES.includes(value)) throw new FinancePlanError(`${field} must be one of ${GOAL_SOURCES.join(', ')}`);
+  return value;
+}
+
+// `payment` items are worded "à payer" in the brief; any other item keeps a neutral wording.
+const ITEM_KINDS = ['payment', 'task'];
+
+function dueDate(value, field) {
+  const date = String(value ?? '').trim();
+  if (!date) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) {
+    throw new FinancePlanError(`${field} must be a YYYY-MM-DD date`);
+  }
+  return date;
+}
+
+function recurrence(value, field) {
+  if (value === null || value === undefined || value === '') return null;
+  if (!RECURRENCES.includes(value)) throw new FinancePlanError(`${field} must be one of ${RECURRENCES.join(', ')}`);
+  return value;
+}
+
+function last4Field(value, field) {
+  if (value === null || value === undefined || value === '') return null;
+  if (!/^\d{4}$/.test(String(value))) throw new FinancePlanError(`${field} must be exactly four digits`);
+  return String(value);
+}
+
+function ledgerField(value, field) {
+  if (value === null || value === undefined || value === '') return null;
+  if (!['perso', 'corp'].includes(value)) throw new FinancePlanError(`${field} must be perso or corp`);
+  return value;
 }
 
 function accountCode(value) {
@@ -80,12 +121,25 @@ function cleanPlan(input = {}) {
       asOf: text(asset.asOf, 10) || null, note: text(asset.note, 200)
     })),
     milestones: list(input.milestones, 'milestones', 60, (item) => ({ text: text(item.text, 240), done: item.done === true })),
-    openItems: list(input.openItems, 'openItems', 40, (item) => ({ title: text(item.title, 120), detail: text(item.detail, 400),
-      severity: ['critical', 'warning', 'info'].includes(item.severity) ? item.severity : 'info' })),
+    openItems: list(input.openItems, 'openItems', 40, (item, field) => ({ title: text(item.title, 120), detail: text(item.detail, 400),
+      severity: ['critical', 'warning', 'info'].includes(item.severity) ? item.severity : 'info', briefLabel: text(item.briefLabel, 60) || null,
+      kind: ITEM_KINDS.includes(item.kind) ? item.kind : null,
+      dueDate: dueDate(item.dueDate, `${field}.dueDate`), recurrence: recurrence(item.recurrence, `${field}.recurrence`) })),
     allocations: list(input.allocations, 'allocations', 20, (item, field) => ({ step: text(item.step, 120),
       amountCents: cents(item.amountCents, `${field}.amountCents`), amountText: text(item.amountText, 60),
       status: text(item.status, 30), effect: text(item.effect, 240) })),
-    watch: list(input.watch, 'watch', 40, (item) => ({ date: text(item.date, 40), what: text(item.what, 300), status: text(item.status, 30) })),
+    watch: list(input.watch, 'watch', 40, (item, field) => ({ date: text(item.date, 40), what: text(item.what, 300), status: text(item.status, 30),
+      briefLabel: text(item.briefLabel, 60) || null, kind: ITEM_KINDS.includes(item.kind) ? item.kind : null,
+      dueDate: dueDate(item.dueDate, `${field}.dueDate`), recurrence: recurrence(item.recurrence, `${field}.recurrence`) })),
+    // Statement series (issuer and last four) named for the alerts; `closed` series raise no stale or dormant alert.
+    // A goal's progress comes from a ledger account, a plan asset, or the sum of a tag; `ref` names it.
+    goals: list(input.goals, 'goals', 20, (item, field) => ({ name: text(item.name, 80), targetCents: cents(item.targetCents, `${field}.targetCents`, { optional: false }),
+      targetDate: dueDate(item.targetDate, `${field}.targetDate`), priority: ['high', 'medium', 'low'].includes(item.priority) ? item.priority : 'medium',
+      source: { kind: goalSource(item.source?.kind, `${field}.source.kind`), ref: text(item.source?.ref, 80) } })),
+    // last4 and ledger let a Secretary statement find its series: the issuer has no last four in the ledger.
+    seriesStatus: list(input.seriesStatus, 'seriesStatus', 60, (item, field) => ({ series: text(item.series, 80), label: text(item.label, 80),
+      closed: item.closed === true, note: text(item.note, 200), last4: last4Field(item.last4, `${field}.last4`),
+      ledger: ledgerField(item.ledger, `${field}.ledger`) })),
     taxRoom: list(input.taxRoom, 'taxRoom', 10, (item, field) => ({ name: text(item.name, 40),
       roomCents: cents(item.roomCents, `${field}.roomCents`, { optional: false }), asOf: text(item.asOf, 10) || null }))
   };
@@ -103,13 +157,26 @@ async function savePlan(input) {
 }
 
 const SECTIONS = ['phase', 'excludeTags', 'budget', 'debts', 'credit', 'provisions', 'assets', 'milestones',
-  'openItems', 'allocations', 'watch', 'taxRoom'];
+  'openItems', 'allocations', 'watch', 'taxRoom', 'seriesStatus', 'goals'];
 
 // Replaces one section (the page editor saves a whole table at once).
 async function saveSection(section, value) {
   if (!SECTIONS.includes(section)) throw new FinancePlanError(`unknown plan section: ${section}`);
   const current = await getPlan();
   return savePlan({ ...current, [section]: value });
+}
+
+const RECURRENCE_MONTHS = { monthly: 1, quarterly: 3, yearly: 12 };
+
+// Moves a YYYY-MM-DD date by whole months. A last-day date stays on the last day of the target month.
+function addMonths(date, months) {
+  const [year, month, day] = date.split('-').map(Number);
+  const first = new Date(Date.UTC(year, month - 1 + months, 1));
+  const y = first.getUTCFullYear();
+  const m = first.getUTCMonth();
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const isLastDay = new Date(Date.UTC(year, month, 0)).getUTCDate() === day;
+  return new Date(Date.UTC(y, m, isLastDay ? lastDay : Math.min(day, lastDay))).toISOString().slice(0, 10);
 }
 
 // Small edits for the finance persona: add, update (by index or by a text
@@ -142,8 +209,22 @@ async function applyOps(ops) {
       if (index < 0 || index >= items.length) throw new FinancePlanError(`no ${section} item matches ${op.match ?? op.index}`);
       if (op.op === 'remove') items.splice(index, 1); else items[index] = { ...items[index], ...(op.item || {}) };
       applied.push({ op: op.op, section, index });
+    } else if (op.op === 'done') {
+      // Settled: a recurring item moves to its next dueDate; any other item is removed and kept as a settled milestone.
+      if (!['watch', 'openItems'].includes(section)) throw new FinancePlanError(`${section} does not take done`);
+      const index = find();
+      if (index < 0 || index >= items.length) throw new FinancePlanError(`no ${section} item matches ${op.match ?? op.index}`);
+      const item = items[index];
+      if (item.recurrence) {
+        if (!item.dueDate) throw new FinancePlanError(`${section} item with a recurrence needs a dueDate`);
+        items[index] = { ...item, dueDate: addMonths(item.dueDate, RECURRENCE_MONTHS[item.recurrence]) };
+      } else {
+        items.splice(index, 1);
+        plan.milestones.push({ text: `${item.what || item.title} — réglé le ${new Date().toISOString().slice(0, 10)}`, done: true });
+      }
+      applied.push({ op: 'done', section, index });
     } else {
-      throw new FinancePlanError('op must be add, update, remove or set');
+      throw new FinancePlanError('op must be add, update, remove, set or done');
     }
   }
   const saved = await savePlan(plan);
@@ -190,15 +271,20 @@ async function situation({ months } = {}) {
   // transaction is earlier; otherwise the newest transaction's month is partial.
   const statementEnd = accounts.map((account) => account.asOf).filter(Boolean).sort().at(-1) || '';
   const monthsWindow = latest ? lastMonths(lastFullMonth(statementEnd > latest.date ? statementEnd : latest.date), window) : [];
-  const rows = monthsWindow.length ? await FinanceTransaction.find({
+  const fetched = monthsWindow.length ? await FinanceTransaction.find({
     ...PERSO, date: { $gte: `${monthsWindow[0]}-01`, $lte: `${monthsWindow.at(-1)}-31` }, category: { $ne: TRANSFERS },
     ...(plan.excludeTags.length && { tags: { $nin: plan.excludeTags } })
   }).select('date flowCents category tags').lean() : [];
+  // Averages count only months the payroll statements fully cover; the others are listed apart.
+  const payroll = await payrollCoverage({ ledger: 'perso' });
+  const averageMonths = monthsWindow.filter((month) => payroll.isComplete(month));
+  const counted = new Set(averageMonths);
+  const rows = fetched.filter((row) => counted.has(row.date.slice(0, 7)));
 
   let inCents = 0;
   let outCents = 0;
   for (const row of rows) { if (row.flowCents > 0) inCents += row.flowCents; else outCents += row.flowCents; }
-  const perMonth = (total) => (monthsWindow.length ? Math.round(total / monthsWindow.length) : 0);
+  const perMonth = (total) => (averageMonths.length ? Math.round(total / averageMonths.length) : 0);
 
   // Budget lines grouped by (category, tag): a tagged group takes its tagged
   // rows; the untagged group of a category takes the rest, so nothing counts twice.
@@ -229,7 +315,8 @@ async function situation({ months } = {}) {
     phase: plan.phase,
     excludeTags: plan.excludeTags,
     planUpdatedAt: plan.updatedAt,
-    window: { months: monthsWindow, from: monthsWindow[0] || null, to: latest?.date || null },
+    window: { months: monthsWindow, averageMonths, incompleteMonths: monthsWindow.filter((m) => !counted.has(m)),
+      from: monthsWindow[0] || null, to: latest?.date || null, dataAsOf: payroll.asOf },
     cash: cash ? { balanceCents: cash.balanceCents, asOf: cash.asOf } : null,
     monthly: { inCents: perMonth(inCents), outCents: perMonth(outCents), netCents: perMonth(inCents + outCents) },
     totalDebtCents,
@@ -251,6 +338,7 @@ async function situation({ months } = {}) {
     allocations: plan.allocations,
     watch: plan.watch,
     taxRoom: plan.taxRoom,
+    seriesStatus: plan.seriesStatus,
     taxRoomCents: plan.taxRoom.reduce((sum, item) => sum + item.roomCents, 0)
   };
 }

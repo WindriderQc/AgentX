@@ -1,5 +1,5 @@
 'use strict';
-const { outcome, outcomeSplit, callSplit, sparkPaths, comparisonRows, buckets, runtimeView, gpuRows } = require('../../public/js/analytics-overview');
+const { needsReview, statusText, outcome, outcomeSplit, callSplit, sparkPaths, comparisonRows, buckets, runtimeView, gpuRows } = require('../../public/js/analytics-overview');
 
 describe('analytics overview evidence', () => {
   test('success excludes both errors and cancellations; no activity is not 100% healthy', () => {
@@ -67,5 +67,29 @@ describe('analytics overview evidence', () => {
     expect(stale.utilization).toBeUndefined();
     expect(gpuRows([{ ...host, residency: 'cpu' }])).toEqual([]);
     expect(gpuRows([{ hostId: 'missing', vramUsedMiB: 0, vramTotalMiB: 24000 }])[0].fresh).toBe(false);
+  });
+});
+
+describe('analytics overview review threshold', () => {
+  test('a single error in a busy window is reported but not flagged', () => {
+    expect(needsReview({ calls: 1481, errors: 1, errorRate: 0.07 })).toBe(false);
+    expect(statusText({ calls: 1481, errors: 1, errorRate: 0.07 })).toEqual({ state: 'ready', text: '1 recorded error · below the 2% review threshold' });
+  });
+
+  test('a rate above 2% needs at least three errors', () => {
+    expect(needsReview({ calls: 40, errors: 2, errorRate: 5 })).toBe(false);
+    expect(needsReview({ calls: 100, errors: 3, errorRate: 3 })).toBe(true);
+    expect(statusText({ calls: 100, errors: 3, errorRate: 3 }).state).toBe('attention');
+  });
+
+  test('any error in the last hour needs review, however long the window', () => {
+    const totals = { calls: 10000, errors: 50, errorRate: 0.5 };
+    expect(needsReview(totals, { calls: 40, errors: 0 })).toBe(false);
+    expect(needsReview(totals, { calls: 40, errors: 1 })).toBe(true);
+    expect(statusText(totals, { calls: 40, errors: 2 })).toEqual({ state: 'attention', text: '2 errors in the last hour need review' });
+  });
+
+  test('no calls is empty, not healthy', () => {
+    expect(statusText({ calls: 0, errors: 0 }).state).toBe('empty');
   });
 });

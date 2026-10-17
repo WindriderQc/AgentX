@@ -16,14 +16,9 @@
             <div>
                 <div class="eyebrow">AgentX • Intelligence</div>
                 <h2><i class="fas fa-chart-line"></i><span class="title-separator"></span>Activity workbench</h2>
-                <p class="lede">Inference details below. Playground conversation panels use their own period.</p>
+                <p class="lede">Every panel below follows the Period chosen at the top of the page.</p>
             </div>
             <div class="header-controls">
-                <select id="periodSelect" aria-label="Playground conversation period">
-                    <option value="7">Last 7 days</option>
-                    <option value="14">Last 14 days</option>
-                    <option value="30">Last 30 days</option>
-                </select>
                 <button type="button" id="refreshBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
             </div>
         </header>
@@ -39,12 +34,6 @@
                 <div class="section-header">
                     <h2><i class="fas fa-microchip"></i> Platform Inference</h2>
                     <div style="display: flex; gap: 8px; align-items: center;">
-                        <select id="infWindow" aria-label="Inference window" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 12px;">
-                            <option value="24h" selected>Last 24 hours</option>
-                            <option value="7d">Last 7 days</option>
-                            <option value="30d">Last 30 days</option>
-                            <option value="90d">Last 90 days</option>
-                        </select>
                         <button type="button" id="infRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
@@ -349,8 +338,7 @@
             function esc(value){ return String(value == null ? '' : value).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
             function label(value){ return esc(String(value || 'other').replace(/-/g, ' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); })); }
             function effectivenessWindow(){
-                var days = document.getElementById('periodSelect')?.value || '7';
-                return ['7','14','30'].includes(days) ? days + 'd' : '7d';
+                return document.getElementById('analyticsWindow')?.value || '24h';
             }
             var effectivenessSeq = 0;
             async function loadEffectiveness(){
@@ -426,11 +414,15 @@
                     document.getElementById('effectivenessRuntimeBody').innerHTML = '<tr><td colspan="7" style="padding:12px;text-align:center;color:var(--muted);">Unable to load effectiveness telemetry.</td></tr>';
                 }
             }
+            function loadEffectivenessWhenOpen(){
+                var gate = window.AgentXAnalyticsCockpit && window.AgentXAnalyticsCockpit.whenOpen;
+                return gate ? gate('effectiveness', loadEffectiveness) : loadEffectiveness();
+            }
             document.getElementById('effectivenessRefreshBtn')?.addEventListener('click', loadEffectiveness);
-            document.getElementById('periodSelect')?.addEventListener('change', loadEffectiveness);
+            document.getElementById('analyticsWindow')?.addEventListener('change', loadEffectivenessWhenOpen);
             document.getElementById('refreshBtn')?.addEventListener('click', loadEffectiveness);
-            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadEffectiveness);
-            else loadEffectiveness();
+            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadEffectivenessWhenOpen);
+            else loadEffectivenessWhenOpen();
         })();
         </script>
 
@@ -649,14 +641,6 @@
                                         <span style="color: var(--muted);">Typical: 12-20 per doc (~800 chars/chunk)<br>More chunks = more granular search</span>
                                     </div>
                                     <div>
-                                        <strong style="color: var(--text);">Processing Time</strong><br>
-                                        <span style="color: var(--muted);">Normal: &lt;500ms per doc<br>Slow: &gt;1s indicates Ollama issues</span>
-                                    </div>
-                                    <div>
-                                        <strong style="color: var(--text);">Status Types</strong><br>
-                                        <span style="color: var(--muted);"><span style="color: #10b981;">created</span> = new, <span style="color: #3b82f6;">updated</span> = changed, <span style="color: #6b7280;">unchanged</span> = same</span>
-                                    </div>
-                                    <div>
                                         <strong style="color: var(--text);">Health Status</strong><br>
                                         <span style="color: var(--muted);"><span style="color: #10b981;">&#10003;</span> = Qdrant connected<br><span style="color: #ef4444;">&#10007;</span> = Qdrant offline</span>
                                     </div>
@@ -730,14 +714,6 @@
                     </div>
 
                     <div style="margin-top: 20px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px; font-size: 12px; color: var(--muted);">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                            <span><i class="fas fa-clock"></i> Oldest Document:</span>
-                            <span id="ragOldest">—</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                            <span><i class="fas fa-clock"></i> Newest Document:</span>
-                            <span id="ragNewest">—</span>
-                        </div>
                         <div style="display: flex; justify-content: space-between;" title="From the RAG ingest job history; the corpus freshness rule is evaluated against this instant.">
                             <span><i class="fas fa-file-import"></i> Last successful ingest:</span>
                             <span id="ragLastIngest">—</span>
@@ -761,13 +737,6 @@
                 <div class="section-header">
                     <h2><i class="fas fa-network-wired"></i> Federated Cost &amp; Consumption</h2>
                     <div style="display: flex; gap: 8px; align-items: center;">
-                        <select id="federatedWindowSelect" aria-label="Federated window" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 12px;">
-                            <option value="1h">Last 1h</option>
-                            <option value="24h">Last 24h</option>
-                            <option value="7d" selected>Last 7d</option>
-                            <option value="30d">Last 30d</option>
-                            <option value="all">All time</option>
-                        </select>
                         <button type="button" id="federatedRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
@@ -883,7 +852,7 @@
                 document.getElementById('fedMcTableBody').innerHTML = errorRow(5, 'Could not load provider telemetry. Try Refresh.');
             }
             async function loadFederated(){
-                const win = document.getElementById('federatedWindowSelect').value;
+                const win = document.getElementById('analyticsWindow')?.value || '24h';
                 const seq = ++federatedSeq;
                 let payload;
                 try {
@@ -960,13 +929,17 @@
                     mbody.innerHTML = '<tr><td colspan="5" style="padding:12px;text-align:center;color:var(--muted);">Provider telemetry unavailable.</td></tr>';
                 }
             }
+            function loadFederatedWhenOpen(){
+                const gate = window.AgentXAnalyticsCockpit && window.AgentXAnalyticsCockpit.whenOpen;
+                return gate ? gate('federated', loadFederated) : loadFederated();
+            }
             document.getElementById('federatedRefreshBtn').addEventListener('click', loadFederated);
-            document.getElementById('federatedWindowSelect').addEventListener('change', loadFederated);
-            // Kick off on load.
+            document.getElementById('analyticsWindow')?.addEventListener('change', loadFederatedWhenOpen);
+            // Loads once the workbench is opened.
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', loadFederated);
+                document.addEventListener('DOMContentLoaded', loadFederatedWhenOpen);
             } else {
-                loadFederated();
+                loadFederatedWhenOpen();
             }
         })();
         </script>

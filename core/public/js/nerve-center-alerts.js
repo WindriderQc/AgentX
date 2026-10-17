@@ -82,7 +82,7 @@
                     html += `<div class="nc-muted nc-fs-sm" style="margin:-4px 0 8px">Showing ${alertList.length} of ${activeTotal} active alerts. Severity cards count the complete active set.</div>`;
                 }
                 html += `<table class="nc-table"><thead><tr>
-                    <th>Severity</th><th>Alert</th><th>Where</th><th>Count</th><th>Last Seen</th><th>Actions</th>
+                    <th scope="col">Severity</th><th scope="col">Alert</th><th scope="col">Where</th><th scope="col">Count</th><th scope="col">Last Seen</th><th scope="col">Actions</th>
                 </tr></thead><tbody>`;
 
                 for (const a of alertList) {
@@ -98,14 +98,14 @@
                         ? `<div style="font-size:0.7rem;color:var(--muted);margin-top:2px;">${shared.escapeHtml(metaBits)}</div>`
                         : '';
                     html += `<tr>
-                        <td><span style="color:${sevColor}">&bull; ${shared.escapeHtml(a.severity || '')}</span></td>
+                        <td><span style="color:${sevColor}"><span aria-hidden="true">&bull;</span> ${shared.escapeHtml(a.severity || '')}</span></td>
                         <td>${shared.escapeHtml(a.title || '')}${metaLine}</td>
                         <td><span class="nc-model-tag">${shared.escapeHtml(ctx.component || a.source || 'unknown')}</span></td>
                         <td>${a.occurrenceCount > 1 ? `${a.occurrenceCount}×` : '1×'}</td>
                         <td>${shared.timeAgo(a.lastOccurrence || a.createdAt)}</td>
                         <td>
-                            <button class="nc-btn" data-ack="${a._id}">Ack</button>
-                            <button class="nc-btn" data-resolve="${a._id}">Resolve</button>
+                            <button class="nc-btn" data-ack="${a._id}" aria-label="Acknowledge alert ${shared.escapeHtml(a.title || '')}">Ack</button>
+                            <button class="nc-btn" data-resolve="${a._id}" aria-label="Resolve alert ${shared.escapeHtml(a.title || '')}">Resolve</button>
                         </td>
                     </tr>`;
                 }
@@ -116,9 +116,9 @@
 
             // ── Rules table (dynamic from API) ──
             html += `<h4 style="color:var(--text-bright);margin:20px 0 8px;display:flex;align-items:center;gap:12px">
-                <span><i class="fa-solid fa-shield-halved"></i> Alert Rules</span>
-                <button class="nc-btn" id="nc-add-rule-btn" style="font-size:10px;padding:3px 10px;margin-left:auto"><i class="fas fa-plus"></i> Add Rule</button>
-                <button class="nc-btn" id="nc-bulk-resolve-btn" style="font-size:10px;padding:3px 10px;border-color:rgba(248,113,113,0.3);color:#f87171"><i class="fas fa-broom"></i> Resolve Old</button>
+                <span><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Alert Rules</span>
+                <button class="nc-btn" id="nc-add-rule-btn" aria-expanded="false" aria-controls="nc-rule-editor" style="font-size:10px;padding:3px 10px;margin-left:auto"><i class="fas fa-plus" aria-hidden="true"></i> Add Rule</button>
+                <button class="nc-btn" id="nc-bulk-resolve-btn" title="Resolve active alerts with no occurrence in the last 7 days" style="font-size:10px;padding:3px 10px;border-color:rgba(248,113,113,0.3);color:#f87171"><i class="fas fa-broom" aria-hidden="true"></i> Resolve Old</button>
             </h4>`;
             html += buildRulesTable(rules);
 
@@ -136,8 +136,10 @@
 
         if (!_poller) {
             _poller = new window.PollingController();
-            // The refresh rebuilds the section, rule editor included: skip it while a rule is being written.
-            _poller.addTask('alerts', () => (ruleEditorOpen() ? undefined : loadAlerts()), 30000, { runOnStart: false });
+            // The refresh rebuilds the section, rule editor included: skip it while a rule
+            // is being written or while keyboard focus sits on an alert or rule control.
+            const busy = () => ruleEditorOpen() || document.getElementById('nc-alerts-body')?.contains(document.activeElement);
+            _poller.addTask('alerts', () => (busy() ? undefined : loadAlerts()), 30000, { runOnStart: false });
             _poller.start();
         }
     }
@@ -157,25 +159,25 @@
 
             rows += `<tr data-rule-id="${shared.escapeHtml(r.ruleId)}">
                 <td class="nc-td-md">${shared.escapeHtml(r.name)}${r.builtIn ? ' <span class="nc-muted" style="font-size:0.75em">(built-in)</span>' : ''}</td>
-                <td class="nc-td-md"><span style="color:${sevColor}">&bull; ${shared.escapeHtml(r.severity)}</span></td>
+                <td class="nc-td-md"><span style="color:${sevColor}"><span aria-hidden="true">&bull;</span> ${shared.escapeHtml(r.severity)}</span></td>
                 <td style="padding:8px 10px;font-size:0.85em;font-family:monospace">${condText}</td>
                 <td class="nc-td-md">
-                    <button class="nc-btn nc-rule-toggle" data-rule="${shared.escapeHtml(r.ruleId)}" data-enabled="${r.enabled}" ${retired ? 'disabled' : ''} title="${shared.escapeHtml(r.stateReason || '')}" style="font-size:10px;padding:3px 8px">
+                    <button class="nc-btn nc-rule-toggle" data-rule="${shared.escapeHtml(r.ruleId)}" data-enabled="${r.enabled}" aria-pressed="${Boolean(r.enabled)}" aria-label="Rule ${shared.escapeHtml(r.name || r.ruleId)} enabled" ${retired ? 'disabled' : ''} title="${shared.escapeHtml(r.stateReason || '')}" style="font-size:10px;padding:3px 8px">
                         ${detectorState === 'active'
-                            ? '<span style="color:#4ade80">&bull; ACTIVE</span>'
+                            ? '<span style="color:#4ade80"><span aria-hidden="true">&bull;</span> ACTIVE</span>'
                             : detectorState === 'retired_by_design'
-                                ? '<span class="nc-muted">&bull; RETIRED</span>'
-                                : '<span style="color:#f59e0b">&bull; DISABLED</span>'}
+                                ? '<span class="nc-muted"><span aria-hidden="true">&bull;</span> RETIRED</span>'
+                                : '<span style="color:#f59e0b"><span aria-hidden="true">&bull;</span> DISABLED</span>'}
                     </button>
                 </td>
                 <td style="padding:8px 10px;text-align:center">
                     <button class="nc-btn nc-rule-edit" data-rule="${shared.escapeHtml(r.ruleId)}" aria-label="Edit rule ${shared.escapeHtml(r.name || r.ruleId)}" title="Edit rule" style="font-size:10px;padding:3px 8px;margin-right:4px"><i class="fas fa-pen" aria-hidden="true"></i></button>
-                    ${!r.builtIn ? `<button class="nc-btn nc-rule-delete" data-rule="${shared.escapeHtml(r.ruleId)}" aria-label="Delete rule ${shared.escapeHtml(r.name || r.ruleId)}" title="Delete rule" style="font-size:10px;padding:3px 8px;border-color:rgba(248,113,113,0.3);color:#f87171"><i class="fas fa-trash"></i></button>` : ''}
+                    ${!r.builtIn ? `<button class="nc-btn nc-rule-delete" data-rule="${shared.escapeHtml(r.ruleId)}" aria-label="Delete rule ${shared.escapeHtml(r.name || r.ruleId)}" title="Delete rule" style="font-size:10px;padding:3px 8px;border-color:rgba(248,113,113,0.3);color:#f87171"><i class="fas fa-trash" aria-hidden="true"></i></button>` : ''}
                 </td>
             </tr>`;
         }
         return `<table class="nc-table" id="nc-rules-table"><thead><tr>
-            <th>Rule</th><th>Severity</th><th>Conditions</th><th>Status</th><th style="text-align:center;width:100px"></th>
+            <th scope="col">Rule</th><th scope="col">Severity</th><th scope="col">Conditions</th><th scope="col">Status</th><th scope="col" style="text-align:center;width:100px"><span class="nc-sr-only">Actions</span></th>
         </tr></thead><tbody>${rows}</tbody></table>`;
     }
 
@@ -185,7 +187,7 @@
     }
 
     function buildRuleEditor() {
-        return `<div id="nc-rule-editor" style="display:none;margin-top:12px;padding:14px;background:rgba(18,23,38,0.6);border:1px solid rgba(255,255,255,0.08);border-radius:8px">
+        return `<div id="nc-rule-editor" role="group" aria-labelledby="nc-rule-editor-title" style="display:none;margin-top:12px;padding:14px;background:rgba(18,23,38,0.6);border:1px solid rgba(255,255,255,0.08);border-radius:8px">
             <h5 style="margin:0 0 10px;color:var(--text-bright);font-size:0.9rem" id="nc-rule-editor-title">New Alert Rule</h5>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
                 <div>
@@ -213,12 +215,12 @@
                 </div>
             </div>
             <div style="margin-bottom:8px">
-                <label class="nc-muted" style="font-size:0.8em;display:block;margin-bottom:4px">Conditions</label>
-                <div id="nc-rule-conditions"></div>
-                <button class="nc-btn" id="nc-rule-add-cond" style="font-size:10px;padding:2px 8px;margin-top:4px"><i class="fas fa-plus"></i> Add Condition</button>
+                <div class="nc-muted" id="nc-rule-conditions-label" style="font-size:0.8em;display:block;margin-bottom:4px">Conditions</div>
+                <div id="nc-rule-conditions" role="group" aria-labelledby="nc-rule-conditions-label"></div>
+                <button class="nc-btn" id="nc-rule-add-cond" style="font-size:10px;padding:2px 8px;margin-top:4px"><i class="fas fa-plus" aria-hidden="true"></i> Add Condition</button>
             </div>
             <div style="display:flex;gap:8px;margin-top:10px">
-                <button class="nc-btn" id="nc-rule-save" style="padding:4px 16px;font-size:12px"><i class="fas fa-check"></i> Save</button>
+                <button class="nc-btn" id="nc-rule-save" style="padding:4px 16px;font-size:12px"><i class="fas fa-check" aria-hidden="true"></i> Save</button>
                 <button class="nc-btn" id="nc-rule-cancel" style="padding:4px 16px;font-size:12px;border-color:rgba(248,113,113,0.3);color:#f87171">Cancel</button>
             </div>
         </div>`;
@@ -317,21 +319,45 @@
         // Bulk-resolve old alerts
         const bulkButton = document.getElementById('nc-bulk-resolve-btn');
         bulkButton?.addEventListener('click', () => {
-            if (!confirm('Resolve all active alerts older than 7 days?')) return;
             act(bulkButton, async () => {
-                const result = await shared.fetchJson('/api/alerts/bulk-resolve', {
+                const post = (body) => shared.fetchJson('/api/alerts/bulk-resolve', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ olderThanDays: 7 }),
+                    body: JSON.stringify(body),
                 });
+                // Count first so the confirmation names exactly what will be resolved.
+                const preview = await post({ olderThanDays: 7, dryRun: true });
+                const matching = preview?.data?.matching || 0;
+                if (matching === 0) {
+                    window.AgentXUtils?.showToast?.('No active alert has been quiet for 7 days.', 'info');
+                    return;
+                }
+                if (!confirm(`Resolve ${matching} active alert${matching === 1 ? '' : 's'} with no occurrence in the last 7 days?`)) return;
+                const result = await post({ olderThanDays: 7 });
                 const count = result?.data?.resolved || 0;
-                window.AgentXUtils?.showToast?.(count > 0 ? `Resolved ${count} old alert(s).` : 'No alert older than 7 days.', 'info');
+                window.AgentXUtils?.showToast?.(`Resolved ${count} quiet alert${count === 1 ? '' : 's'}.`, 'info');
                 loadAlerts();
             });
         });
 
+        // The editor takes focus when it opens and hands it back to the control that opened it.
+        const addRuleButton = document.getElementById('nc-add-rule-btn');
+        let editorOpener = null;
+        const openEditor = (opener, firstField) => {
+            editorOpener = opener;
+            editor.style.display = 'block';
+            addRuleButton?.setAttribute('aria-expanded', 'true');
+            document.getElementById(firstField)?.focus();
+        };
+        const closeEditor = () => {
+            editor.style.display = 'none';
+            addRuleButton?.setAttribute('aria-expanded', 'false');
+            if (editorOpener?.isConnected) editorOpener.focus();
+            editorOpener = null;
+        };
+
         // Add rule button
-        document.getElementById('nc-add-rule-btn')?.addEventListener('click', () => {
+        addRuleButton?.addEventListener('click', () => {
             editingRuleId = null;
             document.getElementById('nc-rule-editor-title').textContent = 'New Alert Rule';
             document.getElementById('nc-rule-id').value = '';
@@ -341,7 +367,7 @@
             document.getElementById('nc-rule-desc').value = '';
             condContainer.innerHTML = '';
             addConditionRow(condContainer);
-            editor.style.display = 'block';
+            openEditor(addRuleButton, 'nc-rule-id');
         });
 
         // Add condition
@@ -350,9 +376,7 @@
         });
 
         // Cancel
-        document.getElementById('nc-rule-cancel')?.addEventListener('click', () => {
-            editor.style.display = 'none';
-        });
+        document.getElementById('nc-rule-cancel')?.addEventListener('click', closeEditor);
 
         // Save
         const saveButton = document.getElementById('nc-rule-save');
@@ -375,7 +399,7 @@
                     body: JSON.stringify(values),
                 });
             }
-            editor.style.display = 'none';
+            closeEditor();
             loadAlerts();
         }));
 
@@ -410,7 +434,7 @@
                 condContainer.innerHTML = '';
                 (rule.conditions?.all || []).forEach(c => addConditionRow(condContainer, c));
                 if (!rule.conditions?.all?.length) addConditionRow(condContainer);
-                editor.style.display = 'block';
+                openEditor(btn, 'nc-rule-name');
             });
         });
 

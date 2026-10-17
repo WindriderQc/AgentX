@@ -91,7 +91,8 @@
   function render(s) {
     $('financePhase').textContent = s.phase || '';
     const asOf = s.cash?.asOf ? `as of ${s.cash.asOf}` : '';
-    const window = s.window?.months?.length ? `average ${s.window.months[0]} → ${s.window.months.at(-1)}` : '';
+    const averaged = s.window?.averageMonths || [];
+    const window = averaged.length ? `average ${averaged[0]} → ${averaged.at(-1)}, complete months only` : '';
     $('financeSituation').replaceChildren(
       tile('Cash (EOP account)', s.cash ? money(s.cash.balanceCents) : '—', asOf),
       tile('Total debt', money(s.totalDebtCents), `${s.debts.length} tracked debt(s)`),
@@ -148,8 +149,9 @@
           el('span', { class: 'finance-budget-plan', style: `width:${width(b.monthlyCents)}` }),
           el('span', { class: `finance-budget-actual${over ? ' finance-budget-actual-over' : ''}`, style: `width:${width(b.actualMonthlyCents)}` }))));
     }));
-    $('financeBudgetNote').textContent = s.window?.months?.length
-      ? `Actual = average of ${s.window.months.length} months (${s.window.months[0]} → ${s.window.months.at(-1)}) · total budget spending ${money(s.budgetTotals.monthlyCents)} vs actual ${money(s.budgetTotals.actualMonthlyCents)}`
+    const budgetAveraged = s.window?.averageMonths || [];
+    $('financeBudgetNote').textContent = budgetAveraged.length
+      ? `Actual = average of ${budgetAveraged.length} complete months (${budgetAveraged[0]} → ${budgetAveraged.at(-1)}) · total budget spending ${money(s.budgetTotals.monthlyCents)} vs actual ${money(s.budgetTotals.actualMonthlyCents)}`
       : '';
     show('financeBudgetCard', s.budget.length > 0);
 
@@ -159,6 +161,26 @@
     $('financeProvisionsNote').textContent = s.provisions.length ? `≈ ${money(s.provisionsMonthlyCents)} to set aside each month` : '';
     show('financeProvisionsCard', s.provisions.length > 0);
   }
+
+  // Savings goals as progress bars: progress, status, projected month and the monthly amount the date needs.
+  const GOAL_STATUS = { reached: 'reached', on_track: 'on track', behind: 'behind the date', no_pace: 'no pace yet' };
+  function renderGoals(list) {
+    $('financeGoals').replaceChildren(...list.map((goal) => {
+      const detail = [`${money(goal.progressCents)} of ${money(goal.targetCents)}`,
+        goal.projectedMonth ? `projected ${goal.projectedMonth}` : null,
+        goal.requiredMonthlyCents && goal.targetDate ? `${money(goal.requiredMonthlyCents)} a month to reach it by ${goal.targetDate}` : null]
+        .filter(Boolean).join(' · ');
+      return el('div', { class: 'finance-goal' },
+        el('div', { class: 'finance-goal-head' }, el('strong', {}, goal.name), el('span', {}, ` · ${GOAL_STATUS[goal.status] || goal.status}`)),
+        el('div', { class: 'finance-goal-track', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(goal.percent) },
+          el('span', { class: 'finance-goal-fill', style: `width:${goal.percent}%` })),
+        el('small', {}, detail));
+    }));
+  }
+  fetch('/api/finance/goals', { credentials: 'same-origin' })
+    .then((response) => response.json())
+    .then((body) => { if (body?.status === 'success' && body.data.goals.length) renderGoals(body.data.goals); })
+    .catch(() => {});
 
   fetch('/api/finance/situation', { credentials: 'same-origin' })
     .then((response) => response.json())

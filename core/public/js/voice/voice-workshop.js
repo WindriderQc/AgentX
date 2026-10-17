@@ -39,7 +39,7 @@
     const setRows = (node, rows) => { node.replaceChildren(); for (const [label, value] of rows) { const dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = label; dd.textContent = value ?? 'Non observé'; node.append(dt, dd); } };
     const capture = () => S.normalize(Object.fromEntries([...host.querySelectorAll('[data-capture]')].map(el => [el.dataset.capture, el.value === '' ? NaN : Number(el.value)])), true);
     const draft = () => ({ ...prefs, language: field('language').value, voice: field('voice').value,
-      wakeWord: field('wakeWord').checked, interruption: field('interruption').checked,
+      wakeWord: field('wakeWord').checked, interruption: field('interruption').checked, linksClickable: field('linksClickable').checked,
       spokenReplies: field('spokenReplies').checked, autoSend: field('autoSend').checked, inputDeviceId: field('inputDeviceId').value });
     function voiceOptions(select, lang, selected = '') {
       select.replaceChildren(new Option('Voix effective du parcours', ''));
@@ -78,12 +78,12 @@
       updateExample(prefs.language);
       if (field('compareLanguage')) field('compareLanguage').value = prefs.language === 'fr' ? 'en' : 'fr';
       voiceOptions(field('voice'), prefs.language, prefs.voice); voiceOptions(field('testVoice'), prefs.language, prefs.voice);
-      for (const key of ['wakeWord','interruption','spokenReplies','autoSend']) field(key).checked = prefs[key];
+      for (const key of ['wakeWord','interruption','linksClickable','spokenReplies','autoSend']) field(key).checked = prefs[key] === true;
       if (prefs.inputDeviceId) field('inputDeviceId').add(new Option('Micro enregistré', prefs.inputDeviceId));
       field('inputDeviceId').value = prefs.inputDeviceId;
       for (const [key, value] of Object.entries(prefs.capture)) find(`[data-capture="${key}"]`).value = value;
       role('owner').textContent = prefs.owner;
-      role('psyx').hidden = scope !== 'psyx'; role('wake').hidden = !['personal','family'].includes(scope); role('interrupt').hidden = !['personal','family'].includes(scope);
+      role('psyx').hidden = scope !== 'psyx'; role('wake').hidden = !['personal','family'].includes(scope); role('links').hidden = scope !== 'family'; role('interrupt').hidden = !['personal','family'].includes(scope);
     }
     function showTab(value) {
       const selected = Object.hasOwn(tabs, value) ? value : 'microphone'; state.tab = selected;

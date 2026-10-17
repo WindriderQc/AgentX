@@ -8,9 +8,12 @@
   const $ = (id) => document.getElementById(id);
 
   const SEVERITY = [['critical', 'Urgent'], ['warning', 'Important'], ['info', 'Info']];
+  const RECURRENCE = [['', 'Once'], ['monthly', 'Monthly'], ['quarterly', 'Quarterly'], ['yearly', 'Yearly']];
   const SECTIONS = [
-    { key: 'openItems', label: 'Open items', fields: [['title', 'Title'], ['detail', 'Detail', 'long'], ['severity', 'Priority', SEVERITY]] },
-    { key: 'watch', label: 'Watch', fields: [['date', 'Date'], ['what', 'What', 'long'], ['status', 'Status']] },
+    { key: 'openItems', label: 'Open items', fields: [['title', 'Title'], ['detail', 'Detail', 'long'], ['severity', 'Priority', SEVERITY],
+      ['dueDate', 'Due (YYYY-MM-DD)'], ['recurrence', 'Repeats', RECURRENCE]] },
+    { key: 'watch', label: 'Watch', fields: [['date', 'Date'], ['what', 'What', 'long'], ['status', 'Status'],
+      ['dueDate', 'Due (YYYY-MM-DD)'], ['recurrence', 'Repeats', RECURRENCE]] },
     { key: 'debts', label: 'Debts', fields: [['name', 'Debt', 'long'], ['accountCode', 'Account code'], ['issuer', 'Issuer'],
       ['balanceCents', 'Balance ($, if not linked)', 'money'], ['rateBp', 'Rate (%)', 'rate'], ['paymentCents', 'Payment ($)', 'money'],
       ['status', 'Status'], ['endDate', 'End (YYYY-MM-DD)']] },
@@ -24,6 +27,9 @@
     { key: 'allocations', label: 'Allocation', fields: [['step', 'Step', 'long'], ['amountCents', 'Amount ($)', 'money'], ['amountText', 'or text'],
       ['status', 'Status'], ['effect', 'Effect', 'long']] },
     { key: 'milestones', label: 'Settled', fields: [['text', 'Item', 'long'], ['done', 'Done', 'bool']] },
+    { key: 'seriesStatus', label: 'Statement series', fields: [['series', 'Series (issuer)', 'long'], ['last4', 'Last 4 digits'],
+      ['ledger', 'Ledger', [['', '—'], ['perso', 'Personal'], ['corp', 'Corporation']]], ['label', 'Name'],
+      ['closed', 'Closed', 'bool'], ['note', 'Note', 'long']] },
     { key: 'phase', label: 'Phase', scalar: true },
     { key: 'excludeTags', label: 'Exceptional tags', list: true }
   ];

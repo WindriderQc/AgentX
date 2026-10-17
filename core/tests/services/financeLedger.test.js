@@ -173,7 +173,7 @@ describe('ledger questions', () => {
     expect(result.totals).toEqual({ count: 2, inCents: 0, outCents: -900, netCents: -900 });
     expect(result.rows).toHaveLength(2);
     expect((await query.monthly({ account: 'eop' })).months)
-      .toEqual([{ month: '2026-06', count: 3, inCents: 250000, outCents: -900, netCents: 249100 }]);
+      .toEqual([{ month: '2026-06', count: 3, inCents: 250000, outCents: -900, netCents: 249100, complete: true }]);
   });
 
   test('reports the latest closing balance per account', async () => {
@@ -329,8 +329,9 @@ describe('history, insights and export', () => {
       ['2026-01', [['2026-01-02', 'PAIE EMPLOYEUR', 310000], ['2026-01-05', 'NETFLIX', -1999], ['2026-01-20', 'VIREMENT A EPARGNE', -50000]]]
     ];
     for (const [ym, rows] of plan) {
+      const lastDay = new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0)).toISOString().slice(0, 10);
       await ingestDocument(await writeDoc(`${ym}.pdf`, ym), { readText,
-        extract: extractWith(month([`${ym}-01`, `${ym}-28`], rows)) });
+        extract: extractWith(month([`${ym}-01`, lastDay], rows)) });
     }
     await categories.saveRules([
       { pattern: 'dojo', category: 'Enfants et activités', tags: ['karate'] },
@@ -340,7 +341,8 @@ describe('history, insights and export', () => {
 
   test('totals each year, for everything or one tag', async () => {
     expect((await analysis.yearly({ tag: 'karate' })).years)
-      .toEqual([{ year: '2025', count: 2, inCents: 0, outCents: -29800, netCents: -29800, firstDate: '2025-01-09', lastDate: '2025-03-09' }]);
+      .toEqual([{ year: '2025', count: 2, inCents: 0, outCents: -29800, netCents: -29800, firstDate: '2025-01-09', lastDate: '2025-03-09',
+        complete: true, incompleteMonths: [] }]);
     expect((await analysis.yearly({})).years.map((y) => [y.year, y.count])).toEqual([['2025', 9], ['2026', 3]]);
   });
 
@@ -350,7 +352,7 @@ describe('history, insights and export', () => {
     expect(result.recurring.map((r) => [r.description, r.months, r.monthlyCents])).toEqual([['NETFLIX', 4, -1799]]);
     expect(result.largeExpenses.map((e) => e.description)).not.toContain('VIREMENT A EPARGNE');
     const january = result.savings.find((s) => s.month === '2026-01');
-    expect(january).toEqual({ month: '2026-01', inCents: 310000, outCents: -1999, netCents: 308001, savingsRatePercent: 99.4 });
+    expect(january).toEqual({ month: '2026-01', inCents: 310000, outCents: -1999, netCents: 308001, complete: true, savingsRatePercent: 99.4 });
   });
 
   test('exports an Excel-friendly CSV with totals', async () => {
@@ -424,6 +426,576 @@ describe('deterministic alerts', () => {
       extract: extractWith(...Array.from({ length: 4 }, () => statement({ trap: true }))) });
     const found = await alerts.evaluate({ env: {}, now: new Date('2026-07-05T00:00:00Z') });
     expect(found.map((a) => a.kind)).toContain('statement_needs_review');
+  });
+});
+
+describe('payroll coverage, standing alerts and deadlines', () => {
+  const alerts = require('../../src/services/finance/financeAlerts');
+  const plan = require('../../src/services/finance/financePlan');
+  const analysis = require('../../src/services/finance/financeInsights');
+  const env = { FINANCE_ALERT_STALE_DAYS: '45' };
+
+  // Synthetic one-account statement; rows are [date, description, cents]. EOP is the payroll account.
+  function account(code, period, rows) {
+    const card = code !== 'EOP';
+    let balance = 100000;
+    const transactions = rows.map(([date, description, cents]) => {
+      balance += cents;
+      return { date, description, amount_cents: cents, balance_after_cents: balance };
+    });
+    return { issuer: card ? 'Carte Exemple' : 'Caisse Exemple', account_last4: card ? '1111' : '0000',
+      period_start: period[0], period_end: period[1],
+      accounts: [{ code, opening_cents: 100000, closing_cents: balance, transactions }] };
+  }
+
+  async function ingest(name, doc) {
+    await ingestDocument(await writeDoc(name), { readText, extract: extractWith(doc) });
+  }
+
+  test('marks a month without a full payroll statement incomplete, everywhere', async () => {
+    await ingest('mar.pdf', account('EOP', ['2026-03-01', '2026-03-31'], [['2026-03-02', 'PAIE EMPLOYEUR', 300000]]));
+    await ingest('apr-card.pdf', account('MC 1', ['2026-04-01', '2026-04-30'], [['2026-04-07', 'EPICERIE', -20000]]));
+    await ingest('may.pdf', account('EOP', ['2026-05-01', '2026-05-31'],
+      [['2026-05-02', 'PAIE EMPLOYEUR', 300000], ['2026-05-08', 'EPICERIE', -100000]]));
+    await ingest('jun-partial.pdf', account('EOP', ['2026-06-01', '2026-06-15'], [['2026-06-02', 'PAIE EMPLOYEUR', 300000]]));
+
+    const monthly = await query.monthly({ ledger: 'perso' });
+    expect(monthly.months.map((m) => [m.month, m.complete])).toEqual([['2026-03', true], ['2026-04', false], ['2026-05', true], ['2026-06', false]]);
+    expect(monthly.incompleteMonths).toEqual(['2026-04', '2026-06']);
+    expect(monthly.dataAsOf).toBe('2026-06-15');
+    // Average over March and May only: (300000 + 200000) / 2.
+    expect(monthly.averageNetCents).toBe(250000);
+
+    const result = await analysis.insights({ months: 3 });
+    expect(result.savings.map((s) => [s.month, s.complete, s.savingsRatePercent])).toEqual([
+      ['2026-04', false, null], ['2026-05', true, 66.7], ['2026-06', false, null]]);
+    expect(result.incompleteMonths).toEqual(['2026-04', '2026-06']);
+    expect(result.dataAsOf).toBe('2026-06-15');
+
+    const years = await analysis.yearly({});
+    expect(years.years).toEqual([expect.objectContaining({ year: '2026', complete: false, incompleteMonths: ['2026-04', '2026-06'] })]);
+    expect(years.dataAsOf).toBe('2026-06-15');
+  });
+
+  test('marks nothing incomplete when a ledger has no payroll statement at all', async () => {
+    await ingest('card-only.pdf', account('MC 1', ['2026-04-01', '2026-04-30'], [['2026-04-07', 'EPICERIE', -20000]]));
+    const monthly = await query.monthly({});
+    expect(monthly.months.every((m) => m.complete)).toBe(true);
+    expect(monthly.incompleteMonths).toEqual([]);
+    expect(monthly.dataAsOf).toBeNull();
+  });
+
+  test('keeps a stale account listed while it stays stale, and not after a threshold change', async () => {
+    await ingest('jun.pdf', account('EOP', ['2026-06-01', '2026-06-30'], [['2026-06-02', 'PAIE EMPLOYEUR', 300000]]));
+    const late = new Date('2026-09-01T00:00:00Z');
+
+    expect((await alerts.report({ env, now: late })).alerts.map((a) => a.kind)).toEqual(['stale_data']);
+    expect((await alerts.report({ env, now: late })).alerts).toEqual([]);
+    expect((await alerts.refresh({ env, now: late })).alerts.map((a) => a.kind)).toEqual(['stale_data']);
+    expect((await alerts.refresh({ env, now: new Date('2026-06-20T00:00:00Z') })).alerts).toEqual([]);
+    expect((await alerts.refresh({ env: { FINANCE_ALERT_STALE_DAYS: '90' }, now: late })).alerts).toEqual([]);
+  });
+
+  test('alerts on dated plan items at J-7, J-1 and overdue, daily until the date moves', async () => {
+    await plan.savePlan({
+      watch: [{ what: 'Hydro-Québec', date: '~23 de chaque mois', dueDate: '2026-10-23', recurrence: 'monthly', status: '' }],
+      openItems: [{ title: 'Impôt T2', detail: '', severity: 'warning', dueDate: '2026-10-30' }]
+    });
+    const kinds = async (day) => (await alerts.evaluate({ env, now: new Date(`${day}T12:00:00Z`) }))
+      .filter((a) => a.kind.startsWith('deadline')).map((a) => [a.kind, a.facts.label]);
+
+    expect(await kinds('2026-10-15')).toEqual([]);
+    expect(await kinds('2026-10-16')).toEqual([['deadline_upcoming', 'Hydro-Québec']]);
+    expect(await kinds('2026-10-22')).toEqual([['deadline_due', 'Hydro-Québec']]);
+    expect(await kinds('2026-10-24')).toEqual([['deadline_overdue', 'Hydro-Québec'], ['deadline_upcoming', 'Impôt T2']]);
+
+    const day = new Date('2026-10-24T12:00:00Z');
+    const sortedKinds = (result) => result.alerts.map((a) => a.kind).sort();
+    expect(sortedKinds(await alerts.report({ env, now: day }))).toEqual(['deadline_overdue', 'deadline_upcoming']);
+    expect((await alerts.report({ env, now: day })).alerts).toEqual([]);
+    expect(sortedKinds(await alerts.refresh({ env, now: day }))).toEqual(['deadline_overdue', 'deadline_upcoming']);
+    expect(sortedKinds(await alerts.report({ env, now: new Date('2026-10-25T12:00:00Z') })))
+      .toEqual(['deadline_overdue', 'deadline_upcoming']);
+
+    await plan.applyOps([{ op: 'update', section: 'watch', match: 'Hydro', item: { dueDate: '2026-11-23' } }]);
+    expect(await kinds('2026-10-25')).toEqual([['deadline_upcoming', 'Impôt T2']]);
+  });
+
+  test('rejects a malformed dueDate or recurrence and keeps free-text dates', async () => {
+    await expect(plan.savePlan({ watch: [{ what: 'Loyer', dueDate: 'demain' }] })).rejects.toMatchObject({ code: 'FINANCE_PLAN_INVALID' });
+    await expect(plan.savePlan({ openItems: [{ title: 'Assurance', recurrence: 'weekly' }] })).rejects.toMatchObject({ code: 'FINANCE_PLAN_INVALID' });
+    const saved = await plan.savePlan({ watch: [{ what: 'Assurance', date: '~23 de chaque mois' }] });
+    expect(saved.watch[0]).toMatchObject({ date: '~23 de chaque mois', dueDate: null, recurrence: null });
+  });
+});
+
+describe('alert noise: one alert per statement series', () => {
+  const alerts = require('../../src/services/finance/financeAlerts');
+  const plan = require('../../src/services/finance/financePlan');
+  const env = { FINANCE_ALERT_STALE_DAYS: '45', FINANCE_ALERT_DORMANT_DAYS: '180' };
+
+  // One statement with several sub-accounts (same issuer and last four), each with one row.
+  function multi(period, codes) {
+    return { issuer: 'Caisse Exemple', account_last4: '0000', period_start: period[0], period_end: period[1],
+      accounts: codes.map((code) => ({ code, opening_cents: 100000, closing_cents: 100100,
+        transactions: [{ date: period[0], description: 'FRAIS', amount_cents: 100, balance_after_cents: 100100 }] })) };
+  }
+
+  test('raises one stale alert per series, however many sub-accounts it has', async () => {
+    await ingestDocument(await writeDoc('multi.pdf'), { readText, extract: extractWith(multi(['2026-06-01', '2026-06-30'], ['EOP', 'ES1', 'MC1'])) });
+    const found = await alerts.evaluate({ env, now: new Date('2026-09-01T00:00:00Z') });
+    expect(found.filter((a) => a.kind === 'stale_data')).toEqual([expect.objectContaining({
+      key: 'stale:Caisse Exemple ···0000', title: expect.stringContaining('Caisse Exemple ···0000') })]);
+  });
+
+  test('a named and closed series raises nothing; a long-silent series is dormant, once', async () => {
+    await ingestDocument(await writeDoc('closed.pdf'), { readText, extract: extractWith(multi(['2026-06-01', '2026-06-30'], ['EOP'])) });
+    await plan.savePlan({ seriesStatus: [{ series: 'Caisse Exemple ···0000', label: 'Desjardins compte', closed: true }] });
+    expect((await alerts.evaluate({ env, now: new Date('2026-09-01T00:00:00Z') })).filter((a) => a.kind.includes('stale')
+      || a.kind.includes('dormant'))).toEqual([]);
+
+    await plan.savePlan({ seriesStatus: [{ series: 'Caisse Exemple ···0000', label: 'Desjardins compte', closed: false }] });
+    const late = new Date('2027-01-15T00:00:00Z');
+    const dormant = await alerts.evaluate({ env, now: late });
+    expect(dormant.map((a) => a.kind)).toEqual(['dormant_account']);
+    expect(dormant[0].title).toContain('Desjardins compte');
+    expect((await alerts.report({ env, now: late })).alerts.map((a) => a.kind)).toEqual(['dormant_account']);
+    // Same key on a later day: already reported, not sent again.
+    expect((await alerts.report({ env, now: new Date('2027-01-16T00:00:00Z') })).alerts).toEqual([]);
+    expect((await alerts.refresh({ env, now: new Date('2027-01-16T00:00:00Z') })).alerts.map((a) => a.kind)).toEqual([]);
+  });
+});
+
+describe('closing a series and settling deadlines', () => {
+  const alerts = require('../../src/services/finance/financeAlerts');
+  const plan = require('../../src/services/finance/financePlan');
+  const env = { FINANCE_ALERT_STALE_DAYS: '45', FINANCE_ALERT_DORMANT_DAYS: '180' };
+
+  test('closing a series acknowledges its pending dormant alert', async () => {
+    await ingestDocument(await writeDoc('scotia.pdf'), { readText, extract: extractWith({
+      issuer: 'Banque Exemple', account_last4: '5555', period_start: '2026-06-01', period_end: '2026-06-30',
+      accounts: [{ code: 'EOP', opening_cents: 100000, closing_cents: 100100,
+        transactions: [{ date: '2026-06-02', description: 'FRAIS', amount_cents: 100, balance_after_cents: 100100 }] }] }) });
+    const late = new Date('2027-01-15T00:00:00Z');
+    expect((await alerts.report({ env, now: late })).alerts.map((a) => a.key)).toEqual(['dormant:Banque Exemple ···5555']);
+    await plan.savePlan({ seriesStatus: [{ series: 'Banque Exemple ···5555', label: 'Banque Scotia', closed: true }] });
+    expect((await alerts.refresh({ env, now: late })).alerts).toEqual([]);
+    const all = await alerts.list({ includeAcknowledged: true });
+    expect(all.alerts.map((a) => a.key)).toEqual(['dormant:Banque Exemple ···5555']);
+    expect(all.alerts[0].acknowledgedAt).toBeTruthy();
+  });
+
+  test('done moves a recurring deadline to its next period, month-end safe', async () => {
+    await plan.savePlan({ watch: [{ what: 'Odyssée', dueDate: '2026-01-31', recurrence: 'monthly', status: '' }] });
+    let saved = await plan.applyOps([{ op: 'done', section: 'watch', match: 'Odyssée' }]);
+    expect(saved.plan.watch[0].dueDate).toBe('2026-02-28');
+    saved = await plan.applyOps([{ op: 'done', section: 'watch', match: 'Odyssée' }]);
+    expect(saved.plan.watch[0].dueDate).toBe('2026-03-31');
+    await plan.savePlan({ openItems: [{ title: 'Impôt', dueDate: '2026-11-30', recurrence: 'quarterly' }] });
+    saved = await plan.applyOps([{ op: 'done', section: 'openItems', match: 'Impôt' }]);
+    expect(saved.plan.openItems[0].dueDate).toBe('2027-02-28');
+  });
+
+  test('done on a one-off item removes it and keeps a settled milestone; a recurring one without dueDate is refused', async () => {
+    await plan.savePlan({ openItems: [{ title: 'Facture T2', detail: '', severity: 'warning' }],
+      watch: [{ what: 'Assurance', recurrence: 'yearly' }] });
+    const saved = await plan.applyOps([{ op: 'done', section: 'openItems', match: 'T2' }]);
+    expect(saved.plan.openItems).toEqual([]);
+    expect(saved.plan.milestones.map((m) => [m.done, m.text.startsWith('Facture T2 — réglé le ')])).toEqual([[true, true]]);
+    await expect(plan.applyOps([{ op: 'done', section: 'watch', match: 'Assurance' }])).rejects.toMatchObject({ code: 'FINANCE_PLAN_INVALID' });
+  });
+});
+
+describe('Secretary documents matched to ledger rows', () => {
+  const links = require('../../src/services/finance/financeDocumentLinks');
+  const FinanceDocumentLink = require('../../models/FinanceDocumentLink');
+  const previous = process.env.FINANCE_SECRETARY_REGISTER;
+  const previousMax = process.env.FINANCE_DOCUMENT_CLAIM_MAX_CENTS;
+
+  // Synthetic register (schema v2, free-text kinds): every name and figure is invented.
+  const invoices = [
+    { supplier: 'Clinique Exemple', documentNumber: 'F-1', documentDate: '2026-06-10', documentKind: 'facture dentaire', grossAmountCents: 15000, messageId: 'm1' },
+    { supplier: 'Pharmacie Exemple', documentNumber: 'F-2', documentDate: '2026-06-20', documentKind: 'reçu', grossAmountCents: 4200, messageId: 'm2' },
+    { supplier: 'Boutique Exemple', documentNumber: 'F-3', documentDate: '2026-06-25', documentKind: 'facture', grossAmountCents: 9000, messageId: 'm3' },
+    { supplier: 'Vrac Exemple', documentNumber: 'F-4', documentDate: '2026-06-01', documentKind: 'facture', grossAmountCents: 123, messageId: 'm4' },
+    { supplier: 'Banque Exemple', documentNumber: 'R-6', documentDate: '2026-06-30', documentKind: 'relevé mensuel bancaire', messageId: 'm5', originalFilename: 'releve-juin.pdf' },
+    { supplier: 'Assureur Exemple', documentNumber: 'C-7', documentDate: '2026-06-15', documentKind: 'claim', patientPaidCents: 5000, messageId: 'm6' },
+    { supplier: 'PlayStation Exemple', documentNumber: 'P-8', documentDate: '2026-06-05', documentKind: 'reçu', grossAmountCents: 7000, messageId: 'm7' },
+    { supplier: 'Revenu Exemple', documentNumber: 'T-9', documentDate: '2026-06-03', documentKind: 'annexe fiscale', grossAmountCents: 7000, messageId: 'm8' },
+    { supplier: 'Assureur Exemple', documentNumber: 'C-10', documentDate: '2026-06-16', documentKind: 'claim', patientPaidCents: 600000, messageId: 'm9' },
+    { supplier: 'Assurance Exemple', documentNumber: 'S-11', documentDate: '2026-06-28', documentKind: "relevé d'assurance", messageId: 'm10' },
+    { supplier: 'Fournisseur Exemple', documentNumber: 'A-12', documentDate: '2026-06-18', documentKind: 'avis de paiement', person: 'Corp Exemple Inc.', grossAmountCents: 25000, messageId: 'm11' },
+    { supplier: 'Voyage Exemple', documentNumber: 'V-13', documentDate: '2026-06-19', documentKind: 'claim', grossAmountCents: 40000, messageId: 'm12' }
+  ];
+
+  beforeEach(async () => {
+    await Promise.all([FinanceDocumentLink.deleteMany({})]);
+    const rows = [['2026-06-12', 'CLINIQUE EXEMPLE PAIEMENT', -15000], ['2026-06-21', 'PHARMACIE XYZ', -4200],
+      ['2026-06-22', 'EPICERIE', -4200], ['2026-06-26', 'MARCHE A', -9000], ['2026-06-27', 'MARCHE B', -9000],
+      ['2026-06-15', 'GROS ACHAT', -30000]];
+    let balance = 100000;
+    const transactions = rows.map(([date, description, cents]) => { balance += cents; return { date, description, amount_cents: cents, balance_after_cents: balance }; });
+    await ingestDocument(await writeDoc('june-eop.pdf'), { readText, extract: extractWith({
+      issuer: 'Caisse Exemple', account_last4: '0000', period_start: '2026-06-01', period_end: '2026-06-30',
+      accounts: [{ code: 'EOP', opening_cents: 100000, closing_cents: balance, transactions }] }) });
+    const file = await writeDoc('register.json', JSON.stringify({ schemaVersion: 2, generatedAt: '2026-10-16T08:00:00Z', complete: true, coverage: {}, invoices }));
+    process.env.FINANCE_SECRETARY_REGISTER = file;
+    delete process.env.FINANCE_DOCUMENT_CLAIM_MAX_CENTS;
+    process.env.FINANCE_CORP_NAMES = 'Corp Exemple';
+  });
+
+  afterEach(() => {
+    if (previous === undefined) delete process.env.FINANCE_SECRETARY_REGISTER; else process.env.FINANCE_SECRETARY_REGISTER = previous;
+    if (previousMax === undefined) delete process.env.FINANCE_DOCUMENT_CLAIM_MAX_CENTS; else process.env.FINANCE_DOCUMENT_CLAIM_MAX_CENTS = previousMax;
+    delete process.env.FINANCE_CORP_NAMES;
+  });
+
+  test('a corporate payment advice is never a personal claim and never links to a personal row', async () => {
+    const view = await links.documents({ minCents: 10000 });
+    expect(view.toClaim.items.map((d) => d.documentNumber)).toEqual(['C-7']);
+    expect(view.unmatchedDocuments.items.map((d) => d.supplier).sort()).toEqual(
+      ['Assureur Exemple', 'Assureur Exemple', 'PlayStation Exemple', 'Revenu Exemple', 'Voyage Exemple', 'Vrac Exemple']);
+    const corp = await links.documents({ minCents: 10000, ledger: 'corp' });
+    expect(corp.ledger).toBe('corp');
+    expect(corp.toClaim).toMatchObject({ count: 0 });
+    expect(corp.unmatchedDocuments.items.map((d) => d.supplier)).toEqual(['Fournisseur Exemple']);
+    expect(corp.proposals).toEqual([]);
+  });
+
+  test('reads free-text kinds into the closed set and keeps the original label', async () => {
+    const register = require('../../src/services/finance/financeDocumentRegister');
+    expect(register.normalize(invoices[0])).toMatchObject({ kind: 'invoice', documentKindRaw: 'facture dentaire' });
+    expect(register.normalize(invoices[4]).kind).toBe('bank_statement');
+    expect(register.normalize({ ...invoices[0], kind: 'claim' }).kind).toBe('claim');
+  });
+
+  test('proposes confident matches, groups ambiguous ones with their candidates, and keeps statements apart', async () => {
+    const view = await links.documents({ minCents: 10000 });
+    expect(view.status).toBe('ok');
+    expect(view.proposals.map((p) => [p.document.supplier, p.transaction.description, p.ambiguous]).sort()).toEqual([
+      ['Clinique Exemple', 'CLINIQUE EXEMPLE PAIEMENT', false], ['Pharmacie Exemple', 'PHARMACIE XYZ', false]]);
+    const boutique = view.ambiguous.find((group) => group.document.supplier === 'Boutique Exemple');
+    expect(boutique.candidates.map((c) => c.transaction.description).sort()).toEqual(['MARCHE A', 'MARCHE B']);
+    expect(view.unmatchedDocuments.items.map((d) => d.supplier).sort())
+      .toEqual(['Assureur Exemple', 'Assureur Exemple', 'PlayStation Exemple', 'Revenu Exemple', 'Voyage Exemple', 'Vrac Exemple']);
+    expect(view.statements.items.map((d) => d.originalFilename)).toEqual(['releve-juin.pdf']);
+    expect(view.unlinkedTransactions.items.map((t) => t.description)).toEqual(['GROS ACHAT']);
+  });
+
+  test('claims keep health and insurance only; a suspicious figure goes to toVerify and out of the totals', async () => {
+    const view = await links.documents({ minCents: 10000 });
+    expect(view.toClaim).toMatchObject({ count: 1, totalCents: 5000 });
+    expect(view.toClaim.items.map((d) => d.documentNumber)).toEqual(['C-7']);
+    expect(view.toVerify).toMatchObject({ count: 1 });
+    expect(view.toVerify.items.map((d) => d.documentNumber)).toEqual(['C-10']);
+  });
+
+  test('the claim ceiling is configurable', async () => {
+    process.env.FINANCE_DOCUMENT_CLAIM_MAX_CENTS = '700000';
+    const view = await links.documents({ minCents: 10000 });
+    expect(view.toClaim).toMatchObject({ count: 2, totalCents: 605000 });
+    expect(view.toVerify.count).toBe(0);
+  });
+
+  test('confirming a match shows it on the transaction; the other ambiguous candidates are rejected', async () => {
+    const view = await links.documents({ minCents: 10000 });
+    const clinic = view.proposals.find((p) => p.document.supplier === 'Clinique Exemple');
+    const boutique = view.ambiguous.find((group) => group.document.supplier === 'Boutique Exemple');
+    await links.decide([clinic.id], 'confirmed', 'owner');
+    await links.decide([boutique.candidates[0].id], 'confirmed', 'owner');
+    const after = await links.documents({ minCents: 10000 });
+    expect(after.confirmed.map((c) => c.document.supplier).sort()).toEqual(['Boutique Exemple', 'Clinique Exemple']);
+    expect(after.ambiguous.find((group) => group.document.supplier === 'Boutique Exemple')).toBeUndefined();
+    const search = await query.transactions({ q: 'clinique' });
+    expect(search.rows[0].document).toMatchObject({ supplier: 'Clinique Exemple', documentNumber: 'F-1' });
+  });
+
+  test('rejecting a proposal is kept on the next sync, and the document then lacks a transaction', async () => {
+    const view = await links.documents({ minCents: 10000 });
+    const pharmacy = view.proposals.find((p) => p.document.supplier === 'Pharmacie Exemple');
+    await links.decide([pharmacy.id], 'rejected', 'owner');
+    const again = await links.documents({ minCents: 10000 });
+    expect(again.proposals.some((p) => p.document.supplier === 'Pharmacie Exemple')).toBe(false);
+    expect(again.unmatchedDocuments.items.map((d) => d.supplier)).toContain('Pharmacie Exemple');
+  });
+
+  test('reports a missing or unconfigured register without guessing', async () => {
+    process.env.FINANCE_SECRETARY_REGISTER = path.join(tmp, 'absent.json');
+    expect(await links.documents({})).toMatchObject({ status: 'unavailable' });
+    delete process.env.FINANCE_SECRETARY_REGISTER;
+    expect(await links.documents({})).toMatchObject({ status: 'unconfigured' });
+  });
+});
+
+describe('finance line for the daily brief', () => {
+  const brief = require('../../src/services/finance/financeBrief');
+  const plan = require('../../src/services/finance/financePlan');
+
+  async function eop(period, description) {
+    await ingestDocument(await writeDoc(`brief-${period[0]}.pdf`), { readText, extract: extractWith({
+      issuer: 'Caisse Exemple', account_last4: '0000', period_start: period[0], period_end: period[1],
+      accounts: [{ code: 'EOP', opening_cents: 100000, closing_cents: 100100,
+        transactions: [{ date: period[0], description, amount_cents: 100, balance_after_cents: 100100 }] }] }) });
+  }
+
+  test('names deadlines and late series without any amount, account number or path', async () => {
+    await eop(['2026-06-01', '2026-06-30'], 'PAIE');
+    await eop(['2026-07-15', '2026-07-31'], 'PAIE');
+    await plan.savePlan({
+      openItems: [{ title: 'Odyssée 150 $', dueDate: '2026-10-08', kind: 'payment' }, { title: 'Impôt corp', dueDate: '2026-09-30' }]
+    });
+    const line = await brief.summary({ now: new Date('2026-10-01T12:00:00Z') });
+    expect(line.summary).toBe('Finances : Impôt corp en retard · Odyssée à payer dans 7 jours · relevés à déposer : Caisse Exemple');
+    // Counts may be written; no amount ($ or cents) and no account-like number.
+    expect(line.summary).not.toMatch(/\$|\d{3,}/);
+    expect(line.counts).toMatchObject({ overdue: 1, dueSoon: 1, lateSeries: 1, missingStatements: 1 });
+  });
+
+  test('keeps the words and years of a label, removes amounts and account-like numbers, and prefers briefLabel', async () => {
+    const { shortLabel } = brief;
+    expect(shortLabel({ label: 'Payer le T2 corp, (échu le 11 août) via le VMD corp' })).toBe('Payer le T2 corp');
+    expect(shortLabel({ label: 'Hydro: 9 100,83 $ à payer' })).toBe('Hydro');
+    expect(shortLabel({ label: 'Loyer 500 → 550 $/mois' })).toBe('Loyer');
+    expect(shortLabel({ label: 'compte 1234567 pour 2027' })).toBe('compte pour 2027');
+    expect(shortLabel({ label: "Payer l'Odyssée AU COMPLET au relevé pour garder le délai de grâce" }).length).toBeLessThanOrEqual(50);
+    expect(shortLabel({ label: 'ignored long text', briefLabel: 'Payer le T2 corp' })).toBe('Payer le T2 corp');
+  });
+
+  test('the brief lists late series to file, without the count of missing history', async () => {
+    await eop(['2026-06-01', '2026-06-30'], 'PAIE');
+    await eop(['2026-07-15', '2026-07-31'], 'PAIE');
+    await plan.savePlan({ openItems: [{ title: 'Impôt corp', briefLabel: 'Payer le T2 corp', dueDate: '2026-09-30' }] });
+    const line = await brief.summary({ now: new Date('2026-10-01T12:00:00Z') });
+    expect(line.summary).toBe('Finances : Payer le T2 corp en retard · relevés à déposer : Caisse Exemple');
+    expect(line.counts.missingStatements).toBe(1);
+  });
+
+  test('a task is worded neutrally; only a payment says à payer', async () => {
+    await plan.savePlan({ watch: [{ what: 'Relevés du mois', dueDate: '2026-10-08', status: '', kind: 'task' }] });
+    const line = await brief.summary({ now: new Date('2026-10-01T12:00:00Z') });
+    expect(line.summary).toBe('Finances : Relevés du mois dans 7 jours');
+  });
+
+  test('says nothing when there is nothing to say', async () => {
+    await plan.savePlan({});
+    const line = await brief.summary({ now: new Date('2026-09-01T12:00:00Z') });
+    expect(line).toEqual({ summary: null, counts: { overdue: 0, dueSoon: 0, lateSeries: 0, missingStatements: 0, proposals: 0 } });
+  });
+});
+
+const FinanceDocumentLinkModel = () => require('../../models/FinanceDocumentLink');
+
+describe('bank statements from mail: series, ledger and deposit into the inbox', () => {
+  const crypto = require('crypto');
+  const links = require('../../src/services/finance/financeDocumentLinks');
+  const deposit = require('../../src/services/finance/financeStatementDeposit');
+  const FinanceStatement = require('../../models/FinanceStatement');
+  const keys = ['FINANCE_SECRETARY_REGISTER', 'FINANCE_INBOX_PATH', 'FINANCE_SECRETARY_FILES'];
+  const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  const sha = (text) => crypto.createHash('sha256').update(text).digest('hex');
+
+  async function statementOf(period, issuer, last4, rows, ledger) {
+    let balance = 100000;
+    const transactions = rows.map(([date, description, cents]) => { balance += cents; return { date, description, amount_cents: cents, balance_after_cents: balance }; });
+    await ingestDocument(await writeDoc(`${issuer}-${period[0]}-${ledger || 'perso'}.pdf`), { readText, ledger, extract: extractWith({
+      issuer, account_last4: last4, period_start: period[0], period_end: period[1],
+      accounts: [{ code: 'EOP', opening_cents: 100000, closing_cents: balance, transactions }] }) });
+  }
+
+  beforeEach(async () => {
+    await FinanceDocumentLinkModel().deleteMany({});
+    // Personal: June is complete, July starts on the 15th, so July 1 to 14 is a gap.
+    await statementOf(['2026-06-01', '2026-06-30'], 'Caisse Exemple', '0000', [['2026-06-02', 'PAIE', 100]]);
+    await statementOf(['2026-07-15', '2026-07-31'], 'Caisse Exemple', '0000', [['2026-07-16', 'PAIE', 100]]);
+    // Corporate: January to April and June are covered, May 2023 is a gap.
+    await statementOf(['2023-01-01', '2023-04-30'], 'Desjardins', '1449', [['2023-01-05', 'CLIENT', 100]], 'corp');
+    await statementOf(['2023-06-01', '2023-06-30'], 'Desjardins', '1449', [['2023-06-05', 'CLIENT', 100]], 'corp');
+    const inbox = path.join(tmp, 'inbox');
+    const files = path.join(tmp, 'secretary-files');
+    await fs.mkdir(files, { recursive: true });
+    await fs.writeFile(path.join(files, 'juillet.pdf'), 'synthetic july statement');
+    await fs.writeFile(path.join(files, 'ingere.pdf'), 'synthetic ingested statement');
+    await fs.writeFile(path.join(files, '2023.05.pdf'), 'synthetic corporate may statement');
+    await FinanceStatement.create({ status: 'reconciled', fileName: 'previous.pdf', fileSha256: sha('synthetic ingested statement') });
+    const statement = (number, date, supplier, file) => ({ supplier, documentNumber: number, documentDate: date, documentKind: 'relevé mensuel bancaire',
+      messageId: `m-${number}`, originalFilename: file, sources: file ? [{ path: `files/${file}` }] : [] });
+    await fs.writeFile(path.join(tmp, 'register.json'), JSON.stringify({ schemaVersion: 3, generatedAt: '2026-10-16T08:00:00Z', complete: true, coverage: {},
+      invoices: [statement('J-07/0000', '2026-07-31', 'Caisse Exemple', 'juillet.pdf'), statement('J-06/0000', '2026-06-30', 'Caisse Exemple', 'juillet.pdf'),
+        statement('X-03/0000', '2026-03-31', 'Banque Inconnue', 'absent.pdf'), statement('I-05/0000', '2026-07-31', 'Caisse Exemple', 'ingere.pdf'),
+        statement('131449', '2023-05-31', 'Caisse Déserjardins des Rivières du Québec', '2023.05.pdf')] }));
+    process.env.FINANCE_SECRETARY_REGISTER = path.join(tmp, 'register.json');
+    process.env.FINANCE_INBOX_PATH = inbox;
+    process.env.FINANCE_SECRETARY_FILES = files;
+  });
+
+  afterEach(() => {
+    for (const key of keys) { if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key]; }
+  });
+
+  test('finds each statement series by its last four digits and tolerant issuer, then its ledger and status', async () => {
+    const view = await links.documents({});
+    const found = Object.fromEntries(view.statements.items.map((item) => [item.documentNumber, [item.ledger, item.status]]));
+    expect(found).toEqual({
+      'J-07/0000': ['perso', 'fillsGap'], 'J-06/0000': ['perso', 'alreadyIngested'], 'X-03/0000': [null, 'unknown'],
+      'I-05/0000': ['perso', 'fillsGap'], '131449': ['corp', 'fillsGap']
+    });
+    expect(view.statements.items.find((item) => item.documentNumber === '131449').series).toBe('Desjardins ···1449');
+  });
+
+  test('a corporate statement is copied into the corp folder; a personal one into the inbox', async () => {
+    const view = await links.documents({});
+    const ids = Object.fromEntries(view.statements.items.map((item) => [item.documentNumber, item.id]));
+    const result = await deposit.deposit([ids['131449'], ids['J-07/0000']]);
+    expect(result.copied).toEqual([{ id: ids['131449'], ledger: 'corp' }, { id: ids['J-07/0000'], ledger: 'perso' }]);
+    expect(await fs.readdir(path.join(tmp, 'inbox', 'corp'))).toEqual([`secretary-${ids['131449']}-2023-05-31-2023.05.pdf`]);
+    expect(await fs.readdir(path.join(tmp, 'inbox')).then((names) => names.filter((n) => n !== 'corp'))).toEqual([`secretary-${ids['J-07/0000']}-2026-07-31-juillet.pdf`]);
+    expect((await deposit.deposit([ids['J-07/0000']])).refused).toEqual([{ id: ids['J-07/0000'], reason: 'already in inbox' }]);
+  });
+
+  test('refuses a file already ingested, a statement with no series, and bad input; a missing configuration is refused', async () => {
+    const view = await links.documents({});
+    const ids = Object.fromEntries(view.statements.items.map((item) => [item.documentNumber, item.id]));
+    const result = await deposit.deposit([ids['I-05/0000'], ids['X-03/0000']]);
+    expect(result.copied).toEqual([]);
+    expect(result.refused.map((r) => r.reason).sort()).toEqual(['already ingested', 'no account series matches']);
+    await expect(deposit.deposit([], 'perso')).rejects.toMatchObject({ code: 'FINANCE_DEPOSIT_INVALID' });
+    delete process.env.FINANCE_INBOX_PATH;
+    await expect(deposit.deposit([ids['J-07/0000']])).rejects.toMatchObject({ code: 'FINANCE_DEPOSIT_UNCONFIGURED' });
+  });
+
+  test('reads the issuer tolerantly and the last four digits of a document number', () => {
+    expect(deposit.issuerMatches('Caisse Déserjardins des Rivières du Québec', 'Desjardins')).toBe(true);
+    expect(deposit.issuerMatches('Banque Inconnue', 'Desjardins')).toBe(false);
+    expect(deposit.last4Of('131449')).toBe('1449');
+    expect(deposit.last4Of('J-07')).toBeNull();
+  });
+});
+
+describe('savings goals and the monthly review', () => {
+  const goals = require('../../src/services/finance/financeGoals');
+  const plan = require('../../src/services/finance/financePlan');
+  const categories = require('../../src/services/finance/financeCategories');
+
+  async function eop(period, rows) {
+    let balance = 100000;
+    const transactions = rows.map(([date, description, cents]) => { balance += cents; return { date, description, amount_cents: cents, balance_after_cents: balance }; });
+    await ingestDocument(await writeDoc(`goal-${period[0]}.pdf`), { readText, extract: extractWith({
+      issuer: 'Caisse Exemple', account_last4: '0000', period_start: period[0], period_end: period[1],
+      accounts: [{ code: 'EOP', opening_cents: 100000, closing_cents: balance, transactions }] }) });
+  }
+
+  test('measures progress, the pace of complete months, the projection and the monthly need', async () => {
+    for (const month of ['2026-04', '2026-05', '2026-06']) {
+      const end = new Date(Date.UTC(2026, Number(month.slice(5)), 0)).toISOString().slice(0, 10);
+      await eop([`${month}-01`, end], [[`${month}-02`, 'PAIE EMPLOYEUR', 300000], [`${month}-10`, 'EPARGNE VAC', -20000]]);
+    }
+    // July is incomplete: it counts toward progress but not toward the pace.
+    await eop(['2026-07-01', '2026-07-10'], [['2026-07-05', 'EPARGNE VAC', -90000]]);
+    await categories.saveRules({ pattern: 'epargne vac', category: 'Restaurants', tags: ['vacances'] });
+    await plan.savePlan({
+      budget: [{ label: 'Restos', category: 'Restaurants', monthlyCents: 10000 }],
+      goals: [
+        { name: 'Vacances', targetCents: 500000, targetDate: '2026-12-31', priority: 'high', source: { kind: 'tag', ref: 'vacances' } },
+        { name: 'Fonds', targetCents: 1000000, priority: 'low', source: { kind: 'account', ref: 'EOP' } }
+      ]
+    });
+    const result = await goals.goals({ now: new Date('2026-07-15T12:00:00Z') });
+    expect(result.windowMonths).toEqual(['2026-04', '2026-05', '2026-06']);
+    const [vacances, fonds] = result.goals;
+    expect(vacances).toMatchObject({ name: 'Vacances', progressCents: 150000, remainingCents: 350000, paceMonthlyCents: 20000,
+      status: 'behind', projectedMonth: '2028-01', requiredMonthlyCents: 70000 });
+    expect(fonds).toMatchObject({ name: 'Fonds', progressCents: 10000, paceMonthlyCents: 280000, status: 'on_track', requiredMonthlyCents: null });
+  });
+
+  test('a goal with no pace says so, and a reached goal needs nothing more', async () => {
+    await eop(['2026-06-01', '2026-06-30'], [['2026-06-02', 'PAIE EMPLOYEUR', 300000]]);
+    await plan.savePlan({ assets: [{ name: 'REER', valueCents: 2000000 }],
+      goals: [{ name: 'REER', targetCents: 1500000, priority: 'medium', source: { kind: 'asset', ref: 'REER' } }] });
+    const [reer] = (await goals.goals({ now: new Date('2026-07-15T12:00:00Z') })).goals;
+    expect(reer).toMatchObject({ progressCents: 2000000, remainingCents: 0, status: 'reached', requiredMonthlyCents: 0 });
+    await plan.savePlan({ assets: [{ name: 'Compte', valueCents: 1 }], goals: [{ name: 'Tag', targetCents: 9000, source: { kind: 'tag', ref: 'nothing' } }] });
+    const [tag] = (await goals.goals({ now: new Date('2026-07-15T12:00:00Z') })).goals;
+    // A tag with no movement has a pace of zero: nothing is set aside.
+    expect(tag).toMatchObject({ status: 'no_pace', paceMonthlyCents: 0 });
+  });
+
+  test('the monthly review plans the last complete month against actual and lists the three largest overspends', async () => {
+    await eop(['2026-06-01', '2026-06-30'], [['2026-06-02', 'PAIE EMPLOYEUR', 300000], ['2026-06-10', 'EPARGNE VAC', -20000]]);
+    await categories.saveRules({ pattern: 'epargne vac', category: 'Restaurants', tags: ['vacances'] });
+    await plan.savePlan({ budget: [{ label: 'Restos', category: 'Restaurants', monthlyCents: 10000 }, { label: 'Paie', category: 'Revenus', monthlyCents: 300000 }] });
+    const review = await goals.monthlyReview({ now: new Date('2026-07-15T12:00:00Z') });
+    expect(review.month).toBe('2026-06');
+    expect(review.topGaps).toEqual([expect.objectContaining({ label: 'Restos', plannedCents: 10000, actualCents: 20000, gapCents: 10000 })]);
+  });
+});
+
+describe('declared statement series and the reasons for unknown statements', () => {
+  const links = require('../../src/services/finance/financeDocumentLinks');
+  const deposit = require('../../src/services/finance/financeStatementDeposit');
+  const plan = require('../../src/services/finance/financePlan');
+  const keys = ['FINANCE_SECRETARY_REGISTER', 'FINANCE_INBOX_PATH', 'FINANCE_SECRETARY_FILES'];
+  const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+
+  // Statements whose issuer carries no last four in the ledger, as Desjardins' do.
+  async function statementOf(period, ledger) {
+    await ingestDocument(await writeDoc(`desjardins-${ledger}-${period[0]}.pdf`), { readText, ledger, extract: extractWith({
+      issuer: 'Desjardins', account_last4: null, period_start: period[0], period_end: period[1],
+      accounts: [{ code: 'EOP', opening_cents: 100000, closing_cents: 100100,
+        transactions: [{ date: period[0], description: 'FRAIS', amount_cents: 100, balance_after_cents: 100100 }] }] }) });
+  }
+
+  beforeEach(async () => {
+    // Corporate: May 2023 is a gap. Personal: the whole year is covered.
+    await statementOf(['2023-01-01', '2023-04-30'], 'corp');
+    await statementOf(['2023-06-01', '2023-06-30'], 'corp');
+    await statementOf(['2023-01-01', '2023-12-31'], 'perso');
+    const files = path.join(tmp, 'secretary-files');
+    await fs.mkdir(files, { recursive: true });
+    await fs.writeFile(path.join(files, '2023.05.pdf'), 'synthetic corporate may statement');
+    const statement = (number, supplier, file) => ({ supplier, documentNumber: number, documentDate: '2023-05-31', documentKind: 'relevé mensuel bancaire',
+      messageId: `m-${number}`, originalFilename: file, sources: file ? [{ path: `files/${file}` }] : [] });
+    await fs.writeFile(path.join(tmp, 'register.json'), JSON.stringify({ schemaVersion: 3, generatedAt: '2026-10-16T08:00:00Z', complete: true, coverage: {},
+      invoices: [statement('131449', 'Caisse Déserjardins des Rivières du Québec', '2023.05.pdf'), statement('SANS-CHIFFRE', 'Desjardins', null)] }));
+    process.env.FINANCE_SECRETARY_REGISTER = path.join(tmp, 'register.json');
+    process.env.FINANCE_INBOX_PATH = path.join(tmp, 'inbox');
+    process.env.FINANCE_SECRETARY_FILES = files;
+    await plan.savePlan({});
+  });
+
+  afterEach(() => {
+    for (const key of keys) { if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key]; }
+  });
+
+  test('without a declaration, an issuer in both ledgers is unknown, with the reason', async () => {
+    const view = await links.documents({});
+    const byNumber = Object.fromEntries(view.statements.items.map((item) => [item.documentNumber, item]));
+    expect(byNumber['131449']).toMatchObject({ ledger: null, status: 'unknown', reason: 'series in both ledgers, add last4 in seriesStatus' });
+    expect(byNumber['SANS-CHIFFRE'].reason).toBe('series in both ledgers, add last4 in seriesStatus');
+  });
+
+  test('a declared series with its last four and ledger is used first', async () => {
+    await plan.savePlan({ seriesStatus: [{ series: 'Desjardins', last4: '1449', ledger: 'corp' }] });
+    const view = await links.documents({});
+    const byNumber = Object.fromEntries(view.statements.items.map((item) => [item.documentNumber, item]));
+    expect(byNumber['131449']).toMatchObject({ ledger: 'corp', status: 'fillsGap', reason: null });
+    expect(byNumber['SANS-CHIFFRE'].ledger).toBeNull();
+    const deposited = await deposit.deposit([byNumber['131449'].id]);
+    expect(deposited.copied).toEqual([{ id: byNumber['131449'].id, ledger: 'corp' }]);
+    expect(await fs.readdir(path.join(tmp, 'inbox', 'corp'))).toEqual([`secretary-${byNumber['131449'].id}-2023-05-31-2023.05.pdf`]);
+  });
+
+  test('a single declared ledger without a last four decides for the issuer', async () => {
+    await plan.savePlan({ seriesStatus: [{ series: 'Desjardins', ledger: 'perso' }] });
+    const view = await links.documents({});
+    const byNumber = Object.fromEntries(view.statements.items.map((item) => [item.documentNumber, item]));
+    expect(byNumber['SANS-CHIFFRE']).toMatchObject({ ledger: 'perso', status: 'alreadyIngested' });
+  });
+
+  test('the plan refuses a last four that is not four digits and an unknown ledger', async () => {
+    await expect(plan.savePlan({ seriesStatus: [{ series: 'Desjardins', last4: '12' }] })).rejects.toMatchObject({ code: 'FINANCE_PLAN_INVALID' });
+    await expect(plan.savePlan({ seriesStatus: [{ series: 'Desjardins', ledger: 'banque' }] })).rejects.toMatchObject({ code: 'FINANCE_PLAN_INVALID' });
+    const saved = await plan.savePlan({ seriesStatus: [{ series: 'Desjardins', last4: '1449', ledger: 'corp' }] });
+    expect(saved.seriesStatus[0]).toMatchObject({ series: 'Desjardins', last4: '1449', ledger: 'corp' });
   });
 });
 
@@ -544,7 +1116,7 @@ describe('financial plan and situation', () => {
     expect(s.budget.map((b) => [b.label, b.actualMonthlyCents])).toEqual([['Paye', 250000], ['Café', 900], ['Restos', 0]]);
     expect(s.monthly).toEqual({ inCents: 250000, outCents: -900, netCents: 249100 });
     expect(s).toMatchObject({ provisionsMonthlyCents: 30000, taxRoomCents: 1000000, phase: 'Reconstruction' });
-    expect(s.openItems).toEqual([{ title: 'Relevé manquant', detail: '', severity: 'warning' }]);
+    expect(s.openItems).toEqual([{ title: 'Relevé manquant', detail: '', severity: 'warning', briefLabel: null, kind: null, dueDate: null, recurrence: null }]);
     expect(s.excludeTags).toEqual(['refi']);
     await categories.saveRules({ pattern: 'cafe du coin', category: 'Restaurants', tags: ['cafe', 'refi'] });
     expect((await plan.situation({ months: 1 })).monthly).toEqual({ inCents: 250000, outCents: 0, netCents: 250000 });

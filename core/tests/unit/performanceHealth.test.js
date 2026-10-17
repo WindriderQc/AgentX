@@ -14,4 +14,8 @@ describe('performance headline health', () => {
   test('keeps high error rates unhealthy', () => {
     expect(calculateSystemHealth({ error_rate: 6, avg_p95: 200 }, null)).toBe('unhealthy');
   });
+
+  test('reports unknown when no request was measured', () => {
+    expect(calculateSystemHealth({ total_requests: 0, error_rate: 0, avg_p95: null }, null)).toBe('unknown');
+  });
 });

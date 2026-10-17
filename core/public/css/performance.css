@@ -4,6 +4,10 @@
             padding: 20px;
         }
 
+        @media (max-width: 600px) {
+            .performance-page { padding: 16px; }
+        }
+
         .performance-header {
             margin-bottom: 32px;
             display: flex;
@@ -15,7 +19,7 @@
 
         .performance-header .header-content {
             flex: 1;
-            min-width: 300px;
+            min-width: min(100%, 300px);
         }
 
         .performance-header .eyebrow {

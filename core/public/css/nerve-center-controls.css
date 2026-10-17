@@ -475,3 +475,9 @@ select.nc-input { cursor: pointer; }
         min-width: 0;
     }
 }
+
+.nc-sr-only { position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+.nc-collapsible-toggle { background:none; border:0; padding:0; margin:0; color:inherit; font:inherit; text-align:left; cursor:pointer; }
+.nc-collapsible-toggle:focus-visible { outline:2px solid var(--accent, #7cf0ff); outline-offset:2px; border-radius:3px; }
+.nc-routing-inspect { background:none; border:0; padding:0; color:inherit; font:inherit; text-decoration:underline dotted; cursor:pointer; }
+.nc-routing-inspect:focus-visible { outline:2px solid var(--accent, #7cf0ff); outline-offset:2px; border-radius:3px; }

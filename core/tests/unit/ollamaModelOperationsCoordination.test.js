@@ -49,6 +49,21 @@ describe('Ollama model mutations use durable runtime coordination', () => {
     expect(lease.abandon).not.toHaveBeenCalled();
   });
 
+  test('a start on a pinned host loads the pin exactly and refuses another model', async () => {
+    const hostPreferenceService = { getByHost: jest.fn(async () => ({
+      pinnedModels: [{ model: 'model-a', contextSize: 196608, keepAlive: -1 }]
+    })) };
+    const lease = lifecycle();
+    beginRuntimeMutation.mockResolvedValueOnce(lease);
+    fetch.mockResolvedValueOnce({ ok: true, status: 200, text: jest.fn(async () => '{"done":true}') });
+    await operations.startModel('http://host:11434', 'model-a', '10m', { hostPreferenceService });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ keep_alive: -1, options: { num_ctx: 196608 } });
+    await expect(operations.startModel('http://host:11434', 'model-b', '10m', { hostPreferenceService }))
+      .rejects.toMatchObject({ code: 'HOST_PIN_MISMATCH', statusCode: 409 });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(beginRuntimeMutation).toHaveBeenCalledTimes(1);
+  });
+
   test('transport ambiguity quarantines and never releases the maintenance fence', async () => {
     const lease = lifecycle();
     beginRuntimeMutation.mockResolvedValueOnce(lease);

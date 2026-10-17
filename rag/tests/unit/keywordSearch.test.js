@@ -81,6 +81,18 @@ describe('keywordSearch', () => {
     };
   }
 
+  it('drops keyword hits below the Minimum score', async () => {
+    const store = makeMockStore([{ documentId: 'doc-1', source: 'test' }], { 'doc-1': [
+      { text: 'mongodb mongodb mongodb mongodb', chunkIndex: 0 },
+      { text: 'a long passage that mentions mongodb only once near the very end of it', chunkIndex: 1 }
+    ] });
+    const all = await keywordSearch(store, 'mongodb', { topK: 10 });
+    const strict = await keywordSearch(store, 'mongodb', { topK: 10, minScore: Math.max(...all.map(r => r.score)) });
+    expect(all.length).toBe(2);
+    expect(strict.length).toBe(1);
+    expect(strict.every(r => r.score >= Math.max(...all.map(x => x.score)))).toBe(true);
+  });
+
   const docs = [
     { documentId: 'doc-1', source: 'test', title: 'Doc 1' },
     { documentId: 'doc-2', source: 'test', title: 'Doc 2' }

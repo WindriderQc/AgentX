@@ -71,6 +71,11 @@
 .finance-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .finance-table th, .finance-table td { padding: 7px 8px; border-bottom: 1px solid var(--finance-line); text-align: left; }
 .finance-table th { color: var(--finance-muted); font-weight: 500; }
+.finance-row-incomplete td { color: var(--finance-muted); font-style: italic; }
+.finance-goals { display: grid; gap: 12px; margin-bottom: 12px; }
+.finance-goal-track { height: 8px; background: var(--finance-line); border-radius: 4px; overflow: hidden; margin: 6px 0; }
+.finance-goal-fill { display: block; height: 100%; background: var(--series-in); }
+.finance-data-asof { font-weight: 600; }
 .finance-table td:not(:first-child), .finance-table .num { font-variant-numeric: tabular-nums; }
 .finance-card .finance-table { display: block; overflow-x: auto; }
 .finance-table-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }

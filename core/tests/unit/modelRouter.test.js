@@ -119,6 +119,21 @@ describe('Model Router Service', () => {
             expect(classification).toBe('code_generation');
         });
 
+        it('classifies on a pinned host with the pin context and residency', async () => {
+            const prefs = require('../../src/services/hostPreferenceService');
+            jest.spyOn(prefs, 'getByHost').mockResolvedValueOnce({
+                pinnedModels: [{ model: 'pinned:27b', contextSize: 196608, keepAlive: -1 }]
+            });
+            fetch.mockClear();
+            fetch.mockResolvedValueOnce({
+                ok: true,
+                text: () => Promise.resolve(JSON.stringify({ response: 'general_chat', done: true }))
+            });
+            await modelRouter.classifyQuery('hello');
+            const body = JSON.parse(fetch.mock.calls.at(-1)[1].body);
+            expect(body).toMatchObject({ model: 'pinned:27b', keep_alive: -1, options: { num_ctx: 196608, num_predict: 20 } });
+        });
+
         it('should handle classification timeouts/errors gracefully (default to general_chat)', async () => {
              // Logic catches error and returns 'general_chat'
              fetch.mockRejectedValueOnce(new Error('Timeout'));

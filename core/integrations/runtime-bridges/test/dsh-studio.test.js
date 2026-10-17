@@ -228,6 +228,9 @@ test('Studio stays loopback-only and the OpenClaw worker sandbox stays mandatory
 
   assert.match(studio, /web .*--host 127\.0\.0\.1/);
   assert.doesNotMatch(studio, /--host 0\.0\.0\.0/);
+  // The gateway key reaches the sandbox through its private home, never argv.
+  assert.doesNotMatch(studio, /--setenv AGENTX_CORE_API_KEY/);
+  assert.match(studio, /AGENTX_CORE_API_KEY="\$\(< \/home\/agent\/\.dsh\/agentx-core\.key\)"/);
   assert.match(worker, /\/usr\/bin\/bwrap/);
   assert.doesNotMatch(worker, /DSH_STUDIO_ISOLATION|DSH_CODING_AGENT_ISOLATION/);
 });

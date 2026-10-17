@@ -15,6 +15,7 @@ const PerformanceLoadTestSchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true,
+    maxlength: 200,
     index: true,
     description: 'Human-readable test name (e.g., "basic-load-2026-01-03")'
   },
@@ -22,6 +23,7 @@ const PerformanceLoadTestSchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true,
+    maxlength: 120,
     index: true,
     description: 'Artillery scenario name (e.g., "basic-load", "stress-test")'
   },

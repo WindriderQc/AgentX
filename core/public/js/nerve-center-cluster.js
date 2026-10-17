@@ -215,7 +215,7 @@
                 const percent = gpu.vramTotal > 0 ? Math.round((gpu.vramUsed / gpu.vramTotal) * 100) : 0;
                 html += `
                     <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
-                        <td style="padding:4px 0;color:var(--muted);">GPU ${gpu.index != null ? gpu.index : index}</td>
+                        <th scope="row" style="padding:4px 0;color:var(--muted);font-weight:400;text-align:left;">GPU ${gpu.index != null ? gpu.index : index}</th>
                         <td style="padding:4px 6px;">${shared.escapeHtml(gpu.name || '--')}</td>
                         <td class="nc-td-right-sm">${usedGb} / ${totalGb} GB (${percent}%)</td>
                         ${gpu.temperature != null ? `<td class="nc-td-right-sm">${gpu.temperature}&deg;C</td>` : '<td></td>'}
@@ -274,7 +274,7 @@
             systemRows.forEach(([label, value]) => {
                 html += `
                     <tr>
-                        <td style="padding:3px 0;color:var(--muted);width:40%;">${shared.escapeHtml(label)}</td>
+                        <th scope="row" style="padding:3px 0;color:var(--muted);width:40%;font-weight:400;text-align:left;">${shared.escapeHtml(label)}</th>
                         <td style="padding:3px 0;">${shared.escapeHtml(value)}</td>
                     </tr>`;
             });
@@ -286,9 +286,9 @@
         const gpuProcsHtml = procs.length > 0
           ? `<div style="margin-top:8px;"><strong style="font-size:0.8rem;">GPU Processes</strong>
               <table style="width:100%;font-size:0.8rem;margin-top:4px;border-collapse:collapse;">
-                <tr style="color:var(--muted);font-size:0.72rem;text-transform:uppercase;">
-                  <td style="padding:2px 6px;">PID</td><td>Process</td><td class="nc-td-right">VRAM</td>
-                </tr>
+                <thead><tr style="color:var(--muted);font-size:0.72rem;text-transform:uppercase;">
+                  <th scope="col" style="padding:2px 6px;font-weight:400;text-align:left;">PID</th><th scope="col" style="font-weight:400;text-align:left;">Process</th><th scope="col" class="nc-td-right" style="font-weight:400;">VRAM</th>
+                </tr></thead>
                 ${procs.map(p => `<tr><td style="padding:2px 6px;">${p.pid}</td><td>${shared.escapeHtml(p.name)}</td><td class="nc-td-right">${p.vramMiB} MiB</td></tr>`).join('')}
               </table></div>`
           : '';
@@ -313,15 +313,15 @@
         const icon = isPrimary ? 'fa-thumbtack' : (loaded ? 'fa-circle-check' : 'fa-circle-pause');
         const color = loaded ? 'color:#4ade80;' : 'color:#f59e0b;';
         const driftBadge = isDrift
-            ? '<i class="fas fa-triangle-exclamation nc-drift-icon" title="No direct task route; may serve other capabilities"></i>'
+            ? '<i class="fas fa-triangle-exclamation nc-drift-icon" role="img" aria-label="No direct task route; may serve other capabilities" title="No direct task route; may serve other capabilities"></i>'
             : '';
         return '<span class="nc-model-tag default nc-pinned-chip' + (isPrimary ? ' primary' : '') + (isDrift ? ' drift' : '') + '">' +
-            '<i class="fas ' + icon + '" style="' + color + 'font-size:9px;" title="' + (loaded ? 'Loaded' : 'Not loaded') + '"></i>' +
+            '<i class="fas ' + icon + '" style="' + color + 'font-size:9px;" role="img" aria-label="' + (loaded ? 'Loaded' : 'Not loaded') + '" title="' + (loaded ? 'Loaded' : 'Not loaded') + '"></i>' +
             '<span>' + shared.escapeHtml(shared.shortModel(m)) + '</span>' +
             driftBadge +
             (allowRemove ? '<button class="nc-pref-remove-default" data-host-url="' + shared.escapeHtml(host.hostUrl) + '" data-model="' + shared.escapeHtml(m) + '"' +
                 ' title="Remove from pinned set" aria-label="Remove pin ' + shared.escapeHtml(m) + '">' +
-                '<i class="fas fa-xmark"></i></button>' : '') +
+                '<i class="fas fa-xmark" aria-hidden="true"></i></button>' : '') +
             '</span>';
     }
 
@@ -429,6 +429,7 @@
     function buildPinnedModelsSection(host) {
         const entries = host.pinnedEntries || [];
         const hostAttr = 'data-host-url="' + shared.escapeHtml(host.hostUrl) + '"';
+        const onHost = ' on ' + shared.escapeHtml(host.hostname || host.hostUrl);
         const options = (host.availableModels || []).filter(am => {
             const name = typeof am === 'string' ? am : am.name;
             return !entries.some(entry => entry.model === name);
@@ -485,18 +486,18 @@
                 '<span class="nc-defaults-label">Pinned Models</span>' +
                 '<span class="nc-pinned-note">' + loadedCount + '/' + entries.length + ' loaded</span></div>' +
                 '<label class="nc-defaults-slots" title="Declared resident slots; configure Ollama on the host to match">Resident slots ' +
-                    '<select class="nc-inline-select nc-pref-max-select nc-pref-slot-select" ' + hostAttr + ' aria-label="Resident slots">' + slotOptions + '</select></label></div>' +
+                    '<select class="nc-inline-select nc-pref-max-select nc-pref-slot-select" ' + hostAttr + ' aria-label="Resident slots' + onHost + '">' + slotOptions + '</select></label></div>' +
             pinnedRows +
             '<div class="nc-pinned-runtime-row" style="flex-wrap:wrap;justify-content:flex-start;"><span class="nc-pinned-field-label">Loaded now</span>' + loadedLine +
-                '<div class="nc-pinned-swap-controls"><select class="nc-inline-select nc-pin-swap-select" ' + hostAttr + ' aria-label="Temporarily load model">' +
+                '<div class="nc-pinned-swap-controls"><select class="nc-inline-select nc-pin-swap-select" ' + hostAttr + ' aria-label="Temporarily load model' + onHost + '">' +
                     '<option value="">Swap to...</option>' + swapOptions + '</select>' +
-                    '<button class="nc-btn nc-pin-swap nc-btn-icon" ' + hostAttr + ' title="Temporarily swap loaded model" aria-label="Temporarily swap loaded model"><i class="fas fa-arrows-rotate"></i></button></div></div>' +
+                    '<button class="nc-btn nc-pin-swap nc-btn-icon" ' + hostAttr + ' title="Temporarily swap loaded model" aria-label="Temporarily swap loaded model' + onHost + '"><i class="fas fa-arrows-rotate" aria-hidden="true"></i></button></div></div>' +
             '<div class="nc-defaults-actions nc-pinned-add-row">' +
-                '<select class="nc-inline-select nc-pref-add-select nc-pref-add-select-wide" ' + hostAttr + ' aria-label="Add pinned model">' +
+                '<select class="nc-inline-select nc-pref-add-select nc-pref-add-select-wide" ' + hostAttr + ' aria-label="Add pinned model' + onHost + '">' +
                     '<option value="">Add pinned model...</option>' + options + '</select>' +
-                '<button class="nc-btn nc-pref-add-default nc-btn-icon" ' + hostAttr + ' title="Add pinned model" aria-label="Add pinned model"><i class="fas fa-plus"></i></button>' +
-                '<button class="nc-btn nc-pin-restore nc-btn-icon" ' + hostAttr + ' title="Restore all pins" aria-label="Restore all pins"><i class="fas fa-rotate-left"></i></button>' +
-                (entries.length ? '<button class="nc-btn nc-pin-clear nc-btn-icon" ' + hostAttr + ' title="Clear pinned set" aria-label="Clear pinned set"><i class="fas fa-xmark"></i></button>' : '') +
+                '<button class="nc-btn nc-pref-add-default nc-btn-icon" ' + hostAttr + ' title="Add pinned model" aria-label="Add pinned model' + onHost + '"><i class="fas fa-plus" aria-hidden="true"></i></button>' +
+                '<button class="nc-btn nc-pin-restore nc-btn-icon" ' + hostAttr + ' title="Restore all pins" aria-label="Restore all pins' + onHost + '"><i class="fas fa-rotate-left" aria-hidden="true"></i></button>' +
+                (entries.length ? '<button class="nc-btn nc-pin-clear nc-btn-icon" ' + hostAttr + ' title="Clear pinned set" aria-label="Clear pinned set' + onHost + '"><i class="fas fa-xmark" aria-hidden="true"></i></button>' : '') +
                 '</div></div>';
     }
 
@@ -540,9 +541,9 @@
 
         const svcStatus = host.ollamaService?.status;
         const svcDot = svcStatus === 'running'
-          ? '<span style="color:#4ade80;font-size:8px;margin-right:3px;" title="Ollama service running">&#9679;</span>'
+          ? '<span style="color:#4ade80;font-size:8px;margin-right:3px;" title="Ollama service running" role="img" aria-label="Ollama service running">&#9679;</span>'
           : svcStatus === 'failed'
-            ? '<span style="color:#f87171;font-size:8px;margin-right:3px;" title="Ollama service failed">&#9679;</span>'
+            ? '<span style="color:#f87171;font-size:8px;margin-right:3px;" title="Ollama service failed" role="img" aria-label="Ollama service failed">&#9679;</span>'
             : '';
         const svcUptime = (svcStatus === 'running' && host.ollamaService?.uptimeSeconds)
           ? `<span style="font-size:0.7rem;color:var(--muted);margin-left:4px;">up ${shared.formatUptime(host.ollamaService.uptimeSeconds)}</span>`
@@ -562,7 +563,7 @@
             <div class="nc-host-card" data-host="${shared.escapeHtml(host.hostKey)}">
                 <div class="nc-host-card-header">
                     <div class="nc-host-card-title">
-                        <span class="nc-status-dot ${host.status}"></span>
+                        <span class="nc-status-dot ${host.status}" role="img" aria-label="Host ${shared.escapeHtml(host.status || 'unknown')}"></span>
                         <span class="nc-host-card-name">${shared.escapeHtml(host.hostname)}</span>
                         ${host.hostKey ? `<span class="nc-host-key-badge">${shared.escapeHtml(host.hostKey)}</span>` : ''}
                         ${host.residency === 'cpu' ? '<span class="nc-host-key-badge" title="CPU instance: pins are expected outside VRAM">CPU</span>' : ''}
@@ -657,11 +658,11 @@
                         body: JSON.stringify({ maxConcurrentModels })
                     });
                     if (data.status === 'success') {
-                        window.NerveCenterCluster?.loadCluster();
+                        window.NerveCenterCluster?.loadCluster({ quiet: true });
                     }
                 } catch (err) {
                     showPinError(select, err);
-                    window.NerveCenterCluster?.loadCluster();
+                    window.NerveCenterCluster?.loadCluster({ quiet: true });
                 }
             });
         });
@@ -681,7 +682,7 @@
                             body: JSON.stringify({ model: select.dataset.model, [field]: Number(select.value) })
                         });
                         committed = select.value;
-                        window.NerveCenterCluster?.loadCluster();
+                        window.NerveCenterCluster?.loadCluster({ quiet: true });
                     } catch (err) {
                         select.value = committed;
                         showPinError(select, err);
@@ -706,7 +707,7 @@
                         method: removing ? 'DELETE' : 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ model })
                     });
-                    window.NerveCenterCluster?.loadCluster();
+                    window.NerveCenterCluster?.loadCluster({ quiet: true });
                 } catch (err) { showPinError(button, err); }
                 finally { button.disabled = false; }
             });
@@ -724,7 +725,7 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' }
                     });
-                    setTimeout(() => window.NerveCenterCluster?.loadCluster(), 2000);
+                    setTimeout(() => window.NerveCenterCluster?.loadCluster({ quiet: true }), 2000);
                 } catch (err) {
                     console.error('Failed to reload defaults:', err);
                 } finally {
@@ -735,6 +736,12 @@
         });
     }
 
+    // Pin and swap actions unload and reload models on a GPU right away; the
+    // operator confirms the host and model before anything is evicted.
+    function confirmModelChange(hostUrl, verb, model) {
+        return window.confirm(`${verb} ${model ? `"${model}" ` : ''}on ${hostUrl}? Models in VRAM on this host may be unloaded while it loads; requests to it wait meanwhile.`);
+    }
+
     function attachPinHandlers() {
         document.querySelectorAll('.nc-pin-set').forEach(button => {
             button.addEventListener('click', async () => {
@@ -742,6 +749,7 @@
                 const select = document.querySelector(`.nc-pin-model-select[data-host-url="${CSS.escape(hostUrl)}"]`);
                 const model = select?.value;
                 if (!model) return;
+                if (!confirmModelChange(hostUrl, 'Pin and load', model)) return;
                 button.disabled = true;
                 try {
                     await shared.fetchJson(`/api/nerve-center/host-preferences/${encodeURIComponent(hostUrl)}/pin`, {
@@ -761,6 +769,7 @@
         document.querySelectorAll('.nc-pin-restore').forEach(button => {
             button.addEventListener('click', async () => {
                 const hostUrl = button.dataset.hostUrl;
+                if (!confirmModelChange(hostUrl, 'Restore the pinned model', null)) return;
                 button.disabled = true;
                 const origHtml = button.innerHTML;
                 button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
@@ -769,7 +778,7 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' }
                     });
-                    setTimeout(() => window.NerveCenterCluster?.loadCluster(), 2000);
+                    setTimeout(() => window.NerveCenterCluster?.loadCluster({ quiet: true }), 2000);
                 } catch (err) {
                     showPinError(button, err);
                 } finally {
@@ -795,7 +804,7 @@
                         method: 'DELETE',
                         headers: { 'Content-Type': 'application/json', ...headers }
                     });
-                    window.NerveCenterCluster?.loadCluster();
+                    window.NerveCenterCluster?.loadCluster({ quiet: true });
                 } catch (err) {
                     showPinError(button, err);
                 } finally {
@@ -810,6 +819,7 @@
                 const select = document.querySelector(`.nc-pin-swap-select[data-host-url="${CSS.escape(hostUrl)}"]`);
                 const model = select?.value;
                 if (!model) return;
+                if (!confirmModelChange(hostUrl, 'Temporarily swap to', model)) return;
                 button.disabled = true;
                 const origHtml = button.innerHTML;
                 button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
@@ -819,7 +829,7 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ model })
                     });
-                    setTimeout(() => window.NerveCenterCluster?.loadCluster(), 2000);
+                    setTimeout(() => window.NerveCenterCluster?.loadCluster({ quiet: true }), 2000);
                 } catch (err) {
                     showPinError(button, err);
                 } finally {
@@ -837,7 +847,7 @@
                         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ model: checkbox.dataset.model, autoRestore: checkbox.checked })
                     });
-                    window.NerveCenterCluster?.loadCluster();
+                    window.NerveCenterCluster?.loadCluster({ quiet: true });
                 } catch (err) { checkbox.checked = !checkbox.checked; showPinError(checkbox, err); }
                 finally { checkbox.disabled = false; }
             });
@@ -851,6 +861,7 @@
         const body = document.getElementById('sectionClusterBody');
         if (!body) return;
         const load = ++clusterLoad;
+        shared.trackSectionFocus?.(body);
 
         if (!quiet) shared.renderSectionLoading(body, 'Loading cluster data...');
         startClusterRefresh();
@@ -888,6 +899,7 @@
             attachHostCardHandlers();
             attachClusterPreferenceHandlers();
             attachPinHandlers();
+            shared.restoreSectionFocus?.(body);
             // Occupancy over a window loads on its own and never holds the cards.
             void window.NerveCenterGpuOccupancy?.mount(body);
         } catch (err) {
@@ -909,7 +921,7 @@
         clusterRefresh = setInterval(() => {
             const body = document.getElementById('sectionClusterBody');
             if (!body || document.hidden || body.offsetParent === null) return;
-            if (body.contains(document.activeElement) || body.querySelector('details[open]')) return;
+            if (body.contains(document.activeElement) || body.querySelector('details[open], .nc-host-expand[aria-expanded="true"]')) return;
             loadCluster({ quiet: true });
         }, CLUSTER_REFRESH_MS);
     }

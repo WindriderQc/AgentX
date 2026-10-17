@@ -39,7 +39,7 @@
           <div class="control-group"><label for="topk-slider">Results: <span id="topk-value" class="mono">5</span></label><input id="topk-slider" type="range" min="1" max="20" value="5" class="slider"></div>
           <div class="control-group"><label for="minscore-slider">Minimum score: <span id="minscore-value" class="mono">0.00</span></label><input id="minscore-slider" type="range" min="0" max="100" value="0" class="slider"></div>
           <div class="control-group"><label for="search-source">Source</label><input id="search-source" class="input-field input-sm" type="text" placeholder="Any source"></div>
-          <div class="control-group"><label for="search-tags">Tags</label><input id="search-tags" class="input-field input-sm" type="text" placeholder="tag1, tag2"></div>
+          <div class="control-group"><label for="search-tags">Tags</label><input id="search-tags" class="input-field input-sm" type="text" placeholder="tag1, tag2" aria-describedby="search-tags-help"><small id="search-tags-help" class="field-hint">Results must carry every tag listed.</small></div>
         </div>
         <div class="adv-options">
           <label class="adv-toggle"><input id="opt-expand" type="checkbox"><span><strong>Query expansion</strong><small>Rewrite the query into variants to widen recall. Not combined with hybrid search.</small></span></label>

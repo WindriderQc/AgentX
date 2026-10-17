@@ -76,8 +76,12 @@
       const json = await shared.fetchJson(`/api/nerve-center/inference/gpu-occupancy?window=${encodeURIComponent(requested)}`);
       // A slower answer for a window no longer chosen must not show under the new label.
       if (requested !== selected) return;
+      // Re-rendering replaces the window picker; a keyboard user keeps their place on it.
+      const pickerHadFocus = document.activeElement?.matches?.('.nc-gpu-occ-window') && container.contains(document.activeElement);
       container.innerHTML = render(json.data);
-      container.querySelector('.nc-gpu-occ-window')?.addEventListener('change', (event) => {
+      const picker = container.querySelector('.nc-gpu-occ-window');
+      if (pickerHadFocus) picker?.focus();
+      picker?.addEventListener('change', (event) => {
         selected = WINDOWS.includes(event.target.value) ? event.target.value : '24h';
         load(container);
       });

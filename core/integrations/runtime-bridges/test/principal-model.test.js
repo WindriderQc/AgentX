@@ -6,12 +6,17 @@ const { studioSettings, studioPatch, settingsPatch } = require('../../../../inte
 
 test('a following consumer resolves the current concrete model and preserves the full context', () => {
   for (const model of ['standard', 'abliterated']) {
-    const target = resolvePrincipalAlias({ tasks: { daily_operator: { model, contextSize: 196608, hostUrl: 'http://model-host' } } }, 'agentx-primary');
+    const target = resolvePrincipalAlias({ tasks: { daily_operator: { model, contextSize: 196608, hostUrl: 'http://model-host', pinAligned: true } } }, 'agentx-primary');
     assert.equal(target.model, model);
     assert.equal(target.numCtx, 196608);
   }
   assert.equal(resolvePrincipalAlias({ tasks: {} }, 'explicit-standard'), null);
   assert.throws(() => resolvePrincipalAlias({ tasks: {} }, 'agentx-primary'), { code: 'PRINCIPAL_MODEL_UNAVAILABLE' });
+});
+
+test('the alias refuses a principal route that no longer serves its host pin', () => {
+  const unpinned = { tasks: { daily_operator: { model: 'other', contextSize: 196608, hostUrl: 'http://model-host', pinAligned: false } } };
+  assert.throws(() => resolvePrincipalAlias(unpinned, 'agentx-primary'), { code: 'PRINCIPAL_MODEL_UNAVAILABLE', statusCode: 409 });
 });
 
 test('Studio launch overlays preserve preferences, principal context and optional browser configuration', () => {
@@ -50,4 +55,14 @@ test('Studio settings keep native preferences and use the existing Core gateway'
   assert.deepEqual(result['agent-default-model'], { provider: 'agentx-core', model: 'agentx-primary' });
   assert.equal(original['agent-default-model'].provider, 'old');
   assert.throws(() => studioSettings(original, 'http://core-host', null), /context/);
+});
+
+test('Studio declares image input and, with its own token, uses the OpenAI gateway', () => {
+  const hermes = studioSettings({}, 'http://core-host:3180', 196608)['llm-pi-ai'].providers['agentx-core'];
+  const gateway = studioSettings({}, 'http://core-host:3180', 196608, true)['llm-pi-ai'].providers['agentx-core'];
+  assert.deepEqual(hermes.models[0].input, ['text', 'image']);
+  assert.equal(gateway.baseURL, 'http://core-host:3180/api/llm/v1');
+  assert.deepEqual(gateway.models[0].input, ['text', 'image']);
+  const patched = studioPatch({}, 'http://core-host:3180', 196608, undefined, false, true);
+  assert.equal(JSON.stringify(patched).includes('/api/llm/v1'), true);
 });

@@ -50,11 +50,20 @@
     return wrap;
   }
 
-  function linkBody(body) {
+  // External links stay plain text in Famille unless the household turned
+  // them on next to "Hey Nestor" in the voice workshop (owner decision).
+  const FAMILY_LINKS_KEY = 'household.space.family.links';
+  function linksClickable(space) {
+    if (space !== 'family') return true;
+    try { return root.localStorage?.getItem(FAMILY_LINKS_KEY) === 'clickable'; } catch { return false; }
+  }
+
+  function linkBody(body, space) {
     const list = node('div', 'display-block-links');
+    const clickable = linksClickable(space);
     body.split(/\s+/).filter(Boolean).forEach(value => {
       const href = safeUrl(value);
-      if (!href) { list.append(node('span', '', value)); return; }
+      if (!href || !clickable) { list.append(node('span', '', value)); return; }
       const link = node('a', '', value);
       link.href = href; link.target = '_blank'; link.rel = 'noopener noreferrer';
       list.append(link);
@@ -103,7 +112,7 @@
     const caption = node('figcaption', 'display-block-caption');
     caption.append(node('span', '', image.sourceLabel || block.source || ''));
     const origin = safeUrl(image.origin);
-    if (origin) {
+    if (origin && linksClickable(space)) {
       const link = node('a', '', image.originTitle || 'Source');
       link.href = origin; link.target = '_blank'; link.rel = 'noopener noreferrer';
       caption.append(link);
@@ -153,7 +162,7 @@
     else if (block.kind === 'scene') content = sceneBody(block, space);
     else {
       if (block.kind === 'table') content = tableBody(block.body);
-      else if (block.kind === 'link') content = linkBody(block.body);
+      else if (block.kind === 'link') content = linkBody(block.body, space);
       else if (block.kind === 'code') { content = node('pre', 'display-block-code'); content.append(node('code', '', block.body)); }
       else content = inlineText(node('div', 'display-block-text'), block.body);
       actions.append(copyButton(block.body));

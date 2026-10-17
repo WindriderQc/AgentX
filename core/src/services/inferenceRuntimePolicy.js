@@ -5,26 +5,42 @@ const hostPreferenceService = require('./hostPreferenceService');
 const { modelsMatch } = require('../helpers/modelNameNormalization');
 const { resolveInferenceContract } = require('./inferenceContractService');
 const { resolveThinkingPolicy } = require('./thinkingPolicy');
+const { enforceHostPin } = require('./hostPinGuard');
 
 /**
  * Runtime preparation shared by HTTP generation, chat and injected consumers.
- * These are existing caller semantics, not permissions. In particular, direct
- * evaluation keeps its exact options; chat keeps caller residency overrides;
- * injected native consumers keep their explicit think value and native format.
+ * On a pinned host the pin owns the load options (hostPinGuard): a request
+ * inherits them, repeats them or is refused; the chat UI's values are ignored
+ * instead. A claim holder (`request.claimed`, or a session hold on its model)
+ * keeps the existing caller semantics below: direct evaluation keeps its exact
+ * options, chat keeps caller residency overrides, injected native consumers
+ * keep their explicit think value and native format.
  */
 async function prepareInferenceRuntime(request, policy, overrides = {}) {
   const deps = {
     hostPreferenceService, modelsMatch, resolveInferenceContract,
-    resolveThinkingPolicy, applyContractOutputLimit, ...overrides,
+    resolveThinkingPolicy, applyContractOutputLimit, enforceHostPin, ...overrides,
   };
   const { model, host, prompt, messages, system } = request;
   let options = { ...(request.options || {}) };
   let keepAlive = request.keepAlive;
   let numCtxSource = options.num_ctx != null ? 'caller'
     : ['extension', 'embed'].includes(policy) ? 'unresolved' : 'modelfile';
+  const claimedDirect = policy === 'direct' && request.claimed === true;
+  const preference = claimedDirect ? null : await deps.hostPreferenceService.getByHost(host);
+  const pinned = claimedDirect ? { unpinned: true } : deps.enforceHostPin(preference, {
+    hostUrl: host, model, options, keepAlive, claimed: request.claimed === true,
+    onDiffer: policy === 'chat' ? 'ignore' : 'refuse'
+  });
+  let ignoredPinOptions = [];
 
-  if (policy !== 'direct') {
-    const preference = await deps.hostPreferenceService.getByHost(host);
+  if (!pinned.unpinned) {
+    if (pinned.options.num_ctx != null && (options.num_ctx == null || pinned.ignored.includes('num_ctx'))) {
+      numCtxSource = 'host_preference_pin';
+    }
+    ({ options, keepAlive } = pinned);
+    ignoredPinOptions = pinned.ignored;
+  } else if (policy !== 'direct') {
     if (policy === 'chat') {
       ({ options, keepAlive, numCtxSource } = deps.hostPreferenceService.resolvePinnedRuntimeOptions(
         preference, model, options, keepAlive
@@ -76,7 +92,7 @@ async function prepareInferenceRuntime(request, policy, overrides = {}) {
     rawResponseRequested: request.rawResponseRequested,
     stream: request.stream,
   });
-  return { options, keepAlive, numCtxSource, inferenceContract, thinkingPolicy,
+  return { options, keepAlive, numCtxSource, inferenceContract, thinkingPolicy, ignoredPinOptions,
     think: thinkingPolicy ? thinkingPolicy.think : request.think };
 }
 

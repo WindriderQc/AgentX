@@ -11,7 +11,10 @@ const ACTIONS = {
   yearly: { path: '/api/finance/summary/yearly', params: ['account', 'from', 'to', 'q', 'category', 'tag', 'excludeCategory'] },
   insights: { path: '/api/finance/insights', params: ['account', 'category', 'tag', 'months'] },
   rules: { path: '/api/finance/rules', params: [] },
-  statements: { path: '/api/finance/statements', params: ['status'] }
+  statements: { path: '/api/finance/statements', params: ['status'] },
+  documents: { path: '/api/finance/documents', params: ['minCents'] },
+  goals: { path: '/api/finance/goals', params: [] },
+  review: { path: '/api/finance/review/monthly', params: [] }
 };
 
 // Formats integer cents the Quebec way: 1 234,56 $ (narrow no-break space
@@ -92,6 +95,40 @@ export function createCoreRulesClient({ baseUrl, fetchImpl = fetch } = {}) {
     if (!response.ok || body?.status !== 'success' || !Array.isArray(body.data?.saved)) {
       throw new Error(body?.message || `Core finance rules unavailable (${response.status})`);
     }
+    return { authority: 'agentx.core', ...body.data };
+  };
+}
+
+// Confirms or rejects document-to-row proposals the owner approved in the conversation.
+// Core ignores anything that is not a current proposal.
+export function createCoreDocumentLinkClient({ baseUrl, fetchImpl = fetch } = {}) {
+  if (!baseUrl) throw new Error('Configure the canonical AgentX URL for this OpenClaw instance');
+  const url = new URL('/api/finance/documents/links/decide', baseUrl);
+  return async (input = {}) => {
+    const ids = (Array.isArray(input.ids) ? input.ids : []).map((id) => String(id)).slice(0, 20);
+    if (!ids.length) throw new Error('Give at least one link id from finance_ledger action documents');
+    const status = input.decision === 'confirm' ? 'confirmed' : input.decision === 'reject' ? 'rejected' : null;
+    if (!status) throw new Error('decision must be confirm or reject');
+    const response = await fetchImpl(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(20000),
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids, status, createdBy: 'comptable' }) });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || body?.status !== 'success') throw new Error(body?.message || `Core document links unavailable (${response.status})`);
+    return { authority: 'agentx.core', ...withDisplay(body.data) };
+  };
+}
+
+// Copies chosen bank statements from the Secretary into the finance inbox. Core copies only; it never deletes,
+// and the normal ingestion reconciles them.
+export function createCoreStatementDepositClient({ baseUrl, fetchImpl = fetch } = {}) {
+  if (!baseUrl) throw new Error('Configure the canonical AgentX URL for this OpenClaw instance');
+  const url = new URL('/api/finance/documents/statements/deposit', baseUrl);
+  return async (input = {}) => {
+    const ids = (Array.isArray(input.ids) ? input.ids : []).map((id) => String(id)).slice(0, 10);
+    if (!ids.length) throw new Error('Give 1 to 10 statement ids from finance_ledger action documents');
+    const response = await fetchImpl(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30000),
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids }) });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || body?.status !== 'success') throw new Error(body?.message || `Core statement deposit unavailable (${response.status})`);
     return { authority: 'agentx.core', ...body.data };
   };
 }

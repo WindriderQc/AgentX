@@ -185,39 +185,16 @@ PerformanceSnapshotSchema.statics.getEndpointMetrics = async function(path, hour
 };
 
 /**
- * Static method: Calculate percentiles from latency array
- *
- * @param {Array<Number>} latencies - Array of latency values
- * @returns {Object} Percentile breakdown
- */
-PerformanceSnapshotSchema.statics.calculatePercentiles = function(latencies) {
-  if (!latencies || latencies.length === 0) {
-    return { p50: 0, p75: 0, p90: 0, p95: 0, p99: 0, p999: 0 };
-  }
-
-  const sorted = [...latencies].sort((a, b) => a - b);
-  const getPercentile = (p) => {
-    const index = Math.ceil((p / 100) * sorted.length) - 1;
-    return sorted[Math.max(0, index)];
-  };
-
-  return {
-    p50: getPercentile(50),
-    p75: getPercentile(75),
-    p90: getPercentile(90),
-    p95: getPercentile(95),
-    p99: getPercentile(99),
-    p999: getPercentile(99.9)
-  };
-};
-
-/**
  * Static method: Get aggregated metrics for time range
  *
  * @param {Date} startDate - Start of time range
  * @param {Date} endDate - End of time range
  * @returns {Promise<Object>} Aggregated metrics
  */
+function roundOrNull(value) {
+  return value === null || value === undefined ? null : Math.round(value);
+}
+
 PerformanceSnapshotSchema.statics.getAggregatedMetrics = async function(startDate, endDate) {
   const result = await this.aggregate([
     {
@@ -257,9 +234,10 @@ PerformanceSnapshotSchema.statics.getAggregatedMetrics = async function(startDat
     total_failed: metrics.total_failed,
     model_bound_requests: metrics.total_model_bound || 0,
     error_rate: parseFloat(errorRate),
-    avg_latency: Math.round(metrics.avg_latency),
-    avg_p95: Math.round(metrics.avg_p95),
-    avg_p99: Math.round(metrics.avg_p99),
+    // null when no hour carried a latency sample, so callers never read 0 ms.
+    avg_latency: roundOrNull(metrics.avg_latency),
+    avg_p95: roundOrNull(metrics.avg_p95),
+    avg_p99: roundOrNull(metrics.avg_p99),
     max_latency: metrics.max_latency,
     min_latency: metrics.min_latency
   };

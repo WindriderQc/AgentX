@@ -476,6 +476,15 @@ the `ops_watch` task's model with the vendor, hostname and address; it is a
 hint, never applied by itself, and a missing answer never delays the alert
 beyond three minutes.
 
+Core compares the routes, the runtime export and the installed OpenClaw
+config with the host pins every 15 minutes (`PIN_DRIFT_CHECK_MS`, `0`
+disables) and raises the `pin-drift` alert when one names a model or context
+the pin does not own. `GET /api/nerve-center/agent-runtime-config/drift` shows
+the last result (`?refresh=true` checks now). The installed OpenClaw config is
+read through the inventory SSH target, projected on the host to provider
+endpoints, model ids and agent model references. The export names the pinned
+principal `agentx-primary`, as the installed config does.
+
 Switch the operations watch on in the Nerve Center, section "Operations
 watch", which also shows the latest report, checks on demand and sets the
 interval and the report language. Core stores these settings; `OPS_WATCH_MS`
@@ -729,13 +738,25 @@ computes the advice material (monthly savings rate, stable recurring charges,
 category trends, large recent expenses) and `/api/finance/export.csv` exports
 the filtered transactions with their totals for a spreadsheet.
 Deterministic alerts are recomputed after each scan that ingests something and
-on `GET /api/finance/alerts`: statement to review, no statement for
-`FINANCE_ALERT_STALE_DAYS` (45), balance of `FINANCE_ALERT_MIN_BALANCE_ACCOUNTS`
+on `GET /api/finance/alerts`: statement to review, no statement for an account
+statement series (issuer and account or card last four, one alert whatever its
+sub-accounts) for more than `FINANCE_ALERT_STALE_DAYS` (45); beyond
+`FINANCE_ALERT_DORMANT_DAYS` (180) the series is dormant and raises one info
+alert instead. A series the plan marks `closed` (`seriesStatus`) raises nothing.
+Balance of `FINANCE_ALERT_MIN_BALANCE_ACCOUNTS`
 (EOP) under `FINANCE_ALERT_MIN_BALANCE_CENTS` (off when unset), expense over
 `FINANCE_ALERT_LARGE_EXPENSE_CENTS` (1 000 $) in the last 45 days, new stable
 recurring charge, and a category up 50 % and `FINANCE_ALERT_CATEGORY_SPIKE_CENTS`
-(100 $) a month. Each fact is raised once; `POST /api/finance/alerts/report`
+(100 $) a month, and dated plan items (`watch` and `openItems` with `dueDate`):
+upcoming 7 days before, due the day before or the day itself, overdue after.
+A dated item keeps alerting every day until its `dueDate` is moved forward. A
+pending alert is reported once; standing conditions (stale data, deadlines, low
+balance) stay listed on `GET` while they hold. `POST /api/finance/alerts/report`
 returns the pending alerts and marks them reported for a delivery job.
+Months without a payroll (EOP) statement covering every day are incomplete: they
+are flagged in `monthly`, `insights` and `yearly` (`complete: false`,
+`dataAsOf`), and left out of averages, the savings rate and the situation's
+monthly averages.
 The OpenClaw finance agent (`comptable`) reads it through the `finance_ledger` tool of the
 `integrations/openclaw/finance-ledger` plugin (loopback Core URL, visible only
 to the configured finance agent); amounts arrive as cents plus a formatted
@@ -1113,6 +1134,20 @@ header; its token, declared in the secret `AGENTX_LLM_GATEWAY_CLIENTS`, names
 it. Model `agentx-primary` follows the principal route with its pinned
 context. Hermes keeps `/api/hermes-openai`. OpenAI Codex uses the `responses`
 door; its configuration is in `core/integrations/runtime-bridges/README.md`.
+Inline images go to a model that reads them; a model that does not receives
+a description written by OpenClaw Main instead.
+
+## Images through the gateway
+
+Both OpenAI doors (`/api/llm/v1` and `/api/hermes-openai/v1`) send inline PNG,
+JPEG, WebP or GIF data URLs to the model as image bytes. Core's inference path
+checks the routed model on its host (`/api/show` reports `vision`) before
+admission. When it does not read images, the gateway asks OpenClaw Main to
+describe each message's images, four at a time, replaces them with that text
+and runs the request once more; the answer carries
+`X-AgentX-Images-Described: true`. Remote image URLs are refused, never
+fetched. These doors accept request bodies up to 32 MB because clients resend
+a conversation's images with each turn.
 
 ## Light-task fallback ladder
 

@@ -82,10 +82,15 @@
     const colors = { in: css.getPropertyValue('--series-in').trim(), out: css.getPropertyValue('--series-out').trim(),
       grid: css.getPropertyValue('--finance-grid').trim(), text: css.getPropertyValue('--finance-muted').trim() };
     const labels = months.map((m) => monthLabel(m.month));
+    // An incomplete month (no payroll statement) is drawn in the muted colour, not as a real month.
+    const fill = (color) => months.map((m) => (m.complete === false ? colors.text : color));
     const datasets = [
-      { label: 'In', data: months.map((m) => m.inCents / 100), backgroundColor: colors.in },
-      { label: 'Out', data: months.map((m) => -m.outCents / 100), backgroundColor: colors.out }
+      { label: 'In', data: months.map((m) => m.inCents / 100), backgroundColor: fill(colors.in) },
+      { label: 'Out', data: months.map((m) => -m.outCents / 100), backgroundColor: fill(colors.out) }
     ].map((set) => ({ ...set, borderRadius: 4, borderSkipped: 'start', maxBarThickness: 28, borderWidth: 0 }));
+    const asOf = $('financeDataAsOf');
+    asOf.hidden = !data.dataAsOf;
+    asOf.textContent = data.dataAsOf ? `Données au ${data.dataAsOf}` : '';
     if (monthlyChart) monthlyChart.destroy();
     if (window.Chart) {
       monthlyChart = new window.Chart($('monthlyChart'), {
@@ -109,11 +114,15 @@
         }
       });
     }
-    $('monthlyTable').tBodies[0].replaceChildren(...months.map((m) => el('tr', {},
-      el('td', {}, monthLabel(m.month)), el('td', {}, money(m.inCents)), el('td', {}, money(m.outCents)),
+    $('monthlyTable').tBodies[0].replaceChildren(...months.map((m) => el('tr', { class: m.complete === false ? 'finance-row-incomplete' : '' },
+      el('td', {}, monthLabel(m.month) + (m.complete === false ? ' · mois incomplet, sans relevé EOP' : '')),
+      el('td', {}, money(m.inCents)), el('td', {}, money(m.outCents)),
       el('td', {}, money(m.netCents)), el('td', {}, m.count))));
+    const complete = months.filter((m) => m.complete !== false).length;
+    const average = data.averageNetCents == null ? '—' : money(data.averageNetCents);
     $('monthlyNote').textContent = months.length
-      ? `Average net: ${money(data.averageNetCents)} per month over ${months.length} months`
+      ? `Average net: ${average} per month over ${complete} complete months`
+        + (data.incompleteMonths?.length ? ` · ${data.incompleteMonths.length} incomplete month(s) left out` : '')
         + (filters().account || filters().excludeCategory ? '' : ' · all accounts combined, internal transfers included')
       : 'No transactions for these filters.';
   }
@@ -187,8 +196,9 @@
 
   async function renderYearly() {
     const data = await api('summary/yearly', searchParams());
-    $('yearlyTable').tBodies[0].replaceChildren(...data.years.map((y) => el('tr', {},
-      el('td', {}, y.year), el('td', {}, money(y.inCents)), el('td', {}, money(y.outCents)), el('td', {}, money(y.netCents)),
+    $('yearlyTable').tBodies[0].replaceChildren(...data.years.map((y) => el('tr', { class: y.complete === false ? 'finance-row-incomplete' : '' },
+      el('td', {}, y.year + (y.complete === false ? ` · ${y.incompleteMonths.length} mois incomplet(s)` : '')),
+      el('td', {}, money(y.inCents)), el('td', {}, money(y.outCents)), el('td', {}, money(y.netCents)),
       el('td', {}, y.count), el('td', {}, `${y.firstDate} → ${y.lastDate}`))));
   }
 
@@ -229,6 +239,63 @@
   let refreshRun = 0;
   let searchRun = 0;
 
+  // Secretary documents: proposals to confirm or reject, documents and outflows without a match, claims, statements in mail.
+  function documentItem(link) {
+    const d = link.document || {};
+    const t = link.transaction || {};
+    return el('li', {}, `${d.documentDate || ''} · ${d.supplier || ''} ${d.documentNumber || ''} · ${money(d.amountCents)} → ${t.date || ''} ${t.description || ''}${link.ambiguous ? ' (ambiguous)' : ''} `,
+      link.status === 'proposed' ? el('button', { type: 'button', class: 'finance-link', 'data-decide': link.id, 'data-status': 'confirmed' }, 'Confirm') : '',
+      link.status === 'proposed' ? el('button', { type: 'button', class: 'finance-link', 'data-decide': link.id, 'data-status': 'rejected' }, 'Reject') : '');
+  }
+  const STATEMENT_STATUS = { fillsGap: 'comble un trou', alreadyIngested: 'déjà couvert', unknown: 'à classer' };
+  function statementLine(item) {
+    return el('li', {}, `${item.documentDate || '—'} · ${item.supplier || ''} ${item.documentNumber || ''}${item.series ? ` · ${item.series}` : ''}${item.ledger === 'corp' ? ' · corporation' : ''} · ${STATEMENT_STATUS[item.status] || item.status} `,
+      item.status === 'alreadyIngested' ? '' : el('button', { type: 'button', class: 'finance-link', 'data-deposit': item.id }, "Déposer dans l'inbox"));
+  }
+  function documentLine(doc) {
+    return el('li', {}, `${doc.documentDate || '—'} · ${doc.supplier || ''} ${doc.documentNumber || ''} · ${money(doc.amountCents)}${doc.originalFilename ? ` · ${doc.originalFilename}` : ''}`);
+  }
+  // An ambiguous document with each candidate row; the owner picks one (confirming rejects the others).
+  function ambiguousGroup(group) {
+    const d = group.document || {};
+    return el('li', {}, `${d.documentDate || ''} · ${d.supplier || ''} ${d.documentNumber || ''} · ${money(d.amountCents)}`,
+      el('ul', {}, ...group.candidates.map((c) => el('li', {}, `${c.transaction.date} · ${c.transaction.description} · ${money(c.transaction.flowCents)} `,
+        el('button', { type: 'button', class: 'finance-link', 'data-decide': c.id, 'data-status': 'confirmed' }, 'Confirm'),
+        el('button', { type: 'button', class: 'finance-link', 'data-decide': c.id, 'data-status': 'rejected' }, 'Reject')))));
+  }
+  async function renderDocuments() {
+    const data = await api('documents', {}).catch(() => null);
+    const card = $('financeDocumentsCard');
+    if (!data || data.status !== 'ok') {
+      card.hidden = !(LEDGER === '');
+      $('documentsNote').textContent = data ? `Secretary register unavailable (${data.status}).` : 'Secretary register unavailable.';
+      return;
+    }
+    card.hidden = false;
+    $('documentsNote').textContent = `Read-only register${data.generatedAt ? `, generated ${data.generatedAt}` : ''}${data.complete ? '' : ' · incomplete'}.`;
+    $('documentsProposals').replaceChildren(...(data.proposals.length ? data.proposals.map(documentItem) : [el('li', { class: 'finance-note' }, 'Nothing to confirm.')]));
+    $('documentsAmbiguous').replaceChildren(...(data.ambiguous.length ? data.ambiguous.map(ambiguousGroup) : [el('li', { class: 'finance-note' }, 'None.')]));
+    $('documentsUnmatched').replaceChildren(...data.unmatchedDocuments.items.map(documentLine));
+    $('documentsUnlinked').replaceChildren(...data.unlinkedTransactions.items.map((row) => el('li', {}, `${row.date} · ${row.description} · ${money(row.flowCents)}`)));
+    $('documentsClaimTotal').textContent = `${data.toClaim.count} document(s) · ${money(data.toClaim.totalCents)} still to claim`;
+    $('documentsClaims').replaceChildren(...data.toClaim.items.map(documentLine));
+    $('documentsVerifyNote').textContent = `${data.toVerify.count} document(s) left out of the total: above ${money(data.toVerify.maxCents)} or inconsistent with the gross amount.`;
+    $('documentsToVerify').replaceChildren(...data.toVerify.items.map(documentLine));
+    $('documentsStatements').replaceChildren(...data.statements.items.map(statementLine));
+  }
+  $('financeDocumentsCard').addEventListener('click', async (event) => {
+    const deposit = event.target.closest('[data-deposit]');
+    if (deposit) {
+      await post('documents/statements/deposit', { ids: [deposit.dataset.deposit] }).catch(showError);
+      await renderDocuments();
+      return;
+    }
+    const button = event.target.closest('[data-decide]');
+    if (!button) return;
+    await post('documents/links/decide', { ids: [button.dataset.decide], status: button.dataset.status }).catch(showError);
+    await renderDocuments();
+  });
+
   async function search(event) {
     event?.preventDefault();
     const run = ++searchRun;
@@ -247,7 +314,9 @@
           el('thead', {}, el('tr', {}, ...['Date', 'Description', 'Account', 'Category', 'Amount', ''].map((label) => el('th', { scope: 'col' }, label)))),
           el('tbody', {}, ...data.rows.map((row) => el('tr', { 'data-id': row.id, 'data-category': row.manual ? row.category || '' : '',
             'data-tags': row.manual ? (row.tags || []).join(', ') : '' },
-            el('td', {}, row.date), el('td', {}, row.description), el('td', {}, row.accountCode),
+            el('td', {}, row.date), el('td', {}, row.description,
+              row.document ? el('span', { class: 'finance-doc-icon', title: `Secretary document: ${row.document.supplier || ''} ${row.document.documentNumber || ''}`.trim(), role: 'img', 'aria-label': 'Linked document' }, ' 🧾') : ''),
+            el('td', {}, row.accountCode),
             el('td', { class: 'finance-cat-cell' }, `${row.category || '—'}${row.tags?.length ? ` #${row.tags.join(' #')}` : ''}${row.manual ? ' ✎' : ''}`),
             el('td', { class: 'num' }, money(row.flowCents ?? row.amountCents)),
             el('td', {}, el('button', { type: 'button', class: 'finance-link', 'data-edit': row.id, 'aria-label': `Categorize ${row.description} (${row.date})` }, 'Categorize')))))),
@@ -326,6 +395,7 @@
       renderMerchants(merchants.merchants || []);
       renderCategories(byCategory.categories || [], pending);
       await search();
+      await renderDocuments();
       showError(null);
     } catch (error) {
       if (run === refreshRun) showError(error);
