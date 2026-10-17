@@ -164,16 +164,22 @@ function toOpenClawModel(lane) {
   return model;
 }
 
+// The key is Hermes's own gateway token (client `hermes` in
+// AGENTX_LLM_GATEWAY_CLIENTS); the export never carries the secret.
+const HERMES_API_KEY = '<token of gateway client hermes>';
+
 function modelConfig(model, context, baseUrl, { local = true } = {}) {
-  const config = { default: model, provider: 'custom', base_url: baseUrl, api_key: 'no-key-required' };
+  const config = { default: model, provider: 'custom', base_url: baseUrl, api_key: HERMES_API_KEY };
   if (context) config.context_length = context;
   if (local && context) config.ollama_num_ctx = context;
   return config;
 }
 
+// Hermes follows the principal through `agentx-primary` unless an authority
+// model is set explicitly, so a principal switch never leaves it behind.
 function buildHermesExport(lanes, coreBaseUrl) {
-  const baseUrl = `${coreBaseUrl}/api/hermes-openai/v1`;
-  const authorityModel = String(process.env.HERMES_AUTHORITY_MODEL || '').trim() || lanes.daily.model;
+  const baseUrl = `${coreBaseUrl}/api/llm/v1`;
+  const authorityModel = String(process.env.HERMES_AUTHORITY_MODEL || '').trim() || PRINCIPAL_MODEL_ALIAS;
   const authorityIsCloud = isCloudAuthorityModel(authorityModel);
   const authorityContext = positiveInteger(process.env.HERMES_AUTHORITY_CONTEXT)
     || (!authorityIsCloud ? lanes.daily.contextSize : null);

@@ -29,8 +29,15 @@ from client id to token, or to `{ "token", "admission" }`, for example
 Give each device or tool its own token to see its load under its own name.
 Tokens are unique and at least 16 characters. `patient` admission (the
 default) waits up to eight minutes for a busy host, like Hermes's patient
-route; `immediate` is refused at once. Invalid JSON fails startup. Hermes keeps
-its own address, `/api/hermes-openai`, unchanged.
+route; `immediate` is refused at once. Invalid JSON fails startup.
+
+The legacy address `/api/hermes-openai` has no token and is being retired. Its
+callers move to this gateway with their own clients: `hermes` (`immediate`),
+`coding-team` (`patient`, token `AGENTX_LLM_CODING_TEAM_TOKEN` in the runner
+environment), `memory-review` (token `AGENTX_LLM_MEMORY_REVIEW_TOKEN` in the
+collector environment) and `dsh-studio` (`immediate`,
+`AGENTX_LLM_DSH_STUDIO_TOKEN`). Traffic still on the legacy address is recorded
+under the consumer contract `hermes-runtime-v1`.
 
 `responses` serves the stateless Responses API that OpenAI Codex uses
 (`store: false`, full history in `input`); `previous_response_id` is refused.
@@ -66,8 +73,11 @@ model does not, Core refuses before admission and the gateway asks OpenClaw
 Main (below) to describe the images, then runs the request with that text in
 their place (`X-AgentX-Images-Described: true`). Remote image URLs are refused.
 
-Hermes can therefore send images directly to `/api/hermes-openai/v1`. Its
-earlier image analysis route remains: `/api/hermes-openai/vision/v1` with model
+Hermes therefore sends images natively: in its profile, `model.base_url` is
+`/api/llm/v1`, `model.default` is `agentx-primary`, `model.supports_vision` is
+`true`, `agent.image_input_mode` is `native`, and `auxiliary.vision` uses the
+same base URL and model for its vision tool. The earlier image analysis route,
+retired with the legacy address, was `/api/hermes-openai/vision/v1` with model
 `openclaw:agent:main`. The adapter sends inline image bytes to OpenClaw Main
 through Core's existing agent execution source and returns only a verified
 completed answer. Main's local model requests retain the OpenClaw-to-Core
@@ -75,12 +85,10 @@ admission and telemetry path. Vision requests never invoke the local Hermes
 reasoning route.
 The bounded worker exposes the `skills,vision` toolsets.
 
-Configure the external Hermes profile's `auxiliary.vision` with this custom
-endpoint, model and an empty fallback chain, and set `agent.image_input_mode`
-to `text`. Hermes then asks Main to analyze attached images before using the
-observations in its reasoning. The primary reasoning model remains an effective
-local model through `/api/hermes-openai/v1`; its provider fallback list is owned
-by Hermes. A fallback in reasoning does not change the vision endpoint.
+Hermes's provider fallback list is owned by Hermes. The runtime export
+(`/api/nerve-center/agent-runtime-config/export`) gives Hermes `agentx-primary`
+unless `HERMES_AUTHORITY_MODEL` names another model, so a principal switch
+never leaves Hermes on the previous model.
 
 When the local host is refused (benchmark, maintenance, another resident model),
 the OpenClaw protocol answers 409 so an automation records a failed run. A

@@ -1006,7 +1006,7 @@ test('runtime export and validation retain exact effective model/context without
     assert.equal(exported.openclaw.provider.models[0].id, 'agentx-primary');
     assert.equal(exported.openclaw.defaults.primary, 'ollama/agentx-primary');
     assert.equal(exported.coreBaseUrl, 'https://browser.test');
-    assert.equal(exported.hermes.proxyBaseUrl, 'https://browser.test/api/hermes-openai/v1');
+    assert.equal(exported.hermes.proxyBaseUrl, 'https://browser.test/api/llm/v1');
     assert.equal(exported.openclaw.provider.apiBase, 'http://machine.test:3080/api/openclaw-ollama');
     assert.equal(exported.openclaw.provider.authHeader, false);
     assert.equal(exported.openclaw.provider.apiKey, 'ollama-local');

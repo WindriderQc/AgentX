@@ -103,7 +103,10 @@ def http_chat_completion(
     payload: dict,
     timeout: int = DEFAULT_TIMEOUT_S,
 ) -> str:
-    url = f"{base_url.rstrip('/')}/api/hermes-openai/v1/chat/completions"
+    # The review's own token for Core's OpenAI gateway (client `memory-review`).
+    token = os.environ.get("AGENTX_LLM_MEMORY_REVIEW_TOKEN", "").strip()
+    door = "/api/llm/v1" if token else "/api/hermes-openai/v1"
+    url = f"{base_url.rstrip('/')}{door}/chat/completions"
     request = Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
@@ -111,6 +114,7 @@ def http_chat_completion(
             "Content-Type": "application/json",
             "Accept": "application/json",
             "X-AgentX-Caller": "memory-review",
+            **({"Authorization": f"Bearer {token}"} if token else {}),
         },
         method="POST",
     )
@@ -133,7 +137,7 @@ def http_chat_completion(
         reason = f" ({code})" if code else ""
         hint = (
             " Set AGENTX_MEMORY_REVIEW_MODEL to a current model listed by "
-            "GET /api/hermes-openai/v1/models."
+            "GET /api/llm/v1/models."
             if code == "MODEL_NOT_EFFECTIVE" else ""
         )
         raise SynthesisError(f"AgentX inference rejected the request: HTTP {exc.code}{reason}.{hint}") from exc

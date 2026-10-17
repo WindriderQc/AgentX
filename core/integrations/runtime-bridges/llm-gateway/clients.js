@@ -11,7 +11,9 @@ const CLIENT_ID = /^[a-z][a-z0-9-]{0,39}$/;
 const ADMISSION_MODES = new Set(['patient', 'immediate']);
 const MIN_TOKEN_LENGTH = 16;
 
-// Hermes keeps its own address (/api/hermes-openai) and is not a token client.
+// The legacy Hermes address (/api/hermes-openai) has no token; this is the
+// identity Core attests there. Hermes moves to /api/llm/v1 as token client
+// `hermes`, whose traffic is recorded as `hermes-gateway-v1`.
 const HERMES_CLIENT = Object.freeze({
   id: 'hermes',
   label: 'Hermes',
@@ -35,7 +37,6 @@ function parseGatewayClients(raw = process.env.AGENTX_LLM_GATEWAY_CLIENTS) {
   const tokens = new Set();
   return Object.entries(declared).map(([id, value]) => {
     if (!CLIENT_ID.test(id)) throw invalid(`client id "${id}" must be lowercase letters, digits and dashes`);
-    if (id === HERMES_CLIENT.id) throw invalid('hermes is built in and keeps /api/hermes-openai');
     const entry = typeof value === 'string' ? { token: value } : value;
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw invalid(`client "${id}" must be a token or an object`);
     const unknown = Object.keys(entry).filter(key => !['admission', 'token'].includes(key));

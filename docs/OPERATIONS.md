@@ -1132,7 +1132,8 @@ their load appears in admission, the cluster view and analytics under the
 client's name. Each client authenticates with the standard OpenAI API key
 header; its token, declared in the secret `AGENTX_LLM_GATEWAY_CLIENTS`, names
 it. Model `agentx-primary` follows the principal route with its pinned
-context. Hermes keeps `/api/hermes-openai`. OpenAI Codex uses the `responses`
+context. The legacy `/api/hermes-openai` (no token) is being retired; Hermes,
+the Coding Team, the memory review and DSH Studio each have a gateway client. OpenAI Codex uses the `responses`
 door; its configuration is in `core/integrations/runtime-bridges/README.md`.
 Inline images go to a model that reads them; a model that does not receives
 a description written by OpenClaw Main instead.
