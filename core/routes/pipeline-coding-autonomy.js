@@ -23,4 +23,5 @@ router.get('/coding-autonomy/tasks/:id/runs/:requestId/manifest', route(req => s
 const continuation = require('../src/services/pipelineReportContinuationService');
 router.get('/report-continuation', route(() => continuation.status()));
 router.post('/report-continuation/config', route(req => continuation.configureSwitch(req.body || {})));
+router.post('/report-continuation/escalation', route(req => require('../src/services/pipelineReportEscalation').configure(req.body || {})));
 module.exports = router;

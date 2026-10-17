@@ -18,6 +18,18 @@
       <button type="button" class="pipeline-btn compact" data-report-continuation="true">Continue reports automatically</button>
       <button type="button" class="pipeline-btn compact" data-report-continuation="false">Pause automatic continuation</button>
     </div>
+    <form id="reportEscalationForm" class="pipeline-report-escalation">
+      <h4>Cloud escalation of failed report steps</h4>
+      <p class="pipeline-subtle">After a step group fails once on the local model, the runner sends that group's documents and the source files they cite to a cloud model in one request, then verifies every cited line as for any step. Only tasks whose report grant allows it are affected. Models are tried in order; one OpenClaw cannot call directly is skipped.</p>
+      <p id="reportEscalationStatus" role="status" aria-live="polite">Reading the escalation policy…</p>
+      <label>Models in order, one per line <textarea name="models" rows="2" id="reportEscalationModels"></textarea></label>
+      <label>Cost cap per task (USD) <input name="maxCostUsdPerTask" id="reportEscalationCap" type="number" min="0" max="1000" step="0.5"></label>
+      <label class="pipeline-autonomy-confirm"><input type="checkbox" id="reportEscalationConfirm"> I approve sending failed step context to these cloud models for tasks that allow it</label>
+      <div class="pipeline-autonomy-actions">
+        <button type="submit" class="pipeline-btn compact" data-report-escalation="true">Turn escalation on with these settings</button>
+        <button type="button" class="pipeline-btn compact" data-report-escalation="false">Turn escalation off</button>
+      </div>
+    </form>
   </section>
   <details id="codingAutonomySetup">
     <summary>Set up a campaign and authorize a task</summary>

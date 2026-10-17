@@ -31,6 +31,8 @@ const KINDS = Object.freeze({
     }[d.reason] || d.reason) + ' Grant more or approve a window to continue the saved report.' },
   outcome_unknown: { severity: 'error', title: 'Report continuation outcome unknown',
     message: () => 'The automatic continuation could not prove what happened. Reconcile the same request; nothing will relaunch it.' },
+  escalated: { severity: 'info', title: 'Report step escalated to a cloud model',
+    message: d => `Step ${d.step} was retried on ${d.model} after failing locally (cost $${Number(d.usd || 0).toFixed(4)}). Its findings are marked in the report.` },
   completed: { severity: 'info', title: 'Report ready for review',
     message: () => 'Every document is reviewed or explicitly blocked. The report waits for independent review.' }
 });

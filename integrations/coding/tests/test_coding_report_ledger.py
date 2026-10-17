@@ -175,5 +175,24 @@ class StepPlanTest(unittest.TestCase):
         self.assertNotIn("const RETRY_LIMIT", writer)
 
 
+class EscalationContextTest(unittest.TestCase):
+    def test_finds_the_sources_a_group_cites_or_names(self):
+        ledger = ledgers.new_ledger(snapshot())
+        ledgers.merge_step(ledger, ['docs/A.md'], good_result(), source, 1)
+        docs = {'docs/A.md': 'See core/config.js and missing/file.js.', 'docs/B.md': 'Uses `RETRY_LIMIT` and `start()`; RETRY_LIMIT again, MAX_POOL_SIZE.'}
+        self.assertEqual(steps.referenced_sources(ledger, ['docs/A.md'], docs, ['core/config.js', 'docs/A.md']), ['core/config.js'])
+        self.assertEqual(steps.code_terms({'docs/B.md': docs['docs/B.md']}), ['RETRY_LIMIT', 'MAX_POOL_SIZE'])
+
+    def test_the_cloud_request_carries_numbered_sources_and_the_schema(self):
+        messages = steps.escalation_prompt(ledgers.new_ledger(snapshot()), ['docs/A.md'], {'docs/A.md': 'line1\nline2\nline3'},
+                                           {'core/config.js': 'a\nb'}, (2, 3, True))
+        user = messages[1]['content']
+        self.assertIn('=== DOCUMENT docs/A.md (lines 2-3) ===\nline2\nline3', user)
+        self.assertIn('=== SOURCE core/config.js (line numbers prefixed) ===\n1: a\n2: b', user)
+        self.assertIn('Review lines 2-3 of the documents above', user)
+        self.assertEqual(steps.parse_json_object('```json\n{"documents": []}\n```'), ({'documents': []}, None))
+        self.assertEqual(steps.parse_json_object('no json')[1], 'the answer contains no JSON object')
+
+
 if __name__ == '__main__':
     unittest.main()

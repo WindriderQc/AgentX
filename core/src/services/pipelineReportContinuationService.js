@@ -224,7 +224,7 @@ async function configureSwitch(input) {
 async function status() {
   const config = await settings();
   return { enabled: config.enabled === true, revision: config.revision || 0, active: config.active || null,
-    available: Boolean(control && control.target !== '') };
+    available: Boolean(control && control.target !== ''), escalation: await require('./pipelineReportEscalation').policy() };
 }
 
 module.exports = { configure, tick, configureSwitch, status, decide, continuationId, allowance, CONTINUE_REASONS };

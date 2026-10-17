@@ -596,7 +596,7 @@ class ReportStepProgressTest(unittest.TestCase):
                  'reportSteps': {'done': 3, 'failed': 1, 'findings': 2, 'stepContext': 16384, 'budgetSource': 'agent_workload',
                                  'counts': {'reviewed': 5, 'partial': 1, 'blocked': 0, 'pending': 9, 'secret': 'x'}, 'extra': 'drop'}}
         safe = module.safe_progress(value, 'r', '0001')
-        self.assertEqual(safe['reportSteps'], {'done': 3, 'failed': 1, 'findings': 2, 'stepContext': 16384,
+        self.assertEqual(safe['reportSteps'], {'done': 3, 'failed': 1, 'findings': 2, 'escalated': None, 'stepContext': 16384,
             'budgetSource': 'agent_workload', 'counts': {'reviewed': 5, 'partial': 1, 'blocked': 0, 'pending': 9}})
         value['reportSteps']['budgetSource'] = 'invented'
         self.assertIsNone(module.safe_progress(value, 'r', '0001')['reportSteps']['budgetSource'])

@@ -26,9 +26,30 @@
       return payload.data;
     }
     async function refresh() {
-      try { state = await call(base); show(statusText(state)); }
+      try { state = await call(base); show(statusText(state)); showEscalation(state.escalation); }
       catch (error) { show(error.message); }
     }
+    async function escalate(enabled) {
+      const confirm = $('reportEscalationConfirm');
+      if (enabled && !confirm?.checked) { $('reportEscalationStatus').textContent = 'Tick the approval box first.'; return; }
+      const models = String($('reportEscalationModels')?.value || '').split('\n').map(line => line.trim()).filter(Boolean);
+      const cap = Number($('reportEscalationCap')?.value);
+      try {
+        const policy = await call(`${base}/escalation`, { enabled, confirm: true, expectedRevision: state?.escalation?.revision ?? 0,
+          ...(enabled ? { models, maxCostUsdPerTask: cap } : {}) });
+        state = { ...state, escalation: policy };
+        if (confirm) confirm.checked = false;
+        showEscalation(policy);
+      } catch (error) { $('reportEscalationStatus').textContent = error.message; }
+    }
+    function showEscalation(policy) {
+      if (!$('reportEscalationStatus') || !policy) return;
+      $('reportEscalationStatus').textContent = escalationText(policy);
+      if ($('reportEscalationModels') && doc.activeElement !== $('reportEscalationModels')) $('reportEscalationModels').value = policy.models.join('\n');
+      if ($('reportEscalationCap') && doc.activeElement !== $('reportEscalationCap')) $('reportEscalationCap').value = policy.maxCostUsdPerTask;
+    }
+    $('reportEscalationForm')?.addEventListener('submit', event => { event.preventDefault(); escalate(true); });
+    doc.querySelector('[data-report-escalation="false"]')?.addEventListener('click', () => escalate(false));
     doc.querySelectorAll('[data-report-continuation]').forEach(button => button.addEventListener('click', async () => {
       const enabled = button.dataset.reportContinuation === 'true';
       if (enabled && !$('reportContinuationConfirm').checked) { show('Tick the approval box first.'); return; }
@@ -41,6 +62,13 @@
     return refresh();
   }
 
+  function escalationText(policy) {
+    if (!policy) return 'Escalation policy unavailable.';
+    return policy.enabled
+      ? `On · ${policy.models.join(' → ')} · cap $${Number(policy.maxCostUsdPerTask).toFixed(2)} per task · only tasks whose grant allows it`
+      : 'Off · failed steps stay on the local model and are blocked after a second failure';
+  }
+
   if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', () => mount());
-  return { statusText, mount };
+  return { statusText, escalationText, mount };
 });

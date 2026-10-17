@@ -115,6 +115,27 @@ execution stops for another reason, two executions end with the same saved
 report, a continuation needs a new grant or window, or a report is ready for
 review.
 
+### Cloud escalation of a failed step
+
+Off by default. The owner sets the ordered models and a cost cap per task in the
+same panel (default: `openai/gpt-5.6-sol`, then
+`openrouter/nvidia/nemotron-3-super-120b-a12b:free`, $10), and each task must
+allow it on its explicit report grant ("Allow cloud escalation of failed
+steps"). An execution started with both records the models and the task's
+remaining allowance, fixed for that run.
+
+After a group fails once on the local model, the runner sends one self-contained
+request: the group's documents and the source files they cite (or that define
+the identifiers they name), with line numbers, plus the result schema. Core
+executes it through OpenClaw's single-call model mode, trying the models in order
+and skipping one OpenClaw cannot call directly; OpenClaw's own cost reservation
+is capped by what the task has left, and every call is journalled on the
+execution with its model and cost. The answer goes through the same ledger
+verification as a local step; a second failure blocks the group. Escalated
+findings are marked in the report, the Pipeline monitor counts escalated steps
+and an alert records each escalation. A multi-turn tool session is not used:
+OpenClaw's model mode accepts plain messages only.
+
 `AGENTX_REPORT_MODE=single` restores the previous single-session worker, whose
 prompt asks the model to choose groups, save, and keep the table and totals
 consistent itself. A partial report is a reviewable checkpoint, not completion

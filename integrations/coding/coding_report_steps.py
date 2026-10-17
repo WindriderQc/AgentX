@@ -227,3 +227,80 @@ def write_atomic(path, text):
         stream.flush()
         os.fsync(stream.fileno())
     os.replace(temporary, path)
+
+
+# ── Cloud escalation of a failed group (#835) ─────────────────────────────
+
+ESCALATION_SOURCE_CHARS = 360_000     # about 100k tokens of source context
+ESCALATION_FILE_CHARS = 60_000
+ESCALATION_MAX_TOKENS = 8192
+PATH_PATTERN = r'(?<![\w/.-])([\w.-]+(?:/[\w.-]+)+\.(?:js|cjs|mjs|ts|py|json|ya?ml|sh|md|ejs|css|html))'
+
+
+def referenced_sources(ledger, group, doc_texts, files):
+    """Source files a document group cites or already used as evidence, in order."""
+    import re
+    known = set(files)
+    ordered = []
+    for path in group:
+        for ref in ledger['documents'][path]['evidence']:
+            ordered.append(ref['path'])
+        ordered += re.findall(PATH_PATTERN, doc_texts.get(path, ''))
+    seen, result = set(group), []
+    for path in ordered:
+        if path in known and path not in seen:
+            seen.add(path)
+            result.append(path)
+    return result
+
+
+def code_terms(doc_texts, limit=12):
+    """Identifiers a document names in code spans or as CONSTANTS, most frequent first."""
+    import re
+    from collections import Counter
+    counts = Counter()
+    for text in doc_texts.values():
+        for span in re.findall(r'`([^`\n]{3,60})`', text):
+            if re.fullmatch(r'[A-Za-z_][\w.:/-]*', span) and '/' not in span:
+                counts[span] += 1
+        for constant in re.findall(r'\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b', text):
+            counts[constant] += 1
+    return [term for term, _ in counts.most_common(limit)]
+
+
+def escalation_prompt(ledger, group, doc_texts, source_texts, line_range=None):
+    """One self-contained request: the documents, the sources they cite, the schema."""
+    parts = []
+    for path in group:
+        text = doc_texts.get(path, '')
+        if line_range:
+            start, end, _ = line_range
+            text = '\n'.join(text.splitlines()[start - 1:end])
+            parts.append(f'=== DOCUMENT {path} (lines {start}-{end}) ===\n{text}')
+        else:
+            parts.append(f'=== DOCUMENT {path} ===\n{text}')
+    for path, text in source_texts.items():
+        numbered = '\n'.join(f'{index}: {line}' for index, line in enumerate(text.splitlines(), 1))
+        parts.append(f'=== SOURCE {path} (line numbers prefixed) ===\n{numbered}')
+    scope = f' lines {line_range[0]}-{line_range[1]} of' if line_range else ''
+    system = ('You verify technical documentation against source code. You receive the documents and the source files '
+              'they cite, with line numbers. Answer with ONLY one JSON object, no prose, no code fences.')
+    user = ('\n\n'.join(parts) + '\n\n'
+            f'Review{scope} the documents above against the sources. Return exactly this JSON shape:\n{GROUP_SCHEMA}\n'
+            'Evidence lines must be the line numbers shown above. Report a finding only when a source proves the '
+            'document wrong, out of date or missing something important. Mark a document "partial" when the sources '
+            'given are not enough to check all of it, and say what is missing in "note".')
+    return [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}]
+
+
+def parse_json_object(text):
+    """The first JSON object in a model answer, tolerating code fences."""
+    body = str(text or '').replace('```json', '').replace('```', '')
+    start, end = body.find('{'), body.rfind('}')
+    if start < 0 or end <= start:
+        return None, 'the answer contains no JSON object'
+    try:
+        value = json.loads(body[start:end + 1])
+    except json.JSONDecodeError:
+        return None, 'the answer is not valid JSON'
+    return (value, None) if isinstance(value, dict) else (None, 'the answer must be a JSON object')

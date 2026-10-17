@@ -350,6 +350,7 @@ def safe_progress(value: object, request_id: str, task_id: str) -> dict | None:
         tally = steps.get("counts") if isinstance(steps.get("counts"), dict) else {}
         result["reportSteps"] = {
             "done": count(steps.get("done")), "failed": count(steps.get("failed")), "findings": count(steps.get("findings")),
+            "escalated": count(steps.get("escalated")),
             "stepContext": count(steps.get("stepContext")),
             "budgetSource": allowed(steps.get("budgetSource"), {"agent_workload", "speed_knee", "default"}),
             "counts": {key: count(tally.get(key)) for key in ("reviewed", "partial", "blocked", "pending")}}
