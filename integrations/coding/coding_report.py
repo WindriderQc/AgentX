@@ -422,6 +422,9 @@ def escalation_call(r, args, progress, model, messages, step):
     headers = {'Content-Type': 'application/json', 'Accept': 'application/json', 'x-service-caller': 'coding-run',
                'x-agentx-report-request': args.request_id, 'x-agentx-report-task': args.task_id,
                'x-agentx-coding-call': str(uuid.uuid4()), 'x-agentx-report-escalation': str(step)}
+    # The gateway door needs the Coding Team's token, as the relay adds it for workers.
+    if getattr(r, 'GATEWAY_TOKEN', ''):
+        headers['Authorization'] = f'Bearer {r.GATEWAY_TOKEN}'
     timeout = max(60, min(900, steps.remaining(progress)[1] - steps.WRITER_SECONDS))
     outcome = {}
 

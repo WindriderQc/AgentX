@@ -673,6 +673,14 @@ class EscalationStepsTest(StepsReportTest):
         progress = json.loads((runner.RECEIPTS/(KEY+'.progress.json')).read_text())
         self.assertEqual(progress['reportSteps']['escalated'], 1)
 
+    def test_the_escalated_call_carries_the_gateway_token_when_one_is_installed(self):
+        self.escalation = {'models': ['openrouter/nvidia/nemotron'], 'maxCostNanodollars': 10e9, 'calls': 0}
+        self.answers = ['not json', self.reviewed, lambda prompt: {'summary': 's', 'explanations': {}}]
+        sent, patch = self.escalation_answer(error='refused')
+        with patch, mock.patch.object(runner, 'GATEWAY_TOKEN', 'coding-team-token'), mock.patch('builtins.print'):
+            runner.main()
+        self.assertEqual(sent[0].get_header('Authorization'), 'Bearer coding-team-token')
+
     def test_an_unavailable_escalation_blocks_the_group_after_its_second_failure(self):
         self.escalation = {'models': ['openai/gpt-5.6-sol'], 'maxCostNanodollars': 10e9, 'calls': 0}
         self.answers = ['not json', self.reviewed, lambda prompt: {'summary': 's', 'explanations': {}}]

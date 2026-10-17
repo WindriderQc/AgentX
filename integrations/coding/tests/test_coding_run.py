@@ -510,7 +510,7 @@ class ReportDrainTest(unittest.TestCase):
         relay.drain.return_value = True
         progress = mock.Mock(report_mode=True, request_id='11111111-2222-4333-8444-555555555555',
                              cumulative_limits=cumulative_limits, model_context_size=4096,
-                             hard_deadline=1600.0, queue_deadline=1900.0)
+                             hard_deadline=1600.0, queue_deadline=1900.0, relay_headers={})
         progress.now.return_value = 1000.0
         progress.model_remaining.return_value = 900
         with tempfile.TemporaryDirectory() as root, \
