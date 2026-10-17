@@ -51,7 +51,7 @@ describe('lane capability profile', () => {
     expect(capability.provenance).toMatchObject({ contextProfileId: 'ctx1', performanceProfileId: 'perf1',
       depth: 'standard', ageDays: 8 });
     expect(capability.readiness).toEqual({ chat: 'ready', documents: 'speed_only', codingAgent: 'not_measured' });
-    expect(codes(capability)).toEqual(['quality_unknown', 'long_prefill_missing', 'agent_workload_missing']);
+    expect(codes(capability)).toEqual(['quality_unknown', 'long_prefill_missing', 'agent_workload_missing', 'concurrency_unmeasured']);
     expect(capability.gaps.every(gap => typeof gap.text === 'string' && gap.text.length > 10)).toBe(true);
   });
 
@@ -262,5 +262,50 @@ describe('lane night campaign', () => {
       identity: async () => ARTIFACT, contextProfile: async () => contextProfile(), performanceProfile: async () => null, submit, now: () => NOW
     })).rejects.toThrow('valid time');
     expect(submit).not.toHaveBeenCalled();
+  });
+});
+
+describe('re-measurement proposals and concurrency', () => {
+  const full = (over = {}, artifact = { digest: 'sha256:aaa', runtimeFingerprint: 'rt-1' }) => performanceProfile({ profileDepth: 'full',
+    agentWorkload: { summary: { reliableToolTurns: 10 }, session: { turns: [] } },
+    concurrency: { status: 'measured', worstSelfSlowdownPct: 38.5, worstOtherSlowdownPct: 20,
+      pairs: [{ model: 'chat:12b', status: 'measured', selfSlowdownPct: 38.5, otherSlowdownPct: 20 }] }, ...over }, { artifact });
+  const reasons = capability => capability.remeasure.reasons.map(reason => reason.code);
+
+  it('proposes nothing for a lane with a current Full profile of its installed model and runtime', () => {
+    const capability = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT, contextProfile: contextProfile(),
+      performanceProfile: full(), now: NOW });
+    expect(capability.remeasure).toEqual({ needed: false, depth: 'full', reasons: [] });
+    expect(capability.concurrency).toMatchObject({ status: 'measured', worstSelfSlowdownPct: 38.5, separateEndpoints: 'not_measured' });
+    expect(codes(capability)).not.toContain('concurrency_unmeasured');
+  });
+
+  it('names a changed model, a changed runtime, an old profile and a missing Full profile', () => {
+    const changedModel = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT, contextProfile: null,
+      performanceProfile: full({}, { digest: 'sha256:old', runtimeFingerprint: 'rt-1' }), now: NOW });
+    expect(reasons(changedModel)).toEqual(['model_changed', 'full_missing']);
+    const changedRuntime = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT, contextProfile: contextProfile(),
+      performanceProfile: full({}, { digest: 'sha256:aaa', runtimeFingerprint: 'rt-0' }), now: NOW });
+    expect(reasons(changedRuntime)).toEqual(['runtime_changed', 'full_missing']);
+    expect(changedRuntime.remeasure.reasons[0].text).toMatch(/Ollama, its settings or the host hardware/);
+    const old = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT,
+      contextProfile: contextProfile({ lastValidatedAt: '2026-08-01T00:00:00Z' }),
+      performanceProfile: full({ profiledAt: '2026-08-01T00:00:00Z' }), now: NOW });
+    expect(reasons(old)).toEqual(['profile_old']);
+    const standard = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT, contextProfile: contextProfile(),
+      performanceProfile: performanceProfile(), now: NOW });
+    expect(reasons(standard)).toEqual(['full_missing']);
+    expect(codes(standard)).toContain('concurrency_unmeasured');
+    const never = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT, now: NOW });
+    expect(reasons(never)).toEqual(['never_measured']);
+  });
+
+  it('does not propose a lane whose identity is unknown, and reports eviction', () => {
+    const unknown = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: null, now: NOW });
+    expect(unknown.remeasure.needed).toBe(false);
+    expect(unknown.remeasure.blocked).toMatch(/could not be identified/);
+    const evicted = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT, contextProfile: contextProfile(),
+      performanceProfile: full({ concurrency: { status: 'evicted', pairs: [{ model: 'chat:12b', status: 'evicted' }] } }), now: NOW });
+    expect(codes(evicted)).toContain('concurrency_evicts');
   });
 });

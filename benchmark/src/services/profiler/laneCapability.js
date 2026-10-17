@@ -39,7 +39,20 @@ const GAP_TEXT = Object.freeze({
   agent_output_short: 'The model cannot return a complete structured answer of about 1,500 tokens.',
   agent_tool_answers_wrong: 'Fewer than three quarters of the checks recorded through tools were right.',
   profile_old: 'The newest measurement is older than 30 days.',
-  implausible_values: 'Some recorded values are physically impossible and were ignored.'
+  implausible_values: 'Some recorded values are physically impossible and were ignored.',
+  concurrency_unmeasured: 'Speed with other resident models answering at the same time is not measured.',
+  concurrency_evicts: 'This model and a co-resident model did not stay loaded together: one evicted the other.'
+});
+
+// Why a lane should be measured again. Each proposal is a Full profile the
+// owner may queue; none starts by itself.
+const REMEASURE_TEXT = Object.freeze({
+  never_measured: 'This model has never been profiled on this host.',
+  model_changed: 'The installed model artifact changed since the last profile.',
+  runtime_changed: 'Ollama, its settings or the host hardware changed since the last profile.',
+  profile_old: 'The newest measurement is older than 30 days.',
+  recommendations_unverified: 'Context recommendations need a fresh profile.',
+  full_missing: 'No Full profile exists yet: quality, agent work and concurrency are unmeasured.'
 });
 
 function finite(value) {
@@ -109,6 +122,23 @@ function agentCapability(profile, rejected) {
   return agent;
 }
 
+function concurrencyCapability(profile) {
+  const evidence = profile?.concurrency;
+  if (!evidence?.status) return { status: 'not_measured' };
+  const pct = value => (Number.isFinite(Number(value)) ? Number(value) : null);
+  return {
+    status: evidence.status,
+    scope: evidence.scope || 'same_endpoint',
+    worstSelfSlowdownPct: pct(evidence.worstSelfSlowdownPct),
+    worstOtherSlowdownPct: pct(evidence.worstOtherSlowdownPct),
+    pairs: (Array.isArray(evidence.pairs) ? evidence.pairs : []).slice(0, 6).map(pair => ({
+      model: pair.model || null, status: pair.status || null,
+      selfSlowdownPct: pct(pair.selfSlowdownPct), otherSlowdownPct: pct(pair.otherSlowdownPct)
+    })),
+    separateEndpoints: 'not_measured'
+  };
+}
+
 function toolAccuracy(agent) {
   return agent.toolChecksTotal > 0 ? (agent.toolChecksCorrect || 0) / agent.toolChecksTotal : 0;
 }
@@ -157,8 +187,9 @@ function buildLaneCapability({
   const perfRuntime = perf?.artifact?.runtimeFingerprint || perf?.profile?.artifact?.runtimeFingerprint || null;
   // Quality and agent evidence are bound to the exact artifact and runtime:
   // a different Ollama build or setting is a different measurement.
-  const perfMatches = Boolean(perf) && (!identified || ((!perfDigest || digestsMatch(perfDigest, artifact.digest))
-    && (!perfRuntime || perfRuntime === artifact.runtimeFingerprint)));
+  const modelChanged = Boolean(perf) && identified && Boolean(perfDigest) && !digestsMatch(perfDigest, artifact.digest);
+  const runtimeChanged = Boolean(perf) && identified && !modelChanged && Boolean(perfRuntime) && perfRuntime !== artifact.runtimeFingerprint;
+  const perfMatches = Boolean(perf) && !modelChanged && !runtimeChanged;
   if (!perf) gaps.push('no_performance_profile');
   else if (!perfMatches) gaps.push('performance_artifact_mismatch');
   const p = perfMatches ? perf.profile : {};
@@ -211,11 +242,29 @@ function buildLaneCapability({
     if (toolAccuracy(agent) < AGENT_MINIMUMS.toolAccuracy) gaps.push('agent_tool_answers_wrong');
   }
 
+  const concurrency = concurrencyCapability(perfMatches ? p : null);
+  if (concurrency.status === 'not_measured') gaps.push('concurrency_unmeasured');
+  if (concurrency.status === 'evicted') gaps.push('concurrency_evicts');
+
   const dates = [dateOrNull(ctxProfile?.lastValidatedAt), dateOrNull(p?.profiledAt || perf?.updatedAt)].filter(Boolean);
   const measuredAt = dates.length ? new Date(Math.max(...dates.map(date => date.getTime()))) : null;
   const ageDays = measuredAt ? Math.max(0, Math.floor((now.getTime() - measuredAt.getTime()) / 86400000)) : null;
   if (ageDays !== null && ageDays > maxAgeDays) gaps.push('profile_old');
   if (rejected.length) gaps.push('implausible_values');
+
+  const reasons = [];
+  if (!ctxProfile && !perf) reasons.push('never_measured');
+  if (modelChanged) reasons.push('model_changed');
+  if (runtimeChanged) reasons.push('runtime_changed');
+  if (ageDays !== null && ageDays > maxAgeDays) reasons.push('profile_old');
+  if (ctxProfile && !recommendationsVerified) reasons.push('recommendations_unverified');
+  // A Full profile that ran and failed a check is a result, not a reason to
+  // measure again; only a lane that never had one is proposed for it.
+  const fullDone = perfMatches && p?.profileDepth === 'full' && Boolean(p?.agentWorkload);
+  if (!fullDone && !reasons.includes('never_measured')) reasons.push('full_missing');
+  const remeasure = identified
+    ? { needed: reasons.length > 0, depth: 'full', reasons: reasons.map(code => ({ code, text: REMEASURE_TEXT[code] })) }
+    : { needed: false, depth: null, reasons: [], blocked: 'The installed artifact or runtime could not be identified.' };
 
   return {
     schema: SCHEMA,
@@ -227,6 +276,8 @@ function buildLaneCapability({
     quality,
     throughput,
     agent,
+    concurrency,
+    remeasure,
     readiness: readiness({ context, quality, agent }),
     provenance: {
       contextProfileId: ctxProfile?._id ? String(ctxProfile._id) : null,
@@ -240,4 +291,4 @@ function buildLaneCapability({
   };
 }
 
-module.exports = { buildLaneCapability, SCHEMA, LIMITS, MAX_AGE_DAYS, GAP_TEXT, AGENT_MINIMUMS };
+module.exports = { buildLaneCapability, SCHEMA, LIMITS, MAX_AGE_DAYS, GAP_TEXT, REMEASURE_TEXT, AGENT_MINIMUMS };

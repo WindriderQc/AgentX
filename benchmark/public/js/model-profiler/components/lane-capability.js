@@ -111,6 +111,33 @@ export function renderSessionCurve(curve) {
   </figure>`;
 }
 
+function renderConcurrency(concurrency) {
+  const messages = {
+    not_measured: 'Not measured yet (Full profile).',
+    no_co_resident: 'No other model was resident on this endpoint when measured.',
+    not_resident: 'Not measured: the model was not resident.',
+    inventory_unavailable: 'Not measured: resident models could not be read.',
+    unmeasured: 'Not measured: every pair reloaded or failed.'
+  };
+  if (concurrency?.status === 'evicted') {
+    return '<p class="lc-concurrency is-bad">Does not stay loaded together with a co-resident model: one evicts the other.</p>';
+  }
+  if (concurrency?.status !== 'measured') {
+    return `<p class="lc-concurrency is-dim">${escAttr(messages[concurrency?.status] || messages.not_measured)}</p>`;
+  }
+  const rows = (concurrency.pairs || []).filter(pair => pair.status === 'measured').map(pair =>
+    `<li><span>with ${escAttr(pair.model)}</span><strong>${Math.round(pair.selfSlowdownPct ?? 0)} % slower</strong><span class="lc-concurrency-other">it slows ${Math.round(pair.otherSlowdownPct ?? 0)} %</span></li>`).join('');
+  return `<ul class="lc-concurrency-list">${rows}</ul>`;
+}
+
+function renderRemeasure(remeasure) {
+  if (!remeasure?.needed) return '';
+  return `<div class="lc-proposal" role="note">
+    <strong><i class="fas fa-rotate" aria-hidden="true"></i> Re-measurement proposed</strong>
+    <ul>${(remeasure.reasons || []).map(reason => `<li>${escAttr(reason.text || reason.code)}</li>`).join('')}</ul>
+  </div>`;
+}
+
 function renderAgentBlock(agent) {
   if (agent?.status !== 'measured') {
     return `<section class="lc-block" aria-label="Agent work"><h4>Agent work</h4>
@@ -169,6 +196,7 @@ export function renderLaneCard(lane, index = 0) {
       ${readinessPill('Chat', cap.readiness?.chat)}${readinessPill('Documents', cap.readiness?.documents)}${readinessPill('Coding agent', cap.readiness?.codingAgent)}
     </div>
     ${warnings}
+    ${renderRemeasure(cap.remeasure)}
     <section class="lc-block" aria-label="Context">
       <h4>Context</h4>
       ${renderContextGauge(cap, lane.pinContext)}
@@ -182,6 +210,8 @@ export function renderLaneCard(lane, index = 0) {
         <div><dt>Test context</dt><dd>${fmtCtx(t.measuredAtNumCtx)}</dd></div>
       </dl>
       ${prefill}
+      <h4 class="lc-subhead">Answering beside co-resident models</h4>
+      ${renderConcurrency(cap.concurrency)}
     </section>
     ${renderAgentBlock(cap.agent)}
     <footer class="lc-card-foot">
@@ -201,13 +231,15 @@ export function renderLaneSummary(lanes) {
   const list = Array.isArray(lanes) ? lanes : [];
   const count = state => list.filter(lane => lane.capability?.readiness?.codingAgent === state).length;
   const unmeasured = list.filter(lane => lane.capability?.agent?.status !== 'measured').length;
+  const proposed = list.filter(lane => lane.capability?.remeasure?.needed).length;
   const knee = list.filter(lane => laneWarnings(lane).length).length;
   const quality = list.filter(lane => lane.capability?.quality?.status !== 'verified').length;
   return `<span class="lc-summary-item"><strong>${list.length}</strong> ${list.length === 1 ? 'lane' : 'lanes'}</span>
     <span class="lc-summary-item${knee ? ' is-warn' : ''}"><strong>${knee}</strong> past the speed knee</span>
     <span class="lc-summary-item${quality ? ' is-warn' : ''}"><strong>${quality}</strong> without verified quality</span>
     <span class="lc-summary-item${count('not_measured') ? ' is-dim' : ''}"><strong>${count('ready')}</strong> ready for coding agents</span>
-    <span class="lc-summary-item${unmeasured ? ' is-dim' : ''}"><strong>${unmeasured}</strong> without agent measurements</span>`;
+    <span class="lc-summary-item${unmeasured ? ' is-dim' : ''}"><strong>${unmeasured}</strong> without agent measurements</span>
+    <span class="lc-summary-item${proposed ? ' is-warn' : ''}"><strong>${proposed}</strong> ${proposed === 1 ? 're-measurement' : 're-measurements'} proposed</span>`;
 }
 
 /**
@@ -227,16 +259,15 @@ export function buildMeasureRequest(lane, now = new Date()) {
   return { model: cap.model, hostUrl: cap.hostUrl, notBefore: start.toISOString(), startBefore: end.toISOString() };
 }
 
-/** Lanes the night campaign measures: those still missing quality or agent evidence. */
+/** Lanes the night campaign measures: those with a re-measurement proposal. */
 export function campaignTargets(lanes) {
-  return (Array.isArray(lanes) ? lanes : []).filter(lane => lane.capability?.hostId
-    && (lane.capability.quality?.status !== 'verified' || lane.capability.agent?.status !== 'measured'));
+  return (Array.isArray(lanes) ? lanes : []).filter(lane => lane.capability?.hostId && lane.capability.remeasure?.needed === true);
 }
 
 export function campaignText(targets) {
-  if (!targets.length) return 'Every lane already has verified quality and agent measurements.';
+  if (!targets.length) return 'No lane needs re-measurement: every lane has a current Full profile for its installed model and runtime.';
   const hosts = new Set(targets.map(lane => lane.hostName || lane.capability.hostId));
   return `Record ${targets.length} Full-profile ${targets.length === 1 ? 'request' : 'requests'} for tonight, 23:00 to 06:00, `
-    + `on ${hosts.size} ${hosts.size === 1 ? 'host' : 'hosts'}: lanes still missing verified quality or agent measurements. `
+    + `on ${hosts.size} ${hosts.size === 1 ? 'host' : 'hosts'}, for the lanes with a re-measurement proposal. `
     + 'Each takes about three hours. Nothing starts until you reserve them in Automations → Calendar.';
 }
