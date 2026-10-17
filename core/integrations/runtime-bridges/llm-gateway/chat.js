@@ -14,7 +14,7 @@ const {
   sendRuntimeError,
   uniqueEffectiveModels
 } = require('../common');
-const { imageMediaType, ollamaMessages } = require('../hermes/messages');
+const { imageMediaType, ollamaMessages } = require('./messages');
 const { settledStream } = require('../openclaw/settled-stream');
 const { isPreRoutingValidationRefusal } = require('../../../src/extensions/trustedRuntimeServices');
 const { PRINCIPAL_MODEL_ALIAS, resolvePrincipalAlias } = require('../principal-model');

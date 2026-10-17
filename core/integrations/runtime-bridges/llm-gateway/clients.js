@@ -11,17 +11,6 @@ const CLIENT_ID = /^[a-z][a-z0-9-]{0,39}$/;
 const ADMISSION_MODES = new Set(['patient', 'immediate']);
 const MIN_TOKEN_LENGTH = 16;
 
-// The legacy Hermes address (/api/hermes-openai) has no token; this is the
-// identity Core attests there. Hermes moves to /api/llm/v1 as token client
-// `hermes`, whose traffic is recorded as `hermes-gateway-v1`.
-const HERMES_CLIENT = Object.freeze({
-  id: 'hermes',
-  label: 'Hermes',
-  callerDetail: 'hermes-runtime-bridge',
-  consumerContract: 'hermes-runtime-v1',
-  admission: 'immediate'
-});
-
 function invalid(message) {
   return Object.assign(new Error(`AGENTX_LLM_GATEWAY_CLIENTS: ${message}`), { code: 'LLM_GATEWAY_CLIENTS_INVALID' });
 }
@@ -79,4 +68,4 @@ function clientForRequest(clients, req) {
   return found;
 }
 
-module.exports = { HERMES_CLIENT, admissionWaitMs, clientForRequest, parseGatewayClients };
+module.exports = { admissionWaitMs, clientForRequest, parseGatewayClients };

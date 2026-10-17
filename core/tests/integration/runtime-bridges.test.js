@@ -20,6 +20,7 @@ jest.mock('../../src/extensions/trustedRuntimeServices', () => {
 });
 
 process.env.AGENTX_RUNTIME_BRIDGES_ENABLED = 'true';
+process.env.AGENTX_LLM_GATEWAY_CLIENTS = JSON.stringify({ hermes: { token: 'synthetic-hermes-token', admission: 'immediate' } });
 process.env.AGENTX_PRINTER_VISION_ENABLED = 'true';
 const request = require('supertest');
 const mongoose = require('mongoose');
@@ -39,10 +40,13 @@ describe('optional integrations registered in canonical Core', () => {
     expect(openclaw.text).toContain('Synthetic reply');
     expect(JSON.parse(openclaw.text.trim().split('\n').at(-1)).done).toBe(true);
     expect(executeForTest.mock.calls.at(-1)[1].consumerContract).toBe('openclaw-runtime-v1');
-    const hermes = await request(app).post('/api/hermes-openai/v1/chat/completions').send({ model: 'synthetic-model', messages, stream: true }).expect(200);
+    await request(app).post('/api/llm/v1/chat/completions').send({ model: 'synthetic-model', messages }).expect(401);
+    await request(app).post('/api/hermes-openai/v1/chat/completions').send({ model: 'synthetic-model', messages }).expect(404);
+    const hermes = await request(app).post('/api/llm/v1/chat/completions').set('Authorization', 'Bearer synthetic-hermes-token')
+      .send({ model: 'synthetic-model', messages, stream: true }).expect(200);
     expect(hermes.text).toContain('Synthetic reply');
     expect(hermes.text).toContain('data: [DONE]');
-    expect(executeForTest.mock.calls.at(-1)[1].consumerContract).toBe('hermes-runtime-v1');
+    expect(executeForTest.mock.calls.at(-1)[1].consumerContract).toBe('hermes-gateway-v1');
     await request(app).post('/api/openclaw-ollama/api/pull').send({ model: 'unknown' }).expect(404);
     expect(executeForTest).toHaveBeenCalledTimes(2);
   });
