@@ -42,3 +42,69 @@ test('frozen inference result streams content but holds terminal until the nativ
     assert.match(output, /\[DONE\]/);
   } finally { inference.prepare = prior; }
 });
+
+test('a report escalation call runs on the escalation path only, never on the local runtime, and settles its receipt', async () => {
+  const prior = inference.prepare;
+  const escalation = require('../../../src/services/pipelineReportEscalation');
+  const priorExecute = escalation.execute;
+  let settled; let preparedModel; let executed;
+  inference.prepare = async (headers, model) => {
+    preparedModel = model;
+    return { options: { signal: new AbortController().signal, reportDeadlineAt: Date.now() + 60000,
+      reportEscalation: { requestId: 'r', pipelineId: '0939', callId: 'c', step: 3, model, remainingNanodollars: 5 } },
+    finish: async state => { settled = state; } };
+  };
+  escalation.execute = async input => { executed = input;
+    return { model: 'openrouter/nvidia/nemotron', body: { message: { role: 'assistant', content: '{"documents":[]}' }, done_reason: 'stop' } }; };
+  try {
+    const routes = [];
+    const express = { Router: () => Object.fromEntries(['get', 'post', 'all'].map(method => [method,
+      (path, ...handlers) => routes.push({ method, path, handlers })])) };
+    registerHermesProtocol({ express, logger: {}, runtimeServices: {
+      // The model is not in the routing table: only the run's recorded models authorize it.
+      routing: { getEffectiveSnapshot: async () => ({ tasks: { code_generation: { model: 'local-coder' } } }) },
+      inference: { execute: async () => { throw new Error('local runtime must not run an escalation call'); } }
+    } });
+    const req = new EventEmitter();
+    req.headers = { 'x-agentx-report-request': 'r', 'x-agentx-report-task': '0939', 'x-agentx-report-escalation': '3' };
+    req.body = { model: 'openai/gpt-5.6-sol', messages: [{ role: 'user', content: 'Review these documents' }], max_tokens: 4096 };
+    let status; let body;
+    const res = new PassThrough(); res.status = code => { status = code; return res; }; res.set = () => res;
+    res.json = value => { body = value; return res; };
+    await routes.find(route => route.path === '/v1/chat/completions').handlers[0](req, res);
+    assert.equal(preparedModel, 'openai/gpt-5.6-sol');
+    assert.equal(executed.identity.step, 3);
+    assert.equal(executed.maxTokens, 4096);
+    assert.equal(settled, 'completed');
+    assert.equal(status, 200);
+    assert.equal(body.choices[0].message.content, '{"documents":[]}');
+  } finally { inference.prepare = prior; escalation.execute = priorExecute; }
+});
+
+test('an unanswered escalation settles as refused and reports the failure', async () => {
+  const prior = inference.prepare;
+  const escalation = require('../../../src/services/pipelineReportEscalation');
+  const priorExecute = escalation.execute;
+  let settled;
+  inference.prepare = async (headers, model) => ({ options: { signal: new AbortController().signal, reportDeadlineAt: Date.now() + 60000,
+    reportEscalation: { requestId: 'r', pipelineId: '0939', callId: 'c', step: 3, model, remainingNanodollars: 5 } },
+  finish: async state => { settled = state; } });
+  escalation.execute = async () => { throw Object.assign(new Error('No escalation model answered'), { code: 'REPORT_ESCALATION_UNAVAILABLE', statusCode: 502 }); };
+  try {
+    const routes = [];
+    const express = { Router: () => Object.fromEntries(['get', 'post', 'all'].map(method => [method,
+      (path, ...handlers) => routes.push({ method, path, handlers })])) };
+    registerHermesProtocol({ express, logger: {}, runtimeServices: {
+      routing: { getEffectiveSnapshot: async () => ({ tasks: {} }) }, inference: { execute: async () => { throw new Error('no'); } } } });
+    const req = new EventEmitter();
+    req.headers = { 'x-agentx-report-request': 'r', 'x-agentx-report-task': '0939', 'x-agentx-report-escalation': '3' };
+    req.body = { model: 'openai/gpt-5.6-sol', messages: [{ role: 'user', content: 'x' }] };
+    let status; let body;
+    const res = new PassThrough(); res.status = code => { status = code; return res; }; res.set = () => res;
+    res.json = value => { body = value; return res; };
+    await routes.find(route => route.path === '/v1/chat/completions').handlers[0](req, res);
+    assert.equal(settled, 'refused');
+    assert.equal(status, 502);
+    assert.equal(body.error.code, 'REPORT_ESCALATION_UNAVAILABLE');
+  } finally { inference.prepare = prior; escalation.execute = priorExecute; }
+});

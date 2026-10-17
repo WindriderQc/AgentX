@@ -38,7 +38,8 @@
     const source = { agent_workload: 'measured agent work', speed_knee: 'measured speed knee', default: 'default size' }[steps.budgetSource] || 'unknown basis';
     const size = Number.isSafeInteger(steps.stepContext) ? `${Math.round(steps.stepContext / 1024)}k-token steps (${source})` : 'step size unknown';
     return `${n(steps.done)} merged · ${n(steps.failed)} failed · ${n(c.reviewed)} reviewed, ${n(c.partial)} partial, `
-      + `${n(c.blocked)} blocked, ${n(c.pending)} pending · ${n(steps.findings)} new findings · ${size}`;
+      + `${n(c.blocked)} blocked, ${n(c.pending)} pending · ${n(steps.findings)} new findings · ${size}`
+      + (n(steps.escalated) ? ` · ${n(steps.escalated)} escalated to the cloud` : '');
   }
 
   function age(value, now) {

@@ -88,7 +88,8 @@ async function prepare(task, profile, grant) {
   if (!UUID.test(grant.key || '') || !UUID.test(grant.queueRequestId || '') || grant.confirm !== true
     || !Number.isSafeInteger(grant.additionalRuns) || grant.additionalRuns < 1 || grant.additionalRuns > 4
     || !Number.isSafeInteger(grant.budget?.modelCalls) || grant.budget.modelCalls < 128 || grant.budget.modelCalls > 1024
-    || !Number.isSafeInteger(grant.budget?.workSeconds) || grant.budget.workSeconds < 60 || grant.budget.workSeconds > 57600)
+    || !Number.isSafeInteger(grant.budget?.workSeconds) || grant.budget.workSeconds < 60 || grant.budget.workSeconds > 57600
+    || (grant.allowCloudEscalation !== undefined && typeof grant.allowCloudEscalation !== 'boolean'))
     throw fail('Confirm the report campaign, added calls, work seconds and worker count', 'REPORT_GRANT_INVALID', 400);
   const latest = latestOutcome(task);
   const intent = { key: grant.key, queueRequestId: grant.queueRequestId, additionalRuns: grant.additionalRuns,
@@ -96,7 +97,9 @@ async function prepare(task, profile, grant) {
     parentRequestId: latest?.requestId || null, checkpoint: profile.parentRequestId ? {
       requestId: profile.parentRequestId, sha256: profile.parentSha256 } : null,
     specSha256: specHash(task), reportName: profile.reportName, modelCallLimit: profile.modelCallLimit,
-    documentPaths: profile.documentPaths || null };
+    documentPaths: profile.documentPaths || null,
+    // Explicit owner consent to send this task's step context to a cloud model.
+    ...(grant.allowCloudEscalation === true && { allowCloudEscalation: true }) };
   const fingerprint = digest(intent), previous = state.grants.find(row => row.key === grant.key);
   if (previous) {
     if (previous.fingerprint !== fingerprint) throw fail('This report grant key has another intent', 'REPORT_GRANT_CONFLICT');

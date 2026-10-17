@@ -262,6 +262,8 @@ def render(ledger, title, next_groups=()):
                         f'- Document: `{finding["document"]["path"]}:{finding["document"]["line"]}`']
                 out += [f'- Evidence: `{ref["path"]}:{ref["line"]}` — {ref["check"]}' for ref in finding['evidence']]
                 out += [f'- Correction: {finding["correction"]}']
+                if finding.get('escalatedModel'):
+                    out += [f'- Found by cloud escalation on `{finding["escalatedModel"]}` after the local model failed this group.']
                 if finding.get('explanation'):
                     out += ['', finding['explanation']]
                 out += ['']

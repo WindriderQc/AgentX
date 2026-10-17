@@ -533,7 +533,7 @@ class StepsReportTest(unittest.TestCase):
         temp = tempfile.TemporaryDirectory(); self.addCleanup(temp.cleanup)
         self.root = Path(temp.name); self.workspace = self.root/'task-0001'; (self.workspace/'docs').mkdir(parents=True)
         runner.git(self.workspace,'init','--quiet')
-        (self.workspace/'README.md').write_text('# Project\nThe retry limit is 5.\n')
+        (self.workspace/'README.md').write_text('# Project\nThe `RETRY_LIMIT` is 5.\n')
         (self.workspace/'docs'/'GUIDE.md').write_text('# Guide\nRun npm start.\n')
         (self.workspace/'config.js').write_text("const RETRY_LIMIT = 7;\nmodule.exports = { RETRY_LIMIT };\n")
         runner.git(self.workspace,'add','.'); runner.git(self.workspace,*runner.AUTHOR,'commit','-qm','Initial')
@@ -560,6 +560,7 @@ class StepsReportTest(unittest.TestCase):
             if url.endswith('/start'):
                 self.start_intent=body
                 return {'data':{'requestId':KEY,'claimSeq':2,'modelCallLimit':body['modelCallLimit'],
+                    'escalation':getattr(self,'escalation',None),
                     'parentRequestId':None,'parentSha256':None,
                     'authority':{'queueEndAt':'2099-01-01T00:00:00Z','workSeconds':14400},
                     'inventory':dict(body['inventory'],sha256='a'*64)}}
@@ -631,3 +632,61 @@ class StepsReportTest(unittest.TestCase):
         partial = base64.b64decode(self.stops[0]['partial']['dataUrl'].split(',')[1]).decode()
         self.assertIn('agentx-report-ledger:v1', partial)
         self.assertIn('1 documents are not fully reviewed.', partial)
+
+
+class EscalationStepsTest(StepsReportTest):
+    """A group that fails locally is retried once on the cloud escalation path (#835)."""
+
+    def escalation_answer(self, content=None, error=None):
+        sent = []
+        class Response:
+            def __init__(self, value): self.value = value
+            def __enter__(self): return self
+            def __exit__(self, *exc): return False
+            def read(self, *args): return json.dumps(self.value).encode()
+        def urlopen(request, timeout=None):
+            sent.append(request)
+            if error: raise OSError(error)
+            return Response({'model': 'openrouter/nvidia/nemotron', 'choices': [{'message': {'content': content}}]})
+        return sent, mock.patch('urllib.request.urlopen', urlopen)
+
+    def test_a_failed_group_is_retried_once_in_the_cloud_and_its_findings_are_marked(self):
+        self.escalation = {'models': ['openai/gpt-5.6-sol', 'openrouter/nvidia/nemotron'], 'maxCostNanodollars': 10e9, 'calls': 0}
+        self.answers = ['not json', self.reviewed, lambda prompt: {'summary': 's', 'explanations': {}}]
+        content = json.dumps({'documents': [{'path': 'README.md', 'state': 'reviewed',
+            'evidence': [{'path': 'config.js', 'line': 1, 'check': 'RETRY_LIMIT'}]}],
+            'findings': [{'kind': 'inaccuracy', 'severity': 'high', 'title': 'Retry limit is 7', 'document': {'path': 'README.md', 'line': 2},
+                          'evidence': [{'path': 'config.js', 'line': 1, 'check': 'RETRY_LIMIT = 7'}], 'correction': 'Say 7.'}]})
+        sent, patch = self.escalation_answer('```json\n' + content + '\n```')
+        with patch, mock.patch('builtins.print'):
+            self.assertEqual(runner.main(), 0)
+        self.assertEqual(len(sent), 1)
+        request = sent[0]
+        self.assertEqual(request.get_header('X-agentx-report-escalation'), '2')
+        self.assertEqual(request.get_header('X-agentx-report-request'), KEY)
+        payload = json.loads(request.data)
+        self.assertEqual(payload['model'], 'openai/gpt-5.6-sol')
+        self.assertIn('=== SOURCE config.js', payload['messages'][1]['content'])
+        self.assertIn('1: const RETRY_LIMIT = 7;', payload['messages'][1]['content'])
+        report = base64.b64decode(self.uploads[0]['dataUrl'].split(',')[1]).decode()
+        self.assertIn('Found by cloud escalation on `openrouter/nvidia/nemotron`', report)
+        progress = json.loads((runner.RECEIPTS/(KEY+'.progress.json')).read_text())
+        self.assertEqual(progress['reportSteps']['escalated'], 1)
+
+    def test_an_unavailable_escalation_blocks_the_group_after_its_second_failure(self):
+        self.escalation = {'models': ['openai/gpt-5.6-sol'], 'maxCostNanodollars': 10e9, 'calls': 0}
+        self.answers = ['not json', self.reviewed, lambda prompt: {'summary': 's', 'explanations': {}}]
+        sent, patch = self.escalation_answer(error='connection refused')
+        with patch, mock.patch('builtins.print'):
+            self.assertEqual(runner.main(), 0)
+        self.assertEqual(len(sent), 1)
+        states = sorted(row['state'] for row in self.uploads[0]['coverage']['documents'])
+        self.assertEqual(states, ['blocked', 'reviewed'])
+
+    def test_no_escalation_without_permission_from_core(self):
+        self.escalation = None
+        self.answers = ['not json', self.reviewed, '{"documents": []}', lambda prompt: {'summary': 's', 'explanations': {}}]
+        sent, patch = self.escalation_answer('{}')
+        with patch, mock.patch('builtins.print'):
+            self.assertEqual(runner.main(), 0)
+        self.assertEqual(sent, [])

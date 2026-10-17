@@ -295,6 +295,7 @@ def execute(r,args,progress,task,workspace):
             if previous_coverage.get('inventorySha256') != snapshot['sha256']:
                 raise ValueError('Checkpoint coverage belongs to a different source inventory')
             scope.seed(root, snapshot, previous_coverage)
+    progress.report_escalation = started.get('escalation') if isinstance(started.get('escalation'), dict) else None
     progress.heartbeat=lambda:r.request(endpoint(r,args.task_id,args.request_id)+'/heartbeat',{})
     progress.relay_headers={'x-agentx-report-request':args.request_id,'x-agentx-report-task':args.task_id}
     discussion='\n\n'.join(f"{row.get('by','someone')}: {row.get('text','')}" for row in task.get('feedback',[]))
@@ -400,6 +401,97 @@ def initial_ledger(root, path, snapshot, baseline):
     return ledgers.new_ledger(snapshot, coverage, ledgers.legacy_narrative(restored) if restored else None)
 
 
+def escalation_allowed(progress, ledger, group):
+    """Escalate a group once, after its first local failure, if this run may (#835)."""
+    escalation = getattr(progress, 'report_escalation', None)
+    if not escalation or not escalation.get('models'):
+        return False
+    calls, seconds = steps.remaining(progress)
+    return (calls >= 1 + steps.WRITER_CALLS and seconds >= 300
+            and all(ledger['documents'][path].get('attempts', 0) == 1 for path in group)
+            and not any(row.get('escalated') and set(row.get('documents', [])) == set(group) for row in ledger['steps']))
+
+
+def escalation_call(r, args, progress, model, messages, step):
+    """One escalated request through Core, keeping progress heartbeats alive."""
+    import threading, uuid
+    from urllib.request import Request, urlopen
+    from urllib.error import HTTPError
+    body = json.dumps({'model': model, 'messages': messages, 'max_tokens': steps.ESCALATION_MAX_TOKENS,
+                       'temperature': 0, 'stream': False}).encode()
+    headers = {'Content-Type': 'application/json', 'Accept': 'application/json', 'x-service-caller': 'coding-run',
+               'x-agentx-report-request': args.request_id, 'x-agentx-report-task': args.task_id,
+               'x-agentx-coding-call': str(uuid.uuid4()), 'x-agentx-report-escalation': str(step)}
+    timeout = max(60, min(900, steps.remaining(progress)[1] - steps.WRITER_SECONDS))
+    outcome = {}
+
+    def send():
+        try:
+            with urlopen(Request(f'{r.MODEL_URL}/chat/completions', data=body, headers=headers, method='POST'), timeout=timeout) as response:
+                outcome['value'] = json.load(response)
+        except HTTPError as error:
+            outcome['error'] = f'HTTP {error.code}'
+        except (OSError, ValueError) as error:
+            outcome['error'] = type(error).__name__
+    worker = threading.Thread(target=send, daemon=True)
+    worker.start()
+    while worker.is_alive():
+        progress.tick()
+        worker.join(2)
+    progress.model_calls += 1
+    if 'error' in outcome:
+        return None, None, f'escalation unavailable ({outcome["error"]})'
+    choice = (outcome['value'].get('choices') or [{}])[0]
+    return choice.get('message', {}).get('content'), outcome['value'].get('model') or model, None
+
+
+def escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source):
+    escalation = progress.report_escalation
+    files = r.git(workspace, 'ls-tree', '-r', '--name-only', baseline).splitlines()
+    doc_texts = {path: sources[path].decode('utf-8', errors='replace') for path in group}
+    cited_files = steps.referenced_sources(ledger, group, doc_texts, files)
+    if not cited_files:
+        # No path cited and no earlier evidence: find the files that define the
+        # identifiers the documents name, in the frozen snapshot only.
+        hits = {}
+        for term in steps.code_terms(doc_texts):
+            try:
+                found = r.git(workspace, 'grep', '-l', '-F', '-e', term, baseline, '--').splitlines()
+            except Exception:
+                continue
+            for line in found:
+                name = line.split(':', 1)[1] if ':' in line else line
+                if name not in group:
+                    hits[name] = hits.get(name, 0) + 1
+        cited_files = sorted(hits, key=lambda name: (-hits[name], name))[:20]
+    texts, used = {}, 0
+    for cited in cited_files:
+        try:
+            text = scope.source_bytes(workspace, baseline, cited).decode('utf-8', errors='replace')[:steps.ESCALATION_FILE_CHARS]
+        except ValueError:
+            continue
+        if used + len(text) > steps.ESCALATION_SOURCE_CHARS:
+            break
+        texts[cited] = text
+        used += len(text)
+    content, model, reason = escalation_call(r, args, progress, escalation['models'][0],
+                                             steps.escalation_prompt(ledger, group, doc_texts, texts, line_range), number)
+    value = None
+    if content is not None:
+        value, reason = steps.parse_json_object(content)
+    try:
+        if value is None:
+            raise ledgers.LedgerError(reason)
+        ledgers.merge_step(ledger, group, value, source, number, line_range=line_range)
+        ledger['steps'][-1].update(escalated=True, model=model)
+        for finding in ledger['findings']:
+            if finding['step'] == number:
+                finding['escalatedModel'] = model
+    except ledgers.LedgerError as error:
+        ledgers.record_failure(ledger, group, number, f'cloud escalation: {error}')
+        ledger['steps'][-1].update(escalated=True, model=model)
+
+
 def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
     """Run the report as verified steps. Returns 'complete', 'unverified' or a stop reason."""
     ledger = initial_ledger(root, path, snapshot, baseline)
@@ -420,7 +512,8 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
         groups = steps.plan_groups(ledger, sizes, budget, limit=3, line_counts=line_counts)
         steps.write_atomic(path, ledgers.render(ledger, title, [group['documents'] for group in groups]))
         steps.write_atomic(root/'coverage.json', json.dumps(ledgers.coverage(ledger), indent=2) + '\n')
-        progress.report_steps = {'done': sum(1 for row in ledger['steps'] if row['result'] == 'merged'),
+        progress.report_steps = {'escalated': sum(1 for row in ledger['steps'] if row.get('escalated')),
+                                 'done': sum(1 for row in ledger['steps'] if row['result'] == 'merged'),
                                  'failed': sum(1 for row in ledger['steps'] if row['result'] == 'failed'),
                                  'counts': ledgers.counts(ledger), 'findings': len(ledger['findings']),
                                  'stepContext': budget['stepContext'], 'budgetSource': budget['source']}
@@ -480,6 +573,9 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
             ledgers.merge_step(ledger, group, value, source, number, line_range=line_range)
         except ledgers.LedgerError as error:
             ledgers.record_failure(ledger, group, number, str(error))
+            if escalation_allowed(progress, ledger, group):
+                number += 1
+                escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source)
         save()
     calls, seconds = steps.remaining(progress)
     if ledger['findings'] and calls >= steps.WRITER_CALLS and seconds >= steps.WRITER_SECONDS:

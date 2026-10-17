@@ -38,7 +38,8 @@
         ...(saved.length === 2 ? { parentRequestId: saved[0], parentSha256: saved[1] || null } : {}) }),
         reportGrant: { key: data.get('reportGrantKey'), confirm: true, queueRequestId: data.get('reportCampaign'),
           additionalRuns: Number(data.get('reportRuns')), budget: { modelCalls: Number(data.get('reportCalls')),
-            workSeconds: Number(data.get('reportWorkSeconds')) } } } : {};
+            workSeconds: Number(data.get('reportWorkSeconds')) },
+          ...(data.get('reportCloudEscalation') === 'true' ? { allowCloudEscalation: true } : {}) } } : {};
     }
     static currentReport(task) { return profiles.currentReport(task); }
     static profileContext(task) {
@@ -71,6 +72,7 @@
         <label>Additional model calls<input name="reportCalls" type="number" min="128" max="1024" value="256"></label>
         <label>Additional work seconds<input name="reportWorkSeconds" type="number" min="60" max="57600" value="14400"></label>
         <label>Maximum authorized workers<input name="reportRuns" type="number" min="1" max="4" value="1"></label>
+        <label><input type="checkbox" name="reportCloudEscalation" value="true"> Allow cloud escalation of failed steps (the documents and cited source files of that step leave home; global policy and cost cap apply)</label>
         <p>Giving this task records these explicit credits. All earlier consumption stays charged. Each continuation needs the saved checkpoint and this campaign's active window.</p>
         <p>Time and model calls are separate limits. Save findings and pending work before either runs out.</p></div>`;
     }

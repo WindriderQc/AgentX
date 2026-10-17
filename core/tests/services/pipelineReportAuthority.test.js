@@ -223,3 +223,52 @@ test('a stopped continuation with no new file retains the effective earlier chec
   expect(Buffer.from(restored.dataUrl.split(',')[1], 'base64').toString()).toBe('# Original model findings');
   expect(restored.coverage.documents[0].state).toBe('pending');
 });
+
+describe('cloud escalation authority (#835)', () => {
+  const Settings = require('../../models/PipelineReportContinuation');
+  const SOL = 'openai/gpt-5.6-sol';
+  const NEMO = 'openrouter/nvidia/nemotron-3-super-120b-a12b:free';
+  async function started(allow, enabled = true) {
+    await Settings.deleteMany({});
+    await Settings.create({ _id: 'report-continuation', escalation: { enabled, models: [SOL, NEMO], maxCostUsdPerTask: 10 } });
+    const owner = await Task.create({ pipelineId: '0001', title: 'Review fixture', spec: 'Review README against source.',
+      status: 'queued', service: 'agentx-coding' });
+    const task = await preparation.apply({ pipelineId: owner.pipelineId, expectedUpdatedAt: owner.updatedAt.toISOString(),
+      handoff: true, result: profile, reportGrant: { ...grant(), ...(allow && { allowCloudEscalation: true }) } });
+    const intent = await claim(task), key = id();
+    await reports.start('0001', key, intent);
+    return key;
+  }
+  const headers = (key, step) => ({ 'x-agentx-report-task': '0001', 'x-agentx-report-request': key, 'x-agentx-coding-call': id(),
+    ...(step !== undefined && { 'x-agentx-report-escalation': step }) });
+
+  test('a run records escalation only when the owner policy and its grant both allow it', async () => {
+    const key = await started(true);
+    expect((await Run.findById(key).lean()).escalation).toEqual({ models: [SOL, NEMO], maxCostNanodollars: 10e9, policyRevision: 0 });
+    expect((await reports.status('0001', key)).escalation).toEqual({ models: [SOL, NEMO], maxCostNanodollars: 10e9, calls: 0 });
+    await Promise.all([Task.deleteMany({}), Run.deleteMany({})]);
+    const refused = await started(false);
+    expect((await Run.findById(refused).lean()).escalation).toBeUndefined();
+    await Promise.all([Task.deleteMany({}), Run.deleteMany({})]);
+    const off = await started(true, false);
+    expect((await Run.findById(off).lean()).escalation).toBeUndefined();
+  });
+
+  test('an escalated call must name its step and a recorded model, and never gets the local host', async () => {
+    const key = await started(true);
+    const prepared = await inference.prepare(headers(key, '3'), NEMO);
+    expect(prepared.options.hostUrl).toBeUndefined();
+    expect(prepared.options.reportAuthority).toBeUndefined();
+    expect(prepared.options.reportEscalation).toMatchObject({ requestId: key, pipelineId: '0001', step: 3, model: NEMO, remainingNanodollars: 10e9 });
+    await prepared.finish('completed');
+    await expect(inference.prepare(headers(key, '4'), 'openai/other')).rejects.toMatchObject({ code: 'REPORT_ESCALATION_REFUSED' });
+    await expect(inference.prepare(headers(key), SOL)).rejects.toMatchObject({ code: 'REPORT_INFERENCE_CONFLICT' });
+    await expect(inference.prepare(headers(key, 'x'), SOL)).rejects.toMatchObject({ code: 'REPORT_INFERENCE_INVALID' });
+    expect((await Run.findById(key).lean()).modelReceipts.map(row => row.state)).toEqual(['completed']);
+  });
+
+  test('a run without escalation refuses every escalated call', async () => {
+    const key = await started(false);
+    await expect(inference.prepare(headers(key, '1'), NEMO)).rejects.toMatchObject({ code: 'REPORT_ESCALATION_REFUSED' });
+  });
+});

@@ -35,7 +35,8 @@ async function publishJobs(jobs) {
 }
 async function inbox({ offset = 0, limit = 20 } = {}) {
   if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 50) throw fail('Notification offset/limit invalid');
-  const filter = { ruleId: RULE, status: 'active' };
+  // Private report alerts (#835) share this inbox with the queue's own.
+  const filter = { ruleId: { $in: [RULE, 'pipeline_report'] }, status: 'active' };
   const [rows, count] = await Promise.all([
     Alert.find(filter).sort({ lastOccurrence: -1, _id: 1 }).skip(offset).limit(limit).lean(), Alert.countDocuments(filter)
   ]);
@@ -46,11 +47,11 @@ async function inbox({ offset = 0, limit = 20 } = {}) {
 }
 async function acknowledge(id, actor) {
   if (!/^[a-f0-9]{24}$/.test(id || '')) throw fail('Exact notification id required');
-  const row = await Alert.findOneAndUpdate({ _id: id, ruleId: RULE, status: 'active' }, { $set: {
+  const row = await Alert.findOneAndUpdate({ _id: id, ruleId: { $in: [RULE, 'pipeline_report'] }, status: 'active' }, { $set: {
     status: 'acknowledged', acknowledgment: { acknowledged: true, acknowledgedBy: actor, acknowledgedAt: new Date() }
   } }, { new: true, writeConcern: WC }).lean();
   if (!row) {
-    const prior = await Alert.findOne({ _id: id, ruleId: RULE, status: 'acknowledged' }).lean();
+    const prior = await Alert.findOne({ _id: id, ruleId: { $in: [RULE, 'pipeline_report'] }, status: 'acknowledged' }).lean();
     if (!prior) throw fail('Active queue notification not found', 404);
   }
   return { id, acknowledged: true, authority: 'core.alerts' };

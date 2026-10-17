@@ -51,6 +51,8 @@ async function status(id, key) {
     allCallsCompleted: completed(value), result: value.result || null,
     reportName: value.reportName, sourceCommit: value.sourceCommit, parentRequestId: value.parentRequestId || null, parentSha256: value.parentSha256 || null,
     authority: value.authority || null, inventory: value.inventory || null, coverage: value.coverage || null,
+    escalation: value.escalation ? { models: value.escalation.models, maxCostNanodollars: value.escalation.maxCostNanodollars,
+      calls: (value.escalationCalls || []).length } : null,
     cumulativeUsage: await authority.projection(await ownerOrNull(id) || { _id: value.taskId, feedback: [] }) };
 }
 async function start(id, key, body) {
@@ -109,8 +111,9 @@ async function start(id, key, body) {
   }
   const binding = held || await authority.bind(owner, key, intent, target.url, body.hardRemainingSeconds);
   const deadlineAt = new Date(binding.deadlineAt);
+  const escalation = held ? undefined : await require('./pipelineReportEscalation').forRun(owner);
   try { await Run.create([{ _id: key, ...intent, executionVersion: 1, authority: binding, inventory,
-    startedAt: new Date(binding.startedAt), host: target.url, deadlineAt }], { writeConcern: WC }); }
+    startedAt: new Date(binding.startedAt), host: target.url, deadlineAt, ...(escalation && { escalation }) }], { writeConcern: WC }); }
   catch (error) {
     if (error.code !== 11000) throw error;
     if (!await Run.exists({ _id: key })) throw claim.fail('This task claim already belongs to another report execution', 'REPORT_CLAIM_EXECUTION_CONFLICT');
