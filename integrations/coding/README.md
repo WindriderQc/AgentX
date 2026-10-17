@@ -54,8 +54,12 @@ The runner uses four protections:
 - The GitHub token stays with the runner outside the sandbox. The worker cannot
   push; the runner only pushes the task branch and opens a draft pull request.
 - Core admits each inference with the rest of the household's traffic. The relay
-  targets the patient route (`/api/hermes-openai/patient/v1`), which waits up to
-  eight minutes for a busy host instead of refusing. A nonzero exit or a budget
+  targets Core's OpenAI gateway (`/api/llm/v1`) as client `coding-team` with
+  `patient` admission, which waits up to eight minutes for a busy host instead
+  of refusing. The runner reads that client's token from
+  `AGENTX_LLM_CODING_TEAM_TOKEN` and the relay adds it; the worker never holds
+  it. Without the token the relay keeps the legacy patient route
+  (`/api/hermes-openai/patient/v1`), which is being retired. A nonzero exit or a budget
   stop ends the attempt without an automatic retry. An explicit handoff can
   resume its local source checkpoint.
 

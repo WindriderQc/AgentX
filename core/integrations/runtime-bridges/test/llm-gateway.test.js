@@ -98,7 +98,10 @@ test('gateway clients are named by unique tokens and validated at startup', () =
     ['script', 'llm-gateway/script', 'script-gateway-v1', 'immediate']
   ]);
   assert.deepEqual(parseGatewayClients(''), []);
-  for (const raw of ['[1]', 'nope', '{"Codex":"abcdefghijklmnop"}', '{"hermes":"abcdefghijklmnop"}', '{"codex":"short"}',
+  // Hermes moves off its legacy address as an ordinary token client.
+  assert.deepEqual(parseGatewayClients('{"hermes":{"token":"abcdefghijklmnop","admission":"immediate"}}')
+    .map(client => [client.id, client.consumerContract, client.admission]), [['hermes', 'hermes-gateway-v1', 'immediate']]);
+  for (const raw of ['[1]', 'nope', '{"Codex":"abcdefghijklmnop"}', '{"codex":"short"}',
     '{"codex":{"token":"abcdefghijklmnop","priority":1}}', '{"codex":{"token":"abcdefghijklmnop","admission":"later"}}',
     '{"a":"abcdefghijklmnop","b":"abcdefghijklmnop"}', '{"codex":{}}']) {
     assert.throws(() => parseGatewayClients(raw), { code: 'LLM_GATEWAY_CLIENTS_INVALID' }, raw);

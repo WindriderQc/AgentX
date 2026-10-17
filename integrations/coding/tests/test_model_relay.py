@@ -50,6 +50,29 @@ class RelayStopTest(unittest.TestCase):
                              {k: v for k, v in original.items() if k != 'messages'})
         self.assertEqual(json.loads(body), original)
 
+    def test_runner_gateway_token_replaces_whatever_the_worker_sends(self):
+        seen = []
+        class Upstream(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers['Content-Length']))
+                seen.append(self.headers.get('Authorization'))
+                self.send_response(200); self.end_headers(); self.wfile.write(b'{}')
+            def log_message(self, *_args):
+                pass
+        upstream = ThreadingHTTPServer(('127.0.0.1', 0), Upstream)
+        threading.Thread(target=upstream.serve_forever, daemon=True).start()
+        self.addCleanup(upstream.server_close); self.addCleanup(upstream.shutdown)
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / 'model.sock')
+            server = relay.serve(path, f'http://127.0.0.1:{upstream.server_port}/v1',
+                                 runner_headers={'Authorization': 'Bearer runner-gateway-token'})
+            self.addCleanup(server.server_close); self.addCleanup(server.shutdown)
+            connection = http.client.HTTPConnection('worker')
+            connection.sock = socket.socket(socket.AF_UNIX); connection.sock.connect(path)
+            connection.request('POST', '/v1/chat/completions', body=b'{}', headers={'Authorization': 'Bearer local-no-auth'})
+            self.assertEqual(connection.getresponse().read(), b'{}'); connection.close()
+        self.assertEqual(seen, ['Bearer runner-gateway-token'])
+
     def test_absent_guidance_and_malformed_requests_keep_original_bytes(self):
         for body in [b'{}', b'[]', b'{', b'{"messages":[7]}', b'{ "messages": [] }']:
             self.assertEqual(relay.with_budget_guidance(body, 'Synthetic advisory'), body)

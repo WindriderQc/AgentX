@@ -37,7 +37,11 @@ CORE = os.environ.get("AGENTX_CORE_URL", "http://127.0.0.1:3180").rstrip("/")
 REPOSITORY = os.environ.get("AGENTX_CODING_REPOSITORY", "WindriderQc/AgentX")
 BASE_BRANCH = os.environ.get("AGENTX_CODING_BASE_BRANCH", "main")
 MODEL = os.environ.get("AGENTX_CODING_MODEL", "auto")
-MODEL_URL = os.environ.get("AGENTX_CODING_MODEL_URL", f"{CORE}/api/hermes-openai/patient/v1")
+# The Coding Team's own token for Core's OpenAI gateway (client `coding-team`,
+# patient admission). Only the runner-side relay holds it; the worker never does.
+GATEWAY_TOKEN = os.environ.get("AGENTX_LLM_CODING_TEAM_TOKEN", "").strip()
+MODEL_URL = os.environ.get("AGENTX_CODING_MODEL_URL") or (
+    f"{CORE}/api/llm/v1" if GATEWAY_TOKEN else f"{CORE}/api/hermes-openai/patient/v1")
 WORKSPACES = Path.home() / "dsh-workspaces"
 DSH_ROOT = Path(os.environ.get("AGENTX_DSH_ROOT", str(Path.home() / "dsh")))
 NODE_BINARY = Path(os.environ.get("AGENTX_NODE_BIN") or shutil.which("node") or "/usr/local/bin/node")
@@ -372,7 +376,8 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
         progress.set_stage("model_wait")
     relay = model_relay.serve(str(home / "model.sock"), MODEL_URL,
                              progress.model_events.put if progress else None,
-                             getattr(progress, "relay_headers", None),
+                             {**(getattr(progress, "relay_headers", None) or {}),
+                              **({"Authorization": f"Bearer {GATEWAY_TOKEN}"} if GATEWAY_TOKEN else {})},
                              drain_on_disconnect=bool(progress and (progress.cumulative_limits or getattr(progress, 'report_mode', False))),
                              budget_guidance=getattr(progress, "model_guidance", None))
     try:

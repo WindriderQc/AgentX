@@ -1,4 +1,6 @@
 import json
+from unittest import mock
+import os
 import sys
 import threading
 import unittest
@@ -56,6 +58,11 @@ class NativeAccessTests(unittest.TestCase):
             ("/api/memory-review/digest", None),
             ("/api/hermes-openai/v1/chat/completions", None),
         ])
+
+    def test_synthesis_uses_the_gateway_with_its_own_token(self):
+        with mock.patch.dict(os.environ, {"AGENTX_LLM_MEMORY_REVIEW_TOKEN": "memory-review-token-0123"}):
+            self.assertEqual(http_chat_completion(self.base, {}), "synthetic answer")
+        self.assertEqual(self.seen, [("/api/llm/v1/chat/completions", "Bearer memory-review-token-0123")])
 
     def test_redirects_never_forward_observations(self):
         for status in (301, 302, 303, 307, 308):
