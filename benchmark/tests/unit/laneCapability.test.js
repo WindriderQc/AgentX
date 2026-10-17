@@ -1,7 +1,7 @@
 'use strict';
 
 const { buildLaneCapability } = require('../../src/services/profiler/laneCapability');
-const { capabilityFor, listLaneCapabilities, requestLaneMeasurement } = require('../../src/services/profiler/laneCapabilityService');
+const { capabilityFor, listLaneCapabilities, requestLaneMeasurement, requestLaneCampaign } = require('../../src/services/profiler/laneCapabilityService');
 
 const NOW = new Date('2026-10-16T12:00:00Z');
 const HOST = 'http://gpu-b:11434';
@@ -51,7 +51,7 @@ describe('lane capability profile', () => {
     expect(capability.provenance).toMatchObject({ contextProfileId: 'ctx1', performanceProfileId: 'perf1',
       depth: 'standard', ageDays: 8 });
     expect(capability.readiness).toEqual({ chat: 'ready', documents: 'speed_only', codingAgent: 'not_measured' });
-    expect(codes(capability)).toEqual(['quality_unknown', 'long_prefill_missing', 'agent_workload_missing']);
+    expect(codes(capability)).toEqual(['quality_unknown', 'long_prefill_missing', 'agent_workload_missing', 'concurrency_unmeasured']);
     expect(capability.gaps.every(gap => typeof gap.text === 'string' && gap.text.length > 10)).toBe(true);
   });
 
@@ -179,9 +179,9 @@ describe('lane measurement request', () => {
     expect(submit.mock.calls[0][0]).toEqual({
       key: 'lane-capability:alien:coder:27b-q8_0:2026-10-17',
       title: 'Full profile of coder:27b-q8_0 on UG Alien (lane capability)',
-      kind: 'profiler', hosts: [HOST], estimatedMinutes: 90, ...{ notBefore: '2026-10-17T03:00:00.000Z', startBefore: '2026-10-17T10:00:00.000Z' },
+      kind: 'profiler', hosts: [HOST], estimatedMinutes: 180, ...{ notBefore: '2026-10-17T03:00:00.000Z', startBefore: '2026-10-17T10:00:00.000Z' },
       source: { type: 'operator', ref: 'profiler-lane-capability-card' },
-      executor: { hostId: 'alien', depth: 'full', modelNames: [MODEL] }
+      executor: { hostId: 'alien', depth: 'full', skipRecentDays: 0, modelNames: [MODEL] }
     });
     expect(result.job).toEqual({ id: 'q1', state: 'requested', revision: 1 });
   });
@@ -196,5 +196,116 @@ describe('lane measurement request', () => {
     const submit = jest.fn();
     await expect(requestLaneMeasurement(input, { hosts, scope, submit, now: () => NOW })).rejects.toThrow(message);
     expect(submit).not.toHaveBeenCalled();
+  });
+});
+
+describe('agent workload in the lane profile', () => {
+  const agentWorkload = (summary = {}, turns = []) => ({ measuredAt: '2026-10-07T23:50:00Z', session: { turns },
+    summary: { sessionLatencyKneeContext: 40000, sessionAccuracyContext: 90000, verificationVerifiedContext: 32768,
+      reliableOutputItems: 100, reliableOutputTokens: 4200, reliableToolTurns: 24, toolChecksCorrect: 12, toolChecksTotal: 12, ...summary } });
+  const build = workload => buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT,
+    contextProfile: contextProfile(), now: NOW,
+    performanceProfile: performanceProfile({ agentWorkload: workload }, { artifact: { digest: 'sha256:aaa', runtimeFingerprint: 'rt-1' } }) });
+
+  it('recommends the smallest measured step and marks a capable model ready', () => {
+    const capability = build(agentWorkload({}, [{ status: 'pass', contextTokens: 3000, latencyMs: 9000, correct: true }]));
+    expect(capability.agent).toMatchObject({ status: 'measured', recommendedStepContext: 32768, reliableToolTurns: 24 });
+    expect(capability.agent.sessionCurve).toEqual([{ contextTokens: 3000, latencyMs: 9000, correct: true }]);
+    expect(capability.readiness.codingAgent).toBe('ready');
+    expect(codes(capability)).not.toContain('agent_workload_missing');
+  });
+
+  it('marks a measured but weak model limited and says why', () => {
+    const capability = build(agentWorkload({ sessionLatencyKneeContext: 6000, reliableToolTurns: 3, reliableOutputTokens: 900 }));
+    expect(capability.readiness.codingAgent).toBe('limited');
+    expect(codes(capability)).toEqual(expect.arrayContaining(['agent_session_short', 'agent_tools_unreliable', 'agent_output_short']));
+  });
+
+  it('does not call a model ready when its tool verdicts are mostly wrong', () => {
+    const capability = build(agentWorkload({ toolChecksCorrect: 5 }));
+    expect(capability.readiness.codingAgent).toBe('limited');
+    expect(codes(capability)).toContain('agent_tool_answers_wrong');
+  });
+
+  it('ignores agent evidence from another runtime', () => {
+    const capability = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT, contextProfile: contextProfile(), now: NOW,
+      performanceProfile: performanceProfile({ agentWorkload: agentWorkload() }, { artifact: { digest: 'sha256:aaa', runtimeFingerprint: 'rt-old' } }) });
+    expect(capability.agent.status).toBe('not_measured');
+    expect(codes(capability)).toContain('performance_artifact_mismatch');
+  });
+});
+
+describe('lane night campaign', () => {
+  it('requests a Full profile for each lane still missing quality or agent evidence', async () => {
+    const OTHER = 'http://gpu-a:11434';
+    const submit = jest.fn(async request => ({ id: request.key, state: 'requested', revision: 1 }));
+    const verified = { ...contextProfile(), qualityContextStatus: 'verified', qualityVerifiedContext: 131072 };
+    const result = await requestLaneCampaign({ notBefore: '2026-10-17T03:00:00Z', startBefore: '2026-10-17T10:00:00Z' }, {
+      hosts: () => [{ id: 'alien', url: HOST }, { id: 'frank', url: OTHER }],
+      scope: async () => [{ hostUrl: HOST, hostName: 'UG Alien', model: MODEL, tasks: [] }, { hostUrl: OTHER, hostName: 'UG Frank', model: 'chat:12b', tasks: [] }],
+      identity: async () => ARTIFACT,
+      contextProfile: async (model) => (model === 'chat:12b' ? verified : contextProfile()),
+      performanceProfile: async () => null,
+      submit,
+      now: () => NOW
+    });
+    expect(result.requested).toBe(2);
+    expect(submit.mock.calls.map(([request]) => request.executor)).toEqual([
+      { hostId: 'alien', depth: 'full', skipRecentDays: 0, modelNames: [MODEL] }, { hostId: 'frank', depth: 'full', skipRecentDays: 0, modelNames: ['chat:12b'] }]);
+    expect(submit.mock.calls[0][0].estimatedMinutes).toBe(180);
+  });
+
+  it('refuses an invalid window before recording anything', async () => {
+    const submit = jest.fn();
+    await expect(requestLaneCampaign({ notBefore: 'soon', startBefore: '2026-10-17T10:00:00Z' }, {
+      hosts: () => [{ id: 'alien', url: HOST }], scope: async () => [{ hostUrl: HOST, hostName: 'UG Alien', model: MODEL, tasks: [] }],
+      identity: async () => ARTIFACT, contextProfile: async () => contextProfile(), performanceProfile: async () => null, submit, now: () => NOW
+    })).rejects.toThrow('valid time');
+    expect(submit).not.toHaveBeenCalled();
+  });
+});
+
+describe('re-measurement proposals and concurrency', () => {
+  const full = (over = {}, artifact = { digest: 'sha256:aaa', runtimeFingerprint: 'rt-1' }) => performanceProfile({ profileDepth: 'full',
+    agentWorkload: { summary: { reliableToolTurns: 10 }, session: { turns: [] } },
+    concurrency: { status: 'measured', worstSelfSlowdownPct: 38.5, worstOtherSlowdownPct: 20,
+      pairs: [{ model: 'chat:12b', status: 'measured', selfSlowdownPct: 38.5, otherSlowdownPct: 20 }] }, ...over }, { artifact });
+  const reasons = capability => capability.remeasure.reasons.map(reason => reason.code);
+
+  it('proposes nothing for a lane with a current Full profile of its installed model and runtime', () => {
+    const capability = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT, contextProfile: contextProfile(),
+      performanceProfile: full(), now: NOW });
+    expect(capability.remeasure).toEqual({ needed: false, depth: 'full', reasons: [] });
+    expect(capability.concurrency).toMatchObject({ status: 'measured', worstSelfSlowdownPct: 38.5, separateEndpoints: 'not_measured' });
+    expect(codes(capability)).not.toContain('concurrency_unmeasured');
+  });
+
+  it('names a changed model, a changed runtime, an old profile and a missing Full profile', () => {
+    const changedModel = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT, contextProfile: null,
+      performanceProfile: full({}, { digest: 'sha256:old', runtimeFingerprint: 'rt-1' }), now: NOW });
+    expect(reasons(changedModel)).toEqual(['model_changed', 'full_missing']);
+    const changedRuntime = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT, contextProfile: contextProfile(),
+      performanceProfile: full({}, { digest: 'sha256:aaa', runtimeFingerprint: 'rt-0' }), now: NOW });
+    expect(reasons(changedRuntime)).toEqual(['runtime_changed', 'full_missing']);
+    expect(changedRuntime.remeasure.reasons[0].text).toMatch(/Ollama, its settings or the host hardware/);
+    const old = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT,
+      contextProfile: contextProfile({ lastValidatedAt: '2026-08-01T00:00:00Z' }),
+      performanceProfile: full({ profiledAt: '2026-08-01T00:00:00Z' }), now: NOW });
+    expect(reasons(old)).toEqual(['profile_old']);
+    const standard = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT, contextProfile: contextProfile(),
+      performanceProfile: performanceProfile(), now: NOW });
+    expect(reasons(standard)).toEqual(['full_missing']);
+    expect(codes(standard)).toContain('concurrency_unmeasured');
+    const never = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT, now: NOW });
+    expect(reasons(never)).toEqual(['never_measured']);
+  });
+
+  it('does not propose a lane whose identity is unknown, and reports eviction', () => {
+    const unknown = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: null, now: NOW });
+    expect(unknown.remeasure.needed).toBe(false);
+    expect(unknown.remeasure.blocked).toMatch(/could not be identified/);
+    const evicted = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT, contextProfile: contextProfile(),
+      performanceProfile: full({ concurrency: { status: 'evicted', pairs: [{ model: 'chat:12b', status: 'evicted' }] } }), now: NOW });
+    expect(codes(evicted)).toContain('concurrency_evicts');
   });
 });

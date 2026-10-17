@@ -5,10 +5,11 @@
  * heavy-work queue. Nothing here runs a model.
  */
 
-import { renderLaneCard, renderLaneSummary, buildMeasureRequest } from './components/lane-capability.js';
+import { renderLaneCard, renderLaneSummary, buildMeasureRequest, campaignTargets, campaignText } from './components/lane-capability.js';
 
 const LANES_API = '/benchmark/api/profiler/evidence/lanes';
 const MEASURE_API = '/benchmark/api/profiler/evidence/lanes/measure';
+const CAMPAIGN_API = '/benchmark/api/profiler/evidence/lanes/campaign';
 
 let current = [];
 
@@ -59,6 +60,50 @@ export async function renderLanes(root) {
   }
 }
 
+function initCampaign(root) {
+  const open = root.querySelector('#profiler-lanes-campaign');
+  const panel = root.querySelector('#profiler-lanes-campaign-panel');
+  const text = root.querySelector('#profiler-lanes-campaign-text');
+  const confirm = root.querySelector('#profiler-lanes-campaign-confirm');
+  const cancel = root.querySelector('#profiler-lanes-campaign-cancel');
+  const status = root.querySelector('#profiler-lanes-campaign-status');
+  if (!open || !panel) return;
+  const close = () => { panel.hidden = true; open.setAttribute('aria-expanded', 'false'); open.focus(); };
+  open.addEventListener('click', () => {
+    const targets = campaignTargets(current);
+    text.textContent = campaignText(targets);
+    confirm.hidden = targets.length === 0;
+    confirm.disabled = false;
+    confirm.textContent = `Queue ${targets.length} ${targets.length === 1 ? 'request' : 'requests'}`;
+    status.textContent = '';
+    status.className = 'lc-campaign-status';
+    panel.hidden = false;
+    open.setAttribute('aria-expanded', 'true');
+    (targets.length ? confirm : cancel).focus();
+  });
+  cancel.addEventListener('click', close);
+  confirm.addEventListener('click', async () => {
+    const targets = campaignTargets(current);
+    if (!targets.length) return;
+    confirm.disabled = true;
+    status.textContent = 'Recording the requests…';
+    try {
+      const window = buildMeasureRequest(targets[0]);
+      const response = await fetch(CAMPAIGN_API, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notBefore: window.notBefore, startBefore: window.startBefore }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.status !== 'success') throw new Error(result.error || `Benchmark answered ${response.status}`);
+      const failed = result.data.results.filter(row => row.error).length;
+      status.textContent = `${result.data.requested} recorded for tonight${failed ? `, ${failed} not recorded` : ''}. Reserve them in Automations → Calendar to run them.`;
+      status.className = failed ? 'lc-campaign-status is-error' : 'lc-campaign-status is-done';
+    } catch (error) {
+      status.textContent = `Not recorded: ${error.message}. Nothing was started.`;
+      status.className = 'lc-campaign-status is-error';
+      confirm.disabled = false;
+    }
+  });
+}
+
 export function initLanes() {
   const root = document.getElementById('profiler-lanes');
   if (!root) return;
@@ -70,5 +115,6 @@ export function initLanes() {
     if (lane && status) submitMeasure(lane, button, status);
   });
   root.querySelector('#profiler-lanes-refresh')?.addEventListener('click', () => renderLanes(root));
+  initCampaign(root);
   renderLanes(root);
 }

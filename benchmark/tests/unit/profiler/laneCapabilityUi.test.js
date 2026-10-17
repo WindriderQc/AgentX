@@ -8,7 +8,7 @@ const helpers = {
   escAttr: value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 };
 const ui = loadBrowserModule('model-profiler/components/lane-capability.js',
-  'renderLaneCard, renderLaneSummary, renderContextGauge, laneWarnings, buildMeasureRequest, taskLabel, ageText', helpers);
+  'renderLaneCard, renderLaneSummary, renderContextGauge, laneWarnings, buildMeasureRequest, taskLabel, ageText, renderSessionCurve, campaignTargets, campaignText', helpers);
 
 const NOW = new Date('2026-10-16T12:00:00Z');
 const capability = (over = {}) => buildLaneCapability({
@@ -44,7 +44,8 @@ describe('lane capability card', () => {
     expect(html).toContain('53.6 tok/s');
     expect(html).toContain('1450 tok/s');
     expect(html).toContain('measured 8 days ago · standard profile');
-    expect(html).toContain('3 missing measurements');
+    expect(html).toContain('4 missing measurements');
+    expect(html).toContain('Not measured yet. A Full profile measures a growing session');
     expect(html).toContain('Agent workload (growing session');
     expect(html).toContain('data-lane-action="measure"');
   });
@@ -107,5 +108,60 @@ describe('measure tonight window', () => {
     expect(ui.ageText(null)).toBe('never measured');
     expect(ui.ageText(0)).toBe('measured today');
     expect(ui.ageText(12)).toBe('measured 12 days ago');
+  });
+});
+
+describe('agent work on the lane card', () => {
+  const measured = () => {
+    const base = capability();
+    return { ...base, readiness: { ...base.readiness, codingAgent: 'limited' }, agent: {
+      status: 'measured', recommendedStepContext: 24576, reliableToolTurns: 6, toolChecksCorrect: 5, toolChecksTotal: 12,
+      reliableOutputTokens: 4200, verificationVerifiedContext: 32768,
+      sessionCurve: [{ contextTokens: 3000, latencyMs: 9000, correct: true }, { contextTokens: 30000, latencyMs: 60000, correct: false }] } };
+  };
+
+  it('shows the recommended step, tool reliability, output and the session curve', () => {
+    const html = ui.renderLaneCard(lane({ capability: measured() }));
+    expect(html).toMatch(/Coding agent<\/span><span class="lc-ready-state">Limited/);
+    expect(html).toContain('<dt>Recommended step</dt><dd>24k</dd>');
+    expect(html).toContain('6 turns · 5/12 right');
+    expect(html).toContain('<dt>Finds mismatches up to</dt><dd>32k</dd>');
+    expect(html).toContain('red dots are wrong answers');
+    expect(html).toContain('lc-dot lc-dot--wrong');
+  });
+
+  it('draws no curve from fewer than two turns', () => {
+    expect(ui.renderSessionCurve([{ contextTokens: 3000, latencyMs: 9000, correct: true }])).toBe('');
+    expect(ui.renderSessionCurve(null)).toBe('');
+  });
+
+  it('targets only lanes with a re-measurement proposal and explains the cost', () => {
+    const done = lane({ capability: { ...measured(), remeasure: { needed: false, reasons: [] } } });
+    const targets = ui.campaignTargets([lane(), done, lane({ capability: { ...capability(), hostId: null } })]);
+    expect(targets).toHaveLength(1);
+    expect(ui.campaignText(targets)).toContain('Record 1 Full-profile request for tonight, 23:00 to 06:00, on 1 host');
+    expect(ui.campaignText(targets)).toContain('Nothing starts until you reserve them');
+    expect(ui.campaignText([])).toMatch(/^No lane needs re-measurement/);
+  });
+});
+
+describe('proposals and concurrency on the lane card', () => {
+  it('shows why a lane should be measured again', () => {
+    const html = ui.renderLaneCard(lane());
+    expect(html).toContain('Re-measurement proposed');
+    expect(html).toContain('No Full profile exists yet');
+    expect(html).toContain('Not measured yet (Full profile).');
+    expect(ui.renderLaneSummary([lane()])).toContain('<strong>1</strong> re-measurement proposed');
+  });
+
+  it('shows the slowdown beside each co-resident and an eviction plainly', () => {
+    const measured = { ...capability(), remeasure: { needed: false, reasons: [] }, concurrency: { status: 'measured',
+      pairs: [{ model: 'chat:12b', status: 'measured', selfSlowdownPct: 38.5, otherSlowdownPct: 20 }] } };
+    const html = ui.renderLaneCard(lane({ capability: measured }));
+    expect(html).not.toContain('Re-measurement proposed');
+    expect(html).toContain('with chat:12b</span><strong>39 % slower</strong>');
+    expect(html).toContain('it slows 20 %');
+    const evicted = ui.renderLaneCard(lane({ capability: { ...measured, concurrency: { status: 'evicted', pairs: [] } } }));
+    expect(evicted).toContain('one evicts the other');
   });
 });

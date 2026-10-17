@@ -16,6 +16,8 @@ const { getConfiguredHosts, normalizeHostUrl } = require('../../helpers/ollamaHo
 const { normalizeModelTag } = require('../../../../shared/modelNames');
 
 const CONCURRENCY = 4;
+// A Full profile with quality and agent workload probes on a 27B Q8 model.
+const FULL_PROFILE_MINUTES = 180;
 
 function defaults(deps = {}) {
   return {
@@ -126,14 +128,39 @@ async function requestLaneMeasurement({ model, hostUrl, notBefore, startBefore }
     title: `Full profile of ${name} on ${lane.hostName || hostId} (lane capability)`,
     kind: 'profiler',
     hosts: [host],
-    estimatedMinutes: 90,
+    estimatedMinutes: FULL_PROFILE_MINUTES,
     notBefore: start.toISOString(),
     startBefore: end.toISOString(),
     source: { type: 'operator', ref: 'profiler-lane-capability-card' },
-    executor: { hostId, depth: 'full', modelNames: [name] }
+    // A recent standard profile must not skip the Full measurement.
+    executor: { hostId, depth: 'full', skipRecentDays: 0, modelNames: [name] }
   };
   const job = await d.submit(request);
   return { request, job: job ? { id: job.id, state: job.state, revision: job.revision } : null };
 }
 
-module.exports = { capabilityFor, listLaneCapabilities, requestLaneMeasurement, LaneMeasureError };
+/**
+ * Night campaign: one Full-profile request per current lane with a
+ * re-measurement proposal (or every lane with `all`). Each is
+ * an independent request with its own stable key; a lane already requested
+ * for that night returns Core's existing request instead of a duplicate.
+ */
+async function requestLaneCampaign({ notBefore, startBefore, all = false } = {}, deps = {}) {
+  const d = defaults(deps);
+  const { lanes } = await listLaneCapabilities(deps);
+  const targets = lanes.filter(lane => lane.capability?.hostId && (all === true || lane.capability.remeasure?.needed === true));
+  const results = [];
+  for (const lane of targets) {
+    try {
+      const { request, job } = await requestLaneMeasurement({ model: lane.capability.model, hostUrl: lane.capability.hostUrl,
+        notBefore, startBefore }, { ...deps, scope: async () => [{ hostUrl: lane.capability.hostUrl, hostName: lane.hostName, model: lane.capability.model }] });
+      results.push({ model: request.executor.modelNames[0], hostId: request.executor.hostId, key: request.key, job });
+    } catch (error) {
+      if (error instanceof LaneMeasureError) throw error;
+      results.push({ model: lane.capability.model, hostId: lane.capability.hostId, error: 'not recorded' });
+    }
+  }
+  return { requested: results.filter(row => !row.error).length, skipped: lanes.length - targets.length, results, at: d.now().toISOString() };
+}
+
+module.exports = { capabilityFor, listLaneCapabilities, requestLaneMeasurement, requestLaneCampaign, LaneMeasureError };

@@ -154,6 +154,17 @@ router.get('/lanes', async (_req, res) => {
   }
 });
 
+router.post('/lanes/campaign', async (req, res) => {
+  try {
+    const data = await laneCapabilities.requestLaneCampaign({
+      notBefore: req.body?.notBefore, startBefore: req.body?.startBefore, all: req.body?.all === true
+    });
+    return res.status(201).json({ status: 'success', data });
+  } catch (err) {
+    return res.status(err.statusCode || 502).json({ status: 'error', error: err.statusCode ? err.message : 'The campaign could not be recorded; nothing was started' });
+  }
+});
+
 router.post('/lanes/measure', async (req, res) => {
   try {
     const data = await laneCapabilities.requestLaneMeasurement(req.body || {});
