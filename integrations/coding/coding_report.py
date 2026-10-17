@@ -12,6 +12,12 @@ import importlib.util
 _scope_spec = importlib.util.spec_from_file_location('coding_report_scope', __import__('pathlib').Path(__file__).with_name('coding_report_scope.py'))
 scope = importlib.util.module_from_spec(_scope_spec)
 _scope_spec.loader.exec_module(scope)
+_ledger_spec = importlib.util.spec_from_file_location('coding_report_ledger', __import__('pathlib').Path(__file__).with_name('coding_report_ledger.py'))
+ledgers = importlib.util.module_from_spec(_ledger_spec)
+_ledger_spec.loader.exec_module(ledgers)
+_steps_spec = importlib.util.spec_from_file_location('coding_report_steps', __import__('pathlib').Path(__file__).with_name('coding_report_steps.py'))
+steps = importlib.util.module_from_spec(_steps_spec)
+_steps_spec.loader.exec_module(steps)
 
 MAX_BYTES = 2 * 1024 * 1024
 # Only reasons accepted by Core\'s shared worker-outcome observation contract.
@@ -331,12 +337,21 @@ def execute(r,args,progress,task,workspace):
             f'Requested result:\n{task.get("spec","")}\n\nDiscussion:\n{discussion}')
     progress.phase='running';progress.preflight=False
     if progress.check_stop():return stop(r,args,progress,'operator_stop')
-    run=r.run_worker(workspace,prompt,max(1,int(progress.hard_deadline-progress.now())),progress,read_only=True)
-    progress.check_stop();progress.phase='delivering';progress.set_stage('checkpoint')
-    status=settled_status(r,args,progress)
-    if not status.get('terminationVerified') or not getattr(progress,'report_drained',True):
-        progress.stop_reason='model_termination_unverified';progress.write();return 2
-    if run.returncode or progress.stop_reason:return stop(r,args,progress,progress.stop_reason or 'worker_exit')
+    if os.environ.get('AGENTX_REPORT_MODE', 'steps') == 'steps':
+        outcome=run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline)
+        progress.check_stop();progress.phase='delivering';progress.set_stage('checkpoint')
+        status=settled_status(r,args,progress)
+        if outcome=='unverified' or not status.get('terminationVerified') or not getattr(progress,'report_drained',True):
+            progress.stop_reason='model_termination_unverified';progress.write();return 2
+        if progress.stop_reason:return stop(r,args,progress,progress.stop_reason)
+        if outcome!='complete':return stop(r,args,progress,outcome)
+    else:
+        run=r.run_worker(workspace,prompt,max(1,int(progress.hard_deadline-progress.now())),progress,read_only=True)
+        progress.check_stop();progress.phase='delivering';progress.set_stage('checkpoint')
+        status=settled_status(r,args,progress)
+        if not status.get('terminationVerified') or not getattr(progress,'report_drained',True):
+            progress.stop_reason='model_termination_unverified';progress.write();return 2
+        if run.returncode or progress.stop_reason:return stop(r,args,progress,progress.stop_reason or 'worker_exit')
     if not status.get('allCallsCompleted'):return stop(r,args,progress,'worker_exit')
     if r.git(workspace,'rev-parse','HEAD')!=baseline or r.coding_progress.source_state(workspace)!=source or r.git(workspace,'status','--porcelain'):
         return stop(r,args,progress,'runner_error')
@@ -356,6 +371,127 @@ def execute(r,args,progress,task,workspace):
     progress.core_recorded=True;progress.finish('review',checkpoint=baseline)
     print(json.dumps({'reportReadyForReview':True,'deliverableRef':result['receipt']['ref'],'sourceUnchanged':True}))
     return 0
+
+
+def lane_capability(r):
+    """The coding lane's capability profile (#832), or None: sizing evidence only."""
+    try:
+        lanes = r.request(f'{r.CORE}/api/nerve-center/agent-runtime-config/export'
+                          '?includeCandidates=false&includeCapability=true').get('data', {}).get('lanes', {})
+    except (OSError, RuntimeError, ValueError):
+        return None
+    model = getattr(r, 'MODEL', None)
+    for lane in (lanes or {}).values():
+        if isinstance(lane, dict) and isinstance(lane.get('capability'), dict) and (model in (None, 'auto') or lane.get('model') == model):
+            if model not in (None, 'auto') or lane.get('role') == 'codingSpecialist':
+                return lane['capability']
+    return None
+
+
+def initial_ledger(root, path, snapshot, baseline):
+    """Resume the ledger embedded in a restored report, or start one from its coverage."""
+    restored = path.read_text(encoding='utf-8') if path.is_file() else None
+    ledger = ledgers.embedded(restored) if restored else None
+    if ledger:
+        if ledger.get('inventorySha256') != snapshot['sha256'] or ledger.get('sourceCommit') != baseline:
+            raise ValueError('Restored report ledger belongs to another inventory or source')
+        return ledger
+    coverage = json.loads((root/'coverage.json').read_text(encoding='utf-8')) if (root/'coverage.json').is_file() else None
+    return ledgers.new_ledger(snapshot, coverage, ledgers.legacy_narrative(restored) if restored else None)
+
+
+def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
+    """Run the report as verified steps. Returns 'complete', 'unverified' or a stop reason."""
+    ledger = initial_ledger(root, path, snapshot, baseline)
+    capability = lane_capability(r)
+    budget = steps.step_budget(capability)
+    sources = {name: scope.source_bytes(workspace, baseline, name) for name in ledger['documents']}
+    sizes = {name: len(data) for name, data in sources.items()}
+    line_counts = {name: len(data.splitlines()) for name, data in sources.items()}
+    title = f'{task.get("title") or "Documentation review"} — task {args.task_id}'
+    sandbox_root = f'/home/agent/deliverables/{args.request_id}'
+    note = (f'Your working directory is the private output directory {sandbox_root}. /workspace is the read-only source '
+            f'snapshot at {baseline}; use absolute paths or git -C /workspace. Network is unavailable.')
+    immutable_json(r, r.RECEIPTS/f'{args.request_id}.report-steps-plan.json',
+                   {'requestId': args.request_id, 'budget': budget,
+                    'capabilitySource': (capability or {}).get('provenance') if capability else None})
+
+    def save():
+        groups = steps.plan_groups(ledger, sizes, budget, limit=3, line_counts=line_counts)
+        steps.write_atomic(path, ledgers.render(ledger, title, [group['documents'] for group in groups]))
+        steps.write_atomic(root/'coverage.json', json.dumps(ledgers.coverage(ledger), indent=2) + '\n')
+        progress.report_steps = {'done': sum(1 for row in ledger['steps'] if row['result'] == 'merged'),
+                                 'failed': sum(1 for row in ledger['steps'] if row['result'] == 'failed'),
+                                 'counts': ledgers.counts(ledger), 'findings': len(ledger['findings']),
+                                 'stepContext': budget['stepContext'], 'budgetSource': budget['source']}
+
+    def one(number, prompt, calls, seconds):
+        name = f'step-{number:02d}.json'
+        progress.begin_step(calls, seconds, f'{sandbox_root}/{name}')
+        try:
+            run = r.run_worker(workspace, prompt, seconds, progress, read_only=True)
+        finally:
+            progress.end_step()
+        if not getattr(progress, 'report_drained', True):
+            return None, 'unverified'
+        value, reason = steps.read_result(root/name)
+        if value is None and run.returncode and not reason:
+            reason = 'the worker exited without a result'
+        return value, reason
+
+    save()
+    number = 0
+    source = lambda name: scope.source_bytes(workspace, baseline, name)
+    if ledger.get('legacy') and not ledger.get('legacyReviewed') and steps.latest_operator_notes(task):
+        number += 1
+        value, reason = one(number, steps.legacy_prompt(ledger, f'{sandbox_root}/step-{number:02d}.json', task, note),
+                            steps.LEGACY_CALLS, budget['seconds'])
+        if reason == 'unverified':
+            return 'unverified'
+        if value is not None:
+            try:
+                ledgers.merge_step(ledger, [], {'documents': [], **value}, source, number, allow_empty=True)
+            except ledgers.LedgerError as error:
+                ledger['steps'].append({'step': number, 'documents': [], 'result': 'failed', 'reason': str(error)[:300]})
+        ledger['legacyReviewed'] = True
+        save()
+    while True:
+        if progress.check_stop() or progress.stop_reason:
+            return progress.stop_reason or 'operator_stop'
+        groups = steps.plan_groups(ledger, sizes, budget, limit=1, line_counts=line_counts)
+        if not groups:
+            break
+        calls, seconds = steps.remaining(progress)
+        if calls < budget['calls'] + steps.WRITER_CALLS:
+            save()
+            return 'model_call_limit'
+        if seconds < min(budget['seconds'], 600) + steps.WRITER_SECONDS:
+            save()
+            return 'hard_budget'
+        number += 1
+        group, line_range = groups[0]['documents'], groups[0]['range']
+        value, reason = one(number, steps.group_prompt(ledger, group, f'{sandbox_root}/step-{number:02d}.json', task, note, line_range),
+                            budget['calls'], min(budget['seconds'], seconds - steps.WRITER_SECONDS))
+        if reason == 'unverified':
+            return 'unverified'
+        try:
+            if value is None:
+                raise ledgers.LedgerError(reason)
+            ledgers.merge_step(ledger, group, value, source, number, line_range=line_range)
+        except ledgers.LedgerError as error:
+            ledgers.record_failure(ledger, group, number, str(error))
+        save()
+    calls, seconds = steps.remaining(progress)
+    if ledger['findings'] and calls >= steps.WRITER_CALLS and seconds >= steps.WRITER_SECONDS:
+        number += 1
+        value, reason = one(number, steps.writer_prompt(ledger, f'{sandbox_root}/step-{number:02d}.json'),
+                            steps.WRITER_CALLS, steps.WRITER_SECONDS)
+        if reason == 'unverified':
+            return 'unverified'
+        if value is not None:
+            steps.apply_writer(ledger, value)
+    save()
+    return 'complete'
 
 
 def reconcile(r,task_id,key):

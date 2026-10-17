@@ -22,6 +22,8 @@ KEY = '11111111-2222-4333-8444-555555555555'
 
 
 class ReportTest(unittest.TestCase):
+    MODE = 'single'
+
     def setUp(self):
         temp = tempfile.TemporaryDirectory(); self.addCleanup(temp.cleanup)
         self.root = Path(temp.name); self.workspace = self.root/'task-0001'; self.workspace.mkdir()
@@ -40,6 +42,8 @@ class ReportTest(unittest.TestCase):
                            ('push_and_open_pr',mock.Mock())]:
             patch=mock.patch.object(runner,name,value);patch.start();self.addCleanup(patch.stop)
         patch=mock.patch.object(sys,'argv',['coding_run','0001','--request-id',KEY,'--report-name','review.md'])
+        patch.start();self.addCleanup(patch.stop)
+        patch=mock.patch.dict(os.environ,{'AGENTX_REPORT_MODE':self.MODE})
         patch.start();self.addCleanup(patch.stop)
 
     def request(self,url,body=None,**kwargs):
@@ -520,3 +524,110 @@ class ReportDispatchTest(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
+
+
+class StepsReportTest(unittest.TestCase):
+    """Runner-owned report steps (#834): the model writes one JSON result per group."""
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory(); self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name); self.workspace = self.root/'task-0001'; (self.workspace/'docs').mkdir(parents=True)
+        runner.git(self.workspace,'init','--quiet')
+        (self.workspace/'README.md').write_text('# Project\nThe retry limit is 5.\n')
+        (self.workspace/'docs'/'GUIDE.md').write_text('# Guide\nRun npm start.\n')
+        (self.workspace/'config.js').write_text("const RETRY_LIMIT = 7;\nmodule.exports = { RETRY_LIMIT };\n")
+        runner.git(self.workspace,'add','.'); runner.git(self.workspace,*runner.AUTHOR,'commit','-qm','Initial')
+        self.head = runner.git(self.workspace,'rev-parse','HEAD')
+        self.home = self.root/'.home-task-0001'
+        self.out = self.home/'deliverables'/KEY
+        self.task = {'pipelineId':'0001','title':'Documentation review','spec':'Review every Markdown document.',
+                     'status':'queued','service':'agentx-coding','feedback':[],'transitions':[{'kind':'claimed','seq':2}]}
+        self.uploads=[]; self.stops=[]; self.answers=[]; self.prompts=[]
+        for name,value in [('WORKSPACES',self.root),('MODEL','fixture-model'),('RECEIPTS',self.root/'receipts'),
+                           ('request',self.request),('feedback',mock.Mock()),
+                           ('run_worker',mock.Mock(side_effect=self.worker)),('install_dependencies',mock.Mock()),
+                           ('push_and_open_pr',mock.Mock())]:
+            patch=mock.patch.object(runner,name,value);patch.start();self.addCleanup(patch.stop)
+        for patch in [mock.patch.object(sys,'argv',['coding_run','0001','--request-id',KEY,'--report-name','review.md']),
+                      mock.patch.dict(os.environ,{'AGENTX_REPORT_MODE':'steps'})]:
+            patch.start();self.addCleanup(patch.stop)
+
+    def request(self,url,body=None,**kwargs):
+        if 'agent-runtime-config/export' in url:
+            return {'data':{'lanes':{'codingSpecialist':{'role':'codingSpecialist','model':'fixture-model',
+                    'capability':{'agent':{'recommendedStepContext':16384},'provenance':{'depth':'full'}}}}}}
+        if '/reports/' in url:
+            if url.endswith('/start'):
+                self.start_intent=body
+                return {'data':{'requestId':KEY,'claimSeq':2,'modelCallLimit':body['modelCallLimit'],
+                    'parentRequestId':None,'parentSha256':None,
+                    'authority':{'queueEndAt':'2099-01-01T00:00:00Z','workSeconds':14400},
+                    'inventory':dict(body['inventory'],sha256='a'*64)}}
+            if url.endswith('/result'):
+                self.uploads.append(body); self.task['status']='review'
+                receipt={'id':'a'*24,'pipelineId':'0001','ref':'r','sha256':body['sha256'],'size':len(base64.b64decode(body['dataUrl'].split(',')[1])),
+                         'availability':{'status':'available','hashVerified':True}}
+                self.receipt=receipt
+                return {'data':{'reportReadyForReview':True,'receipt':receipt,'outcome':{'requestId':KEY,'claimSeq':2,'sourceCommit':self.head,'sha256':body['sha256']}}}
+            if url.endswith('/stop-result'):
+                self.stops.append(body); self.task['status']='blocked'
+                archived = {'partial': {'deliverableId': 'b'*24, 'sha256': body['partial']['sha256']}} if body.get('partial') else {}
+                return {'data':{'blocked':True,'outcome':{'requestId':KEY,'claimSeq':2, **archived}}}
+            return {'data':{'requestId':KEY,'claimSeq':2,'terminationVerified':True,'allCallsCompleted':True,
+                'inventory':dict(self.start_intent['inventory'],sha256='a'*64)}}
+        if url.endswith('/claim'):self.task.update(status='in_progress',assignee='coding-team')
+        elif '/deliverables/' in url:return {'data':{'receipt':self.receipt}}
+        return {'data':{'task':self.task}}
+
+    def worker(self,workspace,prompt,timeout,progress,*,read_only):
+        self.prompts.append(prompt)
+        progress.model_calls += 2
+        name = progress.step['output'].rsplit('/',1)[1]
+        answer = self.answers.pop(0) if self.answers else None
+        if answer is not None:
+            (self.out/name).write_text(json.dumps(answer(prompt)) if callable(answer) else answer)
+        return subprocess.CompletedProcess([],0,stdout='',stderr='')
+
+    @staticmethod
+    def reviewed(prompt):
+        docs = [line[2:] for line in prompt.split('Review ONLY these documents against the source code and architecture:\n')[1].split('\n\n')[0].splitlines()]
+        result = {'documents':[{'path':doc,'state':'reviewed','evidence':[{'path':'config.js','line':1,'check':'RETRY_LIMIT'}]} for doc in docs],'findings':[]}
+        if 'README.md' in docs:
+            result['findings'].append({'kind':'inaccuracy','severity':'medium','title':'Retry limit is 7','document':{'path':'README.md','line':2},
+                'evidence':[{'path':'config.js','line':1,'check':'RETRY_LIMIT = 7'}],'correction':'Say 7.'})
+        return result
+
+    def test_reviews_groups_in_fresh_sessions_and_delivers_a_rendered_report(self):
+        self.answers=[self.reviewed, self.reviewed, lambda prompt:{'summary':'Two documents reviewed; one wrong value.','explanations':{'F1':'Readers would set 5.'}}]
+        with mock.patch('builtins.print'):self.assertEqual(runner.main(),0)
+        self.assertEqual(len(self.uploads),1)
+        report = base64.b64decode(self.uploads[0]['dataUrl'].split(',')[1]).decode()
+        self.assertIn('#### F1 — Retry limit is 7 *(medium)*', report)
+        self.assertIn('Readers would set 5.', report)
+        self.assertIn('Two documents reviewed; one wrong value.', report)
+        self.assertIn('| 2 | 0 | 0 | 0 | 1 |', report)
+        self.assertTrue(self.uploads[0]['coverage']['declaredComplete'])
+        self.assertEqual(runner.run_worker.call_count,3)
+        self.assertNotIn('docs/GUIDE.md', self.prompts[0] if 'README.md' in self.prompts[0] else self.prompts[1])
+        progress=json.loads((runner.RECEIPTS/(KEY+'.progress.json')).read_text())
+        self.assertEqual(progress['reportSteps']['done'],2)
+        self.assertEqual(progress['reportSteps']['budgetSource'],'agent_workload')
+        self.assertEqual(runner.git(self.workspace,'status','--porcelain'),'')
+
+    def test_a_failing_group_is_retried_alone_then_blocked_without_stopping_the_others(self):
+        self.answers=[self.reviewed, 'not json', '{"documents": []}', lambda prompt:{'summary':'x','explanations':{}}]
+        with mock.patch('builtins.print'):self.assertEqual(runner.main(),0)
+        coverage = self.uploads[0]['coverage']
+        states = {row['path']: row['state'] for row in coverage['documents']}
+        self.assertEqual(sorted(states.values()), ['blocked','reviewed'])
+        self.assertFalse(coverage['declaredComplete'])
+
+    def test_exhausted_calls_stop_with_a_partial_report_for_continuation(self):
+        self.answers=[self.reviewed]
+        with mock.patch.object(runner.coding_progress.Progress,'call_limit',lambda progress: 23), mock.patch('builtins.print'):
+            self.assertEqual(runner.main(),1)
+        self.assertEqual(self.uploads,[])
+        self.assertEqual(self.stops[0]['workerOutcome']['reason'],'model_call_limit')
+        partial = base64.b64decode(self.stops[0]['partial']['dataUrl'].split(',')[1]).decode()
+        self.assertIn('agentx-report-ledger:v1', partial)
+        self.assertIn('1 documents are not fully reviewed.', partial)

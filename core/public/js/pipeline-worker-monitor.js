@@ -30,6 +30,17 @@
   const own = (map, key) => Object.hasOwn(map, key) ? map[key] : null;
   const row = (label, value) => `<div><dt>${esc(label)}</dt><dd>${value}</dd></div>`;
 
+  // Runner-owned report steps (#834): merged and failed steps, ledger totals
+  // and the step size the runner derived from the lane capability profile.
+  function reportStepsText(steps) {
+    const n = value => (Number.isSafeInteger(value) && value >= 0 ? value : 0);
+    const c = steps.counts || {};
+    const source = { agent_workload: 'measured agent work', speed_knee: 'measured speed knee', default: 'default size' }[steps.budgetSource] || 'unknown basis';
+    const size = Number.isSafeInteger(steps.stepContext) ? `${Math.round(steps.stepContext / 1024)}k-token steps (${source})` : 'step size unknown';
+    return `${n(steps.done)} merged · ${n(steps.failed)} failed · ${n(c.reviewed)} reviewed, ${n(c.partial)} partial, `
+      + `${n(c.blocked)} blocked, ${n(c.pending)} pending · ${n(steps.findings)} new findings · ${size}`;
+  }
+
   function age(value, now) {
     if (typeof value !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(value)) return 'Unknown';
     const time = Date.parse(value);
@@ -94,6 +105,7 @@
         + row('Model calls', integer(progress.modelCalls) ? String(progress.modelCalls)
           + (integer(progress.modelCallLimit) && progress.modelCallLimit >= 128 && progress.modelCallLimit <= 256
             ? ` / ${progress.modelCallLimit} · ${Math.max(0, progress.modelCallLimit - progress.modelCalls)} remaining` : '') : 'Unknown')
+        + (progress.reportSteps ? row('Report steps', esc(reportStepsText(progress.reportSteps))) : '')
         + row('Local checkpoint', checkpoint ? `<code title="${checkpoint}">${checkpoint.slice(0, 12)}</code> · source saved locally` : 'Unknown')
         + (REASONS.has(progress.stopReason) ? row('Recorded stop reason', esc(progress.stopReason.replaceAll('_', ' '))) : '');
     } else if (identity) details += row('Worker progress', 'Unknown · no matching progress receipt');

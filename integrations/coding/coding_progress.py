@@ -344,6 +344,15 @@ def safe_progress(value: object, request_id: str, task_id: str) -> dict | None:
     for field in ["seenStates", "seenTests"]:
         items = value.get(field, [])
         result[field] = [v for v in items[:256] if isinstance(v, str) and re.fullmatch(r"[a-f0-9]{64}", v)] if isinstance(items, list) else []
+    steps = value.get("reportSteps")
+    if isinstance(steps, dict):
+        count = lambda item: item if type(item) is int and 0 <= item <= 100000 else None
+        tally = steps.get("counts") if isinstance(steps.get("counts"), dict) else {}
+        result["reportSteps"] = {
+            "done": count(steps.get("done")), "failed": count(steps.get("failed")), "findings": count(steps.get("findings")),
+            "stepContext": count(steps.get("stepContext")),
+            "budgetSource": allowed(steps.get("budgetSource"), {"agent_workload", "speed_knee", "default"}),
+            "counts": {key: count(tally.get(key)) for key in ("reviewed", "partial", "blocked", "pending")}}
     manual = value.get("manualHead")
     result["manualHead"] = manual if isinstance(manual, str) and re.fullmatch(r"[a-f0-9]{40}", manual) else None
     pr = value.get("pr")
@@ -433,6 +442,14 @@ class Progress:
         """Read an advisory snapshot without touching billing or progress timers."""
         if self.phase != "running" or self.stop_reason:
             return None
+        step = getattr(self, "step", None)
+        if getattr(self, "report_mode", False) and step:
+            current = self.now()
+            return ("Runner-owned step budget before this request: " + json.dumps({
+                "modelCalls": max(0, step["calls"] - (self.model_calls - step["startCalls"])),
+                "seconds": max(0, int(step["deadline"] - current))}, sort_keys=True)
+                + f". Write your JSON result to {step['output']} before it runs out; a truthful partial result is "
+                "accepted. Sources remain read-only.")
         if getattr(self, "report_mode", False) and not self.cumulative_limits:
             current = self.now()
             remaining = {"workSeconds": max(0, int(min(self.hard_deadline, self.queue_deadline) - current)),
@@ -488,6 +505,8 @@ class Progress:
                      lastUsefulWorkSeconds=int(self.useful_work))
         if not self.cumulative_limits:
             value['modelCallLimit'] = self.call_limit()
+        if getattr(self, "report_steps", None):
+            value["reportSteps"] = self.report_steps
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(mode="w", dir=self.path.parent, prefix=".progress-", delete=False) as output:
             json.dump(value, output)
@@ -635,7 +654,26 @@ class Progress:
             elif self.stage != "test" and current - self.last_useful >= getattr(self, "no_progress_limit", 45 * 60):
                 self.stop_reason = "no_useful_progress"
         self.write()
-        return self.stop_reason
+        return self.stop_reason or self.step_due(current)
+
+    def begin_step(self, calls: int, seconds: int, output: str):
+        """Bound the next worker session as one report step (#834).
+
+        A step that reaches its calls or time ends that session only; the
+        execution's own limits and stop reasons are unchanged."""
+        self.step = {"calls": calls, "startCalls": self.model_calls, "deadline": self.now() + seconds, "output": output}
+
+    def end_step(self):
+        self.step = None
+
+    def step_due(self, current=None):
+        step = getattr(self, "step", None)
+        if not step:
+            return None
+        current = self.now() if current is None else current
+        if self.model_calls - step["startCalls"] >= step["calls"] or current >= step["deadline"]:
+            return "step_limit"
+        return None
 
     def check_stop(self):
         if self.stop_path:
