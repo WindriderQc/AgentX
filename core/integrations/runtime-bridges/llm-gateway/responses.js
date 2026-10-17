@@ -8,7 +8,7 @@
 // and are not offered.
 const { randomUUID } = require('crypto');
 const { Transform } = require('stream');
-const { isImagePart } = require('../hermes/messages');
+const { isImagePart } = require('./messages');
 
 const NAMESPACE_SEPARATOR = '__';
 const FILE_OMITTED = '[file omitted: the AgentX gateway sends text and images only]';

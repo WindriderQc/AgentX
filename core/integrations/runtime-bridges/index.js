@@ -1,10 +1,9 @@
 'use strict';
 
-const VERSION = '1.8.0';
+const VERSION = '1.9.0';
 const { CodingTaskPreparation } = require('./coding-task-preparation');
 
 const { cleanBaseUrl } = require('./common');
-const { registerHermesProtocol } = require('./hermes/protocol');
 const { parseGatewayClients } = require('./llm-gateway/clients');
 const { registerLlmGateway } = require('./llm-gateway/router');
 const { registerOpenClawProtocol } = require('./openclaw/protocol');
@@ -174,7 +173,6 @@ function register(api) {
     resolveConversationTarget: async model => await app.locals?.aioOpsConversationTarget?.(model)
       || conversationHosts(model)
   }));
-  app.use('/api/hermes-openai', registerHermesProtocol({ express, runtimeServices, logger }));
   app.use('/api/llm', registerLlmGateway({ express, runtimeServices, logger }));
   app.use('/api/openclaw', registerOpenClawOperations({
     express,
@@ -252,7 +250,7 @@ function register(api) {
       version: VERSION,
       coreRuntimeContract: runtimeServices.contractVersion,
       inProcessEvidence: { contractVersion: evidence.contractVersion },
-      routes: ['ecosystem-snapshot-mcp', 'openclaw-ollama', 'hermes-openai', 'llm-gateway', 'agent-runtime-config', 'openclaw-operations', 'dsh-studio', 'hermes-operations', 'agent-ops', 'pipeline-attribution', 'coding-dispatch', 'coding-delivery']
+      routes: ['ecosystem-snapshot-mcp', 'openclaw-ollama', 'llm-gateway', 'agent-runtime-config', 'openclaw-operations', 'dsh-studio', 'hermes-operations', 'agent-ops', 'pipeline-attribution', 'coding-dispatch', 'coding-delivery']
     }
   }));
 }
@@ -262,7 +260,6 @@ module.exports = {
   version: VERSION,
   capabilities: [
     'agent-runtime-config',
-    'hermes-runtime-bridge',
     'openai-compatible-llm-gateway',
     'openclaw-runtime-bridge',
     'dsh-studio-launcher',

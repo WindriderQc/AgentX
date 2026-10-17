@@ -25,7 +25,7 @@ Base: the Core entry given in `references/instance.md`.
 `/api/analytics/usage` · `/stats` · `/costs` · `/feedback` · `/rag-stats` · `/api/analytics/inference/summary?window=7d` · `/api/analytics/inference/logs?limit=N` · `/api/alerts` · `/api/alerts/statistics` · `/api/budget/status` · `/api/budget/escalation-recommendation`
 
 **Other services through Core**
-`/api/rag/status` · `/api/rag/metrics` · `/api/data-toolbox/network/devices` · `/api/data-toolbox/storage/summary` · `/api/data-toolbox/hardware/latest` · `/api/voix/health` · `/api/hermes-openai/v1/models` (OpenAI-compatible list)
+`/api/rag/status` · `/api/rag/metrics` · `/api/data-toolbox/network/devices` · `/api/data-toolbox/storage/summary` · `/api/data-toolbox/hardware/latest` · `/api/voix/health` · `/api/llm/v1/models` (OpenAI-compatible list; needs a gateway client token)
 
 **Benchmark** (under `/benchmark`): `/benchmark/health` · `/benchmark/api/benchmark/batches/active` · `/benchmark/api/profiler/hosts`
 **RAG** (under `/rag`): `/rag/health`

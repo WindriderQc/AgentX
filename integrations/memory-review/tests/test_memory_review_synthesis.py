@@ -1,3 +1,4 @@
+import os
 import json
 import io
 import sys
@@ -41,6 +42,22 @@ def good_candidate(statement="Owner prefers local-first tooling.", ref="obs-1"):
         "conflicts": [],
     }
 
+
+
+_PRIOR_TOKEN = None
+
+
+def setUpModule():
+    global _PRIOR_TOKEN
+    _PRIOR_TOKEN = os.environ.get("AGENTX_LLM_MEMORY_REVIEW_TOKEN")
+    os.environ["AGENTX_LLM_MEMORY_REVIEW_TOKEN"] = "memory-review-token-0123"
+
+
+def tearDownModule():
+    if _PRIOR_TOKEN is None:
+        os.environ.pop("AGENTX_LLM_MEMORY_REVIEW_TOKEN", None)
+    else:
+        os.environ["AGENTX_LLM_MEMORY_REVIEW_TOKEN"] = _PRIOR_TOKEN
 
 class FakeTransport:
     """Scripted transport standing in for the Hermes proxy."""

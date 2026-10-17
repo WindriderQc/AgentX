@@ -31,12 +31,25 @@ const {
   cronListArgs
 } = require('../openclaw/runtimeEvidence');
 const { hermesGatewayFreshness, registerOpenClawOperations } = require('../operations');
-const {
-  HERMES_CONSUMER_CONTRACT,
-  OllamaToOpenAiSse,
-  openAiCompletion,
-  registerHermesProtocol
-} = require('../hermes/protocol');
+const { OllamaToOpenAiSse, openAiCompletion } = require('../llm-gateway/chat');
+const { parseGatewayClients } = require('../llm-gateway/clients');
+const { registerLlmGateway } = require('../llm-gateway/router');
+
+// The OpenAI gateway with Hermes as its token client; every handler receives
+// Hermes's bearer, as Hermes sends it.
+const GATEWAY_TOKEN = 'bridge-test-token-0123';
+const HERMES_CONSUMER_CONTRACT = 'hermes-gateway-v1';
+function registerHermesGateway({ express, runtimeServices, logger }) {
+  const router = registerLlmGateway({ express, runtimeServices, logger,
+    clients: parseGatewayClients(JSON.stringify({ hermes: { token: GATEWAY_TOKEN, admission: 'immediate' } })) });
+  for (const entry of router.routes) {
+    entry.handlers = entry.handlers.map(handler => (req, ...rest) => {
+      req.headers = { authorization: `Bearer ${GATEWAY_TOKEN}`, ...req.headers };
+      return handler(req, ...rest);
+    });
+  }
+  return router;
+}
 const {
   buildRuntimeConfigExport,
   isCloudAuthorityModel,
@@ -139,10 +152,9 @@ function runtimeServices(execute) {
 
 test('manifest owns the complete AIOps bridge surface and registers every route family', () => {
   assert.equal(manifest.id, 'aio-ops-runtime-bridges');
-  assert.equal(manifest.version, '1.8.0');
+  assert.equal(manifest.version, '1.9.0');
   assert.deepEqual(manifest.capabilities, [
     'agent-runtime-config',
-    'hermes-runtime-bridge',
     'openai-compatible-llm-gateway',
     'openclaw-runtime-bridge',
     'dsh-studio-launcher',
@@ -172,7 +184,6 @@ test('manifest owns the complete AIOps bridge surface and registers every route 
   assert.deepEqual(mounts, [
     ['/mcp', '/api/mcp'],
     '/api/openclaw-ollama',
-    '/api/hermes-openai',
     '/api/llm',
     '/api/openclaw',
     '/api/dsh',
@@ -803,7 +814,7 @@ test('OpenClaw Pipeline alias fails closed without an attribution manager', asyn
 
 for (const [name, register, endpoint, expectedContract] of [
   ['OpenClaw', registerOpenClawProtocol, '/api/chat', OPENCLAW_CONSUMER_CONTRACT],
-  ['Hermes', registerHermesProtocol, '/v1/chat/completions', HERMES_CONSUMER_CONTRACT]
+  ['Hermes', registerHermesGateway, '/v1/chat/completions', HERMES_CONSUMER_CONTRACT]
 ]) test(`${name} delivers its first token and drains without further delivery after disconnect`, async () => {
   const upstream = new PassThrough();
   let coreSignal;
@@ -867,7 +878,7 @@ test('agent chat turns ask Core for prompt-prefix telemetry outside the model re
       metadata: { model: 'model-a', upstreamProtocol: 'ollama' } };
   });
   const openclaw = registerOpenClawProtocol({ express: fakeExpress(), runtimeServices: services, logger: {} });
-  const hermes = registerHermesProtocol({ express: fakeExpress(), runtimeServices: services, logger: {} });
+  const hermes = registerHermesGateway({ express: fakeExpress(), runtimeServices: services, logger: {} });
   const messages = [{ role: 'system', content: '## Tooling\nsynthetic' }, { role: 'user', content: 'hello' }];
   await route(openclaw, 'post', '/api/chat').handlers[0](
     new Request({ body: { model: 'model-a', stream: false, messages, options: { temperature: 0.2 } } }), new Response());
@@ -887,7 +898,7 @@ test('agent chat turns ask Core for prompt-prefix telemetry outside the model re
 test('Hermes maps non-streaming content, tools, usage, and routing metadata', async () => {
   let inferenceRequest;
   let inferenceOptions;
-  const router = registerHermesProtocol({
+  const router = registerHermesGateway({
     express: fakeExpress(),
     runtimeServices: runtimeServices(async (request, options) => {
       inferenceRequest = request;
@@ -957,7 +968,7 @@ test('Hermes SSE translation sends the first delta, tool shape, usage, and DONE 
 
 test('Hermes malformed and unapproved requests fail without touching inference', async () => {
   let calls = 0;
-  const router = registerHermesProtocol({
+  const router = registerHermesGateway({
     express: fakeExpress(),
     runtimeServices: runtimeServices(async () => { calls += 1; }),
     logger: {}
@@ -1499,7 +1510,7 @@ test('ordinary OpenClaw tool loops receive done only after Core releases the pre
 
 for (const [name, register, endpoint] of [
   ['OpenClaw', registerOpenClawProtocol, '/api/chat'],
-  ['OpenAI', registerHermesProtocol, '/v1/chat/completions']
+  ['OpenAI', registerHermesGateway, '/v1/chat/completions']
 ]) test(`${name} resolves the principal alias per request without changing explicit choices`, async () => {
   let selected = 'model-a';
   const calls = [];

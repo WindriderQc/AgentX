@@ -63,7 +63,7 @@ describe('Agent X runtime profile', () => {
   test.each([
     '/api/agent-ops',
     '/api/openclaw-ollama/api/chat',
-    '/api/hermes-openai/v1/chat/completions',
+    '/api/llm/v1/chat/completions',
     '/api/openclaw/status',
     '/api/hermes/status',
     '/api/dsh/control-launch',

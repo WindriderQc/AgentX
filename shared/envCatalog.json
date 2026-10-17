@@ -120,7 +120,7 @@
       "default": null,
       "category": "bridges",
       "secret": true,
-      "description": "Secret JSON object naming the clients of the OpenAI-compatible gateway /api/llm/v1 by their bearer token (the standard OpenAI API key), e.g. {\"codex-windows\":{\"token\":\"<random>\",\"admission\":\"patient\"},\"script\":\"<random>\"}. Tokens are unique and at least 16 characters; admission is patient (default, waits up to 8 min for a busy host) or immediate. Unset: the gateway refuses every request; Hermes keeps /api/hermes-openai. An invalid value fails bridge startup."
+      "description": "Secret JSON object naming the clients of the OpenAI-compatible gateway /api/llm/v1 by their bearer token (the standard OpenAI API key), e.g. {\"codex-windows\":{\"token\":\"<random>\",\"admission\":\"patient\"},\"script\":\"<random>\"}. Tokens are unique and at least 16 characters; admission is patient (default, waits up to 8 min for a busy host) or immediate. Unset: the gateway refuses every request; Hermes, the Coding Team, the memory review and DSH Studio each need their own client. An invalid value fails bridge startup."
     },
     "AGENTX_OLLAMA_ALLOWED_TARGETS": {
       "services": [
@@ -1410,7 +1410,7 @@
       "default": null,
       "category": "bridges",
       "secret": false,
-      "description": "Inference timeout for the Hermes OpenAI-compatible bridge. Unset: the inference default."
+      "description": "Inference timeout for the OpenAI-compatible gateway /api/llm/v1 (historical name). Unset: the inference default."
     },
     "HERMES_PUBLIC_URL": {
       "services": [
