@@ -13,7 +13,14 @@ const schema = new mongoose.Schema({
   topic: { type: String, default: 'general' },
   text: { type: String, required: true },
   type: { type: String, enum: ['fact', 'summary'], default: 'fact' },
-  kind: { type: String, enum: ['fact', 'preference', 'decision'], default: 'fact' },
+  kind: { type: String, enum: ['fact', 'preference', 'decision', 'souvenir'], default: 'fact' },
+  // A souvenir is a lasting memory of something that happened: when, with
+  // whom, where, and the sources it was kept from. It never expires.
+  eventDate: { type: String, default: '', maxlength: 40 },
+  eventDatePrecision: { type: String, enum: ['unknown', 'day', 'instant'], default: 'unknown' },
+  people: { type: [String], default: undefined },
+  places: { type: [String], default: undefined },
+  sourceRefs: { type: [{ _id: false, system: String, id: String }], default: undefined },
   source: { type: String, default: 'explicit-ui' },
   sourceTraceId: { type: String, unique: true, sparse: true },
   contentHash: { type: String, default: '', index: true },

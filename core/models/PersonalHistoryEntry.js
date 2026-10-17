@@ -39,6 +39,8 @@ const schema = new mongoose.Schema({
     revision: Number, state: String, assertionState: String, eventDate: String,
     eventDatePrecision: String, reason: String, at: Date
   }],
+  // The owner's souvenir kept from this assertion (MemoryNote id).
+  souvenirNoteId: { type: String, default: '', maxlength: 24 },
   forgottenAt: { type: Date, default: null }
 }, { timestamps: true, collection: 'personal_history_entries' });
 

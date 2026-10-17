@@ -25,7 +25,7 @@ async function forgetSourceNote(note) {
     if (error.code !== 11000) throw error;
     if (!await Suppression.exists({ noteId })) throw error;
   }
-  const matches = [{ 'source.personalNoteId': noteId }];
+  const matches = [{ 'source.personalNoteId': noteId }, { souvenirNoteId: noteId }];
   if (contentHash) matches.push({ contentHash });
   return suppress({ $or: matches });
 }

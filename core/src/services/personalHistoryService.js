@@ -85,7 +85,7 @@ function project(row) {
       ? `https://mail.google.com/mail/#all/${encodeURIComponent(row.source.threadId)}` : null,
     archiveUrl: !forgotten && row.source?.system === 'gmail'
       ? `/api/secretary/archive/${encodeURIComponent(row.source.messageId)}?sha256=${row.source.sourceSha256}` : null,
-    decision: forgotten ? null : row.decision, createdAt: row.createdAt, updatedAt: row.updatedAt };
+    decision: forgotten ? null : row.decision, souvenirNoteId: forgotten ? '' : row.souvenirNoteId || '', createdAt: row.createdAt, updatedAt: row.updatedAt };
 }
 
 async function record(input) {
@@ -178,7 +178,47 @@ async function review(id, input = {}) {
     { $set: changes, $inc: { revision: 1 }, ...(state === 'forgotten' ? {} : { $push: { reviewHistory: decision } }) },
     { new: true, runValidators: true }).lean();
   if (!row) throw failure('History changed; reload before reviewing it', 409);
+  // Forgetting the source also forgets the souvenir kept from it.
+  if (state === 'forgotten' && entry.souvenirNoteId) await notes().forget(entry.souvenirNoteId);
   return { authority: 'agentx.core', entry: project(row) };
 }
 
-module.exports = { normalize, record, list, review, project };
+const notes = () => require('./memoryNoteService').personal();
+const souvenirText = (entry, input) => {
+  if (input.text !== undefined) return text(input.text, 4000, true);
+  return entry.eventDate && !entry.text.includes(entry.eventDate.slice(0, 10))
+    ? `${entry.eventDate.slice(0, 10)} : ${entry.text}` : entry.text;
+};
+
+// The owner keeps an assertion as a souvenir: a lasting owner memory with its
+// date, people, places and sources. Keeping it again returns the same note.
+async function keepAsSouvenir(id, input = {}) {
+  if (!/^[a-f0-9]{24}$/.test(id)) throw failure('Choose an existing history entry');
+  if (!Number.isSafeInteger(input.revision) || input.revision < 0) throw failure('The current entry revision is required');
+  const entry = await Entry.findOne({ _id: id, scope: 'owner' }).lean();
+  if (!entry || entry.reviewState === 'forgotten') throw failure('History entry is unavailable', 404);
+  if (entry.kind === 'action') throw failure('An action is resolved, not kept as a souvenir');
+  if (entry.souvenirNoteId) return { authority: 'agentx.core', created: false, entry: project(entry), souvenirNoteId: entry.souvenirNoteId };
+  if (entry.revision !== input.revision) throw failure('History changed; reload before reviewing it', 409);
+  const precision = input.eventDatePrecision === undefined ? entry.eventDatePrecision
+    : enumValue(input.eventDatePrecision, ['unknown', 'day', 'instant']);
+  const when = eventDate(input.eventDate === undefined ? entry.eventDate : input.eventDate, precision);
+  const sources = [{ system: 'personal-history', id: String(entry._id) },
+    { system: entry.source.system, id: entry.source.sourceSha256 }];
+  const note = await notes().keepSouvenir({ text: souvenirText({ ...entry, eventDate: when }, input),
+    eventDate: when, eventDatePrecision: precision, people: input.people ?? (entry.actor ? [entry.actor] : []),
+    places: input.places, sourceRefs: sources, source: 'secretary-history' });
+  const at = new Date();
+  const reason = 'Kept as a souvenir';
+  const state = entry.reviewState === 'resolved' ? 'resolved' : 'retained';
+  const row = await Entry.findOneAndUpdate({ _id: id, scope: 'owner', revision: input.revision, reviewState: { $ne: 'forgotten' } },
+    { $set: { reviewState: state, souvenirNoteId: note.id, eventDate: when, eventDatePrecision: precision, decision: { reason, at } },
+      $inc: { revision: 1 }, $push: { reviewHistory: { revision: input.revision + 1, state,
+        assertionState: entry.assertionState, eventDate: when, eventDatePrecision: precision, reason, at } } },
+    { new: true, runValidators: true }).lean();
+  // The note is idempotent by source: a reload and retry links the same one.
+  if (!row) throw failure('History changed; reload before reviewing it', 409);
+  return { authority: 'agentx.core', created: note.created, entry: project(row), souvenirNoteId: note.id };
+}
+
+module.exports = { normalize, record, list, review, keepAsSouvenir, project };

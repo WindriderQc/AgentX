@@ -37,6 +37,29 @@ const sourceOf = value => (typeof value === 'string' && /^[a-z0-9-]{1,40}$/.test
 // values are accepted from the Nestor consumer; anything else is not a note
 // the owner dictated, but it is never relabelled as one either.
 const AGENT_PROVENANCE = Object.freeze({ conversation: 'nestor-conversation', 'mail-review': 'nestor-mail-review', scheduled: 'nestor-scheduled' });
+const SOUVENIR_REF_SYSTEMS = ['personal-history', 'gmail', 'outlook-export'];
+function souvenirRefs(value) {
+  if (!Array.isArray(value) || !value.length || value.length > 20) throw error('A souvenir needs 1-20 sources');
+  return value.map(ref => {
+    if (!SOUVENIR_REF_SYSTEMS.includes(ref?.system) || typeof ref.id !== 'string'
+        || !/^[a-zA-Z0-9_-]{8,128}$/.test(ref.id)) throw error('A souvenir source is invalid');
+    return { system: ref.system, id: ref.id };
+  });
+}
+function souvenirDate(value = '', precision = 'unknown') {
+  if (precision === 'unknown') {
+    if (value) throw error('An unknown event date must remain empty');
+    return { eventDate: '', eventDatePrecision: 'unknown' };
+  }
+  const valid = precision === 'day' ? /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T00:00:00Z`).toISOString().startsWith(value)
+    : precision === 'instant' && /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value));
+  if (!valid) throw error('A souvenir date must be a day (YYYY-MM-DD) or an ISO instant with timezone');
+  return { eventDate: precision === 'instant' ? new Date(value).toISOString() : value, eventDatePrecision: precision };
+}
+const labels = (value = []) => {
+  if (!Array.isArray(value) || value.length > 20) throw error('List at most 20 people or places');
+  return [...new Set(value.map(item => cleanText(item, 120)))];
+};
 const limitOf = (value, fallback = 25) => Math.max(1, Math.min(100, Math.trunc(Number(value)) || fallback));
 const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const stopWords = new Set(['les', 'des', 'une', 'que', 'qui', 'pour', 'dans', 'avec', 'mon', 'mes', 'moi', 'est', 'this', 'that', 'the', 'and', 'you', 'what', 'remember', 'retiens',
@@ -61,7 +84,9 @@ function project(row) {
   return { id: String(row._id), text: row.text, kind: row.kind || 'fact', type: row.type,
     topic: row.topic, packId: row.packId, scopeId: row.scopeId, scope: row.scope,
     sensitivity: row.sensitivity, source: row.source, createdAt: row.createdAt,
-    updatedAt: row.updatedAt, expiresAt: row.expiresAt || null };
+    updatedAt: row.updatedAt, expiresAt: row.expiresAt || null,
+    ...(row.kind === 'souvenir' ? { eventDate: row.eventDate || '', eventDatePrecision: row.eventDatePrecision || 'unknown',
+      people: row.people || [], places: row.places || [], sourceRefs: row.sourceRefs || [] } : {}) };
 }
 
 // Bind once in trusted server code. Request bodies and personas cannot widen
@@ -85,7 +110,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
   async function list({ limit, offset = 0, query, kind } = {}) {
     const filter = active();
     if (kind !== undefined) {
-      if (!['fact', 'preference', 'decision'].includes(kind)) throw error('Choose fact, preference or decision');
+      if (!['fact', 'preference', 'decision', 'souvenir'].includes(kind)) throw error('Choose fact, preference, decision or souvenir');
       filter.kind = kind;
     }
     if (query !== undefined && query !== '') filter.text = { $regex: escapeRegex(cleanText(query, 2000)), $options: 'i' };
@@ -110,7 +135,9 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     const id = input.id === undefined ? digest([scopeId, packs[0], text].join('\n')).slice(0, 24) : noteId(input.id);
     const existing = await MemoryNote.findOne({ ...boundary, _id: id }).lean();
     if (input.id !== undefined && (!existing || existing.status === 'forgotten')) throw error('The selected note no longer exists', 404);
-    const expiresAt = Object.hasOwn(input, 'expiresAt') ? input.expiresAt ? new Date(input.expiresAt) : null : existing?.expiresAt || null;
+    // A souvenir is kept for good: a correction cannot give it an expiry.
+    const expiresAt = existing?.kind === 'souvenir' ? null
+      : Object.hasOwn(input, 'expiresAt') ? input.expiresAt ? new Date(input.expiresAt) : null : existing?.expiresAt || null;
     if (expiresAt && (!Number.isFinite(expiresAt.getTime()) || expiresAt <= new Date())) throw error('Expiry must be a future ISO date');
     const kind = input.kind || existing?.kind || 'fact';
     const changed = !existing || existing.status === 'forgotten' || existing.text !== text || existing.kind !== kind
@@ -158,6 +185,28 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
       { $setOnInsert: { ...values, sourceTraceId } }, { new: true, upsert: true, runValidators: true });
     if (!row.embeddedHash) indexLater(row);
     return project(row);
+  }
+
+  // A souvenir kept from reviewed sources. The first keep for a source creates
+  // it; keeping the same source again returns the same note.
+  async function keepSouvenir(input = {}) {
+    if (audience !== 'owner') throw error('Souvenirs belong to the owner space', 403);
+    const refs = souvenirRefs(input.sourceRefs);
+    const { eventDate, eventDatePrecision } = souvenirDate(input.eventDate, input.eventDatePrecision);
+    const sealAll = async values => Promise.all(labels(values).map(async value => (await seal(value)).text));
+    const { text } = await seal(cleanText(input.text));
+    const sourceTraceId = `souvenir:${refs[0].system}:${refs[0].id}`;
+    const values = { packId: packs[0], scopeId, ...classification, text, topic: 'souvenir', type: 'fact',
+      kind: 'souvenir', eventDate, eventDatePrecision, people: await sealAll(input.people),
+      places: await sealAll(input.places), sourceRefs: refs, source: sourceOf(input.source),
+      contentHash: digest(text.toLowerCase()), status: 'active', expiresAt: null };
+    const result = await MemoryNote.findOneAndUpdate({ ...boundary, sourceTraceId },
+      { $setOnInsert: { ...values, sourceTraceId } },
+      { new: true, upsert: true, runValidators: true, includeResultMetadata: true });
+    const row = result.value;
+    if (row.status === 'forgotten') throw error('This souvenir was forgotten', 409);
+    if (!row.embeddedHash) indexLater(row);
+    return { ok: true, authority: 'agentx.core', ...project(row), created: Boolean(result.lastErrorObject?.upserted) };
   }
 
   async function forget(id) {
@@ -223,7 +272,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
   }
   const reindex = () => index.rebuild(boundary);
 
-  return Object.freeze({ list, remember, record, forget, search, similar, reindex, count: () => MemoryNote.countDocuments(active()) });
+  return Object.freeze({ list, remember, record, keepSouvenir, forget, search, similar, reindex, count: () => MemoryNote.countDocuments(active()) });
 }
 
 const personal = () => forSpace({ audience: 'owner', scopeId: 'personal', packIds: ['personal_operator'] });
