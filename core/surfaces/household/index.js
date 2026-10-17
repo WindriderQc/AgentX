@@ -145,6 +145,8 @@ function register(api) {
     throw new Error('agentx-household requires AgentX trusted-extension contract v2');
   }
   const { app, express, mongoose, standardJsonParser, runtimeServices, extensionRoot, logger } = api;
+  // First: a device pinned to the family profile reaches only family pages and APIs (#826).
+  require('./family-device').register({ app, mongoose, standardJsonParser, envelope, fail, logger });
   const models = createModels(mongoose);
   const conversations = require('./turn-attribution').attributedConversations(runtimeServices.conversations.forSurface('household'));
   const memberWork = createMemberWork({ conversations });

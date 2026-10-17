@@ -205,6 +205,7 @@
     $('liveApproveBtn').classList.toggle('rt-hidden', !awaiting);
     $('liveRejectBtn').classList.toggle('rt-hidden', !awaiting);
     const active = ['pending', 'running'].includes(doc?.status);
+    $('liveCancelBtn').classList.toggle('rt-hidden', !active);
     $('liveInterjection').disabled = !active;
     $('liveInterjectBtn').disabled = !active;
     const pending = (doc?.interjections || []).filter((item) => item.status === 'pending').length;
@@ -218,6 +219,26 @@
       liveDoc = data;
       renderGovernance(data);
     } catch {}
+  }
+
+  // Stop the council: the server marks it cancelled and aborts the agent in flight.
+  async function cancelLive() {
+    if (!liveDoc?._id) return;
+    if (!window.confirm('Stop this council now? The current answer is abandoned and no verdict is produced.')) return;
+    const token = $('liveChairToken').value;
+    const button = $('liveCancelBtn');
+    button.disabled = true;
+    try {
+      await jsonFetch(`/api/roundtable/${liveDoc._id}/cancel`, {
+        method: 'POST',
+        headers: token ? { 'x-roundtable-chair-token': token } : {}
+      });
+      await refreshLiveGovernance();
+    } catch (err) {
+      showToast(`Stop failed: ${err.message}`, 'error');
+    } finally {
+      button.disabled = false;
+    }
   }
 
   async function submitInterjection() {
@@ -438,7 +459,7 @@
     }
 
     if (type === 'done') {
-      const stopped = data.status === 'failed' || data.status === 'timeout';
+      const stopped = data.status === 'failed' || data.status === 'timeout' || data.status === 'cancelled';
       const current = document.querySelector('#livePhases .rt-phase.active');
       if (stopped && current) current.classList.replace('active', 'error');
       else setPhase('done');
@@ -448,7 +469,9 @@
         try { liveEventSource.close(); } catch {}
         liveEventSource = null;
       }
-      if (stopped) {
+      if (data.status === 'cancelled') {
+        showToast('Council stopped by the chair', 'info');
+      } else if (stopped) {
         showToast(`Council ${data.status}: ${data.error || 'unknown error'}`, 'error');
       } else if (data.status !== 'completed') {
         showToast(`Council ended: ${data.status || 'unknown status'}`, 'info');
@@ -585,7 +608,7 @@
 
       // Phase state
       if (data.status === 'completed') setPhase('done');
-      else if (data.status === 'failed' || data.status === 'timeout') setPhase('done');
+      else if (['failed', 'timeout', 'cancelled'].includes(data.status)) setPhase('done');
       else if (data.synthesis?.response) setPhase('synthesis');
       else if ((data.turns || []).length) {
         const maxRound = Math.max(...data.turns.map((t) => t.round), 1);
@@ -739,6 +762,7 @@
       renderPanel();
     });
     $('liveInterjectBtn').addEventListener('click', submitInterjection);
+    $('liveCancelBtn').addEventListener('click', cancelLive);
     $('liveInterjection').addEventListener('keydown', (event) => {
       if (event.key === 'Enter') { event.preventDefault(); submitInterjection(); }
     });

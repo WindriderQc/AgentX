@@ -113,6 +113,14 @@ describe('reranker', () => {
       expect(results).toHaveLength(2);
       // Order preserved from original (both have llmScore = original score)
       expect(results[0].text).toBe('irrelevant text here');
+      // The page must not present a fallback as a judge's verdict.
+      expect(results.every(result => result.rerankFailed === true)).toBe(true);
+    });
+
+    it('flags an unreadable verdict instead of presenting the vector score as a judgement', async () => {
+      fetchWithTimeout.mockImplementation(async () => ({ ok: true, json: () => Promise.resolve({ response: 'no idea' }) }));
+      const results = await rerankResults('query', [{ text: 'a', score: 0.4 }], 1);
+      expect(results[0]).toMatchObject({ llmScore: 0.4, rerankFailed: true });
     });
 
     it('should fallback individual result on non-ok response', async () => {

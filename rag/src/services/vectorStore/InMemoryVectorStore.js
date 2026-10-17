@@ -3,6 +3,7 @@
  */
 
 const VectorStoreAdapter = require('./VectorStoreAdapter');
+const { distinctSources, sortDocuments } = require('./documentListing');
 const { cosineSimilarity } = require('../../utils/cosineSimilarity');
 
 class InMemoryVectorStore extends VectorStoreAdapter {
@@ -96,12 +97,13 @@ class InMemoryVectorStore extends VectorStoreAdapter {
       }
     });
 
+    sortDocuments(docs);
     const total = docs.length;
     const offset = pagination.offset || 0;
     const limit = pagination.limit || total; // no limit if not specified
     const paged = docs.slice(offset, offset + limit);
 
-    return { documents: paged, total };
+    return { documents: paged, total, sources: distinctSources(docs) };
   }
 
   async getDocumentChunks(documentId) {

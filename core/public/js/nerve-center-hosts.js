@@ -152,6 +152,7 @@
     async function loadHosts() {
         const body = document.getElementById('sectionHostsBody');
         if (!body) return;
+        shared.trackSectionFocus?.(body);
         try {
             const json = await shared.fetchJson(API);
             const hosts = json.data?.hosts || [];
@@ -164,6 +165,7 @@
                 ${addForm()}`;
             setHeaderSummary(hosts);
             attach(body);
+            shared.restoreSectionFocus?.(body);
         } catch (err) {
             shared.renderSectionError(body, `Failed to load hosts: ${err.message}`);
         } finally {

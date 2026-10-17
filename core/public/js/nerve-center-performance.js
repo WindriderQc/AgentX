@@ -21,8 +21,8 @@
                 baselines.forEach(baseline => {
                     const metrics = baseline.metrics || {};
                     const active = baseline.active
-                        ? '<span style="color:var(--success)" title="Active baseline"><i class="fas fa-circle"></i></span>'
-                        : '<span style="color:var(--muted)"><i class="far fa-circle"></i></span>';
+                        ? '<span style="color:var(--success)" title="Active baseline"><i class="fas fa-circle" aria-hidden="true"></i><span class="nc-sr-only">Active</span></span>'
+                        : '<span style="color:var(--muted)"><i class="far fa-circle" aria-hidden="true"></i><span class="nc-sr-only">Inactive</span></span>';
                     html += `<tr style="border-bottom:1px solid var(--border-subtle)"><td style="padding:4px 8px">${shared.escapeHtml(baseline.name)}</td>`;
                     html += `<td style="text-align:center">${metrics.avg_response_time ?? '--'}</td>`;
                     html += `<td style="text-align:center">${metrics.p95_latency ?? '--'}</td>`;

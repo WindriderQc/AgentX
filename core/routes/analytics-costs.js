@@ -8,7 +8,7 @@ const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
 const logger = require('../config/logger');
-const { activeMessageStages } = require('../src/services/conversationActivityAnalytics');
+const { activeMessageStages, parseAnalyticsRange } = require('../src/services/conversationActivityAnalytics');
 const { rankingSignal, serializeSignal } = require('../../shared/signalEvidence');
 
 // Same freshness contract as the rest of the chat lane (routes/analytics.js).
@@ -26,11 +26,13 @@ const CHAT_LANE_TTL_MS = 5 * 60 * 1000;
  */
 router.get('/costs', async (req, res) => {
   try {
-    const { from, to, groupBy = 'model', minCost = 0 } = req.query;
+    const { from, to, groupBy = 'model' } = req.query;
+    const minCost = Number.isFinite(parseFloat(req.query.minCost)) ? Math.max(0, parseFloat(req.query.minCost)) : 0;
 
     // Parse date range
-    const toDate = to ? new Date(to) : new Date();
-    const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const range = parseAnalyticsRange({ from, to });
+    if (range.error) return res.status(400).json({ status: 'error', message: range.error });
+    const { fromDate, toDate } = range;
 
     // Determine grouping key
     let groupKey;
@@ -99,7 +101,7 @@ router.get('/costs', async (req, res) => {
           }
         }
       },
-      { $match: { 'cost.total': { $gte: parseFloat(minCost) } } },
+      { $match: { 'cost.total': { $gte: minCost } } },
       { $sort: { 'cost.total': -1 } }
     ]);
 
@@ -187,7 +189,7 @@ router.get('/costs', async (req, res) => {
         to: toDate.toISOString(),
         currency: process.env.COST_CURRENCY || 'USD',
         groupBy,
-        minCost: parseFloat(minCost),
+        minCost,
         summary,
         signals: {
           costEfficiencyRanking: serializeSignal(costEfficiencyRanking)

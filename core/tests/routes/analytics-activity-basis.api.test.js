@@ -96,3 +96,13 @@ describe('chat-lane activity basis', () => {
     expect(res.body.data.feedback.noRag.total).toBe(0);
   });
 });
+
+describe('chat-lane date validation', () => {
+  test.each(['/api/analytics/usage', '/api/analytics/feedback', '/api/analytics/rag-stats', '/api/analytics/costs'])('%s refuses an invalid range with 400', async (path) => {
+    const invalid = await request(app()).get(path).query({ from: 'not-a-date' });
+    expect(invalid.status).toBe(400);
+    expect(invalid.body.message).toBe('from and to must be valid dates.');
+    const reversed = await request(app()).get(path).query({ from: '2026-10-10T00:00:00Z', to: '2026-10-01T00:00:00Z' });
+    expect(reversed.status).toBe(400);
+  });
+});

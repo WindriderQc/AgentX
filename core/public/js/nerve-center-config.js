@@ -102,6 +102,8 @@
         body.querySelectorAll('[data-config-filter]').forEach(btn => btn.addEventListener('click', () => {
             filter = btn.dataset.configFilter;
             render();
+            // The filter buttons are rebuilt: keep the keyboard on the one just chosen.
+            body.querySelector(`[data-config-filter="${CSS.escape(filter)}"]`)?.focus();
         }));
         const search = body.querySelector('#nc-config-search');
         search.addEventListener('input', () => {

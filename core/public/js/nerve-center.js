@@ -112,6 +112,30 @@ const NerveCenter = (() => {
         body.innerHTML = `<div class="nc-section-placeholder" role="status" aria-live="polite" aria-atomic="true"><i class="fas fa-spinner fa-spin" aria-hidden="true"></i> ${escapeHtml(message)}</div>`;
     }
 
+    // Sections rebuild their markup after an action or a refresh. Remember the
+    // control the keyboard was on (its nc- class and data attributes) and put focus
+    // back on its replacement, so a keyboard user is not thrown to the page top.
+    function trackSectionFocus(body) {
+        if (!body || body.dataset.ncFocusTracked) return;
+        body.dataset.ncFocusTracked = 'true';
+        body.addEventListener('focusin', (event) => {
+            const el = event.target;
+            const cls = [...el.classList].find(c => c.startsWith('nc-') && c !== 'nc-btn' && c !== 'active');
+            body._ncFocusKey = { id: el.id, cls, tag: el.tagName, data: { ...el.dataset } };
+        });
+    }
+
+    function restoreSectionFocus(body) {
+        const key = body?._ncFocusKey;
+        const active = document.activeElement;
+        if (!key || (active && active !== document.body && active.isConnected)) return;
+        const candidates = key.id ? [document.getElementById(key.id)]
+            : [...body.querySelectorAll(key.cls ? `.${CSS.escape(key.cls)}` : key.tag)];
+        const match = candidates.find(el => el && body.contains(el)
+            && Object.entries(key.data).every(([name, value]) => el.dataset[name] === value));
+        match?.focus();
+    }
+
     function finishSectionLoad(body) {
         setSectionBusy(body, false);
     }
@@ -210,28 +234,33 @@ const NerveCenter = (() => {
         return Promise.resolve();
     }
 
+    let collapsibleSeq = 0;
+
+    // A collapsible header keeps its heading for heading navigation and gains a
+    // native toggle button inside it that announces the open or closed state.
     function attachCollapsibleHandlers(root = document) {
         root.querySelectorAll('.nc-collapsible-header').forEach(header => {
             if (header.dataset.boundCollapse === 'true') return;
             header.dataset.boundCollapse = 'true';
-            header.setAttribute('role', 'button');
-            header.setAttribute('tabindex', '0');
+            const container = header.closest('.nc-collapsible');
+            const panel = container?.querySelector('.nc-collapsible-body');
+            if (!container || !panel) return;
+            if (!panel.id) panel.id = `nc-collapsible-${++collapsibleSeq}`;
 
-            const toggle = () => {
-                const container = header.closest('.nc-collapsible');
-                if (!container) return;
-                container.classList.toggle('open');
-            };
+            const label = header.querySelector('h4, span') || header;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'nc-collapsible-toggle';
+            button.setAttribute('aria-controls', panel.id);
+            button.setAttribute('aria-expanded', String(container.classList.contains('open')));
+            while (label.firstChild) button.appendChild(label.firstChild);
+            label.appendChild(button);
 
             header.addEventListener('click', event => {
-                if (event.target.closest('button, a, select, input')) return;
-                toggle();
-            });
-
-            header.addEventListener('keydown', event => {
-                if (event.key !== 'Enter' && event.key !== ' ') return;
-                event.preventDefault();
-                toggle();
+                const control = event.target.closest('button, a, select, input');
+                if (control && control !== button) return;
+                container.classList.toggle('open');
+                button.setAttribute('aria-expanded', String(container.classList.contains('open')));
             });
         });
     }
@@ -443,6 +472,12 @@ const NerveCenter = (() => {
                 }
 
                 section.scrollIntoView({ behavior: motionSafeScrollBehavior(), block: 'start' });
+                // Move keyboard focus with the view, to the section heading.
+                const heading = section.querySelector('h2');
+                if (heading) {
+                    heading.tabIndex = -1;
+                    heading.focus({ preventScroll: true });
+                }
             });
         });
     }
@@ -759,6 +794,8 @@ const NerveCenter = (() => {
         setSectionBusy,
         renderSectionLoading,
         finishSectionLoad,
+        trackSectionFocus,
+        restoreSectionFocus,
         renderSectionError,
         getEcosystemSnapshot,
         invalidateEcosystemSnapshot,

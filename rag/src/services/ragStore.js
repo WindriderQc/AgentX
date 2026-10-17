@@ -317,9 +317,11 @@ class RagStore {
             topK: candidateTopK * 2 // fetch extra for RRF merge
           });
         })(),
+        // The Minimum score slider applies to keyword hits too, on their own 0-1 scale.
         keywordSearch(this.vectorStore, query, {
           topK: candidateTopK * 2,
-          filters: options.filters
+          filters: options.filters,
+          minScore: options.minScore
         }).catch((error) => {
           // Fall back to vector results, but say so in the response.
           logger.error('Keyword search failed; hybrid search uses vector results only', { error: error.message });

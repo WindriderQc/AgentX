@@ -7,6 +7,22 @@ describe('InMemoryVectorStore', () => {
     store = new InMemoryVectorStore();
   });
 
+  test('pages documents in a stable source order and lists every matched source', async () => {
+    const chunk = [{ text: 'x', embedding: [1, 0, 0], chunkIndex: 0 }];
+    await store.upsertDocument('z-doc', { source: 'beta' }, chunk);
+    await store.upsertDocument('b-doc', { source: 'alpha' }, chunk);
+    await store.upsertDocument('a-doc', { source: 'beta' }, chunk);
+
+    const first = await store.listDocuments({}, { offset: 0, limit: 2 });
+    const second = await store.listDocuments({}, { offset: 2, limit: 2 });
+    expect([...first.documents, ...second.documents].map(d => d.documentId)).toEqual(['b-doc', 'a-doc', 'z-doc']);
+    expect(first.sources).toEqual(['alpha', 'beta']);
+
+    // Re-ingesting a document does not move it between pages.
+    await store.upsertDocument('b-doc', { source: 'alpha' }, chunk);
+    expect((await store.listDocuments({}, { limit: 1 })).documents[0].documentId).toBe('b-doc');
+  });
+
   test('upsert and list documents', async () => {
     await store.upsertDocument('doc1', { source: 'test', tags: ['a'] }, [
       { text: 'hello world', embedding: [1, 0, 0], chunkIndex: 0 }

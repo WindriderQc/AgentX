@@ -9,6 +9,7 @@ const Conversation = require('../models/Conversation');
 const Feedback = require('../models/Feedback');
 const logger = require('../config/logger');
 const {
+  parseAnalyticsRange,
   activeMessageCostExpression,
   activeMessagesExpression,
   activeMessageStages,
@@ -44,8 +45,9 @@ router.get('/usage', async (req, res) => {
     const { from, to, groupBy } = req.query;
 
     // Parse date range (default: last 7 days)
-    const toDate = to ? new Date(to) : new Date();
-    const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const range = parseAnalyticsRange({ from, to });
+    if (range.error) return res.status(400).json({ status: 'error', message: range.error });
+    const { fromDate, toDate } = range;
 
     const dateFilter = conversationActivityFilter(fromDate, toDate);
     const activeMessages = activeMessagesExpression(fromDate, toDate);
@@ -167,8 +169,9 @@ router.get('/feedback', async (req, res) => {
     const { from, to, groupBy } = req.query;
 
     // Parse date range
-    const toDate = to ? new Date(to) : new Date();
-    const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const range = parseAnalyticsRange({ from, to });
+    if (range.error) return res.status(400).json({ status: 'error', message: range.error });
+    const { fromDate, toDate } = range;
 
     // Votes on messages observed in the window (the page-wide activity basis).
     const windowMessages = activeMessageStages(fromDate, toDate);
@@ -300,8 +303,9 @@ router.get('/rag-stats', async (req, res) => {
     const { from, to } = req.query;
 
     // Parse date range
-    const toDate = to ? new Date(to) : new Date();
-    const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const range = parseAnalyticsRange({ from, to });
+    if (range.error) return res.status(400).json({ status: 'error', message: range.error });
+    const { fromDate, toDate } = range;
 
     // Conversations with a message in the window: the same basis as the
     // Conversations tile, so adoption shares its denominator.
@@ -444,8 +448,9 @@ router.get('/stats', async (req, res) => {
     const { from, to, groupBy = 'model' } = req.query;
 
     // Parse date range
-    const toDate = to ? new Date(to) : new Date();
-    const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const range = parseAnalyticsRange({ from, to });
+    if (range.error) return res.status(400).json({ status: 'error', message: range.error });
+    const { fromDate, toDate } = range;
 
     const dateFilter = {
       createdAt: { $gte: fromDate, $lte: toDate }

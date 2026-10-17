@@ -184,8 +184,12 @@
 
   // ── Populate source dropdown ──────────────────────────────
 
+  // Every source label seen so far: a filtered or paged view must not shrink the
+  // dropdown to its own rows (switching from source A to B would need Clear).
+  var knownSources = {};
+
   function populateSourceFilter(documents, preferredSource) {
-    var sources = {};
+    var sources = knownSources;
     documents.forEach(function (d) {
       if (d.source) sources[d.source] = true;
     });
@@ -230,6 +234,7 @@
       if (version !== loadVersion) return;
       var data = resp.data;
       var page = data.documents || [];
+      (Array.isArray(data.sources) ? data.sources : []).forEach(function (source) { knownSources[source] = true; });
       documentTotal = Number.isInteger(data.total) && data.total >= 0 ? data.total : null;
       var followingOffset = params.offset + page.length;
       var hasMore = documentTotal === null ? page.length === params.limit : followingOffset < documentTotal;
@@ -312,9 +317,12 @@
 
   async function loadExactDocument(context) {
     beginLoad('Opening exact source', 'Looking up document ' + context.docId + '.');
+    var version = loadVersion;
 
     try {
       var response = await window.RAG.getDocument(context.docId);
+      // A filter applied meanwhile owns the table now.
+      if (version !== loadVersion) return;
       var documentData = normalizeDetailDocument(response && response.data);
       if (!contextApi.matches(documentData, context)) {
         showContextNotFound(
@@ -340,6 +348,7 @@
       );
       await revealTargetDocument(context.docId);
     } catch (err) {
+      if (version !== loadVersion) return;
       if (err && err.status === 404) {
         showContextNotFound(
           'Document not found',
@@ -487,8 +496,11 @@
     loadingTr.innerHTML = '<td colspan="5"><div class="expand-content loading">Loading chunks...</div></td>';
     rowEl.after(loadingTr);
 
+    var version = loadVersion;
     try {
       var resp = await window.RAG.getDocumentChunks(docId);
+      // The table was reloaded meanwhile; this preview row is gone.
+      if (version !== loadVersion || !loadingTr.isConnected) return;
       var chunks = resp.data.chunks || [];
 
       var html = '<td colspan="5"><div class="expand-content">';
@@ -526,6 +538,7 @@
         });
       });
     } catch (err) {
+      if (version !== loadVersion || !loadingTr.isConnected) return;
       loadingTr.innerHTML = '<td colspan="5"><div class="expand-content error-state">' +
         'Failed to load chunks: ' + escapeHtml(err.message) + '</div></td>';
       setDocumentsStatus('error', 'Chunk load failed', err.message || 'Unknown chunk fetch error.');

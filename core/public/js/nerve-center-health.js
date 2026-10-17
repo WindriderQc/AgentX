@@ -60,7 +60,7 @@
                     : (event.type === 'alert' ? (event.status || 'history') : (event.outcome || event.status || 'history'));
                 return `<div class="nc-event-item"${pinStyle}>
                     <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">
-                        <span class="nc-event-severity ${severity}"></span>
+                        <span class="nc-event-severity ${severity}" role="img" aria-label="${shared.escapeHtml(severity)}"></span>
                         <span class="nc-event-time">${shared.timeAgo(event.timestamp)}</span>
                         <span style="flex:1;">${shared.escapeHtml(event.title || '--')}</span>
                         <span style="font-size:0.7rem;color:${isPinned ? '#f59e0b' : 'var(--muted)'};background:rgba(255,255,255,0.05);padding:2px 6px;border-radius:4px;white-space:nowrap;">${shared.escapeHtml(String(statusLabel).toUpperCase())}</span>

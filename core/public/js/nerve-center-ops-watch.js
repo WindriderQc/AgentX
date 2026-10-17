@@ -11,6 +11,9 @@
     const API = '/api/nerve-center/ops-watch';
     const POLL_MS = 5000;
     let pollTimer = null;
+    // A check started from the button keeps keyboard focus on its replacement and
+    // announces the new headline once, when the check finishes.
+    let checkFromButton = false;
 
     function when(iso) {
         const date = new Date(iso);
@@ -111,7 +114,17 @@
             ${view.body || ''}
         </div>
         <p class="nc-notice is-error nc-ops-watch-error" role="alert" hidden></p>`;
-        holder.querySelector('.nc-ops-watch-check').addEventListener('click', event => checkNow(event.currentTarget, holder));
+        const checkButton = holder.querySelector('.nc-ops-watch-check');
+        checkButton.addEventListener('click', event => checkNow(event.currentTarget, holder));
+        if (checkFromButton) {
+            const active = document.activeElement;
+            if (!active || active === document.body || !active.isConnected) checkButton.focus();
+            if (!data.checking) {
+                checkFromButton = false;
+                const status = holder.parentElement?.querySelector('.nc-ops-watch-status');
+                if (status) status.textContent = `Check finished: ${holder.querySelector('.nc-watch-headline span')?.textContent || ''}`;
+            }
+        }
         setHeaderSummary(view);
         clearTimeout(pollTimer);
         if (data.checking) pollTimer = setTimeout(() => loadOpsWatch({ reportOnly: true }), POLL_MS);
@@ -122,6 +135,7 @@
         if (holder) return renderReport(holder, data);
         body.innerHTML = `<p class="nc-section-note">Monitoring rules find what needs attention; the <code>ops_watch</code> task's model writes one short report with a next action. It runs only when the findings change.</p>
             <div class="nc-ops-watch-report"></div>
+            <p class="nc-sr-only nc-ops-watch-status" role="status" aria-live="polite"></p>
             ${settingsHtml(data.settings)}`;
         body.querySelector('.nc-ops-watch-settings').addEventListener('submit', event => {
             event.preventDefault();
@@ -131,11 +145,13 @@
     }
 
     async function checkNow(button, holder) {
+        checkFromButton = true;
         button.disabled = true;
         try {
             await shared.fetchJson(`${API}/check`, { method: 'POST' });
             await loadOpsWatch({ reportOnly: true });
         } catch (err) {
+            checkFromButton = false;
             button.disabled = false;
             const error = holder.querySelector('.nc-ops-watch-error');
             error.textContent = `The check did not start: ${err.message}`;

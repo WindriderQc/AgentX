@@ -149,9 +149,12 @@
   function renderResults(results) {
     els.results.innerHTML = '';
     results.forEach(function (result, index) {
-      var judged = typeof result.llmScore === 'number';
+      var judged = typeof result.llmScore === 'number' && !result.rerankFailed;
       var score = judged ? result.llmScore : (typeof result.score === 'number' ? result.score : 0);
-      var scoreKind = judged ? 'Judge relevance' : 'Retrieval match';
+      var keywordHit = (result.metadata || {}).searchType === 'keyword';
+      // Keyword and vector scores use different scales; name the one shown.
+      var scoreKind = judged ? 'Judge relevance'
+        : (result.rerankFailed ? 'Retrieval match · judge unavailable' : (keywordHit ? 'Keyword match' : 'Retrieval match'));
       var signal = matchSignal(score);
       var meta = result.metadata || {};
       var docSource = meta.source || '';
