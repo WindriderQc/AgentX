@@ -15,13 +15,24 @@
       <form data-history-filters class="history-filters"><label>Rechercher<input type="search" name="query" maxlength="300" placeholder="Un sujet ou une personne"></label>
       <label>À parcourir<select name="state"><option value="pending">À vérifier et suivis ouverts</option><option value="candidate">À vérifier</option><option value="retained">Conservés</option><option value="resolved">Suivis clos</option><option value="dismissed">Sans suite</option><option value="">Tout</option></select></label>
       <label>Type<select name="kind"><option value="">Tout</option>${Object.entries(kinds).map(([key, label]) => `<option value="${key}">${label}</option>`).join('')}</select></label>
-      <button type="submit">Afficher</button></form><p data-history-status role="status" aria-live="polite"></p>
+      <label>Année de la source<input type="number" name="year" min="1990" max="2100" placeholder="Toutes"></label>
+      <label>Souvenirs<select name="souvenir"><option value="">Tous les relevés</option><option value="not-kept">Pas encore gardés</option><option value="kept">Souvenirs gardés</option></select></label>
+      <label class="history-page-size">Par page<select name="limit"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select></label>
+      <button type="submit">Afficher</button></form>
+      <div class="history-batch row wrap" data-history-batch><button type="button" data-history-select-all>Tout sélectionner sur la page</button>
+      <button type="button" data-history-keep-selected disabled>Garder la sélection comme souvenirs</button>
+      <p class="muted" data-history-selection>Aucune information sélectionnée.</p></div><p data-history-status role="status" aria-live="polite"></p>
       <div data-history-list class="history-list"></div><nav class="row wrap" aria-label="Pages de l’histoire"><button type="button" data-history-prev>Précédents</button><button type="button" data-history-next>Suivants</button></nav></section>`;
     const get = name => app.querySelector(`[data-history-${name}]`);
     let rows = [], offset = 0, next = null, loading = false, epoch = 0;
-    const maximum = 20;
+    let maximum = 20;
+    const selected = new Set();
+    // An action is followed up and closed; the other kinds can become souvenirs.
+    const canKeep = entry => entry.kind !== 'action' && !entry.souvenirNoteId;
     const lock = value => { loading = value; app.querySelectorAll('button, input, select, textarea').forEach(el => { el.disabled = value; }); };
     const card = entry => `<article class="history-entry" data-entry="${esc(entry.id)}"><header><p class="card-kicker">${esc(kinds[entry.kind] || entry.kind)} · ${esc(states[entry.reviewState] || entry.reviewState)}</p>
+      ${entry.souvenirNoteId ? '<p class="history-souvenir">Souvenir gardé dans votre mémoire</p>' : ''}
+      ${canKeep(entry) ? `<label class="history-pick"><input type="checkbox" data-history-pick="${esc(entry.id)}"${selected.has(entry.id) ? ' checked' : ''}> Sélectionner pour garder comme souvenir</label>` : ''}
       <h2>${esc(entry.text)}</h2><p>${entry.actor ? `${['action', 'deliverable'].includes(entry.kind) ? 'Personne qui doit agir, selon le relevé' : 'Personne associée, à vérifier'} : ${esc(entry.actor)}` : 'Personne à préciser'}</p></header>
       <dl><div><dt>Date de la source</dt><dd>${esc(day(entry.sourceDate))}</dd></div><div><dt>Date de l’événement</dt><dd>${entry.eventDate ? esc(entry.eventDatePrecision === 'day' ? entry.eventDate : day(entry.eventDate)) : 'À préciser'}${entry.eventDateAsWritten ? `<small>Dans la source : ${esc(entry.eventDateAsWritten)}</small>` : ''}</dd></div></dl>
       <p class="muted">${esc(entry.source?.system === 'gmail' ? directions[entry.source.direction] : 'Archive Outlook sélectionnée')} · ${esc(assertions[entry.assertionState])}</p>
@@ -33,24 +44,65 @@
       <div class="row wrap"><label>Date de l’événement, si établie<input name="eventDate" type="date" value="${entry.eventDatePrecision === 'day' ? esc(entry.eventDate) : ''}"></label>
       <label>Ce que la source permet d’établir<select name="assertionState">${Object.entries(assertions).map(([key, label]) => `<option value="${key}"${key === entry.assertionState ? ' selected' : ''}>${label}</option>`).join('')}</select></label></div>
       <div class="row wrap"><button type="submit" value="retained">${['action', 'deliverable'].includes(entry.kind) ? 'Garder ce suivi ouvert' : 'Conserver dans mon histoire'}</button>
-      ${['action', 'deliverable'].includes(entry.kind) ? '<button type="submit" value="resolved">Clore ce suivi</button>' : ''}<button type="submit" value="dismissed">Écarter</button></div></form></article>`;
+      ${['action', 'deliverable'].includes(entry.kind) ? '<button type="submit" value="resolved">Clore ce suivi</button>' : ''}<button type="submit" value="dismissed">Écarter</button>
+      ${canKeep(entry) ? '<button type="submit" value="souvenir" formnovalidate>Garder comme souvenir</button>' : ''}</div></form></article>`;
     async function load() {
       const current = ++epoch;
       const filters = new FormData(get('filters'));
       lock(true); get('status').textContent = 'Lecture de votre histoire…';
       const params = new URLSearchParams({ limit: String(maximum), offset: String(offset) });
-      for (const [key, value] of filters) if (value) params.set(key, value);
+      maximum = Number(filters.get('limit')) || 20; params.set('limit', String(maximum));
+      for (const [key, value] of filters) if (value && !['year', 'limit'].includes(key)) params.set(key, value);
+      const year = Number(filters.get('year'));
+      if (Number.isInteger(year) && year >= 1990 && year <= 2100) {
+        params.set('since', `${year}-01-01T00:00:00Z`); params.set('before', `${year + 1}-01-01T00:00:00Z`);
+      }
       try {
         const result = await api(`/api/secretary/history?${params}`);
         if (current !== epoch) return;
         rows = result.entries; next = result.nextOffset;
+        for (const key of [...selected]) if (!rows.some(row => row.id === key && canKeep(row))) selected.delete(key);
         get('list').innerHTML = rows.length ? rows.map(card).join('') : '<p class="empty">Aucun relevé dans cette sélection.</p>';
+        showSelection();
         get('status').textContent = `${result.total} relevé(s) · sources de la plus ancienne à la plus récente${rows.length ? ` · ${offset + 1}–${offset + rows.length}` : ''}`;
       } catch (error) { if (current === epoch) { get('list').replaceChildren(); get('status').textContent = 'La liste est indisponible. Utilisez Afficher pour la relire.'; } }
       finally {
-        if (current === epoch) { lock(false); get('prev').disabled = offset === 0; get('next').disabled = next === null; }
+        if (current === epoch) { lock(false); get('prev').disabled = offset === 0; get('next').disabled = next === null; showSelection(); }
       }
     }
+    function showSelection() {
+      get('selection').textContent = selected.size ? `${selected.size} information(s) sélectionnée(s) sur cette page.` : 'Aucune information sélectionnée.';
+      get('keep-selected').disabled = loading || !selected.size;
+      get('select-all').disabled = loading || !rows.some(canKeep);
+    }
+    const keep = (entry, extra = {}) => api(`/api/secretary/history/${encodeURIComponent(entry.id)}/souvenir`,
+      { method: 'POST', body: JSON.stringify({ revision: entry.revision, ...extra }) });
+    get('list').addEventListener('change', event => {
+      const box = event.target.closest?.('[data-history-pick]');
+      if (!box) return;
+      if (box.checked) selected.add(box.dataset.historyPick); else selected.delete(box.dataset.historyPick);
+      showSelection();
+    });
+    get('select-all').onclick = () => {
+      if (loading) return;
+      rows.filter(canKeep).forEach(row => selected.add(row.id));
+      app.querySelectorAll('[data-history-pick]').forEach(box => { box.checked = true; });
+      showSelection();
+    };
+    get('keep-selected').onclick = async () => {
+      if (loading || !selected.size) return;
+      const chosen = rows.filter(row => selected.has(row.id) && canKeep(row));
+      const preview = chosen.slice(0, 5).map(row => `• ${row.text.slice(0, 90)}`).join('\n');
+      if (!window.confirm(`Garder ${chosen.length} information(s) comme souvenirs permanents dans votre mémoire ?\n\n${preview}${chosen.length > 5 ? '\n…' : ''}`)) return;
+      lock(true);
+      let kept = 0, failed = 0;
+      for (const entry of chosen) {
+        get('status').textContent = `Souvenirs gardés : ${kept} sur ${chosen.length}…`;
+        try { await keep(entry); kept += 1; selected.delete(entry.id); } catch { failed += 1; }
+      }
+      lock(false); await load();
+      get('status').textContent = `${kept} souvenir(s) gardé(s).${failed ? ` ${failed} n’ont pas pu l’être : relisez-les puis réessayez.` : ''}`;
+    };
     get('filters').onsubmit = event => { event.preventDefault(); if (!loading) { offset = 0; void load(); } };
     get('prev').onclick = () => { if (!loading) { offset = Math.max(0, offset - maximum); void load(); } };
     get('next').onclick = () => { if (!loading && next !== null) { offset = next; void load(); } };
@@ -99,6 +151,15 @@
       if (!entry) return;
       const values = new FormData(form);
       const when = values.get('eventDate');
+      if (event.submitter?.value === 'souvenir') {
+        lock(true);
+        try {
+          await keep(entry, when ? { eventDate: when, eventDatePrecision: 'day' } : {});
+          selected.delete(entry.id); lock(false); await load();
+          get('status').textContent = 'Souvenir gardé dans votre mémoire.';
+        } catch { lock(false); get('status').textContent = 'Le souvenir n’a pas pu être gardé. Rechargez la liste avec Afficher avant de réessayer.'; }
+        return;
+      }
       const body = { revision: entry.revision, state: event.submitter?.value || 'retained', reason: values.get('reason'),
         assertionState: values.get('assertionState'), ...(when ? { eventDate: when, eventDatePrecision: 'day' } : {}) };
       lock(true);

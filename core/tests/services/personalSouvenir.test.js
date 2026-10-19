@@ -66,6 +66,15 @@ describe('souvenirs kept from historical review', () => {
     await expect(history.keepAsSouvenir(second.id, { revision: 2 })).rejects.toMatchObject({ statusCode: 404 });
   });
 
+  test('the history list filters souvenirs kept and not yet kept', async () => {
+    const first = (await history.record(input(1))).entry;
+    await history.record(input(2));
+    await history.keepAsSouvenir(first.id, { revision: 0 });
+    expect((await history.list({ souvenir: 'kept' })).entries.map(e => e.id)).toEqual([first.id]);
+    expect((await history.list({ souvenir: 'not-kept' })).entries.map(e => e.text)).toEqual(['Synthetic family event 2']);
+    await expect(history.list({ souvenir: 'maybe' })).rejects.toMatchObject({ statusCode: 400 });
+  });
+
   test('rejects actions, invalid dates and invalid sources', async () => {
     const action = (await history.record(input(1, 'action'))).entry;
     await expect(history.keepAsSouvenir(action.id, { revision: 0 })).rejects.toMatchObject({ statusCode: 400 });

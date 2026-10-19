@@ -139,6 +139,8 @@ async function list(input = {}) {
   else filter.reviewState = input.state ? enumValue(input.state, STATES) : { $ne: 'forgotten' };
   if (input.kind) filter.kind = enumValue(input.kind, KINDS);
   if (input.source) filter['source.system'] = enumValue(input.source, ['gmail', 'outlook-export']);
+  if (input.souvenir) filter.souvenirNoteId = enumValue(input.souvenir, ['kept', 'not-kept']) === 'kept'
+    ? { $nin: ['', null] } : { $in: ['', null] };
   if (input.before || input.since) filter.sourceDate = {
     ...(input.before ? { $lt: date(input.before) } : {}), ...(input.since ? { $gte: date(input.since) } : {})
   };
