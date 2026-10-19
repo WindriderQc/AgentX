@@ -8,7 +8,8 @@ const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
 const logger = require('../config/logger');
-const { activeMessageStages, parseAnalyticsRange } = require('../src/services/conversationActivityAnalytics');
+const { COST_CURRENCY } = require('../src/services/costCalculator');
+const { activeMessageStages, analyticsDayKey, parseAnalyticsRange } = require('../src/services/conversationActivityAnalytics');
 const { rankingSignal, serializeSignal } = require('../../shared/signalEvidence');
 
 // Same freshness contract as the rest of the chat lane (routes/analytics.js).
@@ -38,7 +39,7 @@ router.get('/costs', async (req, res) => {
     let groupKey;
     if (groupBy === 'day') {
       // Day of the message, not of the conversation's first turn.
-      groupKey = { $dateToString: { format: '%Y-%m-%d', date: { $ifNull: ['$messages.timestamp', '$messages.createdAt'] } } };
+      groupKey = analyticsDayKey({ $ifNull: ['$messages.timestamp', '$messages.createdAt'] });
     } else if (groupBy === 'promptVersion') {
       groupKey = { name: '$promptName', version: '$promptVersion' };
     } else {
@@ -187,7 +188,7 @@ router.get('/costs', async (req, res) => {
       data: {
         from: fromDate.toISOString(),
         to: toDate.toISOString(),
-        currency: process.env.COST_CURRENCY || 'USD',
+        currency: COST_CURRENCY,
         groupBy,
         minCost,
         summary,

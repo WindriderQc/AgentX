@@ -22,6 +22,7 @@
  */
 
 const { bucketFacet, summaryCoverage } = require('../src/services/inferenceSummaryMetrics');
+const { analyticsDayKey } = require('../src/services/conversationActivityAnalytics');
 const express = require('express');
 const router = express.Router();
 
@@ -34,7 +35,7 @@ const {
 const envelope = require('../src/helpers/responseEnvelope');
 const logger = require('../config/logger');
 const { isCloudCall, modelProvider } = require('../src/services/budgetAccountingService');
-const { resolvePricing } = require('../src/services/costCalculator');
+const { COST_CURRENCY, resolvePricing } = require('../src/services/costCalculator');
 const {
   averageSignal,
   ratioSignal,
@@ -429,7 +430,7 @@ router.get('/summary', async (req, res) => {
           byDay: [
             {
               $group: {
-                _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
+                _id: analyticsDayKey('$timestamp'),
                 ...groupMetrics
               }
             },
@@ -439,7 +440,7 @@ router.get('/summary', async (req, res) => {
             {
               $group: {
                 _id: {
-                  date: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
+                  date: analyticsDayKey('$timestamp'),
                   caller: '$caller'
                 },
                 calls: { $sum: 1 }
@@ -659,7 +660,7 @@ router.get('/summary', async (req, res) => {
         cancellations: 'Calls ended by caller-disconnect or cancellation evidence.',
         nonSuccesses: 'All calls whose terminal status is not success.'
       },
-      currency: process.env.COST_CURRENCY || 'USD'
+      currency: COST_CURRENCY
     });
   } catch (err) {
     logger.error('Inference analytics summary failed', { error: err.message, stack: err.stack });

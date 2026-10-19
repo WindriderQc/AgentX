@@ -14,7 +14,7 @@ const router = express.Router();
 const InferenceLog = require('../models/InferenceLog');
 const logger = require('../config/logger');
 const { isCloudCall, modelProvider } = require('../src/services/budgetAccountingService');
-const { calculateMessageCost } = require('../src/services/costCalculator');
+const { COST_CURRENCY, calculateMessageCost } = require('../src/services/costCalculator');
 const {
   ingestCodexUsage,
   readCodexSubscriptionValue,
@@ -266,7 +266,7 @@ router.get('/federated', async (req, res) => {
       ? { codex_subscription_error: subscriptionResult.reason?.message || String(subscriptionResult.reason) }
       : {}),
     ...(providerError ? { provider_error: providerError } : {}),
-    currency: process.env.COST_CURRENCY || 'USD',
+    currency: COST_CURRENCY,
   });
 });
 

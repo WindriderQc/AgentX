@@ -22,6 +22,10 @@ const logger = require('../../config/logger');
 const pricingCache = new Map();
 const CACHE_TTL = parseInt(process.env.COST_PRICING_CACHE_TTL || '3600', 10) * 1000; // Default: 1 hour
 
+// Configured prices are US dollars and nothing converts them, so every cost is
+// labelled USD. A relabel to another currency would misstate the amounts.
+const COST_CURRENCY = 'USD';
+
 /**
  * Check if cost tracking is enabled
  */
@@ -230,7 +234,7 @@ async function calculateMessageCost(model, stats) {
       promptTokenCost: 0,
       completionTokenCost: 0,
       totalCost: 0,
-      currency: process.env.COST_CURRENCY || 'USD',
+      currency: COST_CURRENCY,
       pricingSource: {
         source: 'disabled',
         provider: null,
@@ -246,7 +250,7 @@ async function calculateMessageCost(model, stats) {
       promptTokenCost: 0,
       completionTokenCost: 0,
       totalCost: 0,
-      currency: process.env.COST_CURRENCY || 'USD',
+      currency: COST_CURRENCY,
       pricingSource: {
         source: 'unconfigured',
         provider: null,
@@ -271,7 +275,7 @@ async function calculateMessageCost(model, stats) {
     promptTokenCost: parseFloat(promptTokenCost.toFixed(6)),
     completionTokenCost: parseFloat(completionTokenCost.toFixed(6)),
     totalCost: parseFloat(totalCost.toFixed(6)),
-    currency: process.env.COST_CURRENCY || 'USD',
+    currency: COST_CURRENCY,
     pricingSource: {
       provider,
       modelName,
@@ -295,7 +299,7 @@ function calculateConversationCost(messages) {
   if (!Array.isArray(messages) || messages.length === 0) {
     return {
       sum: 0,
-      currency: process.env.COST_CURRENCY || 'USD',
+      currency: COST_CURRENCY,
       breakdown: {
         promptTokens: 0,
         completionTokens: 0,
@@ -319,7 +323,7 @@ function calculateConversationCost(messages) {
 
   return {
     sum: messages.some(msg => msg.metadata?.executionReceipt && msg.metadata.executionReceipt.cost == null) ? null : parseFloat(totalCost.toFixed(6)),
-    currency: process.env.COST_CURRENCY || 'USD',
+    currency: COST_CURRENCY,
     breakdown: {
       promptTokens: parseFloat(promptTokenCost.toFixed(6)),
       completionTokens: parseFloat(completionTokenCost.toFixed(6)),
@@ -383,6 +387,7 @@ function getCacheStats() {
 }
 
 module.exports = {
+  COST_CURRENCY,
   isCostTrackingEnabled,
   parseModel,
   resolvePricing,

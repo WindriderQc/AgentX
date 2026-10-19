@@ -8,7 +8,9 @@ const router = express.Router();
 const Conversation = require('../models/Conversation');
 const Feedback = require('../models/Feedback');
 const logger = require('../config/logger');
+const { COST_CURRENCY } = require('../src/services/costCalculator');
 const {
+  analyticsDayKey,
   parseAnalyticsRange,
   activeMessageCostExpression,
   activeMessagesExpression,
@@ -142,7 +144,7 @@ router.get('/usage', async (req, res) => {
       data: {
         from: fromDate.toISOString(),
         to: toDate.toISOString(),
-        currency: process.env.COST_CURRENCY || 'USD',
+        currency: COST_CURRENCY,
         basis: 'message_observed_at',
         totalConversations,
         totalMessages,
@@ -459,7 +461,7 @@ router.get('/stats', async (req, res) => {
     // Grouping key selection
     let groupKey = '$model'; // Default to model
     if (groupBy === 'day') {
-      groupKey = { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } };
+      groupKey = analyticsDayKey('$createdAt');
     }
 
     const statsAgg = await Conversation.aggregate([
@@ -545,7 +547,7 @@ router.get('/stats', async (req, res) => {
       data: {
         from: fromDate.toISOString(),
         to: toDate.toISOString(),
-        currency: process.env.COST_CURRENCY || 'USD',
+        currency: COST_CURRENCY,
         totals: {
             ...totals,
             avgDurationSec: totals.messages > 0 ? totals.durationSec / totals.messages : 0,

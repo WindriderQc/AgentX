@@ -6,6 +6,7 @@ const {
   CodexUsageWatermark,
   CodexAccountSnapshot,
 } = require('../../models/CodexUsage');
+const { analyticsDayKey } = require('./conversationActivityAnalytics');
 
 const MAX_SESSIONS = 2000;
 
@@ -162,7 +163,7 @@ async function readTotals(sinceMs, Event = CodexUsageEvent) {
     { $group: {
       _id: null,
       sessions: { $addToSet: { $concat: ['$hostId', ':', '$sessionKey'] } },
-      activeDays: { $addToSet: { $dateToString: { date: { $toDate: '$observedAtMs' }, format: '%Y-%m-%d' } } },
+      activeDays: { $addToSet: analyticsDayKey({ $toDate: '$observedAtMs' }) },
       inputTokens: { $sum: '$inputTokens' },
       cachedInputTokens: { $sum: '$cachedInputTokens' },
       outputTokens: { $sum: '$outputTokens' },

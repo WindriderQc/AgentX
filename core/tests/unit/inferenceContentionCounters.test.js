@@ -15,6 +15,9 @@ describe('persistent contention counters', () => {
   beforeEach(async () => { await InferenceContentionCounter.deleteMany({}); });
 
   test('concurrent events increment one hourly bucket per event, task and code', async () => {
+    // Concurrent upserts share one bucket only once the unique index exists, and
+    // Mongoose builds it in the background: wait for it rather than race it.
+    await InferenceContentionCounter.createIndexes();
     await Promise.all(Array.from({ length: 5 }, () => countContention('ladder_served',
       { taskType: 'quick_chat', code: 'primary_busy' }, { model, now: () => AT })));
     await countContention('ladder_served', { taskType: 'quick_chat', code: 'primary_busy' },
@@ -72,6 +75,8 @@ describe('persistent contention counters', () => {
 
   test('a bucket created twice before its unique index existed reads as one', async () => {
     const bucket = { hour: hourOf(AT), event: 'route_refused', taskType: null, code: 'benchmark_claimed', lastAt: new Date(AT) };
+    // The state before the unique index existed, whatever an earlier test built.
+    await InferenceContentionCounter.collection.dropIndex('hour_1_event_1_taskType_1_code_1').catch(() => {});
     await InferenceContentionCounter.collection.insertMany([{ ...bucket, count: 2 }, { ...bucket, count: 3 }]);
     const read = await readContention({ from: new Date(AT - 60_000), to: new Date(AT + 60_000) });
     expect(read.buckets).toEqual([{ hour: hourOf(AT), event: 'route_refused', taskType: null, code: 'benchmark_claimed', count: 5 }]);

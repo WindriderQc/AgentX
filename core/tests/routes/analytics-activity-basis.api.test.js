@@ -82,6 +82,16 @@ describe('chat-lane activity basis', () => {
     expect(res.body.data.summary.totalConversations).toBe(1);
   });
 
+  test('costs stay labelled USD, the currency of every configured price', async () => {
+    process.env.COST_CURRENCY = 'CAD';
+    try {
+      const res = await request(app()).get('/api/analytics/costs').query({ from, to });
+      expect(res.body.data.currency).toBe('USD');
+    } finally {
+      delete process.env.COST_CURRENCY;
+    }
+  });
+
   test('feedback counts votes on in-window messages', async () => {
     const res = await request(app()).get('/api/analytics/feedback').query({ from, to });
     expect(res.status).toBe(200);
@@ -104,5 +114,41 @@ describe('chat-lane date validation', () => {
     expect(invalid.body.message).toBe('from and to must be valid dates.');
     const reversed = await request(app()).get(path).query({ from: '2026-10-10T00:00:00Z', to: '2026-10-01T00:00:00Z' });
     expect(reversed.status).toBe(400);
+  });
+});
+
+describe('chat-lane day buckets', () => {
+  const previousZone = process.env.PLANNING_TIME_ZONE;
+
+  beforeAll(async () => {
+    process.env.NODE_ENV = 'test';
+    await connectTestDb();
+  });
+
+  beforeEach(async () => {
+    await clearTestDb();
+  });
+
+  afterAll(async () => {
+    if (previousZone === undefined) delete process.env.PLANNING_TIME_ZONE;
+    else process.env.PLANNING_TIME_ZONE = previousZone;
+    await disconnectTestDb();
+  });
+
+  test('a late-evening message lands on its local day, not the next UTC day', async () => {
+    process.env.PLANNING_TIME_ZONE = 'America/Toronto';
+    // 23:30 in Toronto on 2026-10-14 is 03:30 UTC on 2026-10-15.
+    const lateEvening = new Date('2026-10-15T03:30:00Z');
+    await Conversation.collection.insertOne({
+      model: 'cloud/model',
+      createdAt: lateEvening,
+      messages: [assistant(lateEvening, 1, 1)]
+    });
+
+    const res = await request(app()).get('/api/analytics/costs')
+      .query({ from: '2026-10-14T00:00:00Z', to: '2026-10-16T00:00:00Z', groupBy: 'day' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.breakdown.map((row) => row.key)).toEqual(['2026-10-14']);
   });
 });
