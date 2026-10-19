@@ -318,6 +318,22 @@ describe('finalize and synthesis input', () => {
     await harness.request.post(`${base}/finalize`).expect(409);
   });
 
+  test('a synthesis failure that repeats three times stops being retried', async () => {
+    const { run } = await seedRunWithObservation('test-synthesis-attempts');
+    const base = `/api/memory-review/runs/${run.runId}`;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await harness.request.post(`${base}/finalize`).expect(200);
+      const res = await harness.request.post(`${base}/fail`).send({ stage: 'synthesis', reason: 'same invalid candidate' }).expect(200);
+      const stored = await MemoryReviewRun.findOne({ runId: run.runId }).lean();
+      expect(stored.failure.retryable).toBe(attempt < 3);
+      if (attempt === 3) expect(stored.failure.reason).toMatch(/stopped after 3 synthesis attempts/);
+      expect(res.body).toBeDefined();
+    }
+    await harness.request.post(`${base}/finalize`).expect(409);
+    const stored = await MemoryReviewRun.findOne({ runId: run.runId }).lean();
+    expect(stored.observations).toHaveLength(1);
+  });
+
   test('finalize does not resume other failures or non-retryable synthesis', async () => {
     for (const [stage, retryable] of [['collection', true], ['synthesis', false]]) {
       const { run } = await seedRunWithObservation(`test-not-resumable-${stage}`);

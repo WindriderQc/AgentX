@@ -149,12 +149,16 @@ def _keep_synthesis_exchanges(state_dir: Path, run_id: str, exchanges: list) -> 
         folder = Path(state_dir) / "synthesis"
         folder.mkdir(parents=True, exist_ok=True)
         os.chmod(folder, 0o700)
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
         path = folder / f"{run_id}-{stamp}.json"
         with open(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as handle:
             json.dump({"runId": run_id, "promptVersion": PROMPT_VERSION, "exchanges": exchanges},
                       handle, ensure_ascii=False)
-        for old in sorted(folder.glob("*.json"), key=lambda item: item.stat().st_mtime)[:-SYNTHESIS_EXCHANGES_KEPT]:
+        # Files written within the same clock tick share an mtime; the stamp,
+        # to the microsecond, keeps the order they were written in.
+        def written(item: Path) -> tuple:
+            return (item.stat().st_mtime_ns, item.stem.rsplit("-", 1)[-1])
+        for old in sorted(folder.glob("*.json"), key=written)[:-SYNTHESIS_EXCHANGES_KEPT]:
             old.unlink()
         print(f"synthesis exchange kept: {path}")
     except OSError as exc:
