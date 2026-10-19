@@ -481,3 +481,24 @@ select.nc-input { cursor: pointer; }
 .nc-collapsible-toggle:focus-visible { outline:2px solid var(--accent, #7cf0ff); outline-offset:2px; border-radius:3px; }
 .nc-routing-inspect { background:none; border:0; padding:0; color:inherit; font:inherit; text-decoration:underline dotted; cursor:pointer; }
 .nc-routing-inspect:focus-visible { outline:2px solid var(--accent, #7cf0ff); outline-offset:2px; border-radius:3px; }
+
+/* Embeddings: serving profile, queued rebuild and change form */
+.nc-embed-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.nc-embed-grid .nc-host-card { padding: 12px; min-width: 0; }
+.nc-embed-label { font-size: 0.8em; text-transform: uppercase; }
+.nc-embed-value { font-weight: 700; color: var(--text-bright); }
+.nc-embed-wrap { overflow-wrap: anywhere; }
+.nc-embed-note { font-size: 0.8rem; margin: 4px 0 12px; overflow-wrap: anywhere; }
+.nc-embed-request { display: grid; gap: 6px; padding: 12px; margin: 12px 0; border: 1px solid rgba(124, 240, 255, 0.25); border-radius: 8px; overflow-wrap: anywhere; }
+.nc-embed-request .nc-btn { justify-self: start; }
+.nc-embed-progress { display: grid; gap: 4px; font-size: 0.8rem; }
+.nc-embed-progress progress { width: 100%; }
+.nc-embed-error { color: #f87171; font-size: 0.85rem; }
+.nc-embed-error:empty { display: none; }
+.nc-embed-form { display: grid; gap: 10px; margin-top: 12px; }
+.nc-embed-form h3 { margin: 0; font-size: 1rem; }
+.nc-embed-form p { margin: 0; font-size: 0.8rem; overflow-wrap: anywhere; }
+.nc-embed-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.nc-embed-fields label { display: grid; gap: 4px; font-size: 0.8rem; color: var(--muted); }
+.nc-embed-fields input { width: 100%; min-width: 0; box-sizing: border-box; }
+.nc-embed-form .nc-btn { justify-self: start; }
