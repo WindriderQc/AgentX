@@ -134,7 +134,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   Historical source assertions have a separate review at `/dad/history`: source
   dates, event dates, attribution and revision-fenced decisions stay explicit.
   Retaining an action keeps it open; source review creates neither a personal
-  commitment nor selected memory. The native archive reader verifies pinned
+  commitment nor selected memory unless the owner keeps an assertion as a
+  souvenir: a permanent owner note with its event date, people, places and
+  sources, recalled by Nestor and forgotten together with its source. The native archive reader verifies pinned
   originals independently of Gmail. Instance import, process qualification and
   evidence-gated mailbox cleanup are tracked in
   [#795](https://github.com/WindriderQc/AgentX/issues/795).

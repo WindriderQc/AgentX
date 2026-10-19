@@ -217,8 +217,13 @@ source date and event date kept separate. Unknown event dates stay unknown.
 Review can retain an assertion, resolve an action/deliverable, dismiss it or
 forget it using the current revision. Retaining an action keeps it in the open
 review list. This creates neither an accepted personal task nor a selected memory.
-Decisions retain a revision history; forgotten identities suppress replay, and
-forgetting a linked owner note suppresses its historical derivative too.
+`POST /api/secretary/history/:id/souvenir` (current revision) is the owner's
+explicit choice to keep a non-action assertion as a souvenir: a permanent owner
+memory note (`kind: souvenir`) with its event date, people, places and source
+references. Keeping it again returns the same note. Decisions retain a revision
+history; forgotten identities suppress replay, forgetting a linked owner note or
+souvenir suppresses its historical source too, and forgetting the source forgets
+its souvenir.
 
 The source reader uses the preserved `.eml`, pinned by its SHA-256, through the
 existing native Secretary host bridge. It paginates body text without Gmail or

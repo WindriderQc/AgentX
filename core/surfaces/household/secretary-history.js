@@ -21,6 +21,7 @@ function registerSecretaryHistoryRoutes({ router, envelope, fail }) {
     return { authority: 'agentx.core', results };
   }));
   router.post('/history/:id/review', (req, res) => respond(res, () => history.review(req.params.id, req.body)));
+  router.post('/history/:id/souvenir', (req, res) => respond(res, () => history.keepAsSouvenir(req.params.id, req.body || {})));
 }
 
 module.exports = { registerSecretaryHistoryRoutes };

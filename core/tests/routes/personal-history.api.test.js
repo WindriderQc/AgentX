@@ -38,4 +38,15 @@ describe('historical review HTTP ownership', () => {
     await request(app).post(`/api/secretary/history/${id}/review`).send({ state: 'resolved', revision: 1, reason: 'Synthetic completion evidence checked' }).expect(200);
     expect((await request(app).get('/api/secretary/history?state=pending').expect(200)).body.data.total).toBe(0);
   });
+
+  test('keeps a fact as a souvenir once and refuses an action', async () => {
+    const saved = await request(app).post('/api/secretary/history/import')
+      .send({ entries: [{ ...source(1), kind: 'fact' }, source(2)] }).expect(200);
+    const [fact, action] = saved.body.data.results.map(r => r.entry.id);
+    const kept = await request(app).post(`/api/secretary/history/${fact}/souvenir`).send({ revision: 0 }).expect(200);
+    expect(kept.body.data).toMatchObject({ created: true, entry: { reviewState: 'retained', revision: 1 } });
+    const again = await request(app).post(`/api/secretary/history/${fact}/souvenir`).send({ revision: 1 }).expect(200);
+    expect(again.body.data.souvenirNoteId).toBe(kept.body.data.souvenirNoteId);
+    await request(app).post(`/api/secretary/history/${action}/souvenir`).send({ revision: 0 }).expect(400);
+  });
 });
