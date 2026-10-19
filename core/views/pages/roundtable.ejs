@@ -52,6 +52,8 @@
                     <input id="liveDecisionNote" aria-label="Decision note" type="text" class="rt-input" placeholder="Optional decision note">
                 </div>
                 <div id="liveChairHint" class="rt-chair-hint">Interjections are advisory and apply at the next phase boundary. No verdict executes actions.</div>
+                <ul id="liveInterjectionList" class="rt-interjection-list" aria-label="Chair interjections"></ul>
+                <div id="liveDecisionRecord" class="rt-chair-hint rt-hidden"></div>
             </div>
 
             <!-- Agent grid -->
@@ -209,6 +211,9 @@
     .rt-chair-row { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:8px; margin-top:8px; }
     .rt-chair-row + .rt-chair-row { grid-template-columns:1fr 1fr; }
     .rt-chair-hint { margin-top:8px; color:#94a3b8; font-size:11px; }
+    .rt-interjection-list { list-style:none; margin:8px 0 0; padding:0; font-size:12px; color:#cbd5e1; }
+    .rt-interjection-list li { padding:4px 0; border-top:1px solid rgba(148,163,184,0.15); overflow-wrap:anywhere; }
+    .rt-interjection-list li span { color:#94a3b8; margin-right:6px; }
 
     .rt-agent-edit-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap:12px; }
     .rt-agent-edit-card { background:#0f1629; border:1px solid #2a3145; border-radius:6px; padding:12px; position:relative; }

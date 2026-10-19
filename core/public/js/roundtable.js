@@ -211,6 +211,16 @@
     $('liveInterjectBtn').disabled = !active;
     const pending = (doc?.interjections || []).filter((item) => item.status === 'pending').length;
     $('liveChairHint').textContent = `${pending} pending interjection${pending === 1 ? '' : 's'}. No verdict executes actions.`;
+    $('liveInterjectionList').innerHTML = (doc?.interjections || []).map((item) => {
+      const when = item.status === 'applied' ? `applied in round ${item.appliedRound ?? '?'}` : 'pending';
+      return `<li><span>${escape(item.author || 'chair')} · ${escape(when)}</span>${escape(item.text || '')}</li>`;
+    }).join('');
+    const decided = doc?.governance?.decidedAt;
+    const note = doc?.governance?.decisionNote;
+    $('liveDecisionRecord').classList.toggle('rt-hidden', !decided);
+    $('liveDecisionRecord').textContent = decided
+      ? `Decided by ${doc.governance.decidedBy || 'chair'}${note ? `: ${note}` : ''}`
+      : '';
   }
 
   async function refreshLiveGovernance() {
