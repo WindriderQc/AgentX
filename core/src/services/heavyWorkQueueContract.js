@@ -80,6 +80,10 @@ function validateRequest(body) {
       only(executor, ['model', 'dimension'], 'embedding reindex executor');
       if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/.test(executor.model || '')) throw fail('embedding reindex model name required');
       if (!Number.isSafeInteger(executor.dimension) || executor.dimension < 1 || executor.dimension > 8192) throw fail('embedding reindex dimension needs 1 to 8192');
+    } else if (kind === 'other' && executor.mode === 'pipeline-report') {
+      // A report campaign Core starts and settles itself (#878).
+      only(executor, ['mode', 'pipelineId'], 'report campaign executor');
+      text(executor.pipelineId, 'executor.pipelineId', 160);
     } else if (['diagnostic', 'other'].includes(kind)) {
       only(executor, ['mode', 'receiptRef'], 'operator executor');
       if (executor.mode !== 'operator') throw fail('Custom work needs the explicit operator receipt protocol');

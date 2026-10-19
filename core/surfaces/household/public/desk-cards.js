@@ -77,7 +77,7 @@
   function mountIdeas(host) {
     host.dataset.mounted = 'true';
     host.innerHTML = `<div class="row"><div class="grow"><p class="card-kicker">Ideas to sort</p><h2>Ideas and reminders</h2>
-      <p class="muted">What the kids or Nestor noted for you. Nothing happens before you choose: remember (a fact), personal task, AgentX TODO, later or reject.</p></div>
+      <p class="muted">What the kids or Nestor noted for you. Nothing happens before you choose: remember (a fact), personal task, AgentX TODO, a Kids Room chore Nestor proposed, later or reject.</p></div>
       <span data-ideas-count class="pill">…</span></div><p data-ideas-status class="muted" role="status"></p><div data-ideas-list class="stack"></div>`;
     const list = host.querySelector('[data-ideas-list]');
     const status = (message) => { host.querySelector('[data-ideas-status]').textContent = message; };
@@ -91,15 +91,20 @@
           <option value="rag">RAG</option><option value="data">Data</option>
         </select><button class="compact" data-idea-action="task">AgentX TODO</button><button class="compact" data-idea-action="park">Later</button>
         <button class="compact danger" data-idea-action="reject">Reject</button></div></div>`;
+    let ideas = [];
     async function load() {
       try {
-        const ideas = ((await api('/api/family/ideas')).ideas || []).filter((idea) => idea.status === 'inbox' || idea.status === 'triaged');
+        ideas = ((await api('/api/family/ideas')).ideas || []).filter((idea) => idea.status === 'inbox' || idea.status === 'triaged');
+        const chores = window.IdeaChoreCard ? ideas.filter((idea) => idea.familyChore) : [];
+        const profiles = chores.length ? ((await api('/api/family/profiles')).profiles || []) : [];
+        const render = (idea) => idea.familyChore && window.IdeaChoreCard ? window.IdeaChoreCard.row(idea, profiles, esc) : row(idea);
         host.querySelector('[data-ideas-count]').textContent = String(ideas.length);
         const foldedCount = host.closest?.('details')?.querySelector('[data-day-ideas-count]');
         if (foldedCount) foldedCount.textContent = String(ideas.length);
         host.hidden = ideas.length === 0 && !host.dataset.touched;
-        list.innerHTML = ideas.length ? ideas.map(row).join('')
+        list.innerHTML = ideas.length ? ideas.map(render).join('')
           : '<div class="dad-clear"><span>✓</span><strong>Nothing to sort.</strong><small>No idea or reminder waiting.</small></div>';
+        if (chores.length) window.IdeaChoreCard.bind(list, ideas, profiles);
         window.HouseholdDadDay?.clamp?.(list, 3);
       } catch (error) { status(error.message); }
     }
@@ -113,7 +118,12 @@
       button.disabled = true;
       host.dataset.touched = 'true';
       try {
-        if (action === 'memory') {
+        if (action === 'family_chore') {
+          const choice = window.IdeaChoreCard.read(button.closest('[data-idea]'));
+          if (!choice.profileId) { button.disabled = false; status('Choose the child first.'); return; }
+          const data = await post(`/api/family/ideas/${encodeURIComponent(id)}/promote`, { targetType: 'family_chore', ...choice });
+          status(`Chore #${data.task.pipelineId} added to the Kids Room.`);
+        } else if (action === 'memory') {
           await post(`/api/family/ideas/${encodeURIComponent(id)}/promote`, { targetType: 'memory' });
           status('Saved to your memories.');
         } else if (action === 'personal' || action === 'task') {

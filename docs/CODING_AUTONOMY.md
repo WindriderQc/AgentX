@@ -458,3 +458,32 @@ runtime admission. The deadline covers the runner preparation time and cannot
 move on replay. File capacity is reserved under the task CAS for every promised
 checkpoint. No automatic report restart, merge, installation or acceptance is
 introduced. See the [report workflow](../integrations/coding/README.md#private-markdown-reports).
+
+### One-click resume (#878)
+
+A stopped or new report resumes from the task drawer with one choice: **As
+soon as possible**, **Tonight** or **At a time**
+(`POST /api/pipeline/tasks/:id/report-resume`, previewed by `GET`). Core:
+
+- reads the remaining documents from the latest run's coverage and turns them
+  into a safety budget (calls, work seconds, executions) shown to the owner
+  rather than asked; the per-document cost is conservative until the lane has
+  agent measurements;
+- records a report campaign it owns in the heavy-work queue (`kind: other`,
+  `executor: { mode: 'pipeline-report', pipelineId }`, key
+  `report-campaign:<task>:<checkpoint>`), places it with the "When" choice and
+  marks it to start automatically;
+- at the slot, records the grant on that campaign and launches the worker from
+  the saved checkpoint with a request id derived from the campaign, saved
+  before the host call;
+- settles the campaign itself when the report is delivered or stops for good
+  (no continuation left under it). A refusal before the worker launch releases
+  the campaign with a `core:not-started` receipt instead of an uncertain fence.
+
+The work ends on progress, not on a clock: a stop whose saved bytes equal its
+parent's is `no_progress` and is not continued; blocked documents raise an
+alert. "Chain the executions automatically" is a per-task consent that lets
+the continuation loop chain this task even while the global switch is off.
+Cloud escalation stays an explicit per-task choice under the owner's cost cap.
+The full form (manual campaign, limits, scope, instructions) stays under
+Advanced.

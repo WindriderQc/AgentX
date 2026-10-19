@@ -116,6 +116,7 @@ function register(api) {
   require('../../src/services/pipelineCodingAutonomyService').configureControl(codingDispatchControl);
   require('../../src/services/pipelineReportAuthority').configureControl(codingDispatchControl);
   require('../../src/services/pipelineReportContinuationService').configure({ control: codingDispatchControl });
+  require('../../src/services/pipelineReportResume').configure({ control: codingDispatchControl });
   const codingPreparation = runtimeServices.pipeline
     ? new CodingTaskPreparation({ pipeline: runtimeServices.pipeline }) : null;
   const codingDeliveryControl = new CodingDeliveryControl({

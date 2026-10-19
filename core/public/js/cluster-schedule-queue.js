@@ -80,7 +80,7 @@ function renderCoreHeavyQueue(container, queue) {
         <div class="cs-next-name">${esc(job.title)}</div>
         <div class="cs-next-meta"><span>P${Number(job.priority)} · ${esc(job.kind)} · ${esc(expired ? 'window expired' : job.state)}</span></div>
         <div class="cs-next-meta">${esc(job.hosts.join(', ') || job.legacyRow?.hosts || 'Hosts need review')}</div>
-        ${job.reservation ? `<div class="cs-next-meta">${esc(formatEvidenceTime(job.reservation.start))} → ${esc(formatEvidenceTime(job.reservation.end))} (estimated)</div>` : ''}
+        ${job.reservation ? `<div class="cs-next-meta">${esc(formatEvidenceTime(job.reservation.start))} → ${esc(formatEvidenceTime(job.reservation.end))} (estimated)${job.reservation.when === 'asap' ? ' · as soon as possible' : job.reservation.when === 'tonight' ? ' · tonight' : ''}</div>` : ''}
         ${job.state === 'reserved' && !expired ? `<div class="cs-queue-start${job.reservation.autoStart ? ' is-auto' : ''}">${job.reservation.autoStart
           ? '<i class="fas fa-play-circle" aria-hidden="true"></i> Starts automatically at its time'
           : launchable ? '<i class="fas fa-hand-pointer" aria-hidden="true"></i> Waits for you: use Run now during its slot' : '<i class="fas fa-terminal" aria-hidden="true"></i> Started by its own executor'}</div>` : ''}
@@ -116,25 +116,52 @@ async function queueWrite(suffix, body) {
   if (!response.ok || result.ok !== true) throw new Error(result.message || 'Queue update failed');
   return result.data;
 }
+function localInput(iso) {
+  const date = iso ? new Date(iso) : null;
+  return date && Number.isFinite(date.getTime()) ? new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '';
+}
+function slotText(slot) {
+  const time = value => new Date(value).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  return `${time(slot.start)} → ${time(slot.end)} (estimated)`;
+}
+// Ask Core which slot this choice gives, before anything is booked (#878).
+async function previewQueueSlot(form) {
+  const when = form.elements.when.value;
+  const output = form.querySelector('[data-queue-slot]');
+  form.querySelector('[data-queue-at]').hidden = when !== 'at';
+  form.elements.start.required = when === 'at';
+  if (when === 'at') { output.textContent = 'Core checks this time against other work when you save.'; return; }
+  output.textContent = 'Finding the slot…';
+  try {
+    const slot = await fetchJSON(`${HEAVY_QUEUE_API}/${encodeURIComponent(form.dataset.queueId)}/place?when=${when}`);
+    output.textContent = slot.fits === false
+      ? (when === 'tonight' ? 'No free slot long enough tonight. Choose As soon as possible or a time.' : 'No free slot before this request\'s start limit.')
+      : `Core will plan it ${slotText(slot)}.`;
+  } catch (error) { output.textContent = `Slot unavailable: ${error.message}`; }
+}
 function openQueueReservation(job) {
   const dialog = document.getElementById('heavyQueueReservation');
   const form = dialog.querySelector('form');
   form.dataset.queueId = job.id;
   form.dataset.revision = job.revision;
-  // A planned slot opens at its current time, in the device's zone.
-  const planned = job.reservation?.start ? new Date(job.reservation.start) : null;
-  form.elements.start.value = planned && Number.isFinite(planned.getTime())
-    ? new Date(planned.getTime() - planned.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '';
+  // A planned slot opens on its own choice and time, in the device's zone.
+  const chosen = job.reservation?.when || (job.reservation ? 'at' : 'asap');
+  form.querySelector(`input[name="when"][value="${chosen}"]`).checked = true;
+  form.elements.start.value = localInput(job.reservation?.start);
   form.elements.priority.value = job.priority;
   const auto = form.querySelector('[data-queue-auto]');
   const launchable = CORE_LAUNCHED_KINDS.includes(job.kind) && Boolean(job.executor);
   auto.hidden = !launchable;
-  form.elements.autoStart.checked = launchable && job.reservation?.autoStart === true;
+  form.elements.autoStart.checked = launchable && (job.reservation ? job.reservation.autoStart === true : true);
   dialog.querySelector('[data-queue-title]').textContent = job.title;
   dialog.querySelector('[data-queue-zone]').textContent = `Your device timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}. Duration: ${job.estimatedMinutes} min (estimated).`;
   dialog.querySelector('[role="alert"]').textContent = '';
   dialog.showModal();
+  previewQueueSlot(form);
 }
+document.querySelector('#heavyQueueReservation form')?.addEventListener('change', event => {
+  if (event.target.name === 'when') previewQueueSlot(event.currentTarget);
+});
 document.getElementById('heavyQueueList')?.addEventListener('click', async event => {
   const button = event.target.closest('[data-queue-action]');
   if (!button) return;
@@ -169,11 +196,15 @@ document.querySelector('#heavyQueueReservation form')?.addEventListener('submit'
   if (event.submitter?.value === 'cancel') return document.getElementById('heavyQueueReservation').close();
   const output = form.closest('dialog').querySelector('[role="alert"]');
   try {
-    const start = new Date(form.elements.start.value);
-    if (!Number.isFinite(start.getTime())) throw new Error('Choose a valid start time');
-    await queueWrite(`/${form.dataset.queueId}/reserve`, { expectedRevision: Number(form.dataset.revision),
-      start: start.toISOString(), priority: Number(form.elements.priority.value),
-      ...(form.querySelector('[data-queue-auto]').hidden ? {} : { autoStart: form.elements.autoStart.checked === true }) });
+    const when = form.elements.when.value;
+    const body = { expectedRevision: Number(form.dataset.revision), when, priority: Number(form.elements.priority.value),
+      ...(form.querySelector('[data-queue-auto]').hidden ? {} : { autoStart: form.elements.autoStart.checked === true }) };
+    if (when === 'at') {
+      const start = new Date(form.elements.start.value);
+      if (!Number.isFinite(start.getTime())) throw new Error('Choose a valid start time');
+      body.at = start.toISOString();
+    }
+    await queueWrite(`/${form.dataset.queueId}/place`, body);
     form.closest('dialog').close();
     await Promise.all([loadHeavyQueue(), loadTimeline()]);
   } catch (error) { output.textContent = error.message; }

@@ -46,6 +46,8 @@ async function preDispatch(job) {
       throw fail('RAG already serves this embedding model', 409, 'HEAVY_QUEUE_EXECUTOR_CHANGED');
     }
     if (build && reindex.IN_PROGRESS.includes(build.status) && build.id !== job.id) throw fail('Another RAG embedding build is in progress', 409, 'HEAVY_QUEUE_CONFLICT');
+  } else if (job.kind === 'other' && job.executor.mode === 'pipeline-report') {
+    await require('./pipelineReportResume').preDispatch(job);
   } else if (!(['diagnostic', 'other'].includes(job.kind) && job.executor.mode === 'operator')) {
     throw fail('This request has no supported executor', 409);
   }
@@ -101,6 +103,11 @@ async function observe(job) {
     if (outcome === null) return { operationId, terminal: false, progress: build.progress || null, buildStatus: build.status };
     if (!outcome) throw fail('RAG build outcome is not terminal', 409);
     receipt = outcome;
+  } else if (job.kind === 'other' && job.executor?.mode === 'pipeline-report') {
+    const result = await require('./pipelineReportResume').observeCampaign(job);
+    if (!result.terminal) return { operationId: operationId || result.operationId, terminal: false };
+    operationId = operationId || result.operationId;
+    receipt = { state: result.state, authority: 'core.pipeline-report', operationId, outcome: result.outcome };
   } else throw fail('No executor evidence adapter on this request', 409);
   // Native owners retain release authority. A terminal result is insufficient
   // while a matching runtime admission (including UNKNOWN) remains fenced.

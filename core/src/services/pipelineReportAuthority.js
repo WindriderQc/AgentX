@@ -20,7 +20,8 @@ function received(result) {
 }
 async function campaign(id, host, taskId) {
   const job = await queue.get(id), now = new Date().toISOString();
-  if (!['dispatching', 'running'].includes(job.state) || job.executor?.mode !== 'operator'
+  const owned = job.executor?.mode === 'pipeline-report' && job.executor.pipelineId === taskId;
+  if (!['dispatching', 'running'].includes(job.state) || (job.executor?.mode !== 'operator' && !owned)
     || job.source?.type !== 'coding' || job.source.taskId !== taskId || !job.source.ref
     || !job.dispatchId || !job.reservation || now < job.reservation.start || now >= job.reservation.end
     || (job.startBefore && now >= job.startBefore) || (host && !job.hosts.includes(host.replace(/\/+$/, ''))))

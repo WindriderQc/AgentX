@@ -714,6 +714,11 @@
     } catch { /* the list refresh below still reflects truth */ }
   }
 
+  // A panel changed the task outside the drawer's forms (one-click resume).
+  window.addEventListener?.('pipeline:task-changed', event => {
+    if (event.detail?.pipelineId === state.drawer.pipelineId) refreshDrawerTask({ preserveDraft: true });
+    loadTasks({ auxiliary: false, silent: true });
+  });
   async function refreshDrawerWorker(task = state.drawer.task) {
     const drawer = state.drawer;
     const outcome = window.PipelineWorkerOutcome?.latest(task);

@@ -120,6 +120,19 @@ async function observeOutcome(task, decision) {
   if (decision.action === 'no_progress') await notifications.publish(task, 'no_progress', outcome.requestId);
 }
 
+/**
+ * Chaining is allowed by the global switch, or for one task by the owner's
+ * explicit choice when resuming it (#878). Turning the switch off stops only
+ * tasks that did not opt in themselves.
+ */
+const chaining = (config, task) => config.enabled === true || task?.reportResume?.autoContinue === true;
+
+/** Whether a continuation would be launched for this task now (read-only). */
+async function wouldContinue(task) {
+  if (!chaining(await settings(), task) || decide(task).action !== 'continue') return false;
+  return (await allowance(task)).ok;
+}
+
 async function select(config) {
   const tasks = await Task.find({ 'codingResult.profile': 'report', 'codingReportAuthority.grants.0': { $exists: true },
     status: { $in: ['blocked', 'review'] } }).lean();
@@ -127,7 +140,7 @@ async function select(config) {
     const decision = decide(task);
     if (decision.action === 'none') continue;
     await observeOutcome(task, decision);
-    if (decision.action !== 'continue' || !config.enabled) continue;
+    if (decision.action !== 'continue' || !chaining(config, task)) continue;
     const parent = decision.outcome;
     const state = task.reportContinuation || { runs: [] };
     if ((state.runs || []).some(run => run.parentRequestId === parent.requestId)) continue;
@@ -136,7 +149,7 @@ async function select(config) {
     if (!allowed.ok) { await notifications.publish(task, 'needs_grant', parent.requestId, { reason: allowed.reason }); continue; }
     const requestId = continuationId(task.pipelineId, parent.requestId);
     const active = { pipelineId: task.pipelineId, requestId, selectedAt: new Date().toISOString() };
-    const won = await Settings.findOneAndUpdate({ _id: ID, enabled: true, revision: config.revision, active: null },
+    const won = await Settings.findOneAndUpdate({ _id: ID, revision: config.revision, active: null },
       { $set: { active } }, { new: true, writeConcern: WC }).lean();
     if (!won) return;
     try {
@@ -154,7 +167,7 @@ async function dispatch(active, config) {
   if (run.finishedAt) { await clearActive(run.requestId); return; }
   const host = await control.status({ requestId: run.requestId });
   if (host.run?.phase === 'not_received' || (!host.run && !run.launchedAt)) {
-    if (!config.enabled) { await block(task, run, 'switched_off', 'execution_failed'); return; }
+    if (!chaining(config, task)) { await block(task, run, 'switched_off', 'execution_failed'); return; }
     let current = task;
     if (task.status === 'blocked') {
       // The same requeue an operator performs: the saved checkpoint becomes the
@@ -227,4 +240,4 @@ async function status() {
     available: Boolean(control && control.target !== ''), escalation: await require('./pipelineReportEscalation').policy() };
 }
 
-module.exports = { configure, tick, configureSwitch, status, decide, continuationId, allowance, CONTINUE_REASONS };
+module.exports = { configure, tick, configureSwitch, status, decide, continuationId, allowance, wouldContinue, CONTINUE_REASONS };
