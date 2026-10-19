@@ -165,3 +165,21 @@ describe('owner unlock of a pinned device', () => {
     expect(await mongoose.models.AgentXHouseholdOwnerUnlock.countDocuments()).toBe(0);
   });
 });
+
+describe('unlock banner', () => {
+  const ejs = require('ejs');
+  const path = require('path');
+  const { buildProductNavigation } = require('../../../shared/productNavigation');
+  const render = (locals) => ejs.renderFile(path.join(__dirname, '../../views/partials/nav.ejs'), {
+    buildProductNavigation, service: 'core', activePage: 'panel', agentxProfile: 'full',
+    publicUrls: { core: 'https://core.example' }, trustedRuntimeNavItems: [], ...locals
+  });
+
+  test('every page of an unlocked device shows when full access ends and offers Relock', async () => {
+    const html = await render({ familyUnlock: { until: '2026-10-19T20:10:00.000Z' } });
+    expect(html).toContain('class="family-unlock-banner" role="status" data-family-unlock-until="2026-10-19T20:10:00.000Z"');
+    expect(html).toContain('data-family-relock');
+    expect(html).toContain('/js/family-device-unlock.js');
+    expect(await render({})).not.toContain('family-unlock-banner');
+  });
+});

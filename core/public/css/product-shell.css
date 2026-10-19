@@ -92,3 +92,9 @@
 #nav-container.product-shell .nav-brand > span:last-child { font-size: 21px; font-weight: 650; letter-spacing: -.7px; color: var(--ax-text); }
 body.psyx-locked #nav-container.product-shell { visibility: hidden; }
 .privacy-home { display: inline-flex; align-items: center; min-height: 44px; color: var(--ax-cyan); font-size: 13px; text-decoration: none; }
+
+/* A family device the owner unlocked: full access until the time shown. */
+.family-unlock-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 16px;
+  background: rgba(251, 191, 36, 0.14); border-bottom: 1px solid rgba(251, 191, 36, 0.4); color: #fde68a; font-size: 0.9rem; }
+.family-unlock-banner button { min-height: 32px; padding: 4px 14px; border-radius: 6px; border: 1px solid rgba(251, 191, 36, 0.6);
+  background: rgba(251, 191, 36, 0.2); color: inherit; font: inherit; cursor: pointer; }
