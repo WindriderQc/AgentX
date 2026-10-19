@@ -32,6 +32,33 @@ describe('souvenirs kept from historical review', () => {
     expect(kept.entry.souvenirNoteId).toBe(kept.souvenirNoteId);
   });
 
+  test('a consolidated assertion carries its people, places and every source into the souvenir', async () => {
+    const related = n => ({ system: 'gmail', threadId: `thread0${n}`, messageId: `message${n}`,
+      sourceSha256: String(n).repeat(64), findingId: 'e'.repeat(64) });
+    const { entry } = await history.record({ ...input(1), people: ['Synthetic friend', 'Synthetic cousin'],
+      places: ['Synthetic lake'], relatedSources: [related(2), related(3), related(1)] });
+    expect(entry).toMatchObject({ people: ['Synthetic friend', 'Synthetic cousin'], places: ['Synthetic lake'] });
+    expect(entry.relatedSources).toHaveLength(3);
+    expect((await history.list({ query: 'synthetic lake' })).entries.map(e => e.id)).toEqual([entry.id]);
+    const kept = await history.keepAsSouvenir(entry.id, { revision: 0 });
+    const note = await MemoryNote.findById(kept.souvenirNoteId).lean();
+    expect(note).toMatchObject({ people: ['Synthetic friend', 'Synthetic cousin'], places: ['Synthetic lake'] });
+    expect(note.sourceRefs).toEqual([{ system: 'personal-history', id: entry.id },
+      ...[1, 2, 3].map(n => ({ system: 'gmail', id: String(n).repeat(64) }))]);
+    await history.review(entry.id, { state: 'forgotten', revision: 1 });
+    expect(await Entry.findById(entry.id).lean()).toMatchObject({ people: [], places: [], relatedSources: [] });
+  });
+
+  test('refuses too many or malformed related sources before writing', async () => {
+    const related = n => ({ system: 'gmail', threadId: 'thread02', messageId: `message${n}0`,
+      sourceSha256: 'a'.repeat(64), findingId: 'e'.repeat(64) });
+    expect(() => history.normalize({ ...input(), relatedSources: Array.from({ length: 19 }, (_, n) => related(n)) }))
+      .toThrow('at most 18');
+    expect(() => history.normalize({ ...input(), relatedSources: [{ ...related(1), sourceSha256: 'x' }] })).toThrow('SHA-256');
+    expect(() => history.normalize({ ...input(), people: Array.from({ length: 21 }, (_, n) => `Person ${n}`) })).toThrow('at most 20');
+    expect(await Entry.countDocuments()).toBe(0);
+  });
+
   test('a souvenir is recalled and listed in the owner space, never in a family space, and never expires', async () => {
     const { entry } = await history.record(input());
     const { souvenirNoteId } = await history.keepAsSouvenir(entry.id, { revision: 0 });

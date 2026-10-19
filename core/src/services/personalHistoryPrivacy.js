@@ -6,6 +6,7 @@ const MemoryNote = require('../../models/MemoryNote');
 const Suppression = require('../../models/PersonalHistorySuppression');
 
 const erased = () => ({ text: '', actor: '', sourceStatus: '', eventDate: '', eventDateAsWritten: '',
+  people: [], places: [], relatedSources: [],
   eventDatePrecision: 'unknown', reviewState: 'forgotten', reviewHistory: [], forgottenAt: new Date(),
   decision: { reason: '', at: new Date() } });
 

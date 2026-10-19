@@ -36,7 +36,10 @@ const source = { system: 'gmail', threadId: id, messageId: id, sourceSha256: 'a'
   await history.record({ kind: 'action', text: 'Suivi récent fictif', sourceDate: '2026-03-01T12:00:00Z',
     source: { ...source, findingId: '3'.repeat(64) } });
   for (const n of [4, 5]) await history.record({ kind: 'fact', text: `Souvenir fictif ${n}`, sourceDate: `2018-0${n}-01T12:00:00Z`,
-    source: { ...source, findingId: String(n).repeat(64) } });
+    source: { ...source, findingId: String(n).repeat(64) },
+    // A consolidated assertion: its people, place and a second source.
+    ...(n === 5 ? { people: ['Amie fictive', 'Cousin fictif'], places: ['Lac fictif'],
+      relatedSources: [{ ...source, messageId: '1a00000000000002', sourceSha256: 'b'.repeat(64), findingId: '6'.repeat(64) }] } : {}) });
   const app = express(); app.use(express.json());
   app.use('/assets/household', express.static(root + '/core/surfaces/household/public'));
   const router = express.Router();
@@ -86,6 +89,9 @@ const source = { system: 'gmail', threadId: id, messageId: id, sourceSha256: 'a'
   await page.locator('[name=souvenir]').selectOption('not-kept');
   await page.locator('[data-history-filters] button').click();
   await page.waitForFunction(() => document.querySelectorAll('.history-entry').length === 2);
+  const merged = await page.locator('.history-entry', { hasText: 'Souvenir fictif 5' }).textContent();
+  assert.match(merged, /Personnes associées, à vérifier : Amie fictive, Cousin fictif/);
+  assert.match(merged, /Lieux : Lac fictif/); assert.match(merged, /Regroupe 2 courriels sources/);
   let preview = '';
   page.once('dialog', dialog => { preview = dialog.message(); return dialog.accept(); });
   await page.locator('[data-history-select-all]').click();
@@ -93,6 +99,9 @@ const source = { system: 'gmail', threadId: id, messageId: id, sourceSha256: 'a'
   await page.waitForFunction(() => document.querySelector('[data-history-status]').textContent.includes('2 souvenir(s) gardé(s)'));
   assert.match(preview, /Garder 2 information\(s\)/); assert.match(preview, /Souvenir fictif 5/);
   assert.equal(await MemoryNote.countDocuments({ kind: 'souvenir' }), 3);
+  const consolidated = await MemoryNote.findOne({ text: /Souvenir fictif 5/ }).lean();
+  assert.deepEqual(consolidated.people, ['Amie fictive', 'Cousin fictif']); assert.deepEqual(consolidated.places, ['Lac fictif']);
+  assert.deepEqual(consolidated.sourceRefs.slice(1).map(ref => ref.id), ['a'.repeat(64), 'b'.repeat(64)]);
   assert.equal(await page.locator('.history-entry').count(), 0);
   await page.locator('[name=souvenir]').selectOption('kept');
   await page.locator('[name=state]').selectOption('');
@@ -126,7 +135,7 @@ const source = { system: 'gmail', threadId: id, messageId: id, sourceSha256: 'a'
   await page.screenshot({ path: reportDir + '/mobile.png', fullPage: true });
   assert.deepEqual(errors, []); assert.deepEqual(external, []);
   fs.writeFileSync(reportDir + '/result.json', JSON.stringify({ passed: true, errors, external,
-    checks: ['oldest-first', 'filters', 'source-pagination', 'mime-text-versions', 'inert-source-html', 'explicit-resolution', 'souvenir-single', 'souvenir-batch-confirmed', 'souvenir-filters', 'action-not-a-souvenir', 'no-personal-task-created', 'mobile-width'] }, null, 2));
+    checks: ['oldest-first', 'filters', 'source-pagination', 'mime-text-versions', 'inert-source-html', 'explicit-resolution', 'souvenir-single', 'souvenir-batch-confirmed', 'consolidated-people-places-sources', 'souvenir-filters', 'action-not-a-souvenir', 'no-personal-task-created', 'mobile-width'] }, null, 2));
   console.log('Historical review browser journey passed');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   if (browser) await browser.close();
