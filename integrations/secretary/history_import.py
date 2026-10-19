@@ -30,6 +30,22 @@ def entry_key(entry):
                                     source["sourceSha256"], entry["kind"], source["findingId"]]).encode()).hexdigest()
 
 
+def preserved_source(root, mid):
+    """The raw receipt of a message whose original is preserved intact in size, or None."""
+    receipt = load(root / "raw-receipts" / f"{mid}.json", {})
+    relative = receipt.get("path", "")
+    original = (root / relative).resolve() if relative else None
+    if not HASH.fullmatch(receipt.get("sha256", "")) or not original \
+            or not original.is_relative_to(root) or not original.is_file() \
+            or original.stat().st_size != receipt.get("bytes"):
+        return None
+    return receipt
+
+
+def direction_of(labels):
+    return "draft" if "DRAFT" in labels else "sent" if "SENT" in labels else "received" if labels else "unknown"
+
+
 def prepare(archive, *, before=None, maximum=200, delivered=()):
     candidates, counts = [], Counter()
     for manifest in archive.manifests():
@@ -56,16 +72,11 @@ def prepare(archive, *, before=None, maximum=200, delivered=()):
                 if before and date >= before:
                     counts["atOrAfterCutoff"] += 1
                     continue
-                receipt = load(archive.root / "raw-receipts" / f"{mid}.json", {})
-                relative = receipt.get("path", "")
-                original = (archive.root / relative).resolve() if relative else None
-                if not HASH.fullmatch(receipt.get("sha256", "")) or not original \
-                        or not original.is_relative_to(archive.root) or not original.is_file() \
-                        or original.stat().st_size != receipt.get("bytes"):
+                receipt = preserved_source(archive.root, mid)
+                if receipt is None:
                     counts["findingsWithoutPreservedRawSource"] += 1
                     continue
-                labels = set(originals.get(mid, {}).get("labelIds", []))
-                direction = "draft" if "DRAFT" in labels else "sent" if "SENT" in labels else "received" if labels else "unknown"
+                direction = direction_of(set(originals.get(mid, {}).get("labelIds", [])))
                 text = finding.get("text")
                 if section == "invoices":
                     text = json.dumps({k: v for k, v in finding.items() if k not in ("messageId", "attachmentSha256")}, ensure_ascii=False)
