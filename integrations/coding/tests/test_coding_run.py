@@ -516,6 +516,7 @@ class ReportDrainTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root, \
                 mock.patch.object(runner, 'WORKSPACES', Path(root)), \
                 mock.patch.object(runner.model_relay, 'serve', return_value=relay), \
+                mock.patch.object(runner, 'GATEWAY_TOKEN', 'coding-team-test-token-01'), \
                 mock.patch.object(runner, 'sandbox', return_value=[]), \
                 mock.patch.object(runner, 'supervise', return_value=subprocess.CompletedProcess([], 0)):
             workspace = Path(root) / 'task-0001'
