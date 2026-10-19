@@ -1,7 +1,6 @@
 /* Parent task filters, recorded deadlines and revision-bound edits. No inferred routines. */
 (function () {
   'use strict';
-  const cadenceLabel = { once: 'One-time', daily: 'Every day', weekly: 'Every week' };
   const fold = value => String(value || '').normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('fr-CA');
   function nextDay(day, offset) {
     const date = new Date(`${day}T12:00:00Z`); date.setUTCDate(date.getUTCDate() + offset);
@@ -17,16 +16,18 @@
     return true;
   }
   function mount({ host, list, api, esc, refresh, toast }) {
+    const frequency = window.FamilyFrequency;
     host.innerHTML = `<section class="family-plan" aria-label="Organize responsibilities">
       <div class="family-metrics"><button type="button" data-family-view="all" aria-pressed="true"><strong data-family-total>…</strong><span>Active</span></button><button type="button" data-family-view="review" aria-pressed="false"><strong data-family-review>…</strong><span>To approve</span></button><button type="button" data-family-view="today" aria-pressed="false"><strong data-family-today>…</strong><span>Today / overdue</span></button><button type="button" data-family-view="week" aria-pressed="false"><strong data-family-week>…</strong><span>Next 7 days</span></button></div>
       <div class="family-filter-bar"><label><span>Child</span><select data-family-profile><option value="">All children</option></select></label><label class="grow"><span>Search a task</span><input data-family-query type="search" maxlength="160" placeholder="Title or instructions…"></label><button type="button" data-family-undated class="compact" aria-pressed="false">Undated</button><button type="button" data-family-refresh class="compact">Refresh</button></div>
       <p data-family-coverage class="muted" role="status"></p><details class="family-agenda"><summary>Due dates in the next 7 days</summary><p class="muted">Recorded task dates. Upcoming repeats appear after approval.</p><div data-family-agenda class="family-agenda-grid"></div></details>
       <p data-family-result class="muted" role="status" aria-live="polite"></p></section>
       <dialog data-family-edit aria-labelledby="familyEditTitle"><form data-family-edit-form><h2 id="familyEditTitle">Edit the task</h2><p class="muted">Changes apply to this routine and its upcoming repeats.</p>
-      <label><span>Task</span><input name="title" required maxlength="160"></label><label><span>For</span><select name="profileId" required></select></label><div class="family-edit-grid"><label><span>Date</span><input name="dueAt" type="date"></label><label><span>Frequency</span><select name="cadence">${Object.entries(cadenceLabel).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select></label><label><span>Stars</span><select name="stars">${[1,2,3,4,5].map(value => `<option>${value}</option>`).join('')}</select></label></div><label><span>Optional instructions</span><textarea name="note" rows="3" maxlength="1000"></textarea></label><p data-family-edit-status role="status" aria-live="polite"></p><div class="row wrap"><button type="submit" class="primary">Save</button><button type="button" data-family-edit-close>Close</button></div></form></dialog>`;
+      <label><span>Task</span><input name="title" required maxlength="160"></label><label><span>For</span><select name="profileId" required></select></label><div class="family-edit-grid"><label><span>Date</span><input name="dueAt" type="date"></label><label><span>Frequency</span><select name="cadence">${frequency.options()}</select></label><label><span>Stars</span><select name="stars">${[1,2,3,4,5].map(value => `<option>${value}</option>`).join('')}</select></label>${frequency.fields()}</div><label><span>Optional instructions</span><textarea name="note" rows="3" maxlength="1000"></textarea></label><p data-family-edit-status role="status" aria-live="polite"></p><div class="row wrap"><button type="submit" class="primary">Save</button><button type="button" data-family-edit-close>Close</button></div></form></dialog>`;
     const pick = selector => host.querySelector(selector);
     const dialog = pick('dialog'), form = pick('[data-family-edit-form]');
     let chores = [], profiles = [], today = '', view = 'all', edit = null, saving = false, pending = false;
+    const syncFrequency = frequency.bind(form, form.elements.cadence, () => today || new Date().toISOString().slice(0, 10));
     function render() {
       if (!today) return;
       const selected = pick('[data-family-profile]').value;
@@ -39,7 +40,7 @@
       list.innerHTML = filtered.length ? filtered.map(chore => {
         const profile = profileMap.get(chore.profileId), waiting = chore.status === 'review';
         const date = chore.dueDay ? new Intl.DateTimeFormat('en-CA', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${chore.dueDay}T12:00:00Z`)) : 'Undated';
-        return `<article class="parent-chore ${waiting ? 'warning' : ''}"><div class="grow"><strong>${esc(profile?.avatar || '⭐')} ${esc(chore.title)}</strong><small>${esc(profile?.displayName || chore.profileId)} · ${esc(cadenceLabel[chore.cadence] || chore.cadence)} · ${'★'.repeat(chore.stars)} · ${esc(date)}</small>${chore.note ? `<p class="family-chore-note">${esc(chore.note)}</p>` : ''}<span class="pill ${waiting ? 'waiting' : chore.overdue ? 'down' : chore.dueToday ? 'ok' : ''}">${waiting ? 'To approve' : chore.overdue ? 'Overdue' : chore.dueToday ? 'Today' : 'To do'}</span></div><div class="row wrap">${waiting ? `<button class="compact primary" data-chore-action="approve" data-ref="${esc(chore.id)}">Approve</button><button class="compact" data-chore-action="reopen" data-ref="${esc(chore.id)}">Redo</button>` : `<button class="compact" data-chore-edit="${esc(chore.id)}">Edit</button>`}<button class="compact danger" data-chore-action="cancel" data-ref="${esc(chore.id)}">Cancel</button></div></article>`;
+        return `<article class="parent-chore ${waiting ? 'warning' : ''}"><div class="grow"><strong>${esc(profile?.avatar || '⭐')} ${esc(chore.title)}</strong><small>${esc(profile?.displayName || chore.profileId)} · ${esc(frequency.label(chore))} · ${'★'.repeat(chore.stars)} · ${esc(date)}</small>${chore.note ? `<p class="family-chore-note">${esc(chore.note)}</p>` : ''}<span class="pill ${waiting ? 'waiting' : chore.overdue ? 'down' : chore.dueToday ? 'ok' : ''}">${waiting ? 'To approve' : chore.overdue ? 'Overdue' : chore.dueToday ? 'Today' : 'To do'}</span></div><div class="row wrap">${waiting ? `<button class="compact primary" data-chore-action="approve" data-ref="${esc(chore.id)}">Approve</button><button class="compact" data-chore-action="reopen" data-ref="${esc(chore.id)}">Redo</button>` : `<button class="compact" data-chore-edit="${esc(chore.id)}">Edit</button>`}<button class="compact danger" data-chore-action="cancel" data-ref="${esc(chore.id)}">Cancel</button></div></article>`;
       }).join('') : '<div class="family-clear"><strong>No task in this view.</strong><p>Change the filters or add a responsibility.</p></div>';
       if (pending) list.querySelectorAll('button').forEach(button => { button.disabled = true; });
       const inProfile = chores.filter(chore => !selected || chore.profileId === selected);
@@ -76,6 +77,7 @@
         if (!profiles.some(profile => profile.id === edit.profileId)) { toast('The profile is archived. Choose an active profile to edit this task.'); }
         for (const key of ['title', 'note', 'profileId', 'cadence', 'stars']) form.elements[key].value = edit[key] ?? '';
         form.elements.dueAt.value = edit.dueDay || '';
+        frequency.fill(form, edit); syncFrequency();
         pick('[data-family-edit-status]').textContent = ''; dialog.showModal(); return;
       }
       const button = event.target.closest('[data-chore-action]');
@@ -97,6 +99,7 @@
       const values = { ref: edit.id, expectedRevision: edit.revision };
       for (const key of ['title', 'note', 'profileId', 'cadence']) values[key] = form.elements[key].value;
       values.dueAt = form.elements.dueAt.value || null; values.stars = Number(form.elements.stars.value);
+      Object.assign(values, frequency.read(form, values.cadence));
       saving = true; form.querySelectorAll('button').forEach(button => { button.disabled = true; });
       try {
         await api('/api/family/chores/update', { method: 'POST', body: JSON.stringify(values) });

@@ -150,6 +150,15 @@ consumers receive bounded operations, never models or an ID allocator:
   parent-approval rules. Family fields are optional in `PipelineTask`, so other
   task lanes keep their shape.
 
+A family routine repeats `once`, `daily`, `weekly` or every N household days
+(`interval`, `intervalDays` 2–90). Daily and weekly repeats step from the due
+day; an interval repeat is counted from the approval day, so a late check-in
+starts a fresh interval instead of stacking repeats. An optional
+`winterIntervalDays` replaces the interval when the approval day falls in the
+household winter season (`FAMILY_WINTER_SEASON`, `MM-DD/MM-DD`, default
+November 1 to March 31). Changing the frequency away from `interval` clears
+both interval fields.
+
 Personal-task deadlines follow one contract on every write path (the
 Household `POST /api/secretary/tasks` and `POST /api/secretary/tasks/update`
 routes and the Secretary MCP `add_personal_task` / `update_personal_task`

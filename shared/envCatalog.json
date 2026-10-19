@@ -1109,6 +1109,16 @@
       "secret": false,
       "description": "Embedding model RAG requests through the Core proxy. Unset: nomic-embed-text:v1.5. Similarity floors were measured with that model."
     },
+    "FAMILY_WINTER_SEASON": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Household winter season for Kids Room routines that repeat every N days, as MM-DD/MM-DD (a start after the end wraps the year). An approval inside it uses the routine's winter interval. Unset or invalid: 11-01/03-31."
+    },
     "FINANCE_ALERT_CATEGORY_SPIKE_CENTS": {
       "services": [
         "core"

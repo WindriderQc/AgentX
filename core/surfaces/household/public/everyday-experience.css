@@ -38,6 +38,8 @@
 [data-family-edit-form] { display: grid; gap: 16px; }
 [data-family-edit-form] p { margin: 0; }
 .family-edit-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+[data-frequency-interval][hidden] { display: none; }
+[data-frequency-hint] { display: block; margin-top: .3rem; }
 .household-shopping > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; cursor: pointer; font-weight: 600; }
 .shopping-form { display: flex; gap: 10px; }
 .shopping-form input { min-width: 0; }
