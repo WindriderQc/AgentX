@@ -353,12 +353,31 @@
       p.classList.remove('active', 'done', 'error');
       if (id === phase) p.classList.add('active');
     });
-    // Mark prior phases done
+    // Mark prior phases done; rounds this Council does not run stay hidden.
     const order = ['round-1', 'round-2', 'round-3', 'synthesis', 'done'];
     const idx = order.indexOf(phase);
     for (let i = 0; i < idx; i += 1) {
-      document.querySelector(`#livePhases .rt-phase[data-phase="${order[i]}"]`)?.classList.add('done');
+      document.querySelector(`#livePhases .rt-phase[data-phase="${order[i]}"]:not(.rt-hidden)`)?.classList.add('done');
     }
+  }
+
+  function showRoundPhases(rounds) {
+    document.querySelectorAll('#livePhases .rt-phase[data-phase^="round-"]').forEach((chip) => {
+      const round = Number(chip.getAttribute('data-phase').slice(6));
+      chip.classList.toggle('rt-hidden', round > (Number(rounds) || 3));
+    });
+  }
+
+  function markPhaseError(phase) {
+    setPhase(phase);
+    document.querySelector(`#livePhases .rt-phase[data-phase="${phase}"]`)?.classList.replace('active', 'error');
+  }
+
+  // The last phase a saved Council reached, for one that stopped early.
+  function reachedPhase(doc) {
+    if (doc.synthesis?.response || doc.synthesis?.error) return 'synthesis';
+    const rounds = (doc.turns || []).map((t) => t.round);
+    return `round-${rounds.length ? Math.max(...rounds) : 1}`;
   }
 
   function fillAgentStats(refs, stats) {
@@ -495,6 +514,7 @@
 
     if (type === 'synthesis-done') {
       if (data.error) {
+        markPhaseError('synthesis');
         $('liveSynthBody').textContent = `Error: ${data.error}`;
       } else if (data.stats) {
         const s = data.stats;
@@ -517,7 +537,7 @@
     if (type === 'done') {
       const stopped = data.status === 'failed' || data.status === 'timeout' || data.status === 'cancelled';
       const current = document.querySelector('#livePhases .rt-phase.active');
-      if (stopped && current) current.classList.replace('active', 'error');
+      if (stopped) current?.classList.replace('active', 'error');
       else setPhase('done');
       if (liveDoc) liveDoc.status = data.status || liveDoc.status;
       $('liveStatus').textContent = `#${liveDoc?._id?.substring(liveDoc._id.length - 8) || 'council'} — ${String(data.status || 'finished').toUpperCase()}`;
@@ -663,14 +683,11 @@
         }
       }
 
-      // Phase state
+      // Phase state: a Council that stopped early shows where it stopped.
+      showRoundPhases(data.rounds);
       if (data.status === 'completed') setPhase('done');
-      else if (['failed', 'timeout', 'cancelled'].includes(data.status)) setPhase('done');
-      else if (data.synthesis?.response) setPhase('synthesis');
-      else if ((data.turns || []).length) {
-        const maxRound = Math.max(...data.turns.map((t) => t.round), 1);
-        setPhase(`round-${maxRound}`);
-      } else setPhase('round-1');
+      else if (['failed', 'timeout', 'cancelled'].includes(data.status)) markPhaseError(reachedPhase(data));
+      else setPhase(reachedPhase(data));
 
       if (data.qualityScores) renderQualityScores(data);
 
