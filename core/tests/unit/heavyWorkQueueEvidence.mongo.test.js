@@ -93,3 +93,15 @@ it('refuses an image action identity already used for a different prompt before 
   await expect(evidence.preDispatch(job)).rejects.toMatchObject({ statusCode: 409 });
   expect((await queue.get(job.id)).state).toBe('requested');
 });
+
+it('lets a profiler request cover sibling endpoints of its own machine and nothing else', async () => {
+  requestJson.mockResolvedValue({ data: { hostUrl: A } });
+  const profile = (key, hostList) => ({ key, title: 'Synthetic profiler fixture', kind: 'profiler', hosts: hostList,
+    estimatedMinutes: 10, executor: { hostId: 'gpu', depth: 'full', skipRecentDays: 0, modelNames: ['synthetic:fixture'] } });
+  await expect(evidence.preDispatch(await queue.submit(profile('lane-only', [A]), 'test'))).resolves.toBeUndefined();
+  await expect(evidence.preDispatch(await queue.submit(profile('lane-and-sibling', [A, B]), 'test'))).resolves.toBeUndefined();
+  await expect(evidence.preDispatch(await queue.submit(profile('other-machine', [A, 'http://127.0.0.2:11434']), 'test')))
+    .rejects.toMatchObject({ code: 'HEAVY_QUEUE_EXECUTOR_CHANGED' });
+  await expect(evidence.preDispatch(await queue.submit(profile('sibling-only', [B]), 'test')))
+    .rejects.toMatchObject({ code: 'HEAVY_QUEUE_EXECUTOR_CHANGED' });
+});

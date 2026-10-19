@@ -53,7 +53,9 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
   onProgress,
   assertClaimActive,
   claimIdentity,
-  signal
+  signal,
+  // Other endpoints of this machine that the Core reservation covers.
+  siblingEndpoints = []
 } = {}) {
   const notify = typeof onProgress === 'function' ? onProgress : () => {};
   const checkpoint = typeof assertClaimActive === 'function' ? assertClaimActive : () => {};
@@ -477,12 +479,15 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
   if (settings.concurrencyEnabled !== false) {
     notify('concurrency', { message: 'Measuring speed with each co-resident model answering at the same time…' });
     checkpoint();
+    const timeoutFor = url => require('../probePlacement').residencyTimeoutMs(url, contextProbeService.getConfig().timeoutMs);
     profileData.concurrency = await runConcurrencyProbe(hostUrl, modelName, {
-      timeoutMs: require('../probePlacement').residencyTimeoutMs(hostUrl, contextProbeService.getConfig().timeoutMs),
+      timeoutMs: timeoutFor(hostUrl),
+      timeoutFor,
+      siblingEndpoints,
       signal,
       checkpoint,
       onProgress: ({ index, total, pair }) => notify('concurrency', {
-        message: `Concurrency ${index}/${total} with ${pair.model}: ${pair.status === 'measured'
+        message: `Concurrency ${index}/${total} with ${pair.model}${pair.endpoint === 'sibling' ? ' (other endpoint)' : ''}: ${pair.status === 'measured'
           ? `${pair.selfSlowdownPct}% slower together` : pair.status}`,
       }),
     });

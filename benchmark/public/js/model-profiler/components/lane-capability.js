@@ -112,6 +112,14 @@ export function renderSessionCurve(curve) {
   </figure>`;
 }
 
+const SEPARATE_ENDPOINTS = {
+  not_measured: 'Other endpoints of this machine: not measured (the reservation did not cover them).',
+  no_co_resident: 'Other endpoints of this machine: no other model was resident there.',
+  inventory_unavailable: 'Other endpoints of this machine: resident models could not be read.',
+  unmeasured: 'Other endpoints of this machine: every pair reloaded or failed.',
+  evicted: 'Other endpoints of this machine: a model there was evicted during the probe.'
+};
+
 function renderConcurrency(concurrency) {
   const messages = {
     not_measured: 'Not measured yet (Full profile).',
@@ -127,8 +135,10 @@ function renderConcurrency(concurrency) {
     return `<p class="lc-concurrency is-dim">${escAttr(messages[concurrency?.status] || messages.not_measured)}</p>`;
   }
   const rows = (concurrency.pairs || []).filter(pair => pair.status === 'measured').map(pair =>
-    `<li><span>with ${escAttr(pair.model)}</span><strong>${Math.round(pair.selfSlowdownPct ?? 0)} % slower</strong><span class="lc-concurrency-other">it slows ${Math.round(pair.otherSlowdownPct ?? 0)} %</span></li>`).join('');
-  return `<ul class="lc-concurrency-list">${rows}</ul>`;
+    `<li><span>with ${escAttr(pair.model)}${pair.endpoint === 'sibling' ? ' (other endpoint, same machine)' : ''}</span><strong>${Math.round(pair.selfSlowdownPct ?? 0)} % slower</strong><span class="lc-concurrency-other">it slows ${Math.round(pair.otherSlowdownPct ?? 0)} %</span></li>`).join('');
+  const separate = concurrency.separateEndpoints && concurrency.separateEndpoints !== 'measured'
+    ? `<p class="lc-concurrency is-dim">${escAttr(SEPARATE_ENDPOINTS[concurrency.separateEndpoints] || SEPARATE_ENDPOINTS.not_measured)}</p>` : '';
+  return `<ul class="lc-concurrency-list">${rows}</ul>${separate}`;
 }
 
 function renderRemeasure(remeasure) {

@@ -23,7 +23,10 @@ async function preDispatch(job) {
     exactHosts(job, [request.host, request.judgeHost]);
   } else if (job.kind === 'profiler') {
     const host = await benchmark(`/api/profiler/hosts/${encodeURIComponent(job.executor.hostId)}`);
-    exactHosts(job, [host.hostUrl]);
+    // A Full profile may also cover the other endpoints of the same machine
+    // (its concurrency probe pairs them); any other machine still refuses.
+    const machine = new URL(hosts([host.hostUrl])[0]).hostname;
+    exactHosts(job, [host.hostUrl, ...job.hosts.filter(url => new URL(url).hostname === machine)]);
   } else if (job.kind === 'image') {
     const config = require('./images/config').loadConfig();
     if (job.executor.mode === 'image-operation') {
