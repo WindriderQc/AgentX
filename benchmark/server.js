@@ -227,9 +227,9 @@ app.get('/profiler', (req, res) => {
       '<link rel="stylesheet" href="/benchmark/css/model-profiler.css?v=host-telemetry-20260622b">',
       '<link rel="stylesheet" href="/benchmark/css/profiler-experience.css">', '<link rel="stylesheet" href="/benchmark/css/profiler-coverage.css">',
       '<link rel="stylesheet" href="/benchmark/css/context-proposal.css">',
-      '<link rel="stylesheet" href="/benchmark/css/profiler-lanes.css?v=lane-capability-20261016">'
+      '<link rel="stylesheet" href="/benchmark/css/profiler-lanes.css?v=lane-auto-start-20261019">'
     ].join('\n'),
-    footerJs: '<script type="module" src="/benchmark/js/model-profiler/index.js?v=lane-capability-20261016"></script>\n<script src="/benchmark/js/model-profiler/recovery.js"></script><script src="/benchmark/js/model-profiler/experience.js"></script><script src="/benchmark/js/model-profiler/coverage.js"></script>'
+    footerJs: '<script type="module" src="/benchmark/js/model-profiler/index.js?v=lane-auto-start-20261019"></script>\n<script src="/benchmark/js/model-profiler/recovery.js"></script><script src="/benchmark/js/model-profiler/experience.js"></script><script src="/benchmark/js/model-profiler/coverage.js"></script>'
   });
 });
 

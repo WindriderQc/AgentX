@@ -9,8 +9,9 @@ let codingTimer;
 let busy = false;
 
 // Observe existing receipts and dispatch only images explicitly accepted by
-// the image service, within their bounded start window. Never replay a crossed
-// dispatch fence or launch a Benchmark/operator request automatically.
+// the image service, within their bounded start window, and Profiler requests
+// whose owner opted in to an automatic start when reserving their slot. Never
+// replay a crossed dispatch fence or launch a Benchmark/operator request.
 async function sweep() {
   if (busy || mongoose.connection.readyState !== 1) return;
   busy = true;
@@ -19,6 +20,8 @@ async function sweep() {
     catch (error) { logger.warn('Report native receipts await reconciliation', { code: error.code || 'REPORT_RECEIPTS_UNAVAILABLE' }); }
     try { await require('./images/imageService').dispatchQueued(); }
     catch (error) { logger.warn('Image dispatcher unavailable; other queue receipts remain observable', { code: error.code || 'IMAGE_QUEUE_UNAVAILABLE' }); }
+    try { await require('./heavyWorkQueueLauncher').dispatchDue(); }
+    catch (error) { logger.warn('Automatic starts unavailable; reserved requests wait', { code: error.code || 'AUTO_START_UNAVAILABLE' }); }
     const current = await queue.list();
     for (const job of current?.jobs || []) {
       if (!['dispatching', 'running', 'uncertain'].includes(job.state)) continue;

@@ -8,7 +8,7 @@ const helpers = {
   escAttr: value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 };
 const ui = loadBrowserModule('model-profiler/components/lane-capability.js',
-  'renderLaneCard, renderLaneSummary, renderContextGauge, laneWarnings, buildMeasureRequest, taskLabel, ageText, renderSessionCurve, campaignTargets, campaignText', helpers);
+  'renderLaneCard, renderLaneSummary, renderContextGauge, laneWarnings, buildMeasureRequest, taskLabel, ageText, renderSessionCurve, campaignTargets, campaignText, renderMeasurement, measurementOpen, renderCampaignPlan, campaignResultText, clock', helpers);
 
 const NOW = new Date('2026-10-16T12:00:00Z');
 const capability = (over = {}) => buildLaneCapability({
@@ -139,8 +139,8 @@ describe('agent work on the lane card', () => {
     const done = lane({ capability: { ...measured(), remeasure: { needed: false, reasons: [] } } });
     const targets = ui.campaignTargets([lane(), done, lane({ capability: { ...capability(), hostId: null } })]);
     expect(targets).toHaveLength(1);
-    expect(ui.campaignText(targets)).toContain('Record 1 Full-profile request for tonight, 23:00 to 06:00, on 1 host');
-    expect(ui.campaignText(targets)).toContain('Nothing starts until you reserve them');
+    expect(ui.campaignText(targets)).toContain('Measure 1 lane tonight, 23:00 to 06:00, on 1 host');
+    expect(ui.campaignText(targets)).toContain('about three hours');
     expect(ui.campaignText([])).toMatch(/^No lane needs re-measurement/);
   });
 });
@@ -163,5 +163,58 @@ describe('proposals and concurrency on the lane card', () => {
     expect(html).toContain('it slows 20 %');
     const evicted = ui.renderLaneCard(lane({ capability: { ...measured, concurrency: { status: 'evicted', pairs: [] } } }));
     expect(evicted).toContain('one evicts the other');
+  });
+});
+
+describe('measurement state and the night plan', () => {
+  const local = (h, m = 0) => new Date(2026, 9, 17, h, m).toISOString();
+
+  it('says on the card when a planned measurement starts by itself, and hides the button meanwhile', () => {
+    const planned = { id: 'q1', state: 'reserved', start: local(23), end: local(2), autoStart: true };
+    const html = ui.renderLaneCard(lane({ measurement: planned }));
+    expect(html).toContain('Planned 23:00–02:00; starts automatically.');
+    expect(html).toContain('href="/automations?view=calendar"');
+    expect(html).not.toContain('data-lane-action="measure"');
+    expect(ui.renderLaneCard(lane({ measurement: { ...planned, state: 'completed', finishedAt: local(2) } }))).toContain('data-lane-action="measure"');
+    expect(ui.renderLaneCard(lane())).toContain('data-lane-action="measure"');
+  });
+
+  it.each([
+    [{ state: 'requested' }, 'no slot yet', 'wait'],
+    [{ state: 'reserved', start: local(23), end: local(2), autoStart: false }, 'start it yourself then', 'wait'],
+    [{ state: 'running', end: local(2) }, 'Measuring now, about until 02:00', 'running'],
+    [{ state: 'uncertain' }, 'will not be retried', 'bad'],
+    [{ state: 'failed' }, 'failed', 'bad']
+  ])('describes %o', (m, text, tone) => {
+    const html = ui.renderMeasurement(m);
+    expect(html).toContain(text);
+    expect(html).toContain(`lc-measurement--${tone}`);
+  });
+
+  it('shows no line without a request and treats only waiting or active ones as open', () => {
+    expect(ui.renderMeasurement(null)).toBe('');
+    expect(ui.measurementOpen({ state: 'reserved' })).toBe(true);
+    expect(ui.measurementOpen({ state: 'completed' })).toBe(false);
+  });
+
+  it('lays out the night per machine and flags lanes that would end after the window', () => {
+    const plan = { windowEnd: local(6), machines: [{ machine: 'gpu-b' }, { machine: 'gpu-a' }], slots: [
+      { model: 'coder:27b', hostId: 'alien', hostName: 'UG Alien', machine: 'gpu-b', start: local(23), end: local(2), fits: true },
+      { model: 'small:4b', hostId: 'alien-cpu', hostName: 'UG Alien CPU', machine: 'gpu-b', start: local(2), end: local(5), fits: true },
+      { model: 'chat:12b', hostId: 'frank', hostName: 'UG Frank', machine: 'gpu-a', start: local(23), end: local(2), fits: true }] };
+    const html = ui.renderCampaignPlan(plan);
+    expect(html).toContain('3 lanes on 2 machines: one lane at a time per machine, machines in parallel. Done by about 05:00.');
+    expect(html).toContain('02:00–05:00');
+    const late = ui.renderCampaignPlan({ ...plan, slots: [...plan.slots, { model: 'big:70b', hostId: 'alien', machine: 'gpu-b', start: local(5), end: local(8), fits: false }] });
+    expect(late).toContain('1 of 4 would end after 06:00');
+    expect(late).toContain('Ends after 06:00');
+    expect(ui.renderCampaignPlan({ slots: [] })).toBe('');
+  });
+
+  it('summarizes what was planned and who starts it', () => {
+    expect(ui.campaignResultText({ autoStart: true, planned: 2, results: [{ planned: true }, { planned: true }, { planned: false }] }))
+      .toBe('2 planned; Core starts each one at its time. 1 recorded without a slot.');
+    expect(ui.campaignResultText({ autoStart: false, planned: 1, results: [{ planned: true }, { error: 'not recorded' }] }))
+      .toBe('1 planned; start each from Automations → Calendar at its time. 1 not recorded.');
   });
 });

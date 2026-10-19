@@ -131,6 +131,12 @@
 .cs-queue-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
 .cs-queue-button { min-height: 44px; padding: 8px 12px; border: 1px solid #64748b; border-radius: 6px; background: #182333; color: #e2e8f0; cursor: pointer; }
 .cs-queue-button:disabled { opacity: .5; cursor: default; }
+.cs-queue-button--primary { border-color: #3b7667; background: #173b35; color: #7cf0c8; font-weight: 600; }
+.cs-queue-start { margin-top: 4px; font-size: .82rem; color: #fbbf24; display: flex; gap: 6px; align-items: baseline; }
+.cs-queue-start.is-auto { color: #7cf0c8; }
+.cs-queue-dialog .cs-queue-check { display: flex; gap: 10px; align-items: center; }
+.cs-queue-dialog .cs-queue-check[hidden] { display: none; }
+.cs-queue-dialog .cs-queue-check input { min-height: 0; width: 18px; height: 18px; accent-color: #7cf0c8; }
 .cs-queue-button:focus-visible { outline: 2px solid #7cf0ff; outline-offset: 2px; }
 .cs-queue-receipt { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
 .cs-queue-dialog { max-width: min(480px, calc(100vw - 32px)); padding: 20px; border: 1px solid #64748b; border-radius: 10px; background: #101c2c; color: #e2e8f0; }

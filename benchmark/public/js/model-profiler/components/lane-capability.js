@@ -2,7 +2,8 @@
 /**
  * Lane capability cards (#832): what each pinned or routed model is ready for
  * on its host, read from existing Profiler evidence. Rendering is pure; the
- * only action builds a heavy-work queue request and never starts a model.
+ * only actions record heavy-work queue requests and plan their night slots.
+ * Core starts a planned measurement only when the owner opted in.
  */
 
 import { _fmtCtx, escAttr } from '../models-helpers.js';
@@ -183,6 +184,7 @@ export function renderLaneCard(lane, index = 0) {
       `<li>${escAttr(gap.text || gap.code)}</li>`).join('')}</ul></details>`
     : '<p class="lc-complete">All capability measurements are present.</p>';
   const canQueue = Boolean(cap.hostId && cap.model);
+  const open = measurementOpen(lane.measurement);
   const provenance = cap.provenance || {};
   return `<article class="lc-card" data-lane-index="${index}">
     <header class="lc-card-head">
@@ -217,10 +219,11 @@ export function renderLaneCard(lane, index = 0) {
     <footer class="lc-card-foot">
       <p class="lc-provenance">${escAttr(ageText(provenance.ageDays))}${provenance.depth ? ` · ${escAttr(provenance.depth)} profile` : ''}</p>
       ${gapList}
+      ${renderMeasurement(lane.measurement)}
       <div class="lc-actions">
-        <button type="button" class="lc-measure" data-lane-action="measure" data-lane-index="${index}"${canQueue ? '' : ' disabled title="The host of this lane is not configured in the Profiler"'}>
+        ${open ? '' : `<button type="button" class="lc-measure" data-lane-action="measure" data-lane-index="${index}"${canQueue ? ' title="Plans a Full profile tonight; Core starts it at its time"' : ' disabled title="The host of this lane is not configured in the Profiler"'}>
           <i class="fas fa-moon" aria-hidden="true"></i> Measure tonight
-        </button>
+        </button>`}
         <span class="lc-action-status" role="status" aria-live="polite">${canQueue ? '' : 'This host is not configured in the Profiler, so it cannot be measured from here.'}</span>
       </div>
     </footer>
@@ -267,7 +270,79 @@ export function campaignTargets(lanes) {
 export function campaignText(targets) {
   if (!targets.length) return 'No lane needs re-measurement: every lane has a current Full profile for its installed model and runtime.';
   const hosts = new Set(targets.map(lane => lane.hostName || lane.capability.hostId));
-  return `Record ${targets.length} Full-profile ${targets.length === 1 ? 'request' : 'requests'} for tonight, 23:00 to 06:00, `
-    + `on ${hosts.size} ${hosts.size === 1 ? 'host' : 'hosts'}, for the lanes with a re-measurement proposal. `
-    + 'Each takes about three hours. Nothing starts until you reserve them in Automations → Calendar.';
+  return `Measure ${targets.length} ${targets.length === 1 ? 'lane' : 'lanes'} tonight, 23:00 to 06:00, `
+    + `on ${hosts.size} ${hosts.size === 1 ? 'host' : 'hosts'}: the lanes with a re-measurement proposal. `
+    + 'A Full profile takes about three hours.';
+}
+
+// Core's public URL (the page passes it); Automations lives in Core.
+let coreBase = '';
+export function setCoreBase(url) { coreBase = String(url || '').replace(/\/+$/, ''); }
+export const calendarUrl = () => `${coreBase}/automations?view=calendar`;
+
+export function clock(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '—';
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+const calendarLink = label => `<a href="${escAttr(calendarUrl())}">${escAttr(label)}</a>`;
+
+/** One line on the card: where this lane's measurement request stands. */
+export function renderMeasurement(m) {
+  if (!m) return '';
+  const span = m.start ? `${clock(m.start)}–${clock(m.end)}` : '';
+  const views = {
+    requested: ['wait', 'fa-hourglass-half', `Requested, no slot yet. ${calendarLink('Plan it in Automations → Calendar')}.`],
+    reserved: m.autoStart
+      ? ['planned', 'fa-calendar-check', `Planned ${span}; starts automatically. ${calendarLink('See it in the calendar')}.`]
+      : ['wait', 'fa-calendar', `Planned ${span}; start it yourself then from ${calendarLink('Automations → Calendar')}.`],
+    dispatching: ['running', 'fa-spinner', 'Starting now.'],
+    running: ['running', 'fa-wave-square', `Measuring now${m.end ? `, about until ${clock(m.end)}` : ''}.`],
+    uncertain: ['bad', 'fa-circle-question', `Launch outcome unknown; it will not be retried. ${calendarLink('Check it in Automations')}.`],
+    completed: ['done', 'fa-circle-check', `Measured${m.finishedAt ? ` ${escAttr(new Date(m.finishedAt).toLocaleDateString())}` : ''}. Refresh to read the new values.`],
+    failed: ['bad', 'fa-circle-xmark', `The last measurement failed. ${calendarLink('Read its receipt')}.`],
+    cancelled: ['wait', 'fa-ban', 'The last measurement request was cancelled.']
+  };
+  const [tone, icon, text] = views[m.state] || ['wait', 'fa-circle-info', escAttr(m.state)];
+  return `<p class="lc-measurement lc-measurement--${tone}" role="note"><i class="fas ${icon}" aria-hidden="true"></i> <span>${text}</span></p>`;
+}
+
+/** Whether the lane already has a request waiting, planned or running. */
+export function measurementOpen(m) {
+  return Boolean(m) && ['requested', 'reserved', 'dispatching', 'running', 'uncertain'].includes(m.state);
+}
+
+/** The night plan, before anything is recorded. */
+export function renderCampaignPlan(plan, targets = []) {
+  const slots = Array.isArray(plan?.slots) ? plan.slots : [];
+  if (!slots.length) return '';
+  const name = slot => targets.find(lane => lane.capability?.hostId === slot.hostId && lane.capability?.model === slot.model)?.hostName || slot.hostName || slot.hostId;
+  const late = slots.filter(slot => !slot.fits).length;
+  const machines = Array.isArray(plan.machines) ? plan.machines : [];
+  const lastEnd = slots.filter(slot => slot.fits).reduce((last, slot) => (slot.end > last ? slot.end : last), '');
+  const summary = late
+    ? `<p class="lc-plan-note is-warn" role="note"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> ${late} of ${slots.length} would end after ${clock(plan.windowEnd)}. They are recorded but not planned; choose another night for them in ${calendarLink('Automations → Calendar')}.</p>`
+    : `<p class="lc-plan-note">${slots.length} ${slots.length === 1 ? 'lane' : 'lanes'} on ${machines.length} ${machines.length === 1 ? 'machine' : 'machines'}: one lane at a time per machine, machines in parallel. Done by about ${clock(lastEnd)}.</p>`;
+  const rows = slots.map(slot => `<tr class="${slot.fits ? '' : 'is-late'}">
+      <th scope="row"><span class="lc-plan-model">${escAttr(slot.model)}</span><span class="lc-plan-host">${escAttr(name(slot))}</span></th>
+      <td>${escAttr(slot.machine)}</td>
+      <td>${clock(slot.start)}–${clock(slot.end)}</td>
+      <td>${slot.fits ? '<span class="lc-plan-fit">Fits</span>' : `<span class="lc-plan-late">Ends after ${clock(plan.windowEnd)}</span>`}</td>
+    </tr>`).join('');
+  return `${summary}
+    <div class="lc-plan-scroll"><table class="lc-plan"><caption class="lc-sr">Night plan</caption>
+      <thead><tr><th scope="col">Lane</th><th scope="col">Machine</th><th scope="col">Time</th><th scope="col">Window</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+}
+
+/** What was recorded and planned, one line per lane. */
+export function campaignResultText(result) {
+  const rows = Array.isArray(result?.results) ? result.results : [];
+  const failed = rows.filter(row => row.error).length;
+  const unplanned = rows.filter(row => !row.error && !row.planned).length;
+  const head = result.autoStart
+    ? `${result.planned} planned; Core starts each one at its time.`
+    : `${result.planned} planned; start each from Automations → Calendar at its time.`;
+  return [head, unplanned ? `${unplanned} recorded without a slot.` : '', failed ? `${failed} not recorded.` : ''].filter(Boolean).join(' ');
 }

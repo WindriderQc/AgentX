@@ -154,10 +154,24 @@ router.get('/lanes', async (_req, res) => {
   }
 });
 
+// Read-only preview: which lanes, at what time on which machine, and whether
+// they all fit in the window. Records nothing.
+router.get('/lanes/campaign/plan', async (req, res) => {
+  try {
+    const data = await laneCapabilities.previewLaneCampaign({
+      notBefore: req.query.notBefore, startBefore: req.query.startBefore, all: req.query.all === 'true'
+    });
+    return res.json({ status: 'success', data });
+  } catch (err) {
+    return res.status(err.statusCode || 502).json({ status: 'error', error: err.statusCode ? err.message : 'The campaign plan is unavailable' });
+  }
+});
+
 router.post('/lanes/campaign', async (req, res) => {
   try {
     const data = await laneCapabilities.requestLaneCampaign({
-      notBefore: req.body?.notBefore, startBefore: req.body?.startBefore, all: req.body?.all === true
+      notBefore: req.body?.notBefore, startBefore: req.body?.startBefore, all: req.body?.all === true,
+      autoStart: req.body?.autoStart === true
     });
     return res.status(201).json({ status: 'success', data });
   } catch (err) {

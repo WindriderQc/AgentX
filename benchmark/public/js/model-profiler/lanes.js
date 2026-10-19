@@ -1,11 +1,13 @@
 // public/js/model-profiler/lanes.js
 /**
  * Lane capability section of the Profiler page (#832). Reads Benchmark
- * evidence and, on request, records a Full-profile request in Core's
- * heavy-work queue. Nothing here runs a model.
+ * evidence and, on request, records Full-profile requests in Core's
+ * heavy-work queue and plans their night slots. Nothing here runs a model;
+ * Core starts a planned measurement at its time only when the owner chose so.
  */
 
-import { renderLaneCard, renderLaneSummary, buildMeasureRequest, campaignTargets, campaignText } from './components/lane-capability.js';
+import { renderLaneCard, renderLaneSummary, buildMeasureRequest, campaignTargets, campaignText,
+  renderCampaignPlan, campaignResultText, clock, setCoreBase } from './components/lane-capability.js?v=lane-auto-start-20261019';
 
 const LANES_API = '/benchmark/api/profiler/evidence/lanes';
 const MEASURE_API = '/benchmark/api/profiler/evidence/lanes/measure';
@@ -17,20 +19,24 @@ function setBusy(grid, busy) {
   grid.setAttribute('aria-busy', busy ? 'true' : 'false');
 }
 
-async function submitMeasure(lane, button, status) {
+async function submitMeasure(lane, button, status, root) {
   button.disabled = true;
-  status.textContent = 'Recording the request…';
+  status.textContent = 'Planning tonight\u2019s measurement…';
   status.className = 'lc-action-status';
   try {
     const response = await fetch(MEASURE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(buildMeasureRequest(lane))
+      body: JSON.stringify({ ...buildMeasureRequest(lane), autoStart: true })
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.status !== 'success') throw new Error(result.error || `Benchmark answered ${response.status}`);
-    status.textContent = 'Requested for tonight. Reserve it in Automations → Calendar to run it.';
-    status.className = 'lc-action-status is-done';
+    const slot = result.data?.slot || {};
+    status.textContent = slot.planned
+      ? `Planned ${clock(slot.start)}–${clock(slot.end)}; Core starts it then.`
+      : `Recorded without a slot: ${slot.note || 'plan it in Automations → Calendar.'}`;
+    status.className = slot.planned ? 'lc-action-status is-done' : 'lc-action-status is-error';
+    if (slot.planned) setTimeout(() => renderLanes(root), 1200);
   } catch (error) {
     status.textContent = `Not recorded: ${error.message}. Nothing was started.`;
     status.className = 'lc-action-status is-error';
@@ -64,41 +70,59 @@ function initCampaign(root) {
   const open = root.querySelector('#profiler-lanes-campaign');
   const panel = root.querySelector('#profiler-lanes-campaign-panel');
   const text = root.querySelector('#profiler-lanes-campaign-text');
+  const planBox = root.querySelector('#profiler-lanes-campaign-plan');
+  const auto = root.querySelector('#profiler-lanes-campaign-auto');
   const confirm = root.querySelector('#profiler-lanes-campaign-confirm');
   const cancel = root.querySelector('#profiler-lanes-campaign-cancel');
   const status = root.querySelector('#profiler-lanes-campaign-status');
   if (!open || !panel) return;
+  let night = null;
   const close = () => { panel.hidden = true; open.setAttribute('aria-expanded', 'false'); open.focus(); };
-  open.addEventListener('click', () => {
+  const setStatus = (message, tone = '') => { status.textContent = message; status.className = `lc-campaign-status${tone ? ` is-${tone}` : ''}`; };
+  open.addEventListener('click', async () => {
     const targets = campaignTargets(current);
     text.textContent = campaignText(targets);
+    planBox.innerHTML = '';
     confirm.hidden = targets.length === 0;
-    confirm.disabled = false;
-    confirm.textContent = `Queue ${targets.length} ${targets.length === 1 ? 'request' : 'requests'}`;
-    status.textContent = '';
-    status.className = 'lc-campaign-status';
+    auto.closest('label').hidden = targets.length === 0;
+    confirm.disabled = true;
+    setStatus('');
     panel.hidden = false;
     open.setAttribute('aria-expanded', 'true');
-    (targets.length ? confirm : cancel).focus();
+    if (!targets.length) { cancel.focus(); return; }
+    night = buildMeasureRequest(targets[0]);
+    planBox.innerHTML = '<p class="lc-plan-note">Placing each lane in tonight\u2019s window…</p>';
+    try {
+      const query = new URLSearchParams({ notBefore: night.notBefore, startBefore: night.startBefore });
+      const response = await fetch(`${CAMPAIGN_API}/plan?${query}`, { cache: 'no-store' });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.status !== 'success') throw new Error(result.error || `Benchmark answered ${response.status}`);
+      planBox.innerHTML = renderCampaignPlan(result.data, targets)
+        + (result.data.queueRead ? '' : '<p class="lc-plan-note is-warn">The queue could not be read, so other planned work is not shown; Core still refuses an overlapping slot.</p>');
+      const fitting = result.data.slots.filter(slot => slot.fits).length;
+      confirm.textContent = `Plan ${fitting} ${fitting === 1 ? 'measurement' : 'measurements'}`;
+      confirm.disabled = fitting === 0;
+      confirm.focus();
+    } catch (error) {
+      planBox.innerHTML = '';
+      setStatus(`The night plan is unavailable: ${error.message}. Nothing was recorded.`, 'error');
+    }
   });
   cancel.addEventListener('click', close);
   confirm.addEventListener('click', async () => {
-    const targets = campaignTargets(current);
-    if (!targets.length) return;
+    if (!night) return;
     confirm.disabled = true;
-    status.textContent = 'Recording the requests…';
+    setStatus('Recording and planning…');
     try {
-      const window = buildMeasureRequest(targets[0]);
       const response = await fetch(CAMPAIGN_API, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notBefore: window.notBefore, startBefore: window.startBefore }) });
+        body: JSON.stringify({ notBefore: night.notBefore, startBefore: night.startBefore, autoStart: auto.checked === true }) });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.status !== 'success') throw new Error(result.error || `Benchmark answered ${response.status}`);
-      const failed = result.data.results.filter(row => row.error).length;
-      status.textContent = `${result.data.requested} recorded for tonight${failed ? `, ${failed} not recorded` : ''}. Reserve them in Automations → Calendar to run them.`;
-      status.className = failed ? 'lc-campaign-status is-error' : 'lc-campaign-status is-done';
+      const trouble = result.data.results.some(row => row.error || !row.planned);
+      setStatus(campaignResultText(result.data), trouble ? 'error' : 'done');
+      renderLanes(root);
     } catch (error) {
-      status.textContent = `Not recorded: ${error.message}. Nothing was started.`;
-      status.className = 'lc-campaign-status is-error';
+      setStatus(`Not recorded: ${error.message}. Nothing was started.`, 'error');
       confirm.disabled = false;
     }
   });
@@ -107,12 +131,13 @@ function initCampaign(root) {
 export function initLanes() {
   const root = document.getElementById('profiler-lanes');
   if (!root) return;
+  setCoreBase(root.dataset.corePublicUrl);
   root.addEventListener('click', event => {
     const button = event.target.closest('[data-lane-action="measure"]');
     if (!button) return;
     const lane = current[Number(button.dataset.laneIndex)];
     const status = button.parentElement.querySelector('.lc-action-status');
-    if (lane && status) submitMeasure(lane, button, status);
+    if (lane && status) submitMeasure(lane, button, status, root);
   });
   root.querySelector('#profiler-lanes-refresh')?.addEventListener('click', () => renderLanes(root));
   initCampaign(root);
