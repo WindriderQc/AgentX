@@ -1129,6 +1129,16 @@
       "secret": false,
       "description": "Minimum monthly increase in cents, with a 50 % rise, for a category spike finance alert. Unset: 10000 (100 $)."
     },
+    "FINANCE_ALERT_DORMANT_DAYS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "180",
+      "category": "finance",
+      "secret": false,
+      "description": "Days without a new statement after which a statement series is dormant: one info alert instead of a stale one. Unset: 180."
+    },
     "FINANCE_ALERT_LARGE_EXPENSE_CENTS": {
       "services": [
         "core"
@@ -1159,56 +1169,6 @@
       "secret": false,
       "description": "Balance in cents under which the listed accounts raise a finance alert. Unset: 0, so the minimum-balance alert is off."
     },
-    "FINANCE_DOCUMENT_CLAIM_MAX_CENTS": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "500000",
-      "category": "finance",
-      "secret": false,
-      "description": "Ceiling in cents for a document in the claims view; above it, or when it is more than twice its gross amount, the document goes to toVerify. Unset: 500000 (5 000 $)."
-    },
-    "FINANCE_CORP_NAMES": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "finance",
-      "secret": false,
-      "description": "Comma-separated names of the owner's corporations. A Secretary document whose person names one of them belongs to the corporate ledger and is never a personal claim. Unset: none."
-    },
-    "FINANCE_SECRETARY_FILES": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "finance",
-      "secret": false,
-      "description": "Folder where the Secretary keeps the files its register refers to. Core copies chosen bank statements from it into the finance inbox; it never writes there. Unset: no deposit."
-    },
-    "FINANCE_SECRETARY_REGISTER": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "finance",
-      "secret": false,
-      "description": "Path to the Secretary invoice register (schema v2), read-only. Unset: no document matching."
-    },
-    "FINANCE_ALERT_DORMANT_DAYS": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "180",
-      "category": "finance",
-      "secret": false,
-      "description": "Days without a new statement after which a statement series is dormant: one info alert instead of a stale one. Unset: 180."
-    },
     "FINANCE_ALERT_STALE_DAYS": {
       "services": [
         "core"
@@ -1228,6 +1188,26 @@
       "category": "finance",
       "secret": false,
       "description": "Absolute directory where reconciled statements move, under <year>/. Unset or relative: the finance inbox is off."
+    },
+    "FINANCE_CORP_NAMES": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "finance",
+      "secret": false,
+      "description": "Comma-separated names of the owner's corporations. A Secretary document whose person names one of them belongs to the corporate ledger and is never a personal claim. Unset: none."
+    },
+    "FINANCE_DOCUMENT_CLAIM_MAX_CENTS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "500000",
+      "category": "finance",
+      "secret": false,
+      "description": "Ceiling in cents for a document in the claims view; above it, or when it is more than twice its gross amount, the document goes to toVerify. Unset: 500000 (5 000 $)."
     },
     "FINANCE_EXTRACTION_MODEL": {
       "services": [
@@ -1279,6 +1259,26 @@
       "category": "finance",
       "secret": false,
       "description": "Absolute directory where statements that do not reconcile move. Unset: <inbox>/a-verifier."
+    },
+    "FINANCE_SECRETARY_FILES": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "finance",
+      "secret": false,
+      "description": "Folder where the Secretary keeps the files its register refers to. Core copies chosen bank statements from it into the finance inbox; it never writes there. Unset: no deposit."
+    },
+    "FINANCE_SECRETARY_REGISTER": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "finance",
+      "secret": false,
+      "description": "Path to the Secretary invoice register (schema v2), read-only. Unset: no document matching."
     },
     "GATE_ENABLED": {
       "services": [
@@ -1349,6 +1349,16 @@
       "category": "observability",
       "secret": false,
       "description": "Interval of the Core health refresh timer. Unset: 30000 ms."
+    },
+    "HEAVY_WORK_NIGHT_WINDOW": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": "23:00-06:00",
+      "category": "operations",
+      "secret": false,
+      "description": "Night window for heavy work placed \"Tonight\" (HH:MM-HH:MM in PLANNING_TIME_ZONE; may cross midnight). Unset or invalid: 23:00-06:00."
     },
     "HERMES_API_TIMEOUT_MS": {
       "services": [

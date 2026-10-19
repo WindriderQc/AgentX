@@ -9,6 +9,8 @@ const { parseHeavyQueue } = require('./heavyQueueProjectionService');
 const { fail, text, hosts, instant, digest, validateRequest } = require('./heavyWorkQueueContract');
 const { planId, planRef, batchRequest } = require('../../../shared/benchmarkBatchPlan.cjs');
 const { hostUrlKey } = require('../../../shared/ollamaHostConfig');
+const placement = require('../../../shared/heavyWorkPlacement');
+const { defaultPlanningTimeZone } = require('./planningDateService');
 
 const FILE = '/instance/config/QUEUE.md';
 const ACTIVE = ['dispatching', 'running', 'uncertain'];
@@ -115,6 +117,67 @@ async function submit(body, actor, options) {
     return event(job, actor, 'requested');
   }, options);
 }
+const MINUTE = 60000;
+const WHEN = ['asap', 'tonight', 'at'];
+function nightOf(now) {
+  return placement.nightWindow(now, { timeZone: defaultPlanningTimeZone(), spec: process.env.HEAVY_WORK_NIGHT_WINDOW });
+}
+/**
+ * The slot Core would give this request (#878). `asap`: the first free slot
+ * on its machines; `tonight`: the first one inside the instance night window
+ * that also ends there; `at`: exactly the given start. Read-only.
+ */
+function slotFor(state, job, when, at, now = Date.now()) {
+  if (!WHEN.includes(when)) throw fail('when needs asap, tonight or at');
+  const notBefore = job.notBefore ? Date.parse(job.notBefore) : -Infinity;
+  const startBefore = job.startBefore ? Date.parse(job.startBefore) : Infinity;
+  if (when === 'at') {
+    const start = Date.parse(instant(at, 'at'));
+    return { start, end: start + job.estimatedMinutes * MINUTE, when };
+  }
+  const night = when === 'tonight' ? nightOf(now) : null;
+  const from = Math.ceil(Math.max(now + MINUTE, notBefore, night ? night.start : -Infinity) / MINUTE) * MINUTE;
+  const machines = new Set(job.hosts.map(placement.machineOf));
+  // Work on the same machine or the same physical device holds the slot.
+  const related = state.jobs.filter(other => other.id !== job.id && placement.BUSY_STATES.includes(other.state)
+    && (other.hosts || []).some(host => machines.has(placement.machineOf(host)) || sameResources(other, job)))
+    .map(other => ({ ...other, hosts: job.hosts }));
+  const [slot] = placement.planSlots([{ hosts: job.hosts, minutes: job.estimatedMinutes }],
+    { windowStart: from, windowEnd: night ? night.end : Infinity, minutes: job.estimatedMinutes, jobs: related, now });
+  const start = Date.parse(slot.start), end = Date.parse(slot.end);
+  const fits = start < startBefore && (!night || end <= night.end);
+  return { start, end, when, fits, ...(night && { night: { start: new Date(night.start).toISOString(), end: new Date(night.end).toISOString() } }) };
+}
+async function preview(id, body = {}) {
+  const state = await Queue.findById('heavy-work').lean();
+  const job = jobIn(state || { jobs: [] }, id);
+  const slot = slotFor(state, job, body.when, body.at);
+  return { ...slot, start: new Date(slot.start).toISOString(), end: new Date(slot.end).toISOString() };
+}
+/** Reserve the slot `when` names; Core picks the time (#878). */
+async function place(id, body, actor) {
+  revision(body);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const state = await Queue.findById('heavy-work').lean();
+    const job = jobIn(state || { jobs: [] }, id, attempt ? undefined : body.expectedRevision);
+    if (!['requested', 'reserved'].includes(job.state)) throw fail('Only unstarted requests can be planned', 409);
+    const slot = slotFor(state, job, body.when, body.at);
+    if (slot.fits === false) {
+      throw fail(body.when === 'tonight' ? 'No free slot long enough tonight; choose As soon as possible or a time'
+        : 'No free slot before this request\'s start limit', 409, 'HEAVY_QUEUE_NO_SLOT',
+      { earliest: new Date(slot.start).toISOString(), estimatedEnd: new Date(slot.end).toISOString(), night: slot.night || null });
+    }
+    try {
+      return await reserve(id, { expectedRevision: job.revision, start: new Date(slot.start).toISOString(),
+        priority: body.priority ?? job.priority, autoStart: body.autoStart, when: body.when }, actor);
+    } catch (error) {
+      // Another session took the slot between our read and the booking.
+      if (error.code !== 'HEAVY_QUEUE_CONFLICT' && error.code !== 'HEAVY_QUEUE_STALE') throw error;
+      if (attempt === 2) throw error;
+    }
+  }
+  throw fail('Queue changed concurrently; read it before trying again', 409, 'HEAVY_QUEUE_BUSY');
+}
 async function reserve(id, body, actor) {
   revision(body);
   const start = instant(body.start, 'start');
@@ -136,7 +199,8 @@ async function reserve(id, body, actor) {
     const collisions = conflicts(state, job, start, end);
     if (collisions.length) throw fail('Heavy-work reservation overlaps another request', 409, 'HEAVY_QUEUE_CONFLICT', { conflicts: collisions });
     job.state = 'reserved'; job.priority = priority;
-    job.reservation = { start, end, estimated: true, autoStart: body.autoStart === true };
+    job.reservation = { start, end, estimated: true, autoStart: body.autoStart === true,
+      ...(WHEN.includes(body.when) && { when: body.when }) };
     return event(job, actor, 'reserved', job.reservation);
   });
 }
@@ -316,4 +380,4 @@ async function migrate(body, actor, { file = FILE } = {}) {
   return list();
 }
 
-module.exports = { AUTO_START_KINDS, submit, reserve, begin, assertDispatch, record, cancel, settle, prepared, get, list, migrate, legacySnapshot, sameResources, runtimeOverlaps, archive, archived, recover, operatorFinish, MAX_JOBS };
+module.exports = { AUTO_START_KINDS, submit, reserve, place, preview, slotFor, begin, assertDispatch, record, cancel, settle, prepared, get, list, migrate, legacySnapshot, sameResources, runtimeOverlaps, archive, archived, recover, operatorFinish, MAX_JOBS };
