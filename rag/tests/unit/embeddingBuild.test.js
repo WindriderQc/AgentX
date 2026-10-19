@@ -47,7 +47,10 @@ describe('embedding index build', () => {
     expect(serving.vectorStore).toBe(collectionStores.storeForCollection('docs', 4));
     await builds.settled(BUILD);
 
-    expect(await builds.get(BUILD)).toMatchObject({ status: 'activated', profileRevision: 1, progress: { total: 2, documents: 2, failed: 0 } });
+    expect(await builds.get(BUILD)).toMatchObject({
+      status: 'activated', profileRevision: 1,
+      progress: { total: 2, documents: 2, migrated: 2, failed: 0, finalPass: { migrated: 0, pruned: 0 } }
+    });
     expect(await profiles.read()).toMatchObject({
       revision: 1, freeze: null,
       active: { model: 'qllama/bge-m3:f16', dimension: 8, collection: 'docs__qllama_bge_m3_f16_11111111' },
@@ -91,6 +94,7 @@ describe('embedding index build', () => {
     expect(build.status).toBe('activated');
     const target = collectionStores.storeForCollection(build.targetCollection, 8);
     expect((await target.listDocuments()).documents.map((d) => d.documentId).sort()).toEqual(['alpha', 'gamma']);
+    expect(build.progress.finalPass).toEqual({ migrated: 1, pruned: 1 });
   });
 
   test('starts only from a dispatched queue request', async () => {

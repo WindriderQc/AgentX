@@ -129,12 +129,14 @@ function createBuildService({
       const stats = await stores.storeForCollection(build.sourceCollection, build.sourceDimension).getStats();
       total = Number.isFinite(stats?.documentCount) ? stats.documentCount : null;
       const { summary } = await copy(build, {}, total);
-      await repository.update(id, ['copying'], { status: 'finalizing', progress: summaryProgress(summary, total) });
+      const copied = summaryProgress(summary, total);
+      await repository.update(id, ['copying'], { status: 'finalizing', progress: copied });
       if (cancelled.has(id)) throw new CancelledError('build cancelled');
       const finished = await finalize(build, total);
       await repository.update(id, ['finalizing'], {
         status: 'activated', finishedAt: now(), profileRevision: finished.swapped.revision,
-        progress: summaryProgress(finished.summary, total)
+        // The copy's counts, and what the final pass added or removed after it.
+        progress: { ...copied, finalPass: { migrated: finished.summary.migrated, pruned: finished.summary.pruned } }
       });
       logger.info('Embedding build activated', { buildId: id, model: build.model, collection: build.targetCollection });
     } catch (err) {
