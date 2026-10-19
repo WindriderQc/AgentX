@@ -193,6 +193,7 @@
   let liveSeq = 0; // last streamed event applied; the snapshot sets it
   const agentRefs = {}; // agentId -> { card, body, stats, status }
   const searchNotes = {}; // agentId -> web search note shown when its turn starts
+  const searchNoteText = (count) => `[web search: ${count} results]\n\n`;
 
   function clearLive() {
     if (liveEventSource) { try { liveEventSource.close(); } catch {} liveEventSource = null; }
@@ -399,10 +400,11 @@
         const status = entry?.status || 'pending';
         if (status === 'running') refs.card.classList.add('active');
         if (status === 'done' || status === 'error') refs.card.classList.add(status);
-        refs.status.textContent = status === 'searching' ? 'pending' : status;
+        refs.status.textContent = status === 'searching' ? 'searching web' : status;
         refs.status.className = `rt-agent-status ${status === 'searching' ? '' : status}`.trim();
-        if (entry && ['running', 'done'].includes(status)) refs.body.textContent = `${entry.searchNote || ''}${entry.text || ''}`;
-        else if (status === 'error') refs.body.textContent = `Error: ${entry.error}`;
+        refs.searchNote = entry?.searchNote || '';
+        if (entry && ['running', 'done'].includes(status)) refs.body.textContent = `${refs.searchNote}${entry.text || ''}`;
+        else if (status === 'error') refs.body.textContent = `${refs.searchNote}Error: ${entry.error}`;
         else refs.body.textContent = '';
         if (entry && ['pending', 'searching'].includes(status) && entry.searchNote) searchNotes[agentId] = entry.searchNote;
         if (entry) fillAgentStats(refs, entry.stats);
@@ -443,7 +445,8 @@
       refs.status.textContent = 'running';
       refs.status.className = 'rt-agent-status running';
       refs.round.textContent = `round ${data.round}`;
-      refs.body.textContent = searchNotes[data.agentId] || '';
+      refs.searchNote = searchNotes[data.agentId] || '';
+      refs.body.textContent = refs.searchNote;
       delete searchNotes[data.agentId];
       return;
     }
@@ -462,7 +465,8 @@
         refs.card.classList.add('error');
         refs.status.textContent = 'error';
         refs.status.className = 'rt-agent-status error';
-        refs.body.textContent = `Error: ${data.error}`;
+        // The search note stays: it says what the failed turn was given.
+        refs.body.textContent = `${refs.searchNote || ''}Error: ${data.error}`;
       } else {
         refs.card.classList.add('done');
         refs.status.textContent = 'done';
@@ -478,9 +482,15 @@
       return;
     }
 
+    if (type === 'web-search-start') {
+      const refs = agentRefs[data.agentId];
+      if (refs) refs.status.textContent = 'searching web';
+      return;
+    }
+
     if (type === 'web-search-done') {
       // The search runs before the turn starts, which clears the card: keep the note for it.
-      searchNotes[data.agentId] = `[web search: ${data.resultCount} results]\n\n`;
+      searchNotes[data.agentId] = searchNoteText(data.resultCount);
       return;
     }
 
@@ -653,12 +663,14 @@
       (data.turns || []).forEach((t) => {
         const refs = agentRefs[t.agentId];
         if (!refs) return;
+        const note = t.webSearchResults?.length ? searchNoteText(t.webSearchResults.length) : '';
+        const saved = `${note}${t.response || (t.error ? `Error: ${t.error}` : '')}`;
         if (t.round > refs.currentRound) {
           refs.currentRound = t.round;
           refs.round.textContent = `round ${t.round}`;
-          refs.body.textContent = t.response || (t.error ? `Error: ${t.error}` : '');
+          refs.body.textContent = saved;
         } else if (t.round === refs.currentRound) {
-          refs.body.textContent = t.response || (t.error ? `Error: ${t.error}` : '');
+          refs.body.textContent = saved;
         }
         refs.host.textContent = `host ${t.hostName || '—'}`;
         if (t.stats) {
