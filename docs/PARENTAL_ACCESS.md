@@ -10,6 +10,39 @@ The former filename is retained so documentation links remain valid. Code and
 face unlocking are retired. [Scope inventory](LAN_ACCESS_SCOPE.md) describes
 the removed paths; [voice identification](VOICE_ID.md) is a future design only.
 
+## Family-pinned devices and owner unlock
+
+One exception narrows access on a chosen device. From the parent page opened
+on a child's tablet, the owner pins it to Famille: it receives an HttpOnly
+cookie whose SHA-256 hash Core stores, and then reaches only the family pages
+and their APIs. Only another device unpins it. A pin Core cannot check while
+its store is down keeps the device pinned.
+
+On a pinned device, saying **"Nestor superDad"** followed by the owner's secret
+phrase opens full owner access for `HOUSEHOLD_OWNER_UNLOCK_MINUTES` (default
+10). Core recognizes it in its own speech-recognition proxy, from the audio the
+device sent; typed text never unlocks. A transcript that starts with the
+trigger reaches the page as empty text, whether the phrase matches or not. The
+phrase is compared with the scrypt hash in `HOUSEHOLD_OWNER_UNLOCK_PHRASE_HASH`,
+set in the instance environment and never in Git:
+
+```bash
+read -rs phrase && printf %s "$phrase" | node core/scripts/owner-unlock-phrase-hash.js
+```
+
+The unlock is a server record bound to the device's pin token. Every page of the
+device then shows when it ends and a **Relock** button; at that time, or after
+Relock or an unpin, the device is back to Famille. An unlock Core cannot read
+keeps the device locked, and so does an unset hash. Each unlock is audited
+(`household_owner_unlock_audit`, 90 days) and appears in the alert feed;
+refused phrases are audited at most once a minute. No phrase, transcript or
+audio is stored.
+
+This checks knowledge of the phrase, not the owner's voice: anyone who hears
+it can repeat it. Speaker identification remains the open part of
+[#826](https://github.com/WindriderQc/AgentX/issues/826) and the
+[voice ID design](VOICE_ID.md).
+
 ## Current access architecture
 
 ```mermaid
