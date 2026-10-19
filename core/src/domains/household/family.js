@@ -186,6 +186,25 @@ function familyRoutineInput(input = {}, defaultProfileId = '') {
   };
 }
 
+const SUBJECT_REF = /^[a-z][a-z0-9-]{0,19}:[A-Za-z0-9_-]{1,80}$/;
+
+/**
+ * A chore an agent proposes to the parent (#864). Same rules as a routine, but
+ * the child and the date stay the parent's choice: the profile is optional and
+ * no due date is proposed. `subjectRef` names what the chore is about (for
+ * example `plant:<id>`).
+ */
+function familyChoreProposal(input = {}) {
+  const profileId = boundedText(input.profileId, 80) ? cleanProfileId(input.profileId) : null;
+  const routine = familyRoutineInput({ ...input, profileId: profileId || 'proposal', dueAt: null });
+  const subjectRef = boundedText(input.subjectRef, 101);
+  if (subjectRef && !SUBJECT_REF.test(subjectRef)) {
+    throw new FamilyInputError('subjectRef must look like plant:<id>', 'FAMILY_CHORE_BAD_SUBJECT');
+  }
+  const { dueAt, priority, ...chore } = routine;
+  return { ...chore, profileId, subjectRef: subjectRef || null };
+}
+
 function familyLaunchInput(input = {}) {
   const profile = familyProfileInput(input.profile || {});
   if (!Array.isArray(input.routines) || input.routines.length < 1 || input.routines.length > MAX_LAUNCH_ROUTINES) {
@@ -305,6 +324,7 @@ module.exports = {
   cleanProfileId,
   endOfHouseholdDay,
   familyChore,
+  familyChoreProposal,
   familyLaunchInput,
   familyProfile,
   familyProfileInput,

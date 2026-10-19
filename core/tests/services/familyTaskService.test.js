@@ -236,4 +236,17 @@ describe('family task domain in the canonical Core store', () => {
         .rejects.toMatchObject({ status: 400, code: 'FAMILY_CHORE_BAD_INTERVAL' });
     } finally { if (previous === undefined) delete process.env.PLANNING_TIME_ZONE; else process.env.PLANNING_TIME_ZONE = previous; }
   });
+
+  test('a chore created from a reviewed proposal is idempotent by its source key', async () => {
+    await family.addProfile({ profileId: 'sample-child', displayName: 'Sample child' });
+    const origin = { source: 'planning-idea', sourceKey: 'idea:synthetic-proposal' };
+    const first = await family.create({ profileId: 'sample-child', title: 'Proposed routine', cadence: 'weekly' }, origin);
+    const retry = await family.create({ profileId: 'sample-child', title: 'Proposed routine', cadence: 'weekly' }, origin);
+    expect(retry).toMatchObject({ duplicate: true, chore: { id: first.chore.id } });
+    expect(await PipelineTask.countDocuments({ service: 'family' })).toBe(1);
+    expect(await PipelineTask.findOne({ pipelineId: first.chore.id }).lean()).toMatchObject({ source: 'planning-idea', sourceKey: 'idea:synthetic-proposal' });
+    const parent = await family.create({ profileId: 'sample-child', title: 'Parent routine' });
+    expect(parent.duplicate).toBeUndefined();
+    expect(await PipelineTask.findOne({ pipelineId: parent.chore.id }).lean()).toMatchObject({ source: 'household-parent', sourceKey: null });
+  });
 });

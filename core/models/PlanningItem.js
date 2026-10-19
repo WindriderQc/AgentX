@@ -136,7 +136,21 @@ const PlanningItemSchema = new mongoose.Schema({
   scheduleRefs: { type: [ScheduleRefSchema], default: [] },
   promotedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'PlanningItem', default: null },
   // An idea promoted to execution (#13): a personal task or a pipeline task.
-  promotedTask: { kind: { type: String, enum: ['personal', 'task'] }, pipelineId: { type: String, maxlength: 20 } },
+  promotedTask: { kind: { type: String, enum: ['personal', 'task', 'memory', 'family_chore'] }, pipelineId: { type: String, maxlength: 20 } },
+  // A family chore an agent proposed (#864); the parent's review creates it.
+  familyChore: {
+    type: new mongoose.Schema({
+      title: { type: String, maxlength: 160 },
+      note: { type: String, maxlength: 1000 },
+      profileId: { type: String, maxlength: 80, default: null },
+      cadence: { type: String, enum: ['once', 'daily', 'weekly', 'interval'] },
+      intervalDays: { type: Number, default: null },
+      winterIntervalDays: { type: Number, default: null },
+      stars: { type: Number, min: 1, max: 5 },
+      subjectRef: { type: String, maxlength: 101, default: null }
+    }, { _id: false }),
+    default: undefined
+  },
   archivedAt: { type: Date, default: null },
   history: { type: [HistorySchema], default: [] }
 }, { timestamps: true });

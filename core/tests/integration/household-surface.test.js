@@ -1325,4 +1325,43 @@ describe('built-in Household surface on Core', () => {
     const setAside = await request(app).post(`/api/family/ideas/${idea.id}/set-aside`).send({ action: 'reject' }).expect(409);
     expect(setAside.body.code).toBe('IDEA_ALREADY_REVIEWED');
   });
+
+  test('Nestor proposes a Kids Room chore; the parent creates it once from the idea inbox (#864)', async () => {
+    await request(app).post('/api/family/profiles').send({ profileId: 'synthetic-plant-child', displayName: 'Synthetic child' }).expect(201);
+    const call = (id, args) => request(app).post('/mcp').send({ jsonrpc: '2.0', id, method: 'tools/call',
+      params: { name: 'propose_family_chore', arguments: args } }).expect(200);
+    const listed = await request(app).post('/mcp').send({ jsonrpc: '2.0', id: 20, method: 'tools/list' }).expect(200);
+    expect(listed.body.result.tools.map(tool => tool.name)).toContain('propose_family_chore');
+    const args = { title: 'Water the synthetic plant', note: 'Only when the soil is dry.', cadence: 'interval', intervalDays: 7,
+      winterIntervalDays: 14, stars: 2, reason: 'Synthetic care plan', subjectRef: 'plant:synthetic-1', sourceKey: 'synthetic-plant-water' };
+    const proposed = (await call(21, args)).body.result.structuredContent;
+    expect(proposed.idea).toMatchObject({ origin: 'nestor', kind: 'family_chore', status: 'inbox',
+      familyChore: { title: 'Water the synthetic plant', cadence: 'interval', intervalDays: 7, winterIntervalDays: 14, stars: 2, profileId: null, subjectRef: 'plant:synthetic-1' } });
+    expect((await call(22, args)).body.result.structuredContent).toMatchObject({ duplicate: true, idea: { id: proposed.idea.id } });
+    const invalid = (await call(23, { title: 'Bad interval', cadence: 'interval' })).body.result;
+    expect(invalid).toMatchObject({ isError: true, structuredContent: { error: 'FAMILY_CHORE_BAD_INTERVAL' } });
+    // Proposing creates nothing in the Kids Room.
+    expect(await PipelineTask.countDocuments({ service: 'family', title: 'Water the synthetic plant' })).toBe(0);
+
+    const id = proposed.idea.id;
+    const inbox = (await request(app).get('/api/family/ideas').expect(200)).body.data.ideas;
+    expect(inbox.find(idea => idea.id === id).familyChore.title).toBe('Water the synthetic plant');
+    // The child is the parent's choice, and only a proposed chore becomes a family chore.
+    expect((await request(app).post(`/api/family/ideas/${id}/promote`).send({ targetType: 'family_chore' }).expect(400)).body.code).toBe('FAMILY_PROFILE_ID_REQUIRED');
+    const plain = (await request(app).post('/mcp').send({ jsonrpc: '2.0', id: 24, method: 'tools/call',
+      params: { name: 'add_idea', arguments: { text: 'Synthetic plain idea' } } }).expect(200)).body.result.structuredContent.idea;
+    expect((await request(app).post(`/api/family/ideas/${plain.id}/promote`).send({ targetType: 'family_chore', profileId: 'synthetic-plant-child' }).expect(400)).body.code).toBe('IDEA_NOT_A_CHORE');
+
+    const promoted = (await request(app).post(`/api/family/ideas/${id}/promote`)
+      .send({ targetType: 'family_chore', profileId: 'synthetic-plant-child', stars: 3 }).expect(201)).body.data;
+    expect(promoted.idea).toMatchObject({ status: 'promoted', promotedTask: { kind: 'family_chore' } });
+    const chores = await PipelineTask.find({ service: 'family', title: 'Water the synthetic plant' }).lean();
+    expect(chores).toHaveLength(1);
+    expect(chores[0]).toMatchObject({ pipelineId: promoted.task.pipelineId, title: 'Water the synthetic plant', profileId: 'synthetic-plant-child',
+      cadence: 'interval', intervalDays: 7, winterIntervalDays: 14, stars: 3, source: 'planning-idea', sourceKey: `idea:${id}` });
+    const room = (await request(app).get('/api/family/room?profileId=synthetic-plant-child').expect(200)).body.data.room;
+    expect(room.available.map(chore => chore.title)).toContain('Water the synthetic plant');
+    expect((await request(app).post(`/api/family/ideas/${id}/promote`).send({ targetType: 'family_chore', profileId: 'synthetic-plant-child' }).expect(409)).body.code).toBe('IDEA_ALREADY_REVIEWED');
+    expect(await PipelineTask.countDocuments({ service: 'family', title: 'Water the synthetic plant' })).toBe(1);
+  });
 });

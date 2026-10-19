@@ -54,7 +54,7 @@ async function compensateLaunchTask(task) {
   }
 }
 
-async function createTask(routine, source = 'household-parent') {
+async function createTask(routine, source = 'household-parent', sourceKey = null) {
   const pipelineId = String(await Counter.next('pipelineTask')).padStart(4, '0');
   return PipelineTask.create({
     pipelineId,
@@ -63,7 +63,7 @@ async function createTask(routine, source = 'household-parent') {
     priority: routine.priority, dueAt: routine.dueAt, profileId: routine.profileId,
     cadence: routine.cadence, intervalDays: routine.intervalDays, winterIntervalDays: routine.winterIntervalDays,
     stars: routine.stars, completionCount: 0,
-    familyCancelled: false, source,
+    familyCancelled: false, source, ...(sourceKey ? { sourceKey } : {}),
     ...initialTransition(pipelineId, { channel: 'family_surface', declaredActor: source })
   });
 }
@@ -168,10 +168,26 @@ async function list(input = {}) {
   return { chores, hasMore: rows.length > 100, timeZone: familyTimeZone(), today: calendarDayKey(new Date()) };
 }
 
-async function create(input = {}) {
+// `origin` records where a chore came from. A chore created from a reviewed
+// proposal carries its sourceKey (`idea:<id>`), so a retried promotion returns
+// the chore already created instead of a second one.
+async function create(input = {}, origin = {}) {
   const routine = familyRoutineInput(input);
   await getProfile(routine.profileId);
-  return { chore: familyChore(await createTask(routine)) };
+  const source = text(origin.source, 80) || 'household-parent';
+  const sourceKey = text(origin.sourceKey, 200) || null;
+  const existing = () => PipelineTask.findOne({ service: 'family', source, sourceKey }).lean();
+  if (sourceKey) {
+    const found = await existing();
+    if (found) return { chore: familyChore(found), duplicate: true };
+  }
+  try {
+    return { chore: familyChore(await createTask(routine, source, sourceKey)) };
+  } catch (error) {
+    const found = sourceKey && error?.code === 11000 ? await existing() : null;
+    if (found) return { chore: familyChore(found), duplicate: true };
+    throw error;
+  }
 }
 
 // The parent edits an open routine against the revision shown by Core. A

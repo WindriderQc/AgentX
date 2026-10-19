@@ -254,7 +254,13 @@ Planning idea in `inbox`, tagged with its origin (`origin:nestor` or
 `origin:family`) and kind. Nothing is queued until the parent reviews it on
 Dad's Desk ("Idées à trier") or through `/api/planning/ideas/:id/promote`: a
 personal task, a pipeline task (`source: planning-idea`, `sourceKey:
-idea:<id>`, so a retry reuses it), later, or rejected. A family conversation
+idea:<id>`, so a retry reuses it), later, or rejected. Nestor's
+`propose_family_chore` tool stages a Kids Room chore the same way (kind
+`family_chore`, with the chore as the child would read it and an optional
+`subjectRef` such as `plant:<id>`); it creates no chore. The parent chooses the
+child, frequency and stars on the card, and the promotion creates one family
+chore (`source: planning-idea`, `sourceKey: idea:<id>`, so a retry returns the
+same chore). The family agent never creates or proposes chores. A family conversation
 also receives a read-only summary of the Kids Room routines; it cannot check
 in, approve or reach personal tasks.
 
