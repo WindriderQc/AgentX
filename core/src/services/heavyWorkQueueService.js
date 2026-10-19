@@ -15,7 +15,7 @@ const ACTIVE = ['dispatching', 'running', 'uncertain'];
 const TERMINAL = ['completed', 'failed', 'cancelled'];
 // Kinds whose executor Core can launch itself at a reserved slot. The owner
 // opts in per reservation; every other kind keeps its explicit launch.
-const AUTO_START_KINDS = ['profiler'];
+const AUTO_START_KINDS = ['profiler', 'embedding-reindex'];
 // Bound the singleton below BSON limits. Refuse explicitly; never discard history.
 const MAX_JOBS = 400;
 const WC = { w: 1, j: true };
@@ -125,7 +125,7 @@ async function reserve(id, body, actor) {
     const job = jobIn(state, id, body.expectedRevision);
     if (!['requested', 'reserved'].includes(job.state)) throw fail('Only unstarted requests can be reserved', 409);
     if (body.autoStart === true && (!AUTO_START_KINDS.includes(job.kind) || !job.executor)) {
-      throw fail('Only a Profiler request with its executor can start automatically', 409, 'HEAVY_QUEUE_AUTO_START_UNSUPPORTED');
+      throw fail('Only a Profiler or embedding reindex request with its executor can start automatically', 409, 'HEAVY_QUEUE_AUTO_START_UNSUPPORTED');
     }
     const topology = resourceTopology();
     assertTopology(state, topology);

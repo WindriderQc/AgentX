@@ -1,8 +1,8 @@
 'use strict';
 
-// Core launches a reserved Profiler request itself, either because the owner
-// pressed "Run now" or because the owner opted in to an automatic start when
-// planning its slot. Both paths cross the same durable dispatch fence as the
+// Core launches a reserved Profiler or embedding reindex request itself,
+// either because the owner pressed "Run now" or because the owner opted in to
+// an automatic start when planning its slot. Both paths cross the same durable dispatch fence as the
 // operator CLI: the request must be reserved, its window open and its
 // resources free; a launch whose outcome is unknown is never repeated.
 
@@ -20,10 +20,24 @@ async function startProfile(body) {
     path: '/api/profiler/pipeline/profile-host', method: 'POST', body, timeoutMs: START_TIMEOUT_MS, serviceName: 'benchmark' });
   return answer?.data ?? answer;
 }
-function startable(job) {
-  if (!queue.AUTO_START_KINDS.includes(job.kind) || !job.executor) {
-    throw fail('Core launches Profiler requests only; use the request\'s own executor protocol', 409, 'HEAVY_QUEUE_LAUNCH_UNSUPPORTED');
+// Each kind Core launches: the native start and the receipt identity it returns.
+const STARTERS = {
+  profiler: {
+    start: (job, begun) => startProfile({ ...begun.executor, queueRequestId: begun.id }),
+    operationId: result => result?.queueId,
+    name: 'Profiler'
+  },
+  'embedding-reindex': {
+    start: (job, begun) => require('./embeddingReindex').startBuild(begun),
+    operationId: result => result?.id,
+    name: 'RAG embedding build'
   }
+};
+function startable(job) {
+  if (!queue.AUTO_START_KINDS.includes(job.kind) || !job.executor || !STARTERS[job.kind]) {
+    throw fail('Core launches Profiler and embedding reindex requests only; use the request\'s own executor protocol', 409, 'HEAVY_QUEUE_LAUNCH_UNSUPPORTED');
+  }
+  return STARTERS[job.kind];
 }
 function windowOpen(job, now) {
   return job.state === 'reserved' && Date.parse(job.reservation?.start) <= now && now < Date.parse(job.reservation?.end)
@@ -35,9 +49,9 @@ function windowOpen(job, now) {
  * the dispatch mark; after it, any failure leaves the request uncertain with
  * its reason, for the owner to reconcile, and is never retried here.
  */
-async function launch(id, actor, { expectedRevision, start = startProfile } = {}) {
+async function launch(id, actor, { expectedRevision, start } = {}) {
   const job = await queue.get(id);
-  startable(job);
+  const starter = startable(job);
   if (!Number.isInteger(expectedRevision)) throw fail('expectedRevision required');
   if (expectedRevision !== job.revision) throw fail('Request changed; read its current revision', 409, 'HEAVY_QUEUE_STALE');
   await evidence.preDispatch(job);
@@ -45,18 +59,19 @@ async function launch(id, actor, { expectedRevision, start = startProfile } = {}
   let operationId;
   try {
     await queue.assertDispatch(id, begun.dispatchId);
-    const result = await start({ ...begun.executor, queueRequestId: begun.id });
-    operationId = result?.queueId;
-    if (typeof operationId !== 'string' || !operationId) throw new Error('Profiler returned no queue identity');
+    // A test or the Run now path may supply the native start; it receives the same body.
+    const result = start ? await start({ ...begun.executor, queueRequestId: begun.id }) : await starter.start(job, begun);
+    operationId = starter.operationId(result);
+    if (typeof operationId !== 'string' || !operationId) throw new Error(`${starter.name} returned no receipt identity`);
     return await queue.record(id, { dispatchId: begun.dispatchId, state: 'running', operationId }, actor);
   } catch (error) {
     const reason = String(error.message || error).slice(0, 900);
-    // A started profile is found again by its queue request identity; leave
-    // the dispatch mark for the observer instead of declaring it uncertain.
+    // A started profile or build is found again by its queue request identity;
+    // leave the dispatch mark for the observer instead of declaring it uncertain.
     if (!operationId) {
       try {
         await queue.record(id, { dispatchId: begun.dispatchId, state: 'uncertain',
-          reason: `Launch outcome unknown: ${reason}. Check the Profiler before recovering this request; it is not retried.` }, actor);
+          reason: `Launch outcome unknown: ${reason}. Check the ${starter.name} before recovering this request; it is not retried.` }, actor);
       } catch { /* The durable dispatch mark still fences the resources. */ }
     }
     throw fail(`Request ${id} needs reconciliation: ${reason}`, 409, 'HEAVY_QUEUE_LAUNCH_UNCERTAIN');
@@ -64,7 +79,7 @@ async function launch(id, actor, { expectedRevision, start = startProfile } = {}
 }
 
 /** Launch every reserved request whose owner opted in and whose slot is open. */
-async function dispatchDue({ now = Date.now(), start = startProfile } = {}) {
+async function dispatchDue({ now = Date.now(), start } = {}) {
   const current = await queue.list();
   const due = (current?.jobs || [])
     .filter(job => job.reservation?.autoStart === true && queue.AUTO_START_KINDS.includes(job.kind) && windowOpen(job, now))

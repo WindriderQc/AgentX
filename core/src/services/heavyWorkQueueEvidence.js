@@ -38,6 +38,14 @@ async function preDispatch(job) {
     const input = require('./images/imageService').validate(job.executor, config);
     const prior = await Images.findOne({ actionKey: job.executor.actionKey }).select('requestHash').lean();
     if (prior && prior.requestHash !== input.requestHash) throw fail('Image actionKey already names another request', 409);
+  } else if (job.kind === 'embedding-reindex') {
+    const reindex = require('./embeddingReindex');
+    exactHosts(job, reindex.reindexHosts(job.executor.model));
+    const { profile, build } = await reindex.readProfile();
+    if (profile?.active?.model === job.executor.model && profile?.active?.dimension === job.executor.dimension) {
+      throw fail('RAG already serves this embedding model', 409, 'HEAVY_QUEUE_EXECUTOR_CHANGED');
+    }
+    if (build && reindex.IN_PROGRESS.includes(build.status) && build.id !== job.id) throw fail('Another RAG embedding build is in progress', 409, 'HEAVY_QUEUE_CONFLICT');
   } else if (!(['diagnostic', 'other'].includes(job.kind) && job.executor.mode === 'operator')) {
     throw fail('This request has no supported executor', 409);
   }
@@ -78,6 +86,21 @@ async function observe(job) {
     if (!['completed', 'failed', 'cancelled', 'archive_failed'].includes(result.state)) return { operationId, terminal: false, uncertain: result.state === 'unknown' };
     receipt = { state: result.state === 'archive_failed' ? 'failed' : result.state, authority: 'core.image-operation', operationId,
       runtimeRestored: result.runtimeRestored, artifact: result.artifact || null };
+  } else if (job.kind === 'embedding-reindex') {
+    const reindex = require('./embeddingReindex');
+    let build;
+    try { build = await reindex.readBuild(job.id); }
+    catch (error) {
+      // No build under this identity: the start never reached RAG, or its answer is lost.
+      if (error.status === 404 || error.statusCode === 404) throw fail('RAG holds no build for this request; inspect it before recovery', 409);
+      throw error;
+    }
+    if (build.id !== job.id || build.model !== job.executor.model || build.dimension !== job.executor.dimension) throw fail('RAG build belongs to another request', 409);
+    operationId = build.id;
+    const outcome = reindex.buildOutcome(build);
+    if (outcome === null) return { operationId, terminal: false, progress: build.progress || null, buildStatus: build.status };
+    if (!outcome) throw fail('RAG build outcome is not terminal', 409);
+    receipt = outcome;
   } else throw fail('No executor evidence adapter on this request', 409);
   // Native owners retain release authority. A terminal result is insufficient
   // while a matching runtime admission (including UNKNOWN) remains fenced.
