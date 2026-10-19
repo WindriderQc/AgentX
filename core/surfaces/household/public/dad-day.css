@@ -148,3 +148,10 @@
 @media (max-width: 900px) {
   .action-quick-add { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 0; margin-bottom: 0; color: #b8e7d2; font-size: 12px; text-decoration: none; }
 }
+/* A chore Nestor proposed (#864): the Kids Room preview, then the parent's choices. */
+.dad-day-page .dad-task.idea-chore { flex-wrap: wrap; }
+.idea-chore .dad-task-main { flex: 1 1 100%; }
+.idea-chore-preview { margin: 8px 0 0; padding: 8px 12px; border: 1px solid rgba(251, 191, 36, .3); border-radius: 12px; background: rgba(251, 191, 36, .07); }
+.idea-chore-preview span { display: block; color: var(--amber); font-size: .72rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.idea-chore-form { display: grid; flex: 1 1 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 600px) { .idea-chore-form { grid-template-columns: minmax(0, 1fr); } }

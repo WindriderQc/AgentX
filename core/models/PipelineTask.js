@@ -217,7 +217,11 @@ const PipelineTaskSchema = new mongoose.Schema({
   // Household routines use the same canonical task lifecycle and ID sequence.
   // Domain fields are optional so engineering/personal tasks stay unchanged.
   profileId: { type: String, index: true },
-  cadence: { type: String, enum: ['once', 'daily', 'weekly'] },
+  cadence: { type: String, enum: ['once', 'daily', 'weekly', 'interval'] },
+  // Interval routines only (#863): days between repeats, and an optional
+  // winter-season interval (FAMILY_WINTER_SEASON).
+  intervalDays: Number,
+  winterIntervalDays: Number,
   stars: Number,
   completionCount: Number,
   checkedInAt: Date,
