@@ -128,7 +128,14 @@
                         <form>
                             <h3 data-queue-title></h3>
                             <p data-queue-zone></p>
-                            <label>Planned start <input type="datetime-local" name="start" required></label>
+                            <fieldset class="cs-queue-when">
+                                <legend>When</legend>
+                                <label><input type="radio" name="when" value="asap" checked> As soon as possible</label>
+                                <label><input type="radio" name="when" value="tonight"> Tonight</label>
+                                <label><input type="radio" name="when" value="at"> At a time</label>
+                            </fieldset>
+                            <label data-queue-at hidden>Planned start <input type="datetime-local" name="start"></label>
+                            <p class="cs-queue-slot" data-queue-slot aria-live="polite"></p>
                             <label>Priority (1 first, 9 last) <input type="number" name="priority" min="1" max="9" required></label>
                             <label class="cs-queue-check" data-queue-auto hidden><input type="checkbox" name="autoStart"> Start it automatically at this time</label>
                             <p>Planning a slot acquires no runtime resources. Without an automatic start, nothing runs until someone starts it during the slot; Core checks the window, the host and the model again at launch.</p>

@@ -46,6 +46,9 @@ router.get('/export', async (_req, res) => {
   } catch { res.status(503).json({ ok: false, message: 'Queue export unavailable' }); }
 });
 router.get('/:id', wrap(req => queue.get(req.params.id)));
+// "When" choices (#878): Core picks the slot. GET previews, POST reserves.
+router.get('/:id/place', wrap(req => queue.preview(req.params.id, { when: req.query.when, at: req.query.at })));
+router.post('/:id/place', wrap(req => queue.place(req.params.id, req.body, actor(req))));
 router.post('/:id/reserve', wrap(req => queue.reserve(req.params.id, req.body, actor(req))));
 router.post('/:id/begin', wrap(async req => {
   await evidence.preDispatch(await queue.get(req.params.id));

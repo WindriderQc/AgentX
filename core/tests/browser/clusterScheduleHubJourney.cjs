@@ -30,6 +30,8 @@ const timeline=date=>ownerEntries.map(entry=>({...entry,slots:[{start:date+'T12:
  app.get('/api/health',(_request,response)=>response.json({status:'ok'}));
  app.get('/api/*',(request,response)=>{
   const date=request.query.date||'2026-10-14',now=new Date().toISOString();let data={};
+  if(request.path.endsWith('/place'))return response.json({ok:true,data:request.query.when==='tonight'
+   ?{when:'tonight',fits:false,start:now,end:now}:{when:'asap',fits:true,start:new Date(Date.now()+60000).toISOString(),end:new Date(Date.now()+181*60000).toISOString()}});
   switch(request.path){
    case '/api/cluster/schedule/timeline':data={date,timezone:'America/Toronto',timeline:timeline(date)};break;
    case '/api/cluster/schedule/timeline-by-host':data={date,hosts:[{hostId:'unassigned',hostName:'Sans GPU',vramMb:0,tasks:timeline(date)}]};break;
@@ -64,6 +66,16 @@ const timeline=date=>ownerEntries.map(entry=>({...entry,slots:[{start:date+'T12:
  assert.equal(await page.locator('[data-queue-id="lane-open"] [data-queue-action="run"]').count(),1);
  await page.locator('[data-queue-id="lane-open"] [data-queue-action="reserve"]').click();
  assert(await page.locator('#heavyQueueReservation [data-queue-auto]').isVisible());
+ // A planned slot reopens on "At a time" with its time; the choices ask Core for the slot.
+ assert.equal(await page.locator('#heavyQueueReservation input[value="at"]').isChecked(),true);
+ assert(await page.locator('#heavyQueueReservation [data-queue-at]').isVisible());
+ await page.locator('#heavyQueueReservation input[value="asap"]').check();
+ await page.locator('#heavyQueueReservation [data-queue-slot]').filter({hasText:'Core will plan it'}).waitFor();
+ assert.equal(await page.locator('#heavyQueueReservation [data-queue-at]').isVisible(),false);
+ await page.locator('#heavyQueueReservation input[value="tonight"]').check();
+ await page.locator('#heavyQueueReservation [data-queue-slot]').filter({hasText:'No free slot long enough tonight'}).waitFor();
+ await page.locator('#heavyQueueReservation input[value="asap"]').check();
+ await page.locator('#heavyQueueReservation [data-queue-slot]').filter({hasText:'Core will plan it'}).waitFor();
  await page.screenshot({path:report+'/calendar-slot-dialog.png'});
  await page.locator('#heavyQueueReservation button[value="cancel"]').click();
  await page.locator('[data-queue-id="pending-request"] [data-queue-action="reserve"]').click();
@@ -82,6 +94,6 @@ const timeline=date=>ownerEntries.map(entry=>({...entry,slots:[{start:date+'T12:
  await page.locator('#scheduleMeasurements summary').click();await page.setViewportSize({width:390,height:844});
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:report+'/calendar-mobile.png',fullPage:true});
  await page.goto(base+'/automations?view=resources');assert.equal(new URL(page.url()).searchParams.get('view'),'calendar');
- assert.deepEqual(errors,[]);fs.writeFileSync(report+'/calendar-journey.json',JSON.stringify({passed:true,checks:['one existing calendar','legacy URLs redirect','task and host views','owner and text filters','date navigation','measured views preserved','queue preserved','Profiler auto-start and Run now','desktop/mobile'],errors},null,2));
+ assert.deepEqual(errors,[]);fs.writeFileSync(report+'/calendar-journey.json',JSON.stringify({passed:true,checks:['one existing calendar','legacy URLs redirect','task and host views','owner and text filters','date navigation','measured views preserved','queue preserved','Profiler auto-start and Run now','When choices placed by Core','desktop/mobile'],errors},null,2));
  console.log('PASS: one Cluster Schedule calendar, controls, filters, aliases and desktop/mobile.');
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{if(browser)await browser.close();if(server)await new Promise(resolve=>server.close(resolve));});
