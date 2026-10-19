@@ -13,7 +13,7 @@ const VOIX_LONG_TIMEOUT_MS = () => Math.max(5000, Number(process.env.VOIX_LONG_T
 
 function registerVoixRoutes(app, {
   express, standardJsonParser, fail, envelope, cleanText, normalizeVoixTranscriptionMultipart,
-  voixUpstream = getVoiceUpstream()
+  voixUpstream = getVoiceUpstream(), interceptTranscript = null
 }) {
   const voix = express.Router();
   voix.get('/health', async (_req, res) => {
@@ -39,7 +39,7 @@ function registerVoixRoutes(app, {
   const speechRecognition = require('../../src/services/voice/voix-transcription');
   speechRecognition.registerTranscriptionProxy(voix, {
     express, normalizeMultipart: normalizeVoixTranscriptionMultipart, upstream: voixUpstream,
-    fetchWithTimeout, timeoutMs: VOIX_LONG_TIMEOUT_MS, fail
+    fetchWithTimeout, timeoutMs: VOIX_LONG_TIMEOUT_MS, fail, interceptTranscript
   });
   speechRecognition.registerRecognitionWarmProxy(voix, { upstream: voixUpstream, fetchWithTimeout });
   voix.use(standardJsonParser);
