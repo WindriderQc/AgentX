@@ -311,6 +311,11 @@ def validate_candidates(payload: object, known_observation_ids: set[str]) -> lis
             raise SynthesisOutputError(f"{where}.target missing")
         if set(target.keys()) - _ALLOWED_TARGET_KEYS:
             raise SynthesisOutputError(f"{where}.target has unknown keys")
+        if TARGETS_BY_TYPE.get(ctype) == ("ignore",):
+            # A type that may only be ignored (sensitive, ephemeral, stale...)
+            # is never applied; a different target the model proposed is
+            # dropped rather than failing the whole run.
+            target = {"kind": "ignore"}
         if target.get("kind") not in TARGET_KINDS:
             raise SynthesisOutputError(f"{where}.target.kind invalid: {target.get('kind')!r}")
         if target.get("runtime") is not None and target.get("runtime") not in RUNTIMES:

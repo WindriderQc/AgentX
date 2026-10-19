@@ -737,16 +737,26 @@ async function authorizeApplyRun(runId, { by } = {}) {
   return run;
 }
 
+// Synthesis retries the same observations with a deterministic model, so a
+// failure that repeats this many times will not clear on its own; the run then
+// stops being retried every night. Its observations stay for review.
+const MAX_SYNTHESIS_ATTEMPTS = 3;
+
 async function failRun(runId, { stage, reason } = {}) {
   const run = await getRunOrThrow(runId);
   if (['completed'].includes(run.status)) {
     throw new MemoryReviewError(`run ${runId} already completed`, { status: 409, code: 'MEMORY_REVIEW_WRONG_STATE' });
   }
+  const failedStage = String(stage || 'unknown').slice(0, 40);
+  const attempts = 1 + run.audit.filter((entry) => entry.event === 'run_failed'
+    && String(entry.detail || '').startsWith(`${failedStage}:`)).length;
+  const exhausted = failedStage === 'synthesis' && attempts >= MAX_SYNTHESIS_ATTEMPTS;
+  const redacted = contentGuard.redact(String(reason || ''));
   run.status = 'failed';
   run.failure = {
-    stage: String(stage || 'unknown').slice(0, 40),
-    reason: contentGuard.redact(String(reason || '')).slice(0, 600),
-    retryable: true,
+    stage: failedStage,
+    reason: (exhausted ? `${redacted} (stopped after ${attempts} synthesis attempts)` : redacted).slice(0, 600),
+    retryable: !exhausted,
   };
   audit(run, 'run_failed', { level: 'error', detail: `${run.failure.stage}: ${run.failure.reason}`.slice(0, 400) });
   await run.save();

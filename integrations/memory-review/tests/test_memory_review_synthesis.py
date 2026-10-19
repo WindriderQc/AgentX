@@ -287,6 +287,17 @@ class SynthesisTests(unittest.TestCase):
         with self.assertRaises(schema.SynthesisOutputError):
             self._run(transport)
 
+    def test_ignore_only_type_is_ignored_whatever_target_the_model_proposed(self):
+        candidate = good_candidate()
+        candidate["type"] = "sensitive_or_secret"
+        candidate["target"] = {"kind": "runtime_local", "runtime": "openclaw"}
+        transport = FakeTransport([json.dumps({"candidates": [candidate]})])
+        result = self._run(transport)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["type"], "sensitive_or_secret")
+        self.assertEqual(result[0]["target"]["kind"], "ignore")
+        self.assertIsNone(result[0]["target"].get("runtime"))
+
     def test_unknown_target_kind_rejected(self):
         candidate = good_candidate()
         candidate["target"]["kind"] = "write_to_disk"
