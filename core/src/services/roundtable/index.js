@@ -33,9 +33,19 @@ const {
 const { validateRuntimeConfiguration } = require('./runtimeParticipantAdapter');
 const { LiveRunEmitter } = require('./liveRun');
 
-// Councils may overlap; the most recently started one is the active one shown.
+// One Council runs at a time in this process; a second start is refused (409).
 const activeRoundtableIds = new Set();
+let startInProgress = false;
 function getActiveRoundtableId() { return [...activeRoundtableIds].pop() || null; }
+
+function refuseWhileActive() {
+  if (!activeRoundtableIds.size && !startInProgress) return;
+  const err = new Error('A Council is already running: attach to it or stop it first');
+  err.status = 409;
+  err.code = 'COUNCIL_ACTIVE';
+  err.activeId = getActiveRoundtableId();
+  throw err;
+}
 
 /**
  * Create + fire-and-forget execution. Returns the pending doc; the
@@ -77,6 +87,16 @@ async function resolveStartOptions(options = {}) {
 }
 
 async function startRoundtable(options = {}) {
+  refuseWhileActive();
+  startInProgress = true;
+  try {
+    return await launchRoundtable(options);
+  } finally {
+    startInProgress = false;
+  }
+}
+
+async function launchRoundtable(options) {
   const resolvedOptions = await resolveStartOptions(options);
   // An agent presiding as chair is a runtime participant too.
   const chair = resolvedOptions.synthesizer?.runtime === 'openclaw'

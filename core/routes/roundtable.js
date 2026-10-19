@@ -103,7 +103,8 @@ router.post('/', express.json(), async (req, res) => {
     res.status(err.status || 500).json({
       status: 'error',
       message: err.message,
-      ...(err.code ? { code: err.code } : {})
+      ...(err.code ? { code: err.code } : {}),
+      ...(err.activeId ? { activeId: err.activeId } : {})
     });
   }
 });

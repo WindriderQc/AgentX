@@ -19,7 +19,9 @@
   async function jsonFetch(url, opts = {}) {
     const resp = await fetch(url, opts);
     const body = await resp.json().catch(() => ({}));
-    if (!resp.ok || body.status === 'error') throw new Error(body.message || `HTTP ${resp.status}`);
+    if (!resp.ok || body.status === 'error') {
+      throw Object.assign(new Error(body.message || `HTTP ${resp.status}`), { status: resp.status, code: body.code, activeId: body.activeId });
+    }
     return body;
   }
   function fmtDate(v) {
@@ -730,6 +732,13 @@
       $('liveChairToken').value = $('formChairToken').value;
       showToast('Council convened — streaming live', 'success');
     } catch (err) {
+      if (err.code === 'COUNCIL_ACTIVE' && err.activeId) {
+        // One Council runs at a time: show the one in progress instead.
+        showToast('A Council is already running — showing it. Stop it before convening another.', 'info');
+        clearLive();
+        await attachLive(String(err.activeId));
+        return;
+      }
       showToast(`Failed: ${err.message}`, 'error');
     } finally {
       btn.innerHTML = '<i class="fas fa-rocket"></i> Convene Council';
