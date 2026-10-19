@@ -1395,4 +1395,20 @@ describe('built-in Household surface on Core', () => {
     expect(Buffer.compare(photo.body, png)).toBe(0);
     expect((await request(app).get('/api/family/plants/not-an-id').expect(400)).body.code).toBe('PLANT_BAD_ID');
   });
+
+  test('plant model help starts over HTTP and Nestor is offered draft_plant_card (#867)', async () => {
+    const created = (await request(app).post('/api/family/plants').send({ nickname: 'Synthetic assisted plant' }).expect(201)).body.data.plant;
+    expect((await request(app).post(`/api/family/plants/${created.id}/care-draft`).send({}).expect(409)).body.code).toBe('PLANT_SPECIES_REQUIRED');
+    const started = (await request(app).post(`/api/family/plants/${created.id}/identify`).send({}).expect(202)).body.data.plant;
+    expect(started.assistant.identify.state).toBe('running');
+    let identify;
+    for (let attempt = 0; attempt < 50 && identify?.state !== 'failed'; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+      identify = (await request(app).get(`/api/family/plants/${created.id}?view=manage`).expect(200)).body.data.plant.assistant.identify;
+    }
+    // No photo yet: the step fails visibly instead of guessing.
+    expect(identify).toMatchObject({ state: 'failed', error: expect.stringContaining('PLANT_PHOTO_REQUIRED') });
+    const listed = await request(app).post('/mcp').send({ jsonrpc: '2.0', id: 30, method: 'tools/list' }).expect(200);
+    expect(listed.body.result.tools.map(tool => tool.name)).toContain('draft_plant_card');
+  });
 });

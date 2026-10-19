@@ -70,6 +70,18 @@ const SECRETARY_TOOLS = Object.freeze([
     _meta: SECRETARY_MCP_META
   }),
   Object.freeze({
+    name: 'draft_plant_card',
+    title: 'Draft A Household Plant Card',
+    description: 'Start a household plant card from the plant photo Dad just attached in this conversation (the latest photo from the last 30 minutes). It creates a draft and starts identification; nothing reaches the children until Dad reviews and publishes it on the Famille Plants page. Call it once per plant, after the photo is attached. Give the nickname or room only when Dad said them. Relay the reviewUrl and say that Dad will choose the species there; never claim the plant is identified.',
+    inputSchema: objectSchema({
+      nickname: { type: 'string', maxLength: 60, description: 'What the family calls this plant, if Dad said it.' },
+      room: { type: 'string', maxLength: 60, description: 'Room where it lives, if Dad said it.' },
+      spot: { type: 'string', maxLength: 120, description: 'Where in the room, if Dad said it.' }
+    }),
+    annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
+    _meta: SECRETARY_MCP_META
+  }),
+  Object.freeze({
     name: 'list_personal_tasks',
     title: 'List Personal Tasks',
     description: 'Read all personal actions and extracted findings from Core, grouped by category: action (owner action), email (request to clarify), platform (technical follow-up), assistant (the Secretary\'s own reading). needsReview means the extraction is uncertain, not a confirmed commitment or overdue work. scope active selects owner actions; scope review selects extractions. categoryCounts covers the full snapshot, totalCount covers the selected scope/category, count covers this page, and nextOffset pages through hasMore results. Check existing findings before capturing another mail action. Attribute requests and uncertainty in your answer. Name days exactly as dueLocal, relevantUntilLocal and todayLocal give them.',
@@ -253,6 +265,10 @@ async function callSecretaryTool(name, args, deps) {
     if (name === 'update_personal_task') return textResult(await deps.personalTasks.update({ ...input, by: 'nestor-secretary' }));
     if (name === 'add_idea') return textResult(await (deps.ideaInbox || require('../../src/services/ideaInboxService')).captureIdea({ text: input.text, tags: input.tags, origin: 'nestor' }));
     if (name === 'propose_family_chore') return textResult(await (deps.ideaInbox || require('../../src/services/ideaInboxService')).proposeFamilyChore(input));
+    if (name === 'draft_plant_card') {
+      if (!deps.plantCapture) throw Object.assign(new Error('Plant cards are unavailable on this instance.'), { code: 'PLANT_CAPTURE_UNAVAILABLE' });
+      return textResult(await deps.plantCapture.draftFromLatestPhoto(input));
+    }
     if (name === 'personal_briefing') return textResult(await deps.personalTasks.briefing());
     if (name === 'network_devices') {
       const read = deps.networkInventory || require('../../src/services/networkInventory').readNetworkInventory;
@@ -365,9 +381,10 @@ function secretaryMcpMiddleware(deps) {
   };
 }
 
-function registerSecretaryMcp({ app, standardJsonParser, models, personalTasks, sounds }) {
+function registerSecretaryMcp({ app, standardJsonParser, models, personalTasks, sounds, plantCapture = null }) {
   const middleware = secretaryMcpMiddleware({
     personalTasks,
+    plantCapture,
     shoppingList: require('../../src/services/shoppingListService').shoppingList,
     EmailAction: models.EmailAction,
     sounds

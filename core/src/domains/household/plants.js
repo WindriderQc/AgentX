@@ -151,6 +151,16 @@ const photoUrl = (plant, photo) => `/api/family/plants/${encodeURIComponent(Stri
 const photoView = plant => (plant.photos || []).map(photo => ({ id: String(photo._id || photo.id), mimeType: photo.mimeType,
   size: photo.size, url: photoUrl(plant, photo) }));
 
+const step = entry => entry?.state ? { state: entry.state, error: entry.error || null, model: entry.model || null,
+  startedAt: entry.startedAt || null, finishedAt: entry.finishedAt || null } : null;
+function assistantView(assistant = {}) {
+  const identify = step(assistant?.identify), care = step(assistant?.care);
+  return {
+    identify: identify && { ...identify, candidates: assistant.identify.candidates || [] },
+    care: care && { ...care, unsourced: assistant.care.unsourced === true, draft: assistant.care.draft || null }
+  };
+}
+
 /** The parent's view: everything, including sources, candidates and review state. */
 function managedPlant(plant = {}) {
   return {
@@ -165,6 +175,7 @@ function managedPlant(plant = {}) {
     funFact: plant.funFact || null,
     carePlan: plant.carePlan || [],
     photos: photoView(plant),
+    assistant: assistantView(plant.assistant),
     problems: publishProblems(plant),
     revision: Number.isInteger(plant.__v) ? plant.__v : 0,
     publishedAt: plant.publishedAt || null,

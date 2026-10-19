@@ -39,6 +39,13 @@ const schema = new mongoose.Schema({
     _id: { type: mongoose.Schema.Types.ObjectId, required: true },
     mimeType: String, size: Number, sha256: String
   }, { _id: false })],
+  // Model help (#867): its proposals wait here until the parent applies them.
+  assistant: {
+    identify: { state: { type: String, enum: ['running', 'completed', 'failed'] }, error: String, model: String,
+      startedAt: Date, finishedAt: Date, candidates: [new mongoose.Schema(species, { _id: false })] },
+    care: { state: { type: String, enum: ['running', 'completed', 'failed'] }, error: String, model: String,
+      startedAt: Date, finishedAt: Date, unsourced: Boolean, draft: mongoose.Schema.Types.Mixed }
+  },
   publishedAt: { type: Date, default: null },
   retiredAt: { type: Date, default: null }
 }, { timestamps: true, collection: 'household_plants' });

@@ -1048,6 +1048,18 @@ endpoints must be separate from the spoken model. A busy or reserved primary can
 use a CPU reviewer; a failure after dispatch is never replayed on another model.
 Reviews disclose their actual model and any fallback marker. Deliberate
 `master_brain` and `deep_reasoning` requests remain strict.
+
+Plant cards use two routed tasks:
+
+- `plant_identify` reads one photo and needs a vision model. Choose it in the
+  routing table: the default analysis model may not read images, and the card
+  then reports `PLANT_VISION_UNAVAILABLE` instead of a guess.
+- `plant_care_draft` writes the care draft from at most three web searches. It
+  uses `SEARXNG_URL` when set; without it the draft is marked unsourced.
+
+Both run once per plant at a time and only propose: the parent chooses the
+species and applies the draft. Nestor's `draft_plant_card` tool starts a card
+from the latest photo of the personal conversation (last 30 minutes).
 Reviews use shared admission unless `HOUSEHOLD_BRAIN_EXCLUSIVE=true`, which waits
 for an idle host, blocks other callers and unloads co-resident models. The
 browser speaks its remark only while listening with no turn in flight.

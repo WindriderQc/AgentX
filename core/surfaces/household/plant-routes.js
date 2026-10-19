@@ -6,7 +6,7 @@
 // page's view. Like the rest of /api/family, a pinned family device keeps the
 // parent actions (owner decision, #865).
 
-function registerPlantRoutes({ app, express, plants, standardJsonParser }) {
+function registerPlantRoutes({ app, express, plants, assistant = null, standardJsonParser }) {
   const router = express.Router();
   const reply = async (res, status, operation) => {
     try { return res.status(status).json({ ok: true, status: 'success', data: await operation() }); }
@@ -22,6 +22,11 @@ function registerPlantRoutes({ app, express, plants, standardJsonParser }) {
   const actions = [['update', 'update', 200], ['photos', 'addPhoto', 201], ['publish', 'publish', 200], ['retire', 'retire', 200]];
   for (const [path, operation, status] of actions) {
     router.post(`/:id/${path}`, (req, res) => reply(res, status, () => plants[operation]({ ...(req.body || {}), id: req.params.id })));
+  }
+  // Model help (#867): starts a step and answers with the card; the page polls `assistant`.
+  if (assistant) {
+    router.post('/:id/identify', (req, res) => reply(res, 202, () => assistant.identify({ id: req.params.id, photoId: req.body?.photoId })));
+    router.post('/:id/care-draft', (req, res) => reply(res, 202, () => assistant.draftCare({ id: req.params.id })));
   }
   router.post('/:id/photos/:photoId/remove', (req, res) => reply(res, 200,
     () => plants.removePhoto({ ...(req.body || {}), id: req.params.id, photoId: req.params.photoId })));

@@ -181,6 +181,22 @@ both interval fields.
   page's view.
 - Photos are served from `/api/family/plants/:id/photos/:photoId`, to the
   child view only once the card is published.
+- Model help only proposes, and records its state on the card under
+  `assistant`:
+  - `POST /:id/identify` (routed task `plant_identify`, vision) stores up to
+    three candidates.
+  - `POST /:id/care-draft` (routed task `plant_care_draft`) needs the species
+    the parent chose. It searches the web at most three times and stores a
+    care sheet, toxicity, fun fact and care plan.
+  - Sources are only the URLs Core searched; any URL the model writes is
+    dropped. The draft's toxicity is never confirmed.
+  - Care actions that involve tools, fertilizer, pesticides or repotting, or
+    any action on a plant toxic to children, are never for the youngest age
+    band.
+  - Nothing changes the card's fields or revision until the parent applies
+    the proposal. Nestor's `draft_plant_card` tool starts a draft from the
+    latest image in the personal conversation (last 30 minutes) and starts
+    identification.
 
 Personal-task deadlines follow one contract on every write path (the
 Household `POST /api/secretary/tasks` and `POST /api/secretary/tasks/update`

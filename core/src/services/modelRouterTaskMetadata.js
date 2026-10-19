@@ -20,6 +20,8 @@ const TASK_TYPE_METADATA = Object.freeze({
   janitor_ai: { title: 'Janitor AI', description: 'Disk janitor advisory reasoning for storage cleanup workflows.' },
   ops_watch: { title: 'Operations Watch', description: 'Background reports on findings that monitoring rules detected; suited to a slow CPU host.' },
   mail_review: { title: 'Mail Review', description: 'Background page-by-page review of newly archived mail; nothing waits on it, suited to a slow CPU host.' },
+  plant_identify: { title: 'Plant Identification', description: 'Proposes up to three species from a household plant photo; requires a vision model. The parent chooses.' },
+  plant_care_draft: { title: 'Plant Care Draft', description: 'Drafts a plant card (care, toxicity, child chores) from bounded web results for the parent to review.' },
   embeddings: { title: 'Embeddings', description: 'Vectorization requests for retrieval and similarity workflows.' },
   daily_operator: { title: 'Daily Operator', description: 'Direct-only external automation lane; hidden from user auto-routing.' },
   nestor_answer_light: { title: 'Nestor Answer Light', description: 'Low-latency local Nestor answers on the dedicated pinned model and host.' }

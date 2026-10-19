@@ -530,11 +530,15 @@ function register(api) {
     express, standardJsonParser, envelope, personalTasks, fail, CORE_SELF_URL,
     bridgeProjection, secretaryMail, familyTasks, models, knowledgeState, mongoose
   });
-  registerSecretaryMcp({ app, standardJsonParser, models, personalTasks, sounds });
+  const plantAssistant = runtimeServices.household?.plants
+    ? require('../../src/services/householdPlantAssistant').createPlantAssistant({ inference: runtimeServices.inference, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT, logger })
+    : null;
+  const plantCapture = plantAssistant ? require('../../src/services/householdPlantCapture').createPlantCapture({ assistant: plantAssistant }) : null;
+  registerSecretaryMcp({ app, standardJsonParser, models, personalTasks, sounds, plantCapture });
 
   registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, conversations });
   if (runtimeServices.household?.plants) {
-    require('./plant-routes').registerPlantRoutes({ app, express, plants: runtimeServices.household.plants, standardJsonParser });
+    require('./plant-routes').registerPlantRoutes({ app, express, plants: runtimeServices.household.plants, assistant: plantAssistant, standardJsonParser });
   }
   registerDeviceAcceptanceRoutes(app, {
     express, standardJsonParser, models, envelope, fail, cleanText
