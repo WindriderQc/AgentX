@@ -181,10 +181,17 @@ class ReportTest(unittest.TestCase):
                 reads.append(url)
                 if len(reads)>=3:self.terminated=True
             return original(url,body,**kwargs)
-        with mock.patch.object(runner,'request',lagging),mock.patch('time.sleep') as sleep,mock.patch('builtins.print'):
+        # Count only the settlement poll: the subprocess watch loop also
+        # sleeps 2 s when a child process is still running, depending on speed.
+        polls=[]
+        def sleeping(seconds):
+            frame=sys._getframe(1)
+            while frame and frame.f_code.co_name!='settled_status':frame=frame.f_back
+            if frame:polls.append(seconds)
+        with mock.patch.object(runner,'request',lagging),mock.patch('time.sleep',side_effect=sleeping),mock.patch('builtins.print'):
             self.assertEqual(runner.main(),1)
         self.assertEqual(self.task['status'],'blocked');self.assertEqual(len(self.partial_uploads),1)
-        self.assertEqual(sleep.call_count,2)
+        self.assertEqual(polls,[2,2])
 
     def test_stop_wins_the_publication_lock_without_core_deposit(self):
         original=self.worker
