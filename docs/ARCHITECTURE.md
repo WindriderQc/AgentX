@@ -197,6 +197,12 @@ both interval fields.
     the proposal. Nestor's `draft_plant_card` tool starts a draft from the
     latest image in the personal conversation (last 30 minutes) and starts
     identification.
+- The parent page `/dad/family/plants` (`plants-parent.js`, rendering in
+  `plant-view.js`) lists drafts first. Adding a plant takes a photo, reduces
+  it in the browser and starts identification. Each card is then completed
+  in three steps: choose the species, apply or edit the care card (toxicity
+  confirmation, care actions assignable only to children old enough), then
+  publish with a preview of what the children will see.
 
 Personal-task deadlines follow one contract on every write path (the
 Household `POST /api/secretary/tasks` and `POST /api/secretary/tasks/update`

@@ -235,7 +235,7 @@ function register(api) {
   app.get('/voice-personas/debug', (_req, res) => res.redirect(302, '/voice-lab/personas'));
   app.get('/dad/nestor', (_req, res) => res.redirect(302, '/voice'));
   app.get([
-    '/panel', '/dad', '/dad/day', '/dad/memories', '/dad/history', '/dad/family', '/voice-lab', '/voice-lab/devices', '/voice-lab/personas', '/kids', '/kids/sounds', '/lecture', '/lecture/parents', '/lecture/parents.html',
+    '/panel', '/dad', '/dad/day', '/dad/memories', '/dad/history', '/dad/family', '/dad/family/plants', '/voice-lab', '/voice-lab/devices', '/voice-lab/personas', '/kids', '/kids/sounds', '/lecture', '/lecture/parents', '/lecture/parents.html',
     '/voice', '/voice.html', '/voix', '/voice-personas', '/voice-personas.html'
   ], require('../../src/ui/productShell').householdPage(app, path.join(publicRoot, 'index.html')));
   app.get('/api/household/avatar/llmx-face.js', createScriptRelay({ resolveUrl: avatarModuleUrl, fetchWithTimeout,

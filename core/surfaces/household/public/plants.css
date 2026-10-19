@@ -1,0 +1,82 @@
+/* Household plants (#868): the parent page. Phone first, one hand; Famille tokens. */
+.plants-page { width: min(860px, 100%); margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+.plants-head { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; justify-content: space-between; }
+.plants-head h1 { margin: .2rem 0 .3rem; font-size: clamp(1.8rem, 6vw, 2.6rem); letter-spacing: -.02em; }
+.plants-head .muted { max-width: 46ch; margin: 0; }
+.plants-head a[data-plant-back] { color: var(--cyan); text-decoration: none; }
+.plant-add { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding-inline: 1.2rem; }
+/* These labels are buttons: they keep the button text, not the field caption style. */
+.plant-add > span, .plant-photo-add > span { margin: 0; color: inherit; font-size: 1rem; font-weight: 800; letter-spacing: 0; text-transform: none; }
+.plants-section { display: grid; gap: .6rem; }
+.plants-section h2 { margin: 0 0 .2rem; font-size: 1rem; color: var(--soft); text-transform: uppercase; letter-spacing: .08em; }
+
+.plant-row { display: flex; gap: .8rem; align-items: center; min-height: 72px; padding: .6rem; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); text-decoration: none; }
+.plant-row:hover { border-color: #4a687a; }
+.plant-row.status-draft { border-color: rgba(201, 109, 60, .55); background: #18150f; }
+.plant-row img, .plant-thumb { width: 56px; height: 56px; flex: none; border-radius: 12px; object-fit: cover; background: #163527; }
+.plant-row .grow { min-width: 0; }
+.plant-row strong, .plant-row small { display: block; }
+.plant-row small { color: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.plant-photos { display: flex; gap: .6rem; overflow-x: auto; padding-bottom: .2rem; }
+.plant-photos figure { position: relative; margin: 0; flex: none; }
+.plant-photos img { display: block; width: 132px; height: 132px; border-radius: 16px; object-fit: cover; background: #163527; }
+.plant-photos figure button { position: absolute; top: 6px; right: 6px; min-width: 36px; min-height: 36px; padding: 0; border-radius: 999px; background: rgba(7, 16, 24, .82); }
+.plant-photo-add { display: grid; place-items: center; width: 132px; height: 132px; flex: none; border: 1px dashed #3b5466; border-radius: 16px; color: var(--soft); cursor: pointer; }
+.plant-photo-add:hover { border-color: var(--cyan); color: var(--text); }
+
+.plant-step h2 { display: flex; align-items: center; gap: .6rem; margin: 0 0 .8rem; font-size: 1.15rem; }
+.plant-step-number { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 999px; background: var(--panel-2); color: var(--cyan); font-size: .9rem; font-weight: 800; }
+.plant-step.done .plant-step-number { background: rgba(74, 222, 128, .16); color: #86efac; }
+.plant-working { display: flex; align-items: center; gap: .6rem; color: var(--soft); }
+.plant-working::before { content: ''; width: 14px; height: 14px; border-radius: 999px; border: 2px solid var(--cyan); border-right-color: transparent; animation: plant-spin 1s linear infinite; }
+@keyframes plant-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .plant-working::before { animation: none; } }
+.plant-note { padding: .6rem .8rem; border-radius: 12px; background: rgba(251, 191, 36, .08); border: 1px solid rgba(251, 191, 36, .3); }
+.plant-chosen { margin: 0 0 .6rem; font-size: 1.1rem; }
+.plant-chosen em { color: var(--soft); }
+
+.plant-candidates { display: grid; gap: .6rem; margin-bottom: .8rem; }
+.plant-candidate { display: grid; gap: .3rem; padding: .75rem .9rem; border: 2px solid var(--line); border-radius: 16px; background: var(--panel); cursor: pointer; }
+.plant-candidate input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.plant-candidate:has(input:checked), .plant-candidate.selected { border-color: var(--cyan); background: #0f2a2c; }
+.plant-candidate:has(input:focus-visible) { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.plant-candidate-head { display: flex; justify-content: space-between; gap: .5rem; }
+.plant-candidate em, .plant-candidate small { color: var(--soft); }
+.plant-confidence { display: block; height: 6px; border-radius: 6px; background: var(--line); overflow: hidden; }
+.plant-confidence span { display: block; height: 100%; }
+.plant-confidence .strong { background: var(--cyan); }
+.plant-confidence .weak { background: var(--amber); }
+
+.plant-proposal { margin-bottom: .8rem; padding: .8rem .9rem; border: 1px solid rgba(85, 217, 208, .35); border-radius: 14px; background: rgba(85, 217, 208, .06); }
+.plant-proposal ul { margin: .4rem 0 .6rem; padding-left: 1.1rem; }
+.plant-proposal li span { color: var(--soft); font-weight: 700; }
+
+.plant-editor { display: grid; gap: .7rem; margin-top: .8rem; }
+.plant-editor h3 { margin: .8rem 0 0; font-size: 1rem; }
+.plant-where { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem; }
+.plant-field { display: grid; gap: .2rem; }
+.plant-field small { color: var(--soft); }
+.plant-toxicity-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem; padding: .7rem; border: 1px solid rgba(251, 113, 133, .4); border-radius: 14px; background: rgba(251, 113, 133, .06); }
+.plant-check { display: flex; gap: .6rem; align-items: center; min-height: 44px; }
+.plant-check input { width: 22px; height: 22px; flex: none; accent-color: var(--cyan); }
+.plant-action { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem; margin: 0; padding: .8rem; border: 1px solid var(--line); border-radius: 14px; }
+.plant-action legend { padding: 0 .3rem; color: var(--soft); font-size: .8rem; }
+.plant-action .wide { grid-column: 1 / -1; }
+.plant-action [data-remove-action] { justify-self: start; align-self: end; }
+.plant-save { position: sticky; bottom: .6rem; }
+.plant-save button { min-height: 48px; min-width: 140px; }
+
+.plant-child-preview { display: grid; gap: .3rem; padding: .9rem; border: 1px solid rgba(251, 191, 36, .35); border-radius: 18px; background: #10261c; }
+.plant-child-preview strong { font-size: 1.3rem; }
+.plant-child-preview p { margin: 0; }
+.plant-child-preview p span { display: block; color: #7ee2a8; font-size: .75rem; font-weight: 750; text-transform: uppercase; letter-spacing: .08em; }
+.plant-do-not-eat { color: #ffb4bf; font-weight: 700; }
+.plant-problems { margin: .6rem 0; padding-left: 1.1rem; color: #fcd34d; }
+
+@media (max-width: 600px) {
+  .plant-where, .plant-toxicity-grid, .plant-action { grid-template-columns: minmax(0, 1fr); }
+  .plant-add { width: 100%; }
+  .plant-photos img, .plant-photo-add { width: 108px; height: 108px; }
+}
+.plant-more-fields { display: grid; gap: .7rem; margin-top: .6rem; }
