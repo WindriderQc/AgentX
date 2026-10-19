@@ -19,14 +19,20 @@ const digest = text => crypto.createHash('sha256').update(text).digest('hex');
 let harness, nativeDeps;
 const { PassThrough } = require('stream');
 const { executeRoutedInference } = require('../../src/extensions/trustedRuntimeServices');
-const { registerHermesProtocol } = require('../../integrations/runtime-bridges/hermes/protocol');
+const { parseGatewayClients } = require('../../integrations/runtime-bridges/llm-gateway/clients');
+const { registerLlmGateway } = require('../../integrations/runtime-bridges/llm-gateway/router');
+// The Coding Team reaches Core's OpenAI gateway as token client `coding-team`.
+const GATEWAY_TOKEN = 'coding-team-test-token-01';
+const registerCodingGateway = options => registerLlmGateway({ ...options,
+  clients: parseGatewayClients(JSON.stringify({ 'coding-team': GATEWAY_TOKEN })) });
+const withGatewayToken = (req, _res, next) => { req.headers.authorization = `Bearer ${GATEWAY_TOKEN}`; next(); };
 beforeAll(async () => {
   await File.createCollection(); await File.createIndexes();
   await Run.createCollection(); await Run.createIndexes();
   const app = express().use(express.json({ limit: '5mb' })).use('/api/pipeline', require('../../routes/pipeline-deliverables'))
     .use('/api/pipeline', require('../../routes/pipeline-feedback'))
     .use('/api/pipeline', require('../../routes/pipeline'));
-  app.use(registerHermesProtocol({ express, logger: {}, runtimeServices: {
+  app.use(withGatewayToken, registerCodingGateway({ express, logger: {}, runtimeServices: {
     routing: { getEffectiveSnapshot: async () => ({ tasks: { code_generation: { model: 'synthetic-local-model' } } }) },
     inference: { execute: (input, options) => executeRoutedInference(nativeDeps, input, options) },
   } }));

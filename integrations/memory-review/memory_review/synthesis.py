@@ -105,8 +105,9 @@ def http_chat_completion(
 ) -> str:
     # The review's own token for Core's OpenAI gateway (client `memory-review`).
     token = os.environ.get("AGENTX_LLM_MEMORY_REVIEW_TOKEN", "").strip()
-    door = "/api/llm/v1" if token else "/api/hermes-openai/v1"
-    url = f"{base_url.rstrip('/')}{door}/chat/completions"
+    if not token:
+        raise SynthesisError("AGENTX_LLM_MEMORY_REVIEW_TOKEN is required for synthesis through /api/llm/v1.")
+    url = f"{base_url.rstrip('/')}/api/llm/v1/chat/completions"
     request = Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
@@ -114,7 +115,7 @@ def http_chat_completion(
             "Content-Type": "application/json",
             "Accept": "application/json",
             "X-AgentX-Caller": "memory-review",
-            **({"Authorization": f"Bearer {token}"} if token else {}),
+            "Authorization": f"Bearer {token}",
         },
         method="POST",
     )

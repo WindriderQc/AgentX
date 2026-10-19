@@ -7,7 +7,6 @@ const mongoSanitize = require('express-mongo-sanitize');
 // and `$ref`; rewriting them would alter what the model receives.
 const INFERENCE_PROXY_PREFIXES = Object.freeze([
   '/api/openclaw-ollama/',
-  '/api/hermes-openai/',
   '/api/llm/'
 ]);
 

@@ -4,7 +4,9 @@ const assert = require('node:assert/strict');
 const { EventEmitter, once } = require('node:events');
 const { PassThrough } = require('node:stream');
 const inference = require('../../../src/services/pipelineCodingInferenceService');
-const { registerHermesProtocol } = require('../hermes/protocol');
+const { parseGatewayClients } = require('../llm-gateway/clients');
+const { registerLlmGateway } = require('../llm-gateway/router');
+const TOKEN = 'settlement-test-token-01';
 
 test('frozen inference result streams content but holds terminal until the native coding receipt is durable', async () => {
   const prior = inference.prepare;
@@ -21,12 +23,12 @@ test('frozen inference result streams content but holds terminal until the nativ
     let finish;
     const native = new Promise(resolve => { finish = resolve; });
     let options;
-    registerHermesProtocol({ express, logger: {}, runtimeServices: {
+    registerLlmGateway({ express, logger: {}, clients: parseGatewayClients(JSON.stringify({ 'coding-team': TOKEN })), runtimeServices: {
       routing: { getEffectiveSnapshot: async () => ({ tasks: { code_generation: { model: 'synthetic' } } }) },
       inference: { execute: async (_input, opts) => { options = opts; return Object.freeze({ ok: true, status: 200,
         stream: source, completion: native, metadata: { model: 'synthetic', upstreamProtocol: 'ollama' } }); } }
     } });
-    const req = new EventEmitter(); req.headers = {}; req.body = { model: 'synthetic', stream: true, messages: [{ role: 'user', content: 'Synthetic fixture' }] };
+    const req = new EventEmitter(); req.headers = { authorization: `Bearer ${TOKEN}` }; req.body = { model: 'synthetic', stream: true, messages: [{ role: 'user', content: 'Synthetic fixture' }] };
     const res = new PassThrough(); res.status = () => res; res.set = () => res;
     res.json = value => { throw new Error(JSON.stringify(value)); };
     let output = ''; res.on('data', data => { output += data.toString(); });
@@ -60,13 +62,13 @@ test('a report escalation call runs on the escalation path only, never on the lo
     const routes = [];
     const express = { Router: () => Object.fromEntries(['get', 'post', 'all'].map(method => [method,
       (path, ...handlers) => routes.push({ method, path, handlers })])) };
-    registerHermesProtocol({ express, logger: {}, runtimeServices: {
+    registerLlmGateway({ express, logger: {}, clients: parseGatewayClients(JSON.stringify({ 'coding-team': TOKEN })), runtimeServices: {
       // The model is not in the routing table: only the run's recorded models authorize it.
       routing: { getEffectiveSnapshot: async () => ({ tasks: { code_generation: { model: 'local-coder' } } }) },
       inference: { execute: async () => { throw new Error('local runtime must not run an escalation call'); } }
     } });
     const req = new EventEmitter();
-    req.headers = { 'x-agentx-report-request': 'r', 'x-agentx-report-task': '0939', 'x-agentx-report-escalation': '3' };
+    req.headers = { authorization: `Bearer ${TOKEN}`, 'x-agentx-report-request': 'r', 'x-agentx-report-task': '0939', 'x-agentx-report-escalation': '3' };
     req.body = { model: 'openai/gpt-5.6-sol', messages: [{ role: 'user', content: 'Review these documents' }], max_tokens: 4096 };
     let status; let body;
     const res = new PassThrough(); res.status = code => { status = code; return res; }; res.set = () => res;
@@ -94,10 +96,10 @@ test('an unanswered escalation settles as refused and reports the failure', asyn
     const routes = [];
     const express = { Router: () => Object.fromEntries(['get', 'post', 'all'].map(method => [method,
       (path, ...handlers) => routes.push({ method, path, handlers })])) };
-    registerHermesProtocol({ express, logger: {}, runtimeServices: {
+    registerLlmGateway({ express, logger: {}, clients: parseGatewayClients(JSON.stringify({ 'coding-team': TOKEN })), runtimeServices: {
       routing: { getEffectiveSnapshot: async () => ({ tasks: {} }) }, inference: { execute: async () => { throw new Error('no'); } } } });
     const req = new EventEmitter();
-    req.headers = { 'x-agentx-report-request': 'r', 'x-agentx-report-task': '0939', 'x-agentx-report-escalation': '3' };
+    req.headers = { authorization: `Bearer ${TOKEN}`, 'x-agentx-report-request': 'r', 'x-agentx-report-task': '0939', 'x-agentx-report-escalation': '3' };
     req.body = { model: 'openai/gpt-5.6-sol', messages: [{ role: 'user', content: 'x' }] };
     let status; let body;
     const res = new PassThrough(); res.status = code => { status = code; return res; }; res.set = () => res;

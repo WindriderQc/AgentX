@@ -9,7 +9,13 @@ const capacity = require('../../src/services/pipelineCodingCapacity');
 const { claimEligibleTask } = require('../../src/services/pipelineTaskService');
 const { normalizePipelineAutomationIntent } = require('../../../shared/pipelineAutomationContract');
 const { executeRoutedInference, TrustedRuntimeServiceError } = require('../../src/extensions/trustedRuntimeServices');
-const { registerHermesProtocol } = require('../../integrations/runtime-bridges/hermes/protocol');
+const { parseGatewayClients } = require('../../integrations/runtime-bridges/llm-gateway/clients');
+const { registerLlmGateway } = require('../../integrations/runtime-bridges/llm-gateway/router');
+// The Coding Team reaches Core's OpenAI gateway as token client `coding-team`.
+const GATEWAY_TOKEN = 'coding-team-test-token-01';
+const registerCodingGateway = options => registerLlmGateway({ ...options,
+  clients: parseGatewayClients(JSON.stringify({ 'coding-team': GATEWAY_TOKEN })) });
+const withGatewayToken = (req, _res, next) => { req.headers.authorization = `Bearer ${GATEWAY_TOKEN}`; next(); };
 jest.mock('../../src/services/heavyWorkQueueService', () => ({ get: jest.fn() }));
 const queue = require('../../src/services/heavyWorkQueueService');
 
@@ -73,8 +79,8 @@ async function fixture({ modelSeconds = 3600, execute, deps = dependencies() } =
     workloadAdmissionId: 'synthetic-admission', workloadGeneration: 'synthetic-generation' });
   const runtime = { routing: { getEffectiveSnapshot: jest.fn(async () => ({ tasks: { code_generation: { model: MODEL } } })) },
     inference: { execute: jest.fn(execute || ((input, options) => executeRoutedInference(deps, input, options))) } };
-  const app = express().use(express.json()).use(registerHermesProtocol({ express, runtimeServices: runtime, logger: {} }));
-  const headers = { 'x-agentx-coding-task': '0001', 'x-agentx-coding-request': active.requestId,
+  const app = express().use(express.json()).use(withGatewayToken, registerCodingGateway({ express, runtimeServices: runtime, logger: {} }));
+  const headers = { authorization: `Bearer ${GATEWAY_TOKEN}`, 'x-agentx-coding-task': '0001', 'x-agentx-coding-request': active.requestId,
     'x-agentx-coding-lease': leaseId, 'x-agentx-coding-call': CALL };
   const post = (body = {}, override = {}) => request(app).post('/v1/chat/completions').set({ ...headers, ...override })
     .send({ model: MODEL, messages: [{ role: 'user', content: 'Synthetic CPU request' }], ...body });
@@ -330,7 +336,7 @@ test('caller interruption retains unknown even when the original validation refu
   const routes = [];
   const fakeExpress = { Router: () => Object.fromEntries(['get', 'post', 'all'].map(method => [method,
     (path, ...handlers) => routes.push({ path, handlers })])) };
-  registerHermesProtocol({ express: fakeExpress, runtimeServices: f.runtime, logger: {} });
+  registerCodingGateway({ express: fakeExpress, runtimeServices: f.runtime, logger: {} });
   const req = new EventEmitter(); req.headers = f.headers;
   req.body = { model: MODEL, messages: [{ role: 'user', content: 'Synthetic interrupted request' }] };
   abortRequest = () => req.emit('aborted');
@@ -357,7 +363,7 @@ test.each(['persistence_rejected', 'persistence_ack_lost', 'native_completion_fa
   const routes = [];
   const fakeExpress = { Router: () => Object.fromEntries(['get', 'post', 'all'].map(method => [method,
     (path, ...handlers) => routes.push({ path, handlers })])) };
-  registerHermesProtocol({ express: fakeExpress, runtimeServices: f.runtime, logger: {} });
+  registerCodingGateway({ express: fakeExpress, runtimeServices: f.runtime, logger: {} });
   const req = new EventEmitter(); req.headers = f.headers;
   req.body = { model: MODEL, stream: true, messages: [{ role: 'user', content: 'Synthetic CPU stream' }] };
   const res = new PassThrough(); res.status = () => res; res.set = () => res;

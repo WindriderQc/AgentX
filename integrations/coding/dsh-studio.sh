@@ -18,8 +18,7 @@ core_url="${AGENTX_CORE_URL:-http://127.0.0.1:3180}"
 settings_helper="${integration_root}/dsh-studio-settings.cjs"
 node_bin="${AGENTX_NODE_BIN:-/usr/local/bin/node}"
 browser_bin="${DSH_STUDIO_BROWSER_EXECUTABLE:-}"
-# Studio's own token for Core's OpenAI gateway (client `dsh-studio`). Unset,
-# Studio keeps Hermes's address, which needs no key.
+# Studio's own token for Core's OpenAI gateway (client `dsh-studio`).
 gateway_token="${AGENTX_LLM_DSH_STUDIO_TOKEN:-}"
 launch=()
 if [[ -n "${DSH_STUDIO_LAUNCH_FILE:-}" ]]; then
@@ -36,9 +35,7 @@ fi
 [[ ! -L "$workspace_root" && ! -L "$state_root" ]] || fail 'DSH Studio roots must not be symbolic links'
 [[ "$node_bin" == /* && -x "$node_bin" ]] || fail "Node runtime is unavailable at ${node_bin}"
 [[ -r "$settings_helper" ]] || fail 'DSH Studio settings helper is unavailable'
-if [[ -n "$gateway_token" ]]; then
-  [[ "$gateway_token" =~ ^[A-Za-z0-9._~+/=-]{16,}$ ]] || fail 'AGENTX_LLM_DSH_STUDIO_TOKEN is invalid'
-fi
+[[ "$gateway_token" =~ ^[A-Za-z0-9._~+/=-]{16,}$ ]] || fail 'AGENTX_LLM_DSH_STUDIO_TOKEN is missing or invalid'
 if [[ -n "$browser_bin" ]]; then
   [[ "$browser_bin" == /* && -x "$browser_bin" ]] || fail 'Chromium executable is unavailable'
   browser_bin="$(realpath -e -- "$browser_bin")"
@@ -51,8 +48,7 @@ if [[ "${1:-}" == '--check' ]]; then
   if [[ "$isolation" == 'bubblewrap' ]]; then
     [[ -x /usr/bin/bwrap ]] || fail 'Bubblewrap is unavailable'
   fi
-  printf 'status=ready isolation=%s bind=127.0.0.1:%s workspace=%s admission=per-request route=%s\n' \
-    "$isolation" "$port" "$workspace_root" "$([[ -n "$gateway_token" ]] && echo gateway || echo hermes)"
+  printf 'status=ready isolation=%s bind=127.0.0.1:%s workspace=%s admission=per-request\n' "$isolation" "$port" "$workspace_root"
   exit 0
 fi
 [[ $# -eq 0 ]] || fail 'DSH Studio accepts no command arguments'
@@ -72,9 +68,8 @@ if [[ -n "$browser_bin" && "$isolation" == 'bubblewrap' ]]; then
   browser_mount=(--ro-bind "$(dirname -- "$browser_bin")" /opt/agentx-chromium)
   browser_bin="/opt/agentx-chromium/$(basename -- "$browser_bin")"
 fi
-DSH_STUDIO_BROWSER_EXECUTABLE="$browser_bin" AGENTX_LLM_DSH_STUDIO_TOKEN="$gateway_token" \
-  "$node_bin" "$settings_helper" "$settings" "$studio_home/.dsh/agentx.patch.json" "$core_url"
-api_key="${gateway_token:-local-no-auth}"
+DSH_STUDIO_BROWSER_EXECUTABLE="$browser_bin" "$node_bin" "$settings_helper" "$settings" "$studio_home/.dsh/agentx.patch.json" "$core_url"
+api_key="$gateway_token"
 unset AGENTX_LLM_DSH_STUDIO_TOKEN
 
 export DSH_PERMISSION_MODE=workspace-write
