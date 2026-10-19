@@ -1,7 +1,8 @@
 'use strict';
 
 jest.mock('../../src/helpers/crossServiceClient', () => ({ requestJson: jest.fn(), CrossServiceClientError: class extends Error {} }));
-jest.mock('../../src/services/modelRouter', () => ({ getTargetForModel: () => 'http://127.0.0.1:11434', resolveHostKey: () => null }));
+jest.mock('../../src/services/modelRouter', () => ({ getTargetForModel: jest.fn(() => 'http://127.0.0.1:11434'), resolveHostKey: () => null }));
+const { getTargetForModel } = require('../../src/services/modelRouter');
 const { requestJson } = require('../../src/helpers/crossServiceClient');
 const Queue = require('../../models/HeavyWorkQueue');
 const Archive = require('../../models/HeavyWorkQueueArchive');
@@ -49,6 +50,12 @@ it('refuses a second change while one is queued, a stale view, the served model 
   await expect(reindex.requestChange(change({ requestKey: OTHER_KEY, model: 'nomic-embed-text:v1.5', dimension: 768 }), 'owner')).rejects.toMatchObject({ code: 'EMBEDDING_MODEL_UNCHANGED' });
   await expect(reindex.requestChange(change({ requestKey: OTHER_KEY, model: 'llama3.2:1b' }), 'owner')).rejects.toMatchObject({ statusCode: 400 });
   await expect(reindex.requestChange(change({ requestKey: 'not-a-key' }), 'owner')).rejects.toMatchObject({ statusCode: 400 });
+});
+
+it('refuses clearly when no Ollama host serves the model', async () => {
+  getTargetForModel.mockReturnValueOnce(null);
+  await expect(reindex.requestChange(change(), 'owner')).rejects.toMatchObject({ statusCode: 409, code: 'EMBEDDING_HOST_UNAVAILABLE' });
+  expect((await queue.list())?.jobs || []).toHaveLength(0);
 });
 
 it('cancels before the launch in the queue, and during the copy through RAG', async () => {

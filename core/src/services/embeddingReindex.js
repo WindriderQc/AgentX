@@ -35,6 +35,7 @@ async function rag(method, path, body) {
 /** The endpoints whose embedding window the build occupies. */
 function reindexHosts(model) {
   const target = getTargetForModel(model);
+  if (!target) throw fail(`No Ollama host is configured for ${model}`, 409, 'EMBEDDING_HOST_UNAVAILABLE');
   const chain = process.env.AGENTX_EMBEDDING_HOST_CHAIN;
   return chain && chain.trim() ? embeddingHostCandidates(target) : [target];
 }
