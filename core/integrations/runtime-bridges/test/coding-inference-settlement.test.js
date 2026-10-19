@@ -62,13 +62,13 @@ test('a report escalation call runs on the escalation path only, never on the lo
     const routes = [];
     const express = { Router: () => Object.fromEntries(['get', 'post', 'all'].map(method => [method,
       (path, ...handlers) => routes.push({ method, path, handlers })])) };
-    registerHermesProtocol({ express, logger: {}, runtimeServices: {
+    registerLlmGateway({ express, logger: {}, clients: parseGatewayClients(JSON.stringify({ 'coding-team': TOKEN })), runtimeServices: {
       // The model is not in the routing table: only the run's recorded models authorize it.
       routing: { getEffectiveSnapshot: async () => ({ tasks: { code_generation: { model: 'local-coder' } } }) },
       inference: { execute: async () => { throw new Error('local runtime must not run an escalation call'); } }
     } });
     const req = new EventEmitter();
-    req.headers = { 'x-agentx-report-request': 'r', 'x-agentx-report-task': '0939', 'x-agentx-report-escalation': '3' };
+    req.headers = { authorization: `Bearer ${TOKEN}`, 'x-agentx-report-request': 'r', 'x-agentx-report-task': '0939', 'x-agentx-report-escalation': '3' };
     req.body = { model: 'openai/gpt-5.6-sol', messages: [{ role: 'user', content: 'Review these documents' }], max_tokens: 4096 };
     let status; let body;
     const res = new PassThrough(); res.status = code => { status = code; return res; }; res.set = () => res;
@@ -96,10 +96,10 @@ test('an unanswered escalation settles as refused and reports the failure', asyn
     const routes = [];
     const express = { Router: () => Object.fromEntries(['get', 'post', 'all'].map(method => [method,
       (path, ...handlers) => routes.push({ method, path, handlers })])) };
-    registerHermesProtocol({ express, logger: {}, runtimeServices: {
+    registerLlmGateway({ express, logger: {}, clients: parseGatewayClients(JSON.stringify({ 'coding-team': TOKEN })), runtimeServices: {
       routing: { getEffectiveSnapshot: async () => ({ tasks: {} }) }, inference: { execute: async () => { throw new Error('no'); } } } });
     const req = new EventEmitter();
-    req.headers = { 'x-agentx-report-request': 'r', 'x-agentx-report-task': '0939', 'x-agentx-report-escalation': '3' };
+    req.headers = { authorization: `Bearer ${TOKEN}`, 'x-agentx-report-request': 'r', 'x-agentx-report-task': '0939', 'x-agentx-report-escalation': '3' };
     req.body = { model: 'openai/gpt-5.6-sol', messages: [{ role: 'user', content: 'x' }] };
     let status; let body;
     const res = new PassThrough(); res.status = code => { status = code; return res; }; res.set = () => res;
