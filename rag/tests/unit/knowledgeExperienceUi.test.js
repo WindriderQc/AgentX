@@ -137,7 +137,7 @@ describe('Agent X Knowledge progressive-disclosure experience', () => {
     expect(documentsJs).toContain('showDeleteFailure(err, opener)');
     expect(documentsJs).toContain('The document remains indexed; use Delete to try again.');
     expect(documentsJs).not.toMatch(/\balert\s*\(/);
-    expect(apiJs).toContain('body: JSON.stringify({ confirmation: confirmation })');
+    expect(apiJs).toContain(': { confirmation: confirmation })');
     expect(css).toContain('.delete-confirm-dialog::backdrop');
   });
 

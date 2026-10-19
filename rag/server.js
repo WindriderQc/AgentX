@@ -33,6 +33,7 @@ const { resetEmbeddingsService } = require('./src/services/embeddings');
 const { warmEmbeddingConnection } = require('./src/services/embeddingWarmup');
 const { getProfileService } = require('./src/services/embeddingProfile');
 const { getRagStore } = require('./src/services/ragStore');
+const { recoverInterruptedBuilds } = require('./src/services/embeddingBuild');
 const { resetRagStore } = require('./src/services/ragStore');
 const app = require('./app');
 
@@ -77,6 +78,7 @@ async function start() {
   await connectDB();
   // Serve the stored embedding profile before accepting a search or a write.
   await getProfileService().configure(getRagStore());
+  await recoverInterruptedBuilds();
   server = app.listen(PORT, HOST, () => {
     logger.info(`agentx-rag listening on ${HOST}:${PORT}`);
   });

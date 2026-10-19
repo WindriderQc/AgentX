@@ -9,7 +9,7 @@ describe('RAG maintenance destructive-action confirmations', () => {
   const maintenance = read('public', 'js', 'maintenance.js');
   const api = read('public', 'js', 'api.js');
 
-  test('provides one accessible exact-phrase dialog for cleanup and reindex', () => {
+  test('provides one accessible exact-phrase dialog for cleanup', () => {
     expect(view).toContain('<dialog id="maintenance-confirm-dialog"');
     expect(view).toContain('aria-labelledby="maintenance-confirm-title"');
     expect(view).toContain('aria-describedby="maintenance-confirm-description"');
@@ -28,10 +28,10 @@ describe('RAG maintenance destructive-action confirmations', () => {
     expect(api).toContain('body.confirmation = confirmation');
   });
 
-  test('requires and forwards the global reindex phrase', () => {
-    expect(maintenance).toContain("var expected = 'REINDEX ALL DOCUMENTS';");
-    expect(maintenance).toContain('RAG.triggerReindex(expected)');
-    expect(api).toContain('async function triggerReindex(confirmation)');
-    expect(api).toContain('body: JSON.stringify({ confirmation: confirmation })');
+  test('sends a model change to the Nerve Center instead of reindexing in place', () => {
+    expect(view).toContain('Nerve Center → Routing → Embeddings');
+    expect(maintenance).not.toContain('triggerReindex');
+    expect(api).not.toContain('embedding-migration/reindex');
   });
+
 });
