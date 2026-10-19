@@ -220,7 +220,10 @@ review list. This creates neither an accepted personal task nor a selected memor
 `POST /api/secretary/history/:id/souvenir` (current revision) is the owner's
 explicit choice to keep a non-action assertion as a souvenir: a permanent owner
 memory note (`kind: souvenir`) with its event date, people, places and source
-references. Keeping it again returns the same note. Decisions retain a revision
+references. Keeping it again returns the same note. The `/dad/history` page offers
+it on each non-action card and for a selection of the current page, after a
+confirmation that previews the selection; its filters narrow the review to a
+source year and to souvenirs kept or not yet kept (`souvenir=kept|not-kept`). Decisions retain a revision
 history; forgotten identities suppress replay, forgetting a linked owner note or
 souvenir suppresses its historical source too, and forgetting the source forgets
 its souvenir.

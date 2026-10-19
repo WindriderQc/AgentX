@@ -12,3 +12,7 @@
 .history-entry form{display:grid;gap:16px;margin-top:22px}.history-entry .row{gap:12px}.history-entry details{margin-top:16px;overflow-wrap:anywhere}
 .history-decision{border-left:3px solid #60c3ac;padding-left:13px;margin-top:20px}.personal-history button{padding:10px 15px}
 .history-entry pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.65;max-height:65vh;overflow:auto;padding:14px;border:1px solid var(--border,#38515c);border-radius:10px}
+.history-batch{gap:12px;align-items:center;margin:0 0 8px}.history-batch p{margin:0}
+.history-pick{display:flex!important;gap:9px;align-items:center;margin:8px 0}.history-pick input{width:auto}
+.history-souvenir{border-left:3px solid #e2b85c;padding-left:13px;margin:8px 0}
+.history-filters .history-page-size{flex:0 1 120px;min-width:100px}
