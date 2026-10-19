@@ -94,4 +94,15 @@ describe('Qdrant payload indexes', () => {
     await expect(store.findKeywordCandidates(['ia'])).rejects.toThrow(/full-text index/);
     expect(fetch.mock.calls.some(([url]) => url.endsWith('/scroll'))).toBe(false);
   });
+
+  test('deleteCollection deletes this collection only, and reports a missing one', async () => {
+    fetch.mockResolvedValueOnce(mockOk({ result: true }));
+    expect(await store.deleteCollection()).toBe(true);
+    const [url, options, , context] = fetch.mock.calls[0];
+    expect(url).toBe('http://qdrant:6333/collections/target');
+    expect(options.method).toBe('DELETE');
+    expect(context.operationId).toBe('rag.qdrant.collection-delete');
+    fetch.mockResolvedValueOnce(mockFail(404, 'Not found: Collection `target` doesn\'t exist!'));
+    expect(await store.deleteCollection()).toBe(false);
+  });
 });

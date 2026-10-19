@@ -42,7 +42,7 @@
         return iso ? new Date(iso).toLocaleString() : '—';
     }
 
-    function profileHtml(profile) {
+    function profileHtml(profile, open) {
         const active = profile?.active || {};
         return `
             <div class="nc-embed-grid">
@@ -50,7 +50,8 @@
                 <div class="nc-host-card"><div class="nc-muted nc-embed-label">Dimension</div><div class="nc-embed-value">${esc(active.dimension)}</div></div>
                 <div class="nc-host-card"><div class="nc-muted nc-embed-label">Collection</div><div class="nc-embed-value nc-embed-wrap">${esc(active.collection)}</div></div>
             </div>
-            ${profile?.previous ? `<p class="nc-muted nc-embed-note">Previous collection kept: ${esc(profile.previous.collection)} (${esc(profile.previous.model)}), switched ${esc(when(profile.activatedAt))}.</p>` : ''}`;
+            ${profile?.previous ? `<div class="nc-embed-previous"><p class="nc-muted nc-embed-note">Previous collection kept: ${esc(profile.previous.collection)} (${esc(profile.previous.model)}), switched ${esc(when(profile.activatedAt))}.</p>
+                ${open ? '' : '<button type="button" class="nc-btn" data-embed-retire>Delete previous collection</button>'}</div>` : ''}`;
     }
 
     function progressHtml(build) {
@@ -104,9 +105,10 @@
         current = data;
         const body = document.getElementById('nc-embeddings-body');
         const open = data.request && OPEN.includes(data.request.state);
-        body.innerHTML = profileHtml(data.profile) + requestHtml(data.request, data.build) + (open ? '' : formHtml(data.profile));
+        body.innerHTML = profileHtml(data.profile, open) + requestHtml(data.request, data.build) + (open ? '' : formHtml(data.profile));
         body.querySelector('[data-embed-form]')?.addEventListener('submit', submit);
         body.querySelector('[data-embed-cancel]')?.addEventListener('click', cancel);
+        body.querySelector('[data-embed-retire]')?.addEventListener('click', retire);
         clearTimeout(timer);
         if (open) timer = setTimeout(load, POLL_MS);
     }
@@ -167,6 +169,28 @@
             await call(`${API}/requests/${encodeURIComponent(current.request.id)}/cancel`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ expectedRevision: current.request.revision })
+            });
+            await load();
+        } catch (failure) {
+            button.disabled = false;
+            button.insertAdjacentHTML('afterend', `<div class="nc-embed-error" role="alert">${esc(failure.message)}</div>`);
+        }
+    }
+
+    async function retire(event) {
+        const button = event.currentTarget;
+        const { previous, revision } = current.profile;
+        const headers = await window.AgentXTypedConfirmation.confirm({
+            action: 'DELETE EMBEDDING COLLECTION', resource: previous.collection,
+            title: 'Delete the previous embedding collection',
+            description: `${previous.collection} (${previous.model}) is deleted from Qdrant. Going back to that model then needs a full rebuild.`
+        });
+        if (!headers) return;
+        button.disabled = true;
+        try {
+            await call(`${API}/previous/retire`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+                body: JSON.stringify({ collection: previous.collection, expectedRevision: revision })
             });
             await load();
         } catch (failure) {

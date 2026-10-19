@@ -458,6 +458,13 @@ curl http://127.0.0.1:3182/api/rag/embedding-profile
 # => { "ok": true, "data": { "profile": { "revision": 0, "active": { "model": "nomic-embed-text:v1.5", "dimension": 768, "collection": "agentx_embeddings" }, "previous": null, "freeze": null }, "build": null } }
 ```
 
+### POST /api/rag/embedding-profile/previous/retire
+
+Deletes the collection the last switch replaced. The body names it and the
+profile revision the caller read: `{ "collection": "...", "expectedRevision": 1 }`.
+Any other collection, a stale revision or a build in progress is refused with 409.
+Core's Nerve Center calls it after a typed confirmation.
+
 ### POST /api/rag/embedding-builds
 
 Start the build of a dispatched Core `embedding-reindex` request, with its id as

@@ -525,6 +525,19 @@ class QdrantVectorStore extends VectorStoreAdapter {
   }
 
   /** Create one payload index; `fieldSchema` is a Qdrant type name or params object. */
+  /** Delete this whole collection; only a retired embedding profile's collection is deleted. */
+  async deleteCollection() {
+    const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}`, { method: 'DELETE' },
+      QDRANT_TIMEOUT, this._outboundContext(SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_COLLECTION_DELETE));
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      if (this._isMissingCollectionResponse(res.status, text)) return false;
+      throw new Error(`Qdrant collection deletion failed: ${res.status} ${text}`);
+    }
+    this._forgetCollection();
+    return true;
+  }
+
   async createPayloadIndex(fieldName, fieldSchema) {
     const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/index?wait=true`, {
       method: 'PUT',

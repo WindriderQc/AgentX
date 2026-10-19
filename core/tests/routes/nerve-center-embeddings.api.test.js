@@ -3,7 +3,8 @@
 jest.mock('../../src/services/embeddingReindex', () => ({
   status: jest.fn(async () => ({ profile: { active: { model: 'nomic-embed-text:v1.5' } }, build: null, request: null })),
   requestChange: jest.fn(async (body) => ({ id: 'req-1', state: 'reserved', executor: { model: body.model } })),
-  cancelChange: jest.fn(async (id) => ({ id, state: 'cancelled' }))
+  cancelChange: jest.fn(async (id) => ({ id, state: 'cancelled' })),
+  retirePrevious: jest.fn(async (body) => ({ collection: body.collection, deleted: true }))
 }));
 const express = require('express');
 const request = require('supertest');
@@ -50,5 +51,16 @@ describe('Nerve Center embeddings API', () => {
   test('the generic router task editor refuses the embeddings task', () => {
     expect(() => assertEditableTask('embeddings')).toThrow(expect.objectContaining({ statusCode: 409, code: 'EMBEDDINGS_CHANGE_REQUIRES_REINDEX' }));
     expect(assertEditableTask('chat')).toBe('chat');
+  });
+
+  test('retiring the previous collection needs the typed confirmation naming it', async () => {
+    const body = { collection: 'docs', expectedRevision: 1 };
+    const missing = await request(app()).post('/api/nerve-center/embeddings/previous/retire').send(body);
+    expect(missing.status).toBe(400);
+    expect(missing.body.confirmation.expected).toBe('DELETE EMBEDDING COLLECTION docs');
+    expect(reindex.retirePrevious).not.toHaveBeenCalled();
+    const ok = await request(app()).post('/api/nerve-center/embeddings/previous/retire')
+      .set('x-agentx-confirm', 'DELETE EMBEDDING COLLECTION docs').send(body);
+    expect(ok.body.data).toEqual({ collection: 'docs', deleted: true });
   });
 });

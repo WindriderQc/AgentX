@@ -109,4 +109,12 @@ async function cancelChange(id, { expectedRevision }, actor) {
   return job;
 }
 
-module.exports = { reindexHosts, readProfile, readBuild, startBuild, stopBuild, buildOutcome, status, requestChange, cancelChange, IN_PROGRESS };
+/** Delete the collection the last switch replaced, as the page named it. */
+async function retirePrevious({ collection, expectedRevision }) {
+  if (typeof collection !== 'string' || !collection || !Number.isInteger(expectedRevision)) {
+    throw fail('Name the previous collection and the profile revision you saw', 400, 'EMBEDDING_RETIRE_INVALID');
+  }
+  return rag('POST', '/api/rag/embedding-profile/previous/retire', { collection, expectedRevision });
+}
+
+module.exports = { retirePrevious, reindexHosts, readProfile, readBuild, startBuild, stopBuild, buildOutcome, status, requestChange, cancelChange, IN_PROGRESS };

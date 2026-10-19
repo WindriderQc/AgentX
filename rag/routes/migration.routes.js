@@ -7,6 +7,7 @@
  * POST   /embedding-builds             — Start the build a dispatched Core heavy-work request names
  * GET    /embedding-builds/:id         — Build progress and outcome
  * POST   /embedding-builds/:id/cancel  — Stop a build before it switches collections
+ * POST   /embedding-profile/previous/retire — Delete the collection the last switch replaced
  *
  * A model change is requested from Core's Nerve Center. It queues a heavy-work
  * request whose launch starts the build here; search keeps the previous
@@ -108,6 +109,15 @@ router.get('/embedding-profile', async (req, res) => {
   try {
     const [profile, build] = await Promise.all([getProfileService().read(), getBuildService().latest()]);
     res.json({ ok: true, data: { profile, build } });
+  } catch (err) {
+    sendBuildError(res, err);
+  }
+});
+
+router.post('/embedding-profile/previous/retire', async (req, res) => {
+  try {
+    const { collection, expectedRevision } = req.body || {};
+    res.json({ ok: true, data: await getBuildService().retirePrevious({ collection, expectedRevision }) });
   } catch (err) {
     sendBuildError(res, err);
   }

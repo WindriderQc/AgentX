@@ -58,6 +58,13 @@ function mongoRepository() {
     async thaw(buildId) {
       await Model.updateOne({ _id: PROFILE_ID, 'freeze.buildId': buildId }, { $set: { freeze: null } });
     },
+    async forgetPrevious(expectedRevision, collection) {
+      const doc = await Model.findOneAndUpdate(
+        { _id: PROFILE_ID, revision: expectedRevision, 'previous.collection': collection },
+        { $set: { previous: null } }, { new: true }
+      ).lean();
+      return plain(doc);
+    },
     async swap(expectedRevision, next, { buildId, actor, now }) {
       const current = await Model.findById(PROFILE_ID).lean();
       if (!current || current.revision !== expectedRevision || current.freeze?.buildId !== buildId) return null;
@@ -137,6 +144,7 @@ function createProfileService({ repository = mongoRepository(), env = process.en
       return repository.freeze(expectedRevision, { buildId, since: at, until: new Date(at.getTime() + untilMs) }, at);
     },
     thaw: (buildId) => repository.thaw(buildId),
+    forgetPrevious: (expectedRevision, collection) => repository.forgetPrevious(expectedRevision, collection),
     swap: (expectedRevision, next, { buildId, actor = 'embedding-build' }) => repository.swap(expectedRevision, next, { buildId, actor, now: now() })
   };
 }

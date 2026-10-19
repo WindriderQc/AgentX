@@ -41,6 +41,7 @@ const SERVICE_OUTBOUND_OPERATION_IDS = Object.freeze({
   OLLAMA_EMBED_BATCH: 'rag.ollama.embed-batch',
   OLLAMA_EMBED_SINGLE: 'rag.ollama.embed-single',
   QDRANT_COLLECTION_CREATE: 'rag.qdrant.collection-create',
+  QDRANT_COLLECTION_DELETE: 'rag.qdrant.collection-delete',
   QDRANT_COLLECTION_READ: 'rag.qdrant.collection-read',
   QDRANT_COLLECTIONS_HEALTH: 'rag.qdrant.collections-health',
   QDRANT_PAYLOAD_INDEX_CREATE: 'rag.qdrant.payload-index-create',
@@ -82,6 +83,9 @@ const SERVICE_OUTBOUND_OPERATIONS = Object.freeze({
   }),
   [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_COLLECTION_CREATE]: Object.freeze({
     authoritySource: 'configured', deadlineMs: 120_000, maxRequestBytes: 64 * 1024, maxResponseBytes: 2 * MIB,
+  }),
+  [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_COLLECTION_DELETE]: Object.freeze({
+    authoritySource: 'configured', deadlineMs: 120_000, maxRequestBytes: 0, maxResponseBytes: MIB,
   }),
   [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_COLLECTION_READ]: Object.freeze({
     authoritySource: 'configured', deadlineMs: 120_000, maxRequestBytes: 0, maxResponseBytes: 4 * MIB,
@@ -138,6 +142,7 @@ const SERVICE_OUTBOUND_TIMEOUTS = Object.freeze({
   [SERVICE_OUTBOUND_OPERATION_IDS.OLLAMA_EMBED_BATCH]: EMBEDDING_DEADLINE_MS,
   [SERVICE_OUTBOUND_OPERATION_IDS.OLLAMA_EMBED_SINGLE]: EMBEDDING_DEADLINE_MS,
   [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_COLLECTION_CREATE]: QDRANT_DEADLINE_MS,
+  [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_COLLECTION_DELETE]: QDRANT_DEADLINE_MS,
   [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_COLLECTION_READ]: QDRANT_DEADLINE_MS,
   [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_COLLECTIONS_HEALTH]: Math.min(QDRANT_DEADLINE_MS, 2_000),
   [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_PAYLOAD_INDEX_CREATE]: QDRANT_DEADLINE_MS,
@@ -166,6 +171,7 @@ const SERVICE_OUTBOUND_REQUEST_SPECS = Object.freeze({
   [SERVICE_OUTBOUND_OPERATION_IDS.OLLAMA_EMBED_BATCH]: Object.freeze({ allowSearch: false, method: 'POST', pathPattern: '^/api/embed$' }),
   [SERVICE_OUTBOUND_OPERATION_IDS.OLLAMA_EMBED_SINGLE]: Object.freeze({ allowSearch: false, method: 'POST', pathPattern: '^/api/embeddings$' }),
   [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_COLLECTION_CREATE]: Object.freeze({ allowSearch: false, method: 'PUT', pathPattern: `^/collections/${COLLECTION_SEGMENT}$` }),
+  [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_COLLECTION_DELETE]: Object.freeze({ allowSearch: false, method: 'DELETE', pathPattern: `^/collections/${COLLECTION_SEGMENT}$` }),
   [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_COLLECTION_READ]: Object.freeze({ allowSearch: false, method: 'GET', pathPattern: `^/collections/${COLLECTION_SEGMENT}$` }),
   [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_COLLECTIONS_HEALTH]: Object.freeze({ allowSearch: false, method: 'GET', pathPattern: '^/collections$' }),
   [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_PAYLOAD_INDEX_CREATE]: Object.freeze({ allowSearch: false, search: '?wait=true', method: 'PUT', pathPattern: `^/collections/${COLLECTION_SEGMENT}/index$` }),

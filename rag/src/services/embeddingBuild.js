@@ -199,10 +199,28 @@ function createBuildService({
     }
   }
 
+  /**
+   * Delete the collection the last switch replaced. The caller names it and the
+   * revision it saw; nothing else is ever deleted, and never during a build.
+   */
+  async function retirePrevious({ collection, expectedRevision } = {}) {
+    const profile = await profiles.read();
+    if (!profile.previous || profile.previous.collection !== collection || profile.revision !== expectedRevision) {
+      throw fail('Only the previous collection named in the current profile can be retired', 409, 'EMBEDDING_PROFILE_CHANGED');
+    }
+    if (collection === profile.active.collection) throw fail('The serving collection cannot be retired', 409, 'EMBEDDING_COLLECTION_SERVING');
+    if (await repository.findInProgress()) throw fail('An embedding build is in progress', 409, 'EMBEDDING_BUILD_ACTIVE');
+    const deleted = await stores.storeForCollection(collection, profile.previous.dimension).deleteCollection();
+    const updated = await profiles.forgetPrevious(expectedRevision, collection);
+    logger.info('Previous embedding collection retired', { collection, deleted });
+    return { collection, deleted, profile: updated };
+  }
+
   return {
     start,
     cancel,
     recoverInterrupted,
+    retirePrevious,
     get: async (id) => view(await repository.get(id)),
     latest: async () => view(await repository.latest()),
     // Tests wait for the background run they started.

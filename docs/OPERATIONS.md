@@ -2075,8 +2075,10 @@ withdraws it.
    their source before trying again.
 5. After the switch the previous collection stays in Qdrant, named in the
    section. Recalibrate the similarity floors above for the new model, and
-   keep the previous collection until retrieval on the new one is verified;
-   going back is another change to the previous model.
+   keep the previous collection until retrieval on the new one is verified.
+   **Delete previous collection** then removes it after a typed confirmation
+   naming it; only that collection can be deleted, and never during a build.
+   Going back to a model is another change, a full rebuild.
 
 `node scripts/migrate-embedding-collection.js --source <a> --target <b>
 --dry-run` (inside the RAG container) still counts what a copy would move and

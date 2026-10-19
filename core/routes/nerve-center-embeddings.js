@@ -29,4 +29,11 @@ router.post('/embeddings/requests/:id/cancel', async (req, res) => {
   catch (error) { reply(res, error); }
 });
 
+router.post('/embeddings/previous/retire', async (req, res) => {
+  const body = req.body || {};
+  if (!requireTypedConfirmation(req, res, 'DELETE EMBEDDING COLLECTION', body.collection)) return;
+  try { res.json({ status: 'success', data: await reindex.retirePrevious(body) }); }
+  catch (error) { reply(res, error); }
+});
+
 module.exports = router;

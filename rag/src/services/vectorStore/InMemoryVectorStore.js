@@ -151,6 +151,13 @@ class InMemoryVectorStore extends VectorStoreAdapter {
     };
   }
 
+  async deleteCollection() {
+    const existed = this.documents.size > 0 || this.vectors.length > 0;
+    this.documents.clear();
+    this.vectors = [];
+    return existed;
+  }
+
   async createPayloadIndex(field, schema) {
     this.payloadSchema[field] = { data_type: schema };
   }

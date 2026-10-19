@@ -17,6 +17,11 @@ function memoryProfileRepository() {
     async thaw(buildId) {
       if (doc.freeze?.buildId === buildId) doc.freeze = null;
     },
+    async forgetPrevious(expectedRevision, collection) {
+      if (doc.revision !== expectedRevision || doc.previous?.collection !== collection) return null;
+      doc.previous = null;
+      return copy(doc);
+    },
     async swap(expectedRevision, next, { buildId, actor, now }) {
       if (doc.revision !== expectedRevision || doc.freeze?.buildId !== buildId) return null;
       doc = { ...doc, previous: doc.active, active: { ...next }, freeze: null, revision: doc.revision + 1, activatedAt: now.toISOString(), activatedBy: actor };

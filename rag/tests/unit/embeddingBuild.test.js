@@ -150,3 +150,29 @@ describe('embedding index build', () => {
     expect(profileRepository.doc.freeze).toBeNull();
   });
 });
+
+describe('retiring the previous collection', () => {
+  test('deletes only the collection the switch replaced, once it is named with the current revision', async () => {
+    const { builds, profiles } = await setup();
+    await builds.start({ buildId: BUILD, model: 'model-b', dimension: 8 });
+    await builds.settled(BUILD);
+    const { revision, active, previous } = await profiles.read();
+    await expect(builds.retirePrevious({ collection: active.collection, expectedRevision: revision })).rejects.toMatchObject({ code: 'EMBEDDING_PROFILE_CHANGED' });
+    await expect(builds.retirePrevious({ collection: previous.collection, expectedRevision: revision - 1 })).rejects.toMatchObject({ code: 'EMBEDDING_PROFILE_CHANGED' });
+
+    const retired = await builds.retirePrevious({ collection: 'docs', expectedRevision: revision });
+    expect(retired).toMatchObject({ collection: 'docs', deleted: true, profile: { previous: null, active: { collection: active.collection } } });
+    expect(await collectionStores.storeForCollection('docs', 4).getCollectionInfo()).toBeNull();
+    expect((await collectionStores.storeForCollection(active.collection, 8).listDocuments()).total).toBe(2);
+    await expect(builds.retirePrevious({ collection: 'docs', expectedRevision: revision })).rejects.toMatchObject({ code: 'EMBEDDING_PROFILE_CHANGED' });
+  });
+
+  test('refuses while a build is in progress', async () => {
+    const { builds, repository, profiles } = await setup();
+    await builds.start({ buildId: BUILD, model: 'model-b', dimension: 8 });
+    await builds.settled(BUILD);
+    const { revision } = await profiles.read();
+    repository.rows.set(OTHER, { _id: OTHER, status: 'copying', startedAt: new Date().toISOString() });
+    await expect(builds.retirePrevious({ collection: 'docs', expectedRevision: revision })).rejects.toMatchObject({ code: 'EMBEDDING_BUILD_ACTIVE' });
+  });
+});
