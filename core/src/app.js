@@ -748,7 +748,7 @@ app.get('/council', (req, res) => {
     service: 'core',
     activePage: 'council',
     headCss: '<link rel="stylesheet" href="/styles.css">',
-    footerJs: '<script src="/js/roundtable.js"></script>'
+    footerJs: '<script src="/js/council-handoff.js"></script><script src="/js/roundtable.js"></script>'
   });
 });
 

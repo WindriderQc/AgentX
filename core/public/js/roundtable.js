@@ -184,6 +184,7 @@
 
   // ---------- Live rendering ----------
   let liveDoc = null;
+  let handoffSource = null; // 'playground' until the handed-off question is convened
   let liveEventSource = null;
   let liveSeq = 0; // last streamed event applied; the snapshot sets it
   const agentRefs = {}; // agentId -> { card, body, stats, status }
@@ -708,7 +709,7 @@
       governance: { requireApproval: $('formApproval').value === 'true' },
       // A question handed off from the Playground is recorded as such; the
       // server still owns the session and its telemetry attribution.
-      source: new URLSearchParams(window.location.search).get('source') === 'playground' ? 'playground-handoff' : 'web-ui'
+      source: handoffSource === 'playground' ? 'playground-handoff' : 'web-ui'
     };
 
     const btn = $('formStartBtn');
@@ -723,6 +724,7 @@
         },
         body: JSON.stringify(body)
       });
+      handoffSource = null;
       clearLive();
       await attachLive(data._id);
       $('liveChairToken').value = $('formChairToken').value;
@@ -845,18 +847,23 @@
     await loadDefaults();
     loadHistory();
 
-    // Pre-fill question from URL ?question=... (Playground "Open in Council")
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const qParam = params.get('question');
-      if (qParam) {
-        $('formQuestion').value = qParam;
-        $('formQuestion').focus();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        showToast('Question handed off from Chat — nothing has been convened yet. Review the panel, then Convene Council.', 'info');
-      }
-    } catch {}
+    // A handoff link (Playground "Open in Council", Telegram relay) applies once.
+    const handoff = window.AgentXCouncilHandoff.readCouncilHandoff(window.location.search);
+    if (handoff.present) {
+      try { window.history.replaceState(null, '', `${window.location.pathname}${handoff.cleanSearch}${window.location.hash}`); } catch {}
+    }
+    if (handoff.question) {
+      handoffSource = handoff.source;
+      $('formQuestion').value = handoff.question;
+      $('formQuestion').focus();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showToast(window.AgentXCouncilHandoff.handoffMessage(handoff), 'info');
+    }
 
+    if (handoff.id) {
+      attachLive(handoff.id);
+      return;
+    }
     // Auto-attach an active roundtable if one is running
     try {
       const { data } = await jsonFetch('/api/roundtable/active');

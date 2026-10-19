@@ -38,7 +38,7 @@ describe('AgentX Council surface', () => {
     expect(chatMain).toContain("'/council?question=' + encodeURIComponent(text) + '&source=playground'");
     expect(chatMain).toContain("link.rel = 'noopener'");
     expect(chatMain).toContain('Question handed to Council in a new tab');
-    expect(read('core/public/js/roundtable.js')).toContain("get('source') === 'playground' ? 'playground-handoff' : 'web-ui'");
+    expect(read('core/public/js/roundtable.js')).toContain("handoffSource === 'playground' ? 'playground-handoff' : 'web-ui'");
     expect(read('core/views/pages/roundtable.ejs')).toContain('Council is advisory');
   });
 
@@ -59,5 +59,6 @@ describe('AgentX Council surface', () => {
     expect(page.status).toBe(200);
     expect(page.text).toMatch(/bounded multi-model deliberation/i);
     expect(page.text).toContain('/js/roundtable.js');
+    expect(page.text).toContain('/js/council-handoff.js');
   });
 });
