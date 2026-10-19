@@ -159,6 +159,29 @@ household winter season (`FAMILY_WINTER_SEASON`, `MM-DD/MM-DD`, default
 November 1 to March 31). Changing the frequency away from `interval` clears
 both interval fields.
 
+`runtimeServices.household.plants` owns household plant cards
+(`household_plants`, with display photos of 2 MB or less in
+`household_plant_photos`). The domain rules live in
+`src/domains/household/plants.js`:
+
+- A card is a `draft`, `published` or `retired`. Every edit is bound to the
+  revision the parent saw.
+- A card holds a nickname and room, the chosen species with up to three
+  candidates, a care sheet whose entries carry their sources, toxicity for
+  children, cats and dogs, a fun fact, up to eight care actions and up to four
+  JPEG or PNG photos. A care action follows the family routine rules, with a
+  minimum age band.
+- Publishing requires a species, a known toxicity level for every subject
+  that the parent has confirmed, and at least one care action. A published
+  card cannot be edited below that bar; any toxicity edit needs the
+  confirmation again. A retired card is frozen.
+- `/api/family/plants` reads the child projection by default: published
+  cards only, with needs, a do-not-eat flag, the fun fact and photo links,
+  never sources, candidates or review state. `view=manage` is the parent
+  page's view.
+- Photos are served from `/api/family/plants/:id/photos/:photoId`, to the
+  child view only once the card is published.
+
 Personal-task deadlines follow one contract on every write path (the
 Household `POST /api/secretary/tasks` and `POST /api/secretary/tasks/update`
 routes and the Secretary MCP `add_personal_task` / `update_personal_task`

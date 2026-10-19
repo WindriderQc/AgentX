@@ -533,6 +533,9 @@ function register(api) {
   registerSecretaryMcp({ app, standardJsonParser, models, personalTasks, sounds });
 
   registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, conversations });
+  if (runtimeServices.household?.plants) {
+    require('./plant-routes').registerPlantRoutes({ app, express, plants: runtimeServices.household.plants, standardJsonParser });
+  }
   registerDeviceAcceptanceRoutes(app, {
     express, standardJsonParser, models, envelope, fail, cleanText
   });
