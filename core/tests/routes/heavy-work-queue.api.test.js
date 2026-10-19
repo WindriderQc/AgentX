@@ -48,3 +48,12 @@ it('surfaces executor mismatch without a dispatch mark', async () => {
   await request(app).post(`/queue/${job.id}/begin`).send({ expectedRevision: job.revision }).expect(409);
   expect((await queue.get(job.id)).state).toBe('requested');
 });
+
+it('runs a reserved Profiler request now only with its current revision', async () => {
+  const job = await queue.submit(input, 'test');
+  const ready = await queue.reserve(job.id, { expectedRevision: job.revision, start: new Date(Date.now() - 1000).toISOString() }, 'test');
+  jest.spyOn(evidence, 'preDispatch').mockResolvedValue();
+  await request(app).post(`/queue/${job.id}/run`).send({}).expect(400);
+  await request(app).post(`/queue/${job.id}/run`).send({ expectedRevision: ready.revision + 1 }).expect(409);
+  expect((await queue.get(job.id)).state).toBe('reserved');
+});

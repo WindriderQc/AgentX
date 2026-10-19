@@ -1,7 +1,7 @@
 'use strict';
 
 const { buildLaneCapability } = require('../../src/services/profiler/laneCapability');
-const { capabilityFor, listLaneCapabilities, requestLaneMeasurement, requestLaneCampaign } = require('../../src/services/profiler/laneCapabilityService');
+const { capabilityFor, listLaneCapabilities, requestLaneMeasurement, requestLaneCampaign, previewLaneCampaign } = require('../../src/services/profiler/laneCapabilityService');
 
 const NOW = new Date('2026-10-16T12:00:00Z');
 const HOST = 'http://gpu-b:11434';
@@ -173,8 +173,10 @@ describe('lane measurement request', () => {
 
   it('records a Full profile of exactly one current lane and starts nothing', async () => {
     const submit = jest.fn(async () => ({ id: 'q1', state: 'requested', revision: 1, extra: 'x' }));
+    const reserve = jest.fn(async (id, body) => ({ id, state: 'reserved', revision: 2, reservation: { start: body.start, autoStart: body.autoStart } }));
     const result = await requestLaneMeasurement({ model: MODEL, hostUrl: `${HOST}/`, ...window },
-      { hosts, scope, submit, now: () => NOW });
+      { hosts, scope, submit, reserve, queue: async () => ({ jobs: [] }), now: () => NOW });
+    expect(reserve).toHaveBeenCalledWith('q1', { expectedRevision: 1, start: '2026-10-17T03:00:00.000Z', priority: 5, autoStart: false });
     expect(submit).toHaveBeenCalledTimes(1);
     expect(submit.mock.calls[0][0]).toEqual({
       key: 'lane-capability:alien:coder:27b-q8_0:2026-10-17',
@@ -183,7 +185,8 @@ describe('lane measurement request', () => {
       source: { type: 'operator', ref: 'profiler-lane-capability-card' },
       executor: { hostId: 'alien', depth: 'full', skipRecentDays: 0, modelNames: [MODEL] }
     });
-    expect(result.job).toEqual({ id: 'q1', state: 'requested', revision: 1 });
+    expect(result.job).toEqual({ id: 'q1', state: 'reserved', revision: 2 });
+    expect(result.slot).toMatchObject({ planned: true, fits: true, end: '2026-10-17T06:00:00.000Z' });
   });
 
   it.each([
@@ -194,7 +197,7 @@ describe('lane measurement request', () => {
     [{ hostUrl: HOST, ...window }, 'model and hostUrl are required']
   ])('refuses %o without submitting', async (input, message) => {
     const submit = jest.fn();
-    await expect(requestLaneMeasurement(input, { hosts, scope, submit, now: () => NOW })).rejects.toThrow(message);
+    await expect(requestLaneMeasurement(input, { hosts, scope, submit, queue: async () => ({ jobs: [] }), now: () => NOW })).rejects.toThrow(message);
     expect(submit).not.toHaveBeenCalled();
   });
 });
@@ -247,6 +250,8 @@ describe('lane night campaign', () => {
       contextProfile: async (model) => (model === 'chat:12b' ? verified : contextProfile()),
       performanceProfile: async () => null,
       submit,
+      reserve: async () => { throw new Error('not called without a fitting slot'); },
+      queue: async () => ({ jobs: [] }),
       now: () => NOW
     });
     expect(result.requested).toBe(2);
@@ -259,9 +264,91 @@ describe('lane night campaign', () => {
     const submit = jest.fn();
     await expect(requestLaneCampaign({ notBefore: 'soon', startBefore: '2026-10-17T10:00:00Z' }, {
       hosts: () => [{ id: 'alien', url: HOST }], scope: async () => [{ hostUrl: HOST, hostName: 'UG Alien', model: MODEL, tasks: [] }],
-      identity: async () => ARTIFACT, contextProfile: async () => contextProfile(), performanceProfile: async () => null, submit, now: () => NOW
+      identity: async () => ARTIFACT, contextProfile: async () => contextProfile(), performanceProfile: async () => null, submit,
+      queue: async () => ({ jobs: [] }), now: () => NOW
     })).rejects.toThrow('valid time');
     expect(submit).not.toHaveBeenCalled();
+  });
+});
+
+describe('lane campaign slots', () => {
+  const ALIEN_GPU = 'http://gpu-b:11434';
+  const ALIEN_CPU = 'http://gpu-b:11435';
+  const FRANK = 'http://gpu-a:11434';
+  const night = { notBefore: '2026-10-17T03:00:00Z', startBefore: '2026-10-17T10:00:00Z' };
+  const deps = (queueJobs = [], over = {}) => {
+    const created = [];
+    return {
+      created,
+      hosts: () => [{ id: 'alien', url: ALIEN_GPU }, { id: 'alien-cpu', url: ALIEN_CPU }, { id: 'frank', url: FRANK }],
+      scope: async () => [
+        { hostUrl: ALIEN_GPU, hostName: 'UG Alien', model: MODEL, tasks: [] },
+        { hostUrl: ALIEN_CPU, hostName: 'UG Alien CPU', model: 'small:4b', tasks: [] },
+        { hostUrl: FRANK, hostName: 'UG Frank', model: 'chat:12b', tasks: [] }],
+      identity: async () => ARTIFACT, contextProfile: async () => contextProfile(), performanceProfile: async () => null,
+      queue: async () => ({ jobs: [...queueJobs, ...created] }),
+      submit: jest.fn(async request => { const job = { id: `id-${created.length}`, key: request.key, state: 'requested', revision: 1, hosts: request.hosts,
+        title: request.title, source: request.source, executor: request.executor, updatedAt: '2026-10-16T12:00:00Z' }; created.push(job); return job; }),
+      reserve: jest.fn(async (id, body) => { const job = created.find(item => item.id === id);
+        Object.assign(job, { state: 'reserved', revision: 2, reservation: { start: body.start, end: new Date(Date.parse(body.start) + 180 * 60000).toISOString(), autoStart: body.autoStart } });
+        return job; }),
+      now: () => NOW,
+      ...over
+    };
+  };
+
+  it('runs one lane at a time per machine, machines in parallel, and says whether the night is long enough', async () => {
+    const d = deps();
+    const plan = await previewLaneCampaign(night, d);
+    expect(plan.slots.map(slot => [slot.hostId, slot.start, slot.fits])).toEqual([
+      ['alien', '2026-10-17T03:00:00.000Z', true], ['alien-cpu', '2026-10-17T06:00:00.000Z', true], ['frank', '2026-10-17T03:00:00.000Z', true]]);
+    expect(plan.machines).toEqual(expect.arrayContaining([expect.objectContaining({ machine: 'gpu-b', lanes: 2, minutes: 360, fits: true })]));
+    expect(plan.fits).toBe(true);
+    expect(d.submit).not.toHaveBeenCalled();
+    const short = await previewLaneCampaign({ notBefore: night.notBefore, startBefore: '2026-10-17T08:00:00Z' }, deps());
+    expect(short.fits).toBe(false);
+    expect(short.slots.filter(slot => !slot.fits).map(slot => slot.hostId)).toEqual(['alien-cpu']);
+  });
+
+  it('places lanes after work already planned on that machine', async () => {
+    const busy = { id: 'other', state: 'reserved', hosts: [ALIEN_GPU], title: 'Image batch',
+      reservation: { start: '2026-10-17T03:00:00.000Z', end: '2026-10-17T04:00:00.000Z' } };
+    const plan = await previewLaneCampaign(night, deps([busy]));
+    expect(plan.slots.find(slot => slot.hostId === 'alien').start).toBe('2026-10-17T04:00:00.000Z');
+    expect(plan.slots.find(slot => slot.hostId === 'alien-cpu').start).toBe('2026-10-17T07:00:00.000Z');
+    expect(plan.slots.find(slot => slot.hostId === 'alien-cpu').fits).toBe(true);
+  });
+
+  it('records, plans and opts in to the automatic start only when the owner asks', async () => {
+    const d = deps();
+    const result = await requestLaneCampaign({ ...night, autoStart: true }, d);
+    expect(result).toMatchObject({ requested: 3, planned: 3, autoStart: true, fits: true });
+    expect(d.reserve.mock.calls.map(([, body]) => body.autoStart)).toEqual([true, true, true]);
+    const lanes = await listLaneCapabilities(d);
+    expect(lanes.lanes.find(lane => lane.capability.hostId === 'alien-cpu').measurement)
+      .toMatchObject({ state: 'reserved', start: '2026-10-17T06:00:00.000Z', autoStart: true });
+    const manual = deps();
+    await requestLaneCampaign(night, manual);
+    expect(manual.reserve.mock.calls.every(([, body]) => body.autoStart === false)).toBe(true);
+  });
+
+  it('leaves a lane recorded but unplanned when it does not fit or Core refuses the slot', async () => {
+    const d = deps([], { reserve: jest.fn(async () => { throw Object.assign(new Error('Core API 409'), {
+      status: 409, body: JSON.stringify({ ok: false, message: 'Heavy-work reservation overlaps another request' }) }); }) });
+    const result = await requestLaneCampaign({ notBefore: night.notBefore, startBefore: '2026-10-17T08:00:00Z', autoStart: true }, d);
+    const cpu = result.results.find(row => row.hostId === 'alien-cpu');
+    expect(cpu).toMatchObject({ planned: false, fits: false });
+    expect(cpu.note).toMatch(/Does not fit/);
+    expect(result.results.find(row => row.hostId === 'alien').note).toBe('Recorded but not planned: Heavy-work reservation overlaps another request');
+    expect(d.reserve).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows no measurement and plans from the window start when the queue cannot be read', async () => {
+    const d = deps([], { queue: async () => { throw new Error('Core down'); } });
+    const lanes = await listLaneCapabilities(d);
+    expect(lanes.queueRead).toBe(false);
+    expect(lanes.lanes.every(lane => lane.measurement === null)).toBe(true);
+    expect((await previewLaneCampaign(night, d)).queueRead).toBe(false);
   });
 });
 

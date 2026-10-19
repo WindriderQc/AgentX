@@ -19,9 +19,10 @@ node integrations/operations/heavy-work-queue.cjs reserve --core <core-origin> -
 node integrations/operations/heavy-work-queue.cjs run --core <core-origin> --actor operator --id <request-id> --revision <current-revision>
 ```
 
-`run` explicitly launches the saved request. Only an image already accepted by
-Core's image service has an automatic dispatcher; no queued command is executed.
-Existing approval requirements still apply. Smaller
+`run` explicitly launches the saved request. Two kinds start without a person
+at the slot: an image already accepted by Core's image service, and a Profiler
+request whose reservation the owner marked `autoStart: true` (see below). No
+queued command is executed. Existing approval requirements still apply. Smaller
 priority numbers appear first; the owner chooses the slot and launch. Benchmark
 uses `<core-origin>/benchmark` unless `--benchmark` names a verified service origin.
 
@@ -77,10 +78,32 @@ begin a request. Early/expired manual/API starts refuse. Running/uncertain work
 stays fenced after the estimated end. Topology changes require reconciliation.
 The Core observer reads existing executor receipts every 15 seconds. It also
 dispatches images explicitly accepted by the image service, once, within their
-15-minute start window. It never starts Benchmark/operator requests, repeats
+15-minute start window, and Profiler requests reserved with `autoStart: true`
+once their slot opens. It never starts Benchmark/operator requests, repeats
 an uncertain dispatch or releases native authority. A completed result
 does not settle the request while overlapping native workloads or inference
 admissions remain held, including quarantined or uncertain outcomes.
+
+### Profiler automatic start and Run now
+
+Reserving a Profiler request (`POST /:id/reserve`) accepts `autoStart: true`.
+It is the owner's consent for that slot only and is refused for every other
+kind; changing the slot replaces it. When the slot opens, the Core observer
+launches the request through the same path as `run`: executor host check,
+durable dispatch mark, window assertion, then the Profiler start with the queue
+request identity. A refusal before the mark (host busy, executor changed)
+retries on the next sweep while the window stays open. A launch whose answer is
+lost becomes `uncertain`, is never retried, and waits for the owner. `POST
+/:id/run` with `expectedRevision` is the same launch for a reserved Profiler
+request inside its slot; Automations → Calendar shows it as **Run now** and
+labels each reservation with who starts it.
+
+The Profiler's **Measure lanes tonight** (and a lane card's **Measure tonight**)
+records one request per lane and plans the slots itself: one lane at a time per
+machine (two endpoints on one machine still share its memory bandwidth),
+machines in parallel, after work already reserved there. A lane whose slot
+would end after the window is recorded without a slot. The owner chooses the
+automatic start in the preview; Core still refuses any overlapping slot.
 
 Use `reconcile --id …` on demand. Cancel unstarted requests with `cancel --id …
 --revision …`. Cancel running work in its native executor, then reconcile.

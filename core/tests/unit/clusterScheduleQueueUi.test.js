@@ -49,3 +49,20 @@ test('expired unstarted reservations stay visible without displacing actionable 
   await view.click('finished');expect(view.container.innerHTML).toContain('Aucune demande terminée');
   expect(view.writes).not.toHaveBeenCalled();
 });
+test('a reserved Profiler request says who starts it and offers Run now only inside its slot',async()=>{
+  const open={start:new Date(Date.now()-60000).toISOString(),end:new Date(Date.now()+3600000).toISOString()};
+  const later={start:new Date(Date.now()+3600000).toISOString(),end:new Date(Date.now()+7200000).toISOString()};
+  const profile=(id,reservation)=>request(id,'reserved',{kind:'profiler',executor:{hostId:'fixture'},reservation});
+  const view=await ui([profile('auto',{...later,autoStart:true}),profile('manual-open',{...open,autoStart:false}),
+    profile('manual-later',{...later,autoStart:false}),request('custom','reserved',{reservation:open,executor:{mode:'operator'}})]);
+  const card=id=>view.container.innerHTML.split('<article').find(part=>part.includes(`data-queue-id="${id}"`));
+  expect(card('auto')).toContain('Starts automatically at its time');
+  expect(card('auto')).not.toContain('data-queue-action="run"');
+  expect(card('manual-open')).toContain('data-queue-action="run"');
+  expect(card('manual-later')).toContain('Waits for you: use Run now during its slot');
+  expect(card('manual-later')).not.toContain('data-queue-action="run"');
+  expect(card('custom')).toContain('Started by its own executor');
+  expect(card('custom')).not.toContain('data-queue-action="run"');
+  expect(card('auto')).toContain('Change slot');
+  expect(view.writes).not.toHaveBeenCalled();
+});

@@ -1,6 +1,6 @@
 import * as api from './api.js';
 
-const MODULE_VERSION = 'lane-capability-20261016';
+const MODULE_VERSION = 'lane-auto-start-20261019';
 const state = { data: {} };
 
 function normalizeModelName(name) {

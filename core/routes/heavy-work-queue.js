@@ -51,6 +51,9 @@ router.post('/:id/begin', wrap(async req => {
   await evidence.preDispatch(await queue.get(req.params.id));
   return queue.begin(req.params.id, req.body, actor(req));
 }));
+// Owner "Run now" for a reserved Profiler request inside its window.
+router.post('/:id/run', wrap(req => require('../src/services/heavyWorkQueueLauncher')
+  .launch(req.params.id, actor(req), { expectedRevision: req.body?.expectedRevision })));
 router.post('/:id/record', wrap(req => queue.record(req.params.id, req.body, actor(req))));
 router.post('/:id/prepared', wrap(req => queue.prepared(req.params.id, req.body, actor(req))));
 router.post('/:id/assert-dispatch', wrap(req => queue.assertDispatch(req.params.id, req.body.dispatchId)));

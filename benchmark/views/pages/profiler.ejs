@@ -31,7 +31,7 @@
     </a>
   </section>
 
-  <section id="profiler-lanes" class="profiler-lanes" aria-labelledby="profiler-lanes-title">
+  <section id="profiler-lanes" class="profiler-lanes" aria-labelledby="profiler-lanes-title" data-core-public-url="<%= publicUrls.core %>">
     <header class="profiler-lanes-head">
       <div>
         <span class="profiler-experience-eyebrow">Lane capability</span>
@@ -43,11 +43,20 @@
         <button id="profiler-lanes-refresh" class="profiler-lanes-refresh" type="button"><i class="fas fa-rotate" aria-hidden="true"></i> Refresh</button>
       </div>
     </header>
-    <div id="profiler-lanes-campaign-panel" class="lc-campaign" hidden>
+    <div id="profiler-lanes-campaign-panel" class="lc-campaign" role="region" aria-labelledby="profiler-lanes-campaign-title" hidden>
+      <h3 id="profiler-lanes-campaign-title" class="lc-campaign-title">Tonight's measurements</h3>
       <p id="profiler-lanes-campaign-text"></p>
-      <button id="profiler-lanes-campaign-confirm" class="lc-measure" type="button">Queue requests</button>
-      <button id="profiler-lanes-campaign-cancel" class="lc-quiet" type="button">Cancel</button>
-      <span id="profiler-lanes-campaign-status" class="lc-campaign-status" role="status" aria-live="polite"></span>
+      <div id="profiler-lanes-campaign-plan" class="lc-campaign-plan" aria-live="polite"></div>
+      <label class="lc-campaign-auto">
+        <input id="profiler-lanes-campaign-auto" type="checkbox" checked>
+        <span><strong>Start automatically at these times.</strong> Core launches each measurement in its slot after the usual checks (window open, host free, same model). Untick to start them yourself from Automations → Calendar.</span>
+      </label>
+      <div class="lc-campaign-actions">
+        <button id="profiler-lanes-campaign-confirm" class="lc-measure" type="button">Plan measurements</button>
+        <button id="profiler-lanes-campaign-cancel" class="lc-quiet" type="button">Close</button>
+        <a class="lc-quiet lc-campaign-link" href="<%= publicUrls.core %>/automations?view=calendar"><i class="fas fa-calendar-days" aria-hidden="true"></i> Open the calendar</a>
+      </div>
+      <p id="profiler-lanes-campaign-status" class="lc-campaign-status" role="status" aria-live="polite"></p>
     </div>
     <div id="profiler-lanes-summary" class="lc-summary" aria-live="polite"></div>
     <div id="profiler-lanes-grid" class="lc-grid" aria-busy="true">

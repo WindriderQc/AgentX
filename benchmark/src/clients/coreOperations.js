@@ -44,6 +44,8 @@ const CORE_OPERATIONS = Object.freeze({
   INFERENCE_GENERATE: 'benchmark.core-api.inference-generate',
   INFERENCE_CONTRACT: 'benchmark.core-api.inference-contract',
   HEAVY_QUEUE_SUBMIT: 'benchmark.core-api.heavy-queue-submit',
+  HEAVY_QUEUE_RESERVE: 'benchmark.core-api.heavy-queue-reserve',
+  HEAVY_QUEUE_LIST: 'benchmark.core-api.heavy-queue-list',
 });
 
 function operation(method, pathPattern, {
@@ -70,6 +72,15 @@ const CORE_OPERATION_SPECS = Object.freeze({
   // still govern execution (#832 lane capability "Measure tonight").
   [CORE_OPERATIONS.HEAVY_QUEUE_SUBMIT]: operation('POST', '^/api/cluster/schedule/work-queue$', {
     maxRequestBytes: 16 * 1024, maxResponseBytes: 256 * 1024,
+  }),
+  // Plans the owner's lane campaign slots (optionally with an automatic
+  // start); Core still checks the window, overlaps and admission at launch.
+  [CORE_OPERATIONS.HEAVY_QUEUE_RESERVE]: operation('POST', '^/api/cluster/schedule/work-queue/[^/]+/reserve$', {
+    maxRequestBytes: 1024, maxResponseBytes: 256 * 1024,
+  }),
+  // Reads planned work so lane slots avoid it and lane cards show their state.
+  [CORE_OPERATIONS.HEAVY_QUEUE_LIST]: operation('GET', '^/api/cluster/schedule/work-queue$', {
+    maxResponseBytes: 16 * 1024 * 1024,
   }),
   [CORE_OPERATIONS.INFERENCE_CONTRACT]: operation('POST', '^/api/inference/contract/resolve$', {
     maxRequestBytes: 4 * 1024, maxResponseBytes: 256 * 1024,

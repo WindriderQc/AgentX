@@ -69,12 +69,19 @@ function renderCoreHeavyQueue(container, queue) {
     const active = ['dispatching', 'running', 'uncertain'].includes(job.state);
     const expired = job.state === 'reserved' && Date.parse(job.reservation.end) <= Date.now();
     const overrun = active && job.reservation && Date.parse(job.reservation.end) < Date.now();
+    const launchable = job.kind === 'profiler' && Boolean(job.executor);
+    const now = Date.now();
+    const runnable = launchable && job.state === 'reserved' && Date.parse(job.reservation.start) <= now
+      && now < Date.parse(job.reservation.end) && (!job.startBefore || now < Date.parse(job.startBefore));
     return `<article class="cs-next-item cs-queue-item" data-queue-id="${esc(job.id)}">
       <div>
         <div class="cs-next-name">${esc(job.title)}</div>
         <div class="cs-next-meta"><span>P${Number(job.priority)} · ${esc(job.kind)} · ${esc(expired ? 'window expired' : job.state)}</span></div>
         <div class="cs-next-meta">${esc(job.hosts.join(', ') || job.legacyRow?.hosts || 'Hosts need review')}</div>
         ${job.reservation ? `<div class="cs-next-meta">${esc(formatEvidenceTime(job.reservation.start))} → ${esc(formatEvidenceTime(job.reservation.end))} (estimated)</div>` : ''}
+        ${job.state === 'reserved' && !expired ? `<div class="cs-queue-start${job.reservation.autoStart ? ' is-auto' : ''}">${job.reservation.autoStart
+          ? '<i class="fas fa-play-circle" aria-hidden="true"></i> Starts automatically at its time'
+          : launchable ? '<i class="fas fa-hand-pointer" aria-hidden="true"></i> Waits for you: use Run now during its slot' : '<i class="fas fa-terminal" aria-hidden="true"></i> Started by its own executor'}</div>` : ''}
         ${job.dispatchedAt ? `<div class="cs-next-meta">Dispatch recorded ${esc(formatEvidenceTime(job.dispatchedAt))}${job.finishedAt ? ` · settled ${esc(formatEvidenceTime(job.finishedAt))}` : ''}</div>` : ''}
         ${job.releaseReceipt ? `<div class="cs-next-meta">Receipt: ${esc(job.releaseReceipt.authority)}</div>` : ''}
         ${overrun ? '<div class="cs-queue-note">Past estimated end; waiting for an executor and release receipt.</div>' : ''}
@@ -84,7 +91,8 @@ function renderCoreHeavyQueue(container, queue) {
         ${job.reason ? `<div class="cs-queue-note">${esc(job.reason)}</div>` : ''}
         <details><summary>Request and receipts</summary><pre class="cs-queue-receipt">${esc(JSON.stringify(job, null, 2))}</pre></details>
         <div class="cs-queue-actions">
-          ${editable && job.hosts.length ? '<button type="button" class="cs-queue-button" data-queue-action="reserve">Plan a slot</button>' : ''}
+          ${runnable ? '<button type="button" class="cs-queue-button cs-queue-button--primary" data-queue-action="run">Run now</button>' : ''}
+          ${editable && job.hosts.length ? `<button type="button" class="cs-queue-button" data-queue-action="reserve">${job.state === 'reserved' ? 'Change slot' : 'Plan a slot'}</button>` : ''}
           ${editable ? '<button type="button" class="cs-queue-button" data-queue-action="cancel">Cancel request</button>' : ''}
           ${active ? '<button type="button" class="cs-queue-button" data-queue-action="reconcile">Check executor result</button>' : ''}
         </div>
@@ -111,8 +119,15 @@ function openQueueReservation(job) {
   const form = dialog.querySelector('form');
   form.dataset.queueId = job.id;
   form.dataset.revision = job.revision;
-  form.elements.start.value = '';
+  // A planned slot opens at its current time, in the device's zone.
+  const planned = job.reservation?.start ? new Date(job.reservation.start) : null;
+  form.elements.start.value = planned && Number.isFinite(planned.getTime())
+    ? new Date(planned.getTime() - planned.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '';
   form.elements.priority.value = job.priority;
+  const auto = form.querySelector('[data-queue-auto]');
+  const launchable = job.kind === 'profiler' && Boolean(job.executor);
+  auto.hidden = !launchable;
+  form.elements.autoStart.checked = launchable && job.reservation?.autoStart === true;
   dialog.querySelector('[data-queue-title]').textContent = job.title;
   dialog.querySelector('[data-queue-zone]').textContent = `Your device timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}. Duration: ${job.estimatedMinutes} min (estimated).`;
   dialog.querySelector('[role="alert"]').textContent = '';
@@ -135,10 +150,11 @@ document.getElementById('heavyQueueList')?.addEventListener('click', async event
   const id = button.closest('[data-queue-id]')?.dataset.queueId;
   const job = heavyQueueData.jobs?.find(item => item.id === id);
   if (action === 'reserve') return openQueueReservation(job);
+  if (action === 'run' && !window.confirm(`Start “${job.title}” now on ${job.hosts.join(', ')}? It runs about ${job.estimatedMinutes} min.`)) return;
   button.disabled = true;
   try {
     if (action === 'migrate') await queueWrite('/migrate', { sha256: heavyQueueData.sha256 });
-    else await queueWrite(`/${id}/${action}`, action === 'cancel' ? { expectedRevision: job.revision } : {});
+    else await queueWrite(`/${id}/${action}`, ['cancel', 'run'].includes(action) ? { expectedRevision: job.revision } : {});
     await Promise.all([loadHeavyQueue(), loadTimeline()]);
   } catch (error) {
     document.getElementById('heavyQueueError').textContent = error.message;
@@ -154,7 +170,8 @@ document.querySelector('#heavyQueueReservation form')?.addEventListener('submit'
     const start = new Date(form.elements.start.value);
     if (!Number.isFinite(start.getTime())) throw new Error('Choose a valid start time');
     await queueWrite(`/${form.dataset.queueId}/reserve`, { expectedRevision: Number(form.dataset.revision),
-      start: start.toISOString(), priority: Number(form.elements.priority.value) });
+      start: start.toISOString(), priority: Number(form.elements.priority.value),
+      ...(form.querySelector('[data-queue-auto]').hidden ? {} : { autoStart: form.elements.autoStart.checked === true }) });
     form.closest('dialog').close();
     await Promise.all([loadHeavyQueue(), loadTimeline()]);
   } catch (error) { output.textContent = error.message; }

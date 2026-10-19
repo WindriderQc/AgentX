@@ -13,6 +13,9 @@ const { hostUrlKey } = require('../../../shared/ollamaHostConfig');
 const FILE = '/instance/config/QUEUE.md';
 const ACTIVE = ['dispatching', 'running', 'uncertain'];
 const TERMINAL = ['completed', 'failed', 'cancelled'];
+// Kinds whose executor Core can launch itself at a reserved slot. The owner
+// opts in per reservation; every other kind keeps its explicit launch.
+const AUTO_START_KINDS = ['profiler'];
 // Bound the singleton below BSON limits. Refuse explicitly; never discard history.
 const MAX_JOBS = 400;
 const WC = { w: 1, j: true };
@@ -117,9 +120,13 @@ async function reserve(id, body, actor) {
   const start = instant(body.start, 'start');
   const priority = body.priority ?? 5;
   if (!Number.isInteger(priority) || priority < 1 || priority > 9) throw fail('priority needs 1 to 9');
+  if (body.autoStart !== undefined && typeof body.autoStart !== 'boolean') throw fail('autoStart needs true or false');
   return mutate(state => {
     const job = jobIn(state, id, body.expectedRevision);
     if (!['requested', 'reserved'].includes(job.state)) throw fail('Only unstarted requests can be reserved', 409);
+    if (body.autoStart === true && (!AUTO_START_KINDS.includes(job.kind) || !job.executor)) {
+      throw fail('Only a Profiler request with its executor can start automatically', 409, 'HEAVY_QUEUE_AUTO_START_UNSUPPORTED');
+    }
     const topology = resourceTopology();
     assertTopology(state, topology);
     if (!job.hosts.length) throw fail('Legacy request needs explicit hosts and an executor in a new linked request', 409);
@@ -128,7 +135,8 @@ async function reserve(id, body, actor) {
     if (Date.parse(end) <= Date.now() || (job.notBefore && start < job.notBefore) || (job.startBefore && start >= job.startBefore)) throw fail('Reservation is outside the permitted start window', 409);
     const collisions = conflicts(state, job, start, end);
     if (collisions.length) throw fail('Heavy-work reservation overlaps another request', 409, 'HEAVY_QUEUE_CONFLICT', { conflicts: collisions });
-    job.state = 'reserved'; job.priority = priority; job.reservation = { start, end, estimated: true };
+    job.state = 'reserved'; job.priority = priority;
+    job.reservation = { start, end, estimated: true, autoStart: body.autoStart === true };
     return event(job, actor, 'reserved', job.reservation);
   });
 }
@@ -308,4 +316,4 @@ async function migrate(body, actor, { file = FILE } = {}) {
   return list();
 }
 
-module.exports = { submit, reserve, begin, assertDispatch, record, cancel, settle, prepared, get, list, migrate, legacySnapshot, sameResources, runtimeOverlaps, archive, archived, recover, operatorFinish, MAX_JOBS };
+module.exports = { AUTO_START_KINDS, submit, reserve, begin, assertDispatch, record, cancel, settle, prepared, get, list, migrate, legacySnapshot, sameResources, runtimeOverlaps, archive, archived, recover, operatorFinish, MAX_JOBS };
