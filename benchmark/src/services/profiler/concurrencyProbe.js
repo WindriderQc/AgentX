@@ -46,8 +46,12 @@ function residents(running, modelName) {
   return { self, others };
 }
 
+// Core sends truncate/shift false on every call; Ollama starts its runner with
+// or without context shift to match, so a probe call without them relaunches a
+// resident runner and the next Core call relaunches it again (on an unclaimed
+// sibling endpoint that ping-pong would also evict its neighbours).
 async function call(hostUrl, model, numCtx, { timeoutMs, signal }) {
-  return generate(hostUrl, { model, prompt: PROMPT, stream: false, think: false,
+  return generate(hostUrl, { model, prompt: PROMPT, stream: false, think: false, truncate: false, shift: false,
     options: { num_ctx: numCtx, num_predict: NUM_PREDICT, temperature: 0, seed: 7 } }, { timeoutMs, signal });
 }
 

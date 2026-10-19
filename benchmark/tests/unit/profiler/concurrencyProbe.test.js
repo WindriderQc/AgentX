@@ -37,6 +37,7 @@ describe('concurrency probe', () => {
     const contexts = generate.mock.calls.map(([, body]) => [body.model, body.options.num_ctx]);
     expect(new Set(contexts.map(String))).toEqual(new Set(['coder,32768', 'chat,16384']));
     expect(result.separateEndpoints).toMatch(/not_measured/);
+    expect(generate.mock.calls.every(([, body]) => body.truncate === false && body.shift === false)).toBe(true);
   });
 
   it('reports a pair whose models evict each other', async () => {
