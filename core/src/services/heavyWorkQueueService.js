@@ -18,6 +18,10 @@ const TERMINAL = ['completed', 'failed', 'cancelled'];
 // Kinds whose executor Core can launch itself at a reserved slot. The owner
 // opts in per reservation; every other kind keeps its explicit launch.
 const AUTO_START_KINDS = ['profiler'];
+/** Whether Core itself can launch this request at its slot. */
+function autoStartable(job) {
+  return Boolean(job.executor) && (AUTO_START_KINDS.includes(job.kind) || job.executor.mode === 'pipeline-report');
+}
 // Bound the singleton below BSON limits. Refuse explicitly; never discard history.
 const MAX_JOBS = 400;
 const WC = { w: 1, j: true };
@@ -187,8 +191,8 @@ async function reserve(id, body, actor) {
   return mutate(state => {
     const job = jobIn(state, id, body.expectedRevision);
     if (!['requested', 'reserved'].includes(job.state)) throw fail('Only unstarted requests can be reserved', 409);
-    if (body.autoStart === true && (!AUTO_START_KINDS.includes(job.kind) || !job.executor)) {
-      throw fail('Only a Profiler request with its executor can start automatically', 409, 'HEAVY_QUEUE_AUTO_START_UNSUPPORTED');
+    if (body.autoStart === true && !autoStartable(job)) {
+      throw fail('Only Profiler requests and report campaigns can start automatically', 409, 'HEAVY_QUEUE_AUTO_START_UNSUPPORTED');
     }
     const topology = resourceTopology();
     assertTopology(state, topology);
@@ -380,4 +384,4 @@ async function migrate(body, actor, { file = FILE } = {}) {
   return list();
 }
 
-module.exports = { AUTO_START_KINDS, submit, reserve, place, preview, slotFor, begin, assertDispatch, record, cancel, settle, prepared, get, list, migrate, legacySnapshot, sameResources, runtimeOverlaps, archive, archived, recover, operatorFinish, MAX_JOBS };
+module.exports = { AUTO_START_KINDS, autoStartable, submit, reserve, place, preview, slotFor, begin, assertDispatch, record, cancel, settle, prepared, get, list, migrate, legacySnapshot, sameResources, runtimeOverlaps, archive, archived, recover, operatorFinish, MAX_JOBS };

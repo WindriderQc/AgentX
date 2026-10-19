@@ -193,4 +193,15 @@ describe('report continuation loop', () => {
     await expect(service.configureSwitch({ enabled: true, confirm: true, expectedRevision: 1 })).resolves.toMatchObject({ enabled: true, revision: 2 });
     expect(control.launch).not.toHaveBeenCalled();
   });
+
+  it('chains a task the owner resumed with automatic chaining even while the global switch is off', async () => {
+    const { control } = controls();
+    store.settings.enabled = false;
+    store.tasks = [task([stopped(PARENT, 'model_call_limit')], { reportResume: { autoContinue: true } })];
+    await expect(service.wouldContinue(store.tasks[0])).resolves.toBe(true);
+    await service.tick(); await service.tick();
+    expect(control.launch).toHaveBeenCalledTimes(1);
+    store.tasks = [task([stopped(PARENT, 'model_call_limit')], { reportResume: { autoContinue: false } })];
+    await expect(service.wouldContinue(store.tasks[0])).resolves.toBe(false);
+  });
 });

@@ -38,6 +38,8 @@ async function preDispatch(job) {
     const input = require('./images/imageService').validate(job.executor, config);
     const prior = await Images.findOne({ actionKey: job.executor.actionKey }).select('requestHash').lean();
     if (prior && prior.requestHash !== input.requestHash) throw fail('Image actionKey already names another request', 409);
+  } else if (job.kind === 'other' && job.executor.mode === 'pipeline-report') {
+    await require('./pipelineReportResume').preDispatch(job);
   } else if (!(['diagnostic', 'other'].includes(job.kind) && job.executor.mode === 'operator')) {
     throw fail('This request has no supported executor', 409);
   }
@@ -78,6 +80,11 @@ async function observe(job) {
     if (!['completed', 'failed', 'cancelled', 'archive_failed'].includes(result.state)) return { operationId, terminal: false, uncertain: result.state === 'unknown' };
     receipt = { state: result.state === 'archive_failed' ? 'failed' : result.state, authority: 'core.image-operation', operationId,
       runtimeRestored: result.runtimeRestored, artifact: result.artifact || null };
+  } else if (job.kind === 'other' && job.executor?.mode === 'pipeline-report') {
+    const result = await require('./pipelineReportResume').observeCampaign(job);
+    if (!result.terminal) return { operationId: operationId || result.operationId, terminal: false };
+    operationId = operationId || result.operationId;
+    receipt = { state: result.state, authority: 'core.pipeline-report', operationId, outcome: result.outcome };
   } else throw fail('No executor evidence adapter on this request', 409);
   // Native owners retain release authority. A terminal result is insufficient
   // while a matching runtime admission (including UNKNOWN) remains fenced.

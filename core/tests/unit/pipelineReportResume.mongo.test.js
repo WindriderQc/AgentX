@@ -1,0 +1,129 @@
+'use strict';
+
+jest.mock('../../src/services/modelRouterConfig', () => ({
+  ensureTaskModelOverridesLoaded: jest.fn(async () => {}),
+  getModelForTask: jest.fn(() => ({ model: 'coder:27b-q8_0', url: 'http://10.0.0.5:11434/' }))
+}));
+jest.mock('../../src/services/pipelineReportEscalation', () => ({ policy: jest.fn(async () => ({ enabled: false, maxCostNanodollars: 1e10 })) }));
+
+const Task = require('../../models/PipelineTask');
+const Run = require('../../models/PipelineReportRun');
+const Queue = require('../../models/HeavyWorkQueue');
+const Archive = require('../../models/HeavyWorkQueueArchive');
+const Runtime = require('../../models/RuntimeCoordination');
+const Continuation = require('../../models/PipelineReportContinuation');
+const queue = require('../../src/services/heavyWorkQueueService');
+const evidence = require('../../src/services/heavyWorkQueueEvidence');
+const launcher = require('../../src/services/heavyWorkQueueLauncher');
+const resume = require('../../src/services/pipelineReportResume');
+
+const PARENT = '10d7dc99-f2dc-4bd4-b903-6258c6e1d6a7';
+const SHA = 'f'.repeat(64);
+const docs = (reviewed, left) => [...Array.from({ length: reviewed }, (_, i) => ({ path: `docs/R${i}.md`, state: 'reviewed' })),
+  ...Array.from({ length: left }, (_, i) => ({ path: `docs/L${i}.md`, state: i % 3 ? 'pending' : 'partial' }))];
+const stopped = (requestId, reason = 'runner_error', sha = SHA) => ({ by: 'coding-team', at: new Date(),
+  reportOutcome: { requestId, kind: 'blocked', reason, reportName: 'DOCUMENTATION_PEER_REVIEW.md', partial: { deliverableId: 'd', sha256: sha } } });
+
+let control;
+let preparation;
+async function seed(extra = {}) {
+  const _id = new (require('mongoose').Types.ObjectId)();
+  await Task.collection.insertOne({ _id, pipelineId: '0939', title: 'Documentation peer review', status: 'blocked', service: 'agentx-coding',
+    assignee: 'coding-team', updatedAt: new Date('2026-10-16T08:30:00Z'), feedback: [stopped(PARENT)],
+    codingResult: { profile: 'report', reportName: 'DOCUMENTATION_PEER_REVIEW.md', modelCallLimit: 128 }, ...extra });
+  await Run.collection.insertOne({ _id: PARENT, taskId: String(_id), claimSeq: 26, state: 'blocked', coverage: { documents: docs(62, 14) } });
+  return _id;
+}
+function wire() {
+  control = { target: 'host',
+    status: jest.fn(async ({ requestId } = {}) => (requestId ? { run: null } : { busy: false, candidates: [{ pipelineId: '0939', expectedAttemptCount: 3 }] })),
+    launch: jest.fn(async () => ({ accepted: true })) };
+  preparation = { apply: jest.fn(async input => {
+    await Task.updateOne({ pipelineId: input.pipelineId }, { $set: { status: 'queued', codingResult: { ...input.result } } });
+    return Task.findOne({ pipelineId: input.pipelineId }).lean();
+  }) };
+  resume.configure({ control, preparation });
+}
+
+beforeEach(async () => {
+  await Promise.all([Task.deleteMany({}), Run.deleteMany({}), Queue.deleteMany({}), Archive.deleteMany({}), Runtime.deleteMany({}), Continuation.deleteMany({})]);
+  wire();
+});
+
+it('previews the remaining work and a safety budget instead of asking for numbers', async () => {
+  await seed();
+  const view = await resume.preview('0939');
+  expect(view.checkpoint).toEqual({ parentRequestId: PARENT, parentSha256: SHA });
+  expect(view.work).toMatchObject({ total: 76, remaining: 14, reviewed: 62, source: 'coverage' });
+  // 14 documents x 6 calls + writer, with margin, never below the 128-call floor.
+  expect(view.budget).toMatchObject({ modelCalls: 135, executions: 2, basis: 'remaining_documents' });
+  expect(view.budget.workSeconds).toBe(Math.ceil((14 * 240 + 900) * 1.5));
+  expect(view.route).toEqual({ model: 'coder:27b-q8_0', host: 'http://10.0.0.5:11434' });
+});
+
+it('plans a Core-owned campaign as soon as possible, once per checkpoint, starting automatically', async () => {
+  await seed();
+  await expect(resume.resume('0939', { when: 'asap' })).rejects.toMatchObject({ code: 'REPORT_RESUME_INVALID' });
+  const view = await resume.resume('0939', { confirm: true, when: 'asap', autoContinue: true });
+  expect(view.campaign).toMatchObject({ state: 'reserved', reservation: { when: 'asap', autoStart: true } });
+  const job = await queue.get(view.campaign.id);
+  expect(job).toMatchObject({ kind: 'other', hosts: ['http://10.0.0.5:11434'], executor: { mode: 'pipeline-report', pipelineId: '0939' },
+    source: { type: 'coding', taskId: '0939' }, estimatedMinutes: view.budget.minutes });
+  expect(view.resume).toMatchObject({ basis: PARENT, autoContinue: true, allowCloudEscalation: false, state: 'planned' });
+  const again = await resume.resume('0939', { confirm: true, when: 'tonight' }).catch(error => error);
+  // Same checkpoint: the same campaign is replanned, never duplicated.
+  if (!(again instanceof Error)) expect(again.campaign.id).toBe(view.campaign.id);
+  expect((await queue.list()).jobs).toHaveLength(1);
+});
+
+it('at the slot, grants the campaign and launches the worker from the checkpoint once, then settles on no progress', async () => {
+  await seed();
+  const view = await resume.resume('0939', { confirm: true, when: 'asap', allowCloudEscalation: true });
+  // Bring the slot to now.
+  await Queue.updateOne({ _id: 'heavy-work', 'jobs.id': view.campaign.id },
+    { $set: { 'jobs.$.reservation.start': new Date(Date.now() - 1000).toISOString() } });
+  const launched = await launcher.dispatchDue();
+  expect(launched).toHaveLength(1);
+  const grant = preparation.apply.mock.calls[0][0].reportGrant;
+  expect(grant).toMatchObject({ confirm: true, queueRequestId: view.campaign.id, additionalRuns: 2,
+    budget: { modelCalls: 135 }, allowCloudEscalation: true });
+  expect(preparation.apply.mock.calls[0][0].result).toMatchObject({ profile: 'report', parentRequestId: PARENT, parentSha256: SHA });
+  expect(control.launch).toHaveBeenCalledTimes(1);
+  const requestId = control.launch.mock.calls[0][0].requestId;
+  expect(control.launch.mock.calls[0][0]).toMatchObject({ pipelineId: '0939', expectedAttemptCount: 3, parentRequestId: PARENT, confirm: true });
+  expect(await queue.get(view.campaign.id)).toMatchObject({ state: 'running', operation: { id: requestId } });
+  await launcher.dispatchDue();
+  expect(control.launch).toHaveBeenCalledTimes(1);
+
+  // Still running: the campaign stays open.
+  expect((await evidence.reconcile(view.campaign.id, 'test')).state).toBe('running');
+  // The worker stopped with the same saved bytes as its parent: no progress.
+  await Task.updateOne({ pipelineId: '0939' }, { $set: { status: 'blocked' }, $push: { feedback: stopped(requestId, 'model_call_limit') } });
+  const settled = await evidence.reconcile(view.campaign.id, 'test');
+  expect(settled).toMatchObject({ state: 'failed', releaseReceipt: { authority: 'core.pipeline-report', outcome: { requestId, reason: 'model_call_limit' } } });
+  expect((await Task.findOne({ pipelineId: '0939' }).lean()).reportResume).toMatchObject({ state: 'stopped', result: { decision: 'no_progress' } });
+});
+
+it('releases the campaign with Core\'s own receipt when the worker could not be started', async () => {
+  await seed();
+  const view = await resume.resume('0939', { confirm: true, when: 'asap' });
+  await Queue.updateOne({ _id: 'heavy-work', 'jobs.id': view.campaign.id },
+    { $set: { 'jobs.$.reservation.start': new Date(Date.now() - 1000).toISOString() } });
+  preparation.apply.mockRejectedValueOnce(Object.assign(new Error('The original worker must have its native terminal receipt'), { code: 'REPORT_NATIVE_RELEASE_UNVERIFIED' }));
+  await launcher.dispatchDue();
+  const job = await queue.get(view.campaign.id);
+  expect(job.state).toBe('failed');
+  expect(job.releaseReceipt.receiptRef).toMatch(/^core:not-started: .*native terminal receipt/);
+  expect(control.launch).not.toHaveBeenCalled();
+});
+
+it('refuses a delivered report, a running task and a changed checkpoint at the slot', async () => {
+  await seed({ feedback: [{ by: 'coding-team', reportOutcome: { requestId: PARENT, deliverableId: 'd', sha256: SHA } }] });
+  await expect(resume.resume('0939', { confirm: true, when: 'asap' })).rejects.toMatchObject({ code: 'REPORT_RESUME_DELIVERED' });
+  await Task.updateOne({ pipelineId: '0939' }, { $set: { feedback: [stopped(PARENT)], status: 'running' } });
+  await expect(resume.resume('0939', { confirm: true, when: 'asap' })).rejects.toMatchObject({ code: 'REPORT_RESUME_BUSY' });
+  await Task.updateOne({ pipelineId: '0939' }, { $set: { status: 'blocked' } });
+  const view = await resume.resume('0939', { confirm: true, when: 'asap' });
+  await Task.updateOne({ pipelineId: '0939' }, { $push: { feedback: stopped('11111111-1111-4111-8111-111111111111') } });
+  await expect(resume.preDispatch(await queue.get(view.campaign.id))).rejects.toMatchObject({ code: 'REPORT_RESUME_CHANGED' });
+});

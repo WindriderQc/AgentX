@@ -242,6 +242,8 @@ const PipelineTaskSchema = new mongoose.Schema({
   codingReportAuthority: { type: mongoose.Schema.Types.Mixed, default: undefined },
   // Automatic continuation runs of a private report (#835), one per parent outcome.
   reportContinuation: { type: mongoose.Schema.Types.Mixed, default: undefined },
+  // Owner's one-click resume (#878): the Core-owned campaign and its estimate.
+  reportResume: { type: mongoose.Schema.Types.Mixed, default: undefined },
   reportHistoryReceipts: { type: [mongoose.Schema.Types.Mixed], default: undefined },
   reportCheckpointArchive: { type: mongoose.Schema.Types.Mixed, default: undefined },
   reportPreflightReceipts: { type: [mongoose.Schema.Types.Mixed], default: undefined },

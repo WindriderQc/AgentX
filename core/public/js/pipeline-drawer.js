@@ -55,12 +55,18 @@
         ${window.PipelineLaunchController?.profileFields(task) || ''}
         <button type="submit" class="pipeline-btn primary">Give to the team</button></form>`);
     }
+    // A stopped report resumes in one click (#878); the full form stays under Advanced.
+    const quickResume = canReply && window.PipelineReportResume?.eligible(task) ? window.PipelineReportResume.placeholder(task) : '';
     if (canReply) {
-      actions.unshift(`<form class="pipeline-drawer-action" data-drawer-action="reply-resume" data-profile-context="${profileContext}">
+      const form = `<form class="pipeline-drawer-action" data-drawer-action="reply-resume" data-profile-context="${profileContext}">
         ${window.PipelineLaunchController?.profileFields(task) || ''}
         <label><span>Updated instructions or your answer</span><textarea name="answer" rows="4" maxlength="3000" required placeholder="Describe what the next pass must do and save."></textarea></label>
         <button type="submit" class="pipeline-btn primary">Update instructions and resume</button>
-      </form>`);
+      </form>`;
+      actions.unshift(quickResume
+        ? `<details class="pipeline-resume-advanced"><summary>Advanced: change instructions, scope or limits by hand</summary>${form}</details>`
+        : form);
+      if (quickResume) actions.unshift(quickResume);
     }
     if (!qualification && task.status === 'blocked' && codingTask && task.assignee === 'coding-team' && !resumeWorker && workerOutcome) {
       actions.unshift(`<div class="pipeline-drawer-action"><p>Check the original worker status before resuming this task.</p>${state.drawer.workerError ? `<p class="pipeline-error">${escapeHtml(state.drawer.workerError)}</p>` : ''}<button type="button" class="pipeline-btn compact" data-drawer-action="refresh-worker">Check worker status</button></div>`);
