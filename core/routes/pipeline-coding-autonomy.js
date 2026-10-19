@@ -24,4 +24,8 @@ const continuation = require('../src/services/pipelineReportContinuationService'
 router.get('/report-continuation', route(() => continuation.status()));
 router.post('/report-continuation/config', route(req => continuation.configureSwitch(req.body || {})));
 router.post('/report-continuation/escalation', route(req => require('../src/services/pipelineReportEscalation').configure(req.body || {})));
+// One-click resume of a report (#878): preview, then plan with a When choice.
+const reportResume = require('../src/services/pipelineReportResume');
+router.get('/tasks/:id/report-resume', route(req => reportResume.preview(req.params.id)));
+router.post('/tasks/:id/report-resume', route(req => reportResume.resume(req.params.id, req.body || {})));
 module.exports = router;

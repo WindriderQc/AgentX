@@ -21,9 +21,14 @@ async function startProfile(body) {
   return answer?.data ?? answer;
 }
 function startable(job) {
-  if (!queue.AUTO_START_KINDS.includes(job.kind) || !job.executor) {
-    throw fail('Core launches Profiler requests only; use the request\'s own executor protocol', 409, 'HEAVY_QUEUE_LAUNCH_UNSUPPORTED');
+  if (!queue.autoStartable(job)) {
+    throw fail('Core launches Profiler requests and report campaigns only; use the request\'s own executor protocol', 409, 'HEAVY_QUEUE_LAUNCH_UNSUPPORTED');
   }
+}
+/** The native start for this request: the Profiler, or the report's first worker. */
+function starterFor(job, start) {
+  if (job.executor?.mode === 'pipeline-report') return begun => require('./pipelineReportResume').launchFromCampaign(begun);
+  return begun => start({ ...begun.executor, queueRequestId: begun.id });
 }
 function windowOpen(job, now) {
   return job.state === 'reserved' && Date.parse(job.reservation?.start) <= now && now < Date.parse(job.reservation?.end)
@@ -45,12 +50,24 @@ async function launch(id, actor, { expectedRevision, start = startProfile } = {}
   let operationId;
   try {
     await queue.assertDispatch(id, begun.dispatchId);
-    const result = await start({ ...begun.executor, queueRequestId: begun.id });
+    const result = await starterFor(begun, start)(begun);
     operationId = result?.queueId;
     if (typeof operationId !== 'string' || !operationId) throw new Error('Profiler returned no queue identity');
     return await queue.record(id, { dispatchId: begun.dispatchId, state: 'running', operationId }, actor);
   } catch (error) {
     const reason = String(error.message || error).slice(0, 900);
+    if (error.notStarted === true) {
+      // The executor proved nothing reached the native runner: release the
+      // fence with Core's own receipt instead of leaving it uncertain.
+      let released = false;
+      try {
+        const current = await queue.get(id);
+        await queue.recover(id, { expectedRevision: current.revision, dispatchId: begun.dispatchId,
+          confirmation: 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED', receiptRef: `core:not-started: ${reason}`.slice(0, 500) }, actor);
+        released = true;
+      } catch { /* Fall back to an uncertain fence below. */ }
+      if (released) throw fail(`Request ${id} did not start: ${reason}`, 409, error.code || 'HEAVY_QUEUE_LAUNCH_REFUSED');
+    }
     // A started profile is found again by its queue request identity; leave
     // the dispatch mark for the observer instead of declaring it uncertain.
     if (!operationId) {
@@ -67,7 +84,7 @@ async function launch(id, actor, { expectedRevision, start = startProfile } = {}
 async function dispatchDue({ now = Date.now(), start = startProfile } = {}) {
   const current = await queue.list();
   const due = (current?.jobs || [])
-    .filter(job => job.reservation?.autoStart === true && queue.AUTO_START_KINDS.includes(job.kind) && windowOpen(job, now))
+    .filter(job => job.reservation?.autoStart === true && queue.autoStartable(job) && windowOpen(job, now))
     .sort((a, b) => a.reservation.start.localeCompare(b.reservation.start) || a.priority - b.priority);
   const launched = [];
   for (const job of due) {
