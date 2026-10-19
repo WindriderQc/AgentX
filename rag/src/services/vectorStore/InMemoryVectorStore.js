@@ -9,8 +9,10 @@ const { cosineSimilarity } = require('../../utils/cosineSimilarity');
 class InMemoryVectorStore extends VectorStoreAdapter {
   constructor(config = {}) {
     super(config);
+    this.collectionName = config.collectionName || 'memory';
     this.documents = new Map();
     this.vectors = [];
+    this.payloadSchema = {};
   }
 
   async upsertDocument(documentId, metadata, chunks) {
@@ -137,6 +139,28 @@ class InMemoryVectorStore extends VectorStoreAdapter {
     const doc = this.documents.get(documentId);
     if (!doc) return null;
     return doc.originalText ?? null;
+  }
+
+  // The collection surface the embedding migration reads, as Qdrant offers it.
+  async getCollectionInfo() {
+    if (!this.vectors.length && !this.documents.size) return null;
+    return {
+      vectorSize: this.vectors.length ? this.vectors[0].embedding.length : 0,
+      pointsCount: this.vectors.length,
+      payloadSchema: { ...this.payloadSchema }
+    };
+  }
+
+  async createPayloadIndex(field, schema) {
+    this.payloadSchema[field] = { data_type: schema };
+  }
+
+  // Chunk-0 payloads only: the migration filters on chunkIndex 0.
+  async *_scrollPages({ pageSize = 100 } = {}) {
+    const payloads = Array.from(this.documents.values()).map((doc) => ({ ...doc, chunkIndex: 0 }));
+    for (let i = 0; i < payloads.length; i += pageSize) {
+      yield payloads.slice(i, i + pageSize).map((payload, j) => ({ id: `${payload.documentId}:${i + j}`, payload }));
+    }
   }
 
   async setDocumentOriginalText(documentId, text) {

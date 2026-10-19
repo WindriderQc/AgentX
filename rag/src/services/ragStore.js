@@ -31,8 +31,11 @@ let instance = null;
 
 class RagStore {
   constructor(config = {}) {
-    this.vectorStore = createVectorStore(config);
-    this.embeddingsService = getEmbeddingsService();
+    this.vectorStore = config.vectorStore || createVectorStore(config);
+    this.embeddingsService = config.embeddingsService || getEmbeddingsService();
+    // The serving store follows the active embedding profile; a build's target store has no guard.
+    this.writeGuard = null;
+    this.profileRevision = null;
     this.defaultChunkSize = config.chunkSize ?? 500;
     this.defaultChunkOverlap = config.chunkOverlap ?? 50;
     this.identityLocks = new Map();
@@ -276,7 +279,23 @@ class RagStore {
     return { textChunks: chunkMarkdownNote(note, chunkSize, chunkOverlap, splitIntoChunks), note };
   }
 
+  /** Serve another collection and embedding model, as the active profile now says. */
+  useProfile({ vectorStore, embeddingsService, revision }) {
+    this.vectorStore = vectorStore;
+    this.embeddingsService = embeddingsService;
+    this.profileRevision = revision;
+  }
+
+  setWriteGuard(guard) {
+    this.writeGuard = guard;
+  }
+
   async upsertDocumentWithChunks(text, metadata = {}) {
+    if (!this.writeGuard) return this._upsertDocumentWithChunks(text, metadata);
+    return this.writeGuard.run(this, () => this._upsertDocumentWithChunks(text, metadata));
+  }
+
+  async _upsertDocumentWithChunks(text, metadata) {
     const identity = buildDocumentIdentity(metadata.source || 'unknown', text, metadata.documentId);
     const identityKey = identity.sourceIdentity;
     return this._withIdentityLock(
@@ -450,7 +469,8 @@ class RagStore {
   }
 
   async deleteDocument(documentId) {
-    return this.vectorStore.deleteDocument(documentId);
+    if (!this.writeGuard) return this.vectorStore.deleteDocument(documentId);
+    return this.writeGuard.run(this, () => this.vectorStore.deleteDocument(documentId));
   }
 
   async getDocument(documentId) {
