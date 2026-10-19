@@ -6,7 +6,6 @@
  * streaming events, and fetch the finished record.
  */
 
-const { EventEmitter } = require('events');
 const logger = require('../../../config/logger');
 const Roundtable = require('../../../models/Roundtable');
 const {
@@ -32,6 +31,7 @@ const {
   setDecision
 } = require('./controls');
 const { validateRuntimeConfiguration } = require('./runtimeParticipantAdapter');
+const { LiveRunEmitter } = require('./liveRun');
 
 // Councils may overlap; the most recently started one is the active one shown.
 const activeRoundtableIds = new Set();
@@ -86,8 +86,7 @@ async function startRoundtable(options = {}) {
   const id = doc._id.toString();
   const enableScoring = resolvedOptions.enableScoring === true;
 
-  const emitter = new EventEmitter();
-  emitter.setMaxListeners(20);
+  const emitter = new LiveRunEmitter();
   emitterRegistry.set(id, emitter);
 
   activeRoundtableIds.add(id);

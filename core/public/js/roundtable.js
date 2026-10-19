@@ -185,6 +185,7 @@
   // ---------- Live rendering ----------
   let liveDoc = null;
   let liveEventSource = null;
+  let liveSeq = 0; // last streamed event applied; the snapshot sets it
   const agentRefs = {}; // agentId -> { card, body, stats, status }
   const searchNotes = {}; // agentId -> web search note shown when its turn starts
 
@@ -345,7 +346,46 @@
     }
   }
 
+  function fillAgentStats(refs, stats) {
+    if (!stats) return;
+    refs.tokens.textContent = stats.completionTokens ?? '—';
+    refs.tps.textContent = fmtNum(stats.tokensPerSecond);
+    refs.latency.textContent = stats.latencyMs ? fmtDuration(stats.latencyMs) : '—';
+  }
+
+  // Replay the run so far, as the server holds it, on top of the saved turns.
+  function applyLiveSnapshot(snap) {
+    liveSeq = Number(snap.seq) || 0;
+    if (snap.round >= 1) {
+      Object.entries(agentRefs).forEach(([agentId, refs]) => {
+        const entry = snap.agents?.[agentId];
+        refs.currentRound = snap.round;
+        refs.round.textContent = `round ${snap.round}`;
+        refs.card.classList.remove('active', 'done', 'error');
+        const status = entry?.status || 'pending';
+        if (status === 'running') refs.card.classList.add('active');
+        if (status === 'done' || status === 'error') refs.card.classList.add(status);
+        refs.status.textContent = status === 'searching' ? 'pending' : status;
+        refs.status.className = `rt-agent-status ${status === 'searching' ? '' : status}`.trim();
+        if (entry && ['running', 'done'].includes(status)) refs.body.textContent = `${entry.searchNote || ''}${entry.text || ''}`;
+        else if (status === 'error') refs.body.textContent = `Error: ${entry.error}`;
+        else refs.body.textContent = '';
+        if (entry && ['pending', 'searching'].includes(status) && entry.searchNote) searchNotes[agentId] = entry.searchNote;
+        if (entry) fillAgentStats(refs, entry.stats);
+      });
+    }
+    if (snap.phase && snap.phase !== 'done') setPhase(snap.phase);
+    if (snap.synthesis) {
+      $('liveSynthesis').classList.remove('rt-hidden');
+      $('liveSynthMeta').textContent = `model: ${snap.synthesis.model || '—'}`;
+      $('liveSynthBody').textContent = snap.synthesis.error ? `Error: ${snap.synthesis.error}` : (snap.synthesis.text || '');
+    }
+  }
+
   function handleEvent(type, data) {
+    if (type === 'snapshot') { applyLiveSnapshot(data); return; }
+    // Already contained in the snapshot: applying it again would duplicate text.
+    if (Number.isFinite(data?.seq) && data.seq <= liveSeq) return;
     if (type === 'started') return;
 
     if (type === 'round-start') {
@@ -433,6 +473,7 @@
     }
 
     if (type === 'synthesis-chunk') {
+      $('liveSynthesis').classList.remove('rt-hidden');
       $('liveSynthBody').textContent += data.content || '';
       return;
     }
@@ -562,6 +603,7 @@
     try {
       const { data } = await jsonFetch(`/api/roundtable/${id}`);
       liveDoc = data;
+      liveSeq = 0;
       $('liveSection').classList.remove('rt-hidden');
       $('liveStatus').textContent = `#${id.substring(id.length - 8)} — ${data.status.toUpperCase()}`;
       $('liveQuestion').textContent = data.question;
@@ -620,7 +662,7 @@
       // Subscribe if still running
       if (['pending', 'running'].includes(data.status)) {
         liveEventSource = new EventSource(`/api/roundtable/${id}/stream`);
-        ['started', 'round-start', 'round-done', 'turn-start', 'turn-chunk', 'turn-done', 'web-search-start', 'web-search-done', 'interjection-added', 'interjections-applied', 'synthesis-start', 'synthesis-chunk', 'synthesis-done', 'done'].forEach((ev) => {
+        ['snapshot', 'started', 'round-start', 'round-done', 'turn-start', 'turn-chunk', 'turn-done', 'web-search-start', 'web-search-done', 'interjection-added', 'interjections-applied', 'synthesis-start', 'synthesis-chunk', 'synthesis-done', 'done'].forEach((ev) => {
           liveEventSource.addEventListener(ev, (e) => {
             try { handleEvent(ev, JSON.parse(e.data)); } catch {}
           });
