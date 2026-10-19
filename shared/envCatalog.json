@@ -828,16 +828,6 @@
       "secret": false,
       "description": "Browser-facing Core URL used for portal links, the parental gateway unlock redirect and runtime-bridge exports. Unset: bridges derive it from the request host and the unlock redirect is skipped."
     },
-    "COST_CURRENCY": {
-      "services": [
-        "core"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "other",
-      "secret": false,
-      "description": "Currency label of cost analytics. Unset: USD."
-    },
     "COST_PRICING_CACHE_TTL": {
       "services": [
         "core"

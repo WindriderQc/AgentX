@@ -82,6 +82,16 @@ describe('chat-lane activity basis', () => {
     expect(res.body.data.summary.totalConversations).toBe(1);
   });
 
+  test('costs stay labelled USD, the currency of every configured price', async () => {
+    process.env.COST_CURRENCY = 'CAD';
+    try {
+      const res = await request(app()).get('/api/analytics/costs').query({ from, to });
+      expect(res.body.data.currency).toBe('USD');
+    } finally {
+      delete process.env.COST_CURRENCY;
+    }
+  });
+
   test('feedback counts votes on in-window messages', async () => {
     const res = await request(app()).get('/api/analytics/feedback').query({ from, to });
     expect(res.status).toBe(200);

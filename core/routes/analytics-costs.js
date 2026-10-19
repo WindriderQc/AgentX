@@ -8,6 +8,7 @@ const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
 const logger = require('../config/logger');
+const { COST_CURRENCY } = require('../src/services/costCalculator');
 const { activeMessageStages, analyticsDayKey, parseAnalyticsRange } = require('../src/services/conversationActivityAnalytics');
 const { rankingSignal, serializeSignal } = require('../../shared/signalEvidence');
 
@@ -187,7 +188,7 @@ router.get('/costs', async (req, res) => {
       data: {
         from: fromDate.toISOString(),
         to: toDate.toISOString(),
-        currency: process.env.COST_CURRENCY || 'USD',
+        currency: COST_CURRENCY,
         groupBy,
         minCost,
         summary,
