@@ -9,6 +9,7 @@ const Conversation = require('../models/Conversation');
 const Feedback = require('../models/Feedback');
 const logger = require('../config/logger');
 const {
+  analyticsDayKey,
   parseAnalyticsRange,
   activeMessageCostExpression,
   activeMessagesExpression,
@@ -459,7 +460,7 @@ router.get('/stats', async (req, res) => {
     // Grouping key selection
     let groupKey = '$model'; // Default to model
     if (groupBy === 'day') {
-      groupKey = { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } };
+      groupKey = analyticsDayKey('$createdAt');
     }
 
     const statsAgg = await Conversation.aggregate([

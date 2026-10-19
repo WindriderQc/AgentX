@@ -22,6 +22,7 @@
  */
 
 const { bucketFacet, summaryCoverage } = require('../src/services/inferenceSummaryMetrics');
+const { analyticsDayKey } = require('../src/services/conversationActivityAnalytics');
 const express = require('express');
 const router = express.Router();
 
@@ -429,7 +430,7 @@ router.get('/summary', async (req, res) => {
           byDay: [
             {
               $group: {
-                _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
+                _id: analyticsDayKey('$timestamp'),
                 ...groupMetrics
               }
             },
@@ -439,7 +440,7 @@ router.get('/summary', async (req, res) => {
             {
               $group: {
                 _id: {
-                  date: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
+                  date: analyticsDayKey('$timestamp'),
                   caller: '$caller'
                 },
                 calls: { $sum: 1 }

@@ -1,5 +1,15 @@
 'use strict';
 
+const { defaultPlanningTimeZone } = require('./planningDateService');
+
+/**
+ * The calendar day of a date, in the instance's planning time zone, so an
+ * evening's activity lands on that evening's day rather than on the next UTC day.
+ */
+function analyticsDayKey(date) {
+  return { $dateToString: { format: '%Y-%m-%d', date, timezone: defaultPlanningTimeZone() } };
+}
+
 /**
  * The window of a chat-lane analytics request: `to` defaults to now and `from`
  * to seven days earlier. An unparseable or reversed range is refused instead of
@@ -90,7 +100,7 @@ function activityDayPipeline(fromDate, toDate) {
       { $lte: [observedAt, toDate] }
     ] } } },
     { $group: {
-      _id: { $dateToString: { format: '%Y-%m-%d', date: observedAt } },
+      _id: analyticsDayKey(observedAt),
       conversationIds: { $addToSet: '$_id' },
       messages: { $sum: 1 },
       totalCost: {
@@ -122,6 +132,7 @@ function activityDayPipeline(fromDate, toDate) {
 }
 
 module.exports = {
+  analyticsDayKey,
   parseAnalyticsRange,
   activeMessageCostExpression,
   activeMessageStages,
