@@ -10,7 +10,10 @@
 
         <div class="rt-safety-note"><i class="fas fa-shield-halved"></i><div><strong>One authority.</strong> Agent X owns routing, transcripts, and synthesis. External callers may request and present a Council answer through the bounded API; they do not become a second control plane.</div></div>
 
-        <div id="toast" class="rt-toast" role="status" aria-live="polite" aria-atomic="true"></div>
+        <div id="toast" class="rt-toast" aria-hidden="true"></div>
+        <!-- Always rendered, so screen readers announce each change; errors interrupt. -->
+        <div id="toastStatus" class="rt-sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+        <div id="toastAlert" class="rt-sr-only" role="alert" aria-atomic="true"></div>
 
         <!-- Live / active roundtable -->
         <section id="liveSection" class="rt-card rt-hidden">
@@ -281,6 +284,8 @@
     .rt-history { display:flex; flex-direction:column; gap:8px; }
     .rt-history-item { background:#0a0f1d; border:1px solid #2a3145; border-radius:6px; padding:10px 14px; cursor:pointer; transition:border-color 0.2s; }
     .rt-history-item:hover { border-color:#7cf0ff; }
+    .rt-history-item:focus-visible { outline:2px solid #7cf0ff; outline-offset:2px; border-color:#7cf0ff; }
+    .rt-sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
     .rt-history-row { display:flex; justify-content:space-between; align-items:center; gap:12px; }
     .rt-history-q { flex:1; font-size:13px; color:#e2e8f0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
     .rt-history-meta { display:flex; gap:10px; font-size:11px; color:#888; font-family:monospace; white-space:nowrap; }
@@ -288,6 +293,7 @@
     .rt-history-status.completed { background:rgba(77,179,61,0.15); color:#4db33d; }
     .rt-history-status.failed,
     .rt-history-status.timeout { background:rgba(220,53,69,0.15); color:#ff7a7a; }
+    .rt-history-status.cancelled { background:rgba(148,163,184,0.15); color:#cbd5e1; }
     .rt-history-status.running,
     .rt-history-status.pending { background:rgba(124,240,255,0.15); color:#7cf0ff; }
 

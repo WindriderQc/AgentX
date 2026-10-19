@@ -12,6 +12,8 @@
     toast.textContent = msg;
     toast.style.background = type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#007bff';
     toast.style.display = 'block';
+    $('toastStatus').textContent = type === 'error' ? '' : msg;
+    $('toastAlert').textContent = type === 'error' ? msg : '';
     // A newer toast keeps its full time on screen.
     clearTimeout(showToast.timer);
     showToast.timer = setTimeout(() => { toast.style.display = 'none'; }, 4500);

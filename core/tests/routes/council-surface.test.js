@@ -61,4 +61,14 @@ describe('AgentX Council surface', () => {
     expect(page.text).toContain('/js/roundtable.js');
     expect(page.text).toContain('/js/council-handoff.js');
   });
+
+  it('announces toasts through always-rendered live regions and shows keyboard focus on history', async () => {
+    const page = await request(app).get('/council');
+    expect(page.text).toContain('id="toast" class="rt-toast" aria-hidden="true"');
+    expect(page.text).toMatch(/id="toastStatus"[^>]*role="status"[^>]*aria-live="polite"/);
+    expect(page.text).toMatch(/id="toastAlert"[^>]*role="alert"/);
+    expect(page.text).toContain('.rt-history-item:focus-visible');
+    const ui = read('core/public/js/roundtable.js');
+    expect(ui).toContain("$('toastAlert').textContent = type === 'error' ? msg : ''");
+  });
 });
