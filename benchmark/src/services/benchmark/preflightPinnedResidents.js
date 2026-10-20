@@ -6,15 +6,16 @@
  *
  * - An execution host's pinned models that the batch does not test are
  *   unloaded during the batch and restored after it.
- * - A separate judge host is held as shared (#396): its pinned models keep
- *   serving beside the judge, and Ollama makes one wait or reloads it when
- *   VRAM runs short. A judge host on the same GPU as an execution host is
- *   reserved instead, so their calls wait until the batch ends.
+ * - A separate judge host whose pin is the judge is held as shared (#396):
+ *   nothing else loads there and its pinned models keep serving. A judge that
+ *   is not the pin replaces it for the batch under the host claim, and the pin
+ *   returns when the batch ends (#901).
  */
 
 const logger = require('../../../config/logger');
 const { getDedicationStatuses } = require('../../clients/coreApiClient');
 const { normalizeModelName } = require('./modelMetadata');
+const { judgeSharesHost } = require('./batchAdmissionScope');
 
 const trimHost = (host) => String(host || '').replace(/\/+$/, '');
 
@@ -26,10 +27,10 @@ function pinnedModelsOf(status) {
 
 /**
  * @param {Array<{host, model}>} targets - execution targets
- * @param {{ judgeHost?: string }} [options] - the judge's Ollama host, when it is one
+ * @param {{ judgeHost?: string, judgeModel?: string }} [options] - the judge's Ollama host, when it is one, and model
  * @returns {Promise<{ ok: true, affectedHosts: object[], judgeHost: object|null, warnings: string[] }>}
  */
-async function checkPinnedResidents(targets, { judgeHost = null } = {}) {
+async function checkPinnedResidents(targets, { judgeHost = null, judgeModel = null } = {}) {
     const affectedHosts = [];
     const warnings = [];
     let judge = null;
@@ -64,12 +65,13 @@ async function checkPinnedResidents(targets, { judgeHost = null } = {}) {
         const judgeUrl = trimHost(judgeHost);
         const judgePinned = judgeUrl && !execHosts.includes(judgeUrl) ? pinnedModelsOf(statusFor(judgeUrl)) : [];
         if (judgePinned.length) {
-            judge = { host: judgeUrl, pinnedModels: judgePinned };
-            warnings.push(
-                `Judge host ${judgeUrl} serves pinned model(s): ${judgePinned.join(', ')}. The batch holds it as a shared ` +
-                'host: they keep serving beside the judge, and Ollama makes one wait or reloads it when VRAM runs short. ' +
-                'On the same GPU as an execution host it is reserved instead, and their calls wait until the batch ends.'
-            );
+            const shared = judgeSharesHost(new Map([[judgeUrl, judgePinned]]), judgeUrl, judgeModel);
+            judge = { host: judgeUrl, pinnedModels: judgePinned, replacesPin: !shared };
+            warnings.push(shared
+                ? `Judge host ${judgeUrl} has the judge ${judgeModel} as its pin. The batch shares the host: nothing ` +
+                  'else loads there and its pinned models keep serving.'
+                : `The judge ${judgeModel || '(default)'} replaces the pin on ${judgeUrl} (${judgePinned.join(', ')}) ` +
+                  'for this batch. The batch reserves the host, other calls there wait, and the pin returns when the batch ends.');
         }
     } catch (err) {
         logger.debug('Dedication check skipped — core unreachable', { error: err.message });

@@ -650,7 +650,7 @@ async function runPreflight(options = {}) {
         Promise.all(hostChecks),
         checkPromptCoverage(levels, promptIds || prompt_ids, executionConfig),
         checkOrphanedBatches(),
-        checkPinnedResidents(uniqueTargets, { judgeHost }),
+        checkPinnedResidents(uniqueTargets, { judgeHost, judgeModel: judgeConfig?.model || JUDGE_CONFIG.model }),
         checkResponseBudgets(uniqueTargets, executionConfig, { ...judgeConfig, host: judgeHost, model: judgeConfig?.model || JUDGE_CONFIG.model,
             num_ctx: judgeConfig?.num_ctx ?? JUDGE_CONFIG.num_ctx, num_predict: judgeConfig?.num_predict || JUDGE_CONFIG.num_predict },
             { levels, promptIds: promptIds || prompt_ids })

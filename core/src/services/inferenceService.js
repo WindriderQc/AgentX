@@ -15,7 +15,7 @@ const { buildInferenceClientData, classifyHttpRetryFailure, buildInferenceRespon
 const { prepareInferenceRuntime } = require('./inferenceRuntimePolicy');
 const lanePolicy = require('./inferenceLanePolicy');
 const { resolveCallerPolicy } = require('./routing/callerPolicy');
-const { assertHostAvailableForConsumer } = require('./benchmarkClaimGuard');
+const { assertHostAvailableForConsumer, workloadReservesHost } = require('./benchmarkClaimGuard');
 const { fallbackAfterRefusal, refusedBeforeDispatch } = require('./routing/taskFallbackLadder');
 const { createGenerateRouteDecisionBuilder, observeRouteDecision, createAttemptRecorder } = require('./routing/inferenceRouteRecorder');
 const { evaluateResponseAlerts, evaluateTransportFailureAlert } = require('./routing/inferenceAlerts');
@@ -266,7 +266,7 @@ async function executeInferenceOnce(body = {}, {
         });
     }
 
-    let claimed = benchmarkClaimAuthorized && Boolean(body.workloadAdmissionId && body.workloadGeneration);
+    let claimed = false;
     try {
         claimed = Boolean(await assertHostAvailableForConsumer(target, {
             callerDetail: body.callerDetail || null,
@@ -277,7 +277,7 @@ async function executeInferenceOnce(body = {}, {
             benchmarkAuthorized: benchmarkClaimAuthorized,
             model,
             path: '/api/inference/generate'
-        })) || claimed;
+        })) || await workloadReservesHost(target, body, benchmarkClaimAuthorized);
     } catch (err) {
         return refusedResult(err, rejectRoute(buildClaimAdmissionRejection(err, {
             headers, target, routedHostKey, model, laneName,

@@ -216,10 +216,23 @@ async function workloadSharesHost({ id, generation, host } = {}) {
   return Boolean(state);
 }
 
+// True when a live workload holds the host, shared or reserved. A Benchmark
+// batch that judges on a host it shares relies on the pin being its judge.
+async function hostHeldByWorkload(host) {
+  host = canonicalHost(host);
+  if (!host) return false;
+  const state = await RuntimeCoordination.findOne({
+    _id: 'runtime',
+    workloads: { $elemMatch: { hosts: host, expiresAt: { $gt: new Date() } } }
+  }).select('_id').lean();
+  return Boolean(state);
+}
+
 module.exports = {
   acquireWorkload,
   recoverWorkloadAcquisition,
   isWorkloadRecoveryRequired,
   assertWorkloadAdmission,
-  workloadSharesHost
+  workloadSharesHost,
+  hostHeldByWorkload
 };

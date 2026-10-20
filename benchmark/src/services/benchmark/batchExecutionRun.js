@@ -20,7 +20,7 @@ const {
     releaseWorkloadAdmission
 } = require('../../clients/coreApiClient');
 const { startBenchmarkClaimHeartbeat } = require('./benchmarkClaimLifecycle');
-const { batchAdmissionScope } = require('./batchAdmissionScope');
+const { resolveBatchAdmissionScope } = require('./batchAdmissionScope');
 const { normalizeBatchTargets } = require('../../../../shared/benchmarkTargetContract');
 const { markReconciliationPending, retainAdmissionHeartbeat } = require('./batchAuthorityRecovery');
 const { normalizeJudgeThink } = require('./judgeLaunchLimits');
@@ -50,7 +50,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
     });
     const executionAdmission = await acquireWorkloadAdmission(String(batchId), {
         requestId: `benchmark:${batchId}`,
-        ...batchAdmissionScope(executionTargets, judgeConfig),
+        ...await resolveBatchAdmissionScope(executionTargets, judgeConfig),
         batchId: String(batchId),
         ttlMs: options.execution_config?.estimated_duration_ms || null
     });

@@ -120,8 +120,27 @@ async function assertHostAvailableForConsumer(hostUrl, {
   throw buildBenchmarkClaimError(hostUrl, claim);
 }
 
+// A workload admission owns what Ollama loads only on a host it reserves. On a
+// host it shares (a separate judge host whose pin is the judge), the pin keeps
+// owning the host: a request there names a pinned model or is refused.
+async function workloadReservesHost(hostUrl, { workloadAdmissionId = null, workloadGeneration = null } = {},
+  benchmarkAuthorized = false, { sharesHost = null } = {}) {
+  if (benchmarkAuthorized !== true || typeof workloadAdmissionId !== 'string' || typeof workloadGeneration !== 'string'
+    || !workloadAdmissionId || !workloadGeneration) return false;
+  const shares = sharesHost || defaultWorkloadSharesHost;
+  return !(await shares({ id: workloadAdmissionId, generation: workloadGeneration, host: hostUrl }));
+}
+
+async function defaultWorkloadSharesHost(query) {
+  // Never wait on a disconnected database; the distributed admission still
+  // validates the proof before dispatch.
+  if (require('mongoose').connection.readyState !== 1) return false;
+  return require('./runtimeWorkloadAdmission').workloadSharesHost(query);
+}
+
 module.exports = {
   assertHostAvailableForConsumer,
+  workloadReservesHost,
   buildBenchmarkClaimError,
   getActiveBenchmarkClaim,
   isBenchmarkCaller

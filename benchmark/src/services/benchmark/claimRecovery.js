@@ -26,6 +26,7 @@ const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const { getBenchmarkClaims, releaseBenchmarkClaim } = require('../../clients/coreApiClient');
 const { acquireBenchmarkClaims, estimateBenchmarkClaimDurationMs } = require('./benchmarkClaimLifecycle');
 const { resolveJudgeHost } = require('./judgeHostResolution');
+const { judgeModelOf, judgeSharesHost, loadHostPins } = require('./batchAdmissionScope');
 const { groupModelsByHost } = require('./batchHelpers');
 
 const GHOST_BATCH_INACTIVE_THRESHOLD_MS = 10 * 60 * 1000; // 10 min
@@ -198,7 +199,7 @@ async function reacquireActiveBatchClaims({ processStartedAt = null } = {}) {
             });
 
             const claimed = await acquireBenchmarkClaims(allHosts, String(batch._id), estimateMs, {
-                sharedHosts: judgeHosts.filter(url => !execHosts.includes(url))
+                sharedHosts: await sharedJudgeHosts(judgeHosts.filter(url => !execHosts.includes(url)), batch.judge_config)
             });
             if (claimed.length > 0) {
                 reacquired += claimed.length;
@@ -214,6 +215,13 @@ async function reacquireActiveBatchClaims({ processStartedAt = null } = {}) {
     }
 
     return { checked: active.length, reacquired };
+}
+
+// Core keeps the admission's original shared hosts; these only match them.
+async function sharedJudgeHosts(judgeOnlyHosts, judgeConfig = {}) {
+    if (judgeOnlyHosts.length === 0) return [];
+    const hostPins = await loadHostPins();
+    return judgeOnlyHosts.filter(url => judgeSharesHost(hostPins, url, judgeModelOf(judgeConfig)));
 }
 
 module.exports = {
