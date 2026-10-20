@@ -25,6 +25,21 @@ describe('Core JSON transport boundaries', () => {
     expect(response.body.code).toBe('PAYLOAD_TOO_LARGE');
   });
 
+  it('admits photo-sized bodies on /api/inference/generate up to its 32 MiB route limit', async () => {
+    const accepted = await request(app)
+      .post('/api/inference/generate')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ prompt: 'x'.repeat(6 * 1024 * 1024) }));
+    expect(accepted.status).not.toBe(413);
+
+    const refused = await request(app)
+      .post('/api/inference/generate')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ prompt: 'x'.repeat(32 * 1024 * 1024 + 1) }))
+      .expect(413);
+    expect(refused.body.code).toBe('PAYLOAD_TOO_LARGE');
+  });
+
   it('lets Roundtable interjections keep their 16 KiB route-owned limit', async () => {
     const response = await request(app)
       .post('/api/roundtable/any-roundtable/interjections')

@@ -22,6 +22,7 @@ const { evaluateResponseAlerts, evaluateTransportFailureAlert } = require('./rou
 const { createGenerateRoutingTrace } = require('./routing/generateRoutingTrace');
 const { buildClaimAdmissionRejection } = require('./routing/claimAdmissionRejection');
 const { resolveInferenceTimeout } = require('./routing/inferenceTimeoutPolicy');
+const { shrinkMessageImages } = require('./inferenceImageResize');
 
 const LADDER_RETRY = Symbol('taskFallbackLadderRetry');
 
@@ -372,10 +373,18 @@ async function executeInferenceOnce(body = {}, {
     const useChat = !!messages;
     const ollamaUrl = `${target}/api/${useChat ? 'chat' : 'generate'}`;
 
+    // Oversized photos are shrunk here so no caller has to know the model's input size.
+    const shrunk = useChat ? await shrinkMessageImages(messages, { signal }) : null;
+    if (isCancelled()) return undefined;
+    if (shrunk?.stats.images) {
+        routingTrace.request.images = shrunk.stats;
+        headers['X-AgentX-Images-Resized'] = `${shrunk.stats.resized}/${shrunk.stats.images}`;
+    }
+
     const ollamaPayload = useChat
         ? {
             model,
-            messages,
+            messages: shrunk.messages,
             stream,
             options,
             ...(requestedTools !== undefined && { tools: requestedTools }),

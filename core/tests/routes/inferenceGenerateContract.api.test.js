@@ -163,6 +163,21 @@ describe('caller-neutral generation entry point', () => {
     expect(exact.body.agentx_contract.qualification.qualified).toBe(false);
   });
 
+  test('an oversized photo reaches Ollama shrunk by Core, with the count in a header', async () => {
+    const jpeg = require('jpeg-js');
+    const width = 2600, height = 1300;
+    const photo = jpeg.encode({ width, height, data: Buffer.alloc(width * height * 4, 90) }, 90).data.toString('base64');
+    const capture = {};
+    mockOllamaOk(capture);
+    const res = await executeInference({
+      model: 'test-model', rawResponse: true, messages: [{ role: 'user', content: 'describe', images: [photo] }] });
+    expect(res.status).toBe(200);
+    expect(res.headers['X-AgentX-Images-Resized']).toBe('1/1');
+    const sent = JSON.parse(capture.opts.body).messages[0].images[0];
+    const out = jpeg.decode(Buffer.from(sent, 'base64'));
+    expect([out.width, out.height]).toEqual([2048, 1024]);
+  });
+
   test('an already-cancelled internal call neither dispatches nor invents an inference', async () => {
     const controller = new AbortController();
     controller.abort();
