@@ -502,6 +502,7 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
     """Run the report as verified steps. Returns 'complete', 'unverified' or a stop reason."""
     ledger = initial_ledger(root, path, snapshot, baseline)
     ledgers.continuation_retries(ledger, args.request_id, getattr(args, 'parent_request_id', None))
+    saved_progress = ledgers.progress_marker(ledger)
     notes = steps.latest_operator_notes(task)
     capability = lane_capability(r)
     budget = steps.step_budget(capability)
@@ -517,11 +518,16 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
                     'capabilitySource': (capability or {}).get('provenance') if capability else None})
 
     def save():
+        nonlocal saved_progress
         if notes:
             ledger['legacyReviewPending'] = ledgers.legacy_review_required(ledger, notes)
         groups = steps.plan_groups(ledger, sizes, budget, limit=3, line_counts=line_counts)
         steps.write_atomic(path, ledgers.render(ledger, title, [group['documents'] for group in groups]))
         steps.write_atomic(root/'coverage.json', json.dumps(ledgers.coverage(ledger), indent=2) + '\n')
+        material = ledgers.progress_marker(ledger)
+        if any(material[key] - saved_progress[key] for key in material):
+            progress.useful()
+        saved_progress = {key: saved_progress[key] | material[key] for key in material}
         progress.report_steps = {'escalated': sum(1 for row in ledger['steps'] if row.get('escalated')),
                                  'done': sum(1 for row in ledger['steps'] if row['result'] == 'merged'),
                                  'failed': sum(1 for row in ledger['steps'] if row['result'] == 'failed'),

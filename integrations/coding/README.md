@@ -97,6 +97,9 @@ and runs several short worker sessions in fresh context:
 - **Render.** After every step the runner regenerates the Markdown report and
   `coverage.json` from the ledger, so findings, tables and totals cannot
   drift, and each step counts as saved progress.
+  Saved new source evidence, reviewed ranges or completed documents refresh
+  the progress timer before the next session. Failure receipts, retry resets
+  and reworded notes alone do not.
 - **Writer.** A last short session receives only the verified findings and
   writes the summary and explanations.
 - **Resume.** The ledger is embedded in the report as an HTML comment. A

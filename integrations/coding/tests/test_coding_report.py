@@ -622,6 +622,7 @@ class StepsReportTest(unittest.TestCase):
                              stop_reason=None, report_drained=True)
         progress.now.return_value = 0
         progress.check_stop.return_value = False
+        self.correction_progress = progress
         progress.call_limit.return_value = 128
         progress.begin_step.side_effect = lambda calls, seconds, output: setattr(progress, 'step', {'output': output})
         args = mock.Mock(task_id='0001', request_id=KEY, parent_request_id=None)
@@ -639,12 +640,14 @@ class StepsReportTest(unittest.TestCase):
                 self.assertEqual(ledger['legacyReview']['requestId'], KEY)
                 self.assertFalse(report.ledgers.coverage(ledger)['declaredComplete'])
                 self.assertEqual(ledger['legacy'], 'Six families.')
+                self.correction_progress.useful.assert_not_called()
 
     def test_successful_correction_checkpoint_skips_same_notes_but_applies_new_notes(self):
         answer = lambda prompt: {'legacyEdits': [{'find': 'Six families.', 'replace': 'Eight families.'}]}
         outcome, ledger = self.correction_step(answer)
         self.assertEqual(outcome, 'complete')
         self.assertFalse(ledger['legacyReviewPending'])
+        self.correction_progress.useful.assert_called_once()
         calls = runner.run_worker.call_count
         outcome, restored = self.correction_step(None, prior=ledger)
         self.assertEqual(outcome, 'complete')
@@ -655,6 +658,34 @@ class StepsReportTest(unittest.TestCase):
         self.assertEqual(runner.run_worker.call_count, calls + 1)
         self.assertEqual(corrected['legacy'], 'Eight families.')
         self.assertNotEqual(corrected['legacyReview']['notesSha256'], restored['legacyReview']['notesSha256'])
+        self.correction_progress.useful.assert_not_called()
+
+    def test_material_step_save_refreshes_progress_before_next_session_baseline(self):
+        self.out.mkdir(parents=True)
+        clock = [0]
+        progress = runner.coding_progress.Progress('0001', KEY, now=lambda: clock[0])
+        progress.phase = 'running'
+        progress.report_mode = True
+        progress.hard_deadline = progress.queue_deadline = 14400
+        progress.soft_deadline = 14400
+        progress.report_observer = lambda: report.report_signature(self.out/'review.md', self.out)
+        args = mock.Mock(task_id='0001', request_id=KEY, parent_request_id=None)
+        snapshot = dict(report.scope.inventory(self.workspace, self.head), sha256='a'*64)
+        self.answers = [self.reviewed, self.reviewed, lambda prompt: {'summary': 'Done.', 'explanations': {}}]
+        original = self.worker
+        useful_times = []
+        def worker(workspace, prompt, seconds, observed, *, read_only):
+            observed.baseline(self.home, workspace)
+            clock[0] += 2400
+            useful_times.append(observed.last_useful)
+            return original(workspace, prompt, seconds, observed, read_only=read_only)
+        with mock.patch.object(runner, 'run_worker', side_effect=worker):
+            outcome = report.run_steps(runner, args, progress, self.task, self.workspace, self.out,
+                self.out/'review.md', snapshot, self.head)
+        self.assertEqual(outcome, 'complete')
+        self.assertEqual(useful_times, [0, 2400, 4800])
+        self.assertEqual(progress.last_useful, 4800)  # Writer prose alone is not new verified scope.
+        self.assertIsNone(progress.tick())
 
     def test_reviews_groups_in_fresh_sessions_and_delivers_a_rendered_report(self):
         self.answers=[self.reviewed, self.reviewed, lambda prompt:{'summary':'Two documents reviewed; one wrong value.','explanations':{'F1':'Readers would set 5.'}}]

@@ -274,6 +274,20 @@ def merge_legacy_review(ledger, value, reason, notes, source_bytes, step_id, req
     ledger['legacyReviewPending'] = not ledger['legacyReviewed']
 
 
+def progress_marker(ledger):
+    """Material verified scope, excluding prose-only notes and runner receipts."""
+    documents = ledger['documents']
+    return {'reviewed': frozenset(path for path, row in documents.items() if row['state'] == 'reviewed'),
+            'evidence': frozenset((path, ref['path'], ref['sha256'], ref['line'])
+                for path, row in documents.items() for ref in row['evidence']),
+            'ranges': frozenset((path, start, end) for path, row in documents.items()
+                for start, end in row.get('ranges', [])),
+            'findings': frozenset((row['kind'], row['document']['path'], row['document']['line'],
+                tuple(sorted((ref['path'], ref['sha256'], ref['line']) for ref in row['evidence'])))
+                for row in ledger.get('findings', [])),
+            'legacy': frozenset((hashlib.sha256((ledger.get('legacy') or '').encode()).hexdigest(),))}
+
+
 def counts(ledger):
     tally = {'reviewed': 0, 'partial': 0, 'blocked': 0, 'pending': 0}
     for document in ledger['documents'].values():
