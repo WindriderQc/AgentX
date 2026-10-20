@@ -576,20 +576,31 @@ if __name__ == "__main__":
 
 
 class ReportStepProgressTest(unittest.TestCase):
-    def test_a_step_limit_ends_the_session_without_a_stop_reason(self):
+    def test_last_admitted_call_is_not_preempted_and_time_limit_still_ends_the_step(self):
         clock = [100.0]
         progress = module.Progress('0001', '11111111-2222-4333-8444-555555555555', now=lambda: clock[0])
         progress.phase = 'running'
         progress.begin_step(4, 60, '/home/agent/deliverables/x/step-01.json')
         self.assertIsNone(progress.tick())
         progress.model_calls += 4
-        self.assertEqual(progress.tick(), 'step_limit')
+        self.assertIsNone(progress.tick())
         self.assertIsNone(progress.stop_reason)
         progress.end_step()
         self.assertIsNone(progress.tick())
         progress.begin_step(10, 60, '/out/step-02.json')
         clock[0] += 61
         self.assertEqual(progress.step_due(), 'step_limit')
+
+    def test_relay_budget_respects_the_whole_run_without_killing_the_last_allowed_reply(self):
+        progress = module.Progress('0001', '11111111-2222-4333-8444-555555555555')
+        self.assertIsNone(progress.relay_call_budget())
+        progress.model_calls = 127
+        progress.begin_step(4, 60, '/out/current.json')
+        self.assertEqual(progress.relay_call_budget(), {'calls': 1, 'key': '/out/current.json'})
+        self.assertIsNone(progress.tick())
+        progress.model_calls += 1
+        self.assertEqual(progress.relay_call_budget()['calls'], 0)
+        self.assertIsNone(progress.tick())
 
     def test_report_steps_reach_core_only_through_the_whitelist(self):
         value = {'requestId': 'r', 'pipelineId': '0001', 'phase': 'running', 'stage': 'model_wait',

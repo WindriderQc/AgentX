@@ -498,6 +498,7 @@ def escalate_group(r, args, progress, workspace, baseline, ledger, group, line_r
 def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
     """Run the report as verified steps. Returns 'complete', 'unverified' or a stop reason."""
     ledger = initial_ledger(root, path, snapshot, baseline)
+    ledgers.continuation_retries(ledger, args.request_id, getattr(args, 'parent_request_id', None))
     notes = steps.latest_operator_notes(task)
     capability = lane_capability(r)
     budget = steps.step_budget(capability)

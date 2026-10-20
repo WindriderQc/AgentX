@@ -70,6 +70,16 @@ class ModelOnly(BaseHTTPRequestHandler):
         if len(body) > MAX_REQUEST_BYTES:
             self.refuse()
             return
+        admission = self.server.admit_request()
+        if admission:
+            message = json.dumps({'error': {'type': 'model_call_limit' if admission == 'limit' else 'runtime_draining',
+                                           'message': 'The report session cannot start another model call.'}}).encode()
+            self.send_response(400 if admission == 'limit' else 503)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(message)))
+            self.end_headers()
+            self.wfile.write(message)
+            return
         target = urlsplit(f"{self.model_url}/chat/completions")
         connection_type = http.client.HTTPSConnection if target.scheme == "https" else http.client.HTTPConnection
         connection = connection_type(target.hostname, target.port, timeout=UPSTREAM_TIMEOUT_SECONDS)
@@ -123,7 +133,17 @@ class UnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
 
     def __init__(self, *args, **kwargs):
         self.upstreams, self.guard, self.closing = set(), threading.Lock(), False
+        self.request_budget, self.admitted_requests = None, 0
         super().__init__(*args, **kwargs)
+
+    def admit_request(self):
+        with self.guard:
+            if self.closing:
+                return 'closed'
+            if self.request_budget is not None and self.admitted_requests >= self.request_budget['calls']:
+                return 'limit'
+            self.admitted_requests += 1
+            return None
 
     def track(self, upstream):
         with self.guard:
@@ -183,8 +203,12 @@ class UnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
 
 
 def serve(socket_path: str, model_url: str, observer=None, runner_headers=None, drain_on_disconnect=False,
-          budget_guidance=None) -> UnixServer:
+          budget_guidance=None, request_budget=None) -> UnixServer:
     """Start the runner-side relay; the caller shuts it down."""
+    if request_budget is not None and (not isinstance(request_budget, dict)
+            or type(request_budget.get('calls')) is not int or request_budget['calls'] < 0
+            or not isinstance(request_budget.get('key'), str) or not request_budget['key']):
+        raise ValueError('A report relay budget requires a nonnegative call count and step identity')
     if os.path.exists(socket_path):
         os.unlink(socket_path)
     handler = type("Handler", (ModelOnly,), {"model_url": model_url.rstrip("/"),
@@ -192,6 +216,7 @@ def serve(socket_path: str, model_url: str, observer=None, runner_headers=None, 
                     "drain_on_disconnect": drain_on_disconnect,
                     "budget_guidance": staticmethod(budget_guidance or (lambda: None))})
     server = UnixServer(socket_path, handler)
+    server.request_budget = dict(request_budget) if request_budget is not None else None
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
 

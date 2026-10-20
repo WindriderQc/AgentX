@@ -16,6 +16,60 @@ SPEC.loader.exec_module(relay)
 
 
 class RelayStopTest(unittest.TestCase):
+    def test_last_allowed_reply_can_save_before_an_extra_call_is_refused(self):
+        spec = importlib.util.spec_from_file_location('coding_progress', Path(__file__).resolve().parents[1] / 'coding_progress.py')
+        progress_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(progress_module)
+        arrived, release = threading.Event(), threading.Event()
+        forwarded, errors = [], []
+        class Upstream(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers['Content-Length']))
+                forwarded.append(True); arrived.set()
+                release.wait(5)
+                self.send_response(200); self.end_headers(); self.wfile.write(b'final save result')
+            def log_message(self, *_args):
+                pass
+        upstream = ThreadingHTTPServer(('127.0.0.1', 0), Upstream)
+        threading.Thread(target=upstream.serve_forever, daemon=True).start()
+        self.addCleanup(upstream.server_close); self.addCleanup(upstream.shutdown)
+        self.addCleanup(release.set)
+        with tempfile.TemporaryDirectory() as directory:
+            path, saved = str(Path(directory)/'model.sock'), Path(directory)/'step.json'
+            progress = progress_module.Progress('0001', '11111111-2222-4333-8444-555555555555')
+            progress.phase = 'running'; progress.report_mode = True; progress.model_calls = 127
+            progress.begin_step(4, 60, str(saved))
+            server = relay.serve(path, f'http://127.0.0.1:{upstream.server_port}/v1',
+                                 observer=progress.model_events.put, request_budget=progress.relay_call_budget())
+            self.addCleanup(server.server_close); self.addCleanup(server.shutdown)
+            def request():
+                connection = http.client.HTTPConnection('worker', timeout=5)
+                connection.sock = socket.socket(socket.AF_UNIX); connection.sock.connect(path)
+                connection.request('POST', '/v1/chat/completions', body=b'{}')
+                response = connection.getresponse(); result = (response.status, response.read())
+                connection.close(); return result
+            def worker():
+                try:
+                    status, body = request()
+                    self.assertEqual(status, 200)
+                    saved.write_bytes(body)
+                    self.assertEqual(request()[0], 400)
+                except BaseException as error:
+                    errors.append(error)
+            thread = threading.Thread(target=worker); thread.start()
+            self.assertTrue(arrived.wait(3))
+            try:
+                self.assertIsNone(progress.tick())
+                self.assertEqual(progress.model_calls, 128)
+                self.assertFalse(saved.exists())
+            finally:
+                release.set(); thread.join(5)
+            self.assertFalse(thread.is_alive()); self.assertEqual(errors, [])
+            self.assertEqual(saved.read_bytes(), b'final save result')
+            self.assertIsNone(progress.tick())
+            self.assertEqual(progress.model_calls, 128)
+            self.assertEqual(len(forwarded), 1)
+
     def test_each_request_receives_fresh_guidance_without_growing_history_or_changing_options(self):
         received = []
         class Upstream(BaseHTTPRequestHandler):

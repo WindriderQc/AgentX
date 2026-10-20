@@ -45,6 +45,42 @@ def good_result():
 
 
 class LedgerTest(unittest.TestCase):
+    def test_continuation_restores_local_attempts_for_pending_documents_too(self):
+        ledger = ledgers.new_ledger(snapshot())
+        ledgers.record_failure(ledger, ['docs/A.md'], 1, 'no result')
+        ledger['documents']['docs/B.md']['state'] = 'blocked'
+        before = json.loads(json.dumps(ledger['documents']['docs/B.md']))
+        ledgers.continuation_retries(ledger, 'new-request', 'parent-request')
+        self.assertEqual(ledger['documents']['docs/A.md']['state'], 'pending')
+        self.assertEqual(ledger['documents']['docs/A.md']['attempts'], 0)
+        self.assertEqual(ledger['documents']['docs/B.md'], before)
+        self.assertEqual(ledger['steps'][-1]['documents'], ['docs/A.md'])
+
+    def test_authorized_continuation_retries_failed_documents_without_erasing_work(self):
+        ledger = ledgers.new_ledger(snapshot())
+        ledgers.merge_step(ledger, ['docs/A.md'], good_result(), source, 1)
+        ledgers.record_failure(ledger, ['docs/B.md'], 2, 'no result')
+        ledgers.record_failure(ledger, ['docs/B.md'], 3, 'no result')
+        row = ledger['documents']['docs/sub/C.md']
+        row.update(state='partial', partialRounds=3, ranges=[[1, 1]])
+        previous_steps = json.loads(json.dumps(ledger['steps']))
+        reviewed = json.loads(json.dumps(ledger['documents']['docs/A.md']))
+        ledgers.continuation_retries(ledger, 'new-request', None)
+        self.assertEqual(ledger['documents']['docs/B.md']['state'], 'blocked')
+        ledgers.continuation_retries(ledger, 'new-request', 'parent-request')
+        self.assertEqual(ledger['documents']['docs/B.md']['state'], 'pending')
+        self.assertEqual(row['partialRounds'], 0)
+        self.assertEqual(row['ranges'], [[1, 1]])
+        self.assertEqual(ledger['documents']['docs/A.md'], reviewed)
+        self.assertEqual(ledger['steps'][:-1], previous_steps)
+        self.assertEqual(ledger['steps'][-1]['parentRequestId'], 'parent-request')
+        self.assertEqual(ledger['steps'][-1]['previous'][0]['attempts'], 2)
+        self.assertFalse(ledgers.coverage(ledger)['declaredComplete'])
+        restored = ledgers.embedded(ledgers.render(ledger, 'Review'))
+        before = json.dumps(restored, sort_keys=True)
+        ledgers.continuation_retries(restored, 'new-request', 'parent-request')
+        self.assertEqual(json.dumps(restored, sort_keys=True), before)
+
     def test_failed_legacy_corrections_remain_pending_after_checkpoint_restore(self):
         for value in [None, {}, {'legacyEdits': 'invalid'}, {'legacyEdits': ['unexpected']},
                       {'legacyEdits': [1]}, {'legacyEdits': [False]}, {'legacyEdits': [[]]},

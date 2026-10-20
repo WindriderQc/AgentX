@@ -624,7 +624,7 @@ class StepsReportTest(unittest.TestCase):
         progress.check_stop.return_value = False
         progress.call_limit.return_value = 128
         progress.begin_step.side_effect = lambda calls, seconds, output: setattr(progress, 'step', {'output': output})
-        args = mock.Mock(task_id='0001', request_id=KEY)
+        args = mock.Mock(task_id='0001', request_id=KEY, parent_request_id=None)
         outcome = report.run_steps(runner, args, progress, self.task, self.workspace, self.out,
                                    path, snapshot, self.head)
         return outcome, report.ledgers.embedded(path.read_text())

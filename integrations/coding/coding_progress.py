@@ -643,7 +643,7 @@ class Progress:
                 self.stop_reason = "hard_budget"
             elif current >= self.soft_deadline:
                 self.stop_reason = "soft_budget_no_progress"
-            elif self.model_calls >= self.call_limit():
+            elif self.model_calls >= self.call_limit() and not getattr(self, 'step', None):
                 self.stop_reason = "model_call_limit"
             elif self.cumulative_limits and (self.stage_spent["modelSeconds"] >= self.cumulative_limits["modelSeconds"]
                                              or self.stage_spent["testSeconds"] >= self.cumulative_limits["testSeconds"]):
@@ -668,13 +668,17 @@ class Progress:
         self.step = None
 
     def step_due(self, current=None):
-        step = getattr(self, "step", None)
+        step = getattr(self, 'step', None)
+        if step and (self.now() if current is None else current) >= step['deadline']:
+            return 'step_limit'
+        return None
+
+    def relay_call_budget(self):
+        step = getattr(self, 'step', None)
         if not step:
             return None
-        current = self.now() if current is None else current
-        if self.model_calls - step["startCalls"] >= step["calls"] or current >= step["deadline"]:
-            return "step_limit"
-        return None
+        remaining = min(self.call_limit() - self.model_calls, step['calls'] - (self.model_calls - step['startCalls']))
+        return {'calls': max(0, remaining), 'key': step['output']}
 
     def check_stop(self):
         if self.stop_path:
