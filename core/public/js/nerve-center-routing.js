@@ -5,40 +5,7 @@
     let currentRoutingLogs = [];
     let principalModel = null;
 
-    function buildPrincipalChoice() {
-        if (!principalModel) return '';
-        return `<div class="nc-host-card nc-mb-16 nc-td-lg">
-            <h4 class="nc-title">Principal model</h4>
-            <p class="nc-muted">Main, automatic chats and DSH follow this choice. Context: ${shared.escapeHtml(String(principalModel.contextSize || '--'))} tokens.</p>
-            <select id="ncPrincipalChoice" class="nc-inline-select" aria-label="Principal model" ${principalModel.available ? '' : 'disabled'}>
-                ${principalModel.options.map(option => `<option value="${shared.escapeHtml(option.value)}" ${option.value === principalModel.selected ? 'selected' : ''}>${shared.escapeHtml(option.label)}</option>`).join('')}
-            </select>
-            <button id="ncPrincipalApply" class="nc-btn" ${principalModel.available ? '' : 'disabled'}>Apply</button>
-            <span class="nc-muted"> ${shared.escapeHtml(principalModel.model || 'Configure the principal pin first')}</span>
-            <p class="nc-muted">The selection persists. A busy host refuses the switch; retry when its work finishes.</p>
-            ${principalModel.divergentRoutes?.length ? `<p class="nc-muted">Routes on this host that name an unpinned model block the switch: ${principalModel.divergentRoutes.map(task => shared.escapeHtml(task)).join(', ')}.</p>` : ''}
-        </div>`;
-    }
-
-    function attachPrincipalChoice() {
-        const button = document.getElementById('ncPrincipalApply');
-        if (!button) return;
-        button.addEventListener('click', async () => {
-            button.disabled = true;
-            button.textContent = 'Loading model…';
-            try {
-                const reply = await shared.fetchJson('/api/nerve-center/principal-model', {
-                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ selected: document.getElementById('ncPrincipalChoice').value,
-                        expectedModel: principalModel.model, requestId: globalThis.crypto?.randomUUID?.() })
-                });
-                if (reply.status !== 'success') throw new Error(reply.message || 'Switch failed');
-                Toast.success(`Principal model: ${reply.data.model}`);
-                shared.invalidateEcosystemSnapshot();
-            } catch (error) { Toast.error(error.message); }
-            finally { await loadRouting(); }
-        });
-    }
+    const principalCard = window.NerveCenterPrincipalModel;
 
     function getTaskTypes(config) {
         const known = new Set([
@@ -585,7 +552,7 @@
             </div>`;
 
         return `
-            ${buildPrincipalChoice()}
+            ${principalCard.build(principalModel)}
             ${failoverBar}
             ${buildRoutingAnalyticsSection(analytics)}
             <div class="nc-collapsible nc-mb-16">
@@ -726,7 +693,7 @@
             body.innerHTML = buildRoutingSection(config, logs, analytics, failover);
             shared.attachCollapsibleHandlers(body);
             attachTaskRoutingHandlers(config);
-            attachPrincipalChoice();
+            principalCard.attach(principalModel, loadRouting);
             attachRoutingLogHandlers();
         } catch (err) {
             console.error('[NerveCenter] loadRouting failed', err);

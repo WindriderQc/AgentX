@@ -611,6 +611,7 @@ function clearCache() {
 }
 
 module.exports = {
+  fetchOllamaModels,
   getAllModels,
   getModelSources,
   getModelByName,
