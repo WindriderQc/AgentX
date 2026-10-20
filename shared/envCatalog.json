@@ -1635,16 +1635,6 @@
       "secret": true,
       "description": "scrypt hash of the phrase said after \"Nestor superDad\" to unlock a family-pinned device, from core/scripts/owner-unlock-phrase-hash.js. Unset: no device can be unlocked."
     },
-    "HOUSEHOLD_PERMISSIVE_PRIMARY_MODEL": {
-      "services": [
-        "core"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "household",
-      "secret": false,
-      "description": "Model of the household permissive personal-operator pack. Unset: a built-in default model."
-    },
     "HOUSEHOLD_PERSONA_VOICES": {
       "services": [
         "core"

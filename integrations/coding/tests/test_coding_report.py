@@ -164,12 +164,20 @@ class ReportTest(unittest.TestCase):
 
     def test_native_unknown_model_keeps_request_unfinished_without_deposit(self):
         self.terminated=False
-        with mock.patch('time.sleep') as sleep,mock.patch('builtins.print'):self.assertEqual(runner.main(),2)
-        self.assertEqual(sleep.call_count,runner.REPORT_SETTLE_GRACE_SECONDS//2)
+        reads=[];original=self.request
+        def observed(url,body=None,**kwargs):
+            if url==report.endpoint(runner,'0001',KEY) and body is None:reads.append(url)
+            return original(url,body,**kwargs)
+        # Count native settlement observations, not unrelated subprocess-watch sleeps.
+        with mock.patch.object(runner,'request',side_effect=observed), \
+                mock.patch('time.sleep'),mock.patch('builtins.print'):
+            self.assertEqual(runner.main(),2)
+        self.assertEqual(len(reads),1+runner.REPORT_SETTLE_GRACE_SECONDS//2)
         progress=__import__('json').loads((runner.RECEIPTS/(KEY+'.progress.json')).read_text())
         self.assertNotEqual(progress['phase'],'finished');self.assertFalse(progress['coreRecorded'])
         self.assertEqual(progress['stopReason'],'model_termination_unverified');self.assertEqual(self.uploads,[])
         runner.feedback.assert_not_called()
+        runner.run_worker.assert_called_once()
 
     def test_core_settlement_lag_is_awaited_before_recording_the_stop(self):
         # Relay EOF can precede Core's receipt; the short poll settles it
@@ -622,6 +630,7 @@ class StepsReportTest(unittest.TestCase):
                              stop_reason=None, report_drained=True)
         progress.now.return_value = 0
         progress.check_stop.return_value = False
+        self.correction_progress = progress
         progress.call_limit.return_value = 128
         progress.begin_step.side_effect = lambda calls, seconds, output: setattr(progress, 'step', {'output': output})
         args = mock.Mock(task_id='0001', request_id=KEY, parent_request_id=None)
@@ -639,12 +648,14 @@ class StepsReportTest(unittest.TestCase):
                 self.assertEqual(ledger['legacyReview']['requestId'], KEY)
                 self.assertFalse(report.ledgers.coverage(ledger)['declaredComplete'])
                 self.assertEqual(ledger['legacy'], 'Six families.')
+                self.correction_progress.useful.assert_not_called()
 
     def test_successful_correction_checkpoint_skips_same_notes_but_applies_new_notes(self):
         answer = lambda prompt: {'legacyEdits': [{'find': 'Six families.', 'replace': 'Eight families.'}]}
         outcome, ledger = self.correction_step(answer)
         self.assertEqual(outcome, 'complete')
         self.assertFalse(ledger['legacyReviewPending'])
+        self.correction_progress.useful.assert_called_once()
         calls = runner.run_worker.call_count
         outcome, restored = self.correction_step(None, prior=ledger)
         self.assertEqual(outcome, 'complete')
@@ -655,6 +666,34 @@ class StepsReportTest(unittest.TestCase):
         self.assertEqual(runner.run_worker.call_count, calls + 1)
         self.assertEqual(corrected['legacy'], 'Eight families.')
         self.assertNotEqual(corrected['legacyReview']['notesSha256'], restored['legacyReview']['notesSha256'])
+        self.correction_progress.useful.assert_not_called()
+
+    def test_material_step_save_refreshes_progress_before_next_session_baseline(self):
+        self.out.mkdir(parents=True)
+        clock = [0]
+        progress = runner.coding_progress.Progress('0001', KEY, now=lambda: clock[0])
+        progress.phase = 'running'
+        progress.report_mode = True
+        progress.hard_deadline = progress.queue_deadline = 14400
+        progress.soft_deadline = 14400
+        progress.report_observer = lambda: report.report_signature(self.out/'review.md', self.out)
+        args = mock.Mock(task_id='0001', request_id=KEY, parent_request_id=None)
+        snapshot = dict(report.scope.inventory(self.workspace, self.head), sha256='a'*64)
+        self.answers = [self.reviewed, self.reviewed, lambda prompt: {'summary': 'Done.', 'explanations': {}}]
+        original = self.worker
+        useful_times = []
+        def worker(workspace, prompt, seconds, observed, *, read_only):
+            observed.baseline(self.home, workspace)
+            clock[0] += 2400
+            useful_times.append(observed.last_useful)
+            return original(workspace, prompt, seconds, observed, read_only=read_only)
+        with mock.patch.object(runner, 'run_worker', side_effect=worker):
+            outcome = report.run_steps(runner, args, progress, self.task, self.workspace, self.out,
+                self.out/'review.md', snapshot, self.head)
+        self.assertEqual(outcome, 'complete')
+        self.assertEqual(useful_times, [0, 2400, 4800])
+        self.assertEqual(progress.last_useful, 4800)  # Writer prose alone is not new verified scope.
+        self.assertIsNone(progress.tick())
 
     def test_reviews_groups_in_fresh_sessions_and_delivers_a_rendered_report(self):
         self.answers=[self.reviewed, self.reviewed, lambda prompt:{'summary':'Two documents reviewed; one wrong value.','explanations':{'F1':'Readers would set 5.'}}]
@@ -672,6 +711,39 @@ class StepsReportTest(unittest.TestCase):
         self.assertEqual(progress['reportSteps']['done'],2)
         self.assertEqual(progress['reportSteps']['budgetSource'],'agent_workload')
         self.assertEqual(runner.git(self.workspace,'status','--porcelain'),'')
+
+    def test_missing_step_saves_its_own_research_then_uses_normal_frozen_source_validation(self):
+        from integrations.coding.tests.test_coding_report_save import events
+        self.answers = [self.reviewed, self.reviewed, lambda prompt: {'summary': 'Saved evidence.', 'explanations': {}}]
+        original = self.worker
+        first = [True]
+        def worker(workspace, prompt, seconds, progress, *, read_only):
+            if first[0]:
+                first[0] = False
+                progress.model_context_size = 196608
+                progress.model_calls += 2
+                path = self.home/'.dsh/progress-sessions'/KEY/'session-original/session.v4.jsonl'
+                path.parent.mkdir(parents=True)
+                path.write_text(''.join(json.dumps(row)+'\n' for row in events()))
+                return subprocess.CompletedProcess([], 0)
+            return original(workspace, prompt, seconds, progress, read_only=read_only)
+        api = self.request
+        def request(url, body=None, **kwargs):
+            value = api(url, body, **kwargs)
+            if '/reports/' in url and body is None:
+                value['data'].update(state='active', pendingInferences=[],
+                    authority={'requestId':KEY, 'sourceCommit':self.head})
+            return value
+        with mock.patch.object(runner, 'run_worker', side_effect=worker), \
+                mock.patch.object(runner, 'request', side_effect=request), mock.patch('builtins.print'):
+            self.assertEqual(runner.main(), 0)
+        self.assertEqual(len(self.uploads), 1)
+        self.assertTrue(self.uploads[0]['coverage']['declaredComplete'])
+        self.assertIn('SAVE PASS', self.prompts[0])
+        intent = json.loads((runner.RECEIPTS/f'{KEY}.report-save-step-01.json').read_text())
+        self.assertEqual(intent['sourceCommit'], self.head)
+        self.assertEqual(intent['calls'], 4)
+        self.assertEqual(runner.git(self.workspace, 'status', '--porcelain'), '')
 
     def test_a_failing_group_is_retried_alone_then_blocked_without_stopping_the_others(self):
         self.answers=[self.reviewed, 'not json', '{"documents": []}', lambda prompt:{'summary':'x','explanations':{}}]

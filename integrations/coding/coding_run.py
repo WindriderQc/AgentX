@@ -68,6 +68,9 @@ _spec.loader.exec_module(coding_dispatch_control)
 _spec = importlib.util.spec_from_file_location("coding_runtime", HERE / "coding_runtime.py")
 coding_runtime = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(coding_runtime)
+_spec = importlib.util.spec_from_file_location("coding_worker_context", HERE / "coding_worker_context.py")
+coding_worker_context = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(coding_worker_context)
 _spec = importlib.util.spec_from_file_location("coding_autonomous", HERE / "coding_autonomous.py")
 coding_autonomous = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(coding_autonomous)
@@ -361,12 +364,9 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
     home = worker_home(workspace)
     (home / ".dsh").mkdir(exist_ok=True)
     selected_model = model or MODEL
-    context_size = getattr(progress, "model_context_size", None)
-    lanes = None
-    if context_size is None:
-        lanes = request(f"{CORE}/api/nerve-center/agent-runtime-config/export?includeCapability=true").get("data", {}).get("lanes", {})
-        context_size = next((lane.get("contextSize") for lane in lanes.values()
-                             if lane.get("model") == selected_model), None)
+    context_size, lanes = coding_worker_context.resolve(progress, selected_model,
+        lambda: request(f"{CORE}/api/nerve-center/agent-runtime-config/export?includeCapability=true").get("data", {}).get("lanes", {}),
+        remember=read_only)
     record_lane_capability(progress, selected_model, lanes)
     (home / ".dsh/agentx.patch.json").write_text(json.dumps(worker_patch(selected_model, context_size)))
     if progress:
