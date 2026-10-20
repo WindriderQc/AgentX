@@ -138,6 +138,9 @@ const DIRECT_INVOKE_TASKS = {
     janitor_ai: { model: UTILITY_MODEL, host: UTILITY_HOST },
     ops_watch: { model: envModel('AGENTX_OPS_WATCH_MODEL', UTILITY_MODEL), host: envHost('AGENTX_OPS_WATCH_HOST', UTILITY_HOST) },
     mail_review: { model: ANALYSIS_MODEL, host: ANALYSIS_HOST },
+    // Household plant cards (#867). plant_identify needs a vision model; choose one in routing.
+    plant_identify: { model: ANALYSIS_MODEL, host: ANALYSIS_HOST },
+    plant_care_draft: { model: ANALYSIS_MODEL, host: ANALYSIS_HOST },
     embeddings: { model: EMBEDDING_TASK_MODEL, host: EMBEDDING_TASK_HOST }
 };
 

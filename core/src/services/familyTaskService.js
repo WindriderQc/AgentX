@@ -7,7 +7,7 @@ const { initialTransition } = require('./pipelineTaskTransitions');
 const { commitLaneTask } = require('./pipelineLaneTaskMutationService');
 const {
   CADENCES, cleanProfileId, familyChore, familyLaunchInput, familyProfile,
-  familyProfileInput, familyRoom, familyRoutineInput, nextRoutineDue, familyTimeZone, calendarDayKey
+  familyProfileInput, familyRoom, familyRoutineInput, nextRoutineDue, familyTimeZone, calendarDayKey, subjectRefInput
 } = require('../domains/household/family');
 const { familyBirthDate } = require('../domains/household/familyBirthDate');
 
@@ -54,7 +54,7 @@ async function compensateLaunchTask(task) {
   }
 }
 
-async function createTask(routine, source = 'household-parent', sourceKey = null) {
+async function createTask(routine, source = 'household-parent', sourceKey = null, subjectRef = null) {
   const pipelineId = String(await Counter.next('pipelineTask')).padStart(4, '0');
   return PipelineTask.create({
     pipelineId,
@@ -63,7 +63,7 @@ async function createTask(routine, source = 'household-parent', sourceKey = null
     priority: routine.priority, dueAt: routine.dueAt, profileId: routine.profileId,
     cadence: routine.cadence, intervalDays: routine.intervalDays, winterIntervalDays: routine.winterIntervalDays,
     stars: routine.stars, completionCount: 0,
-    familyCancelled: false, source, ...(sourceKey ? { sourceKey } : {}),
+    familyCancelled: false, source, ...(sourceKey ? { sourceKey } : {}), ...(subjectRef ? { subjectRef } : {}),
     ...initialTransition(pipelineId, { channel: 'family_surface', declaredActor: source })
   });
 }
@@ -176,13 +176,14 @@ async function create(input = {}, origin = {}) {
   await getProfile(routine.profileId);
   const source = text(origin.source, 80) || 'household-parent';
   const sourceKey = text(origin.sourceKey, 200) || null;
+  const subjectRef = subjectRefInput(origin.subjectRef);
   const existing = () => PipelineTask.findOne({ service: 'family', source, sourceKey }).lean();
   if (sourceKey) {
     const found = await existing();
     if (found) return { chore: familyChore(found), duplicate: true };
   }
   try {
-    return { chore: familyChore(await createTask(routine, source, sourceKey)) };
+    return { chore: familyChore(await createTask(routine, source, sourceKey, subjectRef)) };
   } catch (error) {
     const found = sourceKey && error?.code === 11000 ? await existing() : null;
     if (found) return { chore: familyChore(found), duplicate: true };
@@ -275,4 +276,15 @@ async function cancel(input = {}) {
   return { chore: familyChore(await cancelTask(task, 'household-parent', 'Cancelled from the household review surface.')) };
 }
 
-module.exports = { listProfiles, listProfileDetails, setProfileBirthDate, addProfile, archiveProfile, launch, room, list, create, update, checkIn, approve, reopen, cancel };
+// The chores about some subjects (for example a plant's care actions), open
+// ones by default. Read-only; changes go through the routine operations above.
+async function listBySubject(subjectRefs = [], { includeClosed = false } = {}) {
+  const refs = [...new Set(subjectRefs.map(subjectRefInput).filter(Boolean))].slice(0, 200);
+  if (!refs.length) return { chores: [] };
+  const query = { service: 'family', subjectRef: { $in: refs } };
+  if (!includeClosed) Object.assign(query, { status: { $in: OPEN_FAMILY_STATUSES }, familyCancelled: { $ne: true } });
+  const rows = await PipelineTask.find(query).sort({ pipelineId: 1 }).limit(500).lean();
+  return { chores: rows.map(task => ({ ...familyChore(task), source: task.source || null, sourceKey: task.sourceKey || null })) };
+}
+
+module.exports = { listBySubject, listProfiles, listProfileDetails, setProfileBirthDate, addProfile, archiveProfile, launch, room, list, create, update, checkIn, approve, reopen, cancel };

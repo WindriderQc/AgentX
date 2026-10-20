@@ -19,7 +19,7 @@ test('a capture goes to the idea inbox instead of family notes, and a failure is
   const captured = [];
   const ideaInbox = { captureIdea: async (input) => captured.push(input) };
   const base = { notes, detectMemoryRequest: () => true, withChores: false };
-  assert.deepEqual(await familyTurn({ ...base, userText: 'Rappelle-moi de lire', ideaInbox }), { savedNow: false, captured: 'reminder', chores: '' });
+  assert.deepEqual(await familyTurn({ ...base, userText: 'Rappelle-moi de lire', ideaInbox }), { savedNow: false, captured: 'reminder', chores: '', plants: '' });
   assert.deepEqual(captured, [{ text: 'Rappelle-moi de lire', origin: 'family', kind: 'reminder' }]);
   assert.equal(recorded.length, 0);
   const failing = { captureIdea: async () => { throw new Error('offline'); } };
@@ -99,4 +99,21 @@ test('a note from mail review or another non-owner source shows its origin in th
   assert.match(block, /- \[from mail review\] Synthetic fact from a mail/);
   assert.match(block, /\n- Synthetic owner preference/);
   assert.match(block, /\n- Synthetic agent note/);
+});
+
+test('family Nestor receives the published plant cards as its only source about the plants (#870)', async () => {
+  const { plantSummary, familyTurn } = require('../family-context');
+  const plants = { list: async ({ view }) => ({ plants: view === 'child' ? [
+    { nickname: 'Gérard', commonName: 'Pothos', room: 'Salon', needs: { light: 'Vive', water: 'Quand c’est sec' }, doNotEat: true, mood: 'thirsty' },
+    { nickname: 'Bob', commonName: 'Cactus', needs: {}, doNotEat: false, mood: 'happy' }] : [] }) };
+  const summary = await plantSummary(plants);
+  assert.match(summary, /seulement à partir de ces fiches/);
+  assert.match(summary, /- Gérard \(Pothos, Salon\) : lumière : Vive ; eau : Quand c’est sec ; toxique : on ne mange jamais ses feuilles, les animaux non plus ; a soif aujourd’hui\./);
+  assert.match(summary, /- Bob \(Cactus\) : pas toxique ; va bien\./);
+  assert.equal(await plantSummary(null), '');
+  assert.equal(await plantSummary({ list: async () => { throw new Error('down'); } }), '');
+  const familyTasks = { listProfiles: async () => ({ profiles: [] }) };
+  const turn = await familyTurn({ userText: 'Bonjour', notes: {}, familyTasks, detectMemoryRequest: () => false, plants });
+  assert.match(turn.plants, /Gérard/);
+  assert.equal((await familyTurn({ userText: 'Bonjour', notes: {}, familyTasks, detectMemoryRequest: () => false, plants, withChores: false })).plants, '');
 });

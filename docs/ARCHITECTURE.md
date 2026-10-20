@@ -169,6 +169,78 @@ household winter season (`FAMILY_WINTER_SEASON`, `MM-DD/MM-DD`, default
 November 1 to March 31). Changing the frequency away from `interval` clears
 both interval fields.
 
+`runtimeServices.household.plants` owns household plant cards
+(`household_plants`, with display photos of 2 MB or less in
+`household_plant_photos`). The domain rules live in
+`src/domains/household/plants.js`:
+
+- A card is a `draft`, `published` or `retired`. Every edit is bound to the
+  revision the parent saw.
+- A card holds a nickname and room, the chosen species with up to three
+  candidates, a care sheet whose entries carry their sources, toxicity for
+  children, cats and dogs, a fun fact, up to eight care actions and up to four
+  JPEG or PNG photos. A care action follows the family routine rules, with a
+  minimum age band.
+- Publishing requires a species, a known toxicity level for every subject
+  that the parent has confirmed, and at least one care action. A published
+  card cannot be edited below that bar; any toxicity edit needs the
+  confirmation again. A retired card is frozen.
+- `/api/family/plants` reads the child projection by default: published
+  cards only, with needs, a do-not-eat flag, the fun fact and photo links,
+  never sources, candidates or review state. `view=manage` is the parent
+  page's view.
+- Photos are served from `/api/family/plants/:id/photos/:photoId`, to the
+  child view only once the card is published.
+- Model help only proposes, and records its state on the card under
+  `assistant`:
+  - `POST /:id/identify` (routed task `plant_identify`, vision) stores up to
+    three candidates.
+  - `POST /:id/care-draft` (routed task `plant_care_draft`) needs the species
+    the parent chose. It searches the web at most three times and stores a
+    care sheet, toxicity, fun fact and care plan.
+  - Sources are only the URLs Core searched; any URL the model writes is
+    dropped. The draft's toxicity is never confirmed.
+  - Care actions that involve tools, fertilizer, pesticides or repotting, or
+    any action on a plant toxic to children, are never for the youngest age
+    band.
+  - Nothing changes the card's fields or revision until the parent applies
+    the proposal. Nestor's `draft_plant_card` tool starts a draft from the
+    latest image in the personal conversation (last 30 minutes) and starts
+    identification.
+- A published card keeps its Kids Room chores in step
+  (`householdPlantChores.js`): one family chore per care action assigned to a
+  child (`subjectRef: plant:<id>`, `source: household-plant`, `sourceKey:
+  plant:<id>:<action key>`), first due on the publishing day. Editing the plan
+  updates, adds or cancels open chores; unassigning an action or retiring the
+  plant cancels them, and assigning it again brings back the same chore. A
+  chore a child has checked in is left unchanged. Each save reports what
+  changed, and a sync failure never undoes the card. The card's mood comes
+  from its open chores: `thirsty` when a watering chore is due, `needs_care`
+  when another one is, `waiting` while a check-in waits for a parent, `happy`
+  otherwise. Chores Nestor proposes about a plant keep their `subjectRef`.
+- Ma jungle (`/kids/plants`, `plants-kids.js`, open to pinned family devices)
+  shows the published plants. A door in the Kids Room appears once a plant is
+  published and names the plants waiting on the selected child. The gallery
+  puts those plants first, with each plant's mood. A plant card shows its
+  needs, a do-not-eat warning when it applies, its fun fact and one large
+  button bound to the child's due chore, which uses the ordinary check-in.
+  "Nestor me présente…" speaks an introduction in the plant's own voice,
+  built only from the published card; "Ask Nestor" opens the Kids Room
+  helper with the question ready. Family Nestor turns receive a bounded
+  summary of the published cards (needs, toxicity, mood) as their only source
+  about the plants, next to the chore summary.
+- `POST /api/family/plants/:id/export-vault` files a published card in the
+  vault inbox as a `Plante` note (`src/domains/household/plantNote.js`): the
+  template's typed properties, its sections and its sources, marked
+  `source: agentx-plant`. The vault inbox adds these properties only for Core
+  callers, never from agent input. The export never changes the card.
+- The parent page `/dad/family/plants` (`plants-parent.js`, rendering in
+  `plant-view.js`) lists drafts first. Adding a plant takes a photo, reduces
+  it in the browser and starts identification. Each card is then completed
+  in three steps: choose the species, apply or edit the care card (toxicity
+  confirmation, care actions assignable only to children old enough), then
+  publish with a preview of what the children will see.
+
 Personal-task deadlines follow one contract on every write path (the
 Household `POST /api/secretary/tasks` and `POST /api/secretary/tasks/update`
 routes and the Secretary MCP `add_personal_task` / `update_personal_task`

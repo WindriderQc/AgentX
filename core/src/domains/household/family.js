@@ -188,6 +188,15 @@ function familyRoutineInput(input = {}, defaultProfileId = '') {
 
 const SUBJECT_REF = /^[a-z][a-z0-9-]{0,19}:[A-Za-z0-9_-]{1,80}$/;
 
+/** What a chore is about, as kind:id (for example `plant:<id>`), or null. */
+function subjectRefInput(value) {
+  const subjectRef = boundedText(value, 101);
+  if (subjectRef && !SUBJECT_REF.test(subjectRef)) {
+    throw new FamilyInputError('subjectRef must look like plant:<id>', 'FAMILY_CHORE_BAD_SUBJECT');
+  }
+  return subjectRef || null;
+}
+
 /**
  * A chore an agent proposes to the parent (#864). Same rules as a routine, but
  * the child and the date stay the parent's choice: the profile is optional and
@@ -197,12 +206,9 @@ const SUBJECT_REF = /^[a-z][a-z0-9-]{0,19}:[A-Za-z0-9_-]{1,80}$/;
 function familyChoreProposal(input = {}) {
   const profileId = boundedText(input.profileId, 80) ? cleanProfileId(input.profileId) : null;
   const routine = familyRoutineInput({ ...input, profileId: profileId || 'proposal', dueAt: null });
-  const subjectRef = boundedText(input.subjectRef, 101);
-  if (subjectRef && !SUBJECT_REF.test(subjectRef)) {
-    throw new FamilyInputError('subjectRef must look like plant:<id>', 'FAMILY_CHORE_BAD_SUBJECT');
-  }
+  const subjectRef = subjectRefInput(input.subjectRef);
   const { dueAt, priority, ...chore } = routine;
-  return { ...chore, profileId, subjectRef: subjectRef || null };
+  return { ...chore, profileId, subjectRef };
 }
 
 function familyLaunchInput(input = {}) {
@@ -244,6 +250,7 @@ function familyChore(task = {}, now = new Date(), timeZone = familyTimeZone()) {
     intervalDays: cadence === 'interval' && Number.isInteger(task.intervalDays) ? task.intervalDays : null,
     winterIntervalDays: cadence === 'interval' && Number.isInteger(task.winterIntervalDays) ? task.winterIntervalDays : null,
     currentIntervalDays: routineIntervalDays({ ...task, cadence }, todayKey),
+    subjectRef: task.subjectRef || null,
     stars,
     completionCount: Math.max(0, Math.floor(Number(task.completionCount) || 0)),
     checkedInAt: task.checkedInAt || null,
@@ -334,5 +341,6 @@ module.exports = {
   isWinterDay,
   nextRoutineDue,
   routineIntervalDays,
+  subjectRefInput,
   winterSeason
 };

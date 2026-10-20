@@ -511,9 +511,13 @@ on the same one. A task routed to a GPU host may follow its model to another
 GPU host, never to a host of the other residency.
 
 `config/obsidian-vault/` holds generic household note templates (appliance,
-routine, recipe, procedure) and `Maison.base`, an Obsidian Base listing
-appliances with their warranty dates, routines and recipes under
-`Docs/Maison`. Copy `Templates/` beside the documents folder, not inside it, so
+routine, recipe, procedure, plant) and `Maison.base`, an Obsidian Base listing
+appliances with their warranty dates, routines, recipes and plants under
+`Docs/Maison`. A published plant card can be exported from the Plants page:
+Core files a `Plante — <name>` note with the template's properties in the
+vault inbox (`VAULT_INBOX_PATH`). Moving it to `Docs/Maison` keeps it and makes
+it eligible for retrieval; the Core card stays the reference, and editing the
+note does not change it. Copy `Templates/` beside the documents folder, not inside it, so
 templates are never ingested; point Obsidian's Templates plugin at it. Note
 properties such as `garantie_fin` are indexed with the note's first chunk.
 
@@ -1048,6 +1052,18 @@ endpoints must be separate from the spoken model. A busy or reserved primary can
 use a CPU reviewer; a failure after dispatch is never replayed on another model.
 Reviews disclose their actual model and any fallback marker. Deliberate
 `master_brain` and `deep_reasoning` requests remain strict.
+
+Plant cards use two routed tasks:
+
+- `plant_identify` reads one photo and needs a vision model. Choose it in the
+  routing table: the default analysis model may not read images, and the card
+  then reports `PLANT_VISION_UNAVAILABLE` instead of a guess.
+- `plant_care_draft` writes the care draft from at most three web searches. It
+  uses `SEARXNG_URL` when set; without it the draft is marked unsourced.
+
+Both run once per plant at a time and only propose: the parent chooses the
+species and applies the draft. Nestor's `draft_plant_card` tool starts a card
+from the latest photo of the personal conversation (last 30 minutes).
 Reviews use shared admission unless `HOUSEHOLD_BRAIN_EXCLUSIVE=true`, which waits
 for an idle host, blocks other callers and unloads co-resident models. The
 browser speaks its remark only while listening with no turn in flight.

@@ -105,4 +105,21 @@ describe('vault inbox without hard links', () => {
       await fs.rm(root, { recursive: true, force: true });
     }
   });
+
+  test('a Core caller adds typed frontmatter properties; agents cannot and reserved keys are refused', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vault-inbox-props-'));
+    const clock = () => new Date('2026-09-23T14:05:00.000Z');
+    const inbox = createVaultInbox({ root, clock });
+    const receipt = await inbox.writeNote({ title: 'Plante — Gérard', body: '# Gérard', tags: ['plante'] },
+      { author: 'household', properties: { type: 'plante', espece: 'Pothos "doré"', arrosage_jours: 7, arrosage_hiver_jours: null } });
+    const text = await fs.readFile(path.join(root, receipt.file), 'utf8');
+    expect(text).toContain('author: household\nstatus: inbox\ntype: "plante"\nespece: "Pothos \\"doré\\""\narrosage_jours: 7\narrosage_hiver_jours:\ntags:');
+    for (const properties of [{ status: 'approved' }, { Type: 'x' }, { nested: { a: 1 } }, { list: ['a'] }]) {
+      await expect(inbox.writeNote({ title: 'X', body: 'x' }, { author: 'household', properties })).rejects.toMatchObject({ code: 'VAULT_NOTE_INVALID' });
+    }
+    const yaml = require('js-yaml');
+    const front = yaml.load(text.split('---')[1]);
+    expect(front).toMatchObject({ type: 'plante', espece: 'Pothos "doré"', arrosage_jours: 7, arrosage_hiver_jours: null, status: 'inbox' });
+    await fs.rm(root, { recursive: true, force: true });
+  });
 });

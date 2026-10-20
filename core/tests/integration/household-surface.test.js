@@ -1364,4 +1364,51 @@ describe('built-in Household surface on Core', () => {
     expect((await request(app).post(`/api/family/ideas/${id}/promote`).send({ targetType: 'family_chore', profileId: 'synthetic-plant-child' }).expect(409)).body.code).toBe('IDEA_ALREADY_REVIEWED');
     expect(await PipelineTask.countDocuments({ service: 'family', title: 'Water the synthetic plant' })).toBe(1);
   });
+
+  test('plant cards go from a parent draft to a published child card over HTTP (#866)', async () => {
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+    const created = (await request(app).post('/api/family/plants').send({ nickname: 'Synthetic HTTP plant', room: 'Salon' }).expect(201)).body.data.plant;
+    expect(created).toMatchObject({ status: 'draft', revision: 0 });
+    const withPhoto = (await request(app).post(`/api/family/plants/${created.id}/photos`)
+      .send({ expectedRevision: 0, dataUrl: `data:image/png;base64,${png.toString('base64')}` }).expect(201)).body.data.plant;
+    const notReady = await request(app).post(`/api/family/plants/${created.id}/publish`).send({ expectedRevision: 1 }).expect(409);
+    expect(notReady.body).toMatchObject({ code: 'PLANT_NOT_READY', details: { problems: ['species', 'toxicity', 'care_plan'] } });
+    // Drafts and their photos stay out of the children's view.
+    expect((await request(app).get('/api/family/plants').expect(200)).body.data.plants.map(plant => plant.id)).not.toContain(created.id);
+    await request(app).get(withPhoto.photos[0].url).expect(404);
+    expect((await request(app).get('/api/family/plants?view=manage').expect(200)).body.data.plants.map(plant => plant.id)).toContain(created.id);
+
+    const toxic = { level: 'toxic', sources: ['https://example.org/toxicity'] };
+    await request(app).post(`/api/family/plants/${created.id}/update`).send({ expectedRevision: 1,
+      identification: { commonName: 'Pothos', latinName: 'Epipremnum aureum' }, careSheet: { water: { text: 'When the top is dry' } },
+      toxicity: { children: toxic, cats: toxic, dogs: toxic, reviewed: true },
+      carePlan: [{ title: 'Water the synthetic plant', cadence: 'interval', intervalDays: 7 }] }).expect(200);
+    expect((await request(app).post(`/api/family/plants/${created.id}/update`).send({ expectedRevision: 1, funFact: 'Stale' }).expect(409)).body.code).toBe('PLANT_EDIT_CONFLICT');
+    await request(app).post(`/api/family/plants/${created.id}/publish`).send({ expectedRevision: 2 }).expect(200);
+
+    const child = (await request(app).get(`/api/family/plants/${created.id}`).expect(200)).body.data.plant;
+    expect(child).toMatchObject({ nickname: 'Synthetic HTTP plant', commonName: 'Pothos', doNotEat: true, needs: { water: 'When the top is dry' } });
+    expect(child).not.toHaveProperty('carePlan'); expect(child).not.toHaveProperty('revision');
+    const photo = await request(app).get(child.photos[0].url).expect(200);
+    expect(photo.headers['content-type']).toBe('image/png');
+    expect(photo.headers['x-content-type-options']).toBe('nosniff');
+    expect(Buffer.compare(photo.body, png)).toBe(0);
+    expect((await request(app).get('/api/family/plants/not-an-id').expect(400)).body.code).toBe('PLANT_BAD_ID');
+  });
+
+  test('plant model help starts over HTTP and Nestor is offered draft_plant_card (#867)', async () => {
+    const created = (await request(app).post('/api/family/plants').send({ nickname: 'Synthetic assisted plant' }).expect(201)).body.data.plant;
+    expect((await request(app).post(`/api/family/plants/${created.id}/care-draft`).send({}).expect(409)).body.code).toBe('PLANT_SPECIES_REQUIRED');
+    const started = (await request(app).post(`/api/family/plants/${created.id}/identify`).send({}).expect(202)).body.data.plant;
+    expect(started.assistant.identify.state).toBe('running');
+    let identify;
+    for (let attempt = 0; attempt < 50 && identify?.state !== 'failed'; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+      identify = (await request(app).get(`/api/family/plants/${created.id}?view=manage`).expect(200)).body.data.plant.assistant.identify;
+    }
+    // No photo yet: the step fails visibly instead of guessing.
+    expect(identify).toMatchObject({ state: 'failed', error: expect.stringContaining('PLANT_PHOTO_REQUIRED') });
+    const listed = await request(app).post('/mcp').send({ jsonrpc: '2.0', id: 30, method: 'tools/list' }).expect(200);
+    expect(listed.body.result.tools.map(tool => tool.name)).toContain('draft_plant_card');
+  });
 });

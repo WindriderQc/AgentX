@@ -240,7 +240,7 @@ function register(api) {
   app.get('/voice-personas/debug', (_req, res) => res.redirect(302, '/voice-lab/personas'));
   app.get('/dad/nestor', (_req, res) => res.redirect(302, '/voice'));
   app.get([
-    '/panel', '/dad', '/dad/day', '/dad/memories', '/dad/history', '/dad/family', '/voice-lab', '/voice-lab/devices', '/voice-lab/personas', '/kids', '/kids/sounds', '/lecture', '/lecture/parents', '/lecture/parents.html',
+    '/panel', '/dad', '/dad/day', '/dad/memories', '/dad/history', '/dad/family', '/dad/family/plants', '/voice-lab', '/voice-lab/devices', '/voice-lab/personas', '/kids', '/kids/sounds', '/kids/plants', '/lecture', '/lecture/parents', '/lecture/parents.html',
     '/voice', '/voice.html', '/voix', '/voice-personas', '/voice-personas.html'
   ], require('../../src/ui/productShell').householdPage(app, path.join(publicRoot, 'index.html')));
   app.get('/api/household/avatar/llmx-face.js', createScriptRelay({ resolveUrl: avatarModuleUrl, fetchWithTimeout,
@@ -536,9 +536,16 @@ function register(api) {
     express, standardJsonParser, envelope, personalTasks, fail, CORE_SELF_URL,
     bridgeProjection, secretaryMail, familyTasks, models, knowledgeState, mongoose
   });
-  registerSecretaryMcp({ app, standardJsonParser, models, personalTasks, sounds });
+  const plantAssistant = runtimeServices.household?.plants
+    ? require('../../src/services/householdPlantAssistant').createPlantAssistant({ inference: runtimeServices.inference, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT, logger })
+    : null;
+  const plantCapture = plantAssistant ? require('../../src/services/householdPlantCapture').createPlantCapture({ assistant: plantAssistant }) : null;
+  registerSecretaryMcp({ app, standardJsonParser, models, personalTasks, sounds, plantCapture });
 
   registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, conversations });
+  if (runtimeServices.household?.plants) {
+    require('./plant-routes').registerPlantRoutes({ app, express, plants: runtimeServices.household.plants, assistant: plantAssistant, standardJsonParser });
+  }
   registerDeviceAcceptanceRoutes(app, {
     express, standardJsonParser, models, envelope, fail, cleanText
   });

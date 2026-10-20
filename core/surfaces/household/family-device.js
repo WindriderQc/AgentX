@@ -18,7 +18,7 @@ const COOKIE = 'agentx_family_device';
 const COOKIE_MAX_AGE_MS = 10 * 365 * 24 * 60 * 60 * 1000;
 const CACHE_MS = 30 * 1000;
 
-const FAMILY_PAGES = new Set(['/panel', '/kids', '/kids/sounds', '/lecture', '/voice-lab/devices']);
+const FAMILY_PAGES = new Set(['/panel', '/kids', '/kids/sounds', '/kids/plants', '/lecture', '/voice-lab/devices']);
 const STATIC_PATHS = [
   /^\/(?:js|css|dist|vendor|img|assets\/household|psyx\/assets)\//,
   /^\/(?:favicon\.(?:ico|svg)|styles\.css)$/

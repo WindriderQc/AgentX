@@ -20,7 +20,9 @@ function productSpaces(link) {
         item('kids', 'Kids', '/kids', 'fa-shapes'),
         item('lecture', 'Reading', '/lecture', 'fa-book-open'),
         item('kids-sounds', 'Sounds & games', '/kids/sounds', 'fa-music'),
-        item('dad-family', 'Family follow-up', '/dad/family', 'fa-clipboard-check', 'core')
+        item('kids-plants', 'Ma jungle', '/kids/plants', 'fa-leaf'),
+        item('dad-family', 'Family follow-up', '/dad/family', 'fa-clipboard-check', 'core'),
+        item('family-plants', 'Plants', '/dad/family/plants', 'fa-seedling', 'core')
       ] },
     { id: 'workshop-group', label: 'Workshop', icon: 'fa-bolt', entry: '/pipeline',
       description: 'Create, research and move your projects forward.', children: [

@@ -8,6 +8,14 @@ properties:
     displayName: Acheté le
   note.piece:
     displayName: Pièce
+  note.espece:
+    displayName: Espèce
+  note.arrosage_jours:
+    displayName: Arrosage (jours)
+  note.arrosage_hiver_jours:
+    displayName: Arrosage l'hiver (jours)
+  note.toxicite_enfants:
+    displayName: Toxicité enfants
 views:
   - type: table
     name: Garanties
@@ -44,3 +52,18 @@ views:
       - note.portions
       - note.temps
       - note.quand
+  - type: table
+    name: Plantes
+    filters:
+      and:
+        - type == "plante"
+    order:
+      - file.name
+      - note.espece
+      - note.piece
+      - note.lumiere
+      - note.arrosage_jours
+      - note.arrosage_hiver_jours
+      - note.toxicite_enfants
+      - note.toxicite_chats
+      - note.toxicite_chiens
