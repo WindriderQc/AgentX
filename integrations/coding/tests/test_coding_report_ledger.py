@@ -46,7 +46,8 @@ def good_result():
 
 class LedgerTest(unittest.TestCase):
     def test_failed_legacy_corrections_remain_pending_after_checkpoint_restore(self):
-        for value in [None, {}, {'legacyEdits': 'invalid'},
+        for value in [None, {}, {'legacyEdits': 'invalid'}, {'legacyEdits': ['unexpected']},
+                      {'legacyEdits': [1]}, {'legacyEdits': [False]}, {'legacyEdits': [[]]},
                       {'legacyEdits': [{'find': 'missing', 'replace': 'corrected'}]}]:
             with self.subTest(value=value):
                 ledger = ledgers.new_ledger(snapshot(), legacy_markdown='Six families.')

@@ -162,6 +162,8 @@ def merge_step(ledger, group, result, source_bytes, step_id, allow_empty=False, 
         raise LedgerError(f'legacyEdits must be a list of at most {MAX_LEGACY_EDITS}')
     legacy = ledger.get('legacy')
     for index, edit in enumerate(edits):
+        if not isinstance(edit, dict):
+            raise LedgerError(f'legacy edit {index + 1} must be an object')
         find = _text((edit or {}).get('find'), f'legacy edit {index + 1} find', 2000)
         replace = (edit or {}).get('replace')
         if not isinstance(replace, str) or len(replace) > 4000:
