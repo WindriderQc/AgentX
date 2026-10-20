@@ -230,6 +230,30 @@ def legacy_review_required(ledger, notes):
                 and review.get('legacySha256') == hashlib.sha256(ledger['legacy'].encode()).hexdigest())
 
 
+def continuation_retries(ledger, request_id, parent_request_id):
+    """Give an explicitly authorized new execution its bounded local attempts.
+
+    Native/Core authority is checked before the restored ledger reaches here.
+    Preserve every failed step and reviewed range; this grants no model calls.
+    """
+    if not parent_request_id or request_id == parent_request_id or ledger.get('continuationRequestId') == request_id:
+        return
+    resets = []
+    for path, row in ledger['documents'].items():
+        if row['state'] not in ('blocked', 'partial', 'pending') or not (row.get('attempts') or row.get('partialRounds')):
+            continue
+        resets.append({'path': path, **{key: row.get(key) for key in ('state', 'attempts', 'partialRounds', 'note')}})
+        if row['state'] == 'blocked':
+            row['state'] = 'partial' if row['evidence'] else 'pending'
+        row['attempts'], row['partialRounds'] = 0, 0
+        row['note'] = ('An authorized continuation permits another bounded attempt. Earlier stop: ' + (row.get('note') or 'no usable step result'))[:600]
+    ledger['continuationRequestId'] = request_id
+    if resets:
+        ledger['steps'].append({'step': 0, 'kind': 'continuation', 'requestId': request_id,
+                                'parentRequestId': parent_request_id, 'result': 'retry_authorized',
+                                'documents': [row['path'] for row in resets], 'previous': resets})
+
+
 def merge_legacy_review(ledger, value, reason, notes, source_bytes, step_id, request_id):
     """Record a failed correction step durably, and acknowledge only valid results."""
     before = hashlib.sha256(ledger['legacy'].encode()).hexdigest()
