@@ -164,12 +164,20 @@ class ReportTest(unittest.TestCase):
 
     def test_native_unknown_model_keeps_request_unfinished_without_deposit(self):
         self.terminated=False
-        with mock.patch('time.sleep') as sleep,mock.patch('builtins.print'):self.assertEqual(runner.main(),2)
-        self.assertEqual(sleep.call_count,runner.REPORT_SETTLE_GRACE_SECONDS//2)
+        reads=[];original=self.request
+        def observed(url,body=None,**kwargs):
+            if url==report.endpoint(runner,'0001',KEY) and body is None:reads.append(url)
+            return original(url,body,**kwargs)
+        # Count native settlement observations, not unrelated subprocess-watch sleeps.
+        with mock.patch.object(runner,'request',side_effect=observed), \
+                mock.patch('time.sleep'),mock.patch('builtins.print'):
+            self.assertEqual(runner.main(),2)
+        self.assertEqual(len(reads),1+runner.REPORT_SETTLE_GRACE_SECONDS//2)
         progress=__import__('json').loads((runner.RECEIPTS/(KEY+'.progress.json')).read_text())
         self.assertNotEqual(progress['phase'],'finished');self.assertFalse(progress['coreRecorded'])
         self.assertEqual(progress['stopReason'],'model_termination_unverified');self.assertEqual(self.uploads,[])
         runner.feedback.assert_not_called()
+        runner.run_worker.assert_called_once()
 
     def test_core_settlement_lag_is_awaited_before_recording_the_stop(self):
         # Relay EOF can precede Core's receipt; the short poll settles it
