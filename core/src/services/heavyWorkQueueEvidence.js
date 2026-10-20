@@ -89,9 +89,18 @@ async function observe(job) {
   // Native owners retain release authority. A terminal result is insufficient
   // while a matching runtime admission (including UNKNOWN) remains fenced.
   const runtime = await Runtime.findById('runtime').lean();
-  const held = [...(runtime?.workloads || []), ...(runtime?.inferences || [])]
-    .some(item => queue.runtimeOverlaps(job, item));
-  return { operationId, terminal: !held, waitingForRelease: held, ...receipt, observedAt: new Date().toISOString() };
+  const now = new Date();
+  const overlapping = [...(runtime?.workloads || []), ...(runtime?.inferences || [])]
+    .filter(item => queue.runtimeOverlaps(job, item));
+  const held = overlapping.length > 0;
+  // An ordinary release finishes within seconds. A quarantined admission (an
+  // UNKNOWN recovery, an owner whose heartbeat expired, an inference no longer
+  // ACTIVE) waits for an operator, so it must not look like a run in progress.
+  const quarantined = overlapping.some(item => item.recoveryState === 'UNKNOWN'
+    || (item.state && item.state !== 'ACTIVE') || new Date(item.expiresAt) <= now);
+  return { operationId, terminal: !held, waitingForRelease: held, uncertain: quarantined,
+    ...(quarantined ? { reason: `Native outcome ${receipt.state}; its runtime admission is held in recovery quarantine and needs the operator recovery procedure` } : {}),
+    ...receipt, observedAt: now.toISOString() };
 }
 async function reconcile(id, actor) {
   let job = await queue.get(id);
@@ -99,7 +108,7 @@ async function reconcile(id, actor) {
   const result = await observe(job);
   if (!job.operation) job = await queue.record(id, { dispatchId: job.dispatchId, state: 'running', operationId: result.operationId }, actor);
   if (result.terminal) return queue.settle(id, result, actor);
-  if (result.uncertain && job.state !== 'uncertain') return queue.record(id, { dispatchId: job.dispatchId, state: 'uncertain', reason: 'Native executor reports an unknown outcome' }, actor);
+  if (result.uncertain && job.state !== 'uncertain') return queue.record(id, { dispatchId: job.dispatchId, state: 'uncertain', reason: result.reason || 'Native executor reports an unknown outcome' }, actor);
   return { ...job, observation: result };
 }
 

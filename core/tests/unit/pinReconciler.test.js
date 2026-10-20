@@ -237,6 +237,43 @@ describe('pinReconciler — pin auto-restore grace period', () => {
     expect(after.status).toBe('benchmarking');
   });
 
+  it('keeps a claim acquired after the tick read its snapshot (2026-10-20 UGAlien)', async () => {
+    reconciler.setPinRestoreGraceMs(60_000);
+    const claim = {
+      batchId: 'profiler-queue-late',
+      claimGeneration: 'gen-late',
+      prevStatus: 'ready',
+      claimedAt: new Date(),
+      estimatedDurationMs: 60_000
+    };
+    // The snapshot says `ready`; the claim lands while /api/ps is in flight,
+    // and the Profiler has already displaced the pin.
+    global.fetch = jest.fn(async (url) => {
+      if (typeof url === 'string' && url.endsWith('/api/ps')) {
+        await HostPreference.updateOne({ hostUrl: HOST_URL }, { $set: { status: 'benchmarking', benchmarkClaim: claim } });
+        return { ok: true, json: async () => ({ models: [{ name: OTHER_MODEL }] }) };
+      }
+      return { ok: true, text: async () => '{"done":true}' };
+    });
+    await reconciler.checkAndReloadDefaults();
+    const after = await HostPreference.findOne({ hostUrl: HOST_URL }).lean();
+    expect(after.status).toBe('benchmarking');
+    expect(after.benchmarkClaim.batchId).toBe('profiler-queue-late');
+  });
+
+  it('never marks a claimed host offline from a stale snapshot', async () => {
+    global.fetch = jest.fn(async () => {
+      await HostPreference.updateOne({ hostUrl: HOST_URL }, { $set: {
+        status: 'benchmarking',
+        benchmarkClaim: { batchId: 'batch-offline', claimGeneration: 'g', prevStatus: 'ready', claimedAt: new Date() }
+      } });
+      return { ok: false };
+    });
+    await reconciler.checkAndReloadDefaults();
+    const after = await HostPreference.findOne({ hostUrl: HOST_URL }).lean();
+    expect(after.status).toBe('benchmarking');
+  });
+
   it('an active session hold short-circuits the restore like a claim', async () => {
     reconciler.setPinRestoreGraceMs(50);
     await HostPreference.findOneAndUpdate(

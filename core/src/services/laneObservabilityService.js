@@ -23,6 +23,7 @@ const METRICS = Object.freeze({
   PIN_RESTORE_FAILURE: 'pin_restore_failure',
   PIN_VRAM_SPILL: 'pin_vram_spill',
   LATENCY_DRIFT: 'lane_latency_drift',
+  RUNTIME_QUARANTINE: 'runtime_recovery_quarantine',
 });
 const RULE_IDS = Object.freeze([
   'lane-context-mismatch',
@@ -31,6 +32,7 @@ const RULE_IDS = Object.freeze([
   'pin-restore-failure',
   'pin-vram-spill',
   'lane-latency-drift',
+  'runtime-recovery-quarantine',
 ]);
 const LATENCY_POLICY = Object.freeze({
   scanIntervalMs: 5 * 60 * 1000,
@@ -366,6 +368,43 @@ async function observePinVramSpill(input = {}) {
   }
 }
 
+/**
+ * One incident per held admission that only an operator can release: a
+ * workload or maintenance lease in UNKNOWN recovery, an owner whose heartbeat
+ * expired, or a benchmark claim whose host status no longer says so. While it
+ * lasts, consumer inference on that host is refused. The scan re-observes it
+ * each minute; the alert resolves as stale once it is gone.
+ */
+async function observeRuntimeQuarantine(input = {}) {
+  try {
+    const host = bounded(input.host, 200);
+    const holder = bounded(input.holder, 160);
+    const code = bounded(input.failureCode, 64) || 'recovery_required';
+    if (!host || !holder) return { emitted: 0, matched: 0 };
+    const event = buildEvent(METRICS.RUNTIME_QUARANTINE, { host, hostKey: input.hostKey, campaignId: holder }, {
+      detector: 'runtime_quarantine',
+      incidentKey: `quarantine:${holder}`,
+      failureCode: code,
+      value: 1,
+      threshold: 0,
+      remediation: code === 'claim_status_overwritten'
+        ? 'The claim heartbeat and release both need status benchmarking: recover through the claim owner (Profiler or Benchmark recovery), never by clearing the claim.'
+        : 'Consumer inference on this host is refused until recovery. Follow the operator recovery procedure in docs/OPERATIONS.md (recover-quarantine, or the Profiler runtime-restart attestation).',
+      evidence: {
+        holder,
+        kind: bounded(input.kind, 64),
+        reason: bounded(input.reason, 200),
+        since: input.since ? new Date(input.since).toISOString() : null,
+        source: 'runtime-quarantine-watch',
+      },
+    });
+    return evaluateEvents([event]);
+  } catch (err) {
+    logger.warn('[LaneObservability] runtime quarantine observation failed (non-fatal)', { error: err.message });
+    return { emitted: 0, matched: 0, error: true };
+  }
+}
+
 /** Resolve the host's open VRAM-spill incident once every pin fits again. */
 async function resolvePinVramSpill(input = {}) {
   try {
@@ -590,6 +629,7 @@ module.exports = {
   observeInference,
   observePinRestoreFailure,
   observePinVramSpill,
+  observeRuntimeQuarantine,
   resolvePinVramSpill,
   scanLatencyDrift,
   summarizeOllamaOutcome,
