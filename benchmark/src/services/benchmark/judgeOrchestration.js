@@ -193,6 +193,7 @@ function createJudgeOrchestrator({
                     current_test: { model: judgeModel, stage: 'warmup', phase: 'judge_warmup', phase_detail: `Warming judge ${judgeModel} on ${judgeHostUrl}`, prompt_name: judgeHostUrl, started_at: new Date() }
                 }
             });
+            const judgeIdentity = judgeRequestIdentity({ host: judgeHostUrl, batch_id: String(batchId) });
             try {
                 if (isCancelled()) throw cancellationReason();
                 await warmupModel(judgeHostUrl, judgeModel, {
@@ -202,14 +203,15 @@ function createJudgeOrchestrator({
                     warmupTimeoutCold: executionConfig.warmup_timeout_cold || 180000,
                     warmupTimeoutLoaded: executionConfig.warmup_timeout_loaded || 90000,
                     num_ctx: judgeNumCtx,
-                    // Nothing is measured on a separate judge host: its other
-                    // residents (embeddings, pins) stay, as for a standalone judge.
-                    preUnloadOthers: false,
+                    // A shared judge host keeps its residents: its pin is the
+                    // judge. On a host the batch reserves, the judge replaces
+                    // the pin, which the claim's release restores (#901).
+                    preUnloadOthers: Boolean(judgeIdentity.claimGeneration),
                     onPhaseDetail: (detail) => _setPhase('judge_warmup', detail),
                     signal: cancelSignal,
                     // A shared judge host has no host claim (#396): the warmup then
                     // carries the batch's workload admission alone, like judge calls.
-                    claimIdentity: judgeRequestIdentity({ host: judgeHostUrl, batch_id: String(batchId) }),
+                    claimIdentity: judgeIdentity,
                     assertClaimActive: () => { if (isCancelled()) throw cancellationReason(); }
                 });
                 logger.info('Judge model ready on configured host', { host: judgeHostUrl, model: judgeModel, num_ctx: judgeNumCtx });

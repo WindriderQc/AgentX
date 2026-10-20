@@ -108,8 +108,11 @@ model or other load options, so Core refuses with 409 `HOST_PIN_MISMATCH` a
 request naming an unpinned model, or a `num_ctx`, `num_gpu`, `num_batch`,
 `num_thread`, `use_mmap` or `main_gpu` that differs from the pin; a request
 omitting them inherits the pin's values and keep-alive. A Benchmark or Profiler
-claim (host claim or Core-minted workload admission) and a session hold on its
-model keep their exact options. The chat UI shows the pinned context instead
+claim (a host claim, or a Core-minted workload admission on a host it reserves)
+and a session hold on its model keep their exact options. A workload admission
+on a host it only shares does not: there the pin stays the owner. The
+Standard/Abliterated switch is refused while any workload holds the principal
+host. The chat UI shows the pinned context instead
 of refusing an ordinary turn. Classification, `POST /api/models/ollama/start`
 and the conversation fallback (which leaves the principal's load options
 behind) follow the same rule. Core sends no `/api/create`.
@@ -325,11 +328,15 @@ call. An exclusive model handoff, an UNKNOWN inference and another endpoint on
 the same physical GPU still exclude every other admission on that host.
 
 A workload reserves its hosts, except the ones it holds as shared. Benchmark
-holds a separate judge host that way and takes no host claim on it: other
-callers keep their ordinary shared inference there, beside the judge, and a
-household turn does not ask the batch to yield for it. An exclusive handoff
-still waits for the batch, and Core does not share a host that sits on the
-same GPU as one the workload reserves.
+holds a separate judge host as shared only when nothing new loads there: the
+host has no pin, or its pin is the judge. It then takes no host claim on it:
+other callers keep their ordinary shared inference there, beside the judge,
+and a household turn does not ask the batch to yield for it. A judge that is
+not the pin replaces it: the batch reserves that host and claims it, the judge
+warmup unloads the pin, and releasing the claim restores it, so two large
+models never load together on a pinned host. The launch pre-flight says which
+of the two applies. An exclusive handoff still waits for the batch, and Core
+does not share a host that sits on the same GPU as one the workload reserves.
 
 Content writes and erasure share a durable Mongo owner fence, including across
 Core workers. Erasure closes admission before waiting for an existing writer,

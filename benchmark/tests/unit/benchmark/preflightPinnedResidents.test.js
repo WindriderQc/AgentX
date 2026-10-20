@@ -12,16 +12,29 @@ const JUDGE = 'http://judge:11434';
 describe('pre-flight pinned residents', () => {
     beforeEach(() => jest.clearAllMocks());
 
-    it('says that a separate judge host keeps serving its pinned models beside the judge', async () => {
+    it('says that a separate judge host whose pin is the judge is shared', async () => {
         getDedicationStatuses.mockResolvedValue([
-            { host: `${JUDGE}/`, pinnedModels: [{ model: 'bge-m3' }, { model: 'gemma4:12b' }] }
+            { host: `${JUDGE}/`, pinnedModels: [{ model: 'gemma4:12b' }, { model: 'bge-m3' }] }
         ]);
-        const result = await checkPinnedResidents([{ host: EXEC, model: 'candidate' }], { judgeHost: JUDGE });
+        const result = await checkPinnedResidents([{ host: EXEC, model: 'candidate' }],
+            { judgeHost: JUDGE, judgeModel: 'gemma4:12b' });
         expect(result.ok).toBe(true);
         expect(result.affectedHosts).toEqual([]);
-        expect(result.judgeHost).toEqual({ host: JUDGE, pinnedModels: ['bge-m3', 'gemma4:12b'] });
+        expect(result.judgeHost).toEqual({ host: JUDGE, pinnedModels: ['gemma4:12b', 'bge-m3'], replacesPin: false });
         expect(result.warnings).toEqual([
-            expect.stringMatching(/^Judge host http:\/\/judge:11434 serves pinned model\(s\): bge-m3, gemma4:12b\. The batch holds it as a shared host: they keep serving beside the judge/)
+            expect.stringMatching(/^Judge host http:\/\/judge:11434 has the judge gemma4:12b as its pin\. The batch shares the host/)
+        ]);
+    });
+
+    it('says that a judge that is not the pin replaces it for the batch', async () => {
+        getDedicationStatuses.mockResolvedValue([
+            { host: JUDGE, pinnedModels: [{ model: 'resident-27b' }, { model: 'bge-m3' }] }
+        ]);
+        const result = await checkPinnedResidents([{ host: EXEC, model: 'candidate' }],
+            { judgeHost: JUDGE, judgeModel: 'judge-27b' });
+        expect(result.judgeHost).toEqual({ host: JUDGE, pinnedModels: ['resident-27b', 'bge-m3'], replacesPin: true });
+        expect(result.warnings).toEqual([
+            expect.stringMatching(/^The judge judge-27b replaces the pin on http:\/\/judge:11434 \(resident-27b, bge-m3\) for this batch\..*the pin returns when the batch ends/)
         ]);
     });
 

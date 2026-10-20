@@ -17,7 +17,7 @@ const {
     releaseWorkloadAdmission
 } = require('../../clients/coreApiClient');
 const { startBenchmarkClaimHeartbeat } = require('./benchmarkClaimLifecycle');
-const { batchAdmissionScope } = require('./batchAdmissionScope');
+const { resolveBatchAdmissionScope } = require('./batchAdmissionScope');
 const {
     buildOllamaTarget,
     buildPromptFingerprint, buildQualityCohortFingerprint,
@@ -69,7 +69,7 @@ async function startBatch({
     const workloadTtlMs = execution_config?.estimated_duration_ms || null;
     await acquireWorkloadAdmission(plannedBatchId.toString(), {
         requestId: `benchmark:${plannedBatchId}`,
-        ...batchAdmissionScope(normalizedTargets, { ...judge_config, target: judgeTarget, host: judgeTarget.host }),
+        ...await resolveBatchAdmissionScope(normalizedTargets, { ...judge_config, target: judgeTarget, host: judgeTarget.host }),
         batchId: plannedBatchId.toString(),
         ttlMs: workloadTtlMs
     });

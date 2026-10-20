@@ -9,7 +9,7 @@ const BenchmarkTimelineEntry = require('../../../models/BenchmarkTimelineEntry')
 // hardwareProfileService removed — profiler handles hardware detection now
 const ConcurrencyQueue = require('./ConcurrencyQueue');
 const { resolveJudgeHost } = require('./judgeHostResolution');
-const { batchAdmissionScope } = require('./batchAdmissionScope');
+const { resolveBatchAdmissionScope } = require('./batchAdmissionScope');
 const { groupModelsByHost, createCurrentTestPersistenceStrategy } = require('./batchHelpers');
 const { detectDedication } = require('./dedicationLifecycle');
 const { findActiveProfilingForHost } = require('../profiler/activeProfileState');
@@ -313,7 +313,7 @@ async function runBatchOrchestrator({
     await setBatchPhase('claiming', `Reserving ${allAffectedHosts.length} host(s) with core…`);
     let claimedHostUrls;
     let orchestrationError = null;
-    const admissionScope = batchAdmissionScope(normalizedTargets, judgeConfig);
+    const admissionScope = await resolveBatchAdmissionScope(normalizedTargets, judgeConfig);
     try {
         claimedHostUrls = await acquireBenchmarkClaims(allAffectedHosts, batchId, claimEstimateMs, {
             kind: admissionScope.kind,

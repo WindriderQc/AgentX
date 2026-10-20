@@ -12,7 +12,7 @@ const {
     releaseWorkloadAdmission
 } = require('../../clients/coreApiClient');
 const { startBenchmarkClaimHeartbeat } = require('./benchmarkClaimLifecycle');
-const { batchAdmissionScope } = require('./batchAdmissionScope');
+const { resolveBatchAdmissionScope } = require('./batchAdmissionScope');
 const {
     normalizeBatchTargets,
     normalizeBenchmarkTarget
@@ -103,7 +103,7 @@ async function resumeBatch(batchId, options = {}) {
     const resumeTtlMs = batch.execution_config?.estimated_duration_ms || null;
     await acquireWorkloadAdmission(batchId, {
         requestId: `benchmark:${batchId}`,
-        ...batchAdmissionScope(normalizedTargets, batch.judge_config),
+        ...await resolveBatchAdmissionScope(normalizedTargets, batch.judge_config),
         batchId,
         ttlMs: resumeTtlMs
     });

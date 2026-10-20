@@ -86,7 +86,7 @@ describe('judge warmup on a separate host', () => {
   const { resolveJudgeHost } = require('../../../src/services/benchmark/judgeHostResolution');
   const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 
-  it('leaves the judge host\'s other residents loaded', async () => {
+  it('leaves a shared judge host\'s residents loaded', async () => {
     BenchmarkBatch.updateOne = jest.fn().mockResolvedValue({});
     resolveJudgeHost.mockReturnValue({ judgeHost: HOST, resolution: 'explicit' });
     const judge = orchestrator({ model: 'judge:latest', num_ctx: 16384 }, jest.fn());
@@ -95,6 +95,22 @@ describe('judge warmup on a separate host', () => {
 
     expect(warmupModel).toHaveBeenCalledWith(HOST, 'judge:latest', expect.objectContaining({
       num_ctx: 16384, preUnloadOthers: false
+    }));
+  });
+
+  it('replaces the pin on a judge host the batch claims (#901)', async () => {
+    const coreApiClient = require('../../../src/clients/coreApiClient');
+    BenchmarkBatch.updateOne = jest.fn().mockResolvedValue({});
+    resolveJudgeHost.mockReturnValue({ judgeHost: HOST, resolution: 'explicit' });
+    const proof = { claimBatchId: 'batch-1', claimGeneration: 'claim-1',
+      workloadAdmissionId: 'admission-1', workloadGeneration: 'generation-1' };
+    coreApiClient.getBenchmarkClaimIdentity.mockImplementationOnce(() => proof);
+    const judge = orchestrator({ model: 'judge:latest', num_ctx: 16384 }, jest.fn());
+
+    await judge.resolveJudgeTargetForHost('http://candidate-host:11434');
+
+    expect(warmupModel).toHaveBeenLastCalledWith(HOST, 'judge:latest', expect.objectContaining({
+      preUnloadOthers: true, claimIdentity: expect.objectContaining({ claimGeneration: 'claim-1' })
     }));
   });
 
