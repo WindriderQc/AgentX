@@ -673,6 +673,39 @@ class StepsReportTest(unittest.TestCase):
         self.assertEqual(progress['reportSteps']['budgetSource'],'agent_workload')
         self.assertEqual(runner.git(self.workspace,'status','--porcelain'),'')
 
+    def test_missing_step_saves_its_own_research_then_uses_normal_frozen_source_validation(self):
+        from integrations.coding.tests.test_coding_report_save import events
+        self.answers = [self.reviewed, self.reviewed, lambda prompt: {'summary': 'Saved evidence.', 'explanations': {}}]
+        original = self.worker
+        first = [True]
+        def worker(workspace, prompt, seconds, progress, *, read_only):
+            if first[0]:
+                first[0] = False
+                progress.model_context_size = 196608
+                progress.model_calls += 2
+                path = self.home/'.dsh/progress-sessions'/KEY/'session-original/session.v4.jsonl'
+                path.parent.mkdir(parents=True)
+                path.write_text(''.join(json.dumps(row)+'\n' for row in events()))
+                return subprocess.CompletedProcess([], 0)
+            return original(workspace, prompt, seconds, progress, read_only=read_only)
+        api = self.request
+        def request(url, body=None, **kwargs):
+            value = api(url, body, **kwargs)
+            if '/reports/' in url and body is None:
+                value['data'].update(state='active', pendingInferences=[],
+                    authority={'requestId':KEY, 'sourceCommit':self.head})
+            return value
+        with mock.patch.object(runner, 'run_worker', side_effect=worker), \
+                mock.patch.object(runner, 'request', side_effect=request), mock.patch('builtins.print'):
+            self.assertEqual(runner.main(), 0)
+        self.assertEqual(len(self.uploads), 1)
+        self.assertTrue(self.uploads[0]['coverage']['declaredComplete'])
+        self.assertIn('SAVE PASS', self.prompts[0])
+        intent = json.loads((runner.RECEIPTS/f'{KEY}.report-save-step-01.json').read_text())
+        self.assertEqual(intent['sourceCommit'], self.head)
+        self.assertEqual(intent['calls'], 4)
+        self.assertEqual(runner.git(self.workspace, 'status', '--porcelain'), '')
+
     def test_a_failing_group_is_retried_alone_then_blocked_without_stopping_the_others(self):
         self.answers=[self.reviewed, 'not json', '{"documents": []}', lambda prompt:{'summary':'x','explanations':{}}]
         with mock.patch('builtins.print'):self.assertEqual(runner.main(),0)

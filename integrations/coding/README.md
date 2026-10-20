@@ -82,6 +82,13 @@ and runs several short worker sessions in fresh context:
   the earlier findings for those documents. It writes one JSON result
   (`step-NN.json`) in its private output directory. A step has its own call
   and time limits; reaching them ends that session only.
+- **Save pass.** If a drained step leaves no result file, the same native worker
+  gets one bounded session to save JSON from that step's exact paired tool
+  results. It reserves the final writer budget and uses at most four calls and
+  fifteen minutes from the existing execution. Ambiguous sessions, uncertain
+  calls, an operator stop or any existing result artifact prevent this pass.
+  Private receipts bind its source, evidence and usage. Omitted evidence cannot
+  establish completed coverage; the normal source validator still owns merging.
 - **Verify and merge.** `coding_report_ledger.py` checks every cited path and
   line against the frozen snapshot, computes source digests itself and merges
   the step whole or not at all. A group that fails twice marks its documents

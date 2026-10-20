@@ -18,6 +18,9 @@ _ledger_spec.loader.exec_module(ledgers)
 _steps_spec = importlib.util.spec_from_file_location('coding_report_steps', __import__('pathlib').Path(__file__).with_name('coding_report_steps.py'))
 steps = importlib.util.module_from_spec(_steps_spec)
 _steps_spec.loader.exec_module(steps)
+_save_spec = importlib.util.spec_from_file_location('coding_report_save', Path(__file__).with_name('coding_report_save.py'))
+saving = importlib.util.module_from_spec(_save_spec)
+_save_spec.loader.exec_module(saving)
 
 MAX_BYTES = 2 * 1024 * 1024
 # Only reasons accepted by Core\'s shared worker-outcome observation contract.
@@ -525,8 +528,9 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
                                  'counts': ledgers.counts(ledger), 'findings': len(ledger['findings']),
                                  'stepContext': budget['stepContext'], 'budgetSource': budget['source']}
 
-    def one(number, prompt, calls, seconds):
+    def one(number, prompt, calls, seconds, *, save_pass=True):
         name = f'step-{number:02d}.json'
+        before = saving.snapshot(r, workspace) if save_pass else None
         progress.begin_step(calls, seconds, f'{sandbox_root}/{name}')
         try:
             run = r.run_worker(workspace, prompt, seconds, progress, read_only=True)
@@ -535,6 +539,9 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
         if not getattr(progress, 'report_drained', True):
             return None, 'unverified'
         value, reason = steps.read_result(root/name)
+        if save_pass and value is None and reason == 'no result file was written':
+            value, reason = saving.attempt(r, args, progress, workspace, root/name, number, prompt, before,
+                                          baseline, snapshot['sha256'], budget['stepContext'], steps, immutable_json, settled_status)
         if value is None and run.returncode and not reason:
             reason = 'the worker exited without a result'
         return value, reason
@@ -583,7 +590,7 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
     if ledger['findings'] and calls >= steps.WRITER_CALLS and seconds >= steps.WRITER_SECONDS:
         number += 1
         value, reason = one(number, steps.writer_prompt(ledger, f'{sandbox_root}/step-{number:02d}.json'),
-                            steps.WRITER_CALLS, steps.WRITER_SECONDS)
+                            steps.WRITER_CALLS, steps.WRITER_SECONDS, save_pass=False)
         if reason == 'unverified':
             return 'unverified'
         if value is not None:
