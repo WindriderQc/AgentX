@@ -4,7 +4,7 @@
 // each request is admitted, routed and recorded by Core under that client.
 const { handleChat, listModels } = require('./chat');
 const { admissionWaitMs, clientForRequest, parseGatewayClients } = require('./clients');
-const { chatRequest, responsesRender } = require('./responses');
+const { chatRequest, responsesRender, toolCensus } = require('./responses');
 
 function openAiError(res, status, message, code) {
   return res.status(status).json({ error: { message, type: 'invalid_request_error', ...(code && { code }) } });
@@ -29,6 +29,8 @@ function registerLlmGateway({ express, runtimeServices, logger, clients = parseG
 
   router.post('/v1/responses', withClient((req, res, client) => {
     let translated;
+    try { logger?.info?.('Gateway Responses tool census', { client: client.id, ...toolCensus(req.body?.tools) }); }
+    catch { /* a census never blocks a request */ }
     try { translated = chatRequest(req.body); }
     catch (error) { return openAiError(res, error.statusCode || 400, error.message, error.code); }
     return handleChat(req, res, {
