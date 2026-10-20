@@ -93,7 +93,14 @@ child memory and tools stay scoped even where the mechanism is shared.
 
 Nerve Center's principal model choice reuses HostPreference's first resident
 and moves every RouterTaskConfig route that host serves with the principal
-model. Both alternatives retain the same pin context; other residents keep
+model. The operator names the model of each option (Standard, Abliterated) in
+the same card, from the models installed on the principal host; Core stores
+them in `principal_model_choices` and ships no model name. On a fresh install
+both options are unset and the switch stays off until one is named. An install
+that ran before keeps what it ran: the first read stores its Standard env value
+once, and a pin the switch had moved off Standard as Abliterated; that env is
+not read for these choices afterwards. Household's Open lane runs
+the stored Abliterated model. Both alternatives retain the same pin context; other residents keep
 their contracts, and a route on that host naming an unpinned model blocks the
 switch until it is aligned (the Nerve Center lists it). Consumers explicitly
 selecting `agentx-primary` follow `daily_operator` through the existing Core

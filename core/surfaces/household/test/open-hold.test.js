@@ -123,7 +123,7 @@ function serverFixture(acquireDelay) {
   };
   return { calls, hold: household.createOpenLaneHold({ runtimeServices: { hosts, routing: {
     getEffectiveSnapshot: async () => ({ tasks: { daily_operator: { hostUrl: 'http://inference-host:11434', contextSize: 196608 } } })
-  } }, env: { HOUSEHOLD_PERMISSIVE_PRIMARY_HOST_URL: 'http://inference-host:11434' } }) };
+  } }, env: { HOUSEHOLD_PERMISSIVE_PRIMARY_HOST_URL: 'http://inference-host:11434' }, abliteratedModel: async () => 'permissive-model' }) };
 }
 
 test('server orders a release behind its pending acquire and ignores delayed older requests', async () => {
@@ -169,6 +169,6 @@ test('Open inherits the principal context and refuses missing context before a h
   const unavailable = household.createOpenLaneHold({ runtimeServices: { hosts: {
     acquireHold, touchHold() {}, releaseHold() {}, getHoldStatus() {}
   }, routing: { getEffectiveSnapshot: async () => ({ tasks: {} }) } },
-  env: { HOUSEHOLD_PERMISSIVE_PRIMARY_HOST_URL: 'http://inference-host:11434' } });
+  env: { HOUSEHOLD_PERMISSIVE_PRIMARY_HOST_URL: 'http://inference-host:11434' }, abliteratedModel: async () => 'permissive-model' });
   await assert.rejects(unavailable.acquire(), { code: 'OPEN_CONTEXT_UNAVAILABLE' });
 });

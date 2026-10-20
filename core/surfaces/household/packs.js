@@ -10,8 +10,6 @@ function cleanText(value, max = 4000) {
   return String(value || '').trim().slice(0, max);
 }
 
-const { PRODUCT_PERMISSIVE_MODEL: HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_MODEL } = require('../../src/services/modelRouterDefaults');
-const HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_DIGEST = '150af2e2fa9b3e09d6dfd1cf6f315bb9cb7d688af157d1cc1c9fe1a809ebb230';
 
 const PERSONAL_OPERATOR_SURFACE_CONTRACT = [
   'This is the owner’s private local conversation. Reply in the language of his latest message; default to Canadian French only when unclear. Keep everyday conversation natural and brief.',
@@ -197,18 +195,23 @@ function modeSummary(mode) {
   };
 }
 
-function inferenceTargetForMode(pack, mode, env = process.env, contextSize = null) {
+// The permissive lane runs the principal's Abliterated choice, which the
+// operator names in the Nerve Center; callers pass it in.
+function inferenceTargetForMode(pack, mode, env = process.env, contextSize = null, model = null) {
   if (pack?.id !== 'personal_operator' || mode?.lane !== 'permissive-local') return null;
   const primary = {
     tier: 'primary',
     hostKey: 'primary',
-    model: cleanText(
-      env.HOUSEHOLD_PERMISSIVE_PRIMARY_MODEL || HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_MODEL,
-      512
-    ),
+    model: cleanText(model || '', 512),
     hostUrl: cleanText(env.HOUSEHOLD_PERMISSIVE_PRIMARY_HOST_URL || env.OLLAMA_HOST, 512).replace(/\/+$/, ''),
     numCtx: contextSize
   };
+  if (!primary.model) {
+    const error = new Error('Choose the Abliterated model in the Nerve Center first.');
+    error.statusCode = 503;
+    error.code = 'PRINCIPAL_ABLITERATED_UNSET';
+    throw error;
+  }
   if (!primary.hostUrl) {
     const error = new Error('The preferred inference-host permissive lane is not configured on this runtime.');
     error.statusCode = 503;
@@ -219,8 +222,6 @@ function inferenceTargetForMode(pack, mode, env = process.env, contextSize = nul
 }
 
 module.exports = {
-  HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_MODEL,
-  HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_DIGEST,
   PERSONAL_OPERATOR_SURFACE_CONTRACT,
   FAMILY_AGENT_PROMPT,
   PACKS,

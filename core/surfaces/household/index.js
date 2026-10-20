@@ -45,7 +45,7 @@ const {
   HOUSEHOLD_OPEN_HOLD_IDLE_MS, HOUSEHOLD_OPEN_HOLD_OWNER, HOUSEHOLD_OPEN_HOLD_WAIT_TIMEOUT_MS
 } = require('./open-lane-hold');
 const {
-  HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_MODEL, HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_DIGEST, PERSONAL_OPERATOR_SURFACE_CONTRACT, PACKS,
+  PERSONAL_OPERATOR_SURFACE_CONTRACT, PACKS,
   SAFETY_SUPPORT, packIdsSharingMemory, packById, packSummary, modeSummary,
   inferenceTargetForMode
 } = require('./packs');
@@ -123,12 +123,16 @@ function cleanScope(value, fallback = 'default') {
     .replace(/^-+|-+$/g, '') || fallback;
 }
 
+// Open runs the principal's Abliterated choice, stored by the Nerve Center.
+const principalChoices = () => require('../../src/services/principalModelChoices');
+
 // The open-lane hold targets the personal operator's Open mode.
 function createOpenLaneHold(options = {}) {
   const pack = PACKS.find((entry) => entry.id === 'personal_operator');
   const mode = pack?.modes.find((entry) => entry.id === 'open');
+  const abliteratedModel = options.abliteratedModel || (() => principalChoices().requireAbliteratedModel());
   return createHostHold({ ...options, resolveTarget: async env => {
-    const target = inferenceTargetForMode(pack, mode, env);
+    const target = inferenceTargetForMode(pack, mode, env, null, await abliteratedModel());
     const snapshot = await options.runtimeServices?.routing?.getEffectiveSnapshot({ includeCatalog: false });
     const daily = snapshot?.tasks?.daily_operator;
     if (daily?.hostUrl !== target.hostUrl || !(daily?.contextSize > 0)) {
@@ -193,9 +197,10 @@ function register(api) {
   // The existing OpenClaw Ollama proxy consumes this same private model policy.
   // Household owns the Open choice/hold; the proxy still owns model transport.
   app.locals.aioOpsConversationTarget = async model => {
-    if (model !== (process.env.HOUSEHOLD_PERMISSIVE_PRIMARY_MODEL || HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_MODEL)) return null;
+    const abliterated = (await principalChoices().getChoices()).abliterated;
+    if (!abliterated || model !== abliterated) return null;
     const pack = packById('personal_operator');
-    const target = inferenceTargetForMode(pack, pack.modes.find(mode => mode.id === 'open'));
+    const target = inferenceTargetForMode(pack, pack.modes.find(mode => mode.id === 'open'), process.env, null, abliterated);
     if (model !== target?.model) return null;
     const state = await openHold.status();
     if (!state.active) return null;
@@ -594,8 +599,6 @@ module.exports = {
   packIdsSharingMemory,
   memoryBlock,
   HOUSEHOLD_CONSUMER_CONTRACT,
-  HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_MODEL,
-  HOUSEHOLD_PERMISSIVE_PRIMARY_DEFAULT_DIGEST,
   MEMORY_CONTRACT,
   SAFETY_SUPPORT,
   nextRoutineDue,

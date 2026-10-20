@@ -1,7 +1,9 @@
 'use strict';
 
 // Principal choice is the existing first host pin and the existing task routes.
-// No parallel preference store: normal restoration and routing remain owners.
+// The two models it offers are the operator's stored choices
+// (principalModelChoices); the product names none. Normal restoration and
+// routing remain owners.
 const routerConfig = require('./modelRouterConfig');
 const hostPrefs = require('./hostPreferenceService');
 const { replacePrimaryPin } = require('./hostPinService');
@@ -10,8 +12,8 @@ const { runRuntimeMutation } = require('./runtimeMutationLeaseService');
 const { hasActiveSessionHold } = require('./hostSessionHoldService');
 const { hostHeldByWorkload } = require('./runtimeWorkloadAdmission');
 const { invalidateRoutingSnapshots } = require('./routing/routingSnapshotCache');
-const { PRODUCT_PERMISSIVE_MODEL } = require('./modelRouterDefaults');
 const { modelsMatch } = require('../helpers/modelNameNormalization');
+const choicesStore = require('./principalModelChoices');
 
 const { PRINCIPAL_MODEL_ALIAS, resolvePrincipalAlias } = require('../../integrations/runtime-bridges/principal-model');
 function refusal(message, code = 'PRINCIPAL_MODEL_UNAVAILABLE') {
@@ -24,16 +26,15 @@ async function getPrincipalModel() {
   const hostUrl = routerConfig.HOSTS[defaults?.host];
   const pref = hostUrl && await hostPrefs.getByHost(hostUrl);
   const pins = hostPrefs.getPinnedEntries(pref);
-  const options = [
-    { value: 'standard', model: defaults?.model, label: 'Standard' },
-    { value: 'abliterated', label: 'Abliterated', model: process.env.HOUSEHOLD_PERMISSIVE_PRIMARY_MODEL || PRODUCT_PERMISSIVE_MODEL }
-  ];
-  const selected = options.find(option => option.model === pins[0]?.model);
+  const choices = await choicesStore.getChoices({ pinnedModel: pins[0]?.model });
+  const options = choicesStore.PRINCIPAL_OPTIONS.map(({ value, label }) => ({ value, label, model: choices[value] }));
+  const selected = options.find(option => option.model && option.model === pins[0]?.model);
   const divergent = divergentRoutes(routerConfig.getEffectiveTaskModels(), { hostKey: defaults?.host, pinnedModels: pins });
   return { available: Boolean(selected && pins[0]?.contextSize > 0), divergentRoutes: divergent,
     selected: selected?.value || null, model: pins[0]?.model || null,
     contextSize: pins[0]?.contextSize || null, hostUrl, hostKey: defaults?.host,
-    alias: PRINCIPAL_MODEL_ALIAS, options, pinnedModels: pins, status: pref?.status || 'unconfigured' };
+    alias: PRINCIPAL_MODEL_ALIAS, options, choicesRevision: choices.revision, choicesSource: choices.source,
+    pinnedModels: pins, status: pref?.status || 'unconfigured' };
 }
 
 // The host pin owns what its host loads (#829): every route the principal
@@ -52,9 +53,61 @@ async function selectPrincipalModel({ selected, expectedModel, principal, reques
   const initial = await getPrincipalModel();
   const choice = initial.options.find(option => option.value === selected);
   if (!choice) throw Object.assign(refusal('Choose Standard or Abliterated', 'PRINCIPAL_MODEL_INVALID'), { statusCode: 400 });
+  if (!choice.model) throw refusal(`Choose the ${choice.label} model first`, 'PRINCIPAL_CHOICE_UNSET');
   if (!initial.available) throw refusal('Configure the principal pin and its context first');
   if (!expectedModel || expectedModel !== initial.model) throw refusal('Principal model changed; reload and retry', 'HOST_PIN_CONFLICT');
   if (choice.model === initial.model) return initial;
+  return movePrincipal({ targetModel: choice.model, expectedModel, principal, requestId });
+}
+
+/**
+ * Name the model of one option. Changing the option in use moves the pin
+ * through the same verified switch, and the new name is stored only once the
+ * model is resident and the routes follow it; a failure there rolls both back.
+ */
+async function saveChoice({ option, model, expectedRevision, expectedModel, principal, requestId } = {},
+  { listInstalledModels = defaultInstalledModels } = {}) {
+  const initial = await getPrincipalModel();
+  const name = choicesStore.validateChoice(choicesStoreView(initial), { option, model });
+  if (expectedRevision !== initial.choicesRevision) throw refusal('The choices changed; reload and retry', 'PRINCIPAL_CHOICES_CHANGED');
+  if (!initial.hostUrl) throw refusal('The principal host is not configured');
+  const installed = await listInstalledModels(initial.hostUrl);
+  if (!installed.length) {
+    throw Object.assign(refusal(`Cannot list the models of ${initial.hostUrl}; retry when it answers`, 'PRINCIPAL_HOST_UNREACHABLE'), { statusCode: 503 });
+  }
+  if (!installed.some(entry => modelsMatch(entry, name))) {
+    throw refusal(`${name} is not installed on ${initial.hostUrl}`, 'PRINCIPAL_MODEL_NOT_INSTALLED');
+  }
+  const save = () => choicesStore.saveChoice({ option, model: name, expectedRevision, principal });
+  const inUse = initial.selected === option;
+  if (!inUse || name === initial.model) {
+    await save();
+    return getPrincipalModel();
+  }
+  if (!initial.available) throw refusal('Configure the principal pin and its context first');
+  if (!expectedModel || expectedModel !== initial.model) throw refusal('Principal model changed; reload and retry', 'HOST_PIN_CONFLICT');
+  return movePrincipal({ targetModel: name, expectedModel, principal, requestId, afterVerified: save });
+}
+
+function choicesStoreView(principalModel) {
+  return Object.fromEntries(principalModel.options.map(option => [option.value, option.model]));
+}
+
+async function defaultInstalledModels(hostUrl) {
+  const models = await require('./modelAggregator').fetchOllamaModels(hostUrl);
+  return [...new Set(models.map(entry => entry.name || entry.model).filter(Boolean))];
+}
+
+/** The models installed on the principal host, for the Nerve Center picker. */
+async function listPrincipalHostModels({ listInstalledModels = defaultInstalledModels } = {}) {
+  const { hostUrl } = await getPrincipalModel();
+  if (!hostUrl) return { hostUrl: null, models: [] };
+  return { hostUrl, models: (await listInstalledModels(hostUrl)).sort((a, b) => a.localeCompare(b)) };
+}
+
+const ROLLBACK_CODES = ['HOST_PIN_RESTORE_FAILED', 'PRINCIPAL_ROUTES_UNVERIFIED', 'PRINCIPAL_CHOICES_CHANGED'];
+
+async function movePrincipal({ targetModel, expectedModel, principal, requestId, afterVerified = null }) {
   const outcome = await runRuntimeMutation({ principal, requestId, scope: 'principal-model:select' }, async ({ signal, assertActive }) => {
     const current = await getPrincipalModel();
     if (current.model !== expectedModel) return { error: refusal('Principal model changed; reload and retry', 'HOST_PIN_CONFLICT') };
@@ -73,7 +126,7 @@ async function selectPrincipalModel({ selected, expectedModel, principal, reques
     if (!routes.some(([task]) => task === 'daily_operator')) return { error: refusal('The principal route has a dedicated override') };
     const documents = await RouterTaskConfig.find({ taskType: { $in: routes.map(([task]) => task) } }).lean();
     try {
-      const updated = await replacePrimaryPin(current.hostUrl, expectedModel, choice.model);
+      const updated = await replacePrimaryPin(current.hostUrl, expectedModel, targetModel);
       if (!updated) return { error: refusal('Principal host preference is missing') };
     } catch (error) {
       if (['HOST_PIN_CONFLICT', 'HOST_PIN_INVALID', 'HOST_PIN_CAPACITY'].includes(error.code)) return { error };
@@ -85,22 +138,23 @@ async function selectPrincipalModel({ selected, expectedModel, principal, reques
       if (resident?.verified !== true) throw refusal(resident?.error || 'Principal model residency was not verified', 'HOST_PIN_RESTORE_FAILED');
       // Persistence failure is ambiguous: keep the native fence for recovery.
       await RouterTaskConfig.bulkWrite(routes.map(([taskType, entry]) => ({
-        updateOne: { filter: { taskType }, update: { $set: { model: choice.model, host: entry.host } }, upsert: true }
+        updateOne: { filter: { taskType }, update: { $set: { model: targetModel, host: entry.host } }, upsert: true }
       })));
       await routerConfig.ensureTaskModelOverridesLoaded({ force: true });
       invalidateRoutingSnapshots();
       const verified = routerConfig.getEffectiveTaskModels();
-      if (routes.some(([task]) => verified[task]?.model !== choice.model)) throw refusal('Principal routes could not be verified', 'PRINCIPAL_ROUTES_UNVERIFIED');
+      if (routes.some(([task]) => verified[task]?.model !== targetModel)) throw refusal('Principal routes could not be verified', 'PRINCIPAL_ROUTES_UNVERIFIED');
+      if (afterVerified) await afterVerified();
       return { ...await getPrincipalModel(), verification: resident.verification || { verified: true } };
     } catch (error) {
       assertActive();
-      if (signal.aborted || !['HOST_PIN_RESTORE_FAILED', 'PRINCIPAL_ROUTES_UNVERIFIED'].includes(error.code)) throw error;
+      if (signal.aborted || !ROLLBACK_CODES.includes(error.code)) throw error;
       // Only known terminal failures can roll back under the same authority.
       const previous = new Map(documents.map(doc => [doc.taskType, doc]));
       await RouterTaskConfig.bulkWrite(routes.map(([taskType]) => previous.has(taskType)
         ? { replaceOne: { filter: { taskType }, replacement: previous.get(taskType), upsert: true } }
         : { deleteOne: { filter: { taskType } } }));
-      await replacePrimaryPin(current.hostUrl, choice.model, expectedModel);
+      await replacePrimaryPin(current.hostUrl, targetModel, expectedModel);
       const rollback = await restore();
       await routerConfig.ensureTaskModelOverridesLoaded({ force: true });
       invalidateRoutingSnapshots();
@@ -114,4 +168,5 @@ async function selectPrincipalModel({ selected, expectedModel, principal, reques
   return outcome;
 }
 
-module.exports = { PRINCIPAL_MODEL_ALIAS, getPrincipalModel, selectPrincipalModel, resolvePrincipalAlias, followedRoutes, divergentRoutes };
+module.exports = { PRINCIPAL_MODEL_ALIAS, getPrincipalModel, selectPrincipalModel, saveChoice, listPrincipalHostModels,
+  resolvePrincipalAlias, followedRoutes, divergentRoutes };

@@ -10,6 +10,7 @@ jest.mock('../../src/services/modelRouterConfig', () => {
 });
 const HostPreference = require('../../models/HostPreference');
 const RouterTaskConfig = require('../../models/RouterTaskConfig');
+const PrincipalModelChoices = require('../../models/PrincipalModelChoices');
 const prefs = require('../../src/services/hostPreferenceService');
 const config = require('../../src/services/modelRouterConfig');
 const { runRuntimeMutation } = require('../../src/services/runtimeMutationLeaseService');
@@ -26,13 +27,17 @@ beforeEach(async () => {
   runRuntimeMutation.mockImplementation(async (_options, operation) => operation({
     signal: new AbortController().signal, assertActive() {}
   }));
+  await PrincipalModelChoices.create({ standard: 'standard', abliterated: 'permissive', revision: 3, source: 'operator' });
   await HostPreference.create({ hostUrl, hostKey: 'primary', maxConcurrentModels: 2, pinnedModels: [
     { model: 'standard', contextSize: 196608, keepAlive: -1, autoRestore: true },
     { model: 'embedding', contextSize: 8192, keepAlive: -1, autoRestore: true }
   ] });
   restore = jest.spyOn(prefs, 'restorePinnedModels').mockResolvedValue({ verified: true, status: 'ready' });
 });
-afterEach(async () => { jest.restoreAllMocks(); await Promise.all([HostPreference.deleteMany({}), RouterTaskConfig.deleteMany({})]); });
+afterEach(async () => {
+  jest.restoreAllMocks();
+  await Promise.all([HostPreference.deleteMany({}), RouterTaskConfig.deleteMany({}), PrincipalModelChoices.deleteMany({})]);
+});
 const select = () => service.selectPrincipalModel({ selected: 'abliterated', expectedModel: 'standard', principal: 'test-operator' });
 
 test('switch preserves sibling pins/context, moves every principal route on the host, and survives a fresh read', async () => {
@@ -98,4 +103,73 @@ test('a route on the principal host naming an unpinned model blocks the switch a
   await expect(select()).rejects.toMatchObject({ code: 'PRINCIPAL_ROUTES_DIVERGE' });
   expect((await service.getPrincipalModel()).model).toBe('standard');
   expect(restore).not.toHaveBeenCalled();
+});
+
+describe('choices named in the Nerve Center (#901)', () => {
+  const installed = async () => ['standard', 'permissive', 'other-model:27b'];
+  const save = (option, model, extra = {}) => service.saveChoice({ option, model, expectedRevision: 3,
+    expectedModel: 'standard', principal: 'test-operator', ...extra }, { listInstalledModels: installed });
+
+  test('the switch offers the stored models and reports their revision', async () => {
+    const principal = await service.getPrincipalModel();
+    expect(principal.options).toEqual([
+      { value: 'standard', label: 'Standard', model: 'standard' },
+      { value: 'abliterated', label: 'Abliterated', model: 'permissive' }
+    ]);
+    expect(principal).toMatchObject({ selected: 'standard', available: true, choicesRevision: 3 });
+  });
+
+  test('naming the option not in use stores it without touching the pin', async () => {
+    const result = await save('abliterated', 'other-model:27b');
+    expect(result.options[1].model).toBe('other-model:27b');
+    expect(result).toMatchObject({ model: 'standard', choicesRevision: 4 });
+    expect(restore).not.toHaveBeenCalled();
+    expect(await RouterTaskConfig.countDocuments()).toBe(0);
+  });
+
+  test('renaming the option in use moves the pin and its routes, then stores the name', async () => {
+    const result = await save('standard', 'other-model:27b');
+    expect(result).toMatchObject({ selected: 'standard', model: 'other-model:27b', choicesRevision: 4 });
+    expect(config.tasks.general_chat.model).toBe('other-model:27b');
+    expect(restore).toHaveBeenCalledTimes(1);
+  });
+
+  test('a failed load keeps the old pin, routes and name', async () => {
+    restore.mockResolvedValueOnce({ verified: false, error: 'does not fit' });
+    await expect(save('standard', 'other-model:27b')).rejects.toMatchObject({ code: 'HOST_PIN_RESTORE_FAILED', rollback: 'verified' });
+    const principal = await service.getPrincipalModel();
+    expect(principal).toMatchObject({ model: 'standard', choicesRevision: 3 });
+    expect(principal.options[0].model).toBe('standard');
+  });
+
+  test('refuses a stale revision, a duplicate, an uninstalled model and an unreachable host', async () => {
+    await expect(save('abliterated', 'other-model:27b', { expectedRevision: 2 })).rejects.toMatchObject({ code: 'PRINCIPAL_CHOICES_CHANGED' });
+    await expect(save('abliterated', 'standard')).rejects.toMatchObject({ code: 'PRINCIPAL_CHOICES_DUPLICATE' });
+    await expect(save('abliterated', 'missing:7b')).rejects.toMatchObject({ code: 'PRINCIPAL_MODEL_NOT_INSTALLED' });
+    await expect(service.saveChoice({ option: 'abliterated', model: 'other-model:27b', expectedRevision: 3 },
+      { listInstalledModels: async () => [] })).rejects.toMatchObject({ code: 'PRINCIPAL_HOST_UNREACHABLE', statusCode: 503 });
+    await expect(save('other', 'other-model:27b')).rejects.toMatchObject({ code: 'PRINCIPAL_MODEL_INVALID', statusCode: 400 });
+    expect((await service.getPrincipalModel()).choicesRevision).toBe(3);
+  });
+
+  test('a fresh install shows both options unset and refuses the switch until one is named', async () => {
+    await PrincipalModelChoices.deleteMany({});
+    const saved = { ...process.env };
+    for (const key of ['AGENTX_DAILY_OPERATOR_MODEL', 'AGENTX_DAILY_MODEL', 'AGENTX_DEFAULT_CHAT_MODEL', 'AGENTX_CHAT_MODEL',
+      'OLLAMA_MODEL', 'HOUSEHOLD_PERMISSIVE_PRIMARY_MODEL']) delete process.env[key];
+    try {
+      const principal = await service.getPrincipalModel();
+      expect(principal.options.map(option => option.model)).toEqual([null, null]);
+      expect(principal).toMatchObject({ selected: null, available: false, choicesSource: 'migrated' });
+      await expect(service.selectPrincipalModel({ selected: 'abliterated', expectedModel: 'standard' }))
+        .rejects.toMatchObject({ code: 'PRINCIPAL_CHOICE_UNSET' });
+      // The pin already loaded can be named as Standard, which turns the switch on.
+      const named = await service.saveChoice({ option: 'standard', model: 'standard', expectedRevision: 0 },
+        { listInstalledModels: installed });
+      expect(named).toMatchObject({ selected: 'standard', choicesRevision: 1 });
+      expect(restore).not.toHaveBeenCalled();
+    } finally {
+      process.env = saved;
+    }
+  });
 });

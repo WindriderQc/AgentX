@@ -1615,16 +1615,6 @@
       "secret": false,
       "description": "JSON mapping of Household image sources to canonical Data indexed roots. Unset: no local source roots."
     },
-    "HOUSEHOLD_PERMISSIVE_PRIMARY_MODEL": {
-      "services": [
-        "core"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "household",
-      "secret": false,
-      "description": "Model of the household permissive personal-operator pack. Unset: a built-in default model."
-    },
     "HOUSEHOLD_OWNER_UNLOCK_MINUTES": {
       "services": [
         "core"
