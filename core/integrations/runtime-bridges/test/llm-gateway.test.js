@@ -333,3 +333,38 @@ test('other refusals with images are not retried as descriptions', async () => {
   assert.equal(res.statusCode, 400);
   assert.equal(calls.length, 1);
 });
+
+function claimError({ claimedAt, estimatedEndAt }) {
+  const cause = Object.assign(new Error('Ollama host is held by an active benchmark claim'), {
+    code: 'BENCHMARK_CLAIM_ACTIVE', statusCode: 503, claimSource: 'profiler', claimedAt, estimatedEndAt
+  });
+  return Object.assign(new Error('Inference host is reserved by an active benchmark workload.'), {
+    code: 'BENCHMARK_CLAIM_ACTIVE', statusCode: 409, cause
+  });
+}
+
+test('a host held past the patient wait is refused at once with who holds it and until when', async () => {
+  const now = Date.now();
+  const error = claimError({ claimedAt: new Date(now - 60_000).toISOString(), estimatedEndAt: new Date(now + 90 * 60_000).toISOString() });
+  const { calls, handler } = gateway(async () => { throw error; },
+    parseGatewayClients(JSON.stringify({ codex: { token: CODEX_TOKEN, admission: 'patient' } })));
+  const res = new Response();
+  await handler('post', '/v1/chat/completions')(new Request({
+    headers: AUTH, body: { model: 'agentx-primary', messages: [{ role: 'user', content: 'salut' }] }
+  }), res);
+  assert.equal(calls.length, 1);
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.headers['x-agentx-inference-outcome'], 'host-busy');
+  assert.equal(res.jsonBody.error.code, 'BENCHMARK_CLAIM_ACTIVE');
+  assert.match(res.jsonBody.error.message, /une mesure du Profiler depuis .+, fin estimée vers \d\d h \d\d\. Rien n'est envoyé vers le cloud\. Réessaie après\./);
+});
+
+test('a busy host without an announced end keeps the generic retry advice', async () => {
+  const { handler } = gateway(async () => { throw claimError({ claimedAt: null, estimatedEndAt: null }); });
+  const res = new Response();
+  await handler('post', '/v1/chat/completions')(new Request({
+    headers: AUTH, body: { model: 'agentx-primary', messages: [{ role: 'user', content: 'salut' }] }
+  }), res);
+  assert.equal(res.statusCode, 409);
+  assert.match(res.jsonBody.error.message, /occupé par une mesure du Profiler\. Rien n'est envoyé vers le cloud\. Réessaie dans quelques minutes\./);
+});

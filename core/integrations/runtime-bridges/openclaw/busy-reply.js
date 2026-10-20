@@ -12,7 +12,9 @@ function mentions(value, pattern) {
 }
 
 function holderLabel(code, holder) {
-  if (code === 'BENCHMARK_CLAIM_ACTIVE') return 'une campagne benchmark';
+  if (code === 'BENCHMARK_CLAIM_ACTIVE') {
+    return mentions(holder?.kind, /profil/i) ? 'une mesure du Profiler' : 'une campagne benchmark';
+  }
   if (!holder) return 'une autre charge de travail';
   const who = `${holder.kind || ''} ${holder.principal || ''}`;
   if (holder.type === 'maintenance') return 'une maintenance';
@@ -31,6 +33,24 @@ function sinceLabel(value, now) {
   return day(date) === day(now) ? ` depuis ${time}` : ` depuis le ${new Intl.DateTimeFormat('fr-CA', { timeZone: TIME_ZONE, day: 'numeric', month: 'long' }).format(date)} à ${time}`;
 }
 
+function clockLabel(value) {
+  return new Intl.DateTimeFormat('fr-CA', { timeZone: TIME_ZONE, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    .format(new Date(value)).replace(':', ' h ');
+}
+
+// A benchmark claim refusal keeps the claim on the original error (the runtime
+// wrapper keeps it as `cause`).
+function claimOf(error) {
+  const source = [error, error?.cause].find(item => item?.code === 'BENCHMARK_CLAIM_ACTIVE' && (item.claimedAt || item.claimSource));
+  return source ? { kind: source.claimSource, since: source.claimedAt, until: source.estimatedEndAt } : null;
+}
+
+function untilLabel(value, now) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime()) || date <= now) return '';
+  return `, fin estimée vers ${clockLabel(date)}`;
+}
+
 function busyMessage(error, now = new Date()) {
   const failure = error?.failure || {};
   if (error?.code === 'RUNTIME_INFERENCE_RECOVERY_REQUIRED' || /recovery_required$/.test(failure.cause || '')) {
@@ -40,8 +60,8 @@ function busyMessage(error, now = new Date()) {
     const { reasonLabel } = require('./conversation-fallback');
     return `⏸️ Je ne peux pas répondre pour le moment : le cerveau principal est ${reasonLabel({ reason: failure.primaryReason })} et le cerveau léger ne répond pas non plus. Rien n'est envoyé vers le cloud. Réessaie dans quelques minutes.`;
   }
-  const holder = failure.holder || null;
-  return `⏸️ Je ne peux pas répondre pour le moment : le serveur d'inférence local est occupé par ${holderLabel(error?.code, holder)}${sinceLabel(holder?.since, now)}. Rien n'est envoyé vers le cloud. Réessaie dans quelques minutes.`;
+  const holder = failure.holder || claimOf(error);
+  return `⏸️ Je ne peux pas répondre pour le moment : le serveur d'inférence local est occupé par ${holderLabel(error?.code, holder)}${sinceLabel(holder?.since, now)}${untilLabel(holder?.until, now)}. Rien n'est envoyé vers le cloud. Réessaie ${holder?.until ? 'après' : 'dans quelques minutes'}.`;
 }
 
 function wantsBusyReply(req, mode) {
@@ -65,4 +85,4 @@ function sendBusyReply(res, { mode, model, stream, error, now = new Date() }) {
   return res.end(`${JSON.stringify(first)}\n${JSON.stringify(final)}\n`);
 }
 
-module.exports = { BUSY_REPLY_HEADER, BUSY_REPLY_MODE, busyMessage, sendBusyReply, wantsBusyReply };
+module.exports = { BUSY_REPLY_HEADER, BUSY_REPLY_MODE, busyMessage, claimOf, sendBusyReply, wantsBusyReply };
