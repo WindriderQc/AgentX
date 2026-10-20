@@ -100,6 +100,9 @@ and runs several short worker sessions in fresh context:
   after Core verifies termination, other groups may continue in the same
   budget. Operator stops, unresolved calls and execution deadlines still stop
   the run. Failed corrections keep the report incomplete.
+  A retry receives the prior rejection reason and, when available in the same
+  execution, its own rejected JSON path. It corrects that result without
+  overwriting the original artifact or restarting verified research.
 - **Render.** After every step the runner regenerates the Markdown report and
   `coverage.json` from the ledger, so findings, tables and totals cannot
   drift, and each step counts as saved progress.

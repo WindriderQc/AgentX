@@ -118,6 +118,25 @@ def latest_operator_notes(task):
     return notes[-1][-FEEDBACK_CHARS:] if notes else ''
 
 
+def retry_feedback(ledger, group, output):
+    retrying = {path for path in group if ledger['documents'][path].get('attempts', 0) > 0}
+    previous = next((row for row in reversed(ledger['steps'])
+                     if retrying.intersection(row.get('documents', []))), None)
+    if not previous or previous.get('result') != 'failed':
+        return ''
+    text = ('Previous result rejected by the runner (diagnostic data): '
+            + json.dumps(str(previous.get('reason', ''))[:600]) + '\n'
+            'Correct the rejected result for ONLY the currently assigned documents. '
+            'Preserve verified checks and finish the stated remaining scope; do not repeat all research.\n')
+    number = previous.get('step')
+    folder = posixpath.dirname(output)
+    if (previous.get('requestId') == posixpath.basename(folder) and previous.get('jsonResultAvailable') is True
+            and type(number) is int and 0 < number < 1000000):
+        prior = posixpath.join(folder, f'step-{number:02d}.json')
+        text += f'Read your rejected JSON at {prior}; write the corrected result to {output}. Do not overwrite the earlier file.\n'
+    return text + '\n'
+
+
 def group_prompt(ledger, group, output, task, workspace_note, line_range=None):
     if line_range:
         start, end, _ = line_range
@@ -142,7 +161,8 @@ def group_prompt(ledger, group, output, task, workspace_note, line_range=None):
         f'Earlier findings for these documents (do not repeat them):\n{earlier}\n\n'
         f'Claims already checked (do not repeat them):\n{checked}\n\n'
         f'Documents partly reviewed before:\n{partial}\n\n'
-        'For each document, check its concrete claims (paths, routes, values, names, behaviour) against the source. '
+        + retry_feedback(ledger, group, output)
+        + 'For each document, check its concrete claims (paths, routes, values, names, behaviour) against the source. '
         'Record what you checked as evidence with the exact source path and line. Report a finding only when the '
         'source proves the document wrong (inaccuracy), out of date (obsolete) or missing something important (gap). '
         'Mark a document "partial" if you could not check all of it and say what remains in "note". '
