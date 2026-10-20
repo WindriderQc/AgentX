@@ -362,8 +362,9 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
       catch (persistenceError) { error = persistenceError; }
     }
     // No fallback serves gateway clients: say who holds the host and until when,
-    // as a final refusal (409) so the client does not retry in a loop.
-    if (!res.headersSent && HOST_BUSY_CODES.has(error?.code)) {
+    // or that it awaits recovery, as a final refusal (409) so the client does
+    // not retry in a loop.
+    if (!res.headersSent && (HOST_BUSY_CODES.has(error?.code) || error?.code === 'RUNTIME_INFERENCE_RECOVERY_REQUIRED')) {
       res.set('x-agentx-inference-outcome', 'host-busy');
       return res.status(409).json({ error: { message: busyMessage(error), type: 'host_busy', code: error.code } });
     }
