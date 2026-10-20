@@ -165,7 +165,14 @@ def legacy_prompt(ledger, output, task, workspace_note):
         f'Earlier findings (verbatim):\n<<<\n{ledger.get("legacy") or ""}\n>>>\n\n'
         f'Write JSON to {output}: {{"legacyEdits": [{{"find": "<exact text that occurs once above>", '
         '"replace": "<corrected text>", "reason": "<which note and what source evidence>"}]}. '
-        'Use an empty list if no correction is justified. Stop as soon as the file is written.'
+        'You may also include "evidenceEdits": [{"document": "<original inventory document>", '
+        '"path": "<existing evidence source path>", "line": <existing 1-based source line>, '
+        '"find": "<exact previous evidence check>", "replace": "<corrected check>"}]. '
+        f'The saved evidence is in {posixpath.join(posixpath.dirname(output), "coverage.json")}. '
+        'Use Python to read only the evidence for documents concerned by the reviewer notes; '
+        'verify each correction against /workspace. An evidence edit changes only existing check text, '
+        'never its source reference, hash or coverage state. Do not edit coverage.json or the rendered report. '
+        'Use empty lists if no correction is justified. Stop as soon as the JSON result is written.'
     )
 
 

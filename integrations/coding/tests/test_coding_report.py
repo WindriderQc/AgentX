@@ -695,6 +695,20 @@ class StepsReportTest(unittest.TestCase):
         self.assertEqual(progress.last_useful, 4800)  # Writer prose alone is not new verified scope.
         self.assertIsNone(progress.tick())
 
+    def test_corrects_saved_evidence_without_rereviewing_completed_documents(self):
+        snapshot = dict(report.scope.inventory(self.workspace, self.head), sha256='a'*64)
+        prior = report.ledgers.new_ledger(snapshot)
+        prior['documents']['README.md']['evidence'] = [{'path': 'config.js', 'line': 1,
+            'sha256': hashlib.sha256((self.workspace/'config.js').read_bytes()).hexdigest(), 'check': 'Retry limit 5.'}]
+        answer = lambda prompt: {'legacyEdits': [], 'evidenceEdits': [{'document': 'README.md',
+            'path': 'config.js', 'line': 1, 'find': 'Retry limit 5.', 'replace': 'Retry limit 7.'}]}
+        outcome, corrected = self.correction_step(answer, notes='Correct README.md evidence.', prior=prior)
+        self.assertEqual(outcome, 'complete')
+        self.assertEqual(runner.run_worker.call_count, 1)
+        self.assertEqual(corrected['documents']['README.md']['evidence'][0]['check'], 'Retry limit 7.')
+        self.assertFalse(corrected['legacyReviewPending'])
+        self.correction_progress.useful.assert_not_called()
+
     def test_reviews_groups_in_fresh_sessions_and_delivers_a_rendered_report(self):
         self.answers=[self.reviewed, self.reviewed, lambda prompt:{'summary':'Two documents reviewed; one wrong value.','explanations':{'F1':'Readers would set 5.'}}]
         with mock.patch('builtins.print'):self.assertEqual(runner.main(),0)

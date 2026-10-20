@@ -218,16 +218,20 @@ def record_failure(ledger, group, step_id, reason, max_attempts=2):
     return blocked
 
 
-def legacy_review_required(ledger, notes):
+def legacy_review_required(ledger, notes, *, review_evidence=False):
     """A historical boolean cannot prove that these reviewer notes were applied."""
-    if not ledger.get('legacy') or not notes:
+    if not notes or not (ledger.get('legacy') or review_evidence):
         return False
     review = ledger.get('legacyReview') or {}
     return not (review.get('result') == 'merged'
                 and review.get('sourceCommit') == ledger['sourceCommit']
                 and review.get('inventorySha256') == ledger['inventorySha256']
                 and review.get('notesSha256') == hashlib.sha256(notes.encode()).hexdigest()
-                and review.get('legacySha256') == hashlib.sha256(ledger['legacy'].encode()).hexdigest())
+                and review.get('legacySha256') == hashlib.sha256((ledger.get('legacy') or '').encode()).hexdigest()
+                and all(any(ref.get('path') == edit['path'] and ref.get('line') == edit['line']
+                            and ref.get('sha256') == edit['sha256'] and ref.get('check') == edit['after']
+                            for ref in ledger['documents'].get(edit['document'], {}).get('evidence', []))
+                        for edit in review.get('evidenceCorrections', [])))
 
 
 def continuation_retries(ledger, request_id, parent_request_id):
@@ -254,22 +258,60 @@ def continuation_retries(ledger, request_id, parent_request_id):
                                 'documents': [row['path'] for row in resets], 'previous': resets})
 
 
+def evidence_corrections(ledger, edits, source_bytes):
+    """Stage exact corrections to existing proof text without changing coverage."""
+    if not isinstance(edits, list) or len(edits) > MAX_LEGACY_EDITS:
+        raise LedgerError(f'evidenceEdits must be a list of at most {MAX_LEGACY_EDITS}')
+    staged, targets = [], set()
+    for edit in edits:
+        if (not isinstance(edit, dict) or not isinstance(edit.get('document'), str)
+                or edit['document'] not in ledger['documents']):
+            raise LedgerError('each evidence edit must identify an original inventory document')
+        if not set(edit) <= {'document', 'path', 'line', 'find', 'replace'}:
+            raise LedgerError('an evidence edit cannot change coverage or source references')
+        path, line = edit.get('path'), edit.get('line')
+        if not isinstance(path, str) or type(line) is not int:
+            raise LedgerError('each evidence edit needs its original source line')
+        find = _text(edit.get('find'), 'evidence edit find')
+        replace = _text(edit.get('replace'), 'evidence edit replace')
+        key = (edit['document'], path, line, find)
+        if key in targets:
+            raise LedgerError('an evidence edit target must occur only once')
+        targets.add(key)
+        matches = [ref for ref in ledger['documents'][edit['document']]['evidence']
+                   if ref['path'] == path and ref['line'] == line and ref['check'] == find]
+        if len(matches) != 1:
+            raise LedgerError('the original evidence text must match exactly once')
+        [verified] = _evidence([{'path': path, 'line': line, 'check': replace}], source_bytes, 'evidence correction')
+        if matches[0]['sha256'] != verified['sha256']:
+            raise LedgerError('the original evidence does not match the frozen source')
+        staged.append((matches[0], replace, {'document': edit['document'], 'path': path, 'line': line,
+            'sha256': verified['sha256'], 'before': find, 'after': replace}))
+    return staged
+
+
 def merge_legacy_review(ledger, value, reason, notes, source_bytes, step_id, request_id):
     """Record a failed correction step durably, and acknowledge only valid results."""
-    before = hashlib.sha256(ledger['legacy'].encode()).hexdigest()
+    before = hashlib.sha256((ledger.get('legacy') or '').encode()).hexdigest()
     try:
         if value is None:
             raise LedgerError(reason or 'no correction result was written')
-        if not isinstance(value, dict) or set(value) != {'legacyEdits'} or not isinstance(value['legacyEdits'], list):
+        if (not isinstance(value, dict) or not set(value) <= {'legacyEdits', 'evidenceEdits'}
+                or not isinstance(value.get('legacyEdits'), list)):
             raise LedgerError('the correction result must contain a legacyEdits list')
-        merge_step(ledger, [], {**value, 'documents': []}, source_bytes, step_id, allow_empty=True)
+        staged = evidence_corrections(ledger, value.get('evidenceEdits', []), source_bytes)
+        merge_step(ledger, [], {'legacyEdits': value['legacyEdits'], 'documents': []}, source_bytes, step_id, allow_empty=True)
+        for ref, replace, _ in staged:
+            ref['check'] = replace
+        if staged:
+            ledger['steps'][-1]['evidenceCorrections'] = [receipt for _, _, receipt in staged]
     except LedgerError as error:
         record_failure(ledger, [], step_id, str(error))
     receipt = ledger['steps'][-1]
     receipt.update(kind='legacy', requestId=request_id, sourceCommit=ledger['sourceCommit'],
                    inventorySha256=ledger['inventorySha256'], legacyBeforeSha256=before,
                    notesSha256=hashlib.sha256(notes.encode()).hexdigest())
-    ledger['legacyReview'] = {**receipt, 'legacySha256': hashlib.sha256(ledger['legacy'].encode()).hexdigest()}
+    ledger['legacyReview'] = {**receipt, 'legacySha256': hashlib.sha256((ledger.get('legacy') or '').encode()).hexdigest()}
     ledger['legacyReviewed'] = receipt['result'] == 'merged'
     ledger['legacyReviewPending'] = not ledger['legacyReviewed']
 

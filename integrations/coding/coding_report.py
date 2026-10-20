@@ -503,6 +503,7 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
     ledger = initial_ledger(root, path, snapshot, baseline)
     ledgers.continuation_retries(ledger, args.request_id, getattr(args, 'parent_request_id', None))
     saved_progress = ledgers.progress_marker(ledger)
+    review_evidence = any(row['evidence'] for row in ledger['documents'].values())
     notes = steps.latest_operator_notes(task)
     capability = lane_capability(r)
     budget = steps.step_budget(capability)
@@ -520,7 +521,7 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
     def save():
         nonlocal saved_progress
         if notes:
-            ledger['legacyReviewPending'] = ledgers.legacy_review_required(ledger, notes)
+            ledger['legacyReviewPending'] = ledgers.legacy_review_required(ledger, notes, review_evidence=review_evidence)
         groups = steps.plan_groups(ledger, sizes, budget, limit=3, line_counts=line_counts)
         steps.write_atomic(path, ledgers.render(ledger, title, [group['documents'] for group in groups]))
         steps.write_atomic(root/'coverage.json', json.dumps(ledgers.coverage(ledger), indent=2) + '\n')
@@ -555,7 +556,7 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
     save()
     number = 0
     source = lambda name: scope.source_bytes(workspace, baseline, name)
-    if ledgers.legacy_review_required(ledger, notes):
+    if ledgers.legacy_review_required(ledger, notes, review_evidence=review_evidence):
         number += 1
         value, reason = one(number, steps.legacy_prompt(ledger, f'{sandbox_root}/step-{number:02d}.json', task, note),
                             steps.LEGACY_CALLS, budget['seconds'])
