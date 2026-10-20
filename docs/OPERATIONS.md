@@ -511,9 +511,13 @@ on the same one. A task routed to a GPU host may follow its model to another
 GPU host, never to a host of the other residency.
 
 `config/obsidian-vault/` holds generic household note templates (appliance,
-routine, recipe, procedure) and `Maison.base`, an Obsidian Base listing
-appliances with their warranty dates, routines and recipes under
-`Docs/Maison`. Copy `Templates/` beside the documents folder, not inside it, so
+routine, recipe, procedure, plant) and `Maison.base`, an Obsidian Base listing
+appliances with their warranty dates, routines, recipes and plants under
+`Docs/Maison`. A published plant card can be exported from the Plants page:
+Core files a `Plante — <name>` note with the template's properties in the
+vault inbox (`VAULT_INBOX_PATH`). Moving it to `Docs/Maison` keeps it and makes
+it eligible for retrieval; the Core card stays the reference, and editing the
+note does not change it. Copy `Templates/` beside the documents folder, not inside it, so
 templates are never ingested; point Obsidian's Templates plugin at it. Note
 properties such as `garantie_fin` are indexed with the note's first chunk.
 

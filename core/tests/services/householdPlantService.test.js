@@ -100,4 +100,27 @@ describe('household plant cards in Core', () => {
     await expect(plants.create({ room: 'Salon' })).rejects.toMatchObject({ code: 'PLANT_NICKNAME_REQUIRED' });
     expect(await Plant.countDocuments({})).toBe(1);
   });
+
+  test('a published card is filed in the vault inbox as a Plante note; drafts are not (#871)', async () => {
+    const fs = require('fs/promises'), os = require('os'), path = require('path');
+    const { createVaultInbox } = require('../../src/services/vaultInboxService');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'plant-vault-'));
+    try {
+      const vaultInbox = createVaultInbox({ root });
+      const { plant } = await plants.create({ nickname: 'Synthetic plant', ...card });
+      await expect(plants.exportToVault({ id: plant.id }, { vaultInbox })).rejects.toMatchObject({ status: 409, code: 'PLANT_NOT_PUBLISHED' });
+      const { plant: published } = await plants.publish({ id: plant.id, expectedRevision: 0 });
+      const exported = await plants.exportToVault({ id: plant.id }, { vaultInbox });
+      expect(exported).toMatchObject({ status: 'inbox', file: expect.stringMatching(/Plante — Synthetic plant\.md$/) });
+      const text = await fs.readFile(path.join(root, exported.file), 'utf8');
+      expect(text).toContain('author: household');
+      expect(text).toContain('type: "plante"');
+      expect(text).toContain(`plant_id: "${plant.id}"`);
+      expect(text).toContain('## Toxicité');
+      // Exporting changes nothing on the card.
+      expect((await plants.get({ id: plant.id, view: 'manage' })).plant.revision).toBe(published.revision);
+      await expect(plants.exportToVault({ id: plant.id }, { vaultInbox: createVaultInbox({ root: '' }) }))
+        .rejects.toMatchObject({ status: 503, code: 'VAULT_INBOX_DISABLED' });
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
+  });
 });

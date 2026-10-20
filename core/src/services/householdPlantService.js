@@ -174,4 +174,18 @@ async function retire(input = {}) {
   return { plant: managedPlant(saved), chores };
 }
 
-module.exports = { MAX_PHOTO_BYTES, addPhoto, create, get, list, photo, publish, removePhoto, retire, update };
+/** Files a published card in the owner's vault inbox (#871); the card itself does not change. */
+async function exportToVault(input = {}, deps = {}) {
+  const plant = await find(input.id);
+  if (plant.status !== 'published') throw failure(409, 'PLANT_NOT_PUBLISHED', 'Only a published plant can be exported.');
+  const inbox = deps.vaultInbox || require('./vaultInboxService').createVaultInbox();
+  const { title, body, tags, properties } = require('../domains/household/plantNote').plantNote(managedPlant(plant));
+  try {
+    const note = await inbox.writeNote({ title, body, tags }, { author: 'household', properties });
+    return { file: note.file, status: note.status };
+  } catch (error) {
+    throw failure(error.statusCode || 500, error.code || 'VAULT_NOTE_FAILED', error.statusCode ? error.message : 'The note could not be written.');
+  }
+}
+
+module.exports = { MAX_PHOTO_BYTES, exportToVault, addPhoto, create, get, list, photo, publish, removePhoto, retire, update };

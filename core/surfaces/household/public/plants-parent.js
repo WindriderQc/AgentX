@@ -160,7 +160,8 @@
         const care = (plant.care || []).map(chore => `<li>${esc(view().nextCare({ care: [chore] }, profiles))}</li>`).join('');
         return `<p>Published. The kids see ${esc(plant.nickname)} in Ma jungle.</p>
           ${care ? `<p class="muted">In the Kids Room now:</p><ul class="plant-care-now">${care}</ul>` : '<p class="muted">No care chore yet: assign a child to a care action.</p>'}
-          <button type="button" class="compact danger" data-plant-retire>Retire this plant</button>`;
+          <div class="row wrap"><button type="button" class="compact" data-plant-export>Export to the vault</button>
+          <button type="button" class="compact danger" data-plant-retire>Retire this plant</button></div>`;
       }
       return `${view().childPreviewHtml(plant, esc)}
         ${problems.length ? `<ul class="plant-problems">${problems.map(problem => `<li>${esc(problem)}</li>`).join('')}</ul>` : '<p>Ready for the kids.</p>'}
@@ -229,6 +230,14 @@
         const fields = view().keepSources(view().readEditor(editor, frequency()), plant);
         if (await save('/update', fields, 'Saved.')) render(host);
       };
+      on('[data-plant-export]', async () => {
+        try {
+          const { file } = await post(`${url(plant.id)}/export-vault`);
+          toast(`Filed in the vault inbox: ${file}. Move it to Docs/Maison to keep it.`);
+        } catch (error) {
+          toast(/VAULT_INBOX_DISABLED|not configured/i.test(error.message) ? 'The vault inbox is not configured on this instance.' : error.message);
+        }
+      });
       on('[data-plant-publish]', async () => { if (await save('/publish', {}, `${plant.nickname} is in Ma jungle.`)) render(host); });
       on('[data-plant-retire]', async () => {
         if (!window.confirm(plant.status === 'draft' ? 'Discard this draft?' : `Retire ${plant.nickname}? The kids will no longer see it.`)) return;

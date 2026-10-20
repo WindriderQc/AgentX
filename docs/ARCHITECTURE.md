@@ -219,6 +219,11 @@ both interval fields.
   helper with the question ready. Family Nestor turns receive a bounded
   summary of the published cards (needs, toxicity, mood) as their only source
   about the plants, next to the chore summary.
+- `POST /api/family/plants/:id/export-vault` files a published card in the
+  vault inbox as a `Plante` note (`src/domains/household/plantNote.js`): the
+  template's typed properties, its sections and its sources, marked
+  `source: agentx-plant`. The vault inbox adds these properties only for Core
+  callers, never from agent input. The export never changes the card.
 - The parent page `/dad/family/plants` (`plants-parent.js`, rendering in
   `plant-view.js`) lists drafts first. Adding a plant takes a photo, reduces
   it in the browser and starts identification. Each card is then completed

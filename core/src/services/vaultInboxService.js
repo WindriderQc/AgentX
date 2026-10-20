@@ -12,7 +12,11 @@ const path = require('path');
 const MAX_TITLE = 120;
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_TAGS = 12;
-const AUTHORS = new Set(['nestor', 'agent']);
+const AUTHORS = new Set(['nestor', 'agent', 'household']);
+// Properties a Core caller adds to the frontmatter (never an agent's input):
+// lower-case keys, and string, number or empty values.
+const PROPERTY_KEY = /^[a-z][a-z0-9_]{0,39}$/;
+const RESERVED = new Set(['title', 'created', 'author', 'status', 'tags']);
 const TAG = /^[\p{L}\p{N}_][\p{L}\p{N}_/-]{0,63}$/u;
 
 function inboxError(message, code, statusCode = 400) {
@@ -48,8 +52,18 @@ function yamlString(value) {
   return JSON.stringify(String(value));
 }
 
-function renderNote({ title, body, tags, author, created }) {
-  const lines = ['---', `title: ${yamlString(title)}`, `created: ${created}`, `author: ${author}`, 'status: inbox'];
+function cleanProperties(value) {
+  const entries = Object.entries(value || {});
+  if (entries.length > 30 || entries.some(([key, item]) => !PROPERTY_KEY.test(key) || RESERVED.has(key)
+    || !(item === null || typeof item === 'string' || (typeof item === 'number' && Number.isFinite(item))))) {
+    throw inboxError('properties must be lower-case keys with string or number values', 'VAULT_NOTE_INVALID', 500);
+  }
+  return entries.map(([key, item]) => [key, typeof item === 'string' ? item.replace(/[\p{Cc}]/gu, ' ').trim().slice(0, 300) : item]);
+}
+
+function renderNote({ title, body, tags, author, created, properties = [] }) {
+  const lines = ['---', `title: ${yamlString(title)}`, `created: ${created}`, `author: ${author}`, 'status: inbox',
+    ...properties.map(([key, item]) => `${key}: ${item === null || item === '' ? '' : typeof item === 'number' ? item : yamlString(item)}`.trimEnd())];
   if (tags.length) lines.push('tags:', ...tags.map((tag) => `  - ${yamlString(tag)}`));
   lines.push('---', '', body.trim(), '');
   return lines.join('\n');
@@ -99,7 +113,7 @@ function createVaultInbox({ root = process.env.VAULT_INBOX_PATH, clock = () => n
     }
   }
 
-  async function writeNote(input = {}, { author } = {}) {
+  async function writeNote(input = {}, { author, properties } = {}) {
     if (!AUTHORS.has(author)) throw inboxError('A server-selected author is required', 'VAULT_AUTHOR_REQUIRED', 500);
     if (!input || typeof input !== 'object' || Array.isArray(input)) {
       throw inboxError('note must be an object', 'VAULT_NOTE_INVALID');
@@ -111,10 +125,11 @@ function createVaultInbox({ root = process.env.VAULT_INBOX_PATH, clock = () => n
       throw inboxError(`body exceeds ${MAX_BODY_BYTES} bytes`, 'VAULT_NOTE_TOO_LARGE', 413);
     }
     const tags = cleanTags(input.tags);
+    const extra = cleanProperties(properties);
     const dir = await resolveRoot();
     const now = clock();
     const created = now.toISOString();
-    const fileName = await place(dir, `${created.slice(0, 10)} ${title}`, renderNote({ title, body, tags, author, created }));
+    const fileName = await place(dir, `${created.slice(0, 10)} ${title}`, renderNote({ title, body, tags, author, created, properties: extra }));
     return { ok: true, authority: 'agentx.core', operation: 'write_vault_note', file: fileName, title, created, status: 'inbox' };
   }
 

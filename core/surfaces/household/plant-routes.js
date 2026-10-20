@@ -19,7 +19,8 @@ function registerPlantRoutes({ app, express, plants, assistant = null, standardJ
   router.get('/', (req, res) => reply(res, 200, () => plants.list({ view: req.query.view, includeRetired: req.query.includeRetired })));
   router.post('/', (req, res) => reply(res, 201, () => plants.create(req.body || {})));
   router.get('/:id', (req, res) => reply(res, 200, () => plants.get({ id: req.params.id, view: req.query.view })));
-  const actions = [['update', 'update', 200], ['photos', 'addPhoto', 201], ['publish', 'publish', 200], ['retire', 'retire', 200]];
+  const actions = [['update', 'update', 200], ['photos', 'addPhoto', 201], ['publish', 'publish', 200], ['retire', 'retire', 200],
+    ['export-vault', 'exportToVault', 201]];
   for (const [path, operation, status] of actions) {
     router.post(`/:id/${path}`, (req, res) => reply(res, status, () => plants[operation]({ ...(req.body || {}), id: req.params.id })));
   }
