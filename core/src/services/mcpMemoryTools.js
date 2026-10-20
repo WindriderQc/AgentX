@@ -49,7 +49,10 @@ function plain(args) {
 
 function view(note) {
   return { id: note.id, text: note.text, kind: note.kind, source: note.source,
-    createdAt: note.createdAt, updatedAt: note.updatedAt, expiresAt: note.expiresAt };
+    createdAt: note.createdAt, updatedAt: note.updatedAt, expiresAt: note.expiresAt,
+    // A souvenir is recalled with its date, people, places and sources.
+    ...(note.kind === 'souvenir' ? { eventDate: note.eventDate, eventDatePrecision: note.eventDatePrecision,
+      people: note.people, places: note.places, sourceRefs: note.sourceRefs } : {}) };
 }
 
 async function memorySearch(args, deps = {}) {
