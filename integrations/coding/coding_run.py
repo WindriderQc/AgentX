@@ -380,7 +380,7 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
                              {**(getattr(progress, "relay_headers", None) or {}),
                               **({"Authorization": f"Bearer {GATEWAY_TOKEN}"} if GATEWAY_TOKEN else {})},
                              drain_on_disconnect=bool(progress and (progress.cumulative_limits or getattr(progress, 'report_mode', False))),
-                             budget_guidance=getattr(progress, "model_guidance", None))
+                             budget_guidance=getattr(progress, "model_guidance", None), request_budget=progress.relay_call_budget() if progress else None)
     try:
         return supervise(sandbox(workspace, home, [
             "python3", "/opt/coding/model_relay.py", "inside", "/home/agent/model.sock", str(RELAY_PORT), "--",
