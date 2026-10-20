@@ -16,3 +16,5 @@
 .history-pick{display:flex!important;gap:9px;align-items:center;margin:8px 0}.history-pick input{width:auto}
 .history-souvenir{border-left:3px solid #e2b85c;padding-left:13px;margin:8px 0}
 .history-filters .history-page-size{flex:0 1 120px;min-width:100px}
+.people-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .75rem; margin: .5rem 0; }
+.people-pair > div, .people summary { display: grid; gap: .15rem; overflow-wrap: anywhere; }
