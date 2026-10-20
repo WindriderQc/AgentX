@@ -157,10 +157,19 @@ async function updateLoadedModel(hostUrl, model, options = {}) {
   return updated;
 }
 
+// A benchmark claim owns `status` until its own release path clears it: the
+// claim heartbeat and finalizer match `status: 'benchmarking'`, so any other
+// write there loses the claim for good (2026-10-20, UGAlien Profiler). This
+// write therefore never lands on a claimed host, whatever snapshot the caller
+// read. `expectStatus` adds a compare-and-set against that snapshot. Returns
+// null when the write was refused.
 async function setHostStatus(hostUrl, status, options = {}) {
   options.assertAuthorityActive?.();
+  if (options.expectStatus === 'benchmarking') return null;
+  const filter = { hostUrl, status: { $ne: 'benchmarking' }, 'benchmarkClaim.batchId': null };
+  if (options.expectStatus !== undefined) filter.status = options.expectStatus;
   const updated = await HostPreference.findOneAndUpdate(
-    { hostUrl },
+    filter,
     { $set: { status } },
     { new: true, ...(options.signal ? { signal: options.signal } : {}) }
   ).lean();

@@ -505,9 +505,13 @@ async function startServer() {
       label: 'Lane Observability',
       start: async () => {
         laneObservability.start();
-        console.log('   ✓ Lane Observability: Active (observe-only, 5m latency scan)');
+        require('./src/services/runtimeQuarantineWatch').start();
+        console.log('   ✓ Lane Observability: Active (observe-only, 5m latency scan, 1m quarantine scan)');
       },
-      stop: async () => laneObservability.stop()
+      stop: async () => {
+        laneObservability.stop();
+        require('./src/services/runtimeQuarantineWatch').stop();
+      }
     });
   } catch (err) {
     console.log(`   ⚠ Lane Observability: ${err.message}`);

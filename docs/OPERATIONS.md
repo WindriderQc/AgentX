@@ -2282,6 +2282,18 @@ recovery.
 A lost heartbeat or a runtime bridge quarantine still needs the restart
 attestation below.
 
+Core says so instead of waiting to be noticed. Once a minute it raises the
+critical `runtime-recovery-quarantine` alert for each holder that only this
+procedure releases: a workload or maintenance lease in UNKNOWN recovery, an
+owner whose heartbeat expired more than a minute ago, an inference no longer
+ACTIVE, or a benchmark claim whose host status is not `benchmarking` (its
+heartbeat and finalizer can then neither renew nor release it). The alert
+resolves as stale once the state is gone. The rule ships with `local_log`; an
+instance that relays alerts adds its own channel. A heavy-work request whose
+executor reports a terminal outcome while its runtime admission is held this
+way turns `uncertain`, with that reason, so the queue notification names it
+instead of showing the request as still running.
+
 For an UNKNOWN workload, use this operator sequence:
 
 1. Inspect the exact operation's journal, Core workload admission and benchmark

@@ -59,15 +59,39 @@ it('finds a lost launch by its native plan tag and settles only its own terminal
   expect(requestJson.mock.calls.every(([options]) => options.method === 'GET')).toBe(true);
 });
 
-it.each(['workloads', 'inferences'])('keeps unknown native %s held even after a terminal benchmark result', async field => {
+it.each(['workloads', 'inferences'])('keeps unknown native %s held after a terminal result and says so', async field => {
   const body = make('held');
   const job = await dispatch(body);
   await queue.record(job.id, { state: 'running', dispatchId: job.dispatchId, operationId }, 'test');
   requestJson.mockResolvedValue({ data: { tags: [planTag(planId(body.executor.plan))], status: 'completed', judge_status: 'completed' } });
   await Runtime.collection.insertOne({ _id: 'runtime', [field]: [{ hosts: [A], expiresAt: new Date(0), recoveryRequired: true }] });
-  expect((await evidence.reconcile(job.id, 'test')).state).toBe('running');
+  // A quarantine waits for an operator: the request turns uncertain, which
+  // raises the queue notification, instead of looking like a run in progress.
+  const held = await evidence.reconcile(job.id, 'test');
+  expect(held).toMatchObject({ state: 'uncertain', reason: expect.stringContaining('recovery quarantine') });
   await Runtime.deleteMany({});
   expect((await evidence.reconcile(job.id, 'test')).state).toBe('completed');
+});
+
+it('keeps a request running while its runtime release is still ordinary', async () => {
+  const body = make('releasing');
+  const job = await dispatch(body);
+  await queue.record(job.id, { state: 'running', dispatchId: job.dispatchId, operationId }, 'test');
+  requestJson.mockResolvedValue({ data: { tags: [planTag(planId(body.executor.plan))], status: 'completed', judge_status: 'completed' } });
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [{ hosts: [A], expiresAt: new Date(Date.now() + 60_000), recoveryState: 'PREPARED' }] });
+  expect((await evidence.reconcile(job.id, 'test')).state).toBe('running');
+});
+
+it('turns a failed Profiler run held in UNKNOWN recovery into an uncertain request (2026-10-20)', async () => {
+  const job = await dispatch({ key: 'profiler-held', title: 'Synthetic profiler fixture', kind: 'profiler', hosts: [A],
+    estimatedMinutes: 90, executor: { hostId: 'primary' } });
+  requestJson.mockImplementation(async ({ path }) => ({ data: path.includes('/progress')
+    ? { queueStatus: 'failed', queueRequestId: job.id, hostId: 'primary' }
+    : { active: [{ queueRequestId: job.id, queueId: 'q-held' }] } }));
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [{ hosts: [A], kind: 'profiler',
+    expiresAt: new Date(Date.now() + 60_000), recoveryState: 'UNKNOWN' }] });
+  const held = await evidence.reconcile(job.id, 'test');
+  expect(held).toMatchObject({ state: 'uncertain', reason: expect.stringContaining('Native outcome failed') });
 });
 
 it('never attaches an unrelated native batch or infers completion from a read failure', async () => {

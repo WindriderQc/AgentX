@@ -213,5 +213,27 @@
         "channels": ["local_log", "telegram"],
         "renotifyMs": 21600000,
         "description": "One short report, written by the ops_watch task model, of what monitoring rules currently flag. One incident per distinct set of findings; it resolves when they are gone. Requires OPS_WATCH_MS."
+    },
+    {
+        "id": "runtime-recovery-quarantine",
+        "name": "Runtime held for operator recovery",
+        "enabled": true,
+        "severity": "critical",
+        "title": "Runtime held for recovery — {{host}}",
+        "message": "{{failureCode}} for {{campaignId}}. {{remediation}}",
+        "conditions": {
+            "all": [
+                {
+                    "fact": "metric",
+                    "operator": "equal",
+                    "value": "runtime_recovery_quarantine"
+                }
+            ]
+        },
+        "channels": [
+            "local_log"
+        ],
+        "renotifyMs": 1800000,
+        "description": "Observe-only signal while a workload, maintenance lease or benchmark claim holds a host in a state only operator recovery releases. Consumer inference there is refused meanwhile."
     }
 ]
