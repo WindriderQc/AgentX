@@ -41,6 +41,8 @@ async function preDispatch(job) {
     const input = require('./images/imageService').validate(job.executor, config);
     const prior = await Images.findOne({ actionKey: job.executor.actionKey }).select('requestHash').lean();
     if (prior && prior.requestHash !== input.requestHash) throw fail('Image actionKey already names another request', 409);
+  } else if (job.kind === 'other' && job.executor.mode === 'pipeline-report') {
+    await require('./pipelineReportResume').preDispatch(job);
   } else if (!(['diagnostic', 'other'].includes(job.kind) && job.executor.mode === 'operator')) {
     throw fail('This request has no supported executor', 409);
   }
@@ -81,13 +83,27 @@ async function observe(job) {
     if (!['completed', 'failed', 'cancelled', 'archive_failed'].includes(result.state)) return { operationId, terminal: false, uncertain: result.state === 'unknown' };
     receipt = { state: result.state === 'archive_failed' ? 'failed' : result.state, authority: 'core.image-operation', operationId,
       runtimeRestored: result.runtimeRestored, artifact: result.artifact || null };
+  } else if (job.kind === 'other' && job.executor?.mode === 'pipeline-report') {
+    const result = await require('./pipelineReportResume').observeCampaign(job);
+    if (!result.terminal) return { operationId: operationId || result.operationId, terminal: false };
+    operationId = operationId || result.operationId;
+    receipt = { state: result.state, authority: 'core.pipeline-report', operationId, outcome: result.outcome };
   } else throw fail('No executor evidence adapter on this request', 409);
   // Native owners retain release authority. A terminal result is insufficient
   // while a matching runtime admission (including UNKNOWN) remains fenced.
   const runtime = await Runtime.findById('runtime').lean();
-  const held = [...(runtime?.workloads || []), ...(runtime?.inferences || [])]
-    .some(item => queue.runtimeOverlaps(job, item));
-  return { operationId, terminal: !held, waitingForRelease: held, ...receipt, observedAt: new Date().toISOString() };
+  const now = new Date();
+  const overlapping = [...(runtime?.workloads || []), ...(runtime?.inferences || [])]
+    .filter(item => queue.runtimeOverlaps(job, item));
+  const held = overlapping.length > 0;
+  // An ordinary release finishes within seconds. A quarantined admission (an
+  // UNKNOWN recovery, an owner whose heartbeat expired, an inference no longer
+  // ACTIVE) waits for an operator, so it must not look like a run in progress.
+  const quarantined = overlapping.some(item => item.recoveryState === 'UNKNOWN'
+    || (item.state && item.state !== 'ACTIVE') || new Date(item.expiresAt) <= now);
+  return { operationId, terminal: !held, waitingForRelease: held, uncertain: quarantined,
+    ...(quarantined ? { reason: `Native outcome ${receipt.state}; its runtime admission is held in recovery quarantine and needs the operator recovery procedure` } : {}),
+    ...receipt, observedAt: now.toISOString() };
 }
 async function reconcile(id, actor) {
   let job = await queue.get(id);
@@ -95,7 +111,7 @@ async function reconcile(id, actor) {
   const result = await observe(job);
   if (!job.operation) job = await queue.record(id, { dispatchId: job.dispatchId, state: 'running', operationId: result.operationId }, actor);
   if (result.terminal) return queue.settle(id, result, actor);
-  if (result.uncertain && job.state !== 'uncertain') return queue.record(id, { dispatchId: job.dispatchId, state: 'uncertain', reason: 'Native executor reports an unknown outcome' }, actor);
+  if (result.uncertain && job.state !== 'uncertain') return queue.record(id, { dispatchId: job.dispatchId, state: 'uncertain', reason: result.reason || 'Native executor reports an unknown outcome' }, actor);
   return { ...job, observation: result };
 }
 

@@ -51,6 +51,25 @@ const SECRETARY_TOOLS = Object.freeze([
     _meta: SECRETARY_MCP_META
   }),
   Object.freeze({
+    name: 'propose_family_chore',
+    title: 'Propose A Family Chore',
+    description: 'Propose one Kids Room chore for Dad to review in the idea inbox. It creates no chore: Dad chooses the child, frequency and stars, then creates it or sets it aside. Use it when Dad or a household fact suggests a recurring responsibility for a child (for example watering a plant). Title as the child will read it: a short verb and object. Never propose chores that need tools, heat, chemicals or fertilizer for a young child. For every few days, use cadence interval with intervalDays, and winterIntervalDays when winter care differs. Use sourceKey (8-64 lowercase letters, digits or dashes) to avoid proposing the same chore twice.',
+    inputSchema: objectSchema({
+      title: { type: 'string', minLength: 1, maxLength: 160, description: 'What the child will read, e.g. "Water Gérard".' },
+      note: { type: 'string', maxLength: 1000, description: 'How to do it, in a few simple words.' },
+      profileId: { type: 'string', maxLength: 80, description: 'Suggested child profile id; omit to let Dad choose.' },
+      cadence: { type: 'string', enum: ['once', 'daily', 'weekly', 'interval'], default: 'once' },
+      intervalDays: { type: 'integer', minimum: 2, maximum: 90, description: 'Days between repeats; required for interval.' },
+      winterIntervalDays: { type: 'integer', minimum: 2, maximum: 90, description: 'Optional interval during the household winter season.' },
+      stars: { type: 'integer', minimum: 1, maximum: 5, default: 1 },
+      reason: { type: 'string', maxLength: 500, description: 'One line for Dad: why this chore.' },
+      subjectRef: { type: 'string', maxLength: 101, description: 'What the chore is about, as kind:id (e.g. plant:<id>).' },
+      sourceKey: { type: 'string', minLength: 8, maxLength: 64, pattern: '^[a-z0-9][a-z0-9-]{7,63}$' }
+    }, ['title']),
+    annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
+    _meta: SECRETARY_MCP_META
+  }),
+  Object.freeze({
     name: 'list_personal_tasks',
     title: 'List Personal Tasks',
     description: 'Read all personal actions and extracted findings from Core, grouped by category: action (owner action), email (request to clarify), platform (technical follow-up), assistant (the Secretary\'s own reading). needsReview means the extraction is uncertain, not a confirmed commitment or overdue work. scope active selects owner actions; scope review selects extractions. categoryCounts covers the full snapshot, totalCount covers the selected scope/category, count covers this page, and nextOffset pages through hasMore results. Check existing findings before capturing another mail action. Attribute requests and uncertainty in your answer. Name days exactly as dueLocal, relevantUntilLocal and todayLocal give them.',
@@ -233,6 +252,7 @@ async function callSecretaryTool(name, args, deps) {
     if (name === 'complete_personal_task') return textResult(await deps.personalTasks.complete({ ...input, by: input.by || 'nestor-secretary' }));
     if (name === 'update_personal_task') return textResult(await deps.personalTasks.update({ ...input, by: 'nestor-secretary' }));
     if (name === 'add_idea') return textResult(await (deps.ideaInbox || require('../../src/services/ideaInboxService')).captureIdea({ text: input.text, tags: input.tags, origin: 'nestor' }));
+    if (name === 'propose_family_chore') return textResult(await (deps.ideaInbox || require('../../src/services/ideaInboxService')).proposeFamilyChore(input));
     if (name === 'personal_briefing') return textResult(await deps.personalTasks.briefing());
     if (name === 'network_devices') {
       const read = deps.networkInventory || require('../../src/services/networkInventory').readNetworkInventory;

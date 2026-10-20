@@ -18,7 +18,7 @@ async function publishJobs(jobs) {
       severity: job.state === 'completed' || job.state === 'cancelled' ? 'info' : 'warning',
       status: 'active', title: `${job.title} — ${labels[job.state]}`,
       message: job.state === 'uncertain'
-        ? 'Check the same receipt before any relaunch. The reservation stays held.'
+        ? `${job.reason ? `${job.reason}. ` : ''}Check the same receipt before any relaunch. The reservation stays held.`
         : `Completion receipt available. Authority: ${job.releaseReceipt?.authority || 'queue'}.`,
       context: { component: 'heavy-work-queue', relatedEvents: [job.id], additionalData: {
         queueRequestId: job.id, state: job.state, source: job.source,

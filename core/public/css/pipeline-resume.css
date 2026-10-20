@@ -1,0 +1,23 @@
+/* One-click report resume (#878). */
+.pipeline-drawer-action.pipeline-resume { gap: 10px; border-color: rgba(124, 240, 200, 0.28); background: rgba(124, 240, 200, 0.05); }
+.pipeline-resume h3 { margin: 0; font-size: 0.95rem; color: var(--text, #e2e8f0); }
+.pipeline-resume p { margin: 0; color: #cbd5e1; font-size: 0.86rem; line-height: 1.5; }
+.pipeline-resume p strong { color: var(--text, #e2e8f0); font-variant-numeric: tabular-nums; }
+.pipeline-resume code { color: #e2e8f0; }
+.pipeline-resume-when { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0; padding: 8px 10px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; }
+.pipeline-resume-when legend { padding: 0 4px; color: #94a3b8; font-size: 0.78rem; }
+.pipeline-drawer-action .pipeline-resume-when label,
+.pipeline-drawer-action .pipeline-resume-check { display: flex; gap: 8px; align-items: center; min-height: 32px; color: #e2e8f0; font-size: 0.86rem; cursor: pointer; }
+.pipeline-drawer-action .pipeline-resume-when input[type="radio"],
+.pipeline-drawer-action .pipeline-resume-check input { width: 18px; height: 18px; padding: 0; flex: none; accent-color: #7cf0c8; }
+.pipeline-drawer-action .pipeline-resume-at { display: grid; flex-basis: 100%; color: #94a3b8; }
+.pipeline-drawer-action .pipeline-resume-at[hidden] { display: none; }
+.pipeline-resume-budget { padding: 8px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.18); }
+.pipeline-resume-state { padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1); }
+.pipeline-resume-state.is-live { border-color: rgba(124, 240, 200, 0.35); color: #7cf0c8; }
+.pipeline-resume-state.is-warn { border-color: rgba(251, 191, 36, 0.4); color: #fbbf24; }
+.pipeline-resume-state a { color: #7cf0ef; margin-left: 4px; }
+.pipeline-resume-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.pipeline-resume-error { color: #fca5a5; font-size: 0.84rem; }
+.pipeline-resume-advanced > summary { cursor: pointer; color: #94a3b8; font-size: 0.84rem; padding: 6px 2px; }
+.pipeline-resume-advanced[open] > summary { margin-bottom: 8px; }

@@ -150,6 +150,15 @@ consumers receive bounded operations, never models or an ID allocator:
   parent-approval rules. Family fields are optional in `PipelineTask`, so other
   task lanes keep their shape.
 
+A family routine repeats `once`, `daily`, `weekly` or every N household days
+(`interval`, `intervalDays` 2–90). Daily and weekly repeats step from the due
+day; an interval repeat is counted from the approval day, so a late check-in
+starts a fresh interval instead of stacking repeats. An optional
+`winterIntervalDays` replaces the interval when the approval day falls in the
+household winter season (`FAMILY_WINTER_SEASON`, `MM-DD/MM-DD`, default
+November 1 to March 31). Changing the frequency away from `interval` clears
+both interval fields.
+
 Personal-task deadlines follow one contract on every write path (the
 Household `POST /api/secretary/tasks` and `POST /api/secretary/tasks/update`
 routes and the Secretary MCP `add_personal_task` / `update_personal_task`
@@ -245,7 +254,13 @@ Planning idea in `inbox`, tagged with its origin (`origin:nestor` or
 `origin:family`) and kind. Nothing is queued until the parent reviews it on
 Dad's Desk ("Idées à trier") or through `/api/planning/ideas/:id/promote`: a
 personal task, a pipeline task (`source: planning-idea`, `sourceKey:
-idea:<id>`, so a retry reuses it), later, or rejected. A family conversation
+idea:<id>`, so a retry reuses it), later, or rejected. Nestor's
+`propose_family_chore` tool stages a Kids Room chore the same way (kind
+`family_chore`, with the chore as the child would read it and an optional
+`subjectRef` such as `plant:<id>`); it creates no chore. The parent chooses the
+child, frequency and stars on the card, and the promotion creates one family
+chore (`source: planning-idea`, `sourceKey: idea:<id>`, so a retry returns the
+same chore). The family agent never creates or proposes chores. A family conversation
 also receives a read-only summary of the Kids Room routines; it cannot check
 in, approve or reach personal tasks.
 

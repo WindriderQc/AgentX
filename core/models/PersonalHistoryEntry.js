@@ -18,6 +18,17 @@ const schema = new mongoose.Schema({
   eventDatePrecision: { type: String, enum: ['unknown', 'day', 'instant'], default: 'unknown' },
   assertionState: { type: String, enum: ['unknown', 'reported', 'planned', 'confirmed', 'cancelled', 'disputed'], default: 'unknown' },
   sourceStatus: { type: String, default: '', maxlength: 1000 },
+  // A consolidated assertion: its people, places and the other sources it merges.
+  people: [{ type: String, maxlength: 300 }],
+  places: [{ type: String, maxlength: 300 }],
+  relatedSources: [{
+    _id: false,
+    system: { type: String, enum: ['gmail', 'outlook-export'], required: true },
+    threadId: { type: String, default: '', maxlength: 256 },
+    messageId: { type: String, default: '', maxlength: 256 },
+    sourceSha256: { type: String, required: true, maxlength: 64 },
+    findingId: { type: String, required: true, maxlength: 64 }
+  }],
   reviewState: { type: String, enum: ['candidate', 'retained', 'resolved', 'dismissed', 'forgotten'], default: 'candidate', index: true },
   revision: { type: Number, default: 0 },
   source: {

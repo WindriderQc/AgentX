@@ -126,7 +126,7 @@ async function checkAndReloadDefaults(isStopped = () => false) {
       });
       if (!response.ok) {
         const hasPin = getPinnedEntries(pref).length > 0;
-        if (hasPin) await setHostStatus(pref.hostUrl, 'offline');
+        if (hasPin) await setHostStatus(pref.hostUrl, 'offline', { expectStatus: pref.status });
         continue;
       }
       const data = await response.json();
@@ -187,12 +187,14 @@ async function checkAndReloadDefaults(isStopped = () => false) {
       await require('./hostGpuHealthService').observeHostGpuHealth(pref, runningModelInfos);
 
       // Ready means every declared resident is present, including embeddings.
+      // `pref` was read at the top of the tick, possibly before a claim was
+      // acquired, so each status write is a compare-and-set on that snapshot.
       const primary = entries[0];
       const allPinsLoaded = entries.every(entry => entrySatisfiedByLoadedModel(entry, runningModelInfos));
       if (allPinsLoaded && pref.status !== 'ready') {
-        await setHostStatus(pref.hostUrl, 'ready');
+        await setHostStatus(pref.hostUrl, 'ready', { expectStatus: pref.status });
       } else if (!allPinsLoaded && pref.status === 'ready') {
-        await setHostStatus(pref.hostUrl, 'idle');
+        await setHostStatus(pref.hostUrl, 'idle', { expectStatus: 'ready' });
       }
       await reconcileVramSpill(pref, entries, runningModelInfos);
 
@@ -311,7 +313,7 @@ async function checkAndReloadDefaults(isStopped = () => false) {
         // A hold may have been acquired after this tick took its snapshot.
         const current = await HostPreference.findOne({ hostUrl: pref.hostUrl }).lean();
         if (hasActiveSessionHold(current) || hasActiveBenchmarkClaim(current)) return;
-        if (primaryDisplaced) await setHostStatus(pref.hostUrl, 'restoring');
+        if (primaryDisplaced) await setHostStatus(pref.hostUrl, 'restoring', { expectStatus: current?.status });
         assertActive();
 
         let anyWarmOk = false;

@@ -17,6 +17,14 @@ function buildBenchmarkClaimError(hostUrl, claim, messagePrefix = 'Ollama host i
   err.code = 'BENCHMARK_CLAIM_ACTIVE';
   err.hostUrl = hostUrl;
   err.batchId = batchId;
+  // What a person needs to read a refusal: who holds the host, since when and,
+  // when the claim announced a duration, until about when.
+  err.claimSource = claim?.source || null;
+  err.claimedAt = claim?.claimedAt || null;
+  const claimedAtMs = Date.parse(claim?.claimedAt || '');
+  const durationMs = Number(claim?.estimatedDurationMs);
+  err.estimatedEndAt = Number.isFinite(claimedAtMs) && durationMs > 0
+    ? new Date(claimedAtMs + durationMs).toISOString() : null;
   return err;
 }
 

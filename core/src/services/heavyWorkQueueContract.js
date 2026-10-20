@@ -76,6 +76,10 @@ function validateRequest(body) {
         if (typeof executor.prompt !== 'string' || !executor.prompt.trim()) throw fail('image prompt required');
       }
       if (!/^[a-zA-Z0-9:_.-]{8,160}$/.test(executor.actionKey || '')) throw fail('image actionKey required');
+    } else if (kind === 'other' && executor.mode === 'pipeline-report') {
+      // A report campaign Core starts and settles itself (#878).
+      only(executor, ['mode', 'pipelineId'], 'report campaign executor');
+      text(executor.pipelineId, 'executor.pipelineId', 160);
     } else if (['diagnostic', 'other'].includes(kind)) {
       only(executor, ['mode', 'receiptRef'], 'operator executor');
       if (executor.mode !== 'operator') throw fail('Custom work needs the explicit operator receipt protocol');

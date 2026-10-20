@@ -1259,6 +1259,24 @@ several uses share one model, each use sets its own reasoning instead: a gateway
 provider sending `x-agentx-think: off` or `on` decides for all its turns, over
 that list (see `core/integrations/runtime-bridges/README.md`).
 
+### Images in inference requests
+
+`POST /api/inference/generate` accepts JSON bodies up to 32 MB, so callers can
+send photos as they are (base64 adds a third to the file size). Every other
+JSON route keeps its own limit; the product default is 5 MB.
+
+Core shrinks each image in `messages[].images` whose longest side exceeds
+`INFERENCE_IMAGE_MAX_SIDE` (default 2048 pixels; `0` turns it off) before the
+request reaches Ollama. Vision models downsize their input anyway, so the
+answer does not change, but transfer and model-side decoding get shorter.
+JPEG stays JPEG (quality 90) and PNG stays PNG. Decoding runs in a worker
+thread, about a second for a 12 MP photo, so other requests are not blocked.
+The re-encoded image carries no EXIF; Ollama ignores EXIF orientation too.
+An image Core cannot read (WebP, GIF, damaged data, more than 40 MP) or a
+worker failure leaves the original untouched. The response header
+`X-AgentX-Images-Resized: <resized>/<images>` and the routing trace
+(`request.images`) report what happened. No image bytes are logged.
+
 ## Routing snapshot cache
 
 The runtime bridges (OpenClaw model discovery, inspection and every model call;
@@ -2281,6 +2299,18 @@ recovery.
 
 A lost heartbeat or a runtime bridge quarantine still needs the restart
 attestation below.
+
+Core says so instead of waiting to be noticed. Once a minute it raises the
+critical `runtime-recovery-quarantine` alert for each holder that only this
+procedure releases: a workload or maintenance lease in UNKNOWN recovery, an
+owner whose heartbeat expired more than a minute ago, an inference no longer
+ACTIVE, or a benchmark claim whose host status is not `benchmarking` (its
+heartbeat and finalizer can then neither renew nor release it). The alert
+resolves as stale once the state is gone. The rule ships with `local_log`; an
+instance that relays alerts adds its own channel. A heavy-work request whose
+executor reports a terminal outcome while its runtime admission is held this
+way turns `uncertain`, with that reason, so the queue notification names it
+instead of showing the request as still running.
 
 For an UNKNOWN workload, use this operator sequence:
 

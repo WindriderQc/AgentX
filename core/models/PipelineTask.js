@@ -217,7 +217,11 @@ const PipelineTaskSchema = new mongoose.Schema({
   // Household routines use the same canonical task lifecycle and ID sequence.
   // Domain fields are optional so engineering/personal tasks stay unchanged.
   profileId: { type: String, index: true },
-  cadence: { type: String, enum: ['once', 'daily', 'weekly'] },
+  cadence: { type: String, enum: ['once', 'daily', 'weekly', 'interval'] },
+  // Interval routines only (#863): days between repeats, and an optional
+  // winter-season interval (FAMILY_WINTER_SEASON).
+  intervalDays: Number,
+  winterIntervalDays: Number,
   stars: Number,
   completionCount: Number,
   checkedInAt: Date,
@@ -238,6 +242,8 @@ const PipelineTaskSchema = new mongoose.Schema({
   codingReportAuthority: { type: mongoose.Schema.Types.Mixed, default: undefined },
   // Automatic continuation runs of a private report (#835), one per parent outcome.
   reportContinuation: { type: mongoose.Schema.Types.Mixed, default: undefined },
+  // Owner's one-click resume (#878): the Core-owned campaign and its estimate.
+  reportResume: { type: mongoose.Schema.Types.Mixed, default: undefined },
   reportHistoryReceipts: { type: [mongoose.Schema.Types.Mixed], default: undefined },
   reportCheckpointArchive: { type: mongoose.Schema.Types.Mixed, default: undefined },
   reportPreflightReceipts: { type: [mongoose.Schema.Types.Mixed], default: undefined },

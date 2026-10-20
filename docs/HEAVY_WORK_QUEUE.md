@@ -84,6 +84,25 @@ an uncertain dispatch or releases native authority. A completed result
 does not settle the request while overlapping native workloads or inference
 admissions remain held, including quarantined or uncertain outcomes.
 
+### When: Core picks the slot
+
+`POST /:id/place` with `{ expectedRevision, when, at?, priority?, autoStart? }`
+reserves a slot Core chooses (`GET /:id/place?when=…` previews it, read-only):
+
+- `asap`: the first free minute on the request's machines;
+- `tonight`: the first free slot inside the night window that also ends in it
+  (`HEAVY_WORK_NIGHT_WINDOW`, default `23:00-06:00`, in `PLANNING_TIME_ZONE`);
+- `at`: exactly `at`.
+
+Placement treats a machine as one resource: work reserved or running on any of
+its endpoints, or on the same physical device, pushes the slot after it. It
+honours the request's `notBefore`/`startBefore`; when nothing fits it answers
+`HEAVY_QUEUE_NO_SLOT` with the earliest possible start and books nothing. The
+booking itself still goes through `reserve`'s overlap check. The same
+placement (`shared/heavyWorkPlacement.js`) plans the Profiler's lane campaign.
+Automations → Calendrier's slot dialog offers the three choices and shows the
+slot before saving.
+
 ### Profiler automatic start and Run now
 
 Reserving a Profiler request (`POST /:id/reserve`) accepts `autoStart: true`.

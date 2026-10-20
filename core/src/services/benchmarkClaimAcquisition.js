@@ -293,6 +293,18 @@ async function claimBenchmark(hostUrl, batchId, estimatedDurationMs = null, opts
   return claimConflict(await HostPreference.findOne({ hostUrl }).lean(), batchId);
 }
 
+// Name the field that no longer matches. "Belongs to X, not X" hid a host
+// status overwritten under a live claim (2026-10-20).
+function heartbeatMismatchReason(current, batchId, claimGeneration) {
+  const claim = current?.benchmarkClaim;
+  if (!claim?.batchId) return 'host is not claimed';
+  if (claim.batchId !== batchId) return `claim belongs to batch ${claim.batchId}, not ${batchId}`;
+  if (claim.claimGeneration !== claimGeneration) return 'claim generation no longer owns the host';
+  if (current.status !== 'benchmarking') return `host status is ${current.status || 'unset'} under claim ${batchId}; expected benchmarking`;
+  if (claim.finalizeToken) return 'claim is being finalized';
+  return 'claim admission proof no longer matches';
+}
+
 /**
  * Refresh an active benchmark/manual claim heartbeat.
  *
@@ -377,9 +389,7 @@ async function heartbeatBenchmarkClaim(hostUrl, batchId, opts = {}) {
     const current = await HostPreference.findOne({ hostUrl }).lean();
     return {
       heartbeat: false,
-      reason: current?.benchmarkClaim?.batchId
-        ? `claim belongs to batch ${current.benchmarkClaim.batchId}, not ${batchId}`
-        : 'claim heartbeat update did not match',
+      reason: heartbeatMismatchReason(current, batchId, claimGeneration),
       pref: current || undefined
     };
   }

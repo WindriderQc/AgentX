@@ -119,8 +119,9 @@ class Busy(Exception):
 
 class CoreClient:
     def __init__(self, base, task_type="analysis", light_model=None, light_host=None, timeout=900,
-                 opener=urllib.request.urlopen):
+                 opener=urllib.request.urlopen, schema=None, caller="secretary-catchup"):
         self.base, self.task_type = base.rstrip("/"), task_type
+        self.schema, self.caller = schema or REVIEW_SCHEMA, caller
         self.light_model, self.light_host = light_model, light_host
         self.timeout, self.opener = timeout, opener
 
@@ -173,8 +174,8 @@ class CoreClient:
 
     def extract(self, system, prompt, light=False, request_id=None):
         body = {"messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
-                "stream": False, "think": False, "format": REVIEW_SCHEMA, "options": {"temperature": 0},
-                "callerDetail": "secretary-catchup"}
+                "stream": False, "think": False, "format": self.schema, "options": {"temperature": 0},
+                "callerDetail": self.caller}
         if request_id:
             body["telemetry"] = {"runtime": "external", "correlationId": request_id}
         if light and self.light_model:

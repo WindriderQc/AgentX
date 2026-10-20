@@ -48,9 +48,9 @@ def completed(directory, state):
     return receipt["value"]
 
 
-def unsettled(root):
+def unsettled(root, attempts="review-attempts"):
     result = []
-    for file in (Path(root) / "review-attempts").glob("*/attempt.json"):
+    for file in (Path(root) / attempts).glob("*/attempt.json"):
         try:
             state = load(file, {})
             if state.get("phase") == "refused":
@@ -64,8 +64,8 @@ def unsettled(root):
     return result
 
 
-def extract_once(archive, client, system, prompt, page, light=False):
-    directory = archive.root / "review-attempts" / hashed(page["pageId"])
+def extract_once(archive, client, system, prompt, page, light=False, attempts="review-attempts"):
+    directory = archive.root / attempts / hashed(page["pageId"])
     file = directory / "attempt.json"
     intent = {"pageId": page["pageId"], "systemSha256": hashed(system), "promptSha256": hashed(prompt),
               "core": getattr(client, "base", None), "taskType": getattr(client, "task_type", None),

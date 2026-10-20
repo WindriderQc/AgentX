@@ -6,7 +6,7 @@ const Profile = require('../../models/HouseholdProfile');
 const { initialTransition } = require('./pipelineTaskTransitions');
 const { commitLaneTask } = require('./pipelineLaneTaskMutationService');
 const {
-  cleanProfileId, familyChore, familyLaunchInput, familyProfile,
+  CADENCES, cleanProfileId, familyChore, familyLaunchInput, familyProfile,
   familyProfileInput, familyRoom, familyRoutineInput, nextRoutineDue, familyTimeZone, calendarDayKey
 } = require('../domains/household/family');
 const { familyBirthDate } = require('../domains/household/familyBirthDate');
@@ -54,15 +54,16 @@ async function compensateLaunchTask(task) {
   }
 }
 
-async function createTask(routine, source = 'household-parent') {
+async function createTask(routine, source = 'household-parent', sourceKey = null) {
   const pipelineId = String(await Counter.next('pipelineTask')).padStart(4, '0');
   return PipelineTask.create({
     pipelineId,
     title: routine.title, spec: routine.note, service: 'family', status: 'queued',
     assignee: FAMILY_PIPELINE_ASSIGNEE, epic: 'Family Routine',
     priority: routine.priority, dueAt: routine.dueAt, profileId: routine.profileId,
-    cadence: routine.cadence, stars: routine.stars, completionCount: 0,
-    familyCancelled: false, source,
+    cadence: routine.cadence, intervalDays: routine.intervalDays, winterIntervalDays: routine.winterIntervalDays,
+    stars: routine.stars, completionCount: 0,
+    familyCancelled: false, source, ...(sourceKey ? { sourceKey } : {}),
     ...initialTransition(pipelineId, { channel: 'family_surface', declaredActor: source })
   });
 }
@@ -167,16 +168,32 @@ async function list(input = {}) {
   return { chores, hasMore: rows.length > 100, timeZone: familyTimeZone(), today: calendarDayKey(new Date()) };
 }
 
-async function create(input = {}) {
+// `origin` records where a chore came from. A chore created from a reviewed
+// proposal carries its sourceKey (`idea:<id>`), so a retried promotion returns
+// the chore already created instead of a second one.
+async function create(input = {}, origin = {}) {
   const routine = familyRoutineInput(input);
   await getProfile(routine.profileId);
-  return { chore: familyChore(await createTask(routine)) };
+  const source = text(origin.source, 80) || 'household-parent';
+  const sourceKey = text(origin.sourceKey, 200) || null;
+  const existing = () => PipelineTask.findOne({ service: 'family', source, sourceKey }).lean();
+  if (sourceKey) {
+    const found = await existing();
+    if (found) return { chore: familyChore(found), duplicate: true };
+  }
+  try {
+    return { chore: familyChore(await createTask(routine, source, sourceKey)) };
+  } catch (error) {
+    const found = sourceKey && error?.code === 11000 ? await existing() : null;
+    if (found) return { chore: familyChore(found), duplicate: true };
+    throw error;
+  }
 }
 
 // The parent edits an open routine against the revision shown by Core. A
 // checked-in task must be returned to the child before its instructions change.
 async function update(input = {}) {
-  const allowed = new Set(['ref', 'expectedRevision', 'title', 'note', 'profileId', 'cadence', 'stars', 'priority', 'dueAt']);
+  const allowed = new Set(['ref', 'expectedRevision', 'title', 'note', 'profileId', 'cadence', 'intervalDays', 'winterIntervalDays', 'stars', 'priority', 'dueAt']);
   if (Object.keys(input).some(key => !allowed.has(key)) || !Number.isInteger(input.expectedRevision) || input.expectedRevision < 0) {
     throw failure(400, 'FAMILY_CHORE_EDIT_INVALID', 'An exact revision and routine fields are required');
   }
@@ -188,15 +205,22 @@ async function update(input = {}) {
   const changes = Object.fromEntries(Object.entries(input).filter(([key]) => key !== 'ref' && key !== 'expectedRevision'));
   if (!Object.keys(changes).length
     || ['title', 'note'].some(key => changes[key] !== undefined && (typeof changes[key] !== 'string' || changes[key].length > (key === 'title' ? 160 : 1000)))
-    || (changes.cadence !== undefined && !['once', 'daily', 'weekly'].includes(changes.cadence))
+    || (changes.cadence !== undefined && !CADENCES.includes(changes.cadence))
+    || ['intervalDays', 'winterIntervalDays'].some(key => changes[key] !== undefined && changes[key] !== null && !Number.isInteger(changes[key]))
     || ['stars', 'priority'].some(key => changes[key] !== undefined && (!Number.isInteger(changes[key]) || changes[key] < 1 || changes[key] > 5))) {
     throw failure(400, 'FAMILY_CHORE_EDIT_INVALID', 'Choose a valid frequency, stars and priority');
   }
   const routine = familyRoutineInput({ title: task.title, note: task.spec, profileId: task.profileId,
-    cadence: task.cadence, stars: task.stars, priority: task.priority, dueAt: task.dueAt, ...changes });
+    cadence: task.cadence, intervalDays: task.intervalDays, winterIntervalDays: task.winterIntervalDays,
+    stars: task.stars, priority: task.priority, dueAt: task.dueAt, ...changes });
   await getProfile(routine.profileId);
+  // The interval fields follow the frequency: leaving `interval` clears them.
+  const keys = new Set(Object.keys(changes));
+  if (keys.has('cadence') || keys.has('intervalDays') || keys.has('winterIntervalDays')) {
+    ['cadence', 'intervalDays', 'winterIntervalDays'].forEach(key => keys.add(key));
+  }
   const saved = await commitLaneTask(task, {
-    fields: Object.fromEntries(Object.keys(changes).map(key => [key === 'note' ? 'spec' : key, routine[key]])),
+    fields: Object.fromEntries([...keys].map(key => [key === 'note' ? 'spec' : key, routine[key]])),
     feedback: feedback('household-parent', 'Routine instructions updated from the household review surface.'),
     channel: 'family_surface', declaredActor: 'household-parent'
   });

@@ -187,11 +187,6 @@ function validateRequest(request) {
       code: 'INFERENCE_MESSAGES_TOO_LARGE', statusCode: 400
     });
   }
-  if (Array.isArray(request.tools) && request.tools.length > 128) {
-    throw new TrustedRuntimeServiceError('tools may contain at most 128 entries.', {
-      code: 'INFERENCE_TOOLS_TOO_LARGE', statusCode: 400
-    });
-  }
   if (request.mode === 'generate' && typeof request.prompt !== 'string') {
     throw new TrustedRuntimeServiceError('prompt must be a string for generate inference.', {
       code: 'INFERENCE_PROMPT_REQUIRED', statusCode: 400

@@ -134,6 +134,12 @@
 .cs-queue-button--primary { border-color: #3b7667; background: #173b35; color: #7cf0c8; font-weight: 600; }
 .cs-queue-start { margin-top: 4px; font-size: .82rem; color: #fbbf24; display: flex; gap: 6px; align-items: baseline; }
 .cs-queue-start.is-auto { color: #7cf0c8; }
+.cs-queue-when { display: grid; gap: 4px; margin: 12px 0; padding: 10px 12px; border: 1px solid #334155; border-radius: 8px; }
+.cs-queue-when legend { padding: 0 4px; color: #cbd5e1; }
+.cs-queue-dialog .cs-queue-when label { display: flex; gap: 10px; align-items: center; margin: 0; min-height: 36px; cursor: pointer; }
+.cs-queue-dialog .cs-queue-when input { min-height: 0; width: 18px; height: 18px; accent-color: #7cf0c8; }
+.cs-queue-dialog label[hidden] { display: none; }
+.cs-queue-slot { margin: 4px 0 8px; color: #7cf0c8; font-variant-numeric: tabular-nums; }
 .cs-queue-dialog .cs-queue-check { display: flex; gap: 10px; align-items: center; }
 .cs-queue-dialog .cs-queue-check[hidden] { display: none; }
 .cs-queue-dialog .cs-queue-check input { min-height: 0; width: 18px; height: 18px; accent-color: #7cf0c8; }

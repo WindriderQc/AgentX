@@ -3,7 +3,9 @@
 const { publicTask } = require('../../services/personalTaskView');
 
 const AGE_BANDS = Object.freeze(['little', 'school', 'teen']);
-const CADENCES = Object.freeze(['once', 'daily', 'weekly']);
+const CADENCES = Object.freeze(['once', 'daily', 'weekly', 'interval']);
+const INTERVAL_DAYS = Object.freeze({ min: 2, max: 90 });
+const DEFAULT_WINTER_SEASON = '11-01/03-31';
 const MAX_LAUNCH_ROUTINES = 5;
 const DEFAULT_FAMILY_TIME_ZONE = 'America/Toronto';
 
@@ -78,6 +80,44 @@ function endOfHouseholdDay(yearMonthDay, timeZone) {
   return new Date(candidate);
 }
 
+// #863 — the household winter season, as month-day bounds "MM-DD/MM-DD"
+// (FAMILY_WINTER_SEASON, default November 1 to March 31). A start after the end
+// wraps over the new year.
+function winterSeason(value = process.env.FAMILY_WINTER_SEASON) {
+  const match = /^(\d{2}-\d{2})\/(\d{2}-\d{2})$/.exec(boundedText(value, 20));
+  const valid = key => {
+    const parsed = new Date(`2024-${key}T12:00:00Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(5, 10) === key;
+  };
+  if (match && valid(match[1]) && valid(match[2])) return { start: match[1], end: match[2] };
+  const [start, end] = DEFAULT_WINTER_SEASON.split('/');
+  return { start, end };
+}
+
+function isWinterDay(dayKey, season = winterSeason()) {
+  const day = String(dayKey || '').slice(5, 10);
+  if (!day) return false;
+  return season.start <= season.end
+    ? day >= season.start && day <= season.end
+    : day >= season.start || day <= season.end;
+}
+
+function intervalDays(value, field) {
+  if (value === undefined || value === null || value === '') return null;
+  const days = Number(value);
+  if (!Number.isInteger(days) || days < INTERVAL_DAYS.min || days > INTERVAL_DAYS.max) {
+    throw new FamilyInputError(`${field} must be a whole number of days from ${INTERVAL_DAYS.min} to ${INTERVAL_DAYS.max}`,
+      'FAMILY_CHORE_BAD_INTERVAL');
+  }
+  return days;
+}
+
+/** Days between two repeats of an interval routine on one household day. */
+function routineIntervalDays(chore = {}, dayKey) {
+  if (chore.cadence !== 'interval' || !Number.isInteger(chore.intervalDays)) return null;
+  return Number.isInteger(chore.winterIntervalDays) && isWinterDay(dayKey) ? chore.winterIntervalDays : chore.intervalDays;
+}
+
 function cleanProfileId(value) {
   return boundedText(value, 80).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'kid';
@@ -128,15 +168,41 @@ function familyRoutineInput(input = {}, defaultProfileId = '') {
       throw new FamilyInputError('dueAt must be an ISO date or datetime', 'FAMILY_CHORE_BAD_DUE_DATE');
     }
   }
+  const cadence = CADENCES.includes(input.cadence) ? input.cadence : 'once';
+  const interval = cadence === 'interval' ? intervalDays(input.intervalDays, 'intervalDays') : null;
+  if (cadence === 'interval' && interval === null) {
+    throw new FamilyInputError('An interval routine needs intervalDays', 'FAMILY_CHORE_BAD_INTERVAL');
+  }
   return {
     profileId,
     title,
     note: boundedText(input.note, 1000),
-    cadence: CADENCES.includes(input.cadence) ? input.cadence : 'once',
+    cadence,
+    intervalDays: interval,
+    winterIntervalDays: cadence === 'interval' ? intervalDays(input.winterIntervalDays, 'winterIntervalDays') : null,
     stars: Math.max(1, Math.min(5, Math.floor(Number(input.stars) || 1))),
     priority: Math.max(1, Math.min(5, Math.floor(Number(input.priority) || 3))),
     dueAt
   };
+}
+
+const SUBJECT_REF = /^[a-z][a-z0-9-]{0,19}:[A-Za-z0-9_-]{1,80}$/;
+
+/**
+ * A chore an agent proposes to the parent (#864). Same rules as a routine, but
+ * the child and the date stay the parent's choice: the profile is optional and
+ * no due date is proposed. `subjectRef` names what the chore is about (for
+ * example `plant:<id>`).
+ */
+function familyChoreProposal(input = {}) {
+  const profileId = boundedText(input.profileId, 80) ? cleanProfileId(input.profileId) : null;
+  const routine = familyRoutineInput({ ...input, profileId: profileId || 'proposal', dueAt: null });
+  const subjectRef = boundedText(input.subjectRef, 101);
+  if (subjectRef && !SUBJECT_REF.test(subjectRef)) {
+    throw new FamilyInputError('subjectRef must look like plant:<id>', 'FAMILY_CHORE_BAD_SUBJECT');
+  }
+  const { dueAt, priority, ...chore } = routine;
+  return { ...chore, profileId, subjectRef: subjectRef || null };
 }
 
 function familyLaunchInput(input = {}) {
@@ -175,6 +241,9 @@ function familyChore(task = {}, now = new Date(), timeZone = familyTimeZone()) {
     lane: !open ? 'done' : overdue ? 'overdue' : dueToday ? 'today' : dueKey ? 'upcoming' : 'inbox',
     profileId: cleanProfileId(task.profileId),
     cadence,
+    intervalDays: cadence === 'interval' && Number.isInteger(task.intervalDays) ? task.intervalDays : null,
+    winterIntervalDays: cadence === 'interval' && Number.isInteger(task.winterIntervalDays) ? task.winterIntervalDays : null,
+    currentIntervalDays: routineIntervalDays({ ...task, cadence }, todayKey),
     stars,
     completionCount: Math.max(0, Math.floor(Number(task.completionCount) || 0)),
     checkedInAt: task.checkedInAt || null,
@@ -217,6 +286,16 @@ function familyRoom(tasks = [], now = new Date(), timeZone = familyTimeZone()) {
 function nextRoutineDue(chore = {}, now = new Date()) {
   const cadence = CADENCES.includes(chore.cadence) ? chore.cadence : 'once';
   if (cadence === 'once') return null;
+  if (cadence === 'interval') {
+    // Counted from the approval day, never from a missed due day, so a late
+    // check-in starts a fresh interval instead of stacking repeats.
+    const zone = familyTimeZone(), today = calendarDayKey(now, zone);
+    const days = routineIntervalDays(chore, today);
+    if (!days) return null;
+    const calendar = new Date(`${today}T12:00:00Z`);
+    calendar.setUTCDate(calendar.getUTCDate() + days);
+    return endOfHouseholdDay(calendar.toISOString().slice(0, 10), zone);
+  }
   const step = cadence === 'daily' ? 1 : 7;
   let next = chore.dueAt ? new Date(chore.dueAt) : new Date(now);
   if (Number.isNaN(next.getTime())) next = new Date(now);
@@ -238,17 +317,22 @@ module.exports = {
   AGE_BANDS,
   CADENCES,
   DEFAULT_FAMILY_TIME_ZONE,
+  INTERVAL_DAYS,
   MAX_LAUNCH_ROUTINES,
   FamilyInputError,
   calendarDayKey,
   cleanProfileId,
   endOfHouseholdDay,
   familyChore,
+  familyChoreProposal,
   familyLaunchInput,
   familyProfile,
   familyProfileInput,
   familyRoom,
   familyRoutineInput,
   familyTimeZone,
-  nextRoutineDue
+  isWinterDay,
+  nextRoutineDue,
+  routineIntervalDays,
+  winterSeason
 };

@@ -206,4 +206,47 @@ describe('family task domain in the canonical Core store', () => {
     expect((await family.setProfileBirthDate({ profileId: 'sample-child', birthDate: '' })).profile.birthDate).toBeNull();
     expect(await Profile.findOne({ profileId: 'sample-child' }).lean()).not.toHaveProperty('birthDate');
   });
+
+  test('interval routines persist their days, roll forward from the approval day and clear when the frequency changes', async () => {
+    const previous = process.env.PLANNING_TIME_ZONE; process.env.PLANNING_TIME_ZONE = 'America/Toronto';
+    try {
+      await family.addProfile({ profileId: 'sample-child', displayName: 'Sample child' });
+      const { chore } = await family.create({ profileId: 'sample-child', title: 'Water the plant', cadence: 'interval', intervalDays: 10, winterIntervalDays: 14, dueAt: '2026-06-01' });
+      expect(chore).toMatchObject({ cadence: 'interval', intervalDays: 10, winterIntervalDays: 14 });
+      await expect(family.create({ profileId: 'sample-child', title: 'No interval', cadence: 'interval' }))
+        .rejects.toMatchObject({ status: 400, code: 'FAMILY_CHORE_BAD_INTERVAL' });
+      await family.checkIn({ ref: chore.id, profileId: 'sample-child' });
+      const approvedOn = new Date();
+      const { chore: rolled } = await family.approve({ ref: chore.id });
+      const { calendarDayKey, routineIntervalDays } = require('../../src/domains/household/family');
+      const today = calendarDayKey(approvedOn), expected = new Date(`${today}T12:00:00Z`);
+      expected.setUTCDate(expected.getUTCDate() + routineIntervalDays(chore, today));
+      expect(rolled).toMatchObject({ status: 'queued', dueDay: expected.toISOString().slice(0, 10), intervalDays: 10 });
+
+      for (const fields of [{ intervalDays: '7' }, { intervalDays: 1 }, { winterIntervalDays: 2.5 }]) {
+        await expect(family.update({ ref: chore.id, expectedRevision: rolled.revision, ...fields })).rejects.toMatchObject({ status: 400 });
+      }
+      const shorter = await family.update({ ref: chore.id, expectedRevision: rolled.revision, intervalDays: 5, winterIntervalDays: null });
+      expect(shorter.chore).toMatchObject({ cadence: 'interval', intervalDays: 5, winterIntervalDays: null });
+      const weekly = await family.update({ ref: chore.id, expectedRevision: shorter.chore.revision, cadence: 'weekly' });
+      expect(weekly.chore).toMatchObject({ cadence: 'weekly', intervalDays: null, winterIntervalDays: null, currentIntervalDays: null });
+      const stored = await PipelineTask.findOne({ pipelineId: chore.id }).lean();
+      expect(stored.intervalDays).toBeNull(); expect(stored.winterIntervalDays).toBeNull();
+      await expect(family.update({ ref: chore.id, expectedRevision: weekly.chore.revision, cadence: 'interval' }))
+        .rejects.toMatchObject({ status: 400, code: 'FAMILY_CHORE_BAD_INTERVAL' });
+    } finally { if (previous === undefined) delete process.env.PLANNING_TIME_ZONE; else process.env.PLANNING_TIME_ZONE = previous; }
+  });
+
+  test('a chore created from a reviewed proposal is idempotent by its source key', async () => {
+    await family.addProfile({ profileId: 'sample-child', displayName: 'Sample child' });
+    const origin = { source: 'planning-idea', sourceKey: 'idea:synthetic-proposal' };
+    const first = await family.create({ profileId: 'sample-child', title: 'Proposed routine', cadence: 'weekly' }, origin);
+    const retry = await family.create({ profileId: 'sample-child', title: 'Proposed routine', cadence: 'weekly' }, origin);
+    expect(retry).toMatchObject({ duplicate: true, chore: { id: first.chore.id } });
+    expect(await PipelineTask.countDocuments({ service: 'family' })).toBe(1);
+    expect(await PipelineTask.findOne({ pipelineId: first.chore.id }).lean()).toMatchObject({ source: 'planning-idea', sourceKey: 'idea:synthetic-proposal' });
+    const parent = await family.create({ profileId: 'sample-child', title: 'Parent routine' });
+    expect(parent.duplicate).toBeUndefined();
+    expect(await PipelineTask.findOne({ pipelineId: parent.chore.id }).lean()).toMatchObject({ source: 'household-parent', sourceKey: null });
+  });
 });
