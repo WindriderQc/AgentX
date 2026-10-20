@@ -47,12 +47,29 @@ function eventDate(value, precision) {
   return value;
 }
 
-function normalize(input = {}) {
-  const source = input.source || {};
+function sourceOf(source = {}) {
   const system = enumValue(source.system, ['gmail', 'outlook-export']);
   for (const key of ['sourceSha256', 'findingId']) if (!HASH.test(source[key] || '')) throw failure(`source.${key} must be a SHA-256`);
-  for (const key of ['evidenceHash', 'reviewSha256']) if (source[key] && !HASH.test(source[key])) throw failure(`source.${key} must be a SHA-256`);
   if (system === 'gmail' && (!ID.test(source.messageId || '') || !ID.test(source.threadId || ''))) throw failure('Exact Gmail message and thread IDs are required');
+  return system;
+}
+// A consolidated assertion names its people and places and cites every other
+// source it merges. A souvenir holds at most 20 sources: this entry, its source
+// and 18 more.
+const labels = (value = []) => {
+  if (!Array.isArray(value) || value.length > 20) throw failure('List at most 20 people or places');
+  return [...new Set(value.map(item => text(item, 120, true)))];
+};
+function relatedSources(value = []) {
+  if (!Array.isArray(value) || value.length > 18) throw failure('Cite at most 18 related sources');
+  return value.map(source => ({ system: sourceOf(source), threadId: text(source.threadId, 256),
+    messageId: text(source.messageId, 256), sourceSha256: source.sourceSha256, findingId: source.findingId }));
+}
+
+function normalize(input = {}) {
+  const source = input.source || {};
+  const system = sourceOf(source);
+  for (const key of ['evidenceHash', 'reviewSha256']) if (source[key] && !HASH.test(source[key])) throw failure(`source.${key} must be a SHA-256`);
   if (source.personalNoteId && !/^[a-f0-9]{24}$/.test(source.personalNoteId)) throw failure('source.personalNoteId is invalid');
   const kind = enumValue(input.kind, KINDS);
   const precision = enumValue(input.eventDatePrecision, ['unknown', 'day', 'instant'], 'unknown');
@@ -63,6 +80,7 @@ function normalize(input = {}) {
     eventDate: eventDate(input.eventDate || '', precision), eventDatePrecision: precision,
     // An importer records assertions, never independently confirms them.
     assertionState: 'unknown', sourceStatus: text(input.sourceStatus, 1000),
+    people: labels(input.people), places: labels(input.places), relatedSources: relatedSources(input.relatedSources),
     source: { system, sourceSha256: source.sourceSha256, findingId: source.findingId,
       threadId: text(source.threadId, 256), messageId: text(source.messageId, 256),
       evidenceHash: source.evidenceHash || '', reviewSha256: source.reviewSha256 || '',
@@ -79,6 +97,8 @@ function project(row) {
     sourceDate: row.sourceDate, eventDate: forgotten ? '' : row.eventDate,
     eventDateAsWritten: forgotten ? '' : row.eventDateAsWritten, eventDatePrecision: row.eventDatePrecision,
     assertionState: row.assertionState, sourceStatus: forgotten ? '' : row.sourceStatus,
+    people: forgotten ? [] : row.people || [], places: forgotten ? [] : row.places || [],
+    relatedSources: forgotten ? [] : row.relatedSources || [],
     reviewState: row.reviewState, revision: row.revision, sensitivity: row.sensitivity,
     source: forgotten ? null : row.source,
     gmailUrl: !forgotten && row.source?.system === 'gmail'
@@ -104,11 +124,14 @@ async function record(input) {
   value.actor = (await sealText(value.actor, { seenIn: 'personal-history' })).text;
   value.sourceStatus = (await sealText(value.sourceStatus, { seenIn: 'personal-history' })).text;
   value.eventDateAsWritten = (await sealText(value.eventDateAsWritten, { seenIn: 'personal-history' })).text;
+  for (const list of ['people', 'places']) {
+    value[list] = await Promise.all(value[list].map(async item => (await sealText(item, { seenIn: 'personal-history' })).text));
+  }
   value.contentHash = digest(value.text.toLowerCase());
   const forgottenQuery = { noteId: value.source.personalNoteId, contentHash: value.contentHash };
   let suppressed = await privacy.forgottenSource(forgottenQuery);
   const insert = { ...value, reviewState: suppressed ? 'forgotten' : 'candidate', revision: 0,
-    ...(suppressed ? { text: '', actor: '', sourceStatus: '', eventDateAsWritten: '',
+    ...(suppressed ? { text: '', actor: '', sourceStatus: '', eventDateAsWritten: '', people: [], places: [], relatedSources: [],
       forgottenAt: new Date(), decision: { reason: '', at: new Date() } } : {}) };
   let row, created = false;
   try {
@@ -146,7 +169,7 @@ async function list(input = {}) {
   };
   if (input.query) {
     const escaped = text(input.query, 300, true).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    filter.$or = [{ text: { $regex: escaped, $options: 'i' } }, { actor: { $regex: escaped, $options: 'i' } }];
+    filter.$or = ['text', 'actor', 'people', 'places'].map(field => ({ [field]: { $regex: escaped, $options: 'i' } }));
   }
   const limit = Math.max(1, Math.min(100, Math.trunc(Number(input.limit)) || 30));
   const offset = Math.max(0, Math.trunc(Number(input.offset)) || 0);
@@ -172,7 +195,7 @@ async function review(id, input = {}) {
   const when = eventDate(input.eventDate === undefined ? entry.eventDate : input.eventDate, precision);
   const changes = { reviewState: state, assertionState: assertion, eventDate: when,
     eventDatePrecision: precision, decision: { reason, at: new Date() } };
-  if (state === 'forgotten') Object.assign(changes, { text: '', actor: '', sourceStatus: '', eventDate: '',
+  if (state === 'forgotten') Object.assign(changes, { text: '', actor: '', sourceStatus: '', eventDate: '', people: [], places: [], relatedSources: [],
     eventDateAsWritten: '', eventDatePrecision: 'unknown', reviewHistory: [], forgottenAt: new Date(), decision: { reason: '', at: new Date() } });
   const decision = { revision: input.revision + 1, state, assertionState: assertion, eventDate: when,
     eventDatePrecision: precision, reason, at: changes.decision.at };
@@ -205,11 +228,13 @@ async function keepAsSouvenir(id, input = {}) {
   const precision = input.eventDatePrecision === undefined ? entry.eventDatePrecision
     : enumValue(input.eventDatePrecision, ['unknown', 'day', 'instant']);
   const when = eventDate(input.eventDate === undefined ? entry.eventDate : input.eventDate, precision);
+  const cited = [entry.source, ...(entry.relatedSources || [])];
   const sources = [{ system: 'personal-history', id: String(entry._id) },
-    { system: entry.source.system, id: entry.source.sourceSha256 }];
+    ...[...new Map(cited.map(s => [`${s.system}:${s.sourceSha256}`, { system: s.system, id: s.sourceSha256 }])).values()]];
+  const people = entry.people?.length ? entry.people : entry.actor ? [entry.actor] : [];
   const note = await notes().keepSouvenir({ text: souvenirText({ ...entry, eventDate: when }, input),
-    eventDate: when, eventDatePrecision: precision, people: input.people ?? (entry.actor ? [entry.actor] : []),
-    places: input.places, sourceRefs: sources, source: 'secretary-history' });
+    eventDate: when, eventDatePrecision: precision, people: input.people ?? people,
+    places: input.places ?? entry.places, sourceRefs: sources, source: 'secretary-history' });
   const at = new Date();
   const reason = 'Kept as a souvenir';
   const state = entry.reviewState === 'resolved' ? 'resolved' : 'retained';
