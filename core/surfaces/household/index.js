@@ -146,7 +146,7 @@ function register(api) {
   }
   const { app, express, mongoose, standardJsonParser, runtimeServices, extensionRoot, logger } = api;
   // First: a device pinned to the family profile reaches only family pages and APIs (#826).
-  require('./family-device').register({ app, mongoose, standardJsonParser, envelope, fail, logger });
+  const { ownerUnlock } = require('./family-device').register({ app, mongoose, standardJsonParser, envelope, fail, logger });
   const models = createModels(mongoose);
   const conversations = require('./turn-attribution').attributedConversations(runtimeServices.conversations.forSurface('household'));
   const memberWork = createMemberWork({ conversations });
@@ -241,7 +241,8 @@ function register(api) {
   app.get('/api/household/avatar/llmx-face.js', createScriptRelay({ resolveUrl: avatarModuleUrl, fetchWithTimeout,
     unavailable: (res, error) => fail(res, error.status || 503, error.message, error.code || 'AVATAR_UNAVAILABLE') }));
 
-  registerVoixRoutes(app, { express, standardJsonParser, envelope, fail, cleanText, normalizeVoixTranscriptionMultipart });
+  registerVoixRoutes(app, { express, standardJsonParser, envelope, fail, cleanText, normalizeVoixTranscriptionMultipart,
+    interceptTranscript: (req, result) => ownerUnlock.intercept(req, result, { tokenHash: req.familyDevice?.tokenHash }) });
 
   const personas = express.Router();
   personas.use(standardJsonParser);

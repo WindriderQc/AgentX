@@ -1,6 +1,17 @@
 'use strict';
 
-function registerTranscriptionProxy(router, { express, normalizeMultipart, upstream, fetchWithTimeout, timeoutMs, fail }) {
+// `interceptTranscript(req, result)` may replace a recognized transcript before
+// it reaches the page (Household's owner unlock); null keeps the answer as is.
+async function interceptedAnswer(interceptTranscript, req, response, buffer) {
+  if (!interceptTranscript || !response.ok || !/json/i.test(response.headers.get('content-type') || '')) return null;
+  let body;
+  try { body = JSON.parse(buffer.toString('utf8')); } catch { return null; }
+  const result = body?.data && typeof body.data === 'object' ? body.data : body;
+  if (typeof result?.text !== 'string') return null;
+  return interceptTranscript(req, result);
+}
+
+function registerTranscriptionProxy(router, { express, normalizeMultipart, upstream, fetchWithTimeout, timeoutMs, fail, interceptTranscript = null }) {
   router.post('/transcribe', express.raw({ type: () => true, limit: '32mb' }), async (req, res) => {
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
       return fail(res, 400, 'audio payload is required', 'VOIX_INVALID_REQUEST');
@@ -19,6 +30,9 @@ function registerTranscriptionProxy(router, { express, normalizeMultipart, upstr
       }, timeoutMs()), { canRetry: () => !abort.signal.aborted });
       const buffer = Buffer.from(await response.arrayBuffer());
       if (abort.signal.aborted) return;
+      const replaced = await interceptedAnswer(interceptTranscript, req, response, buffer);
+      if (abort.signal.aborted) return;
+      if (replaced) return res.status(200).set('X-Voix-Upstream', used).json(replaced);
       res.status(response.status).set({
         'Content-Type': response.headers.get('content-type') || 'application/json',
         'X-Voix-Upstream': used

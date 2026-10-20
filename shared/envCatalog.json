@@ -1625,6 +1625,26 @@
       "secret": false,
       "description": "Model of the household permissive personal-operator pack. Unset: a built-in default model."
     },
+    "HOUSEHOLD_OWNER_UNLOCK_MINUTES": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "10",
+      "category": "household",
+      "secret": false,
+      "description": "Minutes of full owner access a spoken \"Nestor superDad\" unlock opens on a family-pinned device (1 to 60)."
+    },
+    "HOUSEHOLD_OWNER_UNLOCK_PHRASE_HASH": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": true,
+      "description": "scrypt hash of the phrase said after \"Nestor superDad\" to unlock a family-pinned device, from core/scripts/owner-unlock-phrase-hash.js. Unset: no device can be unlocked."
+    },
     "HOUSEHOLD_PERSONA_VOICES": {
       "services": [
         "core"

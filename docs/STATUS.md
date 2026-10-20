@@ -58,8 +58,12 @@ Instance configuration, data and deployment receipts remain outside Git.
   results keep their original provenance. See [execution sources](EXECUTION_SOURCES.md).
 - **Human access.** Private LAN HTTPS entries open human pages/APIs directly,
   without an account, code or adult cookie. Native credentials and business
-  boundaries remain separate. [Voice ID](VOICE_ID.md) is a design proposal only;
-  this repository change does not establish deployment or device acceptance.
+  boundaries remain separate. A device pinned to Famille reaches only family
+  pages; "Nestor superDad" and the owner's secret phrase, heard by Core's
+  speech proxy, open full access on it for a few minutes
+  ([family-pinned devices](PARENTAL_ACCESS.md#family-pinned-devices-and-owner-unlock)).
+  [Voice ID](VOICE_ID.md) is a design proposal only; this repository change
+  does not establish deployment or device acceptance.
 
 - **Surfaces.** The full profile serves Nestor (`/dad`), Household (`/panel`),
   Reader (`/lecture`), animal sounds (`/kids/sounds`), PsyX (`/psyx`) and the

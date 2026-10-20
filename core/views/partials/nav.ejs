@@ -43,5 +43,13 @@
     <% } %>
   </nav>
 </div>
+<% if (locals.familyUnlock) { %>
+  <div class="family-unlock-banner" role="status" data-family-unlock-until="<%= familyUnlock.until %>">
+    <i class="fas fa-unlock" aria-hidden="true"></i>
+    <span>Full access on this family device until <time datetime="<%= familyUnlock.until %>" data-family-unlock-time></time>.</span>
+    <button type="button" data-family-relock>Relock</button>
+  </div>
+  <script src="/js/family-device-unlock.js" defer></script>
+<% } %>
 <%- include('shortcuts-modal') %>
 <script src="/js/product-navigation.js" defer></script>

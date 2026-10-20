@@ -9,7 +9,8 @@
 // operator pages. Only another device can unpin it, from the parent page.
 //
 // Limit: clearing the tablet's site data removes the cookie and the pin with it.
-// The voice-verified owner unlock is a later step of #826.
+// The owner unlocks full access for a few minutes with a spoken phrase
+// (owner-unlock.js); that unlock is a server record bound to this pin.
 
 const crypto = require('crypto');
 
@@ -29,7 +30,7 @@ const FAMILY_APIS = [
   /^\/api\/voix\//,
   /^\/api\/family\//,
   /^\/api\/panel\/status$/,
-  /^\/api\/household\/(?:avatar\/|device-acceptance|family-device$)/
+  /^\/api\/household\/(?:avatar\/|device-acceptance|family-device(?:\/relock)?$)/
 ];
 
 function hashToken(token) {
@@ -57,9 +58,19 @@ function createModel(mongoose) {
   }, { timestamps: true }), 'household_family_devices');
 }
 
-function register({ app, mongoose, standardJsonParser, envelope, fail, logger }) {
+function register({ app, mongoose, standardJsonParser, envelope, fail, logger, ownerUnlock = null }) {
   const Device = createModel(mongoose);
   const cache = new Map();
+  const unlock = ownerUnlock || require('./owner-unlock').createOwnerUnlock({ mongoose, logger });
+
+  // An unlock Core cannot read while its store is down does not exist: the device stays locked.
+  async function unlockedUntil(tokenHash) {
+    try { return await unlock.activeUntil(tokenHash); }
+    catch (error) {
+      logger?.warn?.('Owner unlock lookup failed; keeping the device locked', { error: error.message });
+      return null;
+    }
+  }
 
   // Resolves the pinned device behind a token; a token Core cannot check while
   // its store is down is treated as pinned, so an outage never unlocks a tablet.
@@ -84,15 +95,31 @@ function register({ app, mongoose, standardJsonParser, envelope, fail, logger })
     if (!token) return next();
     const device = await deviceFor(token).catch(() => ({ label: 'Family device', unverified: true }));
     if (!device) return next(); // unpinned elsewhere: the stale cookie grants nothing and blocks nothing
-    req.familyDevice = device;
+    req.familyDevice = { ...device, tokenHash: hashToken(token) };
+    if (STATIC_PATHS.some((pattern) => pattern.test(req.path))) return next();
+    const until = device.unverified ? null : await unlockedUntil(req.familyDevice.tokenHash);
+    if (until) {
+      // Full owner access until the unlock ends; every page shows it and offers Relock.
+      req.familyDevice.unlockedUntil = until;
+      res.locals.familyUnlock = { until: new Date(until).toISOString() };
+      return next();
+    }
     if (allowedForFamilyDevice(req)) return next();
     if (req.method === 'GET' && !req.path.startsWith('/api/')) return res.redirect(302, '/panel');
     return fail(res, 403, 'This device is pinned to the family profile.', 'FAMILY_DEVICE_PINNED');
   });
 
   app.get('/api/household/family-device', (req, res) => envelope(res, {
-    pinned: Boolean(req.familyDevice), label: req.familyDevice?.label || null
+    pinned: Boolean(req.familyDevice), label: req.familyDevice?.label || null,
+    unlockedUntil: req.familyDevice?.unlockedUntil ? new Date(req.familyDevice.unlockedUntil).toISOString() : null
   }));
+
+  app.post('/api/household/family-device/relock', async (req, res) => {
+    if (!req.familyDevice?.tokenHash) return envelope(res, { pinned: false, relocked: false });
+    try { await unlock.relock(req.familyDevice.tokenHash, req.familyDevice.label); }
+    catch (error) { return fail(res, 503, 'The device could not be relocked; try again.', 'FAMILY_DEVICE_RELOCK_FAILED'); }
+    return envelope(res, { pinned: true, relocked: true });
+  });
 
   app.post('/api/household/family-device/pin', standardJsonParser, async (req, res) => {
     if (req.familyDevice) return envelope(res, { pinned: true, label: req.familyDevice.label });
@@ -129,9 +156,12 @@ function register({ app, mongoose, standardJsonParser, envelope, fail, logger })
     catch (error) { return fail(res, 503, 'Family devices are unavailable.', 'FAMILY_DEVICES_UNAVAILABLE'); }
     if (!removed) return fail(res, 404, 'Unknown device.', 'FAMILY_DEVICE_NOT_FOUND');
     cache.delete(removed.tokenHash);
+    await unlock.forget(removed.tokenHash).catch(() => {});
     logger?.info?.('Family device unpinned', { label: removed.label });
     return envelope(res, { unpinned: true });
   });
+
+  return { ownerUnlock: unlock };
 }
 
 module.exports = { COOKIE, allowedForFamilyDevice, hashToken, register };
