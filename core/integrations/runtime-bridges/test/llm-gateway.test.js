@@ -368,3 +368,18 @@ test('a busy host without an announced end keeps the generic retry advice', asyn
   assert.equal(res.statusCode, 409);
   assert.match(res.jsonBody.error.message, /occupé par une mesure du Profiler\. Rien n'est envoyé vers le cloud\. Réessaie dans quelques minutes\./);
 });
+
+test('a host awaiting recovery is a final readable refusal, not a retryable 503', async () => {
+  const { handler } = gateway(async () => {
+    throw Object.assign(new Error('Inference host requires recovery before accepting new requests.'), {
+      code: 'RUNTIME_INFERENCE_RECOVERY_REQUIRED', statusCode: 503
+    });
+  });
+  const res = new Response();
+  await handler('post', '/v1/chat/completions')(new Request({
+    headers: AUTH, body: { model: 'agentx-primary', messages: [{ role: 'user', content: 'salut' }] }
+  }), res);
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.jsonBody.error.type, 'host_busy');
+  assert.match(res.jsonBody.error.message, /attend une intervention après un incident/);
+});
