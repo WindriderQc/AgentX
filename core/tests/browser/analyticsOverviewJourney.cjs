@@ -15,6 +15,7 @@ const { bucketFacet, summaryCoverage } = require(path.join(core, 'src/services/i
 const errors = [], requests = [];
 let failSummary = false, empty = false, staleGPU = false, failLive = false;
 let delayWindow = null;
+let legacySummary = false;
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 function summary(key) {
   const to = new Date(), days = { '24h': 1, '7d': 7, '30d': 30, '90d': 90 }[key] || 1;
@@ -52,6 +53,12 @@ function summary(key) {
       inferenceHours: elapsedMs / 3600000, inferenceSeconds: elapsedMs / 1000, avgLatencyMs: calls > 0 ? Math.round(elapsedMs / calls) : null, tokensOutPerSecond: 24.09, classifiedCalls: 0 },
     byModel: empty ? [] : models, byConsumerContract: empty ? [] : [{ consumerContract: 'native-conversation-v1', calls: 1000, avgLatencyMs: 20000, errorRate: .3 }],
     byDayCaller: [], byCaller: [], byRuntime: [], byTaskType: [], byFallbackUsed: [], byFallbackReason: [], byDegraded: [], topErrors: [],
+    ...(!legacySummary && { failureAnalysis: { admissionRefusals: empty ? 0 : 3, unclassified: 0, byReason: empty ? [] : [
+      { reason: 'workload_reserved', calls: 2 }, { reason: 'inference_recovery_required', calls: 1 },
+    ] }, topErrors: empty ? [] : [
+      { reason: 'workload_reserved', consumerContract: 'desktop-gateway-v1', model: 'local/brain-27b', calls: 2, avgLatencyMs: 25 },
+      { reason: 'inference_recovery_required', consumerContract: 'native-conversation-v1', model: 'local/brain-27b', calls: 1, avgLatencyMs: 30 },
+    ] }),
     coverage: summaryCoverage({ models: empty ? [] : models, listedModels: empty ? [] : models, calls, windowKey: key }),
     local: { calls: empty ? 0 : 1381, inferenceHours: empty ? 0 : models.filter(model => !model.isCloud).reduce((sum, model) => sum + model.inferenceSeconds, 0) / 3600 },
     cloud: { calls: empty ? 0 : 100, estimatedCostUsd: empty ? null : 1.42, unpricedModels: [] }
@@ -161,6 +168,24 @@ const server = http.createServer(async (req, res) => {
     await page.screenshot({ path: path.join(report, 'overview-latency-1440.png'), fullPage: true });
     await page.locator('[data-ao-overlay="errors"]').click();
     assert.equal(await page.evaluate(() => Chart.getChart(document.getElementById('ao-trend-chart')).options.scales.rate.ticks.callback(2)), '2%');
+    await page.locator('#ao-error-focus').click();
+    assert.equal(await page.locator('[data-ao-group="byErrors"]').getAttribute('aria-pressed'), 'true');
+    assert.match(await page.locator('#ao-comparison').textContent(), /Workload reserved.*desktop-gateway-v1/s);
+    assert.match(await page.locator('#ao-comparison').textContent(), /66\.7%/);
+    assert.match(await page.locator('#ao-model-note').textContent(), /retries may repeat one request/);
+    assert.equal(await page.locator('#ao-comparison-detail').getAttribute('data-analytics-target'), 'infErrorLink');
+    for (const [width, height] of [[1440, 900], [1280, 720], [390, 844], [320, 800]]) {
+      await page.setViewportSize({ width, height });
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, `error comparison overflow at ${width}`);
+      if (width >= 1280) assert.ok(await page.locator('.ao-bottom-grid').evaluate(el => el.getBoundingClientRect().bottom) < height);
+      if (width === 1440 || width === 390) await page.screenshot({ path: path.join(report, `overview-errors-${width}.png`), fullPage: true });
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+    legacySummary = true;
+    await page.locator('#analytics-experience-refresh').click();
+    await page.waitForFunction(() => document.getElementById('ao-comparison').textContent.includes('causes unavailable'));
+    assert.match(await page.locator('#ao-error-focus').textContent(), /Explore recorded errors/);
+    legacySummary = false;
     // Opening the workbench loads it; the Playground lane follows the page-wide Period.
     await page.locator('#analytics-cockpit > summary').click();
     await page.waitForFunction(() => document.getElementById('chatLaneEmptyNote').textContent.includes('last 24 hours'));
@@ -184,6 +209,7 @@ const server = http.createServer(async (req, res) => {
     assert.equal(await page.locator('.ao-spark svg').count(), 0, 'failed reads clear prior mini-charts');
     assert.equal(await page.locator('#ao-outcome-ring').evaluate(el => el.classList.contains('is-empty')), true);
     assert.equal(await page.locator('#ao-mix-value').textContent(), '—');
+    assert.equal(await page.locator('#ao-error-focus').isVisible(), false);
     failSummary = false; empty = true;
     await page.locator('#analytics-experience-refresh').click();
     await page.waitForFunction(() => document.getElementById('ao-calls').textContent === '0');
@@ -192,6 +218,9 @@ const server = http.createServer(async (req, res) => {
     assert.equal(await page.locator('.ao-spark svg').count(), 0);
     assert.equal(await page.locator('#ao-mix-ring').evaluate(el => el.classList.contains('is-empty')), true);
     assert.match(await page.locator('#ao-status').textContent(), /No recorded calls/);
+    assert.equal(await page.locator('#ao-error-focus').isVisible(), false);
+    await page.locator('[data-ao-group="byErrors"]').click();
+    assert.match(await page.locator('#ao-comparison').textContent(), /No operational errors/);
     staleGPU = true;
     await page.evaluate(() => document.dispatchEvent(new Event('analytics:refresh-live')));
     await page.waitForFunction(() => document.querySelector('.ao-gpu.is-unknown'));
@@ -222,6 +251,6 @@ const server = http.createServer(async (req, res) => {
     assert.deepEqual(errors, []);
     assert.ok(requests.some(p => p.includes('/summary?window=24h')));
     assert.ok(bucketFacet('24h', {})[0].$group._id.$dateToString.format.includes('%H'));
-    console.log(JSON.stringify({ ok: true, report, viewports: 7, scenarios: ['initial', 'comparison', 'volume/latency overlay', 'visual evidence reset', 'window race', 'retention', 'failed read', 'empty', 'stale GPU', 'live failure', 'detail focus', 'demo profile', 'page-wide Period', 'lazy workbench', 'persistent Playground disclosure'], requests: requests.length }, null, 2));
+    console.log(JSON.stringify({ ok: true, report, viewports: 7, scenarios: ['initial', 'comparison', 'error causes and consumer shares', 'legacy cause availability', 'volume/latency overlay', 'visual evidence reset', 'window race', 'retention', 'failed read', 'empty', 'stale GPU', 'live failure', 'detail focus', 'demo profile', 'page-wide Period', 'lazy workbench', 'persistent Playground disclosure'], requests: requests.length }, null, 2));
   } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

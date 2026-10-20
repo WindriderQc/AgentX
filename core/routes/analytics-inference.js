@@ -22,6 +22,7 @@
  */
 
 const { bucketFacet, summaryCoverage } = require('../src/services/inferenceSummaryMetrics');
+const { failureFacets, shapeFailures } = require('../src/services/inferenceFailureAnalytics');
 const { analyticsDayKey } = require('../src/services/conversationActivityAnalytics');
 const express = require('express');
 const router = express.Router();
@@ -448,15 +449,7 @@ router.get('/summary', async (req, res) => {
             },
             { $sort: { '_id.date': 1 } }
           ],
-          topErrors: [
-            { $match: { status: { $ne: 'success' }, _analyticsCancelled: { $ne: true } } },
-            // Legacy `error` values can contain an entire upstream body. Group
-            // by the closed status enum instead; the response keeps its
-            // existing `error` field but it is now a stable machine bucket.
-            { $group: { _id: { model: '$model', status: '$status' }, calls: { $sum: 1 } } },
-            { $sort: { calls: -1 } },
-            { $limit: 10 }
-          ]
+          ...failureFacets()
         }
       }
     ]);
@@ -644,17 +637,7 @@ router.get('/summary', async (req, res) => {
         caller: r._id?.caller || 'unknown',
         calls: r.calls
       })),
-      topErrors: (facet?.topErrors || []).map((r) => {
-        const projected = projectInferenceLog({
-          model: r._id?.model,
-          status: r._id?.status,
-        });
-        return {
-          model: projected?.model || 'unknown',
-          error: projected?.status || 'error',
-          calls: r.calls
-        };
-      }),
+      ...shapeFailures(facet),
       statusSemantics: {
         errors: 'Non-successful calls excluding caller cancellation evidence.',
         cancellations: 'Calls ended by caller-disconnect or cancellation evidence.',

@@ -177,7 +177,9 @@ describe('trusted runtime services', () => {
     ['RUNTIME_INFERENCE_RECOVERY_REQUIRED', false],
     ['RUNTIME_INFERENCE_RECOVERY_REQUIRED', true]
   ])('preserves %s without dispatching a provider request (stream=%s)', async (code, stream) => {
-    const refusal = Object.assign(new Error('private coordination details'), { code, statusCode: 503 });
+    const reason = code === 'RUNTIME_INFERENCE_RECOVERY_REQUIRED' ? 'inference_recovery_required' : 'workload_reserved';
+    const refusal = Object.assign(new Error('private coordination details'), { code, statusCode: 503,
+      failure: { cause: reason, safeToRetry: true, holder: { principal: 'private-owner' } } });
     const deps = inferenceDeps();
     deps.beginInferenceAdmission.mockRejectedValueOnce(refusal);
 
@@ -185,7 +187,9 @@ describe('trusted runtime services', () => {
       mode: 'chat', model: 'model-a', messages: [{ role: 'user', content: 'hello' }], stream
     })).rejects.toMatchObject({ code, statusCode: 503, cause: refusal });
     expect(deps.fetch).not.toHaveBeenCalled();
-    expect(deps.recordInference).toHaveBeenCalledWith(expect.objectContaining({ status: 'error', error: code }));
+    expect(deps.recordInference).toHaveBeenCalledWith(expect.objectContaining({ status: 'error', error: code,
+      outcomeStage: 'admission', outcomeCode: 'pre_dispatch_error', outcomeReasonCode: reason }));
+    expect(JSON.stringify(deps.recordInference.mock.calls)).not.toContain('private-owner');
 
     // A refused turn leaves no sticky failure: once admission succeeds, the
     // next ordinary request can use the same configured local model.

@@ -5,6 +5,9 @@ The selected period applies to the four headline metrics, the volume/error
 chart, model or consumer comparison, and local/cloud accounting. The default
 is 24 hours. Models and consumers share the same total-call denominator;
 **All other calls** includes rows omitted from the compact comparison.
+**Errors** switches that same comparison to cause × consumer, with model detail
+on hover. Its bars and percentages use all operational errors as the denominator;
+**All other errors** preserves the remainder beyond the displayed groups.
 **Explore the details** retains routing, full model tables, Playground analytics,
 knowledge, provider and subscription panels.
 
@@ -19,8 +22,11 @@ observations, not a claim that one metric caused another.
 
 ## What the numbers mean
 
-- **Inference calls** counts recorded calls across callers and routes. Calls
-  made by a native provider without passing through Core are outside this view.
+- **Inference calls** counts recorded attempts across callers and routes,
+  including admission refusals. A gateway waiting for a reservation may record
+  several refused attempts for one client request. Its error rate is an attempt
+  rate, not a percentage of failed user requests. Calls made by a native provider
+  without passing through Core are outside this view.
 - **Completed successfully** is successful terminal records divided by all
   records. Errors and caller cancellations remain separate below it. An empty
   window has no success percentage.
@@ -45,6 +51,21 @@ are hourly for 24 hours and daily otherwise, in UTC; first and last buckets can
 be partial. Empty buckets in a successfully read window have zero calls and
 no error percentage. Retention is disclosed, including when a requested window
 exceeds it; retention configuration does not prove complete collection.
+
+The chart footer links to the error comparison and reports how many errors were
+admission refusals. A reservation, active incompatible inference or recovery
+quarantine can refuse an attempt before inference is dispatched; this is not
+evidence that the model failed. Refusals remain in the totals. These historical
+causes do not establish that the host is still blocked; use Live inference for
+the current state.
+
+`failureAnalysis.byReason` reconciles all errors; `topErrors` shows at most ten
+cause/consumer/model groups. Causes come from a closed operational vocabulary,
+never upstream error text. New trusted-runtime records retain their terminal
+outcome. Older unknown outcomes can use a terminal failed admission retry only
+when its attempt, zero retry delay and admission-only timing support it. Earlier
+retries cannot explain a later provider failure. Missing evidence stays
+**Cause unrecorded**; an older Core without these fields shows causes unavailable.
 
 Historical values are snapshots refreshed on demand. The snapshot time stays
 visible; after five minutes the status asks for a refresh. Failed reads clear

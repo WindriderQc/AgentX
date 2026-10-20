@@ -79,6 +79,12 @@
 .ao-model-name::after { content: ''; position: absolute; bottom: 1px; left: 0; width: var(--time-share); height: 2px; background: var(--ao-violet); opacity: .85; }
 .ao-model-name::before { content: ''; position: absolute; inset: 2px auto 4px 0; width: var(--share); background: linear-gradient(90deg, #6d9df52b, #6d9df517); border-left: 2px solid #6d9df58f; box-sizing: border-box; }
 .ao-model.is-other { color: var(--ao-muted); }
+.ao-comparison-controls { flex-wrap: wrap; }
+.ao-comparison-key[hidden], #ao-error-focus[hidden] { display: none; }
+.ao-failure .ao-model-name { padding: 2px 0; }
+.ao-failure .ao-model-name small { display: block; color: var(--ao-muted); font-size: .55rem; overflow: hidden; text-overflow: ellipsis; }
+.ao-failure .ao-model-name::before { background: #f0b47d19; border-left-color: #f0b47d; }
+.ao-failure .ao-model-name::after { display: none; }
 .ao-account-row { padding: 10px 17px; border-top: 1px solid #a4bcdf0a; font-size: .75rem; }
 .ao-account-row strong { font-size: 1.1rem; font-weight: 500; white-space: nowrap; }
 .ao-account-row small { display: block; color: var(--ao-muted); font-size: .61rem; margin-top: 4px; }

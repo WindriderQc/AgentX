@@ -3,6 +3,7 @@
 // The InferenceLog row a trusted runtime inference records. Payload-free.
 const { fallbackReasonCode } = require('./taskFallbackLadder');
 const { ollamaPhaseTimings } = require('../../helpers/ollamaResponseHandler');
+const { trustedRuntimeOutcome } = require('./inferenceFailureReasons');
 
 function telemetryEntry(
   request,
@@ -44,6 +45,7 @@ function telemetryEntry(
     retry: metadata.retry || null,
     durationMs: Date.now() - startedAt,
     status,
+    ...trustedRuntimeOutcome(status, error, metadata),
     error
   };
 }

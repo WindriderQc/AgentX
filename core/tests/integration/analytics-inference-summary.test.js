@@ -44,4 +44,61 @@ describe('inference summary aggregation', () => {
     expect(res.body.data.byModel[0].avgLatencyMs).toBeNull();
     expect(res.body.data.bucketHours).toBe(24);
   });
+
+  test('explains retained admission refusals without turning retries into failed user requests', async () => {
+    const base = { model: 'local/brain', host: 'http://192.0.2.1:11434', status: 'error', durationMs: 25 };
+    const refused = (cause, consumerContract) => ({ ...base, consumerContract, admissionWaitMs: 5,
+      routeDecision: { outcome: { stage: 'unknown', code: 'unknown' } },
+      retry: { attempts: 1, history: [{ attempt: 1, cause, delayMs: 0 }] },
+    });
+    await InferenceLog.insertMany([
+      ...Array.from({ length: 7 }, () => refused('workload_reserved', 'desktop-gateway-v1')),
+      ...Array.from({ length: 3 }, () => refused('inference_recovery_required', 'desktop-gateway-v1')),
+      refused('workload_reserved', 'native-runtime-v1'),
+      { ...base, error: 'caller_disconnected', consumerContract: 'desktop-gateway-v1' },
+      { ...base, status: 'success', retry: { attempts: 2, history: [{ attempt: 1, cause: 'workload_reserved', delayMs: 2000 }] } },
+    ]);
+    const { body: { data: d } } = await request(server).get('/api/analytics/inference/summary?window=24h').expect(200);
+    expect(d.totals).toMatchObject({ calls: 13, errors: 11, cancellations: 1 });
+    expect(d.failureAnalysis).toMatchObject({ admissionRefusals: 11, unclassified: 0, byReason: [
+      { reason: 'workload_reserved', calls: 8 }, { reason: 'inference_recovery_required', calls: 3 },
+    ] });
+    expect(d.failureAnalysis.basis).toMatch(/not counts of failed user requests/);
+    expect(d.topErrors).toHaveLength(3);
+    expect(d.topErrors[0]).toMatchObject({ reason: 'workload_reserved', consumerContract: 'desktop-gateway-v1', calls: 7, avgLatencyMs: 25 });
+    expect(d.topErrors.reduce((n, row) => n + row.calls, 0)).toBe(11);
+  });
+
+  test('terminal route evidence wins; earlier retries, malformed fields and raw messages cannot invent a cause', async () => {
+    const secret = 'PRIVATE_PROVIDER_BODY /secret/path user@example.test';
+    const base = { model: 'local/brain', host: 'http://192.0.2.1:11434', status: 'error', error: secret,
+      admissionWaitMs: 5, retry: { attempts: 2, history: [{ attempt: 1, cause: 'workload_reserved', delayMs: 2000 }] } };
+    await InferenceLog.insertMany([
+      base,
+      { ...base, routeDecision: { outcome: { stage: 'execution', code: 'upstream_error', reasonCode: 'connection_failure' } } },
+      { ...base, routeDecision: { outcome: { code: secret, reasonCode: secret } }, retry: { attempts: 2, history: 'invalid' } },
+      { ...base, retry: { attempts: 2, history: [{ attempt: 2, cause: secret, delayMs: 0 }] } },
+      { ...base, hostGateWaitMs: 10, retry: { attempts: 2, history: [{ attempt: 2, cause: 'workload_reserved', delayMs: 0 }] } },
+      { ...base, status: 'timeout' },
+      { ...base, routeDecision: { outcome: { stage: 'admission', code: 'pre_dispatch_error', reasonCode: 'inference_recovery_required' } } },
+    ]);
+    const { body: { data: d } } = await request(server).get('/api/analytics/inference/summary?window=24h').expect(200);
+    expect(JSON.stringify(d)).not.toContain(secret);
+    expect(d.failureAnalysis).toMatchObject({ admissionRefusals: 1, unclassified: 4 });
+    expect(d.failureAnalysis.byReason).toEqual(expect.arrayContaining([
+      { reason: 'connection_failure', calls: 1 }, { reason: 'upstream_timeout', calls: 1 },
+    ]));
+    expect(d.failureAnalysis.byReason.reduce((n, row) => n + row.calls, 0)).toBe(d.totals.errors);
+  });
+
+  test('all error causes reconcile beyond the ten displayed cause/consumer/model groups', async () => {
+    await InferenceLog.insertMany(Array.from({ length: 14 }, (_, i) => ({
+      model: `local/model-${i}`, host: 'http://192.0.2.1:11434', status: 'error',
+      routeDecision: { outcome: { code: 'pre_dispatch_error', reasonCode: 'workload_reserved' } },
+    })));
+    const { body: { data: d } } = await request(server).get('/api/analytics/inference/summary?window=24h').expect(200);
+    expect(d.topErrors).toHaveLength(10);
+    expect(d.failureAnalysis.admissionRefusals).toBe(14);
+    expect(d.failureAnalysis.byReason).toEqual([{ reason: 'workload_reserved', calls: 14 }]);
+  });
 });
