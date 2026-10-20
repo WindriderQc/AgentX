@@ -30,6 +30,14 @@ Base: the Core entry given in `references/instance.md`.
 **Benchmark** (under `/benchmark`): `/benchmark/health` · `/benchmark/api/benchmark/batches/active` · `/benchmark/api/profiler/hosts`
 **RAG** (under `/rag`): `/rag/health`
 
+## Photo reads verified in source
+
+Defined in the product's `core/routes/photos.js` and tested against a mocked
+Immich; not part of the dated live observation above. `/api/photos/status`
+says whether the instance configured them.
+
+`/api/photos/status` · `/api/photos/people` · `/api/photos/people/<id>/assets` · `/api/photos/search/smart?q=` · `/api/photos/search` · `/api/photos/assets/<id>` · `/api/photos/assets/<id>/thumbnail`
+
 ## Pipeline reads verified in source
 
 These paths are defined in the product's Pipeline and optional runtime-bridge

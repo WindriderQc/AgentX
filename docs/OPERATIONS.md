@@ -1124,6 +1124,10 @@ used. It verifies service health and synthetic Qdrant write/read/filter/delete,
 then removes that runner's disposable stack. A passing result validates containers,
 not Ollama inference or the real-phone experience.
 
+Photos come from a separately installed Immich server: set `IMMICH_URL` and
+`IMMICH_API_KEY_FILE` (a read-only key file mounted into Core) to answer
+`/api/photos/*`. Core holds the only key. See [photos](PHOTOS.md).
+
 ## OpenAI-compatible LLM gateway
 
 External clients reach local models through Core at `/api/llm/v1` (`models`,

@@ -33,6 +33,7 @@ const DEMO_DISABLED_PREFIXES = Object.freeze([
   '/api/openclaw',
   '/api/openclaw-ollama',
   '/api/panel',
+  '/api/photos',
   '/api/pipeline',
   '/api/planning',
   '/api/platform-events',
