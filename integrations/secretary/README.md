@@ -259,6 +259,38 @@ python3 integrations/secretary/history_import.py --root "$GMAIL_SECRETARY_ROOT" 
 python3 integrations/secretary/history_import.py --root "$GMAIL_SECRETARY_ROOT" --manifest "$PRIVATE_HISTORY_BATCH" --state "$PRIVATE_HISTORY_DELIVERY" --core "$CORE_ORIGIN" --publish
 ```
 
+### Souvenir candidates
+
+`value_lanes.py` labels every archived message `person`, `important` or `bulk`
+from the archive alone: the owner's sent mail and the people written to, the
+contact and invoice discovery scopes, public-institution domains plus a private
+list of important sender domains, Gmail categories and list/automation headers.
+Gmail's Updates category alone never makes a message bulk. Labels are saved in
+`value-lanes.json`; the command prints counts and never calls Gmail.
+
+`souvenir_candidates.py` reads the memories already found in person and
+important mail, skips those already delivered to `/dad/history` (with
+`--history-state`), merges exact repeats across threads, then consolidates
+batches of 30 findings per source year through Core's task-routed inference
+(`mail_review` by default) with a JSON schema. Each candidate gets French text,
+an event date (a day becomes the event date; a month or year stays as written),
+people, places, a category and every finding it rests on. Batches are fenced
+under `souvenir-candidates/attempts` and saved: a rerun resumes, and an
+uncertain answer stops the job for reconciliation instead of a new call. It
+pauses for maintenance, deploys and benchmark work like the catch-up.
+
+`--manifest` writes `fact` candidates for the history importer. The earliest
+message is the primary source, up to 18 others are related sources, and the
+finding id is the hash of the merged findings. `--publish` uses
+`history_import.publish` with its idempotent receipts. Nothing reaches memory
+until the owner keeps a souvenir. `--plan` counts findings without inference;
+`--max-findings` bounds a trial. Full runs use the instance's heavy-work queue.
+
+```bash
+python3 integrations/secretary/value_lanes.py --root "$GMAIL_SECRETARY_ROOT" --important-domains "$PRIVATE_DOMAINS"
+python3 integrations/secretary/souvenir_candidates.py --root "$GMAIL_SECRETARY_ROOT" --history-state "$PRIVATE_HISTORY_DELIVERY" --max-findings 50 --manifest "$PRIVATE_SOUVENIR_CANDIDATES"
+```
+
 ### Preparing exact-message cleanup review
 
 `retention_plan.py` combines chronological coverage, a fresh completed Gmail ID
