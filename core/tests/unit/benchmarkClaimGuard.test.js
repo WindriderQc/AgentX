@@ -13,7 +13,7 @@ jest.mock('../../src/services/interactivePriorityService', () => ({ claimYielded
 
 const hostPreferenceService = require('../../src/services/hostPreferenceService');
 const interactivePriority = require('../../src/services/interactivePriorityService');
-const { assertHostAvailableForConsumer } = require('../../src/services/benchmarkClaimGuard');
+const { assertHostAvailableForConsumer, workloadReservesHost } = require('../../src/services/benchmarkClaimGuard');
 
 describe('benchmarkClaimGuard session hold', () => {
   const hold = {
@@ -137,5 +137,30 @@ describe('benchmarkClaimGuard claim proof', () => {
       claimBatchId: 'batch-1',
       claimGeneration: 'generation-1'
     })).rejects.toMatchObject({ code: 'BENCHMARK_CLAIM_PROOF_INVALID' });
+  });
+});
+
+describe('workloadReservesHost', () => {
+  const proof = { workloadAdmissionId: 'admission-1', workloadGeneration: 'generation-1' };
+
+  it('owns a host the workload reserves', async () => {
+    const sharesHost = jest.fn(async () => false);
+    await expect(workloadReservesHost('http://exec:11434', proof, true, { sharesHost })).resolves.toBe(true);
+    expect(sharesHost).toHaveBeenCalledWith({ id: 'admission-1', generation: 'generation-1', host: 'http://exec:11434' });
+  });
+
+  it('leaves a shared judge host to its pin', async () => {
+    await expect(workloadReservesHost('http://judge:11434', proof, true, { sharesHost: async () => true }))
+      .resolves.toBe(false);
+  });
+
+  it('needs a Benchmark caller and a complete string proof', async () => {
+    const sharesHost = jest.fn(async () => false);
+    await expect(workloadReservesHost('http://exec:11434', proof, false, { sharesHost })).resolves.toBe(false);
+    await expect(workloadReservesHost('http://exec:11434', { workloadAdmissionId: 'admission-1' }, true, { sharesHost }))
+      .resolves.toBe(false);
+    await expect(workloadReservesHost('http://exec:11434', { workloadAdmissionId: {}, workloadGeneration: 'g' }, true,
+      { sharesHost })).resolves.toBe(false);
+    expect(sharesHost).not.toHaveBeenCalled();
   });
 });

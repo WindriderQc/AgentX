@@ -8,6 +8,7 @@ const { replacePrimaryPin } = require('./hostPinService');
 const RouterTaskConfig = require('../../models/RouterTaskConfig');
 const { runRuntimeMutation } = require('./runtimeMutationLeaseService');
 const { hasActiveSessionHold } = require('./hostSessionHoldService');
+const { hostHeldByWorkload } = require('./runtimeWorkloadAdmission');
 const { invalidateRoutingSnapshots } = require('./routing/routingSnapshotCache');
 const { PRODUCT_PERMISSIVE_MODEL } = require('./modelRouterDefaults');
 const { modelsMatch } = require('../helpers/modelNameNormalization');
@@ -58,7 +59,10 @@ async function selectPrincipalModel({ selected, expectedModel, principal, reques
     const current = await getPrincipalModel();
     if (current.model !== expectedModel) return { error: refusal('Principal model changed; reload and retry', 'HOST_PIN_CONFLICT') };
     const preference = await hostPrefs.getByHost(current.hostUrl);
-    if (hasActiveSessionHold(preference) || hostPrefs.hasActiveBenchmarkClaim(preference)) {
+    // A Benchmark workload on the host, even one that only shares it to judge
+    // with the pinned model, keeps the pin until the workload ends.
+    if (hasActiveSessionHold(preference) || hostPrefs.hasActiveBenchmarkClaim(preference)
+      || await hostHeldByWorkload(current.hostUrl)) {
       return { error: refusal('The principal host has an active session or workload; retry when it finishes', 'PRINCIPAL_HOST_BUSY') };
     }
     const configs = routerConfig.getEffectiveTaskModels();

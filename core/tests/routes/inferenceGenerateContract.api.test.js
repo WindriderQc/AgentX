@@ -88,6 +88,10 @@ jest.mock('../../src/services/artifactIdentityService', () => ({
   resolveArtifactIdentity: jest.fn(jest.requireActual('../../src/services/artifactIdentityService').resolveArtifactIdentity)
 }));
 
+jest.mock('../../src/services/runtimeWorkloadAdmission', () => ({
+  ...jest.requireActual('../../src/services/runtimeWorkloadAdmission'),
+  workloadSharesHost: jest.fn(async () => false)
+}));
 jest.mock('../../src/services/buddyEvents', () => ({ emit: jest.fn() }));
 jest.mock('../../src/services/routing/taskFallbackLadder', () => ({
   ...jest.requireActual('../../src/services/routing/taskFallbackLadder'),
@@ -822,5 +826,57 @@ describe('RouteDecision attribution is populated', () => {
     expect(entry.routingTrace.ollama).not.toHaveProperty('think');
     expect(entry.routingTrace.ollama).not.toHaveProperty('keepAlive');
     expect(entry.routingTrace.ollama.optionsFingerprint).toMatch(/^[a-f0-9]{16}$/);
+  });
+});
+
+describe('a Benchmark workload on a pinned host it only shares (#901)', () => {
+  const app = express();
+  app.use(express.json());
+  app.use('/api', apiRoutes);
+  const mongoose = require('mongoose');
+  const { workloadSharesHost } = require('../../src/services/runtimeWorkloadAdmission');
+  const pin = { hostUrl: 'http://primary:11434', pinnedModels: [
+    { model: 'pinned-model', contextSize: 196608, keepAlive: -1, autoRestore: true }
+  ] };
+  const judge = model => request(app)
+    .post('/api/inference/generate')
+    .set('X-AgentX-Caller', 'benchmark-service')
+    .send({ model, prompt: 'score this', callerDetail: 'benchmark-judge',
+      workloadAdmissionId: 'workload-admission-judge', workloadGeneration: 'workload-generation-judge' });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    hostGate._resetForTests();
+    hostPreferenceService.getByHost.mockResolvedValue(pin);
+    // The guard only asks the database when it is connected.
+    Object.defineProperty(mongoose.connection, 'readyState', { configurable: true, get: () => 1 });
+  });
+  afterEach(() => {
+    delete mongoose.connection.readyState;
+    hostPreferenceService.getByHost.mockResolvedValue(null);
+  });
+
+  test('a judge that is not the pin is refused before it can evict the pin', async () => {
+    mockOllamaOk();
+    workloadSharesHost.mockResolvedValueOnce(true);
+    const res = await judge('other-judge').expect(409);
+    expect(res.body).toMatchObject({ code: 'HOST_PIN_MISMATCH' });
+    expect(workloadSharesHost).toHaveBeenCalledWith({ id: 'workload-admission-judge',
+      generation: 'workload-generation-judge', host: 'http://primary:11434' });
+    expect(fetch.mock.calls.some(([url]) => /\/api\/(chat|generate)$/.test(url))).toBe(false);
+  });
+
+  test('the pinned judge runs with the pin load options', async () => {
+    const capture = {};
+    mockOllamaOk(capture);
+    workloadSharesHost.mockResolvedValueOnce(true);
+    await judge('pinned-model').expect(200);
+    expect(JSON.parse(capture.opts.body).options).toMatchObject({ num_ctx: 196608 });
+  });
+
+  test('a host the workload reserves remains owned by the workload', async () => {
+    mockOllamaOk();
+    workloadSharesHost.mockResolvedValueOnce(false);
+    await judge('other-judge').expect(200);
   });
 });

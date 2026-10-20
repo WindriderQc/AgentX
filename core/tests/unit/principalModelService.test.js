@@ -71,6 +71,21 @@ test('an active Open hold refuses before changing pins and does not attempt rest
   expect((await service.getPrincipalModel()).model).toBe('standard');
   expect(restore).not.toHaveBeenCalled();
 });
+test('a Benchmark workload sharing the principal host refuses before changing pins', async () => {
+  const RuntimeCoordination = require('../../models/RuntimeCoordination');
+  await RuntimeCoordination.updateOne({ _id: 'runtime' }, { $set: { workloads: [{
+    admissionId: 'judge-batch', generation: 'g1', principal: 'benchmark-service', requestId: 'benchmark:b1',
+    workloadId: 'b1', kind: 'benchmark', hosts: [hostUrl], sharedHosts: [hostUrl], acquiredAt: new Date(),
+    heartbeatAt: new Date(), expiresAt: new Date(Date.now() + 60000)
+  }] } }, { upsert: true });
+  try {
+    await expect(select()).rejects.toMatchObject({ code: 'PRINCIPAL_HOST_BUSY' });
+    expect((await service.getPrincipalModel()).model).toBe('standard');
+    expect(restore).not.toHaveBeenCalled();
+  } finally {
+    await RuntimeCoordination.deleteMany({});
+  }
+});
 test('ambiguous persistence never launches a replacement or rollback', async () => {
   jest.spyOn(RouterTaskConfig, 'bulkWrite').mockRejectedValueOnce(new Error('lost acknowledgment'));
   await expect(select()).rejects.toThrow('lost acknowledgment');
