@@ -34,17 +34,25 @@ from mail_catchup import Busy, CoreClient  # noqa: E402
 from mailbox_backfill import Lock  # noqa: E402
 from review_attempts import ReviewUncertain, extract_once, unsettled  # noqa: E402
 from secretary_evidence import DEFAULT_ROOT, Archive  # noqa: E402
-from value_lanes import lanes_of  # noqa: E402
+from value_lanes import lanes_of, messages  # noqa: E402
 
-VERSION = "souvenir-candidates/v1"
+VERSION = "souvenir-candidates/v2"
 WORK = "souvenir-candidates"            # batch results and status, inside the private archive
 ATTEMPTS = WORK + "/attempts"           # replay fences, apart from page-review attempts
 LOCK_NAME = "souvenir-candidates.lock"
 KEPT_LANES = ("person", "important")
 BATCH_SIZE = 30
 MAX_SOURCES = 19                        # a souvenir cites its history entry plus 19 messages
-CATEGORIES = ["family", "relationship", "work", "home", "health", "money", "government", "school",
-              "travel", "event", "other"]
+# One line each in the instructions; the counts per category are the run's summary.
+CATEGORY_HINTS = {
+    "family": "parents, children, relatives", "relationship": "partner, friends, social life",
+    "work": "jobs, contracts, employers, colleagues", "business": "the owner's own company: filings, administration",
+    "home": "housing, moves, renovations, utilities", "vehicle": "cars and other vehicles: purchase, repair",
+    "health": "care, accidents, medical", "money": "pay, banking, taxes, investments, large purchases",
+    "insurance": "policies and claims", "government": "permits, official records, identity documents",
+    "school": "courses, diplomas, certifications", "leisure": "sports, hobbies, clubs",
+    "travel": "trips", "event": "celebrations, gatherings", "other": "none of the above"}
+CATEGORIES = list(CATEGORY_HINTS)
 DAY, MONTH, YEAR = (re.compile(p) for p in (r"\d{4}-\d{2}-\d{2}", r"\d{4}-\d{2}", r"\d{4}"))
 PAUSE_SECONDS = 60
 
@@ -72,14 +80,32 @@ Write in French. Return only the JSON object required by the schema.
   ("Selon X, ..."). Never invent facts, outcomes, attendance or agreement.
 - eventDate: YYYY-MM-DD, YYYY-MM or YYYY when a finding states the event date; otherwise "".
   The source date is when the mail was written, not the event date.
-- people: names as written (no e-mail addresses); the owner is not listed. places: as written.
-- category: the closest one. refs: the ref of each finding the candidate rests on.
+- people: names as written (no e-mail addresses); never the owner. places: as written.
+- category: the closest one, by what the fact is about:
+""" + "\n".join(f"  {name}: {hint}" for name, hint in CATEGORY_HINTS.items()) + """
+- refs: the ref of each finding the candidate rests on.
 - Empty candidates are correct when nothing has lasting value."""
 
 
 def fold(text):
     text = unicodedata.normalize("NFD", text.casefold())
     return re.sub(r"[^a-z0-9]+", " ", "".join(c for c in text if not unicodedata.combining(c))).strip()
+
+
+def owner_names(archive):
+    """Folded display names the owner sends mail under."""
+    found = set()
+    for _, message, labels in messages(archive):
+        if "SENT" in labels:
+            found.update(fold(name) for name, _ in getaddresses([(message.get("headers") or {}).get("from") or ""])
+                         if fold(name))
+    return found
+
+
+def not_owner(person, owner):
+    """False for the owner's name or part of it ("First", "Last"), whatever the accents or case."""
+    words = set(fold(person).split())
+    return bool(words) and not any(words <= set(name.split()) for name in owner)
 
 
 def author(headers):
@@ -170,7 +196,7 @@ def names(values):
     return list(dict.fromkeys(v.strip()[:120] for v in values or [] if isinstance(v, str) and v.strip()))[:20]
 
 
-def candidates_of(batch, raw):
+def candidates_of(batch, raw, owner=frozenset()):
     """Validated candidates of one batch; refs outside the batch are dropped."""
     refs = {f"f{n}": r for n, r in enumerate(batch["findings"], 1)}
     result = []
@@ -183,14 +209,15 @@ def candidates_of(batch, raw):
             continue
         when = item.get("eventDate").strip() if isinstance(item.get("eventDate"), str) else ""
         when = when if any(p.fullmatch(when) for p in (DAY, MONTH, YEAR)) else ""
-        result.append({"text": text, "eventDate": when, "people": names(item.get("people")),
+        people = [p for p in names(item.get("people")) if not_owner(p, owner)]
+        result.append({"text": text, "eventDate": when, "people": people,
                        "places": names(item.get("places")),
                        "category": item.get("category") if item.get("category") in CATEGORIES else "other",
                        "findings": [i for r in rows for i in r["ids"]]})
     return result
 
 
-def entries(rows, results):
+def entries(rows, results, owner=frozenset()):
     """History import entries from every saved batch, identical candidates merged."""
     by_id = {i: r for r in rows for i in r["ids"]}
     merged = {}
@@ -202,7 +229,7 @@ def entries(rows, results):
             key = (fold(candidate["text"]), candidate["eventDate"])
             into = merged.setdefault(key, {**candidate, "findings": []})
             into["findings"] = sorted(set(into["findings"]) | {i for r in found for i in r["ids"]})
-            into["people"] = names(into["people"] + candidate["people"])
+            into["people"] = [p for p in names(into["people"] + candidate["people"]) if not_owner(p, owner)]
             into["places"] = names(into["places"] + candidate["places"])
     out, overflow = [], 0
     for candidate in merged.values():
@@ -229,13 +256,14 @@ def entries(rows, results):
 
 
 def consolidate(archive, client, lock, rows, *, max_findings=None, instructions="", sleep=time.sleep,
-                stop=lambda: False, batch_size=BATCH_SIZE):
+                stop=lambda: False, batch_size=BATCH_SIZE, owner=frozenset()):
     work = archive.root / WORK
     saved = [load(f) for f in sorted((work / "batches").glob("*.json"))]
     covered = {f for result in saved for f in result["findingIds"]}
     status = {"phase": "consolidating", "startedAt": now(), "findings": len(rows), "covered": len(covered),
               "batches": 0, "candidates": 0}
-    system = INSTRUCTIONS + ("\n\nOwner instructions:\n" + instructions.strip() if instructions.strip() else "")
+    system = INSTRUCTIONS + (f"\n\nThe owner's names (never in people): {', '.join(sorted(owner))}" if owner else "") \
+        + ("\n\nOwner instructions:\n" + instructions.strip() if instructions.strip() else "")
 
     def report(phase=None, **changes):
         status.update(changes, updatedAt=now(), **({"phase": phase} if phase else {}))
@@ -266,7 +294,7 @@ def consolidate(archive, client, lock, rows, *, max_findings=None, instructions=
                 sleep(getattr(exc, "retry_after", PAUSE_SECONDS))
         status.pop("paused", None)
         result = {"schema": VERSION, "batchId": batch["batchId"], "at": now(),
-                  "findingIds": [i for r in batch["findings"] for i in r["ids"]], "candidates": candidates_of(batch, raw)}
+                  "findingIds": [i for r in batch["findings"] for i in r["ids"]], "candidates": candidates_of(batch, raw, owner)}
         save(work / "batches" / f"{batch['batchId']}.json", result)
         done += len(batch["findings"])
         report(batches=status["batches"] + 1, candidates=status["candidates"] + len(result["candidates"]),
@@ -304,6 +332,7 @@ def main(argv=None):
         parser.error("Label the archive first with value_lanes.py")
     delivered = load(args.history_state, {}).get("delivered", {}) if args.history_state else {}
     rows, counts = findings(archive, delivered)
+    owner = owner_names(archive)
     if args.plan:
         pending = list(batches(rows, {f for p in (archive.root / WORK / "batches").glob("*.json")
                                       for f in load(p)["findingIds"]}))
@@ -320,13 +349,13 @@ def main(argv=None):
         instructions = args.instructions_file.read_text(encoding="utf-8") if args.instructions_file else ""
         client = CoreClient(args.core, args.task_type, schema=SCHEMA, caller="secretary-souvenirs")
         status = consolidate(archive, client, lock, rows, max_findings=args.max_findings,
-                             instructions=instructions, stop=lambda: bool(stopping))
+                             instructions=instructions, stop=lambda: bool(stopping), owner=owner)
     finally:
         lock.release()
     output = {"phase": status["phase"], "batches": status["batches"], "counts": counts}
     if args.manifest:
         results = [load(f) for f in sorted((archive.root / WORK / "batches").glob("*.json"))]
-        made, overflow = entries(rows, results)
+        made, overflow = entries(rows, results, owner)
         manifest = {"schema": "agentx.secretary-history-import/v1", "at": now(), "source": VERSION,
                     "sourceRoot": str(archive.root), "entries": made, "sourcesBeyondLimit": overflow}
         save(args.manifest, manifest)
