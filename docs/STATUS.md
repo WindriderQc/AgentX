@@ -335,6 +335,9 @@ Instance configuration, data and deployment receipts remain outside Git.
 - **Finance.** A personal ledger in Core accepts only statements that reconcile
   to the cent. The Wallet Beefer page (`/finance`), deterministic alerts and
   the `comptable` agent's tools read it. See [finance](FINANCE.md).
+- **Photos.** Core answers photo questions (smart search, people, places,
+  OCR text, thumbnails) from a separate Immich server through `/api/photos`,
+  with the only Immich key. Tested against a mocked Immich. See [photos](PHOTOS.md).
 - **Data.** A native GPU collector samples `nvidia-smi` into Data; the Nerve
   Center and the Profiler label stale or missing samples as such.
   Advisory storage triage records the metadata sample it receives, including

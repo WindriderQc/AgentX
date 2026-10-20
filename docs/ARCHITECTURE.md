@@ -707,7 +707,7 @@ bypasses the gateway removes the parental boundary.
 
 Core registers surfaces for the `full` profile only; `demo` keeps the
 distributable chat/model/RAG/benchmark experience. Personal capabilities such as
-finance (`/api/finance`, `/finance`) are in the demo exclusion list of
+finance (`/api/finance`, `/finance`) and photos (`/api/photos`) are in the demo exclusion list of
 `shared/agentxRuntimeProfile.js`, and their daemons start in `full` only.
 
 Core owns the common home (`/`, `/portal`, `/ecosystem`).

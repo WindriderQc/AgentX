@@ -1,6 +1,6 @@
 ---
 name: agentx
-description: "Operate an AgentX instance's health, inference hosts, model routing, Benchmark, RAG, Pipeline coding tasks and memory review. Use its Core APIs and native operator tools; keep instance details in its supplied reference sheet."
+description: "Operate an AgentX instance's health, inference hosts, model routing, Benchmark, RAG, Pipeline coding tasks, memory review and household photo questions. Use its Core APIs and native operator tools; keep instance details in its supplied reference sheet."
 ---
 
 # AgentX platform operator
@@ -93,9 +93,42 @@ before the change.
 | Lasting facts and preferences about the owner and the household | Core tool bus `memory_search` / `memory_remember`, or `POST /api/consumers/nestor/v1/memory/notes` |
 | What happened in the owner's mail | `POST /api/consumers/nestor/v1/mail-journal` |
 | Household documents and guides | `POST /api/rag/search` |
+| Household photos, who is in them, where and when | `/api/photos/*` (see Photo questions) |
 | How AgentX works | product repository docs (`docs/ARCHITECTURE.md`, `docs/OPERATIONS.md`, `docs/STATUS.md`), not memory |
 
 Owner data stays in the owner's conversation. Sensitive identifiers appear masked; never ask for or reveal their values. Do not store mail summaries, logs or secrets as memory notes.
+
+## Photo questions
+
+Household photos live in Immich; ask Core, never Immich. Core holds the only
+Immich key: never look for one, ask for one or call Immich directly. First
+`GET /api/photos/status`; `enabled: false` means the instance has no photos.
+
+For "photos of <person> at the beach in 2025":
+
+1. `GET /api/photos/people` gives the exact names (and ids). Match the asked
+   name to one of them; if none fits, say so instead of guessing.
+2. `GET /api/photos/search/smart?q=<what is in the photo>&person=<name>&year=2025`.
+   `q` describes the scene in words (French works: `q=à la plage`). Narrow with
+   `city`, `country`, `from`, `to` (`2025`, `2025-07`, `2025-07-14`). Several
+   names separated by commas means all of them in the photo.
+3. Smart search always returns its closest matches, even weak ones. Before
+   saying a photo shows something, read `GET /api/photos/assets/<id>` (date,
+   place, people, description, text read in the photo) or look at its
+   thumbnail.
+
+Exact questions ("how many photos in Sampleton in July 2024", "the photo with
+the sign that says X", "oldest photo of <person>") use
+`GET /api/photos/search` with `person`, `city`, `from`/`to`, `text`
+(description), `ocr` (text in the photo), `order=asc`, and `cursor` for the next
+page. `GET /api/photos/people/<id>/assets` lists one person's photos.
+
+Show a photo with Core's link `<core>/api/photos/assets/<id>/thumbnail`
+(`?size=preview` for larger). Lists stop at 50 items; say when there are more.
+Faces are identified locally and photos are private household data: keep them
+in the owner's conversation. Writing a description
+(`PUT /api/photos/assets/<id>/description`) is off unless the instance enabled
+it, and needs the owner's request for that photo. Details: `docs/PHOTOS.md`.
 
 ## Memory review
 

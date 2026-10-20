@@ -1615,16 +1615,6 @@
       "secret": false,
       "description": "JSON mapping of Household image sources to canonical Data indexed roots. Unset: no local source roots."
     },
-    "HOUSEHOLD_PERMISSIVE_PRIMARY_MODEL": {
-      "services": [
-        "core"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "household",
-      "secret": false,
-      "description": "Model of the household permissive personal-operator pack. Unset: a built-in default model."
-    },
     "HOUSEHOLD_OWNER_UNLOCK_MINUTES": {
       "services": [
         "core"
@@ -1644,6 +1634,16 @@
       "category": "household",
       "secret": true,
       "description": "scrypt hash of the phrase said after \"Nestor superDad\" to unlock a family-pinned device, from core/scripts/owner-unlock-phrase-hash.js. Unset: no device can be unlocked."
+    },
+    "HOUSEHOLD_PERMISSIVE_PRIMARY_MODEL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Model of the household permissive personal-operator pack. Unset: a built-in default model."
     },
     "HOUSEHOLD_PERSONA_VOICES": {
       "services": [
@@ -1717,6 +1717,46 @@
       "category": "household",
       "secret": false,
       "description": "Writable directory, inside the Core container, where the original of every attached photo and every generated image is kept at full quality. Unset: nothing is archived."
+    },
+    "IMMICH_API_KEY_FILE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": true,
+      "description": "Absolute path, inside the Core container, of a read-only file holding the Immich API key (bare key or JSON with a key field). Read at each request. Unset: photos are off."
+    },
+    "IMMICH_DESCRIPTION_WRITE_ENABLED": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "true lets PUT /api/photos/assets/:id/description write an Immich description (key needs asset.update). Unset or anything else: the route refuses."
+    },
+    "IMMICH_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "10000",
+      "category": "household",
+      "secret": false,
+      "description": "Timeout of one Immich request, from 1000 to 60000. Unset: 10000."
+    },
+    "IMMICH_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Base address of the Immich photo server as Core reaches it, without /api. Unset: /api/photos answers PHOTOS_NOT_CONFIGURED."
     },
     "INFERENCE_FETCH_TIMEOUT_MS": {
       "services": [
