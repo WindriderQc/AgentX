@@ -604,6 +604,7 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
             ledgers.merge_step(ledger, group, value, source, number, line_range=line_range)
         except ledgers.LedgerError as error:
             ledgers.record_failure(ledger, group, number, str(error))
+            ledger['steps'][-1].update(requestId=args.request_id, jsonResultAvailable=value is not None)
             if escalation_allowed(progress, ledger, group):
                 number += 1
                 escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source)

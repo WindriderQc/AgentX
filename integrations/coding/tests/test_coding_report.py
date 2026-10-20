@@ -767,6 +767,33 @@ class StepsReportTest(unittest.TestCase):
         self.assertEqual(sorted(states.values()), ['blocked','reviewed'])
         self.assertFalse(coverage['declaredComplete'])
 
+    def test_rejected_extra_document_can_be_corrected_using_the_native_retry_diagnostic(self):
+        original = self.worker
+        first = [True]
+        self.answers = [self.reviewed, self.reviewed, lambda prompt: {'summary': 'Reviewed.', 'explanations': {}}]
+        def worker(workspace, prompt, seconds, progress, *, read_only):
+            if first[0]:
+                first[0] = False
+                progress.model_calls += 1
+                answer = self.reviewed(prompt)
+                answer['documents'].append({'path': 'docs/GUIDE.md', 'state': 'reviewed',
+                    'evidence': [{'path': 'config.js', 'line': 1, 'check': 'Existing source'}]})
+                target = self.out/progress.step['output'].rsplit('/', 1)[1]
+                target.write_text(json.dumps(answer))
+                return subprocess.CompletedProcess([], 0)
+            if '- README.md\n' in prompt:
+                self.assertIn("'docs/GUIDE.md' is not a document of this group", prompt)
+                self.assertIn(f'/home/agent/deliverables/{KEY}/step-01.json', prompt)
+                self.assertIn('Do not overwrite the earlier file', prompt)
+            return original(workspace, prompt, seconds, progress, read_only=read_only)
+        with mock.patch.object(runner, 'run_worker', side_effect=worker), mock.patch('builtins.print'):
+            self.assertEqual(runner.main(), 0)
+        self.assertTrue(self.uploads[0]['coverage']['declaredComplete'])
+        ledger = report.ledgers.embedded(base64.b64decode(self.uploads[0]['dataUrl'].split(',')[1]).decode())
+        self.assertEqual(ledger['steps'][0]['requestId'], KEY)
+        self.assertTrue(ledger['steps'][0]['jsonResultAvailable'])
+        self.assertEqual([row['result'] for row in ledger['steps']], ['failed', 'merged', 'merged'])
+
     def test_output_limited_group_keeps_failure_and_costs_then_reviews_other_documents(self):
         original = self.worker
         self.answers = [self.reviewed]

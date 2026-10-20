@@ -214,6 +214,39 @@ class LedgerTest(unittest.TestCase):
 
 
 class StepPlanTest(unittest.TestCase):
+    def test_retry_receives_rejection_and_its_own_existing_json_path(self):
+        ledger = ledgers.new_ledger(snapshot())
+        ledgers.record_failure(ledger, ['docs/A.md'], 3, 'docs/B.md is outside this group')
+        ledger['steps'][-1].update(requestId='current-run', jsonResultAvailable=True)
+        output = '/home/agent/deliverables/current-run/step-04.json'
+        prompt = steps.group_prompt(ledger, ['docs/A.md'], output, {}, 'workspace')
+        self.assertIn('Previous result rejected', prompt)
+        self.assertIn('docs/B.md is outside this group', prompt)
+        self.assertIn('/home/agent/deliverables/current-run/step-03.json', prompt)
+        self.assertIn('Do not overwrite the earlier file', prompt)
+        self.assertEqual(ledger['documents']['docs/A.md']['state'], 'pending')
+
+    def test_retry_does_not_invent_an_artifact_for_another_request_or_missing_result(self):
+        ledger = ledgers.new_ledger(snapshot())
+        ledgers.record_failure(ledger, ['docs/A.md'], 3, 'invalid result')
+        row = ledger['steps'][-1]
+        for metadata in [{'requestId': 'earlier-run', 'jsonResultAvailable': True},
+                         {'requestId': 'current-run', 'jsonResultAvailable': False},
+                         {'requestId': 'current-run', 'jsonResultAvailable': True, 'step': True}]:
+            ledger['steps'][-1] = {**row, **metadata}
+            text = steps.retry_feedback(ledger, ['docs/A.md'], '/out/current-run/step-04.json')
+            self.assertIn('invalid result', text)
+            self.assertNotIn('Read your rejected JSON', text)
+
+    def test_new_continuation_and_successful_retry_do_not_receive_stale_failures(self):
+        ledger = ledgers.new_ledger(snapshot())
+        ledgers.record_failure(ledger, ['docs/A.md'], 1, 'stale error')
+        ledger['documents']['docs/A.md']['attempts'] = 0
+        self.assertEqual(steps.retry_feedback(ledger, ['docs/A.md'], '/new/step-02.json'), '')
+        ledger['documents']['docs/A.md']['attempts'] = 1
+        ledgers.merge_step(ledger, ['docs/A.md'], good_result(), source, 2)
+        self.assertEqual(steps.retry_feedback(ledger, ['docs/A.md'], '/new/step-03.json'), '')
+
     def test_step_size_comes_from_the_lane_capability(self):
         self.assertEqual(steps.step_budget({'agent': {'recommendedStepContext': 32768}, 'context': {'knee': 65536}})['source'], 'agent_workload')
         self.assertEqual(steps.step_budget({'context': {'knee': 32768}})['stepContext'], 32768)
