@@ -283,7 +283,7 @@ def progress_marker(ledger):
             'ranges': frozenset((path, start, end) for path, row in documents.items()
                 for start, end in row.get('ranges', [])),
             'findings': frozenset((row['kind'], row['document']['path'], row['document']['line'],
-                tuple(sorted((ref['path'], ref['sha256'], ref['line']) for ref in row['evidence'])))
+                tuple(sorted({(ref['path'], ref['sha256'], ref['line']) for ref in row['evidence']})))
                 for row in ledger.get('findings', [])),
             'legacy': frozenset((hashlib.sha256((ledger.get('legacy') or '').encode()).hexdigest(),))}
 
