@@ -61,13 +61,14 @@
     }
 
     async function list(host) {
-      const { plants } = await api('/api/family/plants?view=manage');
+      const [{ plants }, family] = await Promise.all([api('/api/family/plants?view=manage'), profiles.length ? null : api('/api/family/profiles')]);
+      if (family) profiles = family.profiles || [];
       const drafts = plants.filter(entry => entry.status === 'draft'), published = plants.filter(entry => entry.status === 'published');
       host.innerHTML = `<header class="plants-head"><div><p class="eyebrow">Family</p><h1>Plants</h1>
           <p class="muted">Photograph a plant: Nestor proposes the species and a care card, you check and publish. The kids see only published plants.</p></div>
           ${addButton()}</header><p class="muted" data-plant-status role="status" aria-live="polite"></p>
-        ${drafts.length ? `<section class="card plants-section"><h2>To review</h2>${drafts.map(entry => view().listRowHtml(entry, esc)).join('')}</section>` : ''}
-        <section class="card plants-section"><h2>All plants</h2>${published.length ? published.map(entry => view().listRowHtml(entry, esc)).join('')
+        ${drafts.length ? `<section class="card plants-section"><h2>To review</h2>${drafts.map(entry => view().listRowHtml(entry, esc, profiles)).join('')}</section>` : ''}
+        <section class="card plants-section"><h2>All plants</h2>${published.length ? published.map(entry => view().listRowHtml(entry, esc, profiles)).join('')
           : '<div class="empty">No published plant yet. Start with the one you see most often.</div>'}</section>`;
       const input = host.querySelector('[data-plant-photo]'), status = host.querySelector('[data-plant-status]');
       input.onchange = async () => {
@@ -92,8 +93,11 @@
       if (busy) return false;
       busy = true;
       try {
-        ({ plant } = await post(`${url(plant.id)}${path}`, { expectedRevision: plant.revision, ...body }));
-        if (message) toast(message);
+        const result = await post(`${url(plant.id)}${path}`, { expectedRevision: plant.revision, ...body });
+        plant = result.plant;
+        // A published card also says what changed in the Kids Room.
+        const kids = view().choreSummary(result.chores);
+        if (message || kids) toast([message, kids].filter(Boolean).join(' '));
         return true;
       } catch (error) {
         if (error.status === 409 && /changed/i.test(error.message)) { toast('This plant changed meanwhile. It was reloaded.'); await load(plant.id); }
@@ -152,7 +156,12 @@
 
     function publishBody() {
       const problems = view().problemText(plant.problems);
-      if (plant.status === 'published') return `<p>Published. The kids see ${esc(plant.nickname)} in Ma jungle.</p><button type="button" class="compact danger" data-plant-retire>Retire this plant</button>`;
+      if (plant.status === 'published') {
+        const care = (plant.care || []).map(chore => `<li>${esc(view().nextCare({ care: [chore] }, profiles))}</li>`).join('');
+        return `<p>Published. The kids see ${esc(plant.nickname)} in Ma jungle.</p>
+          ${care ? `<p class="muted">In the Kids Room now:</p><ul class="plant-care-now">${care}</ul>` : '<p class="muted">No care chore yet: assign a child to a care action.</p>'}
+          <button type="button" class="compact danger" data-plant-retire>Retire this plant</button>`;
+      }
       return `${view().childPreviewHtml(plant, esc)}
         ${problems.length ? `<ul class="plant-problems">${problems.map(problem => `<li>${esc(problem)}</li>`).join('')}</ul>` : '<p>Ready for the kids.</p>'}
         <div class="row wrap"><button type="button" class="primary" data-plant-publish${problems.length ? ' disabled' : ''}>Publish ${esc(plant.nickname)}</button>

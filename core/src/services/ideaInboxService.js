@@ -132,7 +132,7 @@ async function promoteToExecution(id, input = {}, deps = {}) {
     const { subjectRef, ...proposal } = idea.familyChore;
     const createChore = deps.createFamilyChore || ((routine, origin) => require('./familyTaskService').create(routine, origin));
     const { chore } = await createChore({ ...proposal, ...choreOverrides(input) },
-      { source: 'planning-idea', sourceKey: `idea:${idea.id}` });
+      { source: 'planning-idea', sourceKey: `idea:${idea.id}`, subjectRef });
     task = { pipelineId: chore.id, title: chore.title };
   } else if (targetType === 'task') {
     const createTask = deps.createTask || require('./pipelineTaskService').createTaskInMongo;

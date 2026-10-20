@@ -222,6 +222,8 @@ const PipelineTaskSchema = new mongoose.Schema({
   // winter-season interval (FAMILY_WINTER_SEASON).
   intervalDays: Number,
   winterIntervalDays: Number,
+  // What a family chore is about, e.g. plant:<id> (#869).
+  subjectRef: { type: String, index: true },
   stars: Number,
   completionCount: Number,
   checkedInAt: Date,

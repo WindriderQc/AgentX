@@ -30,7 +30,7 @@ test('the child projection keeps needs, the eat warning and photos, never source
     id: '0123456789abcdef01234567', nickname: 'Synthetic plant', room: 'Salon', spot: null,
     commonName: 'Pothos', latinName: 'Epipremnum aureum',
     needs: { light: 'Bright, indirect', water: 'When the top is dry' },
-    toxicity: { children: 'toxic', pets: 'toxic' }, doNotEat: true, funFact: 'It climbs trees.',
+    toxicity: { children: 'toxic', pets: 'toxic' }, doNotEat: true, funFact: 'It climbs trees.', mood: 'happy', care: [],
     photos: [{ id: 'abcdefabcdefabcdefabcdef', url: '/api/family/plants/0123456789abcdef01234567/photos/abcdefabcdefabcdefabcdef' }]
   });
   assert.doesNotMatch(JSON.stringify(child), /example\.org|candidates|reviewed|synthetic"|carePlan/);
@@ -64,4 +64,20 @@ test('plant input is bounded, typed and rejects unknown fields', () => {
   assert.equal(input.toxicity.reviewed, false);
   assert.deepEqual(input.carePlan[0], { key: 'arroser-la-plante', title: 'Arroser la plante', note: '', cadence: 'weekly',
     intervalDays: null, winterIntervalDays: null, stars: 5, minAgeBand: 'school', profileId: null });
+});
+
+test('the mood follows the open chores of the plant: thirsty, then other care, then waiting for a parent', () => {
+  const { plantMood } = require('../../../src/domains/household/plants');
+  const water = { title: 'Arroser Gérard', sourceKey: 'plant:x:arroser', status: 'queued', dueToday: true, overdue: false };
+  const turn = { title: 'Tourner le pot', sourceKey: 'plant:x:tourner', status: 'queued', dueToday: false, overdue: true };
+  const later = { title: 'Arroser Gérard', status: 'queued', dueToday: false, overdue: false };
+  const checked = { title: 'Arroser Gérard', status: 'review', dueToday: true, overdue: false };
+  assert.equal(plantMood([water, turn]), 'thirsty');
+  assert.equal(plantMood([later, turn]), 'needs_care');
+  assert.equal(plantMood([checked, later]), 'waiting');
+  assert.equal(plantMood([later]), 'happy');
+  assert.equal(plantMood([]), 'happy');
+  const card = childPlant(ready, [{ id: '0042', title: 'Arroser', profileId: 'leo', stars: 2, dueDay: '2026-10-20', dueToday: true, overdue: false, status: 'queued' }]);
+  assert.equal(card.mood, 'thirsty');
+  assert.deepEqual(card.care, [{ ref: '0042', title: 'Arroser', profileId: 'leo', stars: 2, dueDay: '2026-10-20', dueToday: true, overdue: false, waiting: false }]);
 });

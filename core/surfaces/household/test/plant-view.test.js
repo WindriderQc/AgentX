@@ -80,3 +80,22 @@ test('a draft already applied to the card is not proposed again', () => {
   assert.equal(view.draftApplied(draft, { careSheet: {}, carePlan: [] }), false);
   assert.equal(view.draftApplied(draft, { careSheet: { light: { text: 'Vive' } }, carePlan: [{ title: 'Arroser' }, { title: 'Tourner' }] }), false);
 });
+
+test('published rows show the mood and the next care chore with the child', () => {
+  const profiles = [{ id: 'leo', displayName: 'Léo' }];
+  const plant = { id: 'p1', nickname: 'Gérard', status: 'published', mood: 'thirsty', photos: [], care: [
+    { title: 'Tourner', dueDay: '2026-10-25', dueToday: false, overdue: false, profileId: 'leo' },
+    { title: 'Arroser', dueDay: '2026-10-20', dueToday: true, overdue: false, profileId: 'leo' }] };
+  const html = view.listRowHtml(plant, esc, profiles);
+  assert.match(html, /Arroser · today · Léo/); assert.match(html, /pill down">Thirsty/);
+  assert.equal(view.nextCare({ care: [], carePlan: [{ title: 'Arroser', profileId: null }] }), 'No child assigned yet');
+  assert.equal(view.nextCare({ care: [{ title: 'Arroser', waiting: true, profileId: 'mia' }] }, profiles), 'Arroser · to approve · mia');
+});
+
+test('the save message says what changed in the Kids Room', () => {
+  assert.equal(view.choreSummary({ created: ['1'], updated: [], cancelled: ['2', '3'], waiting: ['4'], errors: [] }),
+    'Kids Room: 1 chore created, 2 chores cancelled, 1 waiting for your approval, unchanged.');
+  assert.equal(view.choreSummary({ created: [], updated: [], cancelled: [], waiting: [], errors: [{ code: 'X' }] }), 'Kids Room: 1 not updated, save again.');
+  assert.equal(view.choreSummary({ created: [], updated: [], cancelled: [], waiting: [], errors: [] }), '');
+  assert.equal(view.choreSummary(undefined), '');
+});

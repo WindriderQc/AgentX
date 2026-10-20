@@ -197,6 +197,17 @@ both interval fields.
     the proposal. Nestor's `draft_plant_card` tool starts a draft from the
     latest image in the personal conversation (last 30 minutes) and starts
     identification.
+- A published card keeps its Kids Room chores in step
+  (`householdPlantChores.js`): one family chore per care action assigned to a
+  child (`subjectRef: plant:<id>`, `source: household-plant`, `sourceKey:
+  plant:<id>:<action key>`), first due on the publishing day. Editing the plan
+  updates, adds or cancels open chores; unassigning an action or retiring the
+  plant cancels them, and assigning it again brings back the same chore. A
+  chore a child has checked in is left unchanged. Each save reports what
+  changed, and a sync failure never undoes the card. The card's mood comes
+  from its open chores: `thirsty` when a watering chore is due, `needs_care`
+  when another one is, `waiting` while a check-in waits for a parent, `happy`
+  otherwise. Chores Nestor proposes about a plant keep their `subjectRef`.
 - The parent page `/dad/family/plants` (`plants-parent.js`, rendering in
   `plant-view.js`) lists drafts first. Adding a plant takes a photo, reduces
   it in the browser and starts identification. Each card is then completed

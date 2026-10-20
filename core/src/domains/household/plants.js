@@ -162,7 +162,7 @@ function assistantView(assistant = {}) {
 }
 
 /** The parent's view: everything, including sources, candidates and review state. */
-function managedPlant(plant = {}) {
+function managedPlant(plant = {}, chores = null) {
   return {
     id: String(plant._id || plant.id),
     nickname: plant.nickname,
@@ -177,6 +177,7 @@ function managedPlant(plant = {}) {
     photos: photoView(plant),
     assistant: assistantView(plant.assistant),
     problems: publishProblems(plant),
+    ...(chores ? { mood: plantMood(chores), care: careView(chores) } : {}),
     revision: Number.isInteger(plant.__v) ? plant.__v : 0,
     publishedAt: plant.publishedAt || null,
     createdAt: plant.createdAt || null,
@@ -185,9 +186,28 @@ function managedPlant(plant = {}) {
 }
 
 const LEVEL_RANK = Object.freeze({ unknown: 0, none: 1, mild: 2, toxic: 3 });
+const WATERING = /arros|water|eau\b|abreuv/i;
+
+/**
+ * How the plant feels, from its open chores (#869): thirsty when a watering
+ * chore is due, needs_care when another care chore is due, waiting while a
+ * check-in waits for a parent, happy otherwise.
+ */
+function plantMood(chores = []) {
+  const due = chore => chore.status !== 'review' && (chore.overdue || chore.dueToday);
+  const watering = chore => WATERING.test(`${chore.title} ${chore.sourceKey || ''}`);
+  if (chores.some(chore => due(chore) && watering(chore))) return 'thirsty';
+  if (chores.some(due)) return 'needs_care';
+  if (chores.some(chore => chore.status === 'review')) return 'waiting';
+  return 'happy';
+}
+
+// The care chores a card shows: what to do, for whom, and when.
+const careView = chores => chores.map(chore => ({ ref: chore.id, title: chore.title, profileId: chore.profileId,
+  stars: chore.stars, dueDay: chore.dueDay, dueToday: chore.dueToday, overdue: chore.overdue, waiting: chore.status === 'review' }));
 
 /** What a child sees on a published card: no sources, candidates or review state. */
-function childPlant(plant = {}) {
+function childPlant(plant = {}, chores = []) {
   const toxicity = plant.toxicity || {};
   const level = subject => toxicity[subject]?.level || 'unknown';
   const pets = LEVEL_RANK[level('cats')] >= LEVEL_RANK[level('dogs')] ? level('cats') : level('dogs');
@@ -202,6 +222,8 @@ function childPlant(plant = {}) {
     toxicity: { children: level('children'), pets },
     doNotEat: ['mild', 'toxic'].includes(level('children')) || ['mild', 'toxic'].includes(pets),
     funFact: plant.funFact || null,
+    mood: plantMood(chores),
+    care: careView(chores),
     photos: photoView(plant).map(({ id, url }) => ({ id, url }))
   };
 }
@@ -217,5 +239,6 @@ module.exports = {
   childPlant,
   managedPlant,
   plantInput,
+  plantMood,
   publishProblems
 };

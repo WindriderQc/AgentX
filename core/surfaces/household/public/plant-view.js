@@ -85,13 +85,36 @@
       ${plant.funFact ? `<p><span>Did you know?</span>${esc(plant.funFact)}</p>` : ''}</div>`;
   }
 
-  function listRowHtml(plant, esc) {
+  const MOODS = { thirsty: ['Thirsty', 'down'], needs_care: ['Needs care', 'waiting'], waiting: ['Check-in to approve', 'waiting'], happy: ['Happy', 'ok'] };
+
+  /** The next care chore of a published plant, in words: "Arroser · today · Léo". */
+  function nextCare(plant, profiles = []) {
+    const next = [...(plant.care || [])].sort((a, b) => Number(b.overdue) - Number(a.overdue) || String(a.dueDay || '9').localeCompare(String(b.dueDay || '9')))[0];
+    if (!next) return plant.carePlan?.some(action => action.profileId) ? '' : 'No child assigned yet';
+    const who = profiles.find(profile => profile.id === next.profileId)?.displayName || next.profileId;
+    const when = next.waiting ? 'to approve' : next.overdue ? 'overdue' : next.dueToday ? 'today' : next.dueDay || '';
+    return [next.title, when, who].filter(Boolean).join(' · ');
+  }
+
+  /** One line for the parent after a save: what changed in the Kids Room. */
+  function choreSummary(result) {
+    if (!result) return '';
+    const parts = [];
+    const count = (list, verb) => list?.length && parts.push(`${list.length} chore${list.length > 1 ? 's' : ''} ${verb}`);
+    count(result.created, 'created'); count(result.updated, 'updated'); count(result.cancelled, 'cancelled');
+    if (result.waiting?.length) parts.push(`${result.waiting.length} waiting for your approval, unchanged`);
+    if (result.errors?.length) parts.push(`${result.errors.length} not updated, save again`);
+    return parts.length ? `Kids Room: ${parts.join(', ')}.` : '';
+  }
+
+  function listRowHtml(plant, esc, profiles = []) {
     const photo = plant.photos?.[0];
-    const hint = plant.status === 'draft' ? (problemText(plant.problems)[0] || 'Ready to publish.') : (plant.room || '');
+    const hint = plant.status === 'draft' ? (problemText(plant.problems)[0] || 'Ready to publish.') : nextCare(plant, profiles) || plant.room || '';
+    const [moodLabel, moodClass] = plant.status === 'published' ? MOODS[plant.mood] || MOODS.happy : [statusLabel(plant.status), plant.status === 'draft' ? 'waiting' : ''];
     return `<a class="plant-row status-${esc(plant.status)}" href="/dad/family/plants?plant=${encodeURIComponent(plant.id)}">
       ${photo ? `<img src="${esc(photo.url)}?view=manage" alt="" loading="lazy">` : '<span class="plant-thumb" aria-hidden="true"></span>'}
       <span class="grow"><strong>${esc(plant.nickname)}</strong><small>${esc(plant.identification?.commonName || 'Species to choose')}${hint ? ` · ${esc(hint)}` : ''}</small></span>
-      <span class="pill ${plant.status === 'draft' ? 'waiting' : plant.status === 'published' ? 'ok' : ''}">${statusLabel(plant.status)}</span></a>`;
+      <span class="pill ${moodClass}">${moodLabel}</span></a>`;
   }
 
   /** Reads the editor back into Core's plant fields. */
@@ -129,6 +152,6 @@
     return Boolean(draft) && sameSheet && titles(draft.carePlan) === titles(plant.carePlan);
   }
 
-  window.PlantView = { CARE, ROOMS, ageAllows, draftApplied, actionHtml, candidatesHtml, careSheetHtml, childPreviewHtml, keepSources,
+  window.PlantView = { CARE, ROOMS, ageAllows, choreSummary, draftApplied, nextCare, actionHtml, candidatesHtml, careSheetHtml, childPreviewHtml, keepSources,
     listRowHtml, problemText, readEditor, statusLabel, toxicityHtml };
 })();

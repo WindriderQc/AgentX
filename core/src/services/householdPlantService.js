@@ -25,7 +25,19 @@ function revision(value) {
 }
 
 const view = value => value === 'manage' ? 'manage' : 'child';
-const project = (plant, as) => as === 'manage' ? managedPlant(plant) : childPlant(plant);
+const project = (plant, as, chores = []) => as === 'manage' ? managedPlant(plant, chores) : childPlant(plant, chores);
+// Required lazily: the chore sync uses the family task service, which is not needed to read a card.
+const plantChores = () => require('./householdPlantChores');
+
+// Keeps the card's Kids Room chores in step; a failure is reported, never hidden.
+async function synced(plant) {
+  try { return { plant, chores: await plantChores().syncPlantChores(plant) }; }
+  catch (error) { return { plant, chores: { errors: [{ code: error.code || 'PLANT_CHORE_SYNC_FAILED' }] } }; }
+}
+async function withChores(plant, as = 'manage') {
+  const chores = (await plantChores().choresByPlant([plant._id])).get(String(plant._id)) || [];
+  return project(plant, as, chores);
+}
 
 async function find(id) {
   const plant = await Plant.findById(plantId(id)).lean();
@@ -65,14 +77,15 @@ async function list(input = {}) {
   const rows = await Plant.find(query).sort({ nickname: 1 }).limit(200).lean();
   // Parents see what needs them first: drafts, then the rest by name.
   if (as === 'manage') rows.sort((a, b) => Number(a.status !== 'draft') - Number(b.status !== 'draft'));
-  return { plants: rows.map(row => project(row, as)) };
+  const chores = await plantChores().choresByPlant(rows.filter(row => row.status === 'published').map(row => row._id));
+  return { plants: rows.map(row => project(row, as, chores.get(String(row._id)) || [])) };
 }
 
 async function get(input = {}) {
   const as = view(input.view);
   const plant = await find(input.id);
   if (as === 'child' && plant.status !== 'published') throw failure(404, 'PLANT_NOT_FOUND', 'Plant not found');
-  return { plant: project(plant, as) };
+  return { plant: plant.status === 'published' ? await withChores(plant, as) : project(plant, as) };
 }
 
 async function update(input = {}) {
@@ -83,7 +96,10 @@ async function update(input = {}) {
   if (!Object.keys(fields).length) throw failure(400, 'PLANT_EDIT_EMPTY', 'Nothing to change');
   // A published card stays publishable: an edit cannot remove what the children rely on.
   if (plant.status === 'published') assertPublishable({ ...plant, ...fields });
-  return { plant: managedPlant(await write(id, expectedRevision, fields)) };
+  const saved = await write(id, expectedRevision, fields);
+  if (saved.status !== 'published') return { plant: managedPlant(saved) };
+  const { chores } = await synced(saved);
+  return { plant: await withChores(saved), chores };
 }
 
 /**
@@ -145,13 +161,17 @@ async function publish(input = {}) {
   assertEditable(plant);
   if (plant.status === 'published') return { plant: managedPlant(plant), alreadyPublished: true };
   assertPublishable(plant);
-  return { plant: managedPlant(await write(input.id, input.expectedRevision, { status: 'published', publishedAt: new Date() })) };
+  const saved = await write(input.id, input.expectedRevision, { status: 'published', publishedAt: new Date() });
+  const { chores } = await synced(saved);
+  return { plant: await withChores(saved), chores };
 }
 
 async function retire(input = {}) {
   const plant = await find(input.id);
   if (plant.status === 'retired') return { plant: managedPlant(plant), alreadyRetired: true };
-  return { plant: managedPlant(await write(input.id, input.expectedRevision, { status: 'retired', retiredAt: new Date() })) };
+  const saved = await write(input.id, input.expectedRevision, { status: 'retired', retiredAt: new Date() });
+  const { chores } = await synced(saved);
+  return { plant: managedPlant(saved), chores };
 }
 
 module.exports = { MAX_PHOTO_BYTES, addPhoto, create, get, list, photo, publish, removePhoto, retire, update };
