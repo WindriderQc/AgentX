@@ -53,6 +53,30 @@ async function choreSummary(familyTasks, { logger } = {}) {
   }
 }
 
+const PLANT_MOODS = Object.freeze({ thirsty: 'a soif aujourd’hui', needs_care: 'a besoin d’un soin aujourd’hui', waiting: 'papa vérifie', happy: 'va bien' });
+const MAX_PLANTS = 12;
+
+// The published plant cards (#870), so Nestor talks about the family's plants
+// from their cards and nothing else. A failure leaves the turn without them.
+async function plantSummary(plants, { logger } = {}) {
+  if (!plants) return '';
+  try {
+    const { plants: rows = [] } = await plants.list({ view: 'child' });
+    if (!rows.length) return '';
+    const lines = rows.slice(0, MAX_PLANTS).map(plant => {
+      const facts = [plant.needs?.light && `lumière : ${plant.needs.light}`, plant.needs?.water && `eau : ${plant.needs.water}`,
+        plant.doNotEat ? 'toxique : on ne mange jamais ses feuilles, les animaux non plus' : 'pas toxique', PLANT_MOODS[plant.mood]];
+      const name = [plant.commonName, plant.room].filter(Boolean).join(', ');
+      return `- ${String(plant.nickname).slice(0, 60)}${name ? ` (${name})` : ''} : ${facts.filter(Boolean).join(' ; ')}.`;
+    });
+    return ['Plantes de la maison (fiches publiées par papa ; parle de ces plantes seulement à partir de ces fiches ; si une question dépasse la fiche, propose de demander à papa ; tu ne peux pas cocher leurs soins) :',
+      ...lines].join('\n').slice(0, MAX_CHARACTERS);
+  } catch (error) {
+    logger?.warn?.('Family plant summary unavailable', { error: error.message });
+    return '';
+  }
+}
+
 // How Nestor sounds with children (#121). Famille keeps the Nestor
 // personality, whose adult temperament (a dry-witted majordomo) read flat to a
 // child; this replaces that temperament in family conversations only. It is
@@ -98,8 +122,8 @@ async function householdMembers(familyTasks, { logger, now = new Date() } = {}) 
 
 // One explicit request per turn: an idea or reminder goes to the parent's
 // inbox; otherwise an explicit "remember" keeps a family note as before.
-async function familyTurn({ userText, notes, familyTasks, detectMemoryRequest, logger, ideaInbox = defaultIdeaInbox, withChores = true }) {
-  const result = { savedNow: false, captured: null, chores: '' };
+async function familyTurn({ userText, notes, familyTasks, detectMemoryRequest, logger, ideaInbox = defaultIdeaInbox, withChores = true, plants = null }) {
+  const result = { savedNow: false, captured: null, chores: '', plants: '' };
   const kind = familyCaptureKind(userText);
   if (kind) {
     try {
@@ -115,7 +139,10 @@ async function familyTurn({ userText, notes, familyTasks, detectMemoryRequest, l
       result.savedNow = true;
     } catch (error) { logger?.error?.('Household memory save failed', { error: error.message }); }
   }
-  if (withChores) result.chores = await choreSummary(familyTasks, { logger });
+  if (withChores) {
+    result.chores = await choreSummary(familyTasks, { logger });
+    result.plants = await plantSummary(plants, { logger });
+  }
   return result;
 }
 
@@ -126,4 +153,4 @@ function capturedPrompt(captured) {
   return ` The child asked to keep ${captured === 'reminder' ? 'a reminder' : 'an idea'} and it has been saved for Dad to review; confirm plainly that Dad will see it, without promising that he will act on it.`;
 }
 
-module.exports = { FAMILY_TONE, capturedPrompt, choreSummary, familyCaptureKind, familyTurn, householdMembers };
+module.exports = { FAMILY_TONE, capturedPrompt, choreSummary, familyCaptureKind, familyTurn, householdMembers, plantSummary };

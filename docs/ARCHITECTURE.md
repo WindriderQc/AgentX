@@ -208,6 +208,17 @@ both interval fields.
   from its open chores: `thirsty` when a watering chore is due, `needs_care`
   when another one is, `waiting` while a check-in waits for a parent, `happy`
   otherwise. Chores Nestor proposes about a plant keep their `subjectRef`.
+- Ma jungle (`/kids/plants`, `plants-kids.js`, open to pinned family devices)
+  shows the published plants. A door in the Kids Room appears once a plant is
+  published and names the plants waiting on the selected child. The gallery
+  puts those plants first, with each plant's mood. A plant card shows its
+  needs, a do-not-eat warning when it applies, its fun fact and one large
+  button bound to the child's due chore, which uses the ordinary check-in.
+  "Nestor me présente…" speaks an introduction in the plant's own voice,
+  built only from the published card; "Ask Nestor" opens the Kids Room
+  helper with the question ready. Family Nestor turns receive a bounded
+  summary of the published cards (needs, toxicity, mood) as their only source
+  about the plants, next to the chore summary.
 - The parent page `/dad/family/plants` (`plants-parent.js`, rendering in
   `plant-view.js`) lists drafts first. Adding a plant takes a photo, reduces
   it in the browser and starts identification. Each card is then completed
