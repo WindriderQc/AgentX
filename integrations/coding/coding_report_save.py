@@ -187,7 +187,8 @@ def attempt(r, args, progress, workspace, result_path, number, original, before,
         return None, 'no result file was written'
     status = settled(r, args, progress)
     if (status.get('requestId') != args.request_id or status.get('claimSeq') != progress.task_claim_seq or
-            not status.get('terminationVerified') or status.get('pendingInferences')):
+            not status.get('terminationVerified') or not status.get('allCallsCompleted') or status.get('pendingInferences') or
+            (status.get('inventory') or {}).get('sha256') != inventory_sha):
         return None, 'unverified'
     if status.get('state') != 'active':
         return None, 'the original report execution is no longer active'
@@ -210,6 +211,7 @@ def attempt(r, args, progress, workspace, result_path, number, original, before,
         'researchSha256': digest(evidence_path.read_bytes()), 'researchRef': evidence_path.name,
         'originalPromptSha256': digest(original.encode()), 'promptSha256': digest(prompt.encode()),
         'promptBytesLimit': prompt_limit(progress, step_context),
+        'originalStepFailure': getattr(progress, 'last_step_failure', None),
         'selectedPairs': selected, 'omittedPairs': omitted, 'calls': calls, 'seconds': seconds,
         'beforeUsage': {'modelCalls': progress.model_calls, 'observedAt': r.coding_progress.utc_now()}})
     progress.begin_step(calls, seconds, f'/home/agent/deliverables/{args.request_id}/{result_path.name}')
@@ -218,6 +220,8 @@ def attempt(r, args, progress, workspace, result_path, number, original, before,
     finally:
         progress.end_step()
     value, reason = steps.read_result(result_path)
+    if value is None and reason == 'no result file was written' and getattr(progress, 'last_step_failure', None) == 'model_output_limit':
+        reason = 'model_output_limit'
     if not getattr(progress, 'report_drained', True):
         value, reason = None, 'unverified'
     documents = value.get('documents') if value is not None else None

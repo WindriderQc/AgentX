@@ -576,6 +576,40 @@ if __name__ == "__main__":
 
 
 class ReportStepProgressTest(unittest.TestCase):
+    def test_output_limit_ends_report_step_without_resetting_global_authority(self):
+        progress = module.Progress('0001', KEY)
+        progress.phase = 'running'
+        progress.report_mode = True
+        progress.model_calls = 17
+        deadlines = (progress.soft_deadline, progress.hard_deadline)
+        progress.begin_step(10, 1200, '/out/step-01.json')
+        progress.event({'type': 'turn/end', 'data': {'reason': {'kind': 'max-tokens'}}})
+        self.assertEqual(progress.tick(), 'model_output_limit')
+        self.assertIsNone(progress.stop_reason)
+        self.assertIsNone(progress.progress_at)
+        progress.end_step()
+        self.assertEqual(progress.last_step_failure, 'model_output_limit')
+        self.assertIsNone(progress.tick())
+        progress.begin_step(16, 1200, '/out/step-02.json')
+        self.assertIsNone(progress.tick())
+        progress.end_step()
+        self.assertIsNone(progress.last_step_failure)
+        self.assertEqual(progress.model_calls, 17)
+        self.assertEqual((progress.soft_deadline, progress.hard_deadline), deadlines)
+
+    def test_operator_stop_and_hard_deadline_dominate_scoped_output_failure(self):
+        for stop in ['operator_stop', 'hard_budget']:
+            with self.subTest(stop=stop):
+                progress = module.Progress('0001', KEY)
+                progress.phase = 'running'
+                progress.report_mode = True
+                progress.begin_step(10, 1200, '/out/step-01.json')
+                progress.stop_reason = stop
+                progress.event({'type': 'turn/end', 'data': {'reason': {'kind': 'max-tokens'}}})
+                self.assertEqual(progress.tick(), stop)
+                progress.end_step()
+                self.assertEqual(progress.stop_reason, stop)
+
     def test_last_admitted_call_is_not_preempted_and_time_limit_still_ends_the_step(self):
         clock = [100.0]
         progress = module.Progress('0001', '11111111-2222-4333-8444-555555555555', now=lambda: clock[0])

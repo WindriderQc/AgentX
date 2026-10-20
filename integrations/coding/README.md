@@ -96,6 +96,10 @@ and runs several short worker sessions in fresh context:
   without new evidence stays partial and is reported as remaining scope.
   A document can retain up to 100 source references, matching Core coverage;
   each finding remains bounded to 40 references. Every reference is checked.
+  A model output limit fails that report step and retains its native receipt;
+  after Core verifies termination, other groups may continue in the same
+  budget. Operator stops, unresolved calls and execution deadlines still stop
+  the run. Failed corrections keep the report incomplete.
 - **Render.** After every step the runner regenerates the Markdown report and
   `coverage.json` from the ledger, so findings, tables and totals cannot
   drift, and each step counts as saved progress.

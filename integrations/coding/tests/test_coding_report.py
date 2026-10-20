@@ -767,6 +767,62 @@ class StepsReportTest(unittest.TestCase):
         self.assertEqual(sorted(states.values()), ['blocked','reviewed'])
         self.assertFalse(coverage['declaredComplete'])
 
+    def test_output_limited_group_keeps_failure_and_costs_then_reviews_other_documents(self):
+        original = self.worker
+        self.answers = [self.reviewed]
+        def worker(workspace, prompt, seconds, progress, *, read_only):
+            if '- README.md\n' in prompt:
+                progress.model_calls += 1
+                progress.event({'type': 'turn/end', 'data': {'reason': {'kind': 'max-tokens'}}})
+                return subprocess.CompletedProcess([], 1)
+            return original(workspace, prompt, seconds, progress, read_only=read_only)
+        api = self.request
+        def request(url, body=None, **kwargs):
+            value = api(url, body, **kwargs)
+            if '/reports/' in url and body is None:
+                value['data'].update(state='active', pendingInferences=[],
+                    authority={'requestId': KEY, 'sourceCommit': self.head})
+            return value
+        with mock.patch.object(runner, 'run_worker', side_effect=worker), \
+                mock.patch.object(runner, 'request', side_effect=request), mock.patch('builtins.print'):
+            self.assertEqual(runner.main(), 0)
+        coverage = self.uploads[0]['coverage']
+        self.assertEqual({row['path']: row['state'] for row in coverage['documents']},
+                         {'README.md': 'blocked', 'docs/GUIDE.md': 'reviewed'})
+        self.assertFalse(coverage['declaredComplete'])
+        progress = json.loads((runner.RECEIPTS/f'{KEY}.progress.json').read_text())
+        self.assertEqual(progress['modelCalls'], 4)
+        ledger = report.ledgers.embedded(base64.b64decode(self.uploads[0]['dataUrl'].split(',')[1]).decode())
+        self.assertEqual([row['reason'] for row in ledger['steps'] if row['result'] == 'failed'],
+                         ['model_output_limit', 'model_output_limit'])
+        receipts = list(runner.RECEIPTS.glob(f'{KEY}.report-step-*.output-limit.json'))
+        self.assertEqual(len(receipts), 2)
+        self.assertTrue(all(json.loads(path.read_text())['terminationVerified'] for path in receipts))
+
+    def test_output_limited_step_does_not_continue_with_unverified_core_termination(self):
+        def worker(workspace, prompt, seconds, progress, *, read_only):
+            progress.model_calls += 1
+            progress.event({'type': 'turn/end', 'data': {'reason': {'kind': 'max-tokens'}}})
+            return subprocess.CompletedProcess([], 1)
+        api = self.request
+        def request(url, body=None, **kwargs):
+            value = api(url, body, **kwargs)
+            if '/reports/' in url and body is None:
+                value['data'].update(terminationVerified=False, allCallsCompleted=False,
+                    state='active', pendingInferences=['unverified'],
+                    authority={'requestId': KEY, 'sourceCommit': self.head})
+            return value
+        with mock.patch.object(runner, 'run_worker', side_effect=worker) as invoked, \
+                mock.patch.object(runner, 'request', side_effect=request), \
+                mock.patch.object(report.time, 'sleep'), mock.patch('builtins.print'):
+            self.assertEqual(runner.main(), 2)
+        invoked.assert_called_once()
+        self.assertEqual(self.uploads, [])
+        self.assertEqual(self.stops, [])
+        progress = json.loads((runner.RECEIPTS/f'{KEY}.progress.json').read_text())
+        self.assertEqual(progress['stopReason'], 'model_termination_unverified')
+        self.assertFalse(progress['coreRecorded'])
+
     def test_exhausted_calls_stop_with_a_partial_report_for_continuation(self):
         self.answers=[self.reviewed]
         with mock.patch.object(runner.coding_progress.Progress,'call_limit',lambda progress: 23), mock.patch('builtins.print'):
