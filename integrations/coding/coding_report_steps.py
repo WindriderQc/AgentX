@@ -75,7 +75,8 @@ def plan_groups(ledger, sizes, budget, limit=None, line_counts=None):
 
     A document larger than the step budget is reviewed in line ranges, one
     range per step. Documents that already failed a step go alone, so one
-    hard document cannot block its neighbours twice. A document still partial
+    hard document cannot block its neighbours twice. Fresh groups and ranges
+    run before failed documents are retried. A document still partial
     after MAX_PARTIAL_ROUNDS steps without progress stays partial and is
     reported as remaining scope instead of being planned again."""
     line_counts = line_counts or {}
@@ -107,9 +108,9 @@ def plan_groups(ledger, sizes, budget, limit=None, line_counts=None):
         area = here
     if current:
         groups.append({'documents': current, 'range': None})
-    retries = [group for group in planned if group['range'] is None]
-    ranged = [group for group in planned if group['range'] is not None]
-    ordered = retries + groups + ranged
+    retries = [group for group in planned if ledger['documents'][group['documents'][0]].get('attempts', 0)]
+    ranged = [group for group in planned if not ledger['documents'][group['documents'][0]].get('attempts', 0)]
+    ordered = groups + ranged + retries
     return ordered[:limit] if limit else ordered
 
 

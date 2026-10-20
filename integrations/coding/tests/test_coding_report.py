@@ -767,6 +767,28 @@ class StepsReportTest(unittest.TestCase):
         self.assertEqual(sorted(states.values()), ['blocked','reviewed'])
         self.assertFalse(coverage['declaredComplete'])
 
+    def test_other_document_is_saved_before_retrying_a_failed_group(self):
+        original = self.worker
+        self.answers = ['not json', self.reviewed, self.reviewed,
+                        lambda prompt: {'summary': 'Reviewed.', 'explanations': {}}]
+        def worker(workspace, prompt, seconds, progress, *, read_only):
+            if len(self.prompts) == 2:
+                saved = report.ledgers.embedded((self.out/'review.md').read_text())
+                self.assertEqual(saved['documents']['docs/GUIDE.md']['state'], 'reviewed')
+                self.assertEqual(saved['documents']['README.md']['state'], 'pending')
+                self.assertEqual(saved['documents']['README.md']['attempts'], 1)
+                self.assertIn('- README.md\n', prompt)
+                self.assertIn('Previous result rejected by the runner', prompt)
+            return original(workspace, prompt, seconds, progress, read_only=read_only)
+        with mock.patch.object(runner, 'run_worker', side_effect=worker), mock.patch('builtins.print'):
+            self.assertEqual(runner.main(), 0)
+        ledger = report.ledgers.embedded(base64.b64decode(self.uploads[0]['dataUrl'].split(',')[1]).decode())
+        self.assertEqual([row['documents'] for row in ledger['steps']],
+                         [['README.md'], ['docs/GUIDE.md'], ['README.md']])
+        self.assertEqual([row['result'] for row in ledger['steps']], ['failed', 'merged', 'merged'])
+        self.assertTrue(self.uploads[0]['coverage']['declaredComplete'])
+        self.assertEqual(json.loads((runner.RECEIPTS/f'{KEY}.progress.json').read_text())['modelCalls'], 8)
+
     def test_rejected_extra_document_can_be_corrected_using_the_native_retry_diagnostic(self):
         original = self.worker
         first = [True]
