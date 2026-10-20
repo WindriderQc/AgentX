@@ -247,7 +247,8 @@ def entries(rows, results, owner=frozenset()):
                     "people": candidate["people"], "places": candidate["places"],
                     "category": candidate["category"],
                     "source": {**{k: v for k, v in primary.items() if k != "sourceDate"},
-                               "findingId": content_hash([VERSION, candidate["findings"]])},
+                               # Two candidates drawn from the same findings stay two assertions.
+                               "findingId": content_hash([VERSION, candidate["findings"], fold(candidate["text"]), when])},
                     "relatedSources": [{k: s[k] for k in ("system", "threadId", "messageId", "sourceSha256", "findingId")}
                                        for s in related],
                     "findingIds": candidate["findings"]})
