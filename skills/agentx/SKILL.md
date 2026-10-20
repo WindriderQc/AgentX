@@ -64,12 +64,14 @@ uses the report profile described in the product's `integrations/coding/README.m
 
 Before live model tests, model load/unload, Benchmark/Profiler work, image
 renders or long shared compute, discover the installed queue from the instance
-sheet and Core. After confirmed migration submit to
-`/api/cluster/schedule/work-queue` through the instance's operator entrance or
-`integrations/operations/heavy-work-queue.cjs`. Link the coding session and task
-or issue; name required hosts, estimated duration and permitted start window.
-Until migration is confirmed, record the request using the instance's existing
-QUEUE.md procedure; afterwards that file is an archive/export.
+sheet and Core. Submit to `/api/cluster/schedule/work-queue` through the
+instance's operator entrance or `integrations/operations/heavy-work-queue.cjs`.
+Link the coding session and task or issue; name required hosts, estimated
+duration and permitted start window. Core's queue is the only planning
+authority; a legacy QUEUE.md is an archive/export. If Core refuses writes
+because an instance still has an unmigrated QUEUE.md, do not write rows there:
+stop and ask the owner to migrate it (`docs/HEAVY_WORK_QUEUE.md`, "Legacy
+transition").
 
 A planned slot is a prerequisite, not campaign approval or runtime admission.
 The authorized operator explicitly launches a saved supported executor; native
