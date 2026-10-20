@@ -18,6 +18,7 @@ const { imageMediaType, ollamaMessages } = require('./messages');
 const { settledStream } = require('../openclaw/settled-stream');
 const { isPreRoutingValidationRefusal } = require('../../../src/extensions/trustedRuntimeServices');
 const { PRINCIPAL_MODEL_ALIAS, resolvePrincipalAlias } = require('../principal-model');
+const { busyMessage, claimOf } = require('../openclaw/busy-reply');
 
 const HARNESS_VERSION = '1.2.0';
 
@@ -169,6 +170,9 @@ async function whenAdmitted(run, { waitMs = 0, retryMs = PATIENT_RETRY_MS, signa
       return await run();
     } catch (error) {
       if (!HOST_BUSY_CODES.has(error?.code) || signal?.aborted || Date.now() + retryMs > deadline) throw error;
+      // A claim announced to end after the wait would only delay the same refusal.
+      const until = Date.parse(claimOf(error)?.until || '');
+      if (Number.isFinite(until) && until > deadline) throw error;
       await delay(retryMs, undefined, { signal });
     }
   }
@@ -356,6 +360,12 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
       const refused = !interrupted && (isPreRoutingValidationRefusal(error, inferenceOptions) || error.failure?.safeToRetry === true);
       try { await settleCoding(refused ? 'refused' : 'unknown'); }
       catch (persistenceError) { error = persistenceError; }
+    }
+    // No fallback serves gateway clients: say who holds the host and until when,
+    // as a final refusal (409) so the client does not retry in a loop.
+    if (!res.headersSent && HOST_BUSY_CODES.has(error?.code)) {
+      res.set('x-agentx-inference-outcome', 'host-busy');
+      return res.status(409).json({ error: { message: busyMessage(error), type: 'host_busy', code: error.code } });
     }
     const safeStatus = Number(error?.statusCode || 500);
     if (!res.headersSent && safeStatus < 500) {
