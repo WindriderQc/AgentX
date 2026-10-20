@@ -545,10 +545,25 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
             progress.end_step()
         if not getattr(progress, 'report_drained', True):
             return None, 'unverified'
+        native_failure = getattr(progress, 'last_step_failure', None)
         value, reason = steps.read_result(root/name)
         if save_pass and value is None and reason == 'no result file was written':
             value, reason = saving.attempt(r, args, progress, workspace, root/name, number, prompt, before,
                                           baseline, snapshot['sha256'], budget['stepContext'], steps, immutable_json, settled_status)
+        if native_failure == 'model_output_limit' or getattr(progress, 'last_step_failure', None) == 'model_output_limit':
+            status = settled_status(r, args, progress)
+            authority = status.get('authority') or {}
+            if (status.get('requestId') != args.request_id or status.get('claimSeq') != progress.task_claim_seq or
+                    not status.get('terminationVerified') or not status.get('allCallsCompleted') or status.get('pendingInferences') or
+                    status.get('state') != 'active' or authority.get('requestId') != args.request_id or
+                    authority.get('sourceCommit') != baseline or (status.get('inventory') or {}).get('sha256') != snapshot['sha256']):
+                return None, 'unverified'
+            immutable_json(r, r.RECEIPTS/f'{args.request_id}.report-step-{number:02d}.output-limit.json',
+                {'requestId': args.request_id, 'claimSeq': progress.task_claim_seq, 'step': number,
+                 'sourceCommit': baseline, 'inventorySha256': snapshot['sha256'], 'reason': 'model_output_limit',
+                 'modelCalls': progress.model_calls, 'terminationVerified': True, 'allCallsCompleted': True})
+            if value is None and reason == 'no result file was written':
+                reason = 'model_output_limit'
         if value is None and run.returncode and not reason:
             reason = 'the worker exited without a result'
         return value, reason

@@ -39,7 +39,8 @@ class SavePassTest(unittest.TestCase):
             model_context_size=196608,
             check_stop=mock.Mock(return_value=False), call_limit=lambda: 128, hard_deadline=14400,
             queue_deadline=14400, now=lambda: 0, begin_step=mock.Mock(), end_step=mock.Mock())
-        self.status = {'requestId': KEY, 'claimSeq': 2, 'terminationVerified': True, 'pendingInferences': [],
+        self.status = {'requestId': KEY, 'claimSeq': 2, 'terminationVerified': True, 'allCallsCompleted': True,
+            'inventory': {'sha256': 'b'*64}, 'pendingInferences': [],
             'state': 'active', 'authority': {'requestId': KEY, 'sourceCommit': 'a'*40}}
         self.settled = mock.Mock(side_effect=lambda *args: self.status)
         self.frozen = {}
@@ -84,6 +85,24 @@ class SavePassTest(unittest.TestCase):
         self.assertEqual((intent['requestId'], intent['step'], intent['claimSeq']), (KEY, 1, 2))
         self.assertEqual(intent['beforeUsage']['modelCalls'], 16)
         self.assertEqual(outcome['modelCalls'], 18)
+
+    def test_output_limited_save_retains_native_failure_without_a_recursive_retry(self):
+        self.session()
+        self.progress.last_step_failure = 'model_output_limit'
+        def limited(*args, **kwargs):
+            self.progress.model_calls += 1
+            return subprocess.CompletedProcess([], 1)
+        self.r.run_worker.side_effect = limited
+        value, reason = self.attempt()
+        self.assertIsNone(value)
+        self.assertEqual(reason, 'model_output_limit')
+        self.r.run_worker.assert_called_once()
+        self.assertIsNone(self.progress.stop_reason)
+        evidence, intent, outcome = self.frozen.values()
+        self.assertEqual(intent['originalStepFailure'], 'model_output_limit')
+        self.assertEqual(outcome['reason'], 'model_output_limit')
+        self.assertTrue(outcome['drained'])
+        self.assertEqual(outcome['modelCalls'], 17)
 
     def test_new_generation_of_old_session_is_never_reused(self):
         self.session(version=1)
@@ -135,7 +154,9 @@ class SavePassTest(unittest.TestCase):
 
     def test_uncertain_termination_or_changed_authority_prevents_another_model_call(self):
         self.session()
+        self.progress.last_step_failure = 'model_output_limit'
         for update in ({'terminationVerified': False}, {'pendingInferences': ['pending']},
+                       {'allCallsCompleted': False}, {'inventory': {'sha256': 'wrong'}},
                        {'claimSeq': 3}, {'state': 'blocked'}, {'authority': {'sourceCommit': 'changed'}}):
             with self.subTest(update=update):
                 with mock.patch.dict(self.status, update):

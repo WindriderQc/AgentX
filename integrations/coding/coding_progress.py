@@ -538,7 +538,8 @@ class Progress:
         elif kind in {"assistant/chunk", "assistant/message"}:
             self.set_stage("model_generation")
         elif kind == "turn/end" and isinstance(data.get("reason"), dict) and data["reason"].get("kind") == "max-tokens":
-            self.stop_reason = self.stop_reason or "model_output_limit"
+            if getattr(self, 'report_mode', False) and getattr(self, 'step', None): self.step['failure'] = 'model_output_limit'
+            else: self.stop_reason = self.stop_reason or "model_output_limit"
         elif kind == "tool/call":
             args = data.get("arguments") or {}
             if isinstance(args, str):
@@ -665,13 +666,13 @@ class Progress:
         self.step = {"calls": calls, "startCalls": self.model_calls, "deadline": self.now() + seconds, "output": output}
 
     def end_step(self):
+        self.last_step_failure = (getattr(self, 'step', None) or {}).get('failure')
         self.step = None
 
     def step_due(self, current=None):
         step = getattr(self, 'step', None)
-        if step and (self.now() if current is None else current) >= step['deadline']:
-            return 'step_limit'
-        return None
+        if not step: return None
+        return step.get('failure') or ('step_limit' if (self.now() if current is None else current) >= step['deadline'] else None)
 
     def relay_call_budget(self):
         step = getattr(self, 'step', None)
