@@ -45,6 +45,35 @@ def good_result():
 
 
 class LedgerTest(unittest.TestCase):
+    def test_document_evidence_keeps_detailed_checks_up_to_core_coverage_bound(self):
+        ledger = ledgers.new_ledger(snapshot())
+        value = good_result()
+        value['documents'][0]['evidence'] = [{'path': 'core/config.js', 'line': 2,
+            'check': f'Verified claim {number}'} for number in range(48)]
+        ledgers.merge_step(ledger, ['docs/A.md'], value, source, 1)
+        self.assertEqual(len(ledger['documents']['docs/A.md']['evidence']), 48)
+        self.assertEqual(len(ledgers.coverage(ledger)['documents'][0]['evidence']), 48)
+        invalid = good_result()
+        invalid['documents'][0]['evidence'] = value['documents'][0]['evidence'] + [
+            {'path': 'core/config.js', 'line': 99, 'check': 'Invalid late reference'}]
+        before = json.dumps(ledger, sort_keys=True)
+        with self.assertRaises(ledgers.LedgerError):
+            ledgers.merge_step(ledger, ['docs/A.md'], invalid, source, 2)
+        self.assertEqual(json.dumps(ledger, sort_keys=True), before)
+
+    def test_document_and_finding_reference_limits_remain_bounded(self):
+        for target, count in [('document', ledgers.MAX_DOC_EVIDENCE + 1),
+                              ('finding', ledgers.MAX_EVIDENCE + 1)]:
+            with self.subTest(target=target):
+                ledger = ledgers.new_ledger(snapshot())
+                value = good_result()
+                row = value['documents'][0] if target == 'document' else value['findings'][0]
+                row['evidence'] = [{'path': 'core/config.js', 'line': 2, 'check': 'Checked'}] * count
+                with self.assertRaises(ledgers.LedgerError):
+                    ledgers.merge_step(ledger, ['docs/A.md'], value, source, 1)
+                self.assertEqual(ledger['documents']['docs/A.md']['state'], 'pending')
+                self.assertEqual(ledger['steps'], [])
+
     def test_continuation_restores_local_attempts_for_pending_documents_too(self):
         ledger = ledgers.new_ledger(snapshot())
         ledgers.record_failure(ledger, ['docs/A.md'], 1, 'no result')

@@ -94,6 +94,8 @@ and runs several short worker sessions in fresh context:
   the step whole or not at all. A group that fails twice marks its documents
   `blocked` with the reason. A document still partial after three steps
   without new evidence stays partial and is reported as remaining scope.
+  A document can retain up to 100 source references, matching Core coverage;
+  each finding remains bounded to 40 references. Every reference is checked.
 - **Render.** After every step the runner regenerates the Markdown report and
   `coverage.json` from the ledger, so findings, tables and totals cannot
   drift, and each step counts as saved progress.
@@ -106,6 +108,9 @@ and runs several short worker sessions in fresh context:
   continuation restored from Core's checkpoint resumes it exactly. A report
   written before steps keeps its findings verbatim in an "earlier executions"
   section; reviewer corrections apply to it only as exact text replacements.
+  Corrections can also replace an existing evidence check exactly, after the
+  runner verifies its source hash and line. They retain the original text in
+  the step receipt and cannot change coverage states or source references.
 
 When calls or time run short with documents left, the execution stops with
 `model_call_limit` or `hard_budget` and archives the partial report for a
