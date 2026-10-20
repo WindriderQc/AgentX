@@ -45,6 +45,44 @@ def good_result():
 
 
 class LedgerTest(unittest.TestCase):
+    def test_failed_legacy_corrections_remain_pending_after_checkpoint_restore(self):
+        for value in [None, {}, {'legacyEdits': 'invalid'}, {'legacyEdits': ['unexpected']},
+                      {'legacyEdits': [1]}, {'legacyEdits': [False]}, {'legacyEdits': [[]]},
+                      {'legacyEdits': [{'find': 'missing', 'replace': 'corrected'}]}]:
+            with self.subTest(value=value):
+                ledger = ledgers.new_ledger(snapshot(), legacy_markdown='Six families.')
+                ledger['legacyReviewed'] = True  # Historical flag without a successful receipt.
+                self.assertTrue(ledgers.legacy_review_required(ledger, 'Check the family count.'))
+                ledgers.merge_legacy_review(ledger, value, 'no result file was written',
+                                           'Check the family count.', source, 1, 'a' * 36)
+                restored = ledgers.embedded(ledgers.render(ledger, 'Review'))
+                self.assertEqual(restored['legacy'], 'Six families.')
+                self.assertFalse(restored['legacyReviewed'])
+                self.assertEqual(restored['steps'][-1]['result'], 'failed')
+                self.assertEqual(restored['steps'][-1]['kind'], 'legacy')
+                self.assertTrue(ledgers.legacy_review_required(restored, 'Check the family count.'))
+                self.assertIn('corrections to the earlier findings remain pending', ledgers.render(restored, 'Review'))
+                for row in restored['documents'].values():
+                    row['state'] = 'reviewed'
+                self.assertFalse(ledgers.coverage(restored)['declaredComplete'])
+
+    def test_successful_corrections_are_bound_to_notes_and_resulting_content(self):
+        ledger = ledgers.new_ledger(snapshot(), legacy_markdown='Six families.')
+        result = {'legacyEdits': [{'find': 'Six families.', 'replace': 'Eight families.'}]}
+        ledgers.merge_legacy_review(ledger, result, None, 'Check count.', source, 1, 'a' * 36)
+        restored = ledgers.embedded(ledgers.render(ledger, 'Review'))
+        self.assertFalse(ledgers.legacy_review_required(restored, 'Check count.'))
+        self.assertFalse(restored['legacyReviewPending'])
+        self.assertEqual(restored['legacy'], 'Eight families.')
+        self.assertTrue(ledgers.legacy_review_required(restored, 'Also check the version.'))
+        restored['legacy'] += '\nChanged finding.'
+        self.assertTrue(ledgers.legacy_review_required(restored, 'Check count.'))
+
+    def test_explicit_empty_corrections_can_acknowledge_already_correct_content(self):
+        ledger = ledgers.new_ledger(snapshot(), legacy_markdown='Eight families.')
+        ledgers.merge_legacy_review(ledger, {'legacyEdits': []}, None, 'Check count.', source, 1, 'a' * 36)
+        self.assertFalse(ledgers.legacy_review_required(ledger, 'Check count.'))
+
     def test_merges_a_verified_step_and_fills_source_digests(self):
         ledger = ledgers.new_ledger(snapshot())
         receipt = ledgers.merge_step(ledger, ['docs/A.md', 'docs/B.md'], good_result(), source, 1)

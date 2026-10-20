@@ -162,6 +162,8 @@ def merge_step(ledger, group, result, source_bytes, step_id, allow_empty=False, 
         raise LedgerError(f'legacyEdits must be a list of at most {MAX_LEGACY_EDITS}')
     legacy = ledger.get('legacy')
     for index, edit in enumerate(edits):
+        if not isinstance(edit, dict):
+            raise LedgerError(f'legacy edit {index + 1} must be an object')
         find = _text((edit or {}).get('find'), f'legacy edit {index + 1} find', 2000)
         replace = (edit or {}).get('replace')
         if not isinstance(replace, str) or len(replace) > 4000:
@@ -216,6 +218,38 @@ def record_failure(ledger, group, step_id, reason, max_attempts=2):
     return blocked
 
 
+def legacy_review_required(ledger, notes):
+    """A historical boolean cannot prove that these reviewer notes were applied."""
+    if not ledger.get('legacy') or not notes:
+        return False
+    review = ledger.get('legacyReview') or {}
+    return not (review.get('result') == 'merged'
+                and review.get('sourceCommit') == ledger['sourceCommit']
+                and review.get('inventorySha256') == ledger['inventorySha256']
+                and review.get('notesSha256') == hashlib.sha256(notes.encode()).hexdigest()
+                and review.get('legacySha256') == hashlib.sha256(ledger['legacy'].encode()).hexdigest())
+
+
+def merge_legacy_review(ledger, value, reason, notes, source_bytes, step_id, request_id):
+    """Record a failed correction step durably, and acknowledge only valid results."""
+    before = hashlib.sha256(ledger['legacy'].encode()).hexdigest()
+    try:
+        if value is None:
+            raise LedgerError(reason or 'no correction result was written')
+        if not isinstance(value, dict) or set(value) != {'legacyEdits'} or not isinstance(value['legacyEdits'], list):
+            raise LedgerError('the correction result must contain a legacyEdits list')
+        merge_step(ledger, [], {**value, 'documents': []}, source_bytes, step_id, allow_empty=True)
+    except LedgerError as error:
+        record_failure(ledger, [], step_id, str(error))
+    receipt = ledger['steps'][-1]
+    receipt.update(kind='legacy', requestId=request_id, sourceCommit=ledger['sourceCommit'],
+                   inventorySha256=ledger['inventorySha256'], legacyBeforeSha256=before,
+                   notesSha256=hashlib.sha256(notes.encode()).hexdigest())
+    ledger['legacyReview'] = {**receipt, 'legacySha256': hashlib.sha256(ledger['legacy'].encode()).hexdigest()}
+    ledger['legacyReviewed'] = receipt['result'] == 'merged'
+    ledger['legacyReviewPending'] = not ledger['legacyReviewed']
+
+
 def counts(ledger):
     tally = {'reviewed': 0, 'partial': 0, 'blocked': 0, 'pending': 0}
     for document in ledger['documents'].values():
@@ -229,7 +263,7 @@ def coverage(ledger):
     return {'inventorySha256': ledger['inventorySha256'],
             'documents': [{'path': path, 'sha256': row['sha256'], 'state': row['state'], 'evidence': row['evidence']}
                           for path, row in sorted(ledger['documents'].items())],
-            'declaredComplete': tally['reviewed'] == len(ledger['documents']),
+            'declaredComplete': tally['reviewed'] == len(ledger['documents']) and not ledger.get('legacyReviewPending'),
             'acceptance': 'independent_review_required'}
 
 
@@ -250,6 +284,8 @@ def render(ledger, title, next_groups=()):
         out += [ledger['summary'], '']
     out += ['| Reviewed | Partial | Blocked | Pending | New findings |', '|---|---|---|---|---|',
             f'| {tally["reviewed"]} | {tally["partial"]} | {tally["blocked"]} | {tally["pending"]} | {len(findings)} |', '']
+    if ledger.get('legacyReviewPending'):
+        out += ['Reviewer corrections to the earlier findings remain pending.', '']
     if findings:
         out += ['## Findings', '']
         for kind, heading in KINDS.items():
@@ -280,6 +316,8 @@ def render(ledger, title, next_groups=()):
             checks = f'{checks} — {row["note"]}' if checks else row['note']
         out += [f'| `{_cell(path)}` | {row["state"]} | {_cell(checks) or "—"} |']
     out += ['', '## Remaining scope', '']
+    if ledger.get('legacyReviewPending'):
+        out += ['Apply the outstanding reviewer corrections to the earlier findings before completion.', '']
     remaining = [path for path, row in sorted(ledger['documents'].items()) if row['state'] != 'reviewed']
     if not remaining:
         out += ['Every document in the inventory is reviewed. The report still needs independent review before acceptance.']
