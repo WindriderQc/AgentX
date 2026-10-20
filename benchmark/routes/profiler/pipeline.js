@@ -17,6 +17,7 @@ const { acquireProfilerClaimLease } = require('../../src/services/profiler/profi
 const { runJournaledProfile } = require('../../src/services/profiler/profilerRunJournal');
 const { createProfileCancellation } = require('../../src/services/profiler/profileCancellation');
 const contextProposalService = require('../../src/services/profiler/contextProposalService');
+const { reservedSiblingEndpoints } = require('../../src/services/profiler/reservedSiblings');
 const logger = require('../../config/logger');
 
 const STEPS_BY_DEPTH = {
@@ -286,7 +287,7 @@ router.get('/profile/:profileId/progress', async (req, res) => {
  * tracker the per-model UI watches so existing frontend reattach logic works.
  * Returns the profile result (resolves on success, throws on failure).
  */
-async function _queueRunSingleProfile(modelName, hostId, hostUrl, depth, lease) {
+async function _queueRunSingleProfile(modelName, hostId, hostUrl, depth, lease, siblingEndpoints = []) {
   const profileId = crypto.randomBytes(8).toString('hex');
   const steps = STEPS_BY_DEPTH[depth] || STEPS_BY_DEPTH.standard;
   lease.assertActive();
@@ -313,6 +314,7 @@ async function _queueRunSingleProfile(modelName, hostId, hostUrl, depth, lease) 
       assertClaimActive: lease.assertActive,
       claimIdentity: lease.identityFor(hostUrl),
       signal: lease.signal,
+      siblingEndpoints,
       onProgress: (step, data) => {
         const idx = steps.indexOf(step);
         if (idx >= 0) tracker.stepsCompleted = idx;
@@ -469,6 +471,8 @@ async function startProfileHostQueue(body = {}) {
 
   // Fire-and-forget driver
   (async () => {
+    const siblingEndpoints = chosenDepth === 'full'
+      ? await reservedSiblingEndpoints(tracker.queueRequestId, host.hostUrl) : [];
     for (let i = 0; i < tracker.models.length; i++) {
       if (tracker.cancelled) break;
       const slot = tracker.models[i];
@@ -477,7 +481,7 @@ async function startProfileHostQueue(body = {}) {
       slot.startedAt = Date.now();
       try {
         lease.assertActive();
-        await _queueRunSingleProfile(slot.name, hostId, host.hostUrl, chosenDepth, lease);
+        await _queueRunSingleProfile(slot.name, hostId, host.hostUrl, chosenDepth, lease, siblingEndpoints);
         slot.status = 'completed';
       } catch (err) {
         slot.status = 'failed';

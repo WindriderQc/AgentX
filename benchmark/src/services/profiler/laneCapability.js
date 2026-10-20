@@ -131,11 +131,14 @@ function concurrencyCapability(profile) {
     scope: evidence.scope || 'same_endpoint',
     worstSelfSlowdownPct: pct(evidence.worstSelfSlowdownPct),
     worstOtherSlowdownPct: pct(evidence.worstOtherSlowdownPct),
+    worstSiblingSelfSlowdownPct: pct(evidence.worstSiblingSelfSlowdownPct),
+    worstSiblingOtherSlowdownPct: pct(evidence.worstSiblingOtherSlowdownPct),
     pairs: (Array.isArray(evidence.pairs) ? evidence.pairs : []).slice(0, 6).map(pair => ({
-      model: pair.model || null, status: pair.status || null,
+      model: pair.model || null, status: pair.status || null, endpoint: pair.endpoint || 'same',
       selfSlowdownPct: pct(pair.selfSlowdownPct), otherSlowdownPct: pct(pair.otherSlowdownPct)
     })),
-    separateEndpoints: 'not_measured'
+    // Evidence from before sibling pairing (probe v1) never covered other endpoints.
+    separateEndpoints: evidence.scope === 'same_machine' && evidence.separateEndpoints ? evidence.separateEndpoints : 'not_measured'
   };
 }
 

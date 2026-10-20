@@ -319,10 +319,10 @@ function _renderConcurrencyEvidence(concurrency) {
     return `<table class="mp-extras-table"><caption>Concurrency</caption><tbody><tr><td>${escAttr(status || concurrency.status)}</td></tr></tbody></table>`;
   }
   return `<table class="mp-extras-table">
-    <caption>Concurrency on this endpoint (${status || 'both answering at once'})</caption>
+    <caption>Concurrency ${concurrency.scope === 'same_machine' ? 'on this machine' : 'on this endpoint'} (${status || 'both answering at once'})</caption>
     <thead><tr><th>Co-resident</th><th>This model alone → together</th><th>Slower</th><th>Co-resident alone → together</th><th>Slower</th><th>Status</th></tr></thead>
     <tbody>${pairs.map(pair => `<tr>
-      <td>${escAttr(pair.model)}</td>
+      <td>${escAttr(pair.model)}${pair.endpoint === 'sibling' ? ` <small>(${escAttr(pair.hostUrl || 'other endpoint')})</small>` : ''}</td>
       <td>${rate(pair.selfSoloTokensPerSec)} → ${rate(pair.selfTogetherTokensPerSec)}</td><td>${pct(pair.selfSlowdownPct)}</td>
       <td>${rate(pair.otherSoloTokensPerSec)} → ${rate(pair.otherTogetherTokensPerSec)}</td><td>${pct(pair.otherSlowdownPct)}</td>
       <td>${escAttr(pair.status)}</td>

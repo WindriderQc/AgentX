@@ -14,7 +14,7 @@ const contextProfiles = require('../modelContextProfileService');
 const performanceProfiles = require('./modelPerformanceProfileService');
 const { getConfiguredHosts, normalizeHostUrl } = require('../../helpers/ollamaHostConfig');
 const { normalizeModelTag } = require('../../../../shared/modelNames');
-const { planNight } = require('./laneCampaignPlan');
+const { planNight, machineOf } = require('./laneCampaignPlan');
 
 const CONCURRENCY = 4;
 // A Full profile with quality and agent workload probes on a 27B Q8 model.
@@ -38,6 +38,13 @@ function defaults(deps = {}) {
 function hostIdFor(hosts, hostUrl) {
   const normalized = normalizeHostUrl(hostUrl);
   return hosts.find(host => normalizeHostUrl(host.url) === normalized)?.id || null;
+}
+
+/** Other configured Profiler endpoints on the same machine (a GPU and a CPU-only service). */
+function siblingEndpointsFor(hosts, hostUrl) {
+  const own = normalizeHostUrl(hostUrl);
+  return [...new Set(hosts.map(host => normalizeHostUrl(host.url))
+    .filter(url => url && url !== own && machineOf(url) === machineOf(own)))].sort();
 }
 
 /**
@@ -132,7 +139,12 @@ function coreMessage(error) {
   try { return JSON.parse(error.body).message || error.message; } catch { return error.message; }
 }
 
-function laneRequest(lane, hostId, start, end) {
+/**
+ * The request covers the machine's sibling endpoints too: a Full profile
+ * already holds the whole machine's slot, and the concurrency probe pairs the
+ * lane with the models resident there only when the reservation covers them.
+ */
+function laneRequest(lane, hostId, start, end, siblings = []) {
   const name = normalizeModelTag(lane.model);
   const day = start.toISOString().slice(0, 10);
   const slug = `${hostId}:${name}`.replace(/[^a-zA-Z0-9:._-]/g, '-').slice(0, 110);
@@ -140,7 +152,7 @@ function laneRequest(lane, hostId, start, end) {
     key: `lane-capability:${slug}:${day}`,
     title: `Full profile of ${name} on ${lane.hostName || hostId} (lane capability)`,
     kind: 'profiler',
-    hosts: [normalizeHostUrl(lane.hostUrl)],
+    hosts: [normalizeHostUrl(lane.hostUrl), ...siblings],
     estimatedMinutes: FULL_PROFILE_MINUTES,
     notBefore: start.toISOString(),
     startBefore: end.toISOString(),
@@ -199,7 +211,7 @@ async function recordAndPlan(targets, { notBefore, startBefore, autoStart = fals
       start: slot.start, end: slot.end, fits: slot.fits };
     let job;
     try {
-      const request = laneRequest(slot, slot.hostId, start, end);
+      const request = laneRequest(slot, slot.hostId, start, end, siblingEndpointsFor(d.hosts(), slot.hostUrl));
       row.key = request.key;
       job = await d.submit(request);
       if (!job) throw new Error('Core returned no request');
@@ -248,7 +260,8 @@ async function requestLaneMeasurement({ model, hostUrl, notBefore, startBefore, 
   const { results } = await recordAndPlan([target], { notBefore, startBefore, autoStart: autoStart === true }, deps);
   const row = results[0];
   if (row.error) throw Object.assign(new Error(row.error), { status: 502 });
-  return { request: laneRequest(target, hostId, new Date(notBefore), new Date(startBefore)), job: row.job, slot: row };
+  const request = laneRequest(target, hostId, new Date(notBefore), new Date(startBefore), siblingEndpointsFor(d.hosts(), host));
+  return { request, job: row.job, slot: row };
 }
 
 /** Preview of the night campaign: which lanes, when, and whether it fits. */
@@ -272,4 +285,4 @@ async function requestLaneCampaign({ notBefore, startBefore, all = false, autoSt
     autoStart: autoStart === true, skipped, fits: plan.fits, machines: plan.machines, results, at: d.now().toISOString() };
 }
 
-module.exports = { capabilityFor, listLaneCapabilities, requestLaneMeasurement, requestLaneCampaign, previewLaneCampaign, LaneMeasureError };
+module.exports = { siblingEndpointsFor, capabilityFor, listLaneCapabilities, requestLaneMeasurement, requestLaneCampaign, previewLaneCampaign, LaneMeasureError };

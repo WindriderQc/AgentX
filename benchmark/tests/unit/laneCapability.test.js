@@ -343,6 +343,15 @@ describe('lane campaign slots', () => {
     expect(d.reserve).toHaveBeenCalledTimes(2);
   });
 
+  it('covers the other endpoints of the same machine in each request, and no other machine', async () => {
+    const d = deps();
+    await requestLaneCampaign(night, d);
+    const hostsBy = Object.fromEntries(d.submit.mock.calls.map(([request]) => [request.executor.hostId, request.hosts]));
+    expect(hostsBy).toEqual({ alien: [ALIEN_GPU, ALIEN_CPU], 'alien-cpu': [ALIEN_CPU, ALIEN_GPU], frank: [FRANK] });
+    const plan = await previewLaneCampaign(night, deps());
+    expect(plan.slots.find(slot => slot.hostId === 'alien-cpu').start).toBe('2026-10-17T06:00:00.000Z');
+  });
+
   it('shows no measurement and plans from the window start when the queue cannot be read', async () => {
     const d = deps([], { queue: async () => { throw new Error('Core down'); } });
     const lanes = await listLaneCapabilities(d);
@@ -365,6 +374,15 @@ describe('re-measurement proposals and concurrency', () => {
     expect(capability.remeasure).toEqual({ needed: false, depth: 'full', reasons: [] });
     expect(capability.concurrency).toMatchObject({ status: 'measured', worstSelfSlowdownPct: 38.5, separateEndpoints: 'not_measured' });
     expect(codes(capability)).not.toContain('concurrency_unmeasured');
+  });
+
+  it('reports pairs with the other endpoint of the same machine from a covering profile', () => {
+    const capability = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT, contextProfile: contextProfile(), now: NOW,
+      performanceProfile: full({ concurrency: { status: 'measured', scope: 'same_machine', separateEndpoints: 'measured',
+        worstSelfSlowdownPct: 4, worstSiblingSelfSlowdownPct: 4, worstSiblingOtherSlowdownPct: 12,
+        pairs: [{ model: 'gemma:26b', endpoint: 'sibling', status: 'measured', selfSlowdownPct: 4, otherSlowdownPct: 12 }] } }) });
+    expect(capability.concurrency).toMatchObject({ scope: 'same_machine', separateEndpoints: 'measured',
+      worstSiblingSelfSlowdownPct: 4, pairs: [{ model: 'gemma:26b', endpoint: 'sibling', selfSlowdownPct: 4 }] });
   });
 
   it('names a changed model, a changed runtime, an old profile and a missing Full profile', () => {

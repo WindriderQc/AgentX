@@ -164,6 +164,17 @@ describe('proposals and concurrency on the lane card', () => {
     const evicted = ui.renderLaneCard(lane({ capability: { ...measured, concurrency: { status: 'evicted', pairs: [] } } }));
     expect(evicted).toContain('one evicts the other');
   });
+
+  it('labels a pair on the other endpoint and says when other endpoints were not covered', () => {
+    const concurrency = { status: 'measured', separateEndpoints: 'measured',
+      pairs: [{ model: 'gemma:26b', endpoint: 'sibling', status: 'measured', selfSlowdownPct: 3.6, otherSlowdownPct: 9 }] };
+    const html = ui.renderLaneCard(lane({ capability: { ...capability(), remeasure: { needed: false, reasons: [] }, concurrency } }));
+    expect(html).toContain('with gemma:26b (other endpoint, same machine)</span><strong>4 % slower</strong>');
+    expect(html).not.toContain('Other endpoints of this machine');
+    const uncovered = ui.renderLaneCard(lane({ capability: { ...capability(), remeasure: { needed: false, reasons: [] },
+      concurrency: { ...concurrency, separateEndpoints: 'not_measured', pairs: [] } } }));
+    expect(uncovered).toContain('Other endpoints of this machine: not measured');
+  });
 });
 
 describe('measurement state and the night plan', () => {
