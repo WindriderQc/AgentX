@@ -383,3 +383,22 @@ test('a host awaiting recovery is a final readable refusal, not a retryable 503'
   assert.equal(res.jsonBody.error.type, 'host_busy');
   assert.match(res.jsonBody.error.message, /attend une intervention après un incident/);
 });
+
+test('the tool census counts types, nested functions and deferred markers without content', () => {
+  const { toolCensus } = require('../llm-gateway/responses');
+  const census = toolCensus([
+    ...CODEX_TOOLS,
+    { type: 'namespace', name: 'gmail', defer_loading: true, tools: [
+      { type: 'function', name: 'search', parameters: { type: 'object', properties: {} } },
+      { type: 'function', name: 'send', defer_loading: true, parameters: { type: 'object', properties: {} } }
+    ] }
+  ]);
+  assert.deepEqual(census.byType, { function: 1, namespace: 2, custom: 1, web_search: 1 });
+  assert.equal(census.topLevel, 5);
+  assert.equal(census.functions, 5);
+  assert.equal(census.deferred, 2);
+  assert.deepEqual(census.groups.map(group => [group.name, group.tools, group.deferred]),
+    [['gmail', 2, true], ['multi_agent_v1', 1, false]]);
+  assert.ok(census.chars > 0);
+  assert.ok(!JSON.stringify(census).includes('Run a command'));
+});

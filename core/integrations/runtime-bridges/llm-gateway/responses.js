@@ -428,11 +428,41 @@ function responsesRender(names) {
   };
 }
 
+// What a Responses client sends as tools, without their content: counts by
+// type, deferred markers and the size each group adds to the prompt. Used to
+// decide whether the gateway should load tools on demand.
+function toolCensus(tools) {
+  const list = Array.isArray(tools) ? tools : [];
+  const size = value => JSON.stringify(value ?? null).length;
+  const byType = {};
+  const groups = [];
+  let deferred = 0;
+  let functions = 0;
+  const count = tool => {
+    if (tool?.defer_loading === true) deferred += 1;
+    if (tool?.type === 'function' || tool?.type === 'custom') functions += 1;
+  };
+  for (const tool of list) {
+    const type = String(tool?.type || 'unknown');
+    byType[type] = (byType[type] || 0) + 1;
+    count(tool);
+    if (type === 'namespace') {
+      const inner = Array.isArray(tool.tools) ? tool.tools : [];
+      inner.forEach(count);
+      groups.push({ name: String(tool.name || '').slice(0, 80), tools: inner.length,
+        deferred: tool.defer_loading === true || inner.some(item => item?.defer_loading === true), chars: size(tool) });
+    }
+  }
+  groups.sort((a, b) => b.chars - a.chars);
+  return { topLevel: list.length, byType, functions, deferred, chars: size(list), groups: groups.slice(0, 40) };
+}
+
 module.exports = {
   ChatSseToResponsesSse,
   NAMESPACE_SEPARATOR,
   chatRequest,
   foldHistory,
   responseFromChat,
-  responsesRender
+  responsesRender,
+  toolCensus
 };
