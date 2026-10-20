@@ -120,6 +120,14 @@ class SouvenirCandidateTests(unittest.TestCase):
         self.assertFalse(any("publicité" in e["text"] for e in entries))  # left out by the model
         self.assertTrue(all(e["kind"] == "fact" for e in entries))
 
+    def test_two_candidates_from_the_same_findings_keep_distinct_identities(self):
+        rows, _ = sc.findings(self.archive)
+        ids = rows[0]["ids"]
+        same = [{"text": text, "eventDate": "", "people": [], "places": [], "category": "other", "findings": ids}
+                for text in ("Premier fait fictif.", "Second fait fictif.")]
+        made, _ = sc.entries(rows, [{"candidates": same}])
+        self.assertEqual(len({e["source"]["findingId"] for e in made}), 2)
+
     def test_the_owner_is_never_one_of_the_people(self):
         owner = {"yanik exemple"}
         self.assertFalse(sc.not_owner("Yanik Exemple", owner))
