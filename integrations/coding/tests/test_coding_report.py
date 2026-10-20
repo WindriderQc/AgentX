@@ -605,6 +605,57 @@ class StepsReportTest(unittest.TestCase):
                 'evidence':[{'path':'config.js','line':1,'check':'RETRY_LIMIT = 7'}],'correction':'Say 7.'})
         return result
 
+    def correction_step(self, answer, notes='Check the count.', prior=None):
+        self.out.mkdir(parents=True, exist_ok=True)
+        for stale in self.out.glob('step-*.json'):
+            stale.unlink()
+        snapshot = dict(report.scope.inventory(self.workspace, self.head), sha256='a' * 64)
+        ledger = prior or report.ledgers.new_ledger(snapshot, legacy_markdown='Six families.')
+        for row in ledger['documents'].values():
+            row['state'] = 'reviewed'
+        ledger['legacyReviewed'] = True  # Reproduce the old runner's unproven flag.
+        path = self.out/'review.md'
+        path.write_text(report.ledgers.render(ledger, 'Review'))
+        self.task['feedback'] = [{'by': 'operator', 'text': notes}]
+        self.answers = [answer]
+        progress = mock.Mock(model_calls=0, hard_deadline=14400, queue_deadline=14400,
+                             stop_reason=None, report_drained=True)
+        progress.now.return_value = 0
+        progress.check_stop.return_value = False
+        progress.call_limit.return_value = 128
+        progress.begin_step.side_effect = lambda calls, seconds, output: setattr(progress, 'step', {'output': output})
+        args = mock.Mock(task_id='0001', request_id=KEY)
+        outcome = report.run_steps(runner, args, progress, self.task, self.workspace, self.out,
+                                   path, snapshot, self.head)
+        return outcome, report.ledgers.embedded(path.read_text())
+
+    def test_missing_or_invalid_correction_results_cannot_complete_reviewed_inventory(self):
+        for answer in [None, 'not json', '{}', '{"legacyEdits":[{"find":"missing","replace":"Eight"}]}']:
+            with self.subTest(answer=answer):
+                outcome, ledger = self.correction_step(answer)
+                self.assertEqual(outcome, 'worker_exit')
+                self.assertTrue(ledger['legacyReviewPending'])
+                self.assertEqual(ledger['steps'][-1]['result'], 'failed')
+                self.assertEqual(ledger['legacyReview']['requestId'], KEY)
+                self.assertFalse(report.ledgers.coverage(ledger)['declaredComplete'])
+                self.assertEqual(ledger['legacy'], 'Six families.')
+
+    def test_successful_correction_checkpoint_skips_same_notes_but_applies_new_notes(self):
+        answer = lambda prompt: {'legacyEdits': [{'find': 'Six families.', 'replace': 'Eight families.'}]}
+        outcome, ledger = self.correction_step(answer)
+        self.assertEqual(outcome, 'complete')
+        self.assertFalse(ledger['legacyReviewPending'])
+        calls = runner.run_worker.call_count
+        outcome, restored = self.correction_step(None, prior=ledger)
+        self.assertEqual(outcome, 'complete')
+        self.assertEqual(runner.run_worker.call_count, calls)
+        outcome, corrected = self.correction_step(lambda prompt: {'legacyEdits': []},
+                                                  notes='Check the version too.', prior=restored)
+        self.assertEqual(outcome, 'complete')
+        self.assertEqual(runner.run_worker.call_count, calls + 1)
+        self.assertEqual(corrected['legacy'], 'Eight families.')
+        self.assertNotEqual(corrected['legacyReview']['notesSha256'], restored['legacyReview']['notesSha256'])
+
     def test_reviews_groups_in_fresh_sessions_and_delivers_a_rendered_report(self):
         self.answers=[self.reviewed, self.reviewed, lambda prompt:{'summary':'Two documents reviewed; one wrong value.','explanations':{'F1':'Readers would set 5.'}}]
         with mock.patch('builtins.print'):self.assertEqual(runner.main(),0)

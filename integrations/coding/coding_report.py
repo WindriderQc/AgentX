@@ -498,6 +498,7 @@ def escalate_group(r, args, progress, workspace, baseline, ledger, group, line_r
 def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
     """Run the report as verified steps. Returns 'complete', 'unverified' or a stop reason."""
     ledger = initial_ledger(root, path, snapshot, baseline)
+    notes = steps.latest_operator_notes(task)
     capability = lane_capability(r)
     budget = steps.step_budget(capability)
     sources = {name: scope.source_bytes(workspace, baseline, name) for name in ledger['documents']}
@@ -512,6 +513,8 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
                     'capabilitySource': (capability or {}).get('provenance') if capability else None})
 
     def save():
+        if notes:
+            ledger['legacyReviewPending'] = ledgers.legacy_review_required(ledger, notes)
         groups = steps.plan_groups(ledger, sizes, budget, limit=3, line_counts=line_counts)
         steps.write_atomic(path, ledgers.render(ledger, title, [group['documents'] for group in groups]))
         steps.write_atomic(root/'coverage.json', json.dumps(ledgers.coverage(ledger), indent=2) + '\n')
@@ -538,18 +541,13 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
     save()
     number = 0
     source = lambda name: scope.source_bytes(workspace, baseline, name)
-    if ledger.get('legacy') and not ledger.get('legacyReviewed') and steps.latest_operator_notes(task):
+    if ledgers.legacy_review_required(ledger, notes):
         number += 1
         value, reason = one(number, steps.legacy_prompt(ledger, f'{sandbox_root}/step-{number:02d}.json', task, note),
                             steps.LEGACY_CALLS, budget['seconds'])
         if reason == 'unverified':
             return 'unverified'
-        if value is not None:
-            try:
-                ledgers.merge_step(ledger, [], {'documents': [], **value}, source, number, allow_empty=True)
-            except ledgers.LedgerError as error:
-                ledger['steps'].append({'step': number, 'documents': [], 'result': 'failed', 'reason': str(error)[:300]})
-        ledger['legacyReviewed'] = True
+        ledgers.merge_legacy_review(ledger, value, reason, notes, source, number, args.request_id)
         save()
     while True:
         if progress.check_stop() or progress.stop_reason:
@@ -590,7 +588,7 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
         if value is not None:
             steps.apply_writer(ledger, value)
     save()
-    return 'complete'
+    return 'worker_exit' if ledger.get('legacyReviewPending') else 'complete'
 
 
 def reconcile(r,task_id,key):
