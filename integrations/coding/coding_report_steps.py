@@ -146,6 +146,7 @@ def group_prompt(ledger, group, output, task, workspace_note, line_range=None):
         'Record what you checked as evidence with the exact source path and line. Report a finding only when the '
         'source proves the document wrong (inaccuracy), out of date (obsolete) or missing something important (gap). '
         'Mark a document "partial" if you could not check all of it and say what remains in "note". '
+        'Each document may cite at most 100 source references; each finding may cite at most 40. '
         'Lines are 1-based in the frozen snapshot; the runner verifies every path and line and rejects the whole '
         'result if one is wrong.\n\n'
         f'Write your result as JSON to {output} with exactly this shape:\n{GROUP_SCHEMA}\n'

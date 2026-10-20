@@ -84,9 +84,9 @@ def legacy_narrative(markdown):
     return '\n'.join(lines).strip()
 
 
-def _evidence(refs, source_bytes, label):
-    if not isinstance(refs, list) or len(refs) > MAX_EVIDENCE:
-        raise LedgerError(f'{label} needs a list of at most {MAX_EVIDENCE} source references')
+def _evidence(refs, source_bytes, label, *, limit=MAX_EVIDENCE):
+    if not isinstance(refs, list) or len(refs) > limit:
+        raise LedgerError(f'{label} needs a list of at most {limit} source references')
     checked = []
     for ref in refs:
         if not isinstance(ref, dict):
@@ -126,7 +126,7 @@ def merge_step(ledger, group, result, source_bytes, step_id, allow_empty=False, 
         state = row.get('state')
         if state not in STATES:
             raise LedgerError(f'{path}: state must be one of {", ".join(STATES)}')
-        evidence = _evidence(row.get('evidence', []), source_bytes, path)
+        evidence = _evidence(row.get('evidence', []), source_bytes, path, limit=MAX_DOC_EVIDENCE)
         if state == 'reviewed' and not evidence:
             raise LedgerError(f'{path}: a reviewed document needs source evidence')
         updates[path] = {'state': state, 'evidence': evidence,

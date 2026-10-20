@@ -94,6 +94,8 @@ and runs several short worker sessions in fresh context:
   the step whole or not at all. A group that fails twice marks its documents
   `blocked` with the reason. A document still partial after three steps
   without new evidence stays partial and is reported as remaining scope.
+  A document can retain up to 100 source references, matching Core coverage;
+  each finding remains bounded to 40 references. Every reference is checked.
 - **Render.** After every step the runner regenerates the Markdown report and
   `coverage.json` from the ledger, so findings, tables and totals cannot
   drift, and each step counts as saved progress.
