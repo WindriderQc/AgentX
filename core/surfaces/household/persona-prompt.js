@@ -32,8 +32,22 @@ function detectMemoryRequest(text) {
 // prompt, so a later turn still reads it as data from that source (ADR 0003).
 const NOTE_ORIGINS = Object.freeze({
   'nestor-mail-review': 'from mail review', 'nestor-scheduled': 'from a scheduled job',
-  'memory-review': 'from memory review', 'openclaw-note-import': 'imported from an agent'
+  'memory-review': 'from memory review', 'openclaw-note-import': 'imported from an agent',
+  'secretary-history': 'kept from archived mail'
 });
+
+// A souvenir keeps its date, people, places and sources in the prompt, so a
+// recalled memory can be dated and attributed (#886).
+function souvenirDetails(entry, text) {
+  if (entry?.kind !== 'souvenir') return '';
+  const list = values => (Array.isArray(values) ? values : []).slice(0, 8).map(value => cleanText(value, 80)).filter(Boolean).join(', ');
+  const date = cleanText(entry.eventDate, 40);
+  const mail = (Array.isArray(entry.sourceRefs) ? entry.sourceRefs : []).filter(ref => ref?.system !== 'personal-history').length;
+  const parts = [date && !text.startsWith(date.slice(0, 10)) ? `date ${date}` : '',
+    list(entry.people) && `people: ${list(entry.people)}`, list(entry.places) && `places: ${list(entry.places)}`,
+    mail ? `sources: ${mail} archived message${mail > 1 ? 's' : ''}` : ''].filter(Boolean);
+  return ` (souvenir${parts.length ? `; ${parts.join('; ')}` : ''})`;
+}
 
 function memoryBlock(memories) {
   if (!Array.isArray(memories) || !memories.length) return '';
@@ -43,7 +57,7 @@ function memoryBlock(memories) {
     const text = cleanText(entry?.text, 400);
     if (!text) continue;
     const origin = NOTE_ORIGINS[entry?.source];
-    const line = origin ? `- [${origin}] ${text}` : `- ${text}`;
+    const line = `- ${origin ? `[${origin}] ` : ''}${text}${souvenirDetails(entry, text)}`;
     if (used + line.length > MEMORY_BLOCK_MAX_CHARS) break;
     used += line.length;
     lines.push(line);
