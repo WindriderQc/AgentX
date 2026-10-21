@@ -103,7 +103,8 @@ router.post('/', express.json(), async (req, res) => {
     res.status(err.status || 500).json({
       status: 'error',
       message: err.message,
-      ...(err.code ? { code: err.code } : {})
+      ...(err.code ? { code: err.code } : {}),
+      ...(err.activeId ? { activeId: err.activeId } : {})
     });
   }
 });
@@ -206,7 +207,7 @@ router.get('/:id/stream', async (req, res) => {
     };
 
     // Already finished — send final and close.
-    if (['completed', 'failed', 'timeout'].includes(doc.status)) {
+    if (['completed', 'failed', 'timeout', 'cancelled'].includes(doc.status)) {
       res.writeHead(200, sseHeaders);
       res.write(`event: done\ndata: ${JSON.stringify({ status: doc.status, totalDurationMs: doc.totalDurationMs })}\n\n`);
       return res.end();
@@ -220,6 +221,11 @@ router.get('/:id/stream', async (req, res) => {
     }
 
     res.writeHead(200, sseHeaders);
+    // The snapshot and the subscription happen in the same tick, so the client
+    // replays the run so far and then receives only the events numbered after it.
+    if (typeof emitter.snapshot === 'function') {
+      res.write(`event: snapshot\ndata: ${JSON.stringify(emitter.snapshot())}\n\n`);
+    }
     const heartbeat = setInterval(() => {
       if (!res.writableEnded) res.write(': heartbeat\n\n');
     }, 15000);

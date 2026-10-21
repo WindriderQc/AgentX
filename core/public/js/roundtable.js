@@ -12,6 +12,8 @@
     toast.textContent = msg;
     toast.style.background = type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#007bff';
     toast.style.display = 'block';
+    $('toastStatus').textContent = type === 'error' ? '' : msg;
+    $('toastAlert').textContent = type === 'error' ? msg : '';
     // A newer toast keeps its full time on screen.
     clearTimeout(showToast.timer);
     showToast.timer = setTimeout(() => { toast.style.display = 'none'; }, 4500);
@@ -19,7 +21,9 @@
   async function jsonFetch(url, opts = {}) {
     const resp = await fetch(url, opts);
     const body = await resp.json().catch(() => ({}));
-    if (!resp.ok || body.status === 'error') throw new Error(body.message || `HTTP ${resp.status}`);
+    if (!resp.ok || body.status === 'error') {
+      throw Object.assign(new Error(body.message || `HTTP ${resp.status}`), { status: resp.status, code: body.code, activeId: body.activeId });
+    }
     return body;
   }
   function fmtDate(v) {
@@ -184,9 +188,12 @@
 
   // ---------- Live rendering ----------
   let liveDoc = null;
+  let handoffSource = null; // 'playground' until the handed-off question is convened
   let liveEventSource = null;
+  let liveSeq = 0; // last streamed event applied; the snapshot sets it
   const agentRefs = {}; // agentId -> { card, body, stats, status }
   const searchNotes = {}; // agentId -> web search note shown when its turn starts
+  const searchNoteText = (count) => `[web search: ${count} results]\n\n`;
 
   function clearLive() {
     if (liveEventSource) { try { liveEventSource.close(); } catch {} liveEventSource = null; }
@@ -210,6 +217,16 @@
     $('liveInterjectBtn').disabled = !active;
     const pending = (doc?.interjections || []).filter((item) => item.status === 'pending').length;
     $('liveChairHint').textContent = `${pending} pending interjection${pending === 1 ? '' : 's'}. No verdict executes actions.`;
+    $('liveInterjectionList').innerHTML = (doc?.interjections || []).map((item) => {
+      const when = item.status === 'applied' ? `applied in round ${item.appliedRound ?? '?'}` : 'pending';
+      return `<li><span>${escape(item.author || 'chair')} · ${escape(when)}</span>${escape(item.text || '')}</li>`;
+    }).join('');
+    const decided = doc?.governance?.decidedAt;
+    const note = doc?.governance?.decisionNote;
+    $('liveDecisionRecord').classList.toggle('rt-hidden', !decided);
+    $('liveDecisionRecord').textContent = decided
+      ? `Decided by ${doc.governance.decidedBy || 'chair'}${note ? `: ${note}` : ''}`
+      : '';
   }
 
   async function refreshLiveGovernance() {
@@ -337,15 +354,74 @@
       p.classList.remove('active', 'done', 'error');
       if (id === phase) p.classList.add('active');
     });
-    // Mark prior phases done
+    // Mark prior phases done; rounds this Council does not run stay hidden.
     const order = ['round-1', 'round-2', 'round-3', 'synthesis', 'done'];
     const idx = order.indexOf(phase);
     for (let i = 0; i < idx; i += 1) {
-      document.querySelector(`#livePhases .rt-phase[data-phase="${order[i]}"]`)?.classList.add('done');
+      document.querySelector(`#livePhases .rt-phase[data-phase="${order[i]}"]:not(.rt-hidden)`)?.classList.add('done');
+    }
+  }
+
+  function showRoundPhases(rounds) {
+    document.querySelectorAll('#livePhases .rt-phase[data-phase^="round-"]').forEach((chip) => {
+      const round = Number(chip.getAttribute('data-phase').slice(6));
+      chip.classList.toggle('rt-hidden', round > (Number(rounds) || 3));
+    });
+  }
+
+  function markPhaseError(phase) {
+    setPhase(phase);
+    document.querySelector(`#livePhases .rt-phase[data-phase="${phase}"]`)?.classList.replace('active', 'error');
+  }
+
+  // The last phase a saved Council reached, for one that stopped early.
+  function reachedPhase(doc) {
+    if (doc.synthesis?.response || doc.synthesis?.error) return 'synthesis';
+    const rounds = (doc.turns || []).map((t) => t.round);
+    return `round-${rounds.length ? Math.max(...rounds) : 1}`;
+  }
+
+  function fillAgentStats(refs, stats) {
+    if (!stats) return;
+    refs.tokens.textContent = stats.completionTokens ?? '—';
+    refs.tps.textContent = fmtNum(stats.tokensPerSecond);
+    refs.latency.textContent = stats.latencyMs ? fmtDuration(stats.latencyMs) : '—';
+  }
+
+  // Replay the run so far, as the server holds it, on top of the saved turns.
+  function applyLiveSnapshot(snap) {
+    liveSeq = Number(snap.seq) || 0;
+    if (snap.round >= 1) {
+      Object.entries(agentRefs).forEach(([agentId, refs]) => {
+        const entry = snap.agents?.[agentId];
+        refs.currentRound = snap.round;
+        refs.round.textContent = `round ${snap.round}`;
+        refs.card.classList.remove('active', 'done', 'error');
+        const status = entry?.status || 'pending';
+        if (status === 'running') refs.card.classList.add('active');
+        if (status === 'done' || status === 'error') refs.card.classList.add(status);
+        refs.status.textContent = status === 'searching' ? 'searching web' : status;
+        refs.status.className = `rt-agent-status ${status === 'searching' ? '' : status}`.trim();
+        refs.searchNote = entry?.searchNote || '';
+        if (entry && ['running', 'done'].includes(status)) refs.body.textContent = `${refs.searchNote}${entry.text || ''}`;
+        else if (status === 'error') refs.body.textContent = `${refs.searchNote}Error: ${entry.error}`;
+        else refs.body.textContent = '';
+        if (entry && ['pending', 'searching'].includes(status) && entry.searchNote) searchNotes[agentId] = entry.searchNote;
+        if (entry) fillAgentStats(refs, entry.stats);
+      });
+    }
+    if (snap.phase && snap.phase !== 'done') setPhase(snap.phase);
+    if (snap.synthesis) {
+      $('liveSynthesis').classList.remove('rt-hidden');
+      $('liveSynthMeta').textContent = `model: ${snap.synthesis.model || '—'}`;
+      $('liveSynthBody').textContent = snap.synthesis.error ? `Error: ${snap.synthesis.error}` : (snap.synthesis.text || '');
     }
   }
 
   function handleEvent(type, data) {
+    if (type === 'snapshot') { applyLiveSnapshot(data); return; }
+    // Already contained in the snapshot: applying it again would duplicate text.
+    if (Number.isFinite(data?.seq) && data.seq <= liveSeq) return;
     if (type === 'started') return;
 
     if (type === 'round-start') {
@@ -369,7 +445,8 @@
       refs.status.textContent = 'running';
       refs.status.className = 'rt-agent-status running';
       refs.round.textContent = `round ${data.round}`;
-      refs.body.textContent = searchNotes[data.agentId] || '';
+      refs.searchNote = searchNotes[data.agentId] || '';
+      refs.body.textContent = refs.searchNote;
       delete searchNotes[data.agentId];
       return;
     }
@@ -388,7 +465,8 @@
         refs.card.classList.add('error');
         refs.status.textContent = 'error';
         refs.status.className = 'rt-agent-status error';
-        refs.body.textContent = `Error: ${data.error}`;
+        // The search note stays: it says what the failed turn was given.
+        refs.body.textContent = `${refs.searchNote || ''}Error: ${data.error}`;
       } else {
         refs.card.classList.add('done');
         refs.status.textContent = 'done';
@@ -404,9 +482,15 @@
       return;
     }
 
+    if (type === 'web-search-start') {
+      const refs = agentRefs[data.agentId];
+      if (refs) refs.status.textContent = 'searching web';
+      return;
+    }
+
     if (type === 'web-search-done') {
       // The search runs before the turn starts, which clears the card: keep the note for it.
-      searchNotes[data.agentId] = `[web search: ${data.resultCount} results]\n\n`;
+      searchNotes[data.agentId] = searchNoteText(data.resultCount);
       return;
     }
 
@@ -433,12 +517,14 @@
     }
 
     if (type === 'synthesis-chunk') {
+      $('liveSynthesis').classList.remove('rt-hidden');
       $('liveSynthBody').textContent += data.content || '';
       return;
     }
 
     if (type === 'synthesis-done') {
       if (data.error) {
+        markPhaseError('synthesis');
         $('liveSynthBody').textContent = `Error: ${data.error}`;
       } else if (data.stats) {
         const s = data.stats;
@@ -461,7 +547,7 @@
     if (type === 'done') {
       const stopped = data.status === 'failed' || data.status === 'timeout' || data.status === 'cancelled';
       const current = document.querySelector('#livePhases .rt-phase.active');
-      if (stopped && current) current.classList.replace('active', 'error');
+      if (stopped) current?.classList.replace('active', 'error');
       else setPhase('done');
       if (liveDoc) liveDoc.status = data.status || liveDoc.status;
       $('liveStatus').textContent = `#${liveDoc?._id?.substring(liveDoc._id.length - 8) || 'council'} — ${String(data.status || 'finished').toUpperCase()}`;
@@ -562,6 +648,7 @@
     try {
       const { data } = await jsonFetch(`/api/roundtable/${id}`);
       liveDoc = data;
+      liveSeq = 0;
       $('liveSection').classList.remove('rt-hidden');
       $('liveStatus').textContent = `#${id.substring(id.length - 8)} — ${data.status.toUpperCase()}`;
       $('liveQuestion').textContent = data.question;
@@ -576,12 +663,14 @@
       (data.turns || []).forEach((t) => {
         const refs = agentRefs[t.agentId];
         if (!refs) return;
+        const note = t.webSearchResults?.length ? searchNoteText(t.webSearchResults.length) : '';
+        const saved = `${note}${t.response || (t.error ? `Error: ${t.error}` : '')}`;
         if (t.round > refs.currentRound) {
           refs.currentRound = t.round;
           refs.round.textContent = `round ${t.round}`;
-          refs.body.textContent = t.response || (t.error ? `Error: ${t.error}` : '');
+          refs.body.textContent = saved;
         } else if (t.round === refs.currentRound) {
-          refs.body.textContent = t.response || (t.error ? `Error: ${t.error}` : '');
+          refs.body.textContent = saved;
         }
         refs.host.textContent = `host ${t.hostName || '—'}`;
         if (t.stats) {
@@ -606,21 +695,18 @@
         }
       }
 
-      // Phase state
+      // Phase state: a Council that stopped early shows where it stopped.
+      showRoundPhases(data.rounds);
       if (data.status === 'completed') setPhase('done');
-      else if (['failed', 'timeout', 'cancelled'].includes(data.status)) setPhase('done');
-      else if (data.synthesis?.response) setPhase('synthesis');
-      else if ((data.turns || []).length) {
-        const maxRound = Math.max(...data.turns.map((t) => t.round), 1);
-        setPhase(`round-${maxRound}`);
-      } else setPhase('round-1');
+      else if (['failed', 'timeout', 'cancelled'].includes(data.status)) markPhaseError(reachedPhase(data));
+      else setPhase(reachedPhase(data));
 
       if (data.qualityScores) renderQualityScores(data);
 
       // Subscribe if still running
       if (['pending', 'running'].includes(data.status)) {
         liveEventSource = new EventSource(`/api/roundtable/${id}/stream`);
-        ['started', 'round-start', 'round-done', 'turn-start', 'turn-chunk', 'turn-done', 'web-search-start', 'web-search-done', 'interjection-added', 'interjections-applied', 'synthesis-start', 'synthesis-chunk', 'synthesis-done', 'done'].forEach((ev) => {
+        ['snapshot', 'started', 'round-start', 'round-done', 'turn-start', 'turn-chunk', 'turn-done', 'web-search-start', 'web-search-done', 'interjection-added', 'interjections-applied', 'synthesis-start', 'synthesis-chunk', 'synthesis-done', 'done'].forEach((ev) => {
           liveEventSource.addEventListener(ev, (e) => {
             try { handleEvent(ev, JSON.parse(e.data)); } catch {}
           });
@@ -656,7 +742,7 @@
       governance: { requireApproval: $('formApproval').value === 'true' },
       // A question handed off from the Playground is recorded as such; the
       // server still owns the session and its telemetry attribution.
-      source: new URLSearchParams(window.location.search).get('source') === 'playground' ? 'playground-handoff' : 'web-ui'
+      source: handoffSource === 'playground' ? 'playground-handoff' : 'web-ui'
     };
 
     const btn = $('formStartBtn');
@@ -671,11 +757,19 @@
         },
         body: JSON.stringify(body)
       });
+      handoffSource = null;
       clearLive();
       await attachLive(data._id);
       $('liveChairToken').value = $('formChairToken').value;
       showToast('Council convened — streaming live', 'success');
     } catch (err) {
+      if (err.code === 'COUNCIL_ACTIVE' && err.activeId) {
+        // One Council runs at a time: show the one in progress instead.
+        showToast('A Council is already running — showing it. Stop it before convening another.', 'info');
+        clearLive();
+        await attachLive(String(err.activeId));
+        return;
+      }
       showToast(`Failed: ${err.message}`, 'error');
     } finally {
       btn.innerHTML = '<i class="fas fa-rocket"></i> Convene Council';
@@ -793,18 +887,23 @@
     await loadDefaults();
     loadHistory();
 
-    // Pre-fill question from URL ?question=... (Playground "Open in Council")
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const qParam = params.get('question');
-      if (qParam) {
-        $('formQuestion').value = qParam;
-        $('formQuestion').focus();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        showToast('Question handed off from Chat — nothing has been convened yet. Review the panel, then Convene Council.', 'info');
-      }
-    } catch {}
+    // A handoff link (Playground "Open in Council", Telegram relay) applies once.
+    const handoff = window.AgentXCouncilHandoff.readCouncilHandoff(window.location.search);
+    if (handoff.present) {
+      try { window.history.replaceState(null, '', `${window.location.pathname}${handoff.cleanSearch}${window.location.hash}`); } catch {}
+    }
+    if (handoff.question) {
+      handoffSource = handoff.source;
+      $('formQuestion').value = handoff.question;
+      $('formQuestion').focus();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showToast(window.AgentXCouncilHandoff.handoffMessage(handoff), 'info');
+    }
 
+    if (handoff.id) {
+      attachLive(handoff.id);
+      return;
+    }
     // Auto-attach an active roundtable if one is running
     try {
       const { data } = await jsonFetch('/api/roundtable/active');

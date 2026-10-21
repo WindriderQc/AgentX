@@ -224,6 +224,19 @@ describe('Roundtable v2 API', () => {
     expect(roundtableService.startRoundtable).not.toHaveBeenCalled();
   });
 
+  test('refuses a second Council with 409 and names the one running', async () => {
+    roundtableService.startRoundtable.mockRejectedValue(Object.assign(new Error('A Council is already running'), {
+      status: 409, code: 'COUNCIL_ACTIVE', activeId: 'aaaaaaaaaaaaaaaaaaaaaaaa'
+    }));
+    const unlocked = express();
+    unlocked.use((_req, res, next) => { res.locals.adultUserId = 'owner'; next(); });
+    unlocked.use('/api/roundtable', router);
+    const response = await request(unlocked).post('/api/roundtable')
+      .send({ question: 'Discuss?', panel: [{ agentId: 'critic', model: 'runtime/model-a' }], synthesizer: { model: 'runtime/model-a' } });
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({ code: 'COUNCIL_ACTIVE', activeId: 'aaaaaaaaaaaaaaaaaaaaaaaa' });
+  });
+
   test('GET /active serves the fallback document even when the facade exposes no reconciler', async () => {
     const Roundtable = require('../../models/Roundtable');
     roundtableService.getActiveRoundtableId.mockReturnValue(null);
