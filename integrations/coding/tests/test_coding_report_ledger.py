@@ -395,6 +395,24 @@ class StepPlanTest(unittest.TestCase):
         self.assertEqual(ledger['documents']['docs/A.md']['state'], 'reviewed')
         self.assertEqual(ledger['documents']['docs/A.md'].get('partialRounds', 0), 0)
 
+    def test_absolute_snapshot_paths_are_accepted_as_repository_paths(self):
+        ledger = ledgers.new_ledger(snapshot())
+        result = good_result()
+        result['documents'][0]['path'] = '/workspace/docs/A.md'
+        result['documents'][0]['evidence'][0]['path'] = '/workspace/core/config.js'
+        result['findings'][0]['document']['path'] = './docs/A.md'
+        result['findings'][0]['evidence'][0]['path'] = '/workspace/./core/config.js'
+        ledgers.merge_step(ledger, ['docs/A.md'], result, source, 1)
+        row = ledger['documents']['docs/A.md']
+        self.assertEqual(row['state'], 'reviewed')
+        self.assertEqual(row['evidence'][0]['path'], 'core/config.js')
+        self.assertEqual(ledger['findings'][0]['document']['path'], 'docs/A.md')
+        self.assertEqual(ledger['findings'][0]['evidence'][0]['path'], 'core/config.js')
+        outside = good_result()
+        outside['documents'][0]['evidence'][0]['path'] = '/etc/passwd'
+        with self.assertRaises(ledgers.LedgerError):
+            ledgers.merge_step(ledgers.new_ledger(snapshot()), ['docs/A.md'], outside, source, 1)
+
     def test_a_document_that_stays_partial_without_progress_stops_being_planned(self):
         ledger = ledgers.new_ledger(snapshot())
         partial = {'documents': [{'path': 'docs/B.md', 'state': 'partial', 'evidence': [], 'note': 'route table unchecked'}]}

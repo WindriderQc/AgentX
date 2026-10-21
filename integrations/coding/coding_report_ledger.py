@@ -84,6 +84,24 @@ def legacy_narrative(markdown):
     return '\n'.join(lines).strip()
 
 
+SNAPSHOT_ROOT = '/workspace/'
+
+
+def snapshot_path(path):
+    """Repository-relative form of a path the worker may write absolute.
+
+    The worker reads the frozen source snapshot at /workspace and is told to
+    use absolute paths there, so `/workspace/README.md` and `./README.md`
+    name the same snapshot file as `README.md`."""
+    if not isinstance(path, str):
+        return path
+    if path.startswith(SNAPSHOT_ROOT):
+        path = path[len(SNAPSHOT_ROOT):]
+    while path.startswith('./'):
+        path = path[2:]
+    return path
+
+
 def _evidence(refs, source_bytes, label, *, limit=MAX_EVIDENCE):
     if not isinstance(refs, list) or len(refs) > limit:
         raise LedgerError(f'{label} needs a list of at most {limit} source references')
@@ -91,7 +109,7 @@ def _evidence(refs, source_bytes, label, *, limit=MAX_EVIDENCE):
     for ref in refs:
         if not isinstance(ref, dict):
             raise LedgerError(f'{label} references must be objects with path, line and check')
-        path = _text(ref.get('path'), f'{label} path', 300)
+        path = snapshot_path(_text(ref.get('path'), f'{label} path', 300))
         line = ref.get('line')
         try:
             data = source_bytes(path)
@@ -120,7 +138,7 @@ def merge_step(ledger, group, result, source_bytes, step_id, allow_empty=False, 
         raise LedgerError('documents must list the group documents you checked')
     updates = {}
     for row in rows:
-        path = row.get('path') if isinstance(row, dict) else None
+        path = snapshot_path(row.get('path')) if isinstance(row, dict) else None
         if path not in group:
             raise LedgerError(f'{path!r} is not a document of this group')
         state = row.get('state')
@@ -145,7 +163,8 @@ def merge_step(ledger, group, result, source_bytes, step_id, allow_empty=False, 
         severity = finding.get('severity')
         if severity not in SEVERITIES:
             raise LedgerError(f'{label}: severity must be one of {", ".join(SEVERITIES)}')
-        document = finding.get('document') or {}
+        document = dict(finding.get('document') or {})
+        document['path'] = snapshot_path(document.get('path'))
         if document.get('path') not in group:
             raise LedgerError(f'{label}: document.path must be a document of this group')
         [doc_ref] = _evidence([{**document, 'check': 'documented claim'}], source_bytes, label)
