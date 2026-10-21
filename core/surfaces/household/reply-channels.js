@@ -13,6 +13,7 @@ const { SPOKEN_REPLY_INSTRUCTION } = require('../../src/services/voice/presentat
 
 const path = require('node:path');
 const spokenPresentation = require('../../public/js/voice/spoken-presentation');
+const screenPages = require('../../public/js/screen-pages');
 
 const KINDS = Object.freeze(['text', 'list', 'table', 'code', 'link', 'secret', 'image']);
 const LIMITS = Object.freeze({ blocks: 20, body: 8000, title: 120, spokenListItems: 3, token: 24, openTag: 300 });
@@ -48,7 +49,7 @@ function languageOf(value) {
 function attributes(source) {
   const values = {};
   for (const [, name, value] of String(source || '').matchAll(/([a-z]+)\s*=\s*"([^"]*)"/gi)) values[name.toLowerCase()] = value;
-  const kind = KINDS.includes(values.kind) || values.kind === 'consult' ? values.kind : 'text';
+  const kind = KINDS.includes(values.kind) || values.kind === 'consult' || values.kind === 'page' ? values.kind : 'text';
   return { kind, title: values.title?.trim().slice(0, LIMITS.title) || '',
     ...(kind === 'image' ? { source: String(values.source || '').trim().toLowerCase().slice(0, 20) } : {}) };
 }
@@ -98,7 +99,7 @@ function spokenTable(lines) {
   return lines.map(row => row.replace(/^\s*\||\|\s*$/g, '').split('|').map(cell => cell.trim()).filter(Boolean).join('. ')).join('\n');
 }
 
-function createReplyChannels({ allowSecrets = false, language = 'fr', readAloud = false, onSay = () => {}, onShow = () => {}, onConsult = () => {} } = {}) {
+function createReplyChannels({ allowSecrets = false, allowPages = false, language = 'fr', readAloud = false, onSay = () => {}, onShow = () => {}, onConsult = () => {} } = {}) {
   const lang = languageOf(language);
   const display = [];
   let pending = '', inShow = false, showAttributes = null, received = false, ended = false;
@@ -118,7 +119,11 @@ function createReplyChannels({ allowSecrets = false, language = 'fr', readAloud 
     if (kind === 'secret' && !allowSecrets) return false;
     // A consult block is a request to Core (#41), never something to display or to store.
     if (kind === 'consult') { onConsult({ member: title, question: content }); return false; }
-    const block = { id: 'b' + (display.length + 1), kind, title, body: content, ...extra };
+    // A page names a Core page and a bounded focus (#924); Core builds the address.
+    const target = kind === 'page' && allowPages ? screenPages.parse(content) : null;
+    if (kind === 'page' && !target) return false;
+    const block = { id: 'b' + (display.length + 1), kind, title: target ? title || screenPages.label(target) : title,
+      body: target ? screenPages.canonical(target) : content, ...extra };
     display.push(block);
     onShow(block);
     return true;
@@ -128,7 +133,7 @@ function createReplyChannels({ allowSecrets = false, language = 'fr', readAloud 
   const showBlock = (body) => {
     const { kind, title, source } = showAttributes;
     addBlock(kind, title, body, source === undefined ? {} : { source });
-    if (readAloud && !['secret', 'consult', 'image'].includes(kind)) {
+    if (readAloud && !['secret', 'consult', 'image', 'page'].includes(kind)) {
       feedSpoken('\n'); closeGroup();
       speakProse((kind === 'table' ? spokenTable(body.split('\n')) : body) + '\n');
     }
@@ -299,7 +304,7 @@ function historyText(replyText, display = []) {
   return [String(replyText || ''), ...blocks].filter(Boolean).join('\n');
 }
 
-function contract({ family = false, imageSources = [] } = {}) {
+function contract({ family = false, imageSources = [], pages = false } = {}) {
   return [
     'Your reply reaches two places: prose outside a show block is spoken aloud completely. Show blocks hold documents and visual details on the user\'s screen.',
     `${SPOKEN_REPLY_INSTRUCTION} When a document is on screen, first speak its useful summary; do not replace the answer with "je te l'ai mis à l'écran".`,
@@ -313,6 +318,11 @@ function contract({ family = false, imageSources = [] } = {}) {
       ? `To show a picture, write <show kind="image" source="${imageSources.join('|')}" title="short caption">a few search words</show>. `
         + 'web searches the internet; photos and media search the household\'s own pictures by file or folder name. Never write a URL or a path; Household finds the picture and it may find none. '
         + 'Say "je te montre" only as an intention; do not describe details of a picture you have not seen.'
+      : '',
+    pages && !family
+      ? 'To open a live AgentX page beside the conversation, write <show kind="page">pipeline</show>. '
+        + 'Pipeline accepts an optional focus: status=queued|in_progress|review|blocked|done and task=<Pipeline ID>, for example <show kind="page">pipeline status=blocked</show>. '
+        + 'Never write a URL. Use it when the user asks to see the pipeline or a task, and still speak the answer from your tools.'
       : ''
   ].filter(Boolean).join(' ');
 }

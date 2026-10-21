@@ -69,7 +69,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   // Shown live: in the avatar's interactive scene Nestor steps aside and that zone comes first.
   const show = block => {
     if (!board.add(block)) return;
-    el('conversationVisual').closest('.conversation-stage').dataset.shown = ['image', 'scene'].includes(block.kind) ? 'visual' : 'text';
+    el('conversationVisual').closest('.conversation-stage').dataset.shown = ['page', 'image', 'scene'].includes(block.kind) ? 'visual' : 'text';
     activity('show');
   };
   const clearBoard = () => { board.clear(); activity('clear'); };

@@ -176,3 +176,21 @@ test('Famille shows external links as text unless the household turned them on',
     delete globalThis.localStorage;
   }
 });
+
+test('a page block frames the rebuilt screen address in the personal space only', () => {
+  globalThis.AgentXScreenPages = require('../../../public/js/screen-pages');
+  try {
+    const container = new Element('section');
+    const board = create(container, { space: 'personal' });
+    assert.equal(board.add({ id: 'b1', kind: 'page', title: 'Pipeline', body: 'pipeline status=blocked' }), true);
+    board.add({ id: 'b2', kind: 'page', title: 'Pipeline', body: 'pipeline task=812' });
+    assert.equal(container.children[1].children.length, 1, 'one live frame per page');
+    assert.equal(container.find(child => child.tagName === 'IFRAME').src, '/pipeline?view=screen&from=nestor&task=812');
+    assert.equal(container.find(child => child.tagName === 'A').href, '/pipeline?from=nestor&task=812');
+    assert.equal(board.add({ id: 'b3', kind: 'page', title: 'x', body: 'javascript:alert(1)' }), false);
+    const family = new Element('section');
+    assert.equal(create(family, { space: 'family' }).add({ id: 'b1', kind: 'page', title: 'Pipeline', body: 'pipeline' }), false);
+  } finally {
+    delete globalThis.AgentXScreenPages;
+  }
+});

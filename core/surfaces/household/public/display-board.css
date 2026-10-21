@@ -28,6 +28,10 @@
 .display-block-caption { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; font-size: .82rem; color: var(--soft); overflow-wrap: anywhere; }
 .display-block-caption a { color: var(--cyan); }
 .display-block[data-kind="scene"] { border-left-color: var(--purple); }
+/* A live Core page beside the conversation (#924). */
+.display-block[data-kind="page"] { border-left-color: var(--cyan); grid-column: 1 / -1; }
+.display-block-page { display: block; width: 100%; height: 60vh; border: 0; border-radius: 8px; background: #06111a; }
+.display-block-page.is-expanded { height: 88vh; }
 .display-block-stage { position: relative; min-height: 64px; }
 .display-block-stage.has-stage { aspect-ratio: 4 / 3; }
 .display-block-stage llmx-stage { position: absolute; inset: 0; width: 100%; height: 100%; }
