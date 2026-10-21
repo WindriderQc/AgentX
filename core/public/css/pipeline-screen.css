@@ -1,0 +1,21 @@
+/* Pipeline on Nestor's screen (#924): the live overview and what needs
+   attention, without navigation, launch or history. Opening the full page
+   from the screen card restores every section. */
+.pipeline-screen .pipeline-page { padding-top: 12px; }
+.pipeline-screen .skip-link,
+.pipeline-screen .pipeline-lifecycle,
+.pipeline-screen .pipeline-section-nav,
+.pipeline-screen #pipelineNewTask,
+.pipeline-screen #pipelinePrepare,
+.pipeline-screen #pipelineDeliveryInbox,
+.pipeline-screen #pipelineStallDiagnosis,
+.pipeline-screen #pipelineHistory,
+.pipeline-screen .pipeline-history-grid { display: none !important; }
+.pipeline-screen .pipeline-context a { display: none; }
+/* A one-line header: the screen card already names the page. */
+.pipeline-screen .pipeline-hero { padding: 12px 16px; }
+.pipeline-screen .pipeline-hero-copy > p,
+.pipeline-screen .pipeline-eyebrow,
+.pipeline-screen .pipeline-hero-actions a,
+.pipeline-screen .cockpit-help-button { display: none !important; }
+.pipeline-screen .pipeline-hero h1 { font-size: 1.25rem; margin: 0 0 8px; }

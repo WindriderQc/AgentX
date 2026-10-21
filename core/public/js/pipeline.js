@@ -105,12 +105,14 @@
 
   function readContext() {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('from') !== 'agent-ops') return null;
+    // Agent Ops and Nestor's screen hand over the same bounded focus.
+    const source = { 'agent-ops': 'Agent Ops', nestor: 'Nestor' }[params.get('from')];
+    if (!source) return null;
     const status = boundedParam(params, 'status', /^(queued|in_progress|review|blocked|done)$/);
     const task = boundedParam(params, 'task', /^[a-z0-9._-]+$/i, 64);
     const assignee = boundedParam(params, 'assignee', /^[a-z0-9][a-z0-9 ._@-]*$/i, 80);
     const alias = boundedParam(params, 'alias', /^[a-z0-9][a-z0-9 ._@-]*$/i, 80);
-    return task || assignee || status ? { task, assignee, alias, status } : null;
+    return task || assignee || status ? { source, task, assignee, alias, status } : null;
   }
 
   // Fold accents and case for search without rewriting literal punctuation
@@ -153,7 +155,7 @@
     const banner = $('pipelineHandoffContext');
     if (!banner || !state.context) return;
     banner.hidden = false;
-    $('pipelineContextTitle').textContent = `Focused from Agent Ops · ${contextDescription()}`;
+    $('pipelineContextTitle').textContent = `Focused from ${state.context.source} · ${contextDescription()}`;
     $('pipelineContextDetail').textContent = 'Counts remain global; the progression, work table and attention list show only this bounded context.';
   }
 
