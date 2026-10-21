@@ -552,3 +552,19 @@ returns 404 when Qdrant reports that the named snapshot does not exist.
 | `INVALID_ROOTS` | 400 | Scan roots outside configured paths |
 | `JOB_NOT_RUNNING` | 400 | Cannot cancel non-running job |
 | Validation messages | 400 | Missing/invalid fields |
+
+
+## Owner recall corpus (`/api/rag/owner-mail`)
+
+Private to Core: every call needs the `x-agentx-owner-mail-token` header equal to
+`OWNER_MAIL_RAG_TOKEN` (503 when unset, 403 otherwise). It uses its own collection
+(`QDRANT_OWNER_MAIL_COLLECTION`, default `agentx_owner_mail`, refused when equal to
+`QDRANT_COLLECTION`); shared search, listing, cleanup and snapshots never read it.
+
+- `POST /documents` `{ documents: [{ documentId: "mail:<id>", text, forceReindex? }] }` (1-50)
+- `POST /search` `{ query, topK?, minScore? }` returns `{ results: [{ documentId, chunkIndex, text, score }] }`
+- `DELETE /documents/:documentId`
+- `GET /stats`
+
+Core keeps provenance (message, preserved source, date, people) and decides what
+is indexed or forgotten; the corpus is rebuildable from the archive.

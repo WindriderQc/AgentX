@@ -146,7 +146,12 @@ Instance configuration, data and deployment receipts remain outside Git.
   and important mail and of contact cards; Core proposes merges on a shared
   address or phone (a shared full name is only a suggestion), and only the
   owner merges, with undo. A person shows their exchanges and the souvenirs
-  that name them. An
+  that name them.
+  Nestor's private owner tool `mail_recall` searches, by meaning, a private
+  corpus of person and important mail, read attachments, souvenirs and people,
+  with date, people and source. It lives in its own RAG collection that only
+  Core can reach; `/mcp`, Family and children never do, and forgotten items
+  leave it. An
   assertion consolidated from several messages names its people and places and
   cites up to 19 sources; its souvenir keeps them all. The native archive reader verifies pinned
   originals independently of Gmail. Instance import, process qualification and

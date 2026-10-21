@@ -362,6 +362,26 @@ python3 integrations/secretary/people_import.py --root "$GMAIL_SECRETARY_ROOT" -
 python3 integrations/secretary/people_import.py --root "$GMAIL_SECRETARY_ROOT" --manifest "$PRIVATE_PEOPLE_MANIFEST" --state "$PRIVATE_PEOPLE_DELIVERY" --publish
 ```
 
+### Owner recall corpus
+
+`recall_index.py` sends, per person or important message with a preserved
+original, its body and the extracted or OCR text of each read attachment to
+`POST /api/secretary/recall/documents`, with subject, date, people and source.
+Core records provenance and indexes the text in RAG's private owner collection
+(`QDRANT_OWNER_MAIL_COLLECTION`, never the shared one), reachable only with
+`OWNER_MAIL_RAG_TOKEN`, which only Core holds. Core then syncs kept souvenirs and
+the people registry; a souvenir or person no longer active leaves the index, and
+a document the owner forgets (`DELETE /api/secretary/recall/documents/:id`) is
+never indexed again. Nestor's private owner tool `mail_recall` searches it by
+meaning; `/mcp`, the Family surface and children never reach it. The job pauses
+for runtime coordination and resumes from its private state; the first full
+indexing uses the heavy-work queue.
+
+```bash
+python3 integrations/secretary/recall_index.py --root "$GMAIL_SECRETARY_ROOT" --state "$PRIVATE_RECALL_STATE" --plan
+python3 integrations/secretary/recall_index.py --root "$GMAIL_SECRETARY_ROOT" --state "$PRIVATE_RECALL_STATE" --max-documents 50
+```
+
 ### Compound attachment preservation and reading
 
 A saved ZIP/RAR or Office package does not establish preservation or review of

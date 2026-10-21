@@ -24,7 +24,8 @@
       "nestor_gpus",
       "local_image",
       "work_queue",
-      "conversation_work"
+      "conversation_work",
+      "mail_recall"
     ]
   },
   "toolMetadata": {
@@ -68,6 +69,9 @@
       "optional": true
     },
     "conversation_work": {
+      "optional": true
+    },
+    "mail_recall": {
       "optional": true
     }
   },
