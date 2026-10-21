@@ -209,9 +209,12 @@ class LedgerTest(unittest.TestCase):
         ledgers.merge_legacy_review(ledger, value, None, notes, source, 2, 'a' * 36)
         ledgers.merge_step(ledger, ['docs/A.md'], good_result(), source, 3)
         before = json.loads(json.dumps(ledger['documents']))
-        ledgers.merge_legacy_review(ledger, value, None, notes, source, 4, 'a' * 36)
-        self.assertEqual(ledger['documents'], before)
-        self.assertEqual(ledger['steps'][-1]['result'], 'failed')
+        for step_id, feedback, answer in [(4, notes, value), (5, notes, value),
+                (6, 'Another correction.', {'legacyEdits': [{'find': 'missing', 'replace': 'Changed'}]}),
+                (7, notes, value)]:
+            ledgers.merge_legacy_review(ledger, answer, None, feedback, source, step_id, 'a' * 36)
+            self.assertEqual(ledger['documents'], before)
+            self.assertEqual(ledger['steps'][-1]['result'], 'failed')
 
     def test_merges_a_verified_step_and_fills_source_digests(self):
         ledger = ledgers.new_ledger(snapshot())

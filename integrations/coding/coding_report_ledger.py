@@ -294,10 +294,16 @@ def document_rechecks(ledger, paths, notes, source_bytes):
     """Stage source-bound coverage withdrawals requested by new reviewer notes."""
     if not isinstance(paths, list) or len(paths) > MAX_LEGACY_EDITS:
         raise LedgerError(f'recheckDocuments must be a list of at most {MAX_LEGACY_EDITS}')
-    prior = ledger.get('legacyReview') or {}
-    if paths and (not isinstance(notes, str) or not notes.strip() or (prior.get('result') == 'merged'
-            and prior.get('notesSha256') == hashlib.sha256(notes.encode()).hexdigest())):
-        raise LedgerError('document rechecks require new reviewer notes')
+    if paths:
+        if not isinstance(notes, str) or not notes.strip():
+            raise LedgerError('document rechecks require new reviewer notes')
+        # A failed later correction must not erase an earlier applied intent.
+        if any(receipt.get('kind') == 'legacy' and receipt.get('result') == 'merged'
+                and receipt.get('notesSha256') == hashlib.sha256(notes.encode()).hexdigest()
+                and receipt.get('sourceCommit') == ledger['sourceCommit']
+                and receipt.get('inventorySha256') == ledger['inventorySha256']
+                for receipt in ledger['steps']):
+            raise LedgerError('document rechecks require new reviewer notes')
     staged, seen = [], set()
     for path in paths:
         if not isinstance(path, str) or path not in ledger['documents'] or path in seen:
