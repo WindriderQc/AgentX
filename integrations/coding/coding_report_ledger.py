@@ -42,6 +42,28 @@ def _text(value, label, limit=MAX_TEXT, required=True):
     return value
 
 
+NOTE_CHARS = 4000          # kept whole: a partial note says what remains to check
+NOTE_TABLE_CHARS = 600     # shown in the report's coverage table
+NOTE_TRUNCATED = ' [note truncated]'
+
+
+def _note(value, label):
+    """A document note is free text, not evidence. It is kept whole up to a
+    generous cap, because a partial document's note tells the next step what
+    remains to check; only beyond that cap is it cut, with an explicit marker.
+    An empty note is dropped. Neither rejects the whole step."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise LedgerError(f'{label} must be a string')
+    value = value.strip()
+    if not value:
+        return None
+    if len(value) <= NOTE_CHARS:
+        return value
+    return value[:NOTE_CHARS - len(NOTE_TRUNCATED)].rstrip() + NOTE_TRUNCATED
+
+
 def new_ledger(snapshot, coverage=None, legacy_markdown=None):
     """Start a ledger from Core's frozen inventory and any restored coverage."""
     prior = {row['path']: row for row in (coverage or {}).get('documents', []) if isinstance(row, dict)}
@@ -148,7 +170,7 @@ def merge_step(ledger, group, result, source_bytes, step_id, allow_empty=False, 
         if state == 'reviewed' and not evidence:
             raise LedgerError(f'{path}: a reviewed document needs source evidence')
         updates[path] = {'state': state, 'evidence': evidence,
-                         'note': _text(row.get('note'), f'{path} note', 600, required=False)}
+                         'note': _note(row.get('note'), f'{path} note')}
     findings = result.get('findings', [])
     if not isinstance(findings, list) or len(findings) > MAX_FINDINGS_PER_STEP:
         raise LedgerError(f'findings must be a list of at most {MAX_FINDINGS_PER_STEP}')
@@ -269,7 +291,8 @@ def continuation_retries(ledger, request_id, parent_request_id):
         if row['state'] == 'blocked':
             row['state'] = 'partial' if row['evidence'] else 'pending'
         row['attempts'], row['partialRounds'] = 0, 0
-        row['note'] = ('An authorized continuation permits another bounded attempt. Earlier stop: ' + (row.get('note') or 'no usable step result'))[:600]
+        row['note'] = _note('An authorized continuation permits another bounded attempt. Earlier stop: '
+                            + (row.get('note') or 'no usable step result'), f'{path} note')
     ledger['continuationRequestId'] = request_id
     if resets:
         ledger['steps'].append({'step': 0, 'kind': 'continuation', 'requestId': request_id,
@@ -446,7 +469,8 @@ def render(ledger, title, next_groups=()):
         if len(row['evidence']) > 4:
             checks += f'; and {len(row["evidence"]) - 4} more'
         if row.get('note'):
-            checks = f'{checks} — {row["note"]}' if checks else row['note']
+            note = row['note'] if len(row['note']) <= NOTE_TABLE_CHARS else row['note'][:NOTE_TABLE_CHARS - 1].rstrip() + '…'
+            checks = f'{checks} — {note}' if checks else note
         out += [f'| `{_cell(path)}` | {row["state"]} | {_cell(checks) or "—"} |']
     out += ['', '## Remaining scope', '']
     if ledger.get('legacyReviewPending'):

@@ -413,6 +413,31 @@ class StepPlanTest(unittest.TestCase):
         with self.assertRaises(ledgers.LedgerError):
             ledgers.merge_step(ledgers.new_ledger(snapshot()), ['docs/A.md'], outside, source, 1)
 
+    def test_a_long_note_is_kept_whole_for_the_next_step_and_only_capped_with_a_marker(self):
+        ledger = ledgers.new_ledger(snapshot())
+        remains = 'Still unchecked: ' + '; '.join(f'claim {n} at line {n}' for n in range(60))
+        self.assertGreater(len(remains), 600)
+        partial = {'documents': [{'path': 'docs/A.md', 'state': 'partial',
+                                  'evidence': [{'path': 'core/config.js', 'line': 1, 'check': 'strict'}], 'note': remains}]}
+        ledgers.merge_step(ledger, ['docs/A.md'], partial, source, 1)
+        self.assertEqual(ledger['documents']['docs/A.md']['note'], remains)
+        self.assertIn('claim 59 at line 59', steps.group_prompt(ledger, ['docs/A.md'], '/o.json', {}, 'note'))
+        self.assertNotIn('claim 59 at line 59', ledgers.render(ledger, 'Review', []).split('## Coverage')[1])
+        huge = good_result()
+        huge['documents'][0]['note'] = 'x' * 9000
+        ledgers.merge_step(ledgers.new_ledger(snapshot()), ['docs/A.md'], huge, source, 1)
+        capped = ledgers.new_ledger(snapshot())
+        ledgers.merge_step(capped, ['docs/A.md'], huge, source, 1)
+        self.assertEqual(len(capped['documents']['docs/A.md']['note']), 4000)
+        self.assertTrue(capped['documents']['docs/A.md']['note'].endswith('[note truncated]'))
+        empty = good_result()
+        empty['documents'][0]['note'] = '   '
+        ledgers.merge_step(ledgers.new_ledger(snapshot()), ['docs/A.md'], empty, source, 1)
+        bad = good_result()
+        bad['documents'][0]['note'] = ['not text']
+        with self.assertRaises(ledgers.LedgerError):
+            ledgers.merge_step(ledgers.new_ledger(snapshot()), ['docs/A.md'], bad, source, 1)
+
     def test_a_document_that_stays_partial_without_progress_stops_being_planned(self):
         ledger = ledgers.new_ledger(snapshot())
         partial = {'documents': [{'path': 'docs/B.md', 'state': 'partial', 'evidence': [], 'note': 'route table unchecked'}]}
