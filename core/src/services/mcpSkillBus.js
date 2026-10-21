@@ -12,6 +12,7 @@ const { createTaskInMongo } = require('./pipelineTaskService');
 const { createVaultInbox } = require('./vaultInboxService');
 const { MEMORY_TOOLS, MEMORY_TOOL_HANDLERS } = require('./mcpMemoryTools');
 const { COVERAGE_TOOLS, COVERAGE_TOOL_HANDLERS } = require('./mcpCoverageTools');
+const { PHOTO_TOOLS, PHOTO_TOOL_HANDLERS } = require('./mcpPhotoTools');
 
 const PROTOCOL_VERSION = '2025-06-18';
 const SERVER_INFO = { name: 'agentx-core-skill-bus', title: 'AgentX Core Skill Bus', version: '0.1.0' };
@@ -112,6 +113,7 @@ const TOOLS = [
   },
   ...MEMORY_TOOLS,
   ...COVERAGE_TOOLS,
+  ...PHOTO_TOOLS,
 ];
 
 function jsonRpcResult(id, result) {
@@ -329,6 +331,7 @@ const TOOL_HANDLERS = {
   write_vault_note: writeVaultNoteTool,
   ...MEMORY_TOOL_HANDLERS,
   ...COVERAGE_TOOL_HANDLERS,
+  ...PHOTO_TOOL_HANDLERS,
 };
 
 const MEMORY_TOOL_NAMES = new Set(['memory_search', 'memory_remember', 'rag_search']);
@@ -366,7 +369,7 @@ async function handleMcpMessage(message, deps = {}, { profile = 'default' } = {}
       serverInfo: SERVER_INFO,
       instructions: profile === 'memory'
         ? 'Search owner memory for relevant durable facts and preferences. When the owner asks you to remember something, save one fact with memory_remember; use its id to correct an existing note. Keep project logs and coding decisions in project files or session history. Use rag_search for documents. Never claim a memory was saved without a successful tool result.'
-        : 'Agent X exposes a narrow product bus for health, RAG, routing recommendations, local task creation, vault inbox notes, and owner memory notes.',
+        : 'Agent X exposes a narrow product bus for health, RAG, routing recommendations, local task creation, vault inbox notes, owner memory notes and household photos.',
     });
   }
   if (method === 'tools/list') {

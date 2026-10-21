@@ -25,7 +25,8 @@
       "local_image",
       "work_queue",
       "conversation_work",
-      "mail_recall"
+      "mail_recall",
+      "nestor_photos"
     ]
   },
   "toolMetadata": {
@@ -72,6 +73,9 @@
       "optional": true
     },
     "mail_recall": {
+      "optional": true
+    },
+    "nestor_photos": {
       "optional": true
     }
   },

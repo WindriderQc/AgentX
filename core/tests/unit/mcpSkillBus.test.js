@@ -63,8 +63,12 @@ describe('mcpSkillBus product tools', () => {
       'benchmark_coverage',
       'benchmark_results',
       'benchmark_request_measurement',
+      'photo_search',
+      'photo_count',
+      'photo_details',
+      'photo_names',
     ]);
-    expect(TOOLS).toHaveLength(10);
+    expect(TOOLS).toHaveLength(14);
   });
 
   test('rag_search uses an injected RAG client and returns structured content', async () => {
