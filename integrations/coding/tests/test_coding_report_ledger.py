@@ -148,6 +148,74 @@ class LedgerTest(unittest.TestCase):
         ledgers.merge_legacy_review(ledger, {'legacyEdits': []}, None, 'Check count.', source, 1, 'a' * 36)
         self.assertFalse(ledgers.legacy_review_required(ledger, 'Check count.'))
 
+    def test_reviewer_recheck_withdraws_only_selected_coverage_and_preserves_proofs(self):
+        ledger = ledgers.new_ledger(snapshot(), legacy_markdown='Earlier findings.')
+        ledgers.merge_step(ledger, ['docs/A.md'], good_result(), source, 1)
+        for row in ledger['documents'].values():
+            row['state'] = 'reviewed'
+        row = ledger['documents']['docs/A.md']
+        row.update(note='No contradiction found.', ranges=[[1, 3]], attempts=2, partialRounds=3)
+        before = json.loads(json.dumps(ledger))
+        marker = ledgers.progress_marker(ledger)
+        notes = 'The completed docs/A.md missed a source contradiction; recheck it.'
+        ledgers.merge_legacy_review(ledger, {'legacyEdits': [], 'recheckDocuments': ['docs/A.md']},
+                                   None, notes, source, 2, 'a' * 36)
+        self.assertEqual(ledgers.counts(ledger), {'reviewed': 2, 'partial': 1, 'blocked': 0, 'pending': 0})
+        self.assertEqual(row['evidence'], before['documents']['docs/A.md']['evidence'])
+        self.assertEqual(row['note'], 'No contradiction found.')  # Prior content, not rewritten by the runner.
+        self.assertEqual((row['ranges'], row['attempts'], row['partialRounds']), ([], 0, 0))
+        self.assertEqual(ledger['findings'], before['findings'])
+        self.assertEqual(ledger['steps'][:-1], before['steps'])
+        for path in ['docs/B.md', 'docs/sub/C.md']:
+            self.assertEqual(ledger['documents'][path], before['documents'][path])
+        receipt = ledger['legacyReview']['recheckedDocuments'][0]
+        self.assertEqual(receipt['previous'], {key: before['documents']['docs/A.md'][key]
+            for key in ('state', 'note', 'ranges', 'attempts', 'partialRounds')})
+        self.assertEqual(receipt['sha256'], before['documents']['docs/A.md']['sha256'])
+        self.assertFalse(any(ledgers.progress_marker(ledger)[key] - marker[key] for key in marker))
+        restored = ledgers.embedded(ledgers.render(ledger, 'Review'))
+        self.assertFalse(ledgers.coverage(restored)['declaredComplete'])
+        self.assertFalse(ledgers.legacy_review_required(restored, notes))
+        self.assertIn('docs/A.md', steps.plan_groups(restored,
+            {path: len(source(path)) for path in restored['documents']}, steps.step_budget(None))[0]['documents'])
+
+    def test_invalid_rechecks_cannot_apply_other_corrections_or_advance_coverage(self):
+        for paths, notes, changed_source, bad_legacy in [
+            (None, 'Recheck.', False, False), (['missing.md'], 'Recheck.', False, False),
+            (['docs/A.md', 'docs/A.md'], 'Recheck.', False, False),
+            (['docs/B.md'], 'Recheck.', False, False), (['docs/A.md'], '', False, False),
+            (['docs/A.md'], 'Recheck.', True, False), (['docs/A.md'], 'Recheck.', False, True),
+            (['docs/A.md'] * (ledgers.MAX_LEGACY_EDITS + 1), 'Recheck.', False, False),
+        ]:
+            with self.subTest(paths=paths, changed_source=changed_source, bad_legacy=bad_legacy):
+                ledger = ledgers.new_ledger(snapshot(), legacy_markdown='Earlier findings.')
+                ledgers.merge_step(ledger, ['docs/A.md'], good_result(), source, 1)
+                before = json.loads(json.dumps(ledger))
+                value = {'legacyEdits': [{'find': 'missing' if bad_legacy else 'Earlier', 'replace': 'Checked'}],
+                    'evidenceEdits': [{'document': 'docs/A.md', 'path': 'core/config.js', 'line': 2,
+                                      'find': 'RETRY_LIMIT value', 'replace': 'Corrected proof text'}],
+                    'recheckDocuments': paths}
+                get = lambda path: b'# Changed\n' if changed_source and path == 'docs/A.md' else source(path)
+                ledgers.merge_legacy_review(ledger, value, None, notes, get, 2, 'a' * 36)
+                for key in ('documents', 'findings', 'legacy'):
+                    self.assertEqual(ledger[key], before[key])
+                self.assertEqual(ledger['steps'][-1]['result'], 'failed')
+
+    def test_same_reviewer_notes_cannot_reopen_completed_work_twice(self):
+        ledger = ledgers.new_ledger(snapshot(), legacy_markdown='Earlier findings.')
+        ledgers.merge_step(ledger, ['docs/A.md'], good_result(), source, 1)
+        notes = 'Recheck docs/A.md.'
+        value = {'legacyEdits': [], 'recheckDocuments': ['docs/A.md']}
+        ledgers.merge_legacy_review(ledger, value, None, notes, source, 2, 'a' * 36)
+        ledgers.merge_step(ledger, ['docs/A.md'], good_result(), source, 3)
+        before = json.loads(json.dumps(ledger['documents']))
+        for step_id, feedback, answer in [(4, notes, value), (5, notes, value),
+                (6, 'Another correction.', {'legacyEdits': [{'find': 'missing', 'replace': 'Changed'}]}),
+                (7, notes, value)]:
+            ledgers.merge_legacy_review(ledger, answer, None, feedback, source, step_id, 'a' * 36)
+            self.assertEqual(ledger['documents'], before)
+            self.assertEqual(ledger['steps'][-1]['result'], 'failed')
+
     def test_merges_a_verified_step_and_fills_source_digests(self):
         ledger = ledgers.new_ledger(snapshot())
         receipt = ledgers.merge_step(ledger, ['docs/A.md', 'docs/B.md'], good_result(), source, 1)

@@ -194,6 +194,12 @@ def legacy_prompt(ledger, output, task, workspace_note):
         'Use Python to read only the evidence for documents concerned by the reviewer notes; '
         'verify each correction against /workspace. An evidence edit changes only existing check text, '
         'never its source reference, hash or coverage state. Do not edit coverage.json or the rendered report. '
+        'If these new reviewer notes reject a previously reviewed document, include '
+        '"recheckDocuments": ["<original inventory path>"]. The runner verifies its frozen source and '
+        'reopens only that document as partial, preserving its evidence and earlier review history. '
+        'Do not fix its note or add findings in this correction step; its next assigned document step '
+        'must check the rejected claims, update the note and report source-backed findings normally. '
+        'Leave accepted documents and corrections alone. '
         'Use empty lists if no correction is justified. Stop as soon as the JSON result is written.'
     )
 

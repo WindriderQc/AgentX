@@ -625,7 +625,7 @@ class StepsReportTest(unittest.TestCase):
         path = self.out/'review.md'
         path.write_text(report.ledgers.render(ledger, 'Review'))
         self.task['feedback'] = [{'by': 'operator', 'text': notes}]
-        self.answers = [answer]
+        self.answers = list(answer) if isinstance(answer, list) else [answer]
         progress = mock.Mock(model_calls=0, hard_deadline=14400, queue_deadline=14400,
                              stop_reason=None, report_drained=True)
         progress.now.return_value = 0
@@ -708,6 +708,27 @@ class StepsReportTest(unittest.TestCase):
         self.assertEqual(corrected['documents']['README.md']['evidence'][0]['check'], 'Retry limit 7.')
         self.assertFalse(corrected['legacyReviewPending'])
         self.correction_progress.useful.assert_not_called()
+
+    def test_rejected_completed_document_returns_through_normal_review_and_finding_validation(self):
+        snapshot = dict(report.scope.inventory(self.workspace, self.head), sha256='a'*64)
+        prior = report.ledgers.new_ledger(snapshot)
+        prior['documents']['README.md'].update(note='No contradiction found.', evidence=[{
+            'path': 'config.js', 'line': 1,
+            'sha256': hashlib.sha256((self.workspace/'config.js').read_bytes()).hexdigest(), 'check': 'RETRY_LIMIT'}])
+        answers = [lambda prompt: {'legacyEdits': [], 'recheckDocuments': ['README.md']}, self.reviewed,
+                   lambda prompt: {'summary': 'A rejected claim was checked and corrected.', 'explanations': {}}]
+        outcome, corrected = self.correction_step(answers, notes='README.md missed the wrong retry limit.', prior=prior)
+        self.assertEqual(outcome, 'complete')
+        self.assertEqual(runner.run_worker.call_count, 3)
+        self.assertIn('"recheckDocuments"', self.prompts[0])
+        assigned = self.prompts[1].split('Review ONLY these documents against the source code and architecture:\n')[1].split('\n\n')[0]
+        self.assertEqual(assigned, '- README.md')
+        self.assertEqual(corrected['documents']['README.md']['state'], 'reviewed')
+        self.assertEqual(len(corrected['findings']), 1)
+        self.assertEqual(corrected['findings'][0]['evidence'][0]['sha256'],
+                         hashlib.sha256((self.workspace/'config.js').read_bytes()).hexdigest())
+        self.assertEqual(corrected['steps'][0]['recheckedDocuments'][0]['path'], 'README.md')
+        self.correction_progress.useful.assert_called_once()  # New source-backed finding, not reopening.
 
     def test_reviews_groups_in_fresh_sessions_and_delivers_a_rendered_report(self):
         self.answers=[self.reviewed, self.reviewed, lambda prompt:{'summary':'Two documents reviewed; one wrong value.','explanations':{'F1':'Readers would set 5.'}}]
