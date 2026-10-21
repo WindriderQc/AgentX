@@ -11,6 +11,7 @@ const { registerSecretaryMailRoutes } = require('./secretary-mail-routes');
 const { checkEmailActionReadiness } = require('./email-action');
 const { registerSecretaryCatchupRoutes } = require('./secretary-catchup');
 const { registerSecretaryHistoryRoutes } = require('./secretary-history');
+const { registerSecretaryPeopleRoutes } = require('./secretary-people');
 
 // A slow or unreachable host never delays the desk; its late answer shows on the next refresh.
 const hostRead = (read, pending) => Promise.race([
@@ -96,6 +97,7 @@ function registerSecretaryRoutes(app, {
   registerSecretaryMailRoutes({ app, router: secretary, mongoose, envelope, fail });
   registerSecretaryCatchupRoutes({ router: secretary, envelope, fail });
   registerSecretaryHistoryRoutes({ router: secretary, envelope, fail });
+  registerSecretaryPeopleRoutes({ router: secretary, envelope, fail });
   secretary.get('/email-action/readiness', async (_req, res) => {
     const readiness = await checkEmailActionReadiness();
     if (readiness.code === 'EMAIL_ACTION_READY') return envelope(res, { readiness });

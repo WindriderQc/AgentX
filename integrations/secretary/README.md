@@ -344,6 +344,24 @@ Keep manifests and all qualification/analysis receipts outside Git.
 python3 integrations/secretary/retention_plan.py --root "$GMAIL_SECRETARY_ROOT" --before "$HISTORICAL_CUTOFF" --inventory "$PRIVATE_GMAIL_INVENTORY" --primary-proof "$PRIVATE_PRIMARY_PROOF" --mirror-proof "$PRIVATE_MIRROR_PROOF" --qualification "$PRIVATE_QUALIFICATION" --decisions "$PRIVATE_ANALYSIS_RECEIPTS" --output "$PRIVATE_RETENTION_PLAN"
 ```
 
+### People registry
+
+`people_import.py` records, in Core's owner people registry, the From of received
+mail and the To/Cc of the owner's sent mail for person and important messages
+with a preserved original, plus the vCards of Gmail attachments and of one
+selected Outlook export (`structured_sources.py`). The owner's own addresses,
+automated senders and malformed addresses are left out. Core finds a person
+again only by an exact address or phone. A person sharing an address or phone
+with another is proposed for merging; a shared full name of two words or more is
+only a suggestion. Nothing merges until the owner accepts on `/dad/people`,
+where a merge can be undone. Contact-card notes pass through the identifier
+vault. The manifest and delivery state stay outside Git; batches replay safely.
+
+```bash
+python3 integrations/secretary/people_import.py --root "$GMAIL_SECRETARY_ROOT" --outlook-export "$OUTLOOK_EXPORT_SHA256" --manifest "$PRIVATE_PEOPLE_MANIFEST"
+python3 integrations/secretary/people_import.py --root "$GMAIL_SECRETARY_ROOT" --manifest "$PRIVATE_PEOPLE_MANIFEST" --state "$PRIVATE_PEOPLE_DELIVERY" --publish
+```
+
 ### Compound attachment preservation and reading
 
 A saved ZIP/RAR or Office package does not establish preservation or review of

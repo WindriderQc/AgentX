@@ -141,7 +141,12 @@ Instance configuration, data and deployment receipts remain outside Git.
   commitment nor selected memory unless the owner keeps an assertion as a
   souvenir: a permanent owner note with its event date, people, places and
   sources, recalled by Nestor with that date, those people and the number of
-  archived sources, and forgotten together with its source. An
+  archived sources, and forgotten together with its source.
+  The owner's people registry (`/dad/people`) gathers the people of person
+  and important mail and of contact cards; Core proposes merges on a shared
+  address or phone (a shared full name is only a suggestion), and only the
+  owner merges, with undo. A person shows their exchanges and the souvenirs
+  that name them. An
   assertion consolidated from several messages names its people and places and
   cites up to 19 sources; its souvenir keeps them all. The native archive reader verifies pinned
   originals independently of Gmail. Instance import, process qualification and
