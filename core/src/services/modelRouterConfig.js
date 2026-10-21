@@ -36,6 +36,7 @@ const logger = require('../../config/logger');
 const crypto = require('crypto');
 const { resolveAdvisoryHost } = require('../helpers/schedulerClient');
 const { isEmbeddingModelName } = require('../../../shared/embeddingModels');
+const { modelsMatch } = require('../helpers/modelNameNormalization');
 const {
     getModelReadiness,
     compareReadiness
@@ -65,6 +66,9 @@ const {
 // prevents cascade evictions. The cache reads pinnedModels only,
 // with a service-layer fallback for legacy docs still in the DB.
 let _pinCache = new Map();
+// hostUrl → pinned model names in pin order, for route defaults that follow
+// their host's pin (see rebuildTaskModels).
+let _hostPins = new Map();
 let _pinCacheLoadedAt = 0;
 let _pinCacheRefreshing = null;
 
@@ -75,7 +79,9 @@ async function refreshPinCache() {
             const hostPrefService = require('./hostPreferenceService');
             const nameMap = await hostPrefService.getPinnedModelsMap();
             const next = new Map();
+            const hostPins = new Map();
             for (const [hostUrl, names] of nameMap) {
+                hostPins.set(hostUrl, (names || []).filter(Boolean));
                 for (const m of names) {
                     if (m && !next.has(m.toLowerCase())) {
                         next.set(m.toLowerCase(), hostUrl);
@@ -83,7 +89,9 @@ async function refreshPinCache() {
                 }
             }
             _pinCache = next;
+            _hostPins = hostPins;
             _pinCacheLoadedAt = Date.now();
+            rebuildTaskModels();
         } catch (_e) {
             // Silent — first call might fire before Mongo is connected.
             // Subsequent refresh ticks will succeed once DB is up.
@@ -92,6 +100,15 @@ async function refreshPinCache() {
         }
     })();
     return _pinCacheRefreshing;
+}
+
+// Waits for a refresh already in flight, then reads the pins again, so a
+// caller that just changed a pin sees it (an in-flight read may predate it).
+async function refreshPinCacheNow() {
+    if (_pinCacheRefreshing) {
+        try { await _pinCacheRefreshing; } catch { /* ignore */ }
+    }
+    return refreshPinCache();
 }
 
 function lookupPinnedHost(model) {
@@ -137,6 +154,9 @@ function isDirectInvokeTask(taskType) {
 }
 
 const TASK_MODELS = cloneTaskModels(DEFAULT_TASK_MODELS);
+// Task types whose effective model is their host's pin rather than their
+// deployment default (no stored route, default model pinned nowhere).
+const HOST_PIN_FOLLOWERS = new Map();
 let taskModelOverrides = {};
 let taskOverridesLoaded = false;
 let taskOverridesLoadPromise = null;
@@ -250,8 +270,40 @@ function isKnownHost(host) { // a host key whose URL is configured; '' means not
     return Object.prototype.hasOwnProperty.call(HOSTS, host) && Boolean(HOSTS[host]);
 }
 
+function routeDefaultsFollowHostPin() {
+    return String(process.env.AGENTX_ROUTE_DEFAULTS_FOLLOW_HOST_PIN || 'true').toLowerCase() !== 'false';
+}
+
+// The host pin owns what its host loads (#829). A deployment default that
+// names a model pinned on no host would load a second runner over the pin, so
+// a task without a stored route follows its host's pin instead: the first
+// pinned chat model, or the first pinned embedding model for an embedding
+// default. A default pinned on another host keeps the existing behaviour of
+// following its model there. Stored routes and explicit callers keep priority.
+function hostPinFor(entry) {
+    if (!routeDefaultsFollowHostPin() || !entry?.model || !entry.host) return null;
+    const hostUrl = HOSTS[entry.host];
+    const pins = hostUrl ? _hostPins.get(hostUrl) : null;
+    if (!pins?.length) return null;
+    if (pins.some((pin) => modelsMatch(pin, entry.model))) return null;
+    if (lookupPinnedHost(entry.model)) return null;
+    const embedding = isEmbeddingModelName(entry.model);
+    return pins.find((pin) => isEmbeddingModelName(pin) === embedding) || null;
+}
+
 function rebuildTaskModels() {
+    refreshHosts();
     const merged = cloneTaskModels(DEFAULT_TASK_MODELS);
+    HOST_PIN_FOLLOWERS.clear();
+
+    Object.entries(merged).forEach(([taskType, entry]) => {
+        if (Object.prototype.hasOwnProperty.call(taskModelOverrides, taskType)) return;
+        const pinned = hostPinFor(entry);
+        if (pinned) {
+            HOST_PIN_FOLLOWERS.set(taskType, entry.model);
+            merged[taskType] = { model: pinned, host: entry.host };
+        }
+    });
 
     Object.entries(taskModelOverrides).forEach(([taskType, entry]) => {
         if (isKnownTaskType(taskType)) {
@@ -261,6 +313,10 @@ function rebuildTaskModels() {
 
     Object.keys(TASK_MODELS).forEach((taskType) => delete TASK_MODELS[taskType]);
     Object.assign(TASK_MODELS, merged);
+}
+
+function getHostPinFollowers() {
+    return [...HOST_PIN_FOLLOWERS.keys()];
 }
 
 function normalizeTaskOverride(taskType, entry) {
@@ -303,7 +359,8 @@ function getTaskModelConfigState() {
             default: { model: defaults.model, host: defaults.host },
             override: override ? { model: override.model, host: override.host } : null,
             effective: { model: effective.model, host: effective.host },
-            isOverride: !!override
+            isOverride: !!override,
+            followsHostPin: HOST_PIN_FOLLOWERS.has(taskType)
         }];
     }));
 }
@@ -691,8 +748,10 @@ module.exports = {
     resolvePreferredTaskEntry,
     // pin-cache surface for tests and diagnostics
     refreshPinCache,
+    refreshPinCacheNow,
     stopPinCacheRefresh,
     lookupPinnedHost,
+    getHostPinFollowers,
     _setPinCacheForTests: (entries) => {
         _pinCache = new Map(Object.entries(entries || {}).map(([k, v]) => [k.toLowerCase(), v]));
     }

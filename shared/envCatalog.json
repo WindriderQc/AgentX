@@ -205,6 +205,16 @@
       "secret": false,
       "description": "true allows restore rehearsal in Core backups and RAG Qdrant snapshots. Any other value or unset: restore rehearsal is refused."
     },
+    "AGENTX_ROUTE_DEFAULTS_FOLLOW_HOST_PIN": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "routing",
+      "secret": false,
+      "description":"Default true: a task route without a stored route whose default model is pinned on no host uses its host's first pinned model. false keeps the plain deployment defaults."
+    },
     "AGENTX_ROUTING_SNAPSHOT_CACHE_MS": {
       "services": [
         "core"
