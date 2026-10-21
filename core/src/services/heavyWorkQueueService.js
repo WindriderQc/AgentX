@@ -17,7 +17,7 @@ const ACTIVE = ['dispatching', 'running', 'uncertain'];
 const TERMINAL = ['completed', 'failed', 'cancelled'];
 // Kinds whose executor Core can launch itself at a reserved slot. The owner
 // opts in per reservation; every other kind keeps its explicit launch.
-const AUTO_START_KINDS = ['profiler'];
+const AUTO_START_KINDS = ['profiler', 'embedding-reindex'];
 /** Whether Core itself can launch this request at its slot. */
 function autoStartable(job) {
   return Boolean(job.executor) && (AUTO_START_KINDS.includes(job.kind) || job.executor.mode === 'pipeline-report');
@@ -192,7 +192,7 @@ async function reserve(id, body, actor) {
     const job = jobIn(state, id, body.expectedRevision);
     if (!['requested', 'reserved'].includes(job.state)) throw fail('Only unstarted requests can be reserved', 409);
     if (body.autoStart === true && !autoStartable(job)) {
-      throw fail('Only Profiler requests and report campaigns can start automatically', 409, 'HEAVY_QUEUE_AUTO_START_UNSUPPORTED');
+      throw fail('Only Profiler, embedding reindex and report campaign requests can start automatically', 409, 'HEAVY_QUEUE_AUTO_START_UNSUPPORTED');
     }
     const topology = resourceTopology();
     assertTopology(state, topology);

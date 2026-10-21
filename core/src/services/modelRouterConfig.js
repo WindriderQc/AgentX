@@ -420,7 +420,7 @@ async function ensureTaskModelOverridesLoaded(options = {}) {
 
 async function saveTaskModelOverride(taskType, entry) {
     const RouterTaskConfig = require('../../models/RouterTaskConfig');
-    const normalized = normalizeTaskOverride(taskType, entry);
+    const normalized = normalizeTaskOverride(require('./routing/editableTasks').assertEditableTask(taskType), entry);
 
     if (isDefaultMapping(taskType, normalized)) {
         await RouterTaskConfig.deleteOne({ taskType });

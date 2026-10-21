@@ -444,40 +444,46 @@ curl http://127.0.0.1:3182/api/rag/embedding-migration/status
 
 ### POST /api/rag/embedding-migration/reindex
 
-Re-embed all documents in place with the current model. Requires the exact
-`confirmation` phrase `REINDEX ALL DOCUMENTS`. Returns async 202 + jobId.
-When dimensions already match, the no-op guard returns `MIGRATION_NOT_NEEDED`
-unless the JSON boolean `force: true` explicitly requests regeneration.
-For an intentional same-dimension regeneration, after checking status:
+Retired: it re-embedded the serving collection in place. Returns 410
+`IN_PLACE_REINDEX_RETIRED`. Change the model from Core's Nerve Center →
+Embeddings instead.
+
+### GET /api/rag/embedding-profile
+
+The profile RAG serves (model, dimension, collection, revision, previous
+collection, write freeze) and the latest build.
 
 ```bash
-curl -X POST http://127.0.0.1:3182/api/rag/embedding-migration/reindex \
-  -H 'Content-Type: application/json' \
-  -d '{ "confirmation": "REINDEX ALL DOCUMENTS", "force": true }'
-# => 202 { "ok": true, "data": { "jobId": "reindex-...", "status": "running" } }
+curl http://127.0.0.1:3182/api/rag/embedding-profile
+# => { "ok": true, "data": { "profile": { "revision": 0, "active": { "model": "nomic-embed-text:v1.5", "dimension": 768, "collection": "agentx_embeddings" }, "previous": null, "freeze": null }, "build": null } }
 ```
 
-**Errors:** 400 `CONFIRMATION_REQUIRED`, 400 `MIGRATION_NOT_NEEDED`, 409 `REINDEX_ALREADY_RUNNING`
+### POST /api/rag/embedding-profile/previous/retire
 
-Reindex re-embeds in place, so it only suits a model with the same dimension.
-A model with another dimension uses a new collection:
-`scripts/migrate-embedding-collection.js` copies every document from a source
-collection into a target one (see "Switching the embedding model" in
-`docs/OPERATIONS.md`).
+Deletes the collection the last switch replaced. The body names it and the
+profile revision the caller read: `{ "collection": "...", "expectedRevision": 1 }`.
+Any other collection, a stale revision or a build in progress is refused with 409.
+Core's Nerve Center calls it after a typed confirmation.
 
-Job tracking is in process memory and is lost on restart. Poll per-document
-failures: a completed job can contain failed documents. Documents without the
-original-text payload must be re-ingested from their approved sources before
-they can be reindexed.
+### POST /api/rag/embedding-builds
 
-### GET /api/rag/embedding-migration/reindex/:jobId
+Start the build of a dispatched Core `embedding-reindex` request, with its id as
+`buildId`. RAG reads the request from Core and refuses any other caller; the
+same `buildId` replays the same build. Returns 202 with the build.
 
-Poll reindex progress.
+**Errors:** 400 `EMBEDDING_BUILD_INVALID`, 409 `EMBEDDING_BUILD_NOT_QUEUED`,
+409 `EMBEDDING_BUILD_ACTIVE`, 409 `EMBEDDING_BUILD_CONFLICT`, 409 `EMBEDDING_MODEL_UNCHANGED`
 
-```bash
-curl http://127.0.0.1:3182/api/rag/embedding-migration/reindex/reindex-123
-# => { "ok": true, "data": { "jobId": "reindex-123", "status": "running", "progress": { "total": 12, "processed": 5, "succeeded": 5, "failed": 0, "errors": [] } } }
-```
+### GET /api/rag/embedding-builds/:id
+
+Status `copying`, `finalizing`, `activated`, `failed` or `cancelled`, with
+progress (`total`, `documents`, `migrated`, `failed`, `missingOriginalText`)
+and the reason of a failure.
+
+### POST /api/rag/embedding-builds/:id/cancel
+
+Stops a build while it copies; the previous collection keeps serving. Refused
+with 409 `EMBEDDING_BUILD_FINALIZING` during the switch.
 
 ## Metrics & Telemetry
 

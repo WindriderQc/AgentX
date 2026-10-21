@@ -18,9 +18,6 @@
   var btnCleanup        = document.getElementById('btn-cleanup');
   var cleanupResult     = document.getElementById('cleanup-result');
   var migrationStatus   = document.getElementById('migration-status');
-  var reindexActions    = document.getElementById('reindex-actions');
-  var btnReindex        = document.getElementById('btn-reindex');
-  var reindexResult     = document.getElementById('reindex-result');
   var actionConfirmDialog = document.getElementById('maintenance-confirm-dialog');
   var actionConfirmForm = document.getElementById('maintenance-confirm-form');
   var actionConfirmTitle = document.getElementById('maintenance-confirm-title');
@@ -244,8 +241,6 @@
 
   async function loadMigrationStatus() {
     migrationStatus.innerHTML = '<p class="loading">Loading migration status...</p>';
-    reindexActions.style.display = 'none';
-    reindexResult.innerHTML = '';
 
     try {
       var res = await RAG.getStatus();
@@ -281,10 +276,6 @@
       html += '<div style="margin-top:12px;">' + assessment.html + '</div>';
 
       migrationStatus.innerHTML = html;
-
-      // Show reindex button; enable only when migration is needed
-      reindexActions.style.display = 'block';
-      btnReindex.disabled = !assessment.mismatch;
     } catch (err) {
       if (err.status === 404) {
         showBannerInfo(migrationStatus, 'Status API not available');
@@ -315,34 +306,6 @@
     return { mismatch: mismatch, html: html };
   }
 
-  async function triggerReindex() {
-    var expected = 'REINDEX ALL DOCUMENTS';
-    var confirmed = await requestActionConfirmation({
-      title: 'Reindex every document?',
-      description: 'This replaces all stored embeddings with vectors from the current model. It can take significant time and cannot be paused from this page.',
-      scope: 'All indexed documents',
-      expected: expected,
-      submitLabel: 'Start reindex'
-    }, btnReindex);
-    if (!confirmed) return;
-
-    reindexResult.innerHTML = '<p class="loading">Triggering reindex...</p>';
-    btnReindex.disabled = true;
-
-    try {
-      await RAG.triggerReindex(expected);
-      reindexResult.innerHTML = '<div class="result-success">Reindex triggered successfully.</div>';
-    } catch (err) {
-      if (err.status === 404) {
-        showBannerInfo(reindexResult, 'Reindex API not available yet — this feature requires task implementation');
-      } else {
-        showError(reindexResult, 'Reindex failed: ' + (err.detail || err.message || 'Unknown error'));
-      }
-    } finally {
-      btnReindex.disabled = false;
-    }
-  }
-
   // ── Event Bindings ────────────────────────────────────────
 
   btnCheckManifest.addEventListener('click', function () {
@@ -371,10 +334,6 @@
     if (currentSource) {
       performCleanup(currentSource);
     }
-  });
-
-  btnReindex.addEventListener('click', function () {
-    triggerReindex();
   });
 
   actionConfirmInput.addEventListener('input', function () {

@@ -61,7 +61,7 @@ describe('Nerve Center accessibility surface', () => {
       expect(widget).toContain('aria-expanded="true"');
     });
 
-    expect(toggles).toHaveLength(11);
+    expect(toggles).toHaveLength(12);
     toggles.forEach(toggle => {
       expect(toggle).toContain('type="button"');
       expect(toggle).toContain('data-section=');
@@ -136,8 +136,8 @@ describe('Nerve Center accessibility surface', () => {
     expect(body.innerHTML).toContain('role="alert"');
     expect(body.innerHTML).toContain('Failed &lt;cluster&gt;');
 
-    expect((viewSource.match(/class="nc-section-body"[^>]*aria-busy="true"/g) || [])).toHaveLength(11);
-    expect((viewSource.match(/role="status" aria-live="polite"/g) || [])).toHaveLength(11);
+    expect((viewSource.match(/class="nc-section-body"[^>]*aria-busy="true"/g) || [])).toHaveLength(12);
+    expect((viewSource.match(/role="status" aria-live="polite"/g) || [])).toHaveLength(12);
   });
 
   test.each([
@@ -148,6 +148,7 @@ describe('Nerve Center accessibility surface', () => {
     ['public/js/nerve-center-inference-health.js', 'setSectionBusy', 'renderSectionError'],
     ['public/js/nerve-center-alerts.js', 'setSectionBusy', 'renderSectionError'],
     ['public/js/nerve-center-rag.js', 'setSectionBusy', 'renderSectionError'],
+    ['public/js/nerve-center-embeddings.js', 'setSectionBusy', 'renderSectionError'],
     ['public/js/nerve-center-config.js', 'setSectionBusy', 'renderSectionError']
   ])('%s manages busy state and announces failures', (file, loadingHelper, errorHelper) => {
     const source = read(file);

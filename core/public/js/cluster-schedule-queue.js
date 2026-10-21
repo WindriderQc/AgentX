@@ -3,6 +3,8 @@ let heavyQueuePage = 0;
 let heavyQueueData = null;
 let heavyQueueView = 'active';
 const HEAVY_QUEUE_API = '/api/cluster/schedule/work-queue';
+// Kinds Core launches itself at their slot (Run now, or the owner's automatic start).
+const CORE_LAUNCHED_KINDS = ['profiler', 'embedding-reindex'];
 
 async function loadHeavyQueue() {
   const container = document.getElementById('heavyQueueList');
@@ -69,7 +71,7 @@ function renderCoreHeavyQueue(container, queue) {
     const active = ['dispatching', 'running', 'uncertain'].includes(job.state);
     const expired = job.state === 'reserved' && Date.parse(job.reservation.end) <= Date.now();
     const overrun = active && job.reservation && Date.parse(job.reservation.end) < Date.now();
-    const launchable = job.kind === 'profiler' && Boolean(job.executor);
+    const launchable = CORE_LAUNCHED_KINDS.includes(job.kind) && Boolean(job.executor);
     const now = Date.now();
     const runnable = launchable && job.state === 'reserved' && Date.parse(job.reservation.start) <= now
       && now < Date.parse(job.reservation.end) && (!job.startBefore || now < Date.parse(job.startBefore));
@@ -148,7 +150,7 @@ function openQueueReservation(job) {
   form.elements.start.value = localInput(job.reservation?.start);
   form.elements.priority.value = job.priority;
   const auto = form.querySelector('[data-queue-auto]');
-  const launchable = job.kind === 'profiler' && Boolean(job.executor);
+  const launchable = CORE_LAUNCHED_KINDS.includes(job.kind) && Boolean(job.executor);
   auto.hidden = !launchable;
   form.elements.autoStart.checked = launchable && (job.reservation ? job.reservation.autoStart === true : true);
   dialog.querySelector('[data-queue-title]').textContent = job.title;

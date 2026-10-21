@@ -271,7 +271,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   inputs are sent whole or refused: the provider declares its character limit,
   Core requests native context refusal, and ingestion does not index a partial
   document after an embedding or chunk-limit failure. Batch results account
-  for refused documents individually.
+  for refused documents individually. Nerve Center → Embeddings changes the
+  model RAG documents use through a queued full rebuild into a new collection;
+  search keeps the serving collection until the rebuild switches, and a failed
+  or cancelled rebuild keeps it.
 - **Team.** Agent Ops (`/agent-ops`) projects who does what and whether it
   runs from read-only runtime evidence, when the instance provides it. Its Team
   tab shows each agent with the persona that presents it, edits a member's

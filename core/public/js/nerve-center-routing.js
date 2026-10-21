@@ -14,7 +14,8 @@
             ...Object.keys(config.taskConfigState || {}),
             ...Object.keys(config.defaults?.taskModels || {})
         ]);
-        return [...known].sort((left, right) => left.localeCompare(right));
+        // Embeddings change through a queued rebuild in their own section.
+        return [...known].filter(task => task !== 'embeddings').sort((left, right) => left.localeCompare(right));
     }
 
     function formatTaskLabel(task, metadata = {}) {

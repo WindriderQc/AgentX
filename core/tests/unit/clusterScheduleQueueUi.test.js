@@ -66,3 +66,11 @@ test('a reserved Profiler request says who starts it and offers Run now only ins
   expect(card('auto')).toContain('Change slot');
   expect(view.writes).not.toHaveBeenCalled();
 });
+
+test('an embedding reindex request offers Run now inside its slot, like a Profiler request',async()=>{
+  const open={start:new Date(Date.now()-60000).toISOString(),end:new Date(Date.now()+3600000).toISOString(),autoStart:false};
+  const view=await ui([request('reindex','reserved',{kind:'embedding-reindex',executor:{model:'qllama/bge-m3:f16',dimension:1024},reservation:open})]);
+  const card=view.container.innerHTML.split('<article').find(part=>part.includes('data-queue-id="reindex"'));
+  expect(card).toContain('data-queue-action="run"');
+  expect(card).not.toContain('Started by its own executor');
+});

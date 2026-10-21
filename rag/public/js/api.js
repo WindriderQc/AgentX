@@ -227,17 +227,6 @@
     });
   }
 
-  /**
-   * POST /api/rag/embedding-migration/reindex — trigger embedding reindex.
-   */
-  async function triggerReindex(confirmation) {
-    return apiFetch('/rag/api/rag/embedding-migration/reindex', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ confirmation: confirmation })
-    });
-  }
-
   window.RAG = {
     API_BASE: API_BASE,
     apiFetch: apiFetch,
@@ -254,7 +243,6 @@
     ingestDocument: ingestDocument,
     getLatestManifest: getLatestManifest,
     getDeletionPreview: getDeletionPreview,
-    runCleanup: runCleanup,
-    triggerReindex: triggerReindex
+    runCleanup: runCleanup
   };
 })();

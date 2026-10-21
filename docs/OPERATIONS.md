@@ -2094,43 +2094,43 @@ the request disables the chain.
 
 ## Switching the embedding model
 
-The embedding model and its dimension belong to one Qdrant collection. A new
-model gets a new collection; the old one stays untouched as the fallback.
-Documents are re-embedded from the `originalText` stored on each document's
-first chunk; a document without it is reported and must be re-ingested from
-its source.
+RAG serves one embedding profile: a model, its vector dimension and the Qdrant
+collection built with it. The profile is a Mongo document (`embedding_profile`)
+seeded once from `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION` and
+`QDRANT_COLLECTION`; after that, those settings no longer change what RAG
+serves. Core's memory notes keep their own embedding model and are not
+affected.
 
-1. Pull the new model on the embedding host and pin it there in the Nerve
-   Center host preferences with `keepAlive` -1, so it stays resident beside the
-   current one.
-2. Snapshot the current collection (`POST /api/rag/snapshots`, or a Core
-   backup) while the instance still points at it.
-3. Count what will move, then copy into the new collection. The script runs
-   inside the RAG container, reads the source collection only and embeds
-   through Core with the model given on the command line:
+Change the model from **Nerve Center → Embeddings**. Nothing is embedded at
+once: the page queues an `embedding-reindex` heavy-work request with the slot,
+the estimate and the owner's automatic start, after a typed confirmation that
+names the model. Only one change can be queued. Before the slot, **Cancel**
+withdraws it.
 
-   ```bash
-   AGENTX_PROJECT_NAME=<project> docker compose --env-file <instance.env> \
-     exec -T -e EMBEDDING_MODEL=<model> -e EMBEDDING_DIMENSION=<dims> rag \
-     node scripts/migrate-embedding-collection.js \
-     --source <current collection> --target <new collection> --dry-run
-   ```
+1. Install the model on its embedding hosts and pin it there with `keepAlive`
+   -1, so it stays resident beside the current one during the slot.
+2. At the slot Core launches the build. RAG copies every document into a new
+   collection, `<collection>__<model>_<id>`, re-embedded from the
+   `originalText` on its first chunk. Search keeps the serving collection the
+   whole time, and ingestion keeps writing to it. **Stop rebuild** ends the
+   copy between two documents.
+3. RAG then freezes writes for the switch, copies what changed meanwhile and
+   removes what was deleted, and swaps the profile. A write that the freeze
+   held, or that the switch overtook, is written again to the new collection.
+4. A document without `originalText`, a failed document, a cancellation or a
+   RAG restart before the swap fails the build; the previous profile keeps
+   serving and the request records RAG's reason. Re-ingest such documents from
+   their source before trying again.
+5. After the switch the previous collection stays in Qdrant, named in the
+   section. Recalibrate the similarity floors above for the new model, and
+   keep the previous collection until retrieval on the new one is verified.
+   **Delete previous collection** then removes it after a typed confirmation
+   naming it; only that collection can be deleted, and never during a build.
+   Going back to a model is another change, a full rebuild.
 
-   Rerun without `--dry-run` to copy (`--limit N` for a first trial). The
-   JSON summary lists migrated, skipped and failed documents with reasons; the
-   exit code is non-zero when any failed. The script refuses a target equal to
-   the source, stops when the target's vector size differs from
-   `EMBEDDING_DIMENSION`, and copies the source payload indexes.
-4. Writes continue on the old collection during the copy. Pause ingestion
-   scans and memory review, or run a final pass with `--delta`, which copies
-   only documents missing from the target or whose hashes differ.
-5. Set `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION` and `QDRANT_COLLECTION` in the
-   instance env file and recreate RAG and Core through the launcher.
-   `/api/rag/embedding-migration/status` must report the new model with
-   matching dimensions.
-6. Recalibrate the similarity floors above for the new model.
-7. Keep the old collection until retrieval on the new one is verified; going
-   back is the previous three settings.
+`node scripts/migrate-embedding-collection.js --source <a> --target <b>
+--dry-run` (inside the RAG container) still counts what a copy would move and
+which documents lack their original text; its copy does not switch the profile.
 
 ## Running a second instance
 

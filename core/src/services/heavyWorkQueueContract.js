@@ -45,7 +45,7 @@ function only(object, keys, label) {
 function validateRequest(body) {
   only(body, ['key', 'title', 'kind', 'hosts', 'estimatedMinutes', 'notBefore', 'startBefore', 'source', 'executor'], 'request');
   const kind = body.kind;
-  if (!['benchmark', 'profiler', 'image', 'diagnostic', 'other'].includes(kind)) throw fail('Unsupported heavy-work kind');
+  if (!['benchmark', 'profiler', 'image', 'embedding-reindex', 'diagnostic', 'other'].includes(kind)) throw fail('Unsupported heavy-work kind');
   const minutes = body.estimatedMinutes;
   if (!Number.isInteger(minutes) || minutes < 1 || minutes > 10080) throw fail('estimatedMinutes needs 1 to 10080 minutes');
   const source = body.source || { type: 'operator' };
@@ -76,6 +76,10 @@ function validateRequest(body) {
         if (typeof executor.prompt !== 'string' || !executor.prompt.trim()) throw fail('image prompt required');
       }
       if (!/^[a-zA-Z0-9:_.-]{8,160}$/.test(executor.actionKey || '')) throw fail('image actionKey required');
+    } else if (kind === 'embedding-reindex') {
+      only(executor, ['model', 'dimension'], 'embedding reindex executor');
+      if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/.test(executor.model || '')) throw fail('embedding reindex model name required');
+      if (!Number.isSafeInteger(executor.dimension) || executor.dimension < 1 || executor.dimension > 8192) throw fail('embedding reindex dimension needs 1 to 8192');
     } else if (kind === 'other' && executor.mode === 'pipeline-report') {
       // A report campaign Core starts and settles itself (#878).
       only(executor, ['mode', 'pipelineId'], 'report campaign executor');

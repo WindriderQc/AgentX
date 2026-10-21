@@ -44,16 +44,8 @@
         <p class="loading">Loading migration status...</p>
       </div>
 
-      <!-- Reindex button -->
-      <div id="reindex-actions" style="display:none; margin-top:16px;">
-        <button id="btn-reindex" class="btn btn-danger" type="button" disabled>Reindex All</button>
-      </div>
-
-      <!-- Reindex result -->
-      <div id="reindex-result"></div>
-
       <div class="banner-info" style="margin-top:16px;">
-        Changing the embedding model requires reindexing all documents. This can take significant time for large collections.
+        Change the embedding model from Core: Nerve Center → Routing → Embeddings. It queues a full rebuild into a new collection; search keeps the current one until the rebuild completes.
       </div>
     </div>
 

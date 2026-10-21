@@ -19,9 +19,10 @@ node integrations/operations/heavy-work-queue.cjs reserve --core <core-origin> -
 node integrations/operations/heavy-work-queue.cjs run --core <core-origin> --actor operator --id <request-id> --revision <current-revision>
 ```
 
-`run` explicitly launches the saved request. Two kinds start without a person
+`run` explicitly launches the saved request. Three kinds start without a person
 at the slot: an image already accepted by Core's image service, and a Profiler
-request whose reservation the owner marked `autoStart: true` (see below). No
+or embedding reindex request whose reservation the owner marked
+`autoStart: true` (see below). No
 queued command is executed. Existing approval requirements still apply. Smaller
 priority numbers appear first; the owner chooses the slot and launch. Benchmark
 uses `<core-origin>/benchmark` unless `--benchmark` names a verified service origin.
@@ -56,6 +57,13 @@ Supported executors:
 - **Image**: the existing image request with `actionKey`, `prompt`, profile,
   dimensions, seed and optional archived parent/recipe. Core checks configured
   GPU consumers. Use artifact references instead of large binary payloads.
+- **Embedding reindex**: `{model, dimension}` rebuilds every RAG document into
+  a new collection embedded with that model, then switches RAG to it (see
+  [operations](OPERATIONS.md#switching-the-embedding-model)). The hosts are the
+  model's embedding endpoints. Before the dispatch mark Core checks them and
+  that RAG does not already serve the model; RAG accepts the build only for a
+  request it reads as dispatching, under the request id as build id. The
+  Nerve Center's Embeddings section submits and reserves it.
 - **Diagnostic/other** requests may be planned without an executor or may use
   `{mode: "operator", receiptRef: "<out-of-Git receipt reference>"}` for custom
   coding checks. The explicit operator protocol below starts no command.
@@ -78,8 +86,8 @@ begin a request. Early/expired manual/API starts refuse. Running/uncertain work
 stays fenced after the estimated end. Topology changes require reconciliation.
 The Core observer reads existing executor receipts every 15 seconds. It also
 dispatches images explicitly accepted by the image service, once, within their
-15-minute start window, and Profiler requests reserved with `autoStart: true`
-once their slot opens. It never starts Benchmark/operator requests, repeats
+15-minute start window, and Profiler and embedding reindex requests reserved
+with `autoStart: true` once their slot opens. It never starts Benchmark/operator requests, repeats
 an uncertain dispatch or releases native authority. A completed result
 does not settle the request while overlapping native workloads or inference
 admissions remain held, including quarantined or uncertain outcomes.
@@ -103,18 +111,19 @@ placement (`shared/heavyWorkPlacement.js`) plans the Profiler's lane campaign.
 Automations → Calendrier's slot dialog offers the three choices and shows the
 slot before saving.
 
-### Profiler automatic start and Run now
+### Automatic start and Run now
 
-Reserving a Profiler request (`POST /:id/reserve`) accepts `autoStart: true`.
-It is the owner's consent for that slot only and is refused for every other
-kind; changing the slot replaces it. When the slot opens, the Core observer
-launches the request through the same path as `run`: executor host check,
-durable dispatch mark, window assertion, then the Profiler start with the queue
-request identity. A refusal before the mark (host busy, executor changed)
+Reserving a Profiler or embedding reindex request (`POST /:id/reserve`) accepts
+`autoStart: true`. It is the owner's consent for that slot only and is refused
+for every other kind; changing the slot replaces it. When the slot opens, the
+Core observer launches the request through the same path as `run`: executor
+host check, durable dispatch mark, window assertion, then the Profiler start or
+the RAG build with the queue request identity. A refusal before the mark (host busy, executor changed)
 retries on the next sweep while the window stays open. A launch whose answer is
-lost becomes `uncertain`, is never retried, and waits for the owner. `POST
-/:id/run` with `expectedRevision` is the same launch for a reserved Profiler
-request inside its slot; Automations → Calendar shows it as **Run now** and
+lost becomes `uncertain`, is never retried, and waits for the owner; the
+observer finds a build RAG did receive by that identity. `POST /:id/run` with
+`expectedRevision` is the same launch for a reserved Profiler or embedding
+reindex request inside its slot; Automations → Calendar shows it as **Run now** and
 labels each reservation with who starts it.
 
 The Profiler's **Measure lanes tonight** (and a lane card's **Measure tonight**)

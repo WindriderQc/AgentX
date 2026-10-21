@@ -9,6 +9,8 @@ const mongoose = require('mongoose');
 const connectDB = require('./config/db');
 const logger = require('./config/logger');
 const { runIngestScan } = require('./src/services/ingestWorker');
+const { getProfileService } = require('./src/services/embeddingProfile');
+const { getRagStore } = require('./src/services/ragStore');
 
 function getArgValue(flag) {
   const matched = process.argv.find((arg) => arg.startsWith(`${flag}=`));
@@ -22,6 +24,8 @@ async function main() {
   }
 
   await connectDB();
+  // Write to the collection RAG serves, and wait while a build switches it.
+  await getProfileService().configure(getRagStore());
 
   const limit = Number(getArgValue('--limit') || 0);
   const summary = await runIngestScan({ limit: limit > 0 ? limit : undefined });

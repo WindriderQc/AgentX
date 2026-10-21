@@ -578,7 +578,7 @@ app.get('/nerve-center', (req, res) => {
       '<script src="/js/nerve-center-inference.js"></script>',
       '<script src="/js/nerve-center-inference-health.js"></script>',
       '<script src="/js/nerve-center-alerts.js"></script>',
-      '<script src="/js/nerve-center-rag.js"></script><script src="/js/nerve-center-config.js"></script>'
+      '<script src="/js/nerve-center-rag.js"></script><script src="/js/nerve-center-embeddings.js"></script><script src="/js/nerve-center-config.js"></script>'
     ].join('\n')
   });
 });
