@@ -240,3 +240,19 @@ test('an explicit table reading preserves every cell in the spoken channel', () 
   const result = run(['| Premier | Deuxième |\n| Troisième | Quatrième |'], { readAloud: true });
   for (const cell of ['Premier', 'Deuxième', 'Troisième', 'Quatrième']) assert.ok(result.say.includes(cell));
 });
+
+test('a page block names a Core page and a bounded focus, never an address (#924)', () => {
+  const reply = 'Trois tâches bloquées. <show kind="page">Pipeline status=blocked task=812 url=https://evil.example</show>';
+  const result = run(chunks(reply, 6), { allowSecrets: true, allowPages: true });
+  assert.deepEqual(result.display.map(({ kind, title, body }) => ({ kind, title, body })),
+    [{ kind: 'page', title: 'Pipeline', body: 'pipeline status=blocked task=812' }]);
+  assert.doesNotMatch(result.say, /pipeline status|evil/);
+  assert.match(result.say, /Trois tâches bloquées/);
+});
+
+test('Famille and unknown pages never open a page block', () => {
+  assert.deepEqual(run(['<show kind="page">pipeline</show>'], { allowPages: false }).display, []);
+  assert.deepEqual(run(['<show kind="page">/admin</show>'], { allowPages: true }).display, []);
+  assert.doesNotMatch(contract({ family: true, pages: true }), /kind="page"/);
+  assert.match(contract({ pages: true }), /kind="page">pipeline/);
+});

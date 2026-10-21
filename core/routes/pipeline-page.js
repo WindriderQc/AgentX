@@ -1,9 +1,20 @@
 'use strict';
 
-module.exports = function registerPipelinePage(app) {
+// Nestor's screen (#924) frames this page from the same origin. Only the
+// screen view relaxes the frame policy, and only for AgentX itself.
+function allowSameOriginFrame(res) {
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  const policy = res.getHeader('Content-Security-Policy');
+  if (policy) res.setHeader('Content-Security-Policy', String(policy).replace(/frame-ancestors [^;]*/, "frame-ancestors 'self'"));
+}
+
+function registerPipelinePage(app) {
   app.get('/js/pipeline-report-selection.js', (_req, res) => res.sendFile(require.resolve('../../shared/pipelineReportSelection')));
   app.get('/pipeline', (req, res) => {
+    const screen = req.query.view === 'screen';
+    if (screen) allowSameOriginFrame(res);
     res.render('layouts/main', {
+      ...(screen && { showNav: false, bodyClass: 'pipeline-screen' }),
       pageView: '../pages/pipeline',
       title: 'AgentX - Pipeline',
       service: 'core',
@@ -12,7 +23,8 @@ module.exports = function registerPipelinePage(app) {
         '<link rel="stylesheet" href="/styles.css">',
         '<link rel="stylesheet" href="/css/pipeline.css"><link rel="stylesheet" href="/css/pipeline-diagnostics.css"><link rel="stylesheet" href="/css/pipeline-attention.css"><link rel="stylesheet" href="/css/pipeline-evidence-references.css"><link rel="stylesheet" href="/css/pipeline-phase-durations.css"><link rel="stylesheet" href="/css/pipeline-plan.css"><link rel="stylesheet" href="/css/pipeline-stall-diagnosis.css">',
         '<link rel="stylesheet" href="/css/pipeline-editor.css"><link rel="stylesheet" href="/css/pipeline-deliverables.css"><link rel="stylesheet" href="/css/pipeline-resume.css">',
-        '<link rel="stylesheet" href="/css/cockpit-help.css">'
+        '<link rel="stylesheet" href="/css/cockpit-help.css">',
+        '<link rel="stylesheet" href="/css/pipeline-screen.css">'
       ].join('\n'),
       footerJs: [
         '<script src="/js/cockpit-help.js"></script>',
@@ -22,4 +34,7 @@ module.exports = function registerPipelinePage(app) {
       ].join('\n')
     });
   });
-};
+}
+
+module.exports = registerPipelinePage;
+module.exports.allowSameOriginFrame = allowSameOriginFrame;

@@ -6,7 +6,7 @@
 // only available live; a restored one says it was not retained.
 (function exposeDisplayBoard(root) {
   const MAX_BLOCKS = 30;
-  const KIND_LABELS = { text: 'Note', list: 'List', table: 'Table', code: 'Code', link: 'Link', secret: 'Secret', image: 'Image', scene: '3D' };
+  const KIND_LABELS = { text: 'Note', list: 'List', table: 'Table', code: 'Code', link: 'Link', secret: 'Secret', image: 'Image', scene: '3D', page: 'Page' };
   const STAGE_WAIT_MS = 4000;
 
   function node(tag, className, text) {
@@ -147,8 +147,37 @@
     return holder;
   }
 
+  // A live Core page (#924), personal space only. The address is rebuilt from
+  // the page name and focus, never taken from the model or a stored turn.
+  function pageTarget(block, space) {
+    const pages = root.AgentXScreenPages;
+    return space === 'personal' && pages ? pages.parse(block.body) : null;
+  }
+
+  function pageBody(block, target, actions) {
+    const pages = root.AgentXScreenPages;
+    const href = pages.url(target);
+    const frame = node('iframe', 'display-block-page');
+    frame.src = href; frame.title = block.title || pages.label(target); frame.loading = 'lazy';
+    frame.referrerPolicy = 'same-origin';
+    const open = node('a', 'display-block-action', 'Open');
+    open.href = href.replace(/([?&])view=screen&?/, '$1').replace(/[?&]$/, '');
+    open.target = '_blank'; open.rel = 'noopener';
+    const expand = node('button', 'display-block-action', 'Expand');
+    expand.type = 'button';
+    expand.addEventListener('click', () => {
+      const expanded = frame.classList.contains('is-expanded');
+      if (expanded) frame.classList.remove('is-expanded'); else frame.classList.add('is-expanded');
+      expand.textContent = expanded ? 'Expand' : 'Reduce';
+    });
+    actions.append(expand, open);
+    return frame;
+  }
+
   function render(block, { secrets, space = 'personal' }) {
     if (!block || (block.kind === 'scene' ? !block.scene : typeof block.body !== 'string') || (block.kind === 'secret' && !secrets)) return null;
+    const target = block.kind === 'page' ? pageTarget(block, space) : null;
+    if (block.kind === 'page' && !target) return null;
     const card = node('article', 'display-block');
     card.dataset.kind = block.kind;
     const header = node('header', 'display-block-header');
@@ -160,6 +189,7 @@
     if (block.kind === 'secret') content = secretBody(block, actions);
     else if (block.kind === 'image') content = imageBody(block, space);
     else if (block.kind === 'scene') content = sceneBody(block, space);
+    else if (block.kind === 'page') content = pageBody(block, target, actions);
     else {
       if (block.kind === 'table') content = tableBody(block.body);
       else if (block.kind === 'link') content = linkBody(block.body, space);
@@ -182,7 +212,9 @@
         const card = render(block, { secrets, space });
         if (!card) return false;
         // A keyed block replaces its previous card: one live 3D picture, not one per turn.
-        const key = block.key || (block.operation?.id ? `image:${block.operation.id}` : '');
+        // A page keeps one live frame per page name, refocused by the newest block.
+        const key = block.key || (block.operation?.id ? `image:${block.operation.id}`
+          : block.kind === 'page' ? `page:${String(block.body).split(/\s+/)[0]}` : '');
         if (key) {
           card.dataset.key = key;
           Array.from(list.children).filter(child => child.dataset?.key === key).forEach(child => { child._dispose?.(); child.remove(); });
@@ -200,10 +232,10 @@
     return board;
   }
 
-  // Pictures get their own zone; everything else goes to the text zone.
+  // Pages and pictures get the visual zone; everything else goes to the text zone.
   function createScreen({ text, visual }, { secrets = false, space = 'personal' } = {}) {
     const boards = [create(text, { secrets, space, kinds: ['text', 'list', 'table', 'code', 'link', 'secret'] }),
-      create(visual, { secrets, space, kinds: ['image', 'scene'], heading: 'Images' })];
+      create(visual, { secrets, space, kinds: ['page', 'image', 'scene'], heading: 'Pages and images' })];
     return {
       // True when one of the zones drew the block.
       add: block => boards.map(board => board.add(block)).some(Boolean),
