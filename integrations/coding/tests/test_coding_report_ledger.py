@@ -260,9 +260,23 @@ class StepPlanTest(unittest.TestCase):
         self.assertEqual(docs(steps.plan_groups(ledger, sizes, {'docTokens': 15000})), [['docs/A.md'], ['docs/B.md'], ['docs/sub/C.md']])
         self.assertEqual(docs(steps.plan_groups(ledger, sizes, {'docTokens': 50000})), [['docs/A.md', 'docs/B.md'], ['docs/sub/C.md']])
         ledgers.record_failure(ledger, ['docs/A.md', 'docs/B.md'], 1, 'invalid')
-        self.assertEqual(docs(steps.plan_groups(ledger, sizes, {'docTokens': 50000})), [['docs/A.md'], ['docs/B.md'], ['docs/sub/C.md']])
+        self.assertEqual(docs(steps.plan_groups(ledger, sizes, {'docTokens': 50000})), [['docs/sub/C.md'], ['docs/A.md'], ['docs/B.md']])
         ledger['documents']['docs/sub/C.md']['state'] = 'reviewed'
         self.assertEqual(docs(steps.plan_groups(ledger, sizes, {'docTokens': 50000}, limit=1)), [['docs/A.md']])
+
+    def test_a_failed_range_waits_for_unfailed_groups_and_ranges_without_losing_its_scope(self):
+        ledger = ledgers.new_ledger(snapshot())
+        sizes = {'docs/A.md': 72000, 'docs/B.md': 72000, 'docs/sub/C.md': 100}
+        lines = {'docs/A.md': 300, 'docs/B.md': 300}
+        ledgers.record_failure(ledger, ['docs/A.md'], 1, 'no result file was written')
+        planned = steps.plan_groups(ledger, sizes, {'docTokens': 10000}, line_counts=lines)
+        self.assertEqual([group['documents'] for group in planned],
+                         [['docs/sub/C.md'], ['docs/B.md'], ['docs/A.md']])
+        self.assertEqual(planned[-1]['range'], (1, 150, False))
+        self.assertEqual(ledger['documents']['docs/A.md']['attempts'], 1)
+        self.assertEqual(ledger['documents']['docs/A.md']['state'], 'pending')
+        self.assertEqual(ledger['documents']['docs/A.md']['ranges'], [])
+        self.assertEqual(ledger['steps'][0]['reason'], 'no result file was written')
 
     def test_reviews_a_large_document_in_line_ranges_until_every_range_is_done(self):
         ledger = ledgers.new_ledger(snapshot())

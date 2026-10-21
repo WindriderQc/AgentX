@@ -103,6 +103,8 @@ and runs several short worker sessions in fresh context:
   A retry receives the prior rejection reason and, when available in the same
   execution, its own rejected JSON path. It corrects that result without
   overwriting the original artifact or restarting verified research.
+  Other pending groups and ranges run before failed documents are retried,
+  so a difficult document cannot hold up the rest of the review twice.
 - **Render.** After every step the runner regenerates the Markdown report and
   `coverage.json` from the ledger, so findings, tables and totals cannot
   drift, and each step counts as saved progress.
