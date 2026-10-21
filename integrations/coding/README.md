@@ -76,8 +76,13 @@ and runs several short worker sessions in fresh context:
 - **Plan.** `coding_report_steps.py` groups pending and partial documents by
   directory. Each group fits a share of the step context, which comes from the
   lane capability profile: the measured agent step, else the measured speed
-  knee, else 24k tokens. A document larger than that is reviewed in line
-  ranges, one range per step.
+  knee, else 24k tokens. A document longer than 250 lines, or larger than
+  that share, is reviewed in equal line ranges of at most 250 lines, one
+  range per step; each reviewed range is kept, so a long document advances
+  range by range across steps and executions. Documents nobody has started
+  run first, then started (partial) ones, then failed ones, so small
+  untouched documents are not starved by a long one that keeps returning
+  partial, including after a continuation resets attempts.
 - **Step.** The worker receives only its group, the claims already checked and
   the earlier findings for those documents. It writes one JSON result
   (`step-NN.json`) in its private output directory. A step has its own call

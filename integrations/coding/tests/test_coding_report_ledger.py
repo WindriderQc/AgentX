@@ -367,6 +367,34 @@ class StepPlanTest(unittest.TestCase):
         self.assertIn('strict (core/config.js:1)', prompt)
         self.assertEqual(steps.plan_groups(ledger, sizes, budget, line_counts=lines), [])
 
+    def test_untouched_documents_run_before_a_started_one_even_after_a_continuation(self):
+        ledger = ledgers.new_ledger(snapshot())
+        sizes = {'docs/A.md': 3600, 'docs/B.md': 3600, 'docs/sub/C.md': 3600}
+        partial = {'documents': [{'path': 'docs/A.md', 'state': 'partial',
+                                  'evidence': [{'path': 'core/config.js', 'line': 1, 'check': 'strict'}]}]}
+        ledgers.merge_step(ledger, ['docs/A.md'], partial, source, 1)
+        ledgers.record_failure(ledger, ['docs/B.md'], 2, 'no result file was written')
+        ledgers.continuation_retries(ledger, 'next-run', 'earlier-run')
+        self.assertEqual(ledger['documents']['docs/B.md']['attempts'], 0)
+        planned = [group['documents'] for group in steps.plan_groups(ledger, sizes, {'docTokens': 50000})]
+        self.assertEqual(planned, [['docs/B.md'], ['docs/sub/C.md'], ['docs/A.md']])
+
+    def test_a_long_document_within_the_token_budget_is_reviewed_in_equal_ranges(self):
+        ledger = ledgers.new_ledger(snapshot())
+        for path in ('docs/B.md', 'docs/sub/C.md'):
+            ledger['documents'][path]['state'] = 'reviewed'
+        sizes, lines, budget = {'docs/A.md': 36000}, {'docs/A.md': 913}, {'docTokens': 22937}
+        ranges = []
+        for step in range(1, 6):
+            planned = steps.plan_groups(ledger, sizes, budget, line_counts=lines)
+            if not planned:
+                break
+            ranges.append(planned[0]['range'])
+            ledgers.merge_step(ledger, ['docs/A.md'], good_result(), source, step, line_range=planned[0]['range'])
+        self.assertEqual(ranges, [(1, 229, False), (230, 458, False), (459, 687, False), (688, 913, True)])
+        self.assertEqual(ledger['documents']['docs/A.md']['state'], 'reviewed')
+        self.assertEqual(ledger['documents']['docs/A.md'].get('partialRounds', 0), 0)
+
     def test_a_document_that_stays_partial_without_progress_stops_being_planned(self):
         ledger = ledgers.new_ledger(snapshot())
         partial = {'documents': [{'path': 'docs/B.md', 'state': 'partial', 'evidence': [], 'note': 'route table unchecked'}]}
