@@ -108,6 +108,8 @@ and runs several short worker sessions in fresh context:
   Prompts enter through a private read-only file and become the CLI task text
   inside its Node process, so Linux's per-argument size limit cannot discard
   a large save pass. Context limits and complete research receipts are preserved.
+  A synchronous Node preload restores the task argument before the CLI runs
+  as the native entrypoint, preserving its main guard and asynchronous lifetime.
 - **Render.** After every step the runner regenerates the Markdown report and
   `coverage.json` from the ledger, so findings, tables and totals cannot
   drift, and each step counts as saved progress.
