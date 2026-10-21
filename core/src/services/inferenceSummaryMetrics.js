@@ -25,7 +25,8 @@ function summaryCoverage({ models, listedModels, calls, windowKey }) {
     calls,
     durationBasis: 'Sum of end-to-end call durations, including routing and waits. Concurrent calls overlap; this is not GPU busy time.',
     tokenBasis: 'Reported tokens only; unreported usage is not measured.',
-    scope: 'Recorded AgentX-routed calls only. Native calls bypassing Core are outside this view.'
+    scope: 'Recorded AgentX-routed calls only. Native calls bypassing Core are outside this view.',
+    callBasis: 'Recorded inference attempts, including admission refusals. Client retries may create several records for one user request.'
   };
 }
 

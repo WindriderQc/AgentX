@@ -20,7 +20,7 @@
     <section class="ao-panel ao-trend" aria-labelledby="ao-trend-title">
       <div class="ao-panel-head"><div><span class="ao-eyebrow">Volume × performance</span><h2 id="ao-trend-title">Activity over time</h2></div><div class="ao-trend-controls"><div class="ao-segment" role="group" aria-label="Overlay on call volume"><button type="button" data-ao-overlay="errors" aria-pressed="true">Errors</button><button type="button" data-ao-overlay="latency" aria-pressed="false">Latency</button></div><div class="ao-legend"><span>Calls</span><span id="ao-overlay-label">Errors %</span></div></div></div>
       <div class="ao-chart"><canvas id="ao-trend-chart" role="img" aria-label="Inference calls and operational error rate over time"></canvas><p id="ao-trend-empty" hidden>No recorded calls in this window.</p></div>
-      <div class="ao-panel-foot"><span id="ao-trend-note">Same time buckets · calls on left, error rate on right</span><span id="ao-fallbacks">— fallbacks</span></div>
+      <div class="ao-panel-foot"><span id="ao-trend-note">Same time buckets · calls on left, error rate on right</span><button id="ao-error-focus" type="button" hidden aria-controls="ao-comparison"></button><span id="ao-fallbacks">— fallbacks</span></div>
     </section>
     <% if (locals.agentxProfile !== 'demo') { %>
     <section class="ao-panel ao-live" aria-labelledby="ao-live-title">
@@ -35,10 +35,10 @@
 
   <div class="ao-bottom-grid">
     <section class="ao-panel" aria-labelledby="ao-model-title">
-      <div class="ao-panel-head"><div><span class="ao-eyebrow">Compare / same window</span><h2 id="ao-model-title">Where the work goes</h2></div><div class="ao-segment" role="group" aria-label="Compare activity by"><button type="button" data-ao-group="byModel" aria-pressed="true">Models</button><button type="button" data-ao-group="byConsumerContract" aria-pressed="false">Consumers</button></div></div>
-      <div class="ao-comparison-head" aria-hidden="true"><span>Share of recorded calls</span><span>Calls</span><span>Mean time</span><span>Errors</span></div>
+      <div class="ao-panel-head ao-comparison-controls"><div><span class="ao-eyebrow">Compare / same window</span><h2 id="ao-model-title">Where the work goes</h2></div><div class="ao-segment" role="group" aria-label="Compare activity by"><button type="button" data-ao-group="byModel" aria-pressed="true">Models</button><button type="button" data-ao-group="byConsumerContract" aria-pressed="false">Consumers</button><button type="button" data-ao-group="byErrors" aria-pressed="false">Errors</button></div></div>
+      <div id="ao-comparison-head" class="ao-comparison-head" aria-hidden="true"><span>Share of recorded calls</span><span>Calls</span><span>Mean time</span><span>Errors</span></div>
       <div id="ao-comparison" class="ao-comparison"><p class="ao-empty">Reading model activity…</p></div>
-      <div class="ao-panel-foot"><span class="ao-comparison-key"><span>Calls</span><span>Elapsed time</span></span><span id="ao-model-note">Share of window total</span><button type="button" data-analytics-target="analytics-models">Full comparison →</button></div>
+      <div class="ao-panel-foot"><span id="ao-comparison-key" class="ao-comparison-key"><span>Calls</span><span>Elapsed time</span></span><span id="ao-model-note">Share of window total</span><button id="ao-comparison-detail" type="button" data-analytics-target="analytics-models">Full comparison →</button></div>
     </section>
     <section class="ao-panel ao-accounting" aria-labelledby="ao-accounting-title">
       <div class="ao-panel-head"><div><span class="ao-eyebrow">Resources / accounting</span><h2 id="ao-accounting-title">Local &amp; cloud</h2></div><i class="fas fa-scale-balanced" aria-hidden="true"></i></div>

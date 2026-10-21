@@ -1,5 +1,5 @@
 'use strict';
-const { needsReview, statusText, outcome, outcomeSplit, callSplit, sparkPaths, comparisonRows, buckets, runtimeView, gpuRows } = require('../../public/js/analytics-overview');
+const { needsReview, statusText, outcome, outcomeSplit, callSplit, sparkPaths, comparisonRows, failureRows, buckets, runtimeView, gpuRows } = require('../../public/js/analytics-overview');
 
 describe('analytics overview evidence', () => {
   test('success excludes both errors and cancellations; no activity is not 100% healthy', () => {
@@ -34,6 +34,19 @@ describe('analytics overview evidence', () => {
       ['a', 30, 30], ['b', 20, 20], ['All other calls', 50, 50]
     ]);
     expect(rows[2].avgLatencyMs).toBeUndefined();
+  });
+
+  test('error shares use all errors and retain the omitted remainder without inventing causes', () => {
+    const data = { totals: { calls: 1000, errors: 20 }, failureAnalysis: {}, topErrors: [
+      { reason: 'workload_reserved', consumerContract: 'desktop-gateway-v1', calls: 12 },
+      { reason: 'unclassified_error', consumerContract: 'unknown', calls: 2 },
+    ] };
+    expect(failureRows(data).map(row => [row.label, row.calls, row.share])).toEqual([
+      ['Workload reserved', 12, 60], ['Cause unrecorded', 2, 10], ['All other errors', 6, 30],
+    ]);
+    expect(failureRows({ ...data, failureAnalysis: undefined })).toBeNull();
+    expect(failureRows({ ...data, totals: { errors: 0 } })).toEqual([]);
+    expect(failureRows(data).at(-1).avgLatencyMs).toBeUndefined();
   });
 
   test('elapsed-time share has its own full-window denominator, not a call-count denominator', () => {

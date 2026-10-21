@@ -100,6 +100,37 @@
     return shown;
   }
 
+  const failureLabels = {
+    workload_reserved: 'Workload reserved', workload_yielded: 'Workload yielded',
+    inference_recovery_required: 'Inference recovery', maintenance_recovery_required: 'Maintenance recovery',
+    workload_recovery_required: 'Workload recovery', inference_active: 'Inference active',
+    inference_residency_active: 'Residency conflict', maintenance_active: 'Maintenance active',
+    upstream_timeout: 'Timeout', upstream_error: 'Upstream error',
+    unclassified_error: 'Cause unrecorded', runtime_inference_admission_denied: 'Admission refused',
+    runtime_inference_recovery_required: 'Runtime recovery', benchmark_claim_active: 'Benchmark reserved',
+  };
+  const failureLabel = reason => failureLabels[reason] || String(reason || 'unclassified_error').replaceAll('_', ' ');
+  function failureRows(data, limit = 3) {
+    if (!data.failureAnalysis || !Array.isArray(data.topErrors)) return null;
+    const total = data.totals?.errors;
+    if (!(total > 0)) return [];
+    const rows = [...data.topErrors].sort((a, b) => b.calls - a.calls).slice(0, limit).map(row => ({
+      ...row, label: failureLabel(row.reason), share: row.calls / total * 100,
+    }));
+    const other = total - rows.reduce((sum, row) => sum + row.calls, 0);
+    if (other > 0) rows.push({ label: 'All other errors', calls: other, share: other / total * 100, other: true });
+    return rows;
+  }
+
+  function renderFailures() {
+    const rows = failureRows(summary);
+    $('ao-comparison').innerHTML = rows?.length ? rows.map(row => `<div class="ao-model ao-failure${row.other ? ' is-other' : ''}">
+      <span class="ao-model-name" style="--share:${Math.max(0, Math.min(100, row.share || 0))}%" title="${esc(`${row.label} · ${row.consumerContract || ''} · ${row.model || ''}`)}"><span>${esc(row.label)}${row.other ? '' : `<small>${esc(row.consumerContract)}</small>`}</span></span>
+      <span>${esc(count(row.calls))}</span><span>${esc(duration(row.avgLatencyMs))}</span><span>${esc(percent(row.share))}</span></div>`).join('')
+      : `<p class="ao-empty">${rows ? 'No operational errors in this window.' : 'Error causes unavailable from this Core version.'}</p>`;
+    set('ao-model-note', 'Recorded attempts · retries may repeat one request');
+  }
+
   function buckets(data) {
     const step = (data.bucketHours || 24) * 3600000;
     const from = Date.parse(data.window?.from), to = Date.parse(data.window?.to);
@@ -143,6 +174,13 @@
 
   function renderComparison() {
     if (!summary) return;
+    const errors = groupBy === 'byErrors';
+    set('ao-model-title', errors ? 'Where calls fail' : 'Where the work goes');
+    $('ao-comparison-head').innerHTML = errors ? '<span>Cause · consumer</span><span>Errors</span><span>Mean time</span><span>Share</span>' : '<span>Share of recorded calls</span><span>Calls</span><span>Mean time</span><span>Errors</span>';
+    $('ao-comparison-key').hidden = errors;
+    $('ao-comparison-detail').dataset.analyticsTarget = errors ? 'infErrorLink' : 'analytics-models';
+    set('ao-comparison-detail', errors ? 'Error details →' : 'Full comparison →');
+    if (errors) return renderFailures();
     const rows = comparisonRows(summary, groupBy);
     $('ao-comparison').innerHTML = rows.length ? rows.map(row => `<div class="ao-model${row.other ? ' is-other' : ''}">
       <span class="ao-model-name" style="--share:${Math.max(0, Math.min(100, row.share || 0))}%;--time-share:${Math.max(0, Math.min(100, row.timeShare || 0))}%" title="${esc(row.label)} · ${esc(percent(row.share))} of calls · ${esc(percent(row.timeShare))} of recorded elapsed time"><span>${esc(row.label)}</span></span>
@@ -240,6 +278,10 @@
     set('ao-time', hasCalls ? `${hours(t.inferenceHours)} summed call time · includes waits` : 'No call duration observed');
     if (hasCalls && finite(t.timedCalls) && t.timedCalls < t.calls) set('ao-time', `${count(t.timedCalls)} / ${count(t.calls)} calls timed · includes waits`);
     set('ao-fallbacks', `${count(t.fallbackCalls)} fallbacks${hasCalls ? ` · ${percent(t.fallbackRate)}` : ''}`);
+    const focus = $('ao-error-focus'), refusals = data.failureAnalysis?.admissionRefusals;
+    focus.hidden = !(t.errors > 0);
+    focus.textContent = finite(refusals) ? `${count(refusals)} / ${count(t.errors)} errors: admission refused →` : 'Explore recorded errors →';
+    focus.title = 'Recorded attempts, not failed user requests. Refusals do not dispatch inference; retries can create several records.';
     set('ao-local-calls', count(data.local?.calls));
     set('ao-local-share', hasCalls && finite(data.local?.calls) ? `${percent(data.local.calls / t.calls * 100)} of recorded calls` : 'No call share observed');
     set('ao-local-time', data.local?.calls > 0 ? hours(data.local.inferenceHours) : '—');
@@ -249,7 +291,7 @@
     const to = new Date(data.window.to);
     set('ao-updated', `Snapshot ${to.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} · refresh on demand`);
     const c = data.coverage;
-    set('ao-coverage', `Recorded AgentX calls only; native calls bypassing Core are outside this view. ${c ? `${c.retentionDays}-day log retention${c.requestedDays > c.retentionDays ? ` limits this ${c.requestedDays}-day window` : ''}. ` : ''}Reported tokens may omit unreported usage. Summed call time is not GPU busy time.`);
+    set('ao-coverage', `Recorded attempts, including admission refusals; retries may repeat one client request. Native calls bypassing Core are outside this view. ${c ? `${c.retentionDays}-day log retention${c.requestedDays > c.retentionDays ? ` limits this ${c.requestedDays}-day window` : ''}. ` : ''}Reported tokens may omit unreported usage. Summed call time is not GPU busy time.`);
     renderComparison();
     renderTrend(data);
     renderVisuals(data);
@@ -265,6 +307,8 @@
     $('ao-status').dataset.state = state;
     set('ao-status', message);
     set('ao-updated', '');
+    $('ao-error-focus').hidden = true;
+    set('ao-error-focus', '');
     ['ao-calls', 'ao-success', 'ao-output', 'ao-latency', 'ao-local-calls', 'ao-local-time', 'ao-cloud-cost'].forEach(id => set(id, '—'));
     ['ao-calls-note', 'ao-outcomes', 'ao-input', 'ao-time', 'ao-fallbacks', 'ao-local-share', 'ao-cloud-note', 'ao-model-note'].forEach(id => set(id, 'Waiting for this window’s data'));
     set('ao-comparison', message);
@@ -338,6 +382,11 @@
       document.querySelectorAll('[data-ao-group]').forEach(other => other.setAttribute('aria-pressed', String(other === button)));
       renderComparison();
     }));
+    $('ao-error-focus').addEventListener('click', () => {
+      const target = document.querySelector('[data-ao-group="byErrors"]');
+      target.click();
+      target.focus();
+    });
     document.querySelectorAll('[data-ao-overlay]').forEach(button => button.addEventListener('click', () => {
       overlay = button.dataset.aoOverlay;
       document.querySelectorAll('[data-ao-overlay]').forEach(other => other.setAttribute('aria-pressed', String(other === button)));
@@ -355,7 +404,7 @@
     }, 15000);
   }
 
-  if (typeof module !== 'undefined' && module.exports) module.exports = { needsReview, statusText, outcome, outcomeSplit, callSplit, sparkPaths, comparisonRows, buckets, runtimeView, gpuRows };
+  if (typeof module !== 'undefined' && module.exports) module.exports = { needsReview, statusText, outcome, outcomeSplit, callSplit, sparkPaths, comparisonRows, failureRows, buckets, runtimeView, gpuRows };
   // Loaded after the markup: subscribe before deferred inference modules run.
   if (typeof document !== 'undefined') init();
 })();

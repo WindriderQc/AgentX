@@ -418,7 +418,7 @@ describe('inference analytics summary', () => {
     const secret = 'LEGACY_SUMMARY_SECRET secret@example.test /private/path sk-token';
     InferenceLog.aggregate.mockResolvedValue(facet({
       topErrors: [{
-        _id: { model: 'model:1', status: 'error', error: secret },
+        _id: { model: 'model:1', status: 'error', error: secret, reason: secret, consumerContract: secret },
         calls: 3,
       }]
     }));
@@ -426,13 +426,13 @@ describe('inference analytics summary', () => {
     const res = await request(server).get('/api/analytics/inference/summary').expect(200);
     expect(JSON.stringify(res.body)).not.toContain(secret);
     expect(res.body.data.topErrors).toEqual([{
-      model: 'model:1', error: 'error', calls: 3
+      model: 'model:1', error: 'error', calls: 3, reason: 'unclassified_error', consumerContract: 'unknown', avgLatencyMs: null
     }]);
 
     const pipeline = InferenceLog.aggregate.mock.calls[0][0];
     const topErrors = pipeline.find((stage) => stage.$facet)?.$facet?.topErrors;
     const group = topErrors.find((stage) => stage.$group).$group;
-    expect(group._id).toEqual({ model: '$model', status: '$status' });
+    expect(group._id).toEqual({ model: '$model', status: '$status', reason: '$_failureReason', consumerContract: '$consumerContract' });
     expect(JSON.stringify(topErrors)).not.toContain('$error');
   });
 

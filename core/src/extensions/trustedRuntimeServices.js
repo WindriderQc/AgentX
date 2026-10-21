@@ -480,7 +480,7 @@ async function executeRoutedInference(deps, request, options = {}) {
       && deps.refusedBeforeDispatch?.(error) && await deps.fallbackAfterRefusal?.(taskType,
         { model, host: hostKey, url: hostUrl, degraded: taskFallback });
     void record(telemetryEntry(
-      request, { ...metadata, retry: error.retry, waits: error.inferenceWaits, promptCache: error.inferencePromptCache }, startedAt, timedOut ? 'timeout' : 'error', null,
+      request, { ...metadata, errorCode: error.code, failure: error.failure, retry: error.retry, waits: error.inferenceWaits, promptCache: error.inferencePromptCache }, startedAt, timedOut ? 'timeout' : 'error', null,
       cancelled ? 'cancelled' : (timedOut ? `timeout_${timeoutMs}ms`
         : (Object.hasOwn(INFERENCE_REFUSALS, error.code) ? error.code : error.message)),
       attribution

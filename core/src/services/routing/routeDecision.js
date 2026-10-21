@@ -116,6 +116,7 @@ const VALID_OUTCOME_CODES = new Set(Object.values(ROUTE_OUTCOME_CODES));
  * deliberately when a new operational condition is introduced.
  */
 const STABLE_REASON_CODES = new Set([
+  ...require('./inferenceFailureReasons').FAILURE_REASONS,
   ...Object.values(REJECTION_REASONS),
   ...Object.values(ROUTE_OUTCOME_CODES),
   'connection_failure',
