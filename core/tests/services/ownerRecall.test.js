@@ -101,12 +101,29 @@ describe('owner private recall corpus', () => {
     expect(rag.calls).toEqual([]);
   });
 
-  test('no shared reader, MCP tool or Family path can reach the owner corpus', () => {
+  test('only the Nestor owner contract selects the private audience; MCP and Family never reach the corpus', () => {
     const core = path.resolve(__dirname, '../..');
-    for (const file of ['src/services/mcpSkillBus.js', 'src/services/memoryReadService.js', 'src/services/ragServiceClient.js',
-      'surfaces/household/nestor-knowledge.js', 'surfaces/household/persona-turn.js', 'surfaces/household/family-routes.js']) {
-      const source = fs.readFileSync(path.join(core, file), 'utf8');
-      expect(source).not.toMatch(/ownerRecallService|owner-mail|OWNER_MAIL_RAG_TOKEN/);
-    }
+    const files = dir => fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => entry.isDirectory()
+      ? (entry.name === 'node_modules' || entry.name === 'public' ? [] : files(path.join(dir, entry.name)))
+      : entry.name.endsWith('.js') ? [path.join(dir, entry.name)] : []);
+    const users = (pattern) => ['src', 'routes', 'surfaces'].flatMap(dir => files(path.join(core, dir)))
+      .filter(file => !file.includes(`${path.sep}test${path.sep}`) && pattern.test(fs.readFileSync(file, 'utf8')))
+      .map(file => path.relative(core, file).split(path.sep).join('/')).sort();
+    expect(users(/'owner-private'/)).toEqual(['routes/nestor-consumer-v1.js', 'src/services/memoryReadService.js']);
+    expect(users(/ownerRecallService/)).toEqual(['src/services/memoryReadService.js', 'surfaces/household/secretary-recall.js']);
+    expect(users(/owner-mail|OWNER_MAIL_RAG_TOKEN/)).toEqual(['src/services/ownerRecallService.js']);
+  });
+
+  test('the owner-private audience ranks shared owner results and private recall together', async () => {
+    const { forAudience } = require('../../src/services/memoryReadService');
+    const ragClient = { searchSimilarChunks: async () => [{ text: 'Synthetic vault note', score: 0.7, metadata: { scope: 'owner' } }] };
+    const recall = { search: async (_q, options) => ({ results: [{ documentId: 'mail:message0001', kind: 'mail', score: 0.9,
+      excerpt: 'Synthetic canoe trip', people: ['Synthetic Friend'], occurredAt: '2016-07-20T12:00:00Z',
+      source: { messageId: 'message0001' }, limit: options.limit }] }) };
+    const results = await forAudience('owner-private', { ragClient, recall, minScore: 0.5 }).search('canoe', { topK: 5 });
+    expect(results.map(r => r.text)).toEqual(['Synthetic canoe trip', 'Synthetic vault note']);
+    expect(results[0].metadata).toMatchObject({ source: 'owner-recall', sensitivity: 'private', kind: 'mail',
+      people: ['Synthetic Friend'], provenance: { messageId: 'message0001' } });
+    expect(() => forAudience('family-private')).toThrow('server-selected');
   });
 });

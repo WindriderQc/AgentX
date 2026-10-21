@@ -103,11 +103,12 @@ async function sync({ limit = 200 } = {}, deps) {
   return { authority: 'agentx.core', ...result, removed: stale.length, remaining: Math.max(0, changed.length - bounded) };
 }
 
-async function search(query, { limit = 8 } = {}, deps) {
+async function search(query, { limit = 8, minScore } = {}, deps) {
   const clean = text(query, 2000);
   if (!clean) throw failure('A query is required');
   const topK = Math.max(1, Math.min(20, Math.trunc(Number(limit)) || 8));
-  const reply = await rag('POST', '/search', { query: clean, topK: Math.min(20, topK * 2) }, deps);
+  const reply = await rag('POST', '/search', { query: clean, topK: Math.min(20, topK * 2),
+    ...(Number.isFinite(Number(minScore)) ? { minScore: Number(minScore) } : {}) }, deps);
   const hits = (reply?.results || []).filter(hit => DOCUMENT_ID.test(hit.documentId || ''));
   const records = new Map((await Recall.find({ documentId: { $in: hits.map(h => h.documentId) }, state: 'indexed' }).lean()).map(r => [r.documentId, r]));
   // A souvenir or person forgotten since the last sync is never returned.

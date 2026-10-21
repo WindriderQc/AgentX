@@ -16,8 +16,12 @@ function defaultMinScore(value = process.env.MEMORY_SEARCH_MIN_SCORE) {
 
 // These capabilities are bound by trusted server code, never by a persona,
 // request body or model-supplied filter. They reuse Memory Policy V2 labels.
-function forAudience(audience, { ragClient = getRagServiceClient(), minScore = defaultMinScore() } = {}) {
-  if (!['owner', 'household'].includes(audience)) {
+// 'owner-private' adds the owner's private recall corpus (archived mail, read
+// attachments, souvenirs, people) to the owner results; only Nestor's private
+// owner contract selects it, never /mcp, the Family surface or children.
+const AUDIENCES = ['owner', 'household', 'owner-private'];
+function forAudience(audience, { ragClient = getRagServiceClient(), minScore = defaultMinScore(), recall } = {}) {
+  if (!AUDIENCES.includes(audience)) {
     throw Object.assign(new Error('A server-selected memory audience is required'), {
       code: 'MEMORY_AUDIENCE_REQUIRED', statusCode: 400
     });
@@ -39,6 +43,7 @@ function forAudience(audience, { ragClient = getRagServiceClient(), minScore = d
         // A tag, persona or caller filter cannot grant access to owner data.
         searchOptions.filters = { ...options.filters, scope: 'household', sensitivity: 'normal' };
       }
+      if (audience === 'owner-private') return privateSearch(query.trim(), searchOptions, { ragClient, recall });
       const results = await ragClient.searchSimilarChunks(query.trim(), searchOptions);
       // Recheck returned labels before text can enter a prompt or UI. Missing
       // labels are not a family grant, even if an upstream adapter ignores its filter.
@@ -46,6 +51,19 @@ function forAudience(audience, { ragClient = getRagServiceClient(), minScore = d
         || (result?.metadata?.scope === 'household' && result?.metadata?.sensitivity === 'normal'));
     }
   });
+}
+
+// Owner results and private recall hits share one shape and one score scale
+// (the same embedding model), ranked together.
+async function privateSearch(query, searchOptions, { ragClient, recall = require('./ownerRecallService') }) {
+  const [shared, own] = await Promise.all([ragClient.searchSimilarChunks(query, searchOptions),
+    recall.search(query, { limit: searchOptions.topK, minScore: searchOptions.minScore })]);
+  const privateHits = own.results.map(hit => ({ text: hit.excerpt, score: hit.score, metadata: {
+    documentId: hit.documentId, source: 'owner-recall', scope: 'owner', sensitivity: 'private', kind: hit.kind,
+    title: hit.title, occurredAt: hit.occurredAt, people: hit.people, provenance: hit.source,
+    ...(hit.souvenirNoteId ? { souvenirNoteId: hit.souvenirNoteId } : {}), ...(hit.personId ? { personId: hit.personId } : {}) } }));
+  return [...(Array.isArray(shared) ? shared : []), ...privateHits]
+    .sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0)).slice(0, searchOptions.topK);
 }
 
 module.exports = { DEFAULT_MIN_SCORE, defaultMinScore, forAudience };
