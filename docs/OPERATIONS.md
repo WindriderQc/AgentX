@@ -476,6 +476,16 @@ the `ops_watch` task's model with the vendor, hostname and address; it is a
 hint, never applied by itself, and a missing answer never delays the alert
 beyond three minutes.
 
+A task route without a stored route follows its host's pin when its
+deployment default (`AGENTX_*_MODEL`) names a model pinned on no host: it
+uses the host's first pinned chat model, or its first pinned embedding model
+for an embedding default. A default pinned on another host still follows its
+model there, and stored routes and explicit callers keep priority. The router
+config marks such a task `followsHostPin`; the principal switch moves it
+without storing a route. So a new route never needs a hand-written model name,
+and an instance does not need to repeat its pin in compose defaults.
+`AGENTX_ROUTE_DEFAULTS_FOLLOW_HOST_PIN=false` restores the plain defaults.
+
 Core compares the routes, the runtime export and the installed OpenClaw
 config with the host pins every 15 minutes (`PIN_DRIFT_CHECK_MS`, `0`
 disables) and raises the `pin-drift` alert when one names a model or context

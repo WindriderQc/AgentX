@@ -6,7 +6,7 @@ jest.mock('../../src/services/modelRouterConfig', () => {
     embeddings: { model: 'embedding', host: 'primary' } };
   return { CLASSIFIABLE_TASKS: { general_chat: {}, code_generation: {} }, HOSTS: { primary: 'http://principal-host:11434' },
     ensureTaskModelOverridesLoaded: jest.fn(), getDefaultTaskModels: () => ({ daily_operator: { model: 'standard', host: 'primary' } }),
-    getEffectiveTaskModels: () => tasks, tasks };
+    getEffectiveTaskModels: () => tasks, getHostPinFollowers: jest.fn(() => []), refreshPinCacheNow: jest.fn(async () => {}), tasks };
 });
 const HostPreference = require('../../models/HostPreference');
 const RouterTaskConfig = require('../../models/RouterTaskConfig');
@@ -24,6 +24,8 @@ beforeEach(async () => {
   config.ensureTaskModelOverridesLoaded.mockImplementation(async () => {
     for (const doc of await RouterTaskConfig.find({}).lean()) config.tasks[doc.taskType] = { model: doc.model, host: doc.host };
   });
+  config.getHostPinFollowers.mockReturnValue([]);
+  config.refreshPinCacheNow.mockImplementation(async () => {});
   runRuntimeMutation.mockImplementation(async (_options, operation) => operation({
     signal: new AbortController().signal, assertActive() {}
   }));
@@ -51,6 +53,18 @@ test('switch preserves sibling pins/context, moves every principal route on the 
   expect((await service.getPrincipalModel()).model).toBe(result.model);
   await service.selectPrincipalModel({ selected: 'standard', expectedModel: result.model, principal: 'test-operator' });
   expect((await service.getPrincipalModel()).selected).toBe('standard');
+});
+test('a route that follows the host pin moves with it and gets no stored route', async () => {
+  config.getHostPinFollowers.mockReturnValue(['voice_persona_reader']);
+  config.refreshPinCacheNow.mockImplementation(async () => {
+    const pref = await HostPreference.findOne({ hostUrl }).lean();
+    config.tasks.voice_persona_reader.model = pref.pinnedModels[0].model;
+  });
+  const result = await select();
+  expect(config.tasks.voice_persona_reader.model).toBe(result.model);
+  expect(config.tasks.general_chat.model).toBe(result.model);
+  expect(await RouterTaskConfig.findOne({ taskType: 'voice_persona_reader' })).toBeNull();
+  expect(await RouterTaskConfig.findOne({ taskType: 'general_chat' })).not.toBeNull();
 });
 test('busy admission and stale UI selection perform no pin or route writes', async () => {
   runRuntimeMutation.mockRejectedValueOnce(Object.assign(new Error('busy'), { code: 'RUNTIME_MUTATION_LEASE_DENIED' }));

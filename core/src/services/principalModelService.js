@@ -124,7 +124,11 @@ async function movePrincipal({ targetModel, expectedModel, principal, requestId,
     }
     const routes = followedRoutes(configs, current);
     if (!routes.some(([task]) => task === 'daily_operator')) return { error: refusal('The principal route has a dedicated override') };
-    const documents = await RouterTaskConfig.find({ taskType: { $in: routes.map(([task]) => task) } }).lean();
+    // Routes without a stored route already follow the pin; storing one for
+    // them would freeze a model name the next switch must rewrite.
+    const pinFollowers = new Set(routerConfig.getHostPinFollowers());
+    const stored = routes.filter(([task]) => !pinFollowers.has(task));
+    const documents = await RouterTaskConfig.find({ taskType: { $in: stored.map(([task]) => task) } }).lean();
     try {
       const updated = await replacePrimaryPin(current.hostUrl, expectedModel, targetModel);
       if (!updated) return { error: refusal('Principal host preference is missing') };
@@ -137,9 +141,12 @@ async function movePrincipal({ targetModel, expectedModel, principal, requestId,
       const resident = await restore();
       if (resident?.verified !== true) throw refusal(resident?.error || 'Principal model residency was not verified', 'HOST_PIN_RESTORE_FAILED');
       // Persistence failure is ambiguous: keep the native fence for recovery.
-      await RouterTaskConfig.bulkWrite(routes.map(([taskType, entry]) => ({
-        updateOne: { filter: { taskType }, update: { $set: { model: targetModel, host: entry.host } }, upsert: true }
-      })));
+      if (stored.length) {
+        await RouterTaskConfig.bulkWrite(stored.map(([taskType, entry]) => ({
+          updateOne: { filter: { taskType }, update: { $set: { model: targetModel, host: entry.host } }, upsert: true }
+        })));
+      }
+      await routerConfig.refreshPinCacheNow();
       await routerConfig.ensureTaskModelOverridesLoaded({ force: true });
       invalidateRoutingSnapshots();
       const verified = routerConfig.getEffectiveTaskModels();
@@ -151,11 +158,14 @@ async function movePrincipal({ targetModel, expectedModel, principal, requestId,
       if (signal.aborted || !ROLLBACK_CODES.includes(error.code)) throw error;
       // Only known terminal failures can roll back under the same authority.
       const previous = new Map(documents.map(doc => [doc.taskType, doc]));
-      await RouterTaskConfig.bulkWrite(routes.map(([taskType]) => previous.has(taskType)
-        ? { replaceOne: { filter: { taskType }, replacement: previous.get(taskType), upsert: true } }
-        : { deleteOne: { filter: { taskType } } }));
+      if (stored.length) {
+        await RouterTaskConfig.bulkWrite(stored.map(([taskType]) => previous.has(taskType)
+          ? { replaceOne: { filter: { taskType }, replacement: previous.get(taskType), upsert: true } }
+          : { deleteOne: { filter: { taskType } } }));
+      }
       await replacePrimaryPin(current.hostUrl, targetModel, expectedModel);
       const rollback = await restore();
+      await routerConfig.refreshPinCacheNow();
       await routerConfig.ensureTaskModelOverridesLoaded({ force: true });
       invalidateRoutingSnapshots();
       if (rollback?.verified !== true) throw error;
