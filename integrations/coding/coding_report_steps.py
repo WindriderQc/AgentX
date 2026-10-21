@@ -20,6 +20,7 @@ MAX_STEP_CONTEXT = 65536
 DOC_SHARE = 0.35          # of the step context, for the documents themselves
 MAX_GROUP_DOCS = 5
 MAX_PARTIAL_ROUNDS = 3
+MAX_RANGE_LINES = 250    # a longer document is reviewed in line ranges, one per step
 STEP_CALLS = 16
 STEP_SECONDS = 20 * 60
 WRITER_CALLS = 6
@@ -70,34 +71,23 @@ def _next_range(row, lines, chunk):
     return None
 
 
-def plan_groups(ledger, sizes, budget, limit=None, line_counts=None):
-    """Next groups of related documents still to review.
+def _range_chunk(lines, tokens, doc_budget):
+    """Lines per range: equal ranges of at most MAX_RANGE_LINES, smaller
+    when the document's tokens per line would overflow the step budget."""
+    count = -(-lines // MAX_RANGE_LINES)
+    chunk = -(-lines // count)
+    if tokens > doc_budget:
+        chunk = min(chunk, max(40, int(lines * doc_budget / tokens)))
+    return chunk
 
-    A document larger than the step budget is reviewed in line ranges, one
-    range per step. Documents that already failed a step go alone, so one
-    hard document cannot block its neighbours twice. Fresh groups and ranges
-    run before failed documents are retried. A document still partial
-    after MAX_PARTIAL_ROUNDS steps without progress stays partial and is
-    reported as remaining scope instead of being planned again."""
-    line_counts = line_counts or {}
-    todo = [path for path, row in sorted(ledger['documents'].items())
-            if row['state'] in ('pending', 'partial') and row.get('partialRounds', 0) < MAX_PARTIAL_ROUNDS]
-    planned, fresh = [], []
-    for path in todo:
-        row = ledger['documents'][path]
-        tokens = doc_tokens(sizes.get(path, 0))
-        lines = line_counts.get(path) or 0
-        if tokens > budget['docTokens'] and lines > 1:
-            chunk = max(40, int(lines * budget['docTokens'] / tokens))
-            next_range = _next_range(row, lines, chunk)
-            if next_range:
-                planned.append({'documents': [path], 'range': next_range})
-        elif row.get('attempts', 0) > 0:
-            planned.append({'documents': [path], 'range': None})
-        else:
-            fresh.append(path)
+
+def _started(row):
+    return row['state'] == 'partial' or bool(row.get('evidence')) or bool(row.get('ranges'))
+
+
+def _group_by_area(paths, sizes, budget):
     groups, current, used, area = [], [], 0, None
-    for path in fresh:
+    for path in paths:
         tokens = doc_tokens(sizes.get(path, 0))
         here = posixpath.dirname(path)
         if current and (len(current) >= MAX_GROUP_DOCS or used + tokens > budget['docTokens'] or here != area):
@@ -108,9 +98,46 @@ def plan_groups(ledger, sizes, budget, limit=None, line_counts=None):
         area = here
     if current:
         groups.append({'documents': current, 'range': None})
-    retries = [group for group in planned if ledger['documents'][group['documents'][0]].get('attempts', 0)]
-    ranged = [group for group in planned if not ledger['documents'][group['documents'][0]].get('attempts', 0)]
-    ordered = groups + ranged + retries
+    return groups
+
+
+def plan_groups(ledger, sizes, budget, limit=None, line_counts=None):
+    """Next groups of related documents still to review.
+
+    A document longer than MAX_RANGE_LINES, or larger than the step budget,
+    is reviewed in line ranges, one range per step, so a long document makes
+    accepted progress range by range. Documents that already failed a step go
+    alone, so one hard document cannot block its neighbours twice.
+
+    Order: documents nobody has started yet, then started ones (partial, with
+    evidence or ranges), then failed documents. Small untouched documents are
+    not starved by a long one that keeps coming back partial, including after
+    a continuation resets attempts. A document still partial after
+    MAX_PARTIAL_ROUNDS steps without progress stays partial and is reported
+    as remaining scope instead of being planned again."""
+    line_counts = line_counts or {}
+    todo = [path for path, row in sorted(ledger['documents'].items())
+            if row['state'] in ('pending', 'partial') and row.get('partialRounds', 0) < MAX_PARTIAL_ROUNDS]
+    fresh, started, ranged_fresh, ranged_started, retries = [], [], [], [], []
+    for path in todo:
+        row = ledger['documents'][path]
+        tokens = doc_tokens(sizes.get(path, 0))
+        lines = line_counts.get(path) or 0
+        if lines > 1 and (lines > MAX_RANGE_LINES or tokens > budget['docTokens']):
+            next_range = _next_range(row, lines, _range_chunk(lines, tokens, budget['docTokens']))
+            if not next_range:
+                continue
+            group = {'documents': [path], 'range': next_range}
+            if row.get('attempts', 0):
+                retries.append(group)
+            else:
+                (ranged_started if _started(row) else ranged_fresh).append(group)
+        elif row.get('attempts', 0) > 0:
+            retries.append({'documents': [path], 'range': None})
+        else:
+            (started if _started(row) else fresh).append(path)
+    ordered = (_group_by_area(fresh, sizes, budget) + ranged_fresh
+               + _group_by_area(started, sizes, budget) + ranged_started + retries)
     return ordered[:limit] if limit else ordered
 
 
