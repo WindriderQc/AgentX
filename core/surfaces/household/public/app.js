@@ -599,6 +599,8 @@
   }
 
   async function start() {
+    const pathname = location.pathname.replace(/\/+$/, '') || '/';
+    if (pathname !== location.pathname) history.replaceState(history.state, '', pathname + location.search + location.hash);
     navActive(); app.innerHTML = '<div class="empty" role="status">Loading…</div>';
     try {
       if (location.pathname === '/panel') return await loadPanel();
