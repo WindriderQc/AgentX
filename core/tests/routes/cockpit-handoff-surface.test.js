@@ -17,11 +17,13 @@ describe('cockpit contextual handoffs', () => {
     expect(source).not.toMatch(/method:\s*['"]POST['"]/);
   });
 
-  test('Pipeline hydrates only an Agent Ops context and keeps global counts', () => {
+  test('Pipeline hydrates only an allowlisted cockpit context and keeps global counts', () => {
     const source = readPipelineSource();
     const view = read('views/pages/pipeline.ejs');
     expect(view).toContain('id="pipelineHandoffContext"');
-    expect(source).toContain("params.get('from') !== 'agent-ops'");
+    expect(source).toContain("{ 'agent-ops': 'Agent Ops', nestor: 'Nestor' }[params.get('from')]");
+    expect(source).toContain('if (!source) return null;');
+    expect(source).toContain('{ source, task, assignee, alias, status }');
     expect(source).toContain('state.tasks.filter(matchesContext)');
     expect(source).toContain("boundedParam(params, 'alias'");
     expect(source).toContain('renderCounts();');
