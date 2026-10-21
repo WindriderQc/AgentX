@@ -364,10 +364,12 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     const rung = voiceLadder.rungOf(response);
     voiceNotice(response.browserSpeech ? 'Server voice unavailable: using this browser’s voice.' : rung ? 'Chosen voice unavailable: using a backup voice.' : '');
     if (response.browserSpeech) return response;
-    if (!signal.aborted) {
+    // The speech receipt moved to the voice workshop; a page without it still speaks.
+    const receipt = el('conversationSpeechReceipt');
+    if (receipt && !signal.aborted) {
       const acknowledged = decodeURIComponent(response.headers.get('X-Voix-Voice') || '');
       const actualLanguage = response.headers.get('X-Nestor-Speech-Language');
-      const receipt = el('conversationSpeechReceipt'); receipt.hidden = false;
+      receipt.hidden = false;
       receipt.textContent = source + ' synthesis · ' + persona.name + ' · '
         + (actualLanguage || lang) + ' · ' + (acknowledged || choices[rung].voice)
         + (acknowledged ? ' (voice acknowledged by the speech proxy)' : ' (requested voice; no proxy receipt)');
