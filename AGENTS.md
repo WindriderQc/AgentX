@@ -31,8 +31,10 @@ and docs/OPERATIONS.md before changing architecture.
   Use Core's heavy-work queue and named operator executors
   (docs/HEAVY_WORK_QUEUE.md); link the session/task/issue and respect the planned
   window plus native admission. Reconcile lost responses by identity, never
-  repeat a launch. Until Core migration is received, use the instance's existing
-  QUEUE.md procedure. Ordinary isolated CPU unit tests/checks/builds stay direct.
+  repeat a launch. Never add rows to a legacy QUEUE.md: if Core refuses writes
+  because an instance still has an unmigrated QUEUE.md, stop and ask the owner
+  to migrate it (docs/HEAVY_WORK_QUEUE.md, "Legacy transition").
+  Ordinary isolated CPU unit tests/checks/builds stay direct.
 - Keep commits in English and responses to the owner in French. One clear change
   per commit. Never rewrite ax/ Modelfiles or benchmarked num_ctx values.
 - aiOPs and AgentX-Ecosystem are archived references. Do not edit them to implement
