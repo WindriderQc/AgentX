@@ -27,6 +27,14 @@ describe('principal model choices', () => {
       .toMatchObject({ standard: 'everyday:27b', abliterated: 'open:27b' });
   });
 
+  test('the seed reads the principal pin itself, whoever reads first (Household)', async () => {
+    await RouterTaskConfig.create({ taskType: 'daily_operator', model: 'open:27b', host: 'primary' });
+    const readPin = jest.fn(async () => 'open:27b');
+    expect(await choices.getChoices({ env: { AGENTX_DAILY_OPERATOR_MODEL: 'everyday:27b' }, readPin }))
+      .toMatchObject({ standard: 'everyday:27b', abliterated: 'open:27b' });
+    expect(readPin).toHaveBeenCalledTimes(1);
+  });
+
   test('a pin without the switch route is not guessed as Abliterated', async () => {
     expect(await choices.getChoices({ env: { AGENTX_DAILY_OPERATOR_MODEL: 'everyday:27b' }, pinnedModel: 'manual:27b' }))
       .toMatchObject({ standard: 'everyday:27b', abliterated: null });
