@@ -36,7 +36,7 @@ Defined in the product's `core/routes/photos.js` and tested against a mocked
 Immich; not part of the dated live observation above. `/api/photos/status`
 says whether the instance configured them.
 
-`/api/photos/status` · `/api/photos/people` · `/api/photos/people/<id>/assets` · `/api/photos/search/smart?q=` · `/api/photos/search` · `/api/photos/assets/<id>` · `/api/photos/assets/<id>/thumbnail`
+`/api/photos/status` · `/api/photos/people` · `/api/photos/people/<id>/assets` · `/api/photos/places` · `/api/photos/tags` · `/api/photos/search/smart?q=` · `/api/photos/search` · `/api/photos/count` · `/api/photos/assets/<id>` · `/api/photos/assets/<id>/thumbnail`
 
 ## Pipeline reads verified in source
 

@@ -108,29 +108,39 @@ Immich key: never look for one, ask for one or call Immich directly. First
 
 For "photos of <person> at the beach in 2025":
 
-1. `GET /api/photos/people` gives the exact names (and ids). Match the asked
-   name to one of them; if none fits, say so instead of guessing.
-2. `GET /api/photos/search/smart?q=<what is in the photo>&person=<name>&year=2025`.
-   `q` describes the scene in words (French works: `q=à la plage`). Narrow with
-   `city`, `country`, `from`, `to` (`2025`, `2025-07`, `2025-07-14`). Several
-   names separated by commas means all of them in the photo.
-3. Smart search always returns its closest matches, even weak ones. Before
+1. `GET /api/photos/search/smart?q=<what is in the photo>&person=<name>&year=2025`.
+   `q` describes the scene in words (French works: `q=à la plage`). A first
+   name is enough when it designates one person; on `409` ask which of
+   `error.details.candidates`, on `404` say that nobody has that name (the
+   owner names faces in Immich). Several names separated by commas means all
+   of them in the photo. Narrow with `city`, `state`, `country`, `tag`,
+   `from`, `to` (`2025`, `2025-07`, `2025-07-14`).
+2. Smart search always returns its closest matches, even weak ones. Before
    saying a photo shows something, read `GET /api/photos/assets/<id>` (date,
-   place, people, description, text read in the photo) or look at its
+   place, people, description, tags, text read in the photo) or look at its
    thumbnail.
 
-Exact questions ("how many photos in Sampleton in July 2024", "the photo with
-the sign that says X", "oldest photo of <person>") use
-`GET /api/photos/search` with `person`, `city`, `from`/`to`, `text`
-(description), `ocr` (text in the photo), `order=asc`, and `cursor` for the next
-page. `GET /api/photos/people/<id>/assets` lists one person's photos.
+Exact questions use `GET /api/photos/search` ("oldest photo of <person>":
+`order=asc`; "the sign that says X": `ocr=X`; a description word: `text=`;
+next page: `cursor`). "How many" uses `GET /api/photos/count` with the same
+filters; say "at least" when `exact` is false. Lists stop at 50 items.
+
+Places come from GPS, and most photos have none: when an answer carries
+`placeCoverage`, say that only `photosWithPlace` of `photos` can match a place.
+Read `notes` (for example a city with the same name as its province:
+then `state=<name>` is the whole province). `GET /api/photos/places`,
+`/api/photos/tags` and `/api/photos/people` list the known names.
+
+Children and family surfaces send `audience=family` on every photo call:
+children see photos and names, but no hidden photo and no generated text the
+owner has not reviewed. Photos are private household data: never send them
+outside the household's conversations.
 
 Show a photo with Core's link `<core>/api/photos/assets/<id>/thumbnail`
-(`?size=preview` for larger). Lists stop at 50 items; say when there are more.
-Faces are identified locally and photos are private household data: keep them
-in the owner's conversation. Writing a description
-(`PUT /api/photos/assets/<id>/description`) is off unless the instance enabled
-it, and needs the owner's request for that photo. Details: `docs/PHOTOS.md`.
+(`?size=preview` for larger); it only opens on the home network. Writing a
+description (`PUT /api/photos/assets/<id>/description`) is off unless the
+instance enabled it, and needs the owner's request for that photo. Details:
+`docs/PHOTOS.md`.
 
 ## Memory review
 
