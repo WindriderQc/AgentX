@@ -27,6 +27,8 @@ class WorkerPromptTest(unittest.TestCase):
         self.workspace.mkdir(); self.home.mkdir()
         self.cli = self.root/'fixture-worker.mjs'
         self.cli.write_text("import { createHash } from 'node:crypto';\n"
+            "if (import.meta.main === false) throw new Error('CLI must be the Node entrypoint');\n"
+            "await new Promise(resolve => setTimeout(resolve, 5));\n"
             "const args = process.argv.slice(2); const task = args.pop();\n"
             "console.log(JSON.stringify({args, bytes:Buffer.byteLength(task), "
             "sha256:createHash('sha256').update(task).digest('hex')}));\n")
@@ -52,11 +54,11 @@ class WorkerPromptTest(unittest.TestCase):
         self.assertIs(on_stop, self.on_stop)
         self.assertIs(progress, self.progress)
         index = command.index('node')
-        self.assertEqual(command[index+1:index+4], [
-            '/opt/coding/coding_worker_prompt.cjs', runner.coding_worker_prompt.SANDBOX_PROMPT,
-            '/opt/dsh/node_modules/.bin/dsh'])
-        return subprocess.run([shutil.which('node'), str(HERE/'coding_worker_prompt.cjs'),
-            str(self.captured['path']), str(self.cli), *command[index+4:]],
+        self.assertEqual(command[index+1:index+5], [
+            '--require', '/opt/coding/coding_worker_prompt.cjs',
+            '/opt/dsh/node_modules/.bin/dsh', runner.coding_worker_prompt.SANDBOX_PROMPT])
+        return subprocess.run([shutil.which('node'), '--require', str(HERE/'coding_worker_prompt.cjs'),
+            str(self.cli), str(self.captured['path']), *command[index+5:]],
             text=True, capture_output=True, timeout=10)
 
     def test_large_literal_utf8_prompt_reaches_cli_unchanged_without_large_exec_arguments(self):
@@ -75,6 +77,15 @@ class WorkerPromptTest(unittest.TestCase):
             'sha256': hashlib.sha256(self.prompt.encode('utf-8')).hexdigest()})
         self.assertTrue(self.captured['read_only'])
         self.assertEqual(self.captured['report_request_id'], self.progress.request_id)
+        self.assertFalse(self.captured['path'].parent.exists())
+
+    def test_unsettled_cli_top_level_await_keeps_native_nonzero_exit(self):
+        self.cli.write_text('await new Promise(() => {});\n')
+        r = SimpleNamespace(sandbox=self.sandbox, supervise=self.supervise, relay_port=8377)
+        result = runner.coding_worker_prompt.run(r, self.workspace, self.home, self.prompt, 600,
+            self.progress, read_only=True, on_stop=self.on_stop)
+        self.assertEqual(result.returncode, 13, result.stderr)
+        self.assertEqual(result.stdout, '')
         self.assertFalse(self.captured['path'].parent.exists())
 
     def test_startup_error_removes_only_the_temporary_prompt(self):

@@ -14,8 +14,8 @@ def run(r, workspace, home, prompt, seconds, progress, *, read_only, on_stop):
         path.chmod(0o400)
         command = [
             'python3', '/opt/coding/model_relay.py', 'inside', '/home/agent/model.sock', str(r.relay_port), '--',
-            'node', '/opt/coding/coding_worker_prompt.cjs', SANDBOX_PROMPT,
-            '/opt/dsh/node_modules/.bin/dsh', '--profile', 'headless',
+            'node', '--require', '/opt/coding/coding_worker_prompt.cjs',
+            '/opt/dsh/node_modules/.bin/dsh', SANDBOX_PROMPT, '--profile', 'headless',
             '--patch', '/home/agent/.dsh/agentx.patch.json', '--patch', '/opt/coding/guard.patch.yml', '--',
         ]
         return r.supervise(r.sandbox(workspace, home, command, network=False, timeout_seconds=seconds,
