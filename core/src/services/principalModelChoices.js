@@ -41,16 +41,27 @@ function publicChoices(doc) {
   };
 }
 
+// The model pinned first on the principal host, read here so the seed does
+// not depend on which caller reads the choices first.
+async function principalPin() {
+  const routerConfig = require('./modelRouterConfig');
+  const hostPrefs = require('./hostPreferenceService');
+  await routerConfig.ensureTaskModelOverridesLoaded();
+  const hostUrl = routerConfig.HOSTS[routerConfig.getDefaultTaskModels().daily_operator?.host];
+  return hostUrl ? hostPrefs.getPinnedEntries(await hostPrefs.getByHost(hostUrl))[0]?.model || null : null;
+}
+
 /**
  * What an install ran before the choices were stored: Standard from its env,
  * and a principal pin the switch moved off Standard (the switch writes the
  * daily_operator route with it), which can only have been Abliterated.
  */
-async function legacyChoices({ env = process.env, pinnedModel = null } = {}) {
+async function legacyChoices({ env = process.env, pinnedModel, readPin = principalPin } = {}) {
   const standard = envFirst(env, LEGACY_ENV.standard);
   let abliterated = null;
-  const pin = cleanModel(pinnedModel);
-  if (!abliterated && standard && pin && pin !== standard) {
+  if (!standard) return { standard: null, abliterated: null };
+  const pin = cleanModel(pinnedModel === undefined ? await readPin() : pinnedModel);
+  if (pin && pin !== standard) {
     const route = await RouterTaskConfig.findOne({ taskType: 'daily_operator' }).lean();
     if (route?.model === pin) abliterated = pin;
   }
