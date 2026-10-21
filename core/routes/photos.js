@@ -6,13 +6,19 @@
  * the only Immich key, so no caller needs one.
  *
  * GET  /api/photos/status
- * GET  /api/photos/search/smart?q=&person=&city=&country=&year=&from=&to=&limit=
- * GET  /api/photos/search?person=&city=&country=&year=&from=&to=&text=&ocr=&fileName=&favorite=&order=&cursor=&limit=
+ * GET  /api/photos/search/smart?q=&person=&city=&state=&country=&tag=&year=&from=&to=&limit=
+ * GET  /api/photos/search?person=&city=&state=&country=&tag=&year=&from=&to=&text=&ocr=&fileName=&favorite=&order=&cursor=&limit=
+ * GET  /api/photos/count?(same filters as /search)
  * GET  /api/photos/people?counts=&includeUnnamed=
  * GET  /api/photos/people/:id/assets?year=&from=&to=&cursor=&limit=
+ * GET  /api/photos/places
+ * GET  /api/photos/tags
  * GET  /api/photos/assets/:id
  * GET  /api/photos/assets/:id/thumbnail?size=thumbnail|preview
  * PUT  /api/photos/assets/:id/description   { description }   (off unless IMMICH_DESCRIPTION_WRITE_ENABLED=true)
+ *
+ * Reads take `audience=family` for children's and family surfaces: timeline
+ * photos only, and no generated text the owner has not reviewed.
  */
 
 const express = require('express');
@@ -27,7 +33,11 @@ function sendError(res, error) {
   return res.status(status).json({
     ok: false,
     code: error.code || 'PHOTOS_ERROR',
-    error: { code: error.code || 'PHOTOS_ERROR', message: error.code ? error.message : 'Photo request failed' },
+    error: {
+      code: error.code || 'PHOTOS_ERROR',
+      message: error.code ? error.message : 'Photo request failed',
+      ...(error.code && error.details ? { details: error.details } : {}),
+    },
   });
 }
 
@@ -41,13 +51,16 @@ function createPhotoRoutes({ service = createPhotoService(), log = console } = {
   router.get('/status', handle(() => service.status()));
   router.get('/search/smart', handle((req) => service.smartSearch(req.query)));
   router.get('/search', handle((req) => service.metadataSearch(req.query)));
+  router.get('/count', handle((req) => service.count(req.query)));
   router.get('/people', handle((req) => service.people(req.query)));
   router.get('/people/:id/assets', handle((req) => service.personAssets(req.params.id, req.query)));
-  router.get('/assets/:id', handle((req) => service.asset(req.params.id)));
+  router.get('/places', handle(() => service.places()));
+  router.get('/tags', handle((req) => service.tags(req.query)));
+  router.get('/assets/:id', handle((req) => service.asset(req.params.id, req.query)));
 
   router.get('/assets/:id/thumbnail', async (req, res) => {
     try {
-      const image = await service.thumbnail(req.params.id, req.query.size);
+      const image = await service.thumbnail(req.params.id, req.query.size, req.query);
       res.set({
         'Content-Type': image.contentType,
         'Content-Length': String(image.bytes.length),
