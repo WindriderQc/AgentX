@@ -71,6 +71,9 @@ _spec.loader.exec_module(coding_runtime)
 _spec = importlib.util.spec_from_file_location("coding_worker_context", HERE / "coding_worker_context.py")
 coding_worker_context = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(coding_worker_context)
+_spec = importlib.util.spec_from_file_location("coding_worker_prompt", HERE / "coding_worker_prompt.py")
+coding_worker_prompt = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(coding_worker_prompt)
 _spec = importlib.util.spec_from_file_location("coding_autonomous", HERE / "coding_autonomous.py")
 coding_autonomous = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(coding_autonomous)
@@ -160,7 +163,7 @@ def worker_patch(model: str, context_size: int | None = None) -> list[dict]:
     ]
 
 
-def sandbox(workspace: Path, home: Path, command: list[str], *, network: bool, timeout_seconds: int, read_only=False, report_request_id="") -> list[str]:
+def sandbox(workspace: Path, home: Path, command: list[str], *, network: bool, timeout_seconds: int, read_only=False, report_request_id="", prompt_file=None) -> list[str]:
     if report_request_id and (not read_only or not coding_progress.REQUEST_ID.fullmatch(report_request_id)):
         raise ValueError("A report working directory requires its read-only source and exact request UUID")
     # DSH workspace-write follows the session cwd. Give it only the private
@@ -179,6 +182,7 @@ def sandbox(workspace: Path, home: Path, command: list[str], *, network: bool, t
         *(arg for name in ("hosts", "resolv.conf", "nsswitch.conf", "ssl", "passwd", "group")
           for arg in ("--ro-bind", f"/etc/{name}", f"/etc/{name}")),
         "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--dir", "/home",
+        *(["--ro-bind", str(prompt_file), coding_worker_prompt.SANDBOX_PROMPT] if prompt_file is not None else []),
         "--bind", str(home), "/home/agent", "--ro-bind", str(NODE_ROOT), "/opt/node",
         "--ro-bind", str(DSH_ROOT), "/opt/dsh", "--ro-bind", str(HERE), "/opt/coding",
         "--ro-bind", str(HERE.parent.parent / "shared/testing/prepareMongo.js"), "/opt/prepareMongo.js",
@@ -382,12 +386,8 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
                              drain_on_disconnect=bool(progress and (progress.cumulative_limits or getattr(progress, 'report_mode', False))),
                              budget_guidance=getattr(progress, "model_guidance", None), request_budget=progress.relay_call_budget() if progress else None)
     try:
-        return supervise(sandbox(workspace, home, [
-            "python3", "/opt/coding/model_relay.py", "inside", "/home/agent/model.sock", str(RELAY_PORT), "--",
-            "/opt/dsh/node_modules/.bin/dsh", "--profile", "headless", "--patch", "/home/agent/.dsh/agentx.patch.json",
-            "--patch", "/opt/coding/guard.patch.yml", "--", prompt,
-        ], network=False, timeout_seconds=timeout_seconds, read_only=read_only,
-            report_request_id=progress.request_id if read_only else ""), progress, home, workspace, on_stop=relay.begin_drain)
+        return coding_worker_prompt.run(SimpleNamespace(sandbox=sandbox, supervise=supervise, relay_port=RELAY_PORT),
+            workspace, home, prompt, timeout_seconds, progress, read_only=read_only, on_stop=relay.begin_drain)
     finally:
         relay.begin_drain()
         if progress and (progress.cumulative_limits or getattr(progress, 'report_mode', False)):
