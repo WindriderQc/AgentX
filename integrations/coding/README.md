@@ -105,6 +105,9 @@ and runs several short worker sessions in fresh context:
   overwriting the original artifact or restarting verified research.
   Other pending groups and ranges run before failed documents are retried,
   so a difficult document cannot hold up the rest of the review twice.
+  Prompts enter through a private read-only file and become the CLI task text
+  inside its Node process, so Linux's per-argument size limit cannot discard
+  a large save pass. Context limits and complete research receipts are preserved.
 - **Render.** After every step the runner regenerates the Markdown report and
   `coverage.json` from the ledger, so findings, tables and totals cannot
   drift, and each step counts as saved progress.
