@@ -99,6 +99,17 @@ Children may see household photos and the names on faces (owner decision,
 `audience` is a product rule, not an access control: on the private network
 any caller may omit it. Family surfaces and family agents must send it.
 
+## Agents
+
+- Core tool bus (`POST /mcp`, default profile): `photo_search` (with
+  `query`: by words; without: exact), `photo_count`, `photo_details`,
+  `photo_names` (`people`, `places`, `tags`). Each takes `audience`.
+- Nestor (OpenClaw plugin `super-dad-memory`): `nestor_photos`. The owner's
+  sessions read everything; another household agent's session always reads
+  with `audience=family`. `show` attaches previews to the reply, because
+  Core's thumbnail links only open on the home network.
+- Other agents with plain HTTPS use the routes above.
+
 ## Not covered
 
 No album, upload, delete, face naming or tagging route. Indexing and its

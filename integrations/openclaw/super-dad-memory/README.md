@@ -45,6 +45,16 @@ scan or GPU sample is said, and an unavailable Data service is a tool failure.
 Only the owner context receives them: file names and paths are the owner's.
 They are optional tools, enabled per agent in `tools.alsoAllow`; grant them to
 `main` only.
+`nestor_photos` answers household photo questions through Core's
+`/api/photos` (Immich behind Core; no Immich key here): search by words or
+exact filters, count, one photo's details, the known names, and `show`, which
+copies up to four previews into the media directory and returns
+`MEDIA:<path>` so Household and Telegram show the picture itself. The
+audience comes from the host session, never from parameters: the owner reads
+everything; a household session of another configured agent (a child or
+family member) always reads with `audience=family` (no hidden photo, no
+unreviewed generated text). Other sessions get no tool. Grant it in
+`tools.alsoAllow` to `main` and to the family agents that may show photos.
 The gateway continuity endpoint only projects agent catalogs and exact native
 run evidence. It does not read or write personal notes.
 When the transcript read throws, the turn projection keeps its fresh run/tool

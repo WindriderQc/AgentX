@@ -29,7 +29,7 @@ The private network needs no account and no code, and nothing is reachable from 
 ## How to reach it
 
 1. **A connector**, when `instance.md` names one: prefer its tools.
-2. **Core tool bus** (`POST <core>/mcp`, JSON-RPC): personal tasks, memory search, briefing, shopping list, vault notes, benchmark results, `check_health`, `ecosystem_snapshot`, `rag_search`. These tools read and write owner data.
+2. **Core tool bus** (`POST <core>/mcp`, JSON-RPC): personal tasks, memory search, briefing, shopping list, vault notes, benchmark results, household photos, `check_health`, `ecosystem_snapshot`, `rag_search`. These tools read and write owner data.
 3. **Plain HTTPS** with curl or fetch. Benchmark and RAG are reachable under `<core>/benchmark/*` and `<core>/rag/*` (for example `<core>/benchmark/api/benchmark/batches/active`, `<core>/rag/api/rag/status`) or through Core's proxies `/api/benchmark-proxy/*` and `/api/rag/*`.
 
 Send the header `x-service-caller: <who you are>` on direct calls; it is logged.
@@ -102,7 +102,9 @@ Owner data stays in the owner's conversation. Sensitive identifiers appear maske
 
 ## Photo questions
 
-Household photos live in Immich; ask Core, never Immich. Core holds the only
+Household photos live in Immich; ask Core, never Immich. On the Core tool bus use
+`photo_search`, `photo_count`, `photo_details` and `photo_names`; with plain
+HTTPS the routes below. Core holds the only
 Immich key: never look for one, ask for one or call Immich directly. First
 `GET /api/photos/status`; `enabled: false` means the instance has no photos.
 
