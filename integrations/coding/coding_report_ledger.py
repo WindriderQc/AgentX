@@ -290,21 +290,49 @@ def evidence_corrections(ledger, edits, source_bytes):
     return staged
 
 
+def document_rechecks(ledger, paths, notes, source_bytes):
+    """Stage source-bound coverage withdrawals requested by new reviewer notes."""
+    if not isinstance(paths, list) or len(paths) > MAX_LEGACY_EDITS:
+        raise LedgerError(f'recheckDocuments must be a list of at most {MAX_LEGACY_EDITS}')
+    prior = ledger.get('legacyReview') or {}
+    if paths and (not isinstance(notes, str) or not notes.strip() or (prior.get('result') == 'merged'
+            and prior.get('notesSha256') == hashlib.sha256(notes.encode()).hexdigest())):
+        raise LedgerError('document rechecks require new reviewer notes')
+    staged, seen = [], set()
+    for path in paths:
+        if not isinstance(path, str) or path not in ledger['documents'] or path in seen:
+            raise LedgerError('each recheck must name a distinct original inventory document')
+        seen.add(path)
+        row = ledger['documents'][path]
+        if row['state'] != 'reviewed':
+            raise LedgerError('only a reviewed document needs reopening')
+        if hashlib.sha256(source_bytes(path)).hexdigest() != row['sha256']:
+            raise LedgerError('the rechecked document does not match the frozen source')
+        staged.append((row, {'path': path, 'sha256': row['sha256'], 'previous': {
+            key: row.get(key) for key in ('state', 'note', 'ranges', 'attempts', 'partialRounds')}}))
+    return staged
+
+
 def merge_legacy_review(ledger, value, reason, notes, source_bytes, step_id, request_id):
     """Record a failed correction step durably, and acknowledge only valid results."""
     before = hashlib.sha256((ledger.get('legacy') or '').encode()).hexdigest()
     try:
         if value is None:
             raise LedgerError(reason or 'no correction result was written')
-        if (not isinstance(value, dict) or not set(value) <= {'legacyEdits', 'evidenceEdits'}
+        if (not isinstance(value, dict) or not set(value) <= {'legacyEdits', 'evidenceEdits', 'recheckDocuments'}
                 or not isinstance(value.get('legacyEdits'), list)):
             raise LedgerError('the correction result must contain a legacyEdits list')
         staged = evidence_corrections(ledger, value.get('evidenceEdits', []), source_bytes)
+        rechecks = document_rechecks(ledger, value.get('recheckDocuments', []), notes, source_bytes)
         merge_step(ledger, [], {'legacyEdits': value['legacyEdits'], 'documents': []}, source_bytes, step_id, allow_empty=True)
         for ref, replace, _ in staged:
             ref['check'] = replace
         if staged:
             ledger['steps'][-1]['evidenceCorrections'] = [receipt for _, _, receipt in staged]
+        for row, _ in rechecks:
+            row.update(state='partial', ranges=[], attempts=0, partialRounds=0)
+        if rechecks:
+            ledger['steps'][-1]['recheckedDocuments'] = [receipt for _, receipt in rechecks]
     except LedgerError as error:
         record_failure(ledger, [], step_id, str(error))
     receipt = ledger['steps'][-1]

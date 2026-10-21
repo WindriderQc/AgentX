@@ -100,6 +100,10 @@ and runs several short worker sessions in fresh context:
   after Core verifies termination, other groups may continue in the same
   budget. Operator stops, unresolved calls and execution deadlines still stop
   the run. Failed corrections keep the report incomplete.
+  New reviewer feedback can request `recheckDocuments` in its correction JSON.
+  Only reviewed documents from the unchanged frozen inventory can reopen as
+  partial. Their evidence and prior review remain recorded; the ordinary group
+  review must produce any corrected note and findings before coverage returns.
   A retry receives the prior rejection reason and, when available in the same
   execution, its own rejected JSON path. It corrects that result without
   overwriting the original artifact or restarting verified research.
