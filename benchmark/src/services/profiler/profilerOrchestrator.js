@@ -35,10 +35,19 @@ const {
 const { persistProfileEvidence } = require('./profilerEvidencePersistence');
 const {
   _detectSpill,
+  _curveContext,
   _runThroughputCurve,
   _runGenerationStability,
   _runLoadTiming
 } = require('./profilerMeasurementPhases');
+
+// Context this model is pinned at on this host (Core preference), or null when
+// it is not pinned or the pins are unreadable.
+async function _pinnedContext(hostUrl, modelName) {
+  const hostPreference = await require('./contextProposalService').loadHostPreference(hostUrl);
+  const pin = (hostPreference?.pinnedModels || []).find(entry => isSameOllamaModel(entry?.model, modelName));
+  return Number(pin?.contextSize) || null;
+}
 
 function agentWorkloadMessage(phase, row) {
   if (phase === 'session') {
@@ -241,7 +250,7 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
         thinking: thinkingProfile
       });
     } catch (err) {
-      if (signal?.aborted || err.code === 'BENCHMARK_CLAIM_LOST' || err.code === 'BENCHMARK_CLAIM_STOPPED') throw err;
+      if (signal?.aborted || err.retainAdmission === true || err.code === 'BENCHMARK_CLAIM_LOST' || err.code === 'BENCHMARK_CLAIM_STOPPED') throw err;
       logger.warn(`Thinking behavior probe failed for ${modelName} on ${hostId}`, { error: err.message });
       thinkingProfile = {
         profiledAt: new Date(),
@@ -416,9 +425,13 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
 
   // --- full: add throughputCurve + generationStability + loadTiming ---
   const maxCtx = profileData.maxVerifiedContext;
-  notify('throughput_curve', { message: `Running throughput curve across 5 context fills (max ${_formatCtx(maxCtx)})…` });
+  const curveCtx = _curveContext(maxCtx, await _pinnedContext(hostUrl, modelName));
   checkpoint();
-  profileData.throughputCurve = await _runThroughputCurve(hostUrl, modelName, maxCtx, settings, notify, { checkpoint, claimIdentity, signal });
+  notify('throughput_curve', { message: curveCtx.source === 'pin'
+    ? `Running throughput curve across 5 context fills of the pinned ${_formatCtx(curveCtx.numCtx)} (verified max ${_formatCtx(maxCtx)})…`
+    : `Running throughput curve across 5 context fills (max ${_formatCtx(maxCtx)})…` });
+  checkpoint();
+  profileData.throughputCurve = await _runThroughputCurve(hostUrl, modelName, curveCtx.numCtx, settings, notify, { checkpoint, claimIdentity, signal });
   notify('generation_stability', { message: 'Testing generation stability at 64/256/512 output tokens…' });
   checkpoint();
   profileData.generationStability = await _runGenerationStability(hostUrl, modelName, maxCtx, settings, notify, { checkpoint, claimIdentity, signal });

@@ -167,6 +167,8 @@ function createProfileCancellation({
       return target?.controller ? { signal: target.controller.signal, timeoutMs: target.timeoutMs + backstopMs } : null;
     },
     disarm(ticket) { if (inFlight?.ticket === ticket) disarm(inFlight); },
+    /** A request outcome is UNKNOWN: stop the run's signal instead of letting later phases fail one by one. */
+    stop(reason) { if (!controller.signal.aborted) controller.abort(reason); },
     settle,
     assertNotCancelled() { if (requestedAt !== null) throw cancelledError(); },
     isAbortedTicket: ticket => abort?.trigger === 'cancel' && abort.ticket === ticket,
@@ -201,4 +203,5 @@ function createProfileCancellation({
   };
 }
 
-module.exports = { createProfileCancellation, psSignature, PROFILE_CANCEL_CONTRACT: CONTRACT };
+module.exports = { createProfileCancellation, psSignature, PROFILE_CANCEL_CONTRACT: CONTRACT,
+  PROFILE_DEADLINE_BACKSTOP_MS: DEFAULTS.backstopMs };

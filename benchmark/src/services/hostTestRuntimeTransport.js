@@ -1,7 +1,24 @@
 'use strict';
 const { readBoundedJson } = require('../../../shared/outboundHttpExecutor');
-const { beginResponseMutation, completeResponseMutation, mutationDispatchAt, rejectedBeforeWork } = require('./profiler/profilerMutationObservation');
+const { beginResponseMutation, completeResponseMutation, failResponseMutation, mutationDispatchAt } = require('./profiler/profilerMutationObservation');
+const requestSignals = new WeakMap();
+
+// The structured reason of an aborted request (a run deadline or an operator
+// cancel) replaces the executor's generic caller-abort error, so the run
+// journal can take its stop proof. A plain local timer has no string code.
+function abortReason(signal) {
+  const reason = signal?.aborted ? signal.reason : null;
+  return reason instanceof Error && typeof reason.code === 'string' ? reason : null;
+}
+
+function withControl(signal, control) {
+  if (!control?.signal) return signal;
+  return signal ? AbortSignal.any([signal, control.signal]) : control.signal;
+}
+
 function createHostTestRequest({ assertRegisteredOperation, hostTestExecutor }) {
+  // `options.runtimeRequest` ({ model, numCtx, timeoutMs }) marks a direct
+  // Ollama generate whose deadline a journaled run owns, as for ollamaClient.
   async function hostTestRequest(operationId, target, options = {}, executor = hostTestExecutor) {
     let requested;
     try {
@@ -9,38 +26,69 @@ function createHostTestRequest({ assertRegisteredOperation, hostTestExecutor }) 
     } catch {
       throw new Error('Host test outbound target is not registered');
     }
-    const method = String(options.method || 'GET').toUpperCase();
+    const { runtimeRequest = null, ...requestOptions } = options;
+    const method = String(requestOptions.method || 'GET').toUpperCase();
     assertRegisteredOperation(operationId, method, requested);
     const receipt = await executor.admitTarget(operationId, requested.href, {
-      signal: options.signal
+      signal: requestOptions.signal
     });
-    const dispatch = () => executor.request(receipt, { ...options, method });
-    return method === 'POST' ? beginResponseMutation(dispatch) : dispatch();
+    const dispatch = async (control = null) => {
+      const signal = withControl(requestOptions.signal, control);
+      try {
+        const response = await executor.request(receipt, { ...requestOptions, method, signal });
+        if (response && typeof response === 'object') requestSignals.set(response, signal);
+        return response;
+      } catch (error) {
+        throw abortReason(signal) || error;
+      }
+    };
+    return method === 'POST' ? beginResponseMutation(dispatch, runtimeRequest) : dispatch();
   }
 
   return hostTestRequest;
 }
+
+// A response that failed after dispatch settles its journal ticket (see
+// failResponseMutation) with the abort reason when its request was aborted.
+async function failResponse(response, error) {
+  const outcome = abortReason(requestSignals.get(response)) || error;
+  await failResponseMutation(response, outcome);
+  return outcome;
+}
+// A 4xx rejection is terminal (rejectedBeforeWork); any other failure leaves
+// the request UNKNOWN in a journaled run.
 async function readExactGenerateTerminal(response, action) {
-  if (!response.ok) {
-    await response.cancel();
-    const error = new Error(`Ollama ${action} returned HTTP ${response.status}`);
-    error.code = 'OLLAMA_GENERATE_REJECTED';
-    error.status = response.status;
-    if (rejectedBeforeWork(error)) await completeResponseMutation(response);
-    throw error;
+  try {
+    if (!response.ok) {
+      await response.cancel();
+      const error = new Error(`Ollama ${action} returned HTTP ${response.status}`);
+      error.code = 'OLLAMA_GENERATE_REJECTED';
+      error.status = response.status;
+      throw error;
+    }
+    const terminal = await readBoundedJson(response);
+    if (!terminal || typeof terminal !== 'object' || Array.isArray(terminal)
+      || terminal.done !== true || typeof terminal.error === 'string') {
+      const error = new Error(`Ollama ${action} ended without an exact terminal done object`);
+      error.code = 'OLLAMA_RESPONSE_INCOMPLETE';
+      throw error;
+    }
+    await completeResponseMutation(response);
+    return terminal;
+  } catch (error) {
+    throw await failResponse(response, error);
   }
-  const terminal = await readBoundedJson(response);
-  if (!terminal || typeof terminal !== 'object' || Array.isArray(terminal)
-    || terminal.done !== true || typeof terminal.error === 'string') {
-    const error = new Error(`Ollama ${action} ended without an exact terminal done object`);
-    error.code = 'OLLAMA_RESPONSE_INCOMPLETE';
-    throw error;
-  }
-  await completeResponseMutation(response);
-  return terminal;
 }
 
 async function readOllamaGenerateStream(response, startedAt, now = Date.now) {
+  try {
+    return await readGenerateStream(response, startedAt, now);
+  } catch (error) {
+    throw await failResponse(response, error);
+  }
+}
+
+async function readGenerateStream(response, startedAt, now) {
   startedAt = mutationDispatchAt(response) ?? startedAt;
   let buffer = '';
   let terminal = null;
@@ -96,4 +144,4 @@ async function readOllamaGenerateStream(response, startedAt, now = Date.now) {
   return { data: { ...terminal, response: output }, timeToFirstTokenMs, clientDurationMs };
 }
 
-module.exports = { createHostTestRequest, readExactGenerateTerminal, readOllamaGenerateStream };
+module.exports = { createHostTestRequest, failResponse, readExactGenerateTerminal, readOllamaGenerateStream };

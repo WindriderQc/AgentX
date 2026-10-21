@@ -4,13 +4,17 @@ const context = new AsyncLocalStorage();
 const responses = new WeakMap();
 const jsonTimings = new WeakMap();
 
-async function beginResponseMutation(operation) {
+// A streamed request. With `request` ({ model, numCtx, timeoutMs }, as for
+// observeJsonMutation) the run owns its deadline and stop proof: the operation
+// receives the journal's request control ({ signal, timeoutMs }) and must
+// throw that signal's reason when it aborted.
+async function beginResponseMutation(operation, request = null) {
   const journal = context.getStore();
-  if (!journal) return operation();
-  const ticket = await journal.beforeMutation();
+  if (!journal) return operation(null);
+  const ticket = await journal.beforeMutation(request && { ...request, abortable: true });
   try {
     const dispatchedAt = Date.now();
-    const response = await operation();
+    const response = await operation(request ? journal.requestControl?.(ticket) ?? null : null);
     responses.set(response, { journal, ticket, dispatchedAt });
     return response;
   } catch (error) {
@@ -23,6 +27,16 @@ async function completeResponseMutation(response) {
   if (!observation) return;
   await observation.journal.completeMutation(observation.ticket);
   responses.delete(response);
+}
+// The response failed after dispatch (stream cut, deadline abort, error
+// status): settle its ticket like a failed dispatch instead of leaving it
+// pending, which refused every later request without saying why.
+async function failResponseMutation(response, error) {
+  const observation = responses.get(response);
+  if (!observation) return;
+  responses.delete(response);
+  if (rejectedBeforeWork(error)) await observation.journal.completeMutation(observation.ticket);
+  else await observation.journal.unknownMutation(observation.ticket, error);
 }
 // Ollama answering 4xx rejected the request before any runtime work (for
 // example a model without thinking support). The request is over: record a
@@ -57,4 +71,6 @@ async function observeJsonMutation(operation, request = null) {
 module.exports = { rejectedBeforeWork, withMutationJournal: (journal, operation) => context.run(journal, operation),
   mutationDispatchAt: response => responses.get(response)?.dispatchedAt,
   jsonMutationDuration: (result, fallback) => jsonTimings.get(result) ?? fallback,
-  beginResponseMutation, completeResponseMutation, observeJsonMutation };
+  // True inside a journaled run, which owns the deadline of an abortable request.
+  mutationJournalActive: () => Boolean(context.getStore()),
+  beginResponseMutation, completeResponseMutation, failResponseMutation, observeJsonMutation };

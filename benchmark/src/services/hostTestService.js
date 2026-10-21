@@ -49,7 +49,9 @@ const {
   verifyAppliedContext
 } = require('./hostTestWarmup');
 const { persistHostSnapshot, persistFailureSnapshot } = require('./hostTestSnapshots');
-const { readExactGenerateTerminal, readOllamaGenerateStream } = require('./hostTestRuntimeTransport');
+const { failResponse, readExactGenerateTerminal, readOllamaGenerateStream } = require('./hostTestRuntimeTransport');
+const { mutationJournalActive } = require('./profiler/profilerMutationObservation');
+const { PROFILE_DEADLINE_BACKSTOP_MS } = require('./profiler/profileCancellation');
 
 /** Parse Ollama's NDJSON stream and measure the first emitted output token. */
 // ── Core Test Functions ────────────────────────────────────────────────────────
@@ -132,6 +134,7 @@ async function testModelOnHost(modelName, hostUrl, options = {}) {
       checkpoint();
     } catch (err) {
       throwIfAborted(signal);
+      if (err.retainAdmission === true) throw err;
       circuitBreaker.recordFailure(hostUrl);
       const snapshot = {
         hostUrl,
@@ -162,8 +165,10 @@ async function testModelOnHost(modelName, hostUrl, options = {}) {
   checkpoint();
   const start = Date.now();
   let probeData;
+  // In a journaled run the run owns this deadline (abort, then /api/ps stop
+  // proof); the local timer becomes a later backstop so the proof comes first.
   const probeDeadline = createLocalDeadline(
-    cfg.timeoutMs,
+    cfg.timeoutMs + (mutationJournalActive() ? PROFILE_DEADLINE_BACKSTOP_MS : 0),
     HOST_TEST_OPERATION_SPECS[HOST_TEST_OPERATIONS.PROBE].policy.deadlineMs
   );
   try {
@@ -183,7 +188,8 @@ async function testModelOnHost(modelName, hostUrl, options = {}) {
           seed: 7
         }
       })),
-      signal: combineAbortSignals(probeDeadline.signal, signal)
+      signal: combineAbortSignals(probeDeadline.signal, signal),
+      runtimeRequest: { model: normalizedModelName, numCtx: numCtx || undefined, timeoutMs: cfg.timeoutMs }
     });
 
     if (!res.ok) {
@@ -191,6 +197,9 @@ async function testModelOnHost(modelName, hostUrl, options = {}) {
       const latencyMs = Date.now() - start;
       circuitBreaker.recordFailure(hostUrl);
       const body = await readBoundedText(res).catch(() => '');
+      // A 4xx is terminal; any other status leaves the request UNKNOWN.
+      await failResponse(res, Object.assign(new Error(`Ollama host test returned HTTP ${res.status}`),
+        { code: 'OLLAMA_GENERATE_REJECTED', status: res.status }));
       const snapshot = {
         hostUrl, hostId, tokensPerSec: 0, latencyMs, numCtx,
         numCtxSource,
@@ -221,7 +230,9 @@ async function testModelOnHost(modelName, hostUrl, options = {}) {
     if (err.retainAdmission === true || err.code === 'HOST_SNAPSHOT_RECONCILIATION_PENDING') throw err;
     circuitBreaker.recordFailure(hostUrl);
     const latencyMs = Date.now() - start;
+    // deadlineAbort: the run's deadline fired and Ollama proved the request stopped.
     const isTimeout = probeDeadline.expired
+      || err.deadlineAbort === true
       || err.code === OUTBOUND_ERROR_CODES.DEADLINE_EXCEEDED
       || err.type === 'request-timeout'
       || err.message.includes('timeout');

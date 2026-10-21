@@ -1,5 +1,9 @@
 'use strict';
 const { runJournaledProfile, prepareProfilerRunJournals } = require('./profilerRunJournal');
+// The run journal's signal stops the profile at its first UNKNOWN request.
+const withRunSignal = (signal, runSignal) => (runSignal
+  ? (signal ? AbortSignal.any([signal, runSignal]) : runSignal)
+  : signal);
 function createProfilerPipelineDriver({ profile, hostTestService }) {
   async function scout(modelName, hosts, { assertClaimActive, claimIdentityFor, signal, journalLease } = {}) {
     if (journalLease) await prepareProfilerRunJournals(journalLease, hosts, modelName);
@@ -7,10 +11,10 @@ function createProfilerPipelineDriver({ profile, hostTestService }) {
     for (const host of hosts) {
       try {
         assertClaimActive?.();
-        const operation = () => hostTestService.testModelOnHost(modelName, host.hostUrl, {
+        const operation = runSignal => hostTestService.testModelOnHost(modelName, host.hostUrl, {
           benchmarkClaim: claimIdentityFor?.(host.hostUrl) || null,
           assertClaimActive,
-          signal
+          signal: withRunSignal(signal, runSignal)
         });
         const testResult = journalLease ? await runJournaledProfile(journalLease, { ...host, modelName }, operation) : await operation();
         assertClaimActive?.();
@@ -34,10 +38,10 @@ function createProfilerPipelineDriver({ profile, hostTestService }) {
     for (const host of hosts) {
       try {
         assertClaimActive?.();
-        const operation = () => profile(modelName, host.hostId, host.hostUrl, 'full', {
+        const operation = runSignal => profile(modelName, host.hostId, host.hostUrl, 'full', {
           assertClaimActive,
           claimIdentity: claimIdentityFor?.(host.hostUrl) || null,
-          signal
+          signal: withRunSignal(signal, runSignal)
         });
         const profileResult = journalLease ? await runJournaledProfile(journalLease, { ...host, modelName }, operation) : await operation();
         results.push({

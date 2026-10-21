@@ -109,6 +109,60 @@ describe('_runThroughputCurve()', () => {
     expect(firstCall[2].numCtx).toBe(512);
     expect(firstCall[2].promptWorkloadMode).toBe('scaled');
   });
+
+  it('sizes each long-fill timeout from the slowest prompt-eval rate measured so far', async () => {
+    // UGAlien 2026-10-21: ~970 tok/s prefill at 262144; the 50% fill needed ~100 s against a flat 60 s.
+    const rates = { 10: 1200, 25: 970, 50: 900, 75: 800, 90: 700 };
+    hostTestService.testModelOnHost.mockImplementation(async (_model, _host, options) => ({
+      status: 'pass', tokensPerSec: 40, vramUsedMiB: 5000, promptEvalTokensPerSec: rates[options.contextFillPct]
+    }));
+    await orchestrator._runThroughputCurve(HOST_URL, MODEL_NAME, 262144, DEFAULT_SETTINGS);
+
+    const timeouts = hostTestService.testModelOnHost.mock.calls.map(call => call[2].timeoutMs);
+    expect(timeouts[0]).toBe(60_000); // nothing measured yet: the configured floor
+    // Later samples of the 10% fill use its own measured rate.
+    expect(timeouts[1]).toBe(60_000 + Math.round(2 * (26214 / 1200) * 1000));
+    // The 50% fill (131072 tokens) after a 970 tok/s sample: ~330 s instead of 60 s.
+    const firstHalfFill = timeouts[10];
+    expect(firstHalfFill).toBe(60_000 + Math.round(2 * (131072 / 970) * 1000));
+    expect(Math.max(...timeouts)).toBeLessThanOrEqual(540_000);
+  });
+
+  it('ends the curve at the first timed-out fill; later fills are larger', async () => {
+    hostTestService.testModelOnHost.mockImplementation(async (_model, _host, options) => (options.contextFillPct < 50
+      ? { status: 'pass', tokensPerSec: 40, vramUsedMiB: 5000, promptEvalTokensPerSec: 1000 }
+      : { status: 'timeout', tokensPerSec: 0, error: 'Ollama request timed out; Ollama confirmed the request stopped' }));
+    const results = await orchestrator._runThroughputCurve(HOST_URL, MODEL_NAME, 196608, DEFAULT_SETTINGS);
+
+    expect(results.map(row => row.contextFillPct)).toEqual([10, 25, 50]);
+    expect(results[2]).toMatchObject({ sampleCount: 1, passingSampleCount: 0 });
+    expect(hostTestService.testModelOnHost).toHaveBeenCalledTimes(11);
+  });
+
+  it('stops at an UNKNOWN request outcome instead of recording it as a failed sample', async () => {
+    hostTestService.testModelOnHost.mockRejectedValue(Object.assign(new Error('Prior profiler request has no terminal receipt'),
+      { code: 'PROFILER_MUTATION_OUTCOME_UNKNOWN', retainAdmission: true }));
+    await expect(orchestrator._runThroughputCurve(HOST_URL, MODEL_NAME, 8192, DEFAULT_SETTINGS))
+      .rejects.toMatchObject({ code: 'PROFILER_MUTATION_OUTCOME_UNKNOWN' });
+    expect(hostTestService.testModelOnHost).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('curve request sizing helpers', () => {
+  const { _curveRequestTimeoutMs, _curveContext } = require('../../../src/services/profiler/profilerMeasurementPhases');
+
+  it('keeps the floor without a measured rate and caps below the probe transport policy', () => {
+    expect(_curveRequestTimeoutMs(98_304, [], 60_000)).toBe(60_000);
+    expect(_curveRequestTimeoutMs(98_304, [null, 0], 60_000)).toBe(60_000);
+    expect(_curveRequestTimeoutMs(98_304, [970], 60_000)).toBe(60_000 + Math.round(2 * (98_304 / 970) * 1000));
+    expect(_curveRequestTimeoutMs(235_929, [100], 60_000)).toBe(540_000);
+  });
+
+  it('takes fills of the pinned context when the pin is below the verified maximum', () => {
+    expect(_curveContext(262144, 196608)).toEqual({ numCtx: 196608, source: 'pin' });
+    expect(_curveContext(131072, 196608)).toEqual({ numCtx: 131072, source: 'max_verified' });
+    expect(_curveContext(262144, null)).toEqual({ numCtx: 262144, source: 'max_verified' });
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -493,6 +493,7 @@ async function recordInference(data) {
                 hostKey: data.routedHost || null,
                 model: data.model || null,
                 caller: data.caller || null,
+                callerDetail: data.callerDetail || null,
                 taskType: data.taskType || null,
                 workItemId: data.workItemId || null,
                 correlationId: data.correlationId || null,
