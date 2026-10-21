@@ -176,7 +176,14 @@ async function list(input = {}) {
   const [rows, total] = await Promise.all([
     Entry.find(filter).sort({ sourceDate: 1, _id: 1 }).skip(offset).limit(limit).lean(), Entry.countDocuments(filter)
   ]);
-  return { authority: 'agentx.core', entries: rows.map(project), total, nextOffset: offset + rows.length < total ? offset + rows.length : null,
+  // A kept entry shows its souvenir as it is now, with the owner's corrections.
+  const kept = new Map((await notes().souvenirs(rows.map(row => row.souvenirNoteId).filter(Boolean))).map(note => [note.id, note]));
+  const entries = rows.map(row => {
+    const note = row.souvenirNoteId && row.reviewState !== 'forgotten' ? kept.get(String(row.souvenirNoteId)) : null;
+    return { ...project(row), ...(note ? { souvenir: { id: note.id, revision: note.revision, text: note.text, eventDate: note.eventDate,
+      eventDatePrecision: note.eventDatePrecision, people: note.people, places: note.places } } : {}) };
+  });
+  return { authority: 'agentx.core', entries, total, nextOffset: offset + rows.length < total ? offset + rows.length : null,
     ordering: 'source-date-oldest-first', eventDateCoverage: 'event-dates-are-independent-of-source-dates' };
 }
 

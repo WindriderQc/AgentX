@@ -86,7 +86,7 @@ function project(row) {
     sensitivity: row.sensitivity, source: row.source, createdAt: row.createdAt,
     updatedAt: row.updatedAt, expiresAt: row.expiresAt || null,
     ...(row.kind === 'souvenir' ? { eventDate: row.eventDate || '', eventDatePrecision: row.eventDatePrecision || 'unknown',
-      people: row.people || [], places: row.places || [], sourceRefs: row.sourceRefs || [] } : {}) };
+      people: row.people || [], places: row.places || [], sourceRefs: row.sourceRefs || [], revision: row.revision || 0 } : {}) };
 }
 
 // Bind once in trusted server code. Request bodies and personas cannot widen
@@ -209,6 +209,50 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     return { ok: true, authority: 'agentx.core', ...project(row), created: Boolean(result.lastErrorObject?.upserted) };
   }
 
+  // The owner corrects a kept souvenir: its date, people, places or text. The
+  // sources it was kept from never change. Values are sealed like a keep, and
+  // the revision on screen must still be the current one.
+  async function editSouvenir(id, input = {}) {
+    if (audience !== 'owner') throw error('Souvenirs belong to the owner space', 403);
+    noteId(id);
+    if (!Number.isSafeInteger(input.revision) || input.revision < 0) throw error('The current souvenir revision is required');
+    const existing = await MemoryNote.findOne({ ...boundary, _id: id, kind: 'souvenir' }).lean();
+    if (!existing || existing.status === 'forgotten') throw error('The selected souvenir no longer exists', 404);
+    const current = existing.revision || 0;
+    if (input.revision !== current) throw error('Souvenir changed; reload before correcting it', 409);
+    const sealAll = async values => Promise.all(labels(values).map(async value => (await seal(value)).text));
+    const set = {};
+    if (input.eventDate !== undefined || input.eventDatePrecision !== undefined) {
+      const precision = input.eventDatePrecision ?? (input.eventDate ? 'day' : 'unknown');
+      Object.assign(set, souvenirDate(input.eventDate || '', precision));
+    }
+    if (input.people !== undefined) set.people = await sealAll(input.people);
+    if (input.places !== undefined) set.places = await sealAll(input.places);
+    if (input.text !== undefined) {
+      set.text = (await seal(cleanText(input.text))).text;
+      set.contentHash = digest(set.text.toLowerCase());
+    }
+    const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+    const changes = Object.fromEntries(Object.entries(set).filter(([key, value]) =>
+      ['people', 'places'].includes(key) ? !same(value, existing[key] || []) : !same(value, existing[key])));
+    if (!Object.keys(changes).length) return { ok: true, authority: 'agentx.core', ...project(existing), changed: false };
+    // A note without a revision yet matches revision 0 (null also matches a missing field).
+    const fence = current === 0 ? { revision: { $in: [0, null] } } : { revision: current };
+    const row = await MemoryNote.findOneAndUpdate({ ...boundary, _id: id, kind: 'souvenir', status: 'active', ...fence },
+      { $set: { ...changes, revision: current + 1 } }, { new: true, runValidators: true }).lean();
+    if (!row) throw error('Souvenir changed; reload before correcting it', 409);
+    if (changes.text) indexLater(row);
+    return { ok: true, authority: 'agentx.core', ...project(row), changed: true };
+  }
+
+  // Active souvenirs of this space by id, for views that show them beside their source.
+  async function souvenirs(ids = []) {
+    const wanted = [...new Set(ids)].filter(id => typeof id === 'string' && /^[a-f0-9]{24}$/.test(id)).slice(0, 500);
+    if (!wanted.length) return [];
+    const rows = await MemoryNote.find({ ...boundary, _id: { $in: wanted }, kind: 'souvenir', status: 'active' }).lean();
+    return rows.map(project);
+  }
+
   async function forget(id) {
     noteId(id);
     const row = await MemoryNote.findOneAndUpdate({ ...boundary, _id: id, status: { $ne: 'forgotten' } },
@@ -272,7 +316,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
   }
   const reindex = () => index.rebuild(boundary);
 
-  return Object.freeze({ list, remember, record, keepSouvenir, forget, search, similar, reindex, count: () => MemoryNote.countDocuments(active()) });
+  return Object.freeze({ list, remember, record, keepSouvenir, editSouvenir, souvenirs, forget, search, similar, reindex, count: () => MemoryNote.countDocuments(active()) });
 }
 
 const personal = () => forSpace({ audience: 'owner', scopeId: 'personal', packIds: ['personal_operator'] });

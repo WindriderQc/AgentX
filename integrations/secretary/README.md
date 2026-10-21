@@ -227,6 +227,14 @@ source year and to souvenirs kept or not yet kept (`souvenir=kept|not-kept`). De
 history; forgotten identities suppress replay, forgetting a linked owner note or
 souvenir suppresses its historical source too, and forgetting the source forgets
 its souvenir.
+`GET /api/secretary/souvenirs/:id` reads a kept souvenir and
+`POST /api/secretary/souvenirs/:id` lets the owner correct its event date
+(`eventDate`, `eventDatePrecision`; an empty date makes it unknown), people,
+places or text with the souvenir's current `revision`. Its source references
+never change, values are sealed like a keep, and a stale revision is refused
+(409). The history list returns each kept entry's souvenir as corrected. This is
+an owner surface only: the Nestor consumer contract has no route to it. The
+private recall picks up a correction at its next sync.
 
 The source reader uses the preserved `.eml`, pinned by its SHA-256, through the
 existing native Secretary host bridge. It paginates body text without Gmail or
