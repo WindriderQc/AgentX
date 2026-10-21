@@ -21,6 +21,9 @@ const schema = new mongoose.Schema({
   people: { type: [String], default: undefined },
   places: { type: [String], default: undefined },
   sourceRefs: { type: [{ _id: false, system: String, id: String }], default: undefined },
+  // Fences the owner's corrections of a souvenir. Notes written before it
+  // existed have no value and count as revision 0.
+  revision: { type: Number, default: undefined, min: 0 },
   source: { type: String, default: 'explicit-ui' },
   sourceTraceId: { type: String, unique: true, sparse: true },
   contentHash: { type: String, default: '', index: true },
