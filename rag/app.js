@@ -211,6 +211,8 @@ app.use('/api/rag', (req, res, next) => {
   next();
 });
 
+// The owner's private recall corpus, before the shared routes, behind Core's token.
+app.use('/api/rag/owner-mail', require('./routes/ownerMail.routes'));
 app.use('/api/rag', require('./routes/rag'));
 app.use('/api/rag', require('./routes/document.routes'));
 app.use('/api/rag', require('./routes/manifest.routes'));

@@ -3359,6 +3359,27 @@
       "category": "operations",
       "secret": false,
       "description": "Poll interval of the Data weather feed. Unset: 60000 ms."
+    },
+    "OWNER_MAIL_RAG_TOKEN": {
+      "services": [
+        "core",
+        "rag"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "security",
+      "secret": true,
+      "description": "Shared secret, at least 32 characters, that only Core sends to RAG to reach the owner private recall corpus (/api/rag/owner-mail). Keep it in the instance env on the host. Unset: the owner recall corpus refuses every call and Nestor recall of mail is unavailable."
+    },
+    "QDRANT_OWNER_MAIL_COLLECTION": {
+      "services": [
+        "rag"
+      ],
+      "forwarded": true,
+      "default": "agentx_owner_mail",
+      "category": "memory",
+      "secret": false,
+      "description": "Qdrant collection of the owner private recall corpus (mail, read attachments, souvenirs, people). It must differ from QDRANT_COLLECTION; shared search, listing, cleanup and snapshots never read it. Unset: agentx_owner_mail."
     }
   }
 }

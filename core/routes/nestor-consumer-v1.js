@@ -287,6 +287,16 @@ function createNestorConsumerV1Routes({ runtimeServices, systemHealth } = {}) {
     envelope.success(res, result);
   }));
 
+  // The owner's private recall corpus (mail, read attachments, souvenirs,
+  // people) with provenance. Same owner contract as notes; never on /mcp.
+  router.post('/memory/recall', asyncRoute(async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const query = typeof req.body?.query === 'string' ? req.body.query : '';
+    const results = await require('../src/services/memoryReadService').forAudience('owner-private')
+      .search(query, { topK: req.body?.limit });
+    envelope.success(res, { authority: 'agentx.core', query: query.trim(), results });
+  }));
+
   // Dated mail digests: owner-only journal, kept out of memory notes.
   router.post('/mail-journal', asyncRoute(async (req, res) => {
     res.set('Cache-Control', 'no-store');
