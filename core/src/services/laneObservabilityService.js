@@ -34,6 +34,10 @@ const RULE_IDS = Object.freeze([
   'lane-latency-drift',
   'runtime-recovery-quarantine',
 ]);
+// Callers whose answer is not an output by design: Benchmark's host-test
+// warm-up asks one token (num_predict 1) only to load and prime the model, so
+// a length stop with no visible final is its expected outcome, not a failure.
+const OUTPUT_CONTRACT_EXEMPT_CALLERS = new Set(['benchmark-host-test-warmup']);
 const LATENCY_POLICY = Object.freeze({
   scanIntervalMs: 5 * 60 * 1000,
   recentWindowMs: 60 * 60 * 1000,
@@ -218,7 +222,8 @@ function buildInferenceEvents(input = {}) {
     || transformations.upstreamTruncationRisk === true;
   const outcomeTruncation = outcome?.truncated === true || outcome?.completed === false;
   const noVisibleFinal = status === 'success' && outcome?.visibleFinal === false;
-  if (contextTruncation || outcomeTruncation || noVisibleFinal) {
+  const exempt = OUTPUT_CONTRACT_EXEMPT_CALLERS.has(input.callerDetail);
+  if (!exempt && (contextTruncation || outcomeTruncation || noVisibleFinal)) {
     const failureKinds = [
       ...(contextTruncation || outcomeTruncation ? ['truncation'] : []),
       ...(noVisibleFinal ? ['no_visible_final'] : []),

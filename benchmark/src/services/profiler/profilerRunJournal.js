@@ -40,6 +40,13 @@ async function createRunJournal(lease, { hostId, hostUrl, modelName }) {
   const tickets = new Set();
   let cancellation = null;
   let deadlineUnproven = null;
+  // The first UNKNOWN outcome stops the run: every later request would be
+  // refused anyway, and the host stays quarantined until restart attestation.
+  function stopRun(cause) {
+    cancellation?.stop(Object.assign(journalError(
+      'A profiler request has no terminal receipt; the profile stopped at the first unknown outcome',
+      'PROFILER_MUTATION_OUTCOME_UNKNOWN'), { cause }));
+  }
   async function update(fields, requireLease = true) {
     if (requireLease) lease.assertActive();
     const result = await HostProfile.updateOne(filter, { $set: Object.fromEntries(
@@ -80,7 +87,9 @@ async function createRunJournal(lease, { hostId, hostUrl, modelName }) {
     uncertain = true;
     deadlineUnproven = result.reason;
     error.deadlineStopUnproven = true;
+    error.retainAdmission = true;
     error.message = `${error.message}; ${result.reason}. The request stays UNKNOWN until a runtime restart attestation`;
+    stopRun(error);
     await update({ state: 'unknown', serverTerminalObserved: false, reason: 'PROFILE_DEADLINE_STOP_UNPROVEN',
       deadlineAbort: { proven: false, reason: result.reason, evidence: result.evidence } }, false);
   }
@@ -117,6 +126,7 @@ async function createRunJournal(lease, { hostId, hostUrl, modelName }) {
         return;
       }
       uncertain = true;
+      stopRun(error);
       await update({ state: 'unknown', serverTerminalObserved: false,
         reason: error?.code || 'Profiler request terminality unknown' }, false);
     },
@@ -125,7 +135,8 @@ async function createRunJournal(lease, { hostId, hostUrl, modelName }) {
       cancellation = runCancellation || createProfileCancellation({ hostUrl });
       try {
         await update({ model: modelName, ownerClaimedAt: new Date() });
-        const result = await withMutationJournal(journal, operation);
+        // The operation may combine this signal with its own to stop at the first UNKNOWN.
+        const result = await withMutationJournal(journal, () => operation(cancellation.signal));
         if (pending || uncertain) throw journalError('Profiler request terminality remains unknown', 'PROFILER_MUTATION_OUTCOME_UNKNOWN');
         await update({ state: 'pending_reconciliation', reason: 'Profile requests settled; exact host restoration pending' });
         return result;

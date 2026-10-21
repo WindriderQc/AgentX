@@ -162,6 +162,16 @@ describe('laneObservabilityService', () => {
     expect(serialized).not.toContain('must-never-appear');
   });
 
+  test('the one-token host-test warm-up is not an output-contract failure; its context check stays', async () => {
+    const result = await laneObservability.observeInference(inferenceInput({
+      callerDetail: 'benchmark-host-test-warmup',
+    }));
+
+    expect(result).toEqual({ emitted: 1, matched: 1 });
+    expect(await Alert.countDocuments({ ruleId: 'lane-output-contract-failure' })).toBe(0);
+    expect(await Alert.countDocuments({ ruleId: 'lane-context-mismatch' })).toBe(1);
+  });
+
   test('incidentKey separates contracts while preserving per-contract deduplication', async () => {
     const base = {
       component: 'primary',

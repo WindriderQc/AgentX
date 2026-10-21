@@ -2264,9 +2264,19 @@ receipt (`reconciliation.deadlineAbort`), the step is recorded as timed out at
 that context, the probe sends no further request, and the profile completes with
 the context verified below it. Not proven: the request stays UNKNOWN with reason
 `PROFILE_DEADLINE_STOP_UNPROVEN`, the profile fails with that explanation and
-needs the restart attestation below. A request that cannot carry the proof (a
-model still loading at the deadline, a streamed or Core-routed request) keeps
-the client deadline and stays UNKNOWN when it expires.
+needs the restart attestation below. The streamed host-test probe (the
+throughput curve and the other Full phases that use it) carries the same
+deadline and proof: a long fill that outlasts its deadline and is proven
+stopped is a measured timeout, and the curve ends at that fill. A request that
+cannot carry the proof (a model still loading at the deadline, a Core-routed
+warm-up) keeps the client deadline and stays UNKNOWN when it expires.
+
+The first UNKNOWN outcome in a run (an unproven deadline stop, a stream cut
+before its terminal frame, an Ollama 5xx) stops the profile at once: a pipeline
+run's signal is aborted with `PROFILER_MUTATION_OUTCOME_UNKNOWN`, instead of
+every later phase being refused one by one with "Prior profiler request has no
+terminal receipt". The host stays quarantined until the restart attestation
+below, as before.
 
 A watchdog probe is admitted only on a host where Core has admitted nothing
 else: on a host that serves one request at a time it would otherwise queue

@@ -61,6 +61,23 @@ performance knee therefore price a nearly full window. They do not measure a
 short prompt in a large allocated window; Full's throughput curve, which holds
 the allocation fixed and varies the fill, is the evidence for that.
 
+The throughput curve fills the window the host serves: when the model is pinned
+on the host below the verified maximum, the 10–90 % fills are taken of the
+pinned context (Core's pin), otherwise of `maxVerifiedContext`. The context
+probe above still verifies the maximum, so a pin proposal keeps its evidence;
+only the curve stops sending above-pin fills that no route uses and that are
+the longest requests of a Full run. When Core's pins are unreadable, the curve
+uses the verified maximum.
+
+Each curve request's deadline is sized from its own prompt. The first request
+uses the host-test timeout (`testTimeoutSec`, `HOST_TEST_TIMEOUT_MS`); every
+later one gets that floor plus twice the prefill time predicted from the slowest
+prompt-eval rate measured so far in the curve, capped at 540 s (the probe's
+600 s transport policy less the stop-proof backstop). A flat 60 s cut a 50 %
+fill at 262,144 tokens (~97k tokens at ~970 tok/s) and quarantined the host.
+A fill that still times out, proven stopped, ends the curve; later fills are
+larger.
+
 The prompt generator's requested fill is not the measured tokenizer coverage.
 Use `promptTokens` and `promptCoveragePct` for the actual workload. Neither an
 allocated context window nor a partially filled successful probe proves recall

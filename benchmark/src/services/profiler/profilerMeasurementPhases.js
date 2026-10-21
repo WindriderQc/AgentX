@@ -61,29 +61,64 @@ async function _detectSpill(hostUrl, modelName, signal = null) {
   }
 }
 
+// A curve request must outlast its own prefill. Above the floor (the host-test
+// timeout, which covers load checks, decode and overhead) each fill gets twice
+// the prefill time predicted from the slowest prompt-eval rate measured so far:
+// the rate drops as the fill grows. The cap stays below the probe's 600 s
+// transport policy minus the stop-proof backstop.
+const CURVE_TIMEOUT_CAP_MS = 540_000;
+const CURVE_PREFILL_MARGIN = 2;
+
+function _curveRequestTimeoutMs(promptTokens, promptEvalRates, floorMs) {
+  const floor = Math.min(CURVE_TIMEOUT_CAP_MS, Math.max(1000, Number(floorMs) || 60_000));
+  const rates = (promptEvalRates || []).map(Number).filter(rate => Number.isFinite(rate) && rate > 0);
+  if (!rates.length || !(promptTokens > 0)) return floor;
+  const prefillMs = (promptTokens / Math.min(...rates)) * 1000;
+  return Math.min(CURVE_TIMEOUT_CAP_MS, Math.round(floor + CURVE_PREFILL_MARGIN * prefillMs));
+}
+
+// The curve describes the window the host serves: when the model is pinned on
+// the host below the verified maximum, fills are taken of the pinned
+// allocation. The context probe still verifies the maximum for pin proposals.
+function _curveContext(maxVerifiedCtx, pinnedCtx) {
+  const max = Number(maxVerifiedCtx);
+  const pin = Number(pinnedCtx);
+  return Number.isSafeInteger(pin) && pin > 0 && (!(max > 0) || pin < max)
+    ? { numCtx: pin, source: 'pin' }
+    : { numCtx: maxVerifiedCtx, source: 'max_verified' };
+}
+
 /**
  * Test throughput at 5 context fill percentages: 10%, 25%, 50%, 75%, 90%.
  * Returns array of { contextFillPct, numCtx, tokensPerSec, vramUsedMiB, gpuOffloaded }.
+ * A fill that times out ends the curve: every later fill is larger.
  */
 async function _runThroughputCurve(hostUrl, modelName, maxCtx, settings, notify, { checkpoint = () => {}, claimIdentity = null, signal = null } = {}) {
   const percentages = [10, 25, 50, 75, 90];
   const minimumSamples = Math.max(5, Number(settings.fullPhaseRepeats) || 5);
+  const floorMs = (Number(settings.testTimeoutSec) || 60) * 1000;
+  const promptEvalRates = [];
   const results = [];
+  let timedOut = false;
 
   for (const pct of percentages) {
+    if (timedOut) break;
     checkpoint();
     const numCtx = Math.max(512, Math.round(maxCtx));
     if (notify) notify('throughput_curve', { message: `Throughput curve: testing ${pct}% fill (${_formatCtx(numCtx)} ctx)…` });
+    // Same prompt size as hostTestConfig.buildProbePlan for a scaled workload.
+    const promptTokens = Math.max(100, Math.floor(numCtx * (pct / 100)));
     const samples = [];
-    for (let repeat = 1; repeat <= minimumSamples; repeat += 1) {
+    for (let repeat = 1; repeat <= minimumSamples && !timedOut; repeat += 1) {
       try {
         checkpoint();
+        const timeoutMs = _curveRequestTimeoutMs(promptTokens, promptEvalRates, floorMs);
         const testResult = await hostTestService.testModelOnHost(modelName, hostUrl, {
           numPredict: settings.numPredict,
           contextFillPct: pct,
           numCtx,
           promptWorkloadMode: 'scaled',
-          timeoutMs: settings.testTimeoutSec * 1000,
+          timeoutMs,
           benchmarkClaim: claimIdentity,
           assertClaimActive: checkpoint,
           signal
@@ -91,16 +126,21 @@ async function _runThroughputCurve(hostUrl, modelName, maxCtx, settings, notify,
         checkpoint();
         const spillCheck = await _detectSpill(hostUrl, modelName, signal);
         checkpoint();
+        if (testResult.status === 'pass') promptEvalRates.push(testResult.promptEvalTokensPerSec);
+        if (testResult.status === 'timeout') timedOut = true;
         samples.push({
           repeat,
           status: testResult.status === 'pass' ? 'pass' : 'error',
           tokensPerSec: testResult.tokensPerSec,
+          promptEvalTokensPerSec: testResult.promptEvalTokensPerSec ?? null,
+          timeoutMs,
           vramUsedMiB: testResult.vramUsedMiB,
           gpuOffloaded: spillCheck.verified === true ? spillCheck.spillDetected : null,
           error: testResult.status === 'pass' ? null : (testResult.error || testResult.status)
         });
       } catch (err) {
-        if (signal?.aborted || err.code === 'BENCHMARK_CLAIM_LOST' || err.code === 'BENCHMARK_CLAIM_STOPPED') throw err;
+        if (signal?.aborted || err.retainAdmission === true
+          || err.code === 'BENCHMARK_CLAIM_LOST' || err.code === 'BENCHMARK_CLAIM_STOPPED') throw err;
         logger.warn(`_runThroughputCurve: ${pct}% repeat ${repeat} failed for ${modelName} — ${err.message}`);
         samples.push({ repeat, status: 'error', tokensPerSec: null, vramUsedMiB: null, gpuOffloaded: null, error: err.message });
       }
@@ -165,7 +205,8 @@ async function _runGenerationStability(hostUrl, modelName, numCtx, settings, not
           error: testResult.status === 'pass' ? null : (testResult.error || testResult.status)
         });
       } catch (err) {
-        if (signal?.aborted || err.code === 'BENCHMARK_CLAIM_LOST' || err.code === 'BENCHMARK_CLAIM_STOPPED') throw err;
+        if (signal?.aborted || err.retainAdmission === true
+          || err.code === 'BENCHMARK_CLAIM_LOST' || err.code === 'BENCHMARK_CLAIM_STOPPED') throw err;
         logger.warn(`_runGenerationStability: ${target} tokens repeat ${repeat} failed for ${modelName} — ${err.message}`);
         samples.push({ repeat, status: 'error', tokensPerSec: null, totalLatencyMs: null, error: err.message });
       }
@@ -282,4 +323,4 @@ async function _runLoadTiming(hostUrl, modelName, { checkpoint = () => {}, signa
   };
 }
 
-module.exports = { _detectSpill, _runThroughputCurve, _runGenerationStability, _runLoadTiming };
+module.exports = { _detectSpill, _curveRequestTimeoutMs, _curveContext, _runThroughputCurve, _runGenerationStability, _runLoadTiming };
