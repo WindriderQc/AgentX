@@ -142,6 +142,20 @@ describe('Pipeline launch reconciliation', () => {
     expect(reloaded.canLaunch('0700')).toBe(false);
   });
 
+  test('reload preserves the executor binding in status and follow-up requests', async () => {
+    const bound = { ...selection, executorId: 'brutal-local' };
+    storage.setItem('agentx.pipeline.simpleWorkerRequest.v1', JSON.stringify(bound));
+    request.mockResolvedValue(snapshot(run('waiting', 'queued', {
+      executorId: 'brutal-local', canCancel: true
+    }), true));
+    const controller = make();
+    await controller.refresh();
+    expect(controller.pending).toEqual(bound);
+    expect(request.mock.calls[0][0]).toContain(`requestId=${ID}&executorId=brutal-local`);
+    await controller.cancel();
+    expect(JSON.parse(posts()[0][1].body)).toEqual({ pipelineId: '0700', executorId: 'brutal-local' });
+  });
+
   test('failed or outdated status cannot re-enable an old candidate', async () => {
     const controller = make();
     await controller.refresh();

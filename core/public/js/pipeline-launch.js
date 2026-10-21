@@ -117,7 +117,11 @@
       try {
         const value = JSON.parse(this.storage?.getItem(STORAGE_KEY) || 'null');
         return value && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value.requestId) && /^\d{4}$/.test(value.pipelineId)
-          && Number.isSafeInteger(value.expectedAttemptCount) && value.expectedAttemptCount >= 0 ? { requestId: value.requestId, pipelineId: value.pipelineId, expectedAttemptCount: value.expectedAttemptCount, ...PipelineLaunchController.profile(value) } : null;
+          && Number.isSafeInteger(value.expectedAttemptCount) && value.expectedAttemptCount >= 0 ? {
+            requestId: value.requestId, pipelineId: value.pipelineId, expectedAttemptCount: value.expectedAttemptCount,
+            ...(typeof value.executorId === 'string' && /^[a-z][a-z0-9_-]{0,63}$/.test(value.executorId)
+              ? { executorId: value.executorId } : {}), ...PipelineLaunchController.profile(value)
+          } : null;
       } catch { return null; }
     }
     persist() {
@@ -157,7 +161,8 @@
       this.checking = true;
       this.changed();
       try {
-        const query = this.pending ? `?requestId=${encodeURIComponent(this.pending.requestId)}` : '';
+        const query = this.pending ? `?requestId=${encodeURIComponent(this.pending.requestId)}`
+          + (this.pending.executorId ? `&executorId=${encodeURIComponent(this.pending.executorId)}` : '') : '';
         const payload = await this.boundedRequest(`/api/runtime-bridges/coding-dispatch/status${query}`, {}, controller);
         if (version !== this.version || this.disposed) return;
         if (payload?.data?.contractVersion !== 2 || !Array.isArray(payload.data.candidates)) throw new Error('The host admission and request status are unavailable. Refresh to recover.');
@@ -166,13 +171,16 @@
         const run = this.control.run;
         if (!this.pending && run?.requestId && run.pipelineId && Number.isSafeInteger(run.expectedAttemptCount)
           && ['submitting', 'uncertain', 'accepted', 'running', 'stopping', 'unknown', 'waiting'].includes(run.phase)) {
-          this.pending = { requestId: run.requestId, pipelineId: run.pipelineId, expectedAttemptCount: run.expectedAttemptCount, ...PipelineLaunchController.profile(run) };
+          this.pending = { requestId: run.requestId, pipelineId: run.pipelineId, expectedAttemptCount: run.expectedAttemptCount,
+            ...(run.executorId && { executorId: run.executorId }), ...PipelineLaunchController.profile(run) };
           this.persist();
         }
         if (this.pending && run?.requestId === this.pending.requestId && run.pipelineId
           && Number.isSafeInteger(run.expectedAttemptCount)) {
           if (run.pipelineId !== this.pending.pipelineId) throw new Error('This saved request belongs to a different task. Inspect its original receipt.');
-          this.pending = { requestId: run.requestId, pipelineId: run.pipelineId, expectedAttemptCount: run.expectedAttemptCount, ...PipelineLaunchController.profile(run) };
+          this.pending = { requestId: run.requestId, pipelineId: run.pipelineId, expectedAttemptCount: run.expectedAttemptCount,
+            ...((run.executorId || this.pending.executorId) && { executorId: run.executorId || this.pending.executorId }),
+            ...PipelineLaunchController.profile(run) };
           this.persist();
         }
         if (this.pending && run?.requestId === this.pending.requestId && TERMINAL.has(run.phase)) {
@@ -199,7 +207,8 @@
       if (!this.canLaunch(id)) return false;
       const selection = PipelineLaunchController.profile(profile);
       const candidate = this.control.candidates.find(item => item.pipelineId === id);
-      this.pending = { requestId: this.newId(), pipelineId: id, expectedAttemptCount: candidate.expectedAttemptCount, ...selection };
+      this.pending = { requestId: this.newId(), pipelineId: id, expectedAttemptCount: candidate.expectedAttemptCount,
+        ...(candidate.executorId && { executorId: candidate.executorId }), ...selection };
       this.persist();
       return this.submit();
     }
@@ -216,7 +225,10 @@
       this.submitting = true;
       this.changed();
       try {
-        await this.boundedRequest(`/api/runtime-bridges/coding-dispatch/runs/${this.pending.requestId}/cancel`, { method: 'POST' });
+        await this.boundedRequest(`/api/runtime-bridges/coding-dispatch/runs/${this.pending.requestId}/cancel`, {
+          method: 'POST', body: JSON.stringify({ pipelineId: this.pending.pipelineId,
+            ...(this.pending.executorId && { executorId: this.pending.executorId }) })
+        });
       } catch (error) { this.error = error.message; }
       finally { this.submitting = false; await this.refresh(); }
       return true;
@@ -233,7 +245,8 @@
       this.changed();
       try {
         await this.boundedRequest(`/api/runtime-bridges/coding-dispatch/runs/${selection.requestId}/stop`, {
-          method: 'POST', body: JSON.stringify({ pipelineId: selection.pipelineId, confirm: true })
+          method: 'POST', body: JSON.stringify({ pipelineId: selection.pipelineId, confirm: true,
+            ...(selection.executorId && { executorId: selection.executorId }) })
         });
       } catch (error) { this.error = `${error.message}. Checking the same stop request; nothing was relaunched.`; }
       finally { this.submitting = false; await this.refresh(); }
@@ -251,7 +264,8 @@
       this.submitting = true; this.reconcileError = null; this.changed();
       try {
         await this.boundedRequest(`/api/runtime-bridges/coding-dispatch/runs/${selection.requestId}/reconcile`, {
-          method: 'POST', body: JSON.stringify({ pipelineId: selection.pipelineId, confirm: true })
+          method: 'POST', body: JSON.stringify({ pipelineId: selection.pipelineId, confirm: true,
+            ...(selection.executorId && { executorId: selection.executorId }) })
         });
       } catch (error) { this.reconcileError = `${error.message}. The original report remains fenced; nothing was relaunched.`; }
       finally { this.submitting = false; await this.refresh(); }

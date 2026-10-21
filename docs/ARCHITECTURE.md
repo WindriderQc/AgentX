@@ -109,6 +109,11 @@ remain explicit. Studio
 has request-scoped admission; Coding Team freezes the native capacity model
 for each attempt. See [Studio setup](DSH_RESUMPTION.md).
 
+The Coding Team uses a Core-owned executor registry rather than treating its
+harness as the scheduler. Executors may use DSH or OpenCode behind the same
+host-control protocol; request receipts bind every follow-up to the original
+executor. See [multi-host and multi-harness architecture](CODING_TEAM_ARCHITECTURE.md).
+
 On a host with a pin, the pin owns what Ollama loads there
 (`core/src/services/hostPinGuard.js`). Ollama reloads a runner for another
 model or other load options, so Core refuses with 409 `HOST_PIN_MISMATCH` a

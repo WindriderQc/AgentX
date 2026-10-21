@@ -1,8 +1,11 @@
 # Local coding worker
 
-DSH powers both the isolated coding worker and the human-operated Studio.
+DSH remains the default isolated coding harness and powers the human-operated Studio.
 Studio uses Core's OpenAI gateway with request-scoped admission; an idle web
 server holds no inference host. See [Studio setup and qualification](../../docs/DSH_RESUMPTION.md).
+The worker also has a replaceable OpenCode adapter; Core and the host runner,
+not either harness, retain task and delivery authority. See the
+[multi-harness architecture](../../docs/CODING_TEAM_ARCHITECTURE.md).
 
 Core Pipeline is the task queue. One local worker takes one task, writes the
 change and opens a draft pull request. Reviewing that pull request, with its
@@ -366,6 +369,10 @@ live outside Git, by default in `~/.config/agentx/coding.env`
 - `AGENTX_NODE_BIN`: optional path to the Node executable in a complete Node/npm
   distribution. It is selected before the runner imports; the same distribution
   is mounted read-only in both sandboxes. Invalid selections block preparation.
+- `AGENTX_CODING_HARNESS`: `dsh` (default) or `opencode`. This is fixed per host
+  executor; a task does not choose it from its prompt.
+- `AGENTX_OPENCODE_ROOT`, `AGENTX_OPENCODE_ENTRY`: reviewed OpenCode runtime and
+  its relative executable (default `bin/opencode`) when that adapter is selected.
 
 `--timeout-seconds` changes the soft budget; the hard ceiling is twice that
 value. Continuous
@@ -374,12 +381,14 @@ its branches are named `agentx/coding-task-<id>`.
 
 ## Run one task from the Pipeline page
 
-Core calls `coding_dispatch_control.py` over SSH (`CODING_DISPATCHER_SSH_TARGET`,
-`CODING_DISPATCHER_REMOTE_ROOT`). `status` lists queued, unowned, non-private
+Core calls `coding_dispatch_control.py` over SSH. `CODING_EXECUTORS_JSON` can
+name several ordered executors and their harness/profile capabilities; the
+legacy `CODING_DISPATCHER_SSH_TARGET` and `CODING_DISPATCHER_REMOTE_ROOT` pair
+still defines one default DSH executor. `status` lists queued, unowned, non-private
 tasks explicitly routed with `service: agentx-coding`; ordinary Core and other
 Pipeline tickets remain available for their own workflows. `launch` starts
 `coding_run.py` for one of the listed tasks as the transient user
-unit `agentx-coding-run`. One task runs at a time. A repeated request id returns
+unit `agentx-coding-run`. One task runs at a time on each executor. A repeated request id returns
 its first receipt instead of starting a second run. After a lost launch reply,
 the matching active unit means running; exact terminal progress means finished.
 Missing or malformed proof stays unknown and blocks another launch. A completed

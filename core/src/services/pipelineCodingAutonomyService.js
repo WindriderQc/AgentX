@@ -201,7 +201,9 @@ async function recordReview(id, input) {
     || !['waiting_ci', 'ready_for_review'].includes(state.state) || !input.text?.trim() || input.text.length > 4000)
     throw policy.fail('Review feedback must name the current PR commit and a completed worker');
   let observation;
-  try { observation = await control.observe({ pipelineId: id, requestId: state.runs.at(-1).requestId, pr: state.pr }); }
+  const currentRun = state.runs.at(-1);
+  try { observation = await control.observe({ pipelineId: id, requestId: currentRun.requestId, pr: state.pr,
+    ...(currentRun.executorId && { executorId: currentRun.executorId }) }); }
   catch { throw policy.fail('The current PR cannot be verified; retain this review without starting a correction'); }
   if (observation.state !== 'open' || observation.merged || observation.head !== state.pr.head)
     throw policy.fail('The PR was closed or its head changed; reconcile its current delivery before requesting a correction');
@@ -224,7 +226,8 @@ async function stop(id, requestId, input = {}) {
   // every scheduler; host acceptance still shares its lock with publication.
   let saved = await save(task, { ...state, spent: ciSpent(state), authorized: false, state: 'stop_requested', reason: 'operator_stop' });
   if (!waiting) {
-    try { await control.stop({ pipelineId: id, requestId, confirm: true }); }
+    try { await control.stop({ pipelineId: id, requestId, confirm: true,
+      ...(state.runs.at(-1).executorId && { executorId: state.runs.at(-1).executorId }) }); }
     catch (error) {
       if (error.code === 'CODING_DISPATCH_STOP_TOO_LATE') {
         const latest = await readTask(id);
@@ -261,14 +264,19 @@ async function select(config) {
     if (policy.exhausted(task)) { await block(task, `cumulative_${policy.exhausted(task)}`); continue; }
     if (taskEligibilityReasons(task, { now: new Date(), automated: true, dependencyStatuses: dependencies }).length) continue;
     try { await campaign(task); } catch { continue; }
+    let executor = null;
+    try { executor = typeof control.select === 'function' ? await control.select({ profile: 'autonomous' }) : null; }
+    catch { continue; }
     const requestId = randomUUID();
-    const active = { pipelineId: task.pipelineId, requestId, selectedAt: new Date().toISOString() };
+    const active = { pipelineId: task.pipelineId, requestId, selectedAt: new Date().toISOString(),
+      ...(executor && { executorId: executor.id, harness: executor.harness }) };
     const won = await Settings.findOneAndUpdate({ _id: ID, enabled: true, revision: config.revision, active: null },
       { $set: { active } }, { new: true, writeConcern: WC }).lean();
     if (!won) return;
     const state = { ...task.codingAutonomy, state: 'dispatching', reason: null,
       runs: [...task.codingAutonomy.runs, { requestId, parentRequestId: task.codingAutonomy.runs.at(-1)?.requestId || null,
-        startedAt: active.selectedAt, expectedAttemptCount: task.automationAttemptCount || 0, pendingInferences: [] }] };
+        startedAt: active.selectedAt, expectedAttemptCount: task.automationAttemptCount || 0, pendingInferences: [],
+        ...(executor && { executorId: executor.id, harness: executor.harness }) }] };
     try { await save(task, state); }
     catch (error) { await clearActive(requestId); throw error; }
     return;
@@ -280,22 +288,26 @@ async function dispatch(task, config) {
   if (run.finishedAt) { await clearActive(run.requestId); return; }
   // Observe before every retry. Absence of a receipt permits only replay of
   // this saved identity; it never permits creating another attempt.
-  const host = await control.status({ requestId: run.requestId });
+  const host = await control.status({ requestId: run.requestId, ...(run.executorId && { executorId: run.executorId }) });
   if (host.run?.phase === 'not_received') {
-    if (!state.authorized) { await control.stop({ pipelineId: task.pipelineId, requestId: run.requestId, confirm: true }); return; }
+    if (!state.authorized) { await control.stop({ pipelineId: task.pipelineId, requestId: run.requestId, confirm: true,
+      ...(run.executorId && { executorId: run.executorId }) }); return; }
     if (!config.enabled) return;
     if (task.status !== 'queued' || task.assignee || task.automationLease) {
       await save(task, { ...state, state: 'stop_requested', reason: 'task_owned_elsewhere' });
-      await control.stop({ pipelineId: task.pipelineId, requestId: run.requestId, confirm: true }); return;
+      await control.stop({ pipelineId: task.pipelineId, requestId: run.requestId, confirm: true,
+        ...(run.executorId && { executorId: run.executorId }) }); return;
     }
     try { await workerManifest(task.pipelineId, run.requestId); }
     catch (error) {
       if (!error.statusCode) throw error;
       await save(task, { ...state, state: 'stop_requested', reason: error.code });
-      await control.stop({ pipelineId: task.pipelineId, requestId: run.requestId, confirm: true }); return;
+      await control.stop({ pipelineId: task.pipelineId, requestId: run.requestId, confirm: true,
+        ...(run.executorId && { executorId: run.executorId }) }); return;
     }
     await control.launch({ pipelineId: task.pipelineId, requestId: run.requestId,
-      expectedAttemptCount: run.expectedAttemptCount, confirm: true, autonomous: true });
+      expectedAttemptCount: run.expectedAttemptCount, confirm: true, autonomous: true,
+      ...(run.executorId && { executorId: run.executorId }) });
     return;
   }
   if (host.run?.pipelineId !== task.pipelineId || host.run?.requestId !== run.requestId) throw policy.fail('Runner receipt identity mismatch');
@@ -308,7 +320,8 @@ async function dispatch(task, config) {
     // The native feedback replay must have released this exact claim. A local
     // terminal file, absent process or expired lease never substitutes for it.
     if (receipt.coreRecorded !== true) {
-      await control.reconcile({ pipelineId: task.pipelineId, requestId: run.requestId });
+      await control.reconcile({ pipelineId: task.pipelineId, requestId: run.requestId,
+        ...(run.executorId && { executorId: run.executorId }) });
       return;
     }
     if (host.run.cancelledBeforeLaunch && task.automationLease?.dispatchRequestId !== run.requestId
@@ -365,7 +378,8 @@ async function dispatch(task, config) {
     return task;
   }
   if (['unknown', 'uncertain'].includes(host.run.phase) && receipt && receipt.phase !== 'finished' && !receipt.coreRecorded) {
-    try { await control.reconcile({ pipelineId: task.pipelineId, requestId: run.requestId }); return; }
+    try { await control.reconcile({ pipelineId: task.pipelineId, requestId: run.requestId,
+      ...(run.executorId && { executorId: run.executorId }) }); return; }
     catch { /* An absent native verdict remains fenced; never relaunch. */ }
   }
   if (['unknown', 'uncertain', 'not_received', 'finished'].includes(host.run.phase)) return block(task, 'runner_outcome_unknown');
@@ -390,7 +404,8 @@ async function observe(task) {
   const elapsed = ciElapsed(state, now);
   if (elapsed + (state.spent.ciSeconds || 0) >= policy.totalLimits(state).ciSeconds) return block(task, 'ci_timeout', guard);
   let observation;
-  try { observation = await control.observe({ pipelineId: task.pipelineId, requestId: state.runs.at(-1).requestId, pr: state.pr }); }
+  try { observation = await control.observe({ pipelineId: task.pipelineId, requestId: last.requestId, pr: state.pr,
+    ...(last.executorId && { executorId: last.executorId }) }); }
   catch {
     const failures = (state.observationFailures || 0) + 1;
     return save(task, { ...state, ...cursor, observationFailures: failures,
@@ -447,7 +462,8 @@ async function tick() {
       if (task.codingAutonomy?.runs.at(-1)?.requestId !== config.active.requestId) {
         // A crash after selection but before the task journal made no host
         // effect. Resolve only a definitively absent exact host request.
-        const host = await control.status({ requestId: config.active.requestId });
+        const host = await control.status({ requestId: config.active.requestId,
+          ...(config.active.executorId && { executorId: config.active.executorId }) });
         if (host.run?.phase === 'not_received') await clearActive(config.active.requestId);
         return;
       }

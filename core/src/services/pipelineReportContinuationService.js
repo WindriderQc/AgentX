@@ -147,14 +147,19 @@ async function select(config) {
     if (task.status !== 'blocked' || task.automationLease) continue;
     const allowed = await allowance(task);
     if (!allowed.ok) { await notifications.publish(task, 'needs_grant', parent.requestId, { reason: allowed.reason }); continue; }
+    let executor = null;
+    try { executor = typeof control.select === 'function' ? await control.select({ profile: 'report' }) : null; }
+    catch { continue; }
     const requestId = continuationId(task.pipelineId, parent.requestId);
-    const active = { pipelineId: task.pipelineId, requestId, selectedAt: new Date().toISOString() };
+    const active = { pipelineId: task.pipelineId, requestId, selectedAt: new Date().toISOString(),
+      ...(executor && { executorId: executor.id, harness: executor.harness }) };
     const won = await Settings.findOneAndUpdate({ _id: ID, revision: config.revision, active: null },
       { $set: { active } }, { new: true, writeConcern: WC }).lean();
     if (!won) return;
     try {
       await saveState(task, { state: 'dispatching', reason: null, runs: [...(state.runs || []), {
-        requestId, parentRequestId: parent.requestId, parentSha256: parent.partial.sha256, selectedAt: active.selectedAt }] });
+        requestId, parentRequestId: parent.requestId, parentSha256: parent.partial.sha256, selectedAt: active.selectedAt,
+        ...(executor && { executorId: executor.id, harness: executor.harness }) }] });
     } catch (error) { await clearActive(requestId); throw error; }
     return;
   }
@@ -165,7 +170,7 @@ async function dispatch(active, config) {
   const run = task?.reportContinuation?.runs?.find(item => item.requestId === active.requestId);
   if (!task || !run) { await clearActive(active.requestId); return; }
   if (run.finishedAt) { await clearActive(run.requestId); return; }
-  const host = await control.status({ requestId: run.requestId });
+  const host = await control.status({ requestId: run.requestId, ...(run.executorId && { executorId: run.executorId }) });
   if (host.run?.phase === 'not_received' || (!host.run && !run.launchedAt)) {
     if (!chaining(config, task)) { await block(task, run, 'switched_off', 'execution_failed'); return; }
     let current = task;
@@ -178,7 +183,7 @@ async function dispatch(active, config) {
           parentRequestId: run.parentRequestId, parentSha256: run.parentSha256,
           ...(task.codingResult.documentPaths ? { documentPaths: task.codingResult.documentPaths } : {}) } });
     }
-    const status = await control.status({});
+    const status = await control.status(run.executorId ? { executorId: run.executorId } : {});
     const candidate = (status.candidates || []).find(row => row.pipelineId === task.pipelineId);
     if (!candidate) return;
     const started = await Task.findOneAndUpdate({ _id: current._id, 'reportContinuation.runs.requestId': run.requestId },
@@ -188,6 +193,7 @@ async function dispatch(active, config) {
     if (!started) return;
     try {
       await control.launch({ pipelineId: task.pipelineId, requestId: run.requestId, expectedAttemptCount: candidate.expectedAttemptCount,
+        ...(run.executorId && { executorId: run.executorId }),
         confirm: true, reportName: task.codingResult.reportName, modelCallLimit: task.codingResult.modelCallLimit,
         parentRequestId: run.parentRequestId, parentSha256: run.parentSha256 });
     } catch (error) {

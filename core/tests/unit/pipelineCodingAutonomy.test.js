@@ -159,6 +159,17 @@ test('double selection and launch retain one durable request', async () => {
   expect(control.launch).toHaveBeenCalledTimes(1); expect((await selected()).requestId).toBe(first.requestId);
   expect((await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy.runs).toHaveLength(1);
 });
+test('selection journals the executor before an autonomous launch', async () => {
+  control.select = jest.fn(async () => ({ id: 'alien-local', harness: 'opencode' }));
+  await task(); await authorize(); await enable(); await service.tick();
+  const active = await selected();
+  expect(active).toMatchObject({ executorId: 'alien-local', harness: 'opencode' });
+  const durable = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(durable.codingAutonomy.runs[0]).toMatchObject({ executorId: 'alien-local', harness: 'opencode' });
+  await service.tick();
+  expect(control.launch).toHaveBeenCalledWith(expect.objectContaining({ executorId: 'alien-local', autonomous: true }));
+  expect(control.status).toHaveBeenCalledWith(expect.objectContaining({ executorId: 'alien-local', requestId: active.requestId }));
+});
 test('lost launch response reconciles the original identity without another launch or attempt', async () => {
   await task(); await authorize(); await enable(); await service.tick(); const first = await selected();
   control.launch.mockImplementationOnce(async input => {
