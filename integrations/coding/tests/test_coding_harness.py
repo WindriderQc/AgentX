@@ -31,6 +31,10 @@ class HarnessAdapterTest(unittest.TestCase):
         self.assertEqual(value['command'][:6], ['python3', '/opt/coding/model_relay.py', 'inside',
                                                 '/home/agent/model.sock', '9123', '--'])
         self.assertIn('--auto', value['command']); self.assertIn('--file', value['command'])
+        instruction = value['command'].index('Implement the attached task. Follow its instructions exactly.')
+        attachment = value['command'].index('--file')
+        self.assertLess(instruction, attachment)
+        self.assertEqual(value['command'][attachment:], ['--file', '/tmp/prompt'])
         config = json.loads(value['environment']['OPENCODE_CONFIG_CONTENT'])
         self.assertEqual(config['model'], 'agentx-core/local-model')
         self.assertEqual(config['provider']['agentx-core']['options']['baseURL'], 'http://127.0.0.1:9123/v1')
