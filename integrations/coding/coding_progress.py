@@ -31,6 +31,7 @@ REASONS = {"model_budget_reserve", "hard_budget", "soft_budget_no_progress", "no
            "tests_failed", "generated_artifacts", "ineligible_task", "runtime_unavailable", "runtime_changed",
            "model_wait_inactive", "model_generation_inactive", "tool_inactive", "test_inactive"}
 REASONS.update({"continuation_checkpoint_changed", "github_token_missing", "git_reconciliation", "git_conflict_remaining", "verification_profile_unknown", "progress_history_limit", "model_termination_unverified", "authorization_removed", "queue_window_closed"})
+REASONS.update({"coding_model_mismatch", "code_step_blocked", "code_step_scope_changed"})
 RESULTS = {"blocked", "review", "local_only"}
 TEST_NAMES = {"pytest", "unittest", "jest", "npm_test", "node_test"}
 TEST_OUTCOMES = {"passed", "failed", "unknown"}
@@ -442,11 +443,14 @@ class Progress:
         step = getattr(self, "step", None)
         if step:
             current = self.now()
-            return ("Runner-owned step budget before this request: " + json.dumps({
+            prefix = ("Runner-owned step budget before this request: " + json.dumps({
                 "modelCalls": max(0, step["calls"] - (self.model_calls - step["startCalls"])),
                 "seconds": max(0, int(step["deadline"] - current))}, sort_keys=True)
-                + f". Write your JSON result to {step['output']} before it runs out; a truthful partial result is "
-                "accepted." + (" Sources remain read-only." if getattr(self, "role_read_only", False) else ""))
+                + ". ")
+            if step.get("resultKind") == "source":
+                return prefix + "Finish only the assigned source step before it runs out; do not commit or expand scope."
+            return (prefix + f"Write your JSON result to {step['output']} before it runs out; a truthful partial result is "
+                    "accepted." + (" Sources remain read-only." if getattr(self, "role_read_only", False) else ""))
         if getattr(self, "report_mode", False) and not self.cumulative_limits:
             current = self.now()
             remaining = {"workSeconds": max(0, int(min(self.hard_deadline, self.queue_deadline) - current)),
@@ -656,12 +660,15 @@ class Progress:
         self.write()
         return self.stop_reason or self.step_due(current)
 
-    def begin_step(self, calls: int, seconds: int, output: str):
+    def begin_step(self, calls: int, seconds: int, output: str, *, result_kind: str = "json"):
         """Bound the next worker session as one report step (#834).
 
         A step that reaches its calls or time ends that session only; the
         execution's own limits and stop reasons are unchanged."""
-        self.step = {"calls": calls, "startCalls": self.model_calls, "deadline": self.now() + seconds, "output": output}
+        if result_kind not in {"json", "source"}:
+            raise ValueError("Runner-owned step result kind is invalid")
+        self.step = {"calls": calls, "startCalls": self.model_calls, "deadline": self.now() + seconds,
+                     "output": output, "resultKind": result_kind}
 
     def end_step(self):
         self.last_step_failure = (getattr(self, 'step', None) or {}).get('failure')

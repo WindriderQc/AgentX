@@ -678,6 +678,16 @@ class ReportStepProgressTest(unittest.TestCase):
         self.assertEqual(progress.relay_call_budget()['calls'], 0)
         self.assertIsNone(progress.tick())
 
+    def test_source_step_guidance_never_tells_an_implementer_to_write_json(self):
+        progress = module.Progress('0001', KEY)
+        progress.phase = 'running'
+        progress.begin_step(4, 60, 'code-step:step-01', result_kind='source')
+        guidance = progress.model_guidance()
+        self.assertIn('assigned source step', guidance)
+        self.assertNotIn('JSON result', guidance)
+        with self.assertRaises(ValueError):
+            progress.begin_step(4, 60, 'bad', result_kind='command')
+
     def test_report_steps_reach_core_only_through_the_whitelist(self):
         value = {'requestId': 'r', 'pipelineId': '0001', 'phase': 'running', 'stage': 'model_wait',
                  'reportSteps': {'done': 3, 'failed': 1, 'findings': 2, 'stepContext': 16384, 'budgetSource': 'agent_workload',

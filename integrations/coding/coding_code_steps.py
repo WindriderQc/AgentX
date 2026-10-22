@@ -231,9 +231,13 @@ def step_prompt(task, step, ledger_summary, verification_profile):
     """Build one fresh implementation turn without prior model conversation."""
     if not isinstance(step, dict) or not isinstance(step.get("paths"), list):
         raise CodePlanError("step prompt needs a validated step")
+    retry = ("This is a retry after the runner rejected an earlier attempt. Re-check the assigned focused test "
+             "targets and correct the implementation instead of repeating it.\n"
+             if step.get("attempts", 0) > 1 else "")
     return (
         "Implement exactly one runner-owned code step in the prepared repository.\n"
         "Edit only the authorized paths below. Do not commit, push, publish, or alter runner receipts; the runner owns Git and verification.\n"
+        + retry +
         f"Task:\n{_json_for_prompt(task)}\n"
         f"Step:\n{_json_for_prompt(step)}\n"
         f"Verified dependency summary:\n{_json_for_prompt(ledger_summary)}\n"

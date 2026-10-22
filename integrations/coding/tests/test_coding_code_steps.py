@@ -113,6 +113,9 @@ class PlanValidationTest(unittest.TestCase):
                                  {"profile": "agentx-core-runner-tests/v1"})
         self.assertIn("Do not commit, push, publish", turn)
         self.assertIn("core/tests/parser.test.js", turn)
+        retried = {**proposed_plan()["steps"][0], "attempts": 2}
+        self.assertIn("runner rejected an earlier attempt",
+                      steps.step_prompt({"title": "Bound work"}, retried, [], {"profile": "fixture"}))
 
 
 if __name__ == "__main__":

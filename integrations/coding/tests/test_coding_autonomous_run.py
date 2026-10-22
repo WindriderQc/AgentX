@@ -2,6 +2,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 from types import SimpleNamespace
 import tempfile
 import unittest
@@ -16,6 +17,12 @@ def load(name):
 runner = load('coding_run')
 autonomous = runner.coding_autonomous
 KEY = '11111111-2222-4333-8444-555555555555'
+NEXT_KEY = '22222222-3333-4444-8555-666666666666'
+
+
+def git(root, *args, **_kwargs):
+    return subprocess.run(['git', '-C', str(root), '-c', 'core.hooksPath=/dev/null', *args],
+                          check=True, capture_output=True, text=True).stdout.strip()
 
 class AutonomousBoundaryTest(unittest.TestCase):
     def test_unknown_verification_profile_refuses_before_worker_or_test_command(self):
@@ -67,11 +74,17 @@ class AutonomousBoundaryTest(unittest.TestCase):
             r.begin_publication = Mock(return_value=True)
             with patch.dict('os.environ', {'GH_TOKEN': 'synthetic'}), patch.object(autonomous.coding_git, 'reconcile', return_value={'conflicts': []}), \
                     patch.object(autonomous.coding_git, 'finish_merge'), patch.object(autonomous.coding_git, 'checkpoint', return_value='a' * 40), \
-                    patch.object(autonomous.coding_git, 'audit', return_value=['source.py']), patch.object(autonomous.coding_publication, 'publish') as publish:
+                    patch.object(autonomous.coding_git, 'audit', return_value=['source.py']), \
+                    patch.object(autonomous, '_prepare_ledger', return_value=(Mock(), {'steps': [{'state': 'verified',
+                        'testTargets': ['integrations/coding/tests/test_coding_autonomous_run.py']}],
+                        'planFingerprint': 'f' * 64}, KEY)), patch.object(autonomous, '_project'), \
+                    patch.object(autonomous, '_write_index'), \
+                    patch.object(autonomous.coding_code_ledger, 'next_step', return_value=None), \
+                    patch.object(autonomous.coding_verification, 'focused_command', return_value=['synthetic-tests']), \
+                    patch.object(autonomous.coding_publication, 'publish') as publish:
                 self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 1)
             r.begin_publication.assert_not_called(); publish.assert_not_called()
             self.assertEqual(feedback[0]['attemptEvidence']['failureCodes'], ['model_termination_unverified'])
-            self.assertEqual(r.run_worker.call_args.kwargs['model'], 'synthetic')
 
     def test_stop_with_revoked_manifest_cancels_native_capacity_without_worker_or_model(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -173,5 +186,176 @@ class AutonomousBoundaryTest(unittest.TestCase):
                 self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 1)
                 r.run_worker.assert_not_called(); r.install_dependencies.assert_not_called()
                 self.assertEqual(feedback[0]['attemptEvidence']['failureCodes'], ['continuation_checkpoint_changed'])
+
+
+class RunnerOwnedCodeStepTest(unittest.TestCase):
+    def fixture(self, directory, *, failed_focused=False, outside=False):
+        root = Path(directory)
+        workspace = root / 'task-0001'
+        workspace.mkdir()
+        git(workspace, 'init', '-q')
+        git(workspace, 'config', 'user.name', 'Fixture')
+        git(workspace, 'config', 'user.email', 'fixture@example.invalid')
+        for name, text in {
+            'source_one.py': 'ONE = 1\n', 'source_two.py': 'TWO = 2\n', 'outside.py': 'OUTSIDE = 0\n',
+            'core/package.json': '{"name":"fixture","version":"1.0.0"}\n',
+            'integrations/coding/tests/test_one.py': 'import unittest\n',
+            'integrations/coding/tests/test_two.py': 'import unittest\n',
+        }.items():
+            path = workspace / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text)
+        git(workspace, 'add', '.')
+        git(workspace, 'commit', '-q', '-m', 'base')
+        git(workspace, 'branch', '-M', 'main')
+        git(workspace, 'update-ref', 'refs/remotes/origin/main', git(workspace, 'rev-parse', 'HEAD'))
+        git(workspace, 'checkout', '-q', '-b', 'agentx/coding-task-0001')
+
+        manifest = {'scope': ['source_one.py', 'source_two.py'],
+                    'remaining': {'workSeconds': 100, 'modelCalls': 20, 'modelSeconds': 90, 'testSeconds': 90},
+                    'limits': {'noProgressSeconds': 100}, 'spent': {}}
+        task = {'pipelineId': '0001', 'title': 'Two exact changes', 'spec': 'Update both constants.',
+                'status': 'in_progress',
+                'automationLease': {'leaseId': 'original', 'dispatchRequestId': KEY},
+                'automation': {'verificationProfile': 'agentx-dispatcher-tests/v1'},
+                'codingCapacity': {'model': 'synthetic', 'numCtx': 24576},
+                'codingAutonomy': {'runs': [{'requestId': KEY, 'pendingInferences': [],
+                    'modelReceipts': [{'state': 'completed'}]}]}}
+        feedback = []
+        def request(url, body=None):
+            if '/manifest' in url:
+                return {'data': manifest}
+            if '/feedback' in url:
+                feedback.append(body); return {}
+            if '/agent-runtime-config/' in url:
+                return {'data': {'lanes': {'coding': {'model': 'synthetic', 'capability': {
+                    'agent': {'recommendedStepContext': 24576}}}}}}
+            return {'data': {'task': task}}
+
+        home = root / '.home-task-0001'
+        calls = []
+        def run_worker(_workspace, prompt, _seconds, progress, model=None, read_only=False):
+            calls.append({'prompt': prompt, 'read_only': read_only, 'model': model})
+            if read_only:
+                output = home / 'deliverables' / KEY / 'code-plan.json'
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_text(json.dumps({'schema': 'agentx.coding-code-plan/v1', 'summary': 'two steps',
+                    'steps': [
+                        {'id': 'step-01', 'title': 'Change one', 'objective': 'Update the first constant.',
+                         'paths': ['source_one.py'], 'testTargets': ['integrations/coding/tests/test_one.py'], 'dependsOn': []},
+                        {'id': 'step-02', 'title': 'Change two', 'objective': 'Update the second constant.',
+                         'paths': ['source_two.py'], 'testTargets': ['integrations/coding/tests/test_two.py'], 'dependsOn': []},
+                    ]}))
+                progress.role_drained = True
+            elif 'step-01' in prompt.split('Step:\n', 1)[1].split('\nVerified dependency summary:', 1)[0]:
+                (workspace / 'source_one.py').write_text('ONE = 10\n')
+                if outside:
+                    (workspace / 'outside.py').write_text('OUTSIDE = 1\n')
+            else:
+                (workspace / 'source_two.py').write_text('TWO = 20\n')
+            return SimpleNamespace(returncode=0, stdout='done', stderr='')
+
+        test_calls = []
+        def supervise(command, _progress=None, **_kwargs):
+            test_calls.append(command)
+            focused = '--runTestsByPath' in command or (command[:3] == ['python3', '-m', 'unittest']
+                       and 'discover' not in command)
+            return SimpleNamespace(returncode=1 if failed_focused and focused else 0, stdout='', stderr='failed')
+
+        r = SimpleNamespace(**vars(runner))
+        r.request = request; r.WORKSPACES = root; r.git = git
+        r.install_dependencies = Mock(); r.dependency_state = Mock(return_value='same')
+        r.worker_home = Mock(return_value=home); r.run_worker = run_worker
+        r.sandbox = lambda _workspace, _home, command, **_kwargs: command
+        r.supervise = supervise; r.begin_publication = Mock(return_value=True)
+        return r, workspace, feedback, calls, test_calls
+
+    def test_two_steps_get_fresh_sessions_focused_tests_commits_and_one_publication(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, workspace, feedback, calls, test_calls = self.fixture(directory)
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+            with patch.dict('os.environ', {'GH_TOKEN': 'synthetic'}), \
+                    patch.object(autonomous.coding_git, 'reconcile', return_value={'conflicts': []}), \
+                    patch.object(autonomous.coding_publication, 'publish', return_value={'url': 'https://example.invalid/pr/1'}) as publish:
+                self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 0)
+            self.assertEqual([call['read_only'] for call in calls], [True, False, False])
+            self.assertTrue(all(call['model'] == 'synthetic' for call in calls))
+            self.assertEqual(len(test_calls), 3)
+            self.assertEqual(test_calls[0][-1], 'integrations/coding/tests/test_one.py')
+            self.assertEqual(test_calls[1][-1], 'integrations/coding/tests/test_two.py')
+            self.assertIn('discover', test_calls[2])
+            self.assertEqual(git(workspace, 'rev-list', '--count', 'origin/main..HEAD'), '2')
+            publish.assert_called_once()
+            steps = feedback[0]['attemptEvidence']['codeSteps']
+            self.assertEqual(steps['counts'], {'pending': 0, 'running': 0, 'passed': 2, 'failed': 0})
+            self.assertTrue(all(row.get('commit') and row['tests'][0]['outcome'] == 'passed' for row in steps['steps']))
+
+    def test_failed_focused_test_preserves_private_stash_and_never_publishes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, workspace, feedback, calls, _ = self.fixture(directory, failed_focused=True)
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+            with patch.dict('os.environ', {'GH_TOKEN': 'synthetic'}), \
+                    patch.object(autonomous.coding_git, 'reconcile', return_value={'conflicts': []}), \
+                    patch.object(autonomous.coding_publication, 'publish') as publish:
+                self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 1)
+            self.assertEqual(git(workspace, 'rev-list', '--count', 'origin/main..HEAD'), '0')
+            self.assertIn('Unverified runner-owned step-01', git(workspace, 'stash', 'list'))
+            self.assertEqual(len(calls), 2)
+            publish.assert_not_called()
+            steps = feedback[0]['attemptEvidence']['codeSteps']
+            self.assertEqual(steps['counts'], {'pending': 1, 'running': 0, 'passed': 0, 'failed': 1})
+            self.assertEqual(feedback[0]['attemptEvidence']['failureCodes'], ['tests_failed'])
+            calls_before_resume = len(calls)
+            resumed = runner.coding_progress.Progress('0001', NEXT_KEY, receipts=Path(directory))
+            continuation = {'continuationCheckpoint': git(workspace, 'rev-parse', 'HEAD'),
+                            'scope': ['source_one.py', 'source_two.py'], 'correction': {'kind': 'local_tests'}}
+            store, ledger, root_request = autonomous._prepare_ledger(
+                r, workspace, '0001', NEXT_KEY, {}, continuation, resumed,
+                autonomous.coding_code_steps.step_budget(None), None)
+            self.assertEqual(root_request, KEY)
+            self.assertEqual(autonomous.coding_code_ledger.next_step(ledger)['id'], 'step-01')
+            self.assertEqual(autonomous.coding_code_ledger.next_step(store.load())['attempts'], 1)
+            self.assertEqual(len(calls), calls_before_resume)
+
+    def test_out_of_step_edit_isolated_without_a_commit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, workspace, feedback, _, _ = self.fixture(directory, outside=True)
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+            with patch.object(autonomous.coding_git, 'reconcile', return_value={'conflicts': []}), \
+                    patch.object(autonomous.coding_publication, 'publish') as publish:
+                self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 1)
+            self.assertEqual(git(workspace, 'rev-list', '--count', 'origin/main..HEAD'), '0')
+            self.assertFalse(git(workspace, 'status', '--porcelain'))
+            publish.assert_not_called()
+            self.assertEqual(feedback[0]['attemptEvidence']['failureCodes'], ['code_step_scope_changed'])
+
+    def test_dependency_change_isolated_before_tests_or_commit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, workspace, feedback, calls, test_calls = self.fixture(directory)
+            manifest = r.request('/manifest')['data']
+            manifest['scope'].append('core/package.json')
+            original_worker = r.run_worker
+            def dependency_worker(_workspace, prompt, seconds, progress, model=None, read_only=False):
+                if read_only:
+                    result = original_worker(_workspace, prompt, seconds, progress, model=model, read_only=True)
+                    plan_path = r.worker_home(workspace) / 'deliverables' / KEY / 'code-plan.json'
+                    plan = json.loads(plan_path.read_text())
+                    plan['steps'][0]['paths'] = ['core/package.json']
+                    plan_path.write_text(json.dumps(plan))
+                    return result
+                calls.append({'prompt': prompt, 'read_only': False, 'model': model})
+                (workspace / 'core/package.json').write_text('{"name":"fixture","version":"2.0.0"}\n')
+                return SimpleNamespace(returncode=0, stdout='changed dependency', stderr='')
+            r.run_worker = dependency_worker
+            r.dependency_state = lambda _workspace: (workspace / 'core/package.json').read_text()
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+            with patch.object(autonomous.coding_git, 'reconcile', return_value={'conflicts': []}), \
+                    patch.object(autonomous.coding_publication, 'publish') as publish:
+                self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 1)
+            self.assertEqual(git(workspace, 'rev-list', '--count', 'origin/main..HEAD'), '0')
+            self.assertFalse(git(workspace, 'status', '--porcelain'))
+            self.assertEqual(test_calls, [])
+            publish.assert_not_called()
+            self.assertEqual(feedback[0]['attemptEvidence']['failureCodes'], ['dependencies_changed'])
 
 if __name__ == '__main__': unittest.main()
