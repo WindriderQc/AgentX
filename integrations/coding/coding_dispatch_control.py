@@ -20,12 +20,26 @@ from urllib.request import urlopen
 
 
 HERE = Path(__file__).resolve().parent
-CORE = os.environ.get("AGENTX_CORE_URL", "http://127.0.0.1:3180").rstrip("/")
+ENV_FILE = Path(os.environ.get("AGENTX_CODING_ENV_FILE", Path.home() / ".config/agentx/coding.env"))
+
+
+def setting(name, fallback=""):
+    if os.environ.get(name):
+        return os.environ[name]
+    if not ENV_FILE.is_file():
+        return fallback
+    for line in ENV_FILE.read_text().splitlines():
+        if line.startswith(name + "="):
+            parts = shlex.split(line.split("=", 1)[1])
+            return parts[0] if len(parts) == 1 else fallback
+    return fallback
+
+
+CORE = setting("AGENTX_CORE_URL", "http://127.0.0.1:3180").rstrip("/")
 STATE = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "agentx"
 RECEIPTS = STATE / "coding-run-requests"
 LEGACY_RECEIPTS = STATE / "coding-dispatch-requests"
 # Model, GitHub token and other settings of the run; they stay outside Git.
-ENV_FILE = Path(os.environ.get("AGENTX_CODING_ENV_FILE", Path.home() / ".config/agentx/coding.env"))
 UNIT = "agentx-coding-run"
 CODING_SERVICE = "agentx-coding"
 _spec = importlib.util.spec_from_file_location("coding_progress", HERE / "coding_progress.py")
@@ -206,6 +220,7 @@ def status(key: str | None = None) -> dict:
                        message="Stop requested; waiting for the local checkpoint. Core may still drain the in-flight inference.")
     return {
         "contractVersion": 2, "available": True, "busy": busy,
+        "harness": setting("AGENTX_CODING_HARNESS", "dsh").strip().lower(),
         "observedAt": datetime.now(timezone.utc).isoformat(),
         "summary": {"queuedTasks": len(tasks), "eligibleTasks": sum(map(can_start, tasks)),
                     "privateQueuedTasks": sum(map(is_private_task, tasks)), **(QUEUE_EVIDENCE or {
@@ -303,7 +318,7 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
         return {"accepted": True, "replayed": False, "pipelineId": pipeline_id, "run": run}
 
 
-def stop(pipeline_id: str, key: str) -> dict:
+def stop(pipeline_id: str, key: str, *, autonomous=True) -> dict:
     """Record a cooperative stop for this request only; never signal a shared unit."""
     STATE.mkdir(parents=True, exist_ok=True)
     with (STATE / "coding-dispatcher-control.lock").open("a") as lock:
@@ -313,7 +328,7 @@ def stop(pipeline_id: str, key: str) -> dict:
             # The same launch/stop lock closes a selected but unreceived ID.
             # Do not change latest or touch an unrelated active host job.
             run = {'pipelineId': pipeline_id, 'requestId': key, 'phase': 'finished',
-                   'autonomous': True, 'cancelledBeforeLaunch': True}
+                   'autonomous': autonomous, 'cancelledBeforeLaunch': True}
             atomic_json(RECEIPTS / f'{key}.json', run)
             atomic_json(RECEIPTS / f'{key}.progress.json', {'pipelineId': pipeline_id, 'requestId': key,
                 'phase': 'finished', 'stage': 'preparing', 'coreRecorded': True, 'preflight': True,
@@ -347,18 +362,6 @@ def load_runner():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-def setting(name, fallback=""):
-    if os.environ.get(name):
-        return os.environ[name]
-    if not ENV_FILE.is_file():
-        return fallback
-    for line in ENV_FILE.read_text().splitlines():
-        if line.startswith(name + "="):
-            parts = shlex.split(line.split("=", 1)[1])
-            return parts[0] if len(parts) == 1 else fallback
-    return fallback
 
 
 def observe(pipeline_id, key):
@@ -467,6 +470,8 @@ def main() -> int:
             data = reconcile(values[0], values[1])
         elif action == "stop" and len(values) == 2 and re.fullmatch(r"\d{4}", values[0]):
             data = stop(values[0], values[1])
+        elif action == "cancel-waiting" and len(values) == 2 and re.fullmatch(r"\d{4}", values[0]):
+            data = stop(values[0], values[1], autonomous=False)
         else:
             raise ControlError("CODING_DISPATCH_INVALID_REQUEST", "Invalid control arguments.", 400)
         print(json.dumps({"status": "success", "data": data}))

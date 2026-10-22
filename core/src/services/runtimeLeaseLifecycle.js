@@ -99,6 +99,7 @@ async function release(kind, { id, generation, principal } = {}) {
     principal: owned.principal,
     requestId: owned.requestId,
     scope: owned.scope,
+    hosts: owned.hosts || [],
     releasedAt
   } : {
     coordinationKind: 'workload',
@@ -140,6 +141,7 @@ async function release(kind, { id, generation, principal } = {}) {
     principal: owned.principal,
     requestId: owned.requestId,
     scope: owned.scope,
+    hosts: owned.hosts || [],
     releasedAt
   } : {
     released: true,
@@ -232,6 +234,7 @@ async function listActive() {
       leaseId: state.maintenance.leaseId,
       principal: state.maintenance.principal,
       scope: state.maintenance.scope,
+      hosts: state.maintenance.hosts || [],
       acquiredAt: state.maintenance.acquiredAt,
       heartbeatAt: state.maintenance.heartbeatAt,
       expiresAt: state.maintenance.expiresAt,

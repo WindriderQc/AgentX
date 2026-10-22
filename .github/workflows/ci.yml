@@ -17,6 +17,17 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# Every npm call in CI installs from the lockfile and the restored cache, with
+# no audit or funding request, and a network stall fails after one minute
+# instead of npm's five-minute default (on 2026-10-22 each npm ci waited out
+# that default once, which pushed the core job past its limit).
+env:
+  npm_config_prefer_offline: 'true'
+  npm_config_audit: 'false'
+  npm_config_fund: 'false'
+  npm_config_fetch_timeout: '60000'
+  npm_config_fetch_retries: '2'
+
 jobs:
   tests:
     # Drafts are not tested; marking the pull request ready starts the run.
@@ -24,7 +35,8 @@ jobs:
     # the owner reviews them with their test result.
     if: ${{ !github.event.pull_request.draft || startsWith(github.head_ref, 'agentx/coding-task-') }}
     runs-on: ${{ github.event.repository.private && vars.AGENTX_CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 20
+    # Core alone runs about 12 minutes of installs and tests.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

@@ -29,6 +29,30 @@
   const integer = value => Number.isSafeInteger(value) && value >= 0 && value <= 86400;
   const own = (map, key) => Object.hasOwn(map, key) ? map[key] : null;
   const row = (label, value) => `<div><dt>${esc(label)}</dt><dd>${value}</dd></div>`;
+  const executorId = value => typeof value === 'string' && /^[a-z][a-z0-9_-]{0,63}$/.test(value) ? value : null;
+  const executorLabel = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/.test(value) ? value : null;
+  const harnessName = value => typeof value === 'string' && /^[a-z][a-z0-9._-]{0,63}$/.test(value) ? value : null;
+
+  function executorText(value, state = '') {
+    const id = executorId(value?.id || value?.executorId);
+    if (!id) return null;
+    const label = executorLabel(value?.label || value?.executorLabel) || id;
+    const harness = harnessName(value?.harness);
+    return `${label}${label !== id ? ` (${id})` : ''}${harness ? ` · ${harness}` : ''}${state ? ` · ${state}` : ''}`;
+  }
+
+  function poolText(control) {
+    const ready = Array.isArray(control?.executors) ? control.executors.flatMap(value => {
+      const state = value.available === false ? 'unavailable' : value.busy ? 'busy' : 'ready';
+      const text = executorText(value, state);
+      return text ? [text] : [];
+    }) : [];
+    const unavailable = Array.isArray(control?.unavailableExecutors) ? control.unavailableExecutors.flatMap(value => {
+      const text = executorText(value, 'unreachable');
+      return text ? [text] : [];
+    }) : [];
+    return [...ready, ...unavailable];
+  }
 
   // Runner-owned report steps (#834): merged and failed steps, ledger totals
   // and the step size the runner derived from the lane capability profile.
@@ -79,9 +103,15 @@
     if (!control || control.available !== true) { title = 'Worker host unavailable'; tone = 'unavailable'; }
     if (controller?.error) { title = 'Host read unavailable; last observation retained'; tone = 'unavailable'; }
     let details = row('Host observation', esc(age(control?.observedAt, now)));
+    const pool = poolText(control);
+    if (pool.length) details += row('Coding executors', pool.map(esc).join('<br>'));
     if (identity) {
+      const selected = [control?.executor, ...(Array.isArray(control?.executors) ? control.executors : [])]
+        .find(value => executorId(value?.id) === executorId(identity.executorId));
+      const selectedText = executorText(selected || identity);
       details += row('Task', taskId ? `#${taskId}${historical ? ' · historical receipt' : ''}` : 'Unknown')
         + row('Launch request', requestId ? `<code>${requestId}</code>` : 'Unknown')
+        + (selectedText ? row('Selected executor', esc(selectedText)) : '')
         + row('Recorded attempt', attempt ? `${attempt.attempt}${attempt.current ? ' · current in dossier' : ' · historical in dossier'}` : 'Unknown · open the dossier for the request binding');
     }
     const inference = control?.inference;

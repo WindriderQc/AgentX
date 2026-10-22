@@ -340,6 +340,16 @@ cut, and the launcher prints its verdict:
 - Both, or every service when none is named, take the global `runtime-deploy`
   lease, refused while any workload or inference is active.
 
+Restarting or upgrading one Ollama machine takes a host lease instead:
+`POST /api/nerve-center/maintenance-leases` with
+`{ "scope": "host", "hosts": ["http://<host>:11434"], "requestId": "…" }`.
+Core grants it when no workload or inference runs on those endpoints or on
+another endpoint of the same machine (`AGENTX_RUNTIME_RESOURCES_JSON`), and
+while it is held refuses new inference only there; other hosts keep serving.
+New workloads and other maintenance leases still wait for it. Release it with
+the usual `DELETE …/maintenance-leases/:leaseId`; the pin reconciler then warms
+the host's pins back.
+
 A refusal stops with exit code 4 without touching a container and names each
 blocker (kind, id, hosts, owner, start, reason) with its clean cancel route:
 the Profiler panel or `POST /api/profiler/pipeline/profile/:profileId/cancel`,

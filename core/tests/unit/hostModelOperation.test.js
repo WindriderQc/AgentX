@@ -31,6 +31,16 @@ test('restoration still respects global maintenance and an exclusive operation o
   expect(warm).not.toHaveBeenCalled();
 });
 
+test('a host lease holds back only its own host\'s restoration until release', async () => {
+  const lease = await runtime.acquireMaintenance({ principal: 'operator-token', requestId: 'upgrade-a',
+    scope: 'host', hosts: ['http://host-a:11434'] });
+  const warm = jest.fn(async () => 'ok');
+  await expect(runHostModelOperation(operation('host-a'), warm)).rejects.toMatchObject({ code: 'RUNTIME_INFERENCE_ADMISSION_DENIED' });
+  await expect(runHostModelOperation(operation('host-b'), warm)).resolves.toBe('ok');
+  await runtime.release('maintenance', { id: lease.leaseId, generation: lease.generation, principal: 'operator-token' });
+  await expect(runHostModelOperation(operation('host-a'), warm)).resolves.toBe('ok');
+});
+
 test('an interrupted restore quarantines only its own host and releases the local gate', async () => {
   await expect(runHostModelOperation(operation('host-a'), async () => { throw new Error('socket lost'); })).rejects.toThrow('socket lost');
   expect(hostGate.hostHasInflight('http://host-a:11434')).toBe(false);
