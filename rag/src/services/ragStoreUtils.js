@@ -55,6 +55,17 @@ function buildDocumentIdentity(source, text, explicitDocumentId = null) {
   };
 }
 
+/**
+ * True when `index` falls between the two halves of a UTF-16 surrogate pair,
+ * where cutting the text would leave a lone surrogate on each side.
+ */
+function insideSurrogatePair(text, index) {
+  if (index <= 0 || index >= text.length) return false;
+  const before = text.charCodeAt(index - 1);
+  const after = text.charCodeAt(index);
+  return before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff;
+}
+
 function splitIntoChunks(text, chunkSize, chunkOverlap) {
   if (typeof text !== 'string') {
     throw new Error('splitIntoChunks: text must be a string');
@@ -83,6 +94,7 @@ function splitIntoChunks(text, chunkSize, chunkOverlap) {
       });
     }
 
+    const chunkStart = start;
     let end = Math.min(start + chunkSize, text.length);
 
     if (end < text.length) {
@@ -90,6 +102,10 @@ function splitIntoChunks(text, chunkSize, chunkOverlap) {
       if (breakPoint > start && breakPoint > start + chunkSize * 0.5) {
         end = breakPoint + 1;
       }
+      // Never end a chunk between the halves of an emoji or other character
+      // beyond the basic plane. Keep the whole pair in this chunk when moving
+      // back would leave it empty.
+      if (insideSurrogatePair(text, end)) end += end - 1 > start ? -1 : 1;
     }
 
     const chunk = text.substring(start, end).trim();
@@ -114,6 +130,11 @@ function splitIntoChunks(text, chunkSize, chunkOverlap) {
     } else {
       start = nextStart;
     }
+
+    // The next chunk must not begin inside a pair either: step back so it
+    // starts with the whole character, or forward when stepping back would
+    // repeat this chunk.
+    if (insideSurrogatePair(text, start)) start += start - 1 > chunkStart ? -1 : 1;
 
     if (start >= text.length) break;
   }
