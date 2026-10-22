@@ -148,7 +148,12 @@ def run(archive, core, state_file, *, client=None, opener=urllib.request.urlopen
         try:
             data = post(core, "/api/secretary/recall/documents", {"documents": batch}, opener)
         except (urllib.error.URLError, TimeoutError, ValueError) as error:
-            report("unconfirmed", error=type(error).__name__)
+            detail = {}
+            if isinstance(error, urllib.error.HTTPError):
+                try: detail = {"httpStatus": error.code, "answer": error.read(2000).decode("utf-8", "replace")[:500]}
+                except OSError: detail = {"httpStatus": error.code}
+            report("unconfirmed", error=type(error).__name__, **detail,
+                   batch=[doc["documentId"] for doc in batch])
             raise RuntimeError("Recall indexing answer is uncertain; rerun to replay the same documents") from error
         for doc in batch:
             state["delivered"][doc["documentId"]] = digest(doc)
