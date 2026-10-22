@@ -84,6 +84,9 @@ _spec.loader.exec_module(coding_sandbox)
 _spec = importlib.util.spec_from_file_location("coding_autonomous", HERE / "coding_autonomous.py")
 coding_autonomous = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(coding_autonomous)
+_spec = importlib.util.spec_from_file_location("coding_distributed_step", HERE / "coding_distributed_step.py")
+coding_distributed_step = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(coding_distributed_step)
 AUTHOR = ["-c", "user.name=AgentX Coding Team", "-c", "user.email=coding-team@agentx.invalid"]
 
 PROMPT = """You are the AgentX coding worker. /workspace is a fresh clone of {repository}
@@ -470,6 +473,7 @@ def main() -> int:
     parser.add_argument("--model-call-limit", type=int, default=None)
     parser.add_argument("--parent-request-id", default=None)
     parser.add_argument("--parent-sha256", default=None)
+    coding_distributed_step.add_arguments(parser)
     args = parser.parse_args()
     if not TASK_ID.fullmatch(args.task_id):
         parser.error("task id is four digits")
@@ -490,12 +494,15 @@ def main() -> int:
         except ValueError as error:
             parser.error(str(error))
 
+    coding_distributed_step.validate_arguments(parser, args)
+
     if args.parent_request_id is not None or args.parent_sha256 is not None:
         if not args.report_name or not coding_progress.REQUEST_ID.fullmatch(args.parent_request_id or '') or args.parent_sha256 is not None and not re.fullmatch(r'[a-f0-9]{64}', args.parent_sha256) or args.parent_request_id == args.request_id:
             parser.error('report continuation needs its original request and SHA-256')
 
     progress = coding_progress.Progress(args.task_id, args.request_id, args.timeout_seconds, receipts=RECEIPTS,
-        heartbeat=None if args.report_name else lambda: request(f"{CORE}/api/pipeline/tasks/{args.task_id}/heartbeat", {"assignee": WORKER}))
+        heartbeat=None if args.report_name or args.distributed_role else
+        lambda: request(f"{CORE}/api/pipeline/tasks/{args.task_id}/heartbeat", {"assignee": WORKER}))
     progress.report_mode = progress.preflight = bool(args.report_name)
     progress.report_model_call_limit = coding_progress.report_call_limit(args.model_call_limit)
     previous_handlers = {signum: signal.getsignal(signum) for signum in (signal.SIGTERM, signal.SIGINT)}
@@ -506,6 +513,9 @@ def main() -> int:
     try:
         return execute(args, progress)
     except Exception as error:
+        distributed_failure = coding_distributed_step.failed(args, error, progress)
+        if distributed_failure is not None:
+            return distributed_failure
         if args.report_name:
             spec = importlib.util.spec_from_file_location("coding_report", HERE / "coding_report.py")
             reporter = importlib.util.module_from_spec(spec)
@@ -528,10 +538,11 @@ def main() -> int:
 
 def execute(args, progress) -> int:
     global MODEL
+    if getattr(args, "distributed_role", None):
+        return coding_distributed_step.execute_role(SimpleNamespace(**globals()), args, progress)
     if getattr(args, "autonomous", False):
         return coding_autonomous.execute(SimpleNamespace(**globals()), args, progress)
-    # The same eligibility rule as the Pipeline launch control: a direct task id
-    # may not start a task the dispatch boundary would refuse, and an ineligible
+    # Direct invocation follows the same eligibility rule as Pipeline launch, so an ineligible
     # task must stay untouched (no claim, clone, dependency install or worker run).
     try:
         task = request(f"{CORE}/api/pipeline/tasks/{args.task_id}")["data"]["task"]

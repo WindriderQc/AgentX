@@ -1,0 +1,377 @@
+#!/usr/bin/env python3
+"""Execute one Core-authorized code DAG step on a pinned executor.
+
+The worker owns only an isolated worktree and one immutable Git bundle.  Core
+owns the graph, attempt identity and settlement.  The small adapter boundary is
+intentional: CPU tests can exercise the complete protocol without a model or a
+network, while ``coding_run.py`` supplies the installed harness at runtime.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import tempfile
+import time
+from datetime import datetime, timezone
+from urllib.request import Request, urlopen
+
+
+UUID = re.compile(r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$")
+SHA1 = re.compile(r"^[a-f0-9]{40}$")
+SHA256 = re.compile(r"^[a-f0-9]{64}$")
+STEP = re.compile(r"^step-(?:0[1-9]|1[0-6])$")
+SCHEMAS = {"agentx.pipeline-code-step-worker-manifest/v1", "agentx.pipeline-code-step-manifest/v1"}
+
+
+class DistributedStepError(RuntimeError):
+    pass
+
+
+def add_arguments(parser):
+    parser.add_argument("--distributed-role", choices=("step", "assembly"), default=None)
+    parser.add_argument("--graph-id", default=None)
+    parser.add_argument("--executor-id", default=None)
+    parser.add_argument("--step-id", default=None)
+    parser.add_argument("--manifest-fingerprint", default=None)
+
+
+def validate_arguments(parser, args):
+    identity = (args.graph_id, args.executor_id, args.manifest_fingerprint)
+    if args.distributed_role:
+        if args.autonomous or args.report_name or not args.request_id or not all(identity):
+            parser.error("distributed execution needs its exact request, graph, executor, and manifest")
+        if args.distributed_role == "step" and not args.step_id:
+            parser.error("a distributed step needs its exact step id")
+        if args.distributed_role == "assembly" and args.step_id:
+            parser.error("the root assembly manifest does not accept a step id")
+    elif any((*identity, args.step_id)):
+        parser.error("distributed identity fields require --distributed-role")
+
+
+def failed(args, error, progress):
+    if not args.distributed_role:
+        return None
+    progress.write()
+    print(f"distributed {args.distributed_role} request requires reconciliation: "
+          f"{type(error).__name__}", file=__import__("sys").stderr)
+    return 2
+
+
+def execute_role(runtime, args, progress):
+    if args.distributed_role == "step":
+        return execute(runtime, args, progress)
+    if args.distributed_role == "assembly":
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "coding_distributed_assembly", Path(__file__).with_name("coding_distributed_assembly.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.execute(runtime, args, progress)
+    return None
+
+
+def _atomic_json(path: Path, value: dict) -> None:
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent,
+                                     prefix=".distributed-step-", delete=False) as output:
+        json.dump(value, output, sort_keys=True, separators=(",", ":"))
+        output.write("\n")
+        output.flush()
+        os.fsync(output.fileno())
+        temporary = Path(output.name)
+    os.chmod(temporary, 0o600)
+    os.replace(temporary, path)
+
+
+def _read_json(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    if path.is_symlink() or path.stat().st_size > 128 * 1024:
+        raise DistributedStepError("distributed step journal is invalid")
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise DistributedStepError("distributed step journal is invalid")
+    return value
+
+
+def _field(container: dict, *names):
+    for name in names:
+        if name in container:
+            return container[name]
+    return None
+
+
+def validate_manifest(value: object, *, task_id: str, request_id: str, graph_id: str,
+                      executor_id: str, step_id: str, fingerprint: str) -> dict:
+    if not isinstance(value, dict) or value.get("schema") not in SCHEMAS or value.get("role") != "step":
+        raise DistributedStepError("Core returned no supported step manifest")
+    task = value.get("task") or {"pipelineId": value.get("pipelineId")}
+    graph = value.get("graph") or {"graphId": value.get("graphId"), "sourceCommit": value.get("sourceCommit")}
+    request = value.get("request") or {"requestId": value.get("requestId"), "baseCommit": value.get("baseCommit"),
+                                       "budget": value.get("budget"), "model": value.get("model")}
+    executor = value.get("executor") or {"executorId": value.get("executorId"),
+                                          "model": value.get("model"), "harness": value.get("harness")}
+    step = value.get("step")
+    if not all(isinstance(item, dict) for item in (task, graph, request, executor, step)):
+        raise DistributedStepError("step manifest is incomplete")
+    observed = (_field(task, "pipelineId", "id"), _field(request, "requestId", "id"),
+                _field(graph, "graphId", "id"), _field(executor, "executorId", "id"),
+                _field(step, "stepId", "id"), value.get("manifestFingerprint"))
+    expected = (task_id, request_id, graph_id, executor_id, step_id, fingerprint)
+    if observed != expected:
+        raise DistributedStepError("step manifest identity differs from the pinned launch")
+    base = _field(request, "baseCommit") or _field(step, "baseCommit") or _field(graph, "baseCommit", "sourceCommit")
+    paths = _field(step, "paths", "allowedPaths")
+    targets = step.get("testTargets")
+    profile = _field(request, "verificationProfile") or value.get("verificationProfile")
+    model = _field(executor, "model") or _field(request, "model") or value.get("model")
+    root_lease = value.get("rootLeaseId")
+    if not SHA1.fullmatch(str(base or "")) or not isinstance(paths, list) or not paths \
+            or not isinstance(targets, list) or not targets or not isinstance(profile, str) or not profile \
+            or not isinstance(model, str) or model in {"", "auto", "agentx-primary"} \
+            or not isinstance(root_lease, str) or not root_lease:
+        raise DistributedStepError("step manifest has no exact base, scope, tests, model, or root lease")
+    executor["model"] = model
+    if not UUID.fullmatch(request_id) or not STEP.fullmatch(step_id) or not SHA256.fullmatch(fingerprint):
+        raise DistributedStepError("pinned step launch identity is invalid")
+    return {**value, "task": task, "graph": graph, "request": request, "executor": executor,
+            "baseCommit": base, "allowedPaths": paths, "testTargets": targets,
+            "verificationProfile": profile}
+
+
+def step_prompt(manifest: dict) -> str:
+    step = manifest["step"]
+    return (
+        "Implement only this independently testable code step. Read AGENTS.md first. "
+        "Do not commit or push; the runner owns verification and the single commit.\n\n"
+        f"Step: {_field(step, 'stepId', 'id')} — {step.get('title', '')}\n"
+        f"Objective: {step.get('objective', '')}\n"
+        f"Exact writable paths: {json.dumps(manifest['allowedPaths'])}\n"
+        f"Runner-owned focused tests: {json.dumps(manifest['testTargets'])}\n"
+    )
+
+
+class HttpCore:
+    def __init__(self, base_url: str):
+        self.base_url = base_url.rstrip("/")
+
+    def _call(self, endpoint: str, *, method="GET", body=None, content_type="application/json"):
+        data = body
+        if isinstance(body, dict):
+            data = json.dumps(body).encode()
+        headers = {"Accept": "application/json", "x-service-caller": "coding-run"}
+        if data is not None:
+            headers["Content-Type"] = content_type
+        with urlopen(Request(self.base_url + endpoint, data=data, headers=headers, method=method), timeout=30) as response:
+            payload = json.load(response)
+        return payload.get("data", payload)
+
+    def manifest(self, endpoint):
+        return self._call(endpoint)
+
+    def upload(self, endpoint, path: Path):
+        return self._call(endpoint, method="PUT", body=path.read_bytes(), content_type="application/octet-stream")
+
+    def post(self, endpoint, body):
+        return self._call(endpoint, method="POST", body=body)
+
+    def download(self, endpoint: str, destination: Path, maximum=8 * 1024 * 1024):
+        """Download one bounded immutable artifact without following mutable workspace state."""
+        url = endpoint if endpoint.startswith(("http://", "https://")) else self.base_url + endpoint
+        with urlopen(Request(url, headers={"Accept": "application/octet-stream",
+                                          "x-service-caller": "coding-run"}), timeout=30) as response:
+            data = response.read(maximum + 1)
+        if not data or len(data) > maximum:
+            raise DistributedStepError("code-step artifact download is empty or exceeds its bound")
+        destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        destination.write_bytes(data)
+        os.chmod(destination, 0o600)
+        return destination
+
+
+class StepWorker:
+    """Protocol driver; ``adapter`` provides local Git, harness and test operations."""
+
+    def __init__(self, adapter, journal_dir: str | os.PathLike[str]):
+        self.adapter = adapter
+        self.journal_dir = Path(journal_dir)
+
+    def execute(self, manifest: dict) -> dict:
+        request_id = _field(manifest["request"], "requestId", "id")
+        path = self.journal_dir / f"{request_id}.distributed-step.json"
+        prior = _read_json(path)
+        if prior:
+            if prior.get("manifestFingerprint") != manifest["manifestFingerprint"]:
+                raise DistributedStepError("request journal belongs to another manifest")
+            if prior.get("state") == "terminal":
+                self.adapter.upload(Path(prior["artifactPath"]))
+                self.adapter.result(prior["result"])
+                return {**prior["result"], "replayed": True}
+            raise DistributedStepError("step has an unresolved non-terminal journal")
+
+        workspace = self.adapter.prepare(manifest)
+        started = time.monotonic()
+        run = self.adapter.harness(workspace, step_prompt(manifest), manifest)
+        if getattr(run, "returncode", 0) != 0:
+            raise DistributedStepError("coding harness did not complete the step")
+        changed = sorted(self.adapter.changed(workspace, manifest["baseCommit"]))
+        allowed = manifest["allowedPaths"]
+        outside = [name for name in changed if not any(name == root or name.startswith(root + "/") for root in allowed)]
+        if not changed or outside:
+            raise DistributedStepError("coding harness produced no change or exceeded the exact step scope")
+        tests = self.adapter.tests(workspace, manifest)
+        if not tests or any(item.get("outcome") != "passed" for item in tests):
+            raise DistributedStepError("runner-owned focused verification did not pass")
+        commit = self.adapter.commit(workspace, manifest, changed)
+        if not SHA1.fullmatch(commit) or self.adapter.parent(workspace, commit) != manifest["baseCommit"]:
+            raise DistributedStepError("step result is not exactly one commit above its base")
+        artifact_path, export = self.adapter.export(workspace, manifest, commit)
+        uploaded = self.adapter.upload(artifact_path)
+        artifact = {
+            "id": uploaded["id"], "sha256": uploaded["sha256"],
+            "sizeBytes": uploaded.get("sizeBytes", uploaded.get("size")),
+            "format": uploaded.get("format", "git-bundle/v1"),
+        }
+        if artifact["sha256"] != export["sha256"] or artifact["sizeBytes"] != export["size"]:
+            raise DistributedStepError("Core artifact receipt differs from the exported bundle")
+        usage = self.adapter.usage(started)
+        result = {"outcome": "verified", "actualUsage": usage, "receipt": {
+            "commit": commit, "changedPaths": changed, "tests": tests, "artifact": artifact,
+            "finishedAt": self.adapter.now(),
+        }}
+        _atomic_json(path, {"schemaVersion": 1, "state": "terminal",
+                            "manifestFingerprint": manifest["manifestFingerprint"],
+                            "artifactPath": str(artifact_path), "result": result})
+        self.adapter.result(result)
+        return result
+
+
+class RunnerStepAdapter:
+    """Production adapter over coding_run's already installed primitives."""
+
+    def __init__(self, runtime, args, progress, manifest, core, endpoint):
+        self.r, self.args, self.progress = runtime, args, progress
+        self.manifest, self.core, self.endpoint = manifest, core, endpoint
+        self.test_seconds = 0
+
+    def _repository(self) -> Path:
+        configured = os.environ.get("AGENTX_CODING_REPOSITORY_PATH", "").strip()
+        if configured:
+            return Path(configured).resolve(strict=True)
+        mirror = self.r.WORKSPACES / ".distributed-repository.git"
+        if not mirror.exists():
+            self.r.WORKSPACES.mkdir(mode=0o700, parents=True, exist_ok=True)
+            result = subprocess.run(["git", "clone", "--mirror", "--no-tags",
+                f"https://github.com/{self.r.REPOSITORY}.git", str(mirror)], capture_output=True)
+            if result.returncode:
+                raise DistributedStepError("distributed repository preparation failed")
+        return mirror
+
+    def prepare(self, manifest):
+        spec = __import__("importlib.util").util.spec_from_file_location(
+            "coding_step_workspace", Path(__file__).with_name("coding_step_workspace.py"))
+        self.workspace_module = __import__("importlib.util").util.module_from_spec(spec)
+        spec.loader.exec_module(self.workspace_module)
+        target = self.r.WORKSPACES / f"graph-{self.args.graph_id}" / f"{self.args.step_id}-{self.args.request_id}"
+        branch = f"agentx/code-step/{self.args.graph_id[:12]}/{self.args.step_id}/{self.args.request_id[:8]}"
+        self.workspace_module.prepare_worktree(self._repository(), target, manifest["baseCommit"], branch)
+        self.r.install_dependencies(target, self.progress)
+        self.installed_dependencies = self.r.dependency_state(target)
+        return target
+
+    def harness(self, workspace, prompt, manifest):
+        executor = manifest["executor"]
+        model = executor.get("model") or manifest["request"].get("model") or self.r.MODEL
+        self.progress.phase = "running"
+        self.progress.relay_headers = {
+            "x-agentx-coding-task": self.args.task_id,
+            "x-agentx-code-graph": self.args.graph_id,
+            "x-agentx-code-step": self.args.step_id,
+            "x-agentx-code-step-request": self.args.request_id,
+            "x-agentx-code-step-executor": self.args.executor_id,
+            "x-agentx-coding-lease": manifest.get("rootLeaseId", ""),
+        }
+        return self.r.run_worker(workspace, prompt, self.args.timeout_seconds,
+                                 self.progress, model=model)
+
+    def changed(self, workspace, base):
+        if self.r.dependency_state(workspace) != self.installed_dependencies:
+            raise DistributedStepError("code step changed dependencies that were not installed for this attempt")
+        tracked = self.r.git(workspace, "diff", "--name-only", base, "--").splitlines()
+        untracked = self.r.git(workspace, "ls-files", "--others", "--exclude-standard").splitlines()
+        return sorted(set(filter(None, [*tracked, *untracked])))
+
+    def tests(self, workspace, manifest):
+        spec = __import__("importlib.util").util.spec_from_file_location(
+            "coding_verification", Path(__file__).with_name("coding_verification.py"))
+        verification = __import__("importlib.util").util.module_from_spec(spec)
+        spec.loader.exec_module(verification)
+        command = verification.focused_command(workspace, manifest["verificationProfile"], manifest["testTargets"])
+        before = self.r.coding_progress.source_state(workspace)
+        started = time.monotonic()
+        result = self.r.supervise(self.r.sandbox(workspace, self.r.worker_home(workspace), command,
+            network=False, timeout_seconds=max(1, self.args.timeout_seconds)), self.progress)
+        duration = max(0, int((time.monotonic() - started) * 1000))
+        self.test_seconds += (duration + 999) // 1000
+        if result.returncode or self.r.coding_progress.source_state(workspace) != before:
+            return [{"target": target, "profile": manifest["verificationProfile"],
+                     "outcome": "failed", "durationMs": duration} for target in manifest["testTargets"]]
+        return [{"target": target, "profile": manifest["verificationProfile"],
+                 "outcome": "passed", "durationMs": duration} for target in manifest["testTargets"]]
+
+    def commit(self, workspace, manifest, changed):
+        self.r.git(workspace, "add", "-A", "--", *changed)
+        self.r.git(workspace, *self.r.AUTHOR, "commit", "--quiet", "--no-verify", "-m",
+                   f"Implement {self.args.step_id}: {manifest['step'].get('title', 'code step')}")
+        if self.r.git(workspace, "status", "--porcelain", "--untracked-files=normal"):
+            raise DistributedStepError("step worktree is not clean after its runner-owned commit")
+        commit = self.r.git(workspace, "rev-parse", "HEAD")
+        self.progress.checkpoint = commit
+        self.progress.write()
+        return commit
+
+    def parent(self, workspace, commit):
+        return self.r.git(workspace, "rev-parse", f"{commit}^")
+
+    def export(self, workspace, manifest, commit):
+        artifact = self.r.RECEIPTS / "code-step-artifacts" / f"{self.args.request_id}.bundle"
+        receipt = self.workspace_module.export_commit(workspace, artifact, manifest["baseCommit"],
+                                                       commit, manifest["allowedPaths"])
+        return artifact, receipt
+
+    def upload(self, path):
+        return self.core.upload(self.manifest.get("artifactUploadPath") or self.endpoint + "/artifact", path)
+
+    def result(self, body):
+        return self.core.post(self.manifest.get("terminalResultPath") or self.endpoint + "/result", body)
+
+    def usage(self, started):
+        observed = self.progress.usage() if hasattr(self.progress, "usage") else {}
+        work = max(0, int(time.monotonic() - started))
+        return {"workSeconds": min(work, int(observed.get("workSeconds", work))),
+                "testSeconds": self.test_seconds,
+                "modelSeconds": max(0, int(observed.get("modelSeconds", 0))),
+                "modelCalls": max(0, int(observed.get("modelCalls", 0)))}
+
+    @staticmethod
+    def now():
+        return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def execute(runtime, args, progress) -> int:
+    """Runtime entry used by coding_run; all network calls retain the run URL."""
+    endpoint = f"/api/pipeline/coding-autonomy/tasks/{args.task_id}/runs/{args.request_id}"
+    core = HttpCore(runtime.CORE)
+    raw = core.manifest(endpoint + "/manifest")
+    manifest = validate_manifest(raw, task_id=args.task_id, request_id=args.request_id,
+        graph_id=args.graph_id, executor_id=args.executor_id, step_id=args.step_id,
+        fingerprint=args.manifest_fingerprint)
+    factory = getattr(runtime, "distributed_step_adapter", RunnerStepAdapter)
+    adapter = factory(runtime, args, progress, manifest, core, endpoint)
+    StepWorker(adapter, runtime.RECEIPTS).execute(manifest)
+    progress.finish("verified", checkpoint=getattr(progress, "checkpoint", None))
+    return 0
