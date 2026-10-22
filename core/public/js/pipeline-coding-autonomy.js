@@ -39,6 +39,21 @@
     const details = element('details', '');
     details.append(element('summary', title), form); article.append(details);
   }
+  function appendCodeStepGraph(article, value) {
+    if (!value) return;
+    const presenter = window.PipelineCodeStepGraph;
+    const summary = presenter?.summaryText?.(value);
+    if (!summary) {
+      article.append(element('p', 'Code-step graph unavailable; malformed evidence was not displayed.'));
+      return;
+    }
+    article.append(element('p', `Multi-host graph · ${summary}`));
+    const details = element('details', '');
+    const body = element('div', '');
+    body.innerHTML = presenter.render(value, { compact: true });
+    details.append(element('summary', 'Code-step graph and final assembly evidence'), body);
+    article.append(details);
+  }
   function renderStatus(suffix = '') {
     const current = snapshot.tasks.filter(t => !t.disposition && t.taskStatus !== 'done');
     const queued = current.filter(t => t.authorized && ['queued', 'correction'].includes(t.state)).length;
@@ -102,6 +117,7 @@
         element('p', `Remaining: ${remaining(task.remaining.workSeconds)} work, ${remaining(task.remaining.testSeconds)} tests, ${remaining(task.remaining.modelSeconds)} model, ${task.remaining.modelCalls} calls, ${remaining(task.remaining.ciSeconds)} CI`),
         element('p', `Last useful progress: ${task.lastUsefulProgressAt || 'none recorded'} · manual interventions: ${task.manualInterventions.length}`));
       article.append(element('p', `Authorized files: ${task.scope.join(', ')} · campaign ${task.queueRequestId}`));
+      appendCodeStepGraph(article, task.codeStepGraph);
       if (task.nativeAttemptLimit) article.append(element('p', `Native attempts: ${task.nativeAttemptCount}/${task.nativeAttemptLimit} · remaining worker corrections: ${task.remaining.maxResumes}`));
       const exhausted = [['workSeconds', 'work'], ['testSeconds', 'tests'], ['modelSeconds', 'model time'],
         ['modelCalls', 'model calls'], ['ciSeconds', 'CI']].filter(([key]) => task.remaining[key] === 0).map(([, title]) => title);

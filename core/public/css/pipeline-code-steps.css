@@ -15,4 +15,16 @@
 .pipeline-code-steps-invalid { margin: 8px 0 0; }
 .pipeline-worker-evidence .pipeline-code-steps-list { margin-top: 8px; }
 .pipeline-worker-evidence .pipeline-code-steps-list > li { padding: 7px 8px; }
+.pipeline-code-graph-budget { margin: 0 0 10px; color: var(--text-muted, #94a3b8); font-size: .78rem; line-height: 1.5; }
+.pipeline-code-graph-meta { display: grid; gap: 4px; margin: 8px 0 0 2rem; font-size: .78rem; }
+.pipeline-code-graph-meta > div { display: grid; grid-template-columns: minmax(84px, .35fr) minmax(0, 1fr); gap: 8px; }
+.pipeline-code-graph-meta dt { color: var(--text-muted, #94a3b8); }
+.pipeline-code-graph-meta dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.pipeline-code-graph-list > li > .pipeline-code-step-tests { margin: 8px 0 0 2rem; }
+.pipeline-code-graph-assembly { margin-top: 12px; padding: 10px; border: 1px solid var(--border-color, #334155); border-radius: 8px; }
+.pipeline-code-graph-assembly h5 { margin: 0 0 6px; font-size: .82rem; }
+.pipeline-code-graph-assembly .pipeline-code-graph-meta { margin-left: 0; }
+.pipeline-code-graph-invalid { margin: 8px 0 0; color: var(--text-muted, #94a3b8); font-size: .78rem; }
+[data-code-graph-state="uncertain"] .pipeline-code-step-state, [data-code-graph-state="waiting"] .pipeline-code-step-state { color: #fde68a; }
+[data-code-graph-state="failed"] .pipeline-code-step-state, [data-code-graph-state="blocked"] .pipeline-code-step-state { color: #fca5a5; }
 @media (max-width: 560px) { .pipeline-code-step-state { margin-left: 0; } }

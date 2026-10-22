@@ -73,10 +73,13 @@ describe('Pipeline open-work experience', () => {
     expect(script).toContain("metaRow('Next action'");
     expect(script).toContain("metaRow('Failure codes'");
     expect(script).toContain('codeSteps?.render(evidence.codeSteps');
+    expect(script).toContain('codeStepGraph?.render(evidence.codeStepGraph');
     expect(script).toContain('Runner-owned code steps');
+    expect(script).toContain('Core-owned code-step graph');
     expect(script).toContain('malformed evidence was not displayed');
     expect(pageRoute.indexOf('/js/code-step-summary.js')).toBeLessThan(pageRoute.indexOf('/js/pipeline-code-steps.js'));
     expect(pageRoute.indexOf('/js/pipeline-code-steps.js')).toBeLessThan(pageRoute.indexOf('/js/pipeline-worker-monitor.js'));
+    expect(pageRoute.indexOf('/js/code-step-graph-summary.js')).toBeLessThan(pageRoute.indexOf('/js/pipeline-code-step-graph.js'));
     expect(script).toContain('it has not been approved, merged, or deployed');
     expect(script).toContain('readDeepLinkedTask()');
     expect(script).toContain('openDrawer(pipelineId, null)');

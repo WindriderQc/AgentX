@@ -300,6 +300,7 @@ router.post(
         ...(existing?.repository && { repository: existing.repository }),
         ...(existing?.inference && { inference: existing.inference }),
         ...(existing?.codeSteps && { codeSteps: existing.codeSteps }),
+        ...(existing?.codeStepGraph && { codeStepGraph: existing.codeStepGraph }),
       });
       if (normalized.usage.costNanodollars == null
         || !normalized.usage.costKind

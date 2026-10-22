@@ -2,6 +2,7 @@
 
 const { fingerprint, DATA_CLASSIFICATIONS } = require('./workerContract');
 const { normalize: normalizeCodeStepSummary } = require('./codeStepSummary');
+const { normalize: normalizeCodeStepGraphSummary } = require('./codeStepGraphSummary');
 
 const PIPELINE_AUTOMATION_SCHEMA = 'agentx.pipeline-automation/v1';
 const PIPELINE_AUTOMATION_EVIDENCE_SCHEMA = 'agentx.pipeline-automation-evidence/v1';
@@ -436,6 +437,14 @@ function normalizePipelineAutomationEvidence(rawValue) {
       throw automationError(`attemptEvidence.codeSteps is invalid: ${error.message}`);
     }
   }
+  let codeStepGraph;
+  if (raw.codeStepGraph != null) {
+    try {
+      codeStepGraph = normalizeCodeStepGraphSummary(raw.codeStepGraph);
+    } catch (error) {
+      throw automationError(`attemptEvidence.codeStepGraph is invalid: ${error.message}`);
+    }
+  }
 
   return {
     schema: PIPELINE_AUTOMATION_EVIDENCE_SCHEMA,
@@ -485,6 +494,7 @@ function normalizePipelineAutomationEvidence(rawValue) {
     ...(repository && { repository }),
     ...(inference && { inference }),
     ...(codeSteps && { codeSteps }),
+    ...(codeStepGraph && { codeStepGraph }),
   };
 }
 

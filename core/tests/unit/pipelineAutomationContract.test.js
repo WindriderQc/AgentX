@@ -46,6 +46,23 @@ function codeSteps(overrides = {}) {
   };
 }
 
+function codeStepGraph(overrides = {}) {
+  const executor = { id: 'ugalien-open', label: 'UGAlien', harness: 'opencode' };
+  return {
+    schema: 'agentx.code-step-graph-summary/v1', graphId: 'graph-0703', planFingerprint: 'e'.repeat(64), state: 'running',
+    activeSteps: ['step-2'], counts: { pending: 0, waiting: 0, running: 1, passed: 1, failed: 0, uncertain: 0, blocked: 0 },
+    budget: { reserved: { workSeconds: 60, testSeconds: 20, modelSeconds: 30, modelCalls: 4, ciSeconds: 0 },
+      spent: { workSeconds: 10, testSeconds: 4, modelSeconds: 8, modelCalls: 1, ciSeconds: 0 } },
+    steps: [
+      { id: 'step-1', title: 'Persist the graph', state: 'passed', dependsOn: [], attempt: 1, executor,
+        commit: 'f'.repeat(40), tests: [{ profile: 'core-unit', outcome: 'passed' }],
+        adoption: { state: 'adopted', assemblyCommit: '1'.repeat(40), receiptFingerprint: '2'.repeat(64) } },
+      { id: 'step-2', title: 'Render the graph', state: 'running', dependsOn: ['step-1'], attempt: 1, executor, tests: [] },
+    ], assembly: { state: 'assembling', executor, baseCommit: '3'.repeat(40), headCommit: '1'.repeat(40), adoptedSteps: 1 },
+    ...overrides,
+  };
+}
+
 describe('pipeline automation contract', () => {
   test('normalizes stable set-like fields and verifies the fingerprint', () => {
     const normalized = normalizePipelineAutomationIntent(intent({
@@ -197,6 +214,33 @@ describe('pipeline automation contract', () => {
 
     expect(task.validateSync()).toBeUndefined();
     expect(task.toObject().automationAttempts[0].evidence.codeSteps).toEqual(codeSteps());
+  });
+
+  test('retains and persists only the bounded additive multi-host graph projection', () => {
+    const raw = codeStepGraph({ sshTarget: 'private@host', workspacePath: '/private/worktree', command: 'private command' });
+    raw.steps[0].executor.host = '10.0.0.8';
+    const evidence = normalizePipelineAutomationEvidence({ schema: PIPELINE_AUTOMATION_EVIDENCE_SCHEMA,
+      verification: { status: 'passed' }, changes: {}, usage: {}, codeSteps: codeSteps(), codeStepGraph: raw });
+    expect(evidence.codeSteps).toEqual(codeSteps());
+    expect(evidence.codeStepGraph).toEqual(codeStepGraph());
+    expect(JSON.stringify(evidence.codeStepGraph)).not.toMatch(/sshTarget|workspacePath|private command|10\.0\.0/);
+
+    const task = new PipelineTask({ pipelineId: '0704', title: 'Graph persistence fixture',
+      automation: normalizePipelineAutomationIntent(intent()), automationAttemptCount: 1,
+      automationAttempts: [{ leaseId: 'fixture-lease', assignee: 'coding-team', attempt: 1,
+        acquiredAt: new Date(), heartbeatAt: new Date(), expiresAt: new Date(), evidence }] });
+    expect(task.validateSync()).toBeUndefined();
+    expect(task.toObject().automationAttempts[0].evidence.codeStepGraph).toEqual(codeStepGraph());
+  });
+
+  test('rejects malformed graph dependencies, receipts and active-step accounting', () => {
+    const base = { schema: PIPELINE_AUTOMATION_EVIDENCE_SCHEMA, verification: { status: 'failed' }, changes: {}, usage: {} };
+    const dependency = codeStepGraph(); dependency.steps[1].dependsOn = ['missing'];
+    expect(() => normalizePipelineAutomationEvidence({ ...base, codeStepGraph: dependency })).toThrow(/distinct earlier step ids/);
+    const active = codeStepGraph({ activeSteps: [] });
+    expect(() => normalizePipelineAutomationEvidence({ ...base, codeStepGraph: active })).toThrow(/activeSteps/);
+    const receipt = codeStepGraph(); delete receipt.steps[0].adoption.receiptFingerprint;
+    expect(() => normalizePipelineAutomationEvidence({ ...base, codeStepGraph: receipt })).toThrow(/commit and receipt/);
   });
 
   test('rejects inconsistent or disclosure-prone code-step summaries', () => {
