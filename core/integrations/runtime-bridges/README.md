@@ -103,6 +103,15 @@ headers. An outcome that is unknown after dispatch, a partial stream or a
 cancelled turn is never replayed. Unset, or with no rung available, the busy
 reply remains. See docs/OPERATIONS.md for the ladder itself.
 
+On the principal alias `agentx-primary`, that conversation borrows the
+`daily_operator` ladder when the instance configures one (in
+`AGENTX_TASK_FALLBACKS_JSON`), else the task above. It degrades only while the
+principal host is held or unavailable (claim, workload, quarantine, down),
+never because the principal is busy, and only to a rung pinned with a context
+on its host; that pin's context replaces the principal's. The degraded reply
+adds `X-AgentX-Degraded-Primary-Host` / `-Actual-Host`. Agents keep the model
+`agentx-conversation/agentx-primary`; gateway and Pipeline turns are unchanged.
+
 `OPENCLAW_CONVERSATION_HOSTS` (`model=http://host:11434`, comma-separated) sends
 an OpenClaw conversation model to one configured inference host instead of the
 routed task model, for example a second agent on a smaller GPU. The bridge sets

@@ -15,7 +15,7 @@ const { settledStream } = require('./settled-stream');
 const { sendBusyReply, wantsBusyReply } = require('./busy-reply');
 const {
   LOCAL_INFERENCE_CONFLICTS, PRIMARY_WAIT_WITH_FALLBACK_MS, applyDegradedHeaders, conversationFallbackTask,
-  markBody, noticeFrame, runWithConversationFallback
+  markBody, noticeFrame, principalFallbackTask, runWithConversationFallback
 } = require('./conversation-fallback');
 
 const OPENCLAW_CONSUMER_CONTRACT = 'openclaw-runtime-v1';
@@ -198,9 +198,11 @@ function registerOpenClawProtocol({
       const leaseId = pipeline?.attribution.correlationId;
       if (pipeline) request.timeoutMs = Math.min(request.timeoutMs || 600000,
         await pipelineAttribution.revalidate(leaseId));
-      // #143: only an opted-in conversation on a routed model may degrade.
+      // #143: only an opted-in conversation on a routed model may degrade. On
+      // the principal alias it borrows the daily operator ladder when there is one.
       const fallbackTask = !pipeline && (!conversationTarget || principalTarget) && wantsBusyReply(req, mode)
-        && typeof runtimeServices.routing.planFallback === 'function' ? conversationFallbackTask() : null;
+        && typeof runtimeServices.routing.planFallback === 'function'
+        ? (principalTarget ? principalFallbackTask(runtimeServices.routing) : conversationFallbackTask()) : null;
       const primaryRun = () => runtimeServices.inference.execute(request, {
         signal: abort.signal,
         consumerContract: pipeline?.consumerContract || OPENCLAW_CONSUMER_CONTRACT,
@@ -222,14 +224,16 @@ function registerOpenClawProtocol({
       });
       const outcome = fallbackTask
         ? await runWithConversationFallback({ runtimeServices, request, fallbackTask, primaryRun,
-          signal: abort.signal, consumerContract: OPENCLAW_CONSUMER_CONTRACT, logger })
+          signal: abort.signal, consumerContract: OPENCLAW_CONSUMER_CONTRACT, logger,
+          primaryHostUrl: principalTarget?.hostUrl || null })
         : { result: await primaryRun(), plan: null };
       const { result, plan } = outcome;
       applyRoutingHeaders(res, result.metadata);
       if (plan) {
         applyDegradedHeaders(res, plan.routing);
         logger?.info?.('OpenClaw conversation served by a fallback brain', { reason: plan.routing.reason,
-          from: plan.routing.fallbackFrom.model, to: plan.routing.fallbackTo.model });
+          from: plan.routing.fallbackFrom.model, to: plan.routing.fallbackTo.model,
+          fromHost: plan.routing.fallbackFrom.host, toHost: plan.routing.fallbackTo.host, task: fallbackTask });
       }
       if (!result.ok) {
         const message = result.body?.error?.message || result.body?.error || 'AgentX inference failed';

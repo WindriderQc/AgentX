@@ -19,6 +19,11 @@
  * quarantined, blocked or unreachable rung is skipped, and the rung model must
  * be installed on its host. Dispatch then runs the usual admission and claim
  * guard on the chosen host, so nothing here bypasses runtime coordination.
+ *
+ * `daily_operator` (the principal route behind `agentx-primary`) may also have
+ * a ladder, read only by an opted-in OpenClaw conversation on the principal
+ * alias. Task routing never degrades it, and its rungs must be pinned with a
+ * context on their host.
  */
 
 const mongoose = require('mongoose');
@@ -52,6 +57,15 @@ const DEGRADABLE_TASKS = Object.freeze([
   'household_review',
 ]);
 
+/**
+ * Strict for task routing, but an opted-in conversation on the principal
+ * alias may borrow their ladder (planExactModelFallback only). Such a turn
+ * degrades only when the principal host is held or unavailable, never because
+ * the principal is busy with another request.
+ */
+const CONVERSATION_ONLY_TASKS = Object.freeze(['daily_operator']);
+const PRINCIPAL_LADDER_TASK = 'daily_operator';
+
 const UNAVAILABLE_REASONS = Object.freeze({
   HOST_UNCONFIGURED: 'host_unconfigured',
   HOST_DOWN: 'host_down',
@@ -67,6 +81,8 @@ const UNAVAILABLE_REASONS = Object.freeze({
   DISPATCH_REFUSED: 'dispatch_refused',
   // The target model is pinned there but runs partly or wholly on CPU.
   VRAM_SPILL: 'vram_spill',
+  // A principal-ladder rung that is not pinned with a context on its host.
+  MODEL_UNPINNED: 'model_unpinned',
 });
 
 // Reasons that can clear by themselves within the short wait.
@@ -116,7 +132,7 @@ function parseTaskFallbacks(raw, { hosts = HOSTS } = {}) {
       errors.push(`unknown task type "${taskType}"`);
       continue;
     }
-    if (!DEGRADABLE_TASKS.includes(taskType)) {
+    if (!DEGRADABLE_TASKS.includes(taskType) && !CONVERSATION_ONLY_TASKS.includes(taskType)) {
       errors.push(`task "${taskType}" is strict and never degrades; remove its fallback list`);
       continue;
     }
@@ -176,8 +192,19 @@ function validateTaskFallbackConfig({ log = logger } = {}) {
   return { valid: true, errors: [], tasks };
 }
 
+/** The ladder task routing uses: never a conversation-only one. */
 function getTaskFallbackLadder(taskType) {
+  return CONVERSATION_ONLY_TASKS.includes(taskType) ? [] : ladderFor(taskType);
+}
+
+function ladderFor(taskType) {
   return loadConfig().ladders.get(taskType) || [];
+}
+
+/** True when an exact-model conversation could borrow `taskType`'s ladder. */
+function hasConversationLadder(taskType) {
+  return (DEGRADABLE_TASKS.includes(taskType) || CONVERSATION_ONLY_TASKS.includes(taskType))
+    && ladderFor(taskType).length > 0;
 }
 
 function waitMs() {
@@ -224,8 +251,15 @@ async function readPinVramSpill(hostUrl) {
   return pref?.pinVramSpill?.models || [];
 }
 
+/** Pinned entries on this host, or null when they cannot be read. */
+async function readPinnedEntries(hostUrl) {
+  if (mongoose.connection.readyState !== 1) return null;
+  const pref = await require('../../../models/HostPreference').findOne({ hostUrl }).lean();
+  return pref ? require('../hostPinPrimitives').getPinnedEntries(pref) : [];
+}
+
 function defaultDeps() {
-  return { readCoordination, assertHostAvailable, checkHostHealth, readPinVramSpill, sleep, now: Date.now };
+  return { readCoordination, assertHostAvailable, checkHostHealth, readPinVramSpill, readPinnedEntries, sleep, now: Date.now };
 }
 
 /** Read-only view of what ordinary admission would refuse on this host. */
@@ -260,7 +294,7 @@ function coordinationBlock(runtime, hostUrl, nowMs, { busyCounts = false, model 
  * `requireModel` verifies the model is installed (fallback rungs only; the
  * primary keeps its existing routing semantics).
  */
-async function probeTarget({ model, host, url = null }, deps, { requireModel = false, busyCounts = false } = {}) {
+async function probeTarget({ model, host, url = null }, deps, { requireModel = false, busyCounts = false, requirePin = false } = {}) {
   const hostUrl = url || HOSTS[host] || null;
   if (!hostUrl) return { available: false, reason: UNAVAILABLE_REASONS.HOST_UNCONFIGURED };
   try {
@@ -299,7 +333,22 @@ async function probeTarget({ model, host, url = null }, deps, { requireModel = f
   if (requireModel && !health.models.some(name => modelsMatch(name, model))) {
     return { available: false, reason: UNAVAILABLE_REASONS.MODEL_MISSING };
   }
+  if (requirePin && !(await pinnedWithContext(hostUrl, model, deps))) {
+    return { available: false, reason: UNAVAILABLE_REASONS.MODEL_UNPINNED };
+  }
   return { available: true, reason: null };
+}
+
+// The rung's own pin decides how its model loads (context, residency); an
+// unpinned rung would load beside, or evict, what its host keeps resident.
+async function pinnedWithContext(hostUrl, model, deps) {
+  let entries = null;
+  try {
+    entries = await deps.readPinnedEntries?.(hostUrl);
+  } catch (err) {
+    logger.debug('[TaskFallbackLadder] pin read skipped', { error: err.message });
+  }
+  return (entries || []).some(entry => modelsMatch(entry.model, model) && Number(entry.contextSize) > 0);
 }
 
 async function probePrimary(primary, deps) {
@@ -326,14 +375,15 @@ function recordServed(taskType, reason, now) {
 }
 
 /** First available rung from `startIndex`, as a degraded recommendation, or null. */
-async function selectRung(taskType, base, { fallbackFrom, reason, startIndex = 0, exclude = null }, deps) {
-  const ladder = getTaskFallbackLadder(taskType);
+async function selectRung(taskType, base, { fallbackFrom, reason, startIndex = 0, exclude = null, conversation = false }, deps) {
+  const ladder = conversation ? ladderFor(taskType) : getTaskFallbackLadder(taskType);
+  const requirePin = CONVERSATION_ONLY_TASKS.includes(taskType);
   const skipped = [];
   for (let index = startIndex; index < ladder.length; index += 1) {
     const rung = ladder[index];
     if (rung.host === fallbackFrom.host && modelsMatch(rung.model, fallbackFrom.model)) continue;
     if (exclude && HOSTS[rung.host] === exclude.url && modelsMatch(rung.model, exclude.model)) continue;
-    const probe = await probeTarget(rung, deps, { requireModel: true });
+    const probe = await probeTarget(rung, deps, { requireModel: true, requirePin });
     if (!probe.available) {
       skipped.push({ model: rung.model, host: rung.host, reason: probe.reason });
       continue;
@@ -399,8 +449,8 @@ function refusedBeforeDispatch(error) {
  * next rung after it, once. `failed` is { model, host, url, degraded } of the
  * target that refused; the caller must not call this again for the retry.
  */
-async function fallbackAfterRefusal(taskType, failed, deps = defaultDeps()) {
-  const ladder = getTaskFallbackLadder(taskType);
+async function fallbackAfterRefusal(taskType, failed, deps = defaultDeps(), { conversation = false } = {}) {
+  const ladder = conversation ? ladderFor(taskType) : getTaskFallbackLadder(taskType);
   if (!ladder.length || !failed?.model) return null;
   refreshHosts();
   const previous = failed.degraded?.degraded === true ? failed.degraded : null;
@@ -414,12 +464,15 @@ async function fallbackAfterRefusal(taskType, failed, deps = defaultDeps()) {
     reason: previous?.reason || knownReason(failed.reason) || UNAVAILABLE_REASONS.DISPATCH_REFUSED,
     startIndex: failedIndex + 1,
     exclude: { model: failed.model, url: failed.url },
+    conversation,
   }, deps);
 }
 
 // An interactive conversation can clear these by asking evaluation work to
 // yield (#62), so an exact-model caller tries its primary first for them.
 const YIELDABLE_REASONS = new Set([UNAVAILABLE_REASONS.BENCHMARK_CLAIM, UNAVAILABLE_REASONS.ADMISSION_BLOCKED]);
+// The principal waits its turn behind another request instead of degrading.
+const PRINCIPAL_WAITS_FOR = new Set([...YIELDABLE_REASONS, UNAVAILABLE_REASONS.PRIMARY_BUSY]);
 
 /**
  * Exact-model callers (#143): an OpenClaw conversation names a model, not a
@@ -427,22 +480,27 @@ const YIELDABLE_REASONS = new Set([UNAVAILABLE_REASONS.BENCHMARK_CLAIM, UNAVAILA
  * for reasons a yield cannot clear; `afterRefusal` picks a rung once after the
  * primary refused before any output. Returns { model, hostUrl, hostKey,
  * routing } or null (no ladder, primary usable, or no rung available).
+ * `hostUrl` names the primary's host when the caller already resolved it
+ * (the principal alias). A conversation-only ladder (`daily_operator`) never
+ * degrades a busy principal, before or after dispatch.
  */
-async function planExactModelFallback({ model, taskType, afterRefusal = false, refusalReason = null } = {}, deps = defaultDeps()) {
+async function planExactModelFallback({ model, taskType, hostUrl = null, afterRefusal = false, refusalReason = null } = {}, deps = defaultDeps()) {
   const requested = String(model || '').trim();
-  if (!requested || !DEGRADABLE_TASKS.includes(taskType) || !getTaskFallbackLadder(taskType).length) return null;
+  if (!requested || !hasConversationLadder(taskType)) return null;
+  const principal = CONVERSATION_ONLY_TASKS.includes(taskType);
+  if (principal && afterRefusal && refusalReason === UNAVAILABLE_REASONS.PRIMARY_BUSY) return null;
   refreshHosts();
-  const url = (deps.targetForModel || require('../modelRouterConfig').getTargetForModel)(requested) || null;
+  const url = hostUrl || (deps.targetForModel || require('../modelRouterConfig').getTargetForModel)(requested) || null;
   const host = Object.keys(HOSTS).find(key => HOSTS[key] && HOSTS[key] === url) || null;
   const primary = { model: requested, host, url };
   let chosen;
   if (afterRefusal) {
     // The caller's observed cause (e.g. benchmark_claim) names the degradation.
-    chosen = await fallbackAfterRefusal(taskType, { ...primary, degraded: null, reason: refusalReason }, deps);
+    chosen = await fallbackAfterRefusal(taskType, { ...primary, degraded: null, reason: refusalReason }, deps, { conversation: true });
   } else {
     const probe = await probePrimary(primary, deps);
-    if (probe.available || YIELDABLE_REASONS.has(probe.reason)) return null;
-    chosen = await selectRung(taskType, primary, { fallbackFrom: { model: requested, host }, reason: probe.reason }, deps);
+    if (probe.available || (principal ? PRINCIPAL_WAITS_FOR : YIELDABLE_REASONS).has(probe.reason)) return null;
+    chosen = await selectRung(taskType, primary, { fallbackFrom: { model: requested, host }, reason: probe.reason, conversation: true }, deps);
   }
   return chosen ? Object.freeze({
     model: chosen.model, hostUrl: chosen.url, hostKey: chosen.host, routing: publicDegradedMarker(chosen.degraded),
@@ -501,10 +559,13 @@ module.exports = {
   WAIT_ENV,
   ROUTING_SOURCE,
   DEGRADABLE_TASKS,
+  CONVERSATION_ONLY_TASKS,
+  PRINCIPAL_LADDER_TASK,
   UNAVAILABLE_REASONS,
   parseTaskFallbacks,
   validateTaskFallbackConfig,
   getTaskFallbackLadder,
+  hasConversationLadder,
   applyTaskFallbackLadder,
   fallbackAfterRefusal,
   planExactModelFallback,

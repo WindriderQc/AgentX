@@ -9,6 +9,10 @@
 const { stripLoadOptions } = require('../../../src/services/hostPinGuard');
 
 const FALLBACK_TASK_ENV = 'OPENCLAW_CONVERSATION_FALLBACK_TASK';
+// The principal alias (`agentx-primary`) follows the daily operator route; an
+// instance that gives that route a ladder lets the conversation keep a brain
+// while the principal host is held, whatever the light-task borrow names.
+const PRINCIPAL_FALLBACK_TASK = 'daily_operator';
 // With a fallback configured, the primary wait for a yielding workload stays
 // short enough for the fallback answer to fit under the gateway timeout.
 const PRIMARY_WAIT_WITH_FALLBACK_MS = 30000;
@@ -35,6 +39,13 @@ const REASON_LABELS = Object.freeze({
 
 function conversationFallbackTask(env = process.env) {
   return String(env[FALLBACK_TASK_ENV] || '').trim() || null;
+}
+
+// A principal-alias turn borrows the daily operator ladder when one is
+// configured, else the light task the instance names for every conversation.
+function principalFallbackTask(routing, env = process.env) {
+  return routing?.hasFallbackLadder?.(PRINCIPAL_FALLBACK_TASK) === true
+    ? PRINCIPAL_FALLBACK_TASK : conversationFallbackTask(env);
 }
 
 function reasonLabel(routing) {
@@ -83,6 +94,9 @@ function applyDegradedHeaders(res, routing) {
   res.set('X-AgentX-Degraded-Reason', routing.reason || '');
   res.set('X-AgentX-Degraded-Primary-Model', routing.fallbackFrom.model || '');
   res.set('X-AgentX-Degraded-Actual-Model', routing.fallbackTo.model || '');
+  // Host IDs (primary, secondary...), never URLs.
+  res.set('X-AgentX-Degraded-Primary-Host', routing.fallbackFrom.host || '');
+  res.set('X-AgentX-Degraded-Actual-Host', routing.fallbackTo.host || '');
 }
 
 // First NDJSON frame of a degraded stream: the notice, as ordinary content.
@@ -130,9 +144,12 @@ function busyError(primaryReason) {
 // Plan before dispatch (primary busy, down, quarantined...), else run the
 // primary and degrade once if it refused before output. Session and return to
 // the primary stay with OpenClaw: every turn plans again.
-async function runWithConversationFallback({ runtimeServices, request, fallbackTask, primaryRun, signal, consumerContract, logger }) {
+async function runWithConversationFallback({
+  runtimeServices, request, fallbackTask, primaryRun, signal, consumerContract, logger, primaryHostUrl = null
+}) {
   const plan = (afterRefusal, refusal = null) => runtimeServices.routing.planFallback({
-    model: request.model, taskType: fallbackTask, afterRefusal, ...(refusal && { refusalReason: refusal })
+    model: request.model, taskType: fallbackTask, ...(primaryHostUrl && { hostUrl: primaryHostUrl }),
+    afterRefusal, ...(refusal && { refusalReason: refusal })
   }).catch((error) => {
     logger?.warn?.('OpenClaw conversation fallback planning failed', { code: error?.code || 'FALLBACK_PLAN_FAILED' });
     return null;
@@ -172,10 +189,12 @@ module.exports = {
   runWithConversationFallback,
   FALLBACK_TASK_ENV,
   FALLBACK_WAIT_MS,
+  PRINCIPAL_FALLBACK_TASK,
   PRIMARY_WAIT_WITH_FALLBACK_MS,
   applyDegradedHeaders,
   brainContext,
   conversationFallbackTask,
+  principalFallbackTask,
   degradeRequest,
   fallbackNotice,
   markBody,
