@@ -275,6 +275,11 @@ class RunnerStepAdapter:
         self.r, self.args, self.progress = runtime, args, progress
         self.manifest, self.core, self.endpoint = manifest, core, endpoint
         self.test_seconds = 0
+        budget = manifest["request"]["budget"]
+        self.progress.cumulative_limits = dict(budget)
+        self.progress.hard_deadline = self.progress.started + budget["workSeconds"]
+        self.progress.soft_deadline = min(self.progress.soft_deadline, self.progress.hard_deadline)
+        self.progress.no_progress_limit = budget["workSeconds"]
 
     def _repository(self) -> Path:
         configured = os.environ.get("AGENTX_CODING_REPOSITORY_PATH", "").strip()
@@ -306,10 +311,6 @@ class RunnerStepAdapter:
         model = executor.get("model") or manifest["request"].get("model") or self.r.MODEL
         self.progress.phase = "running"
         budget = manifest["request"]["budget"]
-        self.progress.cumulative_limits = dict(budget)
-        self.progress.hard_deadline = self.progress.started + budget["workSeconds"]
-        self.progress.soft_deadline = min(self.progress.soft_deadline, self.progress.hard_deadline)
-        self.progress.no_progress_limit = budget["workSeconds"]
         self.progress.relay_headers = {
             "x-agentx-coding-task": self.args.task_id,
             "x-agentx-code-graph": self.args.graph_id,

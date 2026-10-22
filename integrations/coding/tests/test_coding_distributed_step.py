@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import types
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -121,6 +122,25 @@ def manifest(base):
 
 
 class DistributedStepTest(unittest.TestCase):
+    def test_production_adapter_applies_exact_budget_before_dependency_preparation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "source").mkdir()
+            source = GitAdapter(root / "source")
+            observed = []
+            progress = types.SimpleNamespace(started=10, soft_deadline=1000)
+            runtime = types.SimpleNamespace(WORKSPACES=root / "spaces", REPOSITORY="example/repo",
+                install_dependencies=lambda _workspace, current: observed.append({
+                    "limits": dict(current.cumulative_limits), "hard": current.hard_deadline,
+                    "soft": current.soft_deadline, "noProgress": current.no_progress_limit}),
+                dependency_state=lambda _workspace: "installed")
+            args = types.SimpleNamespace(graph_id=FINGERPRINT, step_id="step-01", request_id=REQUEST)
+            checked = manifest(source.base)
+            with mock.patch.dict("os.environ", {"AGENTX_CODING_REPOSITORY_PATH": str(source.repo)}):
+                step_worker.RunnerStepAdapter(runtime, args, progress, checked, None, "/run").prepare(checked)
+            self.assertEqual(observed, [{"limits": checked["request"]["budget"], "hard": 610,
+                "soft": 610, "noProgress": 600}])
+
     def test_verified_bundle_and_terminal_result_are_replay_safe(self):
         with tempfile.TemporaryDirectory() as directory:
             adapter = GitAdapter(Path(directory))
