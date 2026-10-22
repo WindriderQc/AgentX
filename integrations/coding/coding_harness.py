@@ -85,9 +85,13 @@ def invocation(harness: str, prompt_path: str, model: str, context_size: int | N
         return {'command': [*relay, *dsh_command(prompt_path)], 'environment': {}, 'binds': binds}
     if harness == 'opencode':
         root, entry = opencode_runtime()
-        command = ['/opt/harness/' + entry, 'run', '--model', f'agentx-core/{model}', '--agent', 'build',
-                   '--format', 'json', '--auto', '--file', prompt_path,
-                   'Implement the attached task. Follow its instructions exactly.']
+        # OpenCode's --file option is variadic. Keep the positional instruction
+        # before it and the single prompt path last, or the instruction is parsed
+        # as a second filename and the run exits before reaching the model.
+        command = ['/opt/harness/' + entry, 'run',
+                   'Implement the attached task. Follow its instructions exactly.',
+                   '--model', f'agentx-core/{model}', '--agent', 'build',
+                   '--format', 'json', '--auto', '--file', prompt_path]
         environment = {
             'OPENCODE_CONFIG_CONTENT': opencode_config(model, context_size, relay_port),
             'OPENCODE_DISABLE_AUTOUPDATE': 'true', 'OPENCODE_DISABLE_DEFAULT_PLUGINS': 'true',
