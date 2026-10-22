@@ -246,6 +246,10 @@ const PipelineTaskSchema = new mongoose.Schema({
   codingCapacity: { type: mongoose.Schema.Types.Mixed, default: undefined },
   codingCapacityRecovery: { type: mongoose.Schema.Types.Mixed, default: undefined },
   codingAutonomy: { type: mongoose.Schema.Types.Mixed, default: undefined },
+  // Core-owned durable state for one multi-host code-step graph. The pure DAG
+  // service validates every complete replacement before this Mixed value is
+  // committed with a revision-fenced single-document update.
+  codeStepDag: { type: mongoose.Schema.Types.Mixed, default: undefined },
   codingResult: { type: mongoose.Schema.Types.Mixed, default: undefined },
   codingReportAuthority: { type: mongoose.Schema.Types.Mixed, default: undefined },
   // Automatic continuation runs of a private report (#835), one per parent outcome.
