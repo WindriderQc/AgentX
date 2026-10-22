@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import sys
 import time
@@ -47,9 +48,14 @@ def when(message):
     return datetime.fromtimestamp(stamp / 1000, timezone.utc).isoformat().replace("+00:00", "Z") if stamp > 0 else None
 
 
+ASTRAL = re.compile("[\U00010000-\U0010FFFF]")
+
+
 def clean(text):
-    """Extracted text without NUL characters, which Core refuses in stored text."""
-    return text.replace("\x00", "")
+    """Extracted text Core and RAG can store: no NUL (Core refuses it) and no
+    character beyond the basic plane (mostly emoji), which RAG's chunking can
+    split into a lone surrogate that Qdrant rejects."""
+    return ASTRAL.sub("", text.replace("\x00", ""))
 
 
 def people_of(headers, owner):
