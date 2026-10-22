@@ -100,3 +100,55 @@ test('native invocation preserves configured provider routing policy', () => {
   assert.deepEqual(config.agents.defaults.models['ollama/qwen'].params.provider, { only: ['fixed'], allow_fallbacks: false });
   assert.equal(config.agents.defaults.models.other.alias, 'kept');
 });
+
+test('a local Ollama cell starts only with one Core cell budget and Core as its provider (#897)', async () => {
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const { EventEmitter } = require('node:events');
+  const { PassThrough } = require('node:stream');
+  const { cellBudgetId, execute } = require('../executors/openclaw-executor');
+  const budgetId = 'a'.repeat(32);
+  const claim = { host: 'http://model.test:11434', claimBatchId: 'batch', claimGeneration: 'claim',
+    workloadAdmissionId: 'admission', workloadGeneration: 'workload' };
+  const local = { ...input.target, tier: 'local', harness: { version: 'fixture-runtime' } };
+  assert.equal(cellBudgetId({ target: local, runtimeClaims: [{ ...claim, budgetId }] }), budgetId);
+  for (const invalid of [
+    { target: local, runtimeClaims: [] },
+    { target: local, runtimeClaims: [claim] },
+    { target: local, runtimeClaims: [{ ...claim, budgetId: 'forged' }] },
+    { target: local, runtimeClaims: [{ ...claim, budgetId }, { ...claim, host: 'http://other.test:11434', budgetId: 'b'.repeat(32) }] },
+    { target: { ...local, tier: 'free_cloud' }, runtimeClaims: [{ ...claim, budgetId }] },
+    { target: { ...local, tier: 'paid_cloud' }, runtimeClaims: [{ ...claim, budgetId }] },
+    { target: { ...local, provider: 'openai' }, runtimeClaims: [{ ...claim, budgetId }] }
+  ]) assert.equal(cellBudgetId(invalid), null);
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentx-native-budget-')), previous = process.cwd();
+  const oldVersion = process.env.OPENCLAW_RUNTIME_VERSION;
+  const profile = (baseUrl) => JSON.stringify({ models: { providers: { ollama: { baseUrl, models: [{ id: 'qwen' }] } } }, agents: { defaults: {} } });
+  const invocation = { ...input, target: local, runtimeClaims: [{ ...claim, budgetId }],
+    input: { prompt: 'bounded' }, parameters: { ...input.parameters, timeoutMs: 30000, thinking: false },
+    envelope: { ...input.envelope, budgets: { maxTurns: 2, maxToolCalls: 1 }, selection: { model: { constraints: [] } } } };
+  try {
+    process.chdir(dir); process.env.OPENCLAW_RUNTIME_VERSION = 'fixture-runtime';
+    fs.writeFileSync('direct.json', profile('http://model.test:11434'));
+    let starts = 0;
+    await assert.rejects(execute(invocation, { config: path.join(dir, 'direct.json'), openclaw: 'unused' },
+      () => { starts++; throw new Error('native process must not start'); }), /OPENCLAW_NATIVE_AGENT_BUDGET_UNQUALIFIED/);
+    assert.equal(starts, 0);
+    fs.writeFileSync('core.json', profile('http://127.0.0.1:3180/api/openclaw-ollama'));
+    let header = null;
+    const run = () => {
+      const child = new EventEmitter();
+      child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.stdin = new PassThrough();
+      header = JSON.parse(JSON.parse(fs.readFileSync('invocation.json', 'utf8')).models.providers.ollama.headers['x-agentx-benchmark-claims']);
+      setImmediate(() => { child.stdout.end(JSON.stringify(result())); child.emit('close', 0); });
+      return child;
+    };
+    const receipt = await execute(invocation, { config: path.join(dir, 'core.json'), openclaw: 'unused' }, run);
+    assert.deepEqual(header, [{ ...claim, budgetId }]);
+    assert.equal(receipt.usage.turns, 3);
+  } finally {
+    process.chdir(previous);
+    if (oldVersion === undefined) delete process.env.OPENCLAW_RUNTIME_VERSION; else process.env.OPENCLAW_RUNTIME_VERSION = oldVersion;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

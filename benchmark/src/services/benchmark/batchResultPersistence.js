@@ -107,6 +107,7 @@ async function persistSuccessfulResult({
     executionTarget = null,
     executionReceipt = null,
     providerUsage = null,
+    coreCellBudget = null,
     providerCost = null,
     qualityCohortFingerprint = null,
     signal = null,
@@ -164,6 +165,7 @@ async function persistSuccessfulResult({
         judge_target: judgeConfig.target || null,
         execution_receipt: executionReceipt,
         provider_usage: providerUsage,
+        core_cell_budget: coreCellBudget,
         provider_cost: providerCost,
         quality_cohort_fingerprint: qualityCohortFingerprint,
         ...promptIdentity(prompt),
@@ -326,7 +328,7 @@ async function persistSuccessfulResult({
     return result._id;
 }
 
-async function persistFailedResult({ batchId, judgeConfig, queueBatchProgress, flushBatchProgress, model, hostUrl, judgeHostUrl, prompt, promptText = null, err, errorDuration, currentBatch, pendingModelTimeline, repeatIndex = 0, repeatTotal = 1, repeatGroupId = null, executionSettings = null, executionTarget = null, executionReceipt = null, providerUsage = null, providerCost = null, qualityCohortFingerprint = null, signal = null, assertAuthorityActive = null }) {
+async function persistFailedResult({ batchId, judgeConfig, queueBatchProgress, flushBatchProgress, model, hostUrl, judgeHostUrl, prompt, promptText = null, err, errorDuration, currentBatch, pendingModelTimeline, repeatIndex = 0, repeatTotal = 1, repeatGroupId = null, executionSettings = null, executionTarget = null, executionReceipt = null, providerUsage = null, coreCellBudget = null, providerCost = null, qualityCohortFingerprint = null, signal = null, assertAuthorityActive = null }) {
     assertAuthorityActive?.();
     const classified = classifyBenchmarkError(err);
     const scoringType = normalizeScoringCategory(prompt.scoring_type || prompt.category, DEFAULT_SCORING_CATEGORY);
@@ -347,6 +349,7 @@ async function persistFailedResult({ batchId, judgeConfig, queueBatchProgress, f
             judge_target: judgeConfig.target || null,
             execution_receipt: executionReceipt,
             provider_usage: providerUsage,
+            core_cell_budget: coreCellBudget,
             provider_cost: providerCost,
             quality_cohort_fingerprint: qualityCohortFingerprint,
             ...promptIdentity(prompt),

@@ -471,10 +471,14 @@ test('OpenClaw non-streaming inference strips context authority and exposes actu
     workloadAdmissionId: 'admission', workloadGeneration: 'generation' }];
   const benchmarkRequest = new Request({ body: req.body,
     headers: { 'x-agentx-benchmark-claims': JSON.stringify(claims) } });
-  await route(router, 'post', '/api/chat').handlers[0](benchmarkRequest, new Response());
-  assert.deepEqual(capturedOptions.benchmarkClaims, claims);
-  assert.equal(captured.claimBatchId, undefined);
-  assert.equal(captured.options.num_ctx, undefined);
+  // #897: claims on this bridge belong to a native agent cell and need its
+  // Core budget (openclaw-cell-budget.test.js covers the admitted path).
+  captured = null;
+  const refused = new Response();
+  await route(router, 'post', '/api/chat').handlers[0](benchmarkRequest, refused);
+  assert.equal(refused.statusCode, 409);
+  assert.equal(refused.jsonBody.code, 'BENCHMARK_CELL_BUDGET_UNAVAILABLE');
+  assert.equal(captured, null);
 });
 
 test('the active personal Open target uses the existing Core admission and native tool payload', async () => {

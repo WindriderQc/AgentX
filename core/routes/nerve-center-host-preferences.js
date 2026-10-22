@@ -49,6 +49,7 @@ function resolveHostPreferenceUrl(req, res) {
 // ========================================
 
 router.use(require('./nerve-center-host-read'));
+router.use(require('./nerve-center-benchmark-cell-budgets'));
 
 // ========================================
 // PUT /host-preferences/health-check-interval — update health check interval

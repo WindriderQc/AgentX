@@ -24,16 +24,25 @@ public/hidden tests, regression checks and allowed edit paths. The receipt keeps
 patch and fixture digests, test status and whether the executable contract passed.
 A correct final explanation cannot replace a passing verifier. Native receipts
 remain distinct from isolated model quality rankings. Catalog materialization
-pins adapter version 2.3.1 and must be rerun after updating the executor.
+pins adapter version 2.4.0 and must be rerun after updating the executor.
 
-Native agent Benchmark targets are currently unavailable for every billing tier.
-The CLI adapter does not enforce the cell-wide turn, tool, token and spend
-ceilings before each native call. It rejects execution with
+Native agent Benchmark targets are available only for local Ollama cells, whose
+cell-wide turn, tool-call and token ceilings Core enforces before each model call
+(#897). Benchmark opens one budget per cell in Core from the WorkerEnvelope
+budgets and adds its opaque `budgetId` to each runtime claim. Every model call of
+the cell reaches Core's OpenClaw bridge (`/api/openclaw-ollama`), which reserves
+the turn before dispatch and refuses it with a 409 once a ceiling is reached, so
+no Ollama request is opened. The adapter rejects execution with
 `OPENCLAW_NATIVE_AGENT_BUDGET_UNQUALIFIED` before reading the profile, staging a
-workspace or starting OpenClaw. Catalog materialization preserves their metadata
-and pins with `available: false`. A timeout or a final usage check cannot qualify
-these limits. Reopening this route requires proof of native enforcement before
-the next call; request metadata and environment flags cannot enable it.
+workspace or starting OpenClaw when the target is not local Ollama or the claims
+carry no single budget, and after reading the profile when its provider URL does
+not point at Core's bridge. The budgetId only names a record Core holds: Core
+refuses an unknown, closed or expired id, and claims without one.
+
+Cloud and paid native agents reach their provider without Core, so nothing
+enforces their budget before each call. They stay unavailable (#506), and
+catalog materialization keeps their metadata and pins with `available: false`.
+A timeout or a final usage check cannot qualify these limits.
 
 ## Instance configuration
 
@@ -70,7 +79,7 @@ Cloud model targets are projected from the native execution catalogue:
 node materialize-openclaw-model-catalog.js /external/new-targets.json /external/existing-targets.json
 ```
 
-After updating the native executor to 2.3.1, regenerate the native CLI catalogue
+After updating the native executor to 2.4.0, regenerate the native CLI catalogue
 first, using `materialize-openclaw-catalog.js` and the accepted profiles. Pass
 that fresh catalogue as `/external/existing-targets.json` to the model
 materializer. It preserves native entries verbatim, so running only the model

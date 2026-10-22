@@ -90,7 +90,8 @@ function matchesPrefix(pathname, prefix) {
 
 // Benchmark and profiling need Core's existing coordination handlers in both
 // profiles. Their placement under Nerve Center does not make them operator UI.
-// The yield point lets a running workload give way to interactive chat.
+// The yield point lets a running workload give way to interactive chat. A
+// native agent cell budget (#897) is part of batch execution in both profiles.
 // Keep pin editing (including the Profiler's pin context proposal), manual swaps, maintenance, and the cockpit full-profile.
 function isProductCoordination(path, method) {
   if (method === 'GET') {
@@ -100,6 +101,7 @@ function isProductCoordination(path, method) {
   if (method === 'POST') {
     return /^\/api\/nerve-center\/workload-admissions(?:\/[^/]+\/(?:heartbeat|recovery|release-receipt|yield-point))?$/.test(path)
       || /^\/api\/nerve-center\/workload-recoveries\/[^/]+\/(?:adopt|heartbeat|assert|transition|restore-hosts)$/.test(path)
+      || /^\/api\/nerve-center\/benchmark-cell-budgets(?:\/[^/]+\/close)?$/.test(path)
       || /^\/api\/nerve-center\/host-preferences\/[^/]+\/(?:reload|benchmark-claim(?:\/[^/]+\/(?:heartbeat|release-receipt))?)$/.test(path);
   }
   return method === 'DELETE' && (
