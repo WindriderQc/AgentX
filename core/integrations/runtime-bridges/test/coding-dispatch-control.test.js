@@ -202,6 +202,27 @@ test('request discovery binds follow-up actions to the one executor holding its 
   assert.equal(commands.at(-1)[0], 'operator@second');
 });
 
+test('continuation selection stays on the executor holding the original receipt', async () => {
+  const control = new CodingDispatchControl({ executors: [
+    { id: 'free', harness: 'dsh', sshTarget: 'operator@free', priority: 1, profiles: ['report'] },
+    { id: 'owner', harness: 'opencode', sshTarget: 'operator@owner', priority: 2, profiles: ['report'] },
+  ], sshRunner: async (target, command) => envelope({ contractVersion: 2, available: true, busy: false,
+    harness: target.endsWith('@owner') ? 'opencode' : 'dsh', candidates: [], excluded: [],
+    ...(command.includes(`status ${request.requestId}`) && { run: target.endsWith('@owner')
+      ? { ...request, phase: 'finished' } : { requestId: request.requestId, phase: 'not_received' } }) }) });
+  assert.equal((await control.select({ profile: 'report', requestId: request.requestId })).id, 'owner');
+});
+
+test('required executor selection waits instead of migrating a checkpoint', async () => {
+  const control = new CodingDispatchControl({ executors: [
+    { id: 'free', harness: 'dsh', sshTarget: 'operator@free', priority: 1, profiles: ['autonomous'] },
+    { id: 'owner', harness: 'opencode', sshTarget: 'operator@owner', priority: 2, profiles: ['autonomous'] },
+  ], sshRunner: async target => envelope({ contractVersion: 2, available: true,
+    busy: target.endsWith('@owner'), harness: target.endsWith('@owner') ? 'opencode' : 'dsh', candidates: [], excluded: [] }) });
+  await assert.rejects(control.select({ profile: 'autonomous', executorId: 'owner' }),
+    error => error.code === 'CODING_DISPATCH_BUSY');
+});
+
 test('an unanswered executor keeps an unlocated request outcome unknown', async () => {
   const control = new CodingDispatchControl({ executors: [
     { id: 'first', harness: 'dsh', sshTarget: 'operator@first' },

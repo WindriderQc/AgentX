@@ -148,7 +148,9 @@ async function select(config) {
     const allowed = await allowance(task);
     if (!allowed.ok) { await notifications.publish(task, 'needs_grant', parent.requestId, { reason: allowed.reason }); continue; }
     let executor = null;
-    try { executor = typeof control.select === 'function' ? await control.select({ profile: 'report' }) : null; }
+    const previousExecutorId = (state.runs || []).findLast(run => run.requestId === parent.requestId)?.executorId;
+    try { executor = typeof control.select === 'function' ? await control.select({ profile: 'report',
+      ...(previousExecutorId ? { executorId: previousExecutorId } : { requestId: parent.requestId }) }) : null; }
     catch { continue; }
     const requestId = continuationId(task.pipelineId, parent.requestId);
     const active = { pipelineId: task.pipelineId, requestId, selectedAt: new Date().toISOString(),

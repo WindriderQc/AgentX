@@ -147,6 +147,19 @@ class CodingDispatchControl {
   }
   async select(input = {}) {
     const profile = input.profile || 'code';
+    if (input.executorId) {
+      const executor = this.executor(input.executorId);
+      if (!executor.profiles.includes(profile)) throw new CodingDispatchControlError('The selected executor does not support this work profile.', { code: 'CODING_EXECUTOR_PROFILE_UNAVAILABLE' });
+      const status = await this.statusOn(executor);
+      if (!status.available || status.busy) throw new CodingDispatchControlError('The required coding executor is not available.', { code: 'CODING_DISPATCH_BUSY' });
+      return status.executor;
+    }
+    if (input.requestId) {
+      const observed = await this.status({ requestId: exactRequestId(input.requestId) });
+      if (observed.run?.phase !== 'not_received' && observed.run?.executorId)
+        return this.select({ profile, executorId: observed.run.executorId });
+      throw new CodingDispatchControlError('The original coding executor cannot be identified.', { code: 'CODING_DISPATCH_OUTCOME_UNKNOWN', statusCode: 503 });
+    }
     const { answered } = await this.allStatuses();
     const row = answered.find(status => status.available && !status.busy && status.executor.profiles.includes(profile));
     if (!row) throw new CodingDispatchControlError('No compatible coding executor is available.', { code: 'CODING_DISPATCH_BUSY' });

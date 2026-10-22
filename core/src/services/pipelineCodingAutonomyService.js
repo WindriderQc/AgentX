@@ -265,7 +265,9 @@ async function select(config) {
     if (taskEligibilityReasons(task, { now: new Date(), automated: true, dependencyStatuses: dependencies }).length) continue;
     try { await campaign(task); } catch { continue; }
     let executor = null;
-    try { executor = typeof control.select === 'function' ? await control.select({ profile: 'autonomous' }) : null; }
+    const previousExecutorId = task.codingAutonomy.runs.at(-1)?.executorId;
+    try { executor = typeof control.select === 'function' ? await control.select({ profile: 'autonomous',
+      ...(previousExecutorId && { executorId: previousExecutorId }) }) : null; }
     catch { continue; }
     const requestId = randomUUID();
     const active = { pipelineId: task.pipelineId, requestId, selectedAt: new Date().toISOString(),

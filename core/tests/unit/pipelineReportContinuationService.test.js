@@ -121,9 +121,20 @@ describe('report continuation loop', () => {
     expect(store.tasks[0].reportContinuation.runs[0]).toMatchObject({
       executorId: 'brutal-local', harness: 'opencode'
     });
+    expect(control.select).toHaveBeenCalledWith({ profile: 'report', requestId: PARENT });
     await service.tick();
     expect(control.status).toHaveBeenCalledWith(expect.objectContaining({ executorId: 'brutal-local' }));
     expect(control.launch).toHaveBeenCalledWith(expect.objectContaining({ executorId: 'brutal-local' }));
+  });
+
+  it('pins a later continuation to the executor that owns its parent checkpoint', async () => {
+    const { control } = controls();
+    control.select = jest.fn(async () => ({ id: 'brutal-local', harness: 'opencode' }));
+    store.tasks = [task([stopped(PARENT, 'model_call_limit')], { reportContinuation: { runs: [
+      { requestId: PARENT, executorId: 'brutal-local', harness: 'opencode', finishedAt: new Date().toISOString() }
+    ] } })];
+    await service.tick();
+    expect(control.select).toHaveBeenCalledWith({ profile: 'report', executorId: 'brutal-local' });
   });
 
   it('never selects the same parent twice and records the finished run', async () => {
