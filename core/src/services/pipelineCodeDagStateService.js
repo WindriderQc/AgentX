@@ -166,18 +166,20 @@ function projectAssembly(dag) {
     ...(latest && { headCommit: latest.adoptedCommit }),
     adoptedSteps,
   };
+  const publication = dag.assembly.completion.publication;
   return {
-    state: 'verifying',
+    state: 'published',
     executor: coordinator,
     baseCommit: dag.sourceCommit,
     headCommit: dag.assembly.completion.headCommit,
     adoptedSteps,
     verification: {
-      profile: 'dag-final-tests',
+      profile: dag.assembly.completion.tests[0]?.profile || 'dag-final-tests',
       outcome: 'passed',
       durationMs: dag.assembly.completion.tests.reduce((total, test) => total + test.durationMs, 0),
     },
-    publication: { state: 'pending' },
+    publication: { state: 'published', headCommit: publication.headCommit,
+      prNumber: publication.prNumber, url: publication.url },
     receiptFingerprint: fingerprint(dag.assembly.completion),
   };
 }
@@ -191,7 +193,7 @@ function project(dag) {
     schema: graphSummary.SCHEMA,
     graphId: dag.rootRequestId,
     planFingerprint: dag.planFingerprint,
-    state: dag.state === 'verified' ? 'verifying' : (dag.assembly.adoptions.length ? 'assembling' : 'running'),
+    state: dag.state === 'published' ? 'published' : (dag.assembly.adoptions.length ? 'assembling' : 'running'),
     activeSteps: steps.filter(step => ['running', 'uncertain'].includes(step.state)).map(step => step.id),
     counts: Object.fromEntries(states.map(state => [state, steps.filter(step => step.state === state).length])),
     budget: { reserved: publicBudget(dag.budget.reserved), spent: publicBudget(dag.budget.spent) },

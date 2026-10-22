@@ -646,7 +646,7 @@ function recordAdoption(dag, input) {
 
 function completeAssembly(dag, input) {
   assertState(dag);
-  exactObject(input, ['expectedRevision', 'headCommit', 'tests', 'artifact', 'completedAt'], 'input');
+  exactObject(input, ['expectedRevision', 'headCommit', 'tests', 'publication', 'completedAt'], 'input');
   const order = adoptionOrder(dag);
   if (dag.steps.some((step) => step.state !== 'verified')) {
     fail('DAG_NOT_VERIFIED', 'every step must be verified before completing assembly');
@@ -654,16 +654,30 @@ function completeAssembly(dag, input) {
   if (dag.assembly.adoptions.length !== order.length) fail('ASSEMBLY_INCOMPLETE', 'not every verified step has been adopted');
   const expectedHead = currentAssemblyHead(dag);
   const pseudoStep = { testTargets: [...new Set(dag.steps.flatMap((step) => step.testTargets))] };
-  exactObject(input.artifact, ['id', 'sha256', 'sizeBytes', 'format'], 'artifact');
-  if (!Number.isSafeInteger(input.artifact.sizeBytes) || input.artifact.sizeBytes <= 0) fail('INVALID_RECEIPT', 'artifact size must be positive');
+  exactObject(input.publication, ['requestId', 'state', 'url', 'prNumber', 'headCommit'], 'publication');
+  if (input.publication.state !== 'published' || !Number.isSafeInteger(input.publication.prNumber)
+    || input.publication.prNumber < 1 || input.publication.prNumber > 100000000) {
+    fail('INVALID_RECEIPT', 'publication must identify one published pull request');
+  }
+  let publicationUrl;
+  try {
+    const parsed = new URL(identifier(input.publication.url, 'publication.url', 2000));
+    const match = parsed.pathname.match(/\/pull\/(\d+)\/?$/);
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || !match
+      || Number(match[1]) !== input.publication.prNumber) throw new Error();
+    publicationUrl = parsed.toString();
+  } catch {
+    fail('INVALID_RECEIPT', 'publication.url must match publication.prNumber');
+  }
   const completion = {
     headCommit: commit(input.headCommit, 'headCommit'),
     tests: normalizeTests(input.tests, pseudoStep),
-    artifact: {
-      id: identifier(input.artifact.id, 'artifact.id'),
-      sha256: sha256(input.artifact.sha256, 'artifact.sha256'),
-      sizeBytes: input.artifact.sizeBytes,
-      format: identifier(input.artifact.format, 'artifact.format', 80),
+    publication: {
+      requestId: identifier(input.publication.requestId, 'publication.requestId', 200),
+      state: 'published',
+      url: publicationUrl,
+      prNumber: input.publication.prNumber,
+      headCommit: commit(input.publication.headCommit, 'publication.headCommit'),
     },
     completedAt: timestamp(input.completedAt, 'completedAt'),
   };
@@ -673,10 +687,13 @@ function completeAssembly(dag, input) {
   }
   expectRevision(dag, input.expectedRevision);
   if (completion.headCommit !== expectedHead) fail('ASSEMBLY_HEAD_CONFLICT', `expected assembly head ${expectedHead}`);
+  if (completion.publication.headCommit !== completion.headCommit) {
+    fail('ASSEMBLY_PUBLICATION_CONFLICT', 'publication head does not match the verified assembly head');
+  }
   const next = clone(dag);
-  next.assembly.state = 'verified';
+  next.assembly.state = 'published';
   next.assembly.completion = completion;
-  next.state = 'verified';
+  next.state = 'published';
   next.revision += 1;
   return { dag: assertState(next), replayed: false };
 }

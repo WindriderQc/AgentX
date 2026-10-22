@@ -10,7 +10,6 @@ const ADOPT_ONE = '4'.repeat(40);
 const ADOPT_TWO = '5'.repeat(40);
 const ARTIFACT_ONE = 'a'.repeat(64);
 const ARTIFACT_TWO = 'b'.repeat(64);
-const FINAL_ARTIFACT = 'c'.repeat(64);
 const RESPONSE = 'e'.repeat(64);
 const T0 = '2026-10-22T12:00:00.000Z';
 
@@ -95,7 +94,8 @@ function assemblyCompletion(expectedRevision, headCommit = ADOPT_TWO) {
       { target: 'test:one', profile: 'jest/cpu/v1', outcome: 'passed', durationMs: 20 },
       { target: 'test:two', profile: 'jest/cpu/v1', outcome: 'passed', durationMs: 20 },
     ],
-    artifact: { id: 'assembled', sha256: FINAL_ARTIFACT, sizeBytes: 256, format: 'git-bundle/v1' },
+    publication: { requestId: 'assembly-request:publish', state: 'published',
+      url: 'https://github.com/WindriderQc/AgentX/pull/946', prNumber: 946, headCommit },
     completedAt: T0,
   };
 }
@@ -390,8 +390,8 @@ test('requires terminal commit, test and artifact receipts, then assembles in de
   }).dag;
   const completion = assemblyCompletion(dag.revision);
   dag = service.completeAssembly(dag, completion).dag;
-  expect(dag.state).toBe('verified');
-  expect(dag.assembly.state).toBe('verified');
+  expect(dag.state).toBe('published');
+  expect(dag.assembly.state).toBe('published');
   expect(service.completeAssembly(JSON.parse(JSON.stringify(dag)), completion).replayed).toBe(true);
 });
 

@@ -22,7 +22,7 @@ router.post('/coding-autonomy/tasks/:id/runs/:requestId/continuation', route(req
 router.get('/coding-autonomy/tasks/:id/runs/:requestId/manifest', route(req => service.workerManifest(req.params.id, req.params.requestId)));
 router.post('/coding-autonomy/tasks/:id/runs/:requestId/code-step-plan', route(req =>
   service.submitCodeStepPlan(req.params.id, req.params.requestId, req.body || {})));
-router.post('/coding-autonomy/tasks/:id/runs/:requestId/artifacts/:stepId',
+router.put('/coding-autonomy/tasks/:id/runs/:requestId/artifacts/:stepId',
   express.raw({ type: ['application/octet-stream', 'application/x-git-bundle'], limit: '8mb' }),
   route(req => service.storeCodeStepArtifact(req.params.id, req.params.requestId, req.params.stepId, req.body)));
 router.get('/coding-autonomy/tasks/:id/runs/:requestId/artifacts/:artifactId', async (req, res) => {

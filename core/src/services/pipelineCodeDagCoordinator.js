@@ -126,7 +126,7 @@ function createPipelineCodeDagCoordinator(options = {}) {
     const model = value.codingCapacity?.model;
     const rootLeaseId = value.automationLease?.leaseId;
     const verificationProfile = value.codingAutonomy?.verificationProfile || value.automation?.verificationProfile;
-    if (typeof value.title !== 'string' || !value.title || typeof value.spec !== 'string' || !value.spec
+    if (typeof value.title !== 'string' || !value.title || typeof value.spec !== 'string'
       || !model || !rootLeaseId || !verificationProfile) {
       fail('DAG_ROOT_RUNTIME_UNAVAILABLE', 'The active root has no complete lease, model, or verification identity');
     }
@@ -138,7 +138,7 @@ function createPipelineCodeDagCoordinator(options = {}) {
       || (job.startBefore && now >= job.startBefore)) {
       fail('CODING_AUTONOMY_QUEUE_WAIT', 'The approved coding campaign is not within its active queue window');
     }
-    return { task: { title: value.title, spec: value.spec }, verificationProfile,
+    return { task: { pipelineId: value.pipelineId, title: value.title, spec: value.spec }, verificationProfile,
       model, rootLeaseId, queueEndAt: job.reservation.end };
   }
 
@@ -417,7 +417,7 @@ function createPipelineCodeDagCoordinator(options = {}) {
   async function tick(pipelineId) {
     if (!control) return null;
     let dag = await state.read(pipelineId);
-    if (!dag || dag.state === 'verified') return dag;
+    if (!dag || dag.state === 'published') return dag;
     await activeDagTask(pipelineId, dag);
     await ensureCoordination(pipelineId, dag);
     dag = await state.read(pipelineId);

@@ -38,7 +38,7 @@ test('bundle upload remains raw and download returns the exact immutable bytes',
   jest.spyOn(service, 'downloadCodeStepArtifact').mockResolvedValue({
     metadata: { id: ARTIFACT, sha256: 'b'.repeat(64), sizeBytes: bytes.length, format: 'git-bundle/v1' }, bytes,
   });
-  await request(app).post(`/api/pipeline/coding-autonomy/tasks/0946/runs/${STEP}/artifacts/step-01`)
+  await request(app).put(`/api/pipeline/coding-autonomy/tasks/0946/runs/${STEP}/artifacts/step-01`)
     .set('Content-Type', 'application/x-git-bundle').send(bytes).expect(200);
   expect(store).toHaveBeenCalledWith('0946', STEP, 'step-01', expect.any(Buffer));
   expect(store.mock.calls[0][3].equals(bytes)).toBe(true);
