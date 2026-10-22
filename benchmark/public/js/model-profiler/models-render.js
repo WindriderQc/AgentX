@@ -21,6 +21,7 @@ import {
   _formatHardwareTitle,
   _getStalenessInfo,
   escAttr,
+  runtimeDriftByHost,
 } from './models-helpers.js';
 
 export function renderHardwareTelemetry(p) {
@@ -217,6 +218,18 @@ function renderProfileAuthorityBadge(model) {
   return `<span class="mp-profile-authority-badge mp-profile-authority-badge--${status.tone}" title="${escAttr(authority.reason || status.label)}">${status.label}</span>`;
 }
 
+/** Ollama version drift (#908): the profile is still used; Reprofile confirms it. */
+export function renderRuntimeDriftBadge(model) {
+  const drift = runtimeDriftByHost(model);
+  if (!drift.length) return '';
+  const lines = drift.map(row => `${row.hostId}: measured on ${row.measured ? `Ollama ${row.measured}` : 'an unrecorded Ollama version'}, ${row.installed} installed`);
+  const title = `${lines.join('; ')}. The profile is still used; reprofile, or use Measure tonight on the lane card, to confirm it.`;
+  const label = drift.length === 1
+    ? `Ollama ${drift[0].measured || '?'} → ${drift[0].installed}`
+    : `Ollama changed on ${drift.length} hosts`;
+  return `<span class="mp-profile-authority-badge mp-profile-authority-badge--drift" title="${escAttr(title)}">${escAttr(label)}</span>`;
+}
+
 // ─── Card renderer ────────────────────────────────────────────────────────────
 
 export function renderModelCard(model, api) {
@@ -251,6 +264,7 @@ export function renderModelCard(model, api) {
       <span class="mp-card-title">${escAttr(model.name)}</span>
       ${renderBadge(highestStage, total > 0 ? hostCount : null, total > 0 ? total : null)}
       ${renderProfileAuthorityBadge(model)}
+      ${renderRuntimeDriftBadge(model)}
     </div>
 
     <div class="mp-card-subhead">${meta}</div>
@@ -490,6 +504,8 @@ export function renderModelRow(model, api) {
   if (stalenessInfo.stale) metaBits.push(`<span class="mp-stale-badge">stale</span>`);
   const authorityBadge = renderProfileAuthorityBadge(model);
   if (authorityBadge) metaBits.push(authorityBadge);
+  const driftBadge = renderRuntimeDriftBadge(model);
+  if (driftBadge) metaBits.push(driftBadge);
   const ci = p?.contextInsight;
   if (ci?.upgradeAvailable) {
     metaBits.push(`<span class="mp-insight-chip mp-insight-chip--up" title="${ci.upgradeFactor}× ctx headroom (${_fmtCtx(ci.previousNumCtx)} → ${_fmtCtx(ci.discoveredNumCtx)})">▲ ${ci.upgradeFactor}×</span>`);

@@ -6,6 +6,7 @@ const {
   RECEIPT_VERSION
 } = require('./profilerAuthorityReceipt');
 const { identitiesMatch, resolveArtifactIdentity } = require('./artifactIdentityService');
+const { normalizeMeasuredRuntime, runtimeVersionDrift } = require('../../../../shared/measuredRuntime');
 
 function mapToObject(value) {
   return value instanceof Map ? Object.fromEntries(value) : (value || {});
@@ -48,9 +49,16 @@ async function projectReadinessEntry(modelName, hostId, rawReadiness, evidenceBy
     && !new Set(['pending_reconciliation', 'authority_invalidated']).has(evidence?.authorityState);
   const authorityVerified = receiptVerified && liveIdentityVerified && evidenceQualified;
   const failureReason = authorityFailureReason({ receiptVerified, liveIdentityVerified, evidenceQualified });
+  // A different Ollama version keeps the evidence usable and is reported as
+  // drift so the owner can re-measure (#908). Physical changes still fail
+  // the identity match above through the runtime fingerprint.
+  const measuredRuntime = normalizeMeasuredRuntime(readiness.artifact?.runtime);
+  const runtimeDrift = liveIdentityVerified ? runtimeVersionDrift(measuredRuntime, liveArtifact?.runtime) : null;
 
   return {
     ...readiness,
+    measuredRuntime,
+    runtimeDrift,
     benchmarkQualified: authorityVerified && readiness.benchmarkQualified === true,
     stale: readiness.stale === true || !authorityVerified,
     staleReason: readiness.staleReason || failureReason,
@@ -64,6 +72,7 @@ async function projectReadinessEntry(modelName, hostId, rawReadiness, evidenceBy
       verified: authorityVerified,
       reason: failureReason,
       liveArtifactDigest: liveArtifact?.digest || null,
+      liveRuntimeVersion: liveArtifact?.runtime?.ollamaVersion || null,
       checkedAt: now().toISOString()
     }
   };

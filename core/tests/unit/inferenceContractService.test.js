@@ -231,6 +231,27 @@ describe('inferenceContractService', () => {
     })).toBe(true);
   });
 
+  it('reports Ollama version drift without withdrawing the qualification (#908)', async () => {
+    const readiness = drift => ({
+      stage: 'profiled',
+      benchmarkQualified: true,
+      authorityVerified: true,
+      authority: { contract: 'agentx.profiler-readiness/v2', verified: true, liveIdentityVerified: true },
+      ...(drift !== undefined && { runtimeDrift: drift })
+    });
+    const resolve = drift => resolveCapabilities('ax/plain-custom-model', 'http://192.0.2.199:11434', {
+      configuredHosts: HOSTS,
+      modelProfilesCollection: profileCollection({ name: 'ax/plain-custom-model', readiness: { primary: readiness(drift) } })
+    });
+
+    const drifted = await resolve({ measured: '0.34.4', installed: '0.40.8' });
+    expect(drifted.qualification).toMatchObject({ qualified: true, runtimeDrift: { measured: '0.34.4', installed: '0.40.8' } });
+    expect((await resolve({ measured: null, installed: '0.40.8' })).qualification.runtimeDrift)
+      .toEqual({ measured: null, installed: '0.40.8' });
+    expect((await resolve(undefined)).qualification.runtimeDrift).toBeNull();
+    expect((await resolve({ measured: '0.40.8', installed: '0.40.8' })).qualification.runtimeDrift).toBeNull();
+  });
+
   it('does not infer thinking capability from a Qwen-like artifact name', async () => {
     const capabilities = await resolveCapabilities(
       'qwen-super-reasoning:99b',

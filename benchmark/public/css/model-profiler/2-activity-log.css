@@ -525,7 +525,8 @@
 }
 
 .mp-profile-authority-badge--unqualified,
-.mp-profile-authority-badge--stale {
+.mp-profile-authority-badge--stale,
+.mp-profile-authority-badge--drift {
   color: #f0ad4e;
   border-color: rgba(240, 173, 78, 0.45);
   background: rgba(240, 173, 78, 0.08);

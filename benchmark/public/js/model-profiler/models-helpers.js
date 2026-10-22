@@ -120,6 +120,19 @@ export function classifyProfileEvidence(model, evidence, hostId) {
 }
 
 /**
+ * Hosts whose profile was measured on another Ollama version than the one
+ * installed now (#908). The profile stays in use; this is a warning only.
+ */
+export function runtimeDriftByHost(model) {
+  const readiness = model?.readiness;
+  if (!readiness) return [];
+  const entries = readiness instanceof Map ? Array.from(readiness.entries()) : Object.entries(readiness);
+  return entries
+    .filter(([, entry]) => entry?.runtimeDrift?.installed)
+    .map(([hostId, entry]) => ({ hostId, measured: entry.runtimeDrift.measured || null, installed: entry.runtimeDrift.installed }));
+}
+
+/**
  * Count how many hosts are at or above the given stage.
  * (Any host whose stage appears earlier in STAGE_ORDER counts.)
  */

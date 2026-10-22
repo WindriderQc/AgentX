@@ -263,6 +263,14 @@ function resolveToolCapability(toolQualification, artifact, now = new Date()) {
   };
 }
 
+/** {measured, installed} from Benchmark's live readiness projection, or null. */
+function runtimeDriftOf(readiness) {
+  const drift = readiness?.runtimeDrift;
+  const version = value => (typeof value === 'string' && value.trim() ? value.trim() : null);
+  if (!drift || !version(drift.installed) || version(drift.measured) === version(drift.installed)) return null;
+  return { measured: version(drift.measured), installed: version(drift.installed) };
+}
+
 async function resolveCapabilities(model, host, deps = {}) {
   const configuredIdentity = resolveHostIdentity(host, deps.configuredHosts);
   const evidence = await readBenchmarkEvidence(model, configuredIdentity.host, deps);
@@ -355,6 +363,8 @@ async function resolveCapabilities(model, host, deps = {}) {
       stale: readiness?.stale === true,
       exactArtifact: exactProfile,
       authorityVerified,
+      // The evidence stays usable on another Ollama version; this says so (#908).
+      runtimeDrift: runtimeDriftOf(readiness),
       source: profile ? 'benchmark_model_profile' : 'fallback'
     },
     thinking,
