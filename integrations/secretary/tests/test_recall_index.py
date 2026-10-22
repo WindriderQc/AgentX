@@ -58,7 +58,7 @@ class RecallIndexTests(unittest.TestCase):
             if mid == "m2":
                 text = self.root / "files" / "report.txt"
                 text.parent.mkdir(parents=True, exist_ok=True)
-                text.write_text("Synthetic grades: excellent in mathematics", encoding="utf-8")
+                text.write_text("Synthetic grades:\x00 excellent in mathematics", encoding="utf-8")
                 message["attachments"] = [{"filename": "report.pdf", "sha256": "c" * 64, "textPath": "files/report.txt"},
                                           {"filename": "photo.jpg", "sha256": "d" * 64}]
             save(self.root / "threads" / tid / "manifest.json", {"threadId": tid, "evidenceHash": "a" * 64, "messages": [message]})
@@ -82,6 +82,8 @@ class RecallIndexTests(unittest.TestCase):
                          ("mail", "Synthetic canoe", ["Friend"], "2016-07-20T12:00:00Z"))
         self.assertEqual(sent["source"], {"messageId": "m1", "threadId": "t1", "sourceSha256": "1" * 64})
         self.assertEqual(docs[2]["source"]["filename"], "report.pdf")
+        self.assertNotIn("\x00", docs[2]["text"])  # Core refuses NUL characters
+        self.assertEqual(recall_index.clean("Bravo \U0001F389 et merci"), "Bravo  et merci")
         self.assertEqual((counts["messagesNotPersonOrImportant"], counts["attachmentsWithoutReadText"]), (1, 1))
 
     def test_run_pauses_for_core_then_indexes_once_and_syncs(self):

@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import sys
 import time
@@ -33,7 +34,7 @@ from secretary_evidence import DEFAULT_ROOT, Archive, message_text  # noqa: E402
 from value_lanes import correspondents, lanes_of, messages  # noqa: E402
 
 KEPT_LANES = ("person", "important")
-MAX_TEXT = 200_000
+MAX_TEXT = 190_000  # Core puts the subject and people first; the corpus takes 200,000 characters at most
 MAX_BATCH_DOCUMENTS = 20
 MAX_BATCH_CHARS = 1_500_000  # well under Core's JSON body limit
 PAUSE_SECONDS = 60
@@ -47,12 +48,22 @@ def when(message):
     return datetime.fromtimestamp(stamp / 1000, timezone.utc).isoformat().replace("+00:00", "Z") if stamp > 0 else None
 
 
+ASTRAL = re.compile("[\U00010000-\U0010FFFF]")
+
+
+def clean(text):
+    """Extracted text Core and RAG can store: no NUL (Core refuses it) and no
+    character beyond the basic plane (mostly emoji), which RAG's chunking can
+    split into a lone surrogate that Qdrant rejects."""
+    return ASTRAL.sub("", text.replace("\x00", ""))
+
+
 def people_of(headers, owner):
     found = []
     for field in ("from", "to", "cc"):
         for name, address in getaddresses([headers.get(field) or ""]):
             if address.strip().lower() not in owner and (name or address).strip():
-                found.append((name or address).strip()[:200])
+                found.append(clean(name or address).strip()[:200])
     return list(dict.fromkeys(found))[:20]
 
 
@@ -74,25 +85,25 @@ def documents(archive, counts, maximum=None):
             payload = load(archive.root / "threads" / tid / "original.json", {})
             originals = {tid: {m["id"]: m for m in payload.get("thread", payload).get("messages", [])}}
         headers = message.get("headers") or {}
-        base = {"title": (headers.get("subject") or "").strip()[:300], "occurredAt": when(message),
+        base = {"title": clean(headers.get("subject") or "").strip()[:300], "occurredAt": when(message),
                 "people": people_of(headers, owner)}
         source = {"messageId": message["id"], "threadId": tid, "sourceSha256": receipt["sha256"]}
         original = originals[tid].get(message["id"])
-        body = message_text(original).strip() if original else ""
+        body = clean(message_text(original)).strip() if original else ""
         if body:
             counts["bodies"] += 1
             counts["truncatedTexts"] += len(body) > MAX_TEXT
             yield {**base, "documentId": f"mail:{message['id']}", "kind": "mail", "text": body[:MAX_TEXT], "source": source}
         for attachment in message.get("attachments", []):
             path = attachment.get("textPath")
-            text = (archive.root / path).read_text(encoding="utf-8", errors="replace").strip() if path and (archive.root / path).is_file() else ""
+            text = clean((archive.root / path).read_text(encoding="utf-8", errors="replace")).strip() if path and (archive.root / path).is_file() else ""
             if not text or not attachment.get("sha256"):
                 counts["attachmentsWithoutReadText"] += 1
                 continue
             counts["attachments"] += 1
             counts["truncatedTexts"] += len(text) > MAX_TEXT
             yield {**base, "documentId": f"file:{attachment['sha256'][:32]}_{message['id']}", "kind": "file",
-                   "title": f"{base['title']} — {attachment.get('filename') or 'pièce jointe'}"[:300], "text": text[:MAX_TEXT],
+                   "title": clean(f"{base['title']} — {attachment.get('filename') or 'pièce jointe'}")[:300], "text": text[:MAX_TEXT],
                    "source": {**source, "filename": (attachment.get("filename") or "")[:300]}}
         if maximum is not None and counts["bodies"] + counts["attachments"] >= maximum:
             return
@@ -148,7 +159,12 @@ def run(archive, core, state_file, *, client=None, opener=urllib.request.urlopen
         try:
             data = post(core, "/api/secretary/recall/documents", {"documents": batch}, opener)
         except (urllib.error.URLError, TimeoutError, ValueError) as error:
-            report("unconfirmed", error=type(error).__name__)
+            detail = {}
+            if isinstance(error, urllib.error.HTTPError):
+                try: detail = {"httpStatus": error.code, "answer": error.read(2000).decode("utf-8", "replace")[:500]}
+                except OSError: detail = {"httpStatus": error.code}
+            report("unconfirmed", error=type(error).__name__, **detail,
+                   batch=[doc["documentId"] for doc in batch])
             raise RuntimeError("Recall indexing answer is uncertain; rerun to replay the same documents") from error
         for doc in batch:
             state["delivered"][doc["documentId"]] = digest(doc)
@@ -159,7 +175,8 @@ def run(archive, core, state_file, *, client=None, opener=urllib.request.urlopen
         totals.update({f"sync{k[0].upper()}{k[1:]}": data.get(k) or 0 for k in ("indexed", "removed")})
         if not data.get("remaining"):
             break
-    state.pop("error", None)
+    for key in ("error", "httpStatus", "answer", "batch"):
+        state.pop(key, None)  # an earlier interruption no longer applies
     report("done")
     return state
 
