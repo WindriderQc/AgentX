@@ -222,15 +222,24 @@
     if (!detail || !select || !confirm || !button) return;
     const control = controller?.control;
     const candidates = control?.candidates || [];
+    const taskCandidates = candidates.filter((task, index) =>
+      candidates.findIndex(row => row.pipelineId === task.pipelineId) === index);
     const pending = controller?.pending;
     const selected = pending ? '' : select.value;
     const completeCandidates = control?.summary?.eligibleCountExact === true;
-    const options = '<option value="">' + (candidates.length ? 'Choose a task…' : completeCandidates ? 'No task is currently eligible' : 'No candidate in the loaded tasks') + '</option>'
-      + candidates.map(task => `<option value="${escapeHtml(task.pipelineId)}">${escapeHtml(task.pipelineId)} · ${escapeHtml(task.title)}</option>`).join('');
+    const options = '<option value="">' + (taskCandidates.length ? 'Choose a task…' : completeCandidates ? 'No task is currently eligible' : 'No candidate in the loaded tasks') + '</option>'
+      + taskCandidates.map(task => {
+        const workers = candidates.filter(row => row.pipelineId === task.pipelineId);
+        return `<option value="${escapeHtml(task.pipelineId)}">${escapeHtml(task.pipelineId)} · ${escapeHtml(task.title)}`
+          + `${workers.length > 1 ? ` · ${workers.length} available workers` : ''}</option>`;
+      }).join('');
     if (select.dataset.options !== options) { select.innerHTML = options; select.dataset.options = options; }
-    const candidate = candidates.find(task => task.pipelineId === selected);
+    const candidate = taskCandidates.find(task => task.pipelineId === selected);
     select.value = candidate ? selected : '';
-    const identity = candidate ? JSON.stringify([candidate.pipelineId, candidate.expectedAttemptCount, candidate.title, candidate.canReport, candidate.reportName, candidate.reportCheckpoint]) : '';
+    const identity = candidate ? JSON.stringify([candidate.pipelineId, candidate.expectedAttemptCount, candidate.title,
+      candidate.canReport, candidate.reportName, candidate.reportCheckpoint,
+      candidates.filter(row => row.pipelineId === candidate.pipelineId)
+        .map(row => [row.executorId, row.harness, row.executorProfiles])]) : '';
     if (select.dataset.candidate !== identity) confirm.checked = false;
     select.dataset.candidate = identity;
     const profile = $('pipelineTeamLaunchProfile');
@@ -238,7 +247,7 @@
       profile.innerHTML = window.PipelineLaunchController.profileFields(candidate); profile.dataset.candidate = identity;
     }
     const ready = control?.available === true && !control.busy && !pending && !controller?.submitting && !controller?.checking && !controller?.error;
-    select.disabled = !ready || !candidates.length;
+    select.disabled = !ready || !taskCandidates.length;
     $('pipelineTeamLaunchForm')?.querySelectorAll('[name=reportName], [name=modelCallLimit], [name=resumeReport]').forEach(field => { field.disabled = !ready; });
     confirm.disabled = !ready || !select.value;
     // A status read temporarily disables launch, but does not erase consent for
@@ -252,7 +261,7 @@
         : !control ? 'Checking launch availability…'
           : !control.available ? 'The launch host is unavailable.'
             : pending || control.busy ? 'A run is already active. Follow it in the execution monitor.'
-              : candidates.length ? `${completeCandidates ? '' : 'At least '}${candidates.length} eligible task${candidates.length === 1 ? '' : 's'} · choose one to run`
+              : taskCandidates.length ? `${completeCandidates ? '' : 'At least '}${taskCandidates.length} eligible task${taskCandidates.length === 1 ? '' : 's'} · choose one to run`
                 : completeCandidates ? 'No eligible task. Check task scope and admission conditions below.'
                   : 'No candidate in the loaded tasks. Queue coverage is incomplete; inspect admission details.';
     }

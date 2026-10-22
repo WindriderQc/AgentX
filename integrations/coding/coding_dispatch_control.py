@@ -206,6 +206,7 @@ def status(key: str | None = None) -> dict:
                        message="Stop requested; waiting for the local checkpoint. Core may still drain the in-flight inference.")
     return {
         "contractVersion": 2, "available": True, "busy": busy,
+        "harness": setting("AGENTX_CODING_HARNESS", "dsh").strip().lower(),
         "observedAt": datetime.now(timezone.utc).isoformat(),
         "summary": {"queuedTasks": len(tasks), "eligibleTasks": sum(map(can_start, tasks)),
                     "privateQueuedTasks": sum(map(is_private_task, tasks)), **(QUEUE_EVIDENCE or {
@@ -303,7 +304,7 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
         return {"accepted": True, "replayed": False, "pipelineId": pipeline_id, "run": run}
 
 
-def stop(pipeline_id: str, key: str) -> dict:
+def stop(pipeline_id: str, key: str, *, autonomous=True) -> dict:
     """Record a cooperative stop for this request only; never signal a shared unit."""
     STATE.mkdir(parents=True, exist_ok=True)
     with (STATE / "coding-dispatcher-control.lock").open("a") as lock:
@@ -313,7 +314,7 @@ def stop(pipeline_id: str, key: str) -> dict:
             # The same launch/stop lock closes a selected but unreceived ID.
             # Do not change latest or touch an unrelated active host job.
             run = {'pipelineId': pipeline_id, 'requestId': key, 'phase': 'finished',
-                   'autonomous': True, 'cancelledBeforeLaunch': True}
+                   'autonomous': autonomous, 'cancelledBeforeLaunch': True}
             atomic_json(RECEIPTS / f'{key}.json', run)
             atomic_json(RECEIPTS / f'{key}.progress.json', {'pipelineId': pipeline_id, 'requestId': key,
                 'phase': 'finished', 'stage': 'preparing', 'coreRecorded': True, 'preflight': True,
@@ -467,6 +468,8 @@ def main() -> int:
             data = reconcile(values[0], values[1])
         elif action == "stop" and len(values) == 2 and re.fullmatch(r"\d{4}", values[0]):
             data = stop(values[0], values[1])
+        elif action == "cancel-waiting" and len(values) == 2 and re.fullmatch(r"\d{4}", values[0]):
+            data = stop(values[0], values[1], autonomous=False)
         else:
             raise ControlError("CODING_DISPATCH_INVALID_REQUEST", "Invalid control arguments.", 400)
         print(json.dumps({"status": "success", "data": data}))

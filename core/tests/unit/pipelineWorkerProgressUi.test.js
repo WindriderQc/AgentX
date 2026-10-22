@@ -60,6 +60,20 @@ test('a running receipt separates observed age, host liveness, useful work, budg
   expect(elements.pipelineWorkerMonitorDossier.href).toBe('/pipeline?task=0001');
 });
 
+test('the monitor names the incumbent executor, harness and the available fleet', () => {
+  const f = fixture({ stage: 'tool' }, 'running', { executors: [
+    { id: 'ugfrank-dsh', label: 'UGFrank', harness: 'dsh', available: true, busy: true },
+    { id: 'ugalien-open', label: 'UGAlien', harness: 'opencode', available: true, busy: false },
+  ], unavailableExecutors: [{ id: 'ugbrutal-open', label: 'UGBrutal', harness: 'opencode' }] });
+  Object.assign(f.controller.control.run, { executorId: 'ugfrank-dsh', executorLabel: 'UGFrank', harness: 'dsh' });
+  Object.assign(f.controller.pending, { executorId: 'ugfrank-dsh', executorLabel: 'UGFrank', harness: 'dsh' });
+  const evidence = renderMonitor(f).pipelineWorkerMonitorEvidence.innerHTML;
+  expect(evidence).toContain('UGFrank (ugfrank-dsh) · dsh · busy');
+  expect(evidence).toContain('UGAlien (ugalien-open) · opencode · ready');
+  expect(evidence).toContain('UGBrutal (ugbrutal-open) · opencode · unreachable');
+  expect(evidence).toContain('<dt>Selected executor</dt><dd>UGFrank (ugfrank-dsh) · dsh</dd>');
+});
+
 test('attempt identity requires the dossier request binding and never adds one to the pre-launch count', () => {
   const f = fixture({}, 'running', { inference: { pipelineId: '0001', attempt: 9 }, run: { requestId: ID, pipelineId: '0001',
     phase: 'running', expectedAttemptCount: 8, task: { pipelineId: '0001', automationAttemptCount: 9 } } });
@@ -208,6 +222,17 @@ test('a status refresh preserves consent for the same candidate and changed iden
   controller.control.candidates = []; draw();
   expect(elements.pipelineTeamLaunchConfirm.checked).toBe(false);
   expect(elements.pipelineTeamLaunchButton.disabled).toBe(true);
+});
+
+test('multi-host candidates appear once per task and name their available worker count', () => {
+  const task = { pipelineId: '0002', title: 'Synthetic task', expectedAttemptCount: 0 };
+  const { elements } = setup(null, 'finished', { candidates: [
+    { ...task, executorId: 'ugfrank-dsh', executorProfiles: ['code', 'report'] },
+    { ...task, executorId: 'ugalien-open', executorProfiles: ['code'] },
+  ] });
+  expect(elements.pipelineTeamLaunchTask.innerHTML.match(/value="0002"/g)).toHaveLength(1);
+  expect(elements.pipelineTeamLaunchTask.innerHTML).toContain('2 available workers');
+  expect(elements.pipelineTeamLaunchAvailability.textContent).toContain('1 eligible task');
 });
 
 test('live progress and worker identifiers stay out of the launch availability message', () => {

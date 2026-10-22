@@ -716,6 +716,16 @@
       "secret": false,
       "description": "user@host SSH target where Core launches coding dispatcher runs. Unset: dispatch reports unavailable; an invalid value fails bridge startup."
     },
+    "CODING_EXECUTORS_JSON": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "JSON array of coding executors ({id, label, harness, sshTarget, remoteRoot, profiles, priority}). Each executor exposes the same AgentX host control contract. When unset, the legacy CODING_DISPATCHER_* pair defines one DSH executor."
+    },
     "COMPRESSION_CACHE_TTL": {
       "services": [
         "rag"

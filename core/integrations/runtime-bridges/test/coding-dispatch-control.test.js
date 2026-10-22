@@ -21,8 +21,8 @@ test('concurrent copies of the same POST share one SSH request', async () => {
   const second = control.launch(request);
   await assert.rejects(control.launch({ ...request, pipelineId: '0701' }), error => error.code === 'CODING_DISPATCH_REQUEST_CONFLICT');
   complete(envelope(accepted));
-  assert.deepEqual(await first, accepted);
-  assert.deepEqual(await second, accepted);
+  assert.deepEqual((await first).run, { ...accepted.run, executorId: 'default', executorLabel: 'default', harness: 'dsh' });
+  assert.deepEqual((await second).run, { ...accepted.run, executorId: 'default', executorLabel: 'default', harness: 'dsh' });
   assert.equal(calls, 1);
 });
 
@@ -33,7 +33,9 @@ test('status reads the requested receipt and live host admission asynchronously'
     assert.equal(command, `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py status ${request.requestId}`);
     return envelope(data);
   });
-  assert.deepEqual(await control.status({ requestId: request.requestId }), data);
+  const status = await control.status({ requestId: request.requestId });
+  assert.deepEqual(status.run, { phase: 'running', executorId: 'default', executorLabel: 'default', harness: 'dsh' });
+  assert.equal(status.executors[0].id, 'default');
 });
 
 test('HTTP loss is reported as uncertain and does not reflect private stderr', async () => {
@@ -147,4 +149,85 @@ test('legacy checkpoint reads use the exact bounded native path without starting
   });
   assert.equal((await control.checkpoint({ ...request, path: '.review-work/REVIEW.md' })).sha256, 'a'.repeat(64));
   await assert.rejects(control.checkpoint({ ...request, path: '.review-work/../secret.md' }));
+});
+
+test('executor pool merges candidates and launches on the selected harness', async () => {
+  const calls = [];
+  const control = new CodingDispatchControl({ executors: [
+    { id: 'alien-dsh', harness: 'dsh', sshTarget: 'operator@alien', remoteRoot: '/srv/agentx/AgentX', priority: 20 },
+    { id: 'brutal-local', harness: 'opencode', sshTarget: 'operator@brutal', remoteRoot: '/srv/agentx/AgentX', priority: 10 },
+  ], sshRunner: async (target, command) => {
+    calls.push([target, command]);
+    if (command.includes(' status')) return envelope({ contractVersion: 2, available: true, busy: false,
+      harness: target.endsWith('@alien') ? 'dsh' : 'opencode',
+      candidates: [{ pipelineId: '0700', expectedAttemptCount: 0 }], excluded: [] });
+    return envelope(accepted);
+  } });
+  const status = await control.status();
+  assert.deepEqual(status.executors.map(row => row.id), ['brutal-local', 'alien-dsh']);
+  assert.deepEqual(status.candidates.map(row => [row.executorId, row.harness]),
+    [['brutal-local', 'opencode'], ['alien-dsh', 'dsh']]);
+  const result = await control.launch({ ...request, executorId: 'alien-dsh' });
+  assert.equal(result.run.executorId, 'alien-dsh');
+  assert.equal(calls.at(-1)[0], 'operator@alien');
+});
+
+test('pooled candidates are offered only by an executor that can accept them now', async () => {
+  const control = new CodingDispatchControl({ executors: [
+    { id: 'preferred-busy', harness: 'dsh', sshTarget: 'operator@busy', priority: 1 },
+    { id: 'available', harness: 'opencode', sshTarget: 'operator@free', priority: 2 },
+  ], sshRunner: async target => envelope({ contractVersion: 2, available: true,
+    harness: target.endsWith('@busy') ? 'dsh' : 'opencode',
+    busy: target.endsWith('@busy'), candidates: [{ pipelineId: '0700', expectedAttemptCount: 0 }], excluded: [] }) });
+  const status = await control.status();
+  assert.deepEqual(status.candidates.map(row => row.executorId), ['available']);
+  assert.equal(status.busy, false);
+});
+
+test('request discovery binds follow-up actions to the one executor holding its receipt', async () => {
+  const commands = [];
+  const control = new CodingDispatchControl({ executors: [
+    { id: 'first', harness: 'dsh', sshTarget: 'operator@first' },
+    { id: 'second', harness: 'dsh', sshTarget: 'operator@second' },
+  ], sshRunner: async (target, command) => {
+    commands.push([target, command]);
+    if (command.includes(' status ')) return envelope({ contractVersion: 2, available: true, busy: false, harness: 'dsh',
+      candidates: [], excluded: [], run: target.endsWith('@second')
+        ? { ...request, phase: 'running' } : { requestId: request.requestId, phase: 'not_received' } });
+    return envelope({ accepted: true, phase: 'stopping' });
+  } });
+  const status = await control.status({ requestId: request.requestId });
+  assert.equal(status.run.executorId, 'second');
+  await control.stop(request);
+  assert.equal(commands.at(-1)[0], 'operator@second');
+});
+
+test('an unanswered executor keeps an unlocated request outcome unknown', async () => {
+  const control = new CodingDispatchControl({ executors: [
+    { id: 'first', harness: 'dsh', sshTarget: 'operator@first' },
+    { id: 'second', harness: 'dsh', sshTarget: 'operator@second' },
+  ], sshRunner: async (target, command) => {
+    if (target.endsWith('@second')) throw new Error('offline');
+    return envelope({ contractVersion: 2, available: true, busy: false, harness: 'dsh', candidates: [], excluded: [],
+      run: { requestId: request.requestId, phase: 'not_received' } });
+  } });
+  await assert.rejects(control.status({ requestId: request.requestId }), error => error.code === 'CODING_DISPATCH_OUTCOME_UNKNOWN');
+});
+
+test('pool refuses a host whose installed harness differs from the registry', async () => {
+  const control = new CodingDispatchControl({ executors: [
+    { id: 'declared-open', harness: 'opencode', sshTarget: 'operator@host' },
+  ], sshRunner: async () => envelope({ contractVersion: 2, harness: 'dsh', available: true,
+    busy: false, candidates: [], excluded: [] }) });
+  await assert.rejects(control.status(), error => error.code === 'CODING_DISPATCH_OUTCOME_UNKNOWN');
+  await assert.rejects(control.status({ executorId: 'declared-open' }), error => error.code === 'CODING_EXECUTOR_HARNESS_MISMATCH');
+});
+
+test('waiting cancellation carries the task identity to the selected executor', async () => {
+  const control = configured(async (_target, command) => {
+    assert.equal(command, `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py cancel-waiting 0700 ${request.requestId}`);
+    return envelope({ accepted: true, cancelledBeforeLaunch: true });
+  });
+  assert.equal((await control.cancel(request)).cancelledBeforeLaunch, true);
+  await assert.rejects(control.cancel({ requestId: request.requestId }), error => error.statusCode === 400);
 });
