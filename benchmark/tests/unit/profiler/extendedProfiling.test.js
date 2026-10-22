@@ -111,7 +111,7 @@ describe('_runThroughputCurve()', () => {
   });
 
   it('sizes each long-fill timeout from the slowest prompt-eval rate measured so far', async () => {
-    // UGAlien 2026-10-21: ~970 tok/s prefill at 262144; the 50% fill needed ~100 s against a flat 60 s.
+    // A slow large-context host can need much longer than a flat 60-second timeout.
     const rates = { 10: 1200, 25: 970, 50: 900, 75: 800, 90: 700 };
     hostTestService.testModelOnHost.mockImplementation(async (_model, _host, options) => ({
       status: 'pass', tokensPerSec: 40, vramUsedMiB: 5000, promptEvalTokensPerSec: rates[options.contextFillPct]

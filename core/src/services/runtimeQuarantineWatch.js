@@ -4,7 +4,7 @@
  * Runtime quarantine watch — observe-only.
  *
  * A held admission that only an operator can release used to be silent: on
- * 2026-10-20 a Profiler run on UGAlien lost its claim after 30 s, its workload
+ * A Profiler run once lost its claim after 30 s while its workload
  * went to UNKNOWN recovery, and Nestor was refused on that host for twenty
  * minutes before anyone looked. This scan finds those states once a minute
  * and raises `runtime-recovery-quarantine`. It never releases or changes

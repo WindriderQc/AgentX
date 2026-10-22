@@ -31,6 +31,12 @@ test('pages, extensionless addresses and frozen API answers come from the mirror
   const doc = await request(app()).get('/images/labo/docs/report.md').expect(200);
   expect(doc.headers['content-type']).toContain('text/plain'); expect(doc.headers['cache-control']).toBe('no-store');
 });
+test('instance pages override the generic product fallback', async () => {
+  write('index.html', '<h1>instance lab</h1>');
+  write('campaign.html', 'instance cockpit');
+  expect((await request(app()).get('/images/labo/').expect(200)).text).toBe('<h1>instance lab</h1>');
+  expect((await request(app()).get('/images/labo/campaign').expect(200)).text).toBe('instance cockpit');
+});
 test('the lab is read-only and cannot reach outside its folder', async () => {
   await request(app()).get('/images/labo/.secret').expect(404);
   await request(app()).get('/images/labo/%2e%2e/%2e%2e/etc/passwd').expect(404);
@@ -100,6 +106,4 @@ test('the drawing of the production path is fed by the configured worker and rec
   expect(body.imageWorker).toEqual({ label: 'Bench', gpu: 'Card', vramGiB: 24 }); expect(body.imageRecipes).toEqual([{ id: 'quality', steps: 25 }]);
   const failing = await request(app(() => ({ listActive: idle, hosts, gpus, workshop: () => { throw new Error('no manifest'); } }))).get('/images/labo/api/lab').expect(200);
   expect(failing.body.imageWorker).toBeUndefined(); expect(failing.body.groups).toEqual([1]);
-  const page = fs.readFileSync(path.join(__dirname, '../../public/image-lab/lab-resources/ui/lab.js'), 'utf8');
-  expect(page.slice(page.indexOf('function productionPath'), page.indexOf('function machines'))).not.toMatch(/UGFrank|UGAlien|RTX|qwen|klein/);
 });

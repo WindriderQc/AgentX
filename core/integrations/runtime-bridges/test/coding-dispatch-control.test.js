@@ -8,7 +8,7 @@ const envelope = data => ({ stdout: JSON.stringify({ status: 'success', data }) 
 const configured = sshRunner => new CodingDispatchControl({ sshTarget: 'operator@host', sshRunner });
 
 test('launch binds an exact task, request and observed attempt without shell interpolation', async () => {
-  assert.equal(launchCommand({ ...request, root: '/srv/agentx/AgentX' }), `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py launch 0700 ${request.requestId} 0`);
+  assert.equal(launchCommand({ ...request, root: '/opt/agentx' }), `/usr/bin/python3 /opt/agentx/integrations/coding/coding_dispatch_control.py launch 0700 ${request.requestId} 0`);
   for (const change of [{ pipelineId: '700' }, { pipelineId: '0700; reboot' }, { requestId: 'a; reboot' }, { expectedAttemptCount: '0' }, { expectedAttemptCount: -1 }, { confirm: false }]) {
     await assert.rejects(configured(() => assert.fail('must not contact host')).launch({ ...request, ...change }), error => error.statusCode === 400);
   }
@@ -30,7 +30,7 @@ test('status reads the requested receipt and live host admission asynchronously'
   const data = { contractVersion: 2, available: true, candidates: [], run: { phase: 'running' } };
   const control = configured(async (target, command) => {
     assert.equal(target, 'operator@host');
-    assert.equal(command, `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py status ${request.requestId}`);
+    assert.equal(command, `/usr/bin/python3 /opt/agentx/integrations/coding/coding_dispatch_control.py status ${request.requestId}`);
     return envelope(data);
   });
   assert.deepEqual(await control.status({ requestId: request.requestId }), data);
@@ -43,7 +43,7 @@ test('HTTP loss is reported as uncertain and does not reflect private stderr', a
 
 test('stop requires confirmation and binds the exact task and request without signaling another unit', async () => {
   const control = configured(async (target, command) => {
-    assert.equal(command, `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py stop 0700 ${request.requestId}`);
+    assert.equal(command, `/usr/bin/python3 /opt/agentx/integrations/coding/coding_dispatch_control.py stop 0700 ${request.requestId}`);
     return envelope({ accepted: true, phase: 'stopping' });
   });
   assert.equal((await control.stop(request)).phase, 'stopping');
@@ -81,7 +81,7 @@ test('routes await host observations and reserve 202 for request acknowledgement
 
 test('private report launch reaches the native executor with its exact filename and explicit call budget', async () => {
   const control = configured(async (_target, command) => {
-    assert.equal(command, `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py launch-report 0700 ${request.requestId} 0 REVIEW.md --model-call-limit 256`);
+    assert.equal(command, `/usr/bin/python3 /opt/agentx/integrations/coding/coding_dispatch_control.py launch-report 0700 ${request.requestId} 0 REVIEW.md --model-call-limit 256`);
     return envelope({ ...accepted, run: { ...accepted.run, reportName: 'REVIEW.md', modelCallLimit: 256 } });
   });
   const result = await control.launch({ ...request, reportName: 'REVIEW.md', modelCallLimit: 256 });
@@ -119,7 +119,7 @@ test('report continuations preserve the exact parent and cannot mutate it under 
 });
 test('reconciliation requires confirmation and reaches only the original native request', async () => {
   const control = configured(async (_target, command) => {
-    assert.equal(command, `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py reconcile 0700 ${request.requestId}`);
+    assert.equal(command, `/usr/bin/python3 /opt/agentx/integrations/coding/coding_dispatch_control.py reconcile 0700 ${request.requestId}`);
     return envelope({ reconciled: true });
   });
   // Core's already authorized correction loop reconciles the same native identity internally.
@@ -142,7 +142,7 @@ test('a terminal execution without a saved file retains its parent id without fa
 });
 test('legacy checkpoint reads use the exact bounded native path without starting a worker', async () => {
   const control = configured(async (_target, command) => {
-    assert.equal(command, `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py read-checkpoint 0700 ${request.requestId} .review-work/REVIEW.md`);
+    assert.equal(command, `/usr/bin/python3 /opt/agentx/integrations/coding/coding_dispatch_control.py read-checkpoint 0700 ${request.requestId} .review-work/REVIEW.md`);
     return envelope({ sha256: 'a'.repeat(64) });
   });
   assert.equal((await control.checkpoint({ ...request, path: '.review-work/REVIEW.md' })).sha256, 'a'.repeat(64));

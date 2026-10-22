@@ -1,8 +1,8 @@
 'use strict';
-// The image lab: the trial site built by the workshop sessions, served read-only under /images/labo.
-// Its code lives in core/public/image-lab; its images, evidence files and frozen API answers live
-// on the shared image drive (<IMAGE_ARCHIVE_DIR>/atelier-site). Lots deposited under atelier-tests
-// are read at each request; host occupancy and GPU readings come live from Core.
+// The image lab serves an instance-owned site read-only under /images/labo. AgentX ships only a
+// generic fallback page and reusable UI resources. Pages, images, evidence and frozen API answers
+// live under <IMAGE_ARCHIVE_DIR>/atelier-site. Lots deposited under atelier-tests are read at each
+// request; host occupancy and GPU readings come live from Core.
 const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -117,7 +117,9 @@ function createRouter({ code = CODE, data = dataRoot, lots = lotsRoot, sources =
     express.static(dir, { ...options, extensions: false, index: false })(req, res, () => res.status(404).end());
   });
   router.use((req, res, next) => {
-    const roots = [code, data()].filter(Boolean);
+    // Instance pages intentionally win over the generic public fallback. Never copy a concrete
+    // instance's fleet, receipts or campaign results into the product checkout.
+    const roots = [data(), code].filter(Boolean);
     if (!['GET', 'HEAD'].includes(req.method)) return res.status(404).end();
     // A page may share its name with a folder (/campaign and /campaign/archive): the page wins.
     const page = req.path.replace(/\/$/, '') + '.html';

@@ -27,7 +27,7 @@ describe('runtimeQuarantineWatch.findQuarantines', () => {
     expect(watch.findQuarantines(runtime, prefs, NOW)).toEqual([]);
   });
 
-  it('names the 2026-10-20 UGAlien state: UNKNOWN workload and a claim under status idle', () => {
+  it('names an UNKNOWN workload with a claim under status idle', () => {
     const runtime = { workloads: [{ workloadId: 'profiler-queue-38b4', hosts: [HOST], kind: 'profiler',
       recoveryState: 'UNKNOWN', recoveryReceipt: { reason: 'BENCHMARK_CLAIM_LOST' },
       expiresAt: new Date(NOW - 10_000), recoveryArmedAt: new Date(NOW - 600_000) }] };

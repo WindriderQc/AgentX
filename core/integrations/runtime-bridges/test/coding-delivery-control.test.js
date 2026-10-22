@@ -537,15 +537,15 @@ test('manual deployment requires running source identity and handles optional Da
 });
 
 test('production probe selects the configured Compose instance and rejects shell syntax', () => {
-  const command = productionCommand('/srv/agentx/AgentX', { projectName: 'agentx-canary', envFile: '/etc/agentx/canary.env', overrideFile: '/etc/agentx/canary.yml' });
+  const command = productionCommand('/opt/agentx', { projectName: 'agentx-canary', envFile: '/etc/agentx/canary.env', overrideFile: '/etc/agentx/canary.yml' });
   assert.match(command, /--project-name agentx-canary/);
   assert.match(command, /--env-file \/etc\/agentx\/canary.env/);
   assert.match(command, /compose ps -q/);
   assert.match(command, /service-image-parity\.py/);
   assert.doesNotMatch(command, /agentx-core|up -d/);
-  assert.throws(() => productionCommand('/srv/agentx/AgentX'), /explicit production env/);
-  assert.throws(() => productionCommand('/srv/agentx/AgentX', { projectName: 'x; touch', envFile: '/tmp/a' }));
-  assert.throws(() => productionCommand('/srv/agentx/AgentX', { envFile: '/tmp/a;touch' }));
+  assert.throws(() => productionCommand('/opt/agentx'), /explicit production env/);
+  assert.throws(() => productionCommand('/opt/agentx', { projectName: 'x; touch', envFile: '/tmp/a' }));
+  assert.throws(() => productionCommand('/opt/agentx', { envFile: '/tmp/a;touch' }));
 });
 
 test('Product acceptance asks for Product publication instead of waiting for the AIOps publisher', async () => {
