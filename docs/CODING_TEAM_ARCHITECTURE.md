@@ -71,6 +71,12 @@ The host reports its installed `AGENTX_CODING_HARNESS`; Core refuses a registry
 entry that claims a different harness. Current entries also require distinct
 SSH targets because the host controller owns one fixed native unit.
 
+The remote controller currently requires a POSIX SSH endpoint. A Windows host
+may participate through a Linux VM or WSL distribution, but Core must target an
+SSH service inside that Linux environment; a Windows SSH endpoint that opens
+PowerShell is not compatible. Keeping the transport uniform avoids embedding
+host-specific shell quoting and `wsl.exe` lifecycle behavior in Core.
+
 Each registry entry currently represents one native host unit and therefore
 has capacity one. More concurrency is expressed with more executors, not by
 starting hidden children behind a host lock.
