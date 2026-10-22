@@ -181,6 +181,27 @@ test('public reads expose bounded graph evidence but no plan paths, objectives, 
   expect((await service.read('0946')).plan.steps[0].paths).toEqual(['src/one.js']);
 });
 
+test('persists and projects one replay-safe cumulative-budget terminal receipt', async () => {
+  await service.create('0946', createInput({ budget: budget(1, 1, 1, 1) }));
+  const input = { expectedRevision: 0, state: 'blocked', code: 'cumulative_budget_exhausted',
+    reason: 'No positive reservation remains for every required budget dimension', stepId: null,
+    finishedAt: T0 };
+  FakeTaskModel.loseNextAck = true;
+  const result = await service.terminalize('0946', input);
+  expect(result).toMatchObject({ replayed: true, dag: { revision: 1, state: 'blocked' }, summary: {
+    state: 'blocked', activeSteps: [], counts: { blocked: 2 },
+    steps: [{ id: 'step-01', state: 'blocked', attempt: 0,
+      failureCode: 'cumulative_budget_exhausted' }, { id: 'step-02', state: 'blocked', attempt: 0 }],
+    assembly: { state: 'blocked', adoptedSteps: 0 },
+  } });
+  expect(result.summary.assembly.receiptFingerprint).toMatch(/^[a-f0-9]{64}$/);
+  expect(result.summary.assembly.receiptFingerprint).toBe(result.dag.terminalFailureFingerprint);
+  expect(await service.terminalize('0946', input)).toMatchObject({ replayed: true, dag: { revision: 1 } });
+  await expect(service.startAttempt('0946', { expectedRevision: 1, stepId: 'step-01', executorId: 'ugalien',
+    requestId: 'late-request', baseCommit: SOURCE, budget: budget(1, 1, 1, 1), startedAt: T0 }))
+    .rejects.toMatchObject({ code: 'DAG_TERMINAL' });
+});
+
 test('a changed or completed root fences every later DAG mutation', async () => {
   await service.create('0946', createInput());
   FakeTaskModel.task.codingAutonomy.runs[0].finishedAt = T0;

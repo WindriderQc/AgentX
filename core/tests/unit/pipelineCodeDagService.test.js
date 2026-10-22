@@ -1,6 +1,7 @@
 'use strict';
 
 const service = require('../../src/services/pipelineCodeDagService');
+const terminal = require('../../src/services/pipelineCodeDagTerminalService');
 const { SOURCE_PLAN_SCHEMA } = require('../../../shared/codeStepDagContract');
 
 const SOURCE = '1'.repeat(40);
@@ -114,6 +115,38 @@ function settleModel(dag, stepId, requestId, callId, outcome, durationSeconds) {
       : outcome === 'failed' ? { code: 'model_refused' } : { reason: 'acknowledgement_lost' },
   });
 }
+
+test('terminalizes budget exhaustion only at a settled boundary and replays its exact receipt', () => {
+  let dag = createDag({ limit: budget(1, 1, 1, 1) });
+  const input = { expectedRevision: dag.revision, state: 'blocked', code: 'cumulative_budget_exhausted',
+    reason: 'No positive reservation remains for every required budget dimension', stepId: null, finishedAt: T0 };
+  const blocked = terminal.terminalize(dag, input);
+  expect(blocked).toMatchObject({ replayed: false, dag: { revision: 1, state: 'blocked',
+    assembly: { state: 'blocked' }, terminalFailure: { code: 'cumulative_budget_exhausted' } } });
+  expect(blocked.dag.terminalFailureFingerprint).toMatch(/^[a-f0-9]{64}$/);
+  expect(terminal.terminalize(blocked.dag, input)).toMatchObject({ replayed: true, dag: { revision: 1 } });
+  expect(() => terminal.terminalize(blocked.dag, { ...input, reason: 'different' }))
+    .toThrow(expect.objectContaining({ code: 'TERMINAL_RECEIPT_CONFLICT' }));
+
+  dag = start(createDag(), 'step-01', 'executor-a', 'unsettled').dag;
+  expect(() => terminal.terminalize(dag, { ...input, expectedRevision: dag.revision }))
+    .toThrow(expect.objectContaining({ code: 'DAG_NOT_TERMINALIZABLE' }));
+});
+
+test('terminalizes an exhausted failed step with deterministic failure evidence', () => {
+  let dag = createDag({ stepCount: 1 });
+  for (let attempt = 1; attempt <= service.MAX_ATTEMPTS; attempt += 1) {
+    const requestId = `attempt-${attempt}`;
+    dag = start(dag, 'step-01', 'executor-a', requestId).dag;
+    dag = service.settleAttempt(dag, { expectedRevision: dag.revision, requestId, outcome: 'failed',
+      actualUsage: budget(1, 1, 1, 1), receipt: { code: 'focused_tests_failed', finishedAt: T0 } }).dag;
+  }
+  const failed = terminal.terminalize(dag, { expectedRevision: dag.revision, state: 'failed',
+    code: 'step_attempts_exhausted', reason: 'step-01 exhausted its bounded attempts',
+    stepId: 'step-01', finishedAt: T0 });
+  expect(failed.dag).toMatchObject({ state: 'failed', assembly: { state: 'failed' },
+    terminalFailure: { code: 'step_attempts_exhausted', stepId: 'step-01' } });
+});
 
 test('selects a deterministic maximal ready set with distinct executors', () => {
   const dag = createDag();

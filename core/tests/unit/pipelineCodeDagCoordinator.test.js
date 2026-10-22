@@ -13,12 +13,12 @@ const step = (id, path, dependsOn = []) => ({ id, title: `Change ${id}`, objecti
   paths: [path], testTargets: [`test:${id}`], dependsOn });
 const clone = value => JSON.parse(JSON.stringify(value));
 
-function fixture({ lostLaunch = false } = {}) {
+function fixture({ lostLaunch = false, limit = budget() } = {}) {
   const plan = { schema: 'agentx.coding-code-plan/v1', summary: 'Parallel fake plan', steps: [
     step('step-01', 'src/one.js'), step('step-02', 'src/two.js'), step('step-03', 'src/three.js', ['step-01']),
   ] };
   const memory = { dag: domain.create({ pipelineId: '0946', rootRequestId: ROOT, sourceCommit: SOURCE, plan,
-    reviewedScope: plan.steps.map(item => item.paths[0]), reviewedLockKeys: [], budget: budget(), createdAt: T0 }) };
+    reviewedScope: plan.steps.map(item => item.paths[0]), reviewedLockKeys: [], budget: limit, createdAt: T0 }) };
   const taskRecord = { pipelineId: '0946', title: 'Synthetic DAG', spec: 'Public fake work', service: 'agentx-coding',
     automation: { fingerprint: 'f'.repeat(64), verificationProfile: 'agentx-core-runner-tests/v1' }, automationAttemptCount: 1,
     automationLease: { leaseId: 'root-lease' }, codingCapacity: { model: 'qwen3-coder:30b' } };
@@ -38,6 +38,10 @@ function fixture({ lostLaunch = false } = {}) {
     reconcileUnknown: jest.fn(transition('reconcileUnknown')),
     recordAdoption: jest.fn(transition('recordAdoption')),
     completeAssembly: jest.fn(transition('completeAssembly')),
+    terminalize: jest.fn(async (_pipelineId, input) => {
+      const terminal = require('../../src/services/pipelineCodeDagTerminalService');
+      const result = terminal.terminalize(memory.dag, input); memory.dag = result.dag; return result;
+    }),
   };
   Object.assign(taskRecord, { codeStepDag: memory.dag, codingAutonomy: { authorized: true, revision: 2, basis,
     queueRequestId: '99999999-9999-4999-8999-999999999999',
@@ -176,4 +180,35 @@ test('stop fans out only exact unsettled child requests', async () => {
   expect(f.control.stop.mock.calls.map(([input]) => input.requestId).sort()).toEqual(
     f.memory.dag.steps.slice(0, 2).map(item => item.attempts[0].requestId).sort());
   expect(f.control.stop.mock.calls.every(([input]) => input.confirm === true && input.executorId !== 'ugfrank')).toBe(true);
+});
+
+test('terminalizes a graph instead of dispatching a zero-dimension reservation', async () => {
+  const f = fixture({ limit: budget(900, 300, 300, 2) });
+  const coordinator = f.create();
+  const blocked = await coordinator.tick('0946');
+  expect(f.launches).toEqual([]);
+  expect(blocked).toMatchObject({ state: 'blocked', assembly: { state: 'blocked' },
+    terminalFailure: { code: 'cumulative_budget_exhausted', stepId: null } });
+  expect(await coordinator.tick('0946')).toMatchObject({ revision: 1, state: 'blocked' });
+  expect(f.stateService.terminalize).toHaveBeenCalledTimes(1);
+  const manifest = await coordinator.manifest('0946', deterministicUuid(ROOT, 'assembly'));
+  expect(manifest).toMatchObject({ finalReady: false, codeStepGraph: { graphId: ROOT },
+    terminalFailure: { code: 'cumulative_budget_exhausted', reason: expect.any(String) } });
+});
+
+test('terminalizes a settled failed step after its bounded attempts are exhausted', async () => {
+  const f = fixture();
+  for (let attempt = 1; attempt <= domain.MAX_ATTEMPTS; attempt += 1) {
+    const requestId = `exhausted-${attempt}`;
+    f.memory.dag = domain.startAttempt(f.memory.dag, { expectedRevision: f.memory.dag.revision,
+      stepId: 'step-01', executorId: 'ugalien', requestId, baseCommit: SOURCE,
+      budget: budget(10, 10, 10, 1), startedAt: T0 }).dag;
+    f.memory.dag = domain.settleAttempt(f.memory.dag, { expectedRevision: f.memory.dag.revision,
+      requestId, outcome: 'failed', actualUsage: budget(1, 1, 1, 1),
+      receipt: { code: 'focused_tests_failed', finishedAt: T0 } }).dag;
+  }
+  const failed = await f.create().tick('0946');
+  expect(f.launches).toEqual([]);
+  expect(failed).toMatchObject({ state: 'failed', terminalFailure: {
+    code: 'step_attempts_exhausted', stepId: 'step-01' } });
 });

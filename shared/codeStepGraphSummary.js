@@ -108,7 +108,7 @@
       fail(`${name} passed state requires one commit and passing focused tests`);
     }
     if (state !== 'passed' && commit) fail(`${name} may retain a commit only after passing focused tests`);
-    if (['running', 'passed', 'failed', 'uncertain', 'blocked'].includes(state) && attempt < 1) {
+    if (['running', 'passed', 'failed', 'uncertain'].includes(state) && attempt < 1) {
       fail(`${name}.${state} requires an attempt`);
     }
     const waitCode = raw.waitCode == null || raw.waitCode === '' ? null : identifier(raw.waitCode, `${name}.waitCode`);

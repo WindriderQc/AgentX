@@ -12,7 +12,7 @@ const WC = { w: 1, j: true };
 const MANIFEST_SCHEMA = 'agentx.pipeline-code-step-worker-manifest/v1';
 const COORDINATION_SCHEMA = 'agentx.pipeline-code-step-coordination/v1';
 const ZERO_USAGE = Object.freeze({ workSeconds: 0, testSeconds: 0, modelSeconds: 0, modelCalls: 0 });
-const TERMINAL_STEP_STATES = new Set(['verified', 'failed']);
+const TERMINAL_STEP_STATES = new Set(['verified']);
 
 class PipelineCodeDagCoordinatorError extends Error {
   constructor(code, message, statusCode = 409) {
@@ -74,8 +74,7 @@ function attemptBudget(dag) {
     const remaining = dag.budget.limit[key] - dag.budget.spent[key] - dag.budget.reserved[key];
     result[key] = Math.max(0, Math.floor(remaining / remainingSteps));
   }
-  if (dagDomain.BUDGET_KEYS.every(key => result[key] === 0)) fail('CODE_STEP_BUDGET_EXHAUSTED', 'No aggregate code-step budget remains');
-  return result;
+  return dagDomain.BUDGET_KEYS.some(key => result[key] <= 0) ? null : result;
 }
 
 function publicArtifact(metadata) {
@@ -265,12 +264,15 @@ function createPipelineCodeDagCoordinator(options = {}) {
       const adoptedSteps = dag.assembly.adoptions.map(item => item.stepId);
       const finalReady = !dag.assembly.completion && !receipt
         && dag.steps.every(item => item.state === 'verified') && adoptedSteps.length === order.length;
+      const codeStepGraph = await state.projection(pipelineId);
+      const terminalFailure = dag.terminalFailure && { code: dag.terminalFailure.code,
+        reason: dag.terminalFailure.reason, ...(dag.terminalFailure.stepId && { stepId: dag.terminalFailure.stepId }) };
       return signedManifest({ schema: MANIFEST_SCHEMA, role: 'assembly', pipelineId, graphId: dag.rootRequestId,
         requestId, executorId: dag.authority.coordinator.id, expectedAttemptCount, stepId: null,
         rootRequestId: dag.rootRequestId, sourceCommit: dag.sourceCommit, baseCommit: currentHead(dag),
         planFingerprint: dag.planFingerprint, ...runtime,
         testTargets: [...new Set(dag.steps.flatMap(item => item.testTargets))],
-        adoptionOrder: order, adoptedSteps, finalReady,
+        adoptionOrder: order, adoptedSteps, finalReady, codeStepGraph, terminalFailure: terminalFailure || null,
         readyAdoption: receipt ? { stepId: step.id, requestId: latestAttempt(step).requestId,
           commit: receipt.commit, parent: latestAttempt(step).baseCommit,
           allowedPaths: [...step.paths], effectiveDependsOn: [...step.effectiveDependsOn],
@@ -362,6 +364,11 @@ function createPipelineCodeDagCoordinator(options = {}) {
     return state.completeAssembly(pipelineId, { ...input, expectedRevision: dag.revision });
   }
 
+  async function terminalize(pipelineId, requestId, input) {
+    const dag = await assertAssemblyIdentity(pipelineId, requestId);
+    return state.terminalize(pipelineId, { ...input, expectedRevision: dag.revision });
+  }
+
   async function observeAttempt(pipelineId, dag, step) {
     const attempt = latestAttempt(step);
     let host;
@@ -417,7 +424,7 @@ function createPipelineCodeDagCoordinator(options = {}) {
   async function tick(pipelineId) {
     if (!control) return null;
     let dag = await state.read(pipelineId);
-    if (!dag || dag.state === 'published') return dag;
+    if (!dag || ['published', 'failed', 'blocked'].includes(dag.state)) return dag;
     await activeDagTask(pipelineId, dag);
     await ensureCoordination(pipelineId, dag);
     dag = await state.read(pipelineId);
@@ -425,6 +432,13 @@ function createPipelineCodeDagCoordinator(options = {}) {
     for (const step of dag.steps.filter(candidate => ['running', 'unknown'].includes(candidate.state))) {
       const changed = await observeAttempt(pipelineId, dag, step);
       if (changed) dag = changed.dag;
+    }
+    const unsettled = dag.steps.some(step => ['running', 'unknown'].includes(step.state));
+    const exhausted = dag.steps.find(step => step.state === 'failed' && step.attempts.length >= dagDomain.MAX_ATTEMPTS);
+    if (!unsettled && exhausted) {
+      return (await state.terminalize(pipelineId, { expectedRevision: dag.revision, state: 'failed',
+        code: 'step_attempts_exhausted', reason: `${exhausted.id} exhausted its bounded attempts`,
+        stepId: exhausted.id, finishedAt: iso(clock) })).dag;
     }
     await markAssemblyRequested(pipelineId, dag);
     dag = await state.read(pipelineId);
@@ -435,12 +449,21 @@ function createPipelineCodeDagCoordinator(options = {}) {
     const executors = availableExecutors(fleet, dag.authority.coordinator.id);
     const assignments = dagDomain.readySet(dag, executors.map(item => item.id));
     for (const assignment of assignments) {
+      const reservation = attemptBudget(dag);
+      if (!reservation) {
+        if (!dag.steps.some(step => ['running', 'unknown'].includes(step.state))) {
+          return (await state.terminalize(pipelineId, { expectedRevision: dag.revision, state: 'blocked',
+            code: 'cumulative_budget_exhausted', reason: 'No positive reservation remains for every required budget dimension',
+            stepId: null, finishedAt: iso(clock) })).dag;
+        }
+        break;
+      }
       dag = await persistExecutorProfile(pipelineId, dag,
         executors.find(executor => executor.id === assignment.executorId));
       const requestId = uuid();
       const started = await state.startAttempt(pipelineId, { expectedRevision: dag.revision,
         stepId: assignment.stepId, executorId: assignment.executorId, requestId,
-        baseCommit: currentHead(dag), budget: attemptBudget(dag), startedAt: iso(clock) });
+        baseCommit: currentHead(dag), budget: reservation, startedAt: iso(clock) });
       dag = started.dag;
       await observeAttempt(pipelineId, dag, dag.steps.find(step => step.id === assignment.stepId));
       dag = await state.read(pipelineId);
@@ -462,7 +485,7 @@ function createPipelineCodeDagCoordinator(options = {}) {
   }
 
   return Object.freeze({ configureControl, submitPlan, manifest, storeArtifact, downloadArtifact,
-    settleStep, recordAdoption, completeAssembly, tick, stopChildren });
+    settleStep, recordAdoption, completeAssembly, terminalize, tick, stopChildren });
 }
 
 const shared = createPipelineCodeDagCoordinator();

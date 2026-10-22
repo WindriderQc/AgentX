@@ -2,6 +2,7 @@
 
 const Task = require('../../models/PipelineTask');
 const dagService = require('./pipelineCodeDagService');
+const dagTerminal = require('./pipelineCodeDagTerminalService');
 const { fingerprint } = require('../../../shared/codeStepDagContract');
 const graphSummary = require('../../../shared/codeStepGraphSummary');
 
@@ -110,6 +111,8 @@ function publicBudget(value) {
 
 function stepState(dag, step) {
   if (step.state === 'verified') return 'passed';
+  if (dag.terminalFailure) return dag.terminalFailure.state === 'failed'
+    && dag.terminalFailure.stepId === step.id ? 'failed' : 'blocked';
   if (step.state === 'unknown') return 'uncertain';
   if (step.state === 'failed') return 'failed';
   if (step.state === 'running') return 'running';
@@ -145,7 +148,9 @@ function projectStep(dag, step) {
   if (state === 'passed') projected.commit = step.verifiedReceipt.commit;
   if (state === 'waiting') projected.waitCode = 'dependencies_pending';
   if (state === 'uncertain') projected.waitCode = 'executor_outcome_unknown';
-  if (state === 'failed') projected.failureCode = attempt?.settlement?.receipt?.code || 'step_failed';
+  if (state === 'failed') projected.failureCode = dag.terminalFailure?.stepId === step.id
+    ? dag.terminalFailure.code : (attempt?.settlement?.receipt?.code || 'step_failed');
+  if (state === 'blocked') projected.failureCode = dag.terminalFailure.code;
   if (adoption) projected.adoption = {
     state: 'adopted',
     assemblyCommit: adoption.adoptedCommit,
@@ -156,6 +161,13 @@ function projectStep(dag, step) {
 
 function projectAssembly(dag) {
   const adoptedSteps = dag.assembly.adoptions.length;
+  if (dag.terminalFailure) {
+    const latest = dag.assembly.adoptions[adoptedSteps - 1];
+    return { state: dag.terminalFailure.state,
+      executor: dag.authority?.coordinator || { id: 'coordinator', label: 'Coordinator', harness: 'unknown' },
+      baseCommit: dag.sourceCommit, ...(latest && { headCommit: latest.adoptedCommit }), adoptedSteps,
+      receiptFingerprint: dag.terminalFailureFingerprint || fingerprint(dag.terminalFailure) };
+  }
   if (!dag.assembly.completion && adoptedSteps === 0) return { state: 'pending', adoptedSteps };
   const coordinator = dag.authority?.coordinator || { id: 'coordinator', label: 'Coordinator', harness: 'unknown' };
   const latest = dag.assembly.adoptions[adoptedSteps - 1];
@@ -193,7 +205,8 @@ function project(dag) {
     schema: graphSummary.SCHEMA,
     graphId: dag.rootRequestId,
     planFingerprint: dag.planFingerprint,
-    state: dag.state === 'published' ? 'published' : (dag.assembly.adoptions.length ? 'assembling' : 'running'),
+    state: dag.terminalFailure?.state || (dag.state === 'published' ? 'published'
+      : (dag.assembly.adoptions.length ? 'assembling' : 'running')),
     activeSteps: steps.filter(step => ['running', 'uncertain'].includes(step.state)).map(step => step.id),
     counts: Object.fromEntries(states.map(state => [state, steps.filter(step => step.state === state).length])),
     budget: { reserved: publicBudget(dag.budget.reserved), spent: publicBudget(dag.budget.spent) },
@@ -255,13 +268,17 @@ function createPipelineCodeDagStateService(Model = Task) {
     if (!task) fail('TASK_NOT_FOUND', 'Pipeline task not found', 404);
     if (!task.codeStepDag) fail('DAG_NOT_FOUND', 'The task has no code-step DAG', 404);
     const dag = clone(task.codeStepDag);
+    if (dag.terminalFailure && operation !== 'terminalize') {
+      fail('DAG_TERMINAL', 'The code-step graph already has a durable terminal result');
+    }
     const binding = authority(task, {
       taskBasis: dag.authority?.taskBasis,
       rootRequestId: dag.rootRequestId,
       sourceCommit: dag.sourceCommit,
     });
     if (!sameAuthority(binding, dag.authority)) fail('DAG_ROOT_CHANGED', 'The persisted DAG authority no longer matches the root run');
-    const result = dagService[operation](dag, input);
+    const operationService = operation === 'terminalize' ? dagTerminal : dagService;
+    const result = operationService[operation](dag, input);
     if (result.replayed) return { dag: result.dag, summary: project(result.dag), replayed: true };
     const resultSummary = project(result.dag);
     const saved = await queryResult(Model.findOneAndUpdate(
@@ -282,7 +299,7 @@ function createPipelineCodeDagStateService(Model = Task) {
       if (!sameAuthority(currentBinding, current.codeStepDag.authority)) {
         fail('DAG_ROOT_CHANGED', 'The persisted DAG authority no longer matches the root run');
       }
-      const replay = dagService[operation](clone(current.codeStepDag), input);
+      const replay = operationService[operation](clone(current.codeStepDag), input);
       if (replay.replayed) return { dag: replay.dag, summary: project(replay.dag), replayed: true };
     }
     fail('DAG_REVISION_CONFLICT', 'The code-step DAG changed; read its current revision before retrying');
@@ -301,6 +318,7 @@ function createPipelineCodeDagStateService(Model = Task) {
     reconcileUnknown: (pipelineId, input) => transition(pipelineId, 'reconcileUnknown', input),
     recordAdoption: (pipelineId, input) => transition(pipelineId, 'recordAdoption', input),
     completeAssembly: (pipelineId, input) => transition(pipelineId, 'completeAssembly', input),
+    terminalize: (pipelineId, input) => transition(pipelineId, 'terminalize', input),
   };
 }
 

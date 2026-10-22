@@ -6,9 +6,10 @@ const {
   repositoryPath,
   validatePlan,
 } = require('../../../shared/codeStepDagContract');
+const scheduling = require('./pipelineCodeDagSchedulingService');
 
 const BUDGET_KEYS = ['workSeconds', 'testSeconds', 'modelSeconds', 'modelCalls'];
-const MAX_ATTEMPTS = 3;
+const { MAX_ATTEMPTS } = scheduling;
 
 class PipelineCodeDagError extends Error {
   constructor(code, message) {
@@ -158,23 +159,10 @@ function findStep(dag, stepId) {
   return step;
 }
 
-function adoptedStepIds(dag) {
-  return new Set(dag.assembly.adoptions.map((adoption) => adoption.stepId));
-}
-
 function currentAssemblyHead(dag) {
   return dag.assembly.adoptions.length
     ? dag.assembly.adoptions[dag.assembly.adoptions.length - 1].adoptedCommit
     : dag.sourceCommit;
-}
-
-function dependenciesReady(dag, step) {
-  const adopted = adoptedStepIds(dag);
-  const frozenStep = dag.plan.steps.find((candidate) => candidate.id === step.id);
-  if (!frozenStep) fail('INVALID_DAG', `${step.id} is missing from the frozen plan`);
-  return frozenStep.effectiveDependsOn.every(
-    (dependencyId) => findStep(dag, dependencyId).state === 'verified' && adopted.has(dependencyId),
-  );
 }
 
 function create(input) {
@@ -216,29 +204,7 @@ function create(input) {
 
 function readySet(dag, availableExecutorIds) {
   assertState(dag);
-  if (!Array.isArray(availableExecutorIds)) fail('INVALID_EXECUTORS', 'availableExecutorIds must be an array');
-  const busy = new Set(dag.steps.filter((step) => ['running', 'unknown'].includes(step.state)).map((step) => step.executorId));
-  const available = [...new Set(availableExecutorIds.map((value, index) => identifier(value, `availableExecutorIds[${index}]`)))]
-    .filter((executorId) => !busy.has(executorId))
-    .sort();
-  const candidates = dag.steps.filter((step) =>
-    ['pending', 'failed'].includes(step.state) && step.attempts.length < MAX_ATTEMPTS && dependenciesReady(dag, step));
-  const assigned = new Set();
-  const assignments = new Map();
-  for (const step of candidates.filter((candidate) => candidate.executorId)) {
-    if (available.includes(step.executorId) && !assigned.has(step.executorId)) {
-      assigned.add(step.executorId);
-      assignments.set(step.id, step.executorId);
-    }
-  }
-  for (const step of candidates.filter((candidate) => !candidate.executorId)) {
-    const executorId = available.find((candidate) => !assigned.has(candidate));
-    if (!executorId) break;
-    assigned.add(executorId);
-    assignments.set(step.id, executorId);
-  }
-  return candidates.filter((step) => assignments.has(step.id))
-    .map((step) => ({ stepId: step.id, executorId: assignments.get(step.id) }));
+  return scheduling.readySet(dag, availableExecutorIds);
 }
 
 function startAttempt(dag, input) {
@@ -264,7 +230,7 @@ function startAttempt(dag, input) {
   expectRevision(dag, input.expectedRevision);
   const next = clone(dag);
   const step = findStep(next, intent.stepId);
-  if (!['pending', 'failed'].includes(step.state) || !dependenciesReady(next, step)) {
+  if (!['pending', 'failed'].includes(step.state) || !scheduling.dependenciesReady(next, step)) {
     fail('STEP_NOT_READY', `${step.id} is not ready`);
   }
   const expectedBaseCommit = currentAssemblyHead(next);
@@ -701,6 +667,7 @@ function completeAssembly(dag, input) {
 module.exports = {
   BUDGET_KEYS,
   MAX_ATTEMPTS,
+  assertState,
   PipelineCodeDagError,
   create,
   readySet,
