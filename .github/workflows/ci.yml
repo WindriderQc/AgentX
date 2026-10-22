@@ -35,12 +35,13 @@ jobs:
     # the owner reviews them with their test result.
     if: ${{ !github.event.pull_request.draft || startsWith(github.head_ref, 'agentx/coding-task-') }}
     runs-on: ${{ github.event.repository.private && vars.AGENTX_CI_RUNNER || 'ubuntu-latest' }}
-    # Core alone runs about 12 minutes of installs and tests.
-    timeout-minutes: 30
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        service: [core, benchmark, rag, data]
+        # Core runs in the parallel core-* jobs below; the `tests (core)` gate
+        # reports their combined result under the required check name.
+        service: [benchmark, rag, data]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -61,27 +62,6 @@ jobs:
       - if: steps.scope.outputs.run == 'true'
         run: npm ci
         working-directory: ${{ matrix.service }}
-      - if: steps.scope.outputs.run == 'true' && matrix.service == 'core'
-        run: npm run setup:integrations
-      - if: steps.scope.outputs.run == 'true' && matrix.service == 'core'
-        run: python3 -m unittest discover -s integrations/voix -p 'test_*.py'
-      - if: steps.scope.outputs.run == 'true' && matrix.service == 'core'
-        run: |
-          python3 -m venv "$RUNNER_TEMP/voix-venv"
-          "$RUNNER_TEMP/voix-venv/bin/python" -m pip install --quiet -r requirements-test.txt
-          "$RUNNER_TEMP/voix-venv/bin/python" -m pytest -q
-          node --test tests/voice-audio.test.cjs
-        working-directory: integrations/voix
-      # The image worker fsyncs its state directory through a POSIX-only flag,
-      # so its test runs here and not with the cross-platform native tests.
-      - if: steps.scope.outputs.run == 'true' && matrix.service == 'core'
-        run: |
-          python3 -m unittest discover -s integrations/local-images -p 'test_*.py'
-          python3 -m unittest discover -s integrations/hermes/test -p 'test_*.py'
-      # integrations/coding/tests is not a package, so its modules run by
-      # dotted name from the repository root instead of through discover.
-      - if: steps.scope.outputs.run == 'true' && matrix.service == 'core'
-        run: python3 -m unittest $(ls integrations/coding/tests/test_*.py | sed 's#/#.#g; s#\.py$##')
       - if: steps.scope.outputs.run == 'true'
         run: npm run build --if-present
         working-directory: ${{ matrix.service }}
@@ -91,6 +71,143 @@ jobs:
       - if: steps.scope.outputs.run == 'true'
         run: npm run test:surfaces --if-present
         working-directory: ${{ matrix.service }}
+
+  # Core's Jest suite, split by file across runners. Each shard starts its own
+  # disposable MongoDB and every test file owns a separate database
+  # (shared/testing/mongoIdentity.js), so shards never share state.
+  core-jest:
+    name: core jest (${{ matrix.shard }}/${{ strategy.job-total }})
+    if: ${{ !github.event.pull_request.draft || startsWith(github.head_ref, 'agentx/coding-task-') }}
+    runs-on: ${{ github.event.repository.private && vars.AGENTX_CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: scope
+        env:
+          CI_SCOPE_JOB: core
+          CI_SCOPE_BASE: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/ci-scope.cjs
+      - if: steps.scope.outputs.run == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: core/package-lock.json
+      - if: steps.scope.outputs.run == 'true'
+        run: npm ci
+        working-directory: core
+      - if: steps.scope.outputs.run == 'true'
+        run: npm run build --if-present
+        working-directory: core
+      # Two workers per shard, as in local runs (shared/testing/runJest.js).
+      - if: steps.scope.outputs.run == 'true'
+        run: npm test -- --maxWorkers=2 --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+        working-directory: core
+
+  # Core's node:test suites: surfaces, OpenClaw integrations, native tools
+  # (which also run the secretary, memory-review, coding, jobs and operations
+  # Python suites) and shared checks.
+  core-surfaces:
+    name: core surfaces and integrations
+    if: ${{ !github.event.pull_request.draft || startsWith(github.head_ref, 'agentx/coding-task-') }}
+    runs-on: ${{ github.event.repository.private && vars.AGENTX_CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: scope
+        env:
+          CI_SCOPE_JOB: core
+          CI_SCOPE_BASE: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/ci-scope.cjs
+      - if: steps.scope.outputs.run == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            core/package-lock.json
+            integrations/openclaw/gmail-secretary/package-lock.json
+            integrations/openclaw/dsh-coding-agent/package-lock.json
+      - if: steps.scope.outputs.run == 'true'
+        run: npm ci
+        working-directory: core
+      - if: steps.scope.outputs.run == 'true'
+        run: npm run setup:integrations
+      - if: steps.scope.outputs.run == 'true'
+        run: npm run build --if-present
+        working-directory: core
+      - if: steps.scope.outputs.run == 'true'
+        run: npm run test:surfaces --if-present
+        working-directory: core
+
+  # Python suites outside the native tools, and VoiX in its own environment.
+  core-python:
+    name: core python and voix
+    if: ${{ !github.event.pull_request.draft || startsWith(github.head_ref, 'agentx/coding-task-') }}
+    runs-on: ${{ github.event.repository.private && vars.AGENTX_CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: scope
+        env:
+          CI_SCOPE_JOB: core
+          CI_SCOPE_BASE: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/ci-scope.cjs
+      # VoiX's audio test runs under node:test.
+      - if: steps.scope.outputs.run == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - if: steps.scope.outputs.run == 'true'
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/pip
+          key: pip-voix-${{ runner.os }}-${{ hashFiles('integrations/voix/requirements-test.txt') }}
+          restore-keys: pip-voix-${{ runner.os }}-
+      - if: steps.scope.outputs.run == 'true'
+        run: python3 -m unittest discover -s integrations/voix -p 'test_*.py'
+      - if: steps.scope.outputs.run == 'true'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/voix-venv"
+          "$RUNNER_TEMP/voix-venv/bin/python" -m pip install --quiet -r requirements-test.txt
+          "$RUNNER_TEMP/voix-venv/bin/python" -m pytest -q
+          node --test tests/voice-audio.test.cjs
+        working-directory: integrations/voix
+      # The image worker fsyncs its state directory through a POSIX-only flag,
+      # so its test runs here and not with the cross-platform native tests.
+      - if: steps.scope.outputs.run == 'true'
+        run: |
+          python3 -m unittest discover -s integrations/local-images -p 'test_*.py'
+          python3 -m unittest discover -s integrations/hermes/test -p 'test_*.py'
+      # integrations/coding/tests is not a package, so its modules run by
+      # dotted name from the repository root instead of through discover.
+      - if: steps.scope.outputs.run == 'true'
+        run: python3 -m unittest $(ls integrations/coding/tests/test_*.py | sed 's#/#.#g; s#\.py$##')
+
+  # Keeps the required `tests (core)` check name: it passes only when every
+  # core job passed (an out-of-scope core job passes without testing).
+  core:
+    name: tests (core)
+    needs: [core-jest, core-surfaces, core-python]
+    if: ${{ !cancelled() && (!github.event.pull_request.draft || startsWith(github.head_ref, 'agentx/coding-task-')) }}
+    runs-on: ${{ github.event.repository.private && vars.AGENTX_CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    steps:
+      - env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "core jobs: $RESULTS"
+          node -e "const r = JSON.parse(process.env.RESULTS); if (!r.length || r.some(x => x !== 'success')) process.exit(1)"
 
   compose:
     if: ${{ !github.event.pull_request.draft || startsWith(github.head_ref, 'agentx/coding-task-') }}

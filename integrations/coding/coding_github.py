@@ -32,7 +32,9 @@ def observe(request, repository, task_id, expected, token):
         if name not in latest or check['id'] > latest[name]['id']:
             latest[name] = check
     diagnostic_budget = 4
-    coverage_budget = 5
+    # One coverage read per check: the five required checks plus core's
+    # parallel jobs (three Jest shards, surfaces, Python).
+    coverage_budget = 10
     for name, check in sorted(latest.items()):
         failed = check.get('conclusion') in {'failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure'}
         detail = diagnostics(request, origin, check, token) if failed and diagnostic_budget > 0 else []
