@@ -6,6 +6,8 @@ const policy = require('./pipelineCodingAutonomyPolicy');
 const { taskEligibilityReasons } = require('./pipelineTaskEligibility');
 const { loadDependencyStatuses } = require('./pipelineTaskService');
 const { recordTransition, buildTransition } = require('./pipelineTaskTransitions');
+const codeDagCoordinator = require('./pipelineCodeDagCoordinator');
+const codeDagState = require('./pipelineCodeDagStateService');
 const WC = { w: 1, j: true };
 const OBSERVATION_MS = 30000;
 const ID = 'coding-autonomy';
@@ -13,7 +15,7 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 let control;
 let ticking = false;
 const terminal = new Set(['ready_for_review', 'blocked', 'stopped', 'closed']);
-function configureControl(value) { control = value; }
+function configureControl(value) { control = value; codeDagCoordinator.configureControl(value); }
 async function settings() {
   try { await Settings.updateOne({ _id: ID }, { $setOnInsert: { enabled: false, revision: 0, active: null } }, { upsert: true, writeConcern: WC }); }
   catch (error) { if (error.code !== 11000) throw error; }
@@ -126,6 +128,7 @@ function projection(task) {
     failureCodes: task.automationAttempts?.at(-1)?.evidence?.failureCodes || [],
     disposition: state.disposition || null, delivery: state.delivery || null,
     continuationAborts: state.continuationAborts || [],
+    ...(task.codeStepDag && { codeStepGraph: codeDagState.project(task.codeStepDag) }),
     ciObservationActive: Boolean(state.pr && last?.finishedAt && !task.automationLease && !task.codingCapacity
       && ['review', 'blocked'].includes(task.status) && (state.state === 'waiting_ci' || failedCIWatch(state))),
     scope: task.automation.scope, verificationProfile: state.verificationProfile || task.automation.verificationProfile,
@@ -165,6 +168,8 @@ async function campaign(task, host) {
   return job;
 }
 async function workerManifest(id, requestId) {
+  const distributed = await codeDagCoordinator.manifest(id, requestId);
+  if (distributed) return distributed;
   const task = await readTask(id);
   const state = task.codingAutonomy;
   const run = state?.runs.at(-1);
@@ -225,6 +230,7 @@ async function stop(id, requestId, input = {}) {
   // Persist the stop intent before a potentially lost host response. It fences
   // every scheduler; host acceptance still shares its lock with publication.
   let saved = await save(task, { ...state, spent: ciSpent(state), authorized: false, state: 'stop_requested', reason: 'operator_stop' });
+  await codeDagCoordinator.stopChildren(id);
   if (!waiting) {
     try { await control.stop({ pipelineId: id, requestId, confirm: true,
       ...(state.runs.at(-1).executorId && { executorId: state.runs.at(-1).executorId }) }); }
@@ -469,6 +475,7 @@ async function tick() {
         if (host.run?.phase === 'not_received') await clearActive(config.active.requestId);
         return;
       }
+      if (task.codeStepDag) await codeDagCoordinator.tick(task.pipelineId);
       await dispatch(task, config);
     }
     // Bound one sweep and choose the least recently due PR first. No task can
@@ -487,4 +494,10 @@ async function tick() {
   } finally { ticking = false; }
 }
 module.exports = { configureControl, settings, configure, authorize, status, projection, workerManifest,
-  stop, recordReview, recover, continueRecovered, tick, campaign, save, readTask, UUID };
+  stop, recordReview, recover, continueRecovered, tick, campaign, save, readTask, UUID,
+  submitCodeStepPlan: codeDagCoordinator.submitPlan,
+  storeCodeStepArtifact: codeDagCoordinator.storeArtifact,
+  downloadCodeStepArtifact: codeDagCoordinator.downloadArtifact,
+  settleCodeStep: codeDagCoordinator.settleStep,
+  recordCodeStepAdoption: codeDagCoordinator.recordAdoption,
+  completeCodeStepAssembly: codeDagCoordinator.completeAssembly };
