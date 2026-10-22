@@ -154,10 +154,10 @@ def request(url: str, body: dict | None = None, token: str = "", method: str | N
 
 
 def sandbox(workspace: Path, home: Path, command: list[str], *, network: bool, timeout_seconds: int, read_only=False,
-            report_request_id="", prompt_file=None, environment=None, extra_binds=None) -> list[str]:
+            role_request_id="", report_request_id="", prompt_file=None, environment=None, extra_binds=None) -> list[str]:
     return coding_sandbox.build(workspace, home, command, network=network, timeout_seconds=timeout_seconds,
         node_root=NODE_ROOT, coding_root=HERE, request_pattern=coding_progress.REQUEST_ID,
-        read_only=read_only, report_request_id=report_request_id, prompt_file=prompt_file,
+        read_only=read_only, role_request_id=role_request_id, report_request_id=report_request_id, prompt_file=prompt_file,
         prompt_target=coding_worker_prompt.SANDBOX_PROMPT, environment=environment, extra_binds=extra_binds)
 
 
@@ -333,12 +333,14 @@ def record_lane_capability(progress, model, lanes=None):
 
 
 def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None, model=None, *, read_only=False) -> subprocess.CompletedProcess:
-    if read_only and (not progress or not getattr(progress, "report_mode", False) or not coding_progress.REQUEST_ID.fullmatch(progress.request_id)):
-        raise ValueError("A report worker requires its original native request")
+    if read_only and (not progress or not coding_progress.REQUEST_ID.fullmatch(getattr(progress, "request_id", ""))):
+        raise ValueError("A read-only role worker requires its original native request")
     home = worker_home(workspace)
     harness = coding_harness.selected()
     (home / ".dsh").mkdir(exist_ok=True)
     selected_model = model or MODEL
+    if progress:
+        progress.role_read_only = read_only
     context_size, lanes = coding_worker_context.resolve(progress, selected_model,
         lambda: request(f"{CORE}/api/nerve-center/agent-runtime-config/export?includeCapability=true").get("data", {}).get("lanes", {}),
         remember=read_only)
@@ -355,7 +357,7 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
                              progress.model_events.put if progress else None,
                              {**(getattr(progress, "relay_headers", None) or {}),
                               **({"Authorization": f"Bearer {GATEWAY_TOKEN}"} if GATEWAY_TOKEN else {})},
-                             drain_on_disconnect=bool(progress and (progress.cumulative_limits or getattr(progress, 'report_mode', False))),
+                             drain_on_disconnect=bool(progress and (read_only or progress.cumulative_limits or getattr(progress, 'report_mode', False))),
                              budget_guidance=getattr(progress, "model_guidance", None), request_budget=progress.relay_call_budget() if progress else None)
     try:
         return coding_worker_prompt.run(SimpleNamespace(sandbox=sandbox, supervise=supervise,
@@ -364,7 +366,7 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
             context_size=context_size)
     finally:
         relay.begin_drain()
-        if progress and (progress.cumulative_limits or getattr(progress, 'report_mode', False)):
+        if progress and (read_only or progress.cumulative_limits or getattr(progress, 'report_mode', False)):
             remaining = max(0, min(progress.hard_deadline, progress.queue_deadline) - progress.now())
             if progress.cumulative_limits:
                 remaining = min(120, remaining, progress.model_remaining())
@@ -374,8 +376,8 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
                 # call unverified and the execution stuck until manual reconcile.
                 remaining += REPORT_SETTLE_GRACE_SECONDS
             drained = relay.drain(remaining, heartbeat=progress.tick)
-            if getattr(progress, 'report_mode', False):
-                progress.report_drained = drained
+            if read_only:
+                progress.role_drained = progress.report_drained = drained
         relay.shutdown()
         relay.server_close()
         if progress:

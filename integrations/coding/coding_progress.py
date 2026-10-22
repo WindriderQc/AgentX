@@ -3,18 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import hashlib
-import json
-import os
+import hashlib, importlib.util, json, os, queue, re
 from pathlib import Path
-import re
-import queue
-import shlex
-import signal
-import stat
-import subprocess
-import tempfile
-import time
+import shlex, signal, stat, subprocess, tempfile, time
+
+_code_steps_spec = importlib.util.spec_from_file_location("coding_step_progress", Path(__file__).with_name("coding_step_progress.py"))
+coding_step_progress = importlib.util.module_from_spec(_code_steps_spec)
+_code_steps_spec.loader.exec_module(coding_step_progress)
 
 
 REQUEST_ID = re.compile(r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$")
@@ -31,8 +26,7 @@ def report_call_limit(value=None):
 
 STAGES = {"preparing", "dependencies", "model_wait", "model_generation", "tool", "test", "checkpoint", "publishing"}
 PHASES = {"preparing", "running", "delivering", "finished"}
-REASONS = {"model_budget_reserve", "hard_budget", "soft_budget_no_progress", "no_useful_progress", "model_call_limit",
-           "operator_stop",
+REASONS = {"model_budget_reserve", "hard_budget", "soft_budget_no_progress", "no_useful_progress", "model_call_limit", "operator_stop",
            "worker_exit", "model_output_limit", "no_changes", "dependencies_failed", "dependencies_changed", "runner_error",
            "tests_failed", "generated_artifacts", "ineligible_task", "runtime_unavailable", "runtime_changed",
            "model_wait_inactive", "model_generation_inactive", "tool_inactive", "test_inactive"}
@@ -354,6 +348,8 @@ def safe_progress(value: object, request_id: str, task_id: str) -> dict | None:
             "stepContext": count(steps.get("stepContext")),
             "budgetSource": allowed(steps.get("budgetSource"), {"agent_workload", "speed_knee", "default"}),
             "counts": {key: count(tally.get(key)) for key in ("reviewed", "partial", "blocked", "pending")}}
+    if "codeSteps" in value:
+        result["codeSteps"] = coding_step_progress.project(value["codeSteps"])
     manual = value.get("manualHead")
     result["manualHead"] = manual if isinstance(manual, str) and re.fullmatch(r"[a-f0-9]{40}", manual) else None
     pr = value.get("pr")
@@ -444,13 +440,13 @@ class Progress:
         if self.phase != "running" or self.stop_reason:
             return None
         step = getattr(self, "step", None)
-        if getattr(self, "report_mode", False) and step:
+        if step:
             current = self.now()
             return ("Runner-owned step budget before this request: " + json.dumps({
                 "modelCalls": max(0, step["calls"] - (self.model_calls - step["startCalls"])),
                 "seconds": max(0, int(step["deadline"] - current))}, sort_keys=True)
                 + f". Write your JSON result to {step['output']} before it runs out; a truthful partial result is "
-                "accepted. Sources remain read-only.")
+                "accepted." + (" Sources remain read-only." if getattr(self, "role_read_only", False) else ""))
         if getattr(self, "report_mode", False) and not self.cumulative_limits:
             current = self.now()
             remaining = {"workSeconds": max(0, int(min(self.hard_deadline, self.queue_deadline) - current)),
@@ -508,6 +504,8 @@ class Progress:
             value['modelCallLimit'] = self.call_limit()
         if getattr(self, "report_steps", None):
             value["reportSteps"] = self.report_steps
+        if getattr(self, "code_steps", None):
+            value["codeSteps"] = coding_step_progress.project(self.code_steps)
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(mode="w", dir=self.path.parent, prefix=".progress-", delete=False) as output:
             json.dump(value, output)
@@ -538,7 +536,7 @@ class Progress:
         elif kind in {"assistant/chunk", "assistant/message"}:
             self.set_stage("model_generation")
         elif kind == "turn/end" and isinstance(data.get("reason"), dict) and data["reason"].get("kind") == "max-tokens":
-            if getattr(self, 'report_mode', False) and getattr(self, 'step', None): self.step['failure'] = 'model_output_limit'
+            if getattr(self, 'step', None): self.step['failure'] = 'model_output_limit'
             else: self.stop_reason = self.stop_reason or "model_output_limit"
         elif kind == "tool/call":
             args = data.get("arguments") or {}

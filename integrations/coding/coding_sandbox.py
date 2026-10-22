@@ -4,11 +4,14 @@ from pathlib import Path
 
 def build(workspace: Path, home: Path, command: list[str], *, network: bool, timeout_seconds: int,
           node_root: Path, coding_root: Path, request_pattern,
-          read_only=False, report_request_id='', prompt_file=None, prompt_target='',
+          read_only=False, role_request_id='', report_request_id='', prompt_file=None, prompt_target='',
           environment=None, extra_binds=None) -> list[str]:
-    if report_request_id and (not read_only or not request_pattern.fullmatch(report_request_id)):
-        raise ValueError('A private working directory requires its read-only source and exact request UUID')
-    directory = f'/home/agent/deliverables/{report_request_id}' if report_request_id else '/workspace'
+    if role_request_id and report_request_id and role_request_id != report_request_id:
+        raise ValueError('A role output directory has conflicting request identities')
+    request_id = role_request_id or report_request_id
+    if request_id and (not read_only or not request_pattern.fullmatch(request_id)):
+        raise ValueError('A private role output directory requires its read-only source and exact request UUID')
+    directory = f'/home/agent/deliverables/{request_id}' if request_id else '/workspace'
     return [
         'timeout', '-k', '30', str(timeout_seconds),
         'bwrap', '--unshare-all', *(['--share-net'] if network else []),

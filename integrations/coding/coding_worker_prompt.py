@@ -25,6 +25,6 @@ def run(r, workspace, home, prompt, seconds, progress, *, read_only, on_stop,
                        'environment': {}, 'binds': []})
         command = list(adapter['command'])
         return r.supervise(r.sandbox(workspace, home, command, network=False, timeout_seconds=seconds,
-            read_only=read_only, report_request_id=progress.request_id if read_only else '', prompt_file=path,
+            read_only=read_only, role_request_id=progress.request_id if read_only else '', prompt_file=path,
             environment=adapter['environment'], extra_binds=adapter['binds']),
             progress, home, workspace, on_stop=on_stop)
