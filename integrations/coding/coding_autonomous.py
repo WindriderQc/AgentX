@@ -19,6 +19,7 @@ coding_code_steps = load('coding_code_steps')
 coding_code_ledger = load('coding_code_ledger')
 coding_verification = load('coding_verification')
 coding_step_progress = load('coding_step_progress')
+coding_distributed_root = load('coding_distributed_root')
 VERIFICATION_COMMANDS = coding_verification.FULL_COMMANDS
 
 PLANNER_CALLS = 8
@@ -244,9 +245,12 @@ def _prepare_ledger(r, workspace, task_id, key, task, manifest, progress, budget
         raise coding_code_steps.CodePlanError('The code-step plan exceeds the remaining implementation-call budget')
     ledger_file = progress.path.parent / f'{key}.code-steps.json'
     store = coding_code_ledger.CodeStepLedger(ledger_file)
-    ledger = store.create(task_id, r.git(workspace, 'rev-parse', 'HEAD'), plan)
+    source_head = r.git(workspace, 'rev-parse', 'HEAD')
+    ledger = coding_distributed_root.replay_or_create_ledger(
+        store, ledger_file, task_id, source_head, plan, coding_code_ledger.plan_fingerprint)
     _write_index(r, progress, task_id, key, ledger, r.git(workspace, 'rev-parse', 'HEAD'))
     return store, ledger, key
+
 
 def preflight_refusal(progress, error):
     reasons = {'CODING_AUTONOMY_CONFLICT': 'authorization_removed',
@@ -391,6 +395,9 @@ def execute(r, args, progress):
         # worker receives them. Same-step tests may intentionally be new.
         _validate_planned_targets(workspace, profile, ledger)
         _project(progress, ledger, budget)
+        distributed = coding_distributed_root.execute(r, args, progress, endpoint, task, ledger)
+        if distributed is not None:
+            return coding_distributed_root.finalize(r, args, progress, lease, distributed, native_verdict)
         worker_summaries = []
         while True:
             step = coding_code_ledger.next_step(ledger)
@@ -545,7 +552,7 @@ def execute(r, args, progress):
             raise RuntimeError('Operator stop before publication')
         pr = coding_publication.publish(r, workspace, intent, progress.path.parent / f'{key}.publication.json', token)
         result = 'review'
-    except coding_publication.PublicationUnknown:
+    except (coding_distributed_root.DistributedDagPending, coding_publication.PublicationUnknown):
         progress.write()
         return 2  # Durable intent; Core reconciles GET observations, never reruns the worker.
     except Exception as error:
@@ -563,19 +570,8 @@ def execute(r, args, progress):
         reason = reason or progress.stop_reason or ('git_reconciliation' if isinstance(error, coding_git.GitRefusal) else 'runner_error')
         summary = f'Attempt stopped: {type(error).__name__}; {reason}. Source and private receipts are preserved.\n' + summary
     progress.pr = pr
-    progress.phase = 'delivering'
-    current = r.request(f'{r.CORE}/api/pipeline/tasks/{task_id}/worker?agent={r.WORKER}')['data']['task']
-    body = native_verdict(r, task_id, key, lease, current, progress, result, verification, reason)
-    body['text'] = f'Autonomous request {key}: {result}; {pr["url"] if pr else reason}.\n\n{summary}'
-    # Save the exact native request before delivery. If its response is lost,
-    # replay that immutable verdict through Core's existing result fingerprint.
-    path = progress.path.parent / f'{key}.verdict.json'
-    r.coding_dispatch_control.atomic_json(path, body)
-    progress.write()
-    r.request(f'{r.CORE}/api/pipeline/tasks/{task_id}/feedback', body)
-    progress.core_recorded = True
-    progress.finish(result, reason, progress.checkpoint)
-    return 0 if result == 'review' else 1
+    return coding_distributed_root.deliver_native(
+        r, progress, task_id, key, lease, result, verification, reason, summary, native_verdict)
 
 
 def native_verdict(r, task_id, key, lease, current, progress, result, verification, reason):
@@ -589,6 +585,7 @@ def native_verdict(r, task_id, key, lease, current, progress, result, verificati
     code_steps = coding_step_progress.project(getattr(progress, 'code_steps', None))
     if code_steps:
         evidence['codeSteps'] = code_steps
+    coding_distributed_root.attach_graph_evidence(progress, evidence)
     if verified:
         evidence['routing'] = {'status': 'verified', 'provider': 'ollama', 'effectiveModel': current['codingCapacity']['model'],
             'requestCount': len(receipts), 'sessionCallCount': len(receipts),

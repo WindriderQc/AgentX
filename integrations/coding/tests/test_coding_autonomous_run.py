@@ -17,6 +17,7 @@ def load(name):
     return module
 runner = load('coding_run')
 autonomous = runner.coding_autonomous
+distributed_root = autonomous.coding_distributed_root
 KEY = '11111111-2222-4333-8444-555555555555'
 NEXT_KEY = '22222222-3333-4444-8555-666666666666'
 
@@ -39,6 +40,10 @@ class AutonomousBoundaryTest(unittest.TestCase):
             feedback = []
             def request(url, body=None):
                 if '/manifest' in url: return {'data': manifest}
+                if '/code-step-plan' in url:
+                    error = RuntimeError('Distributed coding is explicitly disabled in this fixture')
+                    error.code = 'CODE_STEP_DAG_UNAVAILABLE'
+                    raise error
                 if '/feedback' in url: feedback.append(body); return {}
                 return {'data': {'task': task}}
             r = SimpleNamespace(**vars(runner)); r.request = request; r.WORKSPACES = root
@@ -63,6 +68,10 @@ class AutonomousBoundaryTest(unittest.TestCase):
             feedback = []
             def request(url, body=None):
                 if '/manifest' in url: return {'data': manifest}
+                if '/code-step-plan' in url:
+                    error = RuntimeError('Distributed coding is explicitly disabled in this fixture')
+                    error.code = 'CODE_STEP_DAG_UNAVAILABLE'
+                    raise error
                 if '/feedback' in url: feedback.append(body); return {}
                 return {'data': {'task': task}}
             r = SimpleNamespace(**vars(runner))
@@ -77,8 +86,10 @@ class AutonomousBoundaryTest(unittest.TestCase):
                     patch.object(autonomous.coding_git, 'finish_merge'), patch.object(autonomous.coding_git, 'checkpoint', return_value='a' * 40), \
                     patch.object(autonomous.coding_git, 'audit', return_value=['source.py']), \
                     patch.object(autonomous, '_prepare_ledger', return_value=(Mock(), {'steps': [{'state': 'verified',
-                        'testTargets': ['integrations/coding/tests/test_coding_autonomous_run.py']}],
-                        'planFingerprint': 'f' * 64}, KEY)), patch.object(autonomous, '_project'), \
+                        'id': 'step-01', 'title': 'synthetic', 'objective': 'synthetic', 'paths': ['source.py'],
+                        'testTargets': ['integrations/coding/tests/test_coding_autonomous_run.py'], 'dependsOn': []}],
+                        'planFingerprint': 'f' * 64, 'sourceCommit': 'a' * 40,
+                        'planSummary': 'synthetic'}, KEY)), patch.object(autonomous, '_project'), \
                     patch.object(autonomous, '_write_index'), \
                     patch.object(autonomous, '_validate_planned_targets'), \
                     patch.object(autonomous.coding_code_ledger, 'next_step', return_value=None), \
@@ -191,6 +202,257 @@ class AutonomousBoundaryTest(unittest.TestCase):
                 self.assertEqual(feedback[0]['attemptEvidence']['failureCodes'], ['continuation_checkpoint_changed'])
 
 
+class DistributedRootCoordinatorTest(unittest.TestCase):
+    def fixture(self, directory, manifests, *, stop=False):
+        root = Path(directory)
+        workspace = root / 'task-0001'
+        workspace.mkdir()
+        submissions = []
+        polls = list(manifests)
+
+        def request(url, body=None):
+            if url.endswith(f'/runs/{KEY}/manifest'):
+                return {'data': {'remaining': {'workSeconds': 80, 'testSeconds': 30,
+                    'modelSeconds': 50, 'modelCalls': 6}}}
+            if url.endswith('/code-step-plan'):
+                submissions.append(body)
+                spent = ({'workSeconds': 20, 'testSeconds': 4, 'modelSeconds': 10,
+                          'modelCalls': 2, 'ciSeconds': 0} if len(submissions) > 1 else
+                         {'workSeconds': 0, 'testSeconds': 0, 'modelSeconds': 0,
+                          'modelCalls': 0, 'ciSeconds': 0})
+                return {'data': {'graphId': KEY, 'assemblyRequestId': NEXT_KEY,
+                    'codeStepGraph': {'schema': 'agentx.code-step-graph-summary/v1',
+                                      'budget': {'spent': spent}},
+                    'replayed': len(submissions) > 1}}
+            if url.endswith(f'/runs/{NEXT_KEY}/manifest'):
+                return {'data': polls.pop(0)}
+            raise AssertionError(url)
+
+        r = SimpleNamespace(**vars(runner))
+        r.request = request
+        r.WORKSPACES = root
+        r.RECEIPTS = root / 'receipts'
+        r.RECEIPTS.mkdir()
+        r.worker_home = lambda _workspace: root / 'home'
+        progress = SimpleNamespace(
+            tick=Mock(return_value='operator_stop' if stop else None), check_stop=Mock(return_value=None),
+            test_remaining=Mock(return_value=30), set_stage=Mock(), write=Mock(),
+            checkpoint=None, finish=Mock(),
+            path=root / 'receipts' / f'{KEY}.progress.json',
+            cumulative_limits={'workSeconds': 70, 'testSeconds': 25, 'modelSeconds': 55, 'modelCalls': 5},
+            usage=lambda: {'workSeconds': 5, 'testSeconds': 1, 'modelSeconds': 2, 'modelCalls': 1},
+            hard_deadline=100, queue_deadline=120, now=lambda: 0)
+        ledger = {'sourceCommit': 'a' * 40, 'planSummary': 'two waves', 'steps': [
+            {'id': 'step-01', 'title': 'one', 'objective': 'first', 'paths': ['one.py'],
+             'testTargets': ['test_one.py'], 'dependsOn': []},
+            {'id': 'step-02', 'title': 'two', 'objective': 'second', 'paths': ['two.py'],
+             'testTargets': ['test_two.py'], 'dependsOn': ['step-01']},
+        ]}
+        task = {'codingAutonomy': {'runs': [{'requestId': KEY, 'executorId': 'ugfrank-open'}]}}
+        args = SimpleNamespace(task_id='0001', request_id=KEY)
+        endpoint = f'{r.CORE}/api/pipeline/coding-autonomy/tasks/0001/runs/{KEY}/manifest'
+        return r, progress, ledger, task, args, endpoint, submissions
+
+    @staticmethod
+    def manifest(*, ready=None, final=False, graph=None):
+        value = {'manifestFingerprint': 'f' * 64, 'finalReady': final}
+        if ready:
+            value['readyAdoption'] = {'stepId': ready}
+        if graph:
+            value['codeStepGraph'] = graph
+        return value
+
+    def write_completion(self, r):
+        path = r.RECEIPTS / f'{NEXT_KEY}.distributed-assembly.json'
+        path.write_text(json.dumps({'state': 'terminal', 'identity': {'graphId': KEY,
+            'requestId': NEXT_KEY}, 'completion': {'headCommit': 'b' * 40,
+            'tests': [{'outcome': 'passed', 'durationMs': 2500}],
+            'publication': {'url': 'https://github.com/WindriderQc/AgentX/pull/946'}}}))
+
+    def test_submits_exact_plan_waits_dependency_waves_and_finishes_once(self):
+        final_graph = {'budget': {'spent': {'workSeconds': 20, 'testSeconds': 4,
+            'modelSeconds': 10, 'modelCalls': 2, 'ciSeconds': 0}}}
+        manifests = [self.manifest(), self.manifest(ready='step-01'), self.manifest(),
+                     self.manifest(ready='step-02'), self.manifest(final=True, graph=final_graph)]
+        with tempfile.TemporaryDirectory() as directory:
+            r, progress, ledger, task, args, endpoint, submissions = self.fixture(directory, manifests)
+            observed = []
+            def assemble(_runtime, assembly_args, _progress, *, manifest):
+                observed.append((manifest.get('readyAdoption', {}).get('stepId'), manifest['finalReady'],
+                                 assembly_args.request_id, assembly_args.executor_id,
+                                 assembly_args.timeout_seconds))
+                if manifest['finalReady']:
+                    self.write_completion(r)
+                return 0
+            with patch.object(distributed_root.coding_distributed_assembly, 'execute', side_effect=assemble), \
+                    patch.object(distributed_root.time, 'sleep') as sleep:
+                result = distributed_root.execute(r, args, progress, endpoint, task, ledger)
+            self.assertEqual(result['completion']['headCommit'], 'b' * 40)
+            expected = {'sourceCommit': 'a' * 40,
+                'plan': distributed_root.source_plan(ledger),
+                'budget': {'workSeconds': 65, 'testSeconds': 24, 'modelSeconds': 50, 'modelCalls': 4}}
+            self.assertEqual(submissions, [expected, expected])
+            self.assertEqual(observed, [(None, False, NEXT_KEY, 'ugfrank-open', 30),
+                ('step-01', False, NEXT_KEY, 'ugfrank-open', 30),
+                (None, False, NEXT_KEY, 'ugfrank-open', 30),
+                ('step-02', False, NEXT_KEY, 'ugfrank-open', 30),
+                (None, True, NEXT_KEY, 'ugfrank-open', 20)])
+            self.assertEqual(progress.usage(),
+                {'workSeconds': 28, 'testSeconds': 8, 'modelSeconds': 12, 'modelCalls': 3})
+            self.assertEqual(sleep.call_count, 4)
+
+    def test_restart_replays_plan_and_terminal_assembly_journal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, progress, ledger, task, args, endpoint, submissions = self.fixture(
+                directory, [self.manifest(final=True, graph={'budget': {'spent': {
+                    'workSeconds': 20, 'testSeconds': 4, 'modelSeconds': 10,
+                    'modelCalls': 2, 'ciSeconds': 0}}})])
+            self.write_completion(r)
+            with patch.object(distributed_root.coding_distributed_assembly, 'execute', return_value=0) as execute:
+                result = distributed_root.execute(r, args, progress, endpoint, task, ledger)
+            self.assertEqual(result['completion']['publication']['url'],
+                             'https://github.com/WindriderQc/AgentX/pull/946')
+            self.assertEqual(len(submissions), 2)
+            execute.assert_called_once()
+
+    def test_terminal_failed_graph_stops_polling_and_retains_projection(self):
+        graph = {'schema': 'agentx.code-step-graph-summary/v1', 'state': 'failed'}
+        manifest = {**self.manifest(), 'codeStepGraph': graph,
+                    'terminalFailure': {'code': 'step_attempts_exhausted', 'stepId': 'step-01'}}
+        with tempfile.TemporaryDirectory() as directory:
+            r, progress, ledger, task, args, endpoint, submissions = self.fixture(directory, [manifest])
+            with patch.object(distributed_root.coding_distributed_assembly, 'execute') as execute:
+                result = distributed_root.execute(r, args, progress, endpoint, task, ledger)
+            self.assertEqual(result['failure']['code'], 'step_attempts_exhausted')
+            self.assertIs(result['graph'], graph)
+            self.assertEqual(len(submissions), 1)
+            execute.assert_not_called()
+
+    def test_final_verification_waits_for_current_dag_budget_projection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, progress, ledger, task, args, endpoint, submissions = self.fixture(
+                directory, [self.manifest(final=True)])
+            with patch.object(distributed_root.coding_distributed_assembly, 'execute') as execute:
+                with self.assertRaises(distributed_root.DistributedDagPending):
+                    distributed_root.execute(r, args, progress, endpoint, task, ledger)
+            self.assertEqual(len(submissions), 1)
+            execute.assert_not_called()
+
+    def test_malformed_local_cumulative_limit_never_submits_a_plan(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, progress, ledger, task, args, endpoint, submissions = self.fixture(
+                directory, [self.manifest()])
+            progress.cumulative_limits.pop('testSeconds')
+            with self.assertRaises(distributed_root.DistributedDagPending):
+                distributed_root.execute(r, args, progress, endpoint, task, ledger)
+            self.assertEqual(submissions, [])
+            self.assertFalse((progress.path.parent / f'{KEY}.distributed-plan.json').exists())
+
+    def test_native_verdict_retains_distributed_graph_evidence(self):
+        progress = SimpleNamespace(usage=lambda: {'workSeconds': 2}, checkpoint='b' * 40,
+                                   code_steps=None, code_step_graph={'schema': 'graph', 'state': 'published'})
+        current = {'codingAutonomy': {'runs': [{'modelReceipts': [{'state': 'completed'}]}]},
+                   'codingCapacity': {'model': 'synthetic'}}
+        r = SimpleNamespace(WORKER='ugfrank')
+        evidence = autonomous.native_verdict(r, '0001', KEY, {'leaseId': 'lease'}, current,
+                                              progress, 'review', 'passed', None)['attemptEvidence']
+        self.assertEqual(evidence['codeStepGraph'], {'schema': 'graph', 'state': 'published'})
+
+    def test_root_assembly_uses_the_native_task_publication_branch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = SimpleNamespace(WORKSPACES=root, git=Mock())
+            args = SimpleNamespace(task_id='0001', graph_id=KEY)
+            adapter = distributed_root.RootAssemblyAdapter(
+                runtime, args, Mock(), {'artifacts': []}, Mock(), '/assembly')
+            workspace = SimpleNamespace(prepare_worktree=Mock())
+            with patch.object(adapter, '_module', side_effect=lambda name: workspace), \
+                    patch.object(adapter, '_repository', return_value=root / 'repository.git'):
+                target = adapter.prepare({'baseCommit': 'a' * 40})
+            self.assertEqual(target, root / f'graph-{KEY}' / 'assembly')
+            workspace.prepare_worktree.assert_called_once_with(
+                root / 'repository.git', target, 'a' * 40, 'agentx/coding-task-0001')
+
+    def test_stop_after_acceptance_preserves_children_without_local_fallback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, progress, ledger, task, args, endpoint, submissions = self.fixture(
+                directory, [self.manifest()], stop=True)
+            with patch.object(distributed_root.coding_distributed_assembly, 'execute') as execute, \
+                    patch.object(autonomous.coding_code_ledger, 'next_step') as local:
+                with self.assertRaises(distributed_root.DistributedDagPending):
+                    distributed_root.execute(r, args, progress, endpoint, task, ledger)
+            self.assertEqual(len(submissions), 1)
+            execute.assert_not_called()
+            local.assert_not_called()
+
+    def test_accepted_dag_failure_never_enters_mono_host_ledger(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, progress, ledger, task, args, endpoint, submissions = self.fixture(
+                directory, [self.manifest(ready='step-01')])
+            with patch.object(distributed_root.coding_distributed_assembly, 'execute', side_effect=OSError('lost adoption ack')), \
+                    patch.object(autonomous.coding_code_ledger, 'next_step') as local:
+                with self.assertRaises(distributed_root.DistributedDagPending):
+                    distributed_root.execute(r, args, progress, endpoint, task, ledger)
+            self.assertEqual(len(submissions), 1)
+            local.assert_not_called()
+
+    def test_lost_plan_response_replays_byte_identical_durable_intent(self):
+        final_graph = {'budget': {'spent': {'workSeconds': 20, 'testSeconds': 4,
+            'modelSeconds': 10, 'modelCalls': 2, 'ciSeconds': 0}}}
+        with tempfile.TemporaryDirectory() as directory:
+            r, progress, ledger, task, args, endpoint, submissions = self.fixture(
+                directory, [self.manifest(final=True, graph=final_graph)])
+            original = r.request
+            lost = [False]
+            first_bodies = []
+            def request(url, body=None):
+                if url.endswith('/code-step-plan') and not lost[0]:
+                    lost[0] = True
+                    first_bodies.append(json.loads(json.dumps(body)))
+                    raise OSError('accepted response lost')
+                return original(url, body)
+            r.request = request
+            with self.assertRaises(distributed_root.DistributedDagPending):
+                distributed_root.execute(r, args, progress, endpoint, task, ledger)
+            intent = json.loads((progress.path.parent / f'{KEY}.distributed-plan.json').read_text())
+            self.assertIsNone(intent['assemblyRequestId'])
+            self.assertEqual(intent['rootUsageBeforeDag'],
+                {'workSeconds': 5, 'testSeconds': 1, 'modelSeconds': 2, 'modelCalls': 1})
+            def assemble(_runtime, _assembly_args, _progress, *, manifest):
+                self.write_completion(r)
+                return 0
+            with patch.object(distributed_root.coding_distributed_assembly, 'execute', side_effect=assemble):
+                result = distributed_root.execute(r, args, progress, endpoint, task, ledger)
+            self.assertEqual(first_bodies[0], submissions[0])
+            self.assertEqual(result['assemblyRequestId'], NEXT_KEY)
+            saved = json.loads((progress.path.parent / f'{KEY}.distributed-plan.json').read_text())
+            self.assertEqual(saved['assemblyRequestId'], NEXT_KEY)
+
+    def test_native_feedback_replays_the_same_durable_body(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            calls = []
+            current = {'codingAutonomy': {'runs': [{'requestId': KEY, 'modelReceipts': [
+                {'state': 'completed'}]}]}, 'codingCapacity': {'model': 'synthetic'}}
+            def request(url, body=None):
+                calls.append((url, body))
+                return {} if '/feedback' in url else {'data': {'task': current}}
+            r = SimpleNamespace(**vars(runner)); r.request = request
+            progress = SimpleNamespace(path=root / f'{KEY}.progress.json', phase='running',
+                pr={'url': 'https://github.com/WindriderQc/AgentX/pull/946'}, checkpoint='b' * 40,
+                code_steps=None, code_step_graph={'schema': 'graph'}, usage=lambda: {'workSeconds': 3},
+                write=Mock(), finish=Mock(), core_recorded=False)
+            lease = {'leaseId': 'lease'}
+            distributed_root.deliver_native(r, progress, '0001', KEY, lease,
+                'review', 'passed', None, 'distributed done', autonomous.native_verdict)
+            distributed_root.deliver_native(r, progress, '0001', KEY, lease,
+                'review', 'passed', None, 'changed summary is ignored', autonomous.native_verdict)
+            feedback = [body for url, body in calls if '/feedback' in url]
+            self.assertEqual(len(feedback), 2)
+            self.assertEqual(feedback[0], feedback[1])
+            self.assertEqual(sum('/worker?' in url for url, _body in calls), 1)
+
+
 class RunnerOwnedCodeStepTest(unittest.TestCase):
     def fixture(self, directory, *, failed_focused=False, outside=False):
         root = Path(directory)
@@ -228,6 +490,10 @@ class RunnerOwnedCodeStepTest(unittest.TestCase):
         def request(url, body=None):
             if '/manifest' in url:
                 return {'data': manifest}
+            if '/code-step-plan' in url:
+                error = RuntimeError('Distributed coding is explicitly disabled in this fixture')
+                error.code = 'CODE_STEP_DAG_UNAVAILABLE'
+                raise error
             if '/feedback' in url:
                 feedback.append(body); return {}
             if '/agent-runtime-config/' in url:
@@ -272,6 +538,23 @@ class RunnerOwnedCodeStepTest(unittest.TestCase):
         r.sandbox = lambda _workspace, _home, command, **_kwargs: command
         r.supervise = supervise; r.begin_publication = Mock(return_value=True)
         return r, workspace, feedback, calls, test_calls
+
+    def test_active_root_prefers_distributed_coordinator_before_any_local_step(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, _workspace, _feedback, calls, _test_calls = self.fixture(directory)
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+            distributed = {'completion': {'headCommit': 'b' * 40}, 'assemblyRequestId': NEXT_KEY,
+                           'graph': {'schema': 'agentx.code-step-graph-summary/v1'}}
+            with patch.object(autonomous.coding_git, 'reconcile', return_value={'conflicts': []}), \
+                    patch.object(distributed_root, 'execute', return_value=distributed) as coordinate, \
+                    patch.object(distributed_root, 'finalize', return_value=0) as finalize, \
+                    patch.object(autonomous.coding_code_ledger, 'next_step') as local:
+                self.assertEqual(autonomous.execute(
+                    r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 0)
+            self.assertEqual([call['read_only'] for call in calls], [True])
+            coordinate.assert_called_once()
+            finalize.assert_called_once()
+            local.assert_not_called()
 
     def test_two_steps_get_fresh_sessions_focused_tests_commits_and_one_publication(self):
         with tempfile.TemporaryDirectory() as directory:
