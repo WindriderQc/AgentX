@@ -3,7 +3,7 @@
 const RuntimeCoordination = require('../../models/RuntimeCoordination');
 const { resourceTopology, resourcesFor, topologyGuard, topologyMatches, resourceFailure, overlaps } = require('./runtimePhysicalResources');
 const { inferenceConflict } = require('./runtimeInferenceConflict');
-const { WORKLOAD_INFERENCE_MAINTENANCE_FILTER } = require('./runtimeDeployGate');
+const { WORKLOAD_INFERENCE_MAINTENANCE_FILTER, fencesHost, maintenanceAdmitsHost } = require('./runtimeDeployGate');
 const { clean, ttlMs, secret, canonicalHost, reapExpired } = require('./runtimeCoordinationState');
 const { buildInferenceResidencySpec, buildInferenceResidencyKey } = require('./runtimeInferenceResidency');
 const { modelIdentityKey } = require('../../../shared/modelNames');
@@ -129,7 +129,7 @@ async function acquireInference({
   const ordinaryFilter = {
     _id: 'runtime',
     ...topologyGuard(topology),
-    maintenance: null,
+    ...maintenanceAdmitsHost(host, resourceIds),
     inferences: { $not: { $elemMatch: {
       $or: [
         { requestId, principal },
@@ -146,7 +146,7 @@ async function acquireInference({
   const workloadFilter = {
     _id: 'runtime',
     ...topologyGuard(topology),
-    ...WORKLOAD_INFERENCE_MAINTENANCE_FILTER,
+    $or: [...WORKLOAD_INFERENCE_MAINTENANCE_FILTER.$or, ...maintenanceAdmitsHost(host, resourceIds).$or],
     inferences: { $not: { $elemMatch: {
       $or: [
         { requestId, principal },
@@ -171,7 +171,7 @@ async function acquireInference({
   if (updated) return { acquired: true, ...admission };
   const blocked = await RuntimeCoordination.findById('runtime').lean();
   if (!topologyMatches(blocked, topology)) return resourceFailure('runtime_resource_configuration_changed');
-  const recoveryRequired = blocked?.maintenance?.state === 'UNKNOWN'
+  const recoveryRequired = (blocked?.maintenance?.state === 'UNKNOWN' && fencesHost(blocked.maintenance, host, resourceIds))
     || (blocked?.inferences || []).some(item => overlaps(item, host, resourceIds) && item.state === 'UNKNOWN');
   return {
     acquired: false,

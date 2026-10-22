@@ -112,6 +112,20 @@ describe('report continuation loop', () => {
       confirm: true, reportName: 'DOCUMENTATION_PEER_REVIEW.md', modelCallLimit: 128, parentRequestId: PARENT, parentSha256: SHA }));
   });
 
+  it('journals the selected executor before launching a continuation', async () => {
+    const { control } = controls();
+    control.select = jest.fn(async () => ({ id: 'brutal-local', harness: 'opencode' }));
+    store.tasks = [task([stopped(PARENT, 'model_call_limit')])];
+    await service.tick();
+    expect(store.settings.active).toMatchObject({ executorId: 'brutal-local', harness: 'opencode' });
+    expect(store.tasks[0].reportContinuation.runs[0]).toMatchObject({
+      executorId: 'brutal-local', harness: 'opencode'
+    });
+    await service.tick();
+    expect(control.status).toHaveBeenCalledWith(expect.objectContaining({ executorId: 'brutal-local' }));
+    expect(control.launch).toHaveBeenCalledWith(expect.objectContaining({ executorId: 'brutal-local' }));
+  });
+
   it('never selects the same parent twice and records the finished run', async () => {
     const { control } = controls();
     store.tasks = [task([stopped(PARENT, 'model_call_limit')])];
