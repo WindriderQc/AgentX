@@ -278,6 +278,32 @@ class ControlTest(unittest.TestCase):
         refetch.assert_called_once()
         relaunch.assert_called_once()
 
+    def test_distributed_step_resumes_only_a_supported_exact_journal(self):
+        manifest = self.distributed_manifest()
+        fingerprint = manifest["manifestFingerprint"]
+        control.save_receipt({"requestId": KEY, "pipelineId": "0001", "phase": "accepted",
+                              "expectedAttemptCount": 0, "distributedRole": "step",
+                              "executorId": "alien-open", "graphId": "graph-0001",
+                              "stepId": "step-01", "manifestFingerprint": fingerprint})
+        journal = control.RECEIPTS / f"{KEY}.distributed-step.json"
+        control.atomic_json(journal, {"schemaVersion": 2, "state": "model_started",
+                                     "manifestFingerprint": fingerprint})
+        observed = control.status(KEY)["run"]
+        self.assertEqual((observed["phase"], observed["canResume"]), ("resumable", True))
+
+        control.atomic_json(journal, {"schemaVersion": 2, "state": "model_started",
+                                     "manifestFingerprint": "0" * 64})
+        observed = control.status(KEY)["run"]
+        self.assertEqual(observed["phase"], "unknown")
+        self.assertNotIn("canResume", observed)
+
+        control.atomic_json(journal, {"schemaVersion": 2, "state": "terminal",
+                                     "manifestFingerprint": fingerprint})
+        self.write_progress(self.terminal(coreRecorded=False))
+        observed = control.status(KEY)["run"]
+        self.assertEqual(observed["phase"], "finished")
+        self.assertNotIn("canResume", observed)
+
     def test_accepted_distributed_root_resumes_only_after_its_frozen_plan_exists(self):
         control.save_receipt({"requestId": KEY, "pipelineId": "0001", "phase": "accepted",
                               "expectedAttemptCount": 0, "autonomous": True})

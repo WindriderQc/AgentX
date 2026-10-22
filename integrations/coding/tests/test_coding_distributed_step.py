@@ -129,6 +129,110 @@ def manifest(base, *, source=None, base_adoptions=None, paths=None, step_id="ste
 
 
 class DistributedStepTest(unittest.TestCase):
+    def test_setup_exception_terminalizes_and_replays_without_a_model_call(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            adapter = GitAdapter(root)
+            worker = step_worker.StepWorker(adapter, root / "journal")
+            checked = manifest(adapter.base)
+            with mock.patch.object(adapter, "prepare", side_effect=OSError("dependency service stopped")) as prepare:
+                first = worker.execute(checked)
+                replay = worker.execute(checked)
+            journal = json.loads((root / "journal" / f"{REQUEST}.distributed-step.json").read_text())
+            self.assertEqual((first["outcome"], first["receipt"]["code"]),
+                             ("failed", "step_setup_failed"))
+            self.assertTrue(replay["replayed"])
+            self.assertEqual(journal["state"], "terminal")
+            self.assertEqual((prepare.call_count, adapter.harness_calls, adapter.results), (1, 0, 2))
+            self.assertEqual(first["actualUsage"]["modelCalls"], 0)
+
+    def test_crash_after_model_boundary_settles_exact_request_without_model_replay(self):
+        class SimulatedProcessLoss(BaseException):
+            pass
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            adapter = GitAdapter(root)
+            original_harness = adapter.harness
+
+            def interrupted_harness(*args):
+                original_harness(*args)
+                raise SimulatedProcessLoss()
+
+            adapter.harness = interrupted_harness
+            worker = step_worker.StepWorker(adapter, root / "journal")
+            checked = manifest(adapter.base)
+            with self.assertRaises(SimulatedProcessLoss):
+                worker.execute(checked)
+            pending = json.loads((root / "journal" / f"{REQUEST}.distributed-step.json").read_text())
+            self.assertEqual(pending["state"], "model_started")
+
+            replay = worker.execute(checked)
+            terminal = json.loads((root / "journal" / f"{REQUEST}.distributed-step.json").read_text())
+            self.assertEqual((replay["outcome"], replay["receipt"]["code"]),
+                             ("failed", "model_outcome_unknown"))
+            self.assertTrue(replay["replayed"])
+            self.assertEqual((adapter.harness_calls, adapter.results), (1, 1))
+            self.assertEqual(terminal["state"], "terminal")
+            self.assertEqual(replay["actualUsage"]["modelCalls"], checked["request"]["budget"]["modelCalls"])
+            self.assertEqual(replay["actualUsage"]["modelSeconds"], checked["request"]["budget"]["modelSeconds"])
+
+    def test_post_model_infrastructure_exception_is_terminal_and_not_replayed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            adapter = GitAdapter(root)
+            worker = step_worker.StepWorker(adapter, root / "journal")
+            checked = manifest(adapter.base)
+            with mock.patch.object(adapter, "changed", side_effect=OSError("git unavailable")) as changed:
+                first = worker.execute(checked)
+                replay = worker.execute(checked)
+            self.assertEqual((first["outcome"], first["receipt"]["code"]),
+                             ("failed", "step_infrastructure_failed"))
+            self.assertTrue(replay["replayed"])
+            self.assertEqual((adapter.harness_calls, changed.call_count, adapter.results), (1, 1, 2))
+            self.assertEqual(first["actualUsage"]["modelCalls"], checked["request"]["budget"]["modelCalls"])
+
+    def test_terminal_intent_is_visible_before_a_lost_core_result_post(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            receipt_path = root / f"{REQUEST}.json"
+            receipt_path.write_text(json.dumps({"requestId": REQUEST, "pipelineId": "0946"}))
+
+            class Core:
+                calls = 0
+
+                @classmethod
+                def post(cls, _endpoint, _body):
+                    cls.calls += 1
+                    if cls.calls == 1:
+                        raise OSError("lost Core response")
+                    return {"recorded": True}
+
+            dispatch = types.SimpleNamespace(
+                read_receipt=lambda _request_id: json.loads(receipt_path.read_text()),
+                atomic_json=step_worker._atomic_json)
+            runtime = types.SimpleNamespace(RECEIPTS=root, coding_dispatch_control=dispatch)
+            args = types.SimpleNamespace(request_id=REQUEST, task_id="0946")
+            progress = types.SimpleNamespace(started=0, soft_deadline=1000, core_recorded=False,
+                                             checkpoint=None, finish=mock.Mock())
+            checked = manifest("a" * 40)
+            adapter = step_worker.RunnerStepAdapter(runtime, args, progress, checked, Core(), "/run")
+            body = {"outcome": "failed", "actualUsage": {name: 0 for name in step_worker.BUDGET_KEYS},
+                    "receipt": {"code": "model_outcome_unknown", "finishedAt": "2026-10-22T12:00:00.000Z"}}
+
+            with self.assertRaisesRegex(OSError, "lost Core"):
+                adapter.result(body)
+            pending = json.loads(receipt_path.read_text())
+            self.assertEqual(pending["codeStepResult"], body)
+            self.assertFalse(pending["coreRecorded"])
+            progress.finish.assert_called_once_with("blocked", "code_step_blocked", None)
+
+            self.assertEqual(adapter.result(body), {"recorded": True})
+            confirmed = json.loads(receipt_path.read_text())
+            self.assertTrue(confirmed["coreRecorded"])
+            self.assertTrue(progress.core_recorded)
+            self.assertEqual(progress.finish.call_count, 2)
+
     def test_dependent_wave_reconstructs_exact_assembled_base_on_another_mirror(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

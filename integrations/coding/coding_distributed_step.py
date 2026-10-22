@@ -25,6 +25,7 @@ SHA1 = re.compile(r"^[a-f0-9]{40}$")
 SHA256 = re.compile(r"^[a-f0-9]{64}$")
 STEP = re.compile(r"^step-(?:0[1-9]|1[0-6])$")
 SCHEMAS = {"agentx.pipeline-code-step-worker-manifest/v1", "agentx.pipeline-code-step-manifest/v1"}
+BUDGET_KEYS = ("workSeconds", "testSeconds", "modelSeconds", "modelCalls")
 
 
 class DistributedStepError(RuntimeError):
@@ -249,6 +250,42 @@ class StepWorker:
         self.adapter = adapter
         self.journal_dir = Path(journal_dir)
 
+    def _usage(self, manifest: dict, started: float | None, *, reserve_model: bool = False) -> dict:
+        budget = manifest["request"]["budget"]
+        observed = {}
+        if started is not None:
+            try:
+                observed = self.adapter.usage(started)
+            except Exception:
+                observed = {}
+        usage = {name: min(budget[name], max(0, observed.get(name, 0)))
+                 if type(observed.get(name, 0)) is int else 0 for name in BUDGET_KEYS}
+        if reserve_model:
+            # A process loss beyond the durable model boundary cannot prove how
+            # much of the reserved call ran. Charge the complete reservation so
+            # Core can settle any native inference receipt without understating it.
+            usage["modelSeconds"] = budget["modelSeconds"]
+            usage["modelCalls"] = budget["modelCalls"]
+        return usage
+
+    def _terminal_failure(self, path: Path, manifest: dict, record: dict, code: str,
+                          *, started: float | None = None, reserve_model: bool = False,
+                          before_model: bool = False, replayed: bool = False) -> dict:
+        try:
+            finished_at = self.adapter.now()
+        except Exception:
+            finished_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        actual_usage = self._usage(manifest, started, reserve_model=reserve_model)
+        if before_model:
+            actual_usage.update(modelSeconds=0, modelCalls=0)
+        result = {"outcome": "failed", "actualUsage": actual_usage,
+            "receipt": {"code": code, "finishedAt": finished_at}}
+        terminal = {"schemaVersion": 2, "state": "terminal",
+                    "manifestFingerprint": record["manifestFingerprint"], "result": result}
+        _atomic_json(path, terminal)
+        self.adapter.result(result)
+        return {**result, **({"replayed": True} if replayed else {})}
+
     def _publish_artifact(self, path: Path, record: dict, *, replayed: bool) -> dict:
         artifact_path = Path(record.get("artifactPath", ""))
         export = record.get("export")
@@ -285,12 +322,33 @@ class StepWorker:
                 return {**prior["result"], "replayed": True}
             if prior.get("state") == "artifact_ready":
                 return self._publish_artifact(path, prior, replayed=True)
-            raise DistributedStepError("step has an unresolved non-terminal journal")
+            if prior.get("state") in {"preparing", "model_started", "running"}:
+                # ``running`` is the v1 state. It covered setup and the model
+                # call, so recovery must conservatively treat the call as
+                # possibly dispatched. A new attempt may retry only after this
+                # exact request has a durable terminal settlement.
+                after_model_boundary = prior.get("state") in {"model_started", "running"}
+                code = "model_outcome_unknown" if after_model_boundary else "step_pre_model_interrupted"
+                return self._terminal_failure(path, manifest, prior, code,
+                    reserve_model=after_model_boundary, before_model=not after_model_boundary, replayed=True)
+            raise DistributedStepError("step has an unsupported non-terminal journal")
         started = time.monotonic()
-        _atomic_json(path, {"schemaVersion": 1, "state": "running",
-                            "manifestFingerprint": manifest["manifestFingerprint"]})
+        preparing = {"schemaVersion": 2, "state": "preparing",
+                     "manifestFingerprint": manifest["manifestFingerprint"]}
+        _atomic_json(path, preparing)
         try:
             workspace = self.adapter.prepare(manifest)
+        except DeterministicStepFailure as failure:
+            return self._terminal_failure(path, manifest, preparing, failure.code,
+                started=started, before_model=True)
+        except Exception:
+            return self._terminal_failure(path, manifest, preparing, "step_setup_failed",
+                started=started, before_model=True)
+
+        model_started = {"schemaVersion": 2, "state": "model_started",
+                         "manifestFingerprint": manifest["manifestFingerprint"]}
+        _atomic_json(path, model_started)
+        try:
             run = self.adapter.harness(workspace, step_prompt(manifest), manifest)
             if getattr(run, "returncode", 0) != 0:
                 raise DeterministicStepFailure("harness_failed", "coding harness did not complete the step")
@@ -315,18 +373,12 @@ class StepWorker:
                      "manifestFingerprint": manifest["manifestFingerprint"],
                      "artifactPath": str(artifact_path), "export": export, "resultIntent": intent}
             _atomic_json(path, ready)
-            return self._publish_artifact(path, ready, replayed=False)
         except DeterministicStepFailure as failure:
-            result = {"outcome": "failed", "actualUsage": self.adapter.usage(started),
-                      "receipt": {"code": failure.code, "finishedAt": self.adapter.now()}}
-            artifact_path = None
-        terminal = {"schemaVersion": 1, "state": "terminal",
-                    "manifestFingerprint": manifest["manifestFingerprint"], "result": result}
-        if artifact_path is not None:
-            terminal["artifactPath"] = str(artifact_path)
-        _atomic_json(path, terminal)
-        self.adapter.result(result)
-        return result
+            return self._terminal_failure(path, manifest, model_started, failure.code, started=started)
+        except Exception:
+            return self._terminal_failure(path, manifest, model_started,
+                "step_infrastructure_failed", started=started, reserve_model=True)
+        return self._publish_artifact(path, ready, replayed=False)
 
 
 class RunnerStepAdapter:
@@ -463,13 +515,27 @@ class RunnerStepAdapter:
         return self.core.upload(self.manifest.get("artifactUploadPath") or self.endpoint + "/artifact", path)
 
     def result(self, body):
-        response = self.core.post(self.manifest.get("terminalResultPath") or self.endpoint + "/result", body)
         run = self.r.coding_dispatch_control.read_receipt(self.args.request_id)
         if not isinstance(run, dict) or run.get("requestId") != self.args.request_id \
                 or run.get("pipelineId") != self.args.task_id:
             raise DistributedStepError("host launch receipt changed before terminal result recording")
-        run.update(codeStepResult=body, coreRecorded=True)
+        if run.get("codeStepResult") not in (None, body):
+            raise DistributedStepError("host launch receipt has another terminal step result")
+        # Publish the immutable terminal intent locally first. If Core still has
+        # an unknown native inference, the coordinator can now reconcile that
+        # fence from host status before replaying the same settlement.
+        run.update(codeStepResult=body, coreRecorded=False)
         self.r.coding_dispatch_control.atomic_json(self.r.RECEIPTS / f"{self.args.request_id}.json", run)
+        result = "local_only" if body.get("outcome") == "verified" else "blocked"
+        reason = None if result == "local_only" else "code_step_blocked"
+        self.progress.finish(result, reason, getattr(self.progress, "checkpoint", None))
+        response = self.core.post(self.manifest.get("terminalResultPath") or self.endpoint + "/result", body)
+        confirmed = self.r.coding_dispatch_control.read_receipt(self.args.request_id)
+        if not isinstance(confirmed, dict) or confirmed.get("codeStepResult") != body:
+            raise DistributedStepError("host terminal step result changed during Core recording")
+        confirmed["coreRecorded"] = True
+        self.r.coding_dispatch_control.atomic_json(
+            self.r.RECEIPTS / f"{self.args.request_id}.json", confirmed)
         self.progress.core_recorded = True
         return response
 

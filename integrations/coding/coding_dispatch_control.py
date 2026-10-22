@@ -222,7 +222,24 @@ def resumable_kind(run: dict, progress: dict | None, *, current: bool, busy: boo
         return None
     key = run.get("requestId", "")
     if run.get("distributedRole") in {"step", "assembly"}:
-        return run["distributedRole"]
+        role = run["distributedRole"]
+        if role == "assembly":
+            return role
+        path = RECEIPTS / f"{key}.distributed-step.json"
+        if not path.exists():
+            return role
+        try:
+            if path.is_symlink() or path.stat().st_size > 128 * 1024:
+                return None
+            journal = json.loads(path.read_text())
+        except (OSError, ValueError, TypeError):
+            return None
+        if (not isinstance(journal, dict) or journal.get("schemaVersion") not in {1, 2}
+                or journal.get("manifestFingerprint") != run.get("manifestFingerprint")
+                or journal.get("state") not in {"preparing", "model_started", "running",
+                                                "artifact_ready", "terminal"}):
+            return None
+        return role
     if not run.get("autonomous") or not progress or progress.get("phase") == "finished":
         return None
     try:
@@ -286,7 +303,7 @@ def status(key: str | None = None) -> dict:
                           else f"The exact distributed {resumable} journal can resume on this executor."
                           if run["phase"] == "resumable"
                           else "The host unit stopped without a terminal receipt. Inspect the task and checkpoint.")
-        if resumable:
+        if resumable and run["phase"] == "resumable":
             run["canResume"] = True
     if run and run.get('reportName') and progress and not progress.get('coreRecorded') and (progress['phase'] == 'finished'
             or any((RECEIPTS/f"{run['requestId']}.{suffix}.json").exists() for suffix in ('report-start', 'report-preflight')) and not busy) and not (
