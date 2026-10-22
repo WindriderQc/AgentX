@@ -64,9 +64,11 @@ def step_budget(capability=None):
         "maxObjectiveChars": min(MAX_TEXT, max(600, context // 16)),
         "source": source,
     }
-    limits = capability.get("agent", {}).get("codeStepLimits", {}) if isinstance(capability, dict) and isinstance(capability.get("agent"), dict) else {}
-    if not isinstance(limits, dict) and isinstance(capability, dict):
-        limits = capability.get("codeStepLimits", {})
+    limits = None
+    if isinstance(capability, dict) and isinstance(capability.get("agent"), dict):
+        limits = capability["agent"].get("codeStepLimits")
+    if limits is None and isinstance(capability, dict):
+        limits = capability.get("codeStepLimits")
     if isinstance(limits, dict):
         for field in ("maxSteps", "maxFilesPerStep", "maxTestsPerStep", "maxObjectiveChars"):
             if type(limits.get(field)) is int and limits[field] > 0:

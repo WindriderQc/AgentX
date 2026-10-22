@@ -107,18 +107,19 @@ Codex and Claude remain useful interactive/cloud coding clients, but they are
 not local-AI Coding Team harnesses. A host on which those clients happen to be
 installed can still run a separate local DSH or OpenCode executor.
 
-## Orchestration and the unfinished code-step layer
+## Runner-owned code steps and the next distribution layer
 
-The original multi-worker goal was narrowed when the guarded dispatcher was
-replaced by the simple single-host worker. It was not implemented and later
-removed: issue #836 still tracks runner-owned steps for code changes. The
-report worker now proves the desired pattern—small fresh-context steps, a
-runner-owned ledger, bounded retries and final assembly—but code changes still
-use one model session per autonomous execution.
+The first decomposition layer is implemented by issue #836. One selected
+executor runs a fresh read-only planner, freezes a bounded private ledger, then
+uses a fresh implementation context for every dependency-ready step. The runner
+owns focused tests and one commit per passing step, resumes the exact unfinished
+ledger after a stop, performs final assembly verification and publishes one PR.
+The Pipeline dossier shows bounded step/commit/test evidence.
 
-The executor registry and harness adapters restore the missing distribution
-boundary without pretending that task decomposition already exists. The next
-layer must keep these rules:
+This local step engine is deliberately not cross-host fan-out. Issue #946 is the
+next layer: Core-owned distribution of isolated steps across registered local
+executors. The executor registry and harness adapters supply that boundary. The
+distributed layer must keep these rules:
 
 - Core owns a durable task graph; a model may propose steps but cannot grant or
   dispatch them.

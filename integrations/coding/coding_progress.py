@@ -80,13 +80,14 @@ def source_state(workspace: Path) -> str:
         try:
             info = path.lstat()
             if stat.S_ISREG(info.st_mode) and info.st_size <= 32 * 1024 * 1024:
-                content = hashlib.sha256(path.read_bytes()).digest()
+                kind = b"regular-executable" if info.st_mode & stat.S_IXUSR else b"regular"
+                content = kind + b"\0" + hashlib.sha256(path.read_bytes()).digest()
             elif stat.S_ISLNK(info.st_mode):
-                content = os.readlink(path).encode()
+                content = b"symlink\0" + os.readlink(path).encode()
             else:
                 continue
         except FileNotFoundError:
-            content = b"deleted"
+            content = b"deleted\0"
         digest.update(name.encode() + b"\0" + content)
     return digest.hexdigest()
 

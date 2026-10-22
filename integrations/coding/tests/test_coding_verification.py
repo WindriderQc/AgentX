@@ -45,6 +45,14 @@ class VerificationCommandTest(unittest.TestCase):
             with self.subTest(profile=profile, targets=targets), self.assertRaises(verification.VerificationError):
                 verification.focused_command(self.root, profile, targets)
 
+    def test_plan_preflight_accepts_a_profile_compatible_test_created_by_its_step(self):
+        target = 'core/tests/unit/new.test.js'
+        command = verification.focused_command(self.root, 'agentx-core-runner-tests/v1', [target],
+                                                require_exists=False)
+        self.assertEqual(command[-2:], ['--runTestsByPath', target])
+        with self.assertRaises(verification.VerificationError):
+            verification.focused_command(self.root, 'agentx-core-runner-tests/v1', [target])
+
 
 if __name__ == '__main__':
     unittest.main()

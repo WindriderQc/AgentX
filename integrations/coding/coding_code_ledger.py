@@ -123,7 +123,7 @@ def new_ledger(task_id, source_commit, plan, *, created_at=None, max_attempts=MA
     rows = []
     for step in plan["steps"]:
         rows.append({**deepcopy(step), "state": "pending", "attempts": 0, "commit": None,
-                     "changedPaths": [], "verification": [], "failure": None})
+                     "changedPaths": [], "verification": [], "failure": None, "history": []})
     ledger = {
         "schema": LEDGER_SCHEMA,
         "taskId": task_id,
@@ -176,6 +176,37 @@ def _validate_verification(value, step, *, completed):
         raise CodeLedgerError("verification must cover every planned focused test target")
 
 
+def _validate_failure(value):
+    if not isinstance(value, dict) or set(value) != {"reason", "at"}:
+        raise CodeLedgerError("a failed or blocked step needs its runner reason")
+    _text(value.get("reason"), "failure reason", 1_000)
+    _text(value.get("at"), "failure time", 80)
+
+
+def _validate_history(step, max_attempts):
+    history = step.get("history")
+    if not isinstance(history, list) or len(history) > max_attempts:
+        raise CodeLedgerError(f"{step['id']} has invalid attempt history")
+    for number, entry in enumerate(history, 1):
+        fields = {"attempt", "state", "commit", "changedPaths", "verification", "failure"}
+        if not isinstance(entry, dict) or set(entry) != fields or entry.get("attempt") != number:
+            raise CodeLedgerError(f"{step['id']} attempt history is not append-only")
+        if entry.get("state") not in {"failed", "verified"}:
+            raise CodeLedgerError(f"{step['id']} attempt history state is invalid")
+        _validate_verification(entry.get("verification"), step, completed=entry["state"] == "verified")
+        if entry["state"] == "verified":
+            _oid(entry.get("commit"))
+            changed = entry.get("changedPaths")
+            if not isinstance(changed, list) or not changed or any(path not in step["paths"] for path in changed):
+                raise CodeLedgerError(f"{step['id']} verified attempt history exceeds its scope")
+            if entry.get("failure") is not None:
+                raise CodeLedgerError("verified attempt history cannot retain a failure")
+        else:
+            if entry.get("commit") is not None or entry.get("changedPaths") != []:
+                raise CodeLedgerError("failed attempt history cannot retain a commit")
+            _validate_failure(entry.get("failure"))
+
+
 def validate_ledger(ledger):
     """Validate complete durable state and return it for convenient composition."""
     fields = {"schema", "taskId", "sourceCommit", "planFingerprint", "planSummary", "maxAttempts",
@@ -202,7 +233,7 @@ def validate_ledger(ledger):
     plan_steps = []
     for index, step in enumerate(steps, 1):
         plan_fields = {"id", "title", "objective", "paths", "testTargets", "dependsOn"}
-        runtime_fields = {"state", "attempts", "commit", "changedPaths", "verification", "failure"}
+        runtime_fields = {"state", "attempts", "commit", "changedPaths", "verification", "failure", "history"}
         if not isinstance(step, dict) or set(step) != plan_fields | runtime_fields:
             raise CodeLedgerError(f"ledger step {index} has invalid fields")
         plan_steps.append({key: deepcopy(step[key]) for key in plan_fields})
@@ -217,6 +248,12 @@ def validate_ledger(ledger):
         attempts = step.get("attempts")
         if type(attempts) is not int or not 0 <= attempts <= ledger["maxAttempts"]:
             raise CodeLedgerError(f"{step_id} has invalid attempts")
+        _validate_history(step, ledger["maxAttempts"])
+        expected_history = attempts - 1 if state == "running" else attempts
+        if state == "pending":
+            expected_history = 0
+        if len(step["history"]) != expected_history:
+            raise CodeLedgerError(f"{step_id} attempt history does not match its state")
         commit = step.get("commit")
         changed = step.get("changedPaths")
         if not isinstance(changed, list) or len(set(changed)) != len(changed) or any(path not in step["paths"] for path in changed):
@@ -234,10 +271,7 @@ def validate_ledger(ledger):
             raise CodeLedgerError("a verified step cannot retain a failure")
         if state in ("failed", "blocked"):
             failure = step.get("failure")
-            if not isinstance(failure, dict) or set(failure) != {"reason", "at"}:
-                raise CodeLedgerError("a failed or blocked step needs its runner reason")
-            _text(failure.get("reason"), "failure reason", 1_000)
-            _text(failure.get("at"), "failure time", 80)
+            _validate_failure(failure)
         elif step.get("failure") is not None:
             raise CodeLedgerError("pending, running, and verified steps cannot retain a failure")
         if state in ("running", "verified", "failed") and attempts < 1:
@@ -410,6 +444,9 @@ class CodeStepLedger:
             step["verification"] = deepcopy(verification)
             step["failure"] = None
             step["state"] = "verified"
+            step["history"].append({"attempt": step["attempts"], "state": "verified",
+                                    "commit": step["commit"], "changedPaths": deepcopy(step["changedPaths"]),
+                                    "verification": deepcopy(step["verification"]), "failure": None})
             validate_ledger(ledger)
         return self._mutate(expected_revision, operation)
 
@@ -422,6 +459,9 @@ class CodeStepLedger:
             _validate_verification(step["verification"], step, completed=False)
             step["state"] = "blocked" if step["attempts"] >= ledger["maxAttempts"] else "failed"
             step["failure"] = {"reason": _text(reason, "failure reason", 1_000), "at": _now()}
+            step["history"].append({"attempt": step["attempts"], "state": "failed", "commit": None,
+                                    "changedPaths": [], "verification": deepcopy(step["verification"]),
+                                    "failure": deepcopy(step["failure"])})
         return self._mutate(expected_revision, operation)
 
     def block(self, step_id, reason, expected_revision):

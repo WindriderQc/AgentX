@@ -65,6 +65,11 @@ class ProgressTest(unittest.TestCase):
         self.progress.tick(self.root, self.workspace)
         self.assertEqual(self.progress.last_useful, 10)
 
+    def test_source_state_detects_git_executable_bit_changes(self):
+        before = module.source_state(self.workspace)
+        os.chmod(self.workspace / "README.md", 0o755)
+        self.assertNotEqual(module.source_state(self.workspace), before)
+
     def call(self, call_id="1", command="node scripts/run-jest.js tests/unit/fixture.test.js"):
         self.progress.event({"type": "tool/call", "data": {"callId": call_id, "name": "bash",
                             "arguments": json.dumps({"command": command})}})

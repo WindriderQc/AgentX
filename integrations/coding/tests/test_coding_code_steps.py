@@ -47,6 +47,7 @@ class StepBudgetTest(unittest.TestCase):
                           ("maxSteps", "maxFilesPerStep", "maxTestsPerStep", "maxObjectiveChars")},
                          {"maxSteps": 3, "maxFilesPerStep": 2, "maxTestsPerStep": 1, "maxObjectiveChars": 400})
         self.assertEqual(steps.step_budget({"agent": {"codeStepLimits": {"maxSteps": 99}}})["maxSteps"], 16)
+        self.assertEqual(steps.step_budget({"codeStepLimits": {"maxSteps": 2}})["maxSteps"], 2)
 
 
 class PlanValidationTest(unittest.TestCase):

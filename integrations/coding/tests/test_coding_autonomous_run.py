@@ -1,6 +1,7 @@
 """Synthetic executor fixtures exercise the native gates before external effects."""
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 from types import SimpleNamespace
@@ -79,8 +80,10 @@ class AutonomousBoundaryTest(unittest.TestCase):
                         'testTargets': ['integrations/coding/tests/test_coding_autonomous_run.py']}],
                         'planFingerprint': 'f' * 64}, KEY)), patch.object(autonomous, '_project'), \
                     patch.object(autonomous, '_write_index'), \
+                    patch.object(autonomous, '_validate_planned_targets'), \
                     patch.object(autonomous.coding_code_ledger, 'next_step', return_value=None), \
                     patch.object(autonomous.coding_verification, 'focused_command', return_value=['synthetic-tests']), \
+                    patch.object(r.coding_progress, 'source_state', return_value='same'), \
                     patch.object(autonomous.coding_publication, 'publish') as publish:
                 self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 1)
             r.begin_publication.assert_not_called(); publish.assert_not_called()
@@ -290,6 +293,77 @@ class RunnerOwnedCodeStepTest(unittest.TestCase):
             self.assertEqual(steps['counts'], {'pending': 0, 'running': 0, 'passed': 2, 'failed': 0})
             self.assertTrue(all(row.get('commit') and row['tests'][0]['outcome'] == 'passed' for row in steps['steps']))
 
+    def test_planner_preserves_an_implementation_call_reserve(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, workspace, _, calls, _ = self.fixture(directory)
+            manifest = r.request('/manifest')['data']
+            manifest['remaining']['modelCalls'] = autonomous.IMPLEMENTATION_CALL_RESERVE
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+            progress.carry(manifest)
+            r.MODEL = 'synthetic'
+            with self.assertRaisesRegex(RuntimeError, 'planning and implementation'):
+                autonomous._prepare_ledger(r, workspace, '0001', KEY, {}, manifest, progress,
+                    autonomous.coding_code_steps.step_budget(None), None)
+            self.assertEqual(progress.stop_reason, 'model_call_limit')
+            self.assertEqual(calls, [])
+            progress.model_calls = progress.call_limit()
+            self.assertEqual(autonomous._session_budget(progress, 1)[0], 0)
+            progress.model_calls -= 1
+            self.assertEqual(autonomous._session_budget(progress, 4)[0], 1)
+
+    def test_continuation_before_first_plan_can_replan_but_not_replace_a_lost_index(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, workspace, _, calls, _ = self.fixture(directory)
+            manifest = {**r.request('/manifest')['data'],
+                        'continuationCheckpoint': git(workspace, 'rev-parse', 'HEAD'),
+                        'parentRequestId': KEY}
+            progress = runner.coding_progress.Progress('0001', NEXT_KEY, receipts=Path(directory))
+            progress.carry(manifest); r.MODEL = 'synthetic'
+            original_worker = r.run_worker
+            def next_planner(*args, **kwargs):
+                result = original_worker(*args, **kwargs)
+                old = r.worker_home(workspace) / 'deliverables' / KEY / 'code-plan.json'
+                new = r.worker_home(workspace) / 'deliverables' / NEXT_KEY / 'code-plan.json'
+                new.parent.mkdir(parents=True, exist_ok=True); new.write_text(old.read_text())
+                return result
+            r.run_worker = next_planner
+            _, ledger, root_request = autonomous._prepare_ledger(
+                r, workspace, '0001', NEXT_KEY, {}, manifest, progress,
+                autonomous.coding_code_steps.step_budget(None), None)
+            self.assertEqual(root_request, NEXT_KEY)
+            self.assertEqual(len(ledger['steps']), 2)
+            self.assertEqual(len(calls), 1)
+
+            index = autonomous._index_path(progress, '0001')
+            index.unlink()
+            (Path(directory) / f'{KEY}.code-steps.json').write_text('{}')
+            another = runner.coding_progress.Progress('0001', NEXT_KEY, receipts=Path(directory))
+            another.carry(manifest)
+            with self.assertRaisesRegex(autonomous.coding_code_ledger.CodeLedgerError, 'index'):
+                autonomous._prepare_ledger(r, workspace, '0001', NEXT_KEY, {}, manifest, another,
+                    autonomous.coding_code_steps.step_budget(None), None)
+
+    def test_hallucinated_missing_test_is_rejected_before_writable_worker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, workspace, feedback, calls, _ = self.fixture(directory)
+            original_worker = r.run_worker
+            def hallucinating_planner(*args, **kwargs):
+                result = original_worker(*args, **kwargs)
+                if kwargs.get('read_only'):
+                    path = r.worker_home(workspace) / 'deliverables' / KEY / 'code-plan.json'
+                    plan = json.loads(path.read_text())
+                    plan['steps'][0]['testTargets'] = ['integrations/coding/tests/test_hallucinated.py']
+                    path.write_text(json.dumps(plan))
+                return result
+            r.run_worker = hallucinating_planner
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+            with patch.object(autonomous.coding_git, 'reconcile', return_value={'conflicts': []}), \
+                    patch.object(autonomous.coding_publication, 'publish') as publish:
+                self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 1)
+            self.assertEqual([call['read_only'] for call in calls], [True])
+            self.assertEqual(feedback[0]['attemptEvidence']['failureCodes'], ['runner_error'])
+            publish.assert_not_called()
+
     def test_failed_focused_test_preserves_private_stash_and_never_publishes(self):
         with tempfile.TemporaryDirectory() as directory:
             r, workspace, feedback, calls, _ = self.fixture(directory, failed_focused=True)
@@ -357,5 +431,207 @@ class RunnerOwnedCodeStepTest(unittest.TestCase):
             self.assertEqual(test_calls, [])
             publish.assert_not_called()
             self.assertEqual(feedback[0]['attemptEvidence']['failureCodes'], ['dependencies_changed'])
+
+    def test_worker_exception_leaves_failed_ledger_clean_branch_and_resumable_checkpoint(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, workspace, feedback, calls, _ = self.fixture(directory)
+            original_worker = r.run_worker
+            def crashing_worker(_workspace, prompt, seconds, progress, model=None, read_only=False):
+                if read_only:
+                    return original_worker(_workspace, prompt, seconds, progress, model=model, read_only=True)
+                (workspace / 'source_one.py').write_text('ONE = 99\n')
+                raise OSError('synthetic harness loss')
+            r.run_worker = crashing_worker
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+            with patch.object(autonomous.coding_git, 'reconcile', return_value={'conflicts': []}), \
+                    patch.object(autonomous.coding_publication, 'publish') as publish:
+                self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 1)
+            self.assertFalse(git(workspace, 'status', '--porcelain'))
+            self.assertEqual(git(workspace, 'rev-list', '--count', 'origin/main..HEAD'), '0')
+            self.assertEqual(progress.checkpoint, git(workspace, 'rev-parse', 'HEAD'))
+            self.assertEqual(feedback[0]['attemptEvidence']['codeSteps']['counts']['failed'], 1)
+            self.assertIn('Unverified runner-owned step-01', git(workspace, 'stash', 'list'))
+            publish.assert_not_called()
+
+    def test_lost_failure_ledger_reply_still_cleans_the_assembly_branch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, workspace, feedback, _, _ = self.fixture(directory, failed_focused=True)
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+            original = autonomous.coding_code_ledger.CodeStepLedger.record_failure
+            lost = [False]
+            def lost_reply(store, *args, **kwargs):
+                result = original(store, *args, **kwargs)
+                if not lost[0]:
+                    lost[0] = True
+                    raise OSError('synthetic lost failure acknowledgement')
+                return result
+            with patch.object(autonomous.coding_git, 'reconcile', return_value={'conflicts': []}), \
+                    patch.object(autonomous.coding_code_ledger.CodeStepLedger, 'record_failure', lost_reply), \
+                    patch.object(autonomous.coding_publication, 'publish') as publish:
+                self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 1)
+            self.assertFalse(git(workspace, 'status', '--porcelain'))
+            self.assertIn('Unverified runner-owned step-01', git(workspace, 'stash', 'list'))
+            self.assertEqual(feedback[0]['attemptEvidence']['codeSteps']['counts']['failed'], 1)
+            publish.assert_not_called()
+
+    def test_lost_start_ledger_reply_closes_the_running_attempt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, workspace, feedback, calls, _ = self.fixture(directory)
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+            original = autonomous.coding_code_ledger.CodeStepLedger.start
+            lost = [False]
+            def lost_reply(store, *args, **kwargs):
+                result = original(store, *args, **kwargs)
+                if not lost[0]:
+                    lost[0] = True
+                    raise OSError('synthetic lost start acknowledgement')
+                return result
+            with patch.object(autonomous.coding_git, 'reconcile', return_value={'conflicts': []}), \
+                    patch.object(autonomous.coding_code_ledger.CodeStepLedger, 'start', lost_reply), \
+                    patch.object(autonomous.coding_publication, 'publish') as publish:
+                self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 1)
+            self.assertFalse(git(workspace, 'status', '--porcelain'))
+            self.assertEqual([call['read_only'] for call in calls], [True])
+            self.assertEqual(feedback[0]['attemptEvidence']['codeSteps']['counts']['failed'], 1)
+            publish.assert_not_called()
+
+    def test_lost_verified_ledger_reply_is_adopted_without_a_duplicate_commit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, workspace, feedback, _, _ = self.fixture(directory)
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+            original = autonomous.coding_code_ledger.CodeStepLedger.record_verified
+            lost = [False]
+            def lost_reply(store, *args, **kwargs):
+                result = original(store, *args, **kwargs)
+                if not lost[0]:
+                    lost[0] = True
+                    raise OSError('synthetic lost ledger acknowledgement')
+                return result
+            with patch.object(autonomous.coding_git, 'reconcile', return_value={'conflicts': []}), \
+                    patch.object(autonomous.coding_code_ledger.CodeStepLedger, 'record_verified', lost_reply), \
+                    patch.object(autonomous.coding_publication, 'publish') as publish:
+                self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 1)
+            self.assertEqual(git(workspace, 'rev-list', '--count', 'origin/main..HEAD'), '1')
+            self.assertFalse(git(workspace, 'status', '--porcelain'))
+            steps = feedback[0]['attemptEvidence']['codeSteps']
+            self.assertEqual(steps['counts'], {'pending': 1, 'running': 0, 'passed': 1, 'failed': 0})
+            self.assertEqual(progress.checkpoint, git(workspace, 'rev-parse', 'HEAD'))
+            publish.assert_not_called()
+
+    def test_index_failure_after_verified_step_is_reconciled_to_the_new_head(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, workspace, feedback, _, _ = self.fixture(directory)
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+            base = git(workspace, 'rev-parse', 'HEAD')
+            original = autonomous._write_index
+            failed = [False]
+            def flaky_index(runner_value, progress_value, task_id, root_request_id, ledger, head):
+                if head != base and not failed[0]:
+                    failed[0] = True
+                    raise OSError('synthetic index persistence loss')
+                return original(runner_value, progress_value, task_id, root_request_id, ledger, head)
+            with patch.object(autonomous.coding_git, 'reconcile', return_value={'conflicts': []}), \
+                    patch.object(autonomous, '_write_index', side_effect=flaky_index), \
+                    patch.object(autonomous.coding_publication, 'publish') as publish:
+                self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 1)
+            head = git(workspace, 'rev-parse', 'HEAD')
+            self.assertNotEqual(head, base)
+            self.assertFalse(git(workspace, 'status', '--porcelain'))
+            self.assertEqual(json.loads(autonomous._index_path(progress, '0001').read_text())['head'], head)
+            self.assertEqual(feedback[0]['attemptEvidence']['codeSteps']['counts']['passed'], 1)
+            publish.assert_not_called()
+
+    def test_focused_test_cannot_rewrite_a_new_untracked_planned_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, workspace, feedback, calls, _ = self.fixture(directory)
+            r.request('/manifest')['data']['scope'].append('new_source.py')
+            original_worker = r.run_worker
+            def new_file_worker(_workspace, prompt, seconds, progress, model=None, read_only=False):
+                if read_only:
+                    result = original_worker(_workspace, prompt, seconds, progress, model=model, read_only=True)
+                    path = r.worker_home(workspace) / 'deliverables' / KEY / 'code-plan.json'
+                    plan = json.loads(path.read_text())
+                    plan['steps'] = [plan['steps'][0]]
+                    plan['steps'][0]['paths'] = ['new_source.py']
+                    path.write_text(json.dumps(plan))
+                    return result
+                calls.append({'prompt': prompt, 'read_only': False, 'model': model})
+                (workspace / 'new_source.py').write_text('VALUE = 1\n')
+                return SimpleNamespace(returncode=0, stdout='new file', stderr='')
+            r.run_worker = new_file_worker
+            def mutating_test(command, _progress=None, **_kwargs):
+                if command[:3] == ['python3', '-m', 'unittest'] and 'discover' not in command:
+                    (workspace / 'new_source.py').write_text('VALUE = 2\n')
+                return SimpleNamespace(returncode=0, stdout='', stderr='')
+            r.supervise = mutating_test
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+            with patch.object(autonomous.coding_git, 'reconcile', return_value={'conflicts': []}), \
+                    patch.object(autonomous.coding_publication, 'publish') as publish:
+                self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 1)
+            self.assertEqual(git(workspace, 'rev-list', '--count', 'origin/main..HEAD'), '0')
+            self.assertFalse(git(workspace, 'status', '--porcelain'))
+            self.assertEqual(feedback[0]['attemptEvidence']['failureCodes'], ['tests_failed'])
+            publish.assert_not_called()
+
+    def test_focused_test_cannot_add_an_executable_bit_to_step_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, workspace, feedback, _, _ = self.fixture(directory)
+            def chmod_test(command, _progress=None, **_kwargs):
+                if command[:3] == ['python3', '-m', 'unittest'] and 'discover' not in command:
+                    os.chmod(workspace / 'source_one.py', 0o755)
+                return SimpleNamespace(returncode=0, stdout='', stderr='')
+            r.supervise = chmod_test
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+            with patch.object(autonomous.coding_git, 'reconcile', return_value={'conflicts': []}), \
+                    patch.object(autonomous.coding_publication, 'publish') as publish:
+                self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 1)
+            self.assertEqual(git(workspace, 'rev-list', '--count', 'origin/main..HEAD'), '0')
+            self.assertFalse(git(workspace, 'status', '--porcelain'))
+            self.assertEqual(feedback[0]['attemptEvidence']['failureCodes'], ['tests_failed'])
+            publish.assert_not_called()
+
+    def test_full_verification_cannot_leave_untracked_source_in_the_checkpoint(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, workspace, feedback, _, _ = self.fixture(directory)
+            original_supervise = r.supervise
+            def mutating_full_test(command, progress=None, **kwargs):
+                result = original_supervise(command, progress, **kwargs)
+                if command[:3] == ['python3', '-m', 'unittest'] and 'discover' in command:
+                    (workspace / 'untracked_by_full_test.py').write_text('MUTATED = True\n')
+                return result
+            r.supervise = mutating_full_test
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+            with patch.object(autonomous.coding_git, 'reconcile', return_value={'conflicts': []}), \
+                    patch.object(autonomous.coding_publication, 'publish') as publish:
+                self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 1)
+            self.assertEqual(git(workspace, 'rev-list', '--count', 'origin/main..HEAD'), '2')
+            self.assertFalse(git(workspace, 'status', '--porcelain'))
+            self.assertIn('Unverified runner-owned full-verification', git(workspace, 'stash', 'list'))
+            self.assertEqual(feedback[0]['attemptEvidence']['failureCodes'], ['tests_failed'])
+            publish.assert_not_called()
+
+    def test_full_verification_failure_or_exception_still_cleans_mutated_source(self):
+        for outcome in ('failed', 'exception'):
+            with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as directory:
+                r, workspace, feedback, _, _ = self.fixture(directory)
+                original_supervise = r.supervise
+                def mutating_full_test(command, progress=None, **kwargs):
+                    if command[:3] == ['python3', '-m', 'unittest'] and 'discover' in command:
+                        (workspace / 'untracked_by_failed_full_test.py').write_text('MUTATED = True\n')
+                        if outcome == 'exception':
+                            raise OSError('synthetic test launcher loss')
+                        return SimpleNamespace(returncode=1, stdout='', stderr='failed')
+                    return original_supervise(command, progress, **kwargs)
+                r.supervise = mutating_full_test
+                progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+                with patch.object(autonomous.coding_git, 'reconcile', return_value={'conflicts': []}), \
+                        patch.object(autonomous.coding_publication, 'publish') as publish:
+                    self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 1)
+                self.assertEqual(git(workspace, 'rev-list', '--count', 'origin/main..HEAD'), '2')
+                self.assertFalse(git(workspace, 'status', '--porcelain'))
+                self.assertIn('Unverified runner-owned full-verification', git(workspace, 'stash', 'list'))
+                expected = 'tests_failed' if outcome == 'failed' else 'runner_error'
+                self.assertEqual(feedback[0]['attemptEvidence']['failureCodes'], [expected])
+                publish.assert_not_called()
 
 if __name__ == '__main__': unittest.main()

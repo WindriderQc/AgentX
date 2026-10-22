@@ -94,6 +94,8 @@ class LedgerStateTest(unittest.TestCase):
             revision = current["revision"]
             expected = "blocked" if attempt == 3 else "failed"
             self.assertEqual(current["steps"][0]["state"], expected)
+            self.assertEqual(len(current["steps"][0]["history"]), attempt)
+            self.assertEqual(current["steps"][0]["history"][-1]["failure"]["reason"], f"failure {attempt}")
         self.assertIsNone(ledger_module.next_step(current))
 
     def test_failed_test_is_retained_but_cannot_verify_the_step(self):
@@ -102,6 +104,9 @@ class LedgerStateTest(unittest.TestCase):
                    "outcome": "failed", "exitCode": 1, "durationMs": 30}]
         value = self.store.record_failure("step-01", "focused test failed", 1, verification=failed)
         self.assertEqual(value["steps"][0]["verification"], failed)
+        retried = self.store.start("step-01", value["revision"])
+        self.assertEqual(retried["steps"][0]["history"][0]["verification"], failed)
+        self.assertEqual(retried["steps"][0]["history"][0]["failure"]["reason"], "focused test failed")
         self.assertIsNone(value["steps"][0]["commit"])
 
     def test_progress_projection_matches_the_bounded_core_contract(self):

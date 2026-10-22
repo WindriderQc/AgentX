@@ -30,7 +30,7 @@ def full_command(profile: str) -> list[str]:
     return list(command)
 
 
-def _target(workspace: Path, profile: str, value: object) -> str:
+def _target(workspace: Path, profile: str, value: object, *, require_exists: bool) -> str:
     if not isinstance(value, str) or not value or len(value) > 240 or '\\' in value:
         raise VerificationError('A focused test target must be a bounded repository path')
     path = PurePosixPath(value)
@@ -39,16 +39,16 @@ def _target(workspace: Path, profile: str, value: object) -> str:
     root, suffix = ROOTS[profile]
     if path.suffix != suffix or not (path == PurePosixPath(root) or PurePosixPath(root) in path.parents):
         raise VerificationError('A focused test target is incompatible with the verification profile')
-    if not (workspace / path).is_file():
+    if require_exists and not (workspace / path).is_file():
         raise VerificationError('A focused test target does not exist')
     return str(path)
 
 
-def focused_command(workspace: Path, profile: str, targets: object) -> list[str]:
+def focused_command(workspace: Path, profile: str, targets: object, *, require_exists: bool = True) -> list[str]:
     full_command(profile)
     if not isinstance(targets, list) or not 1 <= len(targets) <= 20:
         raise VerificationError('A code step needs one to twenty focused test targets')
-    clean = [_target(workspace, profile, value) for value in targets]
+    clean = [_target(workspace, profile, value, require_exists=require_exists) for value in targets]
     if len(set(clean)) != len(clean):
         raise VerificationError('Focused test targets must be unique')
     if profile == 'agentx-dispatcher-tests/v1':
