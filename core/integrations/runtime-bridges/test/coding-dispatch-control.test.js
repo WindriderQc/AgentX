@@ -5,7 +5,7 @@ const { CodingDispatchControl, launchCommand, registerCodingDispatchControlRoute
 const request = { pipelineId: '0700', requestId: '10000000-0000-4000-8000-000000000001', expectedAttemptCount: 0, confirm: true };
 const accepted = { accepted: true, run: { ...request, phase: 'accepted' } };
 const envelope = data => ({ stdout: JSON.stringify({ status: 'success', data }) });
-const configured = sshRunner => new CodingDispatchControl({ sshTarget: 'operator@host', sshRunner });
+const configured = sshRunner => new CodingDispatchControl({ sshTarget: 'operator@host', remoteRoot: '/opt/agentx', sshRunner });
 
 test('launch binds an exact task, request and observed attempt without shell interpolation', async () => {
   assert.equal(launchCommand({ ...request, root: '/opt/agentx' }), `/usr/bin/python3 /opt/agentx/integrations/coding/coding_dispatch_control.py launch 0700 ${request.requestId} 0`);
@@ -154,22 +154,22 @@ test('legacy checkpoint reads use the exact bounded native path without starting
 test('executor pool merges candidates and launches on the selected harness', async () => {
   const calls = [];
   const control = new CodingDispatchControl({ executors: [
-    { id: 'alien-dsh', harness: 'dsh', sshTarget: 'operator@alien', remoteRoot: '/srv/agentx/AgentX', priority: 20 },
-    { id: 'brutal-local', harness: 'opencode', sshTarget: 'operator@brutal', remoteRoot: '/srv/agentx/AgentX', priority: 10 },
+    { id: 'primary-dsh', harness: 'dsh', sshTarget: 'operator@primary', remoteRoot: '/opt/agentx', priority: 20 },
+    { id: 'secondary-local', harness: 'opencode', sshTarget: 'operator@secondary', remoteRoot: '/opt/agentx', priority: 10 },
   ], sshRunner: async (target, command) => {
     calls.push([target, command]);
     if (command.includes(' status')) return envelope({ contractVersion: 2, available: true, busy: false,
-      harness: target.endsWith('@alien') ? 'dsh' : 'opencode',
+      harness: target.endsWith('@primary') ? 'dsh' : 'opencode',
       candidates: [{ pipelineId: '0700', expectedAttemptCount: 0 }], excluded: [] });
     return envelope(accepted);
   } });
   const status = await control.status();
-  assert.deepEqual(status.executors.map(row => row.id), ['brutal-local', 'alien-dsh']);
+  assert.deepEqual(status.executors.map(row => row.id), ['secondary-local', 'primary-dsh']);
   assert.deepEqual(status.candidates.map(row => [row.executorId, row.harness]),
-    [['brutal-local', 'opencode'], ['alien-dsh', 'dsh']]);
-  const result = await control.launch({ ...request, executorId: 'alien-dsh' });
-  assert.equal(result.run.executorId, 'alien-dsh');
-  assert.equal(calls.at(-1)[0], 'operator@alien');
+    [['secondary-local', 'opencode'], ['primary-dsh', 'dsh']]);
+  const result = await control.launch({ ...request, executorId: 'primary-dsh' });
+  assert.equal(result.run.executorId, 'primary-dsh');
+  assert.equal(calls.at(-1)[0], 'operator@primary');
 });
 
 test('pooled candidates are offered only by an executor that can accept them now', async () => {
@@ -225,7 +225,7 @@ test('pool refuses a host whose installed harness differs from the registry', as
 
 test('waiting cancellation carries the task identity to the selected executor', async () => {
   const control = configured(async (_target, command) => {
-    assert.equal(command, `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py cancel-waiting 0700 ${request.requestId}`);
+    assert.equal(command, `/usr/bin/python3 /opt/agentx/integrations/coding/coding_dispatch_control.py cancel-waiting 0700 ${request.requestId}`);
     return envelope({ accepted: true, cancelledBeforeLaunch: true });
   });
   assert.equal((await control.cancel(request)).cancelledBeforeLaunch, true);

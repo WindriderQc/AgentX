@@ -1,6 +1,6 @@
 'use strict';
 
-const DEFAULT_ROOT = '/srv/agentx/AgentX';
+const DEFAULT_ROOT = '/opt/agentx';
 const DEFAULT_PROFILES = ['code', 'report', 'autonomous'];
 const ID = /^[a-z][a-z0-9_-]{0,63}$/;
 const HARNESS = /^[a-z][a-z0-9._-]{0,63}$/;
