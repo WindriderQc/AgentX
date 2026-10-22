@@ -21,6 +21,27 @@ Its cumulative budgets and durable publication/native receipts survive resumes.
 The manual path below stays available; it does not turn routing or idea intake
 into autonomous authorization.
 
+### Distributed autonomous code steps
+
+After the root runner freezes its bounded code plan, Core can dispatch ready,
+non-overlapping steps to other registered `autonomous` executors. Each step
+starts from Core's exact assembly head in a fresh worktree, uses that executor's
+configured DSH or OpenCode adapter, runs runner-owned focused tests and exports
+one immutable Git bundle. The child never pushes or publishes.
+
+The root executor keeps the task lease and acts as assembler. It polls the
+durable graph, imports each verified bundle in DAG order, records an adoption
+receipt, runs the full verification profile and publishes the existing
+`agentx/coding-task-<id>` branch once. Restart replays the frozen plan,
+artifacts, adoptions and publication identity. Failed, budget-exhausted,
+conflicting or uncertain work remains visible in the graph and cannot silently
+fall back to the older one-host loop.
+
+Core stores bundle bytes beneath `AGENTX_CODE_STEP_ARTIFACT_DIR`; configure that
+as private persistent instance state shared by Core restarts. It is not a Git
+checkout or a worker checkpoint. CPU tests use temporary repositories and fake
+harness output. Queue any live DSH/OpenCode model comparison as heavy work.
+
 ## One run
 
 ```bash
