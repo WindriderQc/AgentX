@@ -16,6 +16,7 @@ test('plan, terminal step, adoption and final assembly routes retain exact reque
   const settle = jest.spyOn(service, 'settleCodeStep').mockResolvedValue({ replayed: false });
   const adopt = jest.spyOn(service, 'recordCodeStepAdoption').mockResolvedValue({ replayed: false });
   const complete = jest.spyOn(service, 'completeCodeStepAssembly').mockResolvedValue({ replayed: false });
+  const failAssembly = jest.spyOn(service, 'failCodeStepAssembly').mockResolvedValue({ replayed: false });
   const planBody = { sourceCommit: 'a'.repeat(40), plan: { schema: 'synthetic' },
     budget: { workSeconds: 10, testSeconds: 1, modelSeconds: 1, modelCalls: 1 } };
   await request(app).post(`/api/pipeline/coding-autonomy/tasks/0946/runs/${ROOT}/code-step-plan`)
@@ -26,10 +27,15 @@ test('plan, terminal step, adoption and final assembly routes retain exact reque
     .send({ stepId: 'step-01' }).expect(200);
   await request(app).post(`/api/pipeline/coding-autonomy/tasks/0946/runs/${ROOT}/code-step-assembly`)
     .send({ headCommit: 'b'.repeat(40) }).expect(200);
+  const failure = { state: 'failed', code: 'assembly_conflict', stepId: 'step-02',
+    reason: 'step-02 conflicts during deterministic adoption', finishedAt: '2026-10-22T12:00:00.000Z' };
+  await request(app).post(`/api/pipeline/coding-autonomy/tasks/0946/runs/${ROOT}/code-step-assembly-failure`)
+    .send(failure).expect(200);
   expect(plan).toHaveBeenCalledWith('0946', ROOT, planBody);
   expect(settle).toHaveBeenCalledWith('0946', STEP, { outcome: 'failed' });
   expect(adopt).toHaveBeenCalledWith('0946', ROOT, { stepId: 'step-01' });
   expect(complete).toHaveBeenCalledWith('0946', ROOT, { headCommit: 'b'.repeat(40) });
+  expect(failAssembly).toHaveBeenCalledWith('0946', ROOT, failure);
 });
 
 test('bundle upload remains raw and download returns the exact immutable bytes', async () => {

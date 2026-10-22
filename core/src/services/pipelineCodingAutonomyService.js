@@ -500,4 +500,5 @@ module.exports = { configureControl, settings, configure, authorize, status, pro
   downloadCodeStepArtifact: codeDagCoordinator.downloadArtifact,
   settleCodeStep: codeDagCoordinator.settleStep,
   recordCodeStepAdoption: codeDagCoordinator.recordAdoption,
-  completeCodeStepAssembly: codeDagCoordinator.completeAssembly };
+  completeCodeStepAssembly: codeDagCoordinator.completeAssembly,
+  failCodeStepAssembly: codeDagCoordinator.failAssembly };

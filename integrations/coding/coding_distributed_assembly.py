@@ -130,6 +130,17 @@ class AssemblyWorker:
         if prior and prior.get("state") == "terminal":
             return self._replay_terminal(prior)
 
+        if prior.get("state") in {"failure_intent", "failed"}:
+            failure = prior.get("failure")
+            if not isinstance(failure, dict):
+                raise DistributedAssemblyError("assembly failure journal is malformed")
+            self.adapter.failure(failure)
+            replayed = prior["state"] == "failed"
+            if not replayed:
+                prior = {**prior, "state": "failed"}
+                _atomic(path, prior)
+            return {"state": "failed", "failure": failure, "replayed": replayed}
+
         workspace = self.adapter.prepare(manifest)
         if prior and prior.get("state") == "publication_intent":
             publication = self.adapter.reconcile_publication(prior["publicationRequestId"], manifest)
@@ -146,6 +157,20 @@ class AssemblyWorker:
             entries.append({**row, "artifactPath": str(artifact_path)})
         if entries:
             adoptions = self.adapter.adopt(workspace, entries, manifest)
+            conflict = next((item for item in adoptions if item.get("status") == "conflict"), None)
+            if conflict:
+                paths = conflict.get("conflictPaths") if isinstance(conflict.get("conflictPaths"), list) else []
+                detail = ", ".join(str(item) for item in paths[:16]) or "recorded paths"
+                failure = {"state": "failed", "code": "assembly_conflict",
+                           "stepId": conflict.get("stepId"),
+                           "reason": f"{conflict.get('stepId')} conflicts during deterministic adoption: {detail}"[:500],
+                           "finishedAt": self.adapter.now()}
+                intent = {**prior, "state": "failure_intent", "failure": failure,
+                          "finalManifestFingerprint": manifest["manifestFingerprint"]}
+                _atomic(path, intent)
+                self.adapter.failure(failure)
+                _atomic(path, {**intent, "state": "failed"})
+                return {"state": "failed", "failure": failure, "replayed": False}
             if len(adoptions) != len(entries) or any(item.get("status") != "adopted" for item in adoptions):
                 raise DistributedAssemblyError("assembly stopped before the ready step was adopted")
             for adoption in adoptions:
@@ -283,6 +308,10 @@ class RunnerAssemblyAdapter:
     def complete(self, body):
         return self.core.post(self.manifest.get("finalReceiptPath") or self.endpoint + "/assembly", body)
 
+    def failure(self, body):
+        return self.core.post(self.manifest.get("failureReceiptPath")
+                              or self.endpoint + "/code-step-assembly-failure", body)
+
     @staticmethod
     def now():
         return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
@@ -299,7 +328,7 @@ def execute(runtime, args, progress, *, manifest=None, adapter=None) -> int:
     factory = getattr(runtime, "distributed_assembly_adapter", RunnerAssemblyAdapter)
     active_adapter = adapter or factory(runtime, args, progress, checked, core, endpoint)
     result = AssemblyWorker(active_adapter, runtime.RECEIPTS).execute(checked)
-    if result.get("state") == "waiting":
+    if result.get("state") in {"waiting", "failed"}:
         progress.set_stage("checkpoint")
         progress.write()
         return 0

@@ -280,6 +280,7 @@ function createPipelineCodeDagCoordinator(options = {}) {
           downloadPath: `/api/pipeline/coding-autonomy/tasks/${pipelineId}/runs/${latestAttempt(step).requestId}/artifacts/${receipt.artifact.id}` } : null,
         adoptionReceiptPath: `/api/pipeline/coding-autonomy/tasks/${pipelineId}/runs/${requestId}/code-step-adoption`,
         finalReceiptPath: `/api/pipeline/coding-autonomy/tasks/${pipelineId}/runs/${requestId}/code-step-assembly`,
+        failureReceiptPath: `/api/pipeline/coding-autonomy/tasks/${pipelineId}/runs/${requestId}/code-step-assembly-failure`,
       });
     }
     const located = findAttempt(dag, requestId);
@@ -366,6 +367,21 @@ function createPipelineCodeDagCoordinator(options = {}) {
 
   async function terminalize(pipelineId, requestId, input) {
     const dag = await assertAssemblyIdentity(pipelineId, requestId);
+    return state.terminalize(pipelineId, { ...input, expectedRevision: dag.revision });
+  }
+
+  async function failAssembly(pipelineId, requestId, input) {
+    if (!input || input.state !== 'failed' || input.code !== 'assembly_conflict'
+      || typeof input.stepId !== 'string' || typeof input.reason !== 'string'
+      || typeof input.finishedAt !== 'string') {
+      fail('ASSEMBLY_FAILURE_INVALID', 'Assembly failure must identify one deterministic conflict', 400);
+    }
+    const dag = await assertAssemblyIdentity(pipelineId, requestId);
+    const nextStepId = dagDomain.adoptionOrder(dag)[dag.assembly.adoptions.length];
+    const step = dag.steps.find(candidate => candidate.id === input.stepId);
+    if (!step || input.stepId !== nextStepId || step.state !== 'verified') {
+      fail('ASSEMBLY_FAILURE_INVALID', 'Assembly conflict must name the next verified adoption', 400);
+    }
     return state.terminalize(pipelineId, { ...input, expectedRevision: dag.revision });
   }
 
@@ -485,7 +501,7 @@ function createPipelineCodeDagCoordinator(options = {}) {
   }
 
   return Object.freeze({ configureControl, submitPlan, manifest, storeArtifact, downloadArtifact,
-    settleStep, recordAdoption, completeAssembly, terminalize, tick, stopChildren });
+    settleStep, recordAdoption, completeAssembly, failAssembly, terminalize, tick, stopChildren });
 }
 
 const shared = createPipelineCodeDagCoordinator();

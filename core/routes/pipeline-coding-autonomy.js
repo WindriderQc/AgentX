@@ -43,6 +43,8 @@ router.post('/coding-autonomy/tasks/:id/runs/:requestId/code-step-adoption', rou
   service.recordCodeStepAdoption(req.params.id, req.params.requestId, req.body || {})));
 router.post('/coding-autonomy/tasks/:id/runs/:requestId/code-step-assembly', route(req =>
   service.completeCodeStepAssembly(req.params.id, req.params.requestId, req.body || {})));
+router.post('/coding-autonomy/tasks/:id/runs/:requestId/code-step-assembly-failure', route(req =>
+  service.failCodeStepAssembly(req.params.id, req.params.requestId, req.body || {})));
 // Automatic continuation of private reports (#835): switch and status.
 const continuation = require('../src/services/pipelineReportContinuationService');
 router.get('/report-continuation', route(() => continuation.status()));

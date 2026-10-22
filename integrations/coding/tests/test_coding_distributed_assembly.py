@@ -34,7 +34,7 @@ class AssemblyAdapter:
         self.root, self.repo = root, root / "repo"
         self.worktree, self.bundles = root / "assembly", []
         self.publications = self.completions = 0
-        self.adoptions = []
+        self.adoptions, self.failures = [], []
         self._prepare_source()
 
     def _prepare_source(self):
@@ -58,6 +58,16 @@ class AssemblyAdapter:
             bundle = self.root / f"step-{number}.bundle"
             receipt = workspace_tools.export_commit(worktree, bundle, self.base, commit, [name])
             self.bundles.append((bundle, receipt, name, commit))
+        conflict = self.root / "child-conflict"
+        workspace_tools.prepare_worktree(self.repo, conflict, self.base, "child-conflict")
+        (conflict / "one.txt").write_text("competing-change\n")
+        git(conflict, "add", "one.txt")
+        git(conflict, "-c", "user.name=Worker", "-c", "user.email=w@example.invalid",
+            "commit", "-qm", "conflicting step")
+        commit = git(conflict, "rev-parse", "HEAD")
+        bundle = self.root / "step-conflict.bundle"
+        receipt = workspace_tools.export_commit(conflict, bundle, self.base, commit, ["one.txt"])
+        self.bundles.append((bundle, receipt, "one.txt", commit))
 
     def prepare(self, manifest):
         if not self.worktree.exists():
@@ -92,6 +102,9 @@ class AssemblyAdapter:
 
     def complete(self, _body):
         self.completions += 1
+
+    def failure(self, body):
+        self.failures.append(body)
 
     @staticmethod
     def now():
@@ -133,6 +146,22 @@ class DistributedAssemblyTest(unittest.TestCase):
             self.assertEqual(len(adapter.adoptions), 2)
             self.assertEqual((adapter.worktree / "one.txt").read_text(), "changed-1\n")
             self.assertEqual((adapter.worktree / "two.txt").read_text(), "changed-2\n")
+
+    def test_conflicting_adoption_posts_and_replays_one_terminal_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            adapter = AssemblyAdapter(Path(directory))
+            worker = assembly_worker.AssemblyWorker(adapter, Path(directory) / "journal")
+            self.assertEqual(worker.execute(manifest(adapter, ready=1))["state"], "waiting")
+            failed = worker.execute(manifest(adapter, ready=3))
+            replay = worker.execute(manifest(adapter, ready=3))
+            self.assertEqual(failed["failure"]["code"], "assembly_conflict")
+            self.assertEqual(failed["failure"]["stepId"], "step-03")
+            self.assertTrue(replay["replayed"])
+            self.assertEqual(len(adapter.failures), 2)
+            self.assertEqual(adapter.failures[0], adapter.failures[1])
+            self.assertEqual(git(adapter.worktree, "rev-parse", "HEAD"),
+                             adapter.adoptions[0]["resultCommit"])
+            self.assertFalse(git(adapter.worktree, "status", "--porcelain"))
 
 
 if __name__ == "__main__":

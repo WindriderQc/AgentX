@@ -172,6 +172,23 @@ test('a lost launch response keeps the exact request and restart observes it wit
     .toBe(deterministicUuid(ROOT, 'assembly'));
 });
 
+test('records and replays a deterministic conflict on the next verified adoption', async () => {
+  const f = fixture(); const coordinator = f.create();
+  await coordinator.tick('0946');
+  await f.verify(coordinator, 'step-01', 'b'.repeat(40), '1');
+  await f.verify(coordinator, 'step-02', 'c'.repeat(40), '2');
+  const assemblyId = deterministicUuid(ROOT, 'assembly');
+  const failure = { state: 'failed', code: 'assembly_conflict', stepId: 'step-01',
+    reason: 'step-01 conflicts in src/one.js', finishedAt: T0 };
+  expect(await coordinator.failAssembly('0946', assemblyId, failure)).toMatchObject({
+    replayed: false, dag: { state: 'failed', terminalFailure: failure } });
+  expect(await coordinator.failAssembly('0946', assemblyId, failure)).toMatchObject({ replayed: true });
+  expect(await coordinator.manifest('0946', assemblyId)).toMatchObject({
+    terminalFailure: { code: 'assembly_conflict', stepId: 'step-01' },
+    codeStepGraph: { graphId: ROOT }, failureReceiptPath: expect.stringContaining('assembly-failure'),
+  });
+});
+
 test('stop fans out only exact unsettled child requests', async () => {
   const f = fixture(); const coordinator = f.create(); await coordinator.tick('0946');
   const result = await coordinator.stopChildren('0946');
