@@ -28,6 +28,24 @@ function intent(overrides = {}) {
   };
 }
 
+function codeSteps(overrides = {}) {
+  const steps = overrides.steps || [
+    { id: 'step-1', title: 'Add the bounded summary', state: 'passed', commit: 'c'.repeat(40),
+      tests: [{ profile: 'core-unit', outcome: 'passed', durationMs: 4321 }] },
+    { id: 'step-2', title: 'Render the ordered evidence', state: 'running', tests: [] },
+  ];
+  return {
+    schema: 'agentx.code-step-summary/v1',
+    planFingerprint: 'd'.repeat(64),
+    stepContext: 16384,
+    budgetSource: 'agent_workload',
+    currentStep: 'step-2',
+    counts: { pending: 0, running: 1, passed: 1, failed: 0 },
+    steps,
+    ...overrides,
+  };
+}
+
 describe('pipeline automation contract', () => {
   test('normalizes stable set-like fields and verifies the fingerprint', () => {
     const normalized = normalizePipelineAutomationIntent(intent({
@@ -154,6 +172,49 @@ describe('pipeline automation contract', () => {
       },
       workerReceiptFingerprint: null,
     });
+  });
+
+  test('retains only a bounded terminal code-step summary', () => {
+    const evidence = normalizePipelineAutomationEvidence({
+      schema: PIPELINE_AUTOMATION_EVIDENCE_SCHEMA,
+      verification: { status: 'passed' }, changes: {}, usage: {},
+      codeSteps: codeSteps({ command: 'npm test -- --secret', rawOutput: 'private fixture', workspacePath: '/private/worktree' }),
+    });
+
+    expect(evidence.codeSteps).toEqual(codeSteps());
+    expect(JSON.stringify(evidence.codeSteps)).not.toMatch(/command|rawOutput|workspacePath|private fixture/);
+  });
+
+  test('persists the normalized code-step summary with its automation attempt', () => {
+    const evidence = normalizePipelineAutomationEvidence({
+      schema: PIPELINE_AUTOMATION_EVIDENCE_SCHEMA,
+      verification: { status: 'passed' }, changes: {}, usage: {}, codeSteps: codeSteps(),
+    });
+    const task = new PipelineTask({ pipelineId: '0703', title: 'Code-step persistence fixture',
+      automation: normalizePipelineAutomationIntent(intent()), automationAttemptCount: 1,
+      automationAttempts: [{ leaseId: 'fixture-lease', assignee: 'coding-team', attempt: 1,
+        acquiredAt: new Date(), heartbeatAt: new Date(), expiresAt: new Date(), evidence }] });
+
+    expect(task.validateSync()).toBeUndefined();
+    expect(task.toObject().automationAttempts[0].evidence.codeSteps).toEqual(codeSteps());
+  });
+
+  test('rejects inconsistent or disclosure-prone code-step summaries', () => {
+    const base = { schema: PIPELINE_AUTOMATION_EVIDENCE_SCHEMA, verification: { status: 'failed' }, changes: {}, usage: {} };
+    expect(() => normalizePipelineAutomationEvidence({ ...base, codeSteps: codeSteps({ counts: { pending: 0, running: 0, passed: 2, failed: 0 } }) }))
+      .toThrow(/does not match steps/);
+    expect(() => normalizePipelineAutomationEvidence({ ...base, codeSteps: codeSteps({ steps: [
+      { id: 'step-1', title: 'private\nraw output', state: 'running', tests: [] },
+    ], currentStep: 'step-1', counts: { pending: 0, running: 1, passed: 0, failed: 0 } }) }))
+      .toThrow(/bounded display line/);
+    expect(() => normalizePipelineAutomationEvidence({ ...base, codeSteps: codeSteps({ steps: [
+      { id: 'step-1', title: 'Unverified completion', state: 'passed', tests: [] },
+    ], currentStep: null, counts: { pending: 0, running: 0, passed: 1, failed: 0 } }) }))
+      .toThrow(/requires one commit and passing focused tests/);
+    expect(() => normalizePipelineAutomationEvidence({ ...base, codeSteps: codeSteps({ steps: Array.from({ length: 33 }, (_, index) => ({
+      id: `step-${index}`, title: `Step ${index}`, state: 'pending', tests: [],
+    })), currentStep: null, counts: { pending: 33, running: 0, passed: 0, failed: 0 } }) }))
+      .toThrow(/between 1 and 32/);
   });
 
   test('keeps original task worktree evidence and rejects malformed authority', () => {

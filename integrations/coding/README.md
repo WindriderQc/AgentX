@@ -297,6 +297,17 @@ background request would compete with the coding turn.
 An inactive host unit without a terminal receipt remains `unknown`; it is not
 evidence that the task completed.
 
+Autonomous code changes are runner-owned steps. A read-only planning role writes
+one bounded private plan from the authorized file manifest. The runner validates
+it, keeps an atomic private ledger and launches a fresh coding context for each
+dependency-ready step. Each successful step has exactly one runner-created commit
+and one focused-test receipt. The planner and implementers cannot supply commands,
+broaden paths, commit or publish. Failed edits are retained in a private stash
+while the assembly branch stays at its last verified commit; an exact continuation
+loads the same ledger and resumes the first unfinished step. Pipeline receives a
+bounded summary only. Once all steps pass, the runner executes the full profile
+and publishes one draft PR.
+
 A run has a two-hour soft budget by default. New source content or a new test
 result against that content can extend it by 30 minutes, up to a four-hour
 hard ceiling. Cache churn, touching files, repeated source states, repeated
@@ -307,7 +318,8 @@ limit outside an active test. Repeated model waits and reading tools cannot
 reset this limit. Heartbeats continue during those waits.
 
 On a controlled stop, the child process group and its in-flight model relay are
-closed, source changes are committed locally and the task is blocked. A failed
+closed, verified step commits stay on the assembly branch, unfinished edits are
+preserved privately and the task is blocked. A failed
 or unknown last observed test, changed dependency files, or a previous checkpoint
 containing generated runtime artifacts prevents publication. An abrupt host
 failure stays unknown for an operator to reconcile. Successful delivery opens
@@ -343,15 +355,17 @@ installation. Node and npm are called explicitly from that distribution, with
 no fallback. Failed preparation or runtime drift cannot publish a valid marker.
 The worker's package-change guard remains separate from this preparation key.
 
-A worker that needs a new package adds it to `package.json` and stops. The
-runner then leaves the ticket `blocked`, with the change on the local branch and
-no pull request. Handing the task back to the team is the owner's approval: the
-next run installs the package and the worker continues. That install step still
-has the whole network, including the host's own services; it runs registry
-packages without their scripts, never the worker.
+A worker that needs a new package may propose the dependency-file change only
+when that exact path belongs to its authorized step. The runner blocks before a
+step commit or pull request and preserves the proposed edit privately. Handing
+the task back to the team remains the owner's approval; the next preparation may
+install the reviewed package change. That install step still has the whole
+network, including the host's own services; it runs registry packages without
+their scripts, never the worker.
 
-The worker can edit the whole source tree. CI and human review remain the
-verification gate for its draft pull request.
+Each implementation worker can edit only its planned subset of the task's exact
+source scope. The runner's full local profile, PR CI and human review remain
+separate verification gates.
 
 ## Settings
 

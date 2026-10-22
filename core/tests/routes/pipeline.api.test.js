@@ -949,6 +949,12 @@ describe('POST /api/pipeline/tasks/:id/automation-attempts/:attempt/cost', () =>
           usage: { durationMs: 67219, costNanodollars: null },
           failureCodes: [],
           source: 'clawdx-guarded/v1',
+          codeSteps: {
+            schema: 'agentx.code-step-summary/v1', planFingerprint: 'a'.repeat(64), stepContext: 8192,
+            budgetSource: 'default', currentStep: null, counts: { pending: 0, running: 0, passed: 1, failed: 0 },
+            steps: [{ id: 'step-1', title: 'Preserve the receipt', state: 'passed', commit: 'b'.repeat(40),
+              tests: [{ profile: 'core-unit', outcome: 'passed' }] }],
+          },
         },
       }],
     });
@@ -972,6 +978,9 @@ describe('POST /api/pipeline/tasks/:id/automation-attempts/:attempt/cost', () =>
       costKind: 'session-estimate',
       costSource: 'openclaw-session-usage/v1',
       costEvidenceFingerprint: 'c'.repeat(64),
+    });
+    expect(update.$set['automationAttempts.$[attempt].evidence'].codeSteps.steps[0]).toMatchObject({
+      id: 'step-1', state: 'passed', commit: 'b'.repeat(40),
     });
     expect(update.$push.feedback).toMatchObject({ by: 'codex-cost-reconciler' });
     expect(options).toEqual({ new: true, arrayFilters: [{ 'attempt.attempt': 2 }] });

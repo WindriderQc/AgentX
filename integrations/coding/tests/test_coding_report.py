@@ -478,8 +478,8 @@ class ReportTest(unittest.TestCase):
 class ReportDispatchTest(unittest.TestCase):
     def test_report_worker_refuses_an_unbound_directory_before_requests_or_dispatch(self):
         with mock.patch.object(runner,'request') as api, mock.patch.object(runner.model_relay,'serve') as relay:
-            for progress in [None, __import__('types').SimpleNamespace(report_mode=False,request_id=KEY),
-                             __import__('types').SimpleNamespace(report_mode=True,request_id='../other')]:
+            for progress in [None, __import__('types').SimpleNamespace(report_mode=False,request_id='../other'),
+                             __import__('types').SimpleNamespace(report_mode=True,request_id='/tmp')]:
                 with self.assertRaises(ValueError):runner.run_worker(Path('/unused'),'fixture',1,progress,read_only=True)
             api.assert_not_called();relay.assert_not_called()
 

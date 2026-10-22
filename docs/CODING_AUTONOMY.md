@@ -64,8 +64,26 @@ shell command. The dispatcher profile runs the coding Python suites; the bounded
 Core profile runs `inferenceRuntimePolicy`. Neither replaces full PR CI or
 product acceptance. Dependency edits require separate operator handling.
 
-The autonomous worker receives Core's remaining cumulative work, test, model
-duration and model-call budgets, plus the exact installed verification command.
+The autonomous execution receives Core's remaining cumulative work, test, model
+duration and model-call budgets. A fresh read-only planner first writes a bounded
+JSON plan using only authorized paths. The runner validates and freezes it in a
+private ledger, sizes it from the selected lane's measured agent context or speed
+knee, and starts one fresh implementation session per dependency-ready step.
+Each session receives only its exact paths, focused-test targets and the verified
+commit summary of earlier steps; it cannot choose a shell verifier, expand scope,
+commit or publish.
+
+For every step the runner builds the focused invocation from the installed
+verification profile. Only a clean passing result becomes one commit with the
+exact prepared parent. Failed, out-of-scope or dependency-changing edits are
+preserved in a private Git stash and never contaminate the assembly branch. The
+durable ledger retains the frozen plan, attempts, commits and focused-test
+receipts. An exact continuation resumes its first dependency-ready unfinished
+step from the host-local checkpoint. Pipeline shows only bounded titles, states,
+commits and test profile/outcomes; paths, commands, prompts, output and the full
+ledger remain private. After every step passes, the runner runs the full profile
+once and publishes one draft PR.
+
 Before each model request, the relay adds a fresh runner budget advisory with
 the remaining durations, model calls and no-progress window. It preserves the
 worker's complete history and model options; the advisory is not saved back into
@@ -74,9 +92,9 @@ The native Core admission and runner limits remain authoritative. A harness
 `max-tokens` termination records `model_output_limit` and blocks publication;
 it does not enlarge the model's output limit or the task's attempt ceiling.
 Model waiting and reasoning consume the model duration budget even when the
-work deadline is longer. The same native command supplies the worker's focused
-test loop and the runner's independent verification. Unknown profiles refuse
-before model execution.
+work deadline is longer. Focused and full commands are runner-owned constants
+derived from the same profile. Unknown profiles or incompatible focused targets
+refuse before a writable implementation session begins.
 
 Before publication the runner checks exact authorized paths, all unpublished
 commit blobs (including added-then-removed artifacts), credentials, private

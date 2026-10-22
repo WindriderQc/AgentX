@@ -1,7 +1,7 @@
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.PipelineWorkerMonitor = factory();
-})(typeof window === 'undefined' ? globalThis : window, function () {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./pipeline-code-steps'));
+  else root.PipelineWorkerMonitor = factory(root.PipelineCodeSteps);
+})(typeof window === 'undefined' ? globalThis : window, function (codeSteps) {
   'use strict';
   // Presentation of the existing launch controller only. The native owner keeps
   // request reconciliation, stop execution and resource-release receipts.
@@ -137,6 +137,8 @@
           + (integer(progress.modelCallLimit) && progress.modelCallLimit >= 128 && progress.modelCallLimit <= 256
             ? ` / ${progress.modelCallLimit} · ${Math.max(0, progress.modelCallLimit - progress.modelCalls)} remaining` : '') : 'Unknown')
         + (progress.reportSteps ? row('Report steps', esc(reportStepsText(progress.reportSteps))) : '')
+        + (progress.codeSteps ? row('Code steps', codeSteps?.render(progress.codeSteps, { escapeHtml: esc, compact: true })
+          || 'Code-step summary unavailable') : '')
         + row('Local checkpoint', checkpoint ? `<code title="${checkpoint}">${checkpoint.slice(0, 12)}</code> · source saved locally` : 'Unknown')
         + (REASONS.has(progress.stopReason) ? row('Recorded stop reason', esc(progress.stopReason.replaceAll('_', ' '))) : '');
     } else if (identity) details += row('Worker progress', 'Unknown · no matching progress receipt');

@@ -65,6 +65,11 @@ class ProgressTest(unittest.TestCase):
         self.progress.tick(self.root, self.workspace)
         self.assertEqual(self.progress.last_useful, 10)
 
+    def test_source_state_detects_git_executable_bit_changes(self):
+        before = module.source_state(self.workspace)
+        os.chmod(self.workspace / "README.md", 0o755)
+        self.assertNotEqual(module.source_state(self.workspace), before)
+
     def call(self, call_id="1", command="node scripts/run-jest.js tests/unit/fixture.test.js"):
         self.progress.event({"type": "tool/call", "data": {"callId": call_id, "name": "bash",
                             "arguments": json.dumps({"command": command})}})
@@ -570,6 +575,48 @@ class ProgressTest(unittest.TestCase):
         self.progress.event({"type": "turn/end", "data": {"reason": {"kind": "max-tokens"}}})
         self.assertEqual(self.progress.stop_reason, "operator_stop")
 
+    def test_code_steps_are_stored_and_exposed_only_through_the_bounded_contract(self):
+        self.progress.code_steps = {
+            "schema": "agentx.code-step-summary/v1", "planFingerprint": "b" * 64,
+            "stepContext": 16384, "budgetSource": "agent_workload", "currentStep": "step-02",
+            "counts": {"pending": 0, "running": 1, "passed": 1, "failed": 0, "private": 9},
+            "steps": [
+                {"id": "step-01", "title": "Add the focused behavior", "state": "passed",
+                 "commit": "a" * 40, "objective": "private planner detail",
+                 "tests": [{"profile": "agentx-dispatcher-tests/v1", "outcome": "passed",
+                            "durationMs": 321, "output": "private output"}]},
+                {"id": "step-02", "title": "Wire the runner", "state": "running", "tests": []},
+            ], "rawPlan": "/private/plan.json"}
+        self.progress.write()
+        stored = json.loads(self.progress.path.read_text())
+        safe = module.safe_progress(stored, KEY, "0001")["codeSteps"]
+        self.assertEqual(safe["schema"], "agentx.code-step-summary/v1")
+        self.assertEqual(safe["currentStep"], "step-02")
+        self.assertEqual(safe["steps"][0], {"id": "step-01", "title": "Add the focused behavior",
+            "state": "passed", "commit": "a" * 40,
+            "tests": [{"profile": "agentx-dispatcher-tests/v1", "outcome": "passed", "durationMs": 321}]})
+        self.assertNotIn("private", json.dumps(stored))
+
+    def test_code_step_projection_refuses_inconsistent_or_unbounded_summaries(self):
+        base = {"schema": "agentx.code-step-summary/v1", "planFingerprint": "b" * 64,
+                "stepContext": 16384, "budgetSource": "default", "currentStep": "step-01",
+                "counts": {"pending": 0, "running": 1, "passed": 0, "failed": 0},
+                "steps": [{"id": "step-01", "title": "Current step", "state": "running", "tests": []}]}
+        for mutate in [
+            lambda value: value["steps"].append(dict(value["steps"][0])),
+            lambda value: value["counts"].update(running=0),
+            lambda value: value.update(currentStep="another"),
+            lambda value: value["steps"][0].update(title="x\nprivate"),
+            lambda value: value["steps"][0].update(commit="a" * 40),
+            lambda value: value.update(steps=value["steps"] * 33),
+        ]:
+            with self.subTest(mutate=mutate):
+                value = json.loads(json.dumps(base))
+                mutate(value)
+                receipt = {"requestId": KEY, "pipelineId": "0001", "phase": "running",
+                           "stage": "model_wait", "codeSteps": value}
+                self.assertIsNone(module.safe_progress(receipt, KEY, "0001")["codeSteps"])
+
 
 if __name__ == "__main__":
     unittest.main()
@@ -635,6 +682,16 @@ class ReportStepProgressTest(unittest.TestCase):
         progress.model_calls += 1
         self.assertEqual(progress.relay_call_budget()['calls'], 0)
         self.assertIsNone(progress.tick())
+
+    def test_source_step_guidance_never_tells_an_implementer_to_write_json(self):
+        progress = module.Progress('0001', KEY)
+        progress.phase = 'running'
+        progress.begin_step(4, 60, 'code-step:step-01', result_kind='source')
+        guidance = progress.model_guidance()
+        self.assertIn('assigned source step', guidance)
+        self.assertNotIn('JSON result', guidance)
+        with self.assertRaises(ValueError):
+            progress.begin_step(4, 60, 'bad', result_kind='command')
 
     def test_report_steps_reach_core_only_through_the_whitelist(self):
         value = {'requestId': 'r', 'pipelineId': '0001', 'phase': 'running', 'stage': 'model_wait',

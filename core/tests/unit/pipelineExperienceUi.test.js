@@ -58,6 +58,7 @@ describe('Pipeline open-work experience', () => {
   });
 
   test('shows a privacy-safe attempt dossier inside each coding task drawer', () => {
+    const pageRoute = fs.readFileSync(path.resolve(__dirname, '../../routes/pipeline-page.js'), 'utf8');
     expect(script).toContain('Operator attempt dossier');
     expect(script).toContain('Prompts, inference transcripts, tool payloads, raw verifier output');
     expect(script).toContain("metaRow('Editable scope'");
@@ -71,6 +72,11 @@ describe('Pipeline open-work experience', () => {
     expect(script).toContain("metaRow('Impact'");
     expect(script).toContain("metaRow('Next action'");
     expect(script).toContain("metaRow('Failure codes'");
+    expect(script).toContain('codeSteps?.render(evidence.codeSteps');
+    expect(script).toContain('Runner-owned code steps');
+    expect(script).toContain('malformed evidence was not displayed');
+    expect(pageRoute.indexOf('/js/code-step-summary.js')).toBeLessThan(pageRoute.indexOf('/js/pipeline-code-steps.js'));
+    expect(pageRoute.indexOf('/js/pipeline-code-steps.js')).toBeLessThan(pageRoute.indexOf('/js/pipeline-worker-monitor.js'));
     expect(script).toContain('it has not been approved, merged, or deployed');
     expect(script).toContain('readDeepLinkedTask()');
     expect(script).toContain('openDrawer(pipelineId, null)');

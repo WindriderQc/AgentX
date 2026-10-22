@@ -76,7 +76,7 @@ class WorkerPromptTest(unittest.TestCase):
             'bytes': len(self.prompt.encode('utf-8')),
             'sha256': hashlib.sha256(self.prompt.encode('utf-8')).hexdigest()})
         self.assertTrue(self.captured['read_only'])
-        self.assertEqual(self.captured['report_request_id'], self.progress.request_id)
+        self.assertEqual(self.captured['role_request_id'], self.progress.request_id)
         self.assertFalse(self.captured['path'].parent.exists())
 
     def test_unsettled_cli_top_level_await_keeps_native_nonzero_exit(self):
@@ -96,7 +96,7 @@ class WorkerPromptTest(unittest.TestCase):
         with self.assertRaisesRegex(OSError, 'fixture startup failed'):
             runner.coding_worker_prompt.run(r, self.workspace, self.home, self.prompt, 600,
                 None, read_only=False, on_stop=self.on_stop)
-        self.assertEqual(self.captured['report_request_id'], '')
+        self.assertEqual(self.captured['role_request_id'], '')
         self.assertFalse(self.captured['read_only'])
         self.assertFalse(self.captured['path'].parent.exists())
         self.assertEqual(self.home.joinpath('keep.txt').read_text(), 'Existing worker state')
@@ -105,7 +105,7 @@ class WorkerPromptTest(unittest.TestCase):
         path = self.root/'private-input.txt'
         path.write_text('Review')
         command = runner.sandbox(self.workspace, self.home, ['true'], network=False, timeout_seconds=600,
-            read_only=True, report_request_id=self.progress.request_id, prompt_file=path)
+            read_only=True, role_request_id=self.progress.request_id, prompt_file=path)
         self.assertIn('--unshare-all', command)
         self.assertNotIn('--share-net', command)
         for source, target in [(str(path), runner.coding_worker_prompt.SANDBOX_PROMPT),

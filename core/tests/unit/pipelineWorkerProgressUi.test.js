@@ -274,3 +274,36 @@ describe('runner-owned report steps in the worker monitor (#834)', () => {
     expect(observed.details).not.toContain('Report steps');
   });
 });
+
+describe('runner-owned code steps in the worker monitor (#836)', () => {
+  const codeSteps = () => ({
+    schema: 'agentx.code-step-summary/v1', planFingerprint: 'a'.repeat(64), stepContext: 12288,
+    budgetSource: 'agent_workload', currentStep: 'step-2',
+    counts: { pending: 0, running: 1, passed: 1, failed: 0 },
+    steps: [
+      { id: 'step-1', title: 'Implement the ledger', state: 'passed', commit: 'b'.repeat(40),
+        tests: [{ profile: 'coding-unit', outcome: 'passed', durationMs: 2100 }] },
+      { id: 'step-2', title: 'Publish bounded evidence', state: 'running', tests: [] },
+    ],
+  });
+
+  it('shows every ordered step with state, commit and focused tests', () => {
+    const observed = Monitor.observation(fixture({ phase: 'running', stage: 'tool', codeSteps: codeSteps() }).controller, null, NOW);
+    expect(observed.details).toContain('<dt>Code steps</dt>');
+    expect(observed.details.indexOf('Implement the ledger')).toBeLessThan(observed.details.indexOf('Publish bounded evidence'));
+    expect(observed.details).toContain('Passed');
+    expect(observed.details).toContain('Running');
+    expect(observed.details).toContain('bbbbbbbbbbbb');
+    expect(observed.details).toContain('coding-unit');
+    expect(observed.details).toContain('2,100 ms');
+  });
+
+  it('fails closed for malformed progress and never prints its raw fields', () => {
+    const malformed = codeSteps();
+    malformed.steps[0].title = 'privateFixture\nraw output';
+    malformed.rawOutput = 'privateFixture';
+    const observed = Monitor.observation(fixture({ phase: 'running', stage: 'tool', codeSteps: malformed }).controller, null, NOW);
+    expect(observed.details).toContain('malformed evidence was not displayed');
+    expect(observed.details).not.toContain('privateFixture');
+  });
+});
