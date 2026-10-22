@@ -250,6 +250,9 @@ const PipelineTaskSchema = new mongoose.Schema({
   // service validates every complete replacement before this Mixed value is
   // committed with a revision-fenced single-document update.
   codeStepDag: { type: mongoose.Schema.Types.Mixed, default: undefined },
+  // Bounded public graph summaries retained when a terminal DAG is atomically
+  // replaced by a later autonomous correction run.
+  codeStepDagHistory: { type: [mongoose.Schema.Types.Mixed], default: undefined },
   codingResult: { type: mongoose.Schema.Types.Mixed, default: undefined },
   codingReportAuthority: { type: mongoose.Schema.Types.Mixed, default: undefined },
   // Automatic continuation runs of a private report (#835), one per parent outcome.

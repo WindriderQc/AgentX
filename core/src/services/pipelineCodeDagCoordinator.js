@@ -67,6 +67,14 @@ function availableExecutors(status, coordinatorId) {
     .sort((left, right) => (left.priority || 0) - (right.priority || 0) || left.id.localeCompare(right.id));
 }
 
+function configuredWorkerExecutors(status, coordinatorId) {
+  const rows = [...(Array.isArray(status?.executors) ? status.executors : []),
+    ...(Array.isArray(status?.unavailableExecutors) ? status.unavailableExecutors : [])];
+  return [...new Map(rows.filter(row => row?.id).map(row => [row.id, row])).values()]
+    .filter(row => row.id !== coordinatorId && row.enabled !== false
+    && (!Array.isArray(row.profiles) || row.profiles.includes('autonomous')));
+}
+
 function attemptBudget(dag) {
   const remainingSteps = Math.max(1, dag.steps.filter(step => !TERMINAL_STEP_STATES.has(step.state)).length);
   const result = {};
@@ -247,13 +255,19 @@ function createPipelineCodeDagCoordinator(options = {}) {
       reviewedLockKeys: value.automation.lockKeys });
     let dag = await state.read(pipelineId);
     let replayed = false;
-    if (dag) {
-      if (dag.rootRequestId !== rootRequestId || dag.sourceCommit !== input.sourceCommit
-        || dag.planFingerprint !== normalized.fingerprint || fingerprint(dag.budget.limit) !== fingerprint(budget)) {
-        fail('DAG_ALREADY_EXISTS', 'The task already has a different code-step DAG');
-      }
+    const exactReplay = dag && dag.rootRequestId === rootRequestId && dag.sourceCommit === input.sourceCommit
+      && dag.planFingerprint === normalized.fingerprint && fingerprint(dag.budget.limit) === fingerprint(budget);
+    if (exactReplay) {
       replayed = true;
     } else {
+      let fleet;
+      try { fleet = control && await control.status({}); }
+      catch { /* A missing fleet snapshot cannot prove a distributed worker exists. */ }
+      const coordinatorId = value.codingAutonomy.runs.at(-1)?.executorId || 'coordinator';
+      if (!configuredWorkerExecutors(fleet, coordinatorId).length) {
+        fail('CODING_DISTRIBUTION_UNAVAILABLE',
+          'No autonomous coding executor is configured besides the root coordinator');
+      }
       const created = await state.create(pipelineId, { taskBasis: value.codingAutonomy.basis, rootRequestId,
         sourceCommit: input.sourceCommit, plan: input.plan, reviewedScope: value.automation.scope,
         reviewedLockKeys: value.automation.lockKeys, budget, createdAt: iso(clock) });

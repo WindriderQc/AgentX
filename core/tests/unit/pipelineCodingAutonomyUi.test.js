@@ -76,6 +76,16 @@ test('live Coding Team cards show a fail-closed multi-host graph summary and det
   expect(descendants(malformed.nodes.codingAutonomyTasks).some(node =>
     node.textContent.includes('malformed evidence was not displayed'))).toBe(true);
 });
+test('execution history keeps a prior run multi-host graph in the operator dossier', async () => {
+  const snapshot = state(); snapshot.tasks[0].runs[0].codeStepGraph = { graphId: KEY, historical: true };
+  const presenter = { summaryText: jest.fn(() => '3 steps · blocked'),
+    render: jest.fn(() => '<section>historical graph evidence</section>') };
+  const { nodes } = setup(snapshot, { codeStepGraph: presenter }); await flush();
+  const historyGraph = descendants(nodes.codingAutonomyTasks)
+    .find(node => node.innerHTML === '<section>historical graph evidence</section>');
+  expect(historyGraph).toBeDefined();
+  expect(presenter.render).toHaveBeenCalledWith(snapshot.tasks[0].runs[0].codeStepGraph, { compact: true });
+});
 test('idle status separates blocked cards from work awaiting execution and keeps archived qualifications accessible', async () => {
   const snapshot = state('stopped'); Object.assign(snapshot.tasks[0], { taskStatus: 'blocked', authorized: false, disposition: { kind: 'qualification', outcome: 'abandoned' } });
   const { nodes } = setup(snapshot); await flush();

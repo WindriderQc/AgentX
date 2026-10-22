@@ -116,6 +116,9 @@ function ciSpent(state) {
 }
 function projection(task) {
   const state = task.codingAutonomy;
+  const graphHistory = new Map((Array.isArray(task.codeStepDagHistory) ? task.codeStepDagHistory : [])
+    .slice(-codeDagState.HISTORY_LIMIT).filter(item => item?.graphId && item.codeStepGraph)
+    .map(item => [item.graphId, item.codeStepGraph]));
   const remaining = policy.remaining(task);
   const last = state.runs.at(-1);
   const currentUsage = last && policy.usage(last, last.currentUsage);
@@ -137,6 +140,7 @@ function projection(task) {
     resumes: Math.max(0, state.runs.length - 1), remaining, pr: state.pr || null,
     lastUsefulProgressAt: state.lastUsefulProgressAt || null, manualInterventions: state.manualInterventions,
     runs: state.runs.map(({ leaseId, pendingInferences, ...run }) => ({ ...run,
+      ...(graphHistory.has(run.requestId) && { codeStepGraph: graphHistory.get(run.requestId) }),
       pendingInferenceCount: run.recovery?.state === 'confirmed' ? 0 : (pendingInferences || []).length,
       historicalPendingInferenceCount: (pendingInferences || []).length,
       unresolvedCallIds: run.recovery?.state === 'confirmed' ? [] : [...(pendingInferences || [])] })),
@@ -313,6 +317,18 @@ async function dispatch(task, config) {
       await control.stop({ pipelineId: task.pipelineId, requestId: run.requestId, confirm: true,
         ...(run.executorId && { executorId: run.executorId }) }); return;
     }
+    await control.launch({ pipelineId: task.pipelineId, requestId: run.requestId,
+      expectedAttemptCount: run.expectedAttemptCount, confirm: true, autonomous: true,
+      ...(run.executorId && { executorId: run.executorId }) });
+    return;
+  }
+  if (host.run?.phase === 'resumable') {
+    const dag = task.codeStepDag;
+    if (!host.run.canResume || !dag || dag.rootRequestId !== run.requestId
+      || ['published', 'failed', 'blocked'].includes(dag.state)) return block(task, 'runner_outcome_unknown');
+    if (!state.authorized || !config.enabled
+      || task.automationLease?.dispatchRequestId !== run.requestId
+      || task.codingCapacity?.requestId !== run.requestId) return block(task, 'runner_outcome_unknown');
     await control.launch({ pipelineId: task.pipelineId, requestId: run.requestId,
       expectedAttemptCount: run.expectedAttemptCount, confirm: true, autonomous: true,
       ...(run.executorId && { executorId: run.executorId }) });

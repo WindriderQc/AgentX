@@ -7,6 +7,8 @@ const { fingerprint } = require('../../../shared/codeStepDagContract');
 const graphSummary = require('../../../shared/codeStepGraphSummary');
 
 const WC = { w: 1, j: true };
+const HISTORY_LIMIT = 8;
+const TERMINAL_DAG_STATES = new Set(['published', 'failed', 'blocked']);
 
 class PipelineCodeDagStateError extends Error {
   constructor(code, message, statusCode = 409) {
@@ -216,6 +218,16 @@ function project(dag) {
   return graphSummary.normalize(summary);
 }
 
+function terminalDag(dag) {
+  return Boolean(dag?.terminalFailure) || TERMINAL_DAG_STATES.has(dag?.state);
+}
+
+function archiveHistory(task, dag, archivedAt) {
+  const previous = Array.isArray(task.codeStepDagHistory) ? task.codeStepDagHistory : [];
+  const record = { graphId: dag.rootRequestId, archivedAt, codeStepGraph: project(dag) };
+  return [...previous.filter(item => item?.graphId !== record.graphId), record].slice(-HISTORY_LIMIT);
+}
+
 function createPipelineCodeDagStateService(Model = Task) {
   async function find(pipelineId) {
     return queryResult(Model.findOne({ pipelineId }));
@@ -246,9 +258,33 @@ function createPipelineCodeDagStateService(Model = Task) {
     candidate.executorProfiles = {};
     if (binding.coordinator.id !== 'coordinator') candidate.executorProfiles[binding.coordinator.id] = binding.coordinator;
     const candidateSummary = project(candidate);
-    if (task.codeStepDag) {
-      if (!same(task.codeStepDag, candidate)) fail('DAG_ALREADY_EXISTS', 'The task already has a different code-step DAG');
+    if (task.codeStepDag && same(task.codeStepDag, candidate)) {
       return { dag: clone(task.codeStepDag), summary: candidateSummary, replayed: true };
+    }
+    if (task.codeStepDag) {
+      const priorRun = task.codingAutonomy.runs.find(run => run.requestId === task.codeStepDag.rootRequestId);
+      if (task.codeStepDag.rootRequestId === binding.rootRequestId || !terminalDag(task.codeStepDag)
+        || !priorRun?.finishedAt) {
+        fail('DAG_ALREADY_EXISTS', 'The task already has a different or active code-step DAG');
+      }
+      const history = archiveHistory(task, task.codeStepDag, input.createdAt);
+      const saved = await queryResult(Model.findOneAndUpdate(
+        { ...authorityFilter(task, binding), 'codeStepDag.rootRequestId': task.codeStepDag.rootRequestId,
+          'codeStepDag.revision': task.codeStepDag.revision,
+          ...(task.codeStepDag.terminalFailure
+            ? { 'codeStepDag.terminalFailureFingerprint': task.codeStepDag.terminalFailureFingerprint }
+            : { 'codeStepDag.state': 'published' }) },
+        { $set: { codeStepDag: candidate, codeStepDagHistory: history } },
+        { new: true, runValidators: true, writeConcern: WC },
+      ));
+      if (saved) return { dag: clone(saved.codeStepDag), summary: project(saved.codeStepDag), replayed: false };
+      const current = await find(pipelineId);
+      if (current?.codeStepDag?.rootRequestId === candidate.rootRequestId
+        && current.codeStepDag.planFingerprint === candidate.planFingerprint
+        && current.codeStepDag.sourceCommit === candidate.sourceCommit) {
+        return { dag: clone(current.codeStepDag), summary: project(current.codeStepDag), replayed: true };
+      }
+      fail('DAG_CREATE_CONFLICT', 'The terminal DAG or autonomous root changed while the next DAG was being created');
     }
     const saved = await queryResult(Model.findOneAndUpdate(
       { ...authorityFilter(task, binding), codeStepDag: { $exists: false } },
@@ -323,6 +359,7 @@ function createPipelineCodeDagStateService(Model = Task) {
 }
 
 module.exports = {
+  HISTORY_LIMIT,
   PipelineCodeDagStateError,
   createPipelineCodeDagStateService,
   project,

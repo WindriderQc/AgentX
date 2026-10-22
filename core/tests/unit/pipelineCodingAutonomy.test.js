@@ -72,6 +72,19 @@ beforeEach(async () => {
 });
 afterEach(() => service.configureControl(null));
 
+test('projection binds bounded archived DAG evidence to its historical autonomous run', async () => {
+  await task(); await authorize();
+  const graphId = '22222222-3333-4444-8555-666666666666';
+  const graph = { schema: 'agentx.code-step-graph-summary/v1', graphId, state: 'blocked' };
+  await Task.updateOne({ pipelineId: '0001' }, { $set: {
+    'codingAutonomy.runs': [{ requestId: graphId, startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(), result: 'blocked', pendingInferences: [] }],
+    codeStepDagHistory: [{ graphId, archivedAt: new Date().toISOString(), codeStepGraph: graph }],
+  } });
+  const projected = service.projection(await Task.findOne({ pipelineId: '0001' }).lean());
+  expect(projected.runs[0].codeStepGraph).toEqual(graph);
+});
+
 test.each(['merged', 'failed', 'changed-head'])('finished PR observation sees %s while paused without resuming, accepting or rewriting costs', async outcome => {
   await task(); await authorize(); await enable(); const first = await launch(); await complete(first);
   observations.set(first.requestId, { ...PR, state: 'open', mergeable: 'clean',
@@ -178,6 +191,23 @@ test('lost launch response reconciles the original identity without another laun
   });
   await expect(service.tick()).rejects.toThrow('lost'); await service.tick();
   expect(control.launch).toHaveBeenCalledTimes(1); expect((await selected()).requestId).toBe(first.requestId);
+});
+test('an accepted distributed root resumes the exact request after its coordinator process stops', async () => {
+  await task(); await authorize(); await enable(); const first = await launch();
+  await claimEligibleTask('0001', 'coding-team', new Date(), { automated: true, dispatchRequestId: first.requestId });
+  await Task.updateOne({ pipelineId: '0001' }, { $set: {
+    codingCapacity: { requestId: first.requestId, model: 'synthetic-model' },
+    codeStepDag: { rootRequestId: first.requestId, state: 'executing' },
+  } });
+  receipts.set(first.requestId, { pipelineId: '0001', requestId: first.requestId,
+    phase: 'resumable', canResume: true });
+  const coordinator = require('../../src/services/pipelineCodeDagCoordinator');
+  const tick = jest.spyOn(coordinator, 'tick').mockResolvedValue(null);
+  try { await service.tick(); } finally { tick.mockRestore(); }
+  expect(control.launch).toHaveBeenCalledTimes(2);
+  expect(control.launch.mock.calls[1][0]).toEqual(expect.objectContaining({
+    pipelineId: '0001', requestId: first.requestId, autonomous: true, confirm: true,
+  }));
 });
 test.each(['uncertain', 'unknown'])('lost accepted launch with recorded native feedback resolves %s terminal proof', async phase => {
   await task(); await authorize(); await enable(); await service.tick(); const first = await selected();

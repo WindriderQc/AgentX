@@ -1,10 +1,12 @@
 'use strict';
 
 const { SOURCE_PLAN_SCHEMA } = require('../../../shared/codeStepDagContract');
-const { createPipelineCodeDagStateService } = require('../../src/services/pipelineCodeDagStateService');
+const { HISTORY_LIMIT, createPipelineCodeDagStateService } = require('../../src/services/pipelineCodeDagStateService');
 
 const SOURCE = '1'.repeat(40);
 const ROOT = '11111111-2222-4333-8444-555555555555';
+const NEXT_ROOT = '22222222-3333-4444-8555-666666666666';
+const NEXT_SOURCE = '2'.repeat(40);
 const BASIS = 'a'.repeat(64);
 const T0 = '2026-10-22T12:00:00.000Z';
 
@@ -200,6 +202,63 @@ test('persists and projects one replay-safe cumulative-budget terminal receipt',
   await expect(service.startAttempt('0946', { expectedRevision: 1, stepId: 'step-01', executorId: 'ugalien',
     requestId: 'late-request', baseCommit: SOURCE, budget: budget(1, 1, 1, 1), startedAt: T0 }))
     .rejects.toMatchObject({ code: 'DAG_TERMINAL' });
+});
+
+test('atomically archives a terminal graph for a correction run and replays the replacement', async () => {
+  await service.create('0946', createInput());
+  await service.terminalize('0946', { expectedRevision: 0, state: 'blocked', code: 'cumulative_budget_exhausted',
+    reason: 'The first run used its distributed budget', stepId: null, finishedAt: T0 });
+  const originalGraph = clone(FakeTaskModel.task.codeStepDag);
+  FakeTaskModel.task.codeStepDagHistory = Array.from({ length: HISTORY_LIMIT }, (_, index) => ({
+    graphId: `historical-${index}`, archivedAt: T0, codeStepGraph: { graphId: `historical-${index}` },
+  }));
+  FakeTaskModel.task.codingAutonomy.revision = 8;
+  FakeTaskModel.task.codingAutonomy.state = 'correction';
+  FakeTaskModel.task.codingAutonomy.runs[0].finishedAt = T0;
+  FakeTaskModel.task.codingAutonomy.runs.push({ requestId: NEXT_ROOT, sourceCommit: NEXT_SOURCE,
+    parentRequestId: ROOT, executorId: 'ugfrank', harness: 'opencode', startedAt: T0 });
+  const next = createInput({ rootRequestId: NEXT_ROOT, sourceCommit: NEXT_SOURCE,
+    createdAt: '2026-10-22T12:01:00.000Z' });
+
+  FakeTaskModel.loseNextAck = true;
+  const replaced = await service.create('0946', next);
+  expect(replaced).toMatchObject({ replayed: true, dag: { rootRequestId: NEXT_ROOT, revision: 0 } });
+  expect(FakeTaskModel.task.codeStepDagHistory).toHaveLength(HISTORY_LIMIT);
+  expect(FakeTaskModel.task.codeStepDagHistory.at(-1)).toMatchObject({ graphId: ROOT,
+    archivedAt: next.createdAt, codeStepGraph: { graphId: ROOT, state: 'blocked' } });
+  expect(FakeTaskModel.task.codeStepDagHistory[0].graphId).toBe('historical-1');
+  expect(FakeTaskModel.task.codeStepDagHistory.at(-1).codeStepGraph.assembly.receiptFingerprint)
+    .toBe(originalGraph.terminalFailureFingerprint);
+  expect(await service.create('0946', next)).toMatchObject({ replayed: true,
+    dag: { rootRequestId: NEXT_ROOT } });
+  expect(FakeTaskModel.task.codeStepDagHistory).toHaveLength(HISTORY_LIMIT);
+
+  await expect(service.create('0946', { ...next, plan: { ...plan(), summary: 'A racing different plan' } }))
+    .rejects.toMatchObject({ code: 'DAG_ALREADY_EXISTS' });
+});
+
+test('never replaces a non-terminal graph when a newer autonomous run races it', async () => {
+  await service.create('0946', createInput());
+  FakeTaskModel.task.codingAutonomy.revision = 8;
+  FakeTaskModel.task.codingAutonomy.runs[0].finishedAt = T0;
+  FakeTaskModel.task.codingAutonomy.runs.push({ requestId: NEXT_ROOT, sourceCommit: NEXT_SOURCE,
+    parentRequestId: ROOT, executorId: 'ugfrank', harness: 'opencode', startedAt: T0 });
+  await expect(service.create('0946', createInput({ rootRequestId: NEXT_ROOT, sourceCommit: NEXT_SOURCE })))
+    .rejects.toMatchObject({ code: 'DAG_ALREADY_EXISTS' });
+  expect(FakeTaskModel.task.codeStepDag.rootRequestId).toBe(ROOT);
+  expect(FakeTaskModel.task.codeStepDagHistory).toBeUndefined();
+});
+
+test('does not archive a terminal graph until its owning native run is finished', async () => {
+  await service.create('0946', createInput());
+  await service.terminalize('0946', { expectedRevision: 0, state: 'blocked', code: 'cumulative_budget_exhausted',
+    reason: 'Graph terminal but native root unsettled', stepId: null, finishedAt: T0 });
+  FakeTaskModel.task.codingAutonomy.revision = 8;
+  FakeTaskModel.task.codingAutonomy.runs.push({ requestId: NEXT_ROOT, sourceCommit: NEXT_SOURCE,
+    parentRequestId: ROOT, executorId: 'ugfrank', harness: 'opencode', startedAt: T0 });
+  await expect(service.create('0946', createInput({ rootRequestId: NEXT_ROOT, sourceCommit: NEXT_SOURCE })))
+    .rejects.toMatchObject({ code: 'DAG_ALREADY_EXISTS' });
+  expect(FakeTaskModel.task.codeStepDag.rootRequestId).toBe(ROOT);
 });
 
 test('a changed or completed root fences every later DAG mutation', async () => {

@@ -203,7 +203,10 @@
         appendActionForm(article, form, 'Archive this qualification');
       }
       const history = element('details', ''); history.append(element('summary', 'Execution history and intervention evidence'));
-      for (const item of task.runs) history.append(element('p', `${item.requestId} · previous ${item.parentRequestId || 'none'} · ${item.result || 'pending'} · ${item.head || 'no checkpoint'} · ${item.usage ? JSON.stringify(item.usage) : 'usage unconfirmed'}`));
+      for (const item of task.runs) {
+        history.append(element('p', `${item.requestId} · previous ${item.parentRequestId || 'none'} · ${item.result || 'pending'} · ${item.head || 'no checkpoint'} · ${item.usage ? JSON.stringify(item.usage) : 'usage unconfirmed'}`));
+        if (item.codeStepGraph) appendCodeStepGraph(history, item.codeStepGraph);
+      }
       for (const item of task.manualInterventions) history.append(element('p', `${item.kind} · ${item.head || item.requestId || ''} · ${item.at}`));
       for (const form of article.querySelectorAll('form')) protectDraft(form);
       article.append(history);

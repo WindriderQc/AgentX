@@ -3,6 +3,7 @@
 const domain = require('../../src/services/pipelineCodeDagService');
 const policy = require('../../src/services/pipelineCodingAutonomyPolicy');
 const { createPipelineCodeDagCoordinator, deterministicUuid } = require('../../src/services/pipelineCodeDagCoordinator');
+const { normalizePipelineAutomationIntent } = require('../../../shared/pipelineAutomationContract');
 
 const ROOT = '11111111-2222-4333-8444-555555555555';
 const SOURCE = 'a'.repeat(40);
@@ -107,6 +108,106 @@ function fixture({ lostLaunch = false, limit = budget() } = {}) {
   };
   return { memory, stateService, TaskModel, control, launches, runs, create, verify };
 }
+
+function submissionFixture(executors, initialDag = null, unavailableExecutors = []) {
+  const plan = { schema: 'agentx.coding-code-plan/v1', summary: 'One distributed change', steps: [
+    step('step-01', 'src/one.js'),
+  ] };
+  const automation = normalizePipelineAutomationIntent({ schema: 'agentx.pipeline-automation/v1', mode: 'review_only',
+    policyRef: 'agentx.coding-autonomy/v1', dataClassification: 'public', operations: ['update'],
+    scope: ['src/one.js'], sourceFiles: ['src/one.js'], lockKeys: ['file:src/one.js'],
+    executionProfile: 'coding-sandbox/v1', verificationProfile: 'agentx-core-runner-tests/v1',
+    budgets: { maxDurationMs: 900000, maxAttempts: 3, maxCostNanodollars: 0 }, humanGates: ['review', 'merge'] });
+  const taskRecord = { pipelineId: '0946', title: 'Synthetic DAG', spec: 'Public fake work',
+    service: 'agentx-coding', risk: 'low', automation };
+  const basis = policy.basis(taskRecord);
+  Object.assign(taskRecord, { codingAutonomy: { authorized: true, revision: 2, basis,
+    limits: policy.limits(), spent: {}, runs: [{ requestId: ROOT, sourceCommit: SOURCE,
+      executorId: 'ugfrank', harness: 'opencode', startedAt: T0 }] } });
+  let dag = clone(initialDag);
+  const stateService = {
+    read: jest.fn(async () => clone(dag)),
+    create: jest.fn(async (_pipelineId, input) => {
+      dag = domain.create({ pipelineId: '0946', rootRequestId: input.rootRequestId,
+        sourceCommit: input.sourceCommit, plan: input.plan, reviewedScope: input.reviewedScope,
+        reviewedLockKeys: input.reviewedLockKeys, budget: input.budget, createdAt: input.createdAt });
+      dag.authority = { taskBasis: basis, rootRequestId: ROOT, sourceCommit: SOURCE, runIndex: 0,
+        sourceField: 'sourceCommit', coordinator: { id: 'ugfrank', label: 'ugfrank', harness: 'opencode' } };
+      return { dag: clone(dag), replayed: false };
+    }),
+    projection: jest.fn(async () => ({ graphId: dag?.rootRequestId })),
+  };
+  const TaskModel = {
+    findOne: jest.fn(() => ({ lean: async () => clone({ ...taskRecord, ...(dag && { codeStepDag: dag }) }) })),
+    findOneAndUpdate: jest.fn((_filter, update) => {
+      if (update.$set?.['codeStepDag.coordination']) dag.coordination = clone(update.$set['codeStepDag.coordination']);
+      return { lean: async () => clone({ ...taskRecord, codeStepDag: dag }) };
+    }),
+  };
+  const control = { status: jest.fn(async () => ({ executors, unavailableExecutors })) };
+  const coordinator = createPipelineCodeDagCoordinator({ TaskModel, stateService, control, clock: () => Date.parse(T0) });
+  return { coordinator, stateService, control, input: { sourceCommit: SOURCE, plan,
+    budget: budget(100, 100, 100, 2) } };
+}
+
+test('refuses DAG creation when the configured fleet contains only the historical root', async () => {
+  const f = submissionFixture([{ id: 'ugfrank', profiles: ['autonomous'], available: true, busy: false }]);
+  await expect(f.coordinator.submitPlan('0946', ROOT, f.input)).rejects.toMatchObject({
+    code: 'CODING_DISTRIBUTION_UNAVAILABLE', statusCode: 409,
+  });
+  expect(f.stateService.create).not.toHaveBeenCalled();
+});
+
+test('reports distribution unavailable when dispatch control has no fleet snapshot', async () => {
+  const f = submissionFixture([]);
+  f.coordinator.configureControl(null);
+  await expect(f.coordinator.submitPlan('0946', ROOT, f.input)).rejects.toMatchObject({
+    code: 'CODING_DISTRIBUTION_UNAVAILABLE',
+  });
+  expect(f.stateService.create).not.toHaveBeenCalled();
+});
+
+test('accepts a configured non-root worker while it is temporarily busy', async () => {
+  const f = submissionFixture([
+    { id: 'ugfrank', profiles: ['autonomous'], available: true, busy: true },
+    { id: 'ugalien', profiles: ['autonomous'], enabled: true, available: true, busy: true },
+  ]);
+  await expect(f.coordinator.submitPlan('0946', ROOT, f.input)).resolves.toMatchObject({
+    graphId: ROOT, replayed: false,
+  });
+  expect(f.stateService.create).toHaveBeenCalledTimes(1);
+});
+
+test('accepts an offline configured worker from the dispatch-control unavailable inventory', async () => {
+  const f = submissionFixture(
+    [{ id: 'ugfrank', profiles: ['autonomous'], available: true, busy: true }],
+    null,
+    [{ id: 'ugalien', profiles: ['autonomous'], harness: 'opencode', available: false }],
+  );
+  await expect(f.coordinator.submitPlan('0946', ROOT, f.input)).resolves.toMatchObject({
+    graphId: ROOT, replayed: false,
+  });
+  expect(f.stateService.create).toHaveBeenCalledTimes(1);
+});
+
+test('delegates a terminal prior-run graph to the atomic correction replacement', async () => {
+  const oldRoot = '99999999-9999-4999-8999-999999999999';
+  let oldDag = domain.create({ pipelineId: '0946', rootRequestId: oldRoot, sourceCommit: '9'.repeat(40),
+    plan: { schema: 'agentx.coding-code-plan/v1', summary: 'Prior run', steps: [step('step-01', 'src/one.js')] },
+    reviewedScope: ['src/one.js'], reviewedLockKeys: ['file:src/one.js'], budget: budget(10, 10, 10, 1), createdAt: T0 });
+  oldDag = require('../../src/services/pipelineCodeDagTerminalService').terminalize(oldDag, {
+    expectedRevision: 0, state: 'blocked', code: 'cumulative_budget_exhausted', reason: 'Prior run ended',
+    stepId: null, finishedAt: T0,
+  }).dag;
+  const f = submissionFixture([
+    { id: 'ugfrank', profiles: ['autonomous'], busy: true },
+    { id: 'ugalien', profiles: ['autonomous'], available: false },
+  ], oldDag);
+  await expect(f.coordinator.submitPlan('0946', ROOT, f.input)).resolves.toMatchObject({
+    graphId: ROOT, replayed: false,
+  });
+  expect(f.stateService.create).toHaveBeenCalledTimes(1);
+});
 
 test('dispatches a maximal two-host wave and starts the dependency wave from the adopted head', async () => {
   const f = fixture(); const coordinator = f.create();
