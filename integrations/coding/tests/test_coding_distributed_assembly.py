@@ -121,7 +121,7 @@ class AssemblyAdapter:
         return "2026-10-22T12:00:00.000Z"
 
 
-def manifest(adapter, ready=None, final=False):
+def manifest(adapter, ready=None, final=False, final_budget=None):
     artifacts = []
     if ready is not None:
         path, receipt, name, commit = adapter.bundles[ready - 1]
@@ -134,6 +134,7 @@ def manifest(adapter, ready=None, final=False):
            "sourceCommit": adapter.base, "planFingerprint": "d" * 64,
            "requestId": REQUEST, "executorId": "coordinator", "harness": "opencode",
            "artifacts": artifacts, "finalReady": final,
+           "finalVerificationBudget": (final_budget or {"workSeconds": 30, "testSeconds": 30}) if final else None,
            "testTargets": ["integrations/coding/tests/test_x.py"],
            "verificationProfile": "agentx-dispatcher-tests/v1", "manifestFingerprint": "c" * 64}
     return assembly_worker.validate_manifest(raw, task_id="0946", request_id=REQUEST,
@@ -185,6 +186,17 @@ class DistributedAssemblyTest(unittest.TestCase):
             self.assertTrue(replay["replayed"])
             self.assertEqual(adapter.publications, 0)
             self.assertEqual(adapter.failures[0], adapter.failures[1])
+
+    def test_passing_tests_that_exhaust_the_exact_budget_terminalize_before_publication(self):
+        with tempfile.TemporaryDirectory() as directory:
+            adapter = AssemblyAdapter(Path(directory))
+            worker = assembly_worker.AssemblyWorker(adapter, Path(directory) / "journal")
+            result = worker.execute(manifest(adapter, final=True,
+                final_budget={"workSeconds": 1, "testSeconds": 1}))
+            self.assertEqual(result["failure"]["state"], "blocked")
+            self.assertEqual(result["failure"]["code"], "assembly_budget_exhausted")
+            self.assertEqual(result["failure"]["tests"][0]["durationMs"], 1501)
+            self.assertEqual(adapter.publications, 0)
 
     def test_lost_failure_ack_replays_the_exact_durable_terminal_receipt(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -249,7 +261,8 @@ class DistributedAssemblyTest(unittest.TestCase):
             BASE_BRANCH="main")
         progress = mock.Mock()
         args = types.SimpleNamespace(graph_id=GRAPH, task_id="0946", timeout_seconds=30)
-        checked = {"verificationProfile": "agentx-dispatcher-tests/v1", "testTargets": ["test:a"], "artifacts": [],
+        checked = {"verificationProfile": "agentx-dispatcher-tests/v1", "testTargets": ["test:a"],
+                   "finalVerificationBudget": {"workSeconds": 30, "testSeconds": 30}, "artifacts": [],
                    "task": {"title": "Synthetic"}}
         adapter = assembly_worker.RunnerAssemblyAdapter(runtime, args, progress, checked, None, "/endpoint")
         adapter._module = mock.Mock(return_value=types.SimpleNamespace(full_command=lambda _profile: ["test"]))
@@ -258,6 +271,57 @@ class DistributedAssemblyTest(unittest.TestCase):
         self.assertEqual(raised.exception.code, "assembly_source_changed")
         self.assertEqual(raised.exception.tests[0]["outcome"], "failed")
         runtime.sandbox.assert_not_called(); runtime.supervise.assert_not_called()
+
+    def test_final_dependency_install_uses_the_aggregate_deadline_and_terminalizes_exhaustion(self):
+        class DeadlineExceeded(RuntimeError):
+            pass
+        observed = []
+        def install(_workspace, _progress, *, deadline):
+            observed.append(deadline)
+            raise DeadlineExceeded("fixture deadline")
+        runtime = types.SimpleNamespace(
+            CodingDeadlineExceeded=DeadlineExceeded,
+            coding_progress=types.SimpleNamespace(source_state=mock.Mock(return_value="before")),
+            install_dependencies=mock.Mock(side_effect=install), sandbox=mock.Mock(), supervise=mock.Mock(),
+            worker_home=mock.Mock(), git=mock.Mock(), push_and_open_pr=mock.Mock(),
+            RECEIPTS=Path("/tmp"), WORKSPACES=Path("/tmp"), REPOSITORY="example/project",
+            BASE_BRANCH="main")
+        progress = mock.Mock()
+        args = types.SimpleNamespace(graph_id=GRAPH, task_id="0946", timeout_seconds=5)
+        checked = {"verificationProfile": "agentx-dispatcher-tests/v1", "testTargets": ["test:a"],
+                   "finalVerificationBudget": {"workSeconds": 5, "testSeconds": 8}, "artifacts": [],
+                   "task": {"title": "Synthetic"}}
+        adapter = assembly_worker.RunnerAssemblyAdapter(runtime, args, progress, checked, None, "/endpoint")
+        adapter._module = mock.Mock(return_value=types.SimpleNamespace(full_command=lambda _profile: ["test"]))
+        with mock.patch.object(assembly_worker.time, "monotonic", side_effect=[100.0, 100.25]), \
+                self.assertRaises(assembly_worker.DeterministicAssemblyFailure) as raised:
+            adapter.tests(Path("/worktree"), checked)
+        self.assertEqual(observed, [104.0])
+        self.assertEqual(raised.exception.code, "assembly_budget_exhausted")
+        self.assertEqual(raised.exception.state, "blocked")
+        self.assertEqual(raised.exception.tests[0]["durationMs"], 250)
+        runtime.sandbox.assert_not_called(); runtime.supervise.assert_not_called()
+
+    def test_dependency_time_is_removed_from_the_final_command_timeout(self):
+        runtime = types.SimpleNamespace(
+            coding_progress=types.SimpleNamespace(source_state=mock.Mock(return_value="same")),
+            install_dependencies=mock.Mock(), sandbox=mock.Mock(return_value=["sandboxed-test"]),
+            supervise=mock.Mock(return_value=subprocess.CompletedProcess([], 0)), worker_home=mock.Mock(),
+            git=mock.Mock(), push_and_open_pr=mock.Mock(), RECEIPTS=Path("/tmp"), WORKSPACES=Path("/tmp"),
+            REPOSITORY="example/project", BASE_BRANCH="main")
+        args = types.SimpleNamespace(graph_id=GRAPH, task_id="0946", timeout_seconds=5)
+        checked = {"verificationProfile": "agentx-dispatcher-tests/v1", "testTargets": ["test:a"],
+                   "finalVerificationBudget": {"workSeconds": 5, "testSeconds": 8}, "artifacts": [],
+                   "task": {"title": "Synthetic"}}
+        adapter = assembly_worker.RunnerAssemblyAdapter(runtime, args, mock.Mock(), checked, None, "/endpoint")
+        adapter._module = mock.Mock(return_value=types.SimpleNamespace(full_command=lambda _profile: ["test"]))
+        with mock.patch.object(assembly_worker.time, "monotonic",
+                               side_effect=[100.0, 101.0, 101.2, 103.0]):
+            tests = adapter.tests(Path("/worktree"), checked)
+        self.assertEqual(tests[0]["durationMs"], 3000)
+        self.assertEqual(runtime.install_dependencies.call_args.kwargs, {"deadline": 104.0})
+        self.assertEqual(runtime.sandbox.call_args.kwargs["timeout_seconds"], 2)
+        self.assertEqual(runtime.supervise.call_args.kwargs, {"deadline": 104.0})
 
     def test_publication_refuses_a_dirty_post_verification_tree(self):
         runtime = types.SimpleNamespace(

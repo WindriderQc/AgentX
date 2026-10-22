@@ -254,8 +254,10 @@ class DistributedRootCoordinatorTest(unittest.TestCase):
         return r, progress, ledger, task, args, endpoint, submissions
 
     @staticmethod
-    def manifest(*, ready=None, final=False, graph=None):
-        value = {'manifestFingerprint': 'f' * 64, 'finalReady': final}
+    def manifest(*, ready=None, final=False, graph=None, final_budget=None):
+        value = {'manifestFingerprint': 'f' * 64, 'finalReady': final,
+                 'finalVerificationBudget': (final_budget or {
+                     'workSeconds': 20, 'testSeconds': 20}) if final else None}
         if ready:
             value['readyAdoption'] = {'stepId': ready}
         if graph:
@@ -328,10 +330,12 @@ class DistributedRootCoordinatorTest(unittest.TestCase):
             self.assertEqual(len(submissions), 1)
             execute.assert_not_called()
 
-    def test_final_verification_waits_for_current_dag_budget_projection(self):
+    def test_final_verification_waits_for_the_exact_core_budget(self):
         with tempfile.TemporaryDirectory() as directory:
+            manifest = self.manifest(final=True)
+            manifest.pop('finalVerificationBudget')
             r, progress, ledger, task, args, endpoint, submissions = self.fixture(
-                directory, [self.manifest(final=True)])
+                directory, [manifest])
             with patch.object(distributed_root.coding_distributed_assembly, 'execute') as execute:
                 with self.assertRaises(distributed_root.DistributedDagPending):
                     distributed_root.execute(r, args, progress, endpoint, task, ledger)

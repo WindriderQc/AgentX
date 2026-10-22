@@ -50,6 +50,11 @@ function currentHead(dag) {
   return dag.assembly.adoptions.at(-1)?.adoptedCommit || dag.sourceCommit;
 }
 
+function finalVerificationBudget(dag) {
+  return Object.fromEntries(['workSeconds', 'testSeconds'].map(key => [key,
+    Math.max(0, dag.budget.limit[key] - dag.budget.spent[key] - dag.budget.reserved[key])]));
+}
+
 function usage(value = {}) {
   const result = {};
   for (const key of dagDomain.BUDGET_KEYS) {
@@ -301,7 +306,7 @@ function createPipelineCodeDagCoordinator(options = {}) {
       const step = dag.steps.find(candidate => candidate.id === nextId);
       const receipt = step?.state === 'verified' ? step.verifiedReceipt : null;
       const adoptedSteps = dag.assembly.adoptions.map(item => item.stepId);
-      const finalReady = !dag.assembly.completion && !receipt
+      const finalReady = !dag.assembly.completion && !dag.terminalFailure && !receipt
         && dag.steps.every(item => item.state === 'verified') && adoptedSteps.length === order.length;
       const codeStepGraph = await state.projection(pipelineId);
       const terminalFailure = dag.terminalFailure && { code: dag.terminalFailure.code,
@@ -311,6 +316,7 @@ function createPipelineCodeDagCoordinator(options = {}) {
         rootRequestId: dag.rootRequestId, sourceCommit: dag.sourceCommit, baseCommit: currentHead(dag),
         planFingerprint: dag.planFingerprint, ...runtime,
         testTargets: [...new Set(dag.steps.flatMap(item => item.testTargets))],
+        finalVerificationBudget: finalReady ? finalVerificationBudget(dag) : null,
         adoptionOrder: order, adoptedSteps, finalReady, codeStepGraph, terminalFailure: terminalFailure || null,
         readyAdoption: receipt ? { stepId: step.id, requestId: latestAttempt(step).requestId,
           commit: receipt.commit, parent: latestAttempt(step).baseCommit,
@@ -432,8 +438,10 @@ function createPipelineCodeDagCoordinator(options = {}) {
   }
 
   async function failAssembly(pipelineId, requestId, input) {
-    const finalCodes = new Set(['assembly_verification_failed', 'assembly_source_changed', 'assembly_publication_failed']);
-    if (!input || input.state !== 'failed' || typeof input.reason !== 'string'
+    const finalCodes = new Set(['assembly_verification_failed', 'assembly_source_changed',
+      'assembly_publication_failed', 'assembly_budget_exhausted']);
+    const expectedState = input?.code === 'assembly_budget_exhausted' ? 'blocked' : 'failed';
+    if (!input || input.state !== expectedState || typeof input.reason !== 'string'
       || typeof input.finishedAt !== 'string' || !['assembly_conflict', ...finalCodes].includes(input.code)) {
       fail('ASSEMBLY_FAILURE_INVALID', 'Assembly failure must identify one deterministic terminal outcome', 400);
     }

@@ -138,18 +138,15 @@ def _apply_usage(progress, root_usage, graph=None):
     return progress.distributed_usage
 
 
-def _assembly_timeout(progress, intent, graph):
-    if not isinstance(graph, dict):
-        raise DistributedDagPending('Final assembly awaits current aggregate DAG budget evidence')
-    spent = _graph_spent(graph)
-    budget = intent['budget']
-    remaining = min(budget['workSeconds'] - spent['workSeconds'],
-                    budget['testSeconds'] - spent['testSeconds'])
+def _assembly_timeout(progress, manifest):
+    budget = manifest.get('finalVerificationBudget') if isinstance(manifest, dict) else None
+    if (not isinstance(budget, dict) or set(budget) != {'workSeconds', 'testSeconds'}
+            or any(type(budget.get(field)) is not int or budget[field] < 0
+                   for field in ('workSeconds', 'testSeconds'))):
+        raise DistributedDagPending('Final assembly awaits its exact aggregate verification budget')
+    remaining = min(budget['workSeconds'], budget['testSeconds'])
     root_seconds = int(min(progress.hard_deadline, progress.queue_deadline) - progress.now())
-    seconds = min(remaining, root_seconds)
-    if seconds <= 0:
-        raise DistributedDagPending('No aggregate budget remains for final assembly verification')
-    return seconds
+    return max(0, min(remaining, root_seconds))
 
 
 def _completion(r, graph_id, assembly_request_id):
@@ -281,7 +278,7 @@ def execute(r, args, progress, endpoint, task, ledger):
                 _apply_usage(progress, intent['rootUsageBeforeDag'], graph)
                 return {'failure': terminal, 'assemblyRequestId': assembly_request_id,
                         'graph': graph, 'rootUsageBeforeDag': intent['rootUsageBeforeDag']}
-            timeout = (_assembly_timeout(progress, intent, raw.get('codeStepGraph'))
+            timeout = (_assembly_timeout(progress, raw)
                        if raw.get('finalReady') is True else max(1, int(progress.test_remaining())))
             assembly_args = type('AssemblyArgs', (), {
                 'task_id': args.task_id, 'request_id': assembly_request_id,

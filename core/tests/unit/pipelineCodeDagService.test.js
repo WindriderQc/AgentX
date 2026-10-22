@@ -203,6 +203,37 @@ test('publication failure requires passing final tests and final failures requir
       tests: [{ outcome: 'passed' }] } } });
 });
 
+test('terminal budget exhaustion accounts one bounded rounding overage without reopening assembly', () => {
+  let dag = createDag({ stepCount: 1, limit: budget(5, 4, 10, 1) });
+  dag = start(dag, 'step-01', 'executor-a', 'request-final-budget', budget(5, 4, 3, 1)).dag;
+  dag = settleVerified(dag, 'request-final-budget', 1).dag;
+  dag = service.recordAdoption(dag, {
+    expectedRevision: dag.revision,
+    stepId: 'step-01', sourceCommit: STEP_ONE_COMMIT, parentCommit: SOURCE,
+    adoptedCommit: ADOPT_ONE, artifactSha256: ARTIFACT_ONE, adoptedAt: T0,
+  }).dag;
+  const input = { expectedRevision: dag.revision, state: 'blocked', code: 'assembly_budget_exhausted',
+    reason: 'Final verification exhausted its aggregate work or test budget', stepId: null, finishedAt: T0,
+    tests: [{ target: 'test:one', profile: 'jest/cpu/v1', outcome: 'failed', durationMs: 1001 }],
+  };
+  const blocked = terminal.terminalize(dag, input);
+  expect(blocked).toMatchObject({ replayed: false, dag: {
+    state: 'blocked', assembly: { state: 'blocked', usage: { workSeconds: 2, testSeconds: 2 } },
+    budget: { limit: { workSeconds: 5, testSeconds: 4 },
+      spent: { workSeconds: 6, testSeconds: 5 } },
+    terminalFailure: { code: 'assembly_budget_exhausted', tests: [{ durationMs: 1001 }] },
+  } });
+  expect(project(blocked.dag)).toMatchObject({ state: 'blocked',
+    budget: { spent: { workSeconds: 6, testSeconds: 5 } },
+    assembly: { state: 'blocked', verification: { outcome: 'failed', durationMs: 1001 } },
+  });
+  expect(terminal.terminalize(blocked.dag, input)).toMatchObject({ replayed: true,
+    dag: { budget: { spent: { workSeconds: 6, testSeconds: 5 } } } });
+  expect(() => terminal.terminalize(dag, { ...input,
+    tests: [{ ...input.tests[0], durationMs: 2001 }] }))
+    .toThrow(expect.objectContaining({ code: 'ASSEMBLY_BUDGET_EXHAUSTED' }));
+});
+
 test('selects a deterministic maximal ready set with distinct executors', () => {
   const dag = createDag();
   expect(service.readySet(dag, ['executor-z', 'executor-a', 'executor-a']))

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 import re
 import tempfile
 import subprocess
+import time
 from datetime import datetime, timezone
 from urllib.parse import quote
 
@@ -29,9 +31,9 @@ class DistributedAssemblyError(RuntimeError):
 class DeterministicAssemblyFailure(DistributedAssemblyError):
     """A local final-assembly outcome that Core can terminalize without guessing."""
 
-    def __init__(self, code: str, reason: str, tests: list[dict]):
+    def __init__(self, code: str, reason: str, tests: list[dict], *, state: str = "failed"):
         super().__init__(reason)
-        self.code, self.reason, self.tests = code, reason, tests
+        self.code, self.reason, self.tests, self.state = code, reason, tests, state
 
 
 class PublicationOutcomeUnknown(DistributedAssemblyError):
@@ -91,8 +93,14 @@ def validate_manifest(value: object, *, task_id: str, request_id: str, graph_id:
     targets = value.get("testTargets") or graph.get("testTargets")
     profile = value.get("verificationProfile") or request.get("verificationProfile")
     final_ready = value.get("finalReady") is True
+    final_budget = value.get("finalVerificationBudget")
+    valid_final_budget = isinstance(final_budget, dict) \
+        and set(final_budget) == {"workSeconds", "testSeconds"} \
+        and all(type(final_budget[key]) is int and 0 <= final_budget[key] <= 604_800
+                for key in ("workSeconds", "testSeconds"))
     if not protocol.SHA1.fullmatch(str(base or "")) or not isinstance(artifacts, list) \
-            or final_ready and (not isinstance(targets, list) or not targets or not isinstance(profile, str)):
+            or final_ready and (not isinstance(targets, list) or not targets or not isinstance(profile, str)
+                                or not valid_final_budget):
         raise DistributedAssemblyError("assembly manifest lacks its exact artifacts, base, or final tests")
     seen = set()
     normalized = []
@@ -113,7 +121,8 @@ def validate_manifest(value: object, *, task_id: str, request_id: str, graph_id:
                            "artifactSize": row["sizeBytes"], "dependsOn": row.get("effectiveDependsOn", [])})
     return {**value, "task": task, "graph": graph, "request": request, "executor": executor,
             "baseCommit": base, "artifacts": normalized, "finalReady": final_ready,
-            "testTargets": targets or [], "verificationProfile": profile}
+            "testTargets": targets or [], "verificationProfile": profile,
+            "finalVerificationBudget": final_budget if valid_final_budget else None}
 
 
 class AssemblyWorker:
@@ -128,8 +137,9 @@ class AssemblyWorker:
         return {**prior["completion"], "replayed": True}
 
     def _fail(self, path: Path, prior: dict, manifest: dict, *, code: str, reason: str,
-              tests: list[dict] | None = None, step_id: str | None = None) -> dict:
-        failure = {"state": "failed", "code": code, "reason": reason[:500],
+              tests: list[dict] | None = None, step_id: str | None = None,
+              state: str = "failed") -> dict:
+        failure = {"state": state, "code": code, "reason": reason[:500],
                    "finishedAt": self.adapter.now()}
         if step_id is not None:
             failure["stepId"] = step_id
@@ -215,15 +225,35 @@ class AssemblyWorker:
             tests = self.adapter.tests(workspace, manifest)
         except DeterministicAssemblyFailure as failure:
             return self._fail(path, prior, manifest, code=failure.code,
-                              reason=failure.reason, tests=failure.tests)
-        if not tests or any(item.get("outcome") != "passed" for item in tests):
+                              reason=failure.reason, tests=failure.tests, state=failure.state)
+        required_targets = set(manifest["testTargets"])
+        def invalid_test(item):
+            return (not isinstance(item, dict)
+                or set(item) != {"target", "profile", "outcome", "durationMs"}
+                or not isinstance(item.get("target"), str) or not item["target"].strip()
+                or len(item["target"].strip()) > 512
+                or not isinstance(item.get("profile"), str) or not item["profile"].strip()
+                or len(item["profile"].strip()) > 160
+                or item.get("outcome") not in {"passed", "failed"}
+                or type(item.get("durationMs")) is not int
+                or not 0 <= item["durationMs"] <= 604_800_000)
+        if (not isinstance(tests, list) or len(tests) != len(required_targets)
+                or {item.get("target") for item in tests if isinstance(item, dict)} != required_targets
+                or any(invalid_test(item) for item in tests)):
+            raise DistributedAssemblyError("final verification returned no exact bounded test receipts")
+        duration_seconds = (max(item.get("durationMs", 0) for item in tests) + 999) // 1000
+        final_budget = manifest["finalVerificationBudget"]
+        if duration_seconds > min(final_budget["workSeconds"], final_budget["testSeconds"]):
+            return self._fail(path, prior, manifest, code="assembly_budget_exhausted", state="blocked",
+                reason="Final verification exhausted its aggregate work or test budget", tests=tests)
+        if any(item.get("outcome") != "passed" for item in tests):
             return self._fail(path, prior, manifest, code="assembly_verification_failed",
                 reason="Independent final verification did not pass", tests=tests)
         try:
             self.adapter.validate_publication(workspace, manifest, tests)
         except DeterministicAssemblyFailure as failure:
             return self._fail(path, prior, manifest, code=failure.code,
-                              reason=failure.reason, tests=failure.tests or tests)
+                              reason=failure.reason, tests=failure.tests or tests, state=failure.state)
         head = self.adapter.head(workspace)
         publication_id = f"{request_id}:publish"
         completion = {"headCommit": head, "tests": tests, "completedAt": self.adapter.now()}
@@ -310,21 +340,58 @@ class RunnerAssemblyAdapter:
 
     def tests(self, workspace, manifest):
         verification = self._module("coding_verification")
-        started = __import__("time").monotonic()
-        source_before = self.r.coding_progress.source_state(workspace)
-        self.r.install_dependencies(workspace, self.progress)
-        if self.r.coding_progress.source_state(workspace) != source_before:
-            duration = max(0, int((__import__("time").monotonic() - started) * 1000))
-            tests = [{"target": target, "profile": manifest["verificationProfile"],
-                      "outcome": "failed", "durationMs": duration}
-                     for target in manifest["testTargets"]]
+        started = time.monotonic()
+        final_budget = manifest["finalVerificationBudget"]
+        budget_seconds = min(final_budget["workSeconds"], final_budget["testSeconds"],
+                             max(0, self.args.timeout_seconds))
+        settlement_seconds = 1
+
+        def receipts(outcome):
+            duration = max(0, math.ceil((time.monotonic() - started) * 1000))
+            return [{"target": target, "profile": manifest["verificationProfile"],
+                     "outcome": outcome, "durationMs": duration}
+                    for target in manifest["testTargets"]]
+
+        def exhausted(reason):
+            raise DeterministicAssemblyFailure("assembly_budget_exhausted", reason,
+                receipts("failed"), state="blocked")
+
+        if budget_seconds <= settlement_seconds:
+            exhausted("No bounded aggregate budget remains for final verification")
+        deadline = started + budget_seconds - settlement_seconds
+        deadline_errors = (getattr(self.r, "CodingDeadlineExceeded", TimeoutError),
+                           getattr(self.r.coding_progress, "SourceDeadlineExceeded", TimeoutError))
+
+        def source_state():
+            try:
+                return self.r.coding_progress.source_state(workspace, deadline=deadline)
+            except deadline_errors:
+                exhausted("Source verification exhausted the final verification budget")
+
+        source_before = source_state()
+        try:
+            self.r.install_dependencies(workspace, self.progress, deadline=deadline)
+        except deadline_errors:
+            exhausted("Dependency preparation exhausted the final verification budget")
+        if time.monotonic() >= deadline:
+            exhausted("Dependency preparation exhausted the final verification budget")
+        if source_state() != source_before:
+            tests = receipts("failed")
             raise DeterministicAssemblyFailure("assembly_source_changed",
                 "Dependency preparation changed the final assembly source", tests)
         command = verification.full_command(manifest["verificationProfile"])
-        result = self.r.supervise(self.r.sandbox(workspace, self.r.worker_home(workspace), command,
-            network=False, timeout_seconds=max(1, self.args.timeout_seconds)), self.progress)
-        duration = max(0, int((__import__("time").monotonic() - started) * 1000))
-        source_changed = self.r.coding_progress.source_state(workspace) != source_before
+        command_seconds = int(deadline - time.monotonic())
+        if command_seconds <= 0:
+            exhausted("Dependency preparation left no bounded final test budget")
+        try:
+            result = self.r.supervise(self.r.sandbox(workspace, self.r.worker_home(workspace), command,
+                network=False, timeout_seconds=command_seconds), self.progress, deadline=deadline)
+        except deadline_errors:
+            exhausted("Final verification exhausted its aggregate work or test budget")
+        source_changed = source_state() != source_before
+        duration = max(0, math.ceil((time.monotonic() - started) * 1000))
+        if (duration + 999) // 1000 > budget_seconds:
+            exhausted("Final verification exhausted its aggregate work or test budget")
         tests = [{"target": target, "profile": manifest["verificationProfile"],
                   "outcome": "passed" if result.returncode == 0 and not source_changed else "failed",
                   "durationMs": duration} for target in manifest["testTargets"]]

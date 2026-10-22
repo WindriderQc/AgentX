@@ -50,7 +50,7 @@ class DependencyPreparationTest(unittest.TestCase):
         self.addCleanup(patch.stop)
         return value
 
-    def observe_runtime(self, workspace):
+    def observe_runtime(self, workspace, **_kwargs):
         self.assertEqual(workspace, self.workspace)
         return copy.deepcopy(self.identity)
 
@@ -59,7 +59,7 @@ class DependencyPreparationTest(unittest.TestCase):
         self.assertEqual(home, self.home)
         return command
 
-    def install(self, command, progress=None):
+    def install(self, command, progress=None, **_kwargs):
         if self.install_effect:
             self.install_effect()
         return subprocess.CompletedProcess(command, self.exit_code, stdout="fixture", stderr="")
@@ -259,6 +259,22 @@ class DependencyPreparationTest(unittest.TestCase):
         self.assertIn("/opt/node/bin/node /opt/prepareMongo.js", script)
         self.assertNotIn("then npm ", script)
         self.assertNotIn("&& node ", script)
+
+    def test_caller_deadline_bounds_dependency_install_and_both_runtime_probes(self):
+        deadline = runner.time.monotonic() + 20
+        runner.install_dependencies(self.workspace, deadline=deadline)
+        self.assertEqual(self.identity_mock.call_count, 2)
+        self.assertTrue(all(call.kwargs == {"deadline": deadline}
+                            for call in self.identity_mock.call_args_list))
+        self.assertEqual(self.supervise_mock.call_args.kwargs, {"deadline": deadline})
+        self.assertLessEqual(self.sandbox_mock.call_args.kwargs["timeout_seconds"], 20)
+
+    def test_expired_runtime_validation_deadline_keeps_its_budget_identity(self):
+        if self.runtime_impl is None:
+            self.skipTest("The baseline does not expose the runtime probe API")
+        with mock.patch.object(runner, "runtime_identity", self.runtime_impl), \
+                self.assertRaises(runner.CodingDeadlineExceeded):
+            runner.runtime_identity(self.workspace, deadline=runner.time.monotonic() - 1)
 
 
 if __name__ == "__main__":

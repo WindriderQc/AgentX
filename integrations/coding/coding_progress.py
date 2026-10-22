@@ -62,18 +62,39 @@ def session_logs(home: Path):
     return [path for _, path in selected.values()]
 
 
-def git(workspace: Path, *args: str) -> str:
+class SourceDeadlineExceeded(RuntimeError):
+    """Source hashing exhausted its caller-owned monotonic deadline."""
+
+
+def check_source_deadline(deadline) -> float:
+    if deadline is None:
+        return 30
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise SourceDeadlineExceeded("Source observation deadline exhausted")
+    return min(30, remaining)
+
+
+def git(workspace: Path, *args: str, deadline=None) -> str:
     env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"}
-    return subprocess.run(["git", "-C", str(workspace), "-c", "core.hooksPath=/dev/null",
-                           "-c", "core.fsmonitor=false", *args], env=env, capture_output=True,
-                          text=True, check=True, timeout=30).stdout
+    timeout = check_source_deadline(deadline)
+    try:
+        return subprocess.run(["git", "-C", str(workspace), "-c", "core.hooksPath=/dev/null",
+                               "-c", "core.fsmonitor=false", *args], env=env, capture_output=True,
+                              text=True, check=True, timeout=timeout).stdout
+    except subprocess.TimeoutExpired as error:
+        if deadline is not None and (timeout < 30 or time.monotonic() >= deadline):
+            raise SourceDeadlineExceeded("Git source observation exhausted its deadline") from error
+        raise
 
 
-def source_state(workspace: Path) -> str:
+def source_state(workspace: Path, *, deadline=None) -> str:
     """Hash source content, ignoring mtimes, generated caches and links outside the clone."""
-    paths = git(workspace, "ls-files", "-z", "--cached", "--others", "--exclude-standard").split("\0")
+    paths = git(workspace, "ls-files", "-z", "--cached", "--others", "--exclude-standard",
+                deadline=deadline).split("\0")
     digest = hashlib.sha256()
     for name in sorted(set(paths)):
+        check_source_deadline(deadline)
         if not name or artifact(name):
             continue
         path = workspace / name
@@ -81,7 +102,12 @@ def source_state(workspace: Path) -> str:
             info = path.lstat()
             if stat.S_ISREG(info.st_mode) and info.st_size <= 32 * 1024 * 1024:
                 kind = b"regular-executable" if info.st_mode & stat.S_IXUSR else b"regular"
-                content = kind + b"\0" + hashlib.sha256(path.read_bytes()).digest()
+                file_digest = hashlib.sha256()
+                with path.open("rb") as stream:
+                    for block in iter(lambda: stream.read(1024 * 1024), b""):
+                        check_source_deadline(deadline)
+                        file_digest.update(block)
+                content = kind + b"\0" + file_digest.digest()
             elif stat.S_ISLNK(info.st_mode):
                 content = b"symlink\0" + os.readlink(path).encode()
             else:

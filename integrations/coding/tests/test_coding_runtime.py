@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -102,6 +103,11 @@ class RuntimeIdentityTest(unittest.TestCase):
             return self.observation
         with mock.patch.object(self, "probe", side_effect=probe), self.assertRaises(runtime.RuntimeChanged):
             self.identify()
+
+    def test_runtime_hashing_honors_the_caller_owned_deadline(self):
+        with self.assertRaises(runtime.RuntimeDeadlineExceeded):
+            runtime.identity(self.root, self.node, self.probe, deadline=time.monotonic() - 1)
+        self.probe.assert_not_called()
 
 
 if __name__ == "__main__":

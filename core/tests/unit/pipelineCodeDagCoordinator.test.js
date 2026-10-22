@@ -265,6 +265,8 @@ test('dispatches a maximal two-host wave and starts the dependency wave from the
   await f.verify(coordinator, 'step-03', 'f'.repeat(40), '3');
   await coordinator.recordAdoption('0946', assemblyId, { stepId: 'step-03', sourceCommit: 'f'.repeat(40),
     parentCommit: 'e'.repeat(40), adoptedCommit: '7'.repeat(40), artifactSha256: '3'.repeat(64), adoptedAt: T0 });
+  expect(await coordinator.manifest('0946', assemblyId)).toMatchObject({ finalReady: true,
+    finalVerificationBudget: { workSeconds: 870, testSeconds: 285 } });
   expect(await coordinator.manifest('0946', assemblyId)).toMatchObject({
     finalReady: true, readyAdoption: null, adoptedSteps: ['step-01', 'step-02', 'step-03'],
   });
@@ -413,6 +415,28 @@ test('records final verification failure with duration and releases the graph fo
     terminalFailure: { code: 'assembly_verification_failed' },
     codeStepGraph: { graphId: ROOT },
   });
+});
+
+test('accepts a bounded final budget exhaustion receipt before publication', async () => {
+  const f = fixture(); const coordinator = f.create();
+  await coordinator.tick('0946');
+  await f.verify(coordinator, 'step-01', 'b'.repeat(40), '1');
+  await f.verify(coordinator, 'step-02', 'c'.repeat(40), '2');
+  const assemblyId = deterministicUuid(ROOT, 'assembly');
+  await coordinator.recordAdoption('0946', assemblyId, { stepId: 'step-01', sourceCommit: 'b'.repeat(40),
+    parentCommit: SOURCE, adoptedCommit: 'd'.repeat(40), artifactSha256: '1'.repeat(64), adoptedAt: T0 });
+  await coordinator.recordAdoption('0946', assemblyId, { stepId: 'step-02', sourceCommit: 'c'.repeat(40),
+    parentCommit: 'd'.repeat(40), adoptedCommit: 'e'.repeat(40), artifactSha256: '2'.repeat(64), adoptedAt: T0 });
+  await coordinator.tick('0946');
+  await f.verify(coordinator, 'step-03', 'f'.repeat(40), '3');
+  await coordinator.recordAdoption('0946', assemblyId, { stepId: 'step-03', sourceCommit: 'f'.repeat(40),
+    parentCommit: 'e'.repeat(40), adoptedCommit: '7'.repeat(40), artifactSha256: '3'.repeat(64), adoptedAt: T0 });
+  const tests = ['test:step-01', 'test:step-02', 'test:step-03'].map(target => ({ target,
+    profile: 'agentx-core-runner-tests/v1', outcome: 'failed', durationMs: 501 }));
+  await expect(coordinator.failAssembly('0946', assemblyId, { state: 'blocked',
+    code: 'assembly_budget_exhausted', reason: 'Final verification exhausted its aggregate budget',
+    finishedAt: T0, tests })).resolves.toMatchObject({ dag: { state: 'blocked',
+    terminalFailure: { code: 'assembly_budget_exhausted' } } });
 });
 
 test('stop fans out only exact unsettled child requests', async () => {

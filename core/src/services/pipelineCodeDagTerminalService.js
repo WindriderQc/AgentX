@@ -1,13 +1,14 @@
 'use strict';
 
 const { fingerprint } = require('../../../shared/codeStepDagContract');
-const { MAX_ATTEMPTS, assertState } = require('./pipelineCodeDagService');
+const { ASSEMBLY_SETTLEMENT_OVERAGE_SECONDS, MAX_ATTEMPTS, assertState } = require('./pipelineCodeDagService');
 
 const TERMINAL_STATES = new Set(['failed', 'blocked']);
 const FINAL_ASSEMBLY_CODES = new Set([
   'assembly_verification_failed',
   'assembly_source_changed',
   'assembly_publication_failed',
+  'assembly_budget_exhausted',
 ]);
 const CODE = /^[a-z][a-z0-9_]{0,119}$/;
 const STEP = /^step-(?:0[1-9]|1[0-6])$/;
@@ -110,7 +111,8 @@ function terminalize(dag, input) {
     const requiredTargets = new Set(dag.steps.flatMap(step => step.testTargets));
     const publicationFailure = terminal.code === 'assembly_publication_failed';
     const verificationFailure = terminal.code === 'assembly_verification_failed';
-    if (terminal.state !== 'failed' || terminal.stepId !== null
+    const budgetFailure = terminal.code === 'assembly_budget_exhausted';
+    if (terminal.state !== (budgetFailure ? 'blocked' : 'failed') || terminal.stepId !== null
       || dag.steps.some(step => step.state !== 'verified')
       || dag.assembly.adoptions.length !== order.length
       || !terminal.tests || covered.size !== requiredTargets.size
@@ -128,7 +130,12 @@ function terminalize(dag, input) {
   const next = clone(dag);
   next.assembly.usage ||= zeroUsage();
   for (const key of Object.keys(assemblyUsage)) {
-    if (next.budget.spent[key] + next.budget.reserved[key] + assemblyUsage[key] > next.budget.limit[key]) {
+    const overage = next.budget.spent[key] + next.budget.reserved[key]
+      + assemblyUsage[key] - next.budget.limit[key];
+    const boundedSettlementOverage = terminal.code === 'assembly_budget_exhausted'
+      && ['workSeconds', 'testSeconds'].includes(key)
+      && overage <= ASSEMBLY_SETTLEMENT_OVERAGE_SECONDS;
+    if (overage > 0 && !boundedSettlementOverage) {
       fail('ASSEMBLY_BUDGET_EXHAUSTED', `final assembly ${key} usage exceeds the aggregate limit`);
     }
     next.budget.spent[key] += assemblyUsage[key];

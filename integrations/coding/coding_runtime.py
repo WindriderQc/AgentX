@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import time
 
 
 class RuntimeUnavailable(RuntimeError):
@@ -17,19 +18,30 @@ class RuntimeChanged(RuntimeError):
     """The distribution changed while dependency preparation was running."""
 
 
-def file_hash(path: Path) -> str:
+class RuntimeDeadlineExceeded(RuntimeError):
+    """Runtime hashing or validation exhausted its caller-owned deadline."""
+
+
+def check_deadline(deadline) -> None:
+    if deadline is not None and time.monotonic() >= deadline:
+        raise RuntimeDeadlineExceeded("Runtime validation deadline exhausted")
+
+
+def file_hash(path: Path, *, deadline=None) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
+            check_deadline(deadline)
             digest.update(block)
     return digest.hexdigest()
 
 
-def bundle_hash(directory: Path, root: Path) -> str:
+def bundle_hash(directory: Path, root: Path, *, deadline=None) -> str:
     """Include npm's dependencies and symlink targets inside the mounted root."""
     digest = hashlib.sha256()
 
     def visit(path: Path, name: str, parents: frozenset[Path]):
+        check_deadline(deadline)
         actual = path.resolve(strict=True)
         actual.relative_to(root)
         if actual in parents:
@@ -47,13 +59,14 @@ def bundle_hash(directory: Path, root: Path) -> str:
     return digest.hexdigest()
 
 
-def identity(root: Path, selected_node: Path, probe) -> dict:
+def identity(root: Path, selected_node: Path, probe, *, deadline=None) -> dict:
     """Validate artifacts and receive bounded, network-free Node/npm probes.
 
     The caller owns sandboxing. No host path enters the cache identity, so
     relocating identical distribution bytes preserves the preparation key.
     """
     try:
+        check_deadline(deadline)
         root = root.resolve(strict=True)
         node = (root / "bin/node").resolve(strict=True)
         if selected_node.resolve(strict=True) != node or not node.is_file() or not os.access(node, os.X_OK):
@@ -69,7 +82,8 @@ def identity(root: Path, selected_node: Path, probe) -> dict:
             raise RuntimeUnavailable("Invalid npm distribution manifest")
         if (npm_root / package.get("bin", {}).get("npm", "")).resolve(strict=True) != npm_cli:
             raise RuntimeUnavailable("npm CLI does not match its distribution manifest")
-        artifacts = {"nodeSha256": file_hash(node), "npmSha256": bundle_hash(npm_root, root)}
+        artifacts = {"nodeSha256": file_hash(node, deadline=deadline),
+                     "npmSha256": bundle_hash(npm_root, root, deadline=deadline)}
         npm_relative = npm_cli.relative_to(root).as_posix()
         observed = probe(npm_relative)
         if not isinstance(observed, dict) or set(observed) != {"nodeVersion", "modules", "platform", "arch", "npmVersion"}:
@@ -80,10 +94,11 @@ def identity(root: Path, selected_node: Path, probe) -> dict:
             raise RuntimeUnavailable("Invalid Node version or ABI")
         if observed["npmVersion"] != package["version"]:
             raise RuntimeUnavailable("npm probe does not match its distribution")
-        if artifacts != {"nodeSha256": file_hash(node), "npmSha256": bundle_hash(npm_root, root)}:
+        if artifacts != {"nodeSha256": file_hash(node, deadline=deadline),
+                         "npmSha256": bundle_hash(npm_root, root, deadline=deadline)}:
             raise RuntimeChanged("Runtime changed during validation")
         return {**observed, **artifacts, "npmCli": npm_relative}
-    except (RuntimeUnavailable, RuntimeChanged):
+    except (RuntimeUnavailable, RuntimeChanged, RuntimeDeadlineExceeded):
         raise
     except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError) as error:
         raise RuntimeUnavailable("Selected Node/npm distribution unavailable") from error

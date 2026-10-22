@@ -54,6 +54,10 @@ INSTALL_TIMEOUT_SECONDS = 1800
 CLONE_TIMEOUT_SECONDS = 1800
 REPORT_SETTLE_GRACE_SECONDS = 30
 
+
+class CodingDeadlineExceeded(RuntimeError):
+    """A runner-owned subprocess exhausted its caller's monotonic deadline."""
+
 _spec = importlib.util.spec_from_file_location("model_relay", HERE / "model_relay.py")
 model_relay = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(model_relay)
@@ -190,24 +194,51 @@ def installed_state(workspace: Path) -> str:
     return ""
 
 
-def runtime_identity(workspace: Path) -> dict:
+def _deadline_timeout(deadline, maximum: float) -> float:
+    if deadline is None:
+        return maximum
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise CodingDeadlineExceeded("Runner-owned deadline exhausted")
+    return min(maximum, remaining)
+
+
+def runtime_identity(workspace: Path, *, deadline=None) -> dict:
     def probe(npm_cli):
         home = worker_home(workspace)
         script = 'console.log(JSON.stringify({nodeVersion:process.version,modules:process.versions.modules,platform:process.platform,arch:process.arch}))'
         commands = [["/opt/node/bin/node", "-e", script],
                     ["/opt/node/bin/node", "/opt/node/" + npm_cli, "--version"]]
+        deadline_limited = False
         try:
             outputs = []
             for command in commands:
-                result = subprocess.run(sandbox(workspace, home, command, network=False, timeout_seconds=10),
-                                        check=True, capture_output=True, text=True, timeout=45)
+                timeout = _deadline_timeout(deadline, 45)
+                deadline_limited = deadline is not None and timeout < 45
+                sandbox_seconds = max(1, min(10, int(timeout)))
+                result = subprocess.run(sandbox(workspace, home, command, network=False,
+                                                timeout_seconds=sandbox_seconds),
+                                        check=True, capture_output=True, text=True, timeout=timeout)
                 outputs.append(result.stdout.strip())
             observed = json.loads(outputs[0])
             observed["npmVersion"] = outputs[1]
             return observed
+        except CodingDeadlineExceeded as error:
+            raise coding_runtime.RuntimeDeadlineExceeded(
+                "Runtime probe exhausted its runner-owned deadline") from error
+        except subprocess.TimeoutExpired as error:
+            if deadline_limited or deadline is not None and time.monotonic() >= deadline:
+                raise coding_runtime.RuntimeDeadlineExceeded(
+                    "Runtime probe exhausted its runner-owned deadline") from error
+            raise coding_runtime.RuntimeUnavailable("Network-free runtime probe failed") from error
         except (OSError, ValueError, TypeError, subprocess.SubprocessError) as error:
             raise coding_runtime.RuntimeUnavailable("Network-free runtime probe failed") from error
-    return coding_runtime.identity(NODE_ROOT, NODE_BINARY, probe)
+    try:
+        if deadline is not None:
+            return coding_runtime.identity(NODE_ROOT, NODE_BINARY, probe, deadline=deadline)
+        return coding_runtime.identity(NODE_ROOT, NODE_BINARY, probe)
+    except coding_runtime.RuntimeDeadlineExceeded as error:
+        raise CodingDeadlineExceeded("Runtime validation exhausted its runner-owned deadline") from error
 
 
 def preparation_state(workspace: Path, runtime: dict) -> str:
@@ -215,7 +246,7 @@ def preparation_state(workspace: Path, runtime: dict) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def install_dependencies(workspace: Path, progress=None) -> None:
+def install_dependencies(workspace: Path, progress=None, *, deadline=None) -> None:
     """Install what the package files ask for, with network and without the worker.
 
     Package install scripts are skipped, and the test database is prepared with
@@ -223,7 +254,7 @@ def install_dependencies(workspace: Path, progress=None) -> None:
     is open. A changed package file reaches this point only when the owner hands
     the task back, which is the approval.
     """
-    runtime = runtime_identity(workspace)
+    runtime = runtime_identity(workspace, deadline=deadline) if deadline is not None else runtime_identity(workspace)
     state = preparation_state(workspace, runtime)
     if state == installed_state(workspace):
         return
@@ -242,12 +273,14 @@ def install_dependencies(workspace: Path, progress=None) -> None:
         for name in PACKAGE_DIRS)
     if progress:
         progress.set_stage("dependencies")
+    install_timeout = max(1, int(_deadline_timeout(deadline, INSTALL_TIMEOUT_SECONDS)))
     command = sandbox(workspace, home, ["bash", "-c", script], network=True,
-                      timeout_seconds=INSTALL_TIMEOUT_SECONDS)
-    run = supervise(command, progress)
+                      timeout_seconds=install_timeout)
+    run = supervise(command, progress, deadline=deadline) if deadline is not None else supervise(command, progress)
     if run.returncode:
         raise subprocess.CalledProcessError(run.returncode, command, output=run.stdout, stderr=run.stderr)
-    if runtime_identity(workspace) != runtime:
+    observed = runtime_identity(workspace, deadline=deadline) if deadline is not None else runtime_identity(workspace)
+    if observed != runtime:
         raise coding_runtime.RuntimeChanged("Runtime changed during dependency preparation")
     # npm may have finalized a lock. Publish the final key atomically, after success.
     value = {"schemaVersion": 2, "fingerprint": preparation_state(workspace, runtime)}
@@ -268,7 +301,8 @@ def tail(path: Path, size: int = 6000) -> str:
         return stream.read().decode(errors="replace")
 
 
-def supervise(command: list[str], progress=None, home=None, workspace=None, on_stop=None) -> subprocess.CompletedProcess:
+def supervise(command: list[str], progress=None, home=None, workspace=None, on_stop=None,
+              deadline=None) -> subprocess.CompletedProcess:
     """Poll the child while retaining raw stdout/stderr outside the repository."""
     if progress and progress.path:
         output_root = progress.path.parent / f"{progress.request_id}.output"
@@ -280,31 +314,48 @@ def supervise(command: list[str], progress=None, home=None, workspace=None, on_s
     stdout, stderr = directory / "stdout", directory / "stderr"
     with stdout.open("wb") as out, stderr.open("wb") as err:
         process = subprocess.Popen(command, stdout=out, stderr=err, start_new_session=True)
+        deadline_exhausted = False
         try:
             while process.poll() is None:
+                if deadline is not None and time.monotonic() >= deadline:
+                    deadline_exhausted = True
+                    terminate(process, grace_seconds=0)
+                    break
                 if progress and progress.tick(home, workspace):
                     if on_stop:
                         on_stop()
                     terminate(process)
                     break
-                time.sleep(2)
+                delay = 2 if deadline is None else min(2, max(0, deadline - time.monotonic()))
+                if delay:
+                    time.sleep(delay)
         finally:
             if process.poll() is None:
                 if on_stop:
                     on_stop()
                 terminate(process)
+    if deadline_exhausted:
+        raise CodingDeadlineExceeded("Supervised command exhausted its runner-owned deadline")
     if progress and home and workspace:
         progress.observe(home, workspace)
     return subprocess.CompletedProcess(command, process.wait(), tail(stdout), tail(stderr))
 
 
-def terminate(process):
+def terminate(process, grace_seconds=30):
     try:
         os.killpg(process.pid, signal.SIGTERM)
     except ProcessLookupError:
         return
+    if grace_seconds <= 0:
+        if process.poll() is None:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        process.wait()
+        return
     try:
-        process.wait(timeout=30)
+        process.wait(timeout=grace_seconds)
     except subprocess.TimeoutExpired:
         os.killpg(process.pid, signal.SIGKILL)
         process.wait()

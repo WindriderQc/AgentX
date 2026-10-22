@@ -129,7 +129,12 @@ The distributed engine keeps these rules:
   conflicts, failed final verification, verification source mutation and
   publication refusals proven before an external effect produce a durable
   terminal receipt instead of leaving the graph pending. Final-test duration
-  is charged once to the graph's aggregate work and test budgets.
+  is charged once to the graph's aggregate work and test budgets. Core gives
+  the assembler the exact remaining work and test reservation; dependency
+  preparation, the final command and its termination overhead share that one
+  deadline. Exhaustion terminalizes before publication with measured usage.
+  Core records the exact rounded usage and accepts only the budget terminal's
+  bounded one-second settlement overage, so rounding cannot strand the graph.
 - Publication happens once from the assembled branch. Sub-workers never push,
   open pull requests, merge or deploy.
 - Lost launch or model replies retain the original work-unit identity. They do
