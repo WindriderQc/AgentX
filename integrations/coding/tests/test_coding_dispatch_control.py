@@ -248,6 +248,15 @@ class ControlTest(unittest.TestCase):
             control.main()
         self.assertEqual(json.loads(printed.call_args.args[0])["code"], "CODING_DISPATCH_INVALID_REQUEST")
 
+    def test_waiting_cancellation_records_the_exact_non_autonomous_request(self):
+        with mock.patch.object(sys, "argv", ["control", "cancel-waiting", "0001", KEY]), \
+                mock.patch("builtins.print") as printed:
+            control.main()
+        self.assertTrue(json.loads(printed.call_args.args[0])["data"]["cancelledBeforeLaunch"])
+        receipt = control.read_receipt(KEY)
+        self.assertEqual((receipt["pipelineId"], receipt["requestId"]), ("0001", KEY))
+        self.assertFalse(receipt["autonomous"])
+
     def test_stop_is_cooperative_idempotent_and_does_not_signal_a_shared_unit(self):
         control.save_receipt({"requestId": KEY, "pipelineId": "0001", "phase": "accepted"})
         with mock.patch.object(control, "unit_active", return_value=True), mock.patch.object(control.subprocess, "run") as host:

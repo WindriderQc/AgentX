@@ -1,6 +1,7 @@
 'use strict';
 
 const { overlaps } = require('./runtimePhysicalResources');
+const { fencesHost } = require('./runtimeDeployGate');
 const { hostUrlKey } = require('../../../shared/ollamaHostConfig');
 const { describeFailure } = require('../../../shared/failureDiagnostics');
 
@@ -37,7 +38,7 @@ function holderOf(type, item) {
 function inferenceConflict(state, request, now) {
   const failure = (cause, retryable = false, holder = null) => ({ cause, retryable, safeToRetry: true,
     retryAfterMs: retryable ? 2000 : null, holder, diagnostic: describeFailure(cause) });
-  if (state?.maintenance) return failure(state.maintenance.state === 'UNKNOWN'
+  if (state?.maintenance && fencesHost(state.maintenance, request.host, request.resourceIds || [])) return failure(state.maintenance.state === 'UNKNOWN'
     ? 'maintenance_recovery_required' : 'maintenance_active', state.maintenance.state !== 'UNKNOWN',
   holderOf('maintenance', state.maintenance));
   const inferences = (state?.inferences || []).filter(item => overlaps(item, request.host, request.resourceIds || []));

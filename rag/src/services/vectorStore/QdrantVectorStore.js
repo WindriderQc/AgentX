@@ -5,6 +5,7 @@
 const VectorStoreAdapter = require('./VectorStoreAdapter');
 const { distinctSources, sortDocuments } = require('./documentListing');
 const fetchWithTimeout = require('../../utils/fetchWithTimeout');
+const wellFormedJson = require('./wellFormedJson');
 const {
   SERVICE_OUTBOUND_OPERATION_IDS,
   SERVICE_OUTBOUND_TIMEOUTS,
@@ -100,7 +101,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
     const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: wellFormedJson(body)
     }, QDRANT_TIMEOUT, this._outboundContext(
       SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_COLLECTION_CREATE
     ));
@@ -212,7 +213,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
         const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/points?wait=true`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ points: batch })
+          body: wellFormedJson({ points: batch })
         }, QDRANT_TIMEOUT, this._outboundContext(
           SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_UPSERT
         ));
@@ -258,7 +259,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
     const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/points/search`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: wellFormedJson(body)
     }, QDRANT_TIMEOUT, this._outboundContext(
       SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_SEARCH
     ));
@@ -404,7 +405,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
     const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/points/delete?wait=true`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filter })
+      body: wellFormedJson({ filter })
     }, QDRANT_TIMEOUT, this._outboundContext(
       SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_DELETE
     ));
@@ -429,7 +430,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
       const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/points/scroll`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: wellFormedJson(body)
       }, QDRANT_TIMEOUT, this._outboundContext(
         SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_SCROLL
       ));
@@ -542,7 +543,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
     const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/index?wait=true`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ field_name: fieldName, field_schema: fieldSchema })
+      body: wellFormedJson({ field_name: fieldName, field_schema: fieldSchema })
     }, QDRANT_TIMEOUT, this._outboundContext(
       SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_PAYLOAD_INDEX_CREATE
     ));
@@ -602,7 +603,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: wellFormedJson({
           payload: { originalText: text },
           points: [point.id]
         })

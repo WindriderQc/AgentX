@@ -59,6 +59,7 @@ function validateEnvironment() {
   if (dispatcherRoot && (!/^\/[a-z0-9._/-]+$/i.test(dispatcherRoot) || dispatcherRoot.includes('/../'))) {
     throw new Error('CODING_DISPATCHER_REMOTE_ROOT is invalid');
   }
+  require('./coding-executor-registry').fromEnvironment();
   const context = String(process.env.HERMES_AUTHORITY_CONTEXT || '').trim();
   if (context && (!/^\d+$/.test(context) || Number(context) < 1)) {
     throw new Error('HERMES_AUTHORITY_CONTEXT is invalid');

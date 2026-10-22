@@ -206,13 +206,16 @@ async function launchWorker(job) {
       budget: { modelCalls: state.budget.modelCalls, workSeconds: state.budget.workSeconds },
       ...(state.allowCloudEscalation && { allowCloudEscalation: true }) } });
   const status = await control.status({});
-  const candidate = (status.candidates || []).find(row => row.pipelineId === task.pipelineId);
+  const candidate = (status.candidates || []).find(row => row.pipelineId === task.pipelineId
+    && (!Array.isArray(row.executorProfiles) || row.executorProfiles.includes('report')));
   if (!candidate) throw fail('The coding runner does not offer this task now', 'REPORT_RESUME_NOT_CANDIDATE', 409);
   const marked = await Task.findOneAndUpdate({ _id: task._id, 'reportResume.queueRequestId': job.id, 'reportResume.launch': null },
-    { $set: { 'reportResume.launch': { requestId, at: new Date().toISOString(), expectedAttemptCount: candidate.expectedAttemptCount },
+    { $set: { 'reportResume.launch': { requestId, at: new Date().toISOString(), expectedAttemptCount: candidate.expectedAttemptCount,
+      ...(candidate.executorId && { executorId: candidate.executorId }) },
       'reportResume.state': 'launched' } }, { new: true, timestamps: false, writeConcern: WC }).lean();
   if (!marked) throw Object.assign(fail('This campaign already launched its worker', 'REPORT_RESUME_LAUNCHED', 409), { launchSent: true });
   await control.launch({ pipelineId: task.pipelineId, requestId, expectedAttemptCount: candidate.expectedAttemptCount, confirm: true,
+    ...(candidate.executorId && { executorId: candidate.executorId }),
     reportName: result.reportName, modelCallLimit: result.modelCallLimit,
     ...(checkpoint?.parentRequestId && { parentRequestId: checkpoint.parentRequestId }),
     ...(checkpoint?.parentSha256 && { parentSha256: checkpoint.parentSha256 }) })
@@ -231,7 +234,8 @@ async function observeCampaign(job) {
   const operationId = state?.launch?.requestId || null;
   if (!state || state.queueRequestId !== job.id || !operationId) return { terminal: false, operationId };
   const active = await Run.exists({ taskId: String(task._id), state: 'active' });
-  const host = control ? await control.status({ requestId: operationId }).catch(() => null) : null;
+  const host = control ? await control.status({ requestId: operationId,
+    ...(state.launch.executorId && { executorId: state.launch.executorId }) }).catch(() => null) : null;
   if (host?.run?.requestId === operationId && host.run.phase === 'rejected') {
     await Task.updateOne({ _id: task._id, 'reportResume.queueRequestId': job.id },
       { $set: { 'reportResume.state': 'stopped', 'reportResume.finishedAt': new Date().toISOString(),

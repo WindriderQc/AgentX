@@ -74,6 +74,13 @@ _spec.loader.exec_module(coding_worker_context)
 _spec = importlib.util.spec_from_file_location("coding_worker_prompt", HERE / "coding_worker_prompt.py")
 coding_worker_prompt = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(coding_worker_prompt)
+_spec = importlib.util.spec_from_file_location("coding_harness", HERE / "coding_harness.py")
+coding_harness = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(coding_harness)
+worker_patch = lambda model, context_size=None: coding_harness.dsh_patch(model, context_size, RELAY_PORT)
+_spec = importlib.util.spec_from_file_location("coding_sandbox", HERE / "coding_sandbox.py")
+coding_sandbox = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(coding_sandbox)
 _spec = importlib.util.spec_from_file_location("coding_autonomous", HERE / "coding_autonomous.py")
 coding_autonomous = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(coding_autonomous)
@@ -146,49 +153,12 @@ def request(url: str, body: dict | None = None, token: str = "", method: str | N
         raise failure from error
 
 
-def worker_patch(model: str, context_size: int | None = None) -> list[dict]:
-    if context_size is not None and (type(context_size) is not int or context_size <= 0):
-        raise RuntimeError("Coding context is unavailable")
-    model_config = {"id": model, "maxTokens": 32768}
-    if context_size is not None:
-        model_config["contextWindow"] = context_size
-    return [
-        {"id": "llm-pi-ai", "config": {"providers": {"agentx-core": {
-            "displayName": "AgentX Core", "apiKeyEnv": "AGENTX_CORE_API_KEY",
-            "api": "openai-completions", "baseURL": f"http://127.0.0.1:{RELAY_PORT}/v1",
-            "compat": {"supportsDeveloperRole": False, "maxTokensField": "max_tokens", "thinkingFormat": "deepseek"},
-            "models": [model_config],
-        }}}},
-        {"id": "agent-default-model", "config": {"provider": "agentx-core", "model": model}},
-    ]
-
-
-def sandbox(workspace: Path, home: Path, command: list[str], *, network: bool, timeout_seconds: int, read_only=False, report_request_id="", prompt_file=None) -> list[str]:
-    if report_request_id and (not read_only or not coding_progress.REQUEST_ID.fullmatch(report_request_id)):
-        raise ValueError("A report working directory requires its read-only source and exact request UUID")
-    # DSH workspace-write follows the session cwd. Give it only the private
-    # output directory, while source reads remain available at /workspace.
-    directory = f"/home/agent/deliverables/{report_request_id}" if report_request_id else "/workspace"
-    return [
-        "timeout", "-k", "30", str(timeout_seconds),
-        "bwrap", "--unshare-all", *(["--share-net"] if network else []),
-        "--die-with-parent", "--new-session", "--clearenv",
-        "--setenv", "HOME", "/home/agent", "--setenv", "USER", "agent",
-        "--setenv", "PATH", "/opt/node/bin:/usr/bin:/bin", "--setenv", "LANG", "C.UTF-8",
-        "--setenv", "DSH_HOME", "/home/agent/.dsh", "--setenv", "DSH_PERMISSION_MODE", "workspace-write",
-        "--setenv", "DSH_TELEMETRY_MODE", "DISABLED", "--setenv", "AGENTX_CORE_API_KEY", "local-no-auth",
-        "--ro-bind", "/usr", "/usr", "--ro-bind", "/lib", "/lib", "--ro-bind", "/lib64", "/lib64",
-        "--symlink", "usr/bin", "/bin", "--dir", "/etc",
-        *(arg for name in ("hosts", "resolv.conf", "nsswitch.conf", "ssl", "passwd", "group")
-          for arg in ("--ro-bind", f"/etc/{name}", f"/etc/{name}")),
-        "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--dir", "/home",
-        *(["--ro-bind", str(prompt_file), coding_worker_prompt.SANDBOX_PROMPT] if prompt_file is not None else []),
-        "--bind", str(home), "/home/agent", "--ro-bind", str(NODE_ROOT), "/opt/node",
-        "--ro-bind", str(DSH_ROOT), "/opt/dsh", "--ro-bind", str(HERE), "/opt/coding",
-        "--ro-bind", str(HERE.parent.parent / "shared/testing/prepareMongo.js"), "/opt/prepareMongo.js",
-        "--ro-bind" if read_only else "--bind", str(workspace), "/workspace", "--ro-bind", str(workspace / ".git"), "/workspace/.git",
-        "--chdir", directory, *command,
-    ]
+def sandbox(workspace: Path, home: Path, command: list[str], *, network: bool, timeout_seconds: int, read_only=False,
+            report_request_id="", prompt_file=None, environment=None, extra_binds=None) -> list[str]:
+    return coding_sandbox.build(workspace, home, command, network=network, timeout_seconds=timeout_seconds,
+        node_root=NODE_ROOT, coding_root=HERE, request_pattern=coding_progress.REQUEST_ID,
+        read_only=read_only, report_request_id=report_request_id, prompt_file=prompt_file,
+        prompt_target=coding_worker_prompt.SANDBOX_PROMPT, environment=environment, extra_binds=extra_binds)
 
 
 def worker_home(workspace: Path) -> Path:
@@ -366,13 +336,15 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
     if read_only and (not progress or not getattr(progress, "report_mode", False) or not coding_progress.REQUEST_ID.fullmatch(progress.request_id)):
         raise ValueError("A report worker requires its original native request")
     home = worker_home(workspace)
+    harness = coding_harness.selected()
     (home / ".dsh").mkdir(exist_ok=True)
     selected_model = model or MODEL
     context_size, lanes = coding_worker_context.resolve(progress, selected_model,
         lambda: request(f"{CORE}/api/nerve-center/agent-runtime-config/export?includeCapability=true").get("data", {}).get("lanes", {}),
         remember=read_only)
     record_lane_capability(progress, selected_model, lanes)
-    (home / ".dsh/agentx.patch.json").write_text(json.dumps(worker_patch(selected_model, context_size)))
+    if harness == 'dsh':
+        (home / ".dsh/agentx.patch.json").write_text(json.dumps(worker_patch(selected_model, context_size)))
     if progress:
         progress.model_worker_active = True
         progress.baseline(home, workspace)
@@ -386,8 +358,10 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
                              drain_on_disconnect=bool(progress and (progress.cumulative_limits or getattr(progress, 'report_mode', False))),
                              budget_guidance=getattr(progress, "model_guidance", None), request_budget=progress.relay_call_budget() if progress else None)
     try:
-        return coding_worker_prompt.run(SimpleNamespace(sandbox=sandbox, supervise=supervise, relay_port=RELAY_PORT),
-            workspace, home, prompt, timeout_seconds, progress, read_only=read_only, on_stop=relay.begin_drain)
+        return coding_worker_prompt.run(SimpleNamespace(sandbox=sandbox, supervise=supervise,
+            relay_port=RELAY_PORT, harness=coding_harness, dsh_root=DSH_ROOT), workspace, home, prompt, timeout_seconds, progress,
+            read_only=read_only, on_stop=relay.begin_drain, harness=harness, model=selected_model,
+            context_size=context_size)
     finally:
         relay.begin_drain()
         if progress and (progress.cumulative_limits or getattr(progress, 'report_mode', False)):
