@@ -857,12 +857,16 @@ pages and APIs retain the parental gateway guard.
   keeps the result on the turn. A picture the OpenClaw agent generated and cited
   as `MEDIA:<path>` becomes an image block relayed from the Nestor plugin's
   read-only gateway media route.
-  A page block, private space only, also names no address: it names a Core
-  page and a bounded focus (`pipeline status=blocked task=812`). The shared
-  `public/js/screen-pages.js` keeps the closed list, the reply channels drop
-  anything else, and the board frames that page's `view=screen` variant in
-  the Pages and images zone. Only that variant admits a frame, and only from
-  AgentX itself (`frame-ancestors 'self'`).
+  A page block, private space only, names a catalogue ID and optional bounded
+  Pipeline focus (`pipeline status=blocked task=812`). Core composes the shared
+  product directory, contextual pages, runtime launchers and an instance's
+  configured web services. The reply channels validate IDs; the board resolves
+  addresses from the current catalogue for foreground and saved Main results.
+  Same-origin product pages admit only self framing in their `view=screen`
+  variant. External services retain their own framing and authentication rules,
+  with a user-opened link and bounded conversation continuity during the visit.
+  Visible same-origin headings are untrusted turn context; external tabs remain
+  unreadable. See [the web guide contract](NESTOR_WEB_GUIDE.md).
   After each recorded turn a slower local model reviews the conversation in
   the background (`brain.js`, the router's `master_brain` lane): it proposes
   follow-up questions (the page's "Pistes"), revisions of shown content,

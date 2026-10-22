@@ -56,6 +56,12 @@ Instance configuration, data and deployment receipts remain outside Git.
   context, no native memory or agent prompt, zero tool executions and one native
   invocation. Benchmark model and agent cohorts remain distinct; historical
   results keep their original provenance. See [execution sources](EXECUTION_SOURCES.md).
+- **Nestor page visits.** The personal conversation displays product pages
+  and configured instance web services from one validated directory, including
+  saved native Main results. Same-origin pages share bounded visible headings;
+  external links retain service authentication and a bounded background visit.
+  [Behavior and verification](NESTOR_WEB_GUIDE.md). Physical background microphone
+  behavior and external service content access require separate qualification.
 - **Human access.** Private LAN HTTPS entries open human pages/APIs directly,
   without an account, code or adult cookie. Native credentials and business
   boundaries remain separate. A device pinned to Famille reaches only family

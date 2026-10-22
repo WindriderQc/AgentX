@@ -1,53 +1,66 @@
-/* Core pages Nestor may put on the personal screen. Shared by the reply
- * channels (Node) and the display board (browser): the model names a page and
- * a bounded focus, never a URL, and both sides rebuild the address here. */
+/* Node and browser share the validator. Models name IDs, never addresses. */
 (function (root) {
   'use strict';
   const STATUSES = Object.freeze(['queued', 'in_progress', 'review', 'blocked', 'done']);
-  const PAGES = Object.freeze({
-    pipeline: Object.freeze({
-      path: '/pipeline',
-      label: 'Pipeline',
-      focus: Object.freeze({
-        status: value => (STATUSES.includes(value) ? value : ''),
-        task: value => (/^\d{3,4}$/.test(value) ? value : '')
-      })
-    })
-  });
-
-  // "pipeline status=blocked task=812" → { page, focus }. Unknown pages give
-  // null; unknown or invalid focus words are dropped.
-  function parse(body) {
-    const words = String(body || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
-    const page = Object.prototype.hasOwnProperty.call(PAGES, words[0]) ? words[0] : '';
-    if (!page) return null;
-    const focus = {};
-    for (const word of words.slice(1)) {
-      const [key, value = ''] = word.split('=');
-      const check = Object.prototype.hasOwnProperty.call(PAGES[page].focus, key) ? PAGES[page].focus[key] : null;
-      const clean = check ? check(value) : '';
-      if (clean) focus[key] = clean;
-    }
-    return { page, focus };
+  const ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+  const fallback = [{ id: 'pipeline', label: 'Pipeline', href: '/pipeline', mode: 'frame' }];
+  function destination(value) {
+    if (!value || !ID.test(value.id) || typeof value.label !== 'string' || !value.label.trim()
+        || value.label.length > 80 || /[\u0000-\u001f\u007f]/.test(value.label)
+        || typeof value.href !== 'string' || value.href.length > 2048
+        || /[\u0000-\u0020\u007f\\]/.test(value.href)) return null;
+    const relative = value.href.startsWith('/') && !value.href.startsWith('//');
+    if (!relative && !/^https?:\/\//.test(value.href)) return null;
+    try {
+      const url = new URL(value.href, 'https://agentx.invalid');
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
+      return Object.freeze({ id: value.id, label: value.label.trim(),
+        href: relative ? url.pathname + url.search + url.hash : url.href,
+        mode: value.mode === 'frame' ? 'frame' : 'link', ...(value.conversation === true && { conversation: true }) });
+    } catch { return null; }
   }
-
   function canonical(target) {
-    if (!target) return '';
-    return [target.page, ...Object.entries(target.focus || {}).map(([key, value]) => `${key}=${value}`)].join(' ');
+    return target ? [target.page, ...Object.entries(target.focus || {}).map(([key, value]) => `${key}=${value}`)].join(' ') : '';
   }
-
-  // view=screen drops the navigation; from=nestor reuses the page's bounded focus.
-  function url(target) {
-    if (!target || !PAGES[target.page]) return '';
-    const params = new URLSearchParams({ view: 'screen', from: 'nestor', ...(target.focus || {}) });
-    return `${PAGES[target.page].path}?${params}`;
+  function createCatalog(entries = fallback) {
+    const records = Object.create(null);
+    for (const value of (Array.isArray(entries) ? entries : []).slice(0, 100)) {
+      const row = destination(value);
+      if (row && !records[row.id]) records[row.id] = row;
+    }
+    const PAGES = Object.freeze(records);
+    function parse(body) {
+      const words = String(body || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const page = Object.hasOwn(PAGES, words[0]) ? words[0] : '';
+      if (!page) return null;
+      const focus = {};
+      if (page === 'pipeline') for (const word of words.slice(1)) {
+        const [key, value = ''] = word.split('=');
+        if (key === 'status' && STATUSES.includes(value) || key === 'task' && /^\d{3,4}$/.test(value)) focus[key] = value;
+      }
+      return { page, focus };
+    }
+    function url(target, { screen = true } = {}) {
+      const parsed = target && parse(canonical(target)), page = parsed && PAGES[parsed.page];
+      if (!page) return '';
+      if (page.mode !== 'frame' || !page.href.startsWith('/')) return page.href;
+      const resolved = new URL(page.href, 'https://agentx.invalid');
+      if (screen) resolved.searchParams.set('view', 'screen');
+      resolved.searchParams.set('from', 'nestor');
+      for (const [key, value] of Object.entries(parsed.focus)) resolved.searchParams.set(key, value);
+      return resolved.pathname + resolved.search + resolved.hash;
+    }
+    const label = target => target && PAGES[target.page]?.label || '';
+    const mode = target => target && PAGES[target.page]?.mode || 'link';
+    const keepsConversation = target => target && PAGES[target.page] && !PAGES[target.page].conversation;
+    return Object.freeze({ PAGES, STATUSES, parse, canonical, url, label, mode, keepsConversation, entries: Object.freeze(Object.values(PAGES)) });
   }
-
-  function label(target) {
-    return target && PAGES[target.page] ? PAGES[target.page].label : '';
-  }
-
-  const api = Object.freeze({ PAGES, STATUSES, parse, canonical, url, label });
+  let current = createCatalog();
+  const api = Object.freeze({ STATUSES, createCatalog, destination, canonical,
+    configure(entries) { current = createCatalog(entries); },
+    get PAGES() { return current.PAGES; }, get entries() { return current.entries; },
+    parse: body => current.parse(body), url: (target, options) => current.url(target, options),
+    label: target => current.label(target), mode: target => current.mode(target), keepsConversation: target => current.keepsConversation(target) });
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.AgentXScreenPages = api;
 })(typeof window === 'undefined' ? globalThis : window);

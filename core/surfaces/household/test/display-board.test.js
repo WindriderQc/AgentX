@@ -11,6 +11,7 @@ class Element {
     const classes = new Set();
     this.classList = { add: name => classes.add(name), remove: name => classes.delete(name), contains: name => classes.has(name) };
   }
+  setAttribute(name, value) { this[name] = value; }
   append(...nodes) { nodes.forEach(node => { node.parent = this; }); this.children.push(...nodes); }
   prepend(node) { node.parent = this; this.children.unshift(node); }
   remove() { if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); }
@@ -193,4 +194,33 @@ test('a page block frames the rebuilt screen address in the personal space only'
   } finally {
     delete globalThis.AgentXScreenPages;
   }
+});
+
+test('service cards preserve the conversation with a user-opened link and keep blocked frames honest', () => {
+  const pages = require('../../../public/js/screen-pages');
+  globalThis.AgentXScreenPages = pages.createCatalog([
+    { id: 'home-assistant', label: 'Home Assistant', href: 'http://home.test:8123', mode: 'link' },
+    { id: 'service', label: 'Service', href: 'https://service.test/ui', mode: 'frame' }
+  ]);
+  const bus = new EventTarget(), opened = [];
+  globalThis.dispatchEvent = bus.dispatchEvent.bind(bus);
+  bus.addEventListener('nestor-guided-visit', event => opened.push(event.detail));
+  try {
+    const container = new Element('section'), board = create(container, { space: 'personal' });
+    board.add({ kind: 'page', body: 'home-assistant' });
+    assert.equal(container.find(el => el.tagName === 'IFRAME'), null);
+    const link = container.find(el => el.tagName === 'A');
+    assert.equal(link.href, 'http://home.test:8123/'); assert.equal(link.rel, 'noopener noreferrer');
+    link.listeners.click(); assert.deepEqual(opened, [{ page: 'home-assistant', label: 'Home Assistant' }]);
+    assert.deepEqual(board.context(), [{ page: 'home-assistant', status: 'external' }]);
+    board.add({ kind: 'page', body: 'service' });
+    const frame = container.find(el => el.tagName === 'IFRAME');
+    assert.equal(frame.sandbox, 'allow-scripts allow-same-origin allow-forms allow-popups');
+    Object.defineProperty(frame, 'contentDocument', { get: () => { throw new Error('Cross origin'); } });
+    frame.listeners.load(); assert.match(container.text(), /reste vide/);
+    frame.listeners.error(); assert.match(container.text(), /indisponible/);
+    assert.deepEqual(board.context()[0], { page: 'service', status: 'external' });
+    board.clear(); assert.equal(frame.src, 'about:blank');
+    assert.deepEqual(board.context(), []);
+  } finally { delete globalThis.AgentXScreenPages; }
 });

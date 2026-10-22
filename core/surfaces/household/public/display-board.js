@@ -157,21 +157,49 @@
   function pageBody(block, target, actions) {
     const pages = root.AgentXScreenPages;
     const href = pages.url(target);
+    const holder = node('div', 'display-page-holder');
+    const open = node('a', 'display-block-action', 'Ouvrir dans un onglet');
+    open.href = pages.url(target, { screen: false });
+    open.target = '_blank'; open.rel = 'noopener noreferrer';
+    open.addEventListener('click', () => pages.keepsConversation(target) && root.dispatchEvent(new CustomEvent('nestor-guided-visit', {
+      detail: { page: target.page, label: pages.label(target) }
+    })));
+    actions.append(open);
+    const status = node('p', 'display-block-note');
+    status.setAttribute('role', 'status');
+    holder.append(status);
+    if (pages.mode(target) !== 'frame') {
+      status.textContent = 'Ouvrez ce service dans un onglet. Nestor reste disponible ici; il ne voit pas le contenu de cet onglet.';
+      return holder;
+    }
+    status.textContent = 'Ouverture de la page… Si elle reste vide ou demande une connexion, utilisez « Ouvrir dans un onglet ».';
     const frame = node('iframe', 'display-block-page');
     frame.src = href; frame.title = block.title || pages.label(target); frame.loading = 'lazy';
-    frame.referrerPolicy = 'same-origin';
-    const open = node('a', 'display-block-action', 'Open');
-    open.href = href.replace(/([?&])view=screen&?/, '$1').replace(/[?&]$/, '');
-    open.target = '_blank'; open.rel = 'noopener';
-    const expand = node('button', 'display-block-action', 'Expand');
+    frame.referrerPolicy = 'no-referrer';
+    if (!href.startsWith('/')) frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups');
+    frame.addEventListener('load', () => {
+      // A cross-origin load event does not prove successful service rendering.
+      try {
+        const doc = frame.contentDocument;
+        status.textContent = doc?.body && doc.location.href !== 'about:blank'
+          ? 'Page ouverte à côté de la conversation.'
+          : 'Le service contrôle son affichage intégré. Si la page reste vide, ouvrez-la dans un onglet.';
+      } catch { status.textContent = 'Le service contrôle son affichage intégré. Si la page reste vide, ouvrez-la dans un onglet.'; }
+    });
+    frame.addEventListener('error', () => { status.textContent = 'Affichage intégré indisponible. Ouvrez le service dans un onglet.'; });
+    const expand = node('button', 'display-block-action', 'Agrandir');
     expand.type = 'button';
     expand.addEventListener('click', () => {
       const expanded = frame.classList.contains('is-expanded');
       if (expanded) frame.classList.remove('is-expanded'); else frame.classList.add('is-expanded');
-      expand.textContent = expanded ? 'Expand' : 'Reduce';
+      expand.textContent = expanded ? 'Agrandir' : 'Réduire';
     });
-    actions.append(expand, open);
-    return frame;
+    actions.append(expand);
+    holder.append(frame);
+    holder._screenFrame = frame;
+    holder._screenTarget = target;
+    holder._dispose = () => { frame.src = 'about:blank'; };
+    return holder;
   }
 
   function render(block, { secrets, space = 'personal' }) {
@@ -199,6 +227,8 @@
     }
     card.append(header, content);
     card._dispose = content._dispose;
+    card._screenFrame = content._screenFrame;
+    card._screenTarget = block.kind === 'page' ? target : null;
     return card;
   }
 
@@ -226,6 +256,20 @@
       },
       restore(blocks = []) { (Array.isArray(blocks) ? blocks : []).forEach(board.add); },
       has: key => Array.from(list.children).some(child => child.dataset?.key === key),
+      context() {
+        return Array.from(list.children).filter(card => card._screenTarget).slice(0, 3).map(card => {
+          const target = card._screenTarget, base = { page: target.page, status: 'unavailable' };
+          if (!card._screenFrame) return { ...base, status: 'external' };
+          try {
+            const doc = card._screenFrame.contentDocument;
+            const expected = new URL(root.AgentXScreenPages.url(target), root.location.href);
+            if (!doc?.body || doc.location.origin !== root.location.origin || doc.location.pathname !== expected.pathname) return base;
+            return { ...base, status: 'visible', title: String(doc.title || '').slice(0, 160),
+              headings: Array.from(doc.querySelectorAll('h1,h2,h3')).filter(el => el.getClientRects().length)
+                .slice(0, 6).map(el => el.textContent.trim().slice(0, 160)) };
+          } catch { return { ...base, status: 'external' }; }
+        });
+      },
       clear() { Array.from(list.children).forEach(child => child._dispose?.()); list.replaceChildren(); update(); }
     };
     update();
@@ -241,6 +285,7 @@
       add: block => boards.map(board => board.add(block)).some(Boolean),
       restore: blocks => boards.forEach(board => board.restore(blocks)),
       has: key => boards.some(board => board.has(key)),
+      context: () => boards.flatMap(board => board.context()).slice(0, 3),
       clear: () => boards.forEach(board => board.clear())
     };
   }

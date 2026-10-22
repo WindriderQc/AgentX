@@ -14,12 +14,15 @@ function navigationLocals(app, res, extra = {}) {
 }
 
 function registerProductHome(app) {
-  app.get(['/', '/portal', '/ecosystem'], (_req, res) => res.render('layouts/main', {
-    ...navigationLocals(app, res), pageView: '../pages/home', title: 'AgentX · Home',
-    activePage: 'portal', bodyClass: 'product-home', pageLanguage: 'en',
-    headCss: '<link rel="stylesheet" href="/css/home.css">',
-    footerJs: '<script src="/js/home.js" defer></script>'
-  }));
+  app.get(['/', '/portal', '/ecosystem'], (req, res) => {
+    if (req.query.view === 'screen') require('../../../shared/screenView').allowScreenFrame(res);
+    return res.render('layouts/main', {
+      ...navigationLocals(app, res), pageView: '../pages/home', title: 'AgentX · Home',
+      activePage: 'portal', bodyClass: 'product-home', pageLanguage: 'en',
+      headCss: '<link rel="stylesheet" href="/css/home.css">',
+      footerJs: '<script src="/js/home.js" defer></script>'
+    });
+  });
 }
 
 // Static surfaces use the same EJS navigation as Core, Benchmark and RAG.
@@ -29,7 +32,7 @@ function surfacePage(app, file, { activePage, householdControls = false } = {}) 
     try {
       const [source, nav, icons] = await Promise.all([
         fs.readFile(file, 'utf8'),
-        ejs.renderFile(path.join(views, 'partials/nav.ejs'), navigationLocals(app, res, { activePage, householdControls })),
+        res.locals.showNav === false ? '' : ejs.renderFile(path.join(views, 'partials/nav.ejs'), navigationLocals(app, res, { activePage, householdControls })),
         ejs.renderFile(path.join(views, 'partials/app-icons.ejs'))
       ]);
       const assets = icons + '<link rel="stylesheet" href="/css/local-fonts.css">'
