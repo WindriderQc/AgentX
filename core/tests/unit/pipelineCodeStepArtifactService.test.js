@@ -47,7 +47,18 @@ describe('pipeline code-step artifact service', () => {
 
   test('detects bytes changed after storage', async () => {
     const stored = await service.store(owner, bundle);
-    await fs.writeFile(path.join(directory, `${stored.id}.bundle`), Buffer.from('# v2 git bundle\ntampered\n'));
+    await fs.writeFile(path.join(directory, stored.id, 'artifact.bundle'), Buffer.from('# v2 git bundle\ntampered\n'));
     await expect(service.read(stored.id)).rejects.toMatchObject({ code: 'CODE_STEP_ARTIFACT_UNAVAILABLE', statusCode: 503 });
+  });
+
+  test('concurrent divergent stores cannot replace the first immutable bundle', async () => {
+    const other = Buffer.from('# v2 git bundle\nconcurrent divergent fixture\n');
+    const results = await Promise.allSettled([service.store(owner, bundle), service.store(owner, other)]);
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter(result => result.status === 'rejected')[0].reason)
+      .toMatchObject({ code: 'CODE_STEP_ARTIFACT_CONFLICT', statusCode: 409 });
+    const winner = results.find(result => result.status === 'fulfilled').value;
+    const loaded = await service.read(winner.id);
+    expect([bundle.toString('hex'), other.toString('hex')]).toContain(loaded.bytes.toString('hex'));
   });
 });

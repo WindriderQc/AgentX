@@ -596,6 +596,16 @@
       "secret": false,
       "description": "Codex plan name shown in usage analytics. Unset: the plan type reported by the account."
     },
+    "AGENTX_CODE_STEP_ARTIFACT_DIR": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "/app/code-step-artifacts",
+      "category": "bridges",
+      "secret": false,
+      "description": "Persistent private directory in Core for immutable verified code-step Git bundles. Unset: /app/code-step-artifacts."
+    },
     "CODING_DELIVERY_COMPOSE_OVERRIDE": {
       "services": [
         "core"

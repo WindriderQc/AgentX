@@ -48,10 +48,13 @@ function payload(value) {
 function createPipelineCodeStepArtifactService({ dir = process.env.AGENTX_CODE_STEP_ARTIFACT_DIR } = {}) {
   const root = typeof dir === 'string' && dir.trim() ? path.resolve(dir.trim()) : null;
   const unavailable = () => fail('Code-step artifact storage is not configured.', 'CODE_STEP_ARTIFACT_UNAVAILABLE', 503);
-  const fileFor = (id, suffix) => {
+  const directoryFor = id => {
     if (!root) unavailable();
     if (!ARTIFACT_ID.test(id || '')) fail('Invalid code-step artifact id.');
-    return path.join(root, `${id}.${suffix}`);
+    return path.join(root, id);
+  };
+  const fileFor = (id, suffix) => {
+    return path.join(directoryFor(id), suffix === 'bundle' ? 'artifact.bundle' : 'metadata.json');
   };
 
   async function prepareRoot() {
@@ -106,19 +109,19 @@ function createPipelineCodeStepArtifactService({ dir = process.env.AGENTX_CODE_S
     } catch (error) {
       if (error.code !== 'CODE_STEP_ARTIFACT_NOT_FOUND') throw error;
     }
-    const token = `${process.pid}.${crypto.randomUUID()}.tmp`;
-    const bundleFile = fileFor(id, 'bundle');
-    const metadataFile = fileFor(id, 'json');
-    const bundleTemp = `${bundleFile}.${token}`;
-    const metadataTemp = `${metadataFile}.${token}`;
+    const finalDirectory = directoryFor(id);
+    const temporaryDirectory = path.join(root, `.${id}.${process.pid}.${crypto.randomUUID()}.tmp`);
     try {
-      await fs.writeFile(bundleTemp, bytes, { flag: 'wx', mode: 0o600 });
-      await fs.writeFile(metadataTemp, `${JSON.stringify(metadata)}\n`, { flag: 'wx', mode: 0o600 });
-      await fs.rename(bundleTemp, bundleFile);
-      await fs.rename(metadataTemp, metadataFile);
+      await fs.mkdir(temporaryDirectory, { mode: 0o700 });
+      await fs.writeFile(path.join(temporaryDirectory, 'artifact.bundle'), bytes, { flag: 'wx', mode: 0o600 });
+      await fs.writeFile(path.join(temporaryDirectory, 'metadata.json'), `${JSON.stringify(metadata)}\n`,
+        { flag: 'wx', mode: 0o600 });
+      // Renaming one populated directory makes bytes and metadata visible as
+      // one immutable unit. A concurrent divergent writer cannot replace it.
+      await fs.rename(temporaryDirectory, finalDirectory);
     } catch (error) {
-      await Promise.allSettled([fs.unlink(bundleTemp), fs.unlink(metadataTemp)]);
-      if (error.code === 'EEXIST') {
+      await fs.rm(temporaryDirectory, { recursive: true, force: true });
+      if (['EEXIST', 'ENOTEMPTY'].includes(error.code)) {
         const existing = await read(id);
         if (existing.metadata.sha256 === metadata.sha256 && existing.metadata.sizeBytes === metadata.sizeBytes) {
           return { ...existing.metadata, replayed: true };
