@@ -12,6 +12,7 @@ const {
 const { PIPELINE_MODEL_ALIAS } = require('../pipeline-attribution');
 const { PRINCIPAL_MODEL_ALIAS, resolvePrincipalAlias } = require('../principal-model');
 const { settledStream } = require('./settled-stream');
+const { admitCellCall, isCellBudgetRefusal, meteredStream, responseCounts } = require('./cell-budget');
 const { sendBusyReply, wantsBusyReply } = require('./busy-reply');
 const {
   LOCAL_INFERENCE_CONFLICTS, PRIMARY_WAIT_WITH_FALLBACK_MS, applyDegradedHeaders, conversationFallbackTask,
@@ -141,10 +142,12 @@ function registerOpenClawProtocol({
     const abort = requestAbort(req, res);
     let streaming = false;
     let pipeline = null;
+    let cellTurn = null;
     try {
       const body = req.body || {};
       // Per-invocation metadata from the existing Benchmark broker. Core checks
-      // the exact host claim and workload generation before every model turn.
+      // the exact host claim and workload generation before every model turn,
+      // and the cell budget those claims name (#897).
       const claimHeader = req.get('x-agentx-benchmark-claims');
       const benchmarkClaims = claimHeader ? JSON.parse(claimHeader) : undefined;
       pipeline = String(body.model || '').trim() === PIPELINE_MODEL_ALIAS
@@ -200,7 +203,10 @@ function registerOpenClawProtocol({
         await pipelineAttribution.revalidate(leaseId));
       // #143: only an opted-in conversation on a routed model may degrade. On
       // the principal alias it borrows the daily operator ladder when there is one.
-      const fallbackTask = !pipeline && (!conversationTarget || principalTarget) && wantsBusyReply(req, mode)
+      // A benchmark cell never degrades: its turn is reserved for this exact
+      // call, and a refusal here reaches no host.
+      if (benchmarkClaims) cellTurn = admitCellCall(runtimeServices, benchmarkClaims, request, mode);
+      const fallbackTask = !pipeline && !benchmarkClaims && (!conversationTarget || principalTarget) && wantsBusyReply(req, mode)
         && typeof runtimeServices.routing.planFallback === 'function'
         ? (principalTarget ? principalFallbackTask(runtimeServices.routing) : conversationFallbackTask()) : null;
       const primaryRun = () => runtimeServices.inference.execute(request, {
@@ -236,6 +242,7 @@ function registerOpenClawProtocol({
           fromHost: plan.routing.fallbackFrom.host, toHost: plan.routing.fallbackTo.host, task: fallbackTask });
       }
       if (!result.ok) {
+        cellTurn?.settle({ complete: false });
         const message = result.body?.error?.message || result.body?.error || 'AgentX inference failed';
         return res.status(result.status).json({ error: String(message) });
       }
@@ -244,7 +251,8 @@ function registerOpenClawProtocol({
         res.status(result.status);
         res.type('application/x-ndjson');
         // Every native tool loop needs the same terminal-frame settlement.
-        const delivery = settledStream(result.stream, result.completion);
+        const settled = settledStream(result.stream, result.completion);
+        const delivery = cellTurn ? meteredStream(settled, cellTurn) : settled;
         delivery.once('error', (error) => {
           if (pipeline) pipelineAttribution.progress(leaseId, { state: 'recovery_required',
             cause: 'stream_interrupted', attempts: result.retry?.attempts || 1 });
@@ -259,8 +267,16 @@ function registerOpenClawProtocol({
         pipeRuntimeStream(delivery, res, abort.signal);
         return undefined;
       }
+      cellTurn?.settle(responseCounts(result.body));
       return res.status(result.status).json(plan ? markBody(mode, result.body, plan.routing) : result.body);
     } catch (error) {
+      // An unconfirmed call keeps its reservation. A budget refusal is a 409:
+      // a 5xx would make OpenClaw rotate its provider profile and call again.
+      cellTurn?.settle({ complete: false });
+      if (isCellBudgetRefusal(error)) {
+        logger?.info?.('OpenClaw benchmark cell call refused by its budget', { code: error.code, exhaustedBy: error.exhaustedBy || null });
+        return res.status(409).json({ error: error.message, code: error.code });
+      }
       if (pipeline) {
         const progress = error.retry || { state: abort.signal.aborted ? 'cancelled' : 'recovery_required',
           cause: error.failure?.cause || error.code || 'inference_outcome_unknown', attempts: 1 };

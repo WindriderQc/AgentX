@@ -51,6 +51,8 @@ const BenchmarkResultSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.Mixed,
         default: null
     },
+    // #897: Core's own turn, tool-call and token counts of a local native agent cell.
+    core_cell_budget: { type: mongoose.Schema.Types.Mixed, default: null },
     judge_receipt: {
         type: mongoose.Schema.Types.Mixed,
         default: null

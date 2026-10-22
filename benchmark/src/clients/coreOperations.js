@@ -46,6 +46,8 @@ const CORE_OPERATIONS = Object.freeze({
   HEAVY_QUEUE_SUBMIT: 'benchmark.core-api.heavy-queue-submit',
   HEAVY_QUEUE_RESERVE: 'benchmark.core-api.heavy-queue-reserve',
   HEAVY_QUEUE_LIST: 'benchmark.core-api.heavy-queue-list',
+  CELL_BUDGET_OPEN: 'benchmark.core-api.cell-budget-open',
+  CELL_BUDGET_CLOSE: 'benchmark.core-api.cell-budget-close',
 });
 
 function operation(method, pathPattern, {
@@ -204,6 +206,18 @@ const CORE_OPERATION_SPECS = Object.freeze({
     'POST',
     '^/api/inference/generate$',
     { deadlineMs: PIN_RESTORE_TIMEOUT_MS, maxRequestBytes: 2 * 1024 * 1024, maxResponseBytes: 8 * 1024 * 1024 }
+  ),
+  // #897: one budget per local native agent cell; Core enforces it before
+  // every model call of the cell and reports its own counts on close.
+  [CORE_OPERATIONS.CELL_BUDGET_OPEN]: operation(
+    'POST',
+    '^/api/nerve-center/benchmark-cell-budgets$',
+    { maxRequestBytes: 16 * 1024, maxResponseBytes: 16 * 1024 }
+  ),
+  [CORE_OPERATIONS.CELL_BUDGET_CLOSE]: operation(
+    'POST',
+    '^/api/nerve-center/benchmark-cell-budgets/[^/]+/close$',
+    { maxRequestBytes: 1024, maxResponseBytes: 16 * 1024 }
   ),
 });
 

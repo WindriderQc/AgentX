@@ -66,6 +66,15 @@ function target(overrides = {}) {
   });
 }
 
+function fakeCellBudgets({ budgetId, counts = {} } = {}) {
+  return {
+    openCellBudget: jest.fn(async ({ envelope, targetFingerprint }) => ({ budgetId, envelopeFingerprint: envelope.fingerprint,
+      targetFingerprint, ...envelope.budgets })),
+    closeCellBudget: jest.fn(async id => ({ budgetId: id, turns: 1, toolCalls: 0, inputTokens: 4, outputTokens: 3,
+      refusedCalls: 0, exhaustedBy: null, ...counts })),
+  };
+}
+
 function receiptFor(request, output) {
   const selected = request.target;
   const envelope = request.envelope;
@@ -189,9 +198,68 @@ describe('harness broker client', () => {
     expect(requests[0].runtimeClaims).toEqual([]);
     currentTarget = target({ tier: 'local', provider: 'ollama', mode: 'native_agent', pricing: null,
       nativePolicy: { tools: [], filesystemMode: 'none', allowedOperations: [], networkDestinations: [], maxTurns: 3, maxToolCalls: 0 } });
+    const budgetId = 'c'.repeat(32);
     await executeHarnessTarget({ batchId: 'batch', batchFingerprint: HEX('f'), cellId: 'native',
-      target: currentTarget, promptText: 'question', runtimeClaims: claims });
-    expect(requests[1].runtimeClaims).toEqual(claims);
+      target: currentTarget, promptText: 'question', runtimeClaims: claims, cellBudgets: fakeCellBudgets({ budgetId }) });
+    expect(requests[1].runtimeClaims).toEqual(claims.map(claim => ({ ...claim, budgetId })));
+  });
+
+  describe('local native agent cell budget (#897)', () => {
+    const claims = [{ host: 'http://ollama.test:11434', claimBatchId: 'batch', claimGeneration: 'claim',
+      workloadAdmissionId: 'admission', workloadGeneration: 'generation' }];
+    const budgetId = 'd'.repeat(32);
+    const run = (cellBudgets, overrides = {}) => executeHarnessTarget({ batchId: 'batch', batchFingerprint: HEX('f'),
+      cellId: 'native-cell', target: currentTarget, promptText: 'question', runtimeClaims: claims, cellBudgets, ...overrides });
+
+    beforeEach(() => {
+      currentTarget = target({ tier: 'local', provider: 'ollama', mode: 'native_agent', pricing: null,
+        nativePolicy: { tools: [], filesystemMode: 'none', allowedOperations: [], networkDestinations: [], maxTurns: 3, maxToolCalls: 2 } });
+    });
+
+    test('opens the budget from the envelope before the broker and closes it after, with Core counts on the result', async () => {
+      const budgets = fakeCellBudgets({ budgetId });
+      const result = await run(budgets);
+      expect(budgets.openCellBudget).toHaveBeenCalledTimes(1);
+      const opened = budgets.openCellBudget.mock.calls[0][0];
+      expect(opened).toMatchObject({ cellId: 'native-cell', targetFingerprint: currentTarget.fingerprint, claims });
+      expect(opened.envelope.fingerprint).toBe(result.envelope.fingerprint);
+      expect(opened.envelope.budgets).toMatchObject({ maxTurns: 3, maxToolCalls: 2 });
+      expect(budgets.openCellBudget.mock.invocationCallOrder[0]).toBeLessThan(budgets.closeCellBudget.mock.invocationCallOrder[0]);
+      expect(budgets.closeCellBudget).toHaveBeenCalledWith(budgetId);
+      expect(requests[0].runtimeClaims).toEqual([{ ...claims[0], budgetId }]);
+      expect(result.coreCellBudget).toMatchObject({ budgetId, turns: 1 });
+    });
+
+    test('a refused call fails the cell as budget_exceeded, whatever the broker returned', async () => {
+      const refused = fakeCellBudgets({ budgetId, counts: { turns: 3, refusedCalls: 1, exhaustedBy: 'turns' } });
+      await expect(run(refused)).rejects.toMatchObject({ code: 'EXECUTION_BUDGET_EXCEEDED',
+        failureClassification: 'budget_exceeded', coreCellBudget: expect.objectContaining({ exhaustedBy: 'turns' }) });
+      executionMode = 'missing-receipt';
+      await expect(run(fakeCellBudgets({ budgetId, counts: { turns: 3, refusedCalls: 1, exhaustedBy: 'tokens' } })))
+        .rejects.toMatchObject({ code: 'EXECUTION_BUDGET_EXCEEDED' });
+    });
+
+    test('Core and receipt turn counts must agree', async () => {
+      await expect(run(fakeCellBudgets({ budgetId, counts: { turns: 2 } })))
+        .rejects.toMatchObject({ code: 'BUDGET_COUNT_MISMATCH', coreCellBudget: expect.objectContaining({ turns: 2 }) });
+    });
+
+    test('no claims, or unreadable counts, give no result', async () => {
+      const budgets = fakeCellBudgets({ budgetId });
+      await expect(run(budgets, { runtimeClaims: [] })).rejects.toMatchObject({ code: 'CORE_CELL_BUDGET_CLAIMS_REQUIRED' });
+      expect(budgets.openCellBudget).not.toHaveBeenCalled();
+      expect(requests).toHaveLength(0);
+      const unreadable = fakeCellBudgets({ budgetId });
+      unreadable.closeCellBudget.mockRejectedValueOnce(Object.assign(new Error('gone'), { code: 'CORE_CELL_BUDGET_UNREADABLE' }));
+      await expect(run(unreadable)).rejects.toMatchObject({ code: 'CORE_CELL_BUDGET_UNREADABLE' });
+    });
+
+    test('a budget Core cannot open starts no broker execution', async () => {
+      const budgets = fakeCellBudgets({ budgetId });
+      budgets.openCellBudget.mockRejectedValueOnce(Object.assign(new Error('down'), { code: 'CORE_CELL_BUDGET_UNAVAILABLE' }));
+      await expect(run(budgets)).rejects.toMatchObject({ code: 'CORE_CELL_BUDGET_UNAVAILABLE' });
+      expect(requests).toHaveLength(0);
+    });
   });
 
   test('normalizes thinking as an explicit boolean and rejects ambiguous values', () => {

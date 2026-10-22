@@ -162,6 +162,7 @@ function createHarnessTargetRunner(context) {
                             executionTarget: target,
                             executionReceipt: execution.publicReceipt,
                             providerUsage: usage,
+                            coreCellBudget: execution.coreCellBudget || null,
                             providerCost: {
                                 estimated: target.pricing?.estimated === true && usage.costSource !== 'provider-reported',
                                 costNanodollars: usage.costNanodollars,
@@ -197,6 +198,7 @@ function createHarnessTargetRunner(context) {
                             executionTarget: target,
                             executionReceipt: execution?.publicReceipt || error.executionReceipt || null,
                             providerUsage: execution?.receipt?.usage || error.executionReceipt?.usage || null,
+                            coreCellBudget: execution?.coreCellBudget || error.coreCellBudget || null,
                             qualityCohortFingerprint,
                             promptText: promptHints.promptText,
                             signal: batchCancellationController.signal,

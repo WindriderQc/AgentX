@@ -4,11 +4,37 @@ const { spawn } = require('node:child_process');
 const { readFile, writeFile, mkdir } = require('node:fs/promises');
 const path = require('node:path');
 const { fingerprint: hash } = require('../contract');
-const ADAPTER_VERSION = '2.3.1';
+const ADAPTER_VERSION = '2.4.0';
 // agent exec does not receive the cell-wide turn/tool/token/spend ceilings.
 // Its timeout and the broker's final usage check do not enforce those limits.
-// Keep this route closed until enforcement before each native call is qualified.
-const NATIVE_AGENT_BUDGETS_QUALIFIED = false;
+// For a local Ollama cell Core enforces them before each model call (#897):
+// every call goes through Core's OpenClaw bridge with the cell budget that
+// Benchmark opened in Core. Cloud and paid cells reach their provider without
+// Core, so nothing can enforce their budget and they stay closed (#506).
+const CORE_BRIDGE_PATH = '/api/openclaw-ollama';
+const BUDGET_ID = /^[a-f0-9]{32}$/;
+
+function cellBudgetId(input) {
+  const target = input.target || {};
+  if (target.tier !== 'local' || target.provider !== 'ollama') return null;
+  const claims = Array.isArray(input.runtimeClaims) ? input.runtimeClaims : [];
+  const ids = new Set(claims.map((claim) => claim?.budgetId));
+  if (!claims.length || ids.size !== 1) return null;
+  const [id] = ids;
+  return typeof id === 'string' && BUDGET_ID.test(id) ? id : null;
+}
+
+function nativeBudgetAvailable(target) {
+  return target?.tier === 'local' && target?.provider === 'ollama';
+}
+
+function routedThroughCore(config, provider) {
+  try {
+    return new URL(config.models.providers[provider].baseUrl).pathname.replace(/\/+$/, '') === CORE_BRIDGE_PATH;
+  } catch {
+    return false;
+  }
+}
 const { fixtureForEnvelope, stageFixture, verifyFixture } = require('../repoFixture');
 
 function parseArgs(argv) {
@@ -84,12 +110,14 @@ function parseResult(body, input, durationMs, env = process.env) {
 }
 
 async function execute(input, fixed, run = spawn) {
-  if (!NATIVE_AGENT_BUDGETS_QUALIFIED || input.target.tier === 'paid_cloud') {
+  if (input.target.tier === 'paid_cloud' || !cellBudgetId(input)) {
     throw new Error('OPENCLAW_NATIVE_AGENT_BUDGET_UNQUALIFIED');
   }
   const runtimeVersion = String(process.env.OPENCLAW_RUNTIME_VERSION || '');
   if (!runtimeVersion || runtimeVersion !== input.target.harness.version) throw new Error('OPENCLAW_RUNTIME_VERSION does not match the catalog target');
   const config = invocationConfig(JSON.parse(await readFile(fixed.config, 'utf8')), input);
+  // A provider URL outside Core's bridge would bypass the budget.
+  if (!routedThroughCore(config, input.target.provider)) throw new Error('OPENCLAW_NATIVE_AGENT_BUDGET_UNQUALIFIED');
   // The broker owns this temporary home. The agent sees only its work subfolder.
   const configPath = path.resolve('invocation.json');
   const workspace = path.resolve('work');
@@ -136,4 +164,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((error) => { process.stderr.write(`${error.message}\n`); process.exitCode = 1; });
-module.exports = { ADAPTER_VERSION, NATIVE_AGENT_BUDGETS_QUALIFIED, execute, invocationConfig, parseArgs, parseResult };
+module.exports = { ADAPTER_VERSION, cellBudgetId, execute, invocationConfig, nativeBudgetAvailable, parseArgs, parseResult };

@@ -134,11 +134,20 @@ even when its observed tool count is zero. Agent targets cannot judge isolated
 models. Raw targets publish judge eligibility only after the native JSON format
 and the existing judge seed contract are supported. The qualified
 2026.9.4 completions transport forwards both through the native parameter wrapper.
-All native agent Benchmark targets stay unavailable until cell-wide turn, tool,
-token and spend limits are qualified before each native call; model mode has a
-single invocation ceiling. The [broker installation procedure](../integrations/benchmark-harness-broker/README.md#instance-configuration)
+Local Ollama native agent cells run under a budget Core enforces before each
+model call ([#897](https://github.com/WindriderQc/AgentX/issues/897)). Benchmark
+opens one budget per cell in Core from the WorkerEnvelope turn, tool-call and
+token ceilings; the cell's claims carry only its id. Core's OpenClaw bridge
+reserves each turn before dispatch and refuses the call with a 409 once a
+ceiling is reached, so no Ollama request is opened and no fallback runs. Core's
+own counts close the cell and are stored with the result; a refused call fails
+the cell as `budget_exceeded`, and a turn count that differs from the receipt
+fails it. Cloud and paid native agents reach their provider without Core, so
+they stay unavailable until OpenClaw itself enforces those limits before each
+call ([#506](https://github.com/WindriderQc/AgentX/issues/506)); model mode has
+a single invocation ceiling. The [broker installation procedure](../integrations/benchmark-harness-broker/README.md#instance-configuration)
 describes the required catalogue refresh order. Historical agent receipts retain
-their existing ranking rules below; this gate prevents new native agent cells.
+their existing ranking rules below.
 
 A native agent ranks on the same leaderboard as bare models. The campaign kind
 does not split the quality cohort: results share one when scorer, judge and

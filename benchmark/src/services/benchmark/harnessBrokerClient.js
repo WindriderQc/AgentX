@@ -308,7 +308,27 @@ function buildHarnessEnvelope({
   });
 }
 
-async function executeHarnessTarget({ batchId, batchFingerprint, cellId, target, promptText, parameters = {}, spendGrant = null, runtimeClaims = [], role = 'candidate', signal = null, repoFixture = null }) {
+// #897: Core enforces a local native agent cell's turn, tool-call and token
+// ceilings before each model call. Benchmark opens the budget from the
+// envelope, the claims carry its id, and Core's own counts close the cell.
+async function openNativeCellBudget({ cellBudgets, cellId, envelope, target, runtimeClaims, timeoutMs }) {
+  if (!Array.isArray(runtimeClaims) || runtimeClaims.length === 0) {
+    throw brokerError('CORE_CELL_BUDGET_CLAIMS_REQUIRED', 'A local native agent cell requires its host claims', 422);
+  }
+  const budget = await cellBudgets.openCellBudget({ cellId: String(cellId || envelope.task.id), envelope,
+    targetFingerprint: target.fingerprint, claims: runtimeClaims, ttlMs: timeoutMs + 5 * 60_000 });
+  return { budget, claims: runtimeClaims.map(claim => ({ ...claim, budgetId: budget.budgetId })) };
+}
+
+function budgetRefusal(counts) {
+  const error = brokerError('EXECUTION_BUDGET_EXCEEDED',
+    `Core refused the cell's next model call: ${counts.exhaustedBy || 'budget'} ceiling reached`, 409);
+  error.failureClassification = 'budget_exceeded';
+  error.coreCellBudget = counts;
+  return error;
+}
+
+async function executeHarnessTarget({ batchId, batchFingerprint, cellId, target, promptText, parameters = {}, spendGrant = null, runtimeClaims = [], role = 'candidate', signal = null, repoFixture = null, cellBudgets = null }) {
   if (!/^[a-f0-9]{64}$/.test(String(batchFingerprint || '').toLowerCase())) {
     throw brokerError('BATCH_FINGERPRINT_REQUIRED', 'Harness execution requires the frozen batch contract fingerprint', 422);
   }
@@ -327,27 +347,51 @@ async function executeHarnessTarget({ batchId, batchFingerprint, cellId, target,
     repoFixture,
     role,
   });
-  const response = await brokerRequest('/v1/benchmark/execute', {
-    method: 'POST',
-    body: {
-      schema: HARNESS_EXECUTION_SCHEMA,
-      schemaVersion: 1,
-      requestId: envelope.task.id,
-      batchId: String(batchId),
-      batchFingerprint: String(batchFingerprint || ''),
-      role,
-      target: currentTarget,
-      envelope,
-      input: { prompt: String(promptText || '') },
-      parameters: invocationParameters,
-      spendGrant,
-      runtimeClaims: currentTarget.tier === 'local' ? runtimeClaims : [],
-    },
-    signal,
-    maxBytes: MAX_EXECUTION_BYTES,
-  });
+  const budgets = currentTarget.mode === 'native_agent' && currentTarget.tier === 'local'
+    ? cellBudgets || require('../../clients/coreApiClient') : null;
+  const cell = budgets ? await openNativeCellBudget({ cellBudgets: budgets, cellId, envelope, target: currentTarget,
+    runtimeClaims, timeoutMs: invocationParameters.timeoutMs }) : null;
+  let response;
+  let failure = null;
+  try {
+    response = await brokerRequest('/v1/benchmark/execute', {
+      method: 'POST',
+      body: {
+        schema: HARNESS_EXECUTION_SCHEMA,
+        schemaVersion: 1,
+        requestId: envelope.task.id,
+        batchId: String(batchId),
+        batchFingerprint: String(batchFingerprint || ''),
+        role,
+        target: currentTarget,
+        envelope,
+        input: { prompt: String(promptText || '') },
+        parameters: invocationParameters,
+        spendGrant,
+        runtimeClaims: cell ? cell.claims : currentTarget.tier === 'local' ? runtimeClaims : [],
+      },
+      signal,
+      maxBytes: MAX_EXECUTION_BYTES,
+    });
+  } catch (error) {
+    failure = error;
+  }
+  // Closing also refuses any later call with this budget. A cell whose counts
+  // cannot be read gets no result rather than a guessed one.
+  const coreCellBudget = cell ? await budgets.closeCellBudget(cell.budget.budgetId) : null;
+  if (coreCellBudget?.exhaustedBy || coreCellBudget?.refusedCalls > 0) throw budgetRefusal(coreCellBudget);
+  if (failure) {
+    if (coreCellBudget) failure.coreCellBudget = coreCellBudget;
+    throw failure;
+  }
   try {
     const normalized = normalizeHarnessExecutionResponse(response, { envelope, target: currentTarget });
+    if (coreCellBudget && coreCellBudget.turns !== normalized.receipt.usage.turns) {
+      const error = brokerError('BUDGET_COUNT_MISMATCH',
+        `Core saw ${coreCellBudget.turns} model turns but the receipt reports ${normalized.receipt.usage.turns}`, 409);
+      error.coreCellBudget = coreCellBudget;
+      throw error;
+    }
     if (repoFixture) {
       const id = `repo-fixture.${repoFixture.id}`;
       if (!normalized.receipt.evidence.artifacts.some(item => item.id === id && item.digest === repoFixture.fingerprint)
@@ -355,8 +399,9 @@ async function executeHarnessTarget({ batchId, batchFingerprint, cellId, target,
         throw brokerError('HARNESS_FIXTURE_EVIDENCE_MISMATCH', 'Receipt does not verify the pinned repository fixture', 409);
       }
     }
-    return { ...normalized, envelope };
+    return { ...normalized, envelope, coreCellBudget };
   } catch (error) {
+    if (coreCellBudget) error.coreCellBudget ||= coreCellBudget;
     throw markHarnessContractFailure(error);
   }
 }

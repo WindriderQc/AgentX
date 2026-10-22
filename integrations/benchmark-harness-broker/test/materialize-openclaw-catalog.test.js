@@ -38,7 +38,9 @@ for (const extension of ['js', 'mjs']) {
     const catalog = JSON.parse(await readFile(fixture.output, 'utf8'));
     const { target, executor } = catalog.targets[0];
     assert.equal(target.harness.version, '2026.9.4');
-    assert.equal(target.available, false);
+    // A local Ollama cell runs under the budget Core enforces before each call (#897).
+    assert.equal(target.tier, 'local');
+    assert.equal(target.available, true);
     assert.equal(target.capabilities.candidate, true);
     assert.deepEqual(target.nativePolicy.tools.map(tool => tool.name).sort(), ['edit', 'read', 'write']);
     for (const name of ['openclaw-agent-exec', 'openclaw-coding-tools']) {
@@ -75,8 +77,9 @@ test('adds a named subscription agent without replacing the local target or copy
   assert.equal(target.provider, 'openai');
   assert.equal(target.model, 'sol');
   assert.equal(target.tier, 'free_cloud');
+  // Core never sees a cloud agent's calls, so nothing enforces its budget (#506).
   assert.equal(target.available, false);
-  assert.equal(catalog.targets[0].target.available, false);
+  assert.equal(catalog.targets[0].target.available, true);
   assert.match(target.pricing.source, /subscription-included-usage/);
   assert.equal(target.profile.id, 'openclaw-cloudx');
   assert.deepEqual(target.nativePolicy.networkDestinations, ['openai']);

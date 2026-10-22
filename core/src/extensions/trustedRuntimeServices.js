@@ -648,6 +648,11 @@ function createTrustedRuntimeServices(overrides = {}) {
         return require('../services/execution/openclawInference').withExecutionSource(require('../services/embeddingRuntimeHostChain').wrap((input, fixed) => executeRoutedInference(deps, input, fixed), deps), deps.openclawClient)(request, options);
       }
     }),
+    // #897: the OpenClaw bridge reserves each local native agent cell turn.
+    benchmarkCellBudgets: Object.freeze({
+      reserve: (claims, request) => require('../services/benchmarkCellBudget').reserve(claims, request),
+      admitEmbed: claims => require('../services/benchmarkCellBudget').admitEmbed(claims)
+    }),
     routing: Object.freeze({
       getEffectiveSnapshot: require('../services/routing/routingSnapshotCache').effectiveSnapshotReader(deps),
       // #143: an exact-model conversation borrows a light task's fallback ladder.

@@ -30,6 +30,7 @@ const {
   getBenchmarkClaimIdentity,
   getBenchmarkClaims,
 } = require('./coreBenchmarkClaims');
+const { openCellBudget, closeCellBudget } = require('./coreCellBudgets');
 const {
   acquireWorkloadAdmission,
   heartbeatWorkloadAdmission,
@@ -63,6 +64,8 @@ module.exports = {
   getWorkloadAdmissionIdentity,
   generateWithWorkloadAdmission,
   getBenchmarkClaims,
+  openCellBudget,
+  closeCellBudget,
   acquireWorkloadAdmission,
   heartbeatWorkloadAdmission,
   releaseWorkloadAdmission,
