@@ -605,3 +605,17 @@ describe('characterizing the existing routeRequest paths', () => {
     expect(shapes.every((d) => d.attribution.caller === 'chat')).toBe(true);
   });
 });
+
+describe('inference contract Ollama version drift in telemetry (#908)', () => {
+  it('keeps the measured and installed versions and drops anything else', () => {
+    const trace = sanitizeRoutingTrace({
+      inferenceContract: {
+        version: 'agentx.inference-contract.v1',
+        qualification: { qualified: true, runtimeDrift: { measured: '0.34.4', installed: '0.40.8', note: 'x' } },
+      },
+    });
+    expect(trace.inferenceContract.qualification.runtimeDrift).toEqual({ measured: '0.34.4', installed: '0.40.8' });
+    const none = sanitizeRoutingTrace({ inferenceContract: { qualification: { qualified: true } } });
+    expect(none.inferenceContract.qualification.runtimeDrift).toBeNull();
+  });
+});

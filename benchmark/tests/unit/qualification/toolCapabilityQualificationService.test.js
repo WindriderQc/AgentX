@@ -158,6 +158,36 @@ describe('ToolCapabilityQualification persistence', () => {
       .rejects.toMatchObject({ code: 'TOOL_QUALIFICATION_FINALIZED' });
   });
 
+  it('records the measured runtime and binds it into the evidence digest only when present (#908)', async () => {
+    const finalize = async (overrides) => {
+      const Model = makeModel();
+      await begin(Model, overrides);
+      for (let index = 0; index < 3; index += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        await service.recordRepetition('toolcall-campaign-a', identity(), report(), { Model });
+      }
+      const row = await service.finalizeQualification('toolcall-campaign-a', identity(),
+        { completedAt: '2026-09-04T01:00:00Z', ttlMs: 60_000 }, { Model });
+      return { Model, row };
+    };
+    const runtime = { ollamaVersion: '0.40.8', gpuDriver: null, observedAt: '2026-09-04T00:00:00.000Z' };
+    const recorded = await finalize({ measuredRuntime: runtime });
+    const legacy = await finalize({});
+    expect(recorded.row.measuredRuntime).toEqual(runtime);
+    expect(legacy.row).not.toHaveProperty('measuredRuntime');
+    expect(recorded.row.evidenceDigest).not.toBe(legacy.row.evidenceDigest);
+    expect(recorded.row.identityKey).toBe(legacy.row.identityKey);
+
+    const resolved = await service.resolveQualification(identity(), { Model: recorded.Model, now: new Date('2026-09-04T01:00:30Z') });
+    expect(resolved).toMatchObject({ state: 'supported', evidence: { measuredRuntime: runtime } });
+    const legacyResolved = await service.resolveQualification(identity(), { Model: legacy.Model, now: new Date('2026-09-04T01:00:30Z') });
+    expect(legacyResolved).toMatchObject({ state: 'supported', evidence: { measuredRuntime: null } });
+
+    recorded.Model.rows[0].measuredRuntime.ollamaVersion = '0.34.4';
+    const tampered = await service.resolveQualification(identity(), { Model: recorded.Model, now: new Date('2026-09-04T01:00:30Z') });
+    expect(tampered).toMatchObject({ state: 'stale', reasons: ['evidence_integrity_mismatch'] });
+  });
+
   it('requires repeated explicit no-tool-surface evidence before unsupported', async () => {
     const Model = makeModel();
     await begin(Model);

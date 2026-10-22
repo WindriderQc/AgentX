@@ -47,6 +47,10 @@ function runtimeIdentity(hostProfile = {}, fallbackHostUrl = null) {
     },
     ...(gpus && { gpus }),
     ollama: {
+      // Never written (#908): the Ollama version lives on each piece of
+      // evidence (shared/measuredRuntime.js) and a change shows as drift.
+      // Writing it here would void every profile on the host at an upgrade.
+      // The key stays so existing fingerprints keep their hash.
       version: hostProfile.ollama?.version || null,
       backend: hostProfile.ollama?.backend || null,
       cudaVersion: hostProfile.ollama?.cudaVersion || null,

@@ -392,7 +392,7 @@ describe('re-measurement proposals and concurrency', () => {
     const changedRuntime = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT, contextProfile: contextProfile(),
       performanceProfile: full({}, { digest: 'sha256:aaa', runtimeFingerprint: 'rt-0' }), now: NOW });
     expect(reasons(changedRuntime)).toEqual(['runtime_changed', 'full_missing']);
-    expect(changedRuntime.remeasure.reasons[0].text).toMatch(/Ollama, its settings or the host hardware/);
+    expect(changedRuntime.remeasure.reasons[0].text).toMatch(/Ollama settings or the host hardware/);
     const old = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT,
       contextProfile: contextProfile({ lastValidatedAt: '2026-08-01T00:00:00Z' }),
       performanceProfile: full({ profiledAt: '2026-08-01T00:00:00Z' }), now: NOW });
@@ -412,5 +412,57 @@ describe('re-measurement proposals and concurrency', () => {
     const evicted = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT, contextProfile: contextProfile(),
       performanceProfile: full({ concurrency: { status: 'evicted', pairs: [{ model: 'chat:12b', status: 'evicted' }] } }), now: NOW });
     expect(codes(evicted)).toContain('concurrency_evicts');
+  });
+});
+
+describe('Ollama version drift (#908)', () => {
+  const reasonCodes = cap => cap.remeasure.reasons.map(reason => reason.code);
+  const gapCodes = cap => cap.gaps.map(gap => gap.code);
+  const installed = version => ({ ...ARTIFACT, runtime: { ollamaVersion: version } });
+
+  it('keeps using evidence measured on another version and proposes a re-measure', () => {
+    const cap = buildLaneCapability({
+      model: MODEL, hostUrl: HOST, artifact: installed('0.40.8'),
+      contextProfile: contextProfile({ measuredRuntime: { ollamaVersion: '0.34.4' } }), now: NOW
+    });
+    expect(cap.context.max).toBe(262144);
+    expect(cap.context.interactive).toBe(65536);
+    expect(cap.runtimeDrift).toEqual({ measured: '0.34.4', installed: '0.40.8', evidence: [{ kind: 'context_profile', measured: '0.34.4' }] });
+    expect(reasonCodes(cap)).toContain('runtime_version_changed');
+    expect(cap.remeasure.needed).toBe(true);
+  });
+
+  it('marks evidence without a recorded version as a gap, not a re-measure reason', () => {
+    const cap = buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: installed('0.40.8'), contextProfile: contextProfile(), now: NOW });
+    expect(cap.runtimeDrift).toEqual({ measured: null, installed: '0.40.8', evidence: [{ kind: 'context_profile', measured: null }] });
+    expect(gapCodes(cap)).toContain('runtime_version_unrecorded');
+    expect(reasonCodes(cap)).not.toContain('runtime_version_changed');
+  });
+
+  it('reports nothing when the versions match or the installed one is unknown', () => {
+    const measured = contextProfile({ measuredRuntime: { ollamaVersion: '0.40.8' } });
+    expect(buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: installed('0.40.8'), contextProfile: measured, now: NOW }).runtimeDrift).toBeNull();
+    expect(buildLaneCapability({ model: MODEL, hostUrl: HOST, artifact: ARTIFACT, contextProfile: measured, now: NOW }).runtimeDrift).toBeNull();
+  });
+
+  it('reads the performance profile version from its artifact', () => {
+    const cap = buildLaneCapability({
+      model: MODEL, hostUrl: HOST, artifact: installed('0.40.8'),
+      contextProfile: contextProfile({ measuredRuntime: { ollamaVersion: '0.40.8' } }),
+      performanceProfile: performanceProfile({}, { artifact: { digest: 'sha256:aaa', runtimeFingerprint: 'rt-1', runtime: { ollamaVersion: '0.40.5' } } }),
+      now: NOW
+    });
+    expect(cap.runtimeDrift).toMatchObject({ measured: '0.40.5', evidence: [{ kind: 'performance_profile', measured: '0.40.5' }] });
+  });
+
+  it('passes the installed runtime from the resolved identity', async () => {
+    const cap = await capabilityFor({ model: MODEL, hostUrl: HOST }, {
+      hosts: () => [{ id: 'alien', url: HOST }],
+      identity: async () => installed('0.40.8'),
+      contextProfile: async () => contextProfile({ measuredRuntime: { ollamaVersion: '0.34.4' } }),
+      performanceProfile: async () => null,
+      now: () => NOW
+    });
+    expect(cap.runtimeDrift).toMatchObject({ measured: '0.34.4', installed: '0.40.8' });
   });
 });

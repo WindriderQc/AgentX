@@ -229,3 +229,29 @@ describe('measurement state and the night plan', () => {
       .toBe('1 planned; start each from Automations → Calendar at its time. 1 not recorded.');
   });
 });
+
+describe('lane card Ollama version drift (#908)', () => {
+  const driftUi = loadBrowserModule('model-profiler/components/lane-capability.js', 'renderRuntimeDrift, renderLaneCard', helpers);
+
+  it('says which version measured the profile and that it is still used', () => {
+    const html = driftUi.renderRuntimeDrift({ measured: '0.34.4', installed: '0.40.8' });
+    expect(html).toContain('Measured on Ollama 0.34.4; 0.40.8 is installed now');
+    expect(html).toContain('still used');
+    expect(driftUi.renderRuntimeDrift({ measured: null, installed: '0.40.8' })).toContain('was not recorded');
+    expect(driftUi.renderRuntimeDrift(null)).toBe('');
+  });
+
+  it('shows the warning on the card beside the Measure tonight action', () => {
+    const cap = buildLaneCapability({
+      model: 'coder:27b-q8_0', hostUrl: 'http://gpu-b:11434', hostId: 'alien',
+      artifact: { digest: 'sha256:aaa', runtimeFingerprint: 'rt', runtime: { ollamaVersion: '0.40.8' } },
+      contextProfile: { maxVerifiedContext: 65536, recommendationStatus: 'verified', recommendedInteractiveContext: 32768,
+        recommendedDocumentContext: 65536, measuredRuntime: { ollamaVersion: '0.34.4' }, lastValidatedAt: '2026-10-07T23:00:00Z' },
+      now: NOW
+    });
+    const html = driftUi.renderLaneCard({ hostName: 'UG Alien', capability: cap, tasks: [] });
+    expect(html).toContain('lc-warning--runtime');
+    expect(html).toContain('data-lane-action="measure"');
+    expect(html).toContain('The installed Ollama version differs');
+  });
+});

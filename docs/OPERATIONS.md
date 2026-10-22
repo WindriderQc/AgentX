@@ -649,8 +649,16 @@ the runtime fingerprint, so a profile,
 context result or benchmark qualification measured under other settings
 stops matching, and preflight or a sweep asks to profile the host again. Only
 a successful observation changes them, and none while the unit waits for
-`daemon-reload`; a host never observed keeps the fingerprint it had. A
-retired host-report agent still
+`daemon-reload`; a host never observed keeps the fingerprint it had.
+The Ollama version is not part of the fingerprint. Each context profile,
+performance profile and tool qualification records the version (from
+`/api/version`) and the GPU driver it was measured on, the driver only when
+the collector reports one. When the installed version differs, the evidence
+stays in use and the drift is shown: `qualification.runtimeDrift`
+(`{measured, installed}`) in the inference contract, a badge on the Profiler
+model, and a warning on the lane card, whose "Measure tonight" queues a Full
+profile. `measured: null` marks evidence written before versions were recorded.
+A retired host-report agent still
 running on a GPU host is removed by hand on that host; Core has no
 host-report route.
 

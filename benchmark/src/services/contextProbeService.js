@@ -344,6 +344,7 @@ async function probeModelContext(modelName, options = {}) {
       hostId: currentArtifact.hostId,
       artifactDigest: currentArtifact.digest,
       runtimeFingerprint: currentArtifact.runtimeFingerprint,
+      measuredRuntime: currentArtifact.runtime || null,
       profileDepth,
       candidateRepeats,
       testedNumCtx,

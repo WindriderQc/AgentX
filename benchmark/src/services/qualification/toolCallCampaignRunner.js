@@ -322,12 +322,14 @@ async function runToolCapabilityCampaign(options = {}, overrides = {}) {
       sampling: candidate.execution?.sampling || {}
     };
     await deps.assertFrozenArtifactDigest(frozenCampaign, model, host);
-    await assertCurrentArtifactIdentity(identity, deps);
+    const measuredArtifact = await assertCurrentArtifactIdentity(identity, deps);
     await assertActiveClaim(claimReceipt, deps);
 
     await deps.beginQualification({
       campaignId,
       ...identity,
+      // The Ollama version and driver this campaign runs on (#908).
+      measuredRuntime: measuredArtifact?.runtime || null,
       repetitionsRequested: repetitions,
       contractFingerprint: candidate.contractFingerprint,
       claim: claimReceipt
