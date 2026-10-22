@@ -90,8 +90,9 @@ class CodingDispatchControl {
   decorate(data, executor) {
     const identity = registry.publicExecutor(executor);
     return { ...data, executor: identity,
-      ...(data.run && { run: { ...data.run, executorId: executor.id, harness: executor.harness } }),
-      candidates: (data.candidates || []).map(row => ({ ...row, executorId: executor.id, harness: executor.harness })) };
+      ...(data.run && { run: { ...data.run, executorId: executor.id, executorLabel: executor.label, harness: executor.harness } }),
+      candidates: (data.candidates || []).map(row => ({ ...row, executorId: executor.id, executorLabel: executor.label,
+        executorProfiles: [...executor.profiles], harness: executor.harness })) };
   }
   async statusOn(executor, requestId = '') {
     const data = await this.call(executor, this.command(executor, `status${requestId ? ` ${requestId}` : ''}`));

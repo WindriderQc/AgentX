@@ -382,7 +382,8 @@ its branches are named `agentx/coding-task-<id>`.
 ## Run one task from the Pipeline page
 
 Core calls `coding_dispatch_control.py` over SSH. `CODING_EXECUTORS_JSON` can
-name several ordered executors and their harness/profile capabilities; the
+name several ordered executors, their operator-facing labels, and their
+harness/profile capabilities; the
 legacy `CODING_DISPATCHER_SSH_TARGET` and `CODING_DISPATCHER_REMOTE_ROOT` pair
 still defines one default DSH executor. `status` lists queued, unowned, non-private
 tasks explicitly routed with `service: agentx-coding`; ordinary Core and other

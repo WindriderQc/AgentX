@@ -21,8 +21,8 @@ test('concurrent copies of the same POST share one SSH request', async () => {
   const second = control.launch(request);
   await assert.rejects(control.launch({ ...request, pipelineId: '0701' }), error => error.code === 'CODING_DISPATCH_REQUEST_CONFLICT');
   complete(envelope(accepted));
-  assert.deepEqual((await first).run, { ...accepted.run, executorId: 'default', harness: 'dsh' });
-  assert.deepEqual((await second).run, { ...accepted.run, executorId: 'default', harness: 'dsh' });
+  assert.deepEqual((await first).run, { ...accepted.run, executorId: 'default', executorLabel: 'default', harness: 'dsh' });
+  assert.deepEqual((await second).run, { ...accepted.run, executorId: 'default', executorLabel: 'default', harness: 'dsh' });
   assert.equal(calls, 1);
 });
 
@@ -34,7 +34,7 @@ test('status reads the requested receipt and live host admission asynchronously'
     return envelope(data);
   });
   const status = await control.status({ requestId: request.requestId });
-  assert.deepEqual(status.run, { phase: 'running', executorId: 'default', harness: 'dsh' });
+  assert.deepEqual(status.run, { phase: 'running', executorId: 'default', executorLabel: 'default', harness: 'dsh' });
   assert.equal(status.executors[0].id, 'default');
 });
 

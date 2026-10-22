@@ -30,6 +30,7 @@ an ordered JSON array of one to 32 entries:
 [
   {
     "id": "linux-dsh-a",
+    "label": "Existing DSH worker",
     "harness": "dsh",
     "sshTarget": "worker@example-a",
     "remoteRoot": "/srv/agentx/AgentX",
@@ -38,6 +39,7 @@ an ordered JSON array of one to 32 entries:
   },
   {
     "id": "linux-opencode-b",
+    "label": "Second local worker",
     "harness": "opencode",
     "sshTarget": "worker@example-b",
     "remoteRoot": "/srv/agentx/AgentX",
@@ -51,8 +53,15 @@ The host names above are synthetic. Instance host inventories stay outside the
 public repository. If the registry is absent, the existing
 `CODING_DISPATCHER_SSH_TARGET` and `CODING_DISPATCHER_REMOTE_ROOT` values create
 one `default` DSH executor, so an existing installation keeps its behavior.
+An instance should first register its incumbent worker explicitly, retaining
+the legacy pair for rollback, before adding new hosts. `label` is the bounded
+operator-facing machine name shown in the Coding Team monitor; `id` is the
+stable receipt and routing identity.
 
-Status is aggregated. Candidate rows name their executor and harness. Once a
+Status is aggregated. The UI lists every reachable/unreachable executor and
+its harness, while duplicate task candidates from several hosts appear once
+with their available-worker count. Candidate rows retain all compatible
+executors so a code or report launch binds a host that supports that profile. Once a
 request is submitted, the browser, report resume and autonomous journal retain
 that executor. If an old receipt lacks the binding, Core asks every executor
 for the exact request. One receipt establishes the owner; two receipts are a

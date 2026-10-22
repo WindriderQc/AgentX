@@ -5,12 +5,13 @@ const registry = require('../coding-executor-registry');
 
 test('registry accepts a bounded ordered multiharness pool', () => {
   const rows = registry.fromEnvironment({ CODING_EXECUTORS_JSON: JSON.stringify([
-    { id: 'slow', harness: 'dsh', sshTarget: 'worker@slow', priority: 20 },
-    { id: 'fast', harness: 'opencode', sshTarget: 'worker@fast', priority: 10, profiles: ['code'] },
+    { id: 'slow', label: 'Slow host', harness: 'dsh', sshTarget: 'worker@slow', priority: 20 },
+    { id: 'fast', label: 'Fast host', harness: 'opencode', sshTarget: 'worker@fast', priority: 10, profiles: ['code'] },
   ]) });
   assert.deepEqual(rows.map(row => [row.id, row.harness, row.capacity]),
     [['fast', 'opencode', 1], ['slow', 'dsh', 1]]);
   assert.deepEqual(rows[0].profiles, ['code']);
+  assert.equal(registry.publicExecutor(rows[0]).label, 'Fast host');
 });
 
 test('registry preserves the legacy single DSH executor', () => {

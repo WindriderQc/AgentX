@@ -247,6 +247,22 @@ describe('Pipeline launch reconciliation', () => {
 
 describe('private report launch selection', () => {
   const profile = { reportName: 'REVIEW.md', modelCallLimit: 256 };
+  test('selects an executor compatible with the requested profile', async () => {
+    const request = jest.fn(async (_url, options = {}) => options.method === 'POST'
+      ? { data: { run: run('accepted', 'queued', { executorId: 'report-host' }) } }
+      : snapshot(run('accepted', 'queued', { executorId: 'report-host' }), true));
+    const controller = new Controller({ request, newId: () => ID });
+    controller.control = { available: true, busy: false, candidates: [
+      { pipelineId: '0700', expectedAttemptCount: 0, executorId: 'code-host', executorProfiles: ['code'] },
+      { pipelineId: '0700', expectedAttemptCount: 0, executorId: 'report-host', executorLabel: 'Report worker',
+        harness: 'opencode', executorProfiles: ['report'] },
+    ] };
+    try {
+      await controller.launch('0700', profile);
+      const body = JSON.parse(request.mock.calls.find(([, options]) => options.method === 'POST')[1].body);
+      expect(body).toMatchObject({ executorId: 'report-host', executorLabel: 'Report worker', harness: 'opencode', ...profile });
+    } finally { controller.dispose(); }
+  });
   test('lost-response recovery and an explicit retry preserve report mode, budget and request identity', async () => {
     const data = new Map();
     const storage = { getItem: key => data.get(key), setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key) };

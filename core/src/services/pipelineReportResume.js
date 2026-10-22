@@ -206,7 +206,8 @@ async function launchWorker(job) {
       budget: { modelCalls: state.budget.modelCalls, workSeconds: state.budget.workSeconds },
       ...(state.allowCloudEscalation && { allowCloudEscalation: true }) } });
   const status = await control.status({});
-  const candidate = (status.candidates || []).find(row => row.pipelineId === task.pipelineId);
+  const candidate = (status.candidates || []).find(row => row.pipelineId === task.pipelineId
+    && (!Array.isArray(row.executorProfiles) || row.executorProfiles.includes('report')));
   if (!candidate) throw fail('The coding runner does not offer this task now', 'REPORT_RESUME_NOT_CANDIDATE', 409);
   const marked = await Task.findOneAndUpdate({ _id: task._id, 'reportResume.queueRequestId': job.id, 'reportResume.launch': null },
     { $set: { 'reportResume.launch': { requestId, at: new Date().toISOString(), expectedAttemptCount: candidate.expectedAttemptCount,

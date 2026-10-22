@@ -5,6 +5,7 @@ const DEFAULT_PROFILES = ['code', 'report', 'autonomous'];
 const ID = /^[a-z][a-z0-9_-]{0,63}$/;
 const HARNESS = /^[a-z][a-z0-9._-]{0,63}$/;
 const TARGET = /^[a-z0-9_.-]+@[a-z0-9_.:-]+$/i;
+const LABEL = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/;
 
 function invalid(message) {
   const error = new Error(message);
@@ -23,9 +24,11 @@ function root(value) {
 function normalize(value, index) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalid(`Coding executor ${index + 1} must be an object.`);
   const id = String(value.id || '').trim();
+  const label = String(value.label || id).trim();
   const harness = String(value.harness || '').trim();
   const sshTarget = String(value.sshTarget || '').trim();
   if (!ID.test(id)) throw invalid(`Coding executor ${index + 1} has an invalid id.`);
+  if (!LABEL.test(label)) throw invalid(`Coding executor ${id} has an invalid label.`);
   if (!HARNESS.test(harness)) throw invalid(`Coding executor ${id} has an invalid harness.`);
   if (!TARGET.test(sshTarget)) throw invalid(`Coding executor ${id} has an invalid SSH target.`);
   const profiles = value.profiles === undefined ? DEFAULT_PROFILES : value.profiles;
@@ -34,7 +37,7 @@ function normalize(value, index) {
     throw invalid(`Coding executor ${id} has invalid profiles.`);
   const priority = value.priority === undefined ? 100 : value.priority;
   if (!Number.isSafeInteger(priority) || priority < 0 || priority > 10000) throw invalid(`Coding executor ${id} has an invalid priority.`);
-  return Object.freeze({ id, harness, sshTarget, remoteRoot: root(value.remoteRoot), profiles: Object.freeze([...profiles]),
+  return Object.freeze({ id, label, harness, sshTarget, remoteRoot: root(value.remoteRoot), profiles: Object.freeze([...profiles]),
     priority, enabled: value.enabled !== false, capacity: 1 });
 }
 
@@ -62,7 +65,7 @@ function fromEnvironment(env = process.env) {
 }
 
 function publicExecutor(executor) {
-  return { id: executor.id, harness: executor.harness, profiles: [...executor.profiles], priority: executor.priority,
+  return { id: executor.id, label: executor.label, harness: executor.harness, profiles: [...executor.profiles], priority: executor.priority,
     capacity: executor.capacity, enabled: executor.enabled };
 }
 

@@ -120,7 +120,11 @@
           && Number.isSafeInteger(value.expectedAttemptCount) && value.expectedAttemptCount >= 0 ? {
             requestId: value.requestId, pipelineId: value.pipelineId, expectedAttemptCount: value.expectedAttemptCount,
             ...(typeof value.executorId === 'string' && /^[a-z][a-z0-9_-]{0,63}$/.test(value.executorId)
-              ? { executorId: value.executorId } : {}), ...PipelineLaunchController.profile(value)
+              ? { executorId: value.executorId } : {}),
+            ...(typeof value.executorLabel === 'string' && /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/.test(value.executorLabel)
+              ? { executorLabel: value.executorLabel } : {}),
+            ...(typeof value.harness === 'string' && /^[a-z][a-z0-9._-]{0,63}$/.test(value.harness)
+              ? { harness: value.harness } : {}), ...PipelineLaunchController.profile(value)
           } : null;
       } catch { return null; }
     }
@@ -172,7 +176,8 @@
         if (!this.pending && run?.requestId && run.pipelineId && Number.isSafeInteger(run.expectedAttemptCount)
           && ['submitting', 'uncertain', 'accepted', 'running', 'stopping', 'unknown', 'waiting'].includes(run.phase)) {
           this.pending = { requestId: run.requestId, pipelineId: run.pipelineId, expectedAttemptCount: run.expectedAttemptCount,
-            ...(run.executorId && { executorId: run.executorId }), ...PipelineLaunchController.profile(run) };
+            ...(run.executorId && { executorId: run.executorId }), ...(run.executorLabel && { executorLabel: run.executorLabel }),
+            ...(run.harness && { harness: run.harness }), ...PipelineLaunchController.profile(run) };
           this.persist();
         }
         if (this.pending && run?.requestId === this.pending.requestId && run.pipelineId
@@ -180,6 +185,8 @@
           if (run.pipelineId !== this.pending.pipelineId) throw new Error('This saved request belongs to a different task. Inspect its original receipt.');
           this.pending = { requestId: run.requestId, pipelineId: run.pipelineId, expectedAttemptCount: run.expectedAttemptCount,
             ...((run.executorId || this.pending.executorId) && { executorId: run.executorId || this.pending.executorId }),
+            ...((run.executorLabel || this.pending.executorLabel) && { executorLabel: run.executorLabel || this.pending.executorLabel }),
+            ...((run.harness || this.pending.harness) && { harness: run.harness || this.pending.harness }),
             ...PipelineLaunchController.profile(run) };
           this.persist();
         }
@@ -206,9 +213,14 @@
     async launch(id, profile = {}) {
       if (!this.canLaunch(id)) return false;
       const selection = PipelineLaunchController.profile(profile);
-      const candidate = this.control.candidates.find(item => item.pipelineId === id);
+      const requiredProfile = selection.reportName ? 'report' : 'code';
+      const candidate = this.control.candidates.find(item => item.pipelineId === id
+        && (!Array.isArray(item.executorProfiles) || item.executorProfiles.includes(requiredProfile)));
+      if (!candidate) return false;
       this.pending = { requestId: this.newId(), pipelineId: id, expectedAttemptCount: candidate.expectedAttemptCount,
-        ...(candidate.executorId && { executorId: candidate.executorId }), ...selection };
+        ...(candidate.executorId && { executorId: candidate.executorId }),
+        ...(candidate.executorLabel && { executorLabel: candidate.executorLabel }),
+        ...(candidate.harness && { harness: candidate.harness }), ...selection };
       this.persist();
       return this.submit();
     }

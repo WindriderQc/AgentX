@@ -724,7 +724,7 @@
       "default": null,
       "category": "bridges",
       "secret": false,
-      "description": "JSON array of coding executors ({id, harness, sshTarget, remoteRoot, profiles, priority}). Each executor exposes the same AgentX host control contract. When unset, the legacy CODING_DISPATCHER_* pair defines one DSH executor."
+      "description": "JSON array of coding executors ({id, label, harness, sshTarget, remoteRoot, profiles, priority}). Each executor exposes the same AgentX host control contract. When unset, the legacy CODING_DISPATCHER_* pair defines one DSH executor."
     },
     "COMPRESSION_CACHE_TTL": {
       "services": [
