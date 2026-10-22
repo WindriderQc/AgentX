@@ -83,6 +83,15 @@ describe('owner private recall corpus', () => {
     expect(rag.docs.has(`souvenir:${kept.id}`)).toBe(false);
   });
 
+  test('a full-length document stays within the corpus limit, and a RAG refusal is a 400', async () => {
+    const rag = fakeRag();
+    await recall.index([mail(4, 'x'.repeat(200000))], rag.deps);
+    expect(rag.calls[0].body.documents[0].text).toHaveLength(200000);
+    const refused = { send: async () => { throw Object.assign(new Error('Each document needs 1-200000 characters'), { status: 400 }); }, env };
+    await expect(recall.index([mail(5, 'Synthetic text')], refused)).rejects.toMatchObject({ statusCode: 400, code: 'OWNER_RECALL_RAG_REFUSED' });
+    expect(await Recall.countDocuments({ documentId: 'mail:message0005' })).toBe(0);
+  });
+
   test('a document the owner forgets leaves the index and is never indexed again', async () => {
     const rag = fakeRag();
     await recall.index([mail(2, 'Synthetic note about a private matter')], rag.deps);

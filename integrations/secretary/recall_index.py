@@ -33,7 +33,7 @@ from secretary_evidence import DEFAULT_ROOT, Archive, message_text  # noqa: E402
 from value_lanes import correspondents, lanes_of, messages  # noqa: E402
 
 KEPT_LANES = ("person", "important")
-MAX_TEXT = 200_000
+MAX_TEXT = 190_000  # Core puts the subject and people first; the corpus takes 200,000 characters at most
 MAX_BATCH_DOCUMENTS = 20
 MAX_BATCH_CHARS = 1_500_000  # well under Core's JSON body limit
 PAUSE_SECONDS = 60

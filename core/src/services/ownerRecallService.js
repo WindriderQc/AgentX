@@ -12,6 +12,7 @@ const { requestJson } = require('../helpers/crossServiceClient');
 const DOCUMENT_ID = /^(mail|file|souvenir|person):[a-zA-Z0-9_-]{8,160}$/;
 const HASH = /^[a-f0-9]{64}$/;
 const BATCH = 50;
+const RAG_TEXT_LIMIT = 200000; // per-document limit of RAG's owner corpus route
 const digest = value => createHash('sha256').update(value).digest('hex');
 const failure = (message, statusCode = 400, code = 'OWNER_RECALL_INVALID') => Object.assign(new Error(message), { statusCode, code });
 const text = (value, maximum) => {
@@ -23,8 +24,15 @@ const text = (value, maximum) => {
 async function rag(method, path, body, { send = requestJson, env = process.env } = {}) {
   const token = env.OWNER_MAIL_RAG_TOKEN || '';
   if (token.length < 32) throw failure('Owner recall is not configured', 503, 'OWNER_RECALL_UNCONFIGURED');
-  return send({ baseUrl: env.RAG_SERVICE_URL || 'http://localhost:3082', path: `/api/rag/owner-mail${path}`, method, body,
-    headers: { 'x-agentx-owner-mail-token': token }, timeoutMs: 900000, serviceName: 'RAG', errorCode: 'OWNER_RECALL_RAG_FAILED' });
+  try {
+    return await send({ baseUrl: env.RAG_SERVICE_URL || 'http://localhost:3082', path: `/api/rag/owner-mail${path}`, method, body,
+      headers: { 'x-agentx-owner-mail-token': token }, timeoutMs: 900000, serviceName: 'RAG', errorCode: 'OWNER_RECALL_RAG_FAILED' });
+  } catch (error) {
+    // A refusal by RAG is a fault of the request, not an unknown server state.
+    const status = Number(error.status || error.statusCode);
+    if (status >= 400 && status < 500) throw failure(`RAG refused the recall request: ${error.message}`, 400, 'OWNER_RECALL_RAG_REFUSED');
+    throw error;
+  }
 }
 
 // A mail body or read attachment prepared by the archive importer.
@@ -54,7 +62,9 @@ async function store(values, deps) {
   for (let start = 0; start < fresh.length; start += BATCH) {
     const batch = fresh.slice(start, start + BATCH);
     const reply = await rag('POST', '/documents', { documents: batch.map(v => ({ documentId: v.documentId,
-      text: [v.title, v.people.length ? `Personnes : ${v.people.join(', ')}` : '', v.text].filter(Boolean).join('\n'), forceReindex: known.has(v.documentId) })) }, deps);
+      // Subject and people lead the text; the whole stays within the corpus limit.
+      text: [v.title, v.people.length ? `Personnes : ${v.people.join(', ')}` : '', v.text].filter(Boolean).join('\n').slice(0, RAG_TEXT_LIMIT),
+      forceReindex: known.has(v.documentId) })) }, deps);
     const counts = new Map((reply?.results || []).map(r => [r.documentId, r.chunkCount]));
     for (const value of batch) {
       if (!counts.has(value.documentId)) throw failure('RAG returned an incomplete recall receipt', 502, 'OWNER_RECALL_RAG_FAILED');
