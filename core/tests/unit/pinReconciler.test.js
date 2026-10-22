@@ -237,7 +237,7 @@ describe('pinReconciler — pin auto-restore grace period', () => {
     expect(after.status).toBe('benchmarking');
   });
 
-  it('keeps a claim acquired after the tick read its snapshot (2026-10-20 UGAlien)', async () => {
+  it('keeps a claim acquired after the tick read its snapshot', async () => {
     reconciler.setPinRestoreGraceMs(60_000);
     const claim = {
       batchId: 'profiler-queue-late',

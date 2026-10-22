@@ -5,6 +5,7 @@ const { promisify } = require('util');
 const { buildSshArgs } = require('./openclaw/agentInventory');
 const registry = require('./coding-executor-registry');
 const execFileAsync = promisify(execFile);
+const DEFAULT_REMOTE_ROOT = '/opt/agentx';
 const DEFAULT_TIMEOUT_MS = 20_000;
 
 class CodingDispatchControlError extends Error {

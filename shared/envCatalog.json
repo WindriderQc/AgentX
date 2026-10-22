@@ -694,7 +694,7 @@
       "default": null,
       "category": "bridges",
       "secret": false,
-      "description": "Absolute checkout path on the delivery host inspected by the production delivery probe. Unset: /srv/agentx/AgentX."
+      "description": "Absolute checkout path on the delivery host inspected by the production delivery probe. Unset: /opt/agentx."
     },
     "CODING_DELIVERY_SSH_TARGET": {
       "services": [
@@ -714,7 +714,7 @@
       "default": null,
       "category": "bridges",
       "secret": false,
-      "description": "Absolute checkout path of the coding dispatcher scripts on its SSH host, also the Secretary mail fallback root. Unset: /srv/agentx/AgentX; an invalid path fails bridge startup."
+      "description": "Absolute checkout path of the coding dispatcher scripts on its SSH host, also the Secretary mail fallback root. Unset: /opt/agentx; an invalid path fails bridge startup."
     },
     "CODING_DISPATCHER_SSH_TARGET": {
       "services": [

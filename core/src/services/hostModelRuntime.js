@@ -159,7 +159,7 @@ async function updateLoadedModel(hostUrl, model, options = {}) {
 
 // A benchmark claim owns `status` until its own release path clears it: the
 // claim heartbeat and finalizer match `status: 'benchmarking'`, so any other
-// write there loses the claim for good (2026-10-20, UGAlien Profiler). This
+// write there loses the claim for good (observed during a Profiler run). This
 // write therefore never lands on a claimed host, whatever snapshot the caller
 // read. `expectStatus` adds a compare-and-set against that snapshot. Returns
 // null when the write was refused.

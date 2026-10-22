@@ -341,12 +341,13 @@ lists the installed recipes and gives prompting advice. Its host, GPU and recipe
 facts come from `GET /api/images/workshop`; the page source names no machine or
 model, so it stays true when the worker or the profiles change.
 
-`/images/labo` serves the workshop's trial site read-only: comparisons with a
-side-by-side viewer, the hosts and measured setups, recipes, the plan, and the
-older gallery, journal and manual. Its pages, scripts and styles are in
-`core/public/image-lab`; its images, evidence files and frozen API answers are
-read from `<IMAGE_ARCHIVE_DIR>/atelier-site`. Host occupancy is computed live
-from runtime coordination. Nothing in it starts a generation or a reservation.
+`/images/labo` serves an instance-owned trial site read-only. AgentX includes a
+generic fallback page and the reusable route/API contracts; reviewed instance
+pages, scripts, styles, images, evidence files and frozen API answers are read
+from `<IMAGE_ARCHIVE_DIR>/atelier-site` and take precedence over that fallback.
+Concrete fleet names, campaign results and receipt paths stay outside the public
+repository. Host occupancy is computed live from runtime coordination. Nothing
+in the lab starts a generation or a reservation.
 
 New trial results reach the lab through the shared drive, not through a
 development host: a session deposits a folder under

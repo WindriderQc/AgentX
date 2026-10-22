@@ -33,7 +33,7 @@ an ordered JSON array of one to 32 entries:
     "label": "Existing DSH worker",
     "harness": "dsh",
     "sshTarget": "worker@example-a",
-    "remoteRoot": "/srv/agentx/AgentX",
+    "remoteRoot": "/opt/agentx",
     "profiles": ["code", "report", "autonomous"],
     "priority": 10
   },
@@ -42,7 +42,7 @@ an ordered JSON array of one to 32 entries:
     "label": "Second local worker",
     "harness": "opencode",
     "sshTarget": "worker@example-b",
-    "remoteRoot": "/srv/agentx/AgentX",
+    "remoteRoot": "/opt/agentx",
     "profiles": ["code", "autonomous"],
     "priority": 20
   }

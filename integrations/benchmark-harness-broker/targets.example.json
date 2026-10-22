@@ -27,7 +27,7 @@
       "executor": {
         "command": "/usr/bin/node",
         "args": [
-          "/srv/agentx/AgentX/integrations/benchmark-harness-broker/executors/ollama-isolated-executor.js",
+          "/opt/agentx/integrations/benchmark-harness-broker/executors/ollama-isolated-executor.js",
           "--base-url-env",
           "OLLAMA_HOST_A_BENCHMARK_BASE_URL",
           "--version-env",
@@ -41,7 +41,7 @@
         "pins": {
           "runtime": [
             { "name": "node", "path": "/usr/bin/node", "sha256": "4444444444444444444444444444444444444444444444444444444444444444" },
-            { "name": "ollama-isolated-executor", "path": "/srv/agentx/AgentX/integrations/benchmark-harness-broker/executors/ollama-isolated-executor.js", "sha256": "5555555555555555555555555555555555555555555555555555555555555555" }
+            { "name": "ollama-isolated-executor", "path": "/opt/agentx/integrations/benchmark-harness-broker/executors/ollama-isolated-executor.js", "sha256": "5555555555555555555555555555555555555555555555555555555555555555" }
           ],
           "profile": [
             { "name": "host-a-ollama-8192-profile", "path": "/etc/agentx/benchmark/host-a-ollama-8192.json", "sha256": "6666666666666666666666666666666666666666666666666666666666666666" }
@@ -72,7 +72,7 @@
       "attestations": { "noMemory": true, "noTools": true, "noFallback": true, "noFanOut": true, "noDelivery": true, "ephemeralSession": true },
       "executor": {
         "command": "/usr/bin/node",
-        "args": ["/srv/agentx/AgentX/integrations/benchmark-harness-broker/executors/openclaw-executor.js", "--openclaw", "/usr/local/bin/openclaw", "--config", "/etc/agentx/openclaw/benchmark-isolated.json"],
+        "args": ["/opt/agentx/integrations/benchmark-harness-broker/executors/openclaw-executor.js", "--openclaw", "/usr/local/bin/openclaw", "--config", "/etc/agentx/openclaw/benchmark-isolated.json"],
         "envAllowlist": ["OPENCLAW_RUNTIME_VERSION"],
         "lock": "openclaw-benchmark-isolated",
         "capacity": 1,
@@ -81,7 +81,7 @@
         "pins": {
           "runtime": [
             { "name": "node", "path": "/usr/bin/node", "sha256": "4444444444444444444444444444444444444444444444444444444444444444" },
-            { "name": "openclaw-executor", "path": "/srv/agentx/AgentX/integrations/benchmark-harness-broker/executors/openclaw-executor.js", "sha256": "5555555555555555555555555555555555555555555555555555555555555555" },
+            { "name": "openclaw-executor", "path": "/opt/agentx/integrations/benchmark-harness-broker/executors/openclaw-executor.js", "sha256": "5555555555555555555555555555555555555555555555555555555555555555" },
             { "name": "openclaw", "path": "/usr/local/bin/openclaw", "sha256": "6666666666666666666666666666666666666666666666666666666666666666" }
           ],
           "profile": [
@@ -113,7 +113,7 @@
       "attestations": { "noMemory": true, "noTools": true, "noFallback": true, "noFanOut": true, "noDelivery": true, "ephemeralSession": true },
       "executor": {
         "command": "/usr/bin/node",
-        "args": ["/srv/agentx/AgentX/integrations/benchmark-harness-broker/executors/hermes-isolated-executor.js"],
+        "args": ["/opt/agentx/integrations/benchmark-harness-broker/executors/hermes-isolated-executor.js"],
         "envAllowlist": ["HERMES_BENCHMARK_BASE_URL", "HERMES_BENCHMARK_TOKEN"],
         "lock": "hermes-benchmark-isolated",
         "capacity": 1,
@@ -122,7 +122,7 @@
         "pins": {
           "runtime": [
             { "name": "node", "path": "/usr/bin/node", "sha256": "4444444444444444444444444444444444444444444444444444444444444444" },
-            { "name": "hermes-executor", "path": "/srv/agentx/AgentX/integrations/benchmark-harness-broker/executors/hermes-isolated-executor.js", "sha256": "7777777777777777777777777777777777777777777777777777777777777777" }
+            { "name": "hermes-executor", "path": "/opt/agentx/integrations/benchmark-harness-broker/executors/hermes-isolated-executor.js", "sha256": "7777777777777777777777777777777777777777777777777777777777777777" }
           ],
           "profile": [
             { "name": "hermes-isolated-profile", "path": "/etc/agentx/hermes/benchmark-isolated.json", "sha256": "2222222222222222222222222222222222222222222222222222222222222222" }
@@ -154,7 +154,7 @@
       "attestations": { "ephemeralSession": true },
       "executor": {
         "command": "/usr/bin/node",
-        "args": ["/srv/agentx/AgentX/integrations/benchmark-harness-broker/executors/openclaw-executor.js", "--openclaw", "/usr/local/bin/openclaw", "--config", "/etc/agentx/openclaw/native-agent.json"],
+        "args": ["/opt/agentx/integrations/benchmark-harness-broker/executors/openclaw-executor.js", "--openclaw", "/usr/local/bin/openclaw", "--config", "/etc/agentx/openclaw/native-agent.json"],
         "envAllowlist": ["OPENCLAW_RUNTIME_VERSION"],
         "lock": "openclaw-native-agent",
         "capacity": 1,
@@ -163,7 +163,7 @@
         "pins": {
           "runtime": [
             { "name": "node", "path": "/usr/bin/node", "sha256": "4444444444444444444444444444444444444444444444444444444444444444" },
-            { "name": "openclaw-executor", "path": "/srv/agentx/AgentX/integrations/benchmark-harness-broker/executors/openclaw-executor.js", "sha256": "5555555555555555555555555555555555555555555555555555555555555555" },
+            { "name": "openclaw-executor", "path": "/opt/agentx/integrations/benchmark-harness-broker/executors/openclaw-executor.js", "sha256": "5555555555555555555555555555555555555555555555555555555555555555" },
             { "name": "openclaw", "path": "/usr/local/bin/openclaw", "sha256": "6666666666666666666666666666666666666666666666666666666666666666" }
           ],
           "profile": [

@@ -3,14 +3,14 @@
 const { reservedSiblingEndpoints } = require('../../../src/services/profiler/reservedSiblings');
 
 const ID = '74ceaeca-855d-4b17-ad70-183ab52ea341';
-const GPU = 'http://192.168.2.199:11434';
-const CPU = 'http://192.168.2.199:11435';
-const FRANK = 'http://192.168.2.99:11434';
+const GPU = 'http://192.0.2.10:11434';
+const CPU = 'http://192.0.2.10:11435';
+const OTHER_HOST = 'http://192.0.2.20:11434';
 const list = (job) => async () => ({ jobs: [{ id: 'other', state: 'running', hosts: [GPU, CPU] }, job].filter(Boolean) });
 
 describe('reserved sibling endpoints', () => {
   it('returns the same-machine endpoints its executing request covers', async () => {
-    const job = { id: ID, state: 'running', hosts: [CPU, GPU, FRANK] };
+    const job = { id: ID, state: 'running', hosts: [CPU, GPU, OTHER_HOST] };
     await expect(reservedSiblingEndpoints(ID, GPU, { list: list(job) })).resolves.toEqual([CPU]);
     await expect(reservedSiblingEndpoints(ID, GPU, { list: list({ ...job, state: 'dispatching' }) })).resolves.toEqual([CPU]);
   });

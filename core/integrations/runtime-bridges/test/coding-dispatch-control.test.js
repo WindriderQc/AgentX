@@ -5,10 +5,10 @@ const { CodingDispatchControl, launchCommand, registerCodingDispatchControlRoute
 const request = { pipelineId: '0700', requestId: '10000000-0000-4000-8000-000000000001', expectedAttemptCount: 0, confirm: true };
 const accepted = { accepted: true, run: { ...request, phase: 'accepted' } };
 const envelope = data => ({ stdout: JSON.stringify({ status: 'success', data }) });
-const configured = sshRunner => new CodingDispatchControl({ sshTarget: 'operator@host', sshRunner });
+const configured = sshRunner => new CodingDispatchControl({ sshTarget: 'operator@host', remoteRoot: '/opt/agentx', sshRunner });
 
 test('launch binds an exact task, request and observed attempt without shell interpolation', async () => {
-  assert.equal(launchCommand({ ...request, root: '/srv/agentx/AgentX' }), `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py launch 0700 ${request.requestId} 0`);
+  assert.equal(launchCommand({ ...request, root: '/opt/agentx' }), `/usr/bin/python3 /opt/agentx/integrations/coding/coding_dispatch_control.py launch 0700 ${request.requestId} 0`);
   for (const change of [{ pipelineId: '700' }, { pipelineId: '0700; reboot' }, { requestId: 'a; reboot' }, { expectedAttemptCount: '0' }, { expectedAttemptCount: -1 }, { confirm: false }]) {
     await assert.rejects(configured(() => assert.fail('must not contact host')).launch({ ...request, ...change }), error => error.statusCode === 400);
   }
@@ -46,7 +46,7 @@ test('status reads the requested receipt and live host admission asynchronously'
   const data = { contractVersion: 2, available: true, candidates: [], run: { phase: 'running' } };
   const control = configured(async (target, command) => {
     assert.equal(target, 'operator@host');
-    assert.equal(command, `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py status ${request.requestId}`);
+    assert.equal(command, `/usr/bin/python3 /opt/agentx/integrations/coding/coding_dispatch_control.py status ${request.requestId}`);
     return envelope(data);
   });
   const status = await control.status({ requestId: request.requestId });
@@ -61,7 +61,7 @@ test('HTTP loss is reported as uncertain and does not reflect private stderr', a
 
 test('stop requires confirmation and binds the exact task and request without signaling another unit', async () => {
   const control = configured(async (target, command) => {
-    assert.equal(command, `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py stop 0700 ${request.requestId}`);
+    assert.equal(command, `/usr/bin/python3 /opt/agentx/integrations/coding/coding_dispatch_control.py stop 0700 ${request.requestId}`);
     return envelope({ accepted: true, phase: 'stopping' });
   });
   assert.equal((await control.stop(request)).phase, 'stopping');
@@ -99,7 +99,7 @@ test('routes await host observations and reserve 202 for request acknowledgement
 
 test('private report launch reaches the native executor with its exact filename and explicit call budget', async () => {
   const control = configured(async (_target, command) => {
-    assert.equal(command, `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py launch-report 0700 ${request.requestId} 0 REVIEW.md --model-call-limit 256`);
+    assert.equal(command, `/usr/bin/python3 /opt/agentx/integrations/coding/coding_dispatch_control.py launch-report 0700 ${request.requestId} 0 REVIEW.md --model-call-limit 256`);
     return envelope({ ...accepted, run: { ...accepted.run, reportName: 'REVIEW.md', modelCallLimit: 256 } });
   });
   const result = await control.launch({ ...request, reportName: 'REVIEW.md', modelCallLimit: 256 });
@@ -137,7 +137,7 @@ test('report continuations preserve the exact parent and cannot mutate it under 
 });
 test('reconciliation requires confirmation and reaches only the original native request', async () => {
   const control = configured(async (_target, command) => {
-    assert.equal(command, `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py reconcile 0700 ${request.requestId}`);
+    assert.equal(command, `/usr/bin/python3 /opt/agentx/integrations/coding/coding_dispatch_control.py reconcile 0700 ${request.requestId}`);
     return envelope({ reconciled: true });
   });
   // Core's already authorized correction loop reconciles the same native identity internally.
@@ -160,7 +160,7 @@ test('a terminal execution without a saved file retains its parent id without fa
 });
 test('legacy checkpoint reads use the exact bounded native path without starting a worker', async () => {
   const control = configured(async (_target, command) => {
-    assert.equal(command, `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py read-checkpoint 0700 ${request.requestId} .review-work/REVIEW.md`);
+    assert.equal(command, `/usr/bin/python3 /opt/agentx/integrations/coding/coding_dispatch_control.py read-checkpoint 0700 ${request.requestId} .review-work/REVIEW.md`);
     return envelope({ sha256: 'a'.repeat(64) });
   });
   assert.equal((await control.checkpoint({ ...request, path: '.review-work/REVIEW.md' })).sha256, 'a'.repeat(64));
@@ -170,22 +170,22 @@ test('legacy checkpoint reads use the exact bounded native path without starting
 test('executor pool merges candidates and launches on the selected harness', async () => {
   const calls = [];
   const control = new CodingDispatchControl({ executors: [
-    { id: 'alien-dsh', harness: 'dsh', sshTarget: 'operator@alien', remoteRoot: '/srv/agentx/AgentX', priority: 20 },
-    { id: 'brutal-local', harness: 'opencode', sshTarget: 'operator@brutal', remoteRoot: '/srv/agentx/AgentX', priority: 10 },
+    { id: 'primary-dsh', harness: 'dsh', sshTarget: 'operator@primary', remoteRoot: '/opt/agentx', priority: 20 },
+    { id: 'secondary-local', harness: 'opencode', sshTarget: 'operator@secondary', remoteRoot: '/opt/agentx', priority: 10 },
   ], sshRunner: async (target, command) => {
     calls.push([target, command]);
     if (command.includes(' status')) return envelope({ contractVersion: 2, available: true, busy: false,
-      harness: target.endsWith('@alien') ? 'dsh' : 'opencode',
+      harness: target.endsWith('@primary') ? 'dsh' : 'opencode',
       candidates: [{ pipelineId: '0700', expectedAttemptCount: 0 }], excluded: [] });
     return envelope(accepted);
   } });
   const status = await control.status();
-  assert.deepEqual(status.executors.map(row => row.id), ['brutal-local', 'alien-dsh']);
+  assert.deepEqual(status.executors.map(row => row.id), ['secondary-local', 'primary-dsh']);
   assert.deepEqual(status.candidates.map(row => [row.executorId, row.harness]),
-    [['brutal-local', 'opencode'], ['alien-dsh', 'dsh']]);
-  const result = await control.launch({ ...request, executorId: 'alien-dsh' });
-  assert.equal(result.run.executorId, 'alien-dsh');
-  assert.equal(calls.at(-1)[0], 'operator@alien');
+    [['secondary-local', 'opencode'], ['primary-dsh', 'dsh']]);
+  const result = await control.launch({ ...request, executorId: 'primary-dsh' });
+  assert.equal(result.run.executorId, 'primary-dsh');
+  assert.equal(calls.at(-1)[0], 'operator@primary');
 });
 
 test('distributed launch reaches only its pinned executor and cannot change immutable role identity', async () => {
@@ -287,7 +287,7 @@ test('pool refuses a host whose installed harness differs from the registry', as
 
 test('waiting cancellation carries the task identity to the selected executor', async () => {
   const control = configured(async (_target, command) => {
-    assert.equal(command, `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py cancel-waiting 0700 ${request.requestId}`);
+    assert.equal(command, `/usr/bin/python3 /opt/agentx/integrations/coding/coding_dispatch_control.py cancel-waiting 0700 ${request.requestId}`);
     return envelope({ accepted: true, cancelledBeforeLaunch: true });
   });
   assert.equal((await control.cancel(request)).cancelledBeforeLaunch, true);

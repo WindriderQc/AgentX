@@ -62,16 +62,16 @@ test('a running receipt separates observed age, host liveness, useful work, budg
 
 test('the monitor names the incumbent executor, harness and the available fleet', () => {
   const f = fixture({ stage: 'tool' }, 'running', { executors: [
-    { id: 'ugfrank-dsh', label: 'UGFrank', harness: 'dsh', available: true, busy: true },
-    { id: 'ugalien-open', label: 'UGAlien', harness: 'opencode', available: true, busy: false },
-  ], unavailableExecutors: [{ id: 'ugbrutal-open', label: 'UGBrutal', harness: 'opencode' }] });
-  Object.assign(f.controller.control.run, { executorId: 'ugfrank-dsh', executorLabel: 'UGFrank', harness: 'dsh' });
-  Object.assign(f.controller.pending, { executorId: 'ugfrank-dsh', executorLabel: 'UGFrank', harness: 'dsh' });
+    { id: 'primary-dsh', label: 'Primary', harness: 'dsh', available: true, busy: true },
+    { id: 'secondary-open', label: 'Secondary', harness: 'opencode', available: true, busy: false },
+  ], unavailableExecutors: [{ id: 'tertiary-open', label: 'Tertiary', harness: 'opencode' }] });
+  Object.assign(f.controller.control.run, { executorId: 'primary-dsh', executorLabel: 'Primary', harness: 'dsh' });
+  Object.assign(f.controller.pending, { executorId: 'primary-dsh', executorLabel: 'Primary', harness: 'dsh' });
   const evidence = renderMonitor(f).pipelineWorkerMonitorEvidence.innerHTML;
-  expect(evidence).toContain('UGFrank (ugfrank-dsh) · dsh · busy');
-  expect(evidence).toContain('UGAlien (ugalien-open) · opencode · ready');
-  expect(evidence).toContain('UGBrutal (ugbrutal-open) · opencode · unreachable');
-  expect(evidence).toContain('<dt>Selected executor</dt><dd>UGFrank (ugfrank-dsh) · dsh</dd>');
+  expect(evidence).toContain('Primary (primary-dsh) · dsh · busy');
+  expect(evidence).toContain('Secondary (secondary-open) · opencode · ready');
+  expect(evidence).toContain('Tertiary (tertiary-open) · opencode · unreachable');
+  expect(evidence).toContain('<dt>Selected executor</dt><dd>Primary (primary-dsh) · dsh</dd>');
 });
 
 test('attempt identity requires the dossier request binding and never adds one to the pre-launch count', () => {
