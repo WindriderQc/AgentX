@@ -30,12 +30,13 @@ def git(path, *args):
 
 
 class GitAdapter:
-    def __init__(self, root, outside=False):
+    def __init__(self, root, outside=False, fail_result_once=False):
         self.root = root
         self.repo = root / "repo"
         self.worktree = root / "worktree"
         self.artifact = root / "step.bundle"
         self.outside = outside
+        self.fail_result_once = fail_result_once
         self.harness_calls = self.uploads = self.results = 0
         self.result_bodies = []
         self.base = ""
@@ -94,6 +95,8 @@ class GitAdapter:
     def result(self, body):
         self.results += 1
         self.result_bodies.append(body)
+        if self.fail_result_once and self.results == 1:
+            raise OSError("lost terminal response")
 
     def usage(self, _started):
         return {"workSeconds": 1, "testSeconds": 1, "modelSeconds": 1, "modelCalls": 1}
@@ -129,13 +132,31 @@ class DistributedStepTest(unittest.TestCase):
             self.assertEqual((adapter.uploads, adapter.results), (2, 2))
             self.assertEqual(git(adapter.worktree, "rev-list", "--count", adapter.base + "..HEAD"), "1")
 
-    def test_scope_escape_never_commits_or_uploads(self):
+    def test_scope_escape_posts_durable_failed_result_and_replays_it(self):
         with tempfile.TemporaryDirectory() as directory:
             adapter = GitAdapter(Path(directory), outside=True)
-            with self.assertRaisesRegex(step_worker.DistributedStepError, "exceeded"):
-                step_worker.StepWorker(adapter, Path(directory) / "journal").execute(manifest(adapter.base))
+            worker = step_worker.StepWorker(adapter, Path(directory) / "journal")
+            first = worker.execute(manifest(adapter.base))
+            second = worker.execute(manifest(adapter.base))
+            self.assertEqual(first["outcome"], "failed")
+            self.assertEqual(first["receipt"]["code"], "step_scope_changed")
+            self.assertTrue(second["replayed"])
             self.assertEqual(adapter.uploads, 0)
+            self.assertEqual(adapter.results, 2)
+            self.assertEqual(adapter.harness_calls, 1)
             self.assertEqual(git(adapter.worktree, "rev-parse", "HEAD"), adapter.base)
+
+    def test_lost_terminal_post_stays_unknown_until_exact_replay(self):
+        with tempfile.TemporaryDirectory() as directory:
+            adapter = GitAdapter(Path(directory), fail_result_once=True)
+            worker = step_worker.StepWorker(adapter, Path(directory) / "journal")
+            with self.assertRaisesRegex(OSError, "lost terminal"):
+                worker.execute(manifest(adapter.base))
+            replay = worker.execute(manifest(adapter.base))
+            self.assertEqual(replay["outcome"], "verified")
+            self.assertTrue(replay["replayed"])
+            self.assertEqual(adapter.harness_calls, 1)
+            self.assertEqual(adapter.results, 2)
 
 
 if __name__ == "__main__":

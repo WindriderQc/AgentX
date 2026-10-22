@@ -31,6 +31,12 @@ class DistributedStepError(RuntimeError):
     pass
 
 
+class DeterministicStepFailure(DistributedStepError):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
 def add_arguments(parser):
     parser.add_argument("--distributed-role", choices=("step", "assembly"), default=None)
     parser.add_argument("--graph-id", default=None)
@@ -208,44 +214,55 @@ class StepWorker:
             if prior.get("manifestFingerprint") != manifest["manifestFingerprint"]:
                 raise DistributedStepError("request journal belongs to another manifest")
             if prior.get("state") == "terminal":
-                self.adapter.upload(Path(prior["artifactPath"]))
+                if prior["result"].get("outcome") == "verified":
+                    self.adapter.upload(Path(prior["artifactPath"]))
                 self.adapter.result(prior["result"])
                 return {**prior["result"], "replayed": True}
             raise DistributedStepError("step has an unresolved non-terminal journal")
-
-        workspace = self.adapter.prepare(manifest)
         started = time.monotonic()
-        run = self.adapter.harness(workspace, step_prompt(manifest), manifest)
-        if getattr(run, "returncode", 0) != 0:
-            raise DistributedStepError("coding harness did not complete the step")
-        changed = sorted(self.adapter.changed(workspace, manifest["baseCommit"]))
-        allowed = manifest["allowedPaths"]
-        outside = [name for name in changed if not any(name == root or name.startswith(root + "/") for root in allowed)]
-        if not changed or outside:
-            raise DistributedStepError("coding harness produced no change or exceeded the exact step scope")
-        tests = self.adapter.tests(workspace, manifest)
-        if not tests or any(item.get("outcome") != "passed" for item in tests):
-            raise DistributedStepError("runner-owned focused verification did not pass")
-        commit = self.adapter.commit(workspace, manifest, changed)
-        if not SHA1.fullmatch(commit) or self.adapter.parent(workspace, commit) != manifest["baseCommit"]:
-            raise DistributedStepError("step result is not exactly one commit above its base")
-        artifact_path, export = self.adapter.export(workspace, manifest, commit)
-        uploaded = self.adapter.upload(artifact_path)
-        artifact = {
-            "id": uploaded["id"], "sha256": uploaded["sha256"],
-            "sizeBytes": uploaded.get("sizeBytes", uploaded.get("size")),
-            "format": uploaded.get("format", "git-bundle/v1"),
-        }
-        if artifact["sha256"] != export["sha256"] or artifact["sizeBytes"] != export["size"]:
-            raise DistributedStepError("Core artifact receipt differs from the exported bundle")
-        usage = self.adapter.usage(started)
-        result = {"outcome": "verified", "actualUsage": usage, "receipt": {
-            "commit": commit, "changedPaths": changed, "tests": tests, "artifact": artifact,
-            "finishedAt": self.adapter.now(),
-        }}
-        _atomic_json(path, {"schemaVersion": 1, "state": "terminal",
-                            "manifestFingerprint": manifest["manifestFingerprint"],
-                            "artifactPath": str(artifact_path), "result": result})
+        _atomic_json(path, {"schemaVersion": 1, "state": "running",
+                            "manifestFingerprint": manifest["manifestFingerprint"]})
+        try:
+            workspace = self.adapter.prepare(manifest)
+            run = self.adapter.harness(workspace, step_prompt(manifest), manifest)
+            if getattr(run, "returncode", 0) != 0:
+                raise DeterministicStepFailure("harness_failed", "coding harness did not complete the step")
+            changed = sorted(self.adapter.changed(workspace, manifest["baseCommit"]))
+            allowed = manifest["allowedPaths"]
+            outside = [name for name in changed if not any(name == root or name.startswith(root + "/") for root in allowed)]
+            if not changed:
+                raise DeterministicStepFailure("no_changes", "coding harness produced no source change")
+            if outside:
+                raise DeterministicStepFailure("step_scope_changed", "coding harness exceeded the exact step scope")
+            tests = self.adapter.tests(workspace, manifest)
+            if not tests or any(item.get("outcome") != "passed" for item in tests):
+                raise DeterministicStepFailure("focused_tests_failed", "runner-owned focused verification did not pass")
+            commit = self.adapter.commit(workspace, manifest, changed)
+            if not SHA1.fullmatch(commit) or self.adapter.parent(workspace, commit) != manifest["baseCommit"]:
+                raise DeterministicStepFailure("commit_shape_invalid", "step result is not exactly one commit above its base")
+            artifact_path, export = self.adapter.export(workspace, manifest, commit)
+            _atomic_json(path, {"schemaVersion": 1, "state": "artifact_ready",
+                                "manifestFingerprint": manifest["manifestFingerprint"],
+                                "artifactPath": str(artifact_path), "export": export})
+            uploaded = self.adapter.upload(artifact_path)
+            artifact = {"id": uploaded["id"], "sha256": uploaded["sha256"],
+                "sizeBytes": uploaded.get("sizeBytes", uploaded.get("size")),
+                "format": uploaded.get("format", "git-bundle/v1")}
+            if artifact["sha256"] != export["sha256"] or artifact["sizeBytes"] != export["size"]:
+                raise DeterministicStepFailure("artifact_receipt_mismatch",
+                                               "Core artifact receipt differs from the exported bundle")
+            result = {"outcome": "verified", "actualUsage": self.adapter.usage(started), "receipt": {
+                "commit": commit, "changedPaths": changed, "tests": tests, "artifact": artifact,
+                "finishedAt": self.adapter.now()}}
+        except DeterministicStepFailure as failure:
+            result = {"outcome": "failed", "actualUsage": self.adapter.usage(started),
+                      "receipt": {"code": failure.code, "finishedAt": self.adapter.now()}}
+            artifact_path = None
+        terminal = {"schemaVersion": 1, "state": "terminal",
+                    "manifestFingerprint": manifest["manifestFingerprint"], "result": result}
+        if artifact_path is not None:
+            terminal["artifactPath"] = str(artifact_path)
+        _atomic_json(path, terminal)
         self.adapter.result(result)
         return result
 
@@ -300,7 +317,8 @@ class RunnerStepAdapter:
 
     def changed(self, workspace, base):
         if self.r.dependency_state(workspace) != self.installed_dependencies:
-            raise DistributedStepError("code step changed dependencies that were not installed for this attempt")
+            raise DeterministicStepFailure("dependencies_changed",
+                                           "code step changed dependencies that were not installed for this attempt")
         tracked = self.r.git(workspace, "diff", "--name-only", base, "--").splitlines()
         untracked = self.r.git(workspace, "ls-files", "--others", "--exclude-standard").splitlines()
         return sorted(set(filter(None, [*tracked, *untracked])))
@@ -347,7 +365,15 @@ class RunnerStepAdapter:
         return self.core.upload(self.manifest.get("artifactUploadPath") or self.endpoint + "/artifact", path)
 
     def result(self, body):
-        return self.core.post(self.manifest.get("terminalResultPath") or self.endpoint + "/result", body)
+        response = self.core.post(self.manifest.get("terminalResultPath") or self.endpoint + "/result", body)
+        run = self.r.coding_dispatch_control.read_receipt(self.args.request_id)
+        if not isinstance(run, dict) or run.get("requestId") != self.args.request_id \
+                or run.get("pipelineId") != self.args.task_id:
+            raise DistributedStepError("host launch receipt changed before terminal result recording")
+        run.update(codeStepResult=body, coreRecorded=True)
+        self.r.coding_dispatch_control.atomic_json(self.r.RECEIPTS / f"{self.args.request_id}.json", run)
+        self.progress.core_recorded = True
+        return response
 
     def usage(self, started):
         observed = self.progress.usage() if hasattr(self.progress, "usage") else {}
@@ -372,6 +398,8 @@ def execute(runtime, args, progress) -> int:
         fingerprint=args.manifest_fingerprint)
     factory = getattr(runtime, "distributed_step_adapter", RunnerStepAdapter)
     adapter = factory(runtime, args, progress, manifest, core, endpoint)
-    StepWorker(adapter, runtime.RECEIPTS).execute(manifest)
-    progress.finish("verified", checkpoint=getattr(progress, "checkpoint", None))
+    result = StepWorker(adapter, runtime.RECEIPTS).execute(manifest)
+    reason = None if result["outcome"] == "verified" else "code_step_blocked"
+    progress.finish("local_only" if result["outcome"] == "verified" else "blocked", reason,
+                    getattr(progress, "checkpoint", None))
     return 0

@@ -84,7 +84,8 @@ class AssemblyAdapter:
 
     def publish(self, _workspace, _manifest, publication_id):
         self.publications += 1
-        return {"requestId": publication_id, "state": "published", "url": "https://example.invalid/pr/1"}
+        return {"requestId": publication_id, "state": "published", "url": "https://example.invalid/pr/1",
+                "prNumber": 1, "headCommit": self.head(self.worktree)}
 
     def reconcile_publication(self, *_args):
         return None

@@ -268,8 +268,11 @@ class RunnerAssemblyAdapter:
         url = self.r.push_and_open_pr(workspace,
             self.r.git(workspace, "branch", "--show-current"), self.args.task_id,
             title, summary, token, safe_body=True)
+        match = re.fullmatch(r"https://github\.com/[^/]+/[^/]+/pull/([1-9][0-9]*)", url)
+        if not match:
+            raise DistributedAssemblyError("publication returned no canonical GitHub pull request URL")
         return {"requestId": publication_id, "state": "published", "url": url,
-                "headCommit": self.head(workspace)}
+                "prNumber": int(match.group(1)), "headCommit": self.head(workspace)}
 
     def reconcile_publication(self, publication_id, manifest):
         # push_and_open_pr is keyed by the frozen branch and returns the existing
@@ -297,7 +300,7 @@ def execute(runtime, args, progress, *, manifest=None, adapter=None) -> int:
     active_adapter = adapter or factory(runtime, args, progress, checked, core, endpoint)
     result = AssemblyWorker(active_adapter, runtime.RECEIPTS).execute(checked)
     if result.get("state") == "waiting":
-        progress.set_stage("code_step_assembly_wait")
+        progress.set_stage("checkpoint")
         progress.write()
         return 0
     progress.checkpoint = result.get("headCommit")
