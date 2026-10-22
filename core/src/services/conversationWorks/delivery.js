@@ -21,7 +21,7 @@ function createWorkDelivery(works) {
       resultDisposition: row.result?.kind || null,
       controllable: row.classification !== 'native_only' && !row.attempt && ['received', 'queued', 'paused'].includes(row.state),
       result: result && result.kind !== 'no_work' ? { ...result,
-        ...(presented && { language: presented.language, spokenText: presented.spokenText, readingText: presented.readingText, displayText: presented.displayText }),
+        ...(presented && { display: presented.display, language: presented.language, spokenText: presented.spokenText, readingText: presented.readingText, displayText: presented.displayText }),
         automaticSpeech: await works.automaticSpeech(row), version: row.result.version,
         deliveryId: row.delivery.id, presentation: row.delivery.state } : null,
       // A context payload is never a browser projection.

@@ -54,3 +54,7 @@
 .journal-shown-body { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--soft); }
 .journal-shown-image { display: block; max-width: 160px; max-height: 120px; margin-top: 4px; border-radius: 6px; object-fit: contain; }
 @media (max-width: 700px) { .conversation-board { padding: 12px; } .display-board-list { max-height: none; } }
+
+.conversation-screen-picker > summary { cursor: pointer; padding: .6rem; min-height: 44px; }
+.conversation-screen-destinations { display: flex; flex-wrap: wrap; gap: 8px; padding-block: 10px; max-height: 45vh; overflow: auto; }
+.conversation-visit { flex-basis: 100%; padding: 10px; border: 1px solid var(--cyan); border-radius: 8px; }

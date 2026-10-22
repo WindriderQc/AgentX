@@ -4,7 +4,7 @@
   const labels = { received: 'Request saved', queued: 'Handling it in the background', dispatching: 'Being picked up',
     paused: 'Request paused', running: 'Working on your request', uncertain: 'Receipt awaiting verification', failed: 'The work did not succeed',
     cancelled: 'Work stopped', result_ready: 'Result available', completed: 'Result available' };
-  function create({ host, base, api, getConversation, maySpeak = () => true, onSnapshot = () => {}, onPollError = () => {}, pollMs = 2000 }) {
+  function create({ host, base, api, getConversation, maySpeak = () => true, onShow = () => {}, onSnapshot = () => {}, onPollError = () => {}, pollMs = 2000 }) {
     const deviceSession = root.crypto.randomUUID(), items = new Map(), cards = new Map(), attempted = new Set(), requested = new Set();
     let sessionId, cursor = 0, sequence = 0, timer, pollController, presenting = false, disposed = false, generation = 0;
     const url = () => `${base}/${encodeURIComponent(sessionId)}`;
@@ -95,6 +95,8 @@
           for (const item of data.items) {
             const previous = items.get(item.id); items.set(item.id, item); render(item);
             if (item.result && previous?.result?.version !== item.result.version) {
+              // Rebuild pages through the current server catalogue, including restored results.
+              for (const block of item.result.display || []) if (block.kind === 'page') onShow(block);
               // Display is acknowledged after the DOM update, separately from speech.
               void receipt(item, 'displayed').catch(() => {});
             }

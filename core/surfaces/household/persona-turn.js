@@ -42,7 +42,7 @@ const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the
 function createPersonaTurnHandler({
   logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor = null, conversationWorks = null,
   familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
-  sounds, visuals, brain, memberWork, conversationImages, warmup = null, activePersonaTurns, validClientTurnId,
+  sounds, visuals, brain, memberWork, conversationImages, screenPages = require('../../public/js/screen-pages'), warmup = null, activePersonaTurns, validClientTurnId,
   envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,
   packById, packSummary, modeSummary, publicSession, systemPromptFor, spokenReplyLanguage,
   sessionHistoryMessages, loadSessionAuditRows,
@@ -55,7 +55,7 @@ function createPersonaTurnHandler({
     agentInstructions(turnSession, turnSession.persona,
       pack.childSafe ? FAMILY_SURFACE_CONTRACT : PERSONAL_OPERATOR_SURFACE_CONTRACT, selectedMode, { soundPlayback, channel })
     + addressed + workshopPrompt(workshop) + scene
-    + (llmxTurn ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, pages: !pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) })
+    + (llmxTurn ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, pages: !pack.childSafe, pageCatalog: screenPages, imageSources: visuals.sources({ family: pack.childSafe }) })
       + (imagesEnabled && conversationImages ? '\n' + conversationImages.contract(imageSession, imageBackend) : ''));
   // What an ordinary spoken turn of the conversation's own agent sends, in a personal session nobody has spoken in yet.
   const openingInstructions = (session, pack, selectedMode) => nativeInstructionsFor({ turnSession: session, pack, selectedMode,
@@ -318,7 +318,8 @@ function createPersonaTurnHandler({
           : { text: '', refs: [] };
         const contextBase = [systemPromptFor(pack, { ...context, contextOnly: true }), interruptedContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || ''].join('');
-        const contextTail = [isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || ''].join('');
+        const contextTail = [isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || '',
+          !pack.childSafe && !isLlmX && !consult ? require('./screen-context').screenContext(req.body?.screen, screenPages) : ''].join('');
         const turnContext = [contextBase, brainAdvice.text, workAdvice.text, contextTail].join('').trim();
         const guardianContext = guardianSession ? dedicatedGuardian.selectedContext({
           base: contextBase, brain: brainAdvice, work: workAdvice, tail: contextTail }) : null;
@@ -345,13 +346,13 @@ function createPersonaTurnHandler({
         const agentxInstructions = [pack.childSafe ? session.persona?.identity : '',
           systemPromptFor(pack, { modeId: session.modeId }), pack.childSafe ? '' : session.persona?.identity,
           'This turn uses AgentX/Ollama inference with the supplied context. No native agent tools, skills or Dreaming run here. Do not claim to access OpenClaw memory or execute actions. A note is saved only when the supplied context explicitly confirms it.',
-          workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, pages: !pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) }),
+          workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, pages: !pack.childSafe, pageCatalog: screenPages, imageSources: visuals.sources({ family: pack.childSafe }) }),
           isLlmX || member ? '' : conversationImages?.contract(session, backend)].filter(Boolean).join('\n\n');
         abort.signal.throwIfAborted();
         entry.dispatched = true;
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
         const replyLanguage = context.speechLanguage || (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
-        const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowPages: !pack.childSafe, language: replyLanguage,
+        const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowPages: !pack.childSafe, pageCatalog: screenPages, language: replyLanguage,
           onSay: delta => { if (!res.writableEnded) event('delta', { delta }); },
           // One consultation per reply, and a member does not consult in turn.
           onConsult: request => { if (!member) consultRequest ||= teamAddress.consultedMember(request, team, agentIdFor(session)); }, onShow: block => {

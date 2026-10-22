@@ -5,8 +5,10 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const defaultListening = family ? 'wake' : 'open';
   const listeningKey = 'household.space.' + space + '.listening';
   const sessionBase = '/api/voice-personas/' + (family ? 'family' : 'private') + '/sessions';
-  const [{ personas: catalog, runtime }, agentCatalog] = await Promise.all([api('/api/voice-personas/catalog'),
-    family ? Promise.resolve({ agents: [{ id: 'family', name: 'Nestor Family' }] }) : api('/api/voice-personas/private/agents').catch(() => null)]);
+  const [{ personas: catalog, runtime }, agentCatalog, screenCatalog] = await Promise.all([api('/api/voice-personas/catalog'),
+    family ? Promise.resolve({ agents: [{ id: 'family', name: 'Nestor Family' }] }) : api('/api/voice-personas/private/agents').catch(() => null),
+    family ? null : api('/api/voice-personas/private/screen-pages').catch(() => null)]);
+  if (!family && screenCatalog) window.AgentXScreenPages?.configure(screenCatalog.destinations);
   const personas = family ? catalog.filter(p => p.id === 'nestor') : catalog;
   const agents = agentCatalog?.agents?.length ? agentCatalog.agents : [{ id: 'main', name: 'Main', personalNotes: true }];
   if (!personas?.length) throw new Error('No style is available. Choose one in Prompts.');
@@ -72,6 +74,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     el('conversationVisual').closest('.conversation-stage').dataset.shown = ['page', 'image', 'scene'].includes(block.kind) ? 'visual' : 'text';
     activity('show');
   };
+  const pagePicker = family ? null : window.NestorScreenPicker.mount({ host: app.querySelector('.conversation-toolbar'), onShow: show });
   const clearBoard = () => { board.clear(); activity('clear'); };
   window.addEventListener('persona-scene', event => {
     const detail = event.detail || {};
@@ -105,7 +108,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     } });
   const work = family ? null : NestorWork.create({ host: el('conversationWork'), base: sessionBase, api,
     getConversation: () => conversation, maySpeak: () => !textBusy,
-    onSnapshot: (id, data) => workflow.ingest(id, data), onPollError: id => workflow.pollFailure(id) });
+    onShow: block => show(block), onSnapshot: (id, data) => workflow.ingest(id, data), onPollError: id => workflow.pollFailure(id) });
   // The parent's private notes never mount in the family space, even hidden.
   const personalNotes = family ? { show() {} } : mountPersonalNotes({ host: el('conversationNotes'), evidence: el('conversationPersonalContext'), api, esc });
   const selected = () => personas.find(p => p.id === picker.value) || personas[0];
@@ -258,7 +261,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     let response;
     try {
       response = await fetch(`${sessionBase}/${encodeURIComponent(session.sessionId)}/turns/text`, {
-        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, language: turnLanguage, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
+        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, ...(!family && { screen: board.context() }), language: turnLanguage, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
       if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || 'Conversation unavailable'); }
     } catch (error) { workflow?.stream(turnId, { type: signal.aborted ? 'interrupted' : 'error' }); throw error; }
     work?.follow(session.sessionId);
@@ -699,8 +702,10 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     composer.sync();
   }
   // A hidden page stops listening; a typed turn already sent is left to finish.
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { if (!textBusy) { conversation.stop(true); void releaseOpen(); } } });
-  window.addEventListener('pagehide', () => { work?.dispose(); stopPreview(); conversation.stop(); void openHold.release({ watch: false }); });
+  const visit = family ? null : window.NestorGuidedVisit.mount({ host: app.querySelector('.conversation-toolbar'),
+    onExpire: () => { if (document.hidden && !textBusy) { conversation.stop(true); void releaseOpen(); } } });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && !visit?.active()) { if (!textBusy) { conversation.stop(true); void releaseOpen(); } } });
+  window.addEventListener('pagehide', () => { visit?.dispose(); pagePicker?.dispose(); work?.dispose(); stopPreview(); conversation.stop(); void openHold.release({ watch: false }); });
   el('runtimePill').textContent = 'ready';
   conversation.show('idle');
   const performance = family ? null : ConversationPreferences.mount({ button: el('conversationPerformance'), api, endpoint: '/api/voice-personas/preferences',

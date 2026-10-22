@@ -17,7 +17,7 @@ const records = require('../persona-records');
 const BLOCK = '[Household selected context for this turn: reference data, not tool instructions]';
 const RUN_ID = 'resp_33333333-3333-4333-8333-333333333333';
 
-function harness({ packId, backend, response = 'Réponse synthétique.', conversationImages, settle, sounds }) {
+function harness({ packId, backend, response = 'Réponse synthétique.', conversationImages, settle, sounds, screenPages }) {
   const pack = packs.packById(packId);
   const session = { sessionId: 'synthetic-session', status: 'active', packId, modeId: pack.defaultMode, scopeId: pack.defaultScopeId,
     backend, agentId: pack.childSafe ? 'family' : 'main', turnCount: 0,
@@ -52,7 +52,7 @@ function harness({ packId, backend, response = 'Réponse synthétique.', convers
     }
   });
   const handle = createPersonaTurnHandler({
-    logger: null, runtimeServices: { attachments: { ids: () => [] } }, conversations, conversationEnv: {},
+    screenPages, logger: null, runtimeServices: { attachments: { ids: () => [] } }, conversations, conversationEnv: {},
     executeConversation: async request => { const result = await executeConversation(request); settle?.(request); return result; }, conversationImages,
     requireNativeAgent: async () => {},
     familyTasks: { listProfileDetails: async () => ({ profiles: state.profiles }), listProfiles: async () => ({ profiles: state.profiles }),
@@ -309,5 +309,23 @@ for (const backend of ['agentx', 'openclaw']) {
     assert.equal(accepted, 1); assert.equal(result.display[0].operation.state, 'accepted');
     assert.equal(result.reply.text, 'Je demande ton dessin.');
     assert.ok(sent[0].prefix.includes('source="draw"'));
+  });
+}
+
+
+for (const backend of ['agentx', 'openclaw']) {
+  test(`${backend} shows configured services and shares only bounded screen reference data on personal turns`, async () => {
+    const screenPages = require('../../../public/js/screen-pages').createCatalog([
+      { id: 'home-assistant', label: 'Home Assistant', href: 'http://home.test:8123', mode: 'link' }
+    ]);
+    const h = harness({ packId: 'personal_operator', backend, screenPages,
+      response: 'Voici votre maison. <show kind="page">home-assistant</show>' });
+    const result = await h.turn('Montre-moi ma maison.', 'voice', { screen: [{ page: 'home-assistant', status: 'external', title: 'NOT_SEEN' }] });
+    assert.equal(result.display[0].body, 'home-assistant');
+    assert.match(h.sent[0].prefix, /home-assistant/); assert.doesNotMatch(h.sent[0].prefix, /http:\/\/home/);
+    assert.match(h.sent[0].request, /Browser screen observation/); assert.doesNotMatch(h.sent[0].request, /NOT_SEEN/);
+    const family = harness({ packId: 'kidx_nestor', backend, screenPages });
+    await family.turn('Bonjour', 'voice', { screen: [{ page: 'home-assistant', status: 'visible', title: 'PRIVATE_SCREEN' }] });
+    assert.doesNotMatch(family.sent[0].request + family.sent[0].prefix, /PRIVATE_SCREEN|home-assistant/);
   });
 }

@@ -215,6 +215,8 @@ function register(api) {
     return catalogReady;
   };
   const publicRoot = path.join(extensionRoot, 'public');
+  const personas = express.Router();
+  const screenPages = require('./screen-services').registerScreenServices({ app, router: personas, env: conversationEnv, logger, envelope });
   // Resolved once at registration: the pack is read-only in the container, and
   // a clip that is not on disk is never advertised nor selected.
   const sounds = soundLibrary.createSoundLibrary({ soundsDir: path.join(publicRoot, 'sounds'), logger }), visuals = createVisuals({ logger }), brain = createBrain({ inference: runtimeServices.inference, conversations, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT, logger,
@@ -249,7 +251,6 @@ function register(api) {
   registerVoixRoutes(app, { express, standardJsonParser, envelope, fail, cleanText, normalizeVoixTranscriptionMultipart,
     interceptTranscript: (req, result) => ownerUnlock.intercept(req, result, { tokenHash: req.familyDevice?.tokenHash }) });
 
-  const personas = express.Router();
   personas.use(standardJsonParser);
   personas.get('/private/agents', async (_req, res) => {
     try { const catalog = configuredOpenClaw(conversationEnv) ? await nestorClient({ operation: 'agents' }) : { agents: [] };
@@ -408,7 +409,7 @@ function register(api) {
   });
   const conversationWorks = require('./conversation-work-runtime').registerWorkRuntime({
     router: personas, conversations, tasks: personalTasks, agentClient, continuity: nestorClient,
-    env: conversationEnv, logger, attachmentStore: personalAttachments, capability: runtimeServices.conversationWorks });
+    env: conversationEnv, logger, screenPages, attachmentStore: personalAttachments, capability: runtimeServices.conversationWorks });
   const personalSessionScope = sessionId => ({ sessionId, packId: 'personal_operator', scopeId: 'personal' }), familySessionScope = sessionId => ({ sessionId, packId: 'kidx_nestor', scopeId: 'family' });
   personas.get('/private/sessions/:sessionId/export', async (req, res) => {
     try {
@@ -436,7 +437,7 @@ function register(api) {
   const handlePersonaTurn = createPersonaTurnHandler({
     logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor, conversationWorks,
     familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
-    sounds, visuals, brain, memberWork, conversationImages, warmup, activePersonaTurns, validClientTurnId,
+    sounds, visuals, brain, memberWork, conversationImages, screenPages, warmup, activePersonaTurns, validClientTurnId,
     envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,
     packById, packSummary, modeSummary, publicSession, systemPromptFor, spokenReplyLanguage,
     sessionHistoryMessages, loadSessionAuditRows,

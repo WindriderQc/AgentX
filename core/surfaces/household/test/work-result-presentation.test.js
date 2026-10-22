@@ -50,3 +50,17 @@ test('English list fallback speaks its useful items in English and keeps every i
   assert.ok(view.displayText.includes('Echo'));
   assert.ok(view.readingText.includes('Echo'));
 });
+
+test('native Main page blocks reach durable delivery without entering speech or overriding destinations', async () => {
+  const pageCatalog = require('../../../public/js/screen-pages').createCatalog([
+    { id: 'home-assistant', label: 'Home Assistant', href: 'http://home.test:8123', mode: 'link' }
+  ]);
+  const source = { text: 'Voici votre maison. <show kind="page">home-assistant url=https://evil.test</show>' };
+  const presented = workResultPresentation(source, { pageCatalog });
+  assert.equal(presented.spokenText, 'Voici votre maison.');
+  assert.equal(presented.display[0].body, 'home-assistant');
+  for (const field of ['spokenText', 'readingText', 'displayText']) assert.doesNotMatch(presented[field], /home-assistant|evil/);
+  const delivery = createWorkDelivery({ repo: { read: async () => source }, automaticSpeech: async () => true, presentResult: result => workResultPresentation(result, { pageCatalog }) });
+  const row = { _id: 'work', sessionId: 'session', turnId: 'turn', state: 'completed', result: { payloadRef: 'payload', version: 1 }, delivery: { id: 'delivery', state: 'available' } };
+  assert.deepEqual((await delivery.projection(row)).result.display, presented.display);
+});

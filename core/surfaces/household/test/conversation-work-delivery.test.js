@@ -10,14 +10,14 @@ class Element {
   querySelector(selector) { return this.children.find(node => '.' + node.className === selector); }
 }
 function fixture(items) {
-  const host = new Element(), stages = [], spoken = [], languages = [], conversation = { session: { sessionId: 'owner-session' }, state: 'listening',
+  const host = new Element(), stages = [], shown = [], spoken = [], languages = [], conversation = { session: { sessionId: 'owner-session' }, state: 'listening',
     interject: async ({ text, language }, { onScheduled, preserveLanguage }) => { assert.equal(preserveLanguage, true); spoken.push(text); languages.push(language); onScheduled(); return true; } };
   global.document = { createElement: () => new Element() };
-  const feed = create({ host, base: '/sessions', getConversation: () => conversation, api: async (url, options) => {
+  const feed = create({ host, onShow: block => shown.push(block), base: '/sessions', getConversation: () => conversation, api: async (url, options) => {
     if (url.includes('/receipt')) { const receipt = JSON.parse(options.body); stages.push(receipt.stage); return { claimToken: 'owned-claim' }; }
     return { items, cursor: 1, hasMore: false };
   }, pollMs: 60000 });
-  return { host, feed, stages, spoken, languages, conversation };
+  return { host, feed, stages, shown, spoken, languages, conversation };
 }
 const item = (id, automaticSpeech, classification = 'native_work') => ({ id, sessionId: 'owner-session', state: 'completed', classification,
   result: { text: id, version: 1, deliveryId: id, presentation: 'available', automaticSpeech } });
@@ -90,5 +90,18 @@ test('a document result speaks its projected summary, displays everything and re
     assert.deepEqual(h.languages, ['fr', 'fr'], 'a later language choice cannot change the original result or its replay');
     assert.equal(h.stages.filter(stage => stage === 'claim').length, 1);
     assert.equal(h.stages.filter(stage => stage === 'replay').length, 1);
+  } finally { h.feed.dispose(); delete global.document; }
+});
+
+
+test('background page displays are restored once per result version while speech remains separate', async () => {
+  const row = item('native-page', true); row.result.display = [{ kind: 'page', body: 'pipeline' }];
+  const h = fixture([row]);
+  try {
+    h.feed.follow('owner-session'); await tick(); await h.feed.poll();
+    assert.deepEqual(h.shown, row.result.display);
+    assert.deepEqual(h.spoken, ['native-page']);
+    h.feed.reset(); h.feed.follow('owner-session'); await tick();
+    assert.equal(h.shown.length, 2, 'restoring a conversation restores its page');
   } finally { h.feed.dispose(); delete global.document; }
 });

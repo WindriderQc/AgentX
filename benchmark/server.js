@@ -134,16 +134,7 @@ require('../shared/sharedCoreAssets').mountSharedCoreAssets(app);
 
 // Core's /api/config is the browser URL authority in the composed platform.
 // Standalone Benchmark keeps the environment-driven localhost defaults.
-app.use(async (req, res, next) => {
-  if (req.method === 'GET' && !req.path.startsWith('/api/') && !path.extname(req.path)) {
-    const publicUrls = await resolvePublicUrls();
-    app.locals.publicUrls = publicUrls;
-    res.locals.publicUrls = publicUrls;
-    // Same validated launchers Core renders, so navigation stays identical.
-    res.locals.trustedRuntimeNavItems = await resolvePublicUrls.resolveNavigation();
-  }
-  next();
-});
+app.use(require('../shared/productPageConfig').productPageConfig({ app, resolvePublicUrls, service: 'benchmark' }));
 
 app.get('/favicon.ico', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'core', 'public', 'img', 'favicon.ico'));
