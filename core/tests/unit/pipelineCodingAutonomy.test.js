@@ -658,6 +658,7 @@ test('late stop preserves actual published PR and records its refusal; no correc
   expect(control.launch).toHaveBeenCalledTimes(1);
 });
 test('a second upstream conflict resumes only after the native lease is conclusively released', async () => {
+  control.select = jest.fn(async () => ({ id: 'alien-local', harness: 'opencode' }));
   await task(); await authorize(); await enable(); const first = await launch();
   await Task.updateOne({ pipelineId: '0001' }, { $set: { status: 'blocked', automationAttemptCount: 1 } });
   receipts.set(first.requestId, { ...first, phase: 'finished', progress: { pipelineId: first.pipelineId, requestId: first.requestId, phase: 'finished', coreRecorded: true,
@@ -667,6 +668,8 @@ test('a second upstream conflict resumes only after the native lease is conclusi
   const manifest = await service.workerManifest('0001', second.requestId);
   expect(manifest.parentRequestId).toBe(first.requestId); expect(manifest.remaining.workSeconds).toBe(14393);
   expect(manifest.correction.kind).toBe('git_conflict_remaining');
+  expect(control.select).toHaveBeenNthCalledWith(1, { profile: 'autonomous' });
+  expect(control.select).toHaveBeenNthCalledWith(2, { profile: 'autonomous', executorId: 'alien-local' });
 });
 
 

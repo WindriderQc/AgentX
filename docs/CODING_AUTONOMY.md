@@ -337,6 +337,9 @@ UNKNOWN and pending receipts remain unchanged. A recorded operator intervention
 starts a new no-progress window without erasing the source/test history. The
 next request links to the recovered request on the same card and private branch;
 the runner refuses an absent, dirty or substituted checkpoint before model work.
+In a multi-executor pool, Core selects the executor recorded on the parent run.
+The checkpoint and private ledger are host-local, so an unavailable original
+executor delays the continuation; another free host is not a valid substitute.
 
 Activation is fenced until the grant write has been durably acknowledged. After
 a lost reply, reconcile the same key and fingerprint; never submit a replacement

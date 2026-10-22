@@ -392,6 +392,10 @@ Pipeline tickets remain available for their own workflows. `launch` starts
 unit `agentx-coding-run`. One task runs at a time on each executor. A repeated request id returns
 its first receipt instead of starting a second run. After a lost launch reply,
 the matching active unit means running; exact terminal progress means finished.
+An unpublished checkpoint and its private receipts are host-local. Autonomous
+and report continuations therefore stay pinned to the executor that owns their
+parent request; when that executor is busy or unavailable, Core waits instead
+of moving the continuation to another host.
 Missing or malformed proof stays unknown and blocks another launch. A completed
 autonomous request also requires Core's recorded native result before any new
 launch. Core verifies released claims, capacity and inferences before closing
