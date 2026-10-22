@@ -269,6 +269,59 @@ class DependencyPreparationTest(unittest.TestCase):
         self.assertEqual(self.supervise_mock.call_args.kwargs, {"deadline": deadline})
         self.assertLessEqual(self.sandbox_mock.call_args.kwargs["timeout_seconds"], 20)
 
+    def test_fractional_dependency_deadline_does_not_make_the_wrapper_expire_early(self):
+        deadline = runner.time.monotonic() + 1.9
+        with mock.patch.object(runner, "_deadline_timeout", return_value=1.9):
+            runner.install_dependencies(self.workspace, deadline=deadline)
+        self.assertEqual(self.sandbox_mock.call_args.kwargs["timeout_seconds"], 2)
+        self.assertEqual(self.supervise_mock.call_args.kwargs, {"deadline": deadline})
+
+    def test_dependency_wrapper_124_at_the_deadline_keeps_its_budget_identity(self):
+        self.exit_code = 124
+        deadline = 100.0
+        with mock.patch.object(runner, "_deadline_timeout", return_value=1.9), \
+                mock.patch.object(runner.time, "monotonic", return_value=deadline), \
+                self.assertRaises(runner.CodingDeadlineExceeded):
+            runner.install_dependencies(self.workspace, deadline=deadline)
+        self.assertFalse(self.marker.exists())
+
+    def test_fractional_runtime_probe_deadline_keeps_the_outer_timeout_authoritative(self):
+        if self.runtime_impl is None:
+            self.skipTest("The baseline does not expose the runtime probe API")
+        observed = {key: self.identity[key] for key in
+                    ("nodeVersion", "modules", "platform", "arch")}
+        outputs = [subprocess.CompletedProcess([], 0, stdout=json.dumps(observed), stderr=""),
+                   subprocess.CompletedProcess([], 0, stdout=self.identity["npmVersion"], stderr="")]
+
+        def identify(_root, _selected_node, probe, *, deadline):
+            self.assertEqual(deadline, 101.9)
+            self.assertEqual(probe(self.identity["npmCli"]),
+                             {**observed, "npmVersion": self.identity["npmVersion"]})
+            return copy.deepcopy(self.identity)
+
+        with mock.patch.object(runner.coding_runtime, "identity", side_effect=identify), \
+                mock.patch.object(runner, "_deadline_timeout", return_value=1.9), \
+                mock.patch.object(runner.subprocess, "run", side_effect=outputs) as run:
+            self.assertEqual(self.runtime_impl(self.workspace, deadline=101.9), self.identity)
+        self.assertEqual([call.kwargs["timeout_seconds"] for call in self.sandbox_mock.call_args_list], [2, 2])
+        self.assertEqual([call.kwargs["timeout"] for call in run.call_args_list], [1.9, 1.9])
+
+    def test_runtime_wrapper_124_at_the_deadline_keeps_its_budget_identity(self):
+        if self.runtime_impl is None:
+            self.skipTest("The baseline does not expose the runtime probe API")
+
+        def identify(_root, _selected_node, probe, *, deadline):
+            probe(self.identity["npmCli"])
+
+        deadline = 101.9
+        failure = subprocess.CalledProcessError(124, ["probe"])
+        with mock.patch.object(runner.coding_runtime, "identity", side_effect=identify), \
+                mock.patch.object(runner, "_deadline_timeout", return_value=1.9), \
+                mock.patch.object(runner.subprocess, "run", side_effect=failure), \
+                mock.patch.object(runner.time, "monotonic", return_value=deadline), \
+                self.assertRaises(runner.CodingDeadlineExceeded):
+            self.runtime_impl(self.workspace, deadline=deadline)
+
     def test_expired_runtime_validation_deadline_keeps_its_budget_identity(self):
         if self.runtime_impl is None:
             self.skipTest("The baseline does not expose the runtime probe API")

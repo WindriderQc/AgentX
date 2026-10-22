@@ -17,6 +17,7 @@ import fcntl
 import hashlib
 import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -209,7 +210,7 @@ def runtime_identity(workspace: Path, *, deadline=None) -> dict:
             for command in commands:
                 timeout = _deadline_timeout(deadline, 45)
                 deadline_limited = deadline is not None and timeout < 45
-                sandbox_seconds = max(1, min(10, int(timeout)))
+                sandbox_seconds = max(1, min(10, math.ceil(timeout)))
                 result = subprocess.run(sandbox(workspace, home, command, network=False,
                                                 timeout_seconds=sandbox_seconds),
                                         check=True, capture_output=True, text=True, timeout=timeout)
@@ -220,6 +221,12 @@ def runtime_identity(workspace: Path, *, deadline=None) -> dict:
         except CodingDeadlineExceeded as error:
             raise coding_runtime.RuntimeDeadlineExceeded(
                 "Runtime probe exhausted its runner-owned deadline") from error
+        except subprocess.CalledProcessError as error:
+            if (error.returncode == 124 and deadline_limited and deadline is not None
+                    and time.monotonic() >= deadline):
+                raise coding_runtime.RuntimeDeadlineExceeded(
+                    "Runtime probe exhausted its runner-owned deadline") from error
+            raise coding_runtime.RuntimeUnavailable("Network-free runtime probe failed") from error
         except subprocess.TimeoutExpired as error:
             if deadline_limited or deadline is not None and time.monotonic() >= deadline:
                 raise coding_runtime.RuntimeDeadlineExceeded(
@@ -267,11 +274,13 @@ def install_dependencies(workspace: Path, progress=None, *, deadline=None) -> No
         for name in PACKAGE_DIRS)
     if progress:
         progress.set_stage("dependencies")
-    install_timeout = max(1, int(_deadline_timeout(deadline, INSTALL_TIMEOUT_SECONDS)))
+    install_timeout = max(1, math.ceil(_deadline_timeout(deadline, INSTALL_TIMEOUT_SECONDS)))
     command = sandbox(workspace, home, ["bash", "-c", script], network=True,
                       timeout_seconds=install_timeout)
     run = supervise(command, progress, deadline=deadline) if deadline is not None else supervise(command, progress)
     if run.returncode:
+        if deadline is not None and run.returncode == 124 and time.monotonic() >= deadline:
+            raise CodingDeadlineExceeded("Dependency preparation exhausted its runner-owned deadline")
         raise subprocess.CalledProcessError(run.returncode, command, output=run.stdout, stderr=run.stderr)
     observed = runtime_identity(workspace, deadline=deadline) if deadline is not None else runtime_identity(workspace)
     if observed != runtime:
