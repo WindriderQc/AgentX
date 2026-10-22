@@ -9,6 +9,7 @@ import re
 import tempfile
 import subprocess
 from datetime import datetime, timezone
+from urllib.parse import quote
 
 try:
     import coding_distributed_step as protocol
@@ -23,6 +24,18 @@ except ModuleNotFoundError:
 
 class DistributedAssemblyError(RuntimeError):
     pass
+
+
+class DeterministicAssemblyFailure(DistributedAssemblyError):
+    """A local final-assembly outcome that Core can terminalize without guessing."""
+
+    def __init__(self, code: str, reason: str, tests: list[dict]):
+        super().__init__(reason)
+        self.code, self.reason, self.tests = code, reason, tests
+
+
+class PublicationOutcomeUnknown(DistributedAssemblyError):
+    """A publication effect may have been sent and must only be observed."""
 
 
 def _atomic(path: Path, value: dict) -> None:
@@ -114,6 +127,21 @@ class AssemblyWorker:
         self.adapter.complete(prior["completion"])
         return {**prior["completion"], "replayed": True}
 
+    def _fail(self, path: Path, prior: dict, manifest: dict, *, code: str, reason: str,
+              tests: list[dict] | None = None, step_id: str | None = None) -> dict:
+        failure = {"state": "failed", "code": code, "reason": reason[:500],
+                   "finishedAt": self.adapter.now()}
+        if step_id is not None:
+            failure["stepId"] = step_id
+        if tests is not None:
+            failure["tests"] = tests
+        intent = {**prior, "state": "failure_intent", "failure": failure,
+                  "finalManifestFingerprint": manifest["manifestFingerprint"]}
+        _atomic(path, intent)
+        self.adapter.failure(failure)
+        _atomic(path, {**intent, "state": "failed"})
+        return {"state": "failed", "failure": failure, "replayed": False}
+
     def execute(self, manifest: dict) -> dict:
         request_id = protocol._field(manifest["request"], "requestId", "id")
         path = self.journal_dir / f"{request_id}.distributed-assembly.json"
@@ -135,17 +163,21 @@ class AssemblyWorker:
             if not isinstance(failure, dict):
                 raise DistributedAssemblyError("assembly failure journal is malformed")
             self.adapter.failure(failure)
-            replayed = prior["state"] == "failed"
-            if not replayed:
+            if prior["state"] != "failed":
                 prior = {**prior, "state": "failed"}
                 _atomic(path, prior)
-            return {"state": "failed", "failure": failure, "replayed": replayed}
+            return {"state": "failed", "failure": failure, "replayed": True}
 
         workspace = self.adapter.prepare(manifest)
         if prior and prior.get("state") == "publication_intent":
-            publication = self.adapter.reconcile_publication(prior["publicationRequestId"], manifest)
+            try:
+                publication = self.adapter.reconcile_publication(
+                    prior["publicationRequestId"], manifest, prior["completion"])
+            except Exception as error:
+                raise PublicationOutcomeUnknown(
+                    "publication outcome is unknown; retain the original root request") from error
             if not publication:
-                raise DistributedAssemblyError("publication outcome is unknown; retain the original root request")
+                raise PublicationOutcomeUnknown("publication outcome is unknown; retain the original root request")
             completion = {**prior["completion"], "publication": publication}
             terminal = {**prior, "state": "terminal", "completion": completion}
             _atomic(path, terminal)
@@ -161,16 +193,9 @@ class AssemblyWorker:
             if conflict:
                 paths = conflict.get("conflictPaths") if isinstance(conflict.get("conflictPaths"), list) else []
                 detail = ", ".join(str(item) for item in paths[:16]) or "recorded paths"
-                failure = {"state": "failed", "code": "assembly_conflict",
-                           "stepId": conflict.get("stepId"),
-                           "reason": f"{conflict.get('stepId')} conflicts during deterministic adoption: {detail}"[:500],
-                           "finishedAt": self.adapter.now()}
-                intent = {**prior, "state": "failure_intent", "failure": failure,
-                          "finalManifestFingerprint": manifest["manifestFingerprint"]}
-                _atomic(path, intent)
-                self.adapter.failure(failure)
-                _atomic(path, {**intent, "state": "failed"})
-                return {"state": "failed", "failure": failure, "replayed": False}
+                return self._fail(path, prior, manifest, code="assembly_conflict",
+                    step_id=conflict.get("stepId"),
+                    reason=f"{conflict.get('stepId')} conflicts during deterministic adoption: {detail}")
             if len(adoptions) != len(entries) or any(item.get("status") != "adopted" for item in adoptions):
                 raise DistributedAssemblyError("assembly stopped before the ready step was adopted")
             for adoption in adoptions:
@@ -186,18 +211,32 @@ class AssemblyWorker:
         if not manifest["finalReady"]:
             _atomic(path, prior)
             return {"state": "waiting", "adoptions": [], "replayed": False}
-        tests = self.adapter.tests(workspace, manifest)
+        try:
+            tests = self.adapter.tests(workspace, manifest)
+        except DeterministicAssemblyFailure as failure:
+            return self._fail(path, prior, manifest, code=failure.code,
+                              reason=failure.reason, tests=failure.tests)
         if not tests or any(item.get("outcome") != "passed" for item in tests):
-            raise DistributedAssemblyError("independent final verification did not pass")
+            return self._fail(path, prior, manifest, code="assembly_verification_failed",
+                reason="Independent final verification did not pass", tests=tests)
+        try:
+            self.adapter.validate_publication(workspace, manifest, tests)
+        except DeterministicAssemblyFailure as failure:
+            return self._fail(path, prior, manifest, code=failure.code,
+                              reason=failure.reason, tests=failure.tests or tests)
         head = self.adapter.head(workspace)
         publication_id = f"{request_id}:publish"
         completion = {"headCommit": head, "tests": tests, "completedAt": self.adapter.now()}
         intent = {**prior, "state": "publication_intent", "finalManifestFingerprint": manifest["manifestFingerprint"],
                   "publicationRequestId": publication_id, "completion": completion}
         _atomic(path, intent)
-        publication = self.adapter.publish(workspace, manifest, publication_id)
+        try:
+            publication = self.adapter.publish(workspace, manifest, publication_id)
+        except Exception as error:
+            raise PublicationOutcomeUnknown(
+                "publication outcome is unknown; retain the original root request") from error
         if not isinstance(publication, dict):
-            raise DistributedAssemblyError("publication did not return a durable receipt")
+            raise PublicationOutcomeUnknown("publication did not return a durable receipt")
         completion = {**completion, "publication": publication}
         terminal = {**intent, "state": "terminal", "completion": completion}
         _atomic(path, terminal)
@@ -276,33 +315,70 @@ class RunnerAssemblyAdapter:
         self.r.install_dependencies(workspace, self.progress)
         if self.r.coding_progress.source_state(workspace) != source_before:
             duration = max(0, int((__import__("time").monotonic() - started) * 1000))
-            return [{"target": target, "profile": manifest["verificationProfile"],
-                     "outcome": "failed", "durationMs": duration}
-                    for target in manifest["testTargets"]]
+            tests = [{"target": target, "profile": manifest["verificationProfile"],
+                      "outcome": "failed", "durationMs": duration}
+                     for target in manifest["testTargets"]]
+            raise DeterministicAssemblyFailure("assembly_source_changed",
+                "Dependency preparation changed the final assembly source", tests)
         command = verification.full_command(manifest["verificationProfile"])
         result = self.r.supervise(self.r.sandbox(workspace, self.r.worker_home(workspace), command,
             network=False, timeout_seconds=max(1, self.args.timeout_seconds)), self.progress)
         duration = max(0, int((__import__("time").monotonic() - started) * 1000))
-        passed = result.returncode == 0 and self.r.coding_progress.source_state(workspace) == source_before
-        return [{"target": target, "profile": manifest["verificationProfile"],
-                 "outcome": "passed" if passed else "failed", "durationMs": duration}
-                for target in manifest["testTargets"]]
+        source_changed = self.r.coding_progress.source_state(workspace) != source_before
+        tests = [{"target": target, "profile": manifest["verificationProfile"],
+                  "outcome": "passed" if result.returncode == 0 and not source_changed else "failed",
+                  "durationMs": duration} for target in manifest["testTargets"]]
+        if source_changed:
+            raise DeterministicAssemblyFailure("assembly_source_changed",
+                "Final verification changed the assembly source", tests)
+        return tests
 
     def head(self, workspace):
         return self.r.git(workspace, "rev-parse", "HEAD")
 
-    def publish(self, workspace, manifest, publication_id):
+    def validate_publication(self, workspace, manifest, tests):
         if self.r.git(workspace, "status", "--porcelain", "--untracked-files=normal"):
-            raise DistributedAssemblyError("assembly source changed after final verification")
-        token = os.environ.get("GH_TOKEN", "").strip()
-        if not token:
-            raise DistributedAssemblyError("assembly publication requires the coding team's GitHub token")
+            raise DeterministicAssemblyFailure("assembly_source_changed",
+                "Assembly source changed after final verification", tests)
+        if not os.environ.get("GH_TOKEN", "").strip():
+            raise DeterministicAssemblyFailure("assembly_publication_failed",
+                "The coding team's GitHub token is not configured", tests)
+        token = os.environ["GH_TOKEN"].strip()
+        branch, _title, _body = self._publication_details(manifest, "preflight")
+        repository = self.r.REPOSITORY
+        owner = repository.split("/", 1)[0]
+        pulls = self.r.request(
+            f"https://api.github.com/repos/{repository}/pulls?head="
+            f"{quote(owner + ':' + branch, safe=':')}&state=all&per_page=100", token=token)
+        if not isinstance(pulls, list):
+            raise DistributedAssemblyError("publication preflight returned no complete pull-request inventory")
+        if len(pulls) > 1:
+            raise DeterministicAssemblyFailure("assembly_publication_failed",
+                "The task branch has ambiguous pull-request history", tests)
+        if pulls:
+            existing = pulls[0]
+            if (existing.get("state") != "open"
+                    or existing.get("head", {}).get("ref") != branch
+                    or existing.get("head", {}).get("repo", {}).get("full_name") != repository
+                    or existing.get("base", {}).get("ref") != self.r.BASE_BRANCH
+                    or existing.get("base", {}).get("repo", {}).get("full_name") != repository):
+                raise DeterministicAssemblyFailure("assembly_publication_failed",
+                    "The original task pull request is closed or its identity changed", tests)
+
+    def _publication_details(self, manifest, publication_id):
+        branch = self.r.git(self.r.WORKSPACES / f"graph-{self.args.graph_id}" / "assembly",
+                            "branch", "--show-current")
         title = manifest["task"].get("title") or "Distributed coding task"
-        summary = (f"Core code-step graph {self.args.graph_id}.\n\n"
-                   f"Publication request: `{publication_id}`.\n"
-                   "Every adopted step and final verification passed before publication.\n")
+        body = (f"Core code-step graph {self.args.graph_id}.\n\n"
+                f"Publication request: `{publication_id}`.\n"
+                "Every adopted step and final verification passed before publication.\n")
+        return branch, title, body
+
+    def publish(self, workspace, manifest, publication_id):
+        token = os.environ.get("GH_TOKEN", "").strip()
+        branch, title, summary = self._publication_details(manifest, publication_id)
         url = self.r.push_and_open_pr(workspace,
-            self.r.git(workspace, "branch", "--show-current"), self.args.task_id,
+            branch, self.args.task_id,
             title, summary, token, safe_body=True)
         match = re.fullmatch(r"https://github\.com/[^/]+/[^/]+/pull/([1-9][0-9]*)", url)
         if not match:
@@ -310,11 +386,42 @@ class RunnerAssemblyAdapter:
         return {"requestId": publication_id, "state": "published", "url": url,
                 "prNumber": int(match.group(1)), "headCommit": self.head(workspace)}
 
-    def reconcile_publication(self, publication_id, manifest):
-        # push_and_open_pr is keyed by the frozen branch and returns the existing
-        # open PR without creating a second one; use that idempotent lookup path.
+    def reconcile_publication(self, publication_id, manifest, completion):
+        # Once publication may have started, recovery is observation-only. A
+        # missing exact branch/PR/body keeps the original request uncertain.
         workspace = self.r.WORKSPACES / f"graph-{self.args.graph_id}" / "assembly"
-        return self.publish(workspace, manifest, publication_id)
+        token = os.environ.get("GH_TOKEN", "").strip()
+        if not token:
+            return None
+        branch, _title, body = self._publication_details(manifest, publication_id)
+        repository = self.r.REPOSITORY
+        root = f"https://api.github.com/repos/{repository}"
+        ref = self.r.request(f"{root}/git/ref/heads/{quote(branch, safe='')}", token=token)
+        head = completion.get("headCommit")
+        if ref.get("object", {}).get("sha") != head:
+            return None
+        owner = repository.split("/", 1)[0]
+        pulls = self.r.request(
+            f"{root}/pulls?head={quote(owner + ':' + branch, safe=':')}&state=all&per_page=100",
+            token=token)
+        if not isinstance(pulls, list):
+            return None
+        matches = [row for row in pulls if row.get("state") == "open"
+            and row.get("head", {}).get("ref") == branch
+            and row.get("head", {}).get("sha") == head
+            and row.get("head", {}).get("repo", {}).get("full_name") == repository
+            and row.get("base", {}).get("ref") == self.r.BASE_BRANCH
+            and row.get("base", {}).get("repo", {}).get("full_name") == repository
+            and row.get("body") == body]
+        if len(matches) != 1:
+            return None
+        match = matches[0]
+        url = match.get("html_url")
+        number = match.get("number")
+        if not isinstance(url, str) or not isinstance(number, int):
+            return None
+        return {"requestId": publication_id, "state": "published", "url": url,
+                "prNumber": number, "headCommit": head}
 
     def complete(self, body):
         return self.core.post(self.manifest.get("finalReceiptPath") or self.endpoint + "/assembly", body)

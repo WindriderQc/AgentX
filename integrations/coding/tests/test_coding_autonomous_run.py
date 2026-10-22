@@ -216,7 +216,7 @@ class DistributedRootCoordinatorTest(unittest.TestCase):
                     'modelSeconds': 50, 'modelCalls': 6}}}
             if url.endswith('/code-step-plan'):
                 submissions.append(body)
-                spent = ({'workSeconds': 20, 'testSeconds': 4, 'modelSeconds': 10,
+                spent = ({'workSeconds': 23, 'testSeconds': 7, 'modelSeconds': 10,
                           'modelCalls': 2, 'ciSeconds': 0} if len(submissions) > 1 else
                          {'workSeconds': 0, 'testSeconds': 0, 'modelSeconds': 0,
                           'modelCalls': 0, 'ciSeconds': 0})

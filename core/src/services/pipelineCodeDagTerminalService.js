@@ -4,6 +4,11 @@ const { fingerprint } = require('../../../shared/codeStepDagContract');
 const { MAX_ATTEMPTS, assertState } = require('./pipelineCodeDagService');
 
 const TERMINAL_STATES = new Set(['failed', 'blocked']);
+const FINAL_ASSEMBLY_CODES = new Set([
+  'assembly_verification_failed',
+  'assembly_source_changed',
+  'assembly_publication_failed',
+]);
 const CODE = /^[a-z][a-z0-9_]{0,119}$/;
 const STEP = /^step-(?:0[1-9]|1[0-6])$/;
 
@@ -23,9 +28,31 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function zeroUsage() {
+  return { workSeconds: 0, testSeconds: 0, modelSeconds: 0, modelCalls: 0 };
+}
+
+function finalTests(value) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 64) {
+    fail('INVALID_TERMINAL_RECEIPT', 'final assembly failure requires bounded test receipts');
+  }
+  return value.map((test, index) => {
+    const fields = Object.keys(test || {}).sort();
+    if (fields.join(',') !== 'durationMs,outcome,profile,target'
+      || typeof test.target !== 'string' || !test.target.trim() || test.target.trim().length > 512
+      || typeof test.profile !== 'string' || !test.profile.trim() || test.profile.trim().length > 160
+      || !['passed', 'failed'].includes(test.outcome)
+      || !Number.isSafeInteger(test.durationMs) || test.durationMs < 0 || test.durationMs > 604_800_000) {
+      fail('INVALID_TERMINAL_RECEIPT', `tests[${index}] is invalid`);
+    }
+    return { target: test.target.trim(), profile: test.profile.trim(), outcome: test.outcome,
+      durationMs: test.durationMs };
+  });
+}
+
 function receipt(input) {
   const required = ['expectedRevision', 'state', 'code', 'reason', 'finishedAt'];
-  const allowed = new Set([...required, 'stepId']);
+  const allowed = new Set([...required, 'stepId', 'tests']);
   if (!input || typeof input !== 'object' || Array.isArray(input)
     || required.some(key => !Object.prototype.hasOwnProperty.call(input, key))
     || Object.keys(input).some(key => !allowed.has(key))) {
@@ -41,8 +68,9 @@ function receipt(input) {
     || Number.isNaN(Date.parse(input.finishedAt))) {
     fail('INVALID_TERMINAL_RECEIPT', 'terminal state, code, reason, step and timestamp must be bounded');
   }
+  const tests = input.tests == null ? null : finalTests(input.tests);
   return { state: input.state, code: input.code, reason: input.reason.trim(),
-    stepId, finishedAt: new Date(input.finishedAt).toISOString() };
+    stepId, finishedAt: new Date(input.finishedAt).toISOString(), ...(tests && { tests }) };
 }
 
 function terminalize(dag, input) {
@@ -75,7 +103,37 @@ function terminalize(dag, input) {
       fail('INVALID_TERMINAL_RECEIPT', 'attempt exhaustion must name its failed exhausted step');
     }
   }
+  let assemblyUsage = zeroUsage();
+  if (FINAL_ASSEMBLY_CODES.has(terminal.code)) {
+    const order = dag.plan.steps.map(step => step.id);
+    const covered = new Set((terminal.tests || []).map(test => test.target));
+    const requiredTargets = new Set(dag.steps.flatMap(step => step.testTargets));
+    const publicationFailure = terminal.code === 'assembly_publication_failed';
+    const verificationFailure = terminal.code === 'assembly_verification_failed';
+    if (terminal.state !== 'failed' || terminal.stepId !== null
+      || dag.steps.some(step => step.state !== 'verified')
+      || dag.assembly.adoptions.length !== order.length
+      || !terminal.tests || covered.size !== requiredTargets.size
+      || terminal.tests.length !== requiredTargets.size
+      || [...requiredTargets].some(target => !covered.has(target))
+      || (publicationFailure && terminal.tests.some(test => test.outcome !== 'passed'))
+      || (verificationFailure && terminal.tests.every(test => test.outcome === 'passed'))) {
+      fail('INVALID_TERMINAL_RECEIPT', 'final assembly failure must follow complete adoption and exact final verification');
+    }
+    const durationSeconds = Math.ceil(Math.max(...terminal.tests.map(test => test.durationMs)) / 1000);
+    assemblyUsage = { ...zeroUsage(), workSeconds: durationSeconds, testSeconds: durationSeconds };
+  } else if (terminal.tests) {
+    fail('INVALID_TERMINAL_RECEIPT', 'only a final assembly failure may carry final test receipts');
+  }
   const next = clone(dag);
+  next.assembly.usage ||= zeroUsage();
+  for (const key of Object.keys(assemblyUsage)) {
+    if (next.budget.spent[key] + next.budget.reserved[key] + assemblyUsage[key] > next.budget.limit[key]) {
+      fail('ASSEMBLY_BUDGET_EXHAUSTED', `final assembly ${key} usage exceeds the aggregate limit`);
+    }
+    next.budget.spent[key] += assemblyUsage[key];
+    next.assembly.usage[key] += assemblyUsage[key];
+  }
   next.state = terminal.state;
   next.assembly.state = terminal.state;
   next.terminalFailure = terminal;

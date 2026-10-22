@@ -99,6 +99,8 @@ function assertState(dag) {
   }
   const calculatedReserved = zeroBudget();
   const calculatedSpent = zeroBudget();
+  const assemblyUsage = normalizeBudget(dag.assembly?.usage || zeroBudget(), 'dag.assembly.usage');
+  for (const key of BUDGET_KEYS) calculatedSpent[key] += assemblyUsage[key];
   const requestIds = new Set();
   dag.steps.forEach((step, index) => {
     if (step.id !== dag.plan.steps[index].id || !Array.isArray(step.attempts)) {
@@ -197,7 +199,7 @@ function create(input) {
       attempts: [],
       verifiedReceipt: null,
     })),
-    assembly: { state: 'pending', adoptions: [], completion: null },
+    assembly: { state: 'pending', adoptions: [], completion: null, usage: zeroBudget() },
   };
   return assertState(dag);
 }
@@ -657,6 +659,17 @@ function completeAssembly(dag, input) {
     fail('ASSEMBLY_PUBLICATION_CONFLICT', 'publication head does not match the verified assembly head');
   }
   const next = clone(dag);
+  next.assembly.usage ||= zeroBudget();
+  const durationMs = Math.max(...completion.tests.map((test) => test.durationMs));
+  const durationSeconds = Math.ceil(durationMs / 1000);
+  const usage = { ...zeroBudget(), workSeconds: durationSeconds, testSeconds: durationSeconds };
+  for (const key of BUDGET_KEYS) {
+    if (next.budget.spent[key] + next.budget.reserved[key] + usage[key] > next.budget.limit[key]) {
+      fail('ASSEMBLY_BUDGET_EXHAUSTED', `final assembly ${key} usage exceeds the aggregate limit`);
+    }
+    next.budget.spent[key] += usage[key];
+    next.assembly.usage[key] += usage[key];
+  }
   next.assembly.state = 'published';
   next.assembly.completion = completion;
   next.state = 'published';

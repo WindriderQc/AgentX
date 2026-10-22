@@ -385,6 +385,36 @@ test('records and replays a deterministic conflict on the next verified adoption
   });
 });
 
+test('records final verification failure with duration and releases the graph for correction', async () => {
+  const f = fixture(); const coordinator = f.create();
+  await coordinator.tick('0946');
+  await f.verify(coordinator, 'step-01', 'b'.repeat(40), '1');
+  await f.verify(coordinator, 'step-02', 'c'.repeat(40), '2');
+  const assemblyId = deterministicUuid(ROOT, 'assembly');
+  await coordinator.recordAdoption('0946', assemblyId, { stepId: 'step-01', sourceCommit: 'b'.repeat(40),
+    parentCommit: SOURCE, adoptedCommit: 'd'.repeat(40), artifactSha256: '1'.repeat(64), adoptedAt: T0 });
+  await coordinator.recordAdoption('0946', assemblyId, { stepId: 'step-02', sourceCommit: 'c'.repeat(40),
+    parentCommit: 'd'.repeat(40), adoptedCommit: 'e'.repeat(40), artifactSha256: '2'.repeat(64), adoptedAt: T0 });
+  await coordinator.tick('0946');
+  await f.verify(coordinator, 'step-03', 'f'.repeat(40), '3');
+  await coordinator.recordAdoption('0946', assemblyId, { stepId: 'step-03', sourceCommit: 'f'.repeat(40),
+    parentCommit: 'e'.repeat(40), adoptedCommit: '7'.repeat(40), artifactSha256: '3'.repeat(64), adoptedAt: T0 });
+  const tests = ['test:step-01', 'test:step-02', 'test:step-03'].map(target => ({ target,
+    profile: 'agentx-core-runner-tests/v1', outcome: 'failed', durationMs: 1501 }));
+  const failure = { state: 'failed', code: 'assembly_verification_failed',
+    reason: 'Independent final verification did not pass', finishedAt: T0, tests };
+  const terminal = await coordinator.failAssembly('0946', assemblyId, failure);
+  expect(terminal).toMatchObject({ replayed: false, dag: {
+    state: 'failed', assembly: { state: 'failed', usage: { workSeconds: 2, testSeconds: 2 } },
+    terminalFailure: { code: 'assembly_verification_failed', stepId: null, tests },
+  } });
+  expect(await coordinator.failAssembly('0946', assemblyId, failure)).toMatchObject({ replayed: true });
+  expect(await coordinator.manifest('0946', assemblyId)).toMatchObject({
+    terminalFailure: { code: 'assembly_verification_failed' },
+    codeStepGraph: { graphId: ROOT },
+  });
+});
+
 test('stop fans out only exact unsettled child requests', async () => {
   const f = fixture(); const coordinator = f.create(); await coordinator.tick('0946');
   const result = await coordinator.stopChildren('0946');

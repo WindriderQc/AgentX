@@ -2,6 +2,7 @@
 
 const service = require('../../src/services/pipelineCodeDagService');
 const terminal = require('../../src/services/pipelineCodeDagTerminalService');
+const { project } = require('../../src/services/pipelineCodeDagStateService');
 const { SOURCE_PLAN_SCHEMA } = require('../../../shared/codeStepDagContract');
 
 const SOURCE = '1'.repeat(40);
@@ -146,6 +147,60 @@ test('terminalizes an exhausted failed step with deterministic failure evidence'
     stepId: 'step-01', finishedAt: T0 });
   expect(failed.dag).toMatchObject({ state: 'failed', assembly: { state: 'failed' },
     terminalFailure: { code: 'step_attempts_exhausted', stepId: 'step-01' } });
+});
+
+test('terminalizes and charges a deterministic final verification failure exactly once', () => {
+  let dag = createDag({ stepCount: 1 });
+  dag = start(dag, 'step-01', 'executor-a', 'request-final').dag;
+  dag = settleVerified(dag, 'request-final', 1).dag;
+  dag = service.recordAdoption(dag, {
+    expectedRevision: dag.revision,
+    stepId: 'step-01', sourceCommit: STEP_ONE_COMMIT, parentCommit: SOURCE,
+    adoptedCommit: ADOPT_ONE, artifactSha256: ARTIFACT_ONE, adoptedAt: T0,
+  }).dag;
+  const input = { expectedRevision: dag.revision, state: 'failed',
+    code: 'assembly_verification_failed', reason: 'Independent final verification did not pass',
+    stepId: null, finishedAt: T0,
+    tests: [{ target: 'test:one', profile: 'jest/cpu/v1', outcome: 'failed', durationMs: 2101 }],
+  };
+  const failed = terminal.terminalize(dag, input);
+  expect(failed).toMatchObject({ replayed: false, dag: {
+    state: 'failed', assembly: { state: 'failed', usage: { workSeconds: 3, testSeconds: 3 } },
+    budget: { spent: { workSeconds: 7, testSeconds: 6, modelSeconds: 2, modelCalls: 1 } },
+    terminalFailure: { code: 'assembly_verification_failed', tests: [{ durationMs: 2101 }] },
+  } });
+  expect(project(failed.dag)).toMatchObject({ state: 'failed',
+    budget: { spent: { workSeconds: 7, testSeconds: 6 } },
+    assembly: { state: 'failed', verification: {
+      profile: 'jest/cpu/v1', outcome: 'failed', durationMs: 2101,
+    } },
+  });
+  expect(terminal.terminalize(failed.dag, input)).toMatchObject({ replayed: true,
+    dag: { revision: failed.dag.revision, budget: { spent: { workSeconds: 7, testSeconds: 6 } } } });
+});
+
+test('publication failure requires passing final tests and final failures require every adoption', () => {
+  let dag = createDag({ stepCount: 1 });
+  dag = start(dag, 'step-01', 'executor-a', 'request-final-invalid').dag;
+  dag = settleVerified(dag, 'request-final-invalid', 1).dag;
+  const base = { expectedRevision: dag.revision, state: 'failed', code: 'assembly_publication_failed',
+    reason: 'Publication refused before dispatch', stepId: null, finishedAt: T0,
+    tests: [{ target: 'test:one', profile: 'jest/cpu/v1', outcome: 'passed', durationMs: 10 }],
+  };
+  expect(() => terminal.terminalize(dag, base))
+    .toThrow(expect.objectContaining({ code: 'INVALID_TERMINAL_RECEIPT' }));
+  dag = service.recordAdoption(dag, {
+    expectedRevision: dag.revision,
+    stepId: 'step-01', sourceCommit: STEP_ONE_COMMIT, parentCommit: SOURCE,
+    adoptedCommit: ADOPT_ONE, artifactSha256: ARTIFACT_ONE, adoptedAt: T0,
+  }).dag;
+  expect(() => terminal.terminalize(dag, { ...base, expectedRevision: dag.revision,
+    tests: [{ ...base.tests[0], outcome: 'failed' }] }))
+    .toThrow(expect.objectContaining({ code: 'INVALID_TERMINAL_RECEIPT' }));
+  expect(terminal.terminalize(dag, { ...base, expectedRevision: dag.revision,
+    code: 'assembly_source_changed', reason: 'Assembly source changed after final verification' }))
+    .toMatchObject({ dag: { terminalFailure: { code: 'assembly_source_changed',
+      tests: [{ outcome: 'passed' }] } } });
 });
 
 test('selects a deterministic maximal ready set with distinct executors', () => {

@@ -130,12 +130,8 @@ def _graph_spent(graph):
     return usage
 
 
-def _apply_usage(progress, root_usage, graph=None, final_test_seconds=0):
+def _apply_usage(progress, root_usage, graph=None):
     dag_usage = _graph_spent(graph)
-    if type(final_test_seconds) is not int or final_test_seconds < 0:
-        raise DistributedDagPending('Final assembly test usage is invalid')
-    dag_usage['workSeconds'] += final_test_seconds
-    dag_usage['testSeconds'] += final_test_seconds
     progress.distributed_usage = {
         field: root_usage[field] + dag_usage[field] for field in BUDGET_KEYS}
     progress.usage = lambda: dict(progress.distributed_usage)
@@ -154,14 +150,6 @@ def _assembly_timeout(progress, intent, graph):
     if seconds <= 0:
         raise DistributedDagPending('No aggregate budget remains for final assembly verification')
     return seconds
-
-
-def _final_test_seconds(completion):
-    durations = [row.get('durationMs') for row in completion.get('tests', []) if isinstance(row, dict)]
-    if not durations or any(type(value) is not int or value < 0 for value in durations):
-        raise DistributedDagPending('Final assembly has no bounded test duration receipt')
-    # One full command is projected on every target; summing would duplicate it.
-    return (max(durations) + 999) // 1000
 
 
 def _completion(r, graph_id, assembly_request_id):
@@ -307,7 +295,7 @@ def execute(r, args, progress, endpoint, task, ledger):
                         or replay.get('assemblyRequestId') != assembly_request_id):
                     raise DistributedDagPending('Completed graph replay changed its frozen identity')
                 graph = replay.get('codeStepGraph') or response.get('codeStepGraph')
-                _apply_usage(progress, intent['rootUsageBeforeDag'], graph, _final_test_seconds(completion))
+                _apply_usage(progress, intent['rootUsageBeforeDag'], graph)
                 return {'completion': completion, 'assemblyRequestId': assembly_request_id,
                         'graph': graph, 'rootUsageBeforeDag': intent['rootUsageBeforeDag']}
             if progress.check_stop():

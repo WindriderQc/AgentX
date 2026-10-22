@@ -37,6 +37,8 @@ class AssemblyAdapter:
         self.worktree, self.bundles = root / "assembly", []
         self.publications = self.completions = 0
         self.adoptions, self.failures = [], []
+        self.final_outcome, self.publication_failure = "passed", None
+        self.reconciliations = 0
         self._prepare_source()
 
     def _prepare_source(self):
@@ -89,7 +91,12 @@ class AssemblyAdapter:
 
     def tests(self, _workspace, manifest):
         return [{"target": target, "profile": manifest["verificationProfile"],
-                 "outcome": "passed", "durationMs": 5} for target in manifest["testTargets"]]
+                 "outcome": self.final_outcome, "durationMs": 1501} for target in manifest["testTargets"]]
+
+    def validate_publication(self, _workspace, _manifest, tests):
+        if self.publication_failure:
+            raise assembly_worker.DeterministicAssemblyFailure(
+                "assembly_publication_failed", self.publication_failure, tests)
 
     def head(self, workspace):
         return git(workspace, "rev-parse", "HEAD")
@@ -100,6 +107,7 @@ class AssemblyAdapter:
                 "prNumber": 1, "headCommit": self.head(self.worktree)}
 
     def reconcile_publication(self, *_args):
+        self.reconciliations += 1
         return None
 
     def complete(self, _body):
@@ -165,6 +173,73 @@ class DistributedAssemblyTest(unittest.TestCase):
                              adapter.adoptions[0]["resultCommit"])
             self.assertFalse(git(adapter.worktree, "status", "--porcelain"))
 
+    def test_failed_final_verification_posts_and_replays_one_terminal_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            adapter = AssemblyAdapter(Path(directory))
+            adapter.final_outcome = "failed"
+            worker = assembly_worker.AssemblyWorker(adapter, Path(directory) / "journal")
+            failed = worker.execute(manifest(adapter, final=True))
+            replay = worker.execute(manifest(adapter, final=True))
+            self.assertEqual(failed["failure"]["code"], "assembly_verification_failed")
+            self.assertEqual(failed["failure"]["tests"][0]["durationMs"], 1501)
+            self.assertTrue(replay["replayed"])
+            self.assertEqual(adapter.publications, 0)
+            self.assertEqual(adapter.failures[0], adapter.failures[1])
+
+    def test_lost_failure_ack_replays_the_exact_durable_terminal_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            adapter = AssemblyAdapter(Path(directory))
+            adapter.final_outcome = "failed"
+            posted = []
+            def lose_first_ack(body):
+                posted.append(body)
+                if len(posted) == 1:
+                    raise OSError("terminal receipt response lost")
+            adapter.failure = lose_first_ack
+            worker = assembly_worker.AssemblyWorker(adapter, Path(directory) / "journal")
+            with self.assertRaises(OSError):
+                worker.execute(manifest(adapter, final=True))
+            replay = worker.execute(manifest(adapter, final=True))
+            self.assertTrue(replay["replayed"])
+            self.assertEqual(posted[0], posted[1])
+            self.assertEqual(adapter.publications, 0)
+
+    def test_publication_preflight_transport_error_stays_uncertain(self):
+        with tempfile.TemporaryDirectory() as directory:
+            adapter = AssemblyAdapter(Path(directory))
+            adapter.validate_publication = mock.Mock(side_effect=OSError("GitHub unavailable"))
+            worker = assembly_worker.AssemblyWorker(adapter, Path(directory) / "journal")
+            with self.assertRaisesRegex(OSError, "GitHub unavailable"):
+                worker.execute(manifest(adapter, final=True))
+            self.assertEqual(adapter.failures, [])
+            self.assertEqual(adapter.publications, 0)
+
+    def test_deterministic_publication_preflight_failure_terminalizes_after_passing_tests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            adapter = AssemblyAdapter(Path(directory))
+            adapter.publication_failure = "GitHub publication is locally unavailable"
+            result = assembly_worker.AssemblyWorker(adapter, Path(directory) / "journal").execute(
+                manifest(adapter, final=True))
+            self.assertEqual(result["failure"]["code"], "assembly_publication_failed")
+            self.assertEqual(result["failure"]["tests"][0]["outcome"], "passed")
+            self.assertEqual(adapter.publications, 0)
+
+    def test_sent_publication_with_lost_reply_only_resumes_read_only_reconciliation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            adapter = AssemblyAdapter(Path(directory))
+            def lose_reply(*_args):
+                adapter.publications += 1
+                raise OSError("publication response lost")
+            adapter.publish = lose_reply
+            worker = assembly_worker.AssemblyWorker(adapter, Path(directory) / "journal")
+            with self.assertRaises(assembly_worker.PublicationOutcomeUnknown):
+                worker.execute(manifest(adapter, final=True))
+            with self.assertRaises(assembly_worker.PublicationOutcomeUnknown):
+                worker.execute(manifest(adapter, final=True))
+            self.assertEqual(adapter.publications, 1)
+            self.assertEqual(adapter.reconciliations, 1)
+            self.assertEqual(adapter.failures, [])
+
     def test_final_dependency_install_cannot_change_the_tree_that_will_be_published(self):
         runtime = types.SimpleNamespace(
             coding_progress=types.SimpleNamespace(source_state=mock.Mock(side_effect=["before", "changed"])),
@@ -178,8 +253,10 @@ class DistributedAssemblyTest(unittest.TestCase):
                    "task": {"title": "Synthetic"}}
         adapter = assembly_worker.RunnerAssemblyAdapter(runtime, args, progress, checked, None, "/endpoint")
         adapter._module = mock.Mock(return_value=types.SimpleNamespace(full_command=lambda _profile: ["test"]))
-        receipts = adapter.tests(Path("/worktree"), checked)
-        self.assertEqual(receipts[0]["outcome"], "failed")
+        with self.assertRaises(assembly_worker.DeterministicAssemblyFailure) as raised:
+            adapter.tests(Path("/worktree"), checked)
+        self.assertEqual(raised.exception.code, "assembly_source_changed")
+        self.assertEqual(raised.exception.tests[0]["outcome"], "failed")
         runtime.sandbox.assert_not_called(); runtime.supervise.assert_not_called()
 
     def test_publication_refuses_a_dirty_post_verification_tree(self):
@@ -189,8 +266,12 @@ class DistributedAssemblyTest(unittest.TestCase):
         args = types.SimpleNamespace(graph_id=GRAPH, task_id="0946")
         checked = {"task": {"title": "Synthetic"}, "artifacts": []}
         adapter = assembly_worker.RunnerAssemblyAdapter(runtime, args, mock.Mock(), checked, None, "/endpoint")
-        with self.assertRaisesRegex(assembly_worker.DistributedAssemblyError, "source changed"):
-            adapter.publish(Path("/worktree"), checked, "publication-id")
+        checked.update(verificationProfile="agentx-dispatcher-tests/v1", testTargets=["test:a"])
+        with self.assertRaises(assembly_worker.DeterministicAssemblyFailure) as raised:
+            adapter.validate_publication(Path("/worktree"), checked,
+                [{"target": "test:a", "profile": "agentx-dispatcher-tests/v1",
+                  "outcome": "passed", "durationMs": 10}])
+        self.assertEqual(raised.exception.code, "assembly_source_changed")
         runtime.push_and_open_pr.assert_not_called()
 
 

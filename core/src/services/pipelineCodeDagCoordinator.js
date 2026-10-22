@@ -432,18 +432,22 @@ function createPipelineCodeDagCoordinator(options = {}) {
   }
 
   async function failAssembly(pipelineId, requestId, input) {
-    if (!input || input.state !== 'failed' || input.code !== 'assembly_conflict'
-      || typeof input.stepId !== 'string' || typeof input.reason !== 'string'
-      || typeof input.finishedAt !== 'string') {
-      fail('ASSEMBLY_FAILURE_INVALID', 'Assembly failure must identify one deterministic conflict', 400);
+    const finalCodes = new Set(['assembly_verification_failed', 'assembly_source_changed', 'assembly_publication_failed']);
+    if (!input || input.state !== 'failed' || typeof input.reason !== 'string'
+      || typeof input.finishedAt !== 'string' || !['assembly_conflict', ...finalCodes].includes(input.code)) {
+      fail('ASSEMBLY_FAILURE_INVALID', 'Assembly failure must identify one deterministic terminal outcome', 400);
     }
     const dag = await assertAssemblyIdentity(pipelineId, requestId);
-    const nextStepId = dagDomain.adoptionOrder(dag)[dag.assembly.adoptions.length];
-    const step = dag.steps.find(candidate => candidate.id === input.stepId);
-    if (!step || input.stepId !== nextStepId || step.state !== 'verified') {
-      fail('ASSEMBLY_FAILURE_INVALID', 'Assembly conflict must name the next verified adoption', 400);
+    if (input.code === 'assembly_conflict') {
+      const nextStepId = dagDomain.adoptionOrder(dag)[dag.assembly.adoptions.length];
+      const step = dag.steps.find(candidate => candidate.id === input.stepId);
+      if (!step || input.stepId !== nextStepId || step.state !== 'verified' || input.tests != null) {
+        fail('ASSEMBLY_FAILURE_INVALID', 'Assembly conflict must name the next verified adoption', 400);
+      }
+    } else if (input.stepId != null || !Array.isArray(input.tests)) {
+      fail('ASSEMBLY_FAILURE_INVALID', 'Final assembly failure must carry its final test receipts', 400);
     }
-    return state.terminalize(pipelineId, { ...input, expectedRevision: dag.revision });
+    return state.terminalize(pipelineId, { ...input, stepId: input.stepId ?? null, expectedRevision: dag.revision });
   }
 
   async function reconcileTerminalInferences(pipelineId, dag, located, finishedAt) {

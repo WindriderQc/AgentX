@@ -165,9 +165,16 @@ function projectAssembly(dag) {
   const adoptedSteps = dag.assembly.adoptions.length;
   if (dag.terminalFailure) {
     const latest = dag.assembly.adoptions[adoptedSteps - 1];
+    const tests = dag.terminalFailure.tests || [];
+    const verification = tests.length ? {
+      profile: tests[0].profile,
+      outcome: tests.some(test => test.outcome === 'failed') ? 'failed' : 'passed',
+      durationMs: Math.max(...tests.map(test => test.durationMs)),
+    } : null;
     return { state: dag.terminalFailure.state,
       executor: dag.authority?.coordinator || { id: 'coordinator', label: 'Coordinator', harness: 'unknown' },
       baseCommit: dag.sourceCommit, ...(latest && { headCommit: latest.adoptedCommit }), adoptedSteps,
+      ...(verification && { verification }),
       receiptFingerprint: dag.terminalFailureFingerprint || fingerprint(dag.terminalFailure) };
   }
   if (!dag.assembly.completion && adoptedSteps === 0) return { state: 'pending', adoptedSteps };
@@ -190,7 +197,7 @@ function projectAssembly(dag) {
     verification: {
       profile: dag.assembly.completion.tests[0]?.profile || 'dag-final-tests',
       outcome: 'passed',
-      durationMs: dag.assembly.completion.tests.reduce((total, test) => total + test.durationMs, 0),
+      durationMs: Math.max(...dag.assembly.completion.tests.map(test => test.durationMs)),
     },
     publication: { state: 'published', headCommit: publication.headCommit,
       prNumber: publication.prNumber, url: publication.url },

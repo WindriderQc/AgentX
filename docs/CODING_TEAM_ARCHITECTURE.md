@@ -126,11 +126,17 @@ The distributed engine keeps these rules:
   executors. Dependent or overlapping steps serialize.
 - The runner, not a harness, verifies commits and focused tests. The root
   coordinator incrementally assembles verified Git bundles in DAG order;
-  conflicts produce a durable terminal receipt instead of an untracked merge.
+  conflicts, failed final verification, verification source mutation and
+  publication refusals proven before an external effect produce a durable
+  terminal receipt instead of leaving the graph pending. Final-test duration
+  is charged once to the graph's aggregate work and test budgets.
 - Publication happens once from the assembled branch. Sub-workers never push,
   open pull requests, merge or deploy.
 - Lost launch or model replies retain the original work-unit identity. They do
   not create a replacement on another host.
+- A publication whose effect may have been sent remains on its original
+  publication identity and resumes with read-only reconciliation only. It is
+  neither terminalized from missing evidence nor pushed or posted again.
 
 Every child attempt has its own request, executor, base commit, budget,
 inference journal and result receipt. Uncertain launch or inference outcomes
