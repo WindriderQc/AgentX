@@ -4,7 +4,9 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import types
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -162,6 +164,34 @@ class DistributedAssemblyTest(unittest.TestCase):
             self.assertEqual(git(adapter.worktree, "rev-parse", "HEAD"),
                              adapter.adoptions[0]["resultCommit"])
             self.assertFalse(git(adapter.worktree, "status", "--porcelain"))
+
+    def test_final_dependency_install_cannot_change_the_tree_that_will_be_published(self):
+        runtime = types.SimpleNamespace(
+            coding_progress=types.SimpleNamespace(source_state=mock.Mock(side_effect=["before", "changed"])),
+            install_dependencies=mock.Mock(), sandbox=mock.Mock(), supervise=mock.Mock(),
+            worker_home=mock.Mock(), git=mock.Mock(), push_and_open_pr=mock.Mock(),
+            RECEIPTS=Path("/tmp"), WORKSPACES=Path("/tmp"), REPOSITORY="example/project",
+            BASE_BRANCH="main")
+        progress = mock.Mock()
+        args = types.SimpleNamespace(graph_id=GRAPH, task_id="0946", timeout_seconds=30)
+        checked = {"verificationProfile": "agentx-dispatcher-tests/v1", "testTargets": ["test:a"], "artifacts": [],
+                   "task": {"title": "Synthetic"}}
+        adapter = assembly_worker.RunnerAssemblyAdapter(runtime, args, progress, checked, None, "/endpoint")
+        adapter._module = mock.Mock(return_value=types.SimpleNamespace(full_command=lambda _profile: ["test"]))
+        receipts = adapter.tests(Path("/worktree"), checked)
+        self.assertEqual(receipts[0]["outcome"], "failed")
+        runtime.sandbox.assert_not_called(); runtime.supervise.assert_not_called()
+
+    def test_publication_refuses_a_dirty_post_verification_tree(self):
+        runtime = types.SimpleNamespace(
+            git=mock.Mock(return_value=" M package-lock.json"), push_and_open_pr=mock.Mock(),
+            REPOSITORY="example/project", BASE_BRANCH="main")
+        args = types.SimpleNamespace(graph_id=GRAPH, task_id="0946")
+        checked = {"task": {"title": "Synthetic"}, "artifacts": []}
+        adapter = assembly_worker.RunnerAssemblyAdapter(runtime, args, mock.Mock(), checked, None, "/endpoint")
+        with self.assertRaisesRegex(assembly_worker.DistributedAssemblyError, "source changed"):
+            adapter.publish(Path("/worktree"), checked, "publication-id")
+        runtime.push_and_open_pr.assert_not_called()
 
 
 if __name__ == "__main__":

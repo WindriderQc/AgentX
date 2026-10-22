@@ -267,14 +267,19 @@ class RunnerAssemblyAdapter:
 
     def tests(self, workspace, manifest):
         verification = self._module("coding_verification")
-        self.r.install_dependencies(workspace, self.progress)
-        command = verification.full_command(manifest["verificationProfile"])
-        before = self.r.coding_progress.source_state(workspace)
         started = __import__("time").monotonic()
+        source_before = self.r.coding_progress.source_state(workspace)
+        self.r.install_dependencies(workspace, self.progress)
+        if self.r.coding_progress.source_state(workspace) != source_before:
+            duration = max(0, int((__import__("time").monotonic() - started) * 1000))
+            return [{"target": target, "profile": manifest["verificationProfile"],
+                     "outcome": "failed", "durationMs": duration}
+                    for target in manifest["testTargets"]]
+        command = verification.full_command(manifest["verificationProfile"])
         result = self.r.supervise(self.r.sandbox(workspace, self.r.worker_home(workspace), command,
             network=False, timeout_seconds=max(1, self.args.timeout_seconds)), self.progress)
         duration = max(0, int((__import__("time").monotonic() - started) * 1000))
-        passed = result.returncode == 0 and self.r.coding_progress.source_state(workspace) == before
+        passed = result.returncode == 0 and self.r.coding_progress.source_state(workspace) == source_before
         return [{"target": target, "profile": manifest["verificationProfile"],
                  "outcome": "passed" if passed else "failed", "durationMs": duration}
                 for target in manifest["testTargets"]]
@@ -283,6 +288,8 @@ class RunnerAssemblyAdapter:
         return self.r.git(workspace, "rev-parse", "HEAD")
 
     def publish(self, workspace, manifest, publication_id):
+        if self.r.git(workspace, "status", "--porcelain", "--untracked-files=normal"):
+            raise DistributedAssemblyError("assembly source changed after final verification")
         token = os.environ.get("GH_TOKEN", "").strip()
         if not token:
             raise DistributedAssemblyError("assembly publication requires the coding team's GitHub token")
