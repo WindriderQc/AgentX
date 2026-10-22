@@ -1180,7 +1180,8 @@ their load appears in admission, the cluster view and analytics under the
 client's name. Each client authenticates with the standard OpenAI API key
 header; its token, declared in the secret `AGENTX_LLM_GATEWAY_CLIENTS`, names
 it. Model `agentx-primary` follows the principal route with its pinned
-context. Hermes, the Coding Team, the memory review and DSH Studio each have
+context; the gateway never degrades it (the `daily_operator` ladder serves
+OpenClaw conversations only). Hermes, the Coding Team, the memory review and DSH Studio each have
 a gateway client; the former tokenless `/api/hermes-openai` is removed. OpenAI Codex uses the `responses`
 door; its configuration is in `core/integrations/runtime-bridges/README.md`.
 Inline images go to a model that reads them; a model that does not receives
@@ -1238,7 +1239,8 @@ answer tries `secondary` next.
 - Only `quick_chat`, `buddy_reaction`, `nestor_answer_light`,
   `rag_query_expansion`, `rag_reranking`, `rag_compression`, `janitor_ai` and
   advisory `household_review`
-  may degrade. A ladder naming any other task, an unknown task or an
+  may degrade. `daily_operator` may have a ladder that only a principal-alias
+  conversation reads (below). A ladder naming any other task, an unknown task or an
   unconfigured host is rejected as a whole at startup: Core logs
   `[TaskFallbackLadder] AGENTX_TASK_FALLBACKS_JSON rejected` with every
   problem, and no task degrades until the value is fixed.
@@ -1299,6 +1301,37 @@ with a one-line notice (`🪶 Cerveau léger (…)`), and it carries the
 `X-AgentX-Degraded*` headers. Its InferenceLog row records `fallbackUsed` and
 the `task_fallback_<reason>` code, like a ladder rung served by Core. When no
 rung answers, the busy reply remains.
+
+A conversation on the principal alias (`agentx-primary`) borrows the
+`daily_operator` ladder instead, when the instance configures one, so Nestor's
+main brain keeps answering while its host is held:
+
+```bash
+AGENTX_TASK_FALLBACKS_JSON='{…,"daily_operator":[{"model":"gemma4:12b-it-qat","host":"secondary"},{"model":"gemma4:12b-it-qat","host":"tertiary"}]}'
+```
+
+- Only OpenClaw turns carrying `x-agentx-busy-reply: conversation` read it.
+  Task routing never degrades `daily_operator`, and the gateway
+  (`/api/llm/v1`), Pipeline (`agentx-pipeline`), cron turns on the plain
+  provider and exact-model turns keep their route and refusals.
+- The principal degrades only when its host is held or unavailable: down,
+  quarantined, VRAM-spilled, or refusing before any output because of a
+  benchmark or Profiler claim, a workload admission or a recovery. A claim or
+  workload is first asked to yield (30 s). A principal busy with another
+  request is waited for, never replaced. Runtime maintenance holds every host,
+  so it leaves no rung to answer.
+- A rung needs its model pinned on its host with a context, besides the usual
+  checks; an unpinned rung is skipped (`model_unpinned` in the ladder log).
+  The turn runs with that pin's context (for example 32768 on `secondary`
+  instead of the principal's): the principal `num_ctx` is dropped, never
+  refused with `CONTEXT_POLICY_MISMATCH`. A conversation longer than that
+  context is truncated by the fallback model.
+- The degraded turn carries the same marks as above, plus
+  `X-AgentX-Degraded-Primary-Host` / `-Actual-Host` (host IDs). Core logs
+  `OpenClaw conversation served by a fallback brain` with both models, both
+  hosts, the reason and the borrowed task.
+- Without a `daily_operator` ladder, the principal alias keeps the borrow of
+  `OPENCLAW_CONVERSATION_FALLBACK_TASK`, as before.
 
 `OPENCLAW_CONVERSATION_NO_THINK_MODELS` lists conversation models that answer
 without reasoning whatever thinking level the agent asks for, for example the

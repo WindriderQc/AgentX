@@ -273,7 +273,7 @@
       "default": null,
       "category": "routing",
       "secret": false,
-      "description": "One-line JSON ladder of {model, host} fallbacks per light task type. Unset: no task degrades; an invalid value is rejected as a whole at startup."
+      "description": "One-line JSON ladder of {model, host} fallbacks per light task type; a daily_operator ladder serves only OpenClaw conversations on agentx-primary. Unset: no task degrades; an invalid value is rejected as a whole at startup."
     },
     "ALERT_RENOTIFY_MAX_MS": {
       "services": [

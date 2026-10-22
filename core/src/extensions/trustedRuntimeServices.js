@@ -651,7 +651,9 @@ function createTrustedRuntimeServices(overrides = {}) {
     routing: Object.freeze({
       getEffectiveSnapshot: require('../services/routing/routingSnapshotCache').effectiveSnapshotReader(deps),
       // #143: an exact-model conversation borrows a light task's fallback ladder.
-      planFallback: request => require('../services/routing/taskFallbackLadder').planExactModelFallback(request)
+      planFallback: request => require('../services/routing/taskFallbackLadder').planExactModelFallback(request),
+      // The principal alias borrows the daily operator ladder only when one is configured.
+      hasFallbackLadder: taskType => require('../services/routing/taskFallbackLadder').hasConversationLadder(taskType)
     }),
     hosts: Object.freeze({
       acquireHold(request) {

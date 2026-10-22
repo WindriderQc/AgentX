@@ -42,8 +42,10 @@ class Response extends PassThrough {
   json(value) { this.jsonBody = value; this.end(JSON.stringify(value)); return this; }
 }
 
+const ALIEN = 'http://alien.test:11434';
 function snapshot() {
   const task = { taskType: 'daily_operator', model: PRIMARY, configuredModel: PRIMARY, contextSize: 65536,
+    hostKey: 'primary', hostUrl: ALIEN, pinAligned: true,
     inferenceContract: { capabilities: { tools: { supported: true } } } };
   return { generatedAt: '2026-09-27T00:00:00.000Z', tasks: { daily_operator: task } };
 }
@@ -56,7 +58,7 @@ const answer = content => ({ ok: true, status: 200, metadata: { model: LIGHT },
   body: { model: LIGHT, message: { role: 'assistant', content }, done: true } });
 
 // `steps` answers successive execute calls; `plans` answers planFallback calls.
-function harness({ steps, plans = [], resolveConversationTarget } = {}) {
+function harness({ steps, plans = [], resolveConversationTarget, ladders = [] } = {}) {
   const calls = [];
   const planned = [];
   const runtimeServices = {
@@ -67,7 +69,8 @@ function harness({ steps, plans = [], resolveConversationTarget } = {}) {
         planned.push(request);
         const next = plans.shift();
         return typeof next === 'function' ? next(request) : next ?? null;
-      }
+      },
+      hasFallbackLadder: taskType => ladders.includes(taskType)
     },
     inference: { execute: async (request, options) => {
       calls.push({ request, options });
@@ -295,4 +298,69 @@ test('the degraded turn leaves the principal load options behind for the fallbac
     options: { num_ctx: 196608, num_thread: 8, temperature: 0.2 } }, PLAN);
   assert.deepEqual(degraded.options, { temperature: 0.2 });
   assert.equal('keepAlive' in degraded, false);
+});
+
+// The boss (agentx-primary) keeps a brain while UGAlien is held: the daily
+// operator ladder sends it to Brutal, then Frank, with the fallback's own pin.
+const BRUTAL_ROUTING = Object.freeze({ degraded: true, reason: 'benchmark_claim',
+  fallbackFrom: { model: PRIMARY, host: 'primary' }, fallbackTo: { model: LIGHT, host: 'secondary' } });
+const BRUTAL_PLAN = Object.freeze({ model: LIGHT, hostUrl: 'http://brutal.test:11434', hostKey: 'secondary', routing: BRUTAL_ROUTING });
+const claimed = () => Object.assign(new Error('Benchmark claim'), { code: 'BENCHMARK_CLAIM_ACTIVE', statusCode: 503 });
+const principalBody = (extra = {}) => body({ model: 'agentx-primary', options: { num_ctx: 65536, temperature: 0.3 }, ...extra });
+
+test('a held principal alias borrows the daily operator ladder, with the fallback pin context', async () => {
+  delete process.env[FALLBACK_TASK_ENV];
+  const { calls, planned, handler } = harness({ ladders: ['daily_operator'], plans: [null, BRUTAL_PLAN],
+    steps: [() => { throw claimed(); }, answer('Bonjour du cerveau léger')] });
+  const res = await send(handler, { payload: principalBody() });
+  assert.deepEqual(planned, [
+    { model: PRIMARY, taskType: 'daily_operator', hostUrl: ALIEN, afterRefusal: false },
+    { model: PRIMARY, taskType: 'daily_operator', hostUrl: ALIEN, afterRefusal: true, refusalReason: 'benchmark_claim' }
+  ]);
+  assert.equal(calls[0].request.model, PRIMARY);
+  assert.equal(calls[0].request.options.num_ctx, 65536);
+  assert.equal(calls[0].options.hostUrl, ALIEN);
+  assert.deepEqual(calls[0].options.retry, { interactive: true, interactiveWaitMs: 30000 });
+  const fallback = calls[1];
+  assert.equal(fallback.request.model, LIGHT);
+  assert.equal(fallback.options.hostUrl, BRUTAL_PLAN.hostUrl);
+  assert.equal(fallback.request.options.num_ctx, undefined);
+  assert.equal(fallback.request.options.temperature, 0.3);
+  assert.equal(res.headers['X-AgentX-Degraded'], 'true');
+  assert.equal(res.headers['X-AgentX-Degraded-Reason'], 'benchmark_claim');
+  assert.equal(res.headers['X-AgentX-Degraded-Primary-Host'], 'primary');
+  assert.equal(res.headers['X-AgentX-Degraded-Actual-Host'], 'secondary');
+  assert.match(res.jsonBody.message.content, /^🪶 Cerveau léger \(gemma4:12b-it-qat\) : le cerveau principal est réservé par une campagne benchmark\./);
+});
+
+test('when no principal fallback answers, the held principal keeps its original refusal', async () => {
+  delete process.env[FALLBACK_TASK_ENV];
+  const { calls, handler } = harness({ ladders: ['daily_operator'], plans: [null, null], steps: [() => { throw claimed(); }] });
+  const res = await send(handler, { payload: principalBody() });
+  assert.equal(calls.length, 1);
+  assert.equal(res.headers['x-agentx-inference-outcome'], 'host-busy');
+  assert.match(res.jsonBody.message.content, /occupé par une campagne benchmark/);
+});
+
+test('without a daily operator ladder the principal alias keeps the configured light-task borrow', async () => {
+  const { planned, handler } = harness({ steps: [answer('primary')] });
+  await send(handler, { payload: principalBody() });
+  assert.deepEqual(planned, [{ model: PRIMARY, taskType: 'nestor_answer_light', hostUrl: ALIEN, afterRefusal: false }]);
+
+  delete process.env[FALLBACK_TASK_ENV];
+  const off = harness({ steps: [answer('primary')] });
+  await send(off.handler, { payload: principalBody() });
+  assert.equal(off.planned.length, 0);
+  assert.deepEqual(off.calls[0].options.retry, { interactive: true, interactiveWaitMs: 45000 });
+});
+
+test('the principal ladder stays with the conversation provider: plain and exact-model turns are unchanged', async () => {
+  const cron = harness({ ladders: ['daily_operator'], plans: [BRUTAL_PLAN], steps: [() => { throw claimed(); }] });
+  const strict = await send(cron.handler, { headers: {}, payload: principalBody() });
+  assert.equal(strict.statusCode, 409);
+  assert.equal(cron.planned.length, 0);
+
+  const exact = harness({ ladders: ['daily_operator'], steps: [answer('primary')] });
+  await send(exact.handler);
+  assert.deepEqual(exact.planned, [{ model: PRIMARY, taskType: 'nestor_answer_light', afterRefusal: false }]);
 });
