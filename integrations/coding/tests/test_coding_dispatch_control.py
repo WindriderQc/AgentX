@@ -1,6 +1,7 @@
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -44,6 +45,15 @@ class ControlTest(unittest.TestCase):
 
     def write_progress(self, value):
         control.atomic_json(control.RECEIPTS / f"{KEY}.progress.json", value)
+
+    def test_remote_controller_reads_core_url_from_its_private_environment(self):
+        environment = Path(self.state.name) / "coding.env"
+        environment.write_text("AGENTX_CORE_URL=https://core.example.test\n")
+        with mock.patch.dict(os.environ, {"AGENTX_CODING_ENV_FILE": str(environment)}, clear=True):
+            spec = importlib.util.spec_from_file_location("coding_dispatch_control_remote", control.__file__)
+            remote = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(remote)
+        self.assertEqual(remote.CORE, "https://core.example.test")
 
     def manifest(self, url, **kwargs):
         parts = url.split("/")
