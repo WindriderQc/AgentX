@@ -78,6 +78,14 @@ def _resolve_commit(repository: Path, value: str, label: str) -> str:
     return actual
 
 
+def refresh_public_heads(repository: str | os.PathLike[str]) -> Path:
+    """Fetch public branch objects without overwriting private worker refs."""
+    repo = _existing_repository(repository)
+    _git(repo, "-c", "remote.origin.mirror=false", "fetch", "--prune", "--no-tags", "origin",
+         "+refs/heads/*:refs/remotes/origin/*")
+    return repo
+
+
 def _canonical_scope(paths: list[str] | tuple[str, ...]) -> tuple[str, ...]:
     if not isinstance(paths, (list, tuple)) or not paths:
         raise WorkspaceError("allowed_paths must be a non-empty list")

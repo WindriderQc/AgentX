@@ -81,6 +81,31 @@ function publicArtifact(metadata) {
   return { id: metadata.id, sha256: metadata.sha256, sizeBytes: metadata.sizeBytes, format: metadata.format };
 }
 
+function baseAdoptions(dag, pipelineId, baseCommit) {
+  let adoptions = [];
+  if (baseCommit !== dag.sourceCommit) {
+    const index = dag.assembly.adoptions.findIndex(adoption => adoption.adoptedCommit === baseCommit);
+    if (index < 0) fail('DAG_BASE_UNAVAILABLE', 'The step base is not an adopted assembly head');
+    adoptions = dag.assembly.adoptions.slice(0, index + 1);
+  }
+  return adoptions.map(adoption => {
+    const step = dag.steps.find(candidate => candidate.id === adoption.stepId);
+    const attempt = latestAttempt(step);
+    const receipt = step.verifiedReceipt;
+    return {
+      stepId: step.id,
+      requestId: attempt.requestId,
+      commit: receipt.commit,
+      parent: attempt.baseCommit,
+      adoptedParent: adoption.parentCommit,
+      adoptedCommit: adoption.adoptedCommit,
+      allowedPaths: [...step.paths],
+      artifact: publicArtifact(receipt.artifact),
+      downloadPath: `/api/pipeline/coding-autonomy/tasks/${pipelineId}/runs/${attempt.requestId}/artifacts/${receipt.artifact.id}`,
+    };
+  });
+}
+
 function signedManifest(value) {
   const unsigned = clone(value);
   return { ...unsigned, manifestFingerprint: fingerprint(unsigned) };
@@ -290,6 +315,7 @@ function createPipelineCodeDagCoordinator(options = {}) {
       requestId, executorId: attempt.executorId, expectedAttemptCount, stepId: step.id,
       rootRequestId: dag.rootRequestId, sourceCommit: dag.sourceCommit, baseCommit: attempt.baseCommit,
       planFingerprint: dag.planFingerprint, budget: clone(attempt.budget), ...runtime,
+      baseAdoptions: baseAdoptions(dag, pipelineId, attempt.baseCommit),
       step: { id: step.id, title: step.title, objective: step.objective, paths: [...step.paths],
         testTargets: [...step.testTargets], dependsOn: [...step.effectiveDependsOn] },
       artifactUploadPath: `/api/pipeline/coding-autonomy/tasks/${pipelineId}/runs/${requestId}/artifacts/${step.id}`,
@@ -385,6 +411,18 @@ function createPipelineCodeDagCoordinator(options = {}) {
     return state.terminalize(pipelineId, { ...input, expectedRevision: dag.revision });
   }
 
+  async function reconcileTerminalInferences(pipelineId, dag, step) {
+    let current = dag;
+    for (const receipt of latestAttempt(step).modelReceipts.filter(item => item.state === 'unknown')) {
+      const result = await state.reconcileInference(pipelineId, { expectedRevision: current.revision,
+        stepId: step.id, requestId: latestAttempt(step).requestId, callId: receipt.callId,
+        outcome: 'failed', durationSeconds: receipt.durationSeconds, finishedAt: iso(clock),
+        receipt: { code: 'executor_terminal_after_unknown' } });
+      current = result.dag;
+    }
+    return current;
+  }
+
   async function observeAttempt(pipelineId, dag, step) {
     const attempt = latestAttempt(step);
     let host;
@@ -398,7 +436,10 @@ function createPipelineCodeDagCoordinator(options = {}) {
     }
     const phase = host?.run?.phase;
     const terminal = resultForHost(host);
-    if (terminal && ['verified', 'failed'].includes(terminal.outcome)) return settleStep(pipelineId, attempt.requestId, terminal);
+    if (terminal && ['verified', 'failed'].includes(terminal.outcome)) {
+      await reconcileTerminalInferences(pipelineId, dag, step);
+      return settleStep(pipelineId, attempt.requestId, terminal);
+    }
     if (attempt.state === 'unknown' && phase === 'not_received') {
       return state.reconcileUnknown(pipelineId, { expectedRevision: dag.revision, requestId: attempt.requestId,
         outcome: 'failed', actualUsage: clone(ZERO_USAGE), receipt: { code: 'launch_not_received', finishedAt: iso(clock) } });
@@ -407,7 +448,7 @@ function createPipelineCodeDagCoordinator(options = {}) {
       return state.settleAttempt(pipelineId, { expectedRevision: dag.revision, requestId: attempt.requestId,
         outcome: 'unknown', actualUsage: clone(ZERO_USAGE), receipt: { reason: 'executor_outcome_unknown', observedAt: iso(clock) } });
     }
-    if (attempt.state === 'running' && phase === 'not_received') {
+    if (attempt.state === 'running' && ['not_received', 'resumable'].includes(phase)) {
       const workerManifest = await manifest(pipelineId, attempt.requestId);
       try {
         await control.launch({ pipelineId, requestId: attempt.requestId, expectedAttemptCount: workerManifest.expectedAttemptCount,

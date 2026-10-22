@@ -111,6 +111,42 @@ def _field(container: dict, *names):
     return None
 
 
+def _base_adoptions(value: object, *, source_commit: str, base_commit: str) -> list[dict]:
+    if not isinstance(value, list):
+        raise DistributedStepError("step manifest has no exact base adoption chain")
+    expected_head = source_commit
+    seen = set()
+    normalized = []
+    for row in value:
+        if not isinstance(row, dict):
+            raise DistributedStepError("step base adoption is invalid")
+        artifact = row.get("artifact")
+        step_id = row.get("stepId")
+        required = ("requestId", "commit", "parent", "adoptedParent", "adoptedCommit",
+                    "allowedPaths", "downloadPath")
+        if not STEP.fullmatch(str(step_id or "")) or step_id in seen \
+                or any(name not in row for name in required) or not isinstance(artifact, dict) \
+                or not UUID.fullmatch(str(row["requestId"])) \
+                or not SHA1.fullmatch(str(row["commit"])) or not SHA1.fullmatch(str(row["parent"])) \
+                or not SHA1.fullmatch(str(row["adoptedParent"])) \
+                or not SHA1.fullmatch(str(row["adoptedCommit"])) \
+                or row["adoptedParent"] != expected_head \
+                or not isinstance(row["allowedPaths"], list) or not row["allowedPaths"] \
+                or not isinstance(row["downloadPath"], str) or not row["downloadPath"] \
+                or not isinstance(artifact.get("id"), str) or not artifact["id"] \
+                or not SHA256.fullmatch(str(artifact.get("sha256", ""))) \
+                or type(artifact.get("sizeBytes")) is not int or artifact["sizeBytes"] <= 0 \
+                or artifact.get("format") != "git-bundle/v1":
+            raise DistributedStepError("step base adoption receipt is incomplete or discontinuous")
+        seen.add(step_id)
+        normalized.append({**row, "id": step_id, "artifactSha256": artifact["sha256"],
+                           "artifactSize": artifact["sizeBytes"]})
+        expected_head = row["adoptedCommit"]
+    if expected_head != base_commit:
+        raise DistributedStepError("step base adoption chain does not produce its exact base")
+    return normalized
+
+
 def validate_manifest(value: object, *, task_id: str, request_id: str, graph_id: str,
                       executor_id: str, step_id: str, fingerprint: str) -> dict:
     if not isinstance(value, dict) or value.get("schema") not in SCHEMAS or value.get("role") != "step":
@@ -131,24 +167,28 @@ def validate_manifest(value: object, *, task_id: str, request_id: str, graph_id:
     if observed != expected:
         raise DistributedStepError("step manifest identity differs from the pinned launch")
     base = _field(request, "baseCommit") or _field(step, "baseCommit") or _field(graph, "baseCommit", "sourceCommit")
+    source = _field(graph, "sourceCommit") or value.get("sourceCommit")
     paths = _field(step, "paths", "allowedPaths")
     targets = step.get("testTargets")
     profile = _field(request, "verificationProfile") or value.get("verificationProfile")
     model = _field(executor, "model") or _field(request, "model") or value.get("model")
     root_lease = value.get("rootLeaseId")
     budget = request.get("budget") or value.get("budget")
-    if not SHA1.fullmatch(str(base or "")) or not isinstance(paths, list) or not paths \
+    if not SHA1.fullmatch(str(base or "")) or not SHA1.fullmatch(str(source or "")) \
+            or not isinstance(paths, list) or not paths \
             or not isinstance(targets, list) or not targets or not isinstance(profile, str) or not profile \
             or not isinstance(model, str) or model in {"", "auto", "agentx-primary"} \
             or not isinstance(root_lease, str) or not root_lease or not isinstance(budget, dict) \
             or set(budget) != {"workSeconds", "testSeconds", "modelSeconds", "modelCalls"} \
             or any(type(budget[name]) is not int or budget[name] <= 0 for name in budget):
         raise DistributedStepError("step manifest has no exact base, scope, tests, model, lease, or positive budget")
+    base_adoptions = _base_adoptions(value.get("baseAdoptions"), source_commit=source, base_commit=base)
     executor["model"] = model
     if not UUID.fullmatch(request_id) or not STEP.fullmatch(step_id) or not SHA256.fullmatch(fingerprint):
         raise DistributedStepError("pinned step launch identity is invalid")
     return {**value, "task": task, "graph": graph, "request": request, "executor": executor,
-            "baseCommit": base, "allowedPaths": paths, "testTargets": targets,
+            "sourceCommit": source, "baseCommit": base, "baseAdoptions": base_adoptions,
+            "allowedPaths": paths, "testTargets": targets,
             "verificationProfile": profile}
 
 
@@ -209,6 +249,30 @@ class StepWorker:
         self.adapter = adapter
         self.journal_dir = Path(journal_dir)
 
+    def _publish_artifact(self, path: Path, record: dict, *, replayed: bool) -> dict:
+        artifact_path = Path(record.get("artifactPath", ""))
+        export = record.get("export")
+        intent = record.get("resultIntent")
+        if not isinstance(export, dict) or not isinstance(intent, dict) \
+                or intent.get("outcome") != "verified" or not artifact_path.is_file():
+            raise DistributedStepError("artifact-ready step journal is malformed")
+        uploaded = self.adapter.upload(artifact_path)
+        artifact = {"id": uploaded["id"], "sha256": uploaded["sha256"],
+            "sizeBytes": uploaded.get("sizeBytes", uploaded.get("size")),
+            "format": uploaded.get("format", "git-bundle/v1")}
+        if artifact["sha256"] != export.get("sha256") or artifact["sizeBytes"] != export.get("size"):
+            result = {"outcome": "failed", "actualUsage": intent["actualUsage"],
+                      "receipt": {"code": "artifact_receipt_mismatch",
+                                  "finishedAt": intent["receipt"]["finishedAt"]}}
+        else:
+            result = {**intent, "receipt": {**intent["receipt"], "artifact": artifact}}
+        terminal = {"schemaVersion": 1, "state": "terminal",
+                    "manifestFingerprint": record["manifestFingerprint"],
+                    "artifactPath": str(artifact_path), "result": result}
+        _atomic_json(path, terminal)
+        self.adapter.result(result)
+        return {**result, **({"replayed": True} if replayed else {})}
+
     def execute(self, manifest: dict) -> dict:
         request_id = _field(manifest["request"], "requestId", "id")
         path = self.journal_dir / f"{request_id}.distributed-step.json"
@@ -219,6 +283,8 @@ class StepWorker:
             if prior.get("state") == "terminal":
                 self.adapter.result(prior["result"])
                 return {**prior["result"], "replayed": True}
+            if prior.get("state") == "artifact_ready":
+                return self._publish_artifact(path, prior, replayed=True)
             raise DistributedStepError("step has an unresolved non-terminal journal")
         started = time.monotonic()
         _atomic_json(path, {"schemaVersion": 1, "state": "running",
@@ -242,19 +308,14 @@ class StepWorker:
             if not SHA1.fullmatch(commit) or self.adapter.parent(workspace, commit) != manifest["baseCommit"]:
                 raise DeterministicStepFailure("commit_shape_invalid", "step result is not exactly one commit above its base")
             artifact_path, export = self.adapter.export(workspace, manifest, commit)
-            _atomic_json(path, {"schemaVersion": 1, "state": "artifact_ready",
-                                "manifestFingerprint": manifest["manifestFingerprint"],
-                                "artifactPath": str(artifact_path), "export": export})
-            uploaded = self.adapter.upload(artifact_path)
-            artifact = {"id": uploaded["id"], "sha256": uploaded["sha256"],
-                "sizeBytes": uploaded.get("sizeBytes", uploaded.get("size")),
-                "format": uploaded.get("format", "git-bundle/v1")}
-            if artifact["sha256"] != export["sha256"] or artifact["sizeBytes"] != export["size"]:
-                raise DeterministicStepFailure("artifact_receipt_mismatch",
-                                               "Core artifact receipt differs from the exported bundle")
-            result = {"outcome": "verified", "actualUsage": self.adapter.usage(started), "receipt": {
-                "commit": commit, "changedPaths": changed, "tests": tests, "artifact": artifact,
+            intent = {"outcome": "verified", "actualUsage": self.adapter.usage(started), "receipt": {
+                "commit": commit, "changedPaths": changed, "tests": tests,
                 "finishedAt": self.adapter.now()}}
+            ready = {"schemaVersion": 1, "state": "artifact_ready",
+                     "manifestFingerprint": manifest["manifestFingerprint"],
+                     "artifactPath": str(artifact_path), "export": export, "resultIntent": intent}
+            _atomic_json(path, ready)
+            return self._publish_artifact(path, ready, replayed=False)
         except DeterministicStepFailure as failure:
             result = {"outcome": "failed", "actualUsage": self.adapter.usage(started),
                       "receipt": {"code": failure.code, "finishedAt": self.adapter.now()}}
@@ -292,16 +353,41 @@ class RunnerStepAdapter:
                 f"https://github.com/{self.r.REPOSITORY}.git", str(mirror)], capture_output=True)
             if result.returncode:
                 raise DistributedStepError("distributed repository preparation failed")
+        try:
+            self.workspace_module.refresh_public_heads(mirror)
+        except self.workspace_module.WorkspaceError as error:
+            raise DistributedStepError("distributed repository public-head refresh failed") from error
         return mirror
 
-    def prepare(self, manifest):
+    def _module(self, name):
         spec = __import__("importlib.util").util.spec_from_file_location(
-            "coding_step_workspace", Path(__file__).with_name("coding_step_workspace.py"))
-        self.workspace_module = __import__("importlib.util").util.module_from_spec(spec)
-        spec.loader.exec_module(self.workspace_module)
+            name, Path(__file__).with_name(name + ".py"))
+        module = __import__("importlib.util").util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def prepare(self, manifest):
+        self.workspace_module = self._module("coding_step_workspace")
         target = self.r.WORKSPACES / f"graph-{self.args.graph_id}" / f"{self.args.step_id}-{self.args.request_id}"
         branch = f"agentx/code-step/{self.args.graph_id[:12]}/{self.args.step_id}/{self.args.request_id[:8]}"
-        self.workspace_module.prepare_worktree(self._repository(), target, manifest["baseCommit"], branch)
+        self.workspace_module.prepare_worktree(self._repository(), target, manifest["sourceCommit"], branch)
+        if manifest["baseAdoptions"]:
+            assembly = self._module("coding_step_assembly").Assembly(
+                target, self.r.RECEIPTS / "code-step-bases" / self.args.request_id)
+            for row in manifest["baseAdoptions"]:
+                artifact = self.r.RECEIPTS / "code-step-artifacts" / f"{row['requestId']}.base.bundle"
+                self.core.download(row["downloadPath"], artifact)
+                receipt = assembly.adopt_one({"id": row["id"], "requestId": row["requestId"],
+                    "commit": row["commit"], "parent": row["parent"], "artifactPath": str(artifact),
+                    "artifactSha256": row["artifactSha256"], "artifactSize": row["artifactSize"],
+                    "allowedPaths": row["allowedPaths"]})
+                if receipt.get("status") != "adopted" \
+                        or receipt.get("previousHead") != row["adoptedParent"] \
+                        or receipt.get("resultCommit") != row["adoptedCommit"]:
+                    raise DistributedStepError("base adoption did not reconstruct its exact recorded commit")
+        prepared_head = self.workspace_module._git(target, "rev-parse", "--verify", "HEAD").decode().strip()
+        if prepared_head != manifest["baseCommit"]:
+            raise DistributedStepError("prepared step worktree does not match its exact base commit")
         self.r.install_dependencies(target, self.progress)
         self.installed_dependencies = self.r.dependency_state(target)
         return target

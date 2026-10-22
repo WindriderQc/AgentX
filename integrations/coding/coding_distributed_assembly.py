@@ -231,6 +231,10 @@ class RunnerAssemblyAdapter:
                 f"https://github.com/{self.r.REPOSITORY}.git", str(mirror)], capture_output=True)
             if result.returncode:
                 raise DistributedAssemblyError("assembly repository preparation failed")
+        try:
+            self.workspace_module.refresh_public_heads(mirror)
+        except self.workspace_module.WorkspaceError as error:
+            raise DistributedAssemblyError("assembly repository public-head refresh failed") from error
         return mirror
 
     def prepare(self, manifest):

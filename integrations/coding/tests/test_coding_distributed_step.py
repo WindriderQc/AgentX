@@ -21,6 +21,7 @@ def load(name):
 
 step_worker = load("coding_distributed_step")
 workspace_tools = load("coding_step_workspace")
+assembly_tools = load("coding_step_assembly")
 REQUEST = "11111111-1111-4111-8111-111111111111"
 FINGERPRINT = "a" * 64
 
@@ -31,14 +32,15 @@ def git(path, *args):
 
 
 class GitAdapter:
-    def __init__(self, root, outside=False, fail_result_once=False):
+    def __init__(self, root, outside=False, fail_result_once=False, fail_upload_once=False):
         self.root = root
         self.repo = root / "repo"
         self.worktree = root / "worktree"
         self.artifact = root / "step.bundle"
         self.outside = outside
         self.fail_result_once = fail_result_once
-        self.harness_calls = self.uploads = self.results = 0
+        self.fail_upload_once = fail_upload_once
+        self.harness_calls = self.test_calls = self.commit_calls = self.uploads = self.results = 0
         self.result_bodies = []
         self.base = ""
         self._init_repo()
@@ -70,10 +72,12 @@ class GitAdapter:
         return git(workspace, "diff", "--name-only", base).splitlines()
 
     def tests(self, _workspace, manifest):
+        self.test_calls += 1
         return [{"target": target, "profile": manifest["verificationProfile"],
                  "outcome": "passed", "durationMs": 4} for target in manifest["testTargets"]]
 
     def commit(self, workspace, _manifest, changed):
+        self.commit_calls += 1
         git(workspace, "add", *changed)
         git(workspace, "-c", "user.name=Worker", "-c", "user.email=worker@example.invalid",
             "commit", "-qm", "step")
@@ -90,6 +94,8 @@ class GitAdapter:
     def upload(self, path):
         self.uploads += 1
         data = path.read_bytes()
+        if self.fail_upload_once and self.uploads == 1:
+            raise OSError("lost upload acknowledgement")
         return {"id": "artifact-1", "sha256": hashlib.sha256(data).hexdigest(),
                 "sizeBytes": len(data), "format": "git-bundle/v1"}
 
@@ -107,21 +113,116 @@ class GitAdapter:
         return "2026-10-22T12:00:00.000Z"
 
 
-def manifest(base):
+def manifest(base, *, source=None, base_adoptions=None, paths=None, step_id="step-01"):
     raw = {"schema": "agentx.pipeline-code-step-worker-manifest/v1", "role": "step",
-           "pipelineId": "0946", "graphId": FINGERPRINT, "sourceCommit": base,
+           "pipelineId": "0946", "graphId": FINGERPRINT, "sourceCommit": source or base,
            "requestId": REQUEST, "baseCommit": base, "executorId": "alien-open",
            "budget": {"workSeconds": 600, "testSeconds": 120, "modelSeconds": 300, "modelCalls": 4},
            "verificationProfile": "agentx-dispatcher-tests/v1", "harness": "opencode",
            "model": "qwen3-coder:30b",
-           "step": {"stepId": "step-01", "title": "Change value", "objective": "change it",
-                    "paths": ["src/value.py"], "testTargets": ["integrations/coding/tests/test_x.py"]},
+           "step": {"stepId": step_id, "title": "Change value", "objective": "change it",
+                    "paths": paths or ["src/value.py"], "testTargets": ["integrations/coding/tests/test_x.py"]},
+           "baseAdoptions": base_adoptions or [],
            "rootLeaseId": "root-lease-1", "manifestFingerprint": FINGERPRINT}
     return step_worker.validate_manifest(raw, task_id="0946", request_id=REQUEST,
-        graph_id=FINGERPRINT, executor_id="alien-open", step_id="step-01", fingerprint=FINGERPRINT)
+        graph_id=FINGERPRINT, executor_id="alien-open", step_id=step_id, fingerprint=FINGERPRINT)
 
 
 class DistributedStepTest(unittest.TestCase):
+    def test_dependent_wave_reconstructs_exact_assembled_base_on_another_mirror(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            origin = root / "origin.git"
+            subprocess.run(["git", "init", "--bare", "-q", str(origin)], check=True)
+            source = root / "source"
+            subprocess.run(["git", "clone", "-q", str(origin), str(source)], check=True)
+            git(source, "config", "user.name", "Test")
+            git(source, "config", "user.email", "test@example.invalid")
+            (source / "src").mkdir()
+            (source / "src/one.py").write_text("ONE = 1\n")
+            (source / "src/two.py").write_text("TWO = 1\n")
+            git(source, "add", ".")
+            git(source, "commit", "-qm", "base")
+            git(source, "push", "-q", "origin", "HEAD:main")
+            base = git(source, "rev-parse", "HEAD")
+
+            worker_one = root / "worker-one.git"
+            root_mirror = root / "root.git"
+            host_two_spaces = root / "host-two" / "spaces"
+            host_two_spaces.mkdir(parents=True)
+            worker_two = host_two_spaces / ".distributed-repository.git"
+            for target in (worker_one, root_mirror, worker_two):
+                subprocess.run(["git", "clone", "--mirror", "--no-tags", "-q",
+                                str(origin), str(target)], check=True)
+
+            first_worktree = root / "first-worktree"
+            workspace_tools.prepare_worktree(worker_one, first_worktree, base, "step-one")
+            (first_worktree / "src/one.py").write_text("ONE = 2\n")
+            git(first_worktree, "add", "src/one.py")
+            git(first_worktree, "-c", "user.name=Worker", "-c", "user.email=worker@example.invalid",
+                "commit", "-qm", "step one")
+            source_commit = git(first_worktree, "rev-parse", "HEAD")
+            artifact = root / "step-one.bundle"
+            exported = workspace_tools.export_commit(
+                first_worktree, artifact, base, source_commit, ["src/one.py"])
+
+            assembly_worktree = root / "assembly"
+            workspace_tools.prepare_worktree(root_mirror, assembly_worktree, base, "assembly")
+            adoption_request = "22222222-2222-4222-8222-222222222222"
+            adoption = assembly_tools.Assembly(assembly_worktree, root / "assembly-journal").adopt_one({
+                "id": "step-01", "requestId": adoption_request, "commit": source_commit,
+                "parent": base, "artifactPath": str(artifact), "artifactSha256": exported["sha256"],
+                "artifactSize": exported["size"], "allowedPaths": ["src/one.py"]})
+            assembled = adoption["resultCommit"]
+            self.assertNotEqual(assembled, source_commit)
+            self.assertNotEqual(subprocess.run(
+                ["git", "-C", str(worker_two), "cat-file", "-e", f"{assembled}^{{commit}}"],
+                capture_output=True
+            ).returncode, 0)
+
+            (source / "public.py").write_text("PUBLIC = True\n")
+            git(source, "add", "public.py")
+            git(source, "commit", "-qm", "new public head")
+            git(source, "push", "-q", "origin", "HEAD:main")
+            public_head = git(source, "rev-parse", "HEAD")
+            self.assertNotEqual(subprocess.run(
+                ["git", "-C", str(worker_two), "cat-file", "-e", f"{public_head}^{{commit}}"],
+                capture_output=True
+            ).returncode, 0)
+
+            row = {"stepId": "step-01", "requestId": adoption_request, "commit": source_commit,
+                   "parent": base, "adoptedParent": base, "adoptedCommit": assembled,
+                   "allowedPaths": ["src/one.py"],
+                   "artifact": {"id": "artifact-step-one", "sha256": exported["sha256"],
+                                "sizeBytes": exported["size"], "format": "git-bundle/v1"},
+                   "downloadPath": "/artifacts/step-one"}
+            checked = manifest(assembled, source=base, base_adoptions=[row],
+                               paths=["src/two.py"], step_id="step-02")
+
+            class Core:
+                @staticmethod
+                def download(_endpoint, destination):
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    destination.write_bytes(artifact.read_bytes())
+                    return destination
+
+            runtime = types.SimpleNamespace(
+                WORKSPACES=host_two_spaces, RECEIPTS=root / "host-two" / "receipts",
+                REPOSITORY="unused/repository", git=git,
+                install_dependencies=lambda _workspace, _progress: None,
+                dependency_state=lambda _workspace: "installed")
+            args = types.SimpleNamespace(graph_id=FINGERPRINT, step_id="step-02", request_id=REQUEST)
+            progress = types.SimpleNamespace(started=10, soft_deadline=1000)
+            prepared = step_worker.RunnerStepAdapter(
+                runtime, args, progress, checked, Core(), "/run").prepare(checked)
+            self.assertEqual(git(prepared, "rev-parse", "HEAD"), assembled)
+            self.assertEqual(git(worker_two, "rev-parse", f"{public_head}^{{commit}}"), public_head)
+            (prepared / "src/two.py").write_text("TWO = 2\n")
+            git(prepared, "add", "src/two.py")
+            git(prepared, "-c", "user.name=Worker", "-c", "user.email=worker@example.invalid",
+                "commit", "-qm", "dependent step")
+            self.assertEqual(git(prepared, "rev-parse", "HEAD^"), assembled)
+
     def test_production_adapter_applies_exact_budget_before_dependency_preparation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -178,6 +279,24 @@ class DistributedStepTest(unittest.TestCase):
             self.assertTrue(replay["replayed"])
             self.assertEqual(adapter.harness_calls, 1)
             self.assertEqual(adapter.results, 2)
+
+    def test_lost_upload_ack_replays_artifact_intent_without_rerunning_work(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            adapter = GitAdapter(root, fail_upload_once=True)
+            worker = step_worker.StepWorker(adapter, root / "journal")
+            checked = manifest(adapter.base)
+            with self.assertRaisesRegex(OSError, "lost upload acknowledgement"):
+                worker.execute(checked)
+            journal = json.loads((root / "journal" / f"{REQUEST}.distributed-step.json").read_text())
+            self.assertEqual(journal["state"], "artifact_ready")
+            self.assertEqual(journal["resultIntent"]["receipt"]["commit"],
+                             git(adapter.worktree, "rev-parse", "HEAD"))
+            replay = worker.execute(checked)
+            self.assertEqual(replay["outcome"], "verified")
+            self.assertTrue(replay["replayed"])
+            self.assertEqual((adapter.harness_calls, adapter.test_calls, adapter.commit_calls), (1, 1, 1))
+            self.assertEqual((adapter.uploads, adapter.results), (2, 1))
 
 
 if __name__ == "__main__":

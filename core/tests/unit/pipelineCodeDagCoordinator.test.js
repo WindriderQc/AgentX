@@ -34,6 +34,7 @@ function fixture({ lostLaunch = false, limit = budget() } = {}) {
     read: jest.fn(async () => clone(memory.dag)),
     projection: jest.fn(async () => ({ graphId: ROOT })),
     startAttempt: jest.fn(transition('startAttempt')),
+    reconcileInference: jest.fn(transition('reconcileInference')),
     settleAttempt: jest.fn(transition('settleAttempt')),
     reconcileUnknown: jest.fn(transition('reconcileUnknown')),
     recordAdoption: jest.fn(transition('recordAdoption')),
@@ -144,6 +145,20 @@ test('dispatches a maximal two-host wave and starts the dependency wave from the
   expect(f.launches[2]).toMatchObject({ stepId: 'step-03', distributedRole: 'step' });
   const third = f.memory.dag.steps[2].attempts[0];
   expect(third.baseCommit).toBe('e'.repeat(40));
+  expect(await coordinator.manifest('0946', third.requestId)).toMatchObject({
+    sourceCommit: SOURCE,
+    baseCommit: 'e'.repeat(40),
+    baseAdoptions: [
+      { stepId: 'step-01', requestId: expect.any(String), commit: 'b'.repeat(40), parent: SOURCE,
+        adoptedParent: SOURCE, adoptedCommit: 'd'.repeat(40), allowedPaths: ['src/one.js'],
+        artifact: { sha256: '1'.repeat(64), format: 'git-bundle/v1' },
+        downloadPath: expect.stringContaining('/artifacts/code-step-') },
+      { stepId: 'step-02', requestId: expect.any(String), commit: 'c'.repeat(40), parent: SOURCE,
+        adoptedParent: 'd'.repeat(40), adoptedCommit: 'e'.repeat(40), allowedPaths: ['src/two.js'],
+        artifact: { sha256: '2'.repeat(64), format: 'git-bundle/v1' },
+        downloadPath: expect.stringContaining('/artifacts/code-step-') },
+    ],
+  });
   expect(f.control.launch.mock.calls.flatMap(([input]) => input.distributedRole === 'assembly' ? [input] : [])).toEqual([]);
 
   await f.verify(coordinator, 'step-03', 'f'.repeat(40), '3');
@@ -170,6 +185,49 @@ test('a lost launch response keeps the exact request and restart observes it wit
   expect((await restarted.manifest('0946', requestId))).toMatchObject({ role: 'step', requestId, stepId: 'step-01' });
   expect((await restarted.manifest('0946', deterministicUuid(ROOT, 'assembly'))).requestId)
     .toBe(deterministicUuid(ROOT, 'assembly'));
+});
+
+test('resumes the exact running request without creating a replacement attempt', async () => {
+  const f = fixture(); const coordinator = f.create();
+  await coordinator.tick('0946');
+  const attempt = f.memory.dag.steps[0].attempts[0];
+  f.runs.get(attempt.requestId).phase = 'resumable';
+  await coordinator.tick('0946');
+  expect(f.memory.dag.steps[0].attempts).toHaveLength(1);
+  expect(f.launches.filter(item => item.requestId === attempt.requestId)).toHaveLength(2);
+  expect(f.launches.filter(item => item.requestId === attempt.requestId)[1]).toMatchObject({
+    graphId: ROOT, stepId: 'step-01', executorId: attempt.executorId,
+    distributedRole: 'step', manifestFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+  });
+});
+
+test('reconciles unknown model receipts as failed before accepting the executor terminal result', async () => {
+  const f = fixture(); const coordinator = f.create();
+  await coordinator.tick('0946');
+  const requestId = f.memory.dag.steps[0].attempts[0].requestId;
+  f.memory.dag = domain.startInference(f.memory.dag, { expectedRevision: f.memory.dag.revision,
+    stepId: 'step-01', requestId, callId: 'call-unknown', model: 'qwen3-coder:30b',
+    reservedSeconds: 10, startedAt: T0 }).dag;
+  f.memory.dag = domain.settleInference(f.memory.dag, { expectedRevision: f.memory.dag.revision,
+    stepId: 'step-01', requestId, callId: 'call-unknown', outcome: 'unknown', durationSeconds: 3,
+    finishedAt: T0, receipt: { reason: 'acknowledgement_lost' } }).dag;
+  f.runs.set(requestId, { requestId, pipelineId: '0946', phase: 'finished', codeStepResult: {
+    outcome: 'failed', actualUsage: budget(5, 0, 3, 1),
+    receipt: { code: 'harness_failed', finishedAt: T0 },
+  } });
+  f.control.status.mockImplementation(async input => input.requestId
+    ? { busy: false, run: f.runs.get(input.requestId) }
+    : { executors: [] });
+
+  await coordinator.tick('0946');
+  const settled = f.memory.dag.steps[0].attempts[0];
+  expect(settled).toMatchObject({ state: 'failed', pendingInferences: [], modelReceipts: [{
+    callId: 'call-unknown', state: 'failed', durationSeconds: 3,
+    settlement: { receipt: { code: 'executor_terminal_after_unknown' } },
+  }] });
+  expect(f.stateService.reconcileInference).toHaveBeenCalledWith('0946', expect.objectContaining({
+    requestId, callId: 'call-unknown', outcome: 'failed', durationSeconds: 3,
+  }));
 });
 
 test('records and replays a deterministic conflict on the next verified adoption', async () => {
