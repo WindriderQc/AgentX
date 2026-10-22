@@ -137,8 +137,8 @@ Do not commit a copy here. SSH key/known-host mounts and remote paths are explic
 instance settings. Inventory SSH does not implicitly enable coding dispatch or
 production probing.
 
-Coding delivery defaults to this repository's `ci.yml` and the existing five CI
-jobs. After merge, the operator uses the unified AgentX launcher. A deployed
+Coding delivery defaults to this repository's `ci.yml` and its five required CI
+checks. After merge, the operator uses the unified AgentX launcher. A deployed
 receipt requires a clean checkout containing the merge, healthy active services
 and matching `AGENTX_BUILD_REVISION` values from each container. Configure the
 read-only probe using `CODING_DELIVERY_SSH_TARGET`, `CODING_DELIVERY_REMOTE_ROOT`,
