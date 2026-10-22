@@ -238,10 +238,11 @@ class ControlTest(unittest.TestCase):
                           receipt["graphId"], receipt["stepId"], receipt["manifestFingerprint"]),
                          ("accepted", "step", "alien-open", "graph-0001", "step-01", fingerprint))
 
-    def test_distributed_assembly_has_no_step_and_replays_without_refetching_or_relaunching(self):
+    def test_running_distributed_assembly_replays_without_refetching_or_relaunching(self):
         manifest = self.distributed_manifest(role="assembly", step_id=None)
         fingerprint = manifest["manifestFingerprint"]
-        with mock.patch.object(control, "urlopen", return_value=self.manifest_response(manifest)) as fetch, \
+        with mock.patch.object(control, "unit_active", side_effect=[False, True]), \
+                mock.patch.object(control, "urlopen", return_value=self.manifest_response(manifest)) as fetch, \
                 mock.patch.object(control.subprocess, "run") as process:
             first = control.launch("0001", KEY, 0, distributed_role="assembly", executor_id="alien-open",
                                    graph_id="graph-0001", manifest_fingerprint=fingerprint)
@@ -256,7 +257,7 @@ class ControlTest(unittest.TestCase):
         self.assertNotIn("--step-id", command)
         self.assertIsNone(control.read_receipt(KEY)["stepId"])
 
-    def test_lost_distributed_systemd_reply_replays_the_durable_identity_only(self):
+    def test_lost_distributed_systemd_reply_resumes_the_durable_identity_only(self):
         manifest = self.distributed_manifest()
         fingerprint = manifest["manifestFingerprint"]
         arguments = dict(distributed_role="step", executor_id="alien-open", graph_id="graph-0001",
@@ -268,12 +269,31 @@ class ControlTest(unittest.TestCase):
         receipt = control.read_receipt(KEY)
         self.assertEqual((receipt["phase"], receipt["distributedRole"], receipt["manifestFingerprint"]),
                          ("uncertain", "step", fingerprint))
-        with mock.patch.object(control, "urlopen") as refetch, mock.patch.object(control.subprocess, "run") as relaunch:
+        self.assertEqual(control.status(KEY)["run"]["phase"], "resumable")
+        with mock.patch.object(control, "urlopen", return_value=self.manifest_response(manifest)) as refetch, \
+                mock.patch.object(control.subprocess, "run") as relaunch:
             replay = control.launch("0001", KEY, 0, **arguments)
-        self.assertTrue(replay["replayed"])
+        self.assertTrue(replay["replayed"]); self.assertTrue(replay["resumed"])
         self.assertEqual((fetch.call_count, process.call_count), (1, 1))
-        refetch.assert_not_called()
-        relaunch.assert_not_called()
+        refetch.assert_called_once()
+        relaunch.assert_called_once()
+
+    def test_accepted_distributed_root_resumes_only_after_its_frozen_plan_exists(self):
+        control.save_receipt({"requestId": KEY, "pipelineId": "0001", "phase": "accepted",
+                              "expectedAttemptCount": 0, "autonomous": True})
+        self.write_progress({"requestId": KEY, "pipelineId": "0001", "phase": "running",
+                             "stage": "checkpoint", "usage": {}})
+        self.assertEqual(control.status(KEY)["run"]["phase"], "unknown")
+        control.atomic_json(control.RECEIPTS / f"{KEY}.distributed-plan.json", {
+            "schema": "agentx.distributed-code-plan-intent/v1", "taskId": "0001",
+            "rootRequestId": KEY, "sourceCommit": "a" * 40, "plan": {}, "budget": {},
+            "rootUsageBeforeDag": {}, "assemblyRequestId": None})
+        self.assertEqual(control.status(KEY)["run"]["phase"], "resumable")
+        with mock.patch.object(control, "urlopen", side_effect=self.manifest), \
+                mock.patch.object(control.subprocess, "run") as process:
+            replay = control.launch("0001", KEY, 0, autonomous=True)
+        self.assertTrue(replay["replayed"]); self.assertTrue(replay["resumed"])
+        process.assert_called_once()
 
     def test_distributed_manifest_mismatch_writes_no_receipt_and_starts_nothing(self):
         cases = [

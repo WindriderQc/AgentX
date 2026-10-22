@@ -180,6 +180,28 @@ def distributed_manifest(pipeline_id: str, key: str, *, role: str,
     return manifest
 
 
+def start_worker(pipeline_id: str, key: str, *, autonomous: bool, report: str,
+                 model_call_limit: int, parent_request_id: str | None, parent_sha256: str | None,
+                 distributed_role: str | None, executor_id: str | None,
+                 graph_id: str | None, step_id: str | None,
+                 manifest_fingerprint: str | None) -> None:
+    """Start only the already validated, fully pinned worker identity."""
+    subprocess.run(["systemd-run", "--user", "--collect", "--quiet", f"--unit={UNIT}",
+                    f"--property=EnvironmentFile=-{ENV_FILE}", f"--setenv=AGENTX_CORE_URL={CORE}",
+                    f"--setenv=PATH={os.environ.get('PATH', '/usr/local/bin:/usr/bin:/bin')}",
+                    sys.executable, str(HERE / "coding_run.py"), pipeline_id, "--request-id", key,
+                    *(["--autonomous"] if autonomous else []), *(["--report-name", report] if report else []),
+                    *(["--distributed-role", distributed_role, "--graph-id", graph_id,
+                       "--executor-id", executor_id, "--manifest-fingerprint", manifest_fingerprint]
+                      if distributed_role else []),
+                    *(["--step-id", step_id] if step_id else []),
+                    *(["--model-call-limit", str(model_call_limit)]
+                      if report and model_call_limit != progress_module.MANUAL_MODEL_CALL_LIMIT else []),
+                    *(["--parent-request-id", parent_request_id] if parent_request_id else []),
+                    *(["--parent-sha256", parent_sha256] if parent_sha256 else [])],
+                   check=True, capture_output=True, text=True, timeout=10)
+
+
 def read_progress(run: dict) -> dict | None:
     key = run.get("requestId", "")
     if not REQUEST_ID.fullmatch(key):
@@ -192,6 +214,28 @@ def read_progress(run: dict) -> dict | None:
         return progress if progress and (progress["phase"] != "finished" or progress["result"]) else None
     except (OSError, ValueError, TypeError, AttributeError):
         return None
+
+
+def resumable_kind(run: dict, progress: dict | None, *, current: bool, busy: bool) -> str | None:
+    """Return the exact journalled role that may restart without new model work."""
+    if busy or not current or run.get("phase") not in {"accepted", "uncertain"}:
+        return None
+    key = run.get("requestId", "")
+    if run.get("distributedRole") in {"step", "assembly"}:
+        return run["distributedRole"]
+    if not run.get("autonomous") or not progress or progress.get("phase") == "finished":
+        return None
+    try:
+        intent_path = RECEIPTS / f"{key}.distributed-plan.json"
+        if intent_path.is_symlink() or intent_path.stat().st_size > 128 * 1024:
+            return None
+        intent = json.loads(intent_path.read_text())
+    except (OSError, ValueError, TypeError):
+        return None
+    if (not isinstance(intent, dict) or intent.get("schema") != "agentx.distributed-code-plan-intent/v1"
+            or intent.get("taskId") != run.get("pipelineId") or intent.get("rootRequestId") != key):
+        return None
+    return "root"
 
 
 def report_profile(task):
@@ -234,10 +278,16 @@ def status(key: str | None = None) -> dict:
     progress = read_progress(run) if run else None
     current = bool(run and latest.exists() and latest.read_text().strip() == run["requestId"])
     if run and run["phase"] in {"accepted", "uncertain"}:
-        run["phase"] = "running" if busy and current else "finished" if progress and progress["phase"] == "finished" else "unknown"
+        resumable = resumable_kind(run, progress, current=current, busy=busy)
+        run["phase"] = ("running" if busy and current else "finished"
+                        if progress and progress["phase"] == "finished" else "resumable" if resumable else "unknown")
         run["message"] = ("The coding worker is running." if run["phase"] == "running"
                           else "The coding worker stopped. Read its recorded result." if run["phase"] == "finished"
+                          else f"The exact distributed {resumable} journal can resume on this executor."
+                          if run["phase"] == "resumable"
                           else "The host unit stopped without a terminal receipt. Inspect the task and checkpoint.")
+        if resumable:
+            run["canResume"] = True
     if run and run.get('reportName') and progress and not progress.get('coreRecorded') and (progress['phase'] == 'finished'
             or any((RECEIPTS/f"{run['requestId']}.{suffix}.json").exists() for suffix in ('report-start', 'report-preflight')) and not busy) and not (
             progress.get('preflight') and progress.get('modelCalls') == 0 and not any((RECEIPTS/f"{run['requestId']}.{suffix}.json").exists() for suffix in ('report-start', 'report-preflight'))):
@@ -312,6 +362,32 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
                     or previous.get('graphId') != graph_id or previous.get('stepId') != step_id
                     or previous.get('manifestFingerprint') != manifest_fingerprint):
                 raise ControlError("CODING_DISPATCH_REQUEST_CONFLICT", "This request id belongs to a different selection.")
+            latest = RECEIPTS / "latest"
+            current = latest.exists() and latest.read_text().strip() == key
+            resume = resumable_kind(previous, read_progress(previous), current=current, busy=unit_active())
+            if resume:
+                if distributed_role:
+                    distributed_manifest(pipeline_id, key, role=distributed_role, executor_id=executor_id,
+                                         graph_id=graph_id, step_id=step_id,
+                                         expected_fingerprint=manifest_fingerprint)
+                else:
+                    with urlopen(f"{CORE}/api/pipeline/coding-autonomy/tasks/{pipeline_id}/runs/{key}/manifest",
+                                 timeout=10) as response:
+                        root_manifest = json.load(response)["data"]
+                    if root_manifest.get("requestId") != key or root_manifest.get("pipelineId") != pipeline_id:
+                        raise ControlError("CODING_DISPATCH_INELIGIBLE",
+                                           "Core has no matching autonomous authorization.")
+                previous.update(phase="uncertain", message="The exact distributed worker is resuming.")
+                save_receipt(previous)
+                start_worker(pipeline_id, key, autonomous=autonomous, report=report,
+                             model_call_limit=limit, parent_request_id=parent_request_id,
+                             parent_sha256=parent_sha256, distributed_role=distributed_role,
+                             executor_id=executor_id, graph_id=graph_id, step_id=step_id,
+                             manifest_fingerprint=manifest_fingerprint)
+                previous.update(phase="accepted", message="The exact distributed worker resumed.")
+                save_receipt(previous)
+                return {"accepted": True, "replayed": True, "resumed": True,
+                        "pipelineId": pipeline_id, "run": previous}
             return {"accepted": True, "replayed": True, "pipelineId": pipeline_id, "run": previous}
         if (LEGACY_RECEIPTS / f"{key}.json").exists():
             raise ControlError("CODING_DISPATCH_RETIRED_REQUEST", "This request belongs to the retired guarded worker; inspect its preserved result.")
@@ -364,18 +440,10 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
             if parent_request_id:
                 run.update(parentRequestId=parent_request_id, parentSha256=parent_sha256)
         save_receipt(run)
-        subprocess.run(["systemd-run", "--user", "--collect", "--quiet", f"--unit={UNIT}",
-                        f"--property=EnvironmentFile=-{ENV_FILE}", f"--setenv=AGENTX_CORE_URL={CORE}",
-                        f"--setenv=PATH={os.environ.get('PATH', '/usr/local/bin:/usr/bin:/bin')}",
-                        sys.executable, str(HERE / "coding_run.py"), pipeline_id, "--request-id", key,
-                        *(["--autonomous"] if autonomous else []), *(["--report-name", report] if report else []),
-                        *(["--distributed-role", distributed_role, "--graph-id", graph_id,
-                           "--executor-id", executor_id, "--manifest-fingerprint", manifest_fingerprint] if distributed_role else []),
-                        *(["--step-id", step_id] if step_id else []),
-                        *(["--model-call-limit", str(limit)] if report and limit != progress_module.MANUAL_MODEL_CALL_LIMIT else []),
-                        *(["--parent-request-id", parent_request_id] if parent_request_id else []),
-                        *(["--parent-sha256", parent_sha256] if parent_sha256 else [])],
-                       check=True, capture_output=True, text=True, timeout=10)
+        start_worker(pipeline_id, key, autonomous=autonomous, report=report, model_call_limit=limit,
+                     parent_request_id=parent_request_id, parent_sha256=parent_sha256,
+                     distributed_role=distributed_role, executor_id=executor_id, graph_id=graph_id,
+                     step_id=step_id, manifest_fingerprint=manifest_fingerprint)
         run.update(phase="accepted", message="The coding worker started on this task.")
         save_receipt(run)
         return {"accepted": True, "replayed": False, "pipelineId": pipeline_id, "run": run}
