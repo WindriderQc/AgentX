@@ -1,6 +1,7 @@
 'use strict';
 
 const { fingerprint, DATA_CLASSIFICATIONS } = require('./workerContract');
+const { normalize: normalizeCodeStepSummary } = require('./codeStepSummary');
 
 const PIPELINE_AUTOMATION_SCHEMA = 'agentx.pipeline-automation/v1';
 const PIPELINE_AUTOMATION_EVIDENCE_SCHEMA = 'agentx.pipeline-automation-evidence/v1';
@@ -427,6 +428,14 @@ function normalizePipelineAutomationEvidence(rawValue) {
         delayMs: integer(item.delayMs, 'inference.history.delayMs', { max: 120000 })
       })) };
   }
+  let codeSteps;
+  if (raw.codeSteps != null) {
+    try {
+      codeSteps = normalizeCodeStepSummary(raw.codeSteps);
+    } catch (error) {
+      throw automationError(`attemptEvidence.codeSteps is invalid: ${error.message}`);
+    }
+  }
 
   return {
     schema: PIPELINE_AUTOMATION_EVIDENCE_SCHEMA,
@@ -475,6 +484,7 @@ function normalizePipelineAutomationEvidence(rawValue) {
     ...(routing && { routing }),
     ...(repository && { repository }),
     ...(inference && { inference }),
+    ...(codeSteps && { codeSteps }),
   };
 }
 

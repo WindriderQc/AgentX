@@ -114,6 +114,9 @@ const AutomationAttemptEvidenceSchema = new mongoose.Schema({
   repository: { type: mongoose.Schema.Types.Mixed, default: undefined },
   routing: { type: mongoose.Schema.Types.Mixed, default: undefined },
   inference: { type: mongoose.Schema.Types.Mixed, default: undefined },
+  // Public, bounded projection of the private runner ledger. The shared
+  // contract strips prompts, commands, verifier output and workspace paths.
+  codeSteps: { type: mongoose.Schema.Types.Mixed, default: undefined },
   // This subdocument must retain the public field named `schema`. Mongoose's
   // primitive-array caster collides with that field name while validating an
   // explicit `failureCodes: []`, so preserve the already-normalized contract

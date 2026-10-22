@@ -3,7 +3,7 @@
    state and helpers. */
 (function () {
   'use strict';
-  let escapeHtml, formatDate, costEvidencePresentation, localEnergyPresentation, formatStatus, attemptOutcome, metaRow, durationLabel;
+  let escapeHtml, formatDate, costEvidencePresentation, localEnergyPresentation, formatStatus, attemptOutcome, metaRow, durationLabel, codeSteps;
 
   function repositoryPathList(paths) {
     const values = Array.isArray(paths) ? paths.filter((value) => typeof value === 'string' && value) : [];
@@ -145,6 +145,7 @@
             ${metaRow('Next action', escapeHtml(humanSummary.next))}
             ${failureCodes.length ? metaRow('Failure codes', failureCodes.map((code) => `<code>${escapeHtml(code)}</code>`).join(' ')) : ''}
           </dl>
+          ${codeSteps?.render(evidence.codeSteps, { escapeHtml, durationLabel }) || ''}
         </article>`;
     }).join('');
     return `
@@ -164,6 +165,7 @@
   window.PipelineAttemptDossier = {
     create(deps) {
       ({ escapeHtml, formatDate, costEvidencePresentation, localEnergyPresentation, formatStatus, attemptOutcome, metaRow, durationLabel } = deps);
+      codeSteps = deps.codeSteps || window.PipelineCodeSteps;
       return { inferenceSummary, renderAttemptDossier };
     }
   };

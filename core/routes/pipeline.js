@@ -296,6 +296,10 @@ router.post(
         failureCodes: existing?.failureCodes || [],
         workerReceiptFingerprint: existing?.workerReceiptFingerprint || null,
         source: existing?.source || 'cost-reconciliation/v1',
+        ...(existing?.routing && { routing: existing.routing }),
+        ...(existing?.repository && { repository: existing.repository }),
+        ...(existing?.inference && { inference: existing.inference }),
+        ...(existing?.codeSteps && { codeSteps: existing.codeSteps }),
       });
       if (normalized.usage.costNanodollars == null
         || !normalized.usage.costKind
