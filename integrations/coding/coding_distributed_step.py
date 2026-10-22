@@ -136,11 +136,14 @@ def validate_manifest(value: object, *, task_id: str, request_id: str, graph_id:
     profile = _field(request, "verificationProfile") or value.get("verificationProfile")
     model = _field(executor, "model") or _field(request, "model") or value.get("model")
     root_lease = value.get("rootLeaseId")
+    budget = request.get("budget") or value.get("budget")
     if not SHA1.fullmatch(str(base or "")) or not isinstance(paths, list) or not paths \
             or not isinstance(targets, list) or not targets or not isinstance(profile, str) or not profile \
             or not isinstance(model, str) or model in {"", "auto", "agentx-primary"} \
-            or not isinstance(root_lease, str) or not root_lease:
-        raise DistributedStepError("step manifest has no exact base, scope, tests, model, or root lease")
+            or not isinstance(root_lease, str) or not root_lease or not isinstance(budget, dict) \
+            or set(budget) != {"workSeconds", "testSeconds", "modelSeconds", "modelCalls"} \
+            or any(type(budget[name]) is not int or budget[name] <= 0 for name in budget):
+        raise DistributedStepError("step manifest has no exact base, scope, tests, model, lease, or positive budget")
     executor["model"] = model
     if not UUID.fullmatch(request_id) or not STEP.fullmatch(step_id) or not SHA256.fullmatch(fingerprint):
         raise DistributedStepError("pinned step launch identity is invalid")
@@ -304,6 +307,11 @@ class RunnerStepAdapter:
         executor = manifest["executor"]
         model = executor.get("model") or manifest["request"].get("model") or self.r.MODEL
         self.progress.phase = "running"
+        budget = manifest["request"]["budget"]
+        self.progress.cumulative_limits = dict(budget)
+        self.progress.hard_deadline = self.progress.started + budget["workSeconds"]
+        self.progress.soft_deadline = min(self.progress.soft_deadline, self.progress.hard_deadline)
+        self.progress.no_progress_limit = budget["workSeconds"]
         self.progress.relay_headers = {
             "x-agentx-coding-task": self.args.task_id,
             "x-agentx-code-graph": self.args.graph_id,
@@ -312,8 +320,13 @@ class RunnerStepAdapter:
             "x-agentx-code-step-executor": self.args.executor_id,
             "x-agentx-coding-lease": manifest.get("rootLeaseId", ""),
         }
-        return self.r.run_worker(workspace, prompt, self.args.timeout_seconds,
-                                 self.progress, model=model)
+        self.progress.begin_step(budget["modelCalls"], budget["modelSeconds"],
+                                 f"code-step:{self.args.step_id}", result_kind="source")
+        try:
+            return self.r.run_worker(workspace, prompt,
+                max(1, min(self.args.timeout_seconds, budget["workSeconds"])), self.progress, model=model)
+        finally:
+            self.progress.end_step()
 
     def changed(self, workspace, base):
         if self.r.dependency_state(workspace) != self.installed_dependencies:
@@ -332,7 +345,7 @@ class RunnerStepAdapter:
         before = self.r.coding_progress.source_state(workspace)
         started = time.monotonic()
         result = self.r.supervise(self.r.sandbox(workspace, self.r.worker_home(workspace), command,
-            network=False, timeout_seconds=max(1, self.args.timeout_seconds)), self.progress)
+            network=False, timeout_seconds=max(1, int(self.progress.test_remaining()))), self.progress)
         duration = max(0, int((time.monotonic() - started) * 1000))
         self.test_seconds += (duration + 999) // 1000
         if result.returncode or self.r.coding_progress.source_state(workspace) != before:
@@ -378,10 +391,12 @@ class RunnerStepAdapter:
     def usage(self, started):
         observed = self.progress.usage() if hasattr(self.progress, "usage") else {}
         work = max(0, int(time.monotonic() - started))
-        return {"workSeconds": min(work, int(observed.get("workSeconds", work))),
-                "testSeconds": self.test_seconds,
-                "modelSeconds": max(0, int(observed.get("modelSeconds", 0))),
-                "modelCalls": max(0, int(observed.get("modelCalls", 0)))}
+        budget = self.manifest["request"]["budget"]
+        measured = {"workSeconds": min(work, int(observed.get("workSeconds", work))),
+                    "testSeconds": self.test_seconds,
+                    "modelSeconds": max(0, int(observed.get("modelSeconds", 0))),
+                    "modelCalls": max(0, int(observed.get("modelCalls", 0)))}
+        return {name: min(measured[name], budget[name]) for name in measured}
 
     @staticmethod
     def now():

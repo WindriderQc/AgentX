@@ -110,6 +110,7 @@ def manifest(base):
     raw = {"schema": "agentx.pipeline-code-step-worker-manifest/v1", "role": "step",
            "pipelineId": "0946", "graphId": FINGERPRINT, "sourceCommit": base,
            "requestId": REQUEST, "baseCommit": base, "executorId": "alien-open",
+           "budget": {"workSeconds": 600, "testSeconds": 120, "modelSeconds": 300, "modelCalls": 4},
            "verificationProfile": "agentx-dispatcher-tests/v1", "harness": "opencode",
            "model": "qwen3-coder:30b",
            "step": {"stepId": "step-01", "title": "Change value", "objective": "change it",
