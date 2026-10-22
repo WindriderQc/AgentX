@@ -59,6 +59,17 @@ class ControlTest(unittest.TestCase):
         parts = url.split("/")
         return io.BytesIO(json.dumps({"data": {"requestId": parts[-2], "pipelineId": parts[-4]}}).encode())
 
+    def distributed_manifest(self, *, key=KEY, role="step", executor_id="alien-open", graph_id="graph-0001",
+                             step_id="step-01", **extra):
+        manifest = {"schema": control.DISTRIBUTED_MANIFEST_SCHEMA, "role": role, "pipelineId": "0001",
+                    "graphId": graph_id, "requestId": key, "executorId": executor_id,
+                    "stepId": step_id, **extra}
+        manifest["manifestFingerprint"] = control.canonical_fingerprint(manifest)
+        return manifest
+
+    def manifest_response(self, manifest):
+        return io.BytesIO(json.dumps({"status": "success", "data": manifest}).encode())
+
     def test_lost_systemd_reply_finishes_and_replays_without_starting_a_second_worker(self):
         for recorded in (True, False):
             with self.subTest(coreRecorded=recorded), \
@@ -207,6 +218,116 @@ class ControlTest(unittest.TestCase):
         self.assertEqual(run.call_args.args[0][-4:], [str(control.HERE / "coding_run.py"), "0001", "--request-id", KEY])
         self.assertEqual((first["run"]["phase"], first["replayed"], again["replayed"]), ("accepted", False, True))
         self.assertEqual(control.status(KEY)["run"]["phase"], "unknown")
+
+    def test_distributed_step_fetches_and_verifies_manifest_before_durable_acceptance(self):
+        manifest = self.distributed_manifest()
+        fingerprint = manifest["manifestFingerprint"]
+        with mock.patch.object(control, "queued_tasks", side_effect=AssertionError("child role must not read the queue")), \
+                mock.patch.object(control, "urlopen", return_value=self.manifest_response(manifest)) as fetch, \
+                mock.patch.object(control.subprocess, "run") as process:
+            result = control.launch("0001", KEY, 0, distributed_role="step", executor_id="alien-open",
+                                    graph_id="graph-0001", step_id="step-01", manifest_fingerprint=fingerprint)
+        fetch.assert_called_once_with(
+            f"{control.CORE}/api/pipeline/coding-autonomy/tasks/0001/runs/{KEY}/manifest", timeout=10)
+        command = process.call_args.args[0]
+        self.assertEqual(command[-14:], [str(control.HERE / "coding_run.py"), "0001", "--request-id", KEY,
+            "--distributed-role", "step", "--graph-id", "graph-0001", "--executor-id", "alien-open",
+            "--manifest-fingerprint", fingerprint, "--step-id", "step-01"])
+        receipt = control.read_receipt(KEY)
+        self.assertEqual((result["run"]["phase"], receipt["distributedRole"], receipt["executorId"],
+                          receipt["graphId"], receipt["stepId"], receipt["manifestFingerprint"]),
+                         ("accepted", "step", "alien-open", "graph-0001", "step-01", fingerprint))
+
+    def test_distributed_assembly_has_no_step_and_replays_without_refetching_or_relaunching(self):
+        manifest = self.distributed_manifest(role="assembly", step_id=None)
+        fingerprint = manifest["manifestFingerprint"]
+        with mock.patch.object(control, "urlopen", return_value=self.manifest_response(manifest)) as fetch, \
+                mock.patch.object(control.subprocess, "run") as process:
+            first = control.launch("0001", KEY, 0, distributed_role="assembly", executor_id="alien-open",
+                                   graph_id="graph-0001", manifest_fingerprint=fingerprint)
+            replay = control.launch("0001", KEY, 0, distributed_role="assembly", executor_id="alien-open",
+                                    graph_id="graph-0001", manifest_fingerprint=fingerprint)
+        self.assertFalse(first["replayed"])
+        self.assertTrue(replay["replayed"])
+        self.assertEqual((fetch.call_count, process.call_count), (1, 1))
+        command = process.call_args.args[0]
+        self.assertIn("--distributed-role", command)
+        self.assertIn("assembly", command)
+        self.assertNotIn("--step-id", command)
+        self.assertIsNone(control.read_receipt(KEY)["stepId"])
+
+    def test_lost_distributed_systemd_reply_replays_the_durable_identity_only(self):
+        manifest = self.distributed_manifest()
+        fingerprint = manifest["manifestFingerprint"]
+        arguments = dict(distributed_role="step", executor_id="alien-open", graph_id="graph-0001",
+                         step_id="step-01", manifest_fingerprint=fingerprint)
+        with mock.patch.object(control, "urlopen", return_value=self.manifest_response(manifest)) as fetch, \
+                mock.patch.object(control.subprocess, "run", side_effect=TimeoutError) as process, \
+                self.assertRaises(TimeoutError):
+            control.launch("0001", KEY, 0, **arguments)
+        receipt = control.read_receipt(KEY)
+        self.assertEqual((receipt["phase"], receipt["distributedRole"], receipt["manifestFingerprint"]),
+                         ("uncertain", "step", fingerprint))
+        with mock.patch.object(control, "urlopen") as refetch, mock.patch.object(control.subprocess, "run") as relaunch:
+            replay = control.launch("0001", KEY, 0, **arguments)
+        self.assertTrue(replay["replayed"])
+        self.assertEqual((fetch.call_count, process.call_count), (1, 1))
+        refetch.assert_not_called()
+        relaunch.assert_not_called()
+
+    def test_distributed_manifest_mismatch_writes_no_receipt_and_starts_nothing(self):
+        cases = [
+            (self.distributed_manifest(executor_id="other"), "executor"),
+            (self.distributed_manifest(role="assembly", step_id=None), "role"),
+            (self.distributed_manifest(step_id="step-02"), "step"),
+        ]
+        for manifest, label in cases:
+            with self.subTest(label=label), \
+                    mock.patch.object(control, "urlopen", return_value=self.manifest_response(manifest)), \
+                    mock.patch.object(control.subprocess, "run") as process, \
+                    self.assertRaises(control.ControlError) as refused:
+                control.launch("0001", KEY, 0, distributed_role="step", executor_id="alien-open",
+                               graph_id="graph-0001", step_id="step-01",
+                               manifest_fingerprint=manifest["manifestFingerprint"])
+            self.assertEqual(refused.exception.code, "CODING_DISPATCH_INELIGIBLE")
+            self.assertIsNone(control.read_receipt(KEY))
+            process.assert_not_called()
+        valid = self.distributed_manifest()
+        with mock.patch.object(control, "urlopen", return_value=self.manifest_response(valid)), \
+                mock.patch.object(control.subprocess, "run") as process, \
+                self.assertRaises(control.ControlError) as refused:
+            control.launch("0001", KEY, 0, distributed_role="step", executor_id="alien-open",
+                           graph_id="graph-0001", step_id="step-01", manifest_fingerprint="f" * 64)
+        self.assertEqual(refused.exception.code, "CODING_DISPATCH_INELIGIBLE")
+        self.assertIsNone(control.read_receipt(KEY))
+        process.assert_not_called()
+
+    def test_distributed_cli_accepts_only_bounded_exact_role_identity(self):
+        manifest = self.distributed_manifest()
+        fingerprint = manifest["manifestFingerprint"]
+        args = ["control", "launch-step", "0001", KEY, "0", "alien-open", "graph-0001", "step-01", fingerprint]
+        with mock.patch.object(sys, "argv", args), mock.patch.object(control, "urlopen", return_value=self.manifest_response(manifest)), \
+                mock.patch.object(control.subprocess, "run"), mock.patch("builtins.print") as printed:
+            control.main()
+        self.assertEqual(json.loads(printed.call_args.args[0])["data"]["run"]["distributedRole"], "step")
+        for bad in [args[:-1], [*args[:-2], "step;01", fingerprint], [*args[:-1], "A" * 64]]:
+            with self.subTest(args=bad), mock.patch.object(sys, "argv", bad), mock.patch("builtins.print") as printed:
+                control.main()
+            self.assertEqual(json.loads(printed.call_args.args[0])["code"], "CODING_DISPATCH_INVALID_REQUEST")
+
+    def test_only_step_and_assembly_can_bypass_parent_queue_selection(self):
+        with mock.patch.object(control, "queued_tasks", side_effect=AssertionError("must not inspect queue")), \
+                mock.patch.object(control, "urlopen", side_effect=AssertionError("must not fetch manifest")), \
+                mock.patch.object(control.subprocess, "run") as process:
+            for role in ("planner", ""):
+                with self.subTest(role=role), self.assertRaises(control.ControlError) as refused:
+                    control.launch("0001", KEY, 0, distributed_role=role, executor_id="alien-open",
+                                   graph_id="graph-0001", step_id="step-01", manifest_fingerprint="a" * 64)
+                self.assertEqual(refused.exception.code, "CODING_DISPATCH_INVALID_REQUEST")
+        process.assert_not_called()
+        with mock.patch.object(control, "queued_tasks", side_effect=AssertionError("manual launch inspects queue")):
+            with self.assertRaises(AssertionError):
+                control.launch("0001", KEY, 0)
 
     def test_terminal_receipt_distinguishes_stopped_blocked_from_success(self):
         control.save_receipt({"requestId": KEY, "pipelineId": "0001", "phase": "accepted"})

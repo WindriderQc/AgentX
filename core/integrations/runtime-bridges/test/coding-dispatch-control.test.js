@@ -14,6 +14,22 @@ test('launch binds an exact task, request and observed attempt without shell int
   }
 });
 
+test('distributed launches pin the executor, graph, role, step and manifest fingerprint', async () => {
+  const fingerprint = 'a'.repeat(64);
+  assert.equal(launchCommand({ ...request, root: '/srv/agentx/AgentX', executorId: 'alien-open',
+    distributedRole: 'step', graphId: 'graph-0700', stepId: 'step-02', manifestFingerprint: fingerprint }),
+  `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py launch-step 0700 ${request.requestId} 0 alien-open graph-0700 step-02 ${fingerprint}`);
+  assert.equal(launchCommand({ ...request, root: '/srv/agentx/AgentX', executorId: 'alien-open',
+    distributedRole: 'assembly', graphId: 'graph-0700', manifestFingerprint: fingerprint }),
+  `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py launch-assembly 0700 ${request.requestId} 0 alien-open graph-0700 ${fingerprint}`);
+  for (const extra of [{ executorId: 'bad;id' }, { graphId: 'bad graph' }, { stepId: 'step-1' },
+    { manifestFingerprint: 'short' }, { distributedRole: 'planner' }, { autonomous: true }]) {
+    assert.throws(() => launchCommand({ ...request, root: '/srv/agentx/AgentX', executorId: 'alien-open',
+      distributedRole: 'step', graphId: 'graph-0700', stepId: 'step-02', manifestFingerprint: fingerprint, ...extra }),
+    error => error.statusCode === 400);
+  }
+});
+
 test('concurrent copies of the same POST share one SSH request', async () => {
   let complete, calls = 0;
   const control = configured(() => { calls++; return new Promise(resolve => { complete = resolve; }); });
@@ -170,6 +186,31 @@ test('executor pool merges candidates and launches on the selected harness', asy
   const result = await control.launch({ ...request, executorId: 'alien-dsh' });
   assert.equal(result.run.executorId, 'alien-dsh');
   assert.equal(calls.at(-1)[0], 'operator@alien');
+});
+
+test('distributed launch reaches only its pinned executor and cannot change immutable role identity', async () => {
+  const fingerprint = 'b'.repeat(64), commands = [];
+  let finish;
+  const control = new CodingDispatchControl({ executors: [
+    { id: 'alien-open', harness: 'opencode', sshTarget: 'operator@alien', profiles: ['autonomous'] },
+    { id: 'brutal-open', harness: 'opencode', sshTarget: 'operator@brutal', profiles: ['autonomous'] },
+  ], sshRunner: async (target, command) => {
+    commands.push([target, command]);
+    return new Promise(resolve => { finish = resolve; });
+  } });
+  const input = { ...request, executorId: 'alien-open', distributedRole: 'step', graphId: 'graph-0700',
+    stepId: 'step-01', manifestFingerprint: fingerprint };
+  const pending = control.launch(input);
+  await assert.rejects(control.launch({ ...input, stepId: 'step-02' }), error => error.code === 'CODING_DISPATCH_REQUEST_CONFLICT');
+  await assert.rejects(control.launch({ ...input, graphId: 'graph-other' }), error => error.code === 'CODING_DISPATCH_REQUEST_CONFLICT');
+  finish(envelope({ ...accepted, run: { ...accepted.run, distributedRole: 'step', graphId: 'graph-0700', stepId: 'step-01' } }));
+  const result = await pending;
+  assert.equal(commands.length, 1);
+  assert.equal(commands[0][0], 'operator@alien');
+  assert.ok(commands[0][1].includes(` launch-step 0700 ${request.requestId} 0 alien-open graph-0700 step-01 ${fingerprint}`));
+  assert.deepEqual([result.run.executorId, result.run.harness], ['alien-open', 'opencode']);
+  await assert.rejects(control.launch({ ...input, executorId: undefined }), error => error.statusCode === 400);
+  await assert.rejects(control.launch({ ...input, distributedRole: 'assembly', stepId: 'step-01' }), error => error.statusCode === 400);
 });
 
 test('pooled candidates are offered only by an executor that can accept them now', async () => {

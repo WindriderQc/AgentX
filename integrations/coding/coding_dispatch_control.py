@@ -50,6 +50,11 @@ _spec.loader.exec_module(progress_module)
 PRIVATE_SERVICE = re.compile(r"^\s*(personal|family|household|secretary)\s*$", re.IGNORECASE)
 PRIVATE_SOURCE = re.compile(r"^\s*(idea-drop\s*$|household-)", re.IGNORECASE)
 REQUEST_ID = re.compile(r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$")
+EXECUTOR_ID = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
+GRAPH_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$")
+STEP_ID = re.compile(r"^step-[0-9]{2}$")
+SHA256 = re.compile(r"^[a-f0-9]{64}$")
+DISTRIBUTED_MANIFEST_SCHEMA = "agentx.pipeline-code-step-worker-manifest/v1"
 
 
 class ControlError(RuntimeError):
@@ -139,6 +144,40 @@ def atomic_json(path, value, raw=False):
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+def canonical_fingerprint(value: dict) -> str:
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def distributed_manifest(pipeline_id: str, key: str, *, role: str,
+                         executor_id: str, graph_id: str, step_id: str | None,
+                         expected_fingerprint: str) -> dict:
+    endpoint = f"{CORE}/api/pipeline/coding-autonomy/tasks/{pipeline_id}/runs/{key}/manifest"
+    with urlopen(endpoint, timeout=10) as response:
+        raw = response.read(1024 * 1024 + 1)
+    if len(raw) > 1024 * 1024:
+        raise ControlError("CODING_DISPATCH_INELIGIBLE", "Core returned an oversized distributed manifest.")
+    try:
+        body = json.loads(raw)
+        manifest = body["data"]
+    except (ValueError, TypeError, KeyError) as error:
+        raise ControlError("CODING_DISPATCH_INELIGIBLE", "Core returned no complete distributed manifest.") from error
+    if not isinstance(manifest, dict):
+        raise ControlError("CODING_DISPATCH_INELIGIBLE", "Core returned no complete distributed manifest.")
+    fingerprint = manifest.get("manifestFingerprint")
+    unsigned = {name: value for name, value in manifest.items() if name != "manifestFingerprint"}
+    observed = canonical_fingerprint(unsigned)
+    expected_identity = {
+        "schema": DISTRIBUTED_MANIFEST_SCHEMA, "role": role, "pipelineId": pipeline_id,
+        "graphId": graph_id, "requestId": key, "executorId": executor_id,
+        "stepId": step_id,
+    }
+    if (fingerprint != expected_fingerprint or observed != expected_fingerprint or any(
+            manifest.get(name) != value for name, value in expected_identity.items())):
+        raise ControlError("CODING_DISPATCH_INELIGIBLE", "Core has no matching distributed role authorization.")
+    return manifest
 
 
 def read_progress(run: dict) -> dict | None:
@@ -236,9 +275,17 @@ def status(key: str | None = None) -> dict:
     }
 
 
-def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomous=False, report="", model_call_limit=None, parent_request_id=None, parent_sha256=None) -> dict:
-    if report and (autonomous or not report_name(report)):
+def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomous=False, report="", model_call_limit=None,
+           parent_request_id=None, parent_sha256=None, distributed_role=None, executor_id=None,
+           graph_id=None, step_id=None, manifest_fingerprint=None) -> dict:
+    if report and (autonomous or distributed_role or not report_name(report)):
         raise ControlError("CODING_DISPATCH_INVALID_REQUEST", "Report mode needs a plain Markdown file name and a manual request.", 400)
+    if distributed_role is not None and (distributed_role not in {"step", "assembly"} or autonomous
+            or not EXECUTOR_ID.fullmatch(executor_id or "") or not GRAPH_ID.fullmatch(graph_id or "")
+            or distributed_role == "step" and not STEP_ID.fullmatch(step_id or "")
+            or distributed_role == "assembly" and step_id is not None
+            or not SHA256.fullmatch(manifest_fingerprint or "")):
+        raise ControlError("CODING_DISPATCH_INVALID_REQUEST", "Invalid distributed launch identity.", 400)
     try:
         if model_call_limit is not None and not report:
             raise ValueError('A model call override requires report mode')
@@ -260,7 +307,10 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
             if (previous["pipelineId"] != pipeline_id or previous.get("expectedAttemptCount", 0) != expected_attempt_count
                     or bool(previous.get("autonomous")) != autonomous or previous.get('reportName', '') != report
                     or report and previous.get('modelCallLimit', progress_module.MANUAL_MODEL_CALL_LIMIT) != limit
-                    or previous.get('parentRequestId') != parent_request_id or previous.get('parentSha256') != parent_sha256):
+                    or previous.get('parentRequestId') != parent_request_id or previous.get('parentSha256') != parent_sha256
+                    or previous.get('distributedRole') != distributed_role or previous.get('executorId') != executor_id
+                    or previous.get('graphId') != graph_id or previous.get('stepId') != step_id
+                    or previous.get('manifestFingerprint') != manifest_fingerprint):
                 raise ControlError("CODING_DISPATCH_REQUEST_CONFLICT", "This request id belongs to a different selection.")
             return {"accepted": True, "replayed": True, "pipelineId": pipeline_id, "run": previous}
         if (LEGACY_RECEIPTS / f"{key}.json").exists():
@@ -276,18 +326,24 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
                  or pending.get('reportName') and terminal.get('preflight') and terminal.get('modelCalls') == 0
                  and not any((RECEIPTS/f"{pending['requestId']}.{suffix}.json").exists() for suffix in ('report-start', 'report-preflight')))):
             raise ControlError("CODING_DISPATCH_OUTCOME_UNKNOWN", "Reconcile the previous launch before starting another task.")
-        selected = next((task for task in queued_tasks() if task["pipelineId"] == pipeline_id and can_start(task, autonomous=autonomous)), None)
-        if not selected:
-            raise ControlError("CODING_DISPATCH_INELIGIBLE", "Only unowned, queued, non-private agentx-coding tasks can start.")
-        durable = selected.get('codingResult')
-        if durable and (durable.get('profile') != ('report' if report else 'code')
-                or report and any(durable.get(name) != value for name, value in (
-                    ('reportName', report), ('modelCallLimit', limit), ('parentRequestId', parent_request_id), ('parentSha256', parent_sha256)))):
-            raise ControlError('REPORT_PROFILE_CONFLICT', 'Launch must retain the result selection saved by Core.')
-        if report and ((selected.get('automation') or {}).get('mode') == 'review_only' or selected.get('codingAutonomy') or selected.get('automationLease') or selected.get('automationAttemptCount') or selected.get('automationAttempts')):
-            raise ControlError('CODING_DISPATCH_INELIGIBLE', 'Report mode cannot replace an automated attempt.')
-        if int(selected.get("automationAttemptCount") or 0) != expected_attempt_count:
-            raise ControlError("CODING_DISPATCH_REQUEST_CONFLICT", "The task attempt changed before launch.")
+        manifest = None
+        if distributed_role:
+            manifest = distributed_manifest(pipeline_id, key, role=distributed_role,
+                executor_id=executor_id, graph_id=graph_id, step_id=step_id,
+                expected_fingerprint=manifest_fingerprint)
+        else:
+            selected = next((task for task in queued_tasks() if task["pipelineId"] == pipeline_id and can_start(task, autonomous=autonomous)), None)
+            if not selected:
+                raise ControlError("CODING_DISPATCH_INELIGIBLE", "Only unowned, queued, non-private agentx-coding tasks can start.")
+            durable = selected.get('codingResult')
+            if durable and (durable.get('profile') != ('report' if report else 'code')
+                    or report and any(durable.get(name) != value for name, value in (
+                        ('reportName', report), ('modelCallLimit', limit), ('parentRequestId', parent_request_id), ('parentSha256', parent_sha256)))):
+                raise ControlError('REPORT_PROFILE_CONFLICT', 'Launch must retain the result selection saved by Core.')
+            if report and ((selected.get('automation') or {}).get('mode') == 'review_only' or selected.get('codingAutonomy') or selected.get('automationLease') or selected.get('automationAttemptCount') or selected.get('automationAttempts')):
+                raise ControlError('CODING_DISPATCH_INELIGIBLE', 'Report mode cannot replace an automated attempt.')
+            if int(selected.get("automationAttemptCount") or 0) != expected_attempt_count:
+                raise ControlError("CODING_DISPATCH_REQUEST_CONFLICT", "The task attempt changed before launch.")
         if autonomous:
             with urlopen(f"{CORE}/api/pipeline/coding-autonomy/tasks/{pipeline_id}/runs/{key}/manifest", timeout=10) as response:
                 manifest = json.load(response)["data"]
@@ -298,6 +354,10 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
                "message": "The host is starting the coding worker."}
         if autonomous:
             run["autonomous"] = True
+        if distributed_role:
+            run.update(distributedRole=distributed_role, executorId=executor_id, graphId=graph_id,
+                       stepId=step_id, manifestFingerprint=manifest_fingerprint,
+                       manifestSchema=manifest["schema"])
         if report:
             run['reportName'] = report
             run['modelCallLimit'] = limit
@@ -309,6 +369,9 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomou
                         f"--setenv=PATH={os.environ.get('PATH', '/usr/local/bin:/usr/bin:/bin')}",
                         sys.executable, str(HERE / "coding_run.py"), pipeline_id, "--request-id", key,
                         *(["--autonomous"] if autonomous else []), *(["--report-name", report] if report else []),
+                        *(["--distributed-role", distributed_role, "--graph-id", graph_id,
+                           "--executor-id", executor_id, "--manifest-fingerprint", manifest_fingerprint] if distributed_role else []),
+                        *(["--step-id", step_id] if step_id else []),
                         *(["--model-call-limit", str(limit)] if report and limit != progress_module.MANUAL_MODEL_CALL_LIMIT else []),
                         *(["--parent-request-id", parent_request_id] if parent_request_id else []),
                         *(["--parent-sha256", parent_sha256] if parent_sha256 else [])],
@@ -450,6 +513,17 @@ def main() -> int:
             data = status(values[0] if values else None)
         elif action in {"launch", "launch-autonomous"} and len(values) == 3 and re.fullmatch(r"\d{4}", values[0]) and values[2].isdigit():
             data = launch(values[0], values[1], int(values[2]), autonomous=action == "launch-autonomous")
+        elif action in {"launch-step", "launch-assembly"}:
+            step = action == "launch-step"
+            expected_length = 7 if step else 6
+            if (len(values) != expected_length or not re.fullmatch(r"\d{4}", values[0]) or not values[2].isdigit()
+                    or not EXECUTOR_ID.fullmatch(values[3])
+                    or not GRAPH_ID.fullmatch(values[4]) or step and not STEP_ID.fullmatch(values[5])
+                    or not SHA256.fullmatch(values[6] if step else values[5])):
+                raise ControlError("CODING_DISPATCH_INVALID_REQUEST", "Invalid distributed launch identity.", 400)
+            data = launch(values[0], values[1], int(values[2]), distributed_role="step" if step else "assembly",
+                          executor_id=values[3], graph_id=values[4], step_id=values[5] if step else None,
+                          manifest_fingerprint=values[6] if step else values[5])
         elif action == 'launch-report' and len(values) >= 4 and re.fullmatch(r'\d{4}', values[0]) and values[2].isdigit() and report_name(values[3]):
             flags = values[4:]
             allowed = {'--model-call-limit', '--parent-request-id', '--parent-sha256'}

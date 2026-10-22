@@ -26,6 +26,26 @@ function exactRequestId(value) {
   if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id)) throw new CodingDispatchControlError('A valid request id is required.', { code: 'CODING_DISPATCH_INVALID_REQUEST', statusCode: 400 });
   return id;
 }
+function exactExecutorId(value) {
+  const id = String(value || '');
+  if (!/^[a-z][a-z0-9_-]{0,63}$/.test(id)) throw new CodingDispatchControlError('A valid executor id is required.', { code: 'CODING_DISPATCH_INVALID_REQUEST', statusCode: 400 });
+  return id;
+}
+function exactGraphId(value) {
+  const id = String(value || '');
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(id)) throw new CodingDispatchControlError('A valid graph id is required.', { code: 'CODING_DISPATCH_INVALID_REQUEST', statusCode: 400 });
+  return id;
+}
+function exactStepId(value) {
+  const id = String(value || '');
+  if (!/^step-[0-9]{2}$/.test(id)) throw new CodingDispatchControlError('A valid code step id is required.', { code: 'CODING_DISPATCH_INVALID_REQUEST', statusCode: 400 });
+  return id;
+}
+function exactFingerprint(value) {
+  const fingerprint = String(value || '');
+  if (!/^[a-f0-9]{64}$/.test(fingerprint)) throw new CodingDispatchControlError('A valid manifest fingerprint is required.', { code: 'CODING_DISPATCH_INVALID_REQUEST', statusCode: 400 });
+  return fingerprint;
+}
 function remoteRoot(value) {
   try { return registry.root(value); }
   catch (error) { throw new CodingDispatchControlError(error.message, { code: error.code, statusCode: error.statusCode }); }
@@ -39,8 +59,14 @@ const reportSelection = require('../../../shared/pipelineReportSelection').norma
 function launchCommand(input) {
   const { pipelineId, requestId, expectedAttemptCount, root, autonomous } = input;
   const report = reportSelection(input);
-  const action = report.reportName ? 'launch-report' : autonomous === true ? 'launch-autonomous' : 'launch';
-  return `/usr/bin/python3 ${remoteRoot(root)}/integrations/coding/coding_dispatch_control.py ${action} ${exactPipelineId(pipelineId)} ${exactRequestId(requestId)} ${observedAttemptCount(expectedAttemptCount)}`
+  const role = input.distributedRole;
+  if (role !== undefined && role !== 'step' && role !== 'assembly') throw new CodingDispatchControlError('Distributed role must be step or assembly.', { code: 'CODING_DISPATCH_INVALID_REQUEST', statusCode: 400 });
+  if (role && (report.reportName || autonomous === true)) throw new CodingDispatchControlError('Distributed roles cannot replace manual, report or root autonomous launches.', { code: 'CODING_DISPATCH_INVALID_REQUEST', statusCode: 400 });
+  if (role === 'assembly' && input.stepId !== undefined && input.stepId !== null) throw new CodingDispatchControlError('Assembly launches do not have a step id.', { code: 'CODING_DISPATCH_INVALID_REQUEST', statusCode: 400 });
+  const action = role ? `launch-${role}` : report.reportName ? 'launch-report' : autonomous === true ? 'launch-autonomous' : 'launch';
+  const distributed = role ? ` ${exactExecutorId(input.executorId)} ${exactGraphId(input.graphId)}`
+    + (role === 'step' ? ` ${exactStepId(input.stepId)}` : '') + ` ${exactFingerprint(input.manifestFingerprint)}` : '';
+  return `/usr/bin/python3 ${remoteRoot(root)}/integrations/coding/coding_dispatch_control.py ${action} ${exactPipelineId(pipelineId)} ${exactRequestId(requestId)} ${observedAttemptCount(expectedAttemptCount)}${distributed}`
     + (report.reportName ? ` ${report.reportName} --model-call-limit ${report.modelCallLimit}` : '')
     + (report.parentRequestId ? ` --parent-request-id ${report.parentRequestId}` : '')
     + (report.parentSha256 ? ` --parent-sha256 ${report.parentSha256}` : '');
@@ -171,15 +197,24 @@ class CodingDispatchControl {
     const expectedAttemptCount = observedAttemptCount(input.expectedAttemptCount);
     if (input.confirm !== true) throw new CodingDispatchControlError('Explicit confirmation is required for a one-shot launch.', { code: 'CODING_DISPATCH_CONFIRMATION_REQUIRED', statusCode: 400 });
     const report = reportSelection(input);
-    const executor = await this.owner(input, report.reportName ? 'report' : input.autonomous === true ? 'autonomous' : 'code');
+    const role = input.distributedRole;
+    if (role !== undefined && role !== 'step' && role !== 'assembly') throw new CodingDispatchControlError('Distributed role must be step or assembly.', { code: 'CODING_DISPATCH_INVALID_REQUEST', statusCode: 400 });
+    if (role && !input.executorId) throw new CodingDispatchControlError('A distributed launch requires its pinned executor.', { code: 'CODING_DISPATCH_INVALID_REQUEST', statusCode: 400 });
+    const executor = await this.owner(input, report.reportName ? 'report' : input.autonomous === true || role ? 'autonomous' : 'code');
+    const identity = role ? { distributedRole: role, graphId: exactGraphId(input.graphId),
+      stepId: role === 'step' ? exactStepId(input.stepId) : null, manifestFingerprint: exactFingerprint(input.manifestFingerprint) } : {};
+    if (role === 'assembly' && input.stepId !== undefined && input.stepId !== null) throw new CodingDispatchControlError('Assembly launches do not have a step id.', { code: 'CODING_DISPATCH_INVALID_REQUEST', statusCode: 400 });
+    if (role && (report.reportName || input.autonomous === true)) throw new CodingDispatchControlError('Distributed roles cannot replace manual, report or root autonomous launches.', { code: 'CODING_DISPATCH_INVALID_REQUEST', statusCode: 400 });
     const pending = this.launching.get(requestId);
     if (pending) {
-      if (pending.executorId !== executor.id || pending.pipelineId !== pipelineId || pending.expectedAttemptCount !== expectedAttemptCount || pending.autonomous !== (input.autonomous === true) || pending.reportName !== report.reportName || pending.modelCallLimit !== report.modelCallLimit || pending.parentRequestId !== report.parentRequestId || pending.parentSha256 !== report.parentSha256) throw new CodingDispatchControlError('This request id belongs to a different selection.', { code: 'CODING_DISPATCH_REQUEST_CONFLICT' });
+      if (pending.executorId !== executor.id || pending.pipelineId !== pipelineId || pending.expectedAttemptCount !== expectedAttemptCount || pending.autonomous !== (input.autonomous === true) || pending.reportName !== report.reportName || pending.modelCallLimit !== report.modelCallLimit || pending.parentRequestId !== report.parentRequestId || pending.parentSha256 !== report.parentSha256 || pending.distributedRole !== identity.distributedRole || pending.graphId !== identity.graphId || pending.stepId !== identity.stepId || pending.manifestFingerprint !== identity.manifestFingerprint) throw new CodingDispatchControlError('This request id belongs to a different selection.', { code: 'CODING_DISPATCH_REQUEST_CONFLICT' });
       return pending.promise;
     }
-    const promise = this.call(executor, launchCommand({ pipelineId, requestId, expectedAttemptCount, root: executor.remoteRoot, autonomous: input.autonomous, ...report }))
+    const promise = this.call(executor, launchCommand({ pipelineId, requestId, expectedAttemptCount, root: executor.remoteRoot,
+      executorId: executor.id, autonomous: input.autonomous, ...report, ...identity }))
       .then(data => this.decorate(data, executor));
-    this.launching.set(requestId, { executorId: executor.id, pipelineId, expectedAttemptCount, autonomous: input.autonomous === true, ...report, promise });
+    this.launching.set(requestId, { executorId: executor.id, pipelineId, expectedAttemptCount, autonomous: input.autonomous === true,
+      ...report, ...identity, promise });
     try { return await promise; } finally { this.launching.delete(requestId); }
   }
   async cancel(input = {}) {
