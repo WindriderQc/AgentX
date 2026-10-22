@@ -217,8 +217,6 @@ class StepWorker:
             if prior.get("manifestFingerprint") != manifest["manifestFingerprint"]:
                 raise DistributedStepError("request journal belongs to another manifest")
             if prior.get("state") == "terminal":
-                if prior["result"].get("outcome") == "verified":
-                    self.adapter.upload(Path(prior["artifactPath"]))
                 self.adapter.result(prior["result"])
                 return {**prior["result"], "replayed": True}
             raise DistributedStepError("step has an unresolved non-terminal journal")

@@ -130,7 +130,7 @@ class DistributedStepTest(unittest.TestCase):
             self.assertEqual(first["outcome"], "verified")
             self.assertTrue(second["replayed"])
             self.assertEqual(adapter.harness_calls, 1)
-            self.assertEqual((adapter.uploads, adapter.results), (2, 2))
+            self.assertEqual((adapter.uploads, adapter.results), (1, 2))
             self.assertEqual(git(adapter.worktree, "rev-list", "--count", adapter.base + "..HEAD"), "1")
 
     def test_scope_escape_posts_durable_failed_result_and_replays_it(self):
