@@ -92,6 +92,15 @@ describe('owner private recall corpus', () => {
     expect(await Recall.countDocuments({ documentId: 'mail:message0005' })).toBe(0);
   });
 
+  test('a passage quoted across several messages is returned once', async () => {
+    const rag = fakeRag();
+    const quoted = 'Synthetic hotel booking near the drop zone';
+    const reply = { title: 'Re: Synthetic trip', people: [] };
+    await recall.index([mail(6, quoted, reply), mail(7, quoted, reply), mail(8, 'Synthetic other topic about the hotel')], rag.deps);
+    const { results } = await recall.search('hotel booking drop zone', {}, rag.deps);
+    expect(results.filter(r => r.excerpt.includes('booking'))).toHaveLength(1);
+  });
+
   test('a document the owner forgets leaves the index and is never indexed again', async () => {
     const rag = fakeRag();
     await recall.index([mail(2, 'Synthetic note about a private matter')], rag.deps);

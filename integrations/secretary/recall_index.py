@@ -175,7 +175,8 @@ def run(archive, core, state_file, *, client=None, opener=urllib.request.urlopen
         totals.update({f"sync{k[0].upper()}{k[1:]}": data.get(k) or 0 for k in ("indexed", "removed")})
         if not data.get("remaining"):
             break
-    state.pop("error", None)
+    for key in ("error", "httpStatus", "answer", "batch"):
+        state.pop(key, None)  # an earlier interruption no longer applies
     report("done")
     return state
 

@@ -128,9 +128,14 @@ async function search(query, { limit = 8, minScore } = {}, deps) {
     ...(await MemoryNote.find({ _id: { $in: [...records.values()].filter(r => r.noteId).map(r => r.noteId) }, status: 'active' }, { _id: 1 }).lean()).map(n => `souvenir:${n._id}`),
     ...(await Person.find({ _id: { $in: [...records.values()].filter(r => r.personId).map(r => r.personId) }, state: 'active' }, { _id: 1 }).lean()).map(p => `person:${p._id}`)]);
   const results = [];
+  // A passage quoted across a thread's replies is indexed in each message; show it once.
+  const seen = new Set();
   for (const hit of hits) {
     const record = records.get(hit.documentId);
     if (!record || (['souvenir', 'person'].includes(record.kind) && !live.has(record.documentId))) continue;
+    const passage = String(hit.text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (seen.has(passage)) continue;
+    seen.add(passage);
     results.push({ documentId: record.documentId, kind: record.kind, score: hit.score, excerpt: String(hit.text || '').slice(0, 1200),
       title: record.title, occurredAt: record.occurredAt, people: record.people,
       source: record.source?.messageId ? { messageId: record.source.messageId, threadId: record.source.threadId,
