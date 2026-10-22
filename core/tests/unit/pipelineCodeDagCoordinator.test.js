@@ -432,7 +432,8 @@ test('accepts a bounded final budget exhaustion receipt before publication', asy
   await coordinator.recordAdoption('0946', assemblyId, { stepId: 'step-03', sourceCommit: 'f'.repeat(40),
     parentCommit: 'e'.repeat(40), adoptedCommit: '7'.repeat(40), artifactSha256: '3'.repeat(64), adoptedAt: T0 });
   const tests = ['test:step-01', 'test:step-02', 'test:step-03'].map(target => ({ target,
-    profile: 'agentx-core-runner-tests/v1', outcome: 'failed', durationMs: 501 }));
+    profile: 'agentx-core-runner-tests/v1', outcome: 'failed', durationMs: 701,
+    budgetedDurationMs: 501 }));
   await expect(coordinator.failAssembly('0946', assemblyId, { state: 'blocked',
     code: 'assembly_budget_exhausted', reason: 'Final verification exhausted its aggregate budget',
     finishedAt: T0, tests })).resolves.toMatchObject({ dag: { state: 'blocked',

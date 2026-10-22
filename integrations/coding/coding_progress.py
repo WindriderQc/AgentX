@@ -5,11 +5,16 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import hashlib, importlib.util, json, os, queue, re
 from pathlib import Path
-import shlex, signal, stat, subprocess, tempfile, time
+import shlex, signal, tempfile, time
 
 _code_steps_spec = importlib.util.spec_from_file_location("coding_step_progress", Path(__file__).with_name("coding_step_progress.py"))
 coding_step_progress = importlib.util.module_from_spec(_code_steps_spec)
 _code_steps_spec.loader.exec_module(coding_step_progress)
+_deadline_spec = importlib.util.spec_from_file_location("coding_deadline", Path(__file__).with_name("coding_deadline.py"))
+coding_deadline = importlib.util.module_from_spec(_deadline_spec)
+_deadline_spec.loader.exec_module(coding_deadline)
+SourceDeadlineExceeded = coding_deadline.SourceDeadlineExceeded
+git = coding_deadline.git
 
 
 REQUEST_ID = re.compile(r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$")
@@ -62,60 +67,8 @@ def session_logs(home: Path):
     return [path for _, path in selected.values()]
 
 
-class SourceDeadlineExceeded(RuntimeError):
-    """Source hashing exhausted its caller-owned monotonic deadline."""
-
-
-def check_source_deadline(deadline) -> float:
-    if deadline is None:
-        return 30
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        raise SourceDeadlineExceeded("Source observation deadline exhausted")
-    return min(30, remaining)
-
-
-def git(workspace: Path, *args: str, deadline=None) -> str:
-    env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"}
-    timeout = check_source_deadline(deadline)
-    try:
-        return subprocess.run(["git", "-C", str(workspace), "-c", "core.hooksPath=/dev/null",
-                               "-c", "core.fsmonitor=false", *args], env=env, capture_output=True,
-                              text=True, check=True, timeout=timeout).stdout
-    except subprocess.TimeoutExpired as error:
-        if deadline is not None and (timeout < 30 or time.monotonic() >= deadline):
-            raise SourceDeadlineExceeded("Git source observation exhausted its deadline") from error
-        raise
-
-
 def source_state(workspace: Path, *, deadline=None) -> str:
-    """Hash source content, ignoring mtimes, generated caches and links outside the clone."""
-    paths = git(workspace, "ls-files", "-z", "--cached", "--others", "--exclude-standard",
-                deadline=deadline).split("\0")
-    digest = hashlib.sha256()
-    for name in sorted(set(paths)):
-        check_source_deadline(deadline)
-        if not name or artifact(name):
-            continue
-        path = workspace / name
-        try:
-            info = path.lstat()
-            if stat.S_ISREG(info.st_mode) and info.st_size <= 32 * 1024 * 1024:
-                kind = b"regular-executable" if info.st_mode & stat.S_IXUSR else b"regular"
-                file_digest = hashlib.sha256()
-                with path.open("rb") as stream:
-                    for block in iter(lambda: stream.read(1024 * 1024), b""):
-                        check_source_deadline(deadline)
-                        file_digest.update(block)
-                content = kind + b"\0" + file_digest.digest()
-            elif stat.S_ISLNK(info.st_mode):
-                content = b"symlink\0" + os.readlink(path).encode()
-            else:
-                continue
-        except FileNotFoundError:
-            content = b"deleted\0"
-        digest.update(name.encode() + b"\0" + content)
-    return digest.hexdigest()
+    return coding_deadline.source_state(workspace, artifact, deadline=deadline)
 
 
 def timeout_command(tokens: list[str]) -> list[str]:

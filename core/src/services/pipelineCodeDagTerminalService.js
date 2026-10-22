@@ -1,7 +1,7 @@
 'use strict';
 
 const { fingerprint } = require('../../../shared/codeStepDagContract');
-const { ASSEMBLY_SETTLEMENT_OVERAGE_SECONDS, MAX_ATTEMPTS, assertState } = require('./pipelineCodeDagService');
+const { MAX_ATTEMPTS, assertState } = require('./pipelineCodeDagService');
 
 const TERMINAL_STATES = new Set(['failed', 'blocked']);
 const FINAL_ASSEMBLY_CODES = new Set([
@@ -39,15 +39,20 @@ function finalTests(value) {
   }
   return value.map((test, index) => {
     const fields = Object.keys(test || {}).sort();
-    if (fields.join(',') !== 'durationMs,outcome,profile,target'
+    const hasBudgetedDuration = fields.includes('budgetedDurationMs');
+    const expectedFields = hasBudgetedDuration
+      ? 'budgetedDurationMs,durationMs,outcome,profile,target' : 'durationMs,outcome,profile,target';
+    if (fields.join(',') !== expectedFields
       || typeof test.target !== 'string' || !test.target.trim() || test.target.trim().length > 512
       || typeof test.profile !== 'string' || !test.profile.trim() || test.profile.trim().length > 160
       || !['passed', 'failed'].includes(test.outcome)
-      || !Number.isSafeInteger(test.durationMs) || test.durationMs < 0 || test.durationMs > 604_800_000) {
+      || !Number.isSafeInteger(test.durationMs) || test.durationMs < 0 || test.durationMs > 604_800_000
+      || hasBudgetedDuration && (!Number.isSafeInteger(test.budgetedDurationMs)
+        || test.budgetedDurationMs < 0 || test.budgetedDurationMs > test.durationMs)) {
       fail('INVALID_TERMINAL_RECEIPT', `tests[${index}] is invalid`);
     }
     return { target: test.target.trim(), profile: test.profile.trim(), outcome: test.outcome,
-      durationMs: test.durationMs };
+      durationMs: test.durationMs, ...(hasBudgetedDuration && { budgetedDurationMs: test.budgetedDurationMs }) };
   });
 }
 
@@ -119,10 +124,12 @@ function terminalize(dag, input) {
       || terminal.tests.length !== requiredTargets.size
       || [...requiredTargets].some(target => !covered.has(target))
       || (publicationFailure && terminal.tests.some(test => test.outcome !== 'passed'))
-      || (verificationFailure && terminal.tests.every(test => test.outcome === 'passed'))) {
+      || (verificationFailure && terminal.tests.every(test => test.outcome === 'passed'))
+      || terminal.tests.some(test => Object.hasOwn(test, 'budgetedDurationMs') !== budgetFailure)) {
       fail('INVALID_TERMINAL_RECEIPT', 'final assembly failure must follow complete adoption and exact final verification');
     }
-    const durationSeconds = Math.ceil(Math.max(...terminal.tests.map(test => test.durationMs)) / 1000);
+    const durationSeconds = Math.ceil(Math.max(...terminal.tests.map(test =>
+      test.budgetedDurationMs ?? test.durationMs)) / 1000);
     assemblyUsage = { ...zeroUsage(), workSeconds: durationSeconds, testSeconds: durationSeconds };
   } else if (terminal.tests) {
     fail('INVALID_TERMINAL_RECEIPT', 'only a final assembly failure may carry final test receipts');
@@ -130,12 +137,7 @@ function terminalize(dag, input) {
   const next = clone(dag);
   next.assembly.usage ||= zeroUsage();
   for (const key of Object.keys(assemblyUsage)) {
-    const overage = next.budget.spent[key] + next.budget.reserved[key]
-      + assemblyUsage[key] - next.budget.limit[key];
-    const boundedSettlementOverage = terminal.code === 'assembly_budget_exhausted'
-      && ['workSeconds', 'testSeconds'].includes(key)
-      && overage <= ASSEMBLY_SETTLEMENT_OVERAGE_SECONDS;
-    if (overage > 0 && !boundedSettlementOverage) {
+    if (next.budget.spent[key] + next.budget.reserved[key] + assemblyUsage[key] > next.budget.limit[key]) {
       fail('ASSEMBLY_BUDGET_EXHAUSTED', `final assembly ${key} usage exceeds the aggregate limit`);
     }
     next.budget.spent[key] += assemblyUsage[key];

@@ -196,6 +196,7 @@ class DistributedAssemblyTest(unittest.TestCase):
             self.assertEqual(result["failure"]["state"], "blocked")
             self.assertEqual(result["failure"]["code"], "assembly_budget_exhausted")
             self.assertEqual(result["failure"]["tests"][0]["durationMs"], 1501)
+            self.assertEqual(result["failure"]["tests"][0]["budgetedDurationMs"], 1000)
             self.assertEqual(adapter.publications, 0)
 
     def test_lost_failure_ack_replays_the_exact_durable_terminal_receipt(self):
@@ -300,6 +301,50 @@ class DistributedAssemblyTest(unittest.TestCase):
         self.assertEqual(raised.exception.code, "assembly_budget_exhausted")
         self.assertEqual(raised.exception.state, "blocked")
         self.assertEqual(raised.exception.tests[0]["durationMs"], 250)
+        self.assertEqual(raised.exception.tests[0]["budgetedDurationMs"], 250)
+        runtime.sandbox.assert_not_called(); runtime.supervise.assert_not_called()
+
+    def test_settlement_only_budget_terminal_starts_no_verification_work(self):
+        runtime = types.SimpleNamespace(
+            coding_progress=types.SimpleNamespace(source_state=mock.Mock()),
+            install_dependencies=mock.Mock(), sandbox=mock.Mock(), supervise=mock.Mock(),
+            worker_home=mock.Mock(), git=mock.Mock(), push_and_open_pr=mock.Mock(),
+            RECEIPTS=Path("/tmp"), WORKSPACES=Path("/tmp"), REPOSITORY="example/project",
+            BASE_BRANCH="main")
+        args = types.SimpleNamespace(graph_id=GRAPH, task_id="0946", timeout_seconds=1)
+        checked = {"verificationProfile": "agentx-dispatcher-tests/v1", "testTargets": ["test:a"],
+                   "finalVerificationBudget": {"workSeconds": 1, "testSeconds": 3}, "artifacts": [],
+                   "task": {"title": "Synthetic"}}
+        adapter = assembly_worker.RunnerAssemblyAdapter(runtime, args, mock.Mock(), checked, None, "/endpoint")
+        adapter._module = mock.Mock()
+        with mock.patch.object(assembly_worker.time, "monotonic", side_effect=[100.0, 100.25]), \
+                self.assertRaises(assembly_worker.DeterministicAssemblyFailure) as raised:
+            adapter.tests(Path("/worktree"), checked)
+        self.assertEqual(raised.exception.tests[0]["durationMs"], 250)
+        self.assertEqual(raised.exception.tests[0]["budgetedDurationMs"], 0)
+        adapter._module.assert_not_called(); runtime.install_dependencies.assert_not_called()
+
+    def test_deadline_settlement_is_measured_but_not_charged_as_verification_work(self):
+        class DeadlineExceeded(RuntimeError):
+            pass
+        runtime = types.SimpleNamespace(
+            CodingDeadlineExceeded=DeadlineExceeded,
+            coding_progress=types.SimpleNamespace(source_state=mock.Mock(return_value="before")),
+            install_dependencies=mock.Mock(side_effect=DeadlineExceeded("fixture deadline")),
+            sandbox=mock.Mock(), supervise=mock.Mock(), worker_home=mock.Mock(), git=mock.Mock(),
+            push_and_open_pr=mock.Mock(), RECEIPTS=Path("/tmp"), WORKSPACES=Path("/tmp"),
+            REPOSITORY="example/project", BASE_BRANCH="main")
+        args = types.SimpleNamespace(graph_id=GRAPH, task_id="0946", timeout_seconds=5)
+        checked = {"verificationProfile": "agentx-dispatcher-tests/v1", "testTargets": ["test:a"],
+                   "finalVerificationBudget": {"workSeconds": 5, "testSeconds": 8}, "artifacts": [],
+                   "task": {"title": "Synthetic"}}
+        adapter = assembly_worker.RunnerAssemblyAdapter(runtime, args, mock.Mock(), checked, None, "/endpoint")
+        adapter._module = mock.Mock(return_value=types.SimpleNamespace(full_command=lambda _profile: ["test"]))
+        with mock.patch.object(assembly_worker.time, "monotonic", side_effect=[100.0, 105.25]), \
+                self.assertRaises(assembly_worker.DeterministicAssemblyFailure) as raised:
+            adapter.tests(Path("/worktree"), checked)
+        self.assertEqual(raised.exception.tests[0]["durationMs"], 5250)
+        self.assertEqual(raised.exception.tests[0]["budgetedDurationMs"], 4000)
         runtime.sandbox.assert_not_called(); runtime.supervise.assert_not_called()
 
     def test_dependency_time_is_removed_from_the_final_command_timeout(self):

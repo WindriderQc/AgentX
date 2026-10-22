@@ -54,10 +54,6 @@ INSTALL_TIMEOUT_SECONDS = 1800
 CLONE_TIMEOUT_SECONDS = 1800
 REPORT_SETTLE_GRACE_SECONDS = 30
 
-
-class CodingDeadlineExceeded(RuntimeError):
-    """A runner-owned subprocess exhausted its caller's monotonic deadline."""
-
 _spec = importlib.util.spec_from_file_location("model_relay", HERE / "model_relay.py")
 model_relay = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(model_relay)
@@ -72,6 +68,13 @@ _spec.loader.exec_module(coding_dispatch_control)
 _spec = importlib.util.spec_from_file_location("coding_runtime", HERE / "coding_runtime.py")
 coding_runtime = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(coding_runtime)
+_spec = importlib.util.spec_from_file_location("coding_deadline", HERE / "coding_deadline.py")
+coding_deadline = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(coding_deadline)
+CodingDeadlineExceeded = coding_deadline.CodingDeadlineExceeded
+_deadline_timeout = coding_deadline.deadline_timeout
+supervise = coding_deadline.supervise
+terminate = coding_deadline.terminate
 _spec = importlib.util.spec_from_file_location("coding_worker_context", HERE / "coding_worker_context.py")
 coding_worker_context = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(coding_worker_context)
@@ -194,15 +197,6 @@ def installed_state(workspace: Path) -> str:
     return ""
 
 
-def _deadline_timeout(deadline, maximum: float) -> float:
-    if deadline is None:
-        return maximum
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        raise CodingDeadlineExceeded("Runner-owned deadline exhausted")
-    return min(maximum, remaining)
-
-
 def runtime_identity(workspace: Path, *, deadline=None) -> dict:
     def probe(npm_cli):
         home = worker_home(workspace)
@@ -292,73 +286,6 @@ def install_dependencies(workspace: Path, progress=None, *, deadline=None) -> No
             os.replace(temporary, marker)
         finally:
             temporary.unlink(missing_ok=True)
-
-
-def tail(path: Path, size: int = 6000) -> str:
-    with path.open("rb") as stream:
-        stream.seek(0, os.SEEK_END)
-        stream.seek(max(0, stream.tell() - size))
-        return stream.read().decode(errors="replace")
-
-
-def supervise(command: list[str], progress=None, home=None, workspace=None, on_stop=None,
-              deadline=None) -> subprocess.CompletedProcess:
-    """Poll the child while retaining raw stdout/stderr outside the repository."""
-    if progress and progress.path:
-        output_root = progress.path.parent / f"{progress.request_id}.output"
-        output_root.mkdir(mode=0o700, exist_ok=True)
-        directory = Path(tempfile.mkdtemp(prefix=f"{progress.stage}-", dir=output_root))
-    else:
-        directory = Path(tempfile.mkdtemp(prefix="agentx-coding-output-"))
-    # Raw output survives every exit, including an operator stop. It never enters Git.
-    stdout, stderr = directory / "stdout", directory / "stderr"
-    with stdout.open("wb") as out, stderr.open("wb") as err:
-        process = subprocess.Popen(command, stdout=out, stderr=err, start_new_session=True)
-        deadline_exhausted = False
-        try:
-            while process.poll() is None:
-                if deadline is not None and time.monotonic() >= deadline:
-                    deadline_exhausted = True
-                    terminate(process, grace_seconds=0)
-                    break
-                if progress and progress.tick(home, workspace):
-                    if on_stop:
-                        on_stop()
-                    terminate(process)
-                    break
-                delay = 2 if deadline is None else min(2, max(0, deadline - time.monotonic()))
-                if delay:
-                    time.sleep(delay)
-        finally:
-            if process.poll() is None:
-                if on_stop:
-                    on_stop()
-                terminate(process)
-    if deadline_exhausted:
-        raise CodingDeadlineExceeded("Supervised command exhausted its runner-owned deadline")
-    if progress and home and workspace:
-        progress.observe(home, workspace)
-    return subprocess.CompletedProcess(command, process.wait(), tail(stdout), tail(stderr))
-
-
-def terminate(process, grace_seconds=30):
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return
-    if grace_seconds <= 0:
-        if process.poll() is None:
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-        process.wait()
-        return
-    try:
-        process.wait(timeout=grace_seconds)
-    except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGKILL)
-        process.wait()
 
 
 def record_lane_capability(progress, model, lanes=None):

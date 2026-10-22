@@ -203,7 +203,7 @@ test('publication failure requires passing final tests and final failures requir
       tests: [{ outcome: 'passed' }] } } });
 });
 
-test('terminal budget exhaustion accounts one bounded rounding overage without reopening assembly', () => {
+test('terminal budget exhaustion separates settlement time without exceeding the cumulative budget', () => {
   let dag = createDag({ stepCount: 1, limit: budget(5, 4, 10, 1) });
   dag = start(dag, 'step-01', 'executor-a', 'request-final-budget', budget(5, 4, 3, 1)).dag;
   dag = settleVerified(dag, 'request-final-budget', 1).dag;
@@ -214,23 +214,28 @@ test('terminal budget exhaustion accounts one bounded rounding overage without r
   }).dag;
   const input = { expectedRevision: dag.revision, state: 'blocked', code: 'assembly_budget_exhausted',
     reason: 'Final verification exhausted its aggregate work or test budget', stepId: null, finishedAt: T0,
-    tests: [{ target: 'test:one', profile: 'jest/cpu/v1', outcome: 'failed', durationMs: 1001 }],
+    tests: [{ target: 'test:one', profile: 'jest/cpu/v1', outcome: 'failed',
+      durationMs: 1251, budgetedDurationMs: 1000 }],
   };
   const blocked = terminal.terminalize(dag, input);
   expect(blocked).toMatchObject({ replayed: false, dag: {
-    state: 'blocked', assembly: { state: 'blocked', usage: { workSeconds: 2, testSeconds: 2 } },
+    state: 'blocked', assembly: { state: 'blocked', usage: { workSeconds: 1, testSeconds: 1 } },
     budget: { limit: { workSeconds: 5, testSeconds: 4 },
-      spent: { workSeconds: 6, testSeconds: 5 } },
-    terminalFailure: { code: 'assembly_budget_exhausted', tests: [{ durationMs: 1001 }] },
+      spent: { workSeconds: 5, testSeconds: 4 } },
+    terminalFailure: { code: 'assembly_budget_exhausted',
+      tests: [{ durationMs: 1251, budgetedDurationMs: 1000 }] },
   } });
   expect(project(blocked.dag)).toMatchObject({ state: 'blocked',
-    budget: { spent: { workSeconds: 6, testSeconds: 5 } },
-    assembly: { state: 'blocked', verification: { outcome: 'failed', durationMs: 1001 } },
+    budget: { spent: { workSeconds: 5, testSeconds: 4 } },
+    assembly: { state: 'blocked', verification: { outcome: 'failed', durationMs: 1251 } },
   });
   expect(terminal.terminalize(blocked.dag, input)).toMatchObject({ replayed: true,
-    dag: { budget: { spent: { workSeconds: 6, testSeconds: 5 } } } });
+    dag: { budget: { spent: { workSeconds: 5, testSeconds: 4 } } } });
   expect(() => terminal.terminalize(dag, { ...input,
-    tests: [{ ...input.tests[0], durationMs: 2001 }] }))
+    tests: [{ target: 'test:one', profile: 'jest/cpu/v1', outcome: 'failed', durationMs: 1251 }] }))
+    .toThrow(expect.objectContaining({ code: 'INVALID_TERMINAL_RECEIPT' }));
+  expect(() => terminal.terminalize(dag, { ...input,
+    tests: [{ ...input.tests[0], budgetedDurationMs: 1001 }] }))
     .toThrow(expect.objectContaining({ code: 'ASSEMBLY_BUDGET_EXHAUSTED' }));
 });
 

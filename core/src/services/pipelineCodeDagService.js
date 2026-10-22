@@ -9,7 +9,6 @@ const {
 const scheduling = require('./pipelineCodeDagSchedulingService');
 
 const BUDGET_KEYS = ['workSeconds', 'testSeconds', 'modelSeconds', 'modelCalls'];
-const ASSEMBLY_SETTLEMENT_OVERAGE_SECONDS = 1;
 const { MAX_ATTEMPTS } = scheduling;
 
 class PipelineCodeDagError extends Error {
@@ -143,12 +142,7 @@ function assertState(dag) {
     if (dag.budget.reserved[key] !== calculatedReserved[key] || dag.budget.spent[key] !== calculatedSpent[key]) {
       fail('INVALID_DAG', `aggregate ${key} budget does not match attempt receipts`);
     }
-    const overage = dag.budget.reserved[key] + dag.budget.spent[key] - dag.budget.limit[key];
-    const terminalAssemblyOverage = dag.state === 'blocked'
-      && dag.terminalFailure?.code === 'assembly_budget_exhausted'
-      && ['workSeconds', 'testSeconds'].includes(key)
-      && overage <= ASSEMBLY_SETTLEMENT_OVERAGE_SECONDS;
-    if (overage > 0 && !terminalAssemblyOverage) {
+    if (dag.budget.reserved[key] + dag.budget.spent[key] > dag.budget.limit[key]) {
       fail('INVALID_DAG', `aggregate ${key} budget exceeds its limit`);
     }
   }
@@ -684,7 +678,6 @@ function completeAssembly(dag, input) {
 }
 
 module.exports = {
-  ASSEMBLY_SETTLEMENT_OVERAGE_SECONDS,
   BUDGET_KEYS,
   MAX_ATTEMPTS,
   assertState,

@@ -244,6 +244,9 @@ class AssemblyWorker:
         duration_seconds = (max(item.get("durationMs", 0) for item in tests) + 999) // 1000
         final_budget = manifest["finalVerificationBudget"]
         if duration_seconds > min(final_budget["workSeconds"], final_budget["testSeconds"]):
+            budgeted_ms = min(final_budget["workSeconds"], final_budget["testSeconds"]) * 1000
+            tests = [{**item, "budgetedDurationMs": min(item["durationMs"], budgeted_ms)}
+                     for item in tests]
             return self._fail(path, prior, manifest, code="assembly_budget_exhausted", state="blocked",
                 reason="Final verification exhausted its aggregate work or test budget", tests=tests)
         if any(item.get("outcome") != "passed" for item in tests):
@@ -339,26 +342,31 @@ class RunnerAssemblyAdapter:
         return self.core.post(self.manifest.get("adoptionReceiptPath") or self.endpoint + "/adoptions", body)
 
     def tests(self, workspace, manifest):
-        verification = self._module("coding_verification")
         started = time.monotonic()
         final_budget = manifest["finalVerificationBudget"]
         budget_seconds = min(final_budget["workSeconds"], final_budget["testSeconds"],
                              max(0, self.args.timeout_seconds))
         settlement_seconds = 1
+        budgeted_limit_ms = max(0, budget_seconds - settlement_seconds) * 1000
+        deadline = started + budgeted_limit_ms / 1000
 
-        def receipts(outcome):
-            duration = max(0, math.ceil((time.monotonic() - started) * 1000))
-            return [{"target": target, "profile": manifest["verificationProfile"],
-                     "outcome": outcome, "durationMs": duration}
+        def receipts(outcome, *, budget_exhausted=False, stopped_at=None):
+            settled_at = time.monotonic()
+            observed = settled_at if stopped_at is None else stopped_at
+            duration = max(0, math.ceil((settled_at - started) * 1000))
+            budgeted = min(budgeted_limit_ms,
+                           max(0, math.ceil((min(observed, deadline) - started) * 1000)))
+            return [{"target": target, "profile": manifest["verificationProfile"], "outcome": outcome,
+                     "durationMs": duration, **({"budgetedDurationMs": budgeted} if budget_exhausted else {})}
                     for target in manifest["testTargets"]]
 
-        def exhausted(reason):
+        def exhausted(reason, *, stopped_at=None):
             raise DeterministicAssemblyFailure("assembly_budget_exhausted", reason,
-                receipts("failed"), state="blocked")
+                receipts("failed", budget_exhausted=True, stopped_at=stopped_at), state="blocked")
 
         if budget_seconds <= settlement_seconds:
             exhausted("No bounded aggregate budget remains for final verification")
-        deadline = started + budget_seconds - settlement_seconds
+        verification = self._module("coding_verification")
         deadline_errors = (getattr(self.r, "CodingDeadlineExceeded", TimeoutError),
                            getattr(self.r.coding_progress, "SourceDeadlineExceeded", TimeoutError))
 
@@ -389,9 +397,10 @@ class RunnerAssemblyAdapter:
         except deadline_errors:
             exhausted("Final verification exhausted its aggregate work or test budget")
         source_changed = source_state() != source_before
-        duration = max(0, math.ceil((time.monotonic() - started) * 1000))
-        if (duration + 999) // 1000 > budget_seconds:
-            exhausted("Final verification exhausted its aggregate work or test budget")
+        finished = time.monotonic()
+        if finished >= deadline:
+            exhausted("Final verification exhausted its aggregate work or test budget", stopped_at=finished)
+        duration = max(0, math.ceil((finished - started) * 1000))
         tests = [{"target": target, "profile": manifest["verificationProfile"],
                   "outcome": "passed" if result.returncode == 0 and not source_changed else "failed",
                   "durationMs": duration} for target in manifest["testTargets"]]

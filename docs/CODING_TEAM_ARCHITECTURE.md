@@ -133,8 +133,11 @@ The distributed engine keeps these rules:
   the assembler the exact remaining work and test reservation; dependency
   preparation, the final command and its termination overhead share that one
   deadline. Exhaustion terminalizes before publication with measured usage.
-  Core records the exact rounded usage and accepts only the budget terminal's
-  bounded one-second settlement overage, so rounding cannot strand the graph.
+  Its terminal receipt distinguishes total wall duration from work completed
+  before the runner-owned deadline; exception propagation and receipt settlement
+  consume the reserved second but are not charged as verification work. Core
+  charges the latter duration exactly and never lets cumulative spent plus
+  reserved usage exceed the signed aggregate limit.
 - Publication happens once from the assembled branch. Sub-workers never push,
   open pull requests, merge or deploy.
 - Lost launch or model replies retain the original work-unit identity. They do
