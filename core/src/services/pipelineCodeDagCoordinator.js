@@ -375,15 +375,36 @@ function createPipelineCodeDagCoordinator(options = {}) {
   }
 
   async function settleStep(pipelineId, requestId, input) {
-    const dag = await state.read(pipelineId);
+    let dag = await state.read(pipelineId);
     if (dag) await activeDagTask(pipelineId, dag);
-    const located = dag && findAttempt(dag, requestId);
+    let located = dag && findAttempt(dag, requestId);
     if (!located) fail('CODE_STEP_ATTEMPT_NOT_FOUND', 'Code-step attempt not found', 404);
     if (!['verified', 'failed'].includes(input?.outcome)) fail('CODE_STEP_RESULT_INVALID', 'Outcome must be verified or failed', 400);
+    const actualUsage = usage(input.actualUsage);
     if (input.outcome === 'verified') await verifyReceiptArtifact(pipelineId, dag, located, input.receipt);
+
+    // Validate the complete terminal receipt before using it as proof that any
+    // child inference with a lost acknowledgement can no longer be in flight.
+    // This preview also gives every reconciliation the terminal receipt's
+    // stable timestamp, so concurrent POSTs are exact idempotent replays.
+    let preview = clone(dag);
+    let previewLocated = findAttempt(preview, requestId);
+    for (const receipt of previewLocated.attempt.modelReceipts.filter(item => item.state === 'unknown')) {
+      preview = dagDomain.reconcileInference(preview, { expectedRevision: preview.revision,
+        stepId: previewLocated.step.id, requestId, callId: receipt.callId,
+        outcome: 'failed', durationSeconds: receipt.durationSeconds, finishedAt: input.receipt?.finishedAt,
+        receipt: { code: 'executor_terminal_after_unknown' } }).dag;
+      previewLocated = findAttempt(preview, requestId);
+    }
+    const previewTransition = previewLocated.attempt.state === 'unknown' ? 'reconcileUnknown' : 'settleAttempt';
+    dagDomain[previewTransition](preview, { expectedRevision: preview.revision, requestId,
+      outcome: input.outcome, actualUsage, receipt: input.receipt });
+
+    dag = await reconcileTerminalInferences(pipelineId, dag, located, input.receipt.finishedAt);
+    located = findAttempt(dag, requestId);
     const transition = located.attempt.state === 'unknown' ? 'reconcileUnknown' : 'settleAttempt';
     return state[transition](pipelineId, { expectedRevision: dag.revision, requestId,
-      outcome: input.outcome, actualUsage: usage(input.actualUsage), receipt: input.receipt });
+      outcome: input.outcome, actualUsage, receipt: input.receipt });
   }
 
   async function assertAssemblyIdentity(pipelineId, requestId) {
@@ -425,12 +446,12 @@ function createPipelineCodeDagCoordinator(options = {}) {
     return state.terminalize(pipelineId, { ...input, expectedRevision: dag.revision });
   }
 
-  async function reconcileTerminalInferences(pipelineId, dag, step) {
+  async function reconcileTerminalInferences(pipelineId, dag, located, finishedAt) {
     let current = dag;
-    for (const receipt of latestAttempt(step).modelReceipts.filter(item => item.state === 'unknown')) {
+    for (const receipt of located.attempt.modelReceipts.filter(item => item.state === 'unknown')) {
       const result = await state.reconcileInference(pipelineId, { expectedRevision: current.revision,
-        stepId: step.id, requestId: latestAttempt(step).requestId, callId: receipt.callId,
-        outcome: 'failed', durationSeconds: receipt.durationSeconds, finishedAt: iso(clock),
+        stepId: located.step.id, requestId: located.attempt.requestId, callId: receipt.callId,
+        outcome: 'failed', durationSeconds: receipt.durationSeconds, finishedAt,
         receipt: { code: 'executor_terminal_after_unknown' } });
       current = result.dag;
     }
@@ -451,7 +472,6 @@ function createPipelineCodeDagCoordinator(options = {}) {
     const phase = host?.run?.phase;
     const terminal = resultForHost(host);
     if (terminal && ['verified', 'failed'].includes(terminal.outcome)) {
-      await reconcileTerminalInferences(pipelineId, dag, step);
       return settleStep(pipelineId, attempt.requestId, terminal);
     }
     if (attempt.state === 'unknown' && phase === 'not_received') {

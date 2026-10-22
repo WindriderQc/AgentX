@@ -331,6 +331,43 @@ test('reconciles unknown model receipts as failed before accepting the executor 
   }));
 });
 
+test('terminal submission settles its exact unknown model receipt before host result persistence and replays concurrently', async () => {
+  const f = fixture(); const coordinator = f.create();
+  await coordinator.tick('0946');
+  const requestId = f.memory.dag.steps[0].attempts[0].requestId;
+  f.memory.dag = domain.startInference(f.memory.dag, { expectedRevision: f.memory.dag.revision,
+    stepId: 'step-01', requestId, callId: 'call-post-unknown', model: 'qwen3-coder:30b',
+    reservedSeconds: 10, startedAt: T0 }).dag;
+  f.memory.dag = domain.settleInference(f.memory.dag, { expectedRevision: f.memory.dag.revision,
+    stepId: 'step-01', requestId, callId: 'call-post-unknown', outcome: 'unknown', durationSeconds: 3,
+    finishedAt: T0, receipt: { reason: 'terminal_post_acknowledgement_lost' } }).dag;
+  const terminal = { outcome: 'failed', actualUsage: budget(5, 0, 3, 1),
+    receipt: { code: 'harness_failed', finishedAt: T0 } };
+
+  // RunnerStepAdapter posts this terminal before it can persist codeStepResult
+  // in the host receipt. The POST itself must therefore break the fence.
+  expect(f.runs.get(requestId)).not.toHaveProperty('codeStepResult');
+  await expect(coordinator.settleStep('0946', requestId, { ...terminal,
+    actualUsage: budget(5, 0, 2, 1) })).rejects.toMatchObject({ code: 'INFERENCE_USAGE_MISMATCH' });
+  expect(f.memory.dag.steps[0].attempts[0]).toMatchObject({ state: 'running',
+    pendingInferences: ['call-post-unknown'], modelReceipts: [{ state: 'unknown' }] });
+  expect(f.stateService.reconcileInference).not.toHaveBeenCalled();
+
+  const concurrent = await Promise.all([
+    coordinator.settleStep('0946', requestId, terminal),
+    coordinator.settleStep('0946', requestId, terminal),
+  ]);
+
+  expect(concurrent.map(result => result.replayed).sort()).toEqual([false, true]);
+  expect(f.memory.dag.steps[0].attempts[0]).toMatchObject({ state: 'failed', pendingInferences: [],
+    modelReceipts: [{ callId: 'call-post-unknown', state: 'failed', durationSeconds: 3,
+      finishedAt: T0, settlement: { receipt: { code: 'executor_terminal_after_unknown' } } }] });
+  expect(f.runs.get(requestId)).not.toHaveProperty('codeStepResult');
+  expect(f.stateService.reconcileInference).toHaveBeenCalledTimes(2);
+  await expect(coordinator.settleStep('0946', requestId, terminal)).resolves.toMatchObject({ replayed: true });
+  expect(f.stateService.reconcileInference).toHaveBeenCalledTimes(2);
+});
+
 test('records and replays a deterministic conflict on the next verified adoption', async () => {
   const f = fixture(); const coordinator = f.create();
   await coordinator.tick('0946');
