@@ -8,6 +8,9 @@ const MaintenanceLeaseSchema = new mongoose.Schema({
   principal: { type: String, required: true },
   requestId: { type: String, required: true },
   scope: { type: String, required: true },
+  // A host-scoped lease (#933) fences only these endpoints and devices.
+  hosts: { type: [String], default: [] },
+  resourceIds: { type: [String], default: [] },
   acquiredAt: { type: Date, required: true },
   heartbeatAt: { type: Date, required: true },
   expiresAt: { type: Date, required: true },

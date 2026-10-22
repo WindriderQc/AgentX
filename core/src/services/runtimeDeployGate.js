@@ -14,6 +14,9 @@ const CORE_RESTART_TOLERANT_KINDS = Object.freeze(['profiler']);
 const CORE_RESTART_MIN_REMAINING_MS = 2 * 60_000;
 const RUNNING_RECOVERY_STATES = Object.freeze(['PREPARED', 'MUTATING']);
 const CORE_RECREATE_SCOPE = 'core-recreate';
+// Host maintenance (#933): restart or upgrade one machine's Ollama. The lease
+// names its hosts and their physical resources and fences only those.
+const HOST_SCOPE = 'host';
 const DEPLOY_SERVICES = Object.freeze(['core', 'benchmark', 'all']);
 const RECOVERY_DOC = 'follow "Profiler restoration and UNKNOWN recovery" in docs/OPERATIONS.md';
 
@@ -25,6 +28,24 @@ const WORKLOAD_INFERENCE_MAINTENANCE_FILTER = Object.freeze({ $or: [
   { maintenance: null },
   { 'maintenance.scope': CORE_RECREATE_SCOPE, 'maintenance.state': 'ACTIVE' }
 ] });
+
+// The maintenance condition under which inference on this host is admitted:
+// no lease, or a host lease that covers neither this endpoint nor its device.
+function maintenanceAdmitsHost(host, resourceIds = []) {
+  return { $or: [
+    { maintenance: null },
+    { 'maintenance.scope': HOST_SCOPE, 'maintenance.hosts': { $ne: host },
+      'maintenance.resourceIds': { $nin: resourceIds } }
+  ] };
+}
+
+// JS twin of maintenanceAdmitsHost: does this lease refuse inference here?
+function fencesHost(maintenance, host, resourceIds = []) {
+  if (!maintenance) return false;
+  if (maintenance.scope !== HOST_SCOPE) return true;
+  return (maintenance.hosts || []).includes(host)
+    || (maintenance.resourceIds || []).some(id => resourceIds.includes(id));
+}
 
 function iso(value) {
   const date = value ? new Date(value) : null;
@@ -109,7 +130,7 @@ function deployBlockers(state, { service = 'all', now = new Date() } = {}) {
   const maintenance = state?.maintenance;
   if (maintenance) {
     const unknown = maintenance.state === 'UNKNOWN';
-    blockers.push(blocker({ type: 'maintenance', kind: maintenance.scope, id: 'lease', hosts: [],
+    blockers.push(blocker({ type: 'maintenance', kind: maintenance.scope, id: 'lease', hosts: maintenance.hosts || [],
       owner: maintenance.principal, startedAt: iso(maintenance.acquiredAt), expiresAt: iso(maintenance.expiresAt),
       state: maintenance.state || 'ACTIVE',
       reason: unknown ? 'it expired without a terminal receipt' : 'another maintenance lease is held',
@@ -124,7 +145,10 @@ module.exports = {
   CORE_RESTART_MIN_REMAINING_MS,
   CORE_RESTART_TOLERANT_KINDS,
   DEPLOY_SERVICES,
+  HOST_SCOPE,
   WORKLOAD_INFERENCE_MAINTENANCE_FILTER,
   coreRecreateWorkloadFilter,
-  deployBlockers
+  deployBlockers,
+  fencesHost,
+  maintenanceAdmitsHost
 };

@@ -246,7 +246,8 @@ router.get('/host-preferences/benchmark-claims/active', async (_req, res) => {
   }
 });
 
-// Runtime-wide maintenance/workload exclusion. Generations are minted only by
+// Runtime-wide maintenance/workload exclusion, or one host's with
+// { scope: 'host', hosts: [...] }. Generations are minted only by
 // Core and are returned solely to the authenticated acquiring principal.
 router.post('/maintenance-leases', async (req, res) => {
   try {
@@ -254,6 +255,7 @@ router.post('/maintenance-leases', async (req, res) => {
       principal: requestPrincipal(req),
       requestId: req.body?.requestId || req.body?.idempotencyKey,
       scope: req.body?.scope,
+      hosts: req.body?.hosts,
       ttl: req.body?.ttlMs
     });
     return res.status(result.acquired ? 200 : 409).json({ status: result.acquired ? 'success' : 'error', data: result });
