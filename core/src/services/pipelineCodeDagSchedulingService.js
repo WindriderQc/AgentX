@@ -33,7 +33,7 @@ function readySet(dag, availableExecutorIds) {
   }
   const busy = new Set(dag.steps.filter(step => ['running', 'unknown'].includes(step.state)).map(step => step.executorId));
   const available = [...new Set(availableExecutorIds.map((value, index) => identifier(value, `availableExecutorIds[${index}]`)))]
-    .filter(executorId => !busy.has(executorId)).sort();
+    .filter(executorId => !busy.has(executorId));
   const candidates = dag.steps.filter(step => ['pending', 'failed'].includes(step.state)
     && step.attempts.length < MAX_ATTEMPTS && dependenciesReady(dag, step));
   const assigned = new Set();

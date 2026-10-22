@@ -152,8 +152,8 @@ test('selects a deterministic maximal ready set with distinct executors', () => 
   const dag = createDag();
   expect(service.readySet(dag, ['executor-z', 'executor-a', 'executor-a']))
     .toEqual([
-      { stepId: 'step-01', executorId: 'executor-a' },
-      { stepId: 'step-02', executorId: 'executor-z' },
+      { stepId: 'step-01', executorId: 'executor-z' },
+      { stepId: 'step-02', executorId: 'executor-a' },
     ]);
 
   const locked = service.create({
@@ -162,7 +162,7 @@ test('selects a deterministic maximal ready set with distinct executors', () => 
     reviewedLockKeys: ['repo:shared'], budget: budget(), createdAt: T0,
   });
   expect(service.readySet(locked, ['executor-z', 'executor-a']))
-    .toEqual([{ stepId: 'step-01', executorId: 'executor-a' }]);
+    .toEqual([{ stepId: 'step-01', executorId: 'executor-z' }]);
 
   let pinned = createDag();
   pinned = start(pinned, 'step-02', 'executor-a', 'pin-step-02').dag;
@@ -202,8 +202,8 @@ test('runs dependency waves from the adopted assembly head', () => {
   expect(service.adoptionOrder(dag)).toEqual(['step-01', 'step-02', 'step-03']);
   expect(service.readySet(dag, ['executor-b', 'executor-a', 'executor-c']))
     .toEqual([
-      { stepId: 'step-01', executorId: 'executor-a' },
-      { stepId: 'step-02', executorId: 'executor-b' },
+      { stepId: 'step-01', executorId: 'executor-b' },
+      { stepId: 'step-02', executorId: 'executor-a' },
     ]);
   dag = start(dag, 'step-01', 'executor-a', 'wave-request-01').dag;
   dag = start(dag, 'step-02', 'executor-b', 'wave-request-02').dag;
