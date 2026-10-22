@@ -137,6 +137,36 @@ test('persists pure transitions with a single-document revision fence and replay
     .rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
 });
 
+test('journals, settles and explicitly reconciles step inference with CAS and replay recovery', async () => {
+  await service.create('0946', createInput());
+  await service.startAttempt('0946', { expectedRevision: 0, stepId: 'step-01', executorId: 'ugbrutal',
+    requestId: 'step-request-01', baseCommit: SOURCE, budget: budget(10, 10, 10, 2), startedAt: T0 });
+  const start = { expectedRevision: 1, stepId: 'step-01', requestId: 'step-request-01',
+    callId: 'call-01', model: 'qwen-code', reservedSeconds: 8, startedAt: T0 };
+  expect(await service.startInference('0946', start)).toMatchObject({ replayed: false, dag: { revision: 2 } });
+  expect(await service.startInference('0946', start)).toMatchObject({ replayed: true, dag: { revision: 2 } });
+  await expect(service.startInference('0946', { ...start, model: 'another-model' }))
+    .rejects.toMatchObject({ code: 'INFERENCE_CALL_CONFLICT' });
+
+  const unknown = { expectedRevision: 2, stepId: 'step-01', requestId: 'step-request-01', callId: 'call-01',
+    outcome: 'unknown', durationSeconds: 3, finishedAt: '2026-10-22T12:00:03.000Z',
+    receipt: { reason: 'lost_native_ack' } };
+  FakeTaskModel.loseNextAck = true;
+  expect(await service.settleInference('0946', unknown)).toMatchObject({ replayed: true, dag: { revision: 3 } });
+  expect((await service.read('0946')).steps[0].attempts[0]).toMatchObject({
+    pendingInferences: ['call-01'], modelReceipts: [{ callId: 'call-01', state: 'unknown' }],
+  });
+
+  const reconciled = { expectedRevision: 3, stepId: 'step-01', requestId: 'step-request-01', callId: 'call-01',
+    outcome: 'completed', durationSeconds: 3, finishedAt: '2026-10-22T12:00:04.000Z',
+    receipt: { responseSha256: 'f'.repeat(64) } };
+  expect(await service.reconcileInference('0946', reconciled)).toMatchObject({ replayed: false, dag: { revision: 4 } });
+  expect(await service.reconcileInference('0946', reconciled)).toMatchObject({ replayed: true, dag: { revision: 4 } });
+  expect((await service.read('0946')).steps[0].attempts[0]).toMatchObject({
+    pendingInferences: [], modelReceipts: [{ callId: 'call-01', state: 'completed', durationSeconds: 3 }],
+  });
+});
+
 test('public reads expose bounded graph evidence but no plan paths, objectives, commands or workspace data', async () => {
   await service.create('0946', createInput());
   await service.startAttempt('0946', { expectedRevision: 0, stepId: 'step-01', executorId: 'ugalien',
