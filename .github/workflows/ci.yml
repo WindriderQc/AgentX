@@ -66,7 +66,9 @@ jobs:
         run: npm run build --if-present
         working-directory: ${{ matrix.service }}
       - if: steps.scope.outputs.run == 'true'
-        run: npm test -- --runInBand
+        # Each test file has its own database, so files run in parallel on the
+        # runner's four cores (core: about 9.5 minutes in band, 3 in parallel on devX).
+        run: npm test -- --maxWorkers=4
         working-directory: ${{ matrix.service }}
       - if: steps.scope.outputs.run == 'true'
         run: npm run test:surfaces --if-present
