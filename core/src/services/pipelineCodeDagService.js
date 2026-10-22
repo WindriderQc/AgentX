@@ -107,6 +107,28 @@ function assertState(dag) {
       if (requestIds.has(attempt.requestId)) fail('INVALID_DAG', `duplicate requestId ${attempt.requestId}`);
       requestIds.add(attempt.requestId);
       normalizeBudget(attempt.budget, `attempt ${attempt.requestId}.budget`);
+      if (!Array.isArray(attempt.modelReceipts) || !Array.isArray(attempt.pendingInferences)
+        || attempt.pendingInferences.length > 1) fail('INVALID_DAG', `invalid inference journal for ${attempt.requestId}`);
+      const calls = new Set();
+      let modelSeconds = 0;
+      for (const receipt of attempt.modelReceipts) {
+        if (calls.has(receipt.callId)) fail('INVALID_DAG', `duplicate inference call ${receipt.callId}`);
+        calls.add(receipt.callId);
+        if (!['pending', 'unknown', 'completed', 'failed'].includes(receipt.state)
+          || !Number.isSafeInteger(receipt.reservedSeconds) || receipt.reservedSeconds <= 0
+          || (!['pending'].includes(receipt.state)
+            && (!Number.isSafeInteger(receipt.durationSeconds) || receipt.durationSeconds < 0))) {
+          fail('INVALID_DAG', `invalid inference receipt ${receipt.callId}`);
+        }
+        modelSeconds += ['pending', 'unknown'].includes(receipt.state) ? receipt.reservedSeconds : receipt.durationSeconds;
+      }
+      const fenced = attempt.modelReceipts.filter((receipt) => ['pending', 'unknown'].includes(receipt.state));
+      if (attempt.modelReceipts.length > attempt.budget.modelCalls || modelSeconds > attempt.budget.modelSeconds
+        || fenced.length !== attempt.pendingInferences.length
+        || attempt.pendingInferences.some((callId) => !attempt.modelReceipts.some(
+          (receipt) => receipt.callId === callId && ['pending', 'unknown'].includes(receipt.state)))) {
+        fail('INVALID_DAG', `inference journal exceeds the budget or fence for ${attempt.requestId}`);
+      }
       const aggregate = ['running', 'unknown'].includes(attempt.state) ? calculatedReserved : calculatedSpent;
       const usage = ['running', 'unknown'].includes(attempt.state) ? attempt.budget : attempt.settlement?.actualUsage;
       if (!usage) fail('INVALID_DAG', `attempt ${attempt.requestId} has no settlement usage`);
@@ -271,9 +293,146 @@ function startAttempt(dag, input) {
     state: 'running',
     settlement: null,
     settlementFingerprint: null,
+    modelReceipts: [],
+    pendingInferences: [],
   });
   next.revision += 1;
   return { dag: assertState(next), replayed: false };
+}
+
+function locateAttempt(dag, stepId, requestId) {
+  const step = findStep(dag, identifier(stepId, 'stepId'));
+  const normalizedRequestId = identifier(requestId, 'requestId');
+  const attempt = step.attempts.find((candidate) => candidate.requestId === normalizedRequestId);
+  if (!attempt) fail('ATTEMPT_NOT_FOUND', `unknown requestId ${normalizedRequestId} for ${step.id}`);
+  return { step, attempt };
+}
+
+function assertActiveAttempt(step, attempt) {
+  if (step.state !== 'running' || attempt.state !== 'running' || step.attempts.at(-1)?.requestId !== attempt.requestId) {
+    fail('ATTEMPT_NOT_ACTIVE', `${attempt.requestId} is not the active attempt for ${step.id}`);
+  }
+}
+
+function inferenceStart(input) {
+  exactObject(input, ['expectedRevision', 'stepId', 'requestId', 'callId', 'model', 'reservedSeconds', 'startedAt'], 'input');
+  if (!Number.isSafeInteger(input.reservedSeconds) || input.reservedSeconds <= 0) {
+    fail('INVALID_INFERENCE_RESERVATION', 'reservedSeconds must be a positive safe integer');
+  }
+  return {
+    callId: identifier(input.callId, 'callId'),
+    model: identifier(input.model, 'model'),
+    reservedSeconds: input.reservedSeconds,
+    startedAt: timestamp(input.startedAt, 'startedAt'),
+  };
+}
+
+function inferenceSeconds(attempt) {
+  return attempt.modelReceipts.reduce((total, receipt) =>
+    total + (['pending', 'unknown'].includes(receipt.state) ? receipt.reservedSeconds : receipt.durationSeconds), 0);
+}
+
+function startInference(dag, input) {
+  assertState(dag);
+  const start = inferenceStart(input);
+  const located = locateAttempt(dag, input.stepId, input.requestId);
+  const existing = located.attempt.modelReceipts.find((receipt) => receipt.callId === start.callId);
+  if (existing) {
+    const immutable = Object.fromEntries(Object.keys(start).map((key) => [key, existing[key]]));
+    if (!same(immutable, start)) fail('INFERENCE_CALL_CONFLICT', `${start.callId} has different immutable fields`);
+    return { dag: clone(dag), replayed: true };
+  }
+  expectRevision(dag, input.expectedRevision);
+  assertActiveAttempt(located.step, located.attempt);
+  if (located.attempt.pendingInferences.length) fail('INFERENCE_PENDING', 'reconcile the pending inference first');
+  if (located.attempt.modelReceipts.length >= located.attempt.budget.modelCalls) {
+    fail('INFERENCE_CALL_BUDGET_EXHAUSTED', 'attempt modelCalls budget is exhausted');
+  }
+  if (inferenceSeconds(located.attempt) + start.reservedSeconds > located.attempt.budget.modelSeconds) {
+    fail('INFERENCE_DURATION_BUDGET_EXHAUSTED', 'attempt modelSeconds budget is exhausted');
+  }
+  const next = clone(dag);
+  const attempt = locateAttempt(next, input.stepId, input.requestId).attempt;
+  attempt.modelReceipts.push({ ...start, state: 'pending', durationSeconds: null,
+    finishedAt: null, settlement: null, settlementFingerprint: null, settlements: [] });
+  attempt.pendingInferences.push(start.callId);
+  next.revision += 1;
+  return { dag: assertState(next), replayed: false };
+}
+
+function inferenceSettlement(input, outcomes) {
+  exactObject(input, ['expectedRevision', 'stepId', 'requestId', 'callId', 'outcome', 'durationSeconds', 'finishedAt', 'receipt'], 'input');
+  if (!outcomes.includes(input.outcome)) fail('INVALID_INFERENCE_OUTCOME', `outcome must be ${outcomes.join(' or ')}`);
+  if (!Number.isSafeInteger(input.durationSeconds) || input.durationSeconds < 0) {
+    fail('INVALID_INFERENCE_DURATION', 'durationSeconds must be a non-negative safe integer');
+  }
+  let receipt;
+  if (input.outcome === 'completed') {
+    exactObject(input.receipt, ['responseSha256'], 'receipt');
+    receipt = { responseSha256: sha256(input.receipt.responseSha256, 'receipt.responseSha256') };
+  } else if (input.outcome === 'failed') {
+    exactObject(input.receipt, ['code'], 'receipt');
+    receipt = { code: identifier(input.receipt.code, 'receipt.code') };
+  } else {
+    exactObject(input.receipt, ['reason'], 'receipt');
+    receipt = { reason: identifier(input.receipt.reason, 'receipt.reason', 500) };
+  }
+  return { outcome: input.outcome, durationSeconds: input.durationSeconds,
+    finishedAt: timestamp(input.finishedAt, 'finishedAt'), receipt };
+}
+
+function applyInferenceSettlement(dag, input, settlement, receipt) {
+  const next = clone(dag);
+  const attempt = locateAttempt(next, input.stepId, input.requestId).attempt;
+  const target = attempt.modelReceipts.find((candidate) => candidate.callId === receipt.callId);
+  target.state = settlement.outcome;
+  target.durationSeconds = settlement.durationSeconds;
+  target.finishedAt = settlement.finishedAt;
+  target.settlement = settlement;
+  target.settlementFingerprint = fingerprint(settlement);
+  target.settlements.push(settlement);
+  if (settlement.outcome !== 'unknown') {
+    attempt.pendingInferences = attempt.pendingInferences.filter((callId) => callId !== target.callId);
+  }
+  next.revision += 1;
+  return { dag: assertState(next), replayed: false };
+}
+
+function settleInference(dag, input) {
+  assertState(dag);
+  const settlement = inferenceSettlement(input, ['completed', 'failed', 'unknown']);
+  const located = locateAttempt(dag, input.stepId, input.requestId);
+  const callId = identifier(input.callId, 'callId');
+  const receipt = located.attempt.modelReceipts.find((candidate) => candidate.callId === callId);
+  if (!receipt) fail('INFERENCE_NOT_FOUND', `unknown callId ${callId}`);
+  const settlementFingerprint = fingerprint(settlement);
+  if (receipt.state !== 'pending') {
+    if (receipt.settlementFingerprint !== settlementFingerprint) fail('INFERENCE_SETTLEMENT_CONFLICT', 'inference already has a different settlement');
+    return { dag: clone(dag), replayed: true };
+  }
+  expectRevision(dag, input.expectedRevision);
+  assertActiveAttempt(located.step, located.attempt);
+  if (settlement.durationSeconds > receipt.reservedSeconds) fail('INFERENCE_DURATION_EXCEEDED', 'duration exceeds the call reservation');
+  return applyInferenceSettlement(dag, { ...input, callId }, settlement, receipt);
+}
+
+function reconcileInference(dag, input) {
+  assertState(dag);
+  const settlement = inferenceSettlement(input, ['completed', 'failed']);
+  const located = locateAttempt(dag, input.stepId, input.requestId);
+  const callId = identifier(input.callId, 'callId');
+  const receipt = located.attempt.modelReceipts.find((candidate) => candidate.callId === callId);
+  if (!receipt) fail('INFERENCE_NOT_FOUND', `unknown callId ${callId}`);
+  const settlementFingerprint = fingerprint(settlement);
+  if (['completed', 'failed'].includes(receipt.state)) {
+    if (receipt.settlementFingerprint !== settlementFingerprint) fail('INFERENCE_RECONCILIATION_CONFLICT', 'inference has a different reconciled settlement');
+    return { dag: clone(dag), replayed: true };
+  }
+  if (receipt.state !== 'unknown') fail('INFERENCE_NOT_UNKNOWN', 'only an unknown inference can be reconciled');
+  expectRevision(dag, input.expectedRevision);
+  assertActiveAttempt(located.step, located.attempt);
+  if (settlement.durationSeconds > receipt.reservedSeconds) fail('INFERENCE_DURATION_EXCEEDED', 'duration exceeds the call reservation');
+  return applyInferenceSettlement(dag, { ...input, callId }, settlement, receipt);
 }
 
 function normalizeTests(value, step) {
@@ -360,6 +519,12 @@ function settleAttempt(dag, input) {
   }
   expectRevision(dag, input.expectedRevision);
   if (located.attempt.state !== 'running') fail('ATTEMPT_NOT_SETTLEABLE', 'attempt is not running');
+  if (located.attempt.pendingInferences.length) fail('INFERENCE_PENDING', 'attempt has an unsettled inference');
+  if (settlement.actualUsage.modelCalls < located.attempt.modelReceipts.length
+    || settlement.actualUsage.modelSeconds < located.attempt.modelReceipts.reduce(
+      (total, receipt) => total + receipt.durationSeconds, 0)) {
+    fail('INFERENCE_USAGE_MISMATCH', 'attempt usage is lower than its inference journal');
+  }
   for (const key of BUDGET_KEYS) {
     if (settlement.actualUsage[key] > located.attempt.budget[key]) fail('USAGE_EXCEEDS_RESERVATION', `${key} exceeds its reservation`);
   }
@@ -523,6 +688,9 @@ module.exports = {
   create,
   readySet,
   startAttempt,
+  startInference,
+  settleInference,
+  reconcileInference,
   settleAttempt,
   reconcileUnknown,
   adoptionOrder,

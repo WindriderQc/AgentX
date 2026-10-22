@@ -11,6 +11,7 @@ const ADOPT_TWO = '5'.repeat(40);
 const ARTIFACT_ONE = 'a'.repeat(64);
 const ARTIFACT_TWO = 'b'.repeat(64);
 const FINAL_ARTIFACT = 'c'.repeat(64);
+const RESPONSE = 'e'.repeat(64);
 const T0 = '2026-10-22T12:00:00.000Z';
 
 function budget(workSeconds = 100, testSeconds = 100, modelSeconds = 100, modelCalls = 10) {
@@ -97,6 +98,21 @@ function assemblyCompletion(expectedRevision, headCommit = ADOPT_TWO) {
     artifact: { id: 'assembled', sha256: FINAL_ARTIFACT, sizeBytes: 256, format: 'git-bundle/v1' },
     completedAt: T0,
   };
+}
+
+function startModel(dag, stepId, requestId, callId, reservedSeconds) {
+  return service.startInference(dag, {
+    expectedRevision: dag.revision, stepId, requestId, callId,
+    model: 'synthetic-code-model', reservedSeconds, startedAt: T0,
+  });
+}
+
+function settleModel(dag, stepId, requestId, callId, outcome, durationSeconds) {
+  return service.settleInference(dag, {
+    expectedRevision: dag.revision, stepId, requestId, callId, outcome, durationSeconds, finishedAt: T0,
+    receipt: outcome === 'completed' ? { responseSha256: RESPONSE }
+      : outcome === 'failed' ? { code: 'model_refused' } : { reason: 'acknowledgement_lost' },
+  });
 }
 
 test('selects a deterministic maximal ready set with distinct executors', () => {
@@ -192,6 +208,77 @@ test('runs dependency waves from the adopted assembly head', () => {
     baseCommit: ADOPT_TWO, budget: budget(10, 10, 10, 1), startedAt: T0,
   }).dag;
   expect(dag.steps[2].attempts[0].baseCommit).toBe(ADOPT_TWO);
+});
+
+test('journals inference independently for parallel step attempts', () => {
+  let dag = createDag();
+  dag = start(dag, 'step-01', 'executor-a', 'parallel-request-01', budget(10, 10, 10, 2)).dag;
+  dag = start(dag, 'step-02', 'executor-b', 'parallel-request-02', budget(10, 10, 10, 2)).dag;
+  const firstStart = {
+    expectedRevision: dag.revision, stepId: 'step-01', requestId: 'parallel-request-01', callId: 'call-01',
+    model: 'synthetic-code-model', reservedSeconds: 6, startedAt: T0,
+  };
+  dag = service.startInference(dag, firstStart).dag;
+  dag = startModel(dag, 'step-02', 'parallel-request-02', 'call-02', 7).dag;
+  expect(dag.steps[0].attempts[0].pendingInferences).toEqual(['call-01']);
+  expect(dag.steps[1].attempts[0].pendingInferences).toEqual(['call-02']);
+  expect(service.startInference(JSON.parse(JSON.stringify(dag)), firstStart).replayed).toBe(true);
+  expect(() => service.startInference(dag, { ...firstStart, model: 'different-model' }))
+    .toThrow(expect.objectContaining({ code: 'INFERENCE_CALL_CONFLICT' }));
+
+  dag = settleModel(dag, 'step-01', 'parallel-request-01', 'call-01', 'completed', 4).dag;
+  dag = settleModel(dag, 'step-02', 'parallel-request-02', 'call-02', 'failed', 3).dag;
+  expect(dag.steps[0].attempts[0].modelReceipts[0]).toMatchObject({ state: 'completed', durationSeconds: 4 });
+  expect(dag.steps[1].attempts[0].modelReceipts[0]).toMatchObject({ state: 'failed', durationSeconds: 3 });
+  expect(dag.steps.map((step) => step.attempts[0].pendingInferences)).toEqual([[], []]);
+  expect(dag.budget.reserved).toEqual(budget(20, 20, 20, 4));
+});
+
+test('enforces per-attempt inference call and duration reservations', () => {
+  let calls = createDag({ stepCount: 1 });
+  calls = start(calls, 'step-01', 'executor-a', 'call-budget-attempt', budget(10, 10, 5, 1)).dag;
+  calls = startModel(calls, 'step-01', 'call-budget-attempt', 'only-call', 5).dag;
+  calls = settleModel(calls, 'step-01', 'call-budget-attempt', 'only-call', 'completed', 3).dag;
+  expect(() => startModel(calls, 'step-01', 'call-budget-attempt', 'extra-call', 1))
+    .toThrow(expect.objectContaining({ code: 'INFERENCE_CALL_BUDGET_EXHAUSTED' }));
+
+  let duration = createDag({ stepCount: 1 });
+  duration = start(duration, 'step-01', 'executor-a', 'duration-budget-attempt', budget(10, 10, 5, 2)).dag;
+  duration = startModel(duration, 'step-01', 'duration-budget-attempt', 'duration-call-01', 3).dag;
+  duration = settleModel(duration, 'step-01', 'duration-budget-attempt', 'duration-call-01', 'completed', 3).dag;
+  expect(() => startModel(duration, 'step-01', 'duration-budget-attempt', 'duration-call-02', 3))
+    .toThrow(expect.objectContaining({ code: 'INFERENCE_DURATION_BUDGET_EXHAUSTED' }));
+});
+
+test('keeps a lost inference acknowledgement fenced until explicit reconciliation', () => {
+  let dag = createDag({ stepCount: 1 });
+  dag = start(dag, 'step-01', 'executor-a', 'lost-ack-attempt', budget(10, 10, 10, 2)).dag;
+  dag = startModel(dag, 'step-01', 'lost-ack-attempt', 'lost-call', 6).dag;
+  const unknown = {
+    expectedRevision: dag.revision, stepId: 'step-01', requestId: 'lost-ack-attempt', callId: 'lost-call',
+    outcome: 'unknown', durationSeconds: 2, finishedAt: T0, receipt: { reason: 'acknowledgement_lost' },
+  };
+  dag = service.settleInference(dag, unknown).dag;
+  expect(dag.steps[0].attempts[0]).toMatchObject({
+    pendingInferences: ['lost-call'], modelReceipts: [{ callId: 'lost-call', state: 'unknown', reservedSeconds: 6 }],
+  });
+  expect(() => startModel(dag, 'step-01', 'lost-ack-attempt', 'blocked-call', 1))
+    .toThrow(expect.objectContaining({ code: 'INFERENCE_PENDING' }));
+  expect(service.settleInference(JSON.parse(JSON.stringify(dag)), unknown).replayed).toBe(true);
+  expect(() => service.settleInference(dag, { ...unknown, receipt: { reason: 'different_result' } }))
+    .toThrow(expect.objectContaining({ code: 'INFERENCE_SETTLEMENT_CONFLICT' }));
+
+  const reconciled = {
+    expectedRevision: dag.revision, stepId: 'step-01', requestId: 'lost-ack-attempt', callId: 'lost-call',
+    outcome: 'completed', durationSeconds: 4, finishedAt: T0, receipt: { responseSha256: RESPONSE },
+  };
+  dag = service.reconcileInference(dag, reconciled).dag;
+  expect(dag.steps[0].attempts[0]).toMatchObject({
+    pendingInferences: [], modelReceipts: [{ callId: 'lost-call', state: 'completed', durationSeconds: 4 }],
+  });
+  expect(service.reconcileInference(JSON.parse(JSON.stringify(dag)), reconciled).replayed).toBe(true);
+  dag = startModel(dag, 'step-01', 'lost-ack-attempt', 'after-reconcile', 6).dag;
+  expect(dag.steps[0].attempts[0].pendingInferences).toEqual(['after-reconcile']);
 });
 
 test('pins immutable attempt identity, executor, base and budget across replay and retry', () => {
