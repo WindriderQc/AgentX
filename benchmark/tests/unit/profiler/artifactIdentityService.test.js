@@ -59,6 +59,38 @@ describe('profiler artifact identity service', () => {
     expect(identity.runtimeFingerprint).toMatch(/^[a-f0-9]{64}$/);
   });
 
+  it('carries the installed Ollama version outside the runtime fingerprint (#908)', async () => {
+    const service = require('../../../src/services/profiler/artifactIdentityService');
+    service._resetVersionCacheForTests();
+    ollama.getVersion.mockResolvedValueOnce({ version: '0.34.4' });
+    const before = await resolveArtifactIdentity('owner/model:8b-q4', 'host-a', HOST_URL);
+    ollama.getVersion.mockResolvedValueOnce({ version: '0.40.8' });
+    const after = await resolveArtifactIdentity('owner/model:8b-q4', 'host-a', HOST_URL);
+    expect(before.runtime).toMatchObject({ ollamaVersion: '0.34.4', gpuDriver: null });
+    expect(after.runtime).toMatchObject({ ollamaVersion: '0.40.8' });
+    expect(after.runtimeFingerprint).toBe(before.runtimeFingerprint);
+  });
+
+  it('reads the version from a short cache for dashboards and live for measurements', async () => {
+    const service = require('../../../src/services/profiler/artifactIdentityService');
+    service._resetVersionCacheForTests();
+    ollama.getVersion.mockResolvedValue({ version: '0.40.8' });
+    await resolveArtifactIdentity('owner/model:8b-q4', 'host-a', HOST_URL, { refresh: false });
+    await resolveArtifactIdentity('owner/model:8b-q4', 'host-a', HOST_URL, { refresh: false });
+    expect(ollama.getVersion).toHaveBeenCalledTimes(1);
+    await resolveArtifactIdentity('owner/model:8b-q4', 'host-a', HOST_URL, { refresh: true });
+    expect(ollama.getVersion).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps identity resolution working when the version cannot be read', async () => {
+    const service = require('../../../src/services/profiler/artifactIdentityService');
+    service._resetVersionCacheForTests();
+    ollama.getVersion.mockRejectedValueOnce(new Error('connection refused'));
+    const identity = await resolveArtifactIdentity('owner/model:8b-q4', 'host-a', HOST_URL);
+    expect(identity.registryQualified).toBe(true);
+    expect(identity.runtime.ollamaVersion).toBeNull();
+  });
+
   it('does not borrow registry identity from a different namespace', async () => {
     getModelRegistryByName.mockResolvedValue({
       modelName: 'ax/owner/model:8b-q4',

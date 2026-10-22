@@ -25,12 +25,21 @@ const LatestEvidenceSchema = new mongoose.Schema({
   source: String
 }, { _id: false });
 
+// The runtime the evidence was measured on (#908). Not part of the
+// fingerprint: a version change is shown as drift, not invalidation.
+const MeasuredRuntimeSchema = new mongoose.Schema({
+  ollamaVersion: { type: String, default: null },
+  gpuDriver: { type: String, default: null },
+  observedAt: { type: String, default: null }
+}, { _id: false });
+
 const ModelContextProfileSchema = new mongoose.Schema({
   modelName: { type: String, required: true, index: true },
   hostUrl: { type: String, required: true, index: true },
   hostId: { type: String, default: null, index: true },
   artifactDigest: { type: String, required: true, index: true },
   runtimeFingerprint: { type: String, required: true },
+  measuredRuntime: { type: MeasuredRuntimeSchema, default: null },
   profileDepth: { type: String, enum: ['quick', 'standard', 'full'], default: 'standard' },
   contextProbeCandidateRepeats: { type: Number, default: null },
 

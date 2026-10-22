@@ -1,5 +1,13 @@
 const mongoose = require('mongoose');
 
+// The runtime the evidence was measured on (#908). Not part of the
+// fingerprint: a version change is shown as drift, not invalidation.
+const MeasuredRuntimeSchema = new mongoose.Schema({
+  ollamaVersion: { type: String, default: null },
+  gpuDriver: { type: String, default: null },
+  observedAt: { type: String, default: null }
+}, { _id: false });
+
 const ArtifactIdentitySchema = new mongoose.Schema({
   model: { type: String, required: true },
   hostId: { type: String, required: true },
@@ -8,7 +16,8 @@ const ArtifactIdentitySchema = new mongoose.Schema({
   runtimeFingerprint: { type: String, required: true },
   registryId: { type: String, default: null },
   registryDigest: { type: String, default: null },
-  registryQualified: { type: Boolean, default: false }
+  registryQualified: { type: Boolean, default: false },
+  runtime: { type: MeasuredRuntimeSchema, default: undefined }
 }, { _id: false });
 
 const AuthorityReceiptSchema = new mongoose.Schema({

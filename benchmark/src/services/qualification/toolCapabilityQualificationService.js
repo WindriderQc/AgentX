@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const ToolCapabilityQualification = require('../../../models/ToolCapabilityQualification');
 const { normalizeModelTag } = require('../../../../shared/modelNames');
+const { normalizeMeasuredRuntime } = require('../../../../shared/measuredRuntime');
 const {
   exactModelNamesMatch,
   normalizeHostUrl,
@@ -218,6 +219,8 @@ function finalizedDigest(row) {
     hostId: row.hostId,
     artifactDigest: row.artifactDigest,
     runtimeFingerprint: row.runtimeFingerprint,
+    // Bound only when recorded, so evidence finalized before #908 keeps its digest.
+    measuredRuntime: normalizeMeasuredRuntime(row.measuredRuntime) || undefined,
     protocolVersion: row.protocolVersion,
     fixtureVersion: row.fixtureVersion,
     fixtureFingerprint: row.fixtureFingerprint,
@@ -292,6 +295,7 @@ async function beginQualification(input, deps = {}) {
       identityKey: identityKey(identity),
       schemaVersion: contract.schemaVersion,
       ...identity,
+      ...(normalizeMeasuredRuntime(input.measuredRuntime) && { measuredRuntime: normalizeMeasuredRuntime(input.measuredRuntime) }),
       contractFingerprint,
       claim: {
         batchId,
@@ -434,6 +438,7 @@ function evidenceProjection(row) {
     hostId: row.hostId,
     artifactDigest: row.artifactDigest,
     runtimeFingerprint: row.runtimeFingerprint,
+    measuredRuntime: normalizeMeasuredRuntime(row.measuredRuntime),
     protocolVersion: row.protocolVersion,
     fixtureVersion: row.fixtureVersion,
     fixtureFingerprint: row.fixtureFingerprint,

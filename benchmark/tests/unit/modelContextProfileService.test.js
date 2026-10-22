@@ -109,6 +109,27 @@ describe('modelContextProfileService', () => {
     }));
   });
 
+  it('records the runtime the probe ran on without making it identity (#908)', async () => {
+    const step = {
+      numCtx: 32768, passed: true, degradationPct: 5, tokensPerSec: 50,
+      throughputStatistics: stableThroughputStatistics(50), promptTokens: 26000,
+      completionTokens: 64, requestedCompletionTokens: 64, minCompletionTokens: 32
+    };
+    const snapshot = {
+      _id: 'snapshot-runtime', modelName: 'ax/qwen3.5:9b', hostUrl: 'http://192.0.2.12:11434',
+      artifactDigest: 'sha256:exact', runtimeFingerprint: 'runtime-a', status: 'completed',
+      testedNumCtx: 32768, steps: [step],
+      measuredRuntime: { ollamaVersion: '0.40.8', gpuDriver: null, observedAt: '2026-10-21T22:00:00.000Z' }
+    };
+    const profile = await service.updateFromProbeSnapshot(snapshot);
+    expect(profile.measuredRuntime).toEqual({ ollamaVersion: '0.40.8', gpuDriver: null, observedAt: '2026-10-21T22:00:00.000Z' });
+    expect(ModelContextProfile.findOneAndUpdate.mock.calls[0][0]).not.toHaveProperty('measuredRuntime');
+
+    ModelContextProfile.findOneAndUpdate.mockClear();
+    const legacy = await service.updateFromProbeSnapshot({ ...snapshot, _id: 'snapshot-legacy', measuredRuntime: undefined });
+    expect(legacy.measuredRuntime).toBeNull();
+  });
+
   it('lowers the current ceiling while retaining the historical maximum', async () => {
     ModelContextProfile.findOne.mockReturnValue(mockLean({
       verifiedMaxContext: 237568

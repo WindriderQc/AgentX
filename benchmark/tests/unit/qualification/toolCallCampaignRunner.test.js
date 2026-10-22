@@ -194,6 +194,18 @@ describe('toolCallCampaignRunner', () => {
     expect(workload.retainForRecovery).not.toHaveBeenCalled();
   });
 
+  it('records the Ollama version the campaign ran on (#908)', async () => {
+    const runtime = { ollamaVersion: '0.40.8', gpuDriver: null, observedAt: '2026-10-21T22:00:00.000Z' };
+    const deps = dependencies({
+      resolveArtifactIdentity: jest.fn(async () => ({
+        model: 'owner/model:8b', hostId: 'host-a', hostUrl: 'http://host-a:11434',
+        digest: 'sha256:a', runtimeFingerprint: 'runtime-a', registryQualified: true, runtime
+      }))
+    });
+    await runToolCapabilityCampaign(options(), deps);
+    expect(deps.beginQualification).toHaveBeenCalledWith(expect.objectContaining({ measuredRuntime: runtime }));
+  });
+
   it('marks a started campaign interrupted and releases its exact claim after a run error', async () => {
     const failure = Object.assign(new Error('transport stopped'), { code: 'TRANSPORT_STOPPED' });
     const deps = dependencies({ runHarness: jest.fn(async () => { throw failure; }) });

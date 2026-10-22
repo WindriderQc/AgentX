@@ -14,6 +14,25 @@ const {
   normalizeHostUrl,
   verifyRuntimeArtifactReceipt
 } = require('../../../../shared/artifactIdentity');
+const { buildMeasuredRuntime } = require('../../../../shared/measuredRuntime');
+
+// The installed Ollama version, read at most every 30 seconds per host for
+// dashboards. A measurement (refresh) always reads it live.
+const VERSION_TTL_MS = 30_000;
+const versionCache = new Map();
+
+async function readOllamaVersion(hostUrl, { refresh = false, signal } = {}) {
+  const cached = versionCache.get(hostUrl);
+  if (!refresh && cached && Date.now() - cached.at < VERSION_TTL_MS) return cached.version;
+  try {
+    const body = await getVersion(hostUrl, { timeoutMs: 5_000, signal });
+    const version = typeof body?.version === 'string' && body.version.trim() ? body.version.trim() : null;
+    if (version) versionCache.set(hostUrl, { version, at: Date.now() });
+    return version;
+  } catch {
+    return null;
+  }
+}
 
 function digestsMatch(left, right) {
   const leftRaw = String(left || '').trim().toLowerCase();
@@ -53,10 +72,11 @@ async function resolveArtifactIdentity(modelName, hostId, hostUrl, options = {})
   await (options.syncRuntimeSettings || syncHostRuntimeSettings)({ hostId, hostUrl: normalizedHost })
     .catch(() => null);
 
-  const [digest, hostProfile, registry] = await Promise.all([
+  const [digest, hostProfile, registry, ollamaVersion] = await Promise.all([
     getModelDigest(normalizedHost, model, { refresh: options.refresh !== false, signal: options.signal }),
     hostProfileService.getById(hostId),
-    getModelRegistryByName(model, { host: normalizedHost, signal: options.signal }).catch(() => null)
+    getModelRegistryByName(model, { host: normalizedHost, signal: options.signal }).catch(() => null),
+    readOllamaVersion(normalizedHost, { refresh: options.refresh !== false, signal: options.signal })
   ]);
   if (!digest) throw new Error(`Cannot resolve exact Ollama digest for ${model} on ${normalizedHost}`);
 
@@ -84,7 +104,11 @@ async function resolveArtifactIdentity(modelName, hostId, hostUrl, options = {})
     runtimeFingerprint: buildRuntimeFingerprint(hostProfile || { hostId, hostUrl: normalizedHost }, normalizedHost),
     registryId: registry?._id ? String(registry._id) : null,
     registryDigest,
-    registryQualified
+    registryQualified,
+    // The runtime installed now. Evidence written from this identity keeps it
+    // as the runtime it was measured on (#908); it is not part of the
+    // fingerprint, so a version change alone never voids that evidence.
+    runtime: buildMeasuredRuntime({ ollamaVersion, hostProfile })
   };
 }
 
@@ -225,5 +249,6 @@ module.exports = {
   registryInstallation,
   resolveArtifactIdentity,
   resolveRuntimeArtifactReceipt,
-  runtimeReceiptMatchesProfile
+  runtimeReceiptMatchesProfile,
+  _resetVersionCacheForTests: () => versionCache.clear()
 };

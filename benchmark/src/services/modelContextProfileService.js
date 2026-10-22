@@ -6,6 +6,7 @@ const { getConfiguredHosts, normalizeHostUrl } = require('../helpers/ollamaHostC
 // recommendations. Only a fresh probe written by this implementation may
 // carry current recommendation authority.
 const { RECOMMENDATION_EVIDENCE_VERSION } = require('../../../shared/contextEvidence');
+const { normalizeMeasuredRuntime } = require('../../../shared/measuredRuntime');
 const MIN_RECOMMENDATION_SAMPLES = 5;
 const MAX_RECOMMENDATION_CV = 0.12;
 const MAX_RECOMMENDATION_RELATIVE_CI95_WIDTH = 0.30;
@@ -227,6 +228,10 @@ async function updateFromProbeSnapshot(snapshot, options = {}) {
         hostId: snapshot.hostId || hostIdForUrl(hostUrl),
         artifactDigest,
         runtimeFingerprint,
+        // The version is evidence metadata, not identity (#908). A retained
+        // transport-bounded ceiling keeps this run's version: see #908 on
+        // trusting a verified window across versions.
+        measuredRuntime: normalizeMeasuredRuntime(snapshot.measuredRuntime),
         profileDepth: snapshot.profileDepth || 'standard',
         contextProbeCandidateRepeats: positiveInteger(snapshot.candidateRepeats),
         maxVerifiedContext,

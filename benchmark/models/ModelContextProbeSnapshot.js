@@ -79,12 +79,20 @@ const ProbeStepSchema = new mongoose.Schema({
   reason: String
 }, { _id: false });
 
+// The runtime this probe ran on (#908); copied onto the context profile.
+const MeasuredRuntimeSchema = new mongoose.Schema({
+  ollamaVersion: { type: String, default: null },
+  gpuDriver: { type: String, default: null },
+  observedAt: { type: String, default: null }
+}, { _id: false });
+
 const ModelContextProbeSnapshotSchema = new mongoose.Schema({
   modelName:              { type: String, required: true, index: true },
   hostUrl:                { type: String, required: true, index: true },
   hostId:                 { type: String, required: true, index: true },
   artifactDigest:         { type: String, required: true, index: true },
   runtimeFingerprint:     { type: String, required: true },
+  measuredRuntime:        { type: MeasuredRuntimeSchema, default: null },
   profileDepth:           { type: String, enum: ['quick', 'standard', 'full'], default: 'standard' },
   candidateRepeats:       { type: Number, default: 2 },
   testedNumCtx:           Number,
