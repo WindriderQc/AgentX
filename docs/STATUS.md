@@ -255,7 +255,13 @@ Instance configuration, data and deployment receipts remain outside Git.
   [correction loop](CODING_AUTONOMY.md) records explicit engineering scope,
   linked executions, cumulative budgets and manual interventions. Core observes
   exact-head CI and resumes the same task/PR through native claims; uncertain
-  publication/model outcomes remain fenced. Green CI ends at human review.
+  publication/model outcomes remain fenced. Its code-step planner can submit a
+  durable dependency graph to Core: independent non-overlapping steps run in
+  isolated worktrees on other registered DSH or OpenCode executors, while the
+  root adopts tested one-commit bundles in order, performs final verification
+  and publishes the same single task PR. The dossier retains executor, harness,
+  budget, test, commit, wait/failure and assembly evidence. Green CI ends at
+  human review.
 - **Planning.** The page is a frozen historical reference. Its idea inbox is
   live: Nestor and family captures wait there until the parent reviews them.
   Coding workers receive bounded context from linked Planning objectives;

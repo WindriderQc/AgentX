@@ -162,6 +162,7 @@ services:
       CODING_DISPATCHER_SSH_TARGET: ${CODING_DISPATCHER_SSH_TARGET:-}
       CODING_DISPATCHER_REMOTE_ROOT: ${CODING_DISPATCHER_REMOTE_ROOT:-}
       CODING_EXECUTORS_JSON: ${CODING_EXECUTORS_JSON:-}
+      AGENTX_CODE_STEP_ARTIFACT_DIR: ${AGENTX_CODE_STEP_ARTIFACT_DIR:-/app/code-step-artifacts}
       CODING_DELIVERY_GITHUB_TOKEN: ${CODING_DELIVERY_GITHUB_TOKEN:-}
       CODING_DELIVERY_GITHUB_REPOSITORY: ${CODING_DELIVERY_GITHUB_REPOSITORY:-}
       CODING_DELIVERY_SSH_TARGET: ${CODING_DELIVERY_SSH_TARGET:-}
@@ -195,6 +196,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - core_logs:/app/logs
+      - code_step_artifacts:/app/code-step-artifacts
       - recovery_data:/backups
       - ${HOUSEHOLD_PHOTOS_DIR:-./docker/empty}:/mnt/household/photos:ro
       - ${HOUSEHOLD_MEDIA_DIR:-./docker/empty}:/mnt/household/media:ro
@@ -375,6 +377,8 @@ volumes:
     name: ${COMPOSE_PROJECT_NAME}_canonical_qdrant_data
   core_logs:
     name: ${COMPOSE_PROJECT_NAME}_canonical_core_logs
+  code_step_artifacts:
+    name: ${COMPOSE_PROJECT_NAME}_canonical_code_step_artifacts
   recovery_data:
     name: ${COMPOSE_PROJECT_NAME}_canonical_recovery_data
   benchmark_config:

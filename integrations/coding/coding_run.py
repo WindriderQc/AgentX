@@ -17,6 +17,7 @@ import fcntl
 import hashlib
 import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -68,6 +69,13 @@ _spec.loader.exec_module(coding_dispatch_control)
 _spec = importlib.util.spec_from_file_location("coding_runtime", HERE / "coding_runtime.py")
 coding_runtime = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(coding_runtime)
+_spec = importlib.util.spec_from_file_location("coding_deadline", HERE / "coding_deadline.py")
+coding_deadline = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(coding_deadline)
+CodingDeadlineExceeded = coding_deadline.CodingDeadlineExceeded
+_deadline_timeout = coding_deadline.deadline_timeout
+supervise = coding_deadline.supervise
+terminate = coding_deadline.terminate
 _spec = importlib.util.spec_from_file_location("coding_worker_context", HERE / "coding_worker_context.py")
 coding_worker_context = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(coding_worker_context)
@@ -84,6 +92,9 @@ _spec.loader.exec_module(coding_sandbox)
 _spec = importlib.util.spec_from_file_location("coding_autonomous", HERE / "coding_autonomous.py")
 coding_autonomous = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(coding_autonomous)
+_spec = importlib.util.spec_from_file_location("coding_distributed_step", HERE / "coding_distributed_step.py")
+coding_distributed_step = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(coding_distributed_step)
 AUTHOR = ["-c", "user.name=AgentX Coding Team", "-c", "user.email=coding-team@agentx.invalid"]
 
 PROMPT = """You are the AgentX coding worker. /workspace is a fresh clone of {repository}
@@ -187,24 +198,48 @@ def installed_state(workspace: Path) -> str:
     return ""
 
 
-def runtime_identity(workspace: Path) -> dict:
+def runtime_identity(workspace: Path, *, deadline=None) -> dict:
     def probe(npm_cli):
         home = worker_home(workspace)
         script = 'console.log(JSON.stringify({nodeVersion:process.version,modules:process.versions.modules,platform:process.platform,arch:process.arch}))'
         commands = [["/opt/node/bin/node", "-e", script],
                     ["/opt/node/bin/node", "/opt/node/" + npm_cli, "--version"]]
+        deadline_limited = False
         try:
             outputs = []
             for command in commands:
-                result = subprocess.run(sandbox(workspace, home, command, network=False, timeout_seconds=10),
-                                        check=True, capture_output=True, text=True, timeout=45)
+                timeout = _deadline_timeout(deadline, 45)
+                deadline_limited = deadline is not None and timeout < 45
+                sandbox_seconds = max(1, min(10, math.ceil(timeout)))
+                result = subprocess.run(sandbox(workspace, home, command, network=False,
+                                                timeout_seconds=sandbox_seconds),
+                                        check=True, capture_output=True, text=True, timeout=timeout)
                 outputs.append(result.stdout.strip())
             observed = json.loads(outputs[0])
             observed["npmVersion"] = outputs[1]
             return observed
+        except CodingDeadlineExceeded as error:
+            raise coding_runtime.RuntimeDeadlineExceeded(
+                "Runtime probe exhausted its runner-owned deadline") from error
+        except subprocess.CalledProcessError as error:
+            if (error.returncode == 124 and deadline_limited and deadline is not None
+                    and time.monotonic() >= deadline):
+                raise coding_runtime.RuntimeDeadlineExceeded(
+                    "Runtime probe exhausted its runner-owned deadline") from error
+            raise coding_runtime.RuntimeUnavailable("Network-free runtime probe failed") from error
+        except subprocess.TimeoutExpired as error:
+            if deadline_limited or deadline is not None and time.monotonic() >= deadline:
+                raise coding_runtime.RuntimeDeadlineExceeded(
+                    "Runtime probe exhausted its runner-owned deadline") from error
+            raise coding_runtime.RuntimeUnavailable("Network-free runtime probe failed") from error
         except (OSError, ValueError, TypeError, subprocess.SubprocessError) as error:
             raise coding_runtime.RuntimeUnavailable("Network-free runtime probe failed") from error
-    return coding_runtime.identity(NODE_ROOT, NODE_BINARY, probe)
+    try:
+        if deadline is not None:
+            return coding_runtime.identity(NODE_ROOT, NODE_BINARY, probe, deadline=deadline)
+        return coding_runtime.identity(NODE_ROOT, NODE_BINARY, probe)
+    except coding_runtime.RuntimeDeadlineExceeded as error:
+        raise CodingDeadlineExceeded("Runtime validation exhausted its runner-owned deadline") from error
 
 
 def preparation_state(workspace: Path, runtime: dict) -> str:
@@ -212,7 +247,7 @@ def preparation_state(workspace: Path, runtime: dict) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def install_dependencies(workspace: Path, progress=None) -> None:
+def install_dependencies(workspace: Path, progress=None, *, deadline=None) -> None:
     """Install what the package files ask for, with network and without the worker.
 
     Package install scripts are skipped, and the test database is prepared with
@@ -220,7 +255,7 @@ def install_dependencies(workspace: Path, progress=None) -> None:
     is open. A changed package file reaches this point only when the owner hands
     the task back, which is the approval.
     """
-    runtime = runtime_identity(workspace)
+    runtime = runtime_identity(workspace, deadline=deadline) if deadline is not None else runtime_identity(workspace)
     state = preparation_state(workspace, runtime)
     if state == installed_state(workspace):
         return
@@ -239,12 +274,16 @@ def install_dependencies(workspace: Path, progress=None) -> None:
         for name in PACKAGE_DIRS)
     if progress:
         progress.set_stage("dependencies")
+    install_timeout = max(1, math.ceil(_deadline_timeout(deadline, INSTALL_TIMEOUT_SECONDS)))
     command = sandbox(workspace, home, ["bash", "-c", script], network=True,
-                      timeout_seconds=INSTALL_TIMEOUT_SECONDS)
-    run = supervise(command, progress)
+                      timeout_seconds=install_timeout)
+    run = supervise(command, progress, deadline=deadline) if deadline is not None else supervise(command, progress)
     if run.returncode:
+        if deadline is not None and run.returncode == 124 and time.monotonic() >= deadline:
+            raise CodingDeadlineExceeded("Dependency preparation exhausted its runner-owned deadline")
         raise subprocess.CalledProcessError(run.returncode, command, output=run.stdout, stderr=run.stderr)
-    if runtime_identity(workspace) != runtime:
+    observed = runtime_identity(workspace, deadline=deadline) if deadline is not None else runtime_identity(workspace)
+    if observed != runtime:
         raise coding_runtime.RuntimeChanged("Runtime changed during dependency preparation")
     # npm may have finalized a lock. Publish the final key atomically, after success.
     value = {"schemaVersion": 2, "fingerprint": preparation_state(workspace, runtime)}
@@ -256,55 +295,6 @@ def install_dependencies(workspace: Path, progress=None) -> None:
             os.replace(temporary, marker)
         finally:
             temporary.unlink(missing_ok=True)
-
-
-def tail(path: Path, size: int = 6000) -> str:
-    with path.open("rb") as stream:
-        stream.seek(0, os.SEEK_END)
-        stream.seek(max(0, stream.tell() - size))
-        return stream.read().decode(errors="replace")
-
-
-def supervise(command: list[str], progress=None, home=None, workspace=None, on_stop=None) -> subprocess.CompletedProcess:
-    """Poll the child while retaining raw stdout/stderr outside the repository."""
-    if progress and progress.path:
-        output_root = progress.path.parent / f"{progress.request_id}.output"
-        output_root.mkdir(mode=0o700, exist_ok=True)
-        directory = Path(tempfile.mkdtemp(prefix=f"{progress.stage}-", dir=output_root))
-    else:
-        directory = Path(tempfile.mkdtemp(prefix="agentx-coding-output-"))
-    # Raw output survives every exit, including an operator stop. It never enters Git.
-    stdout, stderr = directory / "stdout", directory / "stderr"
-    with stdout.open("wb") as out, stderr.open("wb") as err:
-        process = subprocess.Popen(command, stdout=out, stderr=err, start_new_session=True)
-        try:
-            while process.poll() is None:
-                if progress and progress.tick(home, workspace):
-                    if on_stop:
-                        on_stop()
-                    terminate(process)
-                    break
-                time.sleep(2)
-        finally:
-            if process.poll() is None:
-                if on_stop:
-                    on_stop()
-                terminate(process)
-    if progress and home and workspace:
-        progress.observe(home, workspace)
-    return subprocess.CompletedProcess(command, process.wait(), tail(stdout), tail(stderr))
-
-
-def terminate(process):
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return
-    try:
-        process.wait(timeout=30)
-    except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGKILL)
-        process.wait()
 
 
 def record_lane_capability(progress, model, lanes=None):
@@ -470,6 +460,7 @@ def main() -> int:
     parser.add_argument("--model-call-limit", type=int, default=None)
     parser.add_argument("--parent-request-id", default=None)
     parser.add_argument("--parent-sha256", default=None)
+    coding_distributed_step.add_arguments(parser)
     args = parser.parse_args()
     if not TASK_ID.fullmatch(args.task_id):
         parser.error("task id is four digits")
@@ -490,12 +481,15 @@ def main() -> int:
         except ValueError as error:
             parser.error(str(error))
 
+    coding_distributed_step.validate_arguments(parser, args)
+
     if args.parent_request_id is not None or args.parent_sha256 is not None:
         if not args.report_name or not coding_progress.REQUEST_ID.fullmatch(args.parent_request_id or '') or args.parent_sha256 is not None and not re.fullmatch(r'[a-f0-9]{64}', args.parent_sha256) or args.parent_request_id == args.request_id:
             parser.error('report continuation needs its original request and SHA-256')
 
     progress = coding_progress.Progress(args.task_id, args.request_id, args.timeout_seconds, receipts=RECEIPTS,
-        heartbeat=None if args.report_name else lambda: request(f"{CORE}/api/pipeline/tasks/{args.task_id}/heartbeat", {"assignee": WORKER}))
+        heartbeat=None if args.report_name or args.distributed_role else
+        lambda: request(f"{CORE}/api/pipeline/tasks/{args.task_id}/heartbeat", {"assignee": WORKER}))
     progress.report_mode = progress.preflight = bool(args.report_name)
     progress.report_model_call_limit = coding_progress.report_call_limit(args.model_call_limit)
     previous_handlers = {signum: signal.getsignal(signum) for signum in (signal.SIGTERM, signal.SIGINT)}
@@ -506,6 +500,9 @@ def main() -> int:
     try:
         return execute(args, progress)
     except Exception as error:
+        distributed_failure = coding_distributed_step.failed(args, error, progress)
+        if distributed_failure is not None:
+            return distributed_failure
         if args.report_name:
             spec = importlib.util.spec_from_file_location("coding_report", HERE / "coding_report.py")
             reporter = importlib.util.module_from_spec(spec)
@@ -528,10 +525,11 @@ def main() -> int:
 
 def execute(args, progress) -> int:
     global MODEL
+    if getattr(args, "distributed_role", None):
+        return coding_distributed_step.execute_role(SimpleNamespace(**globals()), args, progress)
     if getattr(args, "autonomous", False):
         return coding_autonomous.execute(SimpleNamespace(**globals()), args, progress)
-    # The same eligibility rule as the Pipeline launch control: a direct task id
-    # may not start a task the dispatch boundary would refuse, and an ineligible
+    # Direct invocation follows the same eligibility rule as Pipeline launch, so an ineligible
     # task must stay untouched (no claim, clone, dependency install or worker run).
     try:
         task = request(f"{CORE}/api/pipeline/tasks/{args.task_id}")["data"]["task"]

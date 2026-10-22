@@ -150,6 +150,13 @@ links to that interface and the Nerve Center's model/routing settings.
 Pipeline's disabled-by-default correction loop uses explicitly reviewed tasks,
 exact file scopes and an approved operator heavy-work campaign. See the
 [authorization, budgets, pause/stop, qualification and rollback procedure](CODING_AUTONOMY.md).
+Its root executor may coordinate a Core-owned code-step DAG across other
+registered autonomous executors. Each child stays on its selected host and
+harness, transfers only a verified immutable Git bundle, and consumes the
+parent task's aggregate budget. The root remains active for heartbeats,
+incremental adoption, final tests and the one publication. A terminal or
+uncertain child is reconciled by its saved request identity; do not launch a
+replacement or move its worktree between hosts.
 Manual one-task launch remains available. Merge, installation and persistent
 activation remain separate operator decisions.
 

@@ -27,7 +27,7 @@ function setup(state, options = {}) {
     querySelectorAll: () => switches };
   const switches = ['true', 'false'].map(value => { const e = new Element(); e.dataset.autonomySwitch = value; return e; });
   const calls = [];
-  vm.runInNewContext(source, { document, window: { addEventListener() {} }, AbortController,
+  vm.runInNewContext(source, { document, window: { addEventListener() {}, PipelineCodeStepGraph: options.codeStepGraph }, AbortController,
     FormData: class {
       constructor(form) { this.values = form.values || {}; }
       get(name) { return this.values[name] ?? null; }
@@ -60,6 +60,31 @@ test('operator sees separate PR, CI, native completion, scope and manual interve
   expect(text).toContain('source.py'); expect(text).toContain('manual interventions: 1');
   expect(text).toContain('PR published. CI not yet observed'); expect(text).toContain('product acceptance have no receipt');
   expect(text).toContain('Synthetic <script> task'); // textContent, never markup parsing.
+});
+test('live Coding Team cards show a fail-closed multi-host graph summary and details', async () => {
+  const snapshot = state(); snapshot.tasks[0].codeStepGraph = { fixture: true };
+  const presenter = { summaryText: jest.fn(() => '2 steps · 2 running · active step-01, step-02'),
+    render: jest.fn(() => '<section>bounded graph details</section>') };
+  const { nodes } = setup(snapshot, { codeStepGraph: presenter }); await flush();
+  const children = descendants(nodes.codingAutonomyTasks);
+  expect(children.some(node => node.textContent.includes('Multi-host graph · 2 steps'))).toBe(true);
+  expect(children.some(node => node.innerHTML === '<section>bounded graph details</section>')).toBe(true);
+  expect(presenter.render).toHaveBeenCalledWith(snapshot.tasks[0].codeStepGraph, { compact: true });
+
+  presenter.summaryText.mockReturnValue(null);
+  const malformed = setup(snapshot, { codeStepGraph: presenter }); await flush();
+  expect(descendants(malformed.nodes.codingAutonomyTasks).some(node =>
+    node.textContent.includes('malformed evidence was not displayed'))).toBe(true);
+});
+test('execution history keeps a prior run multi-host graph in the operator dossier', async () => {
+  const snapshot = state(); snapshot.tasks[0].runs[0].codeStepGraph = { graphId: KEY, historical: true };
+  const presenter = { summaryText: jest.fn(() => '3 steps · blocked'),
+    render: jest.fn(() => '<section>historical graph evidence</section>') };
+  const { nodes } = setup(snapshot, { codeStepGraph: presenter }); await flush();
+  const historyGraph = descendants(nodes.codingAutonomyTasks)
+    .find(node => node.innerHTML === '<section>historical graph evidence</section>');
+  expect(historyGraph).toBeDefined();
+  expect(presenter.render).toHaveBeenCalledWith(snapshot.tasks[0].runs[0].codeStepGraph, { compact: true });
 });
 test('idle status separates blocked cards from work awaiting execution and keeps archived qualifications accessible', async () => {
   const snapshot = state('stopped'); Object.assign(snapshot.tasks[0], { taskStatus: 'blocked', authorized: false, disposition: { kind: 'qualification', outcome: 'abandoned' } });

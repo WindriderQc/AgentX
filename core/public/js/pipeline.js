@@ -638,7 +638,7 @@
     }
   }
 
-  const { inferenceSummary, renderAttemptDossier } = window.PipelineAttemptDossier.create({ escapeHtml: (...args) => escapeHtml(...args), formatDate: (...args) => formatDate(...args), costEvidencePresentation: (...args) => costEvidencePresentation(...args), localEnergyPresentation: (...args) => localEnergyPresentation(...args), formatStatus: (...args) => formatStatus(...args), attemptOutcome: (...args) => attemptOutcome(...args), metaRow: (...args) => metaRow(...args), durationLabel: (...args) => durationLabel(...args), codeSteps: window.PipelineCodeSteps });
+  const { inferenceSummary, renderAttemptDossier } = window.PipelineAttemptDossier.create({ escapeHtml: (...args) => escapeHtml(...args), formatDate: (...args) => formatDate(...args), costEvidencePresentation: (...args) => costEvidencePresentation(...args), localEnergyPresentation: (...args) => localEnergyPresentation(...args), formatStatus: (...args) => formatStatus(...args), attemptOutcome: (...args) => attemptOutcome(...args), metaRow: (...args) => metaRow(...args), durationLabel: (...args) => durationLabel(...args), codeSteps: window.PipelineCodeSteps, codeStepGraph: window.PipelineCodeStepGraph });
 
   function drawerDisclosureKey(el, index) {
     // Panel identities and the summary's text node stay stable when counts or

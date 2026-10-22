@@ -473,7 +473,7 @@ for (const [route, assetPath] of Object.entries(coreVendorAssets)) {
 
 registerLocalStyleVendorAssets(app, path.join(__dirname, '..', 'node_modules'));
 
-app.use(express.static(path.join(__dirname, '..', 'public'))); require('../../shared/benchmarkCategories').mountBrowserCategories(app); require('../../shared/pipelineWorkerOutcome').mountBrowser(app); require('../../shared/codeStepSummary').mountBrowser(app);
+app.use(express.static(path.join(__dirname, '..', 'public'))); require('../../shared/benchmarkCategories').mountBrowserCategories(app); require('../../shared/pipelineWorkerOutcome').mountBrowser(app); require('../../shared/codeStepSummary').mountBrowser(app); require('../../shared/codeStepGraphSummary').mountBrowser(app);
 
 // Browsers often request /favicon.ico implicitly. We serve a real icon to avoid noisy 404s.
 app.get('/favicon.ico', (_req, res) => {

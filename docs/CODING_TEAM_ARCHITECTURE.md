@@ -107,19 +107,16 @@ Codex and Claude remain useful interactive/cloud coding clients, but they are
 not local-AI Coding Team harnesses. A host on which those clients happen to be
 installed can still run a separate local DSH or OpenCode executor.
 
-## Runner-owned code steps and the next distribution layer
+## Core-owned distributed code steps
 
-The first decomposition layer is implemented by issue #836. One selected
-executor runs a fresh read-only planner, freezes a bounded private ledger, then
-uses a fresh implementation context for every dependency-ready step. The runner
-owns focused tests and one commit per passing step, resumes the exact unfinished
-ledger after a stop, performs final assembly verification and publishes one PR.
-The Pipeline dossier shows bounded step/commit/test evidence.
+The planner runs once under the selected root executor, freezes the reviewed
+source plan and submits it to Core. Core derives serialization edges for
+overlapping paths and locks, persists the resulting DAG and dispatches each
+ready step to a distinct available executor other than the root coordinator.
+DSH and OpenCode receive the same immutable step manifest; harness choice stays
+an executor property and never changes task semantics.
 
-This local step engine is deliberately not cross-host fan-out. Issue #946 is the
-next layer: Core-owned distribution of isolated steps across registered local
-executors. The executor registry and harness adapters supply that boundary. The
-distributed layer must keep these rules:
+The distributed engine keeps these rules:
 
 - Core owns a durable task graph; a model may propose steps but cannot grant or
   dispatch them.
@@ -127,25 +124,52 @@ distributed layer must keep these rules:
   model-call budget, test profile and terminal receipt.
 - Independent steps use separate Git worktrees/branches and may run on separate
   executors. Dependent or overlapping steps serialize.
-- The runner, not a harness, verifies commits and focused tests. A merge worker
-  assembles verified step commits; conflicts become a new explicit step.
+- The runner, not a harness, verifies commits and focused tests. The root
+  coordinator incrementally assembles verified Git bundles in DAG order;
+  conflicts, failed final verification, verification source mutation and
+  publication refusals proven before an external effect produce a durable
+  terminal receipt instead of leaving the graph pending. Final-test duration
+  is charged once to the graph's aggregate work and test budgets. Core gives
+  the assembler the exact remaining work and test reservation; dependency
+  preparation, the final command and its termination overhead share that one
+  deadline. Exhaustion terminalizes before publication with measured usage.
+  Its terminal receipt distinguishes total wall duration from work completed
+  before the runner-owned deadline; exception propagation and receipt settlement
+  consume the reserved second but are not charged as verification work. Core
+  charges the latter duration exactly and never lets cumulative spent plus
+  reserved usage exceed the signed aggregate limit.
 - Publication happens once from the assembled branch. Sub-workers never push,
   open pull requests, merge or deploy.
 - Lost launch or model replies retain the original work-unit identity. They do
   not create a replacement on another host.
+- A publication whose effect may have been sent remains on its original
+  publication identity and resumes with read-only reconciliation only. It is
+  neither terminalized from missing evidence nor pushed or posted again.
 
-Until that task-graph journal lands, the Core autonomous correction loop remains
-one selected execution at a time. The pool is already useful for explicit code
-runs, report campaigns and deterministic continuation placement, but it must not
-be described as parallel decomposition of one coding task.
+Every child attempt has its own request, executor, base commit, budget,
+inference journal and result receipt. Uncertain launch or inference outcomes
+remain fenced on that identity. Aggregate reservations cannot exceed the root
+budget. The assembler imports immutable one-commit Git bundles, runs the final
+independent verification and publishes the established task branch once. The
+root then records the one native task verdict; it never falls back to a hidden
+single-host implementation after Core accepts the graph.
+
+Pipeline projects the graph, host and harness selection, focused tests, commit
+and adoption receipts, waits or failures, aggregate usage and final publication
+without exposing private manifests, host targets or local paths.
 
 ## Qualification
 
 CPU tests cover registry validation, legacy fallback, pooled candidate status,
 explicit routing, cross-host receipt discovery, unavailable-host uncertainty,
-waiting cancellation, DSH invocation and OpenCode command/config generation.
+waiting cancellation, DSH invocation, OpenCode command/config generation,
+parallel independent steps, dependency and overlap waves, host loss, aggregate
+budgets, exact restart recovery, deterministic adoption and one final
+publication.
 
 Installing or invoking either harness with a live local model is heavy work.
 Queue that qualification under the instance procedure, link the executor and
 task/issue, and retain the native request and release receipts. A passing dummy
-CLI or source test is not live acceptance.
+CLI or source test is not live acceptance. Harness comparison is an operational
+qualification input for executor priority, not a different Core protocol and
+not a prerequisite for enabling another already-qualified worker.

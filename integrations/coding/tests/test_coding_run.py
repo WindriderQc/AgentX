@@ -6,6 +6,7 @@ import subprocess
 import signal
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -172,6 +173,17 @@ class CodingRunTest(unittest.TestCase):
         self.assertEqual(len(logs), 1)
         self.assertEqual(logs[0].read_text(), "Synthetic preserved output\n")
         self.assertIn("Synthetic preserved output", result.stdout)
+
+    def test_supervisor_kills_a_child_at_the_runner_owned_deadline(self):
+        started = time.monotonic()
+        with self.assertRaises(runner.CodingDeadlineExceeded):
+            runner.supervise([sys.executable, "-c", "import time; time.sleep(60)"],
+                             deadline=started + 0.2)
+        self.assertLess(time.monotonic() - started, 2)
+
+    def test_source_observation_refuses_an_expired_runner_owned_deadline(self):
+        with self.assertRaises(runner.coding_progress.SourceDeadlineExceeded):
+            runner.coding_progress.source_state(self.workspace, deadline=time.monotonic() - 1)
 
     def blocked_clone(self, operator_stop):
         key = "11111111-2222-4333-8444-555555555555"
