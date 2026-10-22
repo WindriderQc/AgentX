@@ -26,6 +26,7 @@ const { getBenchmarkServiceClient } = require('./benchmarkServiceClient');
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const { RECOMMENDATION_EVIDENCE_VERSION } = require('../../../shared/contextEvidence');
+const { normalizeMeasuredRuntime } = require('../../../shared/measuredRuntime');
 const cache = new Map(); // key `${host}::${model}` → { value, expiresAt }
 let _fetch = null;
 
@@ -115,7 +116,7 @@ async function fromContextProfile(model, hostUrl, artifact, deps = {}, workload 
         runtimeFingerprint: artifact.runtimeFingerprint,
         stale: { $ne: true }
       })
-        .select('modelName hostUrl artifactDigest runtimeFingerprint recommendedContext recommendedInteractiveContext recommendedDocumentContext recommendationStatus recommendationEvidenceVersion revalidationRequired maxVerifiedContext verifiedMaxContext historicalMaxVerifiedContext verifiedInputTokens lastValidatedAt source stale')
+        .select('modelName hostUrl artifactDigest runtimeFingerprint recommendedContext recommendedInteractiveContext recommendedDocumentContext recommendationStatus recommendationEvidenceVersion revalidationRequired maxVerifiedContext verifiedMaxContext historicalMaxVerifiedContext verifiedInputTokens lastValidatedAt source stale measuredRuntime')
         .lean();
     } else {
       const client = deps.benchmarkClient || getBenchmarkServiceClient();
@@ -150,7 +151,8 @@ async function fromContextProfile(model, hostUrl, artifact, deps = {}, workload 
       historicalMaxVerifiedContext: Number(profile?.historicalMaxVerifiedContext) || Math.round(verified),
       verifiedInputTokens: profile.verifiedInputTokens || null,
       profiledAt: profile.lastValidatedAt || null,
-      matchedName: profile.modelName || null
+      matchedName: profile.modelName || null,
+      measuredRuntime: normalizeMeasuredRuntime(profile.measuredRuntime)
     };
   } catch (err) {
     logger.debug('[modelContextInfo] context profile lookup failed', { model, hostUrl, error: err.message });
@@ -242,6 +244,8 @@ async function getContextInfo(model, hostUrlRaw, options = {}) {
     ...(profileMeta?.verifiedInputTokens ? { verifiedInputTokens: profileMeta.verifiedInputTokens } : {}),
     ...(profileMeta?.profiledAt ? { profiledAt: profileMeta.profiledAt } : {}),
     ...(profileMeta?.matchedName ? { matchedName: profileMeta.matchedName } : {}),
+    // The Ollama version the window was measured on (#908), when recorded.
+    ...(profileMeta?.measuredRuntime ? { measuredRuntime: profileMeta.measuredRuntime } : {}),
     ...(maxContextLength ? { maxContextLength } : {})
   };
 

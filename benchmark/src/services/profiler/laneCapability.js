@@ -10,6 +10,8 @@
  * `gaps`, and readiness says "not measured" rather than guessing.
  */
 
+const { normalizeMeasuredRuntime, runtimeVersionDrift } = require('../../../../shared/measuredRuntime');
+
 const SCHEMA = 'agentx.lane-capability/v1';
 const MAX_AGE_DAYS = 30;
 // Minimums for an autonomous coding or report worker step.
@@ -41,7 +43,8 @@ const GAP_TEXT = Object.freeze({
   profile_old: 'The newest measurement is older than 30 days.',
   implausible_values: 'Some recorded values are physically impossible and were ignored.',
   concurrency_unmeasured: 'Speed with other resident models answering at the same time is not measured.',
-  concurrency_evicts: 'This model and a co-resident model did not stay loaded together: one evicted the other.'
+  concurrency_evicts: 'This model and a co-resident model did not stay loaded together: one evicted the other.',
+  runtime_version_unrecorded: 'The profile does not record which Ollama version measured it; it is still used.'
 });
 
 // Why a lane should be measured again. Each proposal is a Full profile the
@@ -49,7 +52,8 @@ const GAP_TEXT = Object.freeze({
 const REMEASURE_TEXT = Object.freeze({
   never_measured: 'This model has never been profiled on this host.',
   model_changed: 'The installed model artifact changed since the last profile.',
-  runtime_changed: 'Ollama, its settings or the host hardware changed since the last profile.',
+  runtime_changed: 'Ollama settings or the host hardware changed since the last profile.',
+  runtime_version_changed: 'The installed Ollama version differs from the one that measured this profile; the profile is still used.',
   profile_old: 'The newest measurement is older than 30 days.',
   recommendations_unverified: 'Context recommendations need a fresh profile.',
   full_missing: 'No Full profile exists yet: quality, agent work and concurrency are unmeasured.'
@@ -142,6 +146,24 @@ function concurrencyCapability(profile) {
   };
 }
 
+/**
+ * Version drift of each piece of evidence in use against the installed
+ * runtime. `measured` is the first recorded version that differs, or null
+ * when only evidence without a recorded version drifts.
+ */
+function laneRuntimeDrift(installed, rows) {
+  const evidence = rows.filter(([, used]) => used)
+    .map(([kind, , runtime]) => ({ kind, drift: runtimeVersionDrift(normalizeMeasuredRuntime(runtime), installed) }))
+    .filter(row => row.drift)
+    .map(row => ({ kind: row.kind, measured: row.drift.measured }));
+  if (!evidence.length) return null;
+  return {
+    measured: evidence.find(row => row.measured)?.measured || null,
+    installed: installed.ollamaVersion,
+    evidence
+  };
+}
+
 function toolAccuracy(agent) {
   return agent.toolChecksTotal > 0 ? (agent.toolChecksCorrect || 0) / agent.toolChecksTotal : 0;
 }
@@ -169,7 +191,7 @@ function readiness({ context, quality, agent }) {
  * @param {string} input.model
  * @param {string} input.hostUrl
  * @param {string|null} [input.hostId]
- * @param {{digest?:string, runtimeFingerprint?:string}|null} [input.artifact] installed identity
+ * @param {{digest?:string, runtimeFingerprint?:string, runtime?:object}|null} [input.artifact] installed identity and runtime
  * @param {object|null} [input.contextProfile] normalized ModelContextProfile for that identity
  * @param {object|null} [input.performanceProfile] active ModelPerformanceProfile document
  * @param {Date} [input.now]
@@ -255,10 +277,19 @@ function buildLaneCapability({
   if (ageDays !== null && ageDays > maxAgeDays) gaps.push('profile_old');
   if (rejected.length) gaps.push('implausible_values');
 
+  // A different Ollama version is a warning, not a different runtime (#908):
+  // the evidence above stays in use and a re-measure is proposed.
+  const runtimeDrift = laneRuntimeDrift(artifact?.runtime, [
+    ['context_profile', ctxProfile, ctxProfile?.measuredRuntime],
+    ['performance_profile', perfMatches ? perf : null, perf?.artifact?.runtime || perf?.profile?.artifact?.runtime]
+  ]);
+  if (runtimeDrift?.evidence.some(row => row.measured === null)) gaps.push('runtime_version_unrecorded');
+
   const reasons = [];
   if (!ctxProfile && !perf) reasons.push('never_measured');
   if (modelChanged) reasons.push('model_changed');
   if (runtimeChanged) reasons.push('runtime_changed');
+  if (runtimeDrift?.measured) reasons.push('runtime_version_changed');
   if (ageDays !== null && ageDays > maxAgeDays) reasons.push('profile_old');
   if (ctxProfile && !recommendationsVerified) reasons.push('recommendations_unverified');
   // A Full profile that ran and failed a check is a result, not a reason to
@@ -281,6 +312,7 @@ function buildLaneCapability({
     agent,
     concurrency,
     remeasure,
+    runtimeDrift,
     readiness: readiness({ context, quality, agent }),
     provenance: {
       contextProfileId: ctxProfile?._id ? String(ctxProfile._id) : null,

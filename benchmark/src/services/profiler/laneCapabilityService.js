@@ -66,7 +66,7 @@ async function capabilityFor({ model, hostUrl, artifact = null }, deps = {}) {
   ]);
   return buildLaneCapability({
     model, hostUrl: host, hostId,
-    artifact: identity ? { digest: identity.digest, runtimeFingerprint: identity.runtimeFingerprint } : null,
+    artifact: identity ? { digest: identity.digest, runtimeFingerprint: identity.runtimeFingerprint, runtime: identity.runtime || null } : null,
     contextProfile, performanceProfile, now: d.now()
   });
 }

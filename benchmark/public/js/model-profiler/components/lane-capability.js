@@ -178,6 +178,18 @@ export function laneWarnings(lane) {
   return warnings;
 }
 
+/**
+ * Ollama version drift (#908): the profile stays in use, and "Measure
+ * tonight" queues the re-measurement.
+ */
+export function renderRuntimeDrift(drift) {
+  if (!drift?.installed) return '';
+  const text = drift.measured
+    ? `Measured on Ollama ${drift.measured}; ${drift.installed} is installed now. The profile is still used; measure again to confirm it.`
+    : `The Ollama version that measured this profile was not recorded; ${drift.installed} is installed now. The profile is still used.`;
+  return `<p class="lc-warning lc-warning--runtime" role="note"><i class="fas fa-code-compare" aria-hidden="true"></i> ${escAttr(text)}</p>`;
+}
+
 export function renderLaneCard(lane, index = 0) {
   const cap = lane?.capability || {};
   const t = cap.throughput || {};
@@ -208,6 +220,7 @@ export function renderLaneCard(lane, index = 0) {
       ${readinessPill('Chat', cap.readiness?.chat)}${readinessPill('Documents', cap.readiness?.documents)}${readinessPill('Coding agent', cap.readiness?.codingAgent)}
     </div>
     ${warnings}
+    ${renderRuntimeDrift(cap.runtimeDrift)}
     ${renderRemeasure(cap.remeasure)}
     <section class="lc-block" aria-label="Context">
       <h4>Context</h4>

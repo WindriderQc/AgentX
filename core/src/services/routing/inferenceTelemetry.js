@@ -221,6 +221,12 @@ function sanitizeInferenceContract(value) {
             qualified: booleanOrNull(value.qualification.qualified),
             stale: booleanOrNull(value.qualification.stale),
             exactArtifact: booleanOrNull(value.qualification.exactArtifact),
+            runtimeDrift: value.qualification.runtimeDrift && typeof value.qualification.runtimeDrift === 'object'
+                ? {
+                    measured: operationalIdentifier(value.qualification.runtimeDrift.measured, 40),
+                    installed: operationalIdentifier(value.qualification.runtimeDrift.installed, 40),
+                }
+                : null,
             source: enumValue(value.qualification.source, new Set(['benchmark_model_profile', 'fallback'])),
         }
         : null;
