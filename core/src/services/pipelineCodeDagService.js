@@ -136,8 +136,23 @@ function findStep(dag, stepId) {
   return step;
 }
 
-function dependenciesVerified(dag, step) {
-  return step.effectiveDependsOn.every((dependencyId) => findStep(dag, dependencyId).state === 'verified');
+function adoptedStepIds(dag) {
+  return new Set(dag.assembly.adoptions.map((adoption) => adoption.stepId));
+}
+
+function currentAssemblyHead(dag) {
+  return dag.assembly.adoptions.length
+    ? dag.assembly.adoptions[dag.assembly.adoptions.length - 1].adoptedCommit
+    : dag.sourceCommit;
+}
+
+function dependenciesReady(dag, step) {
+  const adopted = adoptedStepIds(dag);
+  const frozenStep = dag.plan.steps.find((candidate) => candidate.id === step.id);
+  if (!frozenStep) fail('INVALID_DAG', `${step.id} is missing from the frozen plan`);
+  return frozenStep.effectiveDependsOn.every(
+    (dependencyId) => findStep(dag, dependencyId).state === 'verified' && adopted.has(dependencyId),
+  );
 }
 
 function create(input) {
@@ -185,7 +200,7 @@ function readySet(dag, availableExecutorIds) {
     .filter((executorId) => !busy.has(executorId))
     .sort();
   const candidates = dag.steps.filter((step) =>
-    ['pending', 'failed'].includes(step.state) && step.attempts.length < MAX_ATTEMPTS && dependenciesVerified(dag, step));
+    ['pending', 'failed'].includes(step.state) && step.attempts.length < MAX_ATTEMPTS && dependenciesReady(dag, step));
   const assigned = new Set();
   const assignments = new Map();
   for (const step of candidates.filter((candidate) => candidate.executorId)) {
@@ -227,8 +242,12 @@ function startAttempt(dag, input) {
   expectRevision(dag, input.expectedRevision);
   const next = clone(dag);
   const step = findStep(next, intent.stepId);
-  if (!['pending', 'failed'].includes(step.state) || !dependenciesVerified(next, step)) {
+  if (!['pending', 'failed'].includes(step.state) || !dependenciesReady(next, step)) {
     fail('STEP_NOT_READY', `${step.id} is not ready`);
+  }
+  const expectedBaseCommit = currentAssemblyHead(next);
+  if (intent.baseCommit !== expectedBaseCommit) {
+    fail('BASE_COMMIT_CONFLICT', `${step.id} must start from current assembly head ${expectedBaseCommit}`);
   }
   if (step.attempts.length >= MAX_ATTEMPTS) fail('ATTEMPTS_EXHAUSTED', `${step.id} exhausted its attempts`);
   if (step.executorId && step.executorId !== intent.executorId) {
@@ -404,12 +423,11 @@ function reconcileUnknown(dag, input) {
 
 function adoptionOrder(dag) {
   assertState(dag);
-  if (dag.steps.some((step) => step.state !== 'verified')) fail('DAG_NOT_VERIFIED', 'every step must be verified before assembly');
-  const remaining = new Set(dag.steps.map((step) => step.id));
+  const remaining = new Set(dag.plan.steps.map((step) => step.id));
   const adopted = new Set();
   const order = [];
   while (remaining.size) {
-    const step = dag.steps.find(
+    const step = dag.plan.steps.find(
       (candidate) => remaining.has(candidate.id) && candidate.effectiveDependsOn.every((dependency) => adopted.has(dependency)),
     );
     if (!step) fail('INVALID_DAG', 'step dependency graph contains a cycle');
@@ -441,6 +459,9 @@ function recordAdoption(dag, input) {
   const expectedStepId = order[dag.assembly.adoptions.length];
   if (adoption.stepId !== expectedStepId) fail('ADOPTION_ORDER_CONFLICT', `expected adoption of ${expectedStepId}`);
   const step = findStep(dag, adoption.stepId);
+  if (step.state !== 'verified' || !step.verifiedReceipt) {
+    fail('STEP_NOT_VERIFIED', `${step.id} must be verified before adoption`);
+  }
   if (
     adoption.sourceCommit !== step.verifiedReceipt.commit ||
     adoption.artifactSha256 !== step.verifiedReceipt.artifact.sha256
@@ -462,8 +483,11 @@ function completeAssembly(dag, input) {
   assertState(dag);
   exactObject(input, ['expectedRevision', 'headCommit', 'tests', 'artifact', 'completedAt'], 'input');
   const order = adoptionOrder(dag);
+  if (dag.steps.some((step) => step.state !== 'verified')) {
+    fail('DAG_NOT_VERIFIED', 'every step must be verified before completing assembly');
+  }
   if (dag.assembly.adoptions.length !== order.length) fail('ASSEMBLY_INCOMPLETE', 'not every verified step has been adopted');
-  const expectedHead = dag.assembly.adoptions[dag.assembly.adoptions.length - 1].adoptedCommit;
+  const expectedHead = currentAssemblyHead(dag);
   const pseudoStep = { testTargets: [...new Set(dag.steps.flatMap((step) => step.testTargets))] };
   exactObject(input.artifact, ['id', 'sha256', 'sizeBytes', 'format'], 'artifact');
   if (!Number.isSafeInteger(input.artifact.sizeBytes) || input.artifact.sizeBytes <= 0) fail('INVALID_RECEIPT', 'artifact size must be positive');

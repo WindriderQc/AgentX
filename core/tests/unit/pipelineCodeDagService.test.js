@@ -86,6 +86,19 @@ function settleVerified(dag, requestId, step) {
   });
 }
 
+function assemblyCompletion(expectedRevision, headCommit = ADOPT_TWO) {
+  return {
+    expectedRevision,
+    headCommit,
+    tests: [
+      { target: 'test:one', profile: 'jest/cpu/v1', outcome: 'passed', durationMs: 20 },
+      { target: 'test:two', profile: 'jest/cpu/v1', outcome: 'passed', durationMs: 20 },
+    ],
+    artifact: { id: 'assembled', sha256: FINAL_ARTIFACT, sizeBytes: 256, format: 'git-bundle/v1' },
+    completedAt: T0,
+  };
+}
+
 test('selects a deterministic maximal ready set with distinct executors', () => {
   const dag = createDag();
   expect(service.readySet(dag, ['executor-z', 'executor-a', 'executor-a']))
@@ -116,6 +129,69 @@ test('selects a deterministic maximal ready set with distinct executors', () => 
       { stepId: 'step-01', executorId: 'executor-b' },
       { stepId: 'step-02', executorId: 'executor-a' },
     ]);
+});
+
+test('runs dependency waves from the adopted assembly head', () => {
+  const wavePlan = {
+    schema: SOURCE_PLAN_SCHEMA,
+    summary: 'Two parallel roots followed by their dependent',
+    steps: [
+      ...rawPlan().steps,
+      {
+        id: 'step-03', title: 'Dependent', objective: 'Build on both adopted roots',
+        paths: ['src/three.js'], testTargets: ['test:three'], dependsOn: ['step-01', 'step-02'],
+      },
+    ],
+  };
+  let dag = service.create({
+    pipelineId: '0946', rootRequestId: 'dependency-waves', sourceCommit: SOURCE, plan: wavePlan,
+    reviewedScope: ['src/one.js', 'src/two.js', 'src/three.js'],
+    reviewedLockKeys: ['file:src/one.js', 'file:src/two.js', 'file:src/three.js'],
+    budget: budget(), createdAt: T0,
+  });
+
+  expect(service.adoptionOrder(dag)).toEqual(['step-01', 'step-02', 'step-03']);
+  expect(service.readySet(dag, ['executor-b', 'executor-a', 'executor-c']))
+    .toEqual([
+      { stepId: 'step-01', executorId: 'executor-a' },
+      { stepId: 'step-02', executorId: 'executor-b' },
+    ]);
+  dag = start(dag, 'step-01', 'executor-a', 'wave-request-01').dag;
+  dag = start(dag, 'step-02', 'executor-b', 'wave-request-02').dag;
+  expect(dag.steps[0].attempts[0].baseCommit).toBe(SOURCE);
+  expect(dag.steps[1].attempts[0].baseCommit).toBe(SOURCE);
+
+  dag = settleVerified(dag, 'wave-request-01', 1).dag;
+  dag = service.recordAdoption(dag, {
+    expectedRevision: dag.revision,
+    stepId: 'step-01', sourceCommit: STEP_ONE_COMMIT, parentCommit: SOURCE,
+    adoptedCommit: ADOPT_ONE, artifactSha256: ARTIFACT_ONE, adoptedAt: T0,
+  }).dag;
+  expect(dag.steps[1].state).toBe('running');
+  expect(service.readySet(dag, ['executor-c'])).toEqual([]);
+  expect(() => service.completeAssembly(dag, assemblyCompletion(dag.revision, ADOPT_ONE)))
+    .toThrow(expect.objectContaining({ code: 'DAG_NOT_VERIFIED' }));
+
+  dag = settleVerified(dag, 'wave-request-02', 2).dag;
+  dag = service.recordAdoption(dag, {
+    expectedRevision: dag.revision,
+    stepId: 'step-02', sourceCommit: STEP_TWO_COMMIT, parentCommit: ADOPT_ONE,
+    adoptedCommit: ADOPT_TWO, artifactSha256: ARTIFACT_TWO, adoptedAt: T0,
+  }).dag;
+  expect(service.readySet(dag, ['executor-c']))
+    .toEqual([{ stepId: 'step-03', executorId: 'executor-c' }]);
+  expect(() => service.startAttempt(dag, {
+    expectedRevision: dag.revision,
+    stepId: 'step-03', executorId: 'executor-c', requestId: 'wave-request-03-wrong',
+    baseCommit: SOURCE, budget: budget(10, 10, 10, 1), startedAt: T0,
+  })).toThrow(expect.objectContaining({ code: 'BASE_COMMIT_CONFLICT' }));
+
+  dag = service.startAttempt(dag, {
+    expectedRevision: dag.revision,
+    stepId: 'step-03', executorId: 'executor-c', requestId: 'wave-request-03',
+    baseCommit: ADOPT_TWO, budget: budget(10, 10, 10, 1), startedAt: T0,
+  }).dag;
+  expect(dag.steps[2].attempts[0].baseCommit).toBe(ADOPT_TWO);
 });
 
 test('pins immutable attempt identity, executor, base and budget across replay and retry', () => {
@@ -203,6 +279,8 @@ test('requires terminal commit, test and artifact receipts, then assembles in de
   dag = settleVerified(dag, 'request-01', 1).dag;
   dag = settleVerified(dag, 'request-02', 2).dag;
   expect(service.adoptionOrder(dag)).toEqual(['step-01', 'step-02']);
+  expect(() => service.completeAssembly(dag, assemblyCompletion(dag.revision)))
+    .toThrow(expect.objectContaining({ code: 'ASSEMBLY_INCOMPLETE' }));
 
   expect(() => service.recordAdoption(dag, {
     expectedRevision: dag.revision,
@@ -223,16 +301,7 @@ test('requires terminal commit, test and artifact receipts, then assembles in de
     stepId: 'step-02', sourceCommit: STEP_TWO_COMMIT, parentCommit: ADOPT_ONE,
     adoptedCommit: ADOPT_TWO, artifactSha256: ARTIFACT_TWO, adoptedAt: T0,
   }).dag;
-  const completion = {
-    expectedRevision: dag.revision,
-    headCommit: ADOPT_TWO,
-    tests: [
-      { target: 'test:one', profile: 'jest/cpu/v1', outcome: 'passed', durationMs: 20 },
-      { target: 'test:two', profile: 'jest/cpu/v1', outcome: 'passed', durationMs: 20 },
-    ],
-    artifact: { id: 'assembled', sha256: FINAL_ARTIFACT, sizeBytes: 256, format: 'git-bundle/v1' },
-    completedAt: T0,
-  };
+  const completion = assemblyCompletion(dag.revision);
   dag = service.completeAssembly(dag, completion).dag;
   expect(dag.state).toBe('verified');
   expect(dag.assembly.state).toBe('verified');
