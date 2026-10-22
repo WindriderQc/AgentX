@@ -147,4 +147,3 @@ test.each([
   await expect(f.bridge.prepareCodeStep(inputHeaders, model)).rejects.toMatchObject({ code });
   expect(f.state.startInference).not.toHaveBeenCalled();
 });
-
