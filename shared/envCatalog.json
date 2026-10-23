@@ -1370,6 +1370,26 @@
       "secret": false,
       "description": "Enables shared admission gate state (1, true, yes, on). Unset: off."
     },
+    "GOOGLE_CALENDAR_REMOTE_ROOT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "integration",
+      "secret": false,
+      "description": "Optional product checkout on the Google credential host; falls back to SECRETARY_MAIL_REMOTE_ROOT then CODING_DISPATCHER_REMOTE_ROOT. Contains the bounded Calendar provider, never credentials."
+    },
+    "GOOGLE_CALENDAR_SSH_TARGET": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "integration",
+      "secret": false,
+      "description": "Optional SSH target hosting native gog Google authorization. Falls back to OPENCLAW_INVENTORY_SSH_TARGET; no Google credential is copied into Core."
+    },
     "HEALTH_CHECK_INTERVAL_MS": {
       "services": [
         "core"

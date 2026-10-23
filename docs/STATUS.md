@@ -9,6 +9,14 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 ## On main
 
+- **Personal agenda.** The shared `personal_calendar` tool creates Google Calendar
+  events and actual reminders, once or repeating, through the host's existing
+  native Google authorization. Google owns series and popup delivery; stable
+  request identities reconcile creation. Existing Core personal tasks accept
+  repeating schedules and advance once on occurrence completion. Runtime grants
+  and device notification acceptance remain separate. See
+  [personal calendar](PERSONAL_CALENDAR.md).
+
 - **Content presentation.** Personal Nestor selects pages, Markdown, lists,
   tables, code and images in one content workspace with retained navigation,
   copy, expansion and closure. Analytics' inference overview provides a bounded,
