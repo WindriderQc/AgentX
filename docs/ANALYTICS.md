@@ -125,3 +125,10 @@ viewports, window races, failures, empty activity, stale telemetry, keyboard
 detail access and the demo profile. Run it from the repository with Playwright
 available, or set `AGENTX_PLAYWRIGHT_MODULE` to its installed module path.
 `AGENTX_ANALYTICS_BROWSER_REPORT` selects an out-of-Git screenshot directory.
+
+Benchmark generation and judge calls carry the same bounded
+`workItemId=benchmark-workload/<workload-id>` through Core's existing telemetry.
+Use the existing `/api/analytics/inference/logs?workItemId=…` filter to inspect
+one operation. This links calls without another task store or dashboard panel;
+native workload proof and admission are unchanged. Older rows and calls with
+no valid workload identity remain unlinked.
