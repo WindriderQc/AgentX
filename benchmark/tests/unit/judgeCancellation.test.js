@@ -73,7 +73,8 @@ describe('judge caller cancellation', () => {
             .resolves.toMatchObject({ success: true });
         expect(getWorkloadAdmissionIdentity).toHaveBeenCalledWith('judge-calibration:owned');
         const request = JSON.parse(benchmarkFetch.mock.calls[0][1].body);
-        expect(request).toMatchObject({ ...proof, host: CONFIG.host, callerDetail: 'benchmark-judge' });
+        expect(request).toMatchObject({ ...proof, host: CONFIG.host, callerDetail: 'benchmark-judge',
+            workItemId: 'benchmark-workload/judge-calibration:owned' });
         expect(request.claimGeneration).toBeUndefined();
     });
 

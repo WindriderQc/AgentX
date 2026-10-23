@@ -416,13 +416,15 @@ describe('POST /api/inference/generate — behaviour contract', () => {
           model: 'test-model',
           prompt: 'hello',
           callerDetail: 'benchmark-batch-abc123',
+          workItemId: 'benchmark-workload/abc123',
           workloadAdmissionId: 'workload-admission-abc123',
           workloadGeneration: 'workload-generation-abc123'
         })
         .expect(200);
 
       expect(recordInference.mock.calls[0][0]).toMatchObject({ consumerContract: 'benchmark-service-v1',
-        routeDecision: { attribution: { consumerContract: 'benchmark-service-v1' } } });
+        workItemId: 'benchmark-workload/abc123',
+        routeDecision: { attribution: { consumerContract: 'benchmark-service-v1', workItemId: 'benchmark-workload/abc123' } } });
 
       // Bench/profiler self-sequence per host, but passive tracking is required
       // so a claim snapshot cannot race a direct request already in flight.
