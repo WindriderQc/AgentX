@@ -11,17 +11,12 @@ const { planId, planRef, batchRequest } = require('../../../shared/benchmarkBatc
 const { hostUrlKey } = require('../../../shared/ollamaHostConfig');
 const placement = require('../../../shared/heavyWorkPlacement');
 const { defaultPlanningTimeZone } = require('./planningDateService');
+const { AUTO_START_KINDS, autoStartable } = require('./heavyWorkQueueCapabilities');
+const readModel = require('./heavyWorkQueueReadModel');
 
 const FILE = '/instance/config/QUEUE.md';
 const ACTIVE = ['dispatching', 'running', 'uncertain'];
 const TERMINAL = ['completed', 'failed', 'cancelled'];
-// Kinds whose executor Core can launch itself at a reserved slot. The owner
-// opts in per reservation; every other kind keeps its explicit launch.
-const AUTO_START_KINDS = ['profiler', 'embedding-reindex'];
-/** Whether Core itself can launch this request at its slot. */
-function autoStartable(job) {
-  return Boolean(job.executor) && (AUTO_START_KINDS.includes(job.kind) || job.executor.mode === 'pipeline-report');
-}
 // Bound the singleton below BSON limits. Refuse explicitly; never discard history.
 const MAX_JOBS = 400;
 const WC = { w: 1, j: true };
@@ -280,8 +275,11 @@ async function list() {
   const state = await Queue.findById('heavy-work').lean();
   if (!state) return null;
   const jobs = [...state.jobs].sort((a, b) => a.priority - b.priority || a.createdAt.localeCompare(b.createdAt));
+  const now = Date.now();
   return { available: true, authority: 'core.heavy-work-queue', scope: 'planned-heavy-work',
-    observedAt: new Date().toISOString(), revision: state.revision, jobs, count: jobs.length,
+    observedAt: new Date(now).toISOString(), revision: state.revision,
+    jobs: jobs.map(job => readModel.project(job, { now })), count: jobs.length,
+    summary: readModel.summarize(jobs, { now }),
     archivedCount: await Archive.countDocuments(),
     legacy: state.legacy ? { sha256: state.legacy.sha256, migratedAt: state.legacy.migratedAt, frozen: true } : null };
 }

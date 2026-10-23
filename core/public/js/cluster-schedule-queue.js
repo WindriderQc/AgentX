@@ -3,8 +3,6 @@ let heavyQueuePage = 0;
 let heavyQueueData = null;
 let heavyQueueView = 'active';
 const HEAVY_QUEUE_API = '/api/cluster/schedule/work-queue';
-// Kinds Core launches itself at their slot (Run now, or the owner's automatic start).
-const CORE_LAUNCHED_KINDS = ['profiler', 'embedding-reindex'];
 
 async function loadHeavyQueue() {
   const container = document.getElementById('heavyQueueList');
@@ -68,16 +66,25 @@ function renderCoreHeavyQueue(container, queue) {
     <button type="button" class="cs-queue-button" data-queue-action="finished" aria-pressed="${heavyQueueView === 'finished'}">Terminées · ${finished.length}</button></div>
     <a class="cs-queue-export" href="${HEAVY_QUEUE_API}/export" title="${Number(queue.archivedCount || 0)} archivées">Exporter</a></div>`;
   html += '<div class="cs-queue-note">Demandes de Nestor et des sessions de code. Créneaux estimés ; Core vérifie la disponibilité au lancement.</div>';
+  if (queue.observedAt) html += `<div class="cs-queue-note">Lecture : ${esc(formatEvidenceTime(queue.observedAt))}. Le lancement revérifie les conditions.</div>`;
+  if (queue.summary) {
+    const counts = queue.summary.counts;
+    html += `<div class="cs-next-meta cs-queue-summary" aria-label="Suite des demandes">
+      <span>En file automatique · ${Number(counts.automatic_queue)}</span>
+      <span>En attente d’action · ${Number(counts.action_required)}</span>
+      <span>Acheminement · ${Number(counts.dispatching)}</span>
+      <span>Exécution enregistrée · ${Number(counts.running)}</span>
+      <span>À vérifier · ${Number(counts.uncertain) + Number(counts.unknown)}</span></div>`;
+    html += `<div class="cs-queue-note">${Number(queue.summary.reservations.total)} créneau(x) réservé(s), comptés séparément du mode de démarrage.</div>`;
+  }
   html += jobs.slice(heavyQueuePage * size, (heavyQueuePage + 1) * size).map(job => {
     const editable = ['requested', 'reserved'].includes(job.state);
     const active = ['dispatching', 'running', 'uncertain'].includes(job.state);
-    const expired = job.state === 'reserved' && Date.parse(job.reservation.end) <= Date.now();
+    const view = job.presentation;
+    const expired = editable && view?.schedule.state === 'expired';
     const overrun = active && job.reservation && Date.parse(job.reservation.end) < Date.now();
-    const launchable = CORE_LAUNCHED_KINDS.includes(job.kind) && Boolean(job.executor);
-    const now = Date.now();
-    const runnable = launchable && job.state === 'reserved' && Date.parse(job.reservation.start) <= now
-      && now < Date.parse(job.reservation.end) && (!job.startBefore || now < Date.parse(job.startBefore));
-    const state = expired ? 'window expired' : job.state;
+    const runnable = view?.capabilities.runNow === true;
+    const state = view?.label || 'État à actualiser';
     const hosts = job.hosts.length ? queueHostLabels(job.hosts) : (job.legacyRow?.hosts || 'Hosts need review');
     return `<article class="cs-next-item cs-queue-item" data-queue-id="${esc(job.id)}">
       <div>
@@ -87,11 +94,13 @@ function renderCoreHeavyQueue(container, queue) {
         </div>
         <div class="cs-next-meta"><span class="cs-source-chip cadence">P${Number(job.priority)}</span><span>${esc(job.kind)}</span><span aria-hidden="true">·</span><span title="${esc(job.hosts.join(', '))}"><i class="fas fa-server" aria-hidden="true"></i> ${esc(hosts)}</span></div>
         ${job.reservation ? `<div class="cs-next-meta cs-queue-time" title="${esc(formatEvidenceTime(job.reservation.start))} → ${esc(formatEvidenceTime(job.reservation.end))}"><i class="far fa-clock" aria-hidden="true"></i> ${esc(queueWindowText(job.reservation.start, job.reservation.end))} (estimated)${job.reservation.when === 'asap' ? ' · as soon as possible' : job.reservation.when === 'tonight' ? ' · tonight' : ''}</div>` : ''}
-        ${job.state === 'reserved' && !expired ? `<div class="cs-queue-start${job.reservation.autoStart ? ' is-auto' : ''}">${job.reservation.autoStart
-          ? '<i class="fas fa-play-circle" aria-hidden="true"></i> Starts automatically at its time'
-          : launchable ? '<i class="fas fa-hand-pointer" aria-hidden="true"></i> Waits for you: use Run now during its slot' : '<i class="fas fa-terminal" aria-hidden="true"></i> Started by its own executor'}</div>` : ''}
+        ${view ? `<div class="cs-queue-start${view.phase === 'automatic_queue' ? ' is-auto' : ''}">
+          <span>${esc(view.nextAction.detail)}</span> <span class="cs-queue-note">Responsable : ${esc({ core: 'Core (automatique)', operator: 'opérateur', native_executor: 'exécuteur actuel', none: 'aucune action requise' }[view.nextAction.actor] || view.nextAction.actor)}</span></div>`
+          : '<div class="cs-queue-note">Actualisez les données Core pour connaître la prochaine action.</div>'}
+        ${expired && editable ? '<div class="cs-queue-note cs-queue-warn">window expired · revoir la fenêtre autorisée</div>' : ''}
         ${overrun ? '<div class="cs-queue-note cs-queue-warn">Past estimated end; waiting for an executor and release receipt.</div>' : ''}
         <details class="cs-queue-more"><summary>Détails</summary>
+          <div class="cs-next-meta">État enregistré : ${esc(job.state)} · Démarrage : ${esc(view?.startMode || 'unknown')}</div>
           ${job.reason ? `<p class="cs-queue-reason">${esc(job.reason)}</p>` : ''}
           <div class="cs-next-meta">Source : ${esc(job.source.type)} ${esc(job.source.ref || '')} ${esc(job.source.taskId || '')}</div>
           ${job.source.issueUrl ? `<a href="${esc(job.source.issueUrl)}" target="_blank" rel="noopener">GitHub issue</a>` : ''}
@@ -177,7 +186,7 @@ function openQueueReservation(job) {
   form.elements.start.value = localInput(job.reservation?.start);
   form.elements.priority.value = job.priority;
   const auto = form.querySelector('[data-queue-auto]');
-  const launchable = CORE_LAUNCHED_KINDS.includes(job.kind) && Boolean(job.executor);
+  const launchable = job.presentation?.capabilities.configureAutoStart === true;
   auto.hidden = !launchable;
   form.elements.autoStart.checked = launchable && (job.reservation ? job.reservation.autoStart === true : true);
   dialog.querySelector('[data-queue-title]').textContent = job.title;

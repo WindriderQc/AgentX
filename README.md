@@ -141,6 +141,8 @@ and the Data Toolbox world map geometry [its own](core/surfaces/data-toolbox/pub
 [Operational screens](docs/OPERATOR_UI.md) explains Pipeline admission conditions,
 Nerve Center GPU residency and Profiler runtime continuity, with links to their
 operator procedures.
+[Work lifecycle](docs/WORK_LIFECYCLE.md) explains when to use personal tasks,
+Pipeline, GitHub issues and resource requests, and how to interpret their outcomes.
 
 The existing information levels are reused across Core and RAG. Personal Nestor
 is intended to consult the owner's full information; family/child surfaces keep

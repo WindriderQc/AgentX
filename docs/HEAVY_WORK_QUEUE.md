@@ -75,6 +75,11 @@ Preflight/preparation that invokes a model is itself heavy work.
 
 ## State, recovery and history
 
+The shared [work lifecycle](WORK_LIFECYCLE.md) defines task/issue routing and
+the read-only `presentation`/`summary` contract. Automatic queue, action required,
+execution and uncertainty have complete separate phase counts; reserved slots
+remain an independent dimension. Reads never grant permission or probe activity.
+
 `requested → reserved → dispatching → running → completed/failed/cancelled`.
 Ambiguous effects become `uncertain`. Intent is immutable. Submission keys replay
 the same identity; changed content under a used key refuses. Edits need the

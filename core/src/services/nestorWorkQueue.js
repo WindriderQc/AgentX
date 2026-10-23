@@ -2,7 +2,8 @@
 const queue = require('./heavyWorkQueueService');
 const notifications = require('./heavyWorkQueueNotifications');
 const { fail } = require('./heavyWorkQueueContract');
-const view = job => ({ authority: 'core.heavy-work-queue', ...Object.fromEntries(['id', 'key', 'title', 'kind', 'state', 'revision', 'hosts', 'estimatedMinutes',
+const readModel = require('./heavyWorkQueueReadModel');
+const view = (job, options) => ({ authority: 'core.heavy-work-queue', presentation: readModel.presentation(job, options), ...Object.fromEntries(['id', 'key', 'title', 'kind', 'state', 'revision', 'hosts', 'estimatedMinutes',
   'notBefore', 'startBefore', 'reservation', 'source', 'operation', 'releaseReceipt', 'reason', 'createdAt', 'updatedAt', 'archived']
   .filter(key => job[key] !== undefined).map(key => [key, job[key]])) });
 async function operate(body, actor = 'nestor') {
@@ -30,6 +31,7 @@ async function operate(body, actor = 'nestor') {
   if (!state) throw fail('Core queue is not active; migration required', 409);
   const counts = state.jobs.reduce((result, job) => ({ ...result, [job.state]: (result[job.state] || 0) + 1 }), {});
   return { authority: state.authority, counts, count: state.count, archivedCount: state.archivedCount,
-    offset, limit, jobs: state.jobs.slice(offset, offset + limit).map(view), observedAt: state.observedAt };
+    summary: state.summary, offset, limit,
+    jobs: state.jobs.slice(offset, offset + limit).map(job => view(job, { now: Date.parse(state.observedAt) })), observedAt: state.observedAt };
 }
 module.exports = { operate, view };

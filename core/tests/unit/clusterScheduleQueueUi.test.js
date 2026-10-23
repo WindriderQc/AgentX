@@ -1,6 +1,7 @@
 'use strict';
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const source=fs.readFileSync(path.join(__dirname,'../../public/js/cluster-schedule-queue.js'),'utf8');
+const readModel=require('../../src/services/heavyWorkQueueReadModel');
 function request(id,state,extra={}) {
   return {id,title:id,state,priority:5,kind:'diagnostic',hosts:['native-host'],source:{type:'coding'},
     createdAt:'2026-10-01T00:00:00Z',...extra};
@@ -8,7 +9,9 @@ function request(id,state,extra={}) {
 async function ui(jobs) {
   let click;const container={innerHTML:'',addEventListener:(_name,handler)=>{click=handler;}};
   const writes=jest.fn(()=>{throw Error('Presentation must never launch a native write');});
-  const queue={authority:'core.heavy-work-queue',jobs,archivedCount:4};
+  const now=Date.now();
+  const queue={authority:'core.heavy-work-queue',jobs:jobs.map(job=>readModel.project(job,{now})),
+    summary:readModel.summarize(jobs,{now}),archivedCount:4};
   const context=vm.createContext({document:{getElementById:id=>id==='heavyQueueList'?container:null,querySelector:()=>null},
     fetchJSON:async()=>queue,fetch:writes,formatEvidenceTime:value=>value,
     esc:value=>String(value??'').replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;'),console});
@@ -37,8 +40,25 @@ test('finished requests remain available with latest receipts first and active w
 test('pagination covers all pending requests and a view switch resets the page',async()=>{
   const view=await ui([...Array.from({length:12},(_,i)=>request('pending-'+i,'requested')),request('receipt','completed')]);
   expect(view.ids()).toHaveLength(10);await view.click('next');expect(view.ids()).toHaveLength(2);
+  expect(view.container.innerHTML).toContain('En attente d’action · 12');
   await view.click('finished');expect(view.ids()).toEqual(['receipt']);
   await view.click('active');expect(view.ids()).toHaveLength(10);
+  expect(view.writes).not.toHaveBeenCalled();
+});
+
+test('report campaigns use Core capabilities and expired start permission removes automatic status and Run now',async()=>{
+  const open={start:new Date(Date.now()-60000).toISOString(),end:new Date(Date.now()+3600000).toISOString(),autoStart:true};
+  const report={kind:'other',executor:{mode:'pipeline-report',pipelineId:'0123'},reservation:open};
+  const view=await ui([request('report','reserved',report),request('expired-permission','reserved',{
+    ...report,startBefore:new Date(Date.now()-1000).toISOString()})]);
+  const card=id=>view.container.innerHTML.split('<article').find(part=>part.includes(`data-queue-id="${id}"`));
+  expect(card('report')).toContain('En file automatique');
+  expect(card('report')).toContain('data-queue-action="run"');
+  expect(card('expired-permission')).toContain('En attente d’action');
+  expect(card('expired-permission')).not.toContain('data-queue-action="run"');
+  expect(view.container.innerHTML).toContain('En file automatique · 1');
+  expect(view.container.innerHTML).toContain('En attente d’action · 1');
+  expect(view.container.innerHTML).toContain('2 créneau(x) réservé(s)');
   expect(view.writes).not.toHaveBeenCalled();
 });
 test('expired unstarted reservations stay visible without displacing actionable slots',async()=>{

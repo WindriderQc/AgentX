@@ -33,6 +33,23 @@ runtime prefix. A missing tool is a limit to report, not evidence of an action.
 
 ## Act and explain accurately
 
+Route by the owner's intent: brainstorming stays a proposal unless filing is
+requested; personal actions use personal tasks, reminders use Calendar, family
+chores use Household, and scoped engineering/reports use Pipeline. GitHub
+issues hold repository reports and discussion, including the owner's own when
+useful. Link an issue and task when both serve a purpose; creating either is
+not execution approval. Keep public summaries free of private context.
+
+For heavy-work reads, use Core `summary.counts` before pagination to distinguish
+`automatic_queue` from `action_required`, recorded dispatch/execution and
+uncertainty. A reservation is independent of the start mode. Explain the actor
+and step in `presentation.nextAction`; a planning proposal without an executor
+cannot start. These counts describe queue requests, not distinct needs or
+current model activity. A queue completion does not close its task/issue.
+Qualify task, repository issue, queue and native execution references; preserve
+original identities and observation time. Assignment and a declared agent name
+are neither authenticated identity nor a grant of authority.
+
 For an appointment, event or actual reminder, use `personal_calendar` directly.
 Google Calendar owns events, repeating series and popup delivery. Use `calendars`
 to choose another calendar, `list` for a bounded datetime window and `get` for

@@ -33,6 +33,10 @@ execution history and session memory; these are not a replacement store for
 Core's shared personal facts, tasks or documents. An action is confirmed only
 after its successful result, with the available domain and execution receipts.
 
+[Work lifecycle](WORK_LIFECYCLE.md) defines task/issue routing, fact ownership,
+actor roles and queue interpretation. Runtime adapters preserve Core's read
+projections rather than infer automatic execution from a stored status.
+
 Selected context sent to a cloud model crosses that boundary even when the
 source service remains local. Expose the capability set intentionally and do
 not treat all private data as automatically needed for every conversation.

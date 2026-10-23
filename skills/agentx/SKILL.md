@@ -40,6 +40,19 @@ Canonical envelope `{ ok: true, data }` or `{ ok: false, error }`. Older routes 
 
 ## Common reads
 
+Route personal actions to Core personal tasks, notifications to Calendar,
+family chores to Household and engineering/report work to Pipeline. GitHub
+issues hold repository discussion; link them when useful, without copying
+private context. Filing or assignment grants no execution authority. Ideas
+remain proposals unless the owner asks to record a commitment.
+
+Heavy-work list `summary.counts` distinguishes automatic queue, action required,
+recorded dispatch/execution and uncertainty before pagination. Reservations are
+independent counts. Use each `presentation.nextAction` actor and step, not the
+stored state alone. Queue completion does not close its task/issue, and a read
+does not prove current model activity. See the product's
+[work lifecycle](https://github.com/WindriderQc/AgentX/blob/main/docs/WORK_LIFECYCLE.md).
+
 - **Health**: `GET /health`, `/benchmark/health` and `/rag/health`; `GET /api/operations/health`; `GET /api/nerve-center/ecosystem`; `GET /api/nerve-center/inference-health`.
 - **Hosts and models**: `GET /api/models/cluster-summary` (what is loaded and pinned on each host), `/api/models/all`, `/api/models/registry` (filters: category, tag, vendor, status), `/api/ollama-hosts`.
 - **Routing**: `GET /api/router/config` (which model and host serve each task type).

@@ -45,7 +45,7 @@ router.get('/export', async (_req, res) => {
     res.type('text/markdown').set('Content-Disposition', 'attachment; filename="QUEUE.md"').send(markdown);
   } catch { res.status(503).json({ ok: false, message: 'Queue export unavailable' }); }
 });
-router.get('/:id', wrap(req => queue.get(req.params.id)));
+router.get('/:id', wrap(async req => require('../src/services/heavyWorkQueueReadModel').project(await queue.get(req.params.id))));
 // "When" choices (#878): Core picks the slot. GET previews, POST reserves.
 router.get('/:id/place', wrap(req => queue.preview(req.params.id, { when: req.query.when, at: req.query.at })));
 router.post('/:id/place', wrap(req => queue.place(req.params.id, req.body, actor(req))));
