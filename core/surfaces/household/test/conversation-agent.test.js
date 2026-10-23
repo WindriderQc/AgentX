@@ -111,7 +111,7 @@ test('one native session owns tools and history; presentation and model remain i
   const requests = [], starts = [], deltas = [];
   const client = createAgentClient({ env, continuity: async req => {
     assert.equal(req.runId, runId); assert.equal(req.sessionKey, sessionKeyFor(session));
-    return { answer: answer('Trouvé.'), run: { model: 'local', provider: 'ollama' }, receipts: [{ tool: 'agentx__rag_search', observed: true }] };
+    return { answer: answer('Trouvé.'), run: { model: 'local', provider: 'ollama' }, receipts: [{ tool: 'agentx__rag_search', observed: true }], toolChecks: { status: 'observed', runId, completedTools: ['agentx__rag_search'], loop: null } };
   }, fetchImpl: async (url, options) => {
     requests.push({ url, options, body: JSON.parse(options.body) });
     return { ok: true, body: (async function* () {
@@ -125,6 +125,7 @@ test('one native session owns tools and history; presentation and model remain i
   const first = await client(call);
   assert.equal(first.text, 'Trouvé.'); assert.deepEqual(deltas, ['Trouvé.']);
   assert.equal(first.tools.receipts[0].tool, 'agentx__rag_search');
+  assert.deepEqual(first.tools.toolChecks.completedTools, ['agentx__rag_search']);
   assert.equal(requests[0].url.pathname, '/v1/responses');
   assert.equal(requests[0].body.model, 'openclaw/main');
   assert.equal(requests[0].body.input.length, 2);

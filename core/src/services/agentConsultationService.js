@@ -22,7 +22,21 @@ function createConsultations({ conversations, execute, observe, env = process.en
     ...(row.consultation.state === 'completed' ? { resultAvailable: true } : {}),
     instruction: 'Poll this same requestId. Never launch a replacement for a running or uncertain request.' });
   async function result(row) {
-    const turn = await conversations.getTurn({ ...query(row.sessionId), traceId: row.consultation.requestId });
+    let turn = await conversations.getTurn({ ...query(row.sessionId), traceId: row.consultation.requestId });
+    if (turn && !turn.toolEvidence?.toolChecks && row.consultation.runId) {
+      try {
+        const native = await observe({ operation: 'turn', sessionKey: row.consultation.sessionKey, runId: row.consultation.runId });
+        if (native.ok === true && native.authority === 'openclaw.nestor' && native.operation === 'turn'
+          && native.run?.sessionKey === row.consultation.sessionKey && native.run.runId === row.consultation.runId
+          && native.run.status === 'completed' && native.toolChecks?.status === 'observed'
+          && native.toolChecks.runId === row.consultation.runId && Array.isArray(native.toolChecks.completedTools)) {
+          // Supplement old results from the exact native transcript. Never
+          // promote an unknown domain receipt into a verified business result.
+          turn = await conversations.updateTurn({ ...query(row.sessionId), traceId: row.consultation.requestId },
+            { $set: { toolEvidence: { ...turn.toolEvidence, toolChecks: native.toolChecks } } }) || turn;
+        }
+      } catch { /* A native outage does not hide the retained original answer. */ }
+    }
     return { ...view(row), ...(turn ? { answer: turn.replyText, evidence: turn.toolEvidence } : {}) };
   }
   async function complete(row, answer, evidence) {
@@ -74,7 +88,7 @@ function createConsultations({ conversations, execute, observe, env = process.en
       if (receipt.run.status === 'completed' && receipt.answer?.runId === runId && receipt.answer.status === 'ready'
         && receipt.answerObservation === undefined) {
         await complete(row, receipt.answer.text, { authority: `openclaw/${row.agentId}`, runId,
-          run: receipt.run, receipts: receipt.receipts || [] });
+          run: receipt.run, receipts: receipt.receipts || [], toolChecks: receipt.toolChecks || null });
         return result(await conversations.getSession(query(row.sessionId)));
       }
       if (receipt.run.status === 'failed') {
