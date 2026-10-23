@@ -13,6 +13,7 @@ const {
 } = require('../../clients/serviceOutboundClient');
 const crypto = require('crypto');
 const logger = require('../../../config/logger');
+const { memoryFactProjection } = require('../../../../shared/memoryFactMetadata');
 
 const QDRANT_TIMEOUT = SERVICE_OUTBOUND_TIMEOUTS[
   SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_COLLECTION_READ
@@ -20,7 +21,7 @@ const QDRANT_TIMEOUT = SERVICE_OUTBOUND_TIMEOUTS[
 const DOCUMENT_METADATA_FIELDS = [
   'documentId', 'source', 'tags', 'sourceIdentity', 'sourceIdentityKind',
   'contentHash', 'identityVersion', 'chunkSize', 'chunkOverlap', 'scope', 'sensitivity',
-  'format', 'title'
+  'format', 'title', 'validFrom', 'recordedAt', 'sourceRefs'
 ];
 const METADATA_PAGE_SIZE = 1000;
 // Facts every point of one stored revision shares. Points that disagree mean
@@ -43,7 +44,7 @@ const PAYLOAD_INDEXES = Object.freeze({
   aliases: 'keyword',
   text: TEXT_INDEX_SCHEMA
 });
-const KEYWORD_RESULT_FIELDS = ['text', 'chunkIndex', 'documentId', 'source', 'scope', 'sensitivity', 'title'];
+const KEYWORD_RESULT_FIELDS = ['text', 'chunkIndex', 'documentId', 'source', 'scope', 'sensitivity', 'title', 'validFrom', 'recordedAt', 'sourceRefs'];
 
 class QdrantVectorStore extends VectorStoreAdapter {
   constructor(config = {}) {
@@ -298,6 +299,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
       documentId,
       source: payload.source,
       tags: payload.tags,
+      ...memoryFactProjection(payload),
       ...(payload.scope ? { scope: payload.scope, sensitivity: payload.sensitivity } : {}),
       hash: payload.hash,
       ...(payload.sourceIdentity ? { sourceIdentity: payload.sourceIdentity } : {}),
@@ -328,6 +330,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
             documentId: docId,
             source: pt.payload.source,
             tags: pt.payload.tags,
+            ...memoryFactProjection(pt.payload),
             ...(pt.payload.scope ? { scope: pt.payload.scope, sensitivity: pt.payload.sensitivity } : {}),
             ...(pt.payload.sourceIdentity ? { sourceIdentity: pt.payload.sourceIdentity } : {}),
             ...(pt.payload.sourceIdentityKind ? { sourceIdentityKind: pt.payload.sourceIdentityKind } : {}),

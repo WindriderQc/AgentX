@@ -52,6 +52,59 @@ describe('RagStore (in-memory, mocked embeddings)', () => {
     expect(result.status).toBe('created');
   });
 
+  test('late-reported facts retain validity, first recording time and provenance through search, edits and retries', async () => {
+    const validFrom = '2026-01-05T00:00:00.000Z';
+    const sourceRefs = [{ system: 'memory-review', id: 'synthetic-run:synthetic-candidate' }];
+    const metadata = { documentId: 'dated', source: 'agent-artifacts', validFrom, sourceRefs };
+    const before = Date.now();
+    await store.upsertDocumentWithChunks('Synthetic backup moved to B', metadata);
+    const first = await store.getDocument('dated');
+    expect(first).toMatchObject({ validFrom, sourceRefs });
+    expect(Date.parse(first.recordedAt)).toBeGreaterThanOrEqual(before);
+    await expect(store.upsertDocumentWithChunks('Synthetic backup moved to B', metadata)).resolves.toMatchObject({ unchanged: true });
+    expect(store.embeddingsService.embedBatch).toHaveBeenCalledTimes(1);
+    await store.upsertDocumentWithChunks('Synthetic backup moved to B, clarified', { documentId: 'dated', source: 'agent-artifacts' });
+    expect(await store.getDocument('dated')).toMatchObject({ validFrom, sourceRefs, recordedAt: first.recordedAt });
+    const hits = await store.searchSimilarChunks('backup');
+    expect(hits[0].metadata).toMatchObject({ validFrom, sourceRefs, recordedAt: first.recordedAt });
+  });
+
+  test('a same-text metadata correction is persisted; automatic dedup cannot collapse different fact dates', async () => {
+    const sourceRefs = [{ system: 'memory-review', id: 'run:candidate' }];
+    await store.upsertDocumentWithChunks('Synthetic date correction', { documentId: 'date-correction', source: 'agent-artifacts' });
+    await store.upsertDocumentWithChunks('Synthetic date correction', { documentId: 'date-correction', source: 'agent-artifacts',
+      validFrom: '2026-01-05T09:00:00+01:00', sourceRefs });
+    expect(await store.getDocument('date-correction')).toMatchObject({ validFrom: '2026-01-05T08:00:00.000Z', sourceRefs });
+    await store.upsertDocumentWithChunks('Synthetic automatic date', { source: 'memory', validFrom: '2026-01-05T00:00:00Z' });
+    await expect(store.upsertDocumentWithChunks('Synthetic automatic date', { source: 'memory', validFrom: '2026-01-09T00:00:00Z' }))
+      .rejects.toMatchObject({ code: 'MEMORY_FACT_METADATA_CONFLICT' });
+  });
+
+  test('legacy recording/validity remain unknown and migration preserves the original recording time', async () => {
+    await store.vectorStore.upsertDocument('legacy', { source: 'agent-artifacts' }, [{ text: 'Old synthetic fact', chunkIndex: 0, embedding: mockEmbedding }]);
+    // In-memory's createdAt is an adapter timestamp; omit it to model an old
+    // Qdrant payload, which had no persisted recording time.
+    delete store.vectorStore.documents.get('legacy').createdAt;
+    await store.upsertDocumentWithChunks('Old synthetic fact revised', { documentId: 'legacy', source: 'agent-artifacts' });
+    expect(await store.getDocument('legacy')).toMatchObject({ validFrom: null, recordedAt: null });
+    await store.upsertDocumentWithChunks('Copied synthetic fact', { documentId: 'copied', source: 'memory',
+      recordedAt: '2025-12-01T00:00:00Z', validFrom: '2025-11-01T00:00:00Z', restoreFactMetadata: true });
+    expect(await store.getDocument('copied')).toMatchObject({ recordedAt: '2025-12-01T00:00:00.000Z', validFrom: '2025-11-01T00:00:00.000Z' });
+    await expect(store.upsertDocumentWithChunks('Invalid synthetic fact', { validFrom: 'yesterday' })).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  test('an internal migration restores metadata exactly even on a same-text automatic identity', async () => {
+    const meta = { source: 'memory', validFrom: '2026-01-05T00:00:00Z', sourceRefs: [{ system: 'memory-review', id: 'old' }] };
+    const { documentId } = await store.upsertDocumentWithChunks('Synthetic migrated fact', meta);
+    const restored = { ...meta, validFrom: '2025-11-01T00:00:00Z', recordedAt: null,
+      sourceRefs: [{ system: 'memory-review', id: 'source' }], forceReindex: true, restoreFactMetadata: true };
+    await store.upsertDocumentWithChunks('Synthetic migrated fact', restored);
+    expect(await store.getDocument(documentId)).toMatchObject({ validFrom: '2025-11-01T00:00:00.000Z', recordedAt: null,
+      sourceRefs: restored.sourceRefs });
+    await store.upsertDocumentWithChunks('Synthetic migrated fact', { source: 'memory', forceReindex: true });
+    expect((await store.getDocument(documentId)).recordedAt).toBeNull();
+  });
+
   test.each(['EMBEDDING_INPUT_TOO_LARGE', 'EMBEDDING_INPUT_REJECTED'])(
     'a refused %s update keeps the complete previous revision', async (code) => {
       const metadata = { source: 'synthetic', documentId: 'preserved', chunkSize: 50, chunkOverlap: 0 };

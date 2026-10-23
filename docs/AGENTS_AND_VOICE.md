@@ -358,6 +358,27 @@ the timeline's marks do not.
   stateless transcription and synthesis there; without a qualified backup,
   losing the speech host leaves server voice unavailable.
 
+## Recognition while the person speaks
+
+Surfaces offering local early recognition use whole-prefix snapshots while the
+microphone remains live: at most once every two seconds during the first fifteen
+seconds, then at a 200 ms pause. Longer utterances keep every captured sample and
+use the final pause; the snapshot limit never cuts the submitted request. The
+ordinary one-second end-of-turn silence remains unchanged.
+
+Only one speculative HTTP recognition runs, with the latest pending snapshot
+replacing older waiting audio. Resumed speech invalidates its coverage without
+starting a parallel replacement decoder. A snapshot is reusable only if it
+covers the final detected speech; its text never starts a conversation or tool
+before turn completion. Failures fall through to the complete recording. Stop
+and interruption detection retain their separate control path. Ending capture
+cancels active and waiting speculation.
+
+The speech worker releases each generated prefix immediately and retains only
+forty milliseconds for its final fade, rather than waiting for the next complete
+model chunk. Lead-in protection, final silence, complete sample totals and native
+cancellation remain part of the audio contract.
+
 ## Measure the path that the person experiences
 
 | Evidence | Measures | Limitation |
@@ -381,6 +402,15 @@ Unreported phases stay absent rather than becoming zero. Prefix observations
 apply to instrumented OpenClaw/Hermes calls; they are not universal direct-lane
 traces. Household persists timing by the browser's turn id within its session;
 PsyX has no timing store/adapter and does not collect that timeline.
+
+The browser also records first speakable clause, speech request dispatch, speech
+response headers, first response bytes and an estimated first nonzero output
+sample. The estimate includes in-frame silence, playback speed, queued audio and
+browser-reported base/output latency. These are browser observations, not isolated
+GPU durations or acoustic arrival. Missing values remain unknown. The workflow
+view separates these intervals and includes endpoint silence in the reply estimate;
+holding announcements never complete that timer. Browser timing uses a monotonic
+clock when available.
 
 When the recognizer reports it, Household also keeps `voiceTimings.recognition`
 on that same canonical turn: the native request ID, requested/decoded languages

@@ -40,6 +40,13 @@ const contentGuard = require('./contentGuard');
 const { MemoryReviewError } = policy;
 const APPLY_LEASE_MS = 5 * 60 * 1000;
 
+function factMetadata(run, candidate) {
+  return {
+    validFrom: candidate.temporal?.validFrom ? new Date(candidate.temporal.validFrom).toISOString() : null,
+    sourceRefs: [{ system: 'memory-review', id: `${run.runId}:${candidate.candidateId}` }],
+  };
+}
+
 function effectiveStatement(candidate) {
   return candidate.review?.editedStatement || candidate.statement;
 }
@@ -68,6 +75,7 @@ async function applySharedFact(run, candidate, deps) {
     kind: NOTE_KINDS[candidate.type] || 'fact',
     source: 'memory-review',
     sensitivity: candidate.sensitivity,
+    ...factMetadata(run, candidate),
   });
   return {
     result: `owner note ${note.id} ${note.created ? 'created' : note.changed ? 'updated' : 'already held this sentence'}`,
@@ -111,6 +119,7 @@ async function applySoftMemory(run, candidate, deps) {
   ];
   const result = await client.upsertDocumentWithChunks(text, {
     source: 'agentx-working-memory',
+    ...factMetadata(run, candidate),
     scope: candidate.scope,
     sensitivity: candidate.sensitivity,
     documentId,
@@ -147,6 +156,7 @@ async function applyArtifact(run, candidate, deps) {
   contentGuard.assertReviewSafe(text, 'artifact body');
   const result = await client.upsertDocumentWithChunks(text, {
     source: 'agent-artifacts',
+    ...factMetadata(run, candidate),
     scope: candidate.scope,
     sensitivity: candidate.sensitivity,
     documentId,

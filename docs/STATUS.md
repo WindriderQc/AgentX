@@ -107,6 +107,7 @@ Instance configuration, data and deployment receipts remain outside Git.
   Playground, PsyX, personal Nestor and Famille. Their shared editor explains
   resource effects, offers presets and requires an explicit save; Famille
   controls live in the parental space.
+- **Optional Hermes conversation.** Personal Nestor can use Hermes behind the existing local voice and reactive avatar. Core keeps dispatch identity, transcript and terminal receipts; native cancellation and uncertain results remain fenced. Family and LLMx exclude this backend. See [Hermes conversation](HERMES_CONVERSATION.md).
 - **Nestor guardian and brain.** Optional personal voice work commits the human
   request before inference. Native mode sends all work to complete Main with its
   installed tools, memory, specialists and approval contracts while the guardian
@@ -146,6 +147,8 @@ Instance configuration, data and deployment receipts remain outside Git.
   on `/mcp` share the same owner notes; sensitive identifiers leave note and
   journal text for the vault when its key is set. Agents file Markdown notes
   into the owner's vault inbox when the instance names one.
+  Reviewed notes and RAG memory documents retain fact validity separately from
+  recording time and keep candidate provenance through reads and reindexing.
   Historical source assertions have a separate review at `/dad/history`: source
   dates, event dates, attribution and revision-fenced decisions stay explicit.
   Retaining an action keeps it open; source review creates neither a personal
@@ -173,6 +176,13 @@ Instance configuration, data and deployment receipts remain outside Git.
   voice replies use the same speech boundary; physical device adapters retain
   their own capture and playback. The loop keeps one language per turn, prepares
   clauses ahead and permits one bounded retry after a speech stream failure.
+  Local early recognition overlaps microphone capture through bounded whole-prefix
+  snapshots, with one active recognizer and only the latest waiting audio. Only
+  coverage of the final detected speech permits reuse. Pocket speech releases
+  generated prefixes while retaining a forty-millisecond final fade window.
+  Browser timings separate first clause, speech dispatch/headers, response bytes
+  and an output estimate including queued silence and reported device latency;
+  these observations do not establish acoustic arrival.
   Household flushes its final clause before turn completion and persists browser
   voice timings; PsyX keeps its protected speech route without a timing store.
   Timed holding phrases are off by default. Conversation and explanations stay

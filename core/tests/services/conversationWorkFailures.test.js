@@ -98,6 +98,61 @@ test('after a failed turn the next page request can complete and projects its ac
   expect(fetchImpl).toHaveBeenCalledTimes(2);
 });
 
+test('a guardian handoff returns Main’s page and speaks its saved answer once through browser receipts', async () => {
+  const text = 'Et cette page ?', turnId = randomUUID();
+  const accepted = await works.intake({ session: current, turnId, text });
+  expect(accepted.row.classification).toBe('native_review');
+  await works.prepare(accepted.row._id, '');
+  await conversations.settleTurn({ ...works.query(current.sessionId), traceId: turnId,
+    replyText: 'Je vais te présenter la page demandée.', outcome: 'completed' });
+  await works.guardianSettled(accepted.row._id, 'completed', 'awaiting_main');
+  fetchImpl.mockImplementationOnce(async (_url, request) => {
+    const runId = 'resp_' + randomUUID(), sessionKey = request.headers['x-openclaw-session-key'];
+    nativeEvidence.set(runId, { run: { runId, sessionKey, status: 'completed' },
+      answer: { runId, status: 'ready', text: 'Voici la page. <show kind="page">analytics</show>' },
+      toolChecks: { status: 'observed', runId, completedTools: [], loop: null }, receipts: [], progress: [] });
+    return { ok: true, body: ['response.created', 'response.completed'].map(type => row({ type, response: { id: runId } })) };
+  });
+  await works.observer.tick();
+  const saved = await works.repo.get(accepted.row._id), delivery = createWorkDelivery(works);
+  expect(saved).toMatchObject({ state: 'completed', classification: 'native_work', delivery: { automaticSpeech: true } });
+  expect((await delivery.snapshot(current.sessionId)).items[0].requestText).toBe(text);
+  class Element {
+    constructor() { this.children = []; this.dataset = {}; }
+    append(...nodes) { this.children.push(...nodes); }
+    replaceChildren(...nodes) { this.children = nodes; }
+    setAttribute() {}
+    remove() {}
+    querySelector(selector) { return this.children.find(node => '.' + node.className === selector); }
+  }
+  const priorDocument = global.document, shown = [], stages = [];
+  let resolvePlayback, rejectPlayback, timeout;
+  const playback = new Promise((resolve, reject) => { resolvePlayback = resolve; rejectPlayback = reject; });
+  const interject = jest.fn(async ({ text: spoken }, { onScheduled }) => {
+    expect(spoken).toBe('Voici la page.'); onScheduled(); return true;
+  });
+  global.document = { createElement: () => new Element() };
+  const feed = require('../../surfaces/household/public/conversation-work').create({ host: new Element(), base: '/sessions',
+    pollMs: 60000, getConversation: () => ({ session: { sessionId: current.sessionId }, state: 'listening', interject }),
+    onShow: block => shown.push(block),
+    api: async (url, options) => {
+      if (options?.method !== 'POST') return delivery.snapshot(current.sessionId, new URL(url, 'http://fixture').searchParams.get('cursor'));
+      const body = JSON.parse(options.body); stages.push(body.stage);
+      const result = await delivery.receipt(current.sessionId, saved.delivery.id, body);
+      if (body.stage === 'completed') resolvePlayback();
+      return result;
+    } });
+  try {
+    timeout = setTimeout(() => rejectPlayback(Error('Saved Main result was not presented')), 5000);
+    feed.follow(current.sessionId); await playback; await feed.poll(); await feed.naturalPause();
+    expect(shown).toEqual([expect.objectContaining({ kind: 'page', body: 'analytics' })]);
+    expect(stages).toEqual(['displayed', 'claim', 'started', 'completed']);
+    expect(interject).toHaveBeenCalledTimes(1);
+    expect((await works.repo.get(saved._id)).delivery.state).toBe('completed');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  } finally { clearTimeout(timeout); feed.dispose(); global.document = priorDocument; }
+});
+
 test.each([undefined, attempt => ({ ...failure(attempt), runId: 'resp_' + randomUUID() }),
   attempt => ({ ...failure(attempt), sessionKey: 'foreign' }), attempt => ({ ...failure(attempt), source: 'model' })])(
   'missing or foreign terminal evidence keeps the original dispatch held', async receipt => {
@@ -108,6 +163,8 @@ test.each([undefined, attempt => ({ ...failure(attempt), runId: 'resp_' + random
     expect((await works.repo.get(saved._id)).state).toBe('uncertain');
     expect((await works.repo.dispatchOwner()).workId).toBe(saved._id);
     expect(await works.nativeAcceptance(next._id)).toMatchObject({ blocked: true, state: 'queued' });
+    const guardianContext = await works.guardianContext(current.sessionId);
+    expect(guardianContext).toContain('"blocked":true');
     expect(await createWorkDelivery(works).snapshot(current.sessionId, 999999))
       .toMatchObject({ items: [], dispatch: { state: 'blocked', reason: 'native_receipt_unverified' } });
   });

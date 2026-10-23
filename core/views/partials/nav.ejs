@@ -43,6 +43,9 @@
     <% } %>
   </nav>
 </div>
+<% if (locals.service === 'core' && locals.agentxProfile === 'full' && locals.familyDevicePinned === false && !locals.familyUnlock) { %>
+  <span class="superdad-badge" role="status" aria-label="SuperDad: full owner access on this browser" title="Full owner access on this browser">SuperDad</span>
+<% } %>
 <% if (locals.familyUnlock) { %>
   <div class="family-unlock-banner" role="status" data-family-unlock-until="<%= familyUnlock.until %>">
     <i class="fas fa-unlock" aria-hidden="true"></i>

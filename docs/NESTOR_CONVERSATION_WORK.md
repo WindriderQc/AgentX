@@ -12,6 +12,19 @@ Core owns acceptance, complete requests, execution metadata, verified task reads
 structured results and presentation receipts. OpenClaw owns the native agent/tool
 loop. Polling the browser projection never starts inference.
 
+The private browser work list identifies each card by the exact canonical human
+request, receipt time and a short work reference. Long requests expand in place.
+It distinguishes waiting, running, paused, failed and unconfirmed execution,
+without implying a completion estimate. The guardian must likewise use received
+Core states and disclose when no completion estimate is supplied. Request controls
+are separate from voice pause, which stops the microphone and playback.
+Pause/resume/cancel keep their existing pre-dispatch ownership and revision
+checks; a native execution has no browser cancel button. A missing or mismatched
+canonical request hides its controls. A lost command response triggers a fresh
+read of that same work, with controls disabled until verification, and never
+resends the mutation. Cancelled requests retain their state on screen. The list
+scrolls independently to keep the dialogue and composer within reach.
+
 ## Contract
 
 Enable `PERSONAL_CONVERSATION_WORK_MODE=native`,
@@ -293,8 +306,9 @@ agent/run identities and tool receipt metadata, never selected context or payloa
 Each snapshot also projects a dispatcher blocked by an unverified execution,
 even when the conversation cursor has no new events. Queued requests and answer
 reviews say they are waiting; acknowledgments disclose that block instead of
-claiming work has started. A received authentication failure states that the
-model provider needs reconnection. Questions about current coding-team activity
+claiming work has started. The guardian's canonical work context carries the
+same blocked status. A received authentication failure describes that attempt's
+refusal without asserting the provider's current credential state. Questions about current coding-team activity
 use the same native Pipeline evidence as explicit Pipeline status questions;
 the guardian cannot establish ongoing work from conversational context alone.
 The conversation map lights the review only after an observed dispatch; a received

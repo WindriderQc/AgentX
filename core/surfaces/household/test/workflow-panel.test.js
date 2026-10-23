@@ -519,7 +519,8 @@ test('long conversations keep a bounded journal and retain all earlier turns and
 });
 
 test('browser projection exposes exact execution IDs without context, payloads or session keys', async () => {
-  const delivery = createWorkDelivery({ repo: { async read() { throw Error('Unexpected payload read'); } } });
+  const delivery = createWorkDelivery({ requestTextForDisplay: async () => 'Synthetic original request',
+    repo: { async read() { throw Error('Unexpected payload read'); } } });
   const projected = await delivery.projection({ _id: 'work-a', turnId: 'turn-a', sessionId: 'session-1',
     state: 'running', revision: 3, sequence: 8, events: [], guardian: { state: 'running',
       sessionKey: 'private-guardian-key', runId: 'resp-guardian' },

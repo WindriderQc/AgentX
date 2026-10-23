@@ -10,9 +10,11 @@ test('memory classification survives the Core-to-RAG HTTP boundary', async () =>
   fetch.mockResolvedValue({ ok: true, text: async () => JSON.stringify({ ok: true, data: {} }) });
   await new RagServiceClient().upsertDocumentWithChunks('Synthetic private note', {
     source: 'nestor-memory', scope: 'private_domain', sensitivity: 'highly_private',
+    validFrom: '2026-01-05T00:00:00Z', sourceRefs: [{ system: 'memory-review', id: 'run:candidate' }],
   });
   expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({
     scope: 'private_domain', sensitivity: 'highly_private',
+    validFrom: '2026-01-05T00:00:00Z', sourceRefs: [{ system: 'memory-review', id: 'run:candidate' }],
   });
 });
 

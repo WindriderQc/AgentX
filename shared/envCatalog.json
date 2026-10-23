@@ -1624,6 +1624,36 @@
       "secret": false,
       "description": "Household conversation engine: auto, agentx or openclaw. auto selects OpenClaw only when its gateway URL and token are set. Unset: auto."
     },
+    "HOUSEHOLD_HERMES_TOKEN": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": true,
+      "description": "Server-only bearer credential for the optional Hermes conversation API. Never sent to the browser."
+    },
+    "HOUSEHOLD_HERMES_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Server-side HTTP origin of the optional Hermes conversation API. Unset disables this engine."
+    },
+    "HOUSEHOLD_PERSONAL_CONVERSATION_BACKEND": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Default engine for new personal Nestor conversations: hermes, openclaw or agentx. Family and existing conversations keep their engine."
+    },
     "HOUSEHOLD_FAMILY_CONVERSATION_BACKEND": {
       "services": [
         "core"

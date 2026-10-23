@@ -114,10 +114,11 @@ describe('migrate-embedding-collection', () => {
     expect(summary.failed).toEqual([]);
     expect(ragStore.upsertDocumentWithChunks).toHaveBeenNthCalledWith(1, '# Four', {
       documentId: 'maison/four.md', source: 'maison', tags: ['maison'], scope: 'household', sensitivity: 'normal',
-      format: 'markdown', chunkSize: 800, chunkOverlap: 80, hash: 'file-hash', forceReindex: true
+      format: 'markdown', chunkSize: 800, chunkOverlap: 80, hash: 'file-hash', forceReindex: true,
+      validFrom: null, recordedAt: null, sourceRefs: [], restoreFactMetadata: true
     });
     expect(ragStore.upsertDocumentWithChunks).toHaveBeenNthCalledWith(2, 'plain text', {
-      source: 'api', tags: ['a'], forceReindex: true
+      source: 'api', tags: ['a'], forceReindex: true, validFrom: null, recordedAt: null, sourceRefs: [], restoreFactMetadata: true
     });
   });
 

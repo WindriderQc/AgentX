@@ -597,7 +597,8 @@ describe('apply gating and adapters', () => {
   });
 
   test('shared_fact adapter writes one owner memory note and duplicate apply is a no-op', async () => {
-    const { runId, candidateId } = await approvedCandidate('test-apply-fact');
+    const validFrom = '2026-01-05T00:00:00.000Z';
+    const { runId, candidateId } = await approvedCandidate('test-apply-fact', {}, { validFrom });
     await authorizeRun(runId);
     const first = await harness.request
       .post(`/api/memory-review/runs/${runId}/candidates/${candidateId}/apply`)
@@ -610,6 +611,7 @@ describe('apply gating and adapters', () => {
     expect(notes).toEqual([expect.objectContaining({
       text: 'Durable fact for test-apply-fact.', kind: 'preference', source: 'memory-review',
       packId: 'personal_operator', scopeId: 'personal', scope: 'owner', sensitivity: 'private', status: 'active',
+      validFrom: new Date(validFrom), sourceRefs: [expect.objectContaining({ system: 'memory-review', id: `${runId}:${candidateId}` })],
     })]);
     const { personal } = require('../../src/services/memoryNoteService');
     expect((await personal().search('durable fact')).notes.map((note) => note.id)).toEqual([String(notes[0]._id)]);
@@ -619,6 +621,7 @@ describe('apply gating and adapters', () => {
       .send({ by: 'operator' }).expect(200);
     expect(second.body.data.alreadyApplied).toBe(true);
     expect(await MemoryNote.countDocuments({})).toBe(1);
+    expect((await MemoryNote.findOne({}).lean()).createdAt).toEqual(notes[0].createdAt);
   });
 
   test('a manually approved highly private fact keeps that label on the note', async () => {
@@ -631,6 +634,16 @@ describe('apply gating and adapters', () => {
     expect(await MemoryNote.find({}).lean()).toEqual([
       expect.objectContaining({ scope: 'owner', sensitivity: 'highly_private', source: 'memory-review' }),
     ]);
+  });
+
+  test('an artifact apply carries source validity and candidate provenance to RAG', async () => {
+    const validFrom = '2026-01-05T00:00:00.000Z';
+    const { runId, candidateId } = await approvedCandidate('test-dated-artifact', { kind: 'artifact' }, { type: 'project_event', validFrom });
+    await authorizeRun(runId);
+    await harness.request.post(`/api/memory-review/runs/${runId}/candidates/${candidateId}/apply`).send({ by: 'operator' }).expect(200);
+    expect(fakeRag.upsertDocumentWithChunks).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+      source: 'agent-artifacts', validFrom, sourceRefs: [{ system: 'memory-review', id: `${runId}:${candidateId}` }],
+    }));
   });
 
   test('concurrent apply attempts acquire only one adapter lease', async () => {
@@ -760,6 +773,7 @@ describe('standing memory policy v2', () => {
         evidenceRefs: [seeded.observationId], confidence: 0.92,
         scope: 'owner', sensitivity: 'normal', impact: 'context_only', stability: 'durable',
         memoryKey: 'owner:communication:concise-answers',
+        validFrom: '2026-01-05T00:00:00.000Z',
       })],
     }).expect(200);
     expect(res.body.data.automation).toEqual(expect.objectContaining({ mode: 'safe', autoApply: 1 }));
@@ -769,7 +783,10 @@ describe('standing memory policy v2', () => {
     expect(doc.candidates[0]).toEqual(expect.objectContaining({ status: 'applied' }));
     expect(doc.candidates[0].apply.automated).toBe(true);
     expect(doc.candidates[0].automation.disposition).toBe('auto_apply');
-    expect(await MemoryNote.find({}).lean()).toEqual([expect.objectContaining({ source: 'memory-review', status: 'active' })]);
+    expect(await MemoryNote.find({}).lean()).toEqual([expect.objectContaining({ source: 'memory-review', status: 'active',
+      validFrom: new Date('2026-01-05T00:00:00.000Z'),
+      sourceRefs: [expect.objectContaining({ system: 'memory-review', id: `${doc.runId}:${doc.candidates[0].candidateId}` })],
+    })]);
   });
 
   test('a recurrent inference is stored automatically as expiring working memory', async () => {
@@ -794,6 +811,7 @@ describe('standing memory policy v2', () => {
         target: { kind: 'soft_memory', runtime: null, topic: 'communication' },
         evidenceRefs: [seeded.observationId], confidence: 0.72,
         scope: 'workflow', sensitivity: 'normal', impact: 'context_only', stability: 'transient',
+        validFrom: '2026-01-05T00:00:00.000Z',
       })],
     }).expect(200);
     expect(res.body.data.automation.softStore).toBe(1);
@@ -802,7 +820,9 @@ describe('standing memory policy v2', () => {
     expect(doc.candidates[0].temporal.expiresAt).toBeTruthy();
     const [, metadata] = fakeRag.upsertDocumentWithChunks.mock.calls[0];
     expect(metadata.source).toBe('agentx-working-memory');
-    expect(metadata).toMatchObject({ scope: 'workflow', sensitivity: 'normal' });
+    expect(metadata).toMatchObject({ scope: 'workflow', sensitivity: 'normal', validFrom: '2026-01-05T00:00:00.000Z',
+      sourceRefs: [{ system: 'memory-review', id: `${doc.runId}:${doc.candidates[0].candidateId}` }],
+    });
     expect(metadata.tags).toEqual(expect.arrayContaining(['status:provisional', 'scope:workflow']));
   });
 

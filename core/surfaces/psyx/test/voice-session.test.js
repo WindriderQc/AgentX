@@ -184,7 +184,7 @@ test('PsyX keeps no voice timeline: the shared loop measures only for a surface 
   h.captured.io.timings = async (_session, turnId, timings) => { sent.push({ turnId, timings }); return {}; };
   await h.say();
   assert.equal(sent.length, 1);
-  assert.deepEqual(Object.keys(sent[0].timings).sort(), ['firstAudio', 'firstDelta', 'interrupted', 'playbackOutcome', 'requestSent', 'sttDone']);
+  assert.deepEqual(Object.keys(sent[0].timings).sort(), ['firstAudio', 'firstClause', 'firstDelta', 'interrupted', 'playbackOutcome', 'requestSent', 'sttDone', 'ttsReady', 'ttsRequested']);
   assert.equal(sent[0].timings.playbackOutcome, 'completed');
   h.context.stopVoiceSession();
 });

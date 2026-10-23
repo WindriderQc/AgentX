@@ -5,6 +5,9 @@
   const spokenPresentation = typeof module !== 'undefined' && module.exports ? require('./spoken-presentation') : root.AgentXSpokenPresentation;
   const PlaybackHold = (typeof module !== 'undefined' && module.exports ? require('./playback-hold') : root.NestorPlaybackHold)?.PlaybackHold;
   const VoiceTimeline = (typeof module !== 'undefined' && module.exports ? require('./voice-timeline') : root.AgentXVoiceTimeline)?.VoiceTimeline;
+  const { Endpoint, SpeculativeRecognition, TURN_END_SILENCE_MS, INTERRUPTION_END_SILENCE_MS, MINIMUM_VOICE_MS,
+    EARLY_RECOGNITION_SILENCE_MS, RECOGNITION_WARM_INTERVAL_MS, MAX_CAPTURE_BYTES } =
+    typeof module !== 'undefined' && module.exports ? require('./voice-capture') : root.AgentXVoiceCapture;
   // Capture while this script is evaluating; currentScript is null once the user opens the microphone.
   const scriptUrl = root.document?.currentScript?.src;
   const captureWorkletUrl = scriptUrl
@@ -174,90 +177,6 @@
     }
   }
 
-  // Bounded energy endpointing: retain a short lead-in, ignore brief clicks,
-  // and finish after silence. This is not a wake-word or speaker recognizer.
-  // A turn ends after one second of silence, so a spoken hesitation ("euh…")
-  // does not cut the sentence; a barge-in over Nestor still ends quickly.
-  const TURN_END_SILENCE_MS = 1000, INTERRUPTION_END_SILENCE_MS = 250;
-  // A short reply must reach the same local speech decoder as an interruption.
-  // Keep isolated clicks below 100 ms out; the server VAD still judges speech.
-  const MINIMUM_VOICE_MS = 100;
-  // Recognition starts halfway through that second, on what was said so far. If the
-  // silence holds, its text is ready when the turn ends; if the person goes on, it is dropped.
-  const EARLY_RECOGNITION_SILENCE_MS = 500;
-  // Recognition measured warm for about a minute after it last ran, and slower after that.
-  const RECOGNITION_WARM_INTERVAL_MS = 45000;
-  // Match the transcription upload ceiling (32 MiB), leaving room for WAV
-  // and multipart headers. Reaching it is an explicit error, never a partial turn.
-  const MAX_CAPTURE_BYTES = 32 * 1024 * 1024 - 64 * 1024;
-  class Endpoint {
-    constructor(rate, minimumVoiceMs = MINIMUM_VOICE_MS, endSilenceMs = TURN_END_SILENCE_MS, threshold = .015) { this.threshold = threshold; this.rate = rate; this.minimumVoiceMs = minimumVoiceMs; this.endSilenceMs = endSilenceMs; this.maxSamples = MAX_CAPTURE_BYTES / 2; this.reset(); }
-    reset() {
-      this.frames = []; this.preRoll = []; this.preSamples = 0;
-      this.voiceSamples = 0; this.silenceSamples = 0; this.total = 0;
-      this.onsetGap = 0;
-      this.speaking = false;
-      this.level = 0;
-      this.earlyId = null; this.earlyTaken = false; this.events = [];
-      this.heard = 0; this.probed = false;
-    }
-    // What happened since the last call: `{ type: 'early', id, samples }` when a pause is
-    // long enough to start recognition, `{ type: 'resumed', id }` when speech went on after it.
-    drain() { const events = this.events; this.events = []; return events; }
-    push(samples) {
-      const energy = Math.sqrt(samples.reduce((sum, n) => sum + n * n, 0) / samples.length);
-      this.level = energy;
-      const voiced = energy >= this.threshold;
-      if (!this.speaking) {
-        this.preRoll.push(samples); this.preSamples += samples.length;
-        while (this.preSamples > this.rate * 0.35 && this.preRoll.length > 1) {
-          this.preSamples -= this.preRoll.shift().length;
-        }
-        if (voiced) { this.voiceSamples += samples.length; this.onsetGap = 0; }
-        else {
-          this.onsetGap += samples.length;
-          // Brief unvoiced consonants must not restart the onset detector.
-          if (this.onsetGap > this.rate * 0.08) this.voiceSamples = 0;
-        }
-        if (this.voiceSamples < this.rate * this.minimumVoiceMs / 1000) return null;
-        this.speaking = true;
-        this.frames = this.preRoll; this.total = this.preSamples;
-        this.preRoll = []; this.preSamples = 0;
-        return null;
-      }
-      if (this.total + samples.length > this.maxSamples) {
-        throw new Error('This utterance is longer than the accepted size. Pause between ideas, then turn the microphone back on. No partial message was sent.');
-      }
-      this.frames.push(samples); this.total += samples.length; this.heard += samples.length;
-      this.silenceSamples = voiced ? 0 : this.silenceSamples + samples.length;
-      if (voiced && this.earlyId !== null) { this.events.push({ type: 'resumed', id: this.earlyId }); this.earlyId = null; }
-      const join = () => {
-        const joined = new Float32Array(this.total);
-        let offset = 0;
-        for (const frame of this.frames) { joined.set(frame, offset); offset += frame.length; }
-        return joined;
-      };
-      // `{ type: 'probe', samples }` once, when the sound has gone on for `probeMs`.
-      if (this.probeMs && !this.probed && this.heard >= this.rate * this.probeMs / 1000) {
-        this.probed = true; this.events.push({ type: 'probe', samples: join() });
-      }
-      if (this.silenceSamples < this.rate * this.endSilenceMs / 1000) {
-        if (this.earlySilenceMs && this.earlyId === null && !voiced && this.earlySilenceMs < this.endSilenceMs
-            && this.silenceSamples >= this.rate * this.earlySilenceMs / 1000) {
-          this.earlyId = this.earlySeq = (this.earlySeq || 0) + 1;
-          this.events.push({ type: 'early', id: this.earlyId, samples: join() });
-        }
-        return null;
-      }
-      const result = join();
-      // The pause that started recognition ran to the end of the turn: that text is the turn's.
-      const completedEarlyId = this.earlyId, pending = this.events, sequence = this.earlySeq;
-      this.reset();
-      this.completedEarlyId = completedEarlyId; this.events = pending; this.earlySeq = sequence;
-      return result;
-    }
-  }
-
   // Browser AEC is the primary acoustic filter. Correlation with our own output
   // rejects delayed/scaled residual playback; it is not speaker recognition.
   class EchoGuard {
@@ -310,6 +229,7 @@
       this.activeTurn = null;
       this.wake = new WakeWindow(io.now);
       this.wakeAck = null;
+      this.speculative = new SpeculativeRecognition((...args) => this.io.transcribeEarly(...args));
     }
     show(state, detail = '') { this.state = state; this.changed(state, detail); }
     current(epoch) { return epoch === this.epoch && !this.abort.signal.aborted; }
@@ -361,7 +281,7 @@
     // conversation runs, and take effect at the next sentence.
     setLanguage(language) {
       if (!['auto', 'fr', 'en'].includes(language)) return false;
-      if (this.selection?.language !== language) this.dropEarly();
+      if (this.selection?.language !== language) { this.dropEarly(); if (this.state !== 'transcribing') this.speculative.reset(); }
       if (this.selection) this.selection = { ...this.selection, language };
       return true;
     }
@@ -372,6 +292,7 @@
     setWakeWord(enabled) {
       if (!['idle', 'paused', 'error', 'listening'].includes(this.state)) return false;
       if (this.selection) this.selection = { ...this.selection, wakeWord: !!enabled };
+      this.dropEarly(); this.speculative.reset();
       this.cancelWakeAck(); this.wake.arm(); this.captureFollowup = false;
       if (this.state === 'listening') { this.audio.quiet(); this.listen(this.epoch); }
       return true;
@@ -394,7 +315,8 @@
         this.cancelWakeAck();
         this.captureFollowup = this.wake.active();
         if (this.current(epoch)) this.show('hearing');
-      }, { onEarly: (blob, info) => this.recognizeEarly(blob, epoch, info), onEarlyCancel: id => this.dropEarly(id) });
+      }, { progressive: typeof this.io.transcribeEarly === 'function',
+        onEarly: (blob, info) => this.recognizeEarly(blob, epoch, info), onEarlyCancel: id => this.dropEarly(id) });
     }
     cancelWakeAck() {
       const ack = this.wakeAck;
@@ -561,9 +483,13 @@
     }
     // Recognition of a pause that may be the end of the turn (see EARLY_RECOGNITION_SILENCE_MS).
     // Only a surface that offers `transcribeEarly` takes part; its failure is never the turn's.
-    recognizeEarly(blob, epoch, { id } = {}) {
+    recognizeEarly(blob, epoch, { id, progressive = false } = {}) {
       this.dropEarly();
       if (typeof this.io.transcribeEarly !== 'function' || !this.current(epoch) || !['listening', 'hearing'].includes(this.state)) return;
+      if (progressive) {
+        this.early = this.speculative.offer(blob, this.selection.language, this.abort.signal, { id, progressive });
+        return;
+      }
       const abort = new AbortController(), cancel = () => abort.abort();
       this.abort.signal.addEventListener('abort', cancel, { once: true });
       let request;
@@ -574,7 +500,9 @@
     }
     dropEarly(id) {
       if (!this.early || (id !== undefined && this.early.id !== id)) return;
-      this.early.abort.abort(); this.early = null;
+      if (this.early.progressive) this.speculative.invalidate(id);
+      else this.early.abort.abort();
+      this.early = null;
     }
     async exchange(blob, epoch, capture = {}) {
       const previous = this.activeTurn;
@@ -611,13 +539,13 @@
         const stopControl = result?.control === 'stop' || isStopControl(text);
         if (!this.current(epoch)) return;
         transcribed = true; captureOutcome = stopControl ? 'stop' : text.trim() ? 'recognized' : 'empty'; turn.timeline?.mark('sttDone'); turn.timeline?.measure('sttServer', result?.sttMs);
-        turn.timeline?.transcription(result, { mode: offered ? 'early' : 'complete',
+        turn.timeline?.transcription(result, { mode: offered ? early.progressive ? 'progressive' : 'early' : 'complete',
           submittedBytes: offered ? early.bytes : blob.size, captureBytes: blob.size });
         if (!overReply) this.io.transcriptionDone?.(turn.id, turn.timeline?.values());
         this.recognitionWarmAt = this.io.now ? this.io.now() : Date.now(); // it just ran
         this.audio.recordTranscription?.(excerptId, stopControl ? 'control' : text.trim() ? 'transcribed' : 'empty', text,
           { ...(typeof result === 'object' && result ? result : {}), bytes: offered ? early.bytes : blob.size,
-            captureBytes: blob.size, recognitionMode: offered ? 'early' : 'complete' });
+            captureBytes: blob.size, recognitionMode: offered ? early.progressive ? 'progressive' : 'early' : 'complete' });
         if (previous?.candidate && !stopControl && isSpokenEcho(text, previous.spoken)) { text = ''; captureOutcome = 'echo'; }
         if (previous?.candidate && this.owns(previous)) {
           if (!text.trim() && !stopControl) { this.resumeCandidate(previous); return; }
@@ -700,13 +628,16 @@
         }
         turn.spoken = ((turn.spoken || '') + ' ' + text).slice(-800);
         const language = spokenLanguage;
+        if (!notice) turn.timeline?.mark('firstClause');
         const previousPlayback = playback, availableSlot = prefetchSlot;
         // A voice whose accepted stream failed while it played is left for the
         // rest of the turn: `after` asks the surface for the one that follows it.
         let preparedAfter = null;
         const synthesize = () => {
           preparedAfter = turn.voiceFailure || null;
-          return this.io.synthesize({ text, language, ...(preparedAfter && { after: preparedAfter.speech }) }, turn.speech.signal);
+          if (!notice) turn.timeline?.mark('ttsRequested');
+          return Promise.resolve(this.io.synthesize({ text, language, ...(preparedAfter && { after: preparedAfter.speech }) }, turn.speech.signal))
+            .then(value => { if (!notice) turn.timeline?.mark('ttsReady'); return value; });
         };
         // Serialize synthesis, at most one clause ahead of the current sound.
         // A third clause waits for the first playback to finish, bounding audio.
@@ -735,7 +666,16 @@
           if (!notice) turn.timeline?.mark('firstAudio');
           const callbacks = notice ? {} : {
             onScheduled: () => turn.timeline?.mark('firstFrameScheduled'),
-            onSignalScheduled: () => { turn.timeline?.mark('firstSignalScheduled'); this.reportTimeline(turn); },
+            onFirstBytes: () => turn.timeline?.mark('firstAudioBytes'),
+            onSignalScheduled: estimate => {
+              turn.timeline?.mark('firstSignalScheduled');
+              if (estimate) {
+                turn.timeline?.mark('firstSignalOutput', estimate.aheadMs);
+                turn.timeline?.measure('outputLatencyMs', estimate.outputLatencyMs);
+                turn.timeline?.measure('playbackQueueMs', estimate.queueMs);
+              }
+              this.reportTimeline(turn);
+            },
           };
           try { await this.audio.play(bytes, turn.speech.signal, false, null, callbacks); }
           catch (error) {
@@ -864,6 +804,7 @@
     review(source = 'microphone') {
       if (!['listening', 'hearing', 'reviewing'].includes(this.state) || this.activeTurn || this.turnPending) return false;
       if (!this.audio?.freezeReview(source)) return false;
+      this.dropEarly(); this.speculative.reset();
       this.reviewSpeech?.abort(); this.audio.quiet();
       this.show('reviewing');
       return true;
@@ -886,6 +827,7 @@
       this.wake.arm();
       ++this.epoch;
       this.activeTurn?.request.abort(); this.activeTurn?.speech.abort(); this.activeTurn = null;
+      this.dropEarly(); this.speculative.reset();
       this.reviewSpeech?.abort(); this.abort?.abort(); this.audio?.close(); this.audio = null;
       this.show(paused ? 'paused' : 'idle', detail);
     }
@@ -1029,7 +971,7 @@
         playSignal?.addEventListener('abort', finish, { once: true });
         if (playSignal?.aborted || closed) finish();
       });
-      const play = async (bytes, playSignal, isReview = false, gain = null, { onScheduled, onSignalScheduled } = {}) => {
+      const play = async (bytes, playSignal, isReview = false, gain = null, { onScheduled, onSignalScheduled, onFirstBytes } = {}) => {
         if (!root.VoixAudio) throw new Error('The local speech player is unavailable.');
         const abort = new AbortController(); activePlay = abort;
         const cancel = () => abort.abort();
@@ -1049,7 +991,7 @@
           if (bytes?.browserSpeech) return await speakWithBrowser(bytes.browserSpeech, abort.signal, onScheduled);
           return await new root.VoixAudio.Player(!isReview && playbackHold ? playbackHold.playerContext : context, {
             destinations: output ? [output] : isReview ? [context.destination] : [observed ? analyser : context.destination, { node, input: 1 }],
-            onMetrics: options.onPlaybackMetrics, onScheduled, onSignalScheduled,
+            onMetrics: options.onPlaybackMetrics, onScheduled, onSignalScheduled, onFirstBytes,
           }).play(bytes, abort.signal, { rate: gain !== null ? 1 : options.playbackRate?.() || 1 });
         } finally {
           output?.disconnect();
@@ -1084,12 +1026,14 @@
           try { await play(await wav(last.samples, context.sampleRate).arrayBuffer(), abort.signal, true); await settle(abort.signal); }
           finally { playSignal.removeEventListener('abort', cancel); if (replayAbort === abort) replayAbort = null; }
         },
-        listen(onUtterance, onSpeech, { interruptible = false, onEarly = null, onEarlyCancel = null, onProbe = null } = {}) {
+        listen(onUtterance, onSpeech, { interruptible = false, progressive = false, onEarly = null, onEarlyCancel = null, onProbe = null } = {}) {
           if (closed) return;
           history.breakCapture();
           endpoint.reset(); echo.reset(); endpoint.minimumVoiceMs = capture.minimumVoiceMs;
           endpoint.endSilenceMs = interruptible ? capture.interruptionSilenceMs : capture.endSilenceMs;
-          endpoint.earlySilenceMs = !interruptible && onEarly && EARLY_RECOGNITION_SILENCE_MS < capture.endSilenceMs ? EARLY_RECOGNITION_SILENCE_MS : 0;
+          const earlyPauseMs = progressive ? 200 : EARLY_RECOGNITION_SILENCE_MS;
+          endpoint.earlySilenceMs = !interruptible && onEarly && earlyPauseMs < capture.endSilenceMs ? earlyPauseMs : 0;
+          endpoint.progressive = !interruptible && progressive;
           endpoint.probeMs = interruptible && onProbe ? INTERRUPTION_PROBE_MS : 0;
           const expected = ++captureEpoch;
           node.port.onmessage = ({ data }) => {
@@ -1102,13 +1046,13 @@
             catch (error) { quiet(); onError(error); return; }
             if (!prior && endpoint.speaking) onSpeech();
             for (const event of endpoint.drain()) {
-              if (event.type === 'early') onEarly?.(wav(event.samples, context.sampleRate), { id: event.id });
+              if (event.type === 'early') onEarly?.(wav(event.samples, context.sampleRate), { id: event.id, progressive: event.progressive });
               else if (event.type === 'probe') onProbe?.(wav(event.samples, context.sampleRate));
               else onEarlyCancel?.(event.id);
             }
             if (utterance) {
               freeze('utterance', Math.min(utterance.length, context.sampleRate * 20)); quiet();
-              onUtterance(wav(utterance, context.sampleRate), { audioMs: utterance.length / context.sampleRate * 1000, silenceMs: endpoint.endSilenceMs,
+              onUtterance(wav(utterance, context.sampleRate), { audioMs: utterance.length / context.sampleRate * 1000, silenceMs: endpoint.completedSilenceMs ?? endpoint.endSilenceMs,
                 earlyId: endpoint.completedEarlyId ?? null });
             }
           };

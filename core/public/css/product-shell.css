@@ -92,6 +92,16 @@
 #nav-container.product-shell .nav-brand > span:last-child { font-size: 21px; font-weight: 650; letter-spacing: -.7px; color: var(--ax-text); }
 body.psyx-locked #nav-container.product-shell { visibility: hidden; }
 .privacy-home { display: inline-flex; align-items: center; min-height: 44px; color: var(--ax-cyan); font-size: 13px; text-decoration: none; }
+/* Normal owner access stays visible even when Nestor covers the navigation. */
+.superdad-badge {
+  position: fixed; z-index: 120; left: max(12px, env(safe-area-inset-left)); bottom: max(12px, env(safe-area-inset-bottom));
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--ax-line);
+  border-radius: 999px; background: #0c171fe6; color: var(--ax-muted);
+  font: 500 10px/1.3 'Space Grotesk', system-ui, sans-serif; white-space: nowrap; pointer-events: none;
+}
+.superdad-badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--ax-cyan); }
+body:is([data-avatar-view=plein], [data-avatar-view=montre]) .superdad-badge { top: max(12px, env(safe-area-inset-top)); bottom: auto; }
+body.psyx-locked .superdad-badge { visibility: hidden; }
 
 /* A family device the owner unlocked: full access until the time shown. Outside the
    navigation's stacking context, above Nestor's full-page scene (z-index 110-115). */

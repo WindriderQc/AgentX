@@ -25,6 +25,19 @@ function stores(sourcePayloads, targetPayloads) {
 }
 
 describe('embedding collection migration hooks', () => {
+  test('a delta copies changed fact metadata even when the content hash is unchanged', async () => {
+    const sourceRefs = [{ system: 'memory-review', id: 'run:candidate' }];
+    const original = { ...doc('dated', 'same'), validFrom: '2026-01-05T00:00:00.000Z',
+      recordedAt: '2026-01-20T00:00:00.000Z', sourceRefs };
+    const { deps } = stores([original], [doc('dated', 'same')]);
+    const upsert = jest.fn().mockResolvedValue({});
+    deps.targetRagStore.upsertDocumentWithChunks = upsert;
+    const summary = await migrateEmbeddingCollection({ source: 'a', target: 'b', delta: true }, deps);
+    expect(summary.migrated).toBe(1);
+    expect(upsert).toHaveBeenCalledWith('same', expect.objectContaining({
+      validFrom: original.validFrom, recordedAt: original.recordedAt, sourceRefs,
+    }));
+  });
   test('a pruning delta pass copies changes and removes documents deleted from the source', async () => {
     const { deps, deleted, upserts } = stores(
       [doc('kept', 'same'), doc('changed', 'new text')],

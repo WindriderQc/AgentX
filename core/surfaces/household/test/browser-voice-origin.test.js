@@ -29,6 +29,7 @@ test('shared microphone loads its worklet beside the script even after currentSc
         port = { postMessage() {} }; connect() {} disconnect() {}
       },
     };
+    window.AgentXVoiceCapture = require('../../../public/js/voice/voice-capture');
     vm.runInNewContext(source, { window, URL, AbortController, setTimeout, clearTimeout });
     window.document.currentScript = null;
     const audio = await window.NestorConversation.openAudio(new AbortController().signal);

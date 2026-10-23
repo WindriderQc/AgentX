@@ -36,10 +36,11 @@
   }
 
   class Player {
-    constructor(context, { destinations, onReceipt, onMetrics, onScheduled, onSignalScheduled } = {}) {
+    constructor(context, { destinations, onReceipt, onMetrics, onScheduled, onSignalScheduled, onFirstBytes } = {}) {
       this.context = context;
       this.destinations = destinations || [context.destination];
       this.onScheduled = onScheduled || (() => {});
+      this.onFirstBytes = onFirstBytes || (() => {});
       this.onSignalScheduled = onSignalScheduled || (() => {});
       this.onReceipt = onReceipt || (() => {}); this.onMetrics = onMetrics || (() => {});
     }
@@ -47,7 +48,7 @@
       if (signal.aborted) throw abortError();
       const context = this.context, pending = new Set(), nodes = new Set();
       const started = Number.isFinite(requestStartedAt) ? requestStartedAt : root.performance.now();
-      let cursor = 0, reader, firstScheduled = null, firstSignalScheduled = null, gapMs = 0, gaps = 0, peakBufferedMs = 0;
+      let cursor = 0, reader, firstScheduled = null, firstSignalScheduled = null, firstSignalOutput = null, firstBytes = null, gapMs = 0, gaps = 0, peakBufferedMs = 0;
       let rejectAbort, scheduled = false;
       const aborted = new Promise((_, reject) => { rejectAbort = reject; });
       aborted.catch(() => {});
@@ -55,7 +56,7 @@
       const abort = () => { stopNodes(); reader?.cancel().catch(() => {}); rejectAbort(abortError()); };
       signal.addEventListener('abort', abort, { once: true });
       const active = () => { if (signal.aborted) throw abortError(); };
-      const schedule = async (buffer, hasSignal) => {
+      const schedule = async (buffer, signalSample = -1) => {
         active();
         while (cursor - context.currentTime > 3 && pending.size) {
           await Promise.race([...pending, aborted]); active();
@@ -83,9 +84,13 @@
           if (!scheduled) { scheduled = true; this.onScheduled(); }
           // A nonzero sample distinguishes a signal frame from silent padding.
           // This is scheduling evidence, not a speech or acoustic detector.
-          if (hasSignal && firstSignalScheduled === null) {
+          if (signalSample >= 0 && firstSignalScheduled === null) {
             firstSignalScheduled = root.performance.now() - started;
-            this.onSignalScheduled();
+            const latency = key => Number.isFinite(context[key]) && context[key] >= 0 ? Math.min(context[key], 10) : 0;
+            const queueMs = Math.max(0, at - context.currentTime + signalSample / buffer.sampleRate / speed) * 1000;
+            const outputLatencyMs = (latency('baseLatency') + latency('outputLatency')) * 1000;
+            firstSignalOutput = firstSignalScheduled + queueMs + outputLatencyMs;
+            this.onSignalScheduled({ aheadMs: queueMs + outputLatencyMs, queueMs, outputLatencyMs });
           }
         }
         catch (error) { node.onended(); throw error; }
@@ -104,11 +109,14 @@
             if (samples) {
               const buffer = context.createBuffer(1, samples.length, decoder.meta.sample_rate);
               buffer.copyToChannel(samples, 0);
-              await schedule(buffer, samples.some(value => value !== 0));
+              await schedule(buffer, samples.findIndex(value => value !== 0));
             }
           };
           for (;;) {
             const result = await Promise.race([reader.read(), aborted]); active();
+            if (result.value?.length && firstBytes === null) {
+              firstBytes = root.performance.now() - started; this.onFirstBytes();
+            }
             pendingText += utf8.decode(result.value, { stream: !result.done });
             let newline;
             while ((newline = pendingText.indexOf('\n')) >= 0) {
@@ -120,18 +128,22 @@
           if (!decoder.done) throw new Error('Speech connection ended before completion');
         } else {
           const bytes = response?.arrayBuffer ? await Promise.race([response.arrayBuffer(), aborted]) : response;
+          firstBytes = root.performance.now() - started; this.onFirstBytes();
           const buffer = await Promise.race([context.decodeAudioData(bytes), aborted]); active();
           if (response?.headers) this.onReceipt({ provider: response.headers.get('x-voix-provider'),
             voice: decodeURIComponent(response.headers.get('x-voix-voice') || ''), language: response.headers.get('x-voix-language') });
-          let hasSignal = false;
-          for (let channel = 0; channel < buffer.numberOfChannels && !hasSignal; channel++) {
-            hasSignal = buffer.getChannelData(channel).some(value => value !== 0);
+          let signalSample = -1;
+          for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+            const first = buffer.getChannelData(channel).findIndex(value => value !== 0);
+            if (first >= 0 && (signalSample < 0 || first < signalSample)) signalSample = first;
           }
-          await schedule(buffer, hasSignal);
+          await schedule(buffer, signalSample);
         }
         await Promise.race([Promise.all([...pending]), aborted]); active();
         const metrics = { first_scheduled_ms: Math.round(firstScheduled || 0), buffer_gap_ms: Math.round(gapMs),
           ...(firstSignalScheduled !== null ? { first_signal_scheduled_ms: Math.round(firstSignalScheduled) } : {}),
+          ...(firstSignalOutput !== null && Number.isFinite(firstSignalOutput) ? { first_signal_output_ms: Math.round(firstSignalOutput) } : {}),
+          ...(firstBytes !== null ? { first_bytes_ms: Math.round(firstBytes) } : {}),
           buffer_gaps: gaps, peak_buffered_ms: Math.round(peakBufferedMs), basis: 'browser scheduling; not acoustic arrival' };
         this.onMetrics(metrics);
         return metrics;

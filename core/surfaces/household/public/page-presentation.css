@@ -1,0 +1,40 @@
+/* A page owns the main column; the ongoing conversation stays beside it. */
+.page-presentation { min-width: 0; order: -1; }
+.page-presentation-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 12px 0; }
+.page-presentation-toolbar label { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--soft); font-size: .82rem; }
+.page-presentation-toolbar select { width: auto; max-width: 100%; min-height: 44px; }
+.page-presentation-toolbar button { min-height: 44px; }
+.page-presentation-board.conversation-board { margin: 0; padding: 0; border: 0; background: none; }
+.page-presentation-board > .display-board-heading { display: none; }
+.page-presentation-board > .display-board-list { display: block; max-height: none; overflow: visible; }
+.page-presentation .display-block { padding: 12px; }
+.page-presentation .display-block-actions { flex-wrap: wrap; }
+.page-presentation .display-block-actions button { display: none; }
+.page-presentation .display-block-page { height: max(480px, calc(100dvh - 260px)); }
+.page-presentation .display-block-note { margin-bottom: 8px; font-size: .78rem; }
+
+body:has(.page-presentation.is-active) #app { width: 100%; max-width: 1920px; margin-inline: auto; padding-block: 12px; }
+body:has(.page-presentation.is-active) .conversation-shell { max-width: none; padding-block: 0; }
+body:has(.page-presentation.is-active) .conversation-shell > :is(.conversation-heading, .conversation-toolbar, .conversation-team, .conversation-history, .conversation-recap) { display: none; }
+body:has(.page-presentation.is-active) .conversation-shell .conversation-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 350px); gap: 20px; max-width: none; align-items: start; }
+body:has(.page-presentation.is-active) .conversation-settings { display: none; }
+body:has(.page-presentation.is-active) .conversation-stage { margin-top: 76px; padding: 10px; }
+body:has(.page-presentation.is-active) .conversation-cockpit { display: flex; flex-direction: column; gap: 10px; }
+body:has(.page-presentation.is-active) .conversation-cockpit > #conversationWorkflow { display: none; }
+body:has(.page-presentation.is-active) .conversation-live { position: static; width: 100%; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; }
+body:has(.page-presentation.is-active) .conversation-dialogue { position: static; width: 100%; box-sizing: border-box; padding: 8px; }
+body:has(.page-presentation.is-active) .conversation-transcript { min-height: 120px; max-height: 38dvh; }
+body:has(.page-presentation.is-active) .conversation-text { display: flex; flex-wrap: wrap; }
+body:has(.page-presentation.is-active) .conversation-text textarea { flex: 1 1 100%; min-width: 0; }
+body:has(.page-presentation.is-active) .avatar-dock:not([data-mode=cache]) { top: 86px; right: 26px; bottom: auto; left: auto; width: 64px; height: 64px; box-sizing: border-box; border-radius: 18px; }
+body:has(.page-presentation.is-active) .avatar-dock-bar { display: none; }
+
+@media (max-width: 1000px) {
+  body:has(.page-presentation.is-active) .conversation-shell .conversation-layout { grid-template-columns: minmax(0, 1fr); }
+  body:has(.page-presentation.is-active) .conversation-stage { margin-top: 0; padding-bottom: 0; }
+  body:has(.page-presentation.is-active) .conversation-stage .conversation-text { position: static; width: 100%; transform: none; }
+  body:has(.page-presentation.is-active) .conversation-stage .conversation-dialogue { padding-bottom: 8px; }
+  body:has(.page-presentation.is-active) .avatar-dock:not([data-mode=cache]) { position: static; flex: 0 0 48px; order: -1; width: 48px; height: 48px; }
+  body:has(.page-presentation.is-active) .conversation-stage .conversation-actions { justify-content: start; }
+  .page-presentation .display-block-page { height: max(360px, 65dvh); }
+}

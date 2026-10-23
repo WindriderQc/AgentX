@@ -6,6 +6,7 @@ const path = require('path');
 
 const logger = require('../../config/logger');
 const { memoryClassification } = require('../../../shared/memoryClassification');
+const { memoryFactInput, memoryFactProjection, mergeMemoryFactMetadata } = require('../../../shared/memoryFactMetadata');
 const { getEmbeddingsService } = require('./embeddings');
 const { createVectorStore } = require('./vectorStore/factory');
 const {
@@ -190,9 +191,19 @@ class RagStore {
 
     const existing = await this._findExistingIdentity(identity, text, documentId, metadata.hash);
     const requestedClassification = memoryClassification(metadata);
-    const stored = existing || (requestedClassification.scope ? null : await this.vectorStore.getDocument(documentId));
+    const stored = existing || await this.vectorStore.getDocument(documentId);
     const classification = requestedClassification.scope
       ? requestedClassification : memoryClassification(stored || {});
+    const restoring = metadata.restoreFactMetadata === true;
+    const fact = mergeMemoryFactMetadata(metadata, restoring ? {} : stored || {});
+    // Public ingestion cannot set recordedAt. Internal collection migration
+    // carries the original value (including unknown), instead of dating an
+    // old fact as newly learned when its vectors are rebuilt.
+    const recordedAt = restoring ? memoryFactInput({ validFrom: metadata.recordedAt ?? null }).validFrom
+      : stored ? memoryFactProjection(stored).recordedAt : new Date().toISOString();
+    const sameFact = !existing || JSON.stringify({
+      validFrom: existing.validFrom || null, sourceRefs: existing.sourceRefs || [],
+    }) === JSON.stringify(fact);
     const sameClassification = !existing || (existing.scope === classification.scope
       && existing.sensitivity === classification.sensitivity);
     if (existing && !sameClassification && (identity.sourceIdentityKind !== 'document_id'
@@ -201,10 +212,15 @@ class RagStore {
         code: 'MEMORY_CLASSIFICATION_CONFLICT', statusCode: 409,
       });
     }
+    if (existing && !sameFact && identity.sourceIdentityKind !== 'document_id' && !restoring) {
+      throw Object.assign(new Error('Cannot deduplicate documents with different fact dates or provenance; use an explicit documentId'), {
+        code: 'MEMORY_FACT_METADATA_CONFLICT', statusCode: 409,
+      });
+    }
     // A document stored before it was read as Markdown keeps its old flat
     // chunks until it is re-chunked, even when its content hash is unchanged.
     const sameFormat = !existing || (existing.format || null) === (metadata.format || null);
-    if (existing && sameClassification && sameFormat && metadata.forceReindex !== true) {
+    if (existing && sameClassification && sameFormat && sameFact && metadata.forceReindex !== true) {
       await this._backfillOriginalTextIfMissing(existing, identity, text);
       const result = await this._unchangedResult(existing, documentId);
       logger.info(`Document "${documentId}" unchanged (canonical source/content match) — skipping ingestion`, {
@@ -237,6 +253,8 @@ class RagStore {
     const result = await this.vectorStore.upsertDocument(documentId, {
       source: identity.source,
       ...classification,
+      ...fact,
+      recordedAt,
       tags: note ? [...new Set([...(metadata.tags || []), ...note.tags])] : metadata.tags || [],
       ...(note ? {
         format: MARKDOWN_FORMAT,
@@ -296,6 +314,7 @@ class RagStore {
   }
 
   async _upsertDocumentWithChunks(text, metadata) {
+    memoryFactInput(metadata);
     const identity = buildDocumentIdentity(metadata.source || 'unknown', text, metadata.documentId);
     const identityKey = identity.sourceIdentity;
     return this._withIdentityLock(
