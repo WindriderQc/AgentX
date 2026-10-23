@@ -14,7 +14,9 @@ module.exports = new Schema({
     voice: { type: Object, default: null },
     visual: { type: Object, default: null },
     agentId: { type: String, default: 'main' },
-    backend: { type: String, enum: ['openclaw', 'agentx'], default: null },
+    backend: { type: String, enum: ['openclaw', 'agentx', 'hermes'], default: null },
+    // Native Hermes dispatch identity and terminal receipt; unresolved work fences new turns.
+    hermesRuntime: { type: Object, default: undefined },
     agentSessionKey: { type: String, default: null },
     // Native session keys of the team members addressed directly in this conversation (#41).
     agentSessionKeys: { type: Object, default: undefined },

@@ -72,6 +72,11 @@ inference/routing, memory/RAG access, tools/tasks, files/images, events/jobs and
 observable execution. OpenClaw, Telegram and other external harnesses use those
 capabilities and can be replaced without moving canonical data or business rules.
 
+Personal Nestor can also select the optional Hermes native runtime while keeping
+the same local voice and avatar surface. Core retains its session dispatch fence,
+visible transcript and terminal receipts; Hermes retains its native execution
+session. Family does not select this backend. See [Hermes conversation](HERMES_CONVERSATION.md).
+
 A capability (ledger, mail triage rules, tasks) lives in Core. An agent is an
 isolation boundary in the harness: its own tools and permissions, memory,
 session history, channels and scheduled jobs. A team member such as the
