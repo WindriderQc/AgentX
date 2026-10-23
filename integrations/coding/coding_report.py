@@ -413,7 +413,7 @@ def escalation_allowed(progress, ledger, group, line_range=None, *, prior_failur
     failed = all(ledger['documents'][path].get('attempts', 0) == 1 for path in group)
     stalled = all(ledger['documents'][path]['state'] == 'partial'
                   and ledger['documents'][path].get('partialRounds', 0) >= steps.MAX_PARTIAL_ROUNDS for path in group)
-    return (calls >= 1 + steps.WRITER_CALLS and seconds >= 300 and (failed or stalled or prior_failure)
+    return (calls >= 1 + steps.WRITER_CALLS and seconds >= 2 * steps.SOURCE_SAVE_SECONDS and (failed or stalled or prior_failure)
             and not any(steps.escalation_blocks(row, group, line_range, request_id, escalation.get('refusalResolutions', ()))
                         for row in ledger['steps']))
 
@@ -431,7 +431,7 @@ def escalation_call(r, args, progress, model, messages, step):
     # The gateway door needs the Coding Team's token, as the relay adds it for workers.
     if getattr(r, 'GATEWAY_TOKEN', ''):
         headers['Authorization'] = f'Bearer {r.GATEWAY_TOKEN}'
-    timeout = max(60, min(900, steps.remaining(progress)[1] - steps.WRITER_SECONDS))
+    timeout = max(60, min(900, steps.remaining(progress)[1] - steps.SOURCE_SAVE_SECONDS))
     outcome = {}
     progress.last_escalation_failure = None
 
@@ -594,9 +594,9 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
         if calls < budget['calls'] + steps.WRITER_CALLS:
             save()
             return 'model_call_limit'
-        # The next session is capped below by the actual remaining time. Keep
-        # the writer reserve without requiring a full ten-minute step upfront.
-        if seconds < 60 + steps.WRITER_SECONDS:
+        # Checkpoint/rendering is mandatory. The final prose rewrite below is
+        # optional and must not consume the time needed to finish source checks.
+        if seconds < 60 + steps.SOURCE_SAVE_SECONDS:
             save()
             return 'hard_budget'
         number += 1
@@ -607,7 +607,7 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
             save()
             continue
         value, reason = one(number, steps.group_prompt(ledger, group, f'{sandbox_root}/step-{number:02d}.json', task, note, line_range),
-                            budget['calls'], min(budget['seconds'], seconds - steps.WRITER_SECONDS))
+                            budget['calls'], min(budget['seconds'], seconds - steps.SOURCE_SAVE_SECONDS))
         if reason == 'unverified':
             return 'unverified'
         try:
