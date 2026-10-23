@@ -31,6 +31,12 @@ const { fail } = require('./pipelineManualReportClaim');
 
 const WC = { w: 1, j: true };
 const WHEN = ['asap', 'tonight', 'at'];
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+function retryable(task, job) {
+  return job?.state === 'failed' && !task.reportResume?.launch
+    && job.releaseReceipt?.receiptRef?.startsWith('core:not-started:')
+    && !(task.codingReportAuthority?.grants || []).some(row => row.key === task.reportResume?.grantKey);
+}
 // Conservative cost of one document step when the lane has no agent
 // measurement yet, plus the final writer step. MARGIN makes the budget a
 // safety net rather than a target.
@@ -117,6 +123,7 @@ async function preview(pipelineId) {
   return { pipelineId, reportName: task.codingResult?.reportName || latestOutcome(task)?.reportName || null,
     checkpoint: checkpointOf(task), work, budget: budgetFor(work, limit), route: await target().catch(() => null),
     escalation: await require('./pipelineReportEscalation').policy().catch(() => null),
+    retryCampaignId: retryable(task, campaign) ? campaign.id : null,
     resume: task.reportResume || null,
     campaign: campaign ? { id: campaign.id, state: campaign.state, reservation: campaign.reservation, reason: campaign.reason || null,
       releaseReceipt: campaign.releaseReceipt || null } : null };
@@ -131,6 +138,8 @@ async function resume(pipelineId, input = {}) {
   for (const flag of ['autoContinue', 'allowCloudEscalation']) {
     if (input[flag] !== undefined && typeof input[flag] !== 'boolean') throw fail(`${flag} needs true or false`, 'REPORT_RESUME_INVALID', 400);
   }
+  if (input.retryCampaignId !== undefined && !UUID.test(input.retryCampaignId))
+    throw fail('Name the exact failed campaign to retry', 'REPORT_RESUME_INVALID', 400);
   const task = await readTask(pipelineId);
   reportTask(task);
   if (!['queued', 'blocked'].includes(task.status) || task.automationLease?.leaseId) throw fail('The task is running or awaiting review', 'REPORT_RESUME_BUSY', 409);
@@ -145,8 +154,15 @@ async function resume(pipelineId, input = {}) {
     const job = await queue.get(prior.queueRequestId).catch(() => null);
     if (job && ['dispatching', 'running', 'uncertain'].includes(job.state)) throw fail('This resume is already running', 'REPORT_RESUME_BUSY', 409);
   }
+  let retryOfCampaignId = prior?.basis === basis ? prior.retryOfCampaignId || null : null;
+  if (input.retryCampaignId && input.retryCampaignId !== retryOfCampaignId) {
+    const failed = prior?.queueRequestId === input.retryCampaignId && prior.basis === basis
+      ? await queue.get(input.retryCampaignId).catch(() => null) : null;
+    if (!retryable(task, failed)) throw fail('Refresh the exact campaign; only an unstarted, unallocated failure can be retried', 'REPORT_RESUME_CHANGED', 409);
+    retryOfCampaignId = input.retryCampaignId;
+  }
   const request = {
-    key: `report-campaign:${pipelineId}:${basis}`,
+    key: `report-campaign:${pipelineId}:${basis}${retryOfCampaignId ? `:retry:${retryOfCampaignId}` : ''}`,
     title: `Report ${task.codingResult.reportName}: resume task ${pipelineId}`,
     kind: 'other', hosts: [route.host], estimatedMinutes: budget.minutes,
     source: { type: 'coding', ref: 'pipeline-report-resume', taskId: pipelineId },
@@ -157,7 +173,8 @@ async function resume(pipelineId, input = {}) {
     throw fail('This checkpoint already had a campaign; its outcome is in the queue history', 'REPORT_RESUME_DONE', 409);
   }
   job = await queue.place(job.id, { expectedRevision: job.revision, when: input.when, at: input.at, autoStart: true }, 'pipeline-report-resume');
-  const state = { basis, queueRequestId: job.id, grantKey: prior?.basis === basis && prior.grantKey ? prior.grantKey : uuidFrom(`report-grant:${pipelineId}:${job.id}`),
+  const state = { basis, queueRequestId: job.id, grantKey: uuidFrom(`report-grant:${pipelineId}:${job.id}`),
+    ...(retryOfCampaignId && { retryOfCampaignId }),
     when: input.when, budget, work, checkpoint, model: route.model, host: route.host,
     autoContinue: input.autoContinue === true, allowCloudEscalation: input.allowCloudEscalation === true,
     requestedAt: new Date().toISOString(), state: 'planned', launch: null };

@@ -44,7 +44,7 @@
       running: 'Running now. Progress shows in the worker panel.',
       uncertain: 'Launch outcome unknown; it is not retried. Check it in Automations.',
       completed: 'Finished: the report was delivered. Review it below.',
-      failed: `Stopped${resume.result?.decision === 'no_progress' ? ': the last pass saved nothing new' : resume.result?.reason ? ` (${resume.result.reason})` : ''}. ${campaign.releaseReceipt?.receiptRef?.startsWith('core:not-started') ? 'The worker never started. ' : ''}Resume again when ready.`,
+      failed: `Stopped${resume.result?.decision === 'no_progress' ? ': the last pass saved nothing new' : resume.result?.reason ? ` (${resume.result.reason})` : ''}. ${campaign.releaseReceipt?.receiptRef?.startsWith('core:not-started') ? `The worker never started. ${campaign.releaseReceipt.receiptRef.slice('core:not-started:'.length).trim()}. ` : ''}Resume again when ready.`,
       cancelled: 'The planned resume was cancelled.'
     };
     const tone = ['failed', 'uncertain'].includes(campaign.state) ? 'warn' : ['reserved', 'running', 'dispatching'].includes(campaign.state) ? 'live' : '';
@@ -57,7 +57,7 @@
     const cap = view.escalation?.maxCostNanodollars ? `${(view.escalation.maxCostNanodollars / 1e9).toFixed(2).replace(/\.00$/, '')} $` : null;
     const open = !view.campaign || ['completed', 'failed', 'cancelled'].includes(view.campaign.state) || view.campaign.state === 'reserved';
     const route = view.route ? ` on <code>${esc(view.route.model)}</code>` : '';
-    return `<form class="pipeline-drawer-action pipeline-resume" data-report-resume-form="${esc(view.pipelineId)}">
+    return `<form class="pipeline-drawer-action pipeline-resume" data-report-resume-form="${esc(view.pipelineId)}"${view.retryCampaignId ? ` data-retry-campaign-id="${esc(view.retryCampaignId)}"` : ''}>
       <h3>Resume the report</h3>
       <p>${workText(view.work, view.checkpoint)}</p>
       ${stateText(view)}
@@ -115,6 +115,7 @@
       const error = form.querySelector('.pipeline-resume-error');
       const choice = form.elements.when.value;
       const body = { confirm: true, when: choice, autoContinue: form.elements.autoContinue.checked, allowCloudEscalation: form.elements.allowCloudEscalation.checked };
+      if (form.dataset.retryCampaignId) body.retryCampaignId = form.dataset.retryCampaignId;
       if (choice === 'at') {
         const start = new Date(form.elements.at.value);
         if (!Number.isFinite(start.getTime())) { error.textContent = 'Choose a start time.'; return; }

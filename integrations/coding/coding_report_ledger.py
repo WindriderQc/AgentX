@@ -217,6 +217,8 @@ def merge_step(ledger, group, result, source_bytes, step_id, allow_empty=False, 
         row = ledger['documents'][path]
         seen = {(ref['path'], ref['line'], ref['check']) for ref in row['evidence']}
         added = [ref for ref in update['evidence'] if (ref['path'], ref['line'], ref['check']) not in seen]
+        anchors = {(ref['path'], ref['sha256'], ref['line']) for ref in row['evidence']}
+        new_source = any((ref['path'], ref['sha256'], ref['line']) not in anchors for ref in added)
         row['evidence'] = (row['evidence'] + added)[-MAX_DOC_EVIDENCE:]
         if update['note']:
             row['note'] = update['note']
@@ -230,7 +232,7 @@ def merge_step(ledger, group, result, source_bytes, step_id, allow_empty=False, 
         elif state == 'partial':
             # A document still partial after a step with nothing new counts
             # toward its limit, so it cannot be planned forever.
-            row['partialRounds'] = row.get('partialRounds', 0) + (0 if added else 1)
+            row['partialRounds'] = row.get('partialRounds', 0) + (0 if new_source else 1)
         row['state'] = state
     for path in group:
         ledger['documents'][path]['attempts'] = 0

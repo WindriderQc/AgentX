@@ -448,6 +448,17 @@ class StepPlanTest(unittest.TestCase):
         self.assertNotIn(['docs/B.md'], planned)
         self.assertIn('route table unchecked', ledgers.render(ledger, 'Review', []))
 
+    def test_rewording_the_same_source_cannot_reset_the_partial_round_limit(self):
+        ledger = ledgers.new_ledger(snapshot())
+        for step in range(1, 5):
+            result = {'documents': [{'path': 'docs/B.md', 'state': 'partial',
+                'evidence': [{'path': 'core/config.js', 'line': 1, 'check': f'Same source, wording {step}'}]}]}
+            ledgers.merge_step(ledger, ['docs/B.md'], result, source, step)
+        self.assertEqual(ledger['documents']['docs/B.md']['partialRounds'], 3)
+        planned = steps.plan_groups(ledger, {}, {'docTokens': 50000})
+        self.assertNotIn(['docs/B.md'], [row['documents'] for row in planned])
+        self.assertEqual(len(ledger['documents']['docs/B.md']['evidence']), 4)
+
     def test_prompts_carry_only_the_group_and_the_verified_findings(self):
         ledger = ledgers.new_ledger(snapshot())
         ledgers.merge_step(ledger, ['docs/A.md'], good_result(), source, 1)

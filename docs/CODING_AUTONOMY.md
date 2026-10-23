@@ -508,3 +508,11 @@ the continuation loop chain this task even while the global switch is off.
 Cloud escalation stays an explicit per-task choice under the owner's cost cap.
 The full form (manual campaign, limits, scope, instructions) stays under
 Advanced.
+
+A campaign refused before its grant and worker launch can be retried explicitly
+from the same saved report. The resume request names `retryCampaignId`, the
+exact failed campaign shown in the preview. Core requires its `core:not-started`
+release receipt and no committed grant, then derives a new campaign and grant
+identity from that predecessor. Repeating that request returns the same new
+campaign. Original receipts and cumulative costs remain intact; an uncertain
+launch or an already allocated grant still requires reconciliation.
