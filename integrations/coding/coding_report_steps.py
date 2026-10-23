@@ -25,6 +25,7 @@ STEP_CALLS = 16
 STEP_SECONDS = 20 * 60
 WRITER_CALLS = 6
 WRITER_SECONDS = 8 * 60
+SOURCE_SAVE_SECONDS = 60  # mandatory checkpoint reserve; prose rewriting is optional
 LEGACY_CALLS = 10
 RESULT_BYTES = 256 * 1024
 FEEDBACK_CHARS = 3000

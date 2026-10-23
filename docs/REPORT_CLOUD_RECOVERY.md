@@ -57,3 +57,9 @@ before dispatch, even if the selected model's configuration changes. Thus a
 configured free route can continue after verified termination without spending
 another paid allowance or erasing the original accounting uncertainty. The task
 cap, original failure and report acceptance requirements remain in force.
+
+Source checks reserve one minute for their mandatory checkpoint, not the eight
+minutes of the optional final prose pass. The prose pass runs only after source
+coverage is complete and its full time remains. Step and escalation timeouts
+stay below the actual queue/hard deadline with that checkpoint reserve; windows
+shorter than two minutes save their current report without starting a step.
