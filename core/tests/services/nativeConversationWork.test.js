@@ -45,6 +45,65 @@ beforeEach(async () => {
 });
 afterEach(() => works.observer.stop());
 
+test('the mandatory native context call includes one replay-safe canonical task read for an explicit request', async () => {
+  works.observer.stop();
+  const list = jest.fn(async () => ({ tasks: [{ id: 'synthetic-1', title: 'Synthetic task' }], totalCount: 8 }));
+  works = registerWorkRuntime({ router: express.Router(), conversations, tasks: { list }, agentClient: execute, continuity, env, capability });
+  const row = await admitted('Lis ma liste de tâches personnelles ouvertes et donne le total, puis au plus trois titres. Ne modifie rien.');
+  const identity = context(row), callId = 'call_synthetic_context|fc_tasks';
+  const read = await works.contextForNative(identity, callId);
+  expect(read.request).toBe('Lis ma liste de tâches personnelles ouvertes et donne le total, puis au plus trois titres. Ne modifie rien.');
+  expect(read.selectedContext).toBe('Selected owner context.');
+  expect(read.conversation.coverage.complete).toBe(true);
+  expect(read.receipt).toMatchObject({ tool: 'tasks.personal.list', status: 'verified', runId: identity.runId });
+  expect(read.receiptIds).toContain(read.receipt.id);
+  expect(read.data).toMatchObject({ totalCount: 8, tasks: [{ id: 'synthetic-1' }] });
+  expect((await works.contextForNative(identity, callId)).receipt).toEqual(read.receipt);
+  expect(list).toHaveBeenCalledTimes(1);
+  await expect(works.contextForNative({ ...identity, runId: 'resp_' + randomUUID() }, callId)).rejects.toMatchObject({ statusCode: 404 });
+  await expect(works.readTasks(identity, {}, 'call_direct')).rejects.toMatchObject({ statusCode: 404 });
+  const evidence = proof(row.attempt, 'Eight tasks, three requested titles.', ['conversation_work']);
+  evidence.receipts = [{ tool: 'conversation_work', status: 'verified', runId: identity.runId,
+    workRead: { id: read.receipt.id, tool: 'tasks.personal.list' } }];
+  const runtime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
+  expect(await runtime.receive({ row: await works.repo.get(row._id), evidence })).toEqual({ published: true });
+  expect((await works.repo.get(row._id)).state).toBe('result_ready');
+});
+
+test('native task context forwards the native call id over HTTP and denies another run before reading', async () => {
+  works.observer.stop();
+  const list = jest.fn(async () => ({ tasks: [], totalCount: 0 }));
+  router = express.Router();
+  works = registerWorkRuntime({ router, conversations, tasks: { list }, agentClient: execute, continuity, env, capability });
+  const row = await admitted('Regarde mes tâches ouvertes.');
+  const app = express(); app.use(express.json()); app.use(router);
+  const body = { operation: 'native_context', context: context(row), callId: 'call_context_http' };
+  const post = value => request(app).post('/native/work').set('Authorization', 'Bearer ' + env.PERSONAL_CONVERSATION_WORK_TOKEN).send(value);
+  expect((await post({ ...body, context: { ...body.context, agentId: 'family' } })).status).toBe(404);
+  expect(list).not.toHaveBeenCalled();
+  expect((await post(body)).body.data.receipt.status).toBe('verified');
+  expect((await post(body)).body.data.data.totalCount).toBe(0);
+  expect(list).toHaveBeenCalledTimes(1);
+});
+
+test('ordinary native conversation context never speculatively reads tasks', async () => {
+  const row = await admitted('Help me choose a colour.');
+  const result = await works.contextForNative(context(row), 'call_colour_context');
+  expect(result.data).toBeUndefined();
+  expect(result.receipt).toBeUndefined();
+});
+
+test('an unavailable contextual task read preserves complete context without inventing a receipt', async () => {
+  const row = await admitted('Lis mes tâches ouvertes.');
+  const result = await works.contextForNative(context(row), 'call_unavailable_tasks');
+  expect(result.request).toBe('Lis mes tâches ouvertes.');
+  expect(result.selectedContext).toBe('Selected owner context.');
+  expect(result.conversation.coverage.complete).toBe(true);
+  expect(result.taskRead).toEqual({ status: 'unavailable', code: 'CONVERSATION_WORK_READ_UNAVAILABLE' });
+  expect(result.receipt).toBeUndefined();
+  expect((await works.repo.get(row._id)).tools).toHaveLength(0);
+});
+
 test('composite native call identities keep exact replay, budget and run ownership', async () => {
   const row = await admitted('Lis https://example.test et vérifie sur le web.');
   const identity = context(row);
