@@ -63,3 +63,34 @@ test('workflow retains observed execution from the stream and from canonical his
   model.restore('session-c', [{ clientTurnId: 'turn-c', replyText: 'Legacy answer' }]);
   assert.equal(model.snapshot().turns[0].execution, undefined, 'legacy history does not invent a model');
 });
+
+test('Hermes diagnostics show its observed model and voice timings without the OpenClaw pipeline', () => {
+  const { create, stageState } = require('../public/workflow-panel');
+  const prior = global.document;
+  class Element {
+    constructor() { this.children = []; this.dataset = {}; this.attributes = {}; this.textContent = ''; }
+    append(...nodes) { this.children.push(...nodes); }
+    replaceChildren(...nodes) { this.children = nodes; }
+    setAttribute(key, value) { this.attributes[key] = value; }
+    querySelectorAll() { return []; }
+  }
+  global.document = { createElement: () => new Element() };
+  try {
+    const host = new Element(), panel = create({ host });
+    panel.begin('session-hermes', 'turn-hermes', 'voice');
+    panel.timings('turn-hermes', { sttDone: 125, firstAudio: 800, playbackOutcome: 'completed' });
+    panel.stream('turn-hermes', { type: 'done', data: { routing: { backend: 'hermes' }, model: { model: 'actual-sol' } } });
+    const flatten = node => [node, ...node.children.flatMap(flatten)];
+    const nodes = flatten(host), text = nodes.map(node => node.textContent).join(' ');
+    assert.match(text, /Hermes · actual-sol/);
+    assert.ok(nodes.some(node => node.dataset.key === 'meter:stt'));
+    assert.ok(nodes.some(node => node.dataset.key === 'meter:tts'));
+    assert.ok(!nodes.some(node => ['meter:guardian', 'meter:review', 'stage:review', 'stage:agents'].includes(node.dataset.key)));
+    assert.ok(!nodes.some(node => /workflow-graph/.test(node.className || '')));
+    const row = panel.model.snapshot().turns[0];
+    assert.deepEqual(stageState('guardian', row), ['Done', 'Hermes · actual-sol']);
+    assert.equal(stageState('stt', row)[0], 'Done');
+    assert.equal(stageState('tts', row)[0], 'Done');
+    assert.equal(stageState('review', row)[0], 'Not used');
+  } finally { global.document = prior; }
+});
