@@ -83,7 +83,8 @@ test('a report escalation call runs on the escalation path only, never on the lo
   } finally { inference.prepare = prior; escalation.execute = priorExecute; }
 });
 
-test('an unanswered escalation settles as refused and reports the failure', async () => {
+for (const [executionState, expectedSettlement] of [['not-dispatched', 'refused'], ['unknown', 'unknown'], ['completed', 'completed'], [undefined, 'unknown']]) {
+test(`an escalation failure with state ${executionState} keeps settlement ${expectedSettlement}`, async () => {
   const prior = inference.prepare;
   const escalation = require('../../../src/services/pipelineReportEscalation');
   const priorExecute = escalation.execute;
@@ -91,7 +92,9 @@ test('an unanswered escalation settles as refused and reports the failure', asyn
   inference.prepare = async (headers, model) => ({ options: { signal: new AbortController().signal, reportDeadlineAt: Date.now() + 60000,
     reportEscalation: { requestId: 'r', pipelineId: '0939', callId: 'c', step: 3, model, remainingNanodollars: 5 } },
   finish: async state => { settled = state; } });
-  escalation.execute = async () => { throw Object.assign(new Error('No escalation model answered'), { code: 'REPORT_ESCALATION_UNAVAILABLE', statusCode: 502 }); };
+  const attempts = [{ model: 'cloud/model', code: 'OPENCLAW_MODEL_UNAVAILABLE', executionState }];
+  escalation.execute = async () => { throw Object.assign(new Error('No escalation model answered'), {
+    code: 'REPORT_ESCALATION_UNAVAILABLE', statusCode: 502, executionState, attempts }); };
   try {
     const routes = [];
     const express = { Router: () => Object.fromEntries(['get', 'post', 'all'].map(method => [method,
@@ -105,8 +108,11 @@ test('an unanswered escalation settles as refused and reports the failure', asyn
     const res = new PassThrough(); res.status = code => { status = code; return res; }; res.set = () => res;
     res.json = value => { body = value; return res; };
     await routes.find(route => route.path === '/v1/chat/completions').handlers[0](req, res);
-    assert.equal(settled, 'refused');
+    assert.equal(settled, expectedSettlement);
     assert.equal(status, 502);
     assert.equal(body.error.code, 'REPORT_ESCALATION_UNAVAILABLE');
+    assert.equal(body.error.executionState, executionState || 'unknown');
+    assert.deepEqual(body.error.attempts, attempts);
   } finally { inference.prepare = prior; escalation.execute = priorExecute; }
 });
+}

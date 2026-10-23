@@ -260,6 +260,18 @@ async function observeCampaign(job) {
       { timestamps: false, writeConcern: WC });
     return { terminal: true, operationId, state: 'failed', outcome: { requestId: operationId, kind: 'rejected', reason: host.run.reason || 'launch_rejected' } };
   }
+  if (active && host?.busy === false && host.run?.requestId === operationId && host.run.phase === 'unknown'
+    && host.run.canReconcile === true && host.run.progress?.stage === 'checkpoint' && control?.reconcile) {
+    const receipt = await require('./pipelineReportService').status(task.pipelineId, operationId).catch(() => null);
+    if (receipt?.requestId === operationId && receipt.state === 'active' && receipt.terminationVerified === true
+      && Array.isArray(receipt.pendingInferences) && receipt.pendingInferences.length === 0) {
+      // Receive the same saved result through its native owner after a drain
+      // race. Never clear coordination, replace the request or launch work.
+      await control.reconcile({ pipelineId: task.pipelineId, requestId: operationId,
+        ...(state.launch.executorId && { executorId: state.launch.executorId }) }).catch(() => null);
+      return { terminal: false, operationId };
+    }
+  }
   if (active || host?.busy === true || task.automationLease?.leaseId) return { terminal: false, operationId };
   const ours = new Set([operationId, ...((task.reportContinuation?.runs || []).map(row => row.requestId))]);
   const outcome = latestOutcome(task);

@@ -309,17 +309,30 @@ def referenced_sources(ledger, group, doc_texts, files):
     """Source files a document group cites or already used as evidence, in order."""
     import re
     known = set(files)
-    ordered = []
+    ordered = document_source_paths(doc_texts, files)
     for path in group:
         for ref in ledger['documents'][path]['evidence']:
             ordered.append(ref['path'])
-        ordered += re.findall(PATH_PATTERN, doc_texts.get(path, ''))
     seen, result = set(group), []
     for path in ordered:
-        if path in known and path not in seen:
+        if path in known and path not in seen and not path.startswith('.review-work/'):
             seen.add(path)
             result.append(path)
     return result
+
+
+def scoped_texts(doc_texts, line_range):
+    if not line_range:
+        return doc_texts
+    start, end, _ = line_range
+    return {path: '\n'.join(text.splitlines()[start - 1:end]) for path, text in doc_texts.items()}
+
+
+def document_source_paths(doc_texts, files):
+    import re
+    known = set(files) - set(doc_texts)
+    return list(dict.fromkeys(path for text in doc_texts.values() for path in re.findall(PATH_PATTERN, text)
+                             if path in known and not path.startswith('.review-work/')))
 
 
 def code_terms(doc_texts, limit=12):
@@ -336,11 +349,64 @@ def code_terms(doc_texts, limit=12):
     return [term for term, _ in counts.most_common(limit)]
 
 
-def prior_failed_group(ledger, group):
-    """Every still-open document has a preserved local failure from an earlier pass."""
+def prior_failed_group(ledger, group, line_range=None):
+    """The assigned scope is contained in preserved local failures, not fresh scope.
+
+    Historical failures without a lineRange are document-wide. New ranged
+    failures name their exact range; reviewing one does not fail another.
+    """
     failed = {path for row in ledger['steps'] if row.get('result') == 'failed' and not row.get('escalated')
+              and (row.get('lineRange') is None or row['lineRange'] == list(line_range or ()))
               for path in row.get('documents', [])}
     return bool(group) and all(path in failed and ledger['documents'][path]['state'] != 'reviewed' for path in group)
+
+
+def escalation_blocks(row, group, line_range, request_id):
+    if not row.get('escalated') or set(row.get('documents', [])) != set(group):
+        return False
+    if row.get('lineRange') is not None and row['lineRange'] != list(line_range or ()):
+        return False
+    # Core verifies the previous execution's terminal receipts before a new one
+    # can start. A refused/unavailable attempt may then try the newly authorized
+    # policy once; answers and uncertain outcomes retain their original fence.
+    unavailable = (row.get('executionState') == 'not-dispatched' or ('executionState' not in row
+                   and row.get('reason') == 'cloud escalation: escalation unavailable (HTTP 502)'))
+    retry = (request_id and row.get('requestId') != request_id and row.get('result') == 'failed'
+             and row.get('model') is None and unavailable and not row.get('uncertain'))
+    return not retry
+
+
+def escalation_error(error):
+    """Keep only bounded machine codes from Core, never upstream text or content."""
+    import re
+    try:
+        value = json.loads(error.read(8192)).get('error', {})
+        code = value.get('code', '')
+        state = value.get('executionState', 'unknown')
+        if not re.fullmatch(r'[A-Z][A-Z_0-9]{0,79}', code):
+            raise ValueError('no machine code')
+        state = state if state in ('not-dispatched', 'completed') else 'unknown'
+        attempts = [{'model': row['model'], 'code': row['code']} for row in value.get('attempts', [])[:4]
+                    if isinstance(row, dict) and isinstance(row.get('model'), str)
+                    and re.fullmatch(r'[a-z0-9-]+/[A-Za-z0-9._:/-]{1,120}', row['model'])
+                    and re.fullmatch(r'[A-Z][A-Z_0-9]{0,79}', str(row.get('code', '')))]
+        detail = '; '.join(f'{row["model"]}: {row["code"]}' for row in attempts)
+        return f'{code}' + (f' [{detail}]' if detail else ''), {'executionState': state, 'code': code, 'attempts': attempts}
+    except (ValueError, TypeError, KeyError, AttributeError, OSError, RecursionError):
+        return f'HTTP {error.code}', {'executionState': 'unknown'}
+
+
+def escalation_receipt(row, progress, request_id, line_range):
+    row['requestId'] = request_id
+    if line_range:
+        row['lineRange'] = list(line_range)
+    failure = getattr(progress, 'last_escalation_failure', None)
+    if row['result'] == 'failed' and isinstance(failure, dict):
+        row.update(failure)
+        if failure.get('executionState') == 'unknown':
+            row['uncertain'] = True
+            progress.report_drained = False
+            progress.stop_reason = 'model_termination_unverified'
 
 
 def escalation_prompt(ledger, group, doc_texts, source_texts, line_range=None, *, operator_notes=''):

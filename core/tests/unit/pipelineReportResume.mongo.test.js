@@ -5,6 +5,7 @@ jest.mock('../../src/services/modelRouterConfig', () => ({
   getModelForTask: jest.fn(() => ({ model: 'coder:27b-q8_0', url: 'http://10.0.0.5:11434/' }))
 }));
 jest.mock('../../src/services/pipelineReportEscalation', () => ({ policy: jest.fn(async () => ({ enabled: false, maxCostNanodollars: 1e10 })) }));
+jest.mock('../../src/services/pipelineReportService', () => ({ status: jest.fn() }));
 
 const Task = require('../../models/PipelineTask');
 const Run = require('../../models/PipelineReportRun');
@@ -37,7 +38,7 @@ async function seed(extra = {}) {
 function wire() {
   control = { target: 'host',
     status: jest.fn(async ({ requestId } = {}) => (requestId ? { run: null } : { busy: false, candidates: [{ pipelineId: '0939', expectedAttemptCount: 3 }] })),
-    launch: jest.fn(async () => ({ accepted: true })) };
+    launch: jest.fn(async () => ({ accepted: true })), reconcile: jest.fn(async () => ({ reconciled: true })) };
   preparation = { apply: jest.fn(async input => {
     await Task.updateOne({ pipelineId: input.pipelineId }, { $set: { status: 'queued', codingResult: { ...input.result } } });
     return Task.findOne({ pipelineId: input.pipelineId }).lean();
@@ -48,6 +49,31 @@ function wire() {
 beforeEach(async () => {
   await Promise.all([Task.deleteMany({}), Run.deleteMany({}), Queue.deleteMany({}), Archive.deleteMany({}), Runtime.deleteMany({}), Continuation.deleteMany({})]);
   wire();
+  require('../../src/services/pipelineReportService').status.mockReset();
+});
+
+it('receives the original checkpoint after a drain race only when Core proves all calls terminated', async () => {
+  const job = { id: 'f2222222-2222-4222-8222-222222222222', executor: { pipelineId: '0939' },
+    reservation: { end: new Date(Date.now() + 60000).toISOString() } };
+  await seed({ status: 'in_progress', reportResume: { queueRequestId: job.id, launch: { requestId: PARENT, executorId: 'fixture-executor' } } });
+  await Run.updateOne({ _id: PARENT }, { $set: { state: 'active' } });
+  control.status.mockResolvedValue({ busy: false, run: { requestId: PARENT, phase: 'unknown', canReconcile: true,
+    progress: { stage: 'checkpoint' } } });
+  const reports = require('../../src/services/pipelineReportService');
+  reports.status.mockResolvedValue({ requestId: PARENT, state: 'active', terminationVerified: false, pendingInferences: ['original-call'] });
+  expect(await resume.observeCampaign(job)).toMatchObject({ terminal: false, operationId: PARENT });
+  expect(control.reconcile).not.toHaveBeenCalled();
+  reports.status.mockResolvedValue({ requestId: PARENT, state: 'active', terminationVerified: true, pendingInferences: [] });
+  // A lost receive reply keeps the same identity and does not release the campaign.
+  control.reconcile.mockRejectedValueOnce(new Error('response lost'));
+  expect(await resume.observeCampaign(job)).toMatchObject({ terminal: false, operationId: PARENT });
+  expect(control.reconcile).toHaveBeenCalledWith({ pipelineId: '0939', requestId: PARENT, executorId: 'fixture-executor' });
+  expect(control.launch).not.toHaveBeenCalled();
+  await Run.updateOne({ _id: PARENT }, { $set: { state: 'blocked' } });
+  await Task.updateOne({ pipelineId: '0939' }, { $set: { status: 'blocked' }, $push: { feedback: stopped(PARENT, 'runner_error', 'c'.repeat(64)) } });
+  const result = await resume.observeCampaign(job);
+  expect(result).toMatchObject({ terminal: true, state: 'failed', operationId: PARENT });
+  expect(control.reconcile).toHaveBeenCalledTimes(1);
 });
 
 it('previews the remaining work and a safety budget instead of asking for numbers', async () => {

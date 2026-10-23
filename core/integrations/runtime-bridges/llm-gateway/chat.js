@@ -257,8 +257,10 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
           remainingNanodollars: escalation.remainingNanodollars, signal: coding.options.signal,
           timeoutMs: Math.max(1, coding.options.reportDeadlineAt - Date.now()) });
       } catch (error) {
-        await settleCoding('refused');
-        return res.status(error.statusCode || 502).json({ error: { message: error.message, type: 'upstream_error', code: error.code } });
+        const state = error.executionState;
+        await settleCoding(state === 'not-dispatched' ? 'refused' : state === 'completed' ? 'completed' : 'unknown');
+        return res.status(error.statusCode || 502).json({ error: { message: error.message, type: 'upstream_error', code: error.code,
+          executionState: state || 'unknown', attempts: error.attempts || [], ...(error.model && { model: error.model }) } });
       }
       await settleCoding('completed');
       res.set('X-AgentX-Resolved-Model-Version', answered.model);

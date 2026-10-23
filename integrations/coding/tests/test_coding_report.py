@@ -931,7 +931,7 @@ class EscalationStepsTest(StepsReportTest):
             def read(self, *args): return json.dumps(self.value).encode()
         def urlopen(request, timeout=None):
             sent.append(request)
-            if error: raise OSError(error)
+            if error: raise error if isinstance(error, BaseException) else OSError(error)
             return Response({'model': 'openrouter/nvidia/nemotron', 'choices': [{'message': {'content': content}}]})
         return sent, mock.patch('urllib.request.urlopen', urlopen)
 
@@ -970,14 +970,32 @@ class EscalationStepsTest(StepsReportTest):
         self.assertEqual(sent[0].get_header('Authorization'), 'Bearer coding-team-token')
 
     def test_an_unavailable_escalation_blocks_the_group_after_its_second_failure(self):
+        from io import BytesIO
+        from urllib.error import HTTPError
         self.escalation = {'models': ['openai/gpt-5.6-sol'], 'maxCostNanodollars': 10e9, 'calls': 0}
         self.answers = ['not json', self.reviewed, lambda prompt: {'summary': 's', 'explanations': {}}]
-        sent, patch = self.escalation_answer(error='connection refused')
+        error = HTTPError('http://core', 502, 'refused', {}, BytesIO(json.dumps({'error': {
+            'code': 'REPORT_ESCALATION_UNAVAILABLE', 'executionState': 'not-dispatched',
+            'attempts': [{'model': 'openai/gpt-5.6-sol', 'code': 'OPENCLAW_MODEL_TRANSPORT_UNQUALIFIED'}]}}).encode()))
+        sent, patch = self.escalation_answer(error=error)
         with patch, mock.patch('builtins.print'):
             self.assertEqual(runner.main(), 1)
         self.assertEqual(len(sent), 1)
         states = sorted(row['state'] for row in self.stops[0]['coverage']['documents'])
         self.assertEqual(states, ['blocked', 'reviewed'])
+
+    def test_an_unknown_escalation_response_keeps_its_original_work_unverified(self):
+        self.escalation = {'models': ['cloud/model'], 'maxCostNanodollars': 2e9}
+        self.answers = ['not json', self.reviewed]
+        sent, patch = self.escalation_answer(error='connection lost')
+        with patch, mock.patch('builtins.print'):
+            self.assertEqual(runner.main(), 2)
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(self.uploads, [])
+        self.assertEqual(self.stops, [])
+        ledger = report.ledgers.embedded((self.out/'review.md').read_text())
+        self.assertTrue(ledger['steps'][-1]['uncertain'])
+        self.assertEqual(ledger['steps'][-1]['requestId'], KEY)
 
     def test_no_escalation_without_permission_from_core(self):
         self.escalation = None
@@ -1027,6 +1045,26 @@ class EscalationStepsTest(StepsReportTest):
             row['state'] = 'partial'
             progress.report_escalation = None
             self.assertFalse(report.escalation_allowed(progress, ledger, ['README.md']))
+
+    def test_an_unstarted_cloud_refusal_may_retry_only_on_a_new_execution(self):
+        from types import SimpleNamespace
+        progress = SimpleNamespace(report_escalation={'models': ['cloud/new-model']})
+        row = {'documents': ['README.md'], 'escalated': True, 'result': 'failed', 'model': None,
+               'requestId': 'previous', 'executionState': 'not-dispatched'}
+        ledger = {'documents': {'README.md': {'state': 'partial', 'attempts': 1}}, 'steps': [row]}
+        with mock.patch.object(report.steps, 'remaining', return_value=(10, 600)):
+            self.assertTrue(report.escalation_allowed(progress, ledger, ['README.md'], request_id=KEY))
+            self.assertFalse(report.escalation_allowed(progress, ledger, ['README.md'], request_id='previous'))
+            row['executionState'] = 'unknown'
+            self.assertFalse(report.escalation_allowed(progress, ledger, ['README.md'], request_id=KEY))
+            row['executionState'] = 'not-dispatched'
+            row['model'] = 'cloud/model-that-answered'
+            self.assertFalse(report.escalation_allowed(progress, ledger, ['README.md'], request_id=KEY))
+            row.pop('requestId'); row.pop('executionState'); row['model'] = None
+            row['reason'] = 'cloud escalation: escalation unavailable (HTTP 502)'
+            self.assertTrue(report.escalation_allowed(progress, ledger, ['README.md'], request_id=KEY))
+            row['reason'] = 'cloud escalation: escalation unavailable (TimeoutError)'
+            self.assertFalse(report.escalation_allowed(progress, ledger, ['README.md'], request_id=KEY))
 
     def test_escalation_range_receipt_fences_its_own_range_and_legacy_receipts_fence_all_ranges(self):
         from types import SimpleNamespace
