@@ -5,7 +5,7 @@ const ADMISSION_REASONS = Object.freeze([
   'workload_reserved', 'workload_yielded', 'workload_proof_invalid',
   'maintenance_active', 'maintenance_recovery_required', 'workload_recovery_required',
   'inference_active', 'inference_residency_active', 'inference_recovery_required',
-  'admission_conflict_unclassified', 'runtime_inference_admission_denied',
+  'admission_refused', 'admission_conflict_unclassified', 'runtime_inference_admission_denied',
   'runtime_inference_recovery_required', 'benchmark_claim_active', 'benchmark_claim_proof_invalid',
 ]);
 const FAILURE_REASONS = Object.freeze([

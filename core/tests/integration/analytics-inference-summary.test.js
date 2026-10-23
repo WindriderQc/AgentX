@@ -128,6 +128,21 @@ describe('inference summary aggregation', () => {
     expect(d.failureAnalysis.byReason.reduce((n, row) => n + row.calls, 0)).toBe(d.totals.errors);
   });
 
+  test('embedding admission reason outranks legacy upstream/fallback codes without interpreting error prose', async () => {
+    const base = { model: 'local/embed', host: 'http://192.0.2.1:11434', caller: 'embedding', status: 'error' };
+    await InferenceLog.insertMany([
+      ...['upstream_error', 'fallback_failed'].map(code => ({ ...base,
+        routeDecision: { outcome: { code, reasonCode: 'admission_refused' } } })),
+      { ...base, status: 'success', routeDecision: { outcome: { reasonCode: 'admission_refused' } } },
+      { ...base, error: 'admission_refused', routeDecision: { outcome: { code: 'upstream_error' } } },
+      { ...base, error: 'caller_disconnected', routeDecision: { outcome: { reasonCode: 'admission_refused' } } },
+    ]);
+    const { body: { data: d } } = await request(server).get('/api/analytics/inference/summary?window=24h').expect(200);
+    expect(d.totals).toMatchObject({ calls: 5, errors: 3, cancellations: 1 });
+    expect(d.failureAnalysis).toMatchObject({ admissionRefusals: 2, unclassified: 0,
+      byReason: [{ reason: 'admission_refused', calls: 2 }, { reason: 'upstream_error', calls: 1 }] });
+  });
+
   test('all error causes reconcile beyond the ten displayed cause/consumer/model groups', async () => {
     await InferenceLog.insertMany(Array.from({ length: 14 }, (_, i) => ({
       model: `local/model-${i}`, host: 'http://192.0.2.1:11434', status: 'error',

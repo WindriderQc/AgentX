@@ -55,7 +55,10 @@ exceeds it; retention configuration does not prove complete collection.
 The chart footer links to the error comparison and reports how many errors were
 admission refusals. A reservation, active incompatible inference or recovery
 quarantine can refuse an attempt before inference is dispatched; this is not
-evidence that the model failed. Refusals remain in the totals. These historical
+evidence that the model failed. Refusals remain in the totals. The embedding path's stable `admission_refused` reason also counts as an admission
+refusal, even on legacy rows whose broad outcome code says upstream or fallback
+failure. Its specific blocking cause remains unspecified; raw error prose never
+establishes the cause. These historical
 causes do not establish that the host is still blocked; use Live inference for
 the current state.
 

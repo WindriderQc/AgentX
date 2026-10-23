@@ -101,6 +101,7 @@
   }
 
   const failureLabels = {
+    admission_refused: 'Admission refused (cause unspecified)',
     workload_reserved: 'Workload reserved', workload_yielded: 'Workload yielded',
     inference_recovery_required: 'Inference recovery', maintenance_recovery_required: 'Maintenance recovery',
     workload_recovery_required: 'Workload recovery', inference_active: 'Inference active',
