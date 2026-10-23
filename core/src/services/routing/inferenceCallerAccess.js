@@ -22,7 +22,20 @@ function resolveInferenceRequestCaller(req) {
   };
 }
 
+// Bind the known service principal at Core's existing private-LAN boundary.
+// Free-form callerDetail and body.consumerContract never establish identity.
+// This is telemetry only; workload proof/admission still decides execution.
+function resolveExecutionCaller(body, callerContext, consumerContract) {
+  if (!callerContext) {
+    const policy = resolveCallerPolicy(body.callerDetail || '');
+    callerContext = { principal: 'core-inference', requestedPolicy: policy, effectivePolicy: policy };
+  }
+  return { callerContext, consumerContract: consumerContract
+    || (callerContext.principal === 'benchmark-service' ? 'benchmark-service-v1' : null) };
+}
+
 module.exports = {
   inferenceCallerPrincipal,
-  resolveInferenceRequestCaller
+  resolveInferenceRequestCaller,
+  resolveExecutionCaller
 };

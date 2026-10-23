@@ -86,6 +86,13 @@ the overview's prior values. Later responses for a superseded period are ignored
 Playground conversation panels retain their separately labeled period and
 cover conversations, not platform-wide calls.
 
+Core generation binds new calls from its resolved `benchmark-service` principal
+to `benchmark-service-v1`. Existing explicit internal consumer contracts are
+preserved. A benchmark-like `callerDetail` or a contract in the request body
+does not establish that identity. This follows the existing private-LAN service
+attribution contract; native workload proof and admission remain required.
+Historical records without a contract remain unchanged.
+
 ## Live inference and GPU work
 
 In the full profile, **Live inference** reads Core's existing runtime-coordination
