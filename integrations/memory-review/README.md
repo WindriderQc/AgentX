@@ -58,6 +58,18 @@ review, whatever its type or confidence.
 Selected-note writes use Core `MemoryNote` through the native memory adapter; the
 CLI has no separate native-note writer.
 
+Core preserves a candidate's `temporal.validFrom` as source fact metadata on
+selected notes and on working-memory/artifact RAG documents. Unknown validity
+stays `null`: the apply time is never substituted for the date of a fact.
+`recordedAt` describes when the store first recorded the note/document, separately
+from validity. Note reads expose the existing Mongo `createdAt` under that name;
+RAG stores its first recording time in the chunk payload. Content edits, retries
+and embedding-collection migrations preserve it. Legacy RAG documents without
+that timestamp retain an unknown value. Each applied candidate adds a bounded
+`sourceRefs` entry `{ system: 'memory-review', id: '<runId>:<candidateId>' }`.
+These fields carry provenance, not approval or precedence: replacement chains
+and automatic supersession remain tracked in [#896](https://github.com/WindriderQc/AgentX/issues/896).
+
 The 167 synthetic tests cover filtering of owner versus harness/tool content,
 secret sanitation, bounded/resumable collection, API retries, idempotent watermarks,
 candidate validation and accepted Git evidence. No personal transcript or model

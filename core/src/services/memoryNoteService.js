@@ -5,6 +5,7 @@ const MemoryNote = require('../../models/MemoryNote');
 const { sealText } = require('./identifierVault');
 const { createIndex } = require('./memoryNoteIndex');
 const { scoreFloor } = require('../helpers/scoreFloor');
+const { memoryFactInput, memoryFactProjection, mergeMemoryFactMetadata } = require('../../../shared/memoryFactMetadata');
 
 // A note is recalled by meaning when its similarity to the request reaches
 // this floor. Measured with qllama/bge-m3:f16 on 24 owner questions
@@ -85,8 +86,9 @@ function project(row) {
     topic: row.topic, packId: row.packId, scopeId: row.scopeId, scope: row.scope,
     sensitivity: row.sensitivity, source: row.source, createdAt: row.createdAt,
     updatedAt: row.updatedAt, expiresAt: row.expiresAt || null,
+    ...memoryFactProjection(row),
     ...(row.kind === 'souvenir' ? { eventDate: row.eventDate || '', eventDatePrecision: row.eventDatePrecision || 'unknown',
-      people: row.people || [], places: row.places || [], sourceRefs: row.sourceRefs || [], revision: row.revision || 0 } : {}) };
+      people: row.people || [], places: row.places || [], revision: row.revision || 0 } : {}) };
 }
 
 // Bind once in trusted server code. Request bodies and personas cannot widen
@@ -129,11 +131,15 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
 
   async function remember(input = {}) {
     const raw = cleanText(input.text);
+    memoryFactInput(input);
     if (input.kind !== undefined && !['fact', 'preference', 'decision'].includes(input.kind)) throw error('Choose fact, preference or decision');
     if (input.id !== undefined) noteId(input.id);
     const { text, sealed } = await seal(raw);
     const id = input.id === undefined ? digest([scopeId, packs[0], text].join('\n')).slice(0, 24) : noteId(input.id);
     const existing = await MemoryNote.findOne({ ...boundary, _id: id }).lean();
+    // A kept souvenir retains its original sources, including through the
+    // general note editor. Only ordinary facts accumulate review references.
+    const fact = mergeMemoryFactMetadata(existing?.kind === 'souvenir' ? { validFrom: input.validFrom } : input, existing || {});
     if (input.id !== undefined && (!existing || existing.status === 'forgotten')) throw error('The selected note no longer exists', 404);
     // A souvenir is kept for good: a correction cannot give it an expiry.
     const expiresAt = existing?.kind === 'souvenir' ? null
@@ -141,8 +147,10 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     if (expiresAt && (!Number.isFinite(expiresAt.getTime()) || expiresAt <= new Date())) throw error('Expiry must be a future ISO date');
     const kind = input.kind || existing?.kind || 'fact';
     const changed = !existing || existing.status === 'forgotten' || existing.text !== text || existing.kind !== kind
-      || String(existing.expiresAt || '') !== String(expiresAt || '');
-    if (!changed) return { ok: true, authority: 'agentx.core', id, text, kind, sealed, created: false, changed: false, updatedAt: existing.updatedAt };
+      || String(existing.expiresAt || '') !== String(expiresAt || '')
+      || String(existing.validFrom ? new Date(existing.validFrom).toISOString() : '') !== String(fact.validFrom || '')
+      || JSON.stringify(memoryFactProjection(existing).sourceRefs) !== JSON.stringify(fact.sourceRefs);
+    if (!changed) return { ok: true, authority: 'agentx.core', ...project(existing), sealed, created: false, changed: false };
     // An explicit correction keeps an existing classification. In particular it
     // cannot downgrade a highly-private note by using a different presentation.
     // A trusted server caller may ask for the stricter owner label on a new
@@ -153,7 +161,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
       ? { scope: existing.scope, sensitivity: existing.sensitivity } : stricter;
     const filter = { ...boundary, _id: id, ...(input.id === undefined ? {} : { status: { $ne: 'forgotten' } }) };
     const update = { $set: {
-      text, kind, ...labels, expiresAt, status: 'active', forgottenAt: null,
+      text, kind, ...labels, ...fact, expiresAt, status: 'active', forgottenAt: null,
       contentHash: digest(text.toLowerCase())
     }, $setOnInsert: { packId: packs[0], scopeId, topic: 'general', type: 'fact', source: sourceOf(input.source) } };
     let result;
@@ -174,11 +182,12 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
   }
 
   async function record(input = {}) {
+    const fact = memoryFactInput(input);
     const { text } = await seal(cleanText(input.text));
     const values = { packId: packs[0], scopeId, ...classification, text,
       topic: typeof input.topic === 'string' ? input.topic.slice(0, 80) : 'general',
       type: input.type === 'summary' ? 'summary' : 'fact', source: input.source || 'explicit-ui',
-      contentHash: digest(text.toLowerCase()), status: 'active' };
+      contentHash: digest(text.toLowerCase()), status: 'active', ...fact };
     if (!input.sourceTraceId) { const created = await MemoryNote.create(values); indexLater(created); return project(created); }
     const sourceTraceId = cleanText(input.sourceTraceId, 300);
     const row = await MemoryNote.findOneAndUpdate({ ...boundary, sourceTraceId },

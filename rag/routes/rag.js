@@ -17,6 +17,7 @@
 
 const crypto = require('crypto');
 const { memoryClassification } = require('../../shared/memoryClassification');
+const { memoryFactInput } = require('../../shared/memoryFactMetadata');
 const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
@@ -86,9 +87,10 @@ function validateIngestDocument(document) {
   if (source != null && typeof source !== 'string') {
     return { error: 'source must be a string' };
   }
-  let classification;
+  let classification, fact;
   try {
     classification = memoryClassification(document);
+    fact = memoryFactInput(document);
   } catch (error) {
     return { error: error.message };
   }
@@ -115,6 +117,7 @@ function validateIngestDocument(document) {
 
   return { metadata: {
     ...classification,
+    ...fact,
     source: source || 'api', tags: tags || [], documentId,
     chunkSize: resolvedChunkSize, chunkOverlap: resolvedChunkOverlap
   } };
@@ -171,7 +174,7 @@ async function handleIngest(req, res) {
       return sendError(res, classified.status, classified.code, classified.detail, classified.meta);
     }
     logger.error('Ingest error:', err);
-    if (err.code === 'MEMORY_CLASSIFICATION_CONFLICT') {
+    if (['MEMORY_CLASSIFICATION_CONFLICT', 'MEMORY_FACT_METADATA_CONFLICT'].includes(err.code)) {
       return sendError(res, 409, err.code, err.message);
     }
     sendError(res, 500, 'Ingest failed', err.message);

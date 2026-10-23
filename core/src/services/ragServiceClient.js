@@ -83,6 +83,8 @@ class RagServiceClient {
         source: metadata.source,
         scope: metadata.scope,
         sensitivity: metadata.sensitivity,
+        validFrom: metadata.validFrom,
+        sourceRefs: metadata.sourceRefs,
         tags: metadata.tags,
         chunkSize: metadata.chunkSize,
         chunkOverlap: metadata.chunkOverlap,

@@ -34,6 +34,8 @@ const schema = new mongoose.Schema({
   embeddedHash: { type: String, default: null },
   status: { type: String, enum: ['active', 'forgotten'], default: 'active', index: true },
   forgottenAt: { type: Date, default: null },
+  // Source fact time; independent of server-owned createdAt/updatedAt.
+  validFrom: { type: Date, default: null },
   expiresAt: { type: Date, default: null }
 }, { timestamps: true, collection: 'household_voice_memories' });
 

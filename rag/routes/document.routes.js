@@ -10,6 +10,7 @@ const router = express.Router();
 const logger = require('../config/logger');
 const { getRagStore } = require('../src/services/ragStore');
 const { sendError } = require('../src/utils/response');
+const { memoryFactProjection } = require('../../shared/memoryFactMetadata');
 
 // ── GET /documents/:id ──────────────────────────────────
 
@@ -30,6 +31,7 @@ router.get('/documents/:id', async (req, res) => {
         source: doc.source,
         chunkCount: chunks.length,
         metadata: { tags: doc.tags, hash: doc.hash,
+          ...memoryFactProjection(doc),
           ...(doc.scope ? { scope: doc.scope, sensitivity: doc.sensitivity } : {}) }
       }
     });
@@ -59,6 +61,7 @@ router.get('/documents/:id/chunks', async (req, res) => {
           chunkIndex: c.chunkIndex,
           text: c.text,
           metadata: { ...(c.metadata || {}),
+            ...memoryFactProjection(doc),
             ...(doc.scope ? { scope: doc.scope, sensitivity: doc.sensitivity } : {}) }
         }))
       }

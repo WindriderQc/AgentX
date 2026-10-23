@@ -38,7 +38,8 @@ describe('bounded corpus traversal payloads', () => {
   test('inventory and metadata reads omit all source text while preserving document identity', async () => {
     const result = await store.listDocuments();
     const { hash, ...listedMetadata } = metadata;
-    expect(result).toEqual({ total: 1, documents: [{ ...listedMetadata, chunkCount: 1 }], sources: [listedMetadata.source] });
+    expect(result).toEqual({ total: 1, documents: [{ ...listedMetadata, chunkCount: 1,
+      validFrom: null, recordedAt: null, sourceRefs: [] }], sources: [listedMetadata.source] });
     expect(await store.getDocument('doc-1')).toMatchObject(metadata);
     for (const body of requests) {
       expect(body.with_payload.include).not.toEqual(expect.arrayContaining(['text']));
@@ -584,6 +585,7 @@ describe('QdrantVectorStore.getDocument', () => {
       source: 'api',
       tags: ['test'],
       hash: 'abc123',
+      validFrom: null, recordedAt: null, sourceRefs: [],
       chunkCount: 1
     });
   });
@@ -626,12 +628,14 @@ describe('QdrantVectorStore.listDocuments', () => {
       documentId: 'doc-a',
       source: 'api',
       tags: ['x'],
+      validFrom: null, recordedAt: null, sourceRefs: [],
       chunkCount: 2
     });
     expect(documents[1]).toEqual({
       documentId: 'doc-b',
       source: 'file',
       tags: [],
+      validFrom: null, recordedAt: null, sourceRefs: [],
       chunkCount: 1
     });
   });
