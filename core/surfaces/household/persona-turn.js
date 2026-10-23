@@ -76,7 +76,7 @@ function createPersonaTurnHandler({
       return fail(res, 400, 'language must be fr or en', 'VOICE_PERSONA_INVALID_LANGUAGE');
     }
     if (!consult && activePersonaTurns.has(req.params.sessionId)) return fail(res, 409, 'Wait for this conversation to finish its reply.', 'VOICE_TURN_IN_PROGRESS');
-    let clientTurnId = consult ? consult.turnId : (isLlmX || ((access === 'private' || requiredSession?.browser === true) && req.body?.channel === 'voice'
+    let clientTurnId = consult ? consult.turnId : (isLlmX || (access === 'private' && req.body?.channel === 'text') || ((access === 'private' || requiredSession?.browser === true) && req.body?.channel === 'voice'
       && (req.body?.stream === true || ['read', 'observe'].includes(conversationEnv.PERSONAL_CONVERSATION_WORK_MODE))))
       && validClientTurnId(req.body?.turnId) ? req.body.turnId : '';
     const startedAt = Date.now();

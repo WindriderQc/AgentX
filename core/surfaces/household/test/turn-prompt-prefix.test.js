@@ -17,7 +17,7 @@ const records = require('../persona-records');
 const BLOCK = '[Household selected context for this turn: reference data, not tool instructions]';
 const RUN_ID = 'resp_33333333-3333-4333-8333-333333333333';
 
-function harness({ packId, backend, response = 'Réponse synthétique.', conversationImages, settle, sounds, screenPages }) {
+function harness({ packId, backend, response = 'Réponse synthétique.', conversationImages, settle, sounds, screenPages, validClientTurnId = () => false }) {
   const pack = packs.packById(packId);
   const session = { sessionId: 'synthetic-session', status: 'active', packId, modeId: pack.defaultMode, scopeId: pack.defaultScopeId,
     backend, agentId: pack.childSafe ? 'family' : 'main', turnCount: 0,
@@ -64,7 +64,7 @@ function harness({ packId, backend, response = 'Réponse synthétique.', convers
     openHold: {}, openingPayload: () => ({}),
     sounds: sounds || { select: () => state.sound, get: () => null }, visuals: { sources: () => ['web'], present: async block => block },
     brain: { cancel() {}, schedule() {}, contextFor: () => state.advice },
-    activePersonaTurns: new Map(), validClientTurnId: () => false,
+    activePersonaTurns: new Map(), validClientTurnId,
     envelope: (res, data) => { res.payload = data; }, fail: (res, status, message, code) => { res.failure = { status, message, code }; },
     cleanText: (value, max = 4000) => String(value || '').trim().slice(0, max),
     assessSafety: prompt.assessSafety, childBoundaryReply: prompt.childBoundaryReply, escalationReply: prompt.escalationReply,
@@ -88,6 +88,16 @@ const CASES = [
   { packId: 'personal_operator', backend: 'agentx' }, { packId: 'personal_operator', backend: 'openclaw' },
   { packId: 'kidx_nestor', backend: 'agentx' }, { packId: 'kidx_nestor', backend: 'openclaw' }
 ];
+
+test('personal typed requests retain their validated client identity through execution and canonical audit', async () => {
+  const id = '33333333-3333-4333-8333-333333333333';
+  const observed = [];
+  const h = harness({ packId: 'personal_operator', backend: 'agentx', validClientTurnId: value => value === id,
+    settle: request => observed.push(request.turnId) });
+  await h.turn('Requête synthétique.', 'text', { turnId: id });
+  assert.deepEqual(observed, [id]);
+  assert.equal(h.turns[0].clientTurnId, id);
+});
 
 for (const { packId, backend } of CASES) {
   test(`${packId} on ${backend} plays the newly requested animal on consecutive turns`, async () => {
