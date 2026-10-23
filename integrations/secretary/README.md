@@ -340,7 +340,8 @@ historical review for each of its findings, including consolidated souvenir
 candidates through their private manifests. The planner (`--dispositions`)
 accepts bulk mail whose actions, deliverables and invoices are decided, or
 person/important mail whose every finding the owner decided (kept, souvenir,
-dismissed, resolved); a finding the owner never saw keeps the message held, and
+dismissed, resolved); mail with no finding to decide waits for a separate owner
+validation (`no_owner_decision_yet`); a finding the owner never saw keeps the message held, and
 no entry citing it may still be a candidate. Integrity, copies, provider,
 draft, date and unread-page blockers still apply; only bulk mail also waives
 attachment images and thread questions. The exact-analysis qualification is not

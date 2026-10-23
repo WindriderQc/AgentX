@@ -157,6 +157,9 @@ def _reasons_for_disposition(row, disposition):
         required = [i for i, s in expected.items() if s in OBLIGATIONS]
     elif basis == "owner-decided" and lane in ("person", "important"):
         required = list(expected)
+        if not required:
+            # Nothing was found to decide: a separate, later owner validation.
+            reasons.append("no_owner_decision_yet")
     else:
         return reasons + ["owner_disposition_basis_invalid"]
     for identity in required:

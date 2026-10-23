@@ -74,6 +74,12 @@ class OwnerDispositionTests(unittest.TestCase):
         row, _ = self.target(self.owned())
         self.assertIn("finding_not_decided_by_owner", row["blockers"])
 
+    def test_person_mail_without_any_finding_waits_for_a_later_owner_validation(self):
+        self.lane("person")
+        row, _ = self.target(self.owned())
+        self.assertIn("no_owner_decision_yet", row["blockers"])
+        self.assertFalse(row["candidateForOwnerReview"])
+
     def test_person_mail_needs_every_finding_decided_by_the_owner(self):
         finding = self.with_finding()
         self.lane("person")
