@@ -3,7 +3,7 @@
 const { BSON, ObjectId } = require('mongoose').mongo;
 const { error } = require('./financeAccess');
 const { hash, plain, canonical } = require('./financeRepairStorage');
-const { COLLECTIONS, keyOf, afterImages } = require('./financeRepairManifest');
+const { COLLECTIONS, keyOf, afterImages, parts } = require('./financeRepairManifest');
 const conflict = message => error(message, 'FINANCE_REPAIR_STATE_CONFLICT', 409);
 
 async function snapshot(db) {
@@ -17,7 +17,7 @@ async function snapshot(db) {
 }
 const signatures = state => Object.fromEntries(COLLECTIONS.map(name => [name, { count: state[name].length, sha256: hash(state[name]) }]));
 function assertSignatures(state, expected) {
-  if (canonical(signatures(state)) !== canonical(expected)) throw conflict('Finance changed outside the reviewed three documents');
+  if (canonical(signatures(state)) !== canonical(expected)) throw conflict('Finance changed outside the reviewed statement scope');
 }
 function images(state, manifest) {
   return manifest.updates.map(u => {
@@ -33,21 +33,26 @@ function derive(state, manifest, documents) {
   })]));
 }
 function validateScope(state, manifest, destination) {
-  const [s,t,o] = manifest.updates.map(u => u.before);
-  const targets = destination;
+  const group = parts(manifest), s = group.statement.before;
+  const rowIds = group.transactions.map(u => u.id).sort();
   const exactRows = state.finance_transactions.filter(x => String(x.statementId) === s._id);
-  if (exactRows.length !== 1 || String(exactRows[0]._id) !== t._id) throw conflict('Statement transaction scope changed');
-  const oldKey = keyOf(t);
-  const newKey = keyOf({ ...t, accountKey: manifest.updates[1].set.accountKey });
-  const decisions = state.finance_overrides.filter(x => [oldKey,newKey].includes(keyOf(x)));
-  if (decisions.length !== 1 || String(decisions[0]._id) !== o._id) throw conflict('Statement owner decision scope changed');
-  if (state.finance_document_links.some(x => [oldKey,newKey].includes(x.transactionKey)
-    || (x.transaction?.accountKey && [oldKey,newKey].some(k => k.startsWith(x.transaction.accountKey + '|' + x.transaction.date + '|'))))) {
+  if (canonical(exactRows.map(x => String(x._id)).sort()) !== canonical(rowIds)) throw conflict('Statement transaction scope changed');
+  const rows = group.transactions.map(u => u.before);
+  const keys = new Set(rows.flatMap((t,i) => [keyOf(t),keyOf({...t,accountKey:group.transactions[i].set.accountKey})]));
+  const decisionIds = group.overrides.map(u => u.id).sort();
+  const decisions = state.finance_overrides.filter(x => keys.has(keyOf(x)));
+  if (canonical(decisions.map(x => String(x._id)).sort()) !== canonical(decisionIds)) throw conflict('Statement owner decision scope changed');
+  if (state.finance_document_links.some(x => keys.has(x.transactionKey)
+    || (x.transaction?.accountKey && [...keys].some(k => k.startsWith(x.transaction.accountKey + '|' + x.transaction.date + '|'))))) {
     throw conflict('Statement document links require a new reviewed manifest');
   }
-  if (state.finance_statements.some(x => String(x._id) !== s._id && x.statementKey === targets[0].statementKey)
-    || state.finance_transactions.some(x => String(x._id) !== t._id && keyOf(x) === keyOf(targets[1]))
-    || state.finance_overrides.some(x => String(x._id) !== o._id && keyOf(x) === keyOf(targets[2]))) throw conflict('A destination identity is occupied');
+  for (const name of ['finance_statements','finance_transactions','finance_overrides']) {
+    const indexes = manifest.updates.flatMap((u,i) => u.collection === name ? [i] : []);
+    const ownedIds = new Set(indexes.map(i => manifest.updates[i].id));
+    const identity = name === 'finance_statements' ? row => row.statementKey : keyOf;
+    const targetKeys = new Set(indexes.map(i => identity(destination[i])));
+    if (state[name].some(row => !ownedIds.has(String(row._id)) && targetKeys.has(identity(row)))) throw conflict('A destination identity is occupied');
+  }
 }
 function assertImages(current, allowed) {
   current.forEach((doc,i) => {

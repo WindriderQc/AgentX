@@ -1,9 +1,9 @@
 # Bounded Finance book repair
 
-Core's native operator executor moves one reviewed statement, its single
-transaction and its single owner decision between personal and corporate books.
-It changes the book prefix only. Account-number normalization, extra rows,
-document-link reassignment, re-extraction and bulk historical correction are
+Core's native operator executor moves one whole reviewed statement and its exact
+transaction set between personal and corporate books. It changes the book prefix
+only, preserving any existing manual decisions. Account-number normalization,
+document-link reassignment, re-extraction and bulk historical correction remain
 outside this contract. The original PDF never moves or changes.
 
 The implementation lives in `core/src/services/finance/financeRepairExecutor.js`.
@@ -52,13 +52,24 @@ continue to consume Core's APIs.
 
 ## Reviewed manifest
 
-The private JSON file has `schemaVersion: 1`, a stable `requestKey`, a
-`verifiedIdentity` naming the PDF hash/path and the target book, and exactly
-three `updates` in this order:
+The private JSON file has a stable `requestKey` and a `verifiedIdentity` naming
+the PDF hash/path, period, issuer, reviewed account suffix and target book.
+`schemaVersion: 1` retains the original one-row/one-decision contract unchanged,
+including its existing manifest digests and receipts. `schemaVersion: 2` accepts
+one complete statement with 1–50 transactions and 0–50 existing owner decisions,
+at most one per transaction. Both versions group `updates` in this order:
 
-1. `finance_statements`: the reconciled statement.
-2. `finance_transactions`: its entire row set, restricted here to one row.
-3. `finance_overrides`: that row's owner decision.
+1. `finance_statements`: exactly one reconciled statement.
+2. `finance_transactions`: every existing row of that statement, sorted by ID.
+3. `finance_overrides`: exactly the decisions of its manual rows, sorted by ID.
+
+Version 2 also requires `verifiedIdentity.transactionOrder`, an object mapping
+every statement account code to its row IDs in the verified original's printed
+order. Zero-row accounts have an empty array. This order is separate from update
+ID order: several same-day rows may have balances that only reconcile in their
+printed sequence. Each running balance and each closing equation must reconcile
+exactly in integer cents. Missing/extra rows, duplicate identities, unlisted
+manual decisions and either source or target document links refuse execution.
 
 Each update carries its existing `id`, full `before` image, canonical
 `expectedBeforeSha256`, `matchCountRequired: 1`, `insert: false`, `upsert: false`,
@@ -70,12 +81,12 @@ look similar.
 The service derives the allowed field changes from the current book and native
 ledger prefixes. It rejects arbitrary update expressions, amount/category/tag
 changes, normalization of a missing account number, or an unmatched owner
-decision. Both account closing equations, the printed row balance and wallet
-flow sign must reconcile in integer cents. A matching source/target document
+decision. All account closing equations, every printed running balance and the wallet
+flow signs must reconcile in integer cents. A matching source/target document
 link or an occupied destination identity requires another review. This bounded
 executor does not guess how to migrate such a link.
 
-The three images in Mongo must still match the reviewed images. The original
+All reviewed images in Mongo must still match their exact before images. The original
 must resolve inside the configured Finance archive and match its SHA-256.
 The owner's category, tags, manual flag, author and creation date survive;
 the decision's stable account key follows its row. No rules or document
@@ -91,7 +102,7 @@ received after state and rollback state. It refuses snapshots above 32 MiB.
 Receipt paths and real manifests belong outside public Git.
 
 MongoDB standalone does not provide a multi-document transaction for these
-three writes. The executor therefore retains exclusion across all of them.
+bounded writes. The executor therefore retains exclusion across all of them.
 Each replacement checks its before image and uses native unique indexes.
 After interruption, each actual document must match either its saved before
 or after image; matching after means the effect was received and must not be
@@ -119,7 +130,7 @@ native-owner reconciliation; this executor never interprets a changed host or
 missing lock file as permission to clear an exclusion.
 
 Rollback runs under the same process lock and Finance exclusion. It restores
-only these three exact before images, including missing legacy fields and
+only the exact reviewed before images, including missing legacy fields and
 old timestamps, and keeps both application and rollback receipts. A later owner
 decision or occupied old identity refuses rollback rather than overwriting it.
 Unrelated changes made after a completed application are retained. Once
@@ -158,6 +169,9 @@ is a distinct approved request in the [Core heavy-work queue](HEAVY_WORK_QUEUE.m
 synthetic originals. It exercises admission drain, model/API/scan/stream refusal,
 kernel-lock contention, changed intent and evidence, collisions, preserved
 decisions/links, exact rollback and actual SIGKILL at write/receipt boundaries.
-The existing finance service/profile tests remain required. These checks prove
+`core/tests/services/financeStatementRepair.test.js` adds complete-row and
+zero-decision cases, printed-order checks, later-row SIGKILL and uncertain-dispatch
+recovery, destination/link conflicts, preserved decisions and exact reverse
+rollback. The existing finance service/profile tests remain required. These checks prove
 source behavior on disposable databases, separately from installation,
 accounting authorization and a live repair receipt.
