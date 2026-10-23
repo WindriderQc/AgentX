@@ -21,7 +21,7 @@ const KINDS = Object.freeze({
   execution_failed: { severity: 'warning', title: 'Report execution stopped',
     message: d => `The worker stopped with "${d.reason}". Read its saved report before any relaunch; automatic continuation does not retry this.` },
   no_progress: { severity: 'warning', title: 'Report made no progress',
-    message: () => 'Two executions in a row ended with the same saved report. Automatic continuation stopped for this task.' },
+    message: () => 'The execution added no verified source coverage. Automatic continuation stopped; review the remaining scope before another attempt.' },
   needs_grant: { severity: 'info', title: 'Report waits for a new grant or window',
     message: d => ({
       grant_runs_used: 'The current grant has no execution left.',

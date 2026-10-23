@@ -54,7 +54,9 @@ function task(outcomes, extra = {}) {
     codingReportAuthority: { grants: [{ key: 'g1', queueRequestId: 'q1', additionalRuns: 3 }], bindings: [{ grantKey: 'g1' }] },
     feedback: outcomes.map(reportOutcome => ({ by: 'coding-team', reportOutcome })), ...extra };
 }
-const stopped = (requestId, reason, sha = SHA) => ({ requestId, kind: 'blocked', reason, partial: { deliverableId: 'd', sha256: sha } });
+const stopped = (requestId, reason, sha = SHA) => ({ requestId, kind: 'blocked', reason,
+  progress: { schema: 'agentx.report-material-progress/v1', verified: true, advanced: true },
+  partial: { deliverableId: 'd', sha256: sha } });
 
 function controls() {
   const control = { target: 'host', status: jest.fn(async ({ requestId }) => (requestId
@@ -82,9 +84,14 @@ describe('report continuation decisions', () => {
     expect(service.decide(task([stopped(PARENT, 'hard_budget')])).action).toBe('continue');
     expect(service.decide(task([stopped(PARENT, 'runner_error')])).action).toBe('failed');
     expect(service.decide(task([{ ...stopped(PARENT, 'model_call_limit'), partial: null }])).action).toBe('failed');
-    expect(service.decide(task([stopped('a', 'model_call_limit'), stopped(PARENT, 'model_call_limit')])).action).toBe('no_progress');
+    expect(service.decide(task([stopped('a', 'model_call_limit'), { ...stopped(PARENT, 'model_call_limit'), progress: { verified: true, advanced: false } }])).action).toBe('no_progress');
     expect(service.decide(task([stopped('a', 'model_call_limit', 'e'.repeat(64)), stopped(PARENT, 'model_call_limit')])).action).toBe('continue');
     expect(service.decide(task([{ requestId: PARENT, deliverableId: 'd', sha256: SHA }])).action).toBe('completed');
+  });
+
+  it('refuses changed report bytes without material progress or a verified comparison', () => {
+    expect(service.decide(task([{ ...stopped(PARENT, 'hard_budget'), progress: undefined }]))).toMatchObject({ action: 'failed', reason: 'coverage_comparison_unverified' });
+    expect(service.decide(task([{ ...stopped(PARENT, 'hard_budget', 'e'.repeat(64)), progress: { verified: true, advanced: false } }])).action).toBe('no_progress');
   });
 
   it('derives one stable request id per parent', () => {
@@ -92,6 +99,21 @@ describe('report continuation decisions', () => {
     expect(id).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
     expect(service.continuationId('0939', PARENT)).toBe(id);
     expect(service.continuationId('0939', 'other')).not.toBe(id);
+  });
+
+  it('reads legacy native coverage without rewriting old outcomes or crediting changed Markdown', async () => {
+    const row = task([{ ...stopped(PARENT, 'hard_budget'), progress: undefined }]);
+    const original = { _id: 'previous', pipelineId: '0939', taskId: 't1', sourceCommit: 'a'.repeat(40), specSha256: 'b'.repeat(64),
+      coverage: { inventorySha256: 'c'.repeat(64), documents: [{ path: 'README.md', sha256: 'd'.repeat(64), state: 'partial',
+        evidence: [{ path: 'source.js', sha256: 'e'.repeat(64), line: 1, check: 'Original wording' }] }] } };
+    const current = structuredClone(original); current._id = PARENT; current.parentRequestId = 'previous';
+    current.coverage.documents[0].evidence[0].check = 'Same source, another wording';
+    store.runs = [original, current];
+    const before = JSON.stringify({ row, runs: store.runs });
+    expect((await service.decision(row)).action).toBe('no_progress');
+    expect(JSON.stringify({ row, runs: store.runs })).toBe(before);
+    current.pipelineId = '0002';
+    expect((await service.decision(row)).reason).toBe('coverage_comparison_unverified');
   });
 });
 
@@ -194,7 +216,7 @@ describe('report continuation loop', () => {
     await service.tick();
     expect(notifications.publish).toHaveBeenCalledWith(expect.anything(), 'documents_blocked', PARENT, { paths: ['docs/A.md'] });
     expect(notifications.publish).toHaveBeenCalledWith(expect.anything(), 'execution_failed', PARENT, { reason: 'runner_error' });
-    store.tasks = [task([stopped('a', 'model_call_limit'), stopped(PARENT, 'model_call_limit')])];
+    store.tasks = [task([stopped('a', 'model_call_limit'), { ...stopped(PARENT, 'model_call_limit'), progress: { verified: true, advanced: false } }])];
     await service.tick();
     expect(notifications.publish).toHaveBeenCalledWith(expect.anything(), 'no_progress', PARENT);
     store.tasks = [task([{ requestId: PARENT, deliverableId: 'd', sha256: SHA }], { status: 'review' })];

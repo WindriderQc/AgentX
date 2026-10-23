@@ -339,16 +339,44 @@ def legacy_review_required(ledger, notes, *, review_evidence=False):
                         for edit in review.get('evidenceCorrections', [])))
 
 
+def _document_units(row):
+    return sorted({json.dumps(['source', ref['path'], ref['sha256'], ref['line']])
+                   for ref in row.get('evidence', [])}
+                  | {json.dumps(['range', *span]) for span in row.get('ranges', [])}
+                  | ({'reviewed'} if row['state'] == 'reviewed' else set()))
+
+
 def continuation_retries(ledger, request_id, parent_request_id):
     """Give an explicitly authorized new execution its bounded local attempts.
 
     Native/Core authority is checked before the restored ledger reaches here.
     Preserve every failed step and reviewed range; this grants no model calls.
     """
-    if not parent_request_id or request_id == parent_request_id or ledger.get('continuationRequestId') == request_id:
+    baseline = ledger.get('executionBaseline') or {}
+    if (request_id == parent_request_id or ledger.get('continuationRequestId') == request_id
+            or (not parent_request_id and baseline.get('requestId') == request_id)):
+        return
+    # Only attempted documents count as stalled. Untouched pending work cannot
+    # exhaust its retries while another document consumes an execution.
+    touched = {path for step in ledger['steps'][baseline.get('stepOffset', len(ledger['steps'])):]
+               if step.get('result') in ('merged', 'failed') and step.get('kind') != 'legacy'
+               for path in step.get('documents', [])}
+    for path, row in ledger['documents'].items():
+        previous = baseline.get('documents', {}).get(path)
+        if previous is not None and path in touched and row['state'] != 'reviewed':
+            advanced = bool(set(_document_units(row)) - set(previous))
+            row['stalledExecutions'] = 0 if advanced else row.get('stalledExecutions', 0) + 1
+            if row['stalledExecutions'] >= 2:
+                row.update(state='blocked', retryExhausted=True,
+                           note='Two attempted executions added no verified source coverage. Split or review this obligation before a new task.')
+    ledger['executionBaseline'] = {'requestId': request_id, 'stepOffset': len(ledger['steps']),
+                                  'documents': {path: _document_units(row) for path, row in ledger['documents'].items()}}
+    if not parent_request_id or ledger.get('continuationRequestId') == request_id:
         return
     resets = []
     for path, row in ledger['documents'].items():
+        if row.get('retryExhausted'):
+            continue
         if row['state'] not in ('blocked', 'partial', 'pending') or not (row.get('attempts') or row.get('partialRounds')):
             continue
         resets.append({'path': path, **{key: row.get(key) for key in ('state', 'attempts', 'partialRounds', 'note')}})
@@ -481,7 +509,8 @@ def coverage(ledger):
     """coverage.json in the shape Core's report contract validates."""
     tally = counts(ledger)
     return {'inventorySha256': ledger['inventorySha256'],
-            'documents': [{'path': path, 'sha256': row['sha256'], 'state': row['state'], 'evidence': row['evidence']}
+            'documents': [{'path': path, 'sha256': row['sha256'], 'state': row['state'], 'evidence': row['evidence'],
+                           'ranges': sorted(row.get('ranges', []))}
                           for path, row in sorted(ledger['documents'].items())],
             'declaredComplete': tally['reviewed'] == len(ledger['documents']) and not ledger.get('legacyReviewPending'),
             'acceptance': 'independent_review_required'}

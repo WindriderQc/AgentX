@@ -189,6 +189,8 @@ test('authorization submits reduced cumulative budgets and the installed Benchma
   form.values = authorizationValues({ pipelineId: '0001', queueRequestId: KEY,
     scope: ' benchmark/src/services/benchmark/artifactComparison.js \n\nbenchmark/tests/unit/benchmark/artifactComparison.test.js',
     verificationProfile: 'agentx-benchmark-artifact-tests/v1', maxResumes: '0', workMinutes: '20',
+    acceptanceCriteria: 'Expected artifact comparison is reproduced.\nExisting behavior remains valid.',
+    requiredCapabilities: 'source_read\nsource_write\ncpu_tests', estimatedWorkMinutes: '10', estimatedModelCalls: '12',
     testMinutes: '5', modelMinutes: '10', modelCalls: '17', ciMinutes: '8', noProgressMinutes: '3' });
   form.events.submit({ target: form, preventDefault() {} }); await flush();
   expect(calls.some(call => call.options.method === 'POST')).toBe(false);
@@ -200,6 +202,8 @@ test('authorization submits reduced cumulative budgets and the installed Benchma
   expect(body).toMatchObject({ confirm: true, authorized: true, lowRisk: true, expectedRevision: 12,
     queueRequestId: KEY, verificationProfile: 'agentx-benchmark-artifact-tests/v1',
     scope: ['benchmark/src/services/benchmark/artifactComparison.js', 'benchmark/tests/unit/benchmark/artifactComparison.test.js'],
+    qualification: { acceptanceCriteria: ['Expected artifact comparison is reproduced.', 'Existing behavior remains valid.'],
+      requiredCapabilities: ['source_read', 'source_write', 'cpu_tests'], estimate: { workSeconds: 600, modelCalls: 12 } },
     limits: { maxResumes: 0, workSeconds: 1200, testSeconds: 300, modelSeconds: 600,
       modelCalls: 17, ciSeconds: 480, noProgressSeconds: 180 } });
   expect(require('../../src/services/pipelineCodingAutonomyPolicy').limits(body.limits)).toEqual(body.limits);

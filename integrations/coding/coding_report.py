@@ -575,6 +575,9 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
 
     save()
     number = 0
+    unresolved = [row for row in ledger['documents'].values() if row['state'] != 'reviewed']
+    if unresolved and all(row.get('retryExhausted') for row in unresolved):
+        return 'no_useful_progress'
     source = lambda name: scope.source_bytes(workspace, baseline, name)
     if ledgers.legacy_review_required(ledger, notes, review_evidence=review_evidence):
         number += 1

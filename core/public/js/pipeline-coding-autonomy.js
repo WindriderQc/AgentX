@@ -117,6 +117,8 @@
         element('p', `Remaining: ${remaining(task.remaining.workSeconds)} work, ${remaining(task.remaining.testSeconds)} tests, ${remaining(task.remaining.modelSeconds)} model, ${task.remaining.modelCalls} calls, ${remaining(task.remaining.ciSeconds)} CI`),
         element('p', `Last useful progress: ${task.lastUsefulProgressAt || 'none recorded'} · manual interventions: ${task.manualInterventions.length}`));
       article.append(element('p', `Authorized files: ${task.scope.join(', ')} · campaign ${task.queueRequestId}`));
+      if (task.readiness && !task.readiness.canAuthorize)
+        for (const issue of task.readiness.issues) article.append(element('p', `${issue.message} ${issue.nextAction}`));
       appendCodeStepGraph(article, task.codeStepGraph);
       if (task.nativeAttemptLimit) article.append(element('p', `Native attempts: ${task.nativeAttemptCount}/${task.nativeAttemptLimit} · remaining worker corrections: ${task.remaining.maxResumes}`));
       const exhausted = [['workSeconds', 'work'], ['testSeconds', 'tests'], ['modelSeconds', 'model time'],
@@ -260,6 +262,11 @@
         queueRequestId: data.get('queueRequestId'), lowRisk: true,
         scope: String(data.get('scope')).split('\n').map(p => p.trim()).filter(Boolean),
         verificationProfile: data.get('verificationProfile'),
+        qualification: {
+          acceptanceCriteria: String(data.get('acceptanceCriteria') || '').split('\n').map(text => text.trim()).filter(Boolean),
+          requiredCapabilities: String(data.get('requiredCapabilities') || '').split('\n').map(text => text.trim()).filter(Boolean),
+          estimate: { workSeconds: Number(data.get('estimatedWorkMinutes')) * 60, modelCalls: Number(data.get('estimatedModelCalls')) }
+        },
         limits: { maxResumes: Number(data.get('maxResumes')), workSeconds: Number(data.get('workMinutes')) * 60,
           testSeconds: Number(data.get('testMinutes')) * 60, modelSeconds: Number(data.get('modelMinutes')) * 60,
           modelCalls: Number(data.get('modelCalls')), ciSeconds: Number(data.get('ciMinutes')) * 60,

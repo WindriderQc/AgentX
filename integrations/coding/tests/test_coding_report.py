@@ -665,6 +665,24 @@ class StepsReportTest(unittest.TestCase):
         self.assertFalse(self.stops[-1]['coverage']['declaredComplete'])
         self.assertIn('partial', self.stops[-1])
 
+    def test_retry_exhausted_checkpoint_stops_before_a_model_or_optional_writer(self):
+        self.out.mkdir(parents=True)
+        snapshot = dict(report.scope.inventory(self.workspace, self.head), sha256='a'*64)
+        ledger = report.ledgers.new_ledger(snapshot)
+        for row in ledger['documents'].values():
+            row.update(state='blocked', retryExhausted=True, stalledExecutions=2)
+        progress = mock.Mock(model_calls=0, hard_deadline=900, queue_deadline=900, stop_reason=None)
+        progress.now.return_value = 0
+        args = mock.Mock(task_id='0001', request_id=KEY, parent_request_id=None)
+        with mock.patch.object(report, 'initial_ledger', return_value=ledger):
+            outcome = report.run_steps(runner, args, progress, self.task, self.workspace, self.out,
+                self.out/'review.md', snapshot, self.head)
+        self.assertEqual(outcome, 'no_useful_progress')
+        runner.run_worker.assert_not_called()
+        self.assertEqual(self.uploads, [])
+        self.assertTrue((self.out/'review.md').is_file())
+        self.assertFalse(json.loads((self.out/'coverage.json').read_text())['declaredComplete'])
+
     def test_successful_correction_checkpoint_skips_same_notes_but_applies_new_notes(self):
         answer = lambda prompt: {'legacyEdits': [{'find': 'Six families.', 'replace': 'Eight families.'}]}
         outcome, ledger = self.correction_step(answer)

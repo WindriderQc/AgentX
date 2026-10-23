@@ -38,6 +38,7 @@ def _bounded_task(task, manifest):
             'spec': str(task.get('spec') or '')[:8_000],
             'discussion': discussion[-4_000:],
             'planning': str((task.get('planningContext') or {}).get('text') or '')[:3_000],
+            'acceptanceCriteria': (manifest.get('qualification') or {}).get('acceptanceCriteria', []),
             'correction': manifest.get('correction') if isinstance(manifest.get('correction'), dict) else None}
 
 
