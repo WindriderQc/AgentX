@@ -74,3 +74,16 @@ test('an embedding reindex request offers Run now inside its slot, like a Profil
   expect(card).toContain('data-queue-action="run"');
   expect(card).not.toContain('Started by its own executor');
 });
+
+test("a card names known hosts instead of raw Ollama URLs and keeps the URLs in its details",async()=>{
+  const source=fs.readFileSync(path.join(__dirname,"../../public/js/cluster-schedule-queue.js"),"utf8");
+  const container={innerHTML:"",addEventListener:()=>{}};
+  const queue={authority:"core.heavy-work-queue",jobs:[request("named","requested",{hosts:["http://10.0.0.2:11434","http://10.0.0.9:3180"]})]};
+  const context=vm.createContext({document:{getElementById:id=>id==="heavyQueueList"?container:null,querySelector:()=>null},
+    fetchJSON:async()=>queue,formatEvidenceTime:value=>value,esc:value=>String(value??""),console,
+    liveHostsData:[{id:"primary",name:"GPU A",url:"http://10.0.0.2:11434"}]});
+  vm.runInContext(source,context);await context.loadHeavyQueue();
+  const card=container.innerHTML.split("<details")[0];
+  expect(card).toContain("GPU A, 10.0.0.9:3180");
+  expect(container.innerHTML).toContain("Hôtes : http://10.0.0.2:11434, http://10.0.0.9:3180");
+});
