@@ -1,4 +1,44 @@
 /** Bind dashboard controls without inline event handlers (CSP forbids them). */
+
+// Rail tab counts; renderers call this after each load.
+function setRailCount(name, count) {
+  const badge = document.querySelector?.(`[data-rail-count="${name}"]`);
+  if (badge) badge.textContent = Number(count) > 0 ? String(count) : '';
+}
+
+// One rail, three tabs (WAI-ARIA tabs: arrows move, the choice is remembered per viewer).
+function bindRailTabs() {
+  const tabs = [...(document.querySelectorAll?.('[data-rail-tab]') || [])];
+  if (!tabs.length) return;
+  const select = (tab, focus) => {
+    for (const other of tabs) {
+      const selected = other === tab;
+      other.setAttribute('aria-selected', String(selected));
+      other.tabIndex = selected ? 0 : -1;
+      document.getElementById(other.getAttribute('aria-controls')).hidden = !selected;
+    }
+    if (focus) tab.focus();
+    try { localStorage.setItem('cs-rail-tab', tab.dataset.railTab); } catch { /* storage is optional */ }
+  };
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => select(tab, false));
+    tab.addEventListener('keydown', event => {
+      const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
+      if (event.key === 'Home' || event.key === 'End') {
+        event.preventDefault();
+        select(tabs[event.key === 'Home' ? 0 : tabs.length - 1], true);
+      } else if (step) {
+        event.preventDefault();
+        select(tabs[(index + step + tabs.length) % tabs.length], true);
+      }
+    });
+  });
+  let saved = null;
+  try { saved = localStorage.getItem('cs-rail-tab'); } catch { /* storage is optional */ }
+  const initial = tabs.find(tab => tab.dataset.railTab === saved);
+  if (initial) select(initial, false);
+}
+
 (function bindClusterScheduleControls() {
   document.addEventListener('DOMContentLoaded', () => {
     const on = (id, event, handler) => document.getElementById(id).addEventListener(event, handler);
@@ -20,6 +60,7 @@
     on('btnHeatmap', 'click', () => setActualView('heatmap'));
     on('btnAvp', 'click', () => setActualView('avp'));
     on('heatmapDays', 'change', actualViewChanged);
+    bindRailTabs();
 
     const timeline = document.getElementById('heatmapContainer');
     timeline.addEventListener('click', event => {

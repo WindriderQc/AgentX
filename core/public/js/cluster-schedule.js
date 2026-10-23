@@ -700,11 +700,11 @@ async function loadClaims() {
 }
 
 function renderClaims(container) {
+  if (typeof setRailCount === 'function') setRailCount('claims', claimsData.length);
   if (!claimsData.length) {
     container.innerHTML = `
       <div class="cs-empty cs-claims-empty">
-        <i class="fas fa-feather-pointed"></i>
-        <div>No active placement claims</div>
+        <div><i class="fas fa-feather-pointed"></i> No active placement claims</div>
         <div class="cs-claims-empty-note">Claims appear here when a job reserves a host before it runs.</div>
       </div>`;
     return;
@@ -820,6 +820,7 @@ async function loadNextTasks() {
 }
 
 function renderNextTasks(container) {
+  if (typeof setRailCount === 'function') setRailCount('next', nextTasksData.length);
   if (nextTasksData.length === 0) {
     container.innerHTML = isPastDate()
       ? '<div class="cs-empty">This day is over; no upcoming tasks remain.</div>'
