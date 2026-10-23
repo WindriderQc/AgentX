@@ -76,7 +76,9 @@ null, empty, or the legacy `unknown` label. Runtime, caller category and task
 type do not prove application identity; historical contracts are not inferred.
 `attribution` in the summary exposes these same counts and a nullable percentage
 for an empty window. Core Ops Watch stamps `core-ops-watch-v1` on new calls.
-The error link also discloses causes that remain unrecorded.
+The error link also discloses causes that remain unrecorded. The bounded
+`read_presentation` receipt carries attribution counts and unclassified errors
+to clients reading the exact selected summary.
 
 Historical values are snapshots refreshed on demand. The exact window and browser timezone stay
 visible; after five minutes the status asks for a refresh. Failed reads clear

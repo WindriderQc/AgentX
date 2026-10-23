@@ -49,6 +49,14 @@ describe('inference summary aggregation', () => {
       missingByCaller: [{ caller: 'proxy', calls: 2 }, { caller: 'embedding', calls: 1 }] });
     expect(d.observedAt).toBe(d.window.to);
     expect(d.ttlMs).toBe(300000);
+    const read = require('../../src/services/presentationReadService').presentationReader.read(d.presentation);
+    expect(read.status).toBe('available');
+    expect(read.attribution).toEqual({
+      calls: 5, identifiedCalls: 2, missingCalls: 3, identifiedPct: 40,
+      missingByCaller: [{ caller: 'proxy', calls: 2 }, { caller: 'embedding', calls: 1 }]
+    });
+    expect(read.failureAnalysis.unclassified).toBe(0);
+
     for (const [flag, total] of [['true', 3], ['false', 2]]) {
       const res = await request(server).get('/api/analytics/inference/logs').query({
         consumerContractMissing: flag, from: d.window.from, to: d.window.to

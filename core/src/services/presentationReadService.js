@@ -31,13 +31,22 @@ function analyticsSnapshot(data) {
     byConsumerContract: (data.byConsumerContract || []).slice(0, 12).map(row => ({ consumerContract: clean(row.consumerContract), ...metrics(row, rowMetrics) })),
     topErrors: (data.topErrors || []).slice(0, 12).map(row => ({ reason: clean(row.reason), consumerContract: clean(row.consumerContract),
       model: clean(row.model), calls: number(row.calls), avgLatencyMs: number(row.avgLatencyMs) })),
-    failureAnalysis: { admissionRefusals: number(data.failureAnalysis?.admissionRefusals) },
+    attribution: data.attribution ? {
+      ...metrics(data.attribution, ['calls', 'identifiedCalls', 'missingCalls', 'identifiedPct']),
+      missingByCaller: (data.attribution.missingByCaller || []).slice(0, 7).map(row => ({
+        caller: ['chat', 'council', 'benchmark', 'embedding', 'classification', 'proxy'].includes(row.caller) ? row.caller : 'unknown',
+        calls: number(row.calls)
+      }))
+    } : null,
+    failureAnalysis: { admissionRefusals: number(data.failureAnalysis?.admissionRefusals),
+      unclassified: number(data.failureAnalysis?.unclassified) },
     bucketHours: number(data.bucketHours),
     byBucket: buckets.map(row => ({ at: clean(row.date), ...metrics(row, ['calls', 'errors', 'tokensOut', 'avgLatencyMs']) })),
     coverage: { modelsListed: models.length, modelCount: number(data.coverage?.modelCount),
       bucketCount: (data.byBucket || []).length, bucketsListed: buckets.length,
       retentionDays: number(data.coverage?.retentionDays), unpricedModels: (data.cloud?.unpricedModels || []).length },
     limits: ['Recorded attempts, including admission refusals; retries may repeat a user request.',
+      'Consumer identity requires a server-attested contract. Runtime, caller and task type do not identify the application; missing historical contracts are not inferred.',
       'Calls bypassing Core are absent. Tokens are reported usage only. Null means unobserved.',
       'Elapsed call time includes waits; it is not GPU busy time. USD uses configured prices; unpriced models are excluded.',
       'This receipt covers the inference overview, comparisons (up to 40 models, 12 consumers/errors) and UTC trend (96 buckets) only. Live runtime, GPUs and other detail panels are not read.'] };
