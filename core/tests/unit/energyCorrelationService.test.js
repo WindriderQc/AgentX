@@ -33,9 +33,10 @@ describe('energy correlation', () => {
       energy: { points: [{ ts: '2026-10-22T12:00:00Z', median: 2.1 }, { ts: '2026-10-22T12:01:00Z', median: 2.2 }] }
     } };
     const range = { window: '24h', from: new Date('2026-10-22T11:00:00Z'), to: new Date('2026-10-22T13:00:00Z') };
-    const result = energy.compose({ history, live: { measures: {} }, range, deviceId: 'cluster-powerbar' });
+    const result = energy.compose({ history, live: { measures: {} }, inferenceCount: 42, range, deviceId: 'cluster-powerbar' });
     expect(result.contract).toBe('agentx.energy-observability/v1');
     expect(result.summary.energyKwh).toBeCloseTo(.1);
+    expect(result.summary.eventCount).toBe(42);
     expect(result.methodology.exactPerProcess).toBe(false);
   });
 });

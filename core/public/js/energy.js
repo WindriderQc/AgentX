@@ -18,13 +18,15 @@
   function renderEvents(data) {
     const body = $('energyEvents'); body.textContent = '';
     if (!data.events.length) body.innerHTML = '<tr><td colspan="6">Aucune activité corrélée dans cette période.</td></tr>';
-    for (const event of data.events.slice().sort((a,b)=>(b.estimatedWh||0)-(a.estimatedWh||0))) {
+    const ranked = data.events.slice().sort((a,b)=>(b.estimatedWh||0)-(a.estimatedWh||0)).slice(0,100);
+    $('energyEventCount').textContent = `${number(data.summary.eventCount,0)} activités · ${ranked.length} principales affichées`;
+    for (const event of ranked) {
       const row = document.createElement('tr');
       row.innerHTML = `<td><span class="energy-kind ${event.kind}"></span></td><td></td><td>${duration(event.durationMs)}</td><td>${event.deltaW == null ? '—' : `+${number(event.deltaW)} W`}</td><td>${event.estimatedWh == null ? '—' : `${number(event.estimatedWh)} Wh`}</td><td class="energy-confidence-${event.confidence}">${confidence[event.confidence]}</td>`;
       row.cells[0].querySelector('span').append(document.createTextNode(event.label)); row.cells[1].textContent = event.host || '—'; body.append(row);
     }
     const lane = $('energyEventLane'); lane.textContent = ''; const from=Date.parse(data.from), span=Date.parse(data.to)-from;
-    for (const event of data.events) { const mark=document.createElement('span'); mark.className=`energy-event ${event.kind}`; mark.style.left=`${Math.max(0,(Date.parse(event.startAt)-from)/span*100)}%`; mark.style.width=`${Math.max(.35,event.durationMs/span*100)}%`; mark.title=`${event.label} · ${duration(event.durationMs)}`; lane.append(mark); }
+    for (const event of data.events.slice(-500)) { const mark=document.createElement('span'); mark.className=`energy-event ${event.kind}`; mark.style.left=`${Math.max(0,(Date.parse(event.startAt)-from)/span*100)}%`; mark.style.width=`${Math.max(.35,event.durationMs/span*100)}%`; mark.title=`${event.label} · ${duration(event.durationMs)}`; lane.append(mark); }
   }
   function render(data) {
     $('energyPower').textContent = `${number(data.latest.power?.value)} W`; $('energyTotal').textContent = `${number(data.summary.energyKwh,3)} kWh`;

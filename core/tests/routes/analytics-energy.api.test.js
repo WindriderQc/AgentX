@@ -21,7 +21,7 @@ describe('energy analytics API', () => {
     } };
     const fetchData = jest.fn(path => Promise.resolve(answer(path.endsWith('/live') ? { measures: {} } : history)));
     const app = express(); app.use('/api/analytics/energy', createRouter({ env: { ENERGY_IOT_DEVICE_ID: 'cluster-powerbar' }, fetchData,
-      findInferences: async () => [], readOperations: async () => [] }));
+      findInferences: async () => [], countInferences: async () => 0, readOperations: async () => [] }));
     const response = await request(app).get('/api/analytics/energy?window=6h');
     expect(response.status).toBe(200);
     expect(response.body.data.deviceId).toBe('cluster-powerbar');

@@ -16,7 +16,8 @@ function configuration(env) {
 function createRouter(deps = {}) {
   const router = express.Router();
   const data = deps.fetchData || fetchData;
-  const findInferences = deps.findInferences || (filter => InferenceLog.find(filter).sort({ timestamp: 1 }).limit(5000).lean());
+  const findInferences = deps.findInferences || (filter => InferenceLog.find(filter).sort({ timestamp: -1 }).limit(1500).lean());
+  const countInferences = deps.countInferences || (filter => InferenceLog.countDocuments(filter));
   const readOperations = deps.readOperations || (async () => {
     const result = await createOperationsService().status({ refresh: false });
     return result.available ? (result.history || []).map(row => ({ ...row,
@@ -31,16 +32,18 @@ function createRouter(deps = {}) {
     const range = energy.rangeFor(req.query.window);
     const query = new URLSearchParams({ measure: energy.MEASURES.join(','), from: range.from.toISOString(), to: range.to.toISOString(), resolution: 'auto' }).toString();
     try {
-      const [historyAnswer, liveAnswer, inferences, operations] = await Promise.all([
+      const inferenceFilter = { timestamp: { $gte: range.from, $lte: range.to } };
+      const [historyAnswer, liveAnswer, inferences, inferenceCount, operations] = await Promise.all([
         data(`/api/v1/iot/devices/${encodeURIComponent(configured.deviceId)}/history`, { query }),
         data(`/api/v1/iot/devices/${encodeURIComponent(configured.deviceId)}/live`, { query: `measure=${energy.MEASURES.join(',')}` }),
-        findInferences({ timestamp: { $gte: range.from, $lte: range.to } }),
+        findInferences(inferenceFilter),
+        countInferences(inferenceFilter),
         readOperations().catch(() => [])
       ]);
       if (!historyAnswer.response.ok) return res.status(historyAnswer.response.status).json(historyAnswer.body);
       if (!liveAnswer.response.ok) return res.status(liveAnswer.response.status).json(liveAnswer.body);
       return res.json({ status: 'success', data: energy.compose({
-        history: historyAnswer.body.data, live: liveAnswer.body.data, inferences, operations, range, deviceId: configured.deviceId
+        history: historyAnswer.body.data, live: liveAnswer.body.data, inferences, inferenceCount, operations, range, deviceId: configured.deviceId
       }) });
     } catch (error) {
       return res.status(502).json({ status: 'error', code: 'ENERGY_DATA_UNAVAILABLE', message: error.message });

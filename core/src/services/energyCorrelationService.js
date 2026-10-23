@@ -91,7 +91,7 @@ function cumulativeDelta(points) {
   return delta >= 0 ? delta : null;
 }
 
-function compose({ history, live, inferences = [], operations = [], range, deviceId }) {
+function compose({ history, live, inferences = [], inferenceCount, operations = [], range, deviceId }) {
   const power = seriesFromHistory(history, 'power');
   const current = seriesFromHistory(history, 'current');
   const voltage = seriesFromHistory(history, 'voltage');
@@ -108,7 +108,8 @@ function compose({ history, live, inferences = [], operations = [], range, devic
     from: range.from.toISOString(), to: range.to.toISOString(), observedAt: new Date().toISOString(),
     freshness: latest.power?.at || power.at(-1)?.at || null,
     bucket: history?.bucket || null, bucketSeconds,
-    latest, summary: { baselineW, energyKwh: cumulativeDelta(energy), eventCount: attributed.length,
+    latest, summary: { baselineW, energyKwh: cumulativeDelta(energy), eventCount: (inferenceCount ?? inferences.length) + operations.length,
+      returnedEventCount: attributed.length,
       attributedWh: attributed.reduce((sum, event) => sum + (event.estimatedWh || 0), 0) },
     series: { power, current, voltage, energy }, events: attributed,
     methodology: { scope: 'shared_meter', exactPerProcess: false, baseline: 'lower_quartile_of_observed_power',
