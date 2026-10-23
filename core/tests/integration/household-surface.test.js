@@ -1400,8 +1400,9 @@ describe('built-in Household surface on Core', () => {
     const created = (await request(app).post('/api/family/plants').send({ nickname: 'Synthetic assisted plant' }).expect(201)).body.data.plant;
     expect((await request(app).post(`/api/family/plants/${created.id}/care-draft`).send({}).expect(409)).body.code).toBe('PLANT_SPECIES_REQUIRED');
     const started = (await request(app).post(`/api/family/plants/${created.id}/identify`).send({}).expect(202)).body.data.plant;
-    expect(started.assistant.identify.state).toBe('running');
-    let identify;
+    // Missing-photo validation can finish before the HTTP response reads the card.
+    expect(['running', 'failed']).toContain(started.assistant.identify.state);
+    let identify = started.assistant.identify;
     for (let attempt = 0; attempt < 50 && identify?.state !== 'failed'; attempt += 1) {
       await new Promise(resolve => setTimeout(resolve, 20));
       identify = (await request(app).get(`/api/family/plants/${created.id}?view=manage`).expect(200)).body.data.plant.assistant.identify;
