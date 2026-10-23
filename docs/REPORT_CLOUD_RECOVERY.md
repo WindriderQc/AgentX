@@ -42,3 +42,18 @@ from native spend reservation. A later explicitly authorized execution may retry
 a failed answer only when Core supplies the exact original step/model completion
 receipt from a settled execution. Its original charge stays in the task total;
 partial accepted answers and uncertain calls keep their existing fences.
+
+The exact native `OPENCLAW_USAGE_UNOBSERVED` error follows an SDK final result.
+Core receives termination only after its original inactive worker confirms the
+same source/claim. It retains the rejected result's original failure and unknown
+billing; it never fabricates usage, a price or a successful report. Other errors,
+missing final events and active owners retain UNKNOWN. New native plugins save
+rejected SDK final results privately and expose an authenticated receipt read
+(see the plugin README); older discarded output remains unavailable.
+
+While any original cloud cost is unverified, a new authorized escalation carries
+`freeOnly: true` and a zero native cost budget. A native paid model is refused
+before dispatch, even if the selected model's configuration changes. Thus a
+configured free route can continue after verified termination without spending
+another paid allowance or erasing the original accounting uncertainty. The task
+cap, original failure and report acceptance requirements remain in force.

@@ -131,3 +131,38 @@ test('known refused attempts do not disqualify later completed work, but a refus
   await Run.updateOne({ _id: run._id }, { $push: { modelReceipts: { callId: 'uncertain', state: 'unknown' } } });
   expect((await reports.status('0001', run._id)).allCallsCompleted).toBe(false);
 });
+
+test('receives only native usage-rejected termination and keeps unknown billing for zero-cost continuation', async () => {
+  const recovery = require('../../src/services/pipelineReportCloudRecovery');
+  const failure = { callId: row.callId, step: 1, executionState: 'unknown', at: row.finishedAt,
+    attempts: [{ model: 'fixture/model', code: 'OPENCLAW_USAGE_UNOBSERVED', executionState: 'unknown' }] };
+  await Run.updateOne({ _id: run._id }, { $set: { escalationFailures: [failure] } });
+  let current = await Run.findById(run._id).lean();
+  expect(await recovery.receiveTerminalFailure(current, row, { status: async () => ({ busy: true }) })).toBe(false);
+  expect(await recovery.receiveTerminalFailure(current, row, control)).toBe(true);
+  current = await Run.findById(run._id).lean();
+  expect(current.modelReceipts[0]).toMatchObject({ state: 'completed', settlement: { terminationOnly: true },
+    terminationRecovery: { costUncertain: true, originalUnknownReceipt: row, nativeFailure: failure } });
+  expect(current.pendingInferences).toEqual([]);
+  expect(current.escalationCalls).toEqual([]);
+  expect((await reports.status('0001', run._id)).escalation.costUncertain).toBe(true);
+  expect(await resolutions(task._id)).toEqual([]);
+  await Run.updateOne({ _id: run._id }, { $set: { state: 'blocked' } });
+  expect(await resolutions(task._id)).toEqual([expect.objectContaining({ executionState: 'terminated-unusable',
+    requestId: run._id, callId: row.callId, model: 'fixture/model', step: 1 })]);
+  const Settings = require('../../models/PipelineReportContinuation');
+  await Settings.deleteMany({});
+  await Settings.create({ _id: 'report-continuation', escalation: { enabled: true, models: ['fixture/free'], maxCostUsdPerTask: 2 } });
+  const next = await require('../../src/services/pipelineReportEscalation').forRun({ _id: task._id,
+    codingReportAuthority: { grants: [{ allowCloudEscalation: true }] } });
+  expect(next).toMatchObject({ freeOnly: true, maxCostNanodollars: 0, models: ['fixture/free'] });
+  expect(require('../../src/services/pipelineReportEscalation').assertCall({ escalation: next }, 'fixture/free')).toBe(0);
+});
+
+test.each(['OPENCLAW_NATIVE_MODEL_FAILED', 'OPENCLAW_STREAM_INCOMPLETE', 'ABORT_ERR'])('does not infer termination from %s', async code => {
+  await Run.updateOne({ _id: run._id }, { $set: { escalationFailures: [{ callId: row.callId, step: 1,
+    executionState: 'unknown', at: row.finishedAt, attempts: [{ model: 'fixture/model', code, executionState: 'unknown' }] }] } });
+  expect(await require('../../src/services/pipelineReportCloudRecovery').receiveTerminalFailure(
+    await Run.findById(run._id).lean(), row, control)).toBe(false);
+  expect((await Run.findById(run._id).lean()).pendingInferences).toEqual([row.callId]);
+});

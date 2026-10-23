@@ -129,7 +129,7 @@ function verifyPayload(payload, parameters, context, model) {
   if (parameters.responseFormat === 'json' && !['json_object', 'json_schema'].includes(format?.type) && payload.generationConfig?.responseMimeType !== 'application/json' && payload.config?.responseMimeType !== 'application/json') reject('OPENCLAW_RESPONSE_FORMAT_UNAPPLIED', 422);
 }
 
-export function createExecutionService({ backend, now = () => Date.now(), catalogTtlSeconds = 300, maxRequestCostNanodollars = 0, ledger = null, recordRefusal = () => {} } = {}) {
+export function createExecutionService({ backend, now = () => Date.now(), catalogTtlSeconds = 300, maxRequestCostNanodollars = 0, ledger = null, recordRefusal = () => {}, recordTerminal = null } = {}) {
   async function catalogue() {
     const value = await backend.catalogue();
     return { schema: 'agentx.openclaw-execution-catalog/v1', ...value, policy: { maxRequestCostNanodollars },
@@ -225,11 +225,22 @@ export function createExecutionService({ backend, now = () => Date.now(), catalo
       const preflightRefused = payloadError && calls === 1 && http?.attempts === 0;
       // Provider diagnostics are deliberately not returned to AgentX.
       const code = refusalReceipt ? 'OPENCLAW_PROVIDER_REQUEST_REFUSED' : /^OPENCLAW_[A-Z_]{1,80}$/.test(error.code || '') ? error.code : 'OPENCLAW_NATIVE_MODEL_FAILED';
+      let terminalEvidence;
+      if (result && calls === 1 && recordTerminal) {
+        try {
+          terminalEvidence = await recordTerminal({ requestId: id, model: request.model, errorCode: code,
+            startedAt: new Date(startedAt).toISOString(), observedAt: new Date(now()).toISOString(),
+            runtimeVersion: native.runtimeVersion, targetFingerprint: descriptor.fingerprint,
+            contextFingerprint: fingerprint(context), payloadFingerprint: fingerprint(payload), responseId,
+            nativeResult: result, validation: 'rejected', cost: 'unverified' });
+        } catch { /* Never substitute success or a guessed cost when custody fails. */ }
+      }
       // A dispatched paid call may be billed even though no cost was observed.
       if (reservation && ledger && calls && !recorded && !preflightRefused) await ledger.record(refusalReceipt ? 0 : null);
       throw Object.assign(new Error(code), { code,
         statusCode: error.statusCode || 502, partialResponse: partialText, partialThinking,
-        reservation, ...(refusalReceipt ? { refusalReceipt } : {}), executionState: refusalReceipt || preflightRefused || !calls ? 'not-dispatched' : 'unknown' });
+        reservation, ...(refusalReceipt ? { refusalReceipt } : {}), ...(terminalEvidence ? { terminalEvidence } : {}),
+        executionState: refusalReceipt || preflightRefused || !calls ? 'not-dispatched' : 'unknown' });
     }
   }
   return { catalogue, execute };

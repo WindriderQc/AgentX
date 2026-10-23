@@ -17,7 +17,7 @@ jest.mock('../../models/PipelineReportContinuation', () => ({
   })
 }));
 jest.mock('../../models/PipelineReportRun', () => ({
-  find: jest.fn(() => lean(store.runs.filter(run => run.escalationCalls?.length))),
+  find: jest.fn(query => lean(store.runs.filter(run => query['escalationFailures.0'] ? run.escalationFailures?.length : run.escalationCalls?.length))),
   findById: jest.fn(id => lean(store.runs.find(run => run._id === id))),
   updateOne: jest.fn(async (query, update) => {
     const run = store.runs.find(row => row._id === query._id);

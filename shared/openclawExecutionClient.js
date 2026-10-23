@@ -3,6 +3,7 @@
 const { randomUUID } = require('node:crypto');
 const { parseExecutionSource } = require('./executionSource');
 const { nativeRefusal } = require('./openclawRefusal');
+const { nativeTerminalEvidence } = require('./openclawTerminalEvidence');
 
 const MODEL_API = '/api/agentx/execution';
 const CATALOG_SCHEMA = 'agentx.openclaw-execution-catalog/v1';
@@ -65,6 +66,7 @@ function createOpenClawExecutionClient({ env = process.env, fetchImpl = fetch } 
             ? 'unknown' : ['unknown', 'not-dispatched'].includes(body?.executionState) ? body.executionState : 'unknown',
           ...(body?.schema === 'agentx.openclaw-model-error/v1' ? {
             refusalReceipt: receipt,
+            terminalEvidence: nativeTerminalEvidence(body.terminalEvidence),
             partialResponse: typeof body.partialResponse === 'string' ? body.partialResponse.slice(0, 2000000) : '',
             partialThinking: typeof body.partialThinking === 'string' ? body.partialThinking.slice(0, 2000000) : '' } : {}) });
     }
@@ -99,7 +101,8 @@ function createOpenClawExecutionClient({ env = process.env, fetchImpl = fetch } 
             if (event.type === 'text_delta') { if (typeof event.delta !== 'string') throw failure('OPENCLAW_STREAM_INVALID', 'Invalid text event.'); text += event.delta; await onToken?.(event.delta); }
             else if (event.type === 'thinking_delta') { if (typeof event.delta !== 'string') throw failure('OPENCLAW_STREAM_INVALID', 'Invalid thinking event.'); thinking += event.delta; await onThinking?.(event.delta); }
             else if (event.type === 'completed') { result = event.result; terminal = true; }
-            else if (event.type === 'error') throw failure(/^OPENCLAW_[A-Z_]{1,80}$/.test(event.code || '') ? event.code : 'OPENCLAW_EXECUTION_FAILED', 'OpenClaw model execution failed.');
+            else if (event.type === 'error') throw failure(/^OPENCLAW_[A-Z_]{1,80}$/.test(event.code || '') ? event.code : 'OPENCLAW_EXECUTION_FAILED', 'OpenClaw model execution failed.', 502,
+              { terminalEvidence: nativeTerminalEvidence(event.terminalEvidence), executionState: 'unknown' });
           });
         } else { result = await response.json(); terminal = true; }
         if (!terminal || result?.schema !== RESULT_SCHEMA || result.requestId !== id || result.model !== selection.model
@@ -149,6 +152,8 @@ function createOpenClawExecutionClient({ env = process.env, fetchImpl = fetch } 
       if (error.refusalReceipt && (error.refusalReceipt.requestId !== id || error.refusalReceipt.model !== selection.model)) {
         error.refusalReceipt = null; error.executionState = 'unknown';
       }
+      if (error.terminalEvidence && (error.terminalEvidence.requestId !== id || error.terminalEvidence.model !== selection.model))
+        error.terminalEvidence = null;
       error.partialResponse ??= text;
       error.partialThinking ??= thinking;
       error.executionState ??= terminal ? 'completed' : 'unknown';

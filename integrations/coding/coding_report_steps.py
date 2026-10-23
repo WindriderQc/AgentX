@@ -396,6 +396,8 @@ def escalation_blocks(row, group, line_range, request_id, resolutions=()):
                     and len(proof.get('evidenceSha256', '')) == 64
                     and ((proof.get('executionState') == 'not-dispatched'
                           and any(attempt.get('model') == proof.get('model') for attempt in row.get('attempts', [])))
+                         or (proof.get('executionState') == 'terminated-unusable'
+                             and any(attempt.get('model') == proof.get('model') for attempt in row.get('attempts', [])))
                          or (proof.get('executionState') == 'completed' and not row.get('uncertain')
                              and str(row.get('model', '')).removeprefix('openclaw:model:') == proof.get('model')))):
                 return False

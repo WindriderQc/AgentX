@@ -131,3 +131,24 @@ test('the gateway refusal contract preserves only bounded native proof for the e
     assert.ok(!JSON.stringify(error).includes('SENSITIVE'));
   }
 });
+
+test('native terminal evidence stays unknown and binds to its original JSON or SSE request', async () => {
+  for (const streaming of [false, true]) for (const matching of [false, true]) {
+    let calls = 0;
+    const proof = { schema: 'agentx.openclaw-terminal-evidence-ref/v1', ref: 'openclaw-model-terminal:11111111-1111-1111-1111-111111111111',
+      sha256: 'a'.repeat(64), requestId: matching ? 'original' : 'other', model: 'fixture/model',
+      terminalObserved: true, usageValidated: false, rawResult: 'PRIVATE' };
+    const client = createOpenClawExecutionClient({ env, fetchImpl: async () => {
+      calls++; const body = { schema: 'agentx.openclaw-model-error/v1', code: 'OPENCLAW_USAGE_UNOBSERVED',
+        type: 'error', executionState: 'unknown', terminalEvidence: proof };
+      return streaming ? new Response(`data: ${JSON.stringify(body)}\n\n`, { headers: { 'content-type': 'text/event-stream' } })
+        : new Response(JSON.stringify(body), { status: 502 });
+    } });
+    await assert.rejects(client.execute({ ...selected, requestId: 'original' }), error => {
+      assert.equal(error.executionState, 'unknown'); assert.equal(Boolean(error.terminalEvidence), matching);
+      if (matching) assert.equal(error.terminalEvidence.rawResult, undefined);
+      return error.code === 'OPENCLAW_USAGE_UNOBSERVED';
+    });
+    assert.equal(calls, 1);
+  }
+});
