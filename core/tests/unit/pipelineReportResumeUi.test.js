@@ -52,3 +52,11 @@ it('binds the retry button to the exact unstarted campaign and explains its refu
   expect(html).toContain(`data-retry-campaign-id="${id}"`);
   expect(html).toContain('Checkpoint storage is full');
 });
+
+it('shows the native execution ceiling when earlier task credit exceeds the added grant', () => {
+  const html = ui.render(view({ perExecutionModelCalls: 256,
+    budget: { modelCalls: 128, executions: 1, minutes: 65 } }));
+  expect(html).toContain('Up to <strong>256</strong> model calls in <strong>1</strong> execution');
+  expect(html).toContain('The remaining task budget also applies');
+  expect(html).not.toContain('Up to <strong>128</strong>');
+});

@@ -54,6 +54,7 @@
   function render(view) {
     if (!view) return '';
     const budget = view.budget || {};
+    const maximumCalls = view.perExecutionModelCalls ? view.perExecutionModelCalls * budget.executions : budget.modelCalls;
     const cap = view.escalation?.maxCostNanodollars ? `${(view.escalation.maxCostNanodollars / 1e9).toFixed(2).replace(/\.00$/, '')} $` : null;
     const open = !view.campaign || ['completed', 'failed', 'cancelled'].includes(view.campaign.state) || view.campaign.state === 'reserved';
     const route = view.route ? ` on <code>${esc(view.route.model)}</code>` : '';
@@ -67,8 +68,8 @@
         <label><input type="radio" name="when" value="at"> At a time</label>
         <label class="pipeline-resume-at" hidden><span>Start</span><input type="datetime-local" name="at"></label>
       </fieldset>
-      <p class="pipeline-resume-budget">Up to <strong>${esc(budget.modelCalls)}</strong> model calls in <strong>${esc(budget.executions)}</strong> ${budget.executions === 1 ? 'execution' : 'executions'}, about <strong>${esc(duration(budget.minutes || 0))}</strong> of work${route}.
-        This is a safety net: it ends sooner when the report is done, and stops with an alert when a pass saves nothing new.</p>
+      <p class="pipeline-resume-budget">Up to <strong>${esc(maximumCalls)}</strong> model calls in <strong>${esc(budget.executions)}</strong> ${budget.executions === 1 ? 'execution' : 'executions'}, about <strong>${esc(duration(budget.minutes || 0))}</strong> of work${route}.
+        This is a safety net: it ends sooner when the report is done, and stops with an alert when a pass saves nothing new. The remaining task budget also applies.</p>
       <label class="pipeline-resume-check"><input type="checkbox" name="autoContinue" checked> Chain the executions automatically until the report is done</label>
       <label class="pipeline-resume-check"><input type="checkbox" name="allowCloudEscalation"> Send failed steps to the cloud${cap ? ` (cap ${esc(cap)} per task)` : ''}${view.escalation && !view.escalation.enabled ? ' · cloud escalation is off globally, so this applies once it is on' : ''}</label>
       <div class="pipeline-resume-actions"><button type="submit" class="pipeline-btn primary">${view.campaign?.state === 'reserved' ? 'Replan' : 'Resume'}</button>
