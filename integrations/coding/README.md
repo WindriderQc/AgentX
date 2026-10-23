@@ -192,6 +192,11 @@ review.
 
 ### Cloud escalation of a failed step
 
+A valid partial result also becomes eligible when it exhausts the planner's
+three partial rounds without sufficient progress. The same explicit permission,
+remaining call/time budget, and once-per-group guard apply. Escalation still
+verifies its evidence and does not turn an incomplete answer into completion.
+
 Off by default. The owner sets the ordered models and a cost cap per task in the
 same panel (default: `openai/gpt-5.6-sol`, then
 `openrouter/nvidia/nemotron-3-super-120b-a12b:free`, $10), and each task must

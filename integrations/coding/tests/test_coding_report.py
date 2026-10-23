@@ -983,3 +983,44 @@ class EscalationStepsTest(StepsReportTest):
         with patch, mock.patch('builtins.print'):
             self.assertEqual(runner.main(), 1)
         self.assertEqual(sent, [])
+
+    def test_stalled_partial_group_uses_one_cloud_call_after_its_local_round_limit(self):
+        self.escalation = {'models': ['openai/gpt-5.6-sol'], 'maxCostNanodollars': 2e9}
+        def partial(prompt):
+            value = self.reviewed(prompt)
+            value['findings'] = []
+            value['documents'][0].update(state='partial', note='One claim still unverified.')
+            return value
+        # The first partial adds evidence; three subsequent unchanged passes exhaust the limit.
+        self.answers = [partial, self.reviewed, partial, partial, partial]
+        content = json.dumps({'documents': [{'path': 'README.md', 'state': 'reviewed',
+            'evidence': [{'path': 'config.js', 'line': 1, 'check': 'RETRY_LIMIT = 7'}]}], 'findings': []})
+        sent, patch = self.escalation_answer(content)
+        with patch, mock.patch('builtins.print'):
+            self.assertEqual(runner.main(), 0)
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(len(self.prompts), 5)
+        self.assertEqual({row['state'] for row in self.uploads[0]['coverage']['documents']}, {'reviewed'})
+
+    def test_partial_escalation_keeps_permission_budget_round_and_once_guards(self):
+        from types import SimpleNamespace
+        progress = SimpleNamespace(report_escalation={'models': ['cloud/model']})
+        row = {'state': 'partial', 'partialRounds': 2, 'attempts': 0}
+        ledger = {'documents': {'README.md': row}, 'steps': []}
+        with mock.patch.object(report.steps, 'remaining', return_value=(10, 600)) as remaining:
+            self.assertFalse(report.escalation_allowed(progress, ledger, ['README.md']))
+            row['partialRounds'] = report.steps.MAX_PARTIAL_ROUNDS
+            self.assertTrue(report.escalation_allowed(progress, ledger, ['README.md']))
+            ledger['steps'] = [{'documents': ['README.md'], 'escalated': True}]
+            self.assertFalse(report.escalation_allowed(progress, ledger, ['README.md']))
+            ledger['steps'] = []
+            remaining.return_value = (1, 600)
+            self.assertFalse(report.escalation_allowed(progress, ledger, ['README.md']))
+            remaining.return_value = (10, 299)
+            self.assertFalse(report.escalation_allowed(progress, ledger, ['README.md']))
+            remaining.return_value = (10, 600)
+            row['state'] = 'reviewed'
+            self.assertFalse(report.escalation_allowed(progress, ledger, ['README.md']))
+            row['state'] = 'partial'
+            progress.report_escalation = None
+            self.assertFalse(report.escalation_allowed(progress, ledger, ['README.md']))
