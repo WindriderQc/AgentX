@@ -5,6 +5,7 @@ const { acceptedImageReply } = require('./accepted-images');
 const { scoreSpeechLanguage } = require('../../public/js/voice/speech-language');
 const { requestsTaskCheck, taskCheckObserved, confirmedLoop, checkFailure } = require('./tool-turn-guard');
 const { requestsSecretary, SECRETARY_DIRECTIVE } = require('./native-specialist-policy');
+const { nativeResponseFailure } = require('./native-response-failure');
 
 const agentIdFor = session => ['kidx_nestor', 'kidx_reader'].includes(session.packId) ? 'family' : session.agentId || 'main';
 const sessionKeyFor = session => `agent:${agentIdFor(session)}:household:direct:${session.sessionId}`;
@@ -86,7 +87,7 @@ function agentInstructions(session, persona, surface, mode, { soundPlayback = fa
 }
 
 function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, readImageOperation, settleMs = 20000, delegateMs = 300000, progressMs = 2000, streamGraceMs = 3000, streamDrainMs = 30000, evidenceReadMs = 10000 } = {}) {
-  return async ({ session, text, speechLanguage, applicationEvent, currentContent, turnContext, turnDirective, instructions, history = [], model, channel, browserReply, maxOutputTokens, guardianStreaming = false, readAcceptedTaskWork, signal, onDelta = () => {}, onStarted = async () => {}, onSettled = async () => {}, onActivity = () => {} }) => {
+  return async ({ session, text, speechLanguage, applicationEvent, currentContent, turnContext, turnDirective, instructions, history = [], model, channel, browserReply, maxOutputTokens, guardianStreaming = false, readAcceptedTaskWork, signal, onDelta = () => {}, onStarted = async () => {}, onSettled = async () => {}, onTerminalFailure = async () => {}, onActivity = () => {} }) => {
     if (!env.OPENCLAW_GATEWAY_URL || !env.OPENCLAW_GATEWAY_TOKEN) throw new Error('Nestor agent is unavailable: the OpenClaw Gateway is not configured.');
     signal?.throwIfAborted();
     const sessionKey = sessionKeyFor(session);
@@ -310,6 +311,10 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
             replacedStream = true;
             return;
           }
+          // Some native refusals (notably a provider already in auth cooldown)
+          // happen before agent_end. Save their exact terminal transport receipt
+          // before throwing, so background dispatch cannot wait forever on a hook.
+          await onTerminalFailure(nativeResponseFailure(row, sessionKey, runId));
           // The native message ("internal error", a busy host…) is for the log;
           // the person gets a plain outcome.
           throw Object.assign(new Error('Nestor could not finish its answer this time. Try again in a moment.'),

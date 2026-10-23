@@ -262,6 +262,13 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       sessionId: row.sessionId, turnId: row.turnId, requestSha256: row.requestSha256,
       state: row.state, resultReady: Boolean(row.result) };
   }
+  async function dispatchStatus() {
+    const gate = await repo.dispatchOwner();
+    if (!gate?.workId) return null;
+    const row = await repo.getIncludingErased(gate.workId);
+    return row?.state === 'uncertain' && row.attempt && row.attempt.id === gate.attempt?.id && !row.attempt.settledAt
+      ? { state: 'blocked', workId: row._id, reason: 'native_receipt_unverified' } : null;
+  }
   async function nativeAcceptance(id) {
     const row = await repo.get(id);
     if (!row || !['read', 'native'].includes(row.mode) || !nativeWork(row)) return null;
@@ -271,6 +278,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     return { authority: 'core.conversation-works', accepted: true, id: row._id,
       sessionId: row.sessionId, turnId: row.turnId, requestSha256: row.requestSha256,
       state: row.state, resultReady: Boolean(row.result), mode: row.mode,
+      blocked: row.state === 'queued' && Boolean(await dispatchStatus()), reason: row.reason || '',
       foreground: row.foreground || (row.mode === 'native' && !nativeForeground(turn.inputText) ? 'guardian' : 'acknowledge') };
   }
   async function guardianTool(context) {
@@ -364,6 +372,6 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       return { authority: 'core.conversation-works', id: row._id, sessionId: row.sessionId }; },
     admitNativeTool: require('./native-budget').createNativeBudget({ repo, conversations, session, query, policy: nativeBudget, now }),
     publish, publishNative: require('./native-results').createNativeResultReceiver({ repo, session, now, automaticSpeech }), automaticSpeech, presentResult,
-    recover, finalize, handled, guardianContext, guardianContextWithRefs, taskAcceptance, nativeAcceptance, wake: () => wake(), session, query, eligible: (current, channel) => eligible(current, channel, env), wakeWith: fn => { wake = fn; } };
+    recover, finalize, handled, guardianContext, guardianContextWithRefs, taskAcceptance, nativeAcceptance, dispatchStatus, wake: () => wake(), session, query, eligible: (current, channel) => eligible(current, channel, env), wakeWith: fn => { wake = fn; } };
 }
 module.exports = { createConversationWorks };

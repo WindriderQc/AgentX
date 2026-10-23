@@ -1,12 +1,12 @@
 /* Core's durable work projection. Polling never starts inference. */
 (function (root) {
   'use strict';
-  const labels = { received: 'Request saved', queued: 'Handling it in the background', dispatching: 'Being picked up',
+  const labels = { received: 'Request saved', queued: 'Request waiting its turn', dispatching: 'Being picked up',
     paused: 'Request paused', running: 'Working on your request', uncertain: 'Receipt awaiting verification', failed: 'The work did not succeed',
     cancelled: 'Work stopped', result_ready: 'Result available', completed: 'Result available' };
   function create({ host, base, api, getConversation, maySpeak = () => true, onShow = () => {}, onSnapshot = () => {}, onPollError = () => {}, pollMs = 2000 }) {
     const deviceSession = root.crypto.randomUUID(), items = new Map(), cards = new Map(), attempted = new Set(), requested = new Set();
-    let sessionId, cursor = 0, sequence = 0, timer, pollController, presenting = false, disposed = false, generation = 0;
+    let sessionId, cursor = 0, sequence = 0, timer, pollController, presenting = false, disposed = false, generation = 0, dispatch;
     const url = () => `${base}/${encodeURIComponent(sessionId)}`;
     const receipt = (item, stage, claimToken) => api(`${base}/${encodeURIComponent(item.sessionId)}/work-deliveries/${encodeURIComponent(item.result.deliveryId)}/receipt`, {
       method: 'POST', keepalive: true, signal: AbortSignal.timeout(10000), body: JSON.stringify({ stage, resultVersion: item.result.version,
@@ -23,7 +23,15 @@
       }
       const heading = document.createElement('p'); heading.className = 'conversation-work-status';
       heading.textContent = item.result ? (item.result.presentation === 'completed' ? 'Nestor · result presented' : 'Nestor · result available') : item.pending && item.state === 'completed' ? 'Request saved · answer to verify' : labels[item.state] || 'Request saved';
+      if (!item.result && item.state === 'queued') heading.textContent = dispatch?.state === 'blocked'
+        ? 'Request blocked · an earlier execution must be verified'
+        : item.classification === 'native_review' ? 'Answer review waiting its turn' : labels.queued;
       card.replaceChildren(heading);
+      if (!item.result && item.reason === 'native_authentication_failed') {
+        const detail = document.createElement('p');
+        detail.textContent = 'The model provider needs to be reconnected. This request failed and was not retried.';
+        card.append(detail);
+      }
       if (item.result) {
         const text = document.createElement('p'); text.className = 'conversation-work-answer'; text.textContent = item.result.displayText ?? item.result.text;
         const button = document.createElement('button'); button.type = 'button'; button.className = 'button';
@@ -92,6 +100,8 @@
         do {
           const data = await api(`${url()}/work?cursor=${cursor}`, { signal: controller.signal });
           if (currentGeneration !== generation) return;
+          const dispatchChanged = JSON.stringify(dispatch) !== JSON.stringify(data.dispatch);
+          dispatch = data.dispatch;
           for (const item of data.items) {
             const previous = items.get(item.id); items.set(item.id, item); render(item);
             if (item.result && previous?.result?.version !== item.result.version) {
@@ -101,6 +111,7 @@
               void receipt(item, 'displayed').catch(() => {});
             }
           }
+          if (dispatchChanged) for (const item of items.values()) if (item.state === 'queued') render(item);
           onSnapshot(sessionId, data);
           cursor = data.cursor; more = data.hasMore;
         } while (more && !disposed);
@@ -115,7 +126,7 @@
     function follow(id) {
       if (disposed || !id || id === sessionId) return;
       pollController?.abort(); pollController = null;
-      ++generation; sessionId = id; cursor = 0; items.clear(); cards.clear(); attempted.clear(); requested.clear();
+      ++generation; sessionId = id; cursor = 0; dispatch = null; items.clear(); cards.clear(); attempted.clear(); requested.clear();
       host.replaceChildren(); host.hidden = true; clearInterval(timer);
       timer = setInterval(() => { void poll(); }, pollMs); timer.unref?.(); void poll();
     }
