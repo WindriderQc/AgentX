@@ -52,7 +52,7 @@ async function status(id, key) {
     reportName: value.reportName, sourceCommit: value.sourceCommit, parentRequestId: value.parentRequestId || null, parentSha256: value.parentSha256 || null,
     authority: value.authority || null, inventory: value.inventory || null, coverage: value.coverage || null,
     escalation: value.escalation ? { models: value.escalation.models, maxCostNanodollars: value.escalation.maxCostNanodollars,
-      calls: (value.escalationCalls || []).length } : null,
+      calls: (value.escalationCalls || []).length, failures: (value.escalationFailures || []).slice(-4) } : null,
     cumulativeUsage: await authority.projection(await ownerOrNull(id) || { _id: value.taskId, feedback: [] }) };
 }
 async function start(id, key, body) {

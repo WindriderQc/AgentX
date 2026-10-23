@@ -245,7 +245,7 @@ describe('cloud escalation authority (#835)', () => {
   test('a run records escalation only when the owner policy and its grant both allow it', async () => {
     const key = await started(true);
     expect((await Run.findById(key).lean()).escalation).toEqual({ models: [SOL, NEMO], maxCostNanodollars: 10e9, policyRevision: 0 });
-    expect((await reports.status('0001', key)).escalation).toEqual({ models: [SOL, NEMO], maxCostNanodollars: 10e9, calls: 0 });
+    expect((await reports.status('0001', key)).escalation).toEqual({ models: [SOL, NEMO], maxCostNanodollars: 10e9, calls: 0, failures: [] });
     await Promise.all([Task.deleteMany({}), Run.deleteMany({})]);
     const refused = await started(false);
     expect((await Run.findById(refused).lean()).escalation).toBeUndefined();

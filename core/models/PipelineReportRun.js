@@ -37,6 +37,7 @@ const schema = new mongoose.Schema({
   // task's remaining cost cap at start, fixed for the execution.
   escalation: { type: mongoose.Schema.Types.Mixed, default: undefined, immutable: true },
   escalationCalls: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  escalationFailures: { type: [mongoose.Schema.Types.Mixed], default: [] },
 }, { collection: 'pipeline_report_runs' });
 // Preserve historical journals; new executions enforce one immutable identity per task claim.
 schema.index({ taskId: 1, claimSeq: 1 }, { unique: true, partialFilterExpression: { executionVersion: 1 } });

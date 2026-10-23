@@ -546,6 +546,27 @@ class StepPlanTest(unittest.TestCase):
 
 
 class EscalationContextTest(unittest.TestCase):
+    def test_a_range_selects_its_cited_source_before_earlier_evidence(self):
+        ledger = ledgers.new_ledger(snapshot())
+        ledgers.merge_step(ledger, ['docs/A.md'], good_result(), source, 1)
+        docs = {'docs/A.md': 'See core/config.js and EARLY_ONLY.\nSee core/later.js and `LATER_ONLY`.'}
+        scoped = steps.scoped_texts(docs, (2, 2, True))
+        self.assertNotIn('EARLY_ONLY', scoped['docs/A.md'])
+        self.assertEqual(steps.code_terms(scoped), ['LATER_ONLY'])
+        self.assertEqual(steps.referenced_sources(ledger, ['docs/A.md'], scoped,
+            ['core/config.js', 'core/later.js']), ['core/later.js', 'core/config.js'])
+
+    def test_prior_local_failures_cover_only_their_recorded_scope(self):
+        ledger = ledgers.new_ledger(snapshot())
+        ledger['steps'] = [{'result': 'failed', 'documents': ['docs/A.md'], 'lineRange': [1, 150, False]}]
+        self.assertTrue(steps.prior_failed_group(ledger, ['docs/A.md'], (1, 150, False)))
+        self.assertFalse(steps.prior_failed_group(ledger, ['docs/A.md'], (151, 300, True)))
+        self.assertFalse(steps.prior_failed_group(ledger, ['docs/A.md']))
+        del ledger['steps'][0]['lineRange']
+        self.assertTrue(steps.prior_failed_group(ledger, ['docs/A.md'], (151, 300, True)))
+        ledger['documents']['docs/A.md']['state'] = 'reviewed'
+        self.assertFalse(steps.prior_failed_group(ledger, ['docs/A.md'], (151, 300, True)))
+
     def test_finds_the_sources_a_group_cites_or_names(self):
         ledger = ledgers.new_ledger(snapshot())
         ledgers.merge_step(ledger, ['docs/A.md'], good_result(), source, 1)

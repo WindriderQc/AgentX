@@ -209,9 +209,12 @@ operator context along with the sources. Long documents retain a separate
 escalation receipt for each assigned line range; completing a range resets its
 partial-round counter before planning the next range. Earlier receipts without
 a range continue to fence the whole group.
-An authorized continuation may use that one escalation immediately for a group
-of still-open whole documents with preserved local failures. Fresh documents
-and line ranges still take their own local attempt first.
+An authorized continuation may use that one escalation immediately for scope
+contained in preserved local failures. A document-wide failure covers its still
+unreviewed ranges; a recorded ranged failure covers only that range. Fresh
+documents and ranges outside the earlier failed scope take a local attempt first.
+Range context prioritizes that range's cited sources and identifiers before
+earlier evidence, so old sections do not consume its source allowance.
 
 After a group fails once on the local model, the runner sends one self-contained
 request: the group's documents and the source files they cite (or that define
@@ -224,6 +227,19 @@ verification as a local step; a second failure blocks the group. Escalated
 findings are marked in the report, the Pipeline monitor counts escalated steps
 and an alert records each escalation. A multi-turn tool session is not used:
 OpenClaw's model mode accepts plain messages only.
+
+Core retains bounded refusal codes and dispatch states with the original call.
+Only a confirmed refusal before dispatch can yield to the next configured
+model. A missing outcome or cost receipt keeps the original inference pending;
+it cannot dispatch a replacement. A completed unusable answer retains its cost.
+An unavailable group may use its one attempt again in a newly authorized
+execution after Core has verified the earlier native release. The same
+execution, actual answers and uncertain outcomes keep their original fence.
+
+If a worker exits at checkpoint delivery before its relay drains, the campaign
+observer can receive that same checkpoint through the native owner once Core
+proves termination and no inference remains pending. It does not clear native
+coordination or launch another worker; the next observation receives the outcome.
 
 `AGENTX_REPORT_MODE=single` restores the previous single-session worker, whose
 prompt asks the model to choose groups, save, and keep the table and totals

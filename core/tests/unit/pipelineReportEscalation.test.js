@@ -21,7 +21,8 @@ jest.mock('../../models/PipelineReportRun', () => ({
   findById: jest.fn(id => lean(store.runs.find(run => run._id === id))),
   updateOne: jest.fn(async (query, update) => {
     const run = store.runs.find(row => row._id === query._id);
-    run.escalationCalls = [...(run.escalationCalls || []), update.$push.escalationCalls];
+    for (const [field, row] of Object.entries(update.$push)) run[field] = [...(run[field] || []), row];
+    return { acknowledged: true, modifiedCount: 1 };
   })
 }));
 jest.mock('../../src/services/pipelineReportNotifications', () => ({ publish: jest.fn(async () => 'a') }));
@@ -77,13 +78,59 @@ describe('report cloud escalation policy', () => {
     expect(notifications.publish).toHaveBeenCalledWith({ pipelineId: '0939' }, 'escalated', 'r1', expect.objectContaining({ model: NEMO, step: 4 }));
   });
 
-  it('fails plainly when no model answers, journaling nothing', async () => {
+  it('journals bounded native refusal codes when no model can dispatch', async () => {
     store.runs = [{ _id: 'r1', escalation: { models: [SOL, NEMO], maxCostNanodollars: 5e9 }, escalationCalls: [] }];
     const run = jest.fn(async () => ({ ok: false, status: 503, body: { error: { code: 'OPENCLAW_UNAVAILABLE' } } }));
     await expect(escalation.execute({ identity: { requestId: 'r1', pipelineId: '0939', callId: 'c1', step: 2, model: SOL },
       messages: [], maxTokens: 10, requestId: 'c1', remainingNanodollars: 5e9 }, { run })).rejects.toMatchObject({ code: 'REPORT_ESCALATION_UNAVAILABLE' });
     expect(run).toHaveBeenCalledTimes(2);
     expect(store.runs[0].escalationCalls).toEqual([]);
+    expect(store.runs[0].escalationFailures[0]).toMatchObject({ callId: 'c1', step: 2, executionState: 'not-dispatched',
+      attempts: [{ model: SOL, code: 'OPENCLAW_UNAVAILABLE' }, { model: NEMO, code: 'OPENCLAW_UNAVAILABLE' }] });
+  });
+
+  it('keeps an unknown provider outcome on its original identity without trying another model', async () => {
+    store.runs = [{ _id: 'r1', escalation: { models: [SOL, NEMO], maxCostNanodollars: 2e9 }, escalationCalls: [] }];
+    const run = jest.fn(async () => { throw Object.assign(new Error('private provider text'), {
+      code: 'OPENCLAW_NATIVE_MODEL_FAILED', executionState: 'unknown' }); });
+    await expect(escalation.execute({ identity: { requestId: 'r1', pipelineId: '0939', callId: 'c1', step: 2, model: SOL },
+      messages: [], maxTokens: 10, requestId: 'c1', remainingNanodollars: 2e9 }, { run }))
+      .rejects.toMatchObject({ code: 'REPORT_ESCALATION_UNCERTAIN', executionState: 'unknown' });
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(store.runs[0].escalationFailures[0]).toMatchObject({ callId: 'c1', executionState: 'unknown' });
+    expect(JSON.stringify(store.runs)).not.toContain('private provider text');
+  });
+
+  it('does not fall back after a lost success-journal acknowledgement', async () => {
+    store.runs = [{ _id: 'r1', escalation: { models: [SOL, NEMO], maxCostNanodollars: 2e9 }, escalationCalls: [] }];
+    require('../../models/PipelineReportRun').updateOne.mockRejectedValueOnce(new Error('lost acknowledgement'));
+    const run = jest.fn(async () => ({ ok: true, body: {}, metadata: { receipt: { billing: { kind: 'free' } } } }));
+    await expect(escalation.execute({ identity: { requestId: 'r1', pipelineId: '0939', callId: 'c1', step: 2, model: SOL },
+      messages: [], maxTokens: 10, requestId: 'c1', remainingNanodollars: 2e9 }, { run }))
+      .rejects.toMatchObject({ code: 'REPORT_ESCALATION_UNCERTAIN', executionState: 'unknown' });
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not silently price an unobserved paid answer at zero', async () => {
+    store.runs = [{ _id: 'r1', escalation: { models: [SOL, NEMO], maxCostNanodollars: 2e9 }, escalationCalls: [] }];
+    const run = jest.fn(async () => ({ ok: true, body: {}, metadata: { receipt: { billing: { kind: 'paid' } } } }));
+    await expect(escalation.execute({ identity: { requestId: 'r1', pipelineId: '0939', callId: 'c1', step: 2, model: SOL },
+      messages: [], maxTokens: 10, requestId: 'c1', remainingNanodollars: 2e9 }, { run }))
+      .rejects.toMatchObject({ code: 'REPORT_ESCALATION_UNCERTAIN', executionState: 'unknown' });
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(store.runs[0].escalationFailures[0].attempts[0].code).toBe('REPORT_ESCALATION_COST_UNVERIFIED');
+  });
+
+  it('charges a completed unusable answer and does not dispatch a replacement', async () => {
+    store.runs = [{ _id: 'r1', taskId: 't1', escalation: { models: [SOL, NEMO], maxCostNanodollars: 2e9 }, escalationCalls: [] }];
+    const run = jest.fn(async () => { throw Object.assign(new Error('empty answer'), { code: 'OPENCLAW_EMPTY_RESULT',
+      executionState: 'completed', executionReceipt: { billing: { kind: 'paid' }, cost: { nanodollars: 1234, source: 'runtime-estimate' } } }); });
+    await expect(escalation.execute({ identity: { requestId: 'r1', pipelineId: '0939', callId: 'c1', step: 2, model: SOL },
+      messages: [], maxTokens: 10, requestId: 'c1', remainingNanodollars: 2e9 }, { run }))
+      .rejects.toMatchObject({ executionState: 'completed' });
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(await escalation.spentNanodollars('t1')).toBe(1234);
+    expect(store.runs[0].escalationCalls[0].outcome).toBe('unusable_answer');
   });
 
   it('changes the policy only with confirmation, valid models and cap, and the current revision', async () => {
