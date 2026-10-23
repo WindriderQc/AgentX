@@ -178,3 +178,28 @@ test('engineering activity bypasses unverified guardian answers and requests nat
   const directive = body.input[0].content.find(part => part.text?.includes('For this current pipeline read')).text;
   expect(directive).toContain('"mode":"pipeline"');
 });
+
+test('an older uncertain dispatch settles from its exact persisted native failure without a replacement', async () => {
+  const first = await accept(), next = await accept();
+  const attempt = await occupied(first);
+  const terminal = { runId: attempt.runId, sessionKey: attempt.sessionKey, status: 'failed',
+    source: 'openclaw/sessions.get', messageId: 'native-terminal-marker', model: null, provider: null };
+  for (const run of [{ ...terminal, runId: 'resp_' + randomUUID() }, { ...terminal, sessionKey: 'foreign-session' }]) {
+    nativeEvidence.set(attempt.runId, { run });
+    await works.observer.tick();
+    expect((await works.repo.dispatchOwner()).workId).toBe(first._id);
+    expect((await works.repo.get(first._id)).state).toBe('uncertain');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  }
+  nativeEvidence.set(attempt.runId, { run: terminal,
+    answer: { status: 'unavailable', source: 'openclaw/sessions.get', runId: attempt.runId } });
+  await works.observer.tick();
+  const settled = await works.repo.get(first._id);
+  expect(settled).toMatchObject({ state: 'failed', attempt: { id: attempt.id,
+    runId: attempt.runId, terminal: 'failed', settledAt: expect.any(Date) } });
+  expect((await works.repo.dispatchOwner()).workId).toBeNull();
+  expect((await works.repo.get(next._id)).state).toBe('queued');
+  expect(fetchImpl).not.toHaveBeenCalled();
+  expect((await createWorkDelivery(works).snapshot(current.sessionId)).items.find(item => item.id === first._id))
+    .toMatchObject({ state: 'failed', pending: false });
+});
