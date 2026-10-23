@@ -125,6 +125,35 @@ describe('statement extraction', () => {
 });
 
 describe('ledger ingestion', () => {
+  test('keeps a different unidentified account in review instead of replacing a reconciled period', async () => {
+    const original = { ...statement(), account_last4: null };
+    await ingestDocument(await writeDoc('first.pdf', 'first account'), { readText, extract: extractWith(original) });
+    await categories.setTransactions({ id: String((await FinanceTransaction.findOne({ accountCode: 'EOP' }).lean())._id),
+      category: 'Restaurants', tags: ['owner'] });
+    const before = await FinanceTransaction.find({}).sort({ _id: 1 }).lean();
+    const decisions = await FinanceOverride.find({}).lean();
+    const saved = await FinanceStatement.findOne({ status: 'reconciled' }).lean();
+    const second = { ...statement({ coffees: 1 }), account_last4: null };
+    const result = await ingestDocument(await writeDoc('second.pdf', 'second account'), { readText, extract: extractWith(second) });
+    expect(result).toMatchObject({ outcome: 'needs_review', problems: [expect.stringContaining('identity is ambiguous')] });
+    expect(await FinanceStatement.findById(saved._id).lean()).toEqual(saved);
+    expect(await FinanceTransaction.find({}).sort({ _id: 1 }).lean()).toEqual(before);
+    expect(await FinanceOverride.find({}).lean()).toEqual(decisions);
+    expect(await FinanceStatement.countDocuments({ status: 'needs_review' })).toBe(1);
+  });
+
+  test('refuses a known file in another ledger before extraction or archive mutation', async () => {
+    const file = await writeDoc('known.pdf');
+    await ingestDocument(file, { readText, extract: extractWith(statement()) });
+    const before = await FinanceStatement.findOne().lean();
+    const extract = jest.fn();
+    await expect(ingestDocument(file, { ledger: 'corp', readText, extract }))
+      .rejects.toMatchObject({ code: 'FINANCE_STATEMENT_LEDGER_CONFLICT', status: 422 });
+    expect(extract).not.toHaveBeenCalled();
+    expect(await FinanceStatement.findOne().lean()).toEqual(before);
+    expect(await FinanceStatement.countDocuments()).toBe(1);
+  });
+
   test('writes a reconciled statement and keeps identical same-day purchases', async () => {
     const result = await ingestDocument(await writeDoc('june.pdf'), { readText, extract: extractWith(statement()) });
     expect(result).toMatchObject({ outcome: 'reconciled', accounts: 2, inserted: 5, overlapping: 0, replaced: false });
@@ -185,6 +214,31 @@ describe('ledger questions', () => {
 });
 
 describe('finance inbox', () => {
+  test.each(['perso', 'corp'])('repairs a duplicate archive link without extracting or changing %s ledger rows', async (ledger) => {
+    const source = await writeDoc('original.pdf', 'identical statement bytes');
+    const result = await ingestDocument(source, { ledger, readText, extract: extractWith(statement()) });
+    const before = await FinanceTransaction.find({}).sort({ _id: 1 }).lean();
+    const inbox = path.join(tmp, 'inbox');
+    const archive = path.join(tmp, 'archive');
+    const incoming = ledger === 'corp' ? path.join(inbox, 'corp') : inbox;
+    await fs.mkdir(incoming, { recursive: true });
+    await fs.copyFile(source, path.join(incoming, 'copy.pdf'));
+    const extract = jest.fn(() => { throw new Error('A duplicate must not invoke extraction'); });
+    const service = createFinanceInbox({
+      env: { FINANCE_INBOX_PATH: inbox, FINANCE_ARCHIVE_PATH: archive },
+      ingest: (file, options) => ingestDocument(file, { ...options, readText, extract })
+    });
+    const { results } = await service.scanOnce();
+    expect(results).toEqual([expect.objectContaining({ outcome: 'duplicate', statementId: result.statementId, ledger })]);
+    const saved = await FinanceStatement.findById(result.statementId).lean();
+    expect(saved.archivePath).toBe(path.join(archive, ...(ledger === 'corp' ? ['corp'] : []), '2026', 'copy.pdf'));
+    expect(await fs.readFile(saved.archivePath, 'utf8')).toBe('identical statement bytes');
+    expect(await fs.readFile(source, 'utf8')).toBe('identical statement bytes');
+    expect(extract).not.toHaveBeenCalled();
+    expect(await FinanceStatement.countDocuments({})).toBe(1);
+    expect(await FinanceTransaction.find({}).sort({ _id: 1 }).lean()).toEqual(before);
+  });
+
   test('archives reconciled files, sets aside reviews and leaves deferred files for later', async () => {
     const inbox = path.join(tmp, 'inbox');
     const archive = path.join(tmp, 'archive');
