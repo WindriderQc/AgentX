@@ -4,6 +4,20 @@ const assert = require('node:assert/strict');
 const { workResultPresentation } = require('../work-result-presentation');
 const { createWorkDelivery } = require('../../../src/services/conversationWorks/delivery');
 
+test('an explicit item maximum bounds the saved answer presentation without changing native evidence', () => {
+  const original = { text: 'Il y a 8 tâches.\n<show kind="list" title="Tâches (8)">'
+    + Array.from({ length: 8 }, (_, i) => `\n- Titre ${i + 1}\n  détail ${i + 1}`).join('') + '\n</show>' };
+  const before = JSON.stringify(original);
+  const requestText = 'Lis ma liste de tâches et donne le total, puis au plus trois titres.';
+  const view = workResultPresentation(original, { requestText });
+  assert.match(view.displayText, /Il y a 8 tâches/);
+  assert.match(view.displayText, /Titre 3/);
+  assert.doesNotMatch(view.displayText, /Titre [4-8]|détail [4-8]/);
+  assert.doesNotMatch(view.readingText, /Titre [4-8]|détail [4-8]/);
+  assert.match(workResultPresentation(original).displayText, /Titre 8/, 'no implicit cap on complete lists');
+  assert.equal(JSON.stringify(original), before);
+});
+
 test('a native document has a useful spoken summary and complete display and reading views', async () => {
   const summary = 'Voici le plan : préparer les données, vérifier les résultats, puis publier.';
   const document = 'Explication détaillée du document. '.repeat(100) + 'DERNIER MOT';

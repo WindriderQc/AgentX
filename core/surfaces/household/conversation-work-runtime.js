@@ -24,7 +24,7 @@ function registerWorkRuntime({ router, conversations, tasks, agentClient, contin
     presentResult: async (result, row) => {
       const turn = await conversations.getTurn({ sessionId: row.sessionId, packId: 'personal_operator', scopeId: 'personal', traceId: row.turnId });
       const language = turn?.speechLanguage || require('./persona-prompt').spokenReplyLanguage(result.text, turn?.inputText || '');
-      return require('./work-result-presentation').workResultPresentation(result, { language, pageCatalog: screenPages });
+      return require('./work-result-presentation').workResultPresentation(result, { language, pageCatalog: screenPages, requestText: turn?.inputText });
     },
     guardianNeedsMain: awaitingMain, nativeTaskRead: requestsTaskContextRead,
     nativeOnly: text => requestsSecretary(text) || requestsScreenVisit(text, screenPages), nativeRead: text => requestsSecretaryRead(text) || requestsWebRead(text),

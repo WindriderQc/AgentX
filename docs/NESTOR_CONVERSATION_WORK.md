@@ -324,12 +324,22 @@ receipt and is never inferred from timing or a reply.
 
 The guardian’s next selected context includes canonical statuses and received
 results from the same conversation, so it can follow up on the worker’s work.
+For an explicit read of the owner's open personal tasks, Main's native
+`conversation_work context` call also returns the existing canonical task read
+and its same-run receipt. Repeating the same native call identity reuses that
+receipt. Other scopes and filters keep Main's existing tools; missing task data
+does not remove the complete shared context. Main retains its installed model,
+memory, tool inventory and native result validation.
 A trusted surface derives `spokenText`, `readingText` and `displayText` from the
 retained result when projecting it. Conversation and explanations stay complete;
 a document's spoken summary and full screen content remain distinct. Explicit
 Listen uses the full reading view and the original turn’s language, even if the
 browser preference changes while Main works. These views do not rewrite the native result,
 change its version or authorize a new execution.
+An explicit maximum number of list items in the original human request bounds
+the list's screen and reading views, including nested detail of omitted items.
+Counts remain independent of this presentation cap. Unconstrained lists remain
+complete, and the native answer and its receipts stay unchanged.
 The accepted canonical turn retains its selected French/English `speechLanguage`
 before either brain starts; duplicate intake cannot replace it. Older turns
 without that metadata fall back to the received answer's inferred language.
