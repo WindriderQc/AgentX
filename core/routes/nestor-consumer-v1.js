@@ -217,6 +217,9 @@ function createNestorConsumerV1Routes({ runtimeServices, systemHealth } = {}) {
   });
 
   // Owner-only capability transport; never advertised on the shared family bus.
+  router.get('/mcp', (_req, res) => res.status(405).set('Allow', 'POST').json({
+    jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Use POST for Streamable HTTP requests' }
+  }));
   router.post('/mcp', asyncRoute(async (req, res) => {
     res.set('Cache-Control', 'private, no-store');
     const message = await require('../src/services/mcpOwnerTools').handleOwnerMcp(req.body);
