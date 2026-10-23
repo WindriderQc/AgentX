@@ -11,7 +11,7 @@ const root = path.resolve(__dirname, '../../..');
 const core = path.join(root, 'core');
 const report = process.env.AGENTX_ANALYTICS_BROWSER_REPORT || fs.mkdtempSync(path.join(os.tmpdir(), 'agentx-analytics-'));
 const { buildProductNavigation } = require(path.join(root, 'shared/productNavigation'));
-const { bucketFacet, summaryCoverage } = require(path.join(core, 'src/services/inferenceSummaryMetrics'));
+const { bucketFacet, summaryCoverage, attributionCoverage } = require(path.join(core, 'src/services/inferenceSummaryMetrics'));
 const errors = [], requests = [];
 let failSummary = false, empty = false, staleGPU = false, failLive = false;
 let delayWindow = null;
@@ -53,6 +53,7 @@ function summary(key) {
       inferenceHours: elapsedMs / 3600000, inferenceSeconds: elapsedMs / 1000, avgLatencyMs: calls > 0 ? Math.round(elapsedMs / calls) : null, tokensOutPerSecond: 24.09, classifiedCalls: 0 },
     byModel: empty ? [] : models, byConsumerContract: empty ? [] : [{ consumerContract: 'native-conversation-v1', calls: 1000, avgLatencyMs: 20000, errorRate: .3 }],
     byDayCaller: [], byCaller: [], byRuntime: [], byTaskType: [], byFallbackUsed: [], byFallbackReason: [], byDegraded: [], topErrors: [],
+    ...(!legacySummary && { attribution: attributionCoverage(empty ? [] : [{ _id: 'proxy', calls: 400 }, { _id: 'embedding', calls: 81 }], calls) }),
     ...(!legacySummary && { failureAnalysis: { admissionRefusals: empty ? 0 : 3, unclassified: 0, byReason: empty ? [] : [
       { reason: 'workload_reserved', calls: 2 }, { reason: 'inference_recovery_required', calls: 1 },
     ] }, topErrors: empty ? [] : [
@@ -117,10 +118,10 @@ const server = http.createServer(async (req, res) => {
 (async () => {
   fs.mkdirSync(report, { recursive: true });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, ...(process.env.AGENTX_CHROMIUM_EXECUTABLE && { executablePath: process.env.AGENTX_CHROMIUM_EXECUTABLE }) });
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
-    page.on('pageerror', error => errors.push(error.message));
+    page.on('pageerror', error => { errors.push(error.message); console.error(error.message); });
     await page.goto(`http://127.0.0.1:${server.address().port}/analytics`);
     await page.waitForFunction(() => document.getElementById('ao-calls').textContent === '1,481');
     await page.waitForFunction(() => document.getElementById('ao-active').textContent === '1');
@@ -139,6 +140,11 @@ const server = http.createServer(async (req, res) => {
     assert.equal(await page.locator('#analytics-cockpit').getAttribute('open'), null);
     const workbenchPaths = ['/api/analytics/costs', '/api/analytics/usage', '/api/analytics/feedback', '/api/analytics/rag-stats', '/api/analytics/effectiveness', '/api/analytics/federated', '/api/rag/'];
     assert.deepEqual(requests.filter(p => workbenchPaths.some(prefix => p.startsWith(prefix))), [], 'the closed workbench loads nothing');
+    assert.match(await page.locator('#ao-attribution').textContent(), /1,000 \/ 1,481.*481 missing.*400 proxy.*81 embedding/);
+    const drilldown = new URL(await page.locator('#ao-attribution-logs').getAttribute('href'), 'http://test');
+    assert.equal(drilldown.searchParams.get('consumerContractMissing'), 'true');
+    assert.ok(Date.parse(drilldown.searchParams.get('from')) < Date.parse(drilldown.searchParams.get('to')));
+    assert.match(await page.locator('#ao-updated').textContent(), /→.*\(.*\)/);
     await page.evaluate(() => document.fonts.ready);
     for (const [width, height] of [[1920, 1080], [1440, 900], [1366, 768], [1280, 720], [820, 1000], [390, 844], [320, 800]]) {
       await page.setViewportSize({ width, height });
@@ -185,6 +191,8 @@ const server = http.createServer(async (req, res) => {
     await page.locator('#analytics-experience-refresh').click();
     await page.waitForFunction(() => document.getElementById('ao-comparison').textContent.includes('causes unavailable'));
     assert.match(await page.locator('#ao-error-focus').textContent(), /Explore recorded errors/);
+    assert.match(await page.locator('#ao-attribution').textContent(), /unavailable from this Core version/);
+    assert.equal(await page.locator('#ao-attribution-logs').isVisible(), false);
     legacySummary = false;
     // Opening the workbench loads it; the Playground lane follows the page-wide Period.
     await page.locator('#analytics-cockpit > summary').click();
@@ -205,6 +213,8 @@ const server = http.createServer(async (req, res) => {
     await page.locator('#analytics-experience-refresh').click();
     await page.waitForFunction(() => document.querySelector('.analytics-overview').dataset.state === 'error');
     assert.equal(await page.locator('#ao-calls').textContent(), '—');
+    assert.match(await page.locator('#ao-attribution').textContent(), /unavailable for this window/);
+    assert.equal(await page.locator('#ao-attribution-logs').isVisible(), false);
     assert.equal(await page.locator('#ao-success').textContent(), '—');
     assert.equal(await page.locator('.ao-spark svg').count(), 0, 'failed reads clear prior mini-charts');
     assert.equal(await page.locator('#ao-outcome-ring').evaluate(el => el.classList.contains('is-empty')), true);
@@ -251,6 +261,6 @@ const server = http.createServer(async (req, res) => {
     assert.deepEqual(errors, []);
     assert.ok(requests.some(p => p.includes('/summary?window=24h')));
     assert.ok(bucketFacet('24h', {})[0].$group._id.$dateToString.format.includes('%H'));
-    console.log(JSON.stringify({ ok: true, report, viewports: 7, scenarios: ['initial', 'comparison', 'error causes and consumer shares', 'legacy cause availability', 'volume/latency overlay', 'visual evidence reset', 'window race', 'retention', 'failed read', 'empty', 'stale GPU', 'live failure', 'detail focus', 'demo profile', 'page-wide Period', 'lazy workbench', 'persistent Playground disclosure'], requests: requests.length }, null, 2));
+    console.log(JSON.stringify({ ok: true, report, viewports: 7, scenarios: ['initial', 'comparison', 'error causes and consumer shares', 'legacy cause availability', 'consumer attribution and window drilldown', 'volume/latency overlay', 'visual evidence reset', 'window race', 'retention', 'failed read', 'empty', 'stale GPU', 'live failure', 'detail focus', 'demo profile', 'page-wide Period', 'lazy workbench', 'persistent Playground disclosure'], requests: requests.length }, null, 2));
   } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -67,7 +67,20 @@ when its attempt, zero retry delay and admission-only timing support it. Earlier
 retries cannot explain a later provider failure. Missing evidence stays
 **Cause unrecorded**; an older Core without these fields shows causes unavailable.
 
-Historical values are snapshots refreshed on demand. The snapshot time stays
+The consumer attribution line reports identified versus missing contracts and
+breaks missing calls down by caller category. Its inspection link opens the
+canonical paged log API for that exact time window with
+`consumerContractMissing=true`; `false` selects identified contracts. This filter
+cannot be combined with an exact `consumerContract`. Missing means absent,
+null, empty, or the legacy `unknown` label. Runtime, caller category and task
+type do not prove application identity; historical contracts are not inferred.
+`attribution` in the summary exposes these same counts and a nullable percentage
+for an empty window. Core Ops Watch stamps `core-ops-watch-v1` on new calls.
+The error link also discloses causes that remain unrecorded. The bounded
+`read_presentation` receipt carries attribution counts and unclassified errors
+to clients reading the exact selected summary.
+
+Historical values are snapshots refreshed on demand. The exact window and browser timezone stay
 visible; after five minutes the status asks for a refresh. Failed reads clear
 the overview's prior values. Later responses for a superseded period are ignored.
 Playground conversation panels retain their separately labeled period and

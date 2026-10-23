@@ -21,7 +21,7 @@
  * Mounted at /api/analytics/inference by routes/analytics.js.
  */
 
-const { bucketFacet, summaryCoverage } = require('../src/services/inferenceSummaryMetrics');
+const { bucketFacet, summaryCoverage, MISSING_CONSUMER, attributionFacet, attributionCoverage } = require('../src/services/inferenceSummaryMetrics');
 const { failureFacets, shapeFailures } = require('../src/services/inferenceFailureAnalytics');
 const { analyticsDayKey } = require('../src/services/conversationActivityAnalytics');
 const express = require('express');
@@ -139,6 +139,17 @@ function buildLogQuery(query = {}) {
     if (value) filter[field] = value;
   }
 
+  if (query.consumerContractMissing != null && query.consumerContractMissing !== '') {
+    if (!['true', 'false'].includes(String(query.consumerContractMissing))) {
+      throw Object.assign(new Error('consumerContractMissing must be true or false'), { statusCode: 400 });
+    }
+    if (filter.consumerContract) {
+      throw Object.assign(new Error('consumerContract and consumerContractMissing cannot be combined'), { statusCode: 400 });
+    }
+    filter.consumerContract = query.consumerContractMissing === 'true'
+      ? MISSING_CONSUMER : { $nin: MISSING_CONSUMER.$in };
+  }
+
   const statuses = boundedText(query.status, 100)
     .split(',')
     .map(status => status.trim())
@@ -205,6 +216,7 @@ router.get('/logs', async (req, res) => {
         caller: req.query.caller || null,
         callerDetail: req.query.callerDetail || null,
         consumerContract: req.query.consumerContract || null,
+        consumerContractMissing: req.query.consumerContractMissing || null,
         runtime: req.query.runtime || null,
         workItemId: req.query.workItemId || null,
         correlationId: req.query.correlationId || null,
@@ -265,7 +277,7 @@ router.get('/distribution', async (req, res) => {
       window: { key: window.key, from: window.from, to: window.to },
       retentionDays: parseInt(process.env.INFERENCE_LOG_TTL_DAYS || '30', 10),
       filters: Object.fromEntries(
-        [...LOG_FILTER_FIELDS, 'status'].map(field => [field, req.query[field] || null])
+        [...LOG_FILTER_FIELDS, 'status', 'consumerContractMissing'].map(field => [field, req.query[field] || null])
       ),
       ...shapeDistribution(facet, { groupBy, limit, sanitizeLabel: distributionLabel })
     });
@@ -300,7 +312,7 @@ router.get('/prompt-cache', async (req, res) => {
       window: { key: window.key, from: window.from, to: window.to },
       retentionDays: parseInt(process.env.INFERENCE_LOG_TTL_DAYS || '30', 10),
       filters: Object.fromEntries(
-        [...LOG_FILTER_FIELDS, 'status'].map(field => [field, req.query[field] || null])
+        [...LOG_FILTER_FIELDS, 'status', 'consumerContractMissing'].map(field => [field, req.query[field] || null])
       ),
       ...shapePromptCache(facet, { groupBy, limit, sanitizeLabel: distributionLabel })
     });
@@ -409,6 +421,7 @@ router.get('/summary', async (req, res) => {
       },
       {
         $facet: {
+          missingConsumers: attributionFacet(),
           totals: [{ $group: { _id: null, ...groupMetrics } }],
           // Last hour, whatever the window: a fresh outage must not be diluted by 30 days.
           recent: [{ $match: { timestamp: { $gte: new Date(to.getTime() - RECENT_MS) } } }, { $group: { _id: null, ...groupMetrics } }],
@@ -558,7 +571,10 @@ router.get('/summary', async (req, res) => {
     const data = {
       window: { key, from, to },
       source: 'inferencelogs',
-      scope: 'Every AgentX-routed inference call: chat, proxy, embedding, classification, benchmark.',
+      scope: 'Recorded AgentX-routed inference attempts only; native calls bypassing Core are outside this view.',
+      observedAt: to,
+      ttlMs: SUMMARY_TTL_MS,
+      attribution: attributionCoverage(facet?.missingConsumers, t.calls),
       signals: Object.fromEntries(
         Object.entries(classifierSignals).map(([key, signal]) => [key, serializeSignal(signal)])
       ),
