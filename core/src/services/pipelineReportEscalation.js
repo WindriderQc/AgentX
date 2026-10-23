@@ -97,7 +97,7 @@ async function execute({ identity, messages, maxTokens, requestId, remainingNano
     let result;
     try {
       result = await run({ mode: 'chat', model: `openclaw:model:${model}`, messages, stream: false, requestId,
-        options: { num_predict: maxTokens, temperature: 0 }, budget: { maxCalls: 1, maxCostNanodollars: remainingNanodollars } });
+        options: { num_predict: maxTokens }, budget: { maxCalls: 1, maxCostNanodollars: remainingNanodollars } });
       if (!result.ok) throw Object.assign(new Error('Escalation model refused the request'), {
         code: result.body?.error?.code || `HTTP_${result.status}`, executionState: result.body?.executionState });
     } catch (error) {
@@ -105,7 +105,8 @@ async function execute({ identity, messages, maxTokens, requestId, remainingNano
       const cost = observedCost(receipt);
       const state = error.executionState === 'not-dispatched' || (!error.executionState && PRE_DISPATCH.has(error.code)) ? 'not-dispatched'
         : error.executionState === 'completed' && cost !== null ? 'completed' : 'unknown';
-      attempts.push({ model, code: safeCode(error), executionState: state });
+      attempts.push({ model, code: safeCode(error), executionState: state,
+        ...(error.refusalReceipt ? { refusalReceipt: error.refusalReceipt } : {}) });
       if (state === 'completed') await journal(identity, 'escalationCalls', {
         callId: identity.callId, step: identity.step, model, attempts, at: new Date().toISOString(),
         nanodollars: cost, costSource: receipt.cost?.source || 'billing-kind', billing: receipt.billing?.kind,

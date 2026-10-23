@@ -5,7 +5,8 @@ import { createSpendLedger } from './ledger.mjs';
 
 export function registerExecutionRoutes(api, { backend = createNativeBackend(api), ledger = createSpendLedger() } = {}) {
   const service = createExecutionService({ backend, catalogTtlSeconds: api.pluginConfig?.catalogTtlSeconds || 300,
-    maxRequestCostNanodollars: api.pluginConfig?.maxRequestCostNanodollars || 0, ledger });
+    maxRequestCostNanodollars: api.pluginConfig?.maxRequestCostNanodollars || 0, ledger,
+    recordRefusal: receipt => api.logger?.warn?.('[agentx-model-refusal] ' + JSON.stringify(receipt)) });
   const send = (res, status, body) => { res.statusCode = status; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(body)); };
   api.registerHttpRoute({ path: '/api/agentx/execution/models', auth: 'gateway', match: 'exact', handler: async (req, res) => {
     if (req.method !== 'GET') return send(res, 405, { code: 'METHOD_NOT_ALLOWED' });
@@ -38,7 +39,7 @@ export function registerExecutionRoutes(api, { backend = createNativeBackend(api
     } catch (error) {
       const body = { schema: 'agentx.openclaw-model-error/v1',
         partialResponse: error.partialResponse || '', partialThinking: error.partialThinking || '', code: error.code || (error instanceof SyntaxError ? 'OPENCLAW_REQUEST_INVALID' : 'OPENCLAW_EXECUTION_FAILED'),
-        executionState: error.executionState || 'not-dispatched', reservation: error.reservation || null };
+        executionState: error.executionState || 'not-dispatched', reservation: error.reservation || null, ...(error.refusalReceipt ? { refusalReceipt: error.refusalReceipt } : {}) };
       if (res.headersSent) { if (!controller.signal.aborted) res.end(`data: ${JSON.stringify({ type: 'error', ...body })}\n\n`); }
       else send(res, error.statusCode || 400, body);
     } finally { res.removeListener('close', abort); }

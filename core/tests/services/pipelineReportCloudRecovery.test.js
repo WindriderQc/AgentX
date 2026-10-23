@@ -89,3 +89,27 @@ test.each(['busy', 'scope', 'multiple-attempts', 'cost', 'lost-ack'])('retains f
   finally { jest.restoreAllMocks(); }
   expect((await Run.findById(run._id).lean()).pendingInferences).toEqual([row.callId]);
 });
+
+test('receives a native Responses bad-request refusal under explicit generic confirmation', async () => {
+  log[0].message = log[0].message.replace('api=openai-completions', 'api=openai-responses').replace('status=402', 'status=400');
+  body.confirmation = 'RECEIVE_ORIGINAL_CLOUD_PROVIDER_REFUSAL';
+  await archive();
+  expect(await receiver.receive('0001', run._id, body)).toMatchObject({ recovered: true });
+  expect((await Run.findById(run._id).lean()).modelReceipts[0].terminationRecovery).toMatchObject({ httpStatus: 400, nanodollars: 0 });
+});
+
+test('a payment-only confirmation cannot receive a different native refusal', async () => {
+  log[0].message = log[0].message.replace('status=402', 'status=400');
+  await archive();
+  await expect(receiver.receive('0001', run._id, body)).rejects.toThrow();
+});
+
+test('known refused attempts do not disqualify later completed work, but a refusal alone cannot deliver', async () => {
+  await archive(); await receiver.receive('0001', run._id, body);
+  expect((await reports.reconcileModels('0001', run._id)).allCallsCompleted).toBe(false);
+  await Run.updateOne({ _id: run._id }, { $push: { modelReceipts: { callId: crypto.randomUUID(), prepareId: crypto.randomUUID(),
+    state: 'completed', startedAt: row.startedAt, finishedAt: row.finishedAt } } });
+  expect((await reports.status('0001', run._id)).allCallsCompleted).toBe(true);
+  await Run.updateOne({ _id: run._id }, { $push: { modelReceipts: { callId: 'uncertain', state: 'unknown' } } });
+  expect((await reports.status('0001', run._id)).allCallsCompleted).toBe(false);
+});

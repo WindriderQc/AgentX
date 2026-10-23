@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { fingerprint } from './native.mjs';
+import { observationFor, observeHttp, refusedResponse, errorMetadata } from './http-observation.mjs';
 
 const aliasesForMaxTokens = ['max_tokens', 'max_completion_tokens', 'max_output_tokens', 'maxOutputTokens', 'num_predict'];
 const reject = (code, statusCode = 400) => { throw Object.assign(new Error(code), { code, statusCode }); };
@@ -128,7 +129,7 @@ function verifyPayload(payload, parameters, context, model) {
   if (parameters.responseFormat === 'json' && !['json_object', 'json_schema'].includes(format?.type) && payload.generationConfig?.responseMimeType !== 'application/json' && payload.config?.responseMimeType !== 'application/json') reject('OPENCLAW_RESPONSE_FORMAT_UNAPPLIED', 422);
 }
 
-export function createExecutionService({ backend, now = () => Date.now(), catalogTtlSeconds = 300, maxRequestCostNanodollars = 0, ledger = null } = {}) {
+export function createExecutionService({ backend, now = () => Date.now(), catalogTtlSeconds = 300, maxRequestCostNanodollars = 0, ledger = null, recordRefusal = () => {} } = {}) {
   async function catalogue() {
     const value = await backend.catalogue();
     return { schema: 'agentx.openclaw-execution-catalog/v1', ...value, policy: { maxRequestCostNanodollars },
@@ -154,12 +155,14 @@ export function createExecutionService({ backend, now = () => Date.now(), catalo
     if (native.descriptor.fingerprint !== descriptor.fingerprint) reject('OPENCLAW_TARGET_DRIFT', 409);
     const context = nativeContext(request.messages, native.model, request.tools || []);
     const id = request.requestId || randomUUID(), startedAt = now();
+    const http = observationFor(native.model);
+    let nativeError;
     let payload, payloadError, recorded = false, calls = 0, responseId = null, result, partialText = '', partialThinking = '';
     const deadline = AbortSignal.timeout(Math.max(1, Math.min(600000, parameters.timeoutMs || 600000)));
     const boundedSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
     boundedSignal.throwIfAborted();
     try {
-      const stream = native.stream(context, { signal: boundedSignal, requestId: id, maxTokens: parameters.maxTokens,
+      const stream = observeHttp(http, () => native.stream(context, { signal: boundedSignal, requestId: id, maxTokens: parameters.maxTokens,
         ...(parameters.temperature != null ? { temperature: parameters.temperature } : {}),
         ...(parameters.reasoningMaxTokens != null ? { thinkingBudgets: { low: parameters.reasoningMaxTokens } } : {}),
         onPayload: value => {
@@ -168,12 +171,15 @@ export function createExecutionService({ backend, now = () => Date.now(), catalo
           payload = structuredClone(value);
         },
         onResponse: response => { responseId = response.headers?.get?.('x-request-id') || response.headers?.get?.('request-id') || response.headers?.['x-request-id'] || response.headers?.['request-id'] || null; }
-      });
+      }));
       for await (const event of stream) {
         if (event.type === 'text_delta') { partialText += event.delta; await emit({ type: 'text_delta', delta: event.delta }); }
         else if (event.type === 'thinking_delta') { partialThinking += event.delta; await emit({ type: 'thinking_delta', delta: event.delta }); }
         else if (event.type === 'done') result = event.message;
-        else if (event.type === 'error') throw payloadError || Object.assign(new Error('OPENCLAW_NATIVE_MODEL_FAILED'), { code: 'OPENCLAW_NATIVE_MODEL_FAILED' });
+        else if (event.type === 'error') {
+          nativeError = errorMetadata(event.error);
+          throw payloadError || Object.assign(new Error('OPENCLAW_NATIVE_MODEL_FAILED'), { code: 'OPENCLAW_NATIVE_MODEL_FAILED' });
+        }
       }
       boundedSignal.throwIfAborted();
       if (!result || calls !== 1 || !payload || result.provider !== native.model.provider || result.model !== native.model.id) reject('OPENCLAW_RESULT_UNVERIFIED', 502);
@@ -207,13 +213,23 @@ export function createExecutionService({ backend, now = () => Date.now(), catalo
       await emit({ type: 'completed', result: value });
       return value;
     } catch (error) {
+      const response = refusedResponse(http);
+      const refusalReceipt = response && !partialText && !partialThinking && !result ? {
+        schema: 'agentx.openclaw-refusal-receipt/v1', requestId: id, model: request.model,
+        runtimeVersion: native.runtimeVersion, targetFingerprint: descriptor.fingerprint,
+        httpStatus: response.status, observedAt: response.at, modelHttpRequests: 1,
+        executionState: 'not-dispatched', cost: { nanodollars: 0, source: 'native-http-refusal', currency: 'USD' },
+        diagnostic: nativeError || null
+      } : null;
+      if (refusalReceipt) { try { await recordRefusal(refusalReceipt); } catch { /* Core still receives the bounded native proof. */ } }
+      const preflightRefused = payloadError && calls === 1 && http?.attempts === 0;
       // Provider diagnostics are deliberately not returned to AgentX.
-      const code = /^OPENCLAW_[A-Z_]{1,80}$/.test(error.code || '') ? error.code : 'OPENCLAW_NATIVE_MODEL_FAILED';
+      const code = refusalReceipt ? 'OPENCLAW_PROVIDER_REQUEST_REFUSED' : /^OPENCLAW_[A-Z_]{1,80}$/.test(error.code || '') ? error.code : 'OPENCLAW_NATIVE_MODEL_FAILED';
       // A dispatched paid call may be billed even though no cost was observed.
-      if (reservation && ledger && calls && !recorded) await ledger.record(null);
+      if (reservation && ledger && calls && !recorded && !preflightRefused) await ledger.record(refusalReceipt ? 0 : null);
       throw Object.assign(new Error(code), { code,
         statusCode: error.statusCode || 502, partialResponse: partialText, partialThinking,
-        reservation, executionState: calls ? 'unknown' : 'not-dispatched' });
+        reservation, ...(refusalReceipt ? { refusalReceipt } : {}), executionState: refusalReceipt || preflightRefused || !calls ? 'not-dispatched' : 'unknown' });
     }
   }
   return { catalogue, execute };

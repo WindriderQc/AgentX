@@ -2,6 +2,7 @@
 
 const { randomUUID } = require('node:crypto');
 const { parseExecutionSource } = require('./executionSource');
+const { nativeRefusal } = require('./openclawRefusal');
 
 const MODEL_API = '/api/agentx/execution';
 const CATALOG_SCHEMA = 'agentx.openclaw-execution-catalog/v1';
@@ -57,10 +58,13 @@ function createOpenClawExecutionClient({ env = process.env, fetchImpl = fetch } 
     if (!response.ok) {
       let body; try { body = await response.json(); } catch { /* private upstream body is discarded */ }
       const nativeCode = /^OPENCLAW_[A-Z_]{1,80}$/.test(body?.code || '') ? body.code : null;
+      const receipt = nativeRefusal(body?.refusalReceipt);
       const code = nativeCode || (response.status === 404 ? 'OPENCLAW_MODEL_API_UNAVAILABLE' : 'OPENCLAW_EXECUTION_REJECTED');
       throw failure(code, `OpenClaw refused execution (HTTP ${response.status}).`, response.status === 404 ? 503 : response.status,
-        { executionState: ['unknown', 'not-dispatched'].includes(body?.executionState) ? body.executionState : 'unknown',
+        { executionState: body?.code === 'OPENCLAW_PROVIDER_REQUEST_REFUSED' && (!receipt || body.partialResponse || body.partialThinking)
+            ? 'unknown' : ['unknown', 'not-dispatched'].includes(body?.executionState) ? body.executionState : 'unknown',
           ...(body?.schema === 'agentx.openclaw-model-error/v1' ? {
+            refusalReceipt: receipt,
             partialResponse: typeof body.partialResponse === 'string' ? body.partialResponse.slice(0, 2000000) : '',
             partialThinking: typeof body.partialThinking === 'string' ? body.partialThinking.slice(0, 2000000) : '' } : {}) });
     }
@@ -142,6 +146,9 @@ function createOpenClawExecutionClient({ env = process.env, fetchImpl = fetch } 
           requested: selection, observed: null, usage: result.usage || null, cost: null,
           isolation: null, completion: 'completed', finishReason: null } };
     } catch (error) {
+      if (error.refusalReceipt && (error.refusalReceipt.requestId !== id || error.refusalReceipt.model !== selection.model)) {
+        error.refusalReceipt = null; error.executionState = 'unknown';
+      }
       error.partialResponse ??= text;
       error.partialThinking ??= thinking;
       error.executionState ??= terminal ? 'completed' : 'unknown';

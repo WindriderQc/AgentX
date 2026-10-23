@@ -37,7 +37,7 @@ async function run(id, key) {
 function termination(value) {
   return value.pendingInferences.length === 0 && value.modelReceipts.every(row => ['completed', 'refused'].includes(row.state));
 }
-function completed(value) { return termination(value) && value.modelReceipts.length > 0 && value.modelReceipts.every(row => row.state === 'completed'); }
+function completed(value) { return termination(value) && value.modelReceipts.some(row => row.state === 'completed'); }
 async function status(id, key) {
   // Read only this accepted execution's receipts. Later task edits/deletion do
   // not erase custody of an outstanding inference; no task content is exposed.
