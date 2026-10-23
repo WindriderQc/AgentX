@@ -167,6 +167,33 @@ def distinct_findings(ledger):
     return findings
 
 
+def render_legacy(legacy):
+    """The displayed copy of an earlier report, nested under its archive heading."""
+    return re.sub(r'^(#{1,4})\s', lambda m: '#' * (len(m.group(1)) + 2) + ' ', legacy, flags=re.M)
+
+
+def legacy_edit(legacy, find, replace, index):
+    """Accept one exact source edit or a uniquely proven edit from its display.
+
+    The runner adds two heading levels when displaying earlier findings. A
+    worker may copy that display while preparing a deletion or plain-text
+    replacement. Require exact correspondence in both representations; no
+    whitespace, wording or source ambiguity is repaired here.
+    """
+    count = legacy.count(find)
+    if count == 1:
+        return legacy.replace(find, replace, 1), False
+    if count == 0 and not re.search(r'^#{1,6}\s', replace, flags=re.M):
+        original = re.sub(r'^(#{3,6})(?=\s)', lambda m: m.group(1)[2:], find, flags=re.M)
+        displayed = render_legacy(legacy)
+        if original != find and legacy.count(original) == 1 and displayed.count(find) == 1:
+            updated = legacy.replace(original, replace, 1)
+            if render_legacy(updated) == displayed.replace(find, replace, 1):
+                return updated, True
+    raise LedgerError(f'legacy edit {index}: the exact text to replace must occur once (found {count}); '
+                      'use the original narrative for heading changes')
+
+
 def merge_step(ledger, group, result, source_bytes, step_id, allow_empty=False, line_range=None):
     """Verify one step result for `group` (document paths) and merge it.
 
@@ -224,6 +251,7 @@ def merge_step(ledger, group, result, source_bytes, step_id, allow_empty=False, 
     if not isinstance(edits, list) or len(edits) > MAX_LEGACY_EDITS:
         raise LedgerError(f'legacyEdits must be a list of at most {MAX_LEGACY_EDITS}')
     legacy = ledger.get('legacy')
+    rendered_edits = []
     for index, edit in enumerate(edits):
         if not isinstance(edit, dict):
             raise LedgerError(f'legacy edit {index + 1} must be an object')
@@ -231,9 +259,9 @@ def merge_step(ledger, group, result, source_bytes, step_id, allow_empty=False, 
         replace = (edit or {}).get('replace')
         if not isinstance(replace, str) or len(replace) > 4000:
             raise LedgerError(f'legacy edit {index + 1}: replace must be text of at most 4000 characters')
-        if legacy.count(find) != 1:
-            raise LedgerError(f'legacy edit {index + 1}: the exact text to replace must occur once (found {legacy.count(find)})')
-        legacy = legacy.replace(find, replace, 1)
+        legacy, rendered = legacy_edit(legacy, find, replace, index + 1)
+        if rendered:
+            rendered_edits.append(index + 1)
 
     for path, update in updates.items():
         row = ledger['documents'][path]
@@ -273,6 +301,8 @@ def merge_step(ledger, group, result, source_bytes, step_id, allow_empty=False, 
     receipt = {'step': step_id, 'documents': sorted(updates), 'findings': added_findings, 'legacyEdits': len(edits)}
     if added_findings != len(accepted):
         receipt['duplicateFindings'] = len(accepted) - added_findings
+    if rendered_edits:
+        receipt['renderedLegacyEdits'] = rendered_edits
     ledger['steps'].append({**receipt, 'result': 'merged'})
     return receipt
 
@@ -495,7 +525,7 @@ def render(ledger, title, next_groups=()):
     if ledger.get('legacy'):
         out += ['## Findings from earlier executions (preserved)', '',
                 'Kept verbatim from earlier runs, with only the corrections recorded in the ledger applied.', '',
-                re.sub(r'^(#{1,4})\s', lambda m: '#' * min(6, len(m.group(1)) + 2) + ' ', ledger['legacy'], flags=re.M), '']
+                render_legacy(ledger['legacy']), '']
     out += ['## Coverage', '', '| Document | State | Evidence checked |', '|---|---|---|']
     for path, row in sorted(ledger['documents'].items()):
         checks = '; '.join(f'`{ref["path"]}:{ref["line"]}` {ref["check"]}' for ref in row['evidence'][:4])

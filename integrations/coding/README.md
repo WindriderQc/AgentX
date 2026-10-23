@@ -161,6 +161,10 @@ and runs several short worker sessions in fresh context:
   continuation restored from Core's checkpoint resumes it exactly. A report
   written before steps keeps its findings verbatim in an "earlier executions"
   section; reviewer corrections apply to it only as exact text replacements.
+  A deletion or plain-text edit copied from the displayed archive can also be
+  received when the runner proves one exact original match and an identical
+  rendered result. Only its own two-level heading nesting is normalized; changed
+  text, ambiguous matches and display-based heading replacements still refuse.
   Corrections can also replace an existing evidence check exactly, after the
   runner verifies its source hash and line. They retain the original text in
   the step receipt and cannot change coverage states or source references.
