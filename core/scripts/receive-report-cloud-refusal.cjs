@@ -12,13 +12,8 @@ async function main() {
   const load = createRequire(resolve(coreRoot, 'package.json'));
   const mongoose = load('mongoose');
   const intent = JSON.parse(await readFile(intentFile, 'utf8'));
-  const origin = new URL(process.env.CORE_PUBLIC_URL);
-  const control = { status: async ({ requestId }) => {
-    const response = await fetch(new URL(`/api/runtime-bridges/coding-dispatch/status?requestId=${encodeURIComponent(requestId)}`, origin),
-      { signal: AbortSignal.timeout(30000), redirect: 'error' });
-    if (!response.ok) throw new Error('Native status unavailable');
-    const result = await response.json(); return result.data;
-  } };
+  const { CodingDispatchControl } = load('./integrations/runtime-bridges/coding-dispatch-control');
+  const control = new CodingDispatchControl();
   if (!process.env.MONGODB_URI) throw new Error('Installed Core DB configuration is required');
   await mongoose.connect(process.env.MONGODB_URI, { maxPoolSize: 1, serverSelectionTimeoutMS: 5000 });
   try {
