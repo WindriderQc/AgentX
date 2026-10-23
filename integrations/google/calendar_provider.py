@@ -13,11 +13,7 @@ import re
 import subprocess
 import sys
 
-
-class CalendarError(Exception):
-    def __init__(self, code, message):
-        self.code, self.message = code, message
-        super().__init__(message)
+from calendar_errors import CalendarError
 
 
 def native_settings():
@@ -28,14 +24,19 @@ def native_settings():
         return {}
 
 
-def gog_call(method, params, body=None):
-    if method not in {"calendarList.list", "events.list", "events.get", "events.insert"}:
+def gog_call(method, params, body=None, headers=None):
+    if method not in {"calendarList.list", "events.list", "events.get", "events.insert", "events.patch"}:
         raise CalendarError("PERSONAL_CALENDAR_INVALID", "Unsupported Calendar operation.")
     settings = native_settings()
     env = os.environ.copy()
     password_file = Path(os.environ.get("GOOGLE_KEYRING_PASSWORD_FILE") or settings.get("keyringPasswordFile") or Path.home() / ".config/gogcli/keyring-password")
     env["GOG_KEYRING_BACKEND"] = "file"
     env["GOG_KEYRING_PASSWORD"] = password_file.read_text().strip()
+    if method == "events.patch":
+        from calendar_conditional import conditional_patch
+        return conditional_patch(params, body, headers or {}, settings, env)
+    if headers:
+        raise CalendarError("PERSONAL_CALENDAR_INVALID", "Unsupported Calendar headers.")
     args = [os.environ.get("GOOGLE_GOG_PATH") or settings.get("gogPath") or "gog",
             "--json", "--no-input", "--gmail-no-send", "--enable-commands-exact=api.call,api.calendar." + method.lower(),
             "--account=" + (os.environ.get("GOOGLE_ACCOUNT") or settings.get("account") or "auto")]
@@ -55,6 +56,8 @@ def gog_call(method, params, body=None):
             code = "PERSONAL_CALENDAR_NOT_FOUND"
         elif re.search(r"\b409\b|duplicate|already.exists", detail, re.I):
             code = "PERSONAL_CALENDAR_EXISTS"
+        elif re.search(r"rateLimitExceeded|userRateLimitExceeded|quotaExceeded|dailyLimitExceeded|calendarUsageLimitsExceeded", detail):
+            code = "PERSONAL_CALENDAR_RATE_LIMITED"
         elif re.search(r"\b(?:401|403)\b|invalid_grant|insufficient|scope|unauthorized", detail, re.I):
             code = "PERSONAL_CALENDAR_AUTHORIZATION"
         else:
@@ -68,7 +71,7 @@ def gog_call(method, params, body=None):
         raise CalendarError("PERSONAL_CALENDAR_UNCERTAIN", "Invalid Google Calendar response; retain the same requestId.") from None
 
 
-EVENT_FIELDS = ("id", "status", "summary", "description", "location", "start", "end", "recurrence",
+EVENT_FIELDS = ("id", "etag", "organizer", "attendees", "attendeesOmitted", "status", "summary", "description", "location", "start", "end", "recurrence",
                 "recurringEventId", "originalStartTime", "reminders", "htmlLink", "updated", "transparency")
 
 
@@ -92,6 +95,9 @@ def operate(request, call=gog_call):
                 params[target] = request[source]
         result = call("events.list", params)
         return {"events": [project(item) for item in result.get("items", [])], "nextPageToken": result.get("nextPageToken")}
+    if action in {"update", "cancel", "invite", "respond"}:
+        from calendar_mutations import mutate
+        return mutate(request, call, project)
     if action not in {"get", "create"}:
         raise CalendarError("PERSONAL_CALENDAR_INVALID", "Unsupported Calendar operation.")
     event_id = request.get("eventId", "")

@@ -12,7 +12,11 @@ Instance configuration, data and deployment receipts remain outside Git.
 - **Personal agenda.** The shared `personal_calendar` tool creates Google Calendar
   events and actual reminders, once or repeating, through the host's existing
   native Google authorization. Google owns series and popup delivery; stable
-  request identities reconcile creation. Existing Core personal tasks accept
+  request identities reconcile creation. Edits, moves, cancellation, explicit
+  occurrence/series scope, guest changes and self-only RSVP share the same tool.
+  Google ETags fence concurrent edits; Core action receipts fence uncertain
+  replays. Guest effects require explicit intent and exact recipients.
+  Existing Core personal tasks accept
   repeating schedules and advance once on occurrence completion. Runtime grants
   and device notification acceptance remain separate. See
   [personal calendar](PERSONAL_CALENDAR.md).
