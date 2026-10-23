@@ -4,7 +4,7 @@
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
 const { createRequire } = require('node:module');
 const core = path.resolve(__dirname, '../..'), req = createRequire(core + '/package.json');
-const express = req('express'), { chromium } = require('playwright');
+const express = req('express'), { chromium } = require(process.env.AGENTX_PLAYWRIGHT_MODULE || 'playwright');
 const reportDir = process.env.PAGE_PRESENTATION_REPORT_DIR;
 if (!reportDir || path.resolve(reportDir).startsWith(path.resolve(core, '..') + path.sep)) throw Error('Set PAGE_PRESENTATION_REPORT_DIR outside the checkout');
 fs.mkdirSync(reportDir, { recursive: true });
@@ -22,6 +22,7 @@ let server, browser;
     <style>nav{height:56px;border-bottom:1px solid #29404d;padding:12px 24px;box-sizing:border-box} .avatar-dock-orb{opacity:1!important}</style>
     <body class="household-product"><nav>AgentX · Personnel · Famille · Atelier</nav><main id="app">${markup}</main>
     <script src="/js/screen-pages.js"></script><script src="/assets/household/page-presentation.js"></script>
+    <script src="/assets/household/presentation-observation.js"></script>
     <script src="/assets/household/display-board.js"></script><script src="/assets/household/avatar-dock.js"></script>
     <script>
       AgentXScreenPages.configure([{id:'dad-day',label:'Ma journée',href:'/dad/day',mode:'frame'},{id:'dad-memories',label:'Mes souvenirs',href:'/dad/memories',mode:'frame'}]);
@@ -43,7 +44,7 @@ let server, browser;
   const base = `http://127.0.0.1:${server.address().port}`;
   browser = await chromium.launch({ headless: true, ...(process.env.PAGE_PRESENTATION_BROWSER_EXECUTABLE && { executablePath: process.env.PAGE_PRESENTATION_BROWSER_EXECUTABLE }) });
   const results = [], errors = [];
-  for (const viewport of [{ width: 1440, height: 1000 }, { width: 900, height: 1000 }, { width: 390, height: 844 }]) {
+  for (const viewport of [{ width: 1440, height: 1000 }, { width: 900, height: 1000 }, { width: 390, height: 844 }, { width: 320, height: 844 }]) {
     const context = await browser.newContext({ viewport });
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(error.message));
@@ -65,11 +66,11 @@ let server, browser;
     if (viewport.width > 1000) assert.ok(bounds.frame.x + bounds.frame.width <= bounds.conversation.x);
     else assert.ok(bounds.conversation.y >= bounds.frame.y + bounds.frame.height);
     await page.screenshot({ path: path.join(reportDir, `page-${viewport.width}.png`), fullPage: true });
-    await page.getByRole('button', { name: 'Retour à la conversation' }).click();
+    await page.getByRole('button', { name: 'Fermer le contenu' }).click();
     assert.equal(await page.locator('.page-presentation').evaluate(el => el.classList.contains('is-active')), false);
     assert.equal(await page.evaluate(() => document.body.dataset.avatarView), 'menu');
     assert.deepEqual(await page.evaluate(() => board.context()), [], 'a collapsed page is not visible turn context');
-    await page.getByRole('button', { name: 'Afficher la page' }).click();
+    await page.getByRole('button', { name: 'Afficher le contenu' }).click();
     assert.equal(await page.frameLocator('iframe').getByRole('textbox').inputValue(), 'Conserver cette note');
     assert.equal(loads, initialLoads, 'switching layouts preserves the live frame');
     await page.evaluate(() => showPage('dad-memories', 'Mes souvenirs'));
@@ -78,12 +79,19 @@ let server, browser;
     assert.deepEqual(await page.evaluate(() => board.context().map(item => item.page)), ['dad-day']);
     await page.evaluate(() => board.clear());
     assert.equal(await page.locator('.page-presentation').isVisible(), false);
-    // An image does not activate the personal page workspace.
+    // Images, text and pages share the same personal content workspace.
     await page.evaluate(() => board.add({kind:'image',body:'Illustration',status:'missing'}));
-    assert.equal(await page.locator('.page-presentation.is-active').count(), 0);
+    assert.equal(await page.locator('.page-presentation.is-active').count(), 1);
+    assert.equal((await page.evaluate(() => board.context()))[0].status, 'unavailable');
+    await page.evaluate(() => board.add({kind:'list',title:'Outils',body:'- Un\n- Deux'}));
+    assert.equal(await page.locator('#conversationBoard').isVisible(), false);
+    assert.equal(await page.locator('#conversationVisual').isVisible(), false);
+    assert.equal((await page.evaluate(() => board.context()))[0].kind, 'list');
+    assert.equal(await page.locator('.conversation-text').isVisible(), true);
+    assert.equal(await page.locator('.conversation-workflow:visible').count(), 0);
     await page.evaluate(() => { dock.setMode('quart'); showPage(); });
     assert.ok(await page.locator('#app').evaluate(el => el.getBoundingClientRect().width >= innerWidth * .95));
-    await page.getByRole('button', { name: 'Retour à la conversation' }).click();
+    await page.getByRole('button', { name: 'Fermer le contenu' }).click();
     assert.equal(await page.evaluate(() => dock.mode), 'quart', 'the saved avatar mode is preserved');
     await page.evaluate(() => { showPage(); document.getElementById('app').replaceChildren(); });
     await page.waitForFunction(() => !document.querySelector('.page-presentation'));

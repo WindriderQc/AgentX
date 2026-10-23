@@ -23,7 +23,8 @@
     "conversation-work.js",
     "guardian-work.js",
     "native-read-budget.js",
-    "photos.js"
+    "photos.js",
+    "presentation.js"
   ],
   "scripts": {
     "test": "node --test test/*.test.js"

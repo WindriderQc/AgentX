@@ -13,6 +13,7 @@ const { createVaultInbox } = require('./vaultInboxService');
 const { MEMORY_TOOLS, MEMORY_TOOL_HANDLERS } = require('./mcpMemoryTools');
 const { COVERAGE_TOOLS, COVERAGE_TOOL_HANDLERS } = require('./mcpCoverageTools');
 const { PHOTO_TOOLS, PHOTO_TOOL_HANDLERS } = require('./mcpPhotoTools');
+const { PRESENTATION_TOOLS, PRESENTATION_TOOL_HANDLERS } = require('./presentationReadService');
 
 const PROTOCOL_VERSION = '2025-06-18';
 const SERVER_INFO = { name: 'agentx-core-skill-bus', title: 'AgentX Core Skill Bus', version: '0.1.0' };
@@ -114,6 +115,7 @@ const TOOLS = [
   ...MEMORY_TOOLS,
   ...COVERAGE_TOOLS,
   ...PHOTO_TOOLS,
+  ...PRESENTATION_TOOLS,
 ];
 
 function jsonRpcResult(id, result) {
@@ -332,6 +334,7 @@ const TOOL_HANDLERS = {
   ...MEMORY_TOOL_HANDLERS,
   ...COVERAGE_TOOL_HANDLERS,
   ...PHOTO_TOOL_HANDLERS,
+  ...PRESENTATION_TOOL_HANDLERS,
 };
 
 const MEMORY_TOOL_NAMES = new Set(['memory_search', 'memory_remember', 'rag_search']);

@@ -32,6 +32,16 @@ async function callDefaultEscalation(hours = 24) {
 }
 
 describe('mcpSkillBus product tools', () => {
+  test('shared presentation reads return the Core receipt and stay outside the memory profile', async () => {
+    const args = { id: 'view_' + 'a'.repeat(64), revision: 'a'.repeat(64) };
+    const receipt = { status: 'available', period: { from: '2026-01-01', to: '2026-01-02' }, totals: { calls: 42 } };
+    const read = jest.fn(() => receipt), message = { jsonrpc: '2.0', id: 27, method: 'tools/call', params: { name: 'read_presentation', arguments: args } };
+    const result = await handleMcpMessage(message, { presentationReader: { read } });
+    expect(result.result.structuredContent).toEqual(receipt);
+    expect(read).toHaveBeenCalledWith(args);
+    await expect(handleMcpMessage(message, { presentationReader: { read } }, { profile: 'memory' })).rejects.toMatchObject({ code: 'UNKNOWN_TOOL' });
+    expect(read).toHaveBeenCalledTimes(1);
+  });
   test('publishes the canonical path contract as an immutable primitive', () => {
     expect(typeof BUDGET_GATE_REQUEST_SPEC.pathPattern).toBe('string');
     expect(BUDGET_GATE_REQUEST_SPEC.pathPattern.compile).toBeUndefined();
@@ -67,8 +77,9 @@ describe('mcpSkillBus product tools', () => {
       'photo_count',
       'photo_details',
       'photo_names',
+      'read_presentation',
     ]);
-    expect(TOOLS).toHaveLength(14);
+    expect(TOOLS).toHaveLength(15);
   });
 
   test('rag_search uses an injected RAG client and returns structured content', async () => {

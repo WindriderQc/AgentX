@@ -26,10 +26,14 @@
       "work_queue",
       "conversation_work",
       "mail_recall",
-      "nestor_photos"
+      "nestor_photos",
+      "nestor_read_presentation"
     ]
   },
   "toolMetadata": {
+    "nestor_read_presentation": {
+      "optional": true
+    },
     "personal_memory": {
       "optional": true
     },
