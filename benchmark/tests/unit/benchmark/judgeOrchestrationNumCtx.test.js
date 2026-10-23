@@ -126,7 +126,7 @@ describe('judge warmup on a separate host', () => {
 
     expect(coreApiClient.getBenchmarkClaimIdentity).toHaveBeenCalledWith(HOST, 'batch-1');
     expect(warmupModel).toHaveBeenLastCalledWith(HOST, 'judge:latest', expect.objectContaining({
-      claimIdentity: { workloadAdmissionId: 'admission-1', workloadGeneration: 'generation-1' }
+      claimIdentity: { workloadAdmissionId: 'admission-1', workloadGeneration: 'generation-1', workItemId: 'benchmark-workload/batch-1' }
     }));
   });
 });
