@@ -100,7 +100,7 @@ export function continuityOperations({ workspace, config, resolveWorkspace, mode
         capabilities: { isolatedWork: true, nativeReadBudget: true, nativeConversation: true } };
     } else if (operation === 'work_attempt') {
       const match = householdKey.exec(request.sessionKey || '');
-      const isolatedMain = match?.[1] === 'main';
+      const isolatedMain = match?.[1] === 'main' || request.isolatedConsultation === true && ['secretary', 'comptable', 'leadx', 'cloudx'].includes(match?.[1]);
       if (!isolatedMain && (!workAgentId || match?.[1] !== workAgentId)) throw invalid('A configured worker attempt is required');
       const agentWorkspace = householdWorkspace({ agentId: match[1], sessionKey: request.sessionKey }, config, resolveWorkspace);
       if (!agentWorkspace) throw invalid('The native worker is unavailable');

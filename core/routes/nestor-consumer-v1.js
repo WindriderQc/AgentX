@@ -216,6 +216,14 @@ function createNestorConsumerV1Routes({ runtimeServices, systemHealth } = {}) {
     next();
   });
 
+  // Owner-only capability transport; never advertised on the shared family bus.
+  router.post('/mcp', asyncRoute(async (req, res) => {
+    res.set('Cache-Control', 'private, no-store');
+    const message = await require('../src/services/mcpOwnerTools').handleOwnerMcp(req.body);
+    if (!message) return res.status(202).end();
+    return res.json(message);
+  }));
+
   router.get('/capabilities', asyncRoute(async (_req, res) => {
     envelope.success(res, await getCapabilities({ systemHealth }));
   }));

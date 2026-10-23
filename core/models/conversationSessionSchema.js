@@ -17,6 +17,8 @@ module.exports = new Schema({
     backend: { type: String, enum: ['openclaw', 'agentx', 'hermes'], default: null },
     // Native Hermes dispatch identity and terminal receipt; unresolved work fences new turns.
     hermesRuntime: { type: Object, default: undefined },
+    // Core-owned asynchronous collaborator request, dispatch fence and native identity.
+    consultation: { type: Object, default: undefined },
     agentSessionKey: { type: String, default: null },
     // Native session keys of the team members addressed directly in this conversation (#41).
     agentSessionKeys: { type: Object, default: undefined },

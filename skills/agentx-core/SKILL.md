@@ -55,3 +55,29 @@ runtime-specific connection and presentation belong in its adapter.
 
 See [shared capabilities](https://github.com/WindriderQc/AgentX/blob/main/docs/SHARED_AGENT_CAPABILITIES.md) in the source
 repository for development, transport and qualification contracts.
+
+## Personal runtime and collaborators
+
+A personal runtime can connect its existing Core MCP bus plus the owner MCP
+transport at `/api/consumers/nestor/v1/mcp`. The owner transport contains private
+mail recall, personal note corrections, collaborator briefs, Web search,
+indexed file search, Pipeline tasks/artifacts and native consultation. It is
+not a family toolset; preserve the deployment's native credentials and scope.
+
+Read `team_brief` before consulting Secretary or Accountant when their standing
+Core records answer the question. For exact current mail, drafts or triage,
+consult `secretary`; for ledger operations consult `comptable`. Read engineering
+tasks with `pipeline_tasks` and deliverables with `pipeline_artifacts`; use the
+regular `create_todo` to file engineering work. This does not execute it.
+
+Use `consult_team` for an installed collaborator's actual execution. It retains
+that collaborator's native tools and permissions. `main` provides existing
+SuperDad workflows such as page reading and coding delegation through the
+Pipeline. Give the collaborator the complete request and relevant context.
+Generate one UUID `requestId`; retain it, poll `status`, and report only the
+returned answer/evidence. A dispatch acknowledgement is not completion. If
+uncertain, keep polling the original identity; never submit a replacement.
+Do not send mail or perform destructive actions without the owner's explicit
+request. Cloud budget, campaign approval and native admission still apply.
+
+Use ordinary Markdown headings and `- ` bullets for requested onscreen lists.
