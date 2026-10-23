@@ -9,6 +9,8 @@
       request: 'Your request', review: 'Answer review', missing: 'Original request unavailable', full: 'Read the full request',
       answer: 'Answer to verify', available: 'Answer available', presented: 'Answer presented',
       wait: 'Work has not started. No completion estimate is available.',
+      blocked: 'Blocked before start', blockedDetail: 'An earlier execution must be verified before Main can start this request.',
+      reviewQueued: 'Answer review waiting to start', authFailure: 'Authentication was refused for this attempt. It failed and was not restarted.',
       running: 'Work has started. No completion estimate is available.',
       paused: 'This request will wait until you resume it.', cancelled: 'This request was cancelled before execution.',
       controls: 'These controls apply only to this request. Voice controls are above.',
@@ -30,6 +32,8 @@
       request: 'Votre demande', review: 'Vérification de réponse', missing: 'Demande originale indisponible', full: 'Lire la demande complète',
       answer: 'Réponse à vérifier', available: 'Réponse disponible', presented: 'Réponse présentée',
       wait: 'Le travail n’a pas commencé. Aucun délai de fin n’est disponible.',
+      blocked: 'Bloquée avant démarrage', blockedDetail: 'Une exécution précédente doit être vérifiée avant que Main puisse commencer cette demande.',
+      reviewQueued: 'Vérification de réponse en attente', authFailure: 'L’authentification a été refusée pour cette tentative. Elle a échoué et n’a pas été relancée.',
       running: 'Le travail a commencé. Aucun délai de fin n’est disponible.',
       paused: 'Cette demande attendra que vous la repreniez.', cancelled: 'Cette demande a été annulée avant son exécution.',
       controls: 'Ces commandes concernent cette demande seulement. Les commandes vocales sont en haut.',
@@ -48,7 +52,7 @@
   function create({ host, base, api, getConversation, getLanguage = () => getConversation()?.selection?.language || 'en',
     maySpeak = () => true, onShow = () => {}, onSnapshot = () => {}, onPollError = () => {}, pollMs = 2000 }) {
     const deviceSession = root.crypto.randomUUID(), items = new Map(), cards = new Map(), attempted = new Set(), requested = new Set(), commands = new Map();
-    let sessionId, cursor = 0, sequence = 0, timer, pollController, presenting = false, disposed = false, generation = 0, stale = false, refreshQueued = false, summary;
+    let sessionId, cursor = 0, sequence = 0, timer, pollController, presenting = false, disposed = false, generation = 0, stale = false, refreshQueued = false, summary, dispatch;
     const language = () => getLanguage() === 'fr' ? 'fr' : 'en';
     const copy = () => COPY[language()];
     const url = () => `${base}/${encodeURIComponent(sessionId)}`;
@@ -79,9 +83,12 @@
       }
       const c = copy(), request = typeof item.requestText === 'string' && item.requestText.trim() ? item.requestText : null;
       const command = commands.get(item.id);
-      card.dataset.state = item.state;
+      const blocked = !item.result && item.state === 'queued' && dispatch?.state === 'blocked';
+      card.dataset.state = blocked ? 'blocked' : item.state;
       const heading = node('p', 'conversation-work-status', item.result ? (item.result.presentation === 'completed' ? c.presented : c.available)
         : item.pending && item.state === 'completed' ? c.answer : c.states[item.state] || c.states.received);
+      if (!item.result && item.state === 'queued') heading.textContent = blocked ? c.blocked
+        : item.classification === 'native_review' ? c.reviewQueued : c.states.queued;
       const title = node('h3', 'conversation-work-request', request ? request.length > 240 ? request.slice(0, 240) + '…' : request : c.missing);
       title.id = `work-title-${item.id}`;
       const meta = node('p', 'conversation-work-meta', `${item.classification === 'native_review' ? c.review : c.request} · ${requestIdentity(item)}`);
@@ -94,6 +101,8 @@
       let detail = item.state === 'queued' || item.state === 'received' ? c.wait
         : item.state === 'running' || item.state === 'dispatching' ? c.running
         : c[item.state] || '';
+      if (blocked) detail = c.blockedDetail;
+      if (item.reason === 'native_authentication_failed') detail = c.authFailure;
       if (item.result) detail = '';
       if (detail) card.append(node('p', 'conversation-work-detail', detail));
       if (item.pending && item.updatedAt) card.append(node('p', 'conversation-work-meta', `${c.updated} : ${timestamp(item.updatedAt)}`));
@@ -192,6 +201,8 @@
           const data = await api(`${url()}/work?cursor=${nextCursor}`, { signal: controller.signal });
           if (currentGeneration !== generation) return;
           const wasStale = stale; stale = false;
+          const dispatchChanged = JSON.stringify(dispatch) !== JSON.stringify(data.dispatch);
+          dispatch = data.dispatch;
           for (const item of data.items) {
             const previous = items.get(item.id);
             if (previous && item.revision < previous.revision) continue;
@@ -206,6 +217,7 @@
             }
           }
           if (wasStale) refresh();
+          else if (dispatchChanged) for (const item of items.values()) if (item.state === 'queued') render(item);
           onSnapshot(sessionId, data);
           cursor = nextCursor = data.cursor; more = data.hasMore;
         } while (more && !disposed);
@@ -221,14 +233,14 @@
     function follow(id) {
       if (disposed || !id || id === sessionId) return;
       pollController?.abort(); pollController = null;
-      ++generation; sessionId = id; cursor = 0; stale = false; refreshQueued = false; commands.clear(); items.clear(); cards.clear(); attempted.clear(); requested.clear();
+      ++generation; sessionId = id; cursor = 0; dispatch = null; stale = false; refreshQueued = false; commands.clear(); items.clear(); cards.clear(); attempted.clear(); requested.clear();
       summary = node('h2', 'conversation-work-summary', '');
       host.replaceChildren(summary); host.hidden = true; clearInterval(timer);
       timer = setInterval(() => { void poll(); }, pollMs); timer.unref?.(); void poll();
     }
     function reset() {
       pollController?.abort(); pollController = null;
-      ++generation; sessionId = null; clearInterval(timer); stale = false; refreshQueued = false; commands.clear(); items.clear(); cards.clear(); host.replaceChildren(); host.hidden = true;
+      ++generation; sessionId = null; dispatch = null; clearInterval(timer); stale = false; refreshQueued = false; commands.clear(); items.clear(); cards.clear(); host.replaceChildren(); host.hidden = true;
     }
     function dispose() { disposed = true; reset(); }
     return { follow, reset, dispose, poll, naturalPause, refresh };

@@ -25,6 +25,19 @@ test('canonical acceptance replies without invoking either brain and preserves p
   assert.deepEqual(deltas, [answer.text]); assert.equal(settled, true);
 });
 
+test('native acknowledgment distinguishes queued, blocked, running and authentication failure', async () => {
+  for (const [fields, expected] of [
+    [{ state: 'queued' }, /attend son tour/],
+    [{ state: 'queued', blocked: true }, /bloquée.*exécution précédente/],
+    [{ state: 'running' }, /Je m’en occupe/],
+    [{ state: 'failed', reason: 'native_authentication_failed' }, /doit être reconnecté/]
+  ]) {
+    const input = request(); Object.assign(input.acceptance, { mode: 'native' }, fields);
+    const execute = createConversationExecutor({ agentClient: () => assert.fail('No foreground call') });
+    assert.match((await execute(input)).text, expected);
+  }
+});
+
 test('verified background acknowledgments honor the turn language instead of re-detecting the request', async () => {
   for (const [text, speechLanguage, phrase] of [
     ['Please summarize my recent mail.', 'fr', /Ta demande de consultation est enregistrée/],

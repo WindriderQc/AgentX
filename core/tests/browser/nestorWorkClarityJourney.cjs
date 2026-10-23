@@ -22,7 +22,7 @@ let server, browser;
     <section id="transcript"><strong>Nestor</strong><p>Vous pouvez continuer la conversation pendant le travail.</p></section>
     <label for="message">Votre message</label><textarea id="message" rows="2" placeholder="Écrire à Nestor…"></textarea></main>
     <script src="/assets/household/conversation-work.js"></script><script>
-      window.posts=[];window.offline=false;window.language='fr';window.cursor=3;
+      window.posts=[];window.offline=false;window.language='fr';window.cursor=3;window.dispatch=null;
       window.rows=${JSON.stringify([
         row('request-a', 'Montre-moi la page d’activité.'),
         row('request-b', 'Lis mon prochain rendez-vous.'),
@@ -37,7 +37,7 @@ let server, browser;
             row.state=command.action==='cancel'?'cancelled':command.action==='pause'?'paused':'queued';row.pending=row.state!=='cancelled';row.controllable=row.pending;
             return {id,state:row.state,revision:row.revision};
           }
-          return {items:structuredClone(rows),cursor,hasMore:false};
+          return {items:structuredClone(rows),cursor,dispatch,hasMore:false};
         }});feed.follow('synthetic-session');
     </script></html>`));
   server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
@@ -53,6 +53,11 @@ let server, browser;
     assert.match(await first.innerText(), /Le travail n’a pas commencé/);
     assert.match(await second.getByRole('button', { name: /Annuler/ }).getAttribute('aria-label'), /Lis mon prochain rendez-vous/);
     assert.equal(await page.locator('[data-work-id="request-c"] button').count(), 0);
+    await page.evaluate(async () => { dispatch={state:'blocked',reason:'native_receipt_unverified'};await feed.poll(); });
+    await first.getByText('Bloquée avant démarrage', { exact: true }).waitFor();
+    assert.match(await first.innerText(), /Une exécution précédente doit être vérifiée/);
+    await page.evaluate(async () => { dispatch=null;await feed.poll(); });
+    await first.getByText('En attente de démarrage', { exact: true }).waitFor();
     const before = path.join(reportDir, `requests-${viewport.width}.png`); await page.screenshot({ path: before, fullPage: true });
     await second.getByRole('button', { name: /Annuler/ }).click();
     await second.getByText('Demande annulée', { exact: true }).waitFor();

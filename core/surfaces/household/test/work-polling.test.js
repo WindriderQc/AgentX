@@ -29,6 +29,22 @@ const snapshot = (cursor, text = 'Saved result') => ({ cursor, hasMore: false,
   items: [{ id: 'work', sessionId: 'session', state: 'completed', revision: 1,
     result: { version: 1, deliveryId: 'delivery', text, presentation: 'completed' } }] });
 
+test('an unchanged queued request reflects a blocked dispatcher and its later release', async () => {
+  let response = { cursor: 7, hasMore: false, dispatch: null,
+    items: [{ id: 'waiting', state: 'queued', classification: 'native_work', pending: true }] };
+  const h = panel(async () => response);
+  try {
+    h.work.follow('session'); await tick();
+    assert.match(h.cards[0].children.find(node => node.className === 'conversation-work-status').textContent, /Waiting to start/);
+    response = { cursor: 7, hasMore: false, items: [], dispatch: { state: 'blocked', workId: 'earlier' } };
+    await h.work.poll();
+    assert.match(h.cards[0].children.find(node => node.className === 'conversation-work-status').textContent, /Blocked before start/);
+    response = { ...response, dispatch: null };
+    await h.work.poll();
+    assert.match(h.cards[0].children.find(node => node.className === 'conversation-work-status').textContent, /Waiting to start/);
+  } finally { h.work.dispose(); }
+});
+
 test('a stalled result read times out and the next poll recovers from the last cursor', async () => {
   const urls = [], receipts = [], deadlines = [];
   const h = panel(async (url, options) => {

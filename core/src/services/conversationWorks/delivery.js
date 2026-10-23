@@ -38,6 +38,7 @@ function createWorkDelivery(works) {
     const events = selected.flatMap(row => row.events.filter(event => event.sequence > Number(cursor))
       .map(event => ({ ...event, workId: row._id }))).sort((a, b) => a.sequence - b.sequence);
     return { authority: 'core.conversation-works', items: await Promise.all(selected.map(projection)),
+      dispatch: await works.dispatchStatus(),
       events, cursor: selected.at(-1)?.sequence || Number(cursor), hasMore: rows.length > 64,
       snapshotRequired: selected.some(row => row.events.length === LIMITS.events && row.events[0].sequence > Number(cursor)) };
   }

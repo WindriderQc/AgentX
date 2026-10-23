@@ -251,9 +251,16 @@ One durable personal dispatch gate permits one native work at a time. The
 work attempt/session is recorded before the outbound call. An unfinished
 preparation may be revoked by an exact CAS before its dispatch fence. A marked
 or uncertain dispatch never expires into another attempt. Reconcile the exact
-native session/run and terminal lifecycle receipt; missing history, transport
-failure and a returned HTTP promise do not prove settlement. Native runtime
-admission and workload ownership remain authoritative.
+native session/run and terminal lifecycle receipt. The trusted Responses adapter
+also retains authenticated `response.failed`/`response.incomplete` terminal events
+bound to the original session and run. This handles native refusals before an
+`agent_end` hook, including provider authentication cooldown. Core stores only a
+bounded failure category, never the provider's diagnostic text, and reconciles
+that original receipt after restart. A rewritten-stream refusal keeps its
+existing final-answer recovery path. Missing history, a connection failure and a
+returned HTTP promise do not prove settlement. An older uncertain dispatch without
+this receipt still requires native reconciliation; it is never cleared by age.
+Native runtime admission and workload ownership remain authoritative.
 
 The plugin binds calls using the native before-tool hook's session, run and call
 identity. Call identities retain the complete provider value, including composite
@@ -296,6 +303,14 @@ marks active Core states stale until a successful snapshot. It reuses ordered wo
 server phases and the browser's voice offsets. Browser and Core clocks are labelled
 separately; missing events stay unknown. The browser projection includes bounded
 agent/run identities and tool receipt metadata, never selected context or payloads.
+Each snapshot also projects a dispatcher blocked by an unverified execution,
+even when the conversation cursor has no new events. Queued requests and answer
+reviews say they are waiting; acknowledgments disclose that block instead of
+claiming work has started. The guardian's canonical work context carries the
+same blocked status. A received authentication failure describes that attempt's
+refusal without asserting the provider's current credential state. Questions about current coding-team activity
+use the same native Pipeline evidence as explicit Pipeline status questions;
+the guardian cannot establish ongoing work from conversational context alone.
 The conversation map lights the review only after an observed dispatch; a received
 request alone remains pending. Its browser `firstAudio` offset marks a playback
 attempt before the player call, so the map labels it as a request to play, not

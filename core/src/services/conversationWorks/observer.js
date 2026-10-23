@@ -4,6 +4,10 @@ const mongoose = require('mongoose');
 const { randomUUID } = require('node:crypto');
 const { acknowledged } = require('../conversations/writeFence');
 const { OWNER } = require('./contract');
+const FAILURE_REASONS = new Set(['native_authentication_failed', 'native_response_failed', 'native_response_incomplete']);
+const validFailure = (receipt, attempt) => receipt?.source === 'openclaw/responses'
+  && receipt.sessionKey === attempt.sessionKey && receipt.runId === attempt.runId
+  && ['response.failed', 'response.incomplete'].includes(receipt.event) && FAILURE_REASONS.has(receipt.reason);
 
 // This owner dispatches one native run. It does not implement a model/tool
 // loop. The durable gate has no timeout takeover: a lost dispatch is observed
@@ -19,6 +23,17 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
     if (!row) return;
     if (!row.attempt) { if (['completed', 'failed', 'cancelled'].includes(row.state)) await clear(row._id); return; }
     if (row.attempt.settledAt) { await clear(row._id); if (!row.erased) await works.finalize(row); return; }
+    if (validFailure(row.attempt.failureReceipt, row.attempt)) {
+      if (row.erased) { await clear(row._id); return; }
+      // This is the original native response's terminal evidence, not an
+      // inference from an exception, elapsed time or an absent transcript.
+      await works.repo.mutate(row._id, current => ({ fields: {
+        state: current.result ? 'completed' : 'failed', reason: current.result ? '' : current.attempt.failureReceipt.reason,
+        attempt: { ...current.attempt, settledAt: new Date(), terminal: 'failed' } }, event: 'native_failure_settled' }));
+      await clear(row._id);
+      await works.finalize(await works.repo.get(row._id));
+      return;
+    }
     let evidence;
     try { evidence = await observe(row.attempt); }
     catch { return; }
@@ -89,6 +104,14 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
     if (dispatch.matchedCount !== 1) return;
     try {
       await execute({ ...prepared, row,
+        onTerminalFailure: async receipt => {
+          await works.repo.mutate(row._id, current => {
+            if (current.attempt?.id !== id || !validFailure(receipt, current.attempt)) throw new Error('Native failure receipt mismatch');
+            if (current.attempt.failureReceipt) return null;
+            return { fields: { attempt: { ...current.attempt, failureReceipt: { ...receipt, observedAt: new Date() } } },
+              event: 'native_failure_received' };
+          });
+        },
         onStarted: async (sessionKey, runId) => {
           if (sessionKey !== row.attempt.sessionKey) throw new Error('Native work session mismatch');
           if (runId) await works.repo.mutate(row._id, saved => ({ fields: { state: saved.result ? 'result_ready' : 'running',
