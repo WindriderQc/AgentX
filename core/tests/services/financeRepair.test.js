@@ -80,6 +80,7 @@ test('applies only the three images, preserves the owner decision and replays th
   expect((await Statement.findById(manifest.updates[0].id).lean()).ledger).toBe('corp');
   const transaction=await Transaction.findById(manifest.updates[1].id).lean();
   expect(transaction).toMatchObject({ledger:'corp',category:'Impôts',tags:['to-check'],manual:true});
+  for(const doc of check.images(await check.snapshot(mongoose.connection.db),manifest)) expect(doc.updatedAt.toISOString()).toBe(receipt.appliedAtUtc);
   expect((await applyRules({_id:transaction._id})).changed).toBe(0);
   const after=await check.snapshot(mongoose.connection.db);
   for (const name of ['finance_document_links','finance_rules','finance_plan','finance_alerts']) expect(after[name]).toEqual(initial[name]);

@@ -37,7 +37,7 @@ function read(bytes, confirmation) {
     || s.fileSha256 !== m.verifiedIdentity.pdfSha256 || s.archivePath !== m.verifiedIdentity.originalArchivePath
     || s.periodStart !== m.verifiedIdentity.periodStart || s.periodEnd !== m.verifiedIdentity.periodEnd
     || s.issuer !== m.verifiedIdentity.issuer || !/^\d{4}$/.test(m.verifiedIdentity.last4 || '')
-    || m.legacyIdentityRetained?.accountLast4 !== null) throw invalid('Inconsistent reviewed statement identity');
+    || m.legacyIdentityRetained?.accountLast4 !== null || m.expectedAccounting?.latestBalancesExpectedUnchangedInBothLedgers !== true) throw invalid('Inconsistent reviewed statement identity');
   const base = s.statementKey?.replace(/^corp:/, '');
   if (!base || s.statementKey !== ledgerPrefix(source) + base || base.split('|').length !== 4
     || base.split('|')[1] !== '-' || base.split('|')[2] !== s.periodStart || base.split('|')[3] !== s.periodEnd) throw invalid('Invalid statement key');

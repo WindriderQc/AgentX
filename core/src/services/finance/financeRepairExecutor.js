@@ -119,6 +119,7 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
       await storage.immutable(path.join(directory,'after.json'),state);
       await checkpoint('verified');
       return finish('applied',{ documents: 3, inserted: 0, deleted: 0,
+        appliedAtUtc: record.appliedAt.toISOString(),
         sourcePdfSha256: m.verifiedIdentity.pdfSha256, backupSha256: record.backupSha256,
         stateSignatures: record.expectedApplied, arithmeticResidualCents: 0, latestBalancesUnchanged: true });
     }
