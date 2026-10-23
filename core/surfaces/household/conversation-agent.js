@@ -164,17 +164,17 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
     // once the progress watcher reads it there, the stream gets a short grace to
     // end, then the turn stops waiting for it. A client tool call exists only in
     // the stream's last row, so a browser reply waits for its completion row.
-    // Once a matching completion is received, HTTP EOF cannot hold the turn.
+    // Once a matching terminal row is received, HTTP EOF cannot hold the turn.
     let answerSeen, stopWaitingForStream, observedAnswer, streamFailure, localImageObserved = false;
     let retainedAnswer = false;
-    let completedStream = false, graceElapsed = false, graceVersion = 0;
+    let terminalStream = false, graceElapsed = false, graceVersion = 0;
     const streamChange = () => new Promise(resolve => { stopWaitingForStream = resolve; });
     let streamChanged = streamChange();
     const armStreamGrace = () => {
       if (answerSeen) return;
       const version = ++graceVersion;
       answerSeen = setTimeout(() => {
-        if (version !== graceVersion || (!completedStream && !observedAnswer)) return;
+        if (version !== graceVersion || (!terminalStream && !observedAnswer)) return;
         graceElapsed = true;
         stopWaitingForStream();
       }, streamGraceMs);
@@ -206,7 +206,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
         retainedAnswer = false;
         observedAnswer = answered(projected) ? { ...projected.answer } : null;
       }
-      if (!completedStream && !observedAnswer && answerSeen) {
+      if (!terminalStream && !observedAnswer && answerSeen) {
         clearTimeout(answerSeen); answerSeen = undefined;
         graceVersion++; graceElapsed = false;
         stopWaitingForStream();
@@ -311,6 +311,8 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
           // the run's own final-answer evidence below, which still decides.
           if (row.type === 'response.failed' && REPLACED_STREAM.test(row.response?.error?.message || '')) {
             replacedStream = true;
+            terminalStream = true;
+            armStreamGrace();
             return;
           }
           // Some native refusals (notably a provider already in auth cooldown)
@@ -325,7 +327,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
         if (row.type === 'response.completed') {
           if (row.response?.id !== runId) throw new Error('Nestor completion does not match this turn.');
           terminal = true;
-          completedStream = true;
+          terminalStream = true;
           armStreamGrace();
           if (browserReply) {
             const calls = row.response.output?.filter(item => item.type === 'function_call') || [];
@@ -375,7 +377,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
         if (ended) { phase('streamEnd'); break; }
         // A resolved notification can precede a newer observation in the same
         // turn of the event loop. Recheck the proof before confirming a finish.
-        if (!graceElapsed || (!completedStream && !observedAnswer)) continue;
+        if (!graceElapsed || (!terminalStream && !observedAnswer)) continue;
         // Same-run final evidence or a matching completion proves the run ended.
         // Leave the gateway a bounded time to finish behind it, then close the
         // request so it cannot hold the session.

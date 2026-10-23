@@ -1293,3 +1293,31 @@ test('guardian cancellation stops live deltas and retains the original run witho
     signal: abort.signal, onDelta(delta) { deltas.push(delta); abort.abort(new Error('Stop')); } }), /stop is not confirmed/i);
   assert.deepEqual(deltas, ['Beginning.']); assert.equal(stream.requests(), 1);
 });
+
+for (const unavailable of ['failed', 'stalled']) {
+  test(`a rewritten terminal response bounds an open body when evidence is ${unavailable}`, async () => {
+    const stream = heldNativeStream([created, row({ type: 'response.failed', response: { id: runId,
+      error: { message: 'Final text cannot be represented as an append-only response stream' } } })]);
+    const caller = new AbortController(), deltas = [];
+    let settled = 0, readAborted = false;
+    const client = createAgentClient({ env, settleMs: 20, evidenceReadMs: 20,
+      progressMs: 5, streamGraceMs: 10, streamDrainMs: 20, fetchImpl: stream.fetch,
+      continuity: async (_request, signal) => {
+        if (unavailable === 'failed') throw new Error('Evidence unavailable');
+        signal.addEventListener('abort', () => { readAborted = true; });
+        await new Promise(() => {});
+      } });
+    const timeout = setTimeout(() => caller.abort(new Error('Test deadline reached')), 400);
+    try {
+      await assert.rejects(client({ session, text: 'Regarde mes tâches.', signal: caller.signal,
+        onDelta: delta => deltas.push(delta), onSettled: () => settled++ }), /rewrote its answer and it could not be recovered/);
+      assert.equal(caller.signal.aborted, false, 'the terminal transport receipt bounds the wait');
+      assert.equal(settled, 1);
+      assert.equal(stream.requests(), 1, 'no replacement native dispatch');
+      assert.deepEqual(deltas, [], 'unverified prose is never delivered');
+      if (unavailable === 'stalled') assert.equal(readAborted, true);
+      await new Promise(resolve => setTimeout(resolve, 35));
+      assert.equal(settled, 1, 'drain cannot settle again');
+    } finally { clearTimeout(timeout); stream.close(); }
+  });
+}
