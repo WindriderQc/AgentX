@@ -145,7 +145,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       if (text.length > spoken.length) onDelta(text.slice(spoken.length));
       return { text, sessionKey, runId,
         tools: { status: evidence?.run || imageDelivery ? 'observed' : 'unavailable', authority: `openclaw/${agentIdFor(session)}`, runId,
-          receipts: evidence?.receipts || [], run: evidence?.run || null, performedBy: nativePerformedBy(evidence, agentIdFor(session), runId),
+          receipts: evidence?.receipts || [], run: evidence?.run || null, toolChecks: evidence?.toolChecks || null, performedBy: nativePerformedBy(evidence, agentIdFor(session), runId),
           ...(imageDelivery ? { imageDelivery } : {}),
           ...(acceptedTaskWork ? { acceptedWork: acceptedTaskWork,
             verification: { status: 'deferred', reason: 'core_work_accepted' } } : {}),
@@ -505,7 +505,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
           if (!settled && !generating && signal?.aborted) settled = true;
           if (!settled) throw new Error('Nestor’s stop is not confirmed yet. The conversation is paused.');
           if (signal?.aborted) return { text: answer, sessionKey, runId, interrupted: true,
-            tools: { status: evidence?.run ? 'observed' : 'unavailable', authority: `openclaw/${agentIdFor(session)}`, runId, receipts: evidence?.receipts || [], run: evidence?.run || null, performedBy: nativePerformedBy(evidence, agentIdFor(session), runId) },
+            tools: { status: evidence?.run ? 'observed' : 'unavailable', authority: `openclaw/${agentIdFor(session)}`, runId, receipts: evidence?.receipts || [], run: evidence?.run || null, toolChecks: evidence?.toolChecks || null, performedBy: nativePerformedBy(evidence, agentIdFor(session), runId) },
             metadata: { model: evidence?.run?.model || '', provider: evidence?.run?.provider || '', routingSource: `openclaw/${agentIdFor(session)}`, runId } };
         }
       } finally {

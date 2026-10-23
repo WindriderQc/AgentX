@@ -72,3 +72,29 @@ test('uninstalled specialists and invalid identities never launch', async () => 
   await expect(service.operate({ ...request(), requestId: 'invalid' })).rejects.toMatchObject({ code: 'CONSULTATION_INVALID' });
   expect(execute).not.toHaveBeenCalled();
 });
+
+test('older completed answers gain exact native tool-result evidence without changing unknown domain receipts', async () => {
+  const input = request();
+  const execute = jest.fn(async args => {
+    await args.onStarted(args.session.consultation.sessionKey, runId);
+    return { text: 'Retained answer.', sessionKey: args.session.consultation.sessionKey, runId,
+      tools: { receipts: [{ tool: 'gmail_secretary_search', status: 'unknown' }] } };
+  });
+  let key, match = false;
+  const observe = async args => args.operation === 'agents' ? catalog : {
+    ok: true, authority: 'openclaw.nestor', operation: 'turn',
+    run: { runId, sessionKey: match ? key : 'different-session', status: 'completed' },
+    toolChecks: { status: 'observed', runId, completedTools: ['gmail_secretary_search'], loop: null } };
+  const service = createConsultations({ conversations, execute, observe });
+  const accepted = await service.operate(input); key = accepted.sessionKey;
+  await tick();
+  const first = await service.operate({ action: 'status', requestId: input.requestId });
+  expect(first.evidence.toolChecks).toBeUndefined();
+  match = true;
+  const second = await service.operate({ action: 'status', requestId: input.requestId });
+  expect(second.answer).toBe('Retained answer.');
+  expect(second.evidence.toolChecks.completedTools).toEqual(['gmail_secretary_search']);
+  expect(second.evidence.receipts[0].status).toBe('unknown');
+  expect((await conversations.getTurn({ sessionId: accepted.sessionId, traceId: input.requestId })).toolEvidence.toolChecks).toEqual(second.evidence.toolChecks);
+  expect(execute).toHaveBeenCalledTimes(1);
+});
