@@ -57,7 +57,9 @@ function createFinanceInbox({ env = process.env, ingest = ingestDocument, logger
       }
       const year = (result.statementKey || '').split('|')[3]?.slice(0, 4) || String(new Date().getFullYear());
       const movedTo = await moveInto(path.join(archiveRoot, year), filePath);
-      if (result.outcome === 'reconciled') await setArchivePath(result.statementId, movedTo);
+      // A known hash is archived too. Keep its provenance reachable even when
+      // the first ingestion happened outside the inbox or its old copy moved.
+      if (['reconciled', 'duplicate'].includes(result.outcome)) await setArchivePath(result.statementId, movedTo);
       return { ...result, ledger, movedTo };
     } catch (error) {
       const retryLater = RETRYABLE_STATUSES.has(error.status);
