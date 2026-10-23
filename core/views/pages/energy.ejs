@@ -1,0 +1,25 @@
+<main class="energy-page" id="main-content">
+  <header class="energy-hero">
+    <div><p class="energy-eyebrow">OBSERVABILITÉ · CLUSTER MAISON</p><h1>Énergie & activité</h1><p>Ce que consomme le cluster — et ce qui se passait au même moment.</p></div>
+    <div class="energy-ranges" role="group" aria-label="Période">
+      <% [['6h','6 h'],['24h','24 h'],['7d','7 j'],['30d','30 j']].forEach(([value,label]) => { %><button type="button" data-window="<%= value %>" aria-pressed="<%= value === '24h' %>"><%= label %></button><% }) %>
+    </div>
+  </header>
+  <div class="energy-notice" id="energyNotice" role="status">Lecture de la télémétrie…</div>
+  <section class="energy-metrics" aria-label="Résumé énergétique">
+    <article><span>Puissance maintenant</span><strong id="energyPower">—</strong></article>
+    <article><span>Énergie · période</span><strong id="energyTotal">—</strong></article>
+    <article><span>Repos estimé</span><strong id="energyBaseline">—</strong></article>
+    <article><span>Activité attribuable</span><strong id="energyAttributed">—</strong></article>
+  </section>
+  <section class="energy-panel energy-timeline">
+    <header><div><p class="energy-eyebrow">MÊME AXE TEMPOREL</p><h2>Consommation et activité</h2></div><div class="energy-legend"><span class="power">Puissance</span><span class="inference">Inférence</span><span class="automation">Automatisation</span></div></header>
+    <div class="energy-chart"><canvas id="energyChart" aria-label="Puissance électrique et événements AgentX"></canvas></div>
+    <div class="energy-event-lane" id="energyEventLane" aria-label="Activités AgentX"></div>
+  </section>
+  <section class="energy-panel energy-activities">
+    <header><div><p class="energy-eyebrow">CORRÉLATION</p><h2>Activités observées</h2></div><span>Estimation, pas mesure par processus</span></header>
+    <div class="energy-table-wrap"><table><thead><tr><th>Activité</th><th>Hôte</th><th>Durée</th><th>Δ moyen</th><th>Énergie</th><th>Confiance</th></tr></thead><tbody id="energyEvents"><tr><td colspan="6">Lecture…</td></tr></tbody></table></div>
+  </section>
+  <details class="energy-method"><summary>Comment lire ces estimations</summary><p id="energyMethod">La prise mesure le cluster entier. AgentX associe les fenêtres d’activité à la puissance observée et estime le surplus au-dessus du repos.</p></details>
+</main>
