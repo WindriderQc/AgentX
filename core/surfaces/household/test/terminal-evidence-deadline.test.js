@@ -10,6 +10,22 @@ const row = value => Buffer.from('data: ' + JSON.stringify(value) + '\n\n');
 const created = row({ type: 'response.created', response: { id: runId } });
 const completed = row({ type: 'response.completed', response: { id: runId } });
 
+test('zero settlement skips retries without cutting off the first asynchronous evidence read', async () => {
+  let reads = 0;
+  const client = createAgentClient({ env, settleMs: 0, evidenceReadMs: 500, progressMs: 1000,
+    continuity: async () => {
+      reads++;
+      await new Promise(resolve => setTimeout(resolve, 20));
+      return { run: { runId, model: 'synthetic-native' },
+        answer: { status: 'ready', runId, text: 'Réponse vérifiée.' } };
+    }, fetchImpl: async () => ({ ok: true, body: [created, completed] }) });
+  const result = await client({ session, text: 'Bonjour.' });
+  assert.equal(result.text, 'Réponse vérifiée.');
+  assert.equal(result.tools.status, 'observed');
+  assert.equal(result.metadata.model, 'synthetic-native');
+  assert.equal(reads, 1);
+});
+
 for (const held of [false, true]) {
   test(`confirmed native completion bounds stalled evidence reads (${held ? 'open HTTP' : 'closed HTTP'})`, async () => {
     let requests = 0, settled = 0, release;

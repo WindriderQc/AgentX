@@ -128,6 +128,8 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
           })]);
       } finally { clearTimeout(timer); }
     };
+    // Zero skips settlement retries, but still permits one bounded observation.
+    const readSettlingEvidence = until => readEvidence(settleMs === 0 ? 3000 : Math.max(1, until - Date.now()));
     const language = ['fr', 'en'].includes(speechLanguage) ? { language: speechLanguage, decided: true } : scoreSpeechLanguage(text);
     let guardFailure, verificationFailure, taskObservedRun, acceptedTaskWork, stopChecked = false;
     const imageReply = () => browserReply ? Promise.resolve(null) : acceptedImageReply({ session, evidence,
@@ -394,7 +396,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       let until = Date.now() + Math.min(settleMs, 3000);
       do {
         try {
-          const projected = await readEvidence(Math.max(1, until - Date.now()));
+          const projected = await readSettlingEvidence(until);
           rememberAnswer(projected);
           // Only the answer is retained. Fresh receipts/run remain independent
           // evidence; their last hook need not identify this answer's provider.
@@ -474,7 +476,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       if (signal?.aborted || !terminal || !runId || browserReply) throw error;
       const until = Date.now() + Math.min(settleMs, 3000);
       do {
-        try { evidence = await readEvidence(Math.max(1, until - Date.now())); } catch { break; }
+        try { evidence = await readSettlingEvidence(until); } catch { break; }
         const imageDelivery = await imageReply();
         if (signal?.aborted) throw error;
         if (imageDelivery) return deliver(imageDelivery.text, imageDelivery);

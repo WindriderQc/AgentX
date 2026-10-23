@@ -862,9 +862,7 @@ for (const [name, failed, expected, afterAbort] of [
     const settling = new Promise(resolve => { startSettlement = resolve; });
     const lastRead = new Promise(resolve => { releaseFinal = resolve; });
     const deltas = [];
-    // Keep the drain failure inside the requested settlement window. A zero
-    // window must no longer rely on an evidence read exceeding that window.
-    const client = createAgentClient({ env, settleMs: afterAbort ? 100 : 0, progressMs: 3, streamGraceMs: 1, streamDrainMs: afterAbort ? 20 : 1000,
+    const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 1, streamDrainMs: afterAbort ? 20 : 1000,
       continuity: async () => {
         if (++reads === 1) return { answer: answer('Ne pas livrer.') };
         startSettlement();
