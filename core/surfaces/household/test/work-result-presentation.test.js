@@ -18,7 +18,7 @@ test('a native document has a useful spoken summary and complete display and rea
 
   const row = { _id: 'native-work', sessionId: 'owner-session', turnId: 'human-turn', state: 'completed',
     result: { payloadRef: 'retained-result', version: 3 }, delivery: { id: 'delivery-3', state: 'available' } };
-  const delivery = createWorkDelivery({ repo: { read: async () => original },
+  const delivery = createWorkDelivery({ requestTextForDisplay: async () => 'Synthetic original request', repo: { read: async () => original },
     automaticSpeech: async () => true, presentResult: workResultPresentation });
   const projected = await delivery.projection(row);
   assert.equal(projected.result.text, original.text);
@@ -60,7 +60,7 @@ test('native Main page blocks reach durable delivery without entering speech or 
   assert.equal(presented.spokenText, 'Voici votre maison.');
   assert.equal(presented.display[0].body, 'home-assistant');
   for (const field of ['spokenText', 'readingText', 'displayText']) assert.doesNotMatch(presented[field], /home-assistant|evil/);
-  const delivery = createWorkDelivery({ repo: { read: async () => source }, automaticSpeech: async () => true, presentResult: result => workResultPresentation(result, { pageCatalog }) });
+  const delivery = createWorkDelivery({ requestTextForDisplay: async () => 'Synthetic original request', repo: { read: async () => source }, automaticSpeech: async () => true, presentResult: result => workResultPresentation(result, { pageCatalog }) });
   const row = { _id: 'work', sessionId: 'session', turnId: 'turn', state: 'completed', result: { payloadRef: 'payload', version: 1 }, delivery: { id: 'delivery', state: 'available' } };
   assert.deepEqual((await delivery.projection(row)).result.display, presented.display);
 });

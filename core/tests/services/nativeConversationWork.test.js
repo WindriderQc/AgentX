@@ -332,7 +332,7 @@ test('real voice HTTP acknowledges a clear work request immediately and keeps th
   const app = await personalHttp(executor);
   const first = await request(app).post(`/sessions/${current.sessionId}/turns/text`)
     .send({ text, turnId, channel: 'voice', stream: true }).timeout(3000);
-  expect(first.status).toBe(200); expect(first.text).toContain('Je m’en occupe');
+  expect(first.status).toBe(200); expect(first.text).toContain('attend son tour');
   expect(foreground).not.toHaveBeenCalled();
   let release, started;
   const held = new Promise(resolve => { release = resolve; }), dispatched = new Promise(resolve => { started = resolve; });
@@ -631,7 +631,7 @@ test('the dedicated guardian keeps clear-work acknowledgment bound to the canoni
     const app = await personalHttp(createConversationExecutor({ env, inference: {}, agentClient: guardian }));
     const turnId = randomUUID();
     const response = await request(app).post(`/sessions/${current.sessionId}/turns/text`).send({ text: 'Regarde mes tâches.', turnId, channel: 'voice', stream: true });
-    expect(response.status).toBe(200); expect(response.text).toContain('Je m’en occupe'); expect(guardian).not.toHaveBeenCalled();
+    expect(response.status).toBe(200); expect(response.text).toContain('attend son tour'); expect(guardian).not.toHaveBeenCalled();
     const row = await works.repo.get(hash(current.sessionId + '\n' + turnId));
     expect(row.guardian.agentId).toBe('nestor-guardian'); expect(row.foreground).toBe('acknowledge');
     await works.observer.tick();

@@ -48,6 +48,8 @@ function createRepository({ model = Model, counter = Counter } = {}) {
   }
   const find = (query, limit = 100, sort = { receivedAt: 1, _id: 1 }) => collection().find({ owner: OWNER, erased: { $ne: true }, ...query })
     .sort(sort).limit(limit).toArray();
-  return { get, mutate, insert, find, payload, read, collection, getIncludingErased: id => collection().findOne({ _id: id, owner: OWNER }) };
+  return { get, mutate, insert, find, payload, read, collection,
+    dispatchOwner: () => model.db.collection('conversation_work_dispatch').findOne({ _id: OWNER }),
+    getIncludingErased: id => collection().findOne({ _id: id, owner: OWNER }) };
 }
 module.exports = { createRepository };

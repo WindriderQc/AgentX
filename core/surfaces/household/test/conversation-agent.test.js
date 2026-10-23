@@ -195,14 +195,29 @@ test('terminal native failure reports settlement without delivering a reply or s
   }
 });
 
+test('same-run terminal refusals emit a sanitized durable receipt before rejection', async () => {
+  const failures = [], order = [];
+  const client = createAgentClient({ env, settleMs: 0, continuity: async () => null,
+    fetchImpl: async () => ({ ok: true, body: [created, row({ type: 'response.failed', response: { id: runId,
+      error: { message: 'Provider synthetic has auth issue (skipping all models): PRIVATE_DIAGNOSTIC' } } })] }) });
+  await assert.rejects(client({ session, text: 'Check the current work.',
+    onStarted: () => order.push('started'),
+    onTerminalFailure: receipt => { failures.push(receipt); order.push('failure'); },
+    onSettled: () => order.push('settled') }), /could not finish/);
+  assert.deepEqual(order, ['started', 'failure', 'settled']);
+  assert.deepEqual(failures, [{ source: 'openclaw/responses', sessionKey: sessionKeyFor(session), runId,
+    event: 'response.failed', reason: 'native_authentication_failed' }]);
+  assert.doesNotMatch(JSON.stringify(failures), /PRIVATE_DIAGNOSTIC/);
+});
+
 test('truncated and wrong-run native failures do not acknowledge settlement without termination evidence', async () => {
   for (const body of [[created], [created, row({ type: 'response.failed', response: { id: 'wrong-run' } })]]) {
-    let settled = false, started;
+    let settled = false, started, failure = false;
     const client = createAgentClient({ env, settleMs: 0, continuity: async () => null,
       fetchImpl: async () => ({ ok: true, body }) });
     await assert.rejects(client({ session, text: 'Question', onStarted: (_key, id) => { started = id; },
-      onSettled: () => { settled = true; } }), /not confirmed yet/);
-    assert.equal(started, runId); assert.equal(settled, false);
+      onSettled: () => { settled = true; }, onTerminalFailure: () => { failure = true; } }), /not confirmed yet/);
+    assert.equal(started, runId); assert.equal(settled, false); assert.equal(failure, false);
   }
 });
 

@@ -191,7 +191,23 @@ test('publishes only owned receipts, retains result across a new service instanc
   const restarted = createConversationWorks({ conversations, tasks, env });
   const snapshot = await createWorkDelivery(restarted).snapshot(current.sessionId);
   expect(snapshot.items[0].result).toMatchObject({ text: 'Actual result', presentation: 'available', version: 1 });
+  expect(snapshot.items[0].requestText).toBe('Regarde mes tâches.');
   expect(JSON.stringify(snapshot)).not.toContain('Selected personal context');
+});
+
+test('browser controls identify the exact canonical request, never a replaced or foreign turn', async () => {
+  const original = 'Open the activity page.\nKeep this exact request <script> as text.';
+  await works.intake(input(original));
+  const delivery = createWorkDelivery(works);
+  expect((await delivery.snapshot(current.sessionId)).items[0].requestText).toBe(original);
+  const read = jest.fn().mockResolvedValueOnce({ inputText: 'Unrelated replacement' }).mockResolvedValueOnce(null);
+  const mismatched = createWorkDelivery(createConversationWorks({ conversations: { ...conversations, getTurn: read },
+    tasks, env, repository: works.repo }));
+  expect((await mismatched.snapshot(current.sessionId)).items[0].requestText).toBeNull();
+  expect((await mismatched.snapshot(current.sessionId)).items[0].requestText).toBeNull();
+  const foreign = await conversations.createSession({ sessionId: randomUUID(), packId: 'personal_operator', scopeId: 'personal',
+    modeId: 'standard', status: 'active', agentId: 'main', backend: 'openclaw', turnCount: 0 });
+  expect((await delivery.snapshot(foreign.sessionId)).items).toEqual([]);
 });
 
 test('presentation ownership separates display, scheduled playback and completion across devices', async () => {

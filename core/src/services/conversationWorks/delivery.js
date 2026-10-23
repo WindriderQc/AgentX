@@ -4,12 +4,15 @@ const { ACTIVE, LIMITS, fail, notFound } = require('./contract');
 
 function createWorkDelivery(works) {
   async function projection(row) {
+    // Identify controls with the original human request from its canonical owner.
+    // Never substitute selected context, a generated summary or another turn.
+    const requestText = await works.requestTextForDisplay(row);
     const result = row.result ? await works.repo.read(row, row.result.payloadRef) : null;
     // A trusted surface can derive speech/display views without changing the
     // retained native answer, result identity or delivery ownership.
     const presented = result && result.kind !== 'no_work' && works.presentResult ? await works.presentResult(result, row) : null;
     return { id: row._id, turnId: row.turnId, sessionId: row.sessionId, state: row.state,
-      revision: row.revision, receivedAt: row.receivedAt, updatedAt: row.updatedAt,
+      revision: row.revision, receivedAt: row.receivedAt, updatedAt: row.updatedAt, requestText,
       classification: row.classification, guardianStatus: row.guardian?.state || 'unknown', sequence: row.sequence, reason: row.reason || '',
       // Only execution identities and bounded receipt metadata reach the browser.
       // Session keys, tool payloads, selected context and prompts stay private.
@@ -35,6 +38,7 @@ function createWorkDelivery(works) {
     const events = selected.flatMap(row => row.events.filter(event => event.sequence > Number(cursor))
       .map(event => ({ ...event, workId: row._id }))).sort((a, b) => a.sequence - b.sequence);
     return { authority: 'core.conversation-works', items: await Promise.all(selected.map(projection)),
+      dispatch: await works.dispatchStatus(),
       events, cursor: selected.at(-1)?.sequence || Number(cursor), hasMore: rows.length > 64,
       snapshotRequired: selected.some(row => row.events.length === LIMITS.events && row.events[0].sequence > Number(cursor)) };
   }

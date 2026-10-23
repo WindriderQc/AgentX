@@ -235,6 +235,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       ...(excludingId && { _id: { $ne: excludingId } }) }, 4, { sequence: -1, _id: -1 });
     const useful = rows.filter(row => row.classification !== 'simple' && row.result?.kind !== 'no_work');
     if (!useful.length) return { text: '', refs: [] };
+    const dispatch = await dispatchStatus();
     const excerpt = (text, length) => String(text || '').length > length
       ? text.slice(0, length) + ' [shortened context; complete content retained in Core]' : text;
     const entries = [], selectable = [], refs = [];
@@ -242,7 +243,8 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       const turn = await conversations.getTurn({ ...query(sessionId), traceId: row.turnId });
       const result = row.result ? await repo.read(row, row.result.payloadRef) : null;
       const entry = { id: row._id, turnId: row.turnId, request: excerpt(turn?.inputText, 1000),
-        state: row.state, reason: row.reason || '', result: result ? { kind: result.kind, text: excerpt(result.text, 2000),
+        state: row.state, blocked: row.state === 'queued' && dispatch?.state === 'blocked',
+        reason: row.reason || '', result: result ? { kind: result.kind, text: excerpt(result.text, 2000),
           receiptIds: result.receiptIds, version: row.result.version, presentation: row.delivery?.state } : null };
       const ref = result ? { source: 'work', workId: row._id, version: row.result.version,
         sourceTurnId: row.turnId, coverage: [String(result.text || '').length > 2000 ? 'result_excerpt' : 'result'] } : null;
@@ -262,6 +264,13 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       sessionId: row.sessionId, turnId: row.turnId, requestSha256: row.requestSha256,
       state: row.state, resultReady: Boolean(row.result) };
   }
+  async function dispatchStatus() {
+    const gate = await repo.dispatchOwner();
+    if (!gate?.workId) return null;
+    const row = await repo.getIncludingErased(gate.workId);
+    return row?.state === 'uncertain' && row.attempt && row.attempt.id === gate.attempt?.id && !row.attempt.settledAt
+      ? { state: 'blocked', workId: row._id, reason: 'native_receipt_unverified' } : null;
+  }
   async function nativeAcceptance(id) {
     const row = await repo.get(id);
     if (!row || !['read', 'native'].includes(row.mode) || !nativeWork(row)) return null;
@@ -271,6 +280,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     return { authority: 'core.conversation-works', accepted: true, id: row._id,
       sessionId: row.sessionId, turnId: row.turnId, requestSha256: row.requestSha256,
       state: row.state, resultReady: Boolean(row.result), mode: row.mode,
+      blocked: row.state === 'queued' && Boolean(await dispatchStatus()), reason: row.reason || '',
       foreground: row.foreground || (row.mode === 'native' && !nativeForeground(turn.inputText) ? 'guardian' : 'acknowledge') };
   }
   async function guardianTool(context) {
@@ -359,11 +369,15 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       conversationId: row.conversationId, workId: row._id });
   }
   return { repo, intake, retained, prepare, guardianStarted, guardianSettled, binding, request, contextForWorker, conversationContext, readTasks,
+    requestTextForDisplay: async row => {
+      const turn = await conversations.getTurn({ ...query(row.sessionId), traceId: row.turnId });
+      return turn && hash(turn.inputText) === row.requestSha256 ? turn.inputText : null;
+    },
     contextForNative: context => contextForWorker(context, 'boss'), guardianTool,
     nativeOwner: async context => { const row = await binding(context, 'boss');
       return { authority: 'core.conversation-works', id: row._id, sessionId: row.sessionId }; },
     admitNativeTool: require('./native-budget').createNativeBudget({ repo, conversations, session, query, policy: nativeBudget, now }),
     publish, publishNative: require('./native-results').createNativeResultReceiver({ repo, session, now, automaticSpeech }), automaticSpeech, presentResult,
-    recover, finalize, handled, guardianContext, guardianContextWithRefs, taskAcceptance, nativeAcceptance, wake: () => wake(), session, query, eligible: (current, channel) => eligible(current, channel, env), wakeWith: fn => { wake = fn; } };
+    recover, finalize, handled, guardianContext, guardianContextWithRefs, taskAcceptance, nativeAcceptance, dispatchStatus, wake: () => wake(), session, query, eligible: (current, channel) => eligible(current, channel, env), wakeWith: fn => { wake = fn; } };
 }
 module.exports = { createConversationWorks };
