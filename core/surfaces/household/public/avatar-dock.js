@@ -114,7 +114,7 @@
     // The mask's receipt for the current picture and the recorded turn it belongs to (#131);
     // sent once both are known, in whichever order they arrive.
     let pendingReceipt = null, recordedTurn = null, heldScene = null, sceneTimer = null;
-    let face = null, mode = readMode(space), disposed = false, view = 'plein', shown = false;
+    let face = null, mode = readMode(space), disposed = false, view = 'plein', shown = false, pagePresented = false;
     let state = 'idle', wasAsleep = false, hostBusy = false, toolPulses = 0, tint = '#52cfc5', sample = null;
     const meter = createTokenMeter();
     let resolveReady, readySettled = false;
@@ -141,15 +141,20 @@
       applyView();
     }
     function applyView() {
-      const scene = mode === 'scene';
+      const pageActive = !!doc.querySelector?.('.page-presentation.is-active');
+      if (pagePresented && !pageActive) view = 'menu';
+      pagePresented = pageActive;
+      const scene = mode === 'scene' && !pageActive;
       if (scene) { dock.dataset.view = view; doc.body.dataset.avatarView = view; }
       else { delete dock.dataset.view; delete doc.body.dataset.avatarView; }
       sceneBar.hidden = !scene || view === 'menu';
       sceneBar.querySelector('[data-scene=close]').hidden = view !== 'montre';
       // On a phone, the open page keeps the face beside its heading. A fixed
       // bottom corner would cover the composer and its Send button.
-      const heading = scene && view === 'menu' && root.matchMedia?.('(max-width: 700px)').matches
-        ? doc.querySelector?.('.conversation-heading') : null;
+      const heading = pageActive && root.matchMedia?.('(max-width: 1000px)').matches
+        ? doc.querySelector?.('.page-presentation-toolbar')
+        : scene && view === 'menu' && root.matchMedia?.('(max-width: 700px)').matches
+          ? doc.querySelector?.('.conversation-heading') : null;
       const parent = heading || doc.body;
       if (dock.parentElement !== parent) parent.append(dock);
     }
@@ -291,6 +296,7 @@
         root.removeEventListener('persona-activity', onActivity);
         root.removeEventListener('persona-scene-receipt', onSceneReceipt);
         root.removeEventListener('resize', applyView);
+        root.removeEventListener('nestor-page-presentation', applyView);
         statusObserver?.disconnect();
         doc.body.classList.remove('avatar-docked');
         delete doc.body.dataset.avatarMode;
@@ -302,6 +308,7 @@
     };
     root.AvatarDock.current = handle;
     root.addEventListener('resize', applyView);
+    root.addEventListener('nestor-page-presentation', applyView);
     return handle;
   }
 

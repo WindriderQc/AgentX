@@ -14,6 +14,15 @@ Pipeline retains its bounded `status` and `task` focus. Unknown IDs, addresses
 and unrecognized focus arguments cannot become browser destinations. Family
 conversations have no private page catalogue or screen observations.
 
+Showing a page automatically opens a page workspace: the page takes the main
+column, messages and voice controls remain beside it, and the avatar becomes
+small. On tablet and phone widths, the conversation follows the page. Runtime
+diagnostics and conversation settings return with **Retour à la conversation**;
+**Afficher la page** reopens the workspace. The page selector switches between
+shown destinations without moving their frames or losing form and scroll state.
+Only the selected, displayed page contributes browser observations. Pictures
+and family conversations retain their existing display zones.
+
 For AgentX pages under the same origin, a `view=screen` request allows framing
 by that origin and hides shared navigation. Normal page requests retain their
 existing framing policy. The personal conversation receives at most three
@@ -86,6 +95,16 @@ lifecycle without calling a model or a LAN service:
 NODE_PATH=/path/to/playwright/node_modules \
 GUIDED_SERVICES_REPORT_DIR=/path/outside/repository \
 node core/tests/browser/nestorGuidedServicesJourney.cjs
+```
+
+The page workspace journey uses the real conversation markup and styles at
+1440, 900 and 390 pixels. It checks automatic presentation, layout restoration,
+frame state preservation, page switching, observations and navigation cleanup:
+
+```bash
+NODE_PATH=/path/to/dependencies/node_modules:/path/to/playwright/node_modules \
+PAGE_PRESENTATION_REPORT_DIR=/path/outside/repository \
+node core/tests/browser/nestorPagePresentationJourney.cjs
 ```
 
 `GUIDED_SERVICES_BROWSER_EXECUTABLE` optionally selects an already installed
