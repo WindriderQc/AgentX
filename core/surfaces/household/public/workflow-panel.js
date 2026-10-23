@@ -588,6 +588,11 @@
         `Browser, from end of speech: STT ${duration(voice.sttDone)}, request ${duration(voice.requestSent)}, first text ${duration(voice.firstDelta)}, playback start requested ${duration(voice.firstAudio)}. This does not attest that sound was heard. Reported STT processing: ${duration(voice.sttServer)}.`),
         node('p', '', `Server, from start of request: context ready at ${duration(server.prepared)}, answer received at ${duration(server.executed)}.`),
         node('small', '', 'Different clock origins: these durations are not added together. A missing value stays unknown.'));
+      const breakdown = root.AgentXVoiceTimeline?.summarizeTimings(voice);
+      if (breakdown && Object.keys(breakdown).length) {
+        timing.append(node('p', '', `Voice pipeline: end-of-turn silence ${duration(breakdown.endpointMs)}, remaining recognition ${duration(breakdown.recognitionRemainingMs)}, first reply text ${duration(breakdown.replyTextMs)}, first sentence ${duration(breakdown.sentenceMs)}, speech queue ${duration(breakdown.synthesisQueueMs)}, speech headers ${duration(breakdown.synthesisHeadersMs)}, audio transport ${duration(breakdown.audioTransportMs)}.`),
+          node('p', '', `Last detected speech to estimated first reply signal: ${duration(breakdown.replyEstimateMs)}. Includes scheduled playback and browser-reported output latency; not an acoustic measurement.`));
+      }
       const recognition = voice.recognition;
       if (recognition) {
         timing.append(node('p', '', `Recognition request: ${recognition.recognitionId || 'not reported'} · ${recognition.mode || 'capture mode not reported'}. Requested language: ${recognition.requestedLanguage || 'not reported'}; decoded language: ${recognition.decodedLanguage || 'not reported'} (${recognition.languageSource || 'source not reported'}).`),

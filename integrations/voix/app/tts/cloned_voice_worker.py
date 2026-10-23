@@ -131,8 +131,10 @@ class Worker:
             if not emit(np.zeros(at_rate(LEAD_SILENCE, self.sample_rate), dtype="<f4")):
                 return
             stream = self.generate(job.text, job.voice)
-            # Hold one chunk back so the final one can end softly; this delays first audio by one chunk.
-            pending = None
+            # Retain only the fade window, rather than a complete model chunk.
+            # Most of the first generated chunk can reach playback immediately.
+            pending = np.empty(0, dtype="<f4")
+            retain = max(1, at_rate(FADE_SAMPLES, self.sample_rate)) if self.soften_final else 0
             while not job.cancelled.is_set():
                 try:
                     chunk = next(stream)
@@ -142,12 +144,15 @@ class Worker:
                 if not audio.size or not np.isfinite(audio).all():
                     raise ValueError("Invalid generated audio")
                 generated_samples += audio.size
-                if pending is not None and not emit(pending):
+                combined = np.concatenate((pending, audio)) if pending.size else audio
+                ready = max(0, combined.size - retain)
+                if ready and not emit(combined[:ready]):
                     return
-                pending = audio
-            if pending is not None and not job.cancelled.is_set():
-                final = soften_ending(pending, self.sample_rate) if self.soften_final else pending
-                if not emit(final) or not emit(np.zeros(at_rate(TAIL_SILENCE, self.sample_rate), dtype="<f4")):
+                pending = combined[ready:].copy()
+            if generated_samples and not job.cancelled.is_set():
+                if pending.size and not emit(soften_ending(pending, self.sample_rate)):
+                    return
+                if not emit(np.zeros(at_rate(TAIL_SILENCE, self.sample_rate), dtype="<f4")):
                     return
             # Padding is transport audio, not evidence that the model spoke.
             if generated_samples and not job.cancelled.is_set():

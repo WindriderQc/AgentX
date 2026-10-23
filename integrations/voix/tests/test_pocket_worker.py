@@ -43,15 +43,17 @@ def test_a_worker_at_another_rate_declares_it_and_keeps_the_same_silence_duratio
     job = worker.submit(dict(id="a", text="Bonjour.", voice="narrator"))
     thread = threading.Thread(target=worker.execute, args=(job,))
     thread.start()
-    events = [job.output.get(timeout=1) for _ in range(6)]
+    events = []
+    while not events or events[-1]["type"] not in {"done", "error"}:
+        events.append(job.output.get(timeout=1))
     thread.join(timeout=1)
     assert events[0]["sample_rate"] == 24000
     audio = [np.frombuffer(base64.b64decode(e["pcm"]), dtype="<f4") for e in events if e["type"] == "audio"]
     lead, tail = at_rate(LEAD_SILENCE, 24000), at_rate(TAIL_SILENCE, 24000)
     assert (lead, tail) == (1920, 2880), "80 ms and 120 ms at 24 kHz"
-    assert [len(a) for a in audio] == [lead, 2000, 2000, tail]
-    assert abs(audio[2][-1]) < 0.01 and audio[2][0] == np.float32(0.5), "the final chunk still ends softly"
-    assert events[-1] == {"type": "done", "frames": 4, "samples": lead + 4000 + tail}
+    assert [len(a) for a in audio] == [lead, 1040, 2000, 960, tail]
+    assert abs(audio[3][-1]) < 0.01 and audio[3][0] == np.float32(0.5), "the final chunk still ends softly"
+    assert events[-1] == {"type": "done", "frames": 5, "samples": lead + 4000 + tail}
     # The fade is a duration: half as many samples at half the rate.
     half = soften_ending(np.ones(4000, dtype=np.float32), 24000)
     full = soften_ending(np.ones(4000, dtype=np.float32))

@@ -173,6 +173,13 @@ Instance configuration, data and deployment receipts remain outside Git.
   voice replies use the same speech boundary; physical device adapters retain
   their own capture and playback. The loop keeps one language per turn, prepares
   clauses ahead and permits one bounded retry after a speech stream failure.
+  Local early recognition overlaps microphone capture through bounded whole-prefix
+  snapshots, with one active recognizer and only the latest waiting audio. Only
+  coverage of the final detected speech permits reuse. Pocket speech releases
+  generated prefixes while retaining a forty-millisecond final fade window.
+  Browser timings separate first clause, speech dispatch/headers, response bytes
+  and an output estimate including queued silence and reported device latency;
+  these observations do not establish acoustic arrival.
   Household flushes its final clause before turn completion and persists browser
   voice timings; PsyX keeps its protected speech route without a timing store.
   Timed holding phrases are off by default. Conversation and explanations stay

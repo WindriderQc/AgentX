@@ -3,11 +3,11 @@
 (function (root) {
   'use strict';
   const MARKS = Object.freeze(['sttDone', 'requestSent', 'firstDelta', 'holdingPhrase', 'firstAudio',
-    'firstFrameScheduled', 'firstSignalScheduled']);
+    'firstFrameScheduled', 'firstSignalScheduled', 'firstClause', 'ttsRequested', 'ttsReady', 'firstAudioBytes', 'firstSignalOutput']);
   // Durations in ms that explain the marks: the silence waited before the end of
   // speech was decided, the length of the captured clip, and the recognition time
   // the speech service reports (the rest of `sttDone` is upload and transport).
-  const MEASURES = Object.freeze(['silenceMs', 'audioMs', 'sttServer']);
+  const MEASURES = Object.freeze(['silenceMs', 'audioMs', 'sttServer', 'outputLatencyMs', 'playbackQueueMs']);
 
   // Content-free evidence only. The browser and Core use the same boundary;
   // decoder scores are diagnostics, never a confidence that the words are right.
@@ -30,18 +30,37 @@
       if (typeof input.normalizationChanged === 'boolean') evidence.normalizationChanged = input.normalizationChanged;
     }
     if (!Object.keys(evidence).length) return undefined;
-    if (['early', 'complete'].includes(input.mode)) evidence.mode = input.mode;
+    if (['early', 'progressive', 'complete'].includes(input.mode)) evidence.mode = input.mode;
     for (const key of ['submittedBytes', 'captureBytes']) {
       if (Number.isInteger(input[key]) && input[key] >= 0 && input[key] <= 32 * 1024 * 1024) evidence[key] = input[key];
     }
     return { schema: 1, ...evidence };
   }
 
+  // Consecutive observations on the browser clock, not GPU execution durations.
+  // Missing or reversed observations stay unknown; filler never completes a reply.
+  function summarizeTimings(input = {}) {
+    const span = (a, b) => Number.isFinite(input[a]) && Number.isFinite(input[b]) && input[b] >= input[a]
+      ? Math.round(input[b] - input[a]) : undefined;
+    const values = {
+      endpointMs: input.silenceMs, recognitionRemainingMs: input.sttDone,
+      dispatchMs: span('sttDone', 'requestSent'), replyTextMs: span('requestSent', 'firstDelta'),
+      sentenceMs: span('firstDelta', 'firstClause'), synthesisQueueMs: span('firstClause', 'ttsRequested'),
+      synthesisHeadersMs: span('ttsRequested', 'ttsReady'), audioTransportMs: span('ttsReady', 'firstAudioBytes'),
+      audioSchedulingMs: span('firstAudioBytes', 'firstSignalScheduled'),
+      outputEstimateMs: span('firstSignalScheduled', 'firstSignalOutput'),
+      replyEstimateMs: Number.isFinite(input.silenceMs) && Number.isFinite(input.firstSignalOutput)
+        ? input.silenceMs + input.firstSignalOutput : undefined
+    };
+    return Object.fromEntries(Object.entries(values).filter(([, value]) => Number.isFinite(value) && value >= 0));
+  }
+
   class VoiceTimeline {
-    constructor(now = () => Date.now()) { this.now = now; this.origin = now(); this.marks = {}; this.measures = {}; this.sent = false; this.lastSent = null; this.queued = null; this.reporting = Promise.resolve(); this.playbackOutcome = null; }
+    constructor(now = () => root.performance?.now?.() ?? Date.now()) { this.now = now; this.origin = now(); this.marks = {}; this.measures = {}; this.sent = false; this.lastSent = null; this.queued = null; this.reporting = Promise.resolve(); this.playbackOutcome = null; }
     // Only the first occurrence of a mark counts.
-    mark(name) {
-      if (MARKS.includes(name) && this.marks[name] === undefined) this.marks[name] = Math.max(0, Math.round(this.now() - this.origin));
+    mark(name, aheadMs = 0) {
+      if (MARKS.includes(name) && this.marks[name] === undefined && Number.isFinite(aheadMs) && aheadMs >= 0 && aheadMs <= 600000)
+        this.marks[name] = Math.max(0, Math.round(this.now() - this.origin + aheadMs));
     }
     // A reported duration; anything that is not a finite, non-negative number is ignored.
     measure(name, value) {
@@ -77,7 +96,7 @@
     }
   }
 
-  const api = { VoiceTimeline, MARKS, MEASURES, normalizeRecognition };
+  const api = { VoiceTimeline, MARKS, MEASURES, normalizeRecognition, summarizeTimings };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.AgentXVoiceTimeline = api;
 })(typeof window === 'undefined' ? globalThis : window);
