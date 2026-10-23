@@ -234,7 +234,7 @@ function register(api) {
     } });
 
 
-  for (const name of ['browser-conversation', 'speech-language', 'playback-hold', 'voice-capture-worklet']) {
+  for (const name of ['browser-conversation', 'speech-language', 'playback-hold', 'voice-capture', 'voice-capture-worklet']) {
     app.get(`/assets/household/${name}.js`, (_req, res) => res.sendFile(path.join(__dirname, '../../public/js/voice', `${name}.js`)));
   }
   app.use('/assets/household', express.static(publicRoot, { fallthrough: false, maxAge: '5m' }));

@@ -70,7 +70,9 @@ NDJSON response declares mono `f32le` audio at the worker's rate (Pocket uses
 24 kHz), numbered base64 PCM frames, and a completion with exact frame/sample
 totals. Missing completion, reordered frames, unexpected format or voice, and
 nonfinite samples fail the request. Audio and request text are never saved.
-Closing the connection stops generation; `DELETE /v1/requests/{id}` also cancels
+The worker retains at most the final 40 ms for fading and releases the generated
+prefix before requesting the next model chunk. Lead-in and trailing silence remain
+rate-scaled. Closing the connection stops generation; `DELETE /v1/requests/{id}` also cancels
 queued or active work.
 
 ## Verification
