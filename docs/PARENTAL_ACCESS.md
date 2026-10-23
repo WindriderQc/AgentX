@@ -6,6 +6,12 @@ anyone who can reach an application entry can use its human capabilities,
 including personal data and review controls. The server does not identify an
 owner, parent or child. Opening Famille does not lock other pages or tabs.
 
+In the full profile, Core shows a small **SuperDad** badge for normal owner
+access on an unpinned browser, including Nestor's full-screen avatar views.
+It indicates access, not verified identity or the conversation's persona.
+Pinned family browsers do not show it; temporary unlocks keep their expiry
+banner and **Relock** button instead.
+
 The former filename is retained so documentation links remain valid. Code and
 face unlocking are retired. [Scope inventory](LAN_ACCESS_SCOPE.md) describes
 the removed paths; [voice identification](VOICE_ID.md) is a future design only.
