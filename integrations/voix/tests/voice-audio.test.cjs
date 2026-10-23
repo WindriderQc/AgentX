@@ -197,3 +197,22 @@ test('Stop during browser fallback prevents every remaining reading segment', as
   await ready; speech.cancel(); await stopped;
   assert.deepEqual(requests, ['first']);
 });
+
+test('first output estimate includes queued silence, in-frame silence, speed and reported output latency', async t => {
+  let now = 100; t.mock.method(performance, 'now', () => now);
+  const context = new Context(); context.baseLatency = .01; context.outputLatency = .02;
+  const source = stream(), observed = [], bytes = [];
+  const playing = new Player(context, { onFirstBytes: () => bytes.push(now), onSignalScheduled: value => observed.push(value) })
+    .play(source.response, new AbortController().signal, { rate: .8 });
+  now = 200; source.send(meta);
+  const silence = { ...frame(), pcm: Buffer.from(new Float32Array(2400).buffer).toString('base64') };
+  source.send(silence); await tick(); assert.equal(observed.length, 0);
+  const samples = new Float32Array(2400); samples.fill(.2, 1200);
+  now = 220; source.send({ ...frame(2), pcm: Buffer.from(samples.buffer).toString('base64') }); await tick();
+  // 40 ms startup + 125 ms preceding silence + 62.5 ms in-frame silence + 30 ms output.
+  assert.equal(observed[0].queueMs, 227.5); assert.equal(observed[0].outputLatencyMs, 30);
+  assert.equal(observed[0].aheadMs, 257.5); assert.deepEqual(bytes, [200]);
+  source.send({ type: 'done', frames: 2, samples: 4800 }); source.close();
+  context.nodes.forEach(node => node.onended()); const metrics = await playing;
+  assert.equal(metrics.first_signal_output_ms, 378); assert.equal(metrics.first_bytes_ms, 100);
+});

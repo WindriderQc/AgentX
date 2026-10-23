@@ -68,7 +68,7 @@ test('a voice turn reports its offsets from the end of speech when its first rep
   assert.equal(h.sent.length, 1);
   assert.equal(h.sent[0].sessionId, 'family-1');
   assert.match(h.sent[0].turnId, /^[a-f0-9-]{36}$/);
-  assert.deepEqual(h.sent[0].timings, { sttDone: 600, requestSent: 600, firstDelta: 4600, firstAudio: 5100, interrupted: false, playbackOutcome: 'completed' });
+  assert.deepEqual(h.sent[0].timings, { sttDone: 600, requestSent: 600, firstDelta: 4600, firstClause: 4600, ttsRequested: 4600, ttsReady: 5100, firstAudio: 5100, interrupted: false, playbackOutcome: 'completed' });
   await h.say();
   assert.equal(h.sent.length, 2, 'one report per turn');
   assert.notEqual(h.sent[1].turnId, h.sent[0].turnId);
@@ -94,7 +94,7 @@ test('a voice turn keeps playback requested, frame scheduled and non-silent sign
     callbacks.onSignalScheduled();
   };
   await h.conversation.start({ language: 'fr' }); await h.say();
-  assert.deepEqual(h.sent[0].timings, { sttDone: 600, requestSent: 600, firstDelta: 4600,
+  assert.deepEqual(h.sent[0].timings, { sttDone: 600, requestSent: 600, firstDelta: 4600, firstClause: 4600, ttsRequested: 4600, ttsReady: 5100,
     firstAudio: 5100, firstFrameScheduled: 5200, firstSignalScheduled: 5600, interrupted: false });
   assert.deepEqual(normalizeVoiceTimings(h.sent[0].timings), h.sent[0].timings);
   h.conversation.stop();
@@ -116,7 +116,7 @@ test('a voice turn reports what explains its transcription: silence waited, clip
   h.audio.listen = callback => { utterance = callback; };
   await h.conversation.start({ language: 'fr' });
   await utterance(new Blob(['sample']), { audioMs: 4200.4, silenceMs: 1000 });
-  assert.deepEqual(h.sent[0].timings, { sttDone: 600, requestSent: 600, firstDelta: 4600, firstAudio: 5100,
+  assert.deepEqual(h.sent[0].timings, { sttDone: 600, requestSent: 600, firstDelta: 4600, firstClause: 4600, ttsRequested: 4600, ttsReady: 5100, firstAudio: 5100,
     silenceMs: 1000, audioMs: 4200, sttServer: 450, interrupted: false, playbackOutcome: 'completed' });
   h.conversation.stop();
 });
@@ -309,4 +309,29 @@ test('terminal playback and interruption update an already received scheduling s
   assert.deepEqual(normalizeVoiceTimings(sent[2]), sent[2]);
   await timeline.report(send, () => true); assert.equal(sent.length, 3, 'identical snapshots are not repeated');
   assert.equal(normalizeVoiceTimings({ requestSent: 0, playbackOutcome: 'invented' }).playbackOutcome, undefined);
+});
+
+test('latency breakdown uses consecutive browser observations and excludes holding speech', () => {
+  const { summarizeTimings } = require('../../../public/js/voice/voice-timeline');
+  assert.deepEqual(summarizeTimings({ silenceMs: 1000, sttDone: 100, requestSent: 120, holdingPhrase: 200,
+    firstDelta: 500, firstClause: 600, ttsRequested: 620, ttsReady: 800, firstAudioBytes: 850,
+    firstSignalScheduled: 900, firstSignalOutput: 1050 }), {
+    endpointMs: 1000, recognitionRemainingMs: 100, dispatchMs: 20, replyTextMs: 380,
+    sentenceMs: 100, synthesisQueueMs: 20, synthesisHeadersMs: 180, audioTransportMs: 50,
+    audioSchedulingMs: 50, outputEstimateMs: 150, replyEstimateMs: 2050
+  });
+  assert.deepEqual(summarizeTimings({ holdingPhrase: 20 }), {});
+  assert.equal(summarizeTimings({ firstDelta: 100, firstClause: 90 }).sentenceMs, undefined);
+  assert.deepEqual(summarizeTimings({ silenceMs: '1000', firstSignalOutput: 50 }), {});
+});
+
+test('new latency marks and output estimates survive Core validation without arbitrary payloads', () => {
+  let now = 0; const timeline = new VoiceTimeline(() => now);
+  timeline.mark('requestSent'); now = 100; timeline.mark('firstClause'); timeline.mark('ttsRequested');
+  now = 200; timeline.mark('ttsReady'); now = 210; timeline.mark('firstAudioBytes');
+  now = 220; timeline.mark('firstSignalScheduled'); timeline.mark('firstSignalOutput', 70);
+  timeline.measure('outputLatencyMs', 30); timeline.measure('playbackQueueMs', 40);
+  assert.equal(timeline.values().firstSignalOutput, 290);
+  assert.deepEqual(normalizeVoiceTimings(timeline.values()), timeline.values());
+  timeline.mark('firstSignalOutput', 900); assert.equal(timeline.values().firstSignalOutput, 290);
 });

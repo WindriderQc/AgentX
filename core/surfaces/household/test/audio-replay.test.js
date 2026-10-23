@@ -392,3 +392,22 @@ test('the microphone level follows the last listened block and drops to silence 
   audio.close();
   assert.equal(audio.readInputLevel(), 0);
 });
+
+test('real microphone adapter starts covered snapshots during speech and after a 200 ms pause', async t => {
+  const browser = fakeBrowser(t), lifetime = new AbortController(), snapshots = [], invalid = [], complete = [];
+  const audio = await openAudio(lifetime.signal); t.after(() => audio.close());
+  audio.listen((blob, capture) => complete.push({ blob, capture }), () => {}, {
+    progressive: true, onEarly: (blob, info) => snapshots.push({ blob, info }), onEarlyCancel: id => invalid.push(id)
+  });
+  for (let i = 0; i < 20; i++) browser.send(.1);
+  assert.equal(snapshots.length, 1); assert.equal(snapshots[0].info.progressive, true);
+  browser.send(.2); assert.deepEqual(invalid, [snapshots[0].info.id]);
+  browser.send(); browser.send();
+  assert.equal(snapshots.length, 2, 'partial pause begins work without committing the turn');
+  assert.equal(complete.length, 0);
+  for (let i = 0; i < 8; i++) browser.send();
+  assert.equal(complete.length, 1); assert.equal(complete[0].capture.earlyId, snapshots[1].info.id);
+  const view = new DataView(await snapshots[1].blob.arrayBuffer());
+  assert.equal(view.getUint32(40, true), 2300 * 2);
+  assert.equal(view.getInt16(44 + 2000 * 2, true), 6553, 'the final spoken block belongs to the offered audio');
+});
