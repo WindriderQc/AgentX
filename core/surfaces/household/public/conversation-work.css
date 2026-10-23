@@ -1,6 +1,32 @@
-
-.conversation-work { display: grid; gap: .75rem; margin-block: .75rem; }
+/* Requests remain identifiable without pushing the conversation off screen. */
+.conversation-work { display: grid; gap: .75rem; margin-block: .75rem; min-width: 0;
+  max-height: min(46vh, 32rem); overflow-y: auto; scrollbar-gutter: stable; padding: 2px; }
 .conversation-work[hidden] { display: none; }
-.conversation-work-card { padding: 1rem; border: 1px solid var(--line, #243746); border-radius: 1rem; background: var(--panel, #0d1923); }
-.conversation-work-status { font-weight: 600; margin-block: 0 .5rem; }
+.conversation-work-summary { position: sticky; top: 0; z-index: 1; margin: 0; padding: .5rem .25rem;
+  background: #0c1622; color: #c4d6e6; font-size: .85rem; font-weight: 600; }
+.conversation-work-card { min-width: 0; padding: 1rem; border: 1px solid var(--line, #33495c); border-left: 3px solid #98a9c1;
+  border-radius: .8rem; background: var(--panel, #0d1923); overflow-wrap: anywhere; }
+.conversation-work-card[data-state="running"], .conversation-work-card[data-state="dispatching"] { border-left-color: #9eafff; }
+.conversation-work-card[data-state="failed"], .conversation-work-card[data-state="uncertain"] { border-left-color: #ffc477; }
+.conversation-work-card[data-state="completed"], .conversation-work-card[data-state="result_ready"] { border-left-color: #84e2b6; }
+.conversation-work-card[data-state="cancelled"], .conversation-work-card[data-state="paused"] { border-left-color: #7f97ab; }
+.conversation-work-meta { margin: 0 0 .45rem; color: #afc3d5; font-size: .75rem; line-height: 1.5; }
+.conversation-work-request { margin: 0 0 .6rem; color: #edf4fc; font-size: 1rem; font-weight: 600; line-height: 1.5; white-space: pre-wrap; }
+.conversation-work-status { display: inline-block; margin: 0 0 .4rem; padding: .25rem .5rem; border: 1px solid #486078;
+  border-radius: .4rem; color: #dce8fa; background: #172b3d; font-size: .8rem; font-weight: 600; }
+.conversation-work-detail, .conversation-work-help { margin: .3rem 0 .65rem; color: #afc3d5; font-size: .8rem; line-height: 1.5; }
+.conversation-work-help { margin: .6rem 0 0; }
+.conversation-work-notice { margin: .5rem 0; color: #ffdaaa; font-size: .85rem; line-height: 1.5; }
+.conversation-work-original { margin: .3rem 0 .7rem; color: #c4d6e6; font-size: .85rem; }
+.conversation-work-original summary { cursor: pointer; padding-block: .35rem; }
+.conversation-work-original p { white-space: pre-wrap; line-height: 1.6; }
 .conversation-work-answer { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.conversation-work-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
+.conversation-work-card .button { min-height: 44px; white-space: normal; max-width: 100%; }
+.conversation-work-actions [data-action="cancel"] { color: #ffd4c1; border-color: #9b6655; }
+.conversation-work-card :is(button, summary):focus-visible { outline: 2px solid #90deef; outline-offset: 3px; }
+@media (max-width: 520px) {
+  .conversation-work { max-height: 42vh; }
+  .conversation-work-card { padding: .8rem; }
+  .conversation-work-actions .button { flex: 1 1 100%; }
+}

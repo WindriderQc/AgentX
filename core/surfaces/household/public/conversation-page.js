@@ -107,7 +107,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       row.dataset.spoken = String(spoken); row.append(label, document.createTextNode(remark.text)); transcript.append(row); row.scrollIntoView({ block: 'nearest' });
     } });
   const work = family ? null : NestorWork.create({ host: el('conversationWork'), base: sessionBase, api,
-    getConversation: () => conversation, maySpeak: () => !textBusy,
+    getConversation: () => conversation, getLanguage: () => language.value, maySpeak: () => !textBusy,
     onShow: block => show(block), onSnapshot: (id, data) => workflow.ingest(id, data), onPollError: id => workflow.pollFailure(id) });
   // The parent's private notes never mount in the family space, even hidden.
   const personalNotes = family ? { show() {} } : mountPersonalNotes({ host: el('conversationNotes'), evidence: el('conversationPersonalContext'), api, esc });
@@ -515,7 +515,12 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     holdScreen(active || textBusy);
     el('conversationStart').disabled = textBusy && !active;
     el('conversationStart').hidden = enteringSpace && !active;
-    el('conversationStart').textContent = active ? 'Pause' : conversation.session ? 'Resume' : 'Turn on Nestor';
+    el('conversationStart').textContent = active ? (language.value === 'fr' ? 'Pause de la voix' : 'Pause voice')
+      : conversation.session ? (language.value === 'fr' ? 'Reprendre la voix' : 'Resume voice') : 'Turn on Nestor';
+    el('conversationStart').title = active
+      ? language.value === 'fr' ? 'Arrête le micro et la lecture audio. Les demandes déjà enregistrées restent suivies ci-dessous.'
+        : 'Stops the microphone and audio playback. Saved requests remain tracked below.'
+      : language.value === 'fr' ? 'Active le micro pour continuer la conversation.' : 'Turns on the microphone to continue the conversation.';
     const lockReason = renderTeam(active || textBusy);
     // Language and interruption are read at each turn, so they stay changeable while the conversation runs.
     for (const node of [language, interruption]) { node.disabled = false; node.title = ''; }
@@ -627,7 +632,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   backendPicker.onchange = () => { describe(); };
   agentPicker.onchange = () => { savePreferences(); describe(); };
   picker.onchange = () => { restoreProfile(); savePreferences(); describe(); };
-  for (const field of [language]) field.onchange = () => { savePreferences(); describe(); };
+  for (const field of [language]) field.onchange = () => { savePreferences(); describe(); work?.refresh(); };
   language.addEventListener('change', () => conversation.setLanguage(language.value));
   restoreProfile(); describe();
   open.onchange = () => { if (open.checked) void openHold.start(); else void releaseOpen(); };

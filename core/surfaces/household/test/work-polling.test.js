@@ -11,6 +11,7 @@ function panel(api, timers = {}) {
     append(...nodes) { this.children.push(...nodes); }
     replaceChildren(...nodes) { this.children = nodes; }
     remove() {}
+    setAttribute(name, value) { (this.attributes ||= {})[name] = value; }
     querySelector() { return null; }
   }
   const host = new Element(), snapshots = [], errors = [];
@@ -21,7 +22,7 @@ function panel(api, timers = {}) {
   const work = context.NestorWork.create({ host, base: '/sessions', api,
     getConversation: () => ({ state: 'paused' }),
     onSnapshot: (id, data) => snapshots.push({ id, data }), onPollError: id => errors.push(id) });
-  return { work, host, snapshots, errors };
+  return { work, host, get cards() { return host.children.filter(node => node.className === 'conversation-work-card'); }, snapshots, errors };
 }
 
 const snapshot = (cursor, text = 'Saved result') => ({ cursor, hasMore: false,
@@ -44,7 +45,7 @@ test('a stalled result read times out and the next poll recovers from the last c
     assert.equal(deadlines.at(-1)?.ms, 10000, 'a result read has a bounded wait');
     deadlines.at(-1).callback(); await stalled;
     assert.deepEqual(h.errors, ['session']);
-    assert.equal(h.host.children.length, 1, 'the saved result stays on screen during the outage');
+    assert.equal(h.cards.length, 1, 'the saved result stays on screen during the outage');
     await h.work.poll();
     assert.deepEqual(urls, ['/sessions/session/work?cursor=0', '/sessions/session/work?cursor=7', '/sessions/session/work?cursor=7']);
     assert.equal(h.snapshots.at(-1).data.cursor, 8);
@@ -63,12 +64,12 @@ test('switching conversations immediately reads the new results and ignores the 
     assert.equal(reads[0].signal.aborted, true);
     reads[0].resolve(snapshot(90, 'Old result')); await tick();
     assert.deepEqual(h.snapshots, []);
-    assert.equal(h.host.children.length, 0);
+    assert.equal(h.cards.length, 0);
     await h.work.poll();
     assert.equal(reads.length, 2, 'an old response cannot release the new read and start a duplicate');
     reads[1].resolve(snapshot(3, 'New result')); await tick();
     assert.deepEqual(h.snapshots.map(row => row.id), ['new']);
-    assert.equal(h.host.children[0].children[1].textContent, 'New result');
+    assert.equal(h.cards[0].children.find(node => node.className === 'conversation-work-answer').textContent, 'New result');
     const next = h.work.poll();
     assert.equal(reads[2].url, '/sessions/new/work?cursor=3');
     reads[2].resolve({ items: [], cursor: 3, hasMore: false }); await next;
@@ -84,7 +85,7 @@ test('leaving cancels the result read and a late response cannot restore the car
     assert.equal(read.signal?.aborted, true);
     read.resolve(snapshot(4)); await tick();
     assert.deepEqual(h.snapshots, []); assert.deepEqual(h.errors, []);
-    assert.equal(h.host.children.length, 0);
+    assert.equal(h.cards.length, 0);
   } finally { h.work.dispose(); }
 });
 
@@ -94,6 +95,7 @@ test('Core work refreshes while a result is still being read aloud', async () =>
     append(...nodes) { this.children.push(...nodes); }
     replaceChildren(...nodes) { this.children = nodes; }
     remove() {}
+    setAttribute(name, value) { (this.attributes ||= {})[name] = value; }
     querySelector() { return null; }
   }
   let finish;

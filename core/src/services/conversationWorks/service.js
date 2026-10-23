@@ -359,6 +359,10 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       conversationId: row.conversationId, workId: row._id });
   }
   return { repo, intake, retained, prepare, guardianStarted, guardianSettled, binding, request, contextForWorker, conversationContext, readTasks,
+    requestTextForDisplay: async row => {
+      const turn = await conversations.getTurn({ ...query(row.sessionId), traceId: row.turnId });
+      return turn && hash(turn.inputText) === row.requestSha256 ? turn.inputText : null;
+    },
     contextForNative: context => contextForWorker(context, 'boss'), guardianTool,
     nativeOwner: async context => { const row = await binding(context, 'boss');
       return { authority: 'core.conversation-works', id: row._id, sessionId: row.sessionId }; },

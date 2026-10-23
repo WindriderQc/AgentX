@@ -12,6 +12,19 @@ Core owns acceptance, complete requests, execution metadata, verified task reads
 structured results and presentation receipts. OpenClaw owns the native agent/tool
 loop. Polling the browser projection never starts inference.
 
+The private browser work list identifies each card by the exact canonical human
+request, receipt time and a short work reference. Long requests expand in place.
+It distinguishes waiting, running, paused, failed and unconfirmed execution,
+without implying a completion estimate. The guardian must likewise use received
+Core states and disclose when no completion estimate is supplied. Request controls
+are separate from voice pause, which stops the microphone and playback.
+Pause/resume/cancel keep their existing pre-dispatch ownership and revision
+checks; a native execution has no browser cancel button. A missing or mismatched
+canonical request hides its controls. A lost command response triggers a fresh
+read of that same work, with controls disabled until verification, and never
+resends the mutation. Cancelled requests retain their state on screen. The list
+scrolls independently to keep the dialogue and composer within reach.
+
 ## Contract
 
 Enable `PERSONAL_CONVERSATION_WORK_MODE=native`,

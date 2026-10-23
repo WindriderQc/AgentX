@@ -7,6 +7,7 @@ class Element {
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren(...nodes) { this.children = nodes; }
   remove() {}
+  setAttribute(name, value) { (this.attributes ||= {})[name] = value; }
   querySelector(selector) { return this.children.find(node => '.' + node.className === selector); }
 }
 function fixture(items) {
@@ -17,7 +18,7 @@ function fixture(items) {
     if (url.includes('/receipt')) { const receipt = JSON.parse(options.body); stages.push(receipt.stage); return { claimToken: 'owned-claim' }; }
     return { items, cursor: 1, hasMore: false };
   }, pollMs: 60000 });
-  return { host, feed, stages, shown, spoken, languages, conversation };
+  return { host, get cards() { return host.children.filter(node => node.className === 'conversation-work-card'); }, feed, stages, shown, spoken, languages, conversation };
 }
 const item = (id, automaticSpeech, classification = 'native_work') => ({ id, sessionId: 'owner-session', state: 'completed', classification,
   result: { text: id, version: 1, deliveryId: id, presentation: 'available', automaticSpeech } });
@@ -28,7 +29,7 @@ test('a review is displayed without a second voice; explicit Listen still reads 
   try {
     h.feed.follow('owner-session'); await tick(); await h.feed.naturalPause();
     assert.deepEqual(h.spoken, []); assert.deepEqual(h.stages, ['displayed']);
-    h.host.children[0].children.find(node => node.type === 'button').onclick(); await tick();
+    h.cards[0].children.find(node => node.type === 'button').onclick(); await tick();
     assert.deepEqual(h.spoken, ['alternate-story']); assert.deepEqual(h.stages, ['displayed', 'replay', 'started', 'completed']);
   } finally { h.feed.dispose(); delete global.document; }
 });
@@ -63,9 +64,9 @@ test('automatic long explanations and explicit Listen both speak the complete re
   try {
     h.feed.follow('owner-session'); await tick(); await h.feed.naturalPause();
     assert.equal(h.spoken[0], full);
-    assert.equal(h.host.children[0].children[1].textContent, full);
-    assert.match(h.host.children[0].children[0].textContent, /presented/);
-    h.host.children[0].children.find(node => node.type === 'button').onclick(); await tick();
+    assert.equal(h.cards[0].children.find(node => node.className === 'conversation-work-answer').textContent, full);
+    assert.match(h.cards[0].children.find(node => node.className === 'conversation-work-status').textContent, /presented/);
+    h.cards[0].children.find(node => node.type === 'button').onclick(); await tick();
     assert.equal(h.spoken[1], full);
     assert.deepEqual(h.stages, ['displayed', 'claim', 'started', 'completed', 'replay', 'started', 'completed']);
   } finally { h.feed.dispose(); delete global.document; }
@@ -84,8 +85,8 @@ test('a document result speaks its projected summary, displays everything and re
   try {
     h.feed.follow('owner-session'); await tick(); await h.feed.naturalPause();
     assert.deepEqual(h.spoken, [row.result.spokenText]);
-    assert.equal(h.host.children[0].children[1].textContent, row.result.displayText);
-    h.host.children[0].children.find(node => node.type === 'button').onclick(); await tick();
+    assert.equal(h.cards[0].children.find(node => node.className === 'conversation-work-answer').textContent, row.result.displayText);
+    h.cards[0].children.find(node => node.type === 'button').onclick(); await tick();
     assert.equal(h.spoken[1], row.result.readingText);
     assert.deepEqual(h.languages, ['fr', 'fr'], 'a later language choice cannot change the original result or its replay');
     assert.equal(h.stages.filter(stage => stage === 'claim').length, 1);
