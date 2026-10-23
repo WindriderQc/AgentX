@@ -30,7 +30,6 @@ body:has(.page-presentation.is-active) #app { width: 100%; max-width: 1920px; ma
 body:has(.page-presentation.is-active) .conversation-shell { max-width: none; padding-block: 0; }
 body:has(.page-presentation.is-active) .conversation-shell > :is(.conversation-heading, .conversation-toolbar, .conversation-team, .conversation-history, .conversation-recap) { display: none; }
 body:has(.page-presentation.is-active) .conversation-shell .conversation-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 350px); gap: 20px; max-width: none; align-items: start; }
-body:has(.page-presentation.is-active) .conversation-settings { display: none; }
 body:has(.page-presentation.is-active) .conversation-stage { margin-top: 76px; padding: 10px; }
 body:has(.page-presentation.is-active) .conversation-cockpit { display: flex; flex-direction: column; gap: 10px; }
 body:has(.page-presentation.is-active) .conversation-cockpit > #conversationWorkflow { display: none; }
