@@ -259,6 +259,13 @@ both interval fields.
   confirmation, care actions assignable only to children old enough), then
   publish with a preview of what the children will see.
 
+Google Calendar owns personal events, recurring series and standard reminders.
+Core's shared `personal_calendar` tool uses one native credential-host transport;
+personal runtimes select it through their existing MCP grants. Calendar creates
+retain a stable Google event ID for recovery, with no mirror store or parallel
+scheduler. Core owns actions to check off and their occurrence-fenced repeating
+completion. See [personal calendar](PERSONAL_CALENDAR.md).
+
 Personal-task deadlines follow one contract on every write path (the
 Household `POST /api/secretary/tasks` and `POST /api/secretary/tasks/update`
 routes and the Secretary MCP `add_personal_task` / `update_personal_task`

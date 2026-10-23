@@ -48,7 +48,7 @@
         list.innerHTML = tasks.length ? tasks.map(row).join('')
           : '<div class="dad-clear"><span>✓</span><strong>Nothing to sort.</strong><small>No old due date or past activity.</small></div>';
         window.HouseholdDadDay?.clamp?.(list, 3);
-        window.HouseholdDadDay?.selectable?.(list, { close: (ref) => post('/api/secretary/tasks/complete', { ref, note: 'Fermée en lot depuis Dad\'s Desk : plus utile.', by: 'household-dad-desk' }), done: (closed) => { host.dataset.touched = 'true'; status(`${closed} task${closed === 1 ? '' : 's'} closed.`); return load(); } });
+        window.HouseholdDadDay?.selectable?.(list, { close: (ref) => post('/api/secretary/tasks/complete', { ref, stopRepeat: true, note: 'Fermée en lot depuis Dad\'s Desk : plus utile.', by: 'household-dad-desk' }), done: (closed) => { host.dataset.touched = 'true'; status(`${closed} task${closed === 1 ? '' : 's'} closed.`); return load(); } });
       } catch (error) { status(error.message); }
     }
     list.addEventListener('click', async (event) => {
@@ -62,7 +62,7 @@
       button.disabled = true;
       host.dataset.touched = 'true';
       try {
-        if (action === 'close') await post('/api/secretary/tasks/complete', { ref, note: 'Fermée depuis Dad\'s Desk : plus utile.', by: 'household-dad-desk' });
+        if (action === 'close') await post('/api/secretary/tasks/complete', { ref, stopRepeat: true, note: 'Fermée depuis Dad\'s Desk : plus utile.', by: 'household-dad-desk' });
         if (action === 'relevant') await post('/api/secretary/tasks/update', { ref, relevantUntil: noon(date), by: 'household-dad-desk' });
         if (action === 'due') await post('/api/secretary/tasks/update', { ref, dueAt: noon(date), by: 'household-dad-desk' });
         status(`#${ref}: ${action === 'close' ? 'closed' : action === 'relevant' ? `useful until ${day(noon(date))}` : `new due date ${day(noon(date))}`}.`);

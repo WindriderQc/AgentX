@@ -209,6 +209,11 @@ const PipelineTaskSchema = new mongoose.Schema({
   dependsOn: { type: [String], default: [] },          // pipelineIds
   notBefore: { type: Date, default: null, index: true },
   dueAt: { type: Date, default: null, index: true },
+  personalRepeat: { type: mongoose.Schema.Types.Mixed, default: undefined },
+  personalRepeatAnchor: { type: Date, default: undefined },
+  personalLastCompletedOccurrence: { type: Date, default: undefined },
+  personalCaptureId: { type: String, default: undefined },
+  personalCaptureFingerprint: { type: String, default: undefined },
   // Personal tasks only: the day of the activity the task serves. Once it has
   // passed the task is pointless, even when its own dueAt was never met.
   relevantUntil: { type: Date, default: undefined },
@@ -290,6 +295,7 @@ PipelineTaskSchema.index(
   { unique: true, partialFilterExpression: { sourceKey: { $type: 'string' } } }
 );
 PipelineTaskSchema.index({ 'automation.mode': 1, status: 1, priority: 1 });
+PipelineTaskSchema.index({ personalCaptureId: 1 }, { unique: true, partialFilterExpression: { personalCaptureId: { $type: 'string' } } });
 PipelineTaskSchema.index({ 'automationLease.expiresAt': 1 });
 PipelineTaskSchema.index({ 'automationAttempts.acquiredAt': 1 });
 
