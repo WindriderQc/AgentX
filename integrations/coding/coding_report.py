@@ -405,13 +405,15 @@ def initial_ledger(root, path, snapshot, baseline):
 
 
 def escalation_allowed(progress, ledger, group):
-    """Escalate a group once, after its first local failure, if this run may (#835)."""
+    """Escalate once after a local failure or exhausted partial rounds, if allowed."""
     escalation = getattr(progress, 'report_escalation', None)
     if not escalation or not escalation.get('models'):
         return False
     calls, seconds = steps.remaining(progress)
-    return (calls >= 1 + steps.WRITER_CALLS and seconds >= 300
-            and all(ledger['documents'][path].get('attempts', 0) == 1 for path in group)
+    failed = all(ledger['documents'][path].get('attempts', 0) == 1 for path in group)
+    stalled = all(ledger['documents'][path]['state'] == 'partial'
+                  and ledger['documents'][path].get('partialRounds', 0) >= steps.MAX_PARTIAL_ROUNDS for path in group)
+    return (calls >= 1 + steps.WRITER_CALLS and seconds >= 300 and (failed or stalled)
             and not any(row.get('escalated') and set(row.get('documents', [])) == set(group) for row in ledger['steps']))
 
 
@@ -605,9 +607,9 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
         except ledgers.LedgerError as error:
             ledgers.record_failure(ledger, group, number, str(error))
             ledger['steps'][-1].update(requestId=args.request_id, jsonResultAvailable=value is not None)
-            if escalation_allowed(progress, ledger, group):
-                number += 1
-                escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source)
+        if escalation_allowed(progress, ledger, group):
+            number += 1
+            escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source)
         save()
     calls, seconds = steps.remaining(progress)
     if ledger['findings'] and calls >= steps.WRITER_CALLS and seconds >= steps.WRITER_SECONDS:
