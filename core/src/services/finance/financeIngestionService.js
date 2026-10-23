@@ -107,6 +107,10 @@ async function ingestDocument(filePath, {
   }
   const fileSha256 = crypto.createHash('sha256').update(await fs.readFile(filePath)).digest('hex');
   const known = await FinanceStatement.findOne({ fileSha256, status: 'reconciled' }).lean();
+  if (known && ledgerOf(known.ledger) !== ledgerOf(ledger)) {
+    throw Object.assign(new Error('This file is reconciled in another ledger. Review its ledger before depositing it again.'),
+      { code: 'FINANCE_STATEMENT_LEDGER_CONFLICT', status: 422 });
+  }
   if (known) return { outcome: 'duplicate', statementId: String(known._id), statementKey: known.statementKey, fileName };
 
   const text = await readText(filePath);
@@ -124,6 +128,14 @@ async function ingestDocument(filePath, {
     transactionCount: account.transactions.length
   }));
 
+  const statementKey = statementKeyOf(statement, ledger);
+  const previous = await FinanceStatement.findOne({ statementKey }).lean();
+  // With no account identifier, issuer + period can name two different
+  // accounts. Arithmetic alone cannot authorize replacing the first one.
+  if (previous && !statement.accountLast4 && previous.fileSha256 !== fileSha256) {
+    problems.push('Statement identity is ambiguous: another file covers this issuer and period without an account number. Confirm account identity before replacement.');
+  }
+
   if (problems.length) {
     const doc = await FinanceStatement.findOneAndUpdate(
       { fileSha256, status: 'needs_review' },
@@ -133,8 +145,6 @@ async function ingestDocument(filePath, {
     return { outcome: 'needs_review', statementId: String(doc._id), fileName, problems, attempts };
   }
 
-  const statementKey = statementKeyOf(statement, ledger);
-  const previous = await FinanceStatement.findOne({ statementKey }).lean();
   if (previous) await FinanceTransaction.deleteMany({ statementId: previous._id });
   const doc = await FinanceStatement.findOneAndUpdate(
     { statementKey },
