@@ -232,10 +232,10 @@
     return card;
   }
 
-  function create(container, { secrets = false, kinds = null, heading = 'On screen', space = 'personal' } = {}) {
+  function create(container, { secrets = false, kinds = null, heading = 'On screen', space = 'personal', onChange = null } = {}) {
     const list = node('div', 'display-board-list');
     container.replaceChildren(node('h2', 'display-board-heading', heading), list);
-    const update = () => { container.hidden = !list.childElementCount; };
+    const update = () => { container.hidden = !list.childElementCount; onChange?.(Array.from(list.children)); };
     const board = {
       add(block) {
         if (kinds && !kinds.includes(block?.kind)) return false;
@@ -257,7 +257,8 @@
       restore(blocks = []) { (Array.isArray(blocks) ? blocks : []).forEach(board.add); },
       has: key => Array.from(list.children).some(child => child.dataset?.key === key),
       context() {
-        return Array.from(list.children).filter(card => card._screenTarget).slice(0, 3).map(card => {
+        if (container.hidden) return [];
+        return Array.from(list.children).filter(card => card._screenTarget && !card.hidden).slice(0, 3).map(card => {
           const target = card._screenTarget, base = { page: target.page, status: 'unavailable' };
           if (!card._screenFrame) return { ...base, status: 'external' };
           try {
@@ -278,8 +279,10 @@
 
   // Pages and pictures get the visual zone; everything else goes to the text zone.
   function createScreen({ text, visual }, { secrets = false, space = 'personal' } = {}) {
+    const presentation = space === 'personal' ? root.NestorPagePresentation?.mount({ visual }) : null;
     const boards = [create(text, { secrets, space, kinds: ['text', 'list', 'table', 'code', 'link', 'secret'] }),
-      create(visual, { secrets, space, kinds: ['page', 'image', 'scene'], heading: 'Pages and images' })];
+      create(visual, { secrets, space, kinds: presentation ? ['image', 'scene'] : ['page', 'image', 'scene'], heading: 'Pages and images' })];
+    if (presentation) boards.push(create(presentation.board, { secrets, space, kinds: ['page'], heading: 'Page', onChange: presentation.update }));
     return {
       // True when one of the zones drew the block.
       add: block => boards.map(board => board.add(block)).some(Boolean),
