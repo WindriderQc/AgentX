@@ -908,6 +908,16 @@
       "secret": false,
       "description": "JSON display map (network/storage rows with host, supervisor, runtime, cadence) for Data Toolbox collectors, at most 32 KiB. Unset: the Toolbox shows registrations only."
     },
+    "ENERGY_IOT_DEVICE_ID": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Data IoT device id for the shared electrical meter shown by Core's read-only Energy surface. Unset: the Energy API reports that it is not configured."
+    },
     "DATA_EXPORT_DIR": {
       "services": [
         "data"

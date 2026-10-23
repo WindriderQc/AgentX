@@ -691,6 +691,22 @@ app.get('/analytics', (req, res) => {
   });
 });
 
+app.get('/energy', (req, res) => {
+  res.render('layouts/main', {
+    pageView: '../pages/energy',
+    pageLanguage: 'fr',
+    title: 'AgentX · Énergie',
+    service: 'core',
+    activePage: 'energy',
+    headCss: [
+      '<link rel="stylesheet" href="/styles.css">',
+      '<link rel="stylesheet" href="/css/energy.css">',
+      '<script src="/vendor/chart.js/4.4.4/chart.umd.js"></script>'
+    ].join('\n'),
+    footerJs: '<script src="/js/energy.js" defer></script>'
+  });
+});
+
 app.get('/performance', (req, res) => {
   res.render('layouts/main', {
     pageView: '../pages/performance',

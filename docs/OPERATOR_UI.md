@@ -849,3 +849,17 @@ same sources while fresh and clear the ring when switching source. Strings,
 configuration fields and device timestamps never become numeric telemetry.
 Profiles and timers compose the same MQTT connection and are separate from
 these three manual commands.
+
+## Cluster energy
+
+Open **System → Energy** (`/energy`) when the instance sets
+`ENERGY_IOT_DEVICE_ID` to an IoT device whose measures include `power`,
+`current`, `voltage` and `energy`. The page is read-only. It uses Data's IoT
+history and places completed AgentX inference and operations intervals on the
+same time axis for 6 hours, 24 hours, seven days or 30 days.
+
+The meter remains authoritative for whole-device energy. Per-activity Wh are
+estimates above the lower quartile of observed power, labelled with confidence;
+overlapping activities and incomplete sample coverage reduce that confidence.
+The page never presents a shared-meter estimate as process-level measurement.
+Missing Data, an unknown configured device and stale samples are shown in words.

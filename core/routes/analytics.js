@@ -569,5 +569,6 @@ router.use('/', require('./analytics-prompt'));
 router.use('/', require('./analytics-effectiveness'));
 // Inference-log analytics: the lane that actually carries platform traffic.
 router.use('/inference', require('./analytics-inference'));
+router.use('/energy', require('./analytics-energy').createRouter());
 
 module.exports = router;

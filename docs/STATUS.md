@@ -9,6 +9,11 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 ## On main
 
+- **Energy observability.** `/energy` is a read-only shared-meter timeline backed
+  by Data's existing MQTT IoT history. Instances opt in with
+  `ENERGY_IOT_DEVICE_ID`; measured energy stays separate from confidence-labelled
+  inference and automation estimates.
+
 - **Automations.** `/automations` is the shared catalogue and calendar for native
   AgentX host jobs, Core backups and OpenClaw cron jobs, including native core
   functions. Identity comes from the owning scheduler; Cluster Schedule mirrors

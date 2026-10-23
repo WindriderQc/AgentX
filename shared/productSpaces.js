@@ -57,6 +57,7 @@ function productSpaces(link) {
       item('agent-ops', 'Agent Ops', '/agent-ops', 'fa-users-gear'),
       item('automations', 'Automations', '/automations', 'fa-gears'),
       item('analytics', 'AI activity', '/analytics', 'fa-chart-line'),
+      item('energy', 'Energy', '/energy', 'fa-bolt'),
       item('performance', 'Server performance', '/performance', 'fa-tachometer-alt'),
       item('backup', 'Backup', '/backup', 'fa-box-archive'),
       item('iot', 'IoT devices', '/data-toolbox#iot', 'fa-microchip'),
