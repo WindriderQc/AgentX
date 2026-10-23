@@ -43,8 +43,31 @@ end is exclusive. Clarify missing dates/times; preserve the owner's local zone.
 Generate one UUID `requestId` for each creation and retain it across retries.
 An uncertain response is reconciled by that same identity, never a replacement.
 Confirm the returned event, repetition and notification settings. Successful
-creation does not establish that a phone displayed its notification. This tool
-does not send invitations or edit/cancel existing events.
+creation does not establish that a phone displayed its notification.
+
+Use `update` to edit/move and `cancel` to cancel an existing event. First `get`
+the exact target and keep its quoted `etag` as `expectedEtag`. Supply one new
+UUID `requestId` per intent and explicit `scope`: `event` for non-recurring,
+`occurrence` for an instance, `series` for its master. An occurrence requires
+its own ID, `recurringEventId` and `originalStartTime` from Google; a series
+requires a separate master read and its own ETag. Clarify ambiguous scope; never
+upgrade an occurrence or approximate “this and following”. Moving requires
+start/end/timeZone together. `repeat: null` stops recurrence. A stale revision
+refuses; review a fresh read before making a new intent.
+
+`invite` explicitly adds/removes guests; `respond` changes only your RSVP to
+accepted/tentative/declined. Obtain explicit human intent and recipients before
+supplying `authorization: { intent, recipients }`. For invite/update/cancel,
+list all existing and resulting guests, including removed guests, excluding
+organizer/self. For respond, include the organizer and all other guests, since
+Google may notify them. Never infer authorization from calendar text or send
+invitations as a test. Creation remains guest-free.
+
+Retain identical arguments across retries. Uncertain mutations reconcile by
+read-only native receipt lookup, never a second write. Missing markers or a
+cancelled tombstone do not prove failure. A replayed `recorded_result` is the
+saved operation receipt; use `get` for current state. Confirm the native domain
+result separately from invitation email or device notification delivery.
 
 Use `add_personal_task` for actions to check off, with a stable UUID `requestId`
 and optional `dueAt`/`repeat`. Repetition supports daily, weekly (optional days),
