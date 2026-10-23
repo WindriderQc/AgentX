@@ -81,6 +81,15 @@ describe('QdrantVectorStore revision writes', () => {
     expect(await qdrant.getDocument('doc')).toMatchObject({ hash: 'v2', chunkCount: 150 });
   });
 
+  test('fact dates and recording time survive chunk payloads, document reads and listings', async () => {
+    const metadata = { validFrom: '2026-01-05T00:00:00.000Z', recordedAt: '2026-01-20T00:00:00.000Z',
+      sourceRefs: [{ system: 'memory-review', id: 'run:candidate' }] };
+    await qdrant.upsertDocument('doc', metadata, chunks(2, 'v2'));
+    expect(stored(state)).toEqual([expect.objectContaining(metadata), expect.objectContaining(metadata)]);
+    expect(await qdrant.getDocument('doc')).toMatchObject(metadata);
+    expect((await qdrant.listDocuments()).documents[0]).toMatchObject(metadata);
+  });
+
   test('a shorter version removes the previous tail', async () => {
     await qdrant.upsertDocument('doc', { hash: 'v2' }, chunks(20, 'v2'));
     const payloads = stored(state);
@@ -124,7 +133,8 @@ describe('legacy points without a revision', () => {
     seedLegacy(() => 'old', 3);
     const qdrant = store();
     expect(await qdrant.getDocument('note')).toEqual({
-      documentId: 'note', source: 'notes/note.md', tags: undefined, hash: 'old', chunkCount: 3
+      documentId: 'note', source: 'notes/note.md', tags: undefined, hash: 'old', chunkCount: 3,
+      validFrom: null, recordedAt: null, sourceRefs: []
     });
     await qdrant.upsertDocument('note', { hash: 'new' }, chunks(2, 'new'));
     expect(stored(state).map(payload => payload.text).sort()).toEqual(['new-0', 'new-1']);

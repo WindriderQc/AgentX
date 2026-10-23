@@ -19,7 +19,8 @@ class CancelledError extends Error {}
 
 const CHUNK_ZERO_FIELDS = [
   'documentId', 'originalText', 'source', 'tags', 'scope', 'sensitivity', 'format',
-  'chunkSize', 'chunkOverlap', 'hash', 'title', 'sourceIdentityKind', 'contentHash'
+  'chunkSize', 'chunkOverlap', 'hash', 'title', 'sourceIdentityKind', 'contentHash',
+  'validFrom', 'recordedAt', 'sourceRefs'
 ];
 // One page holds whole original texts (up to 2 M characters each) under the
 // 32 MiB scroll response cap.
@@ -45,6 +46,10 @@ function buildUpsertMetadata(payload) {
       ...(keepsDocumentId ? { documentId: payload.documentId } : {}),
       source,
       tags: Array.isArray(payload.tags) ? payload.tags : [],
+      validFrom: payload.validFrom || null,
+      recordedAt: payload.recordedAt || null,
+      sourceRefs: payload.sourceRefs || [],
+      restoreFactMetadata: true,
       ...(hasScope ? { scope: payload.scope, sensitivity: payload.sensitivity } : {}),
       ...(payload.format ? { format: payload.format } : {}),
       ...(payload.chunkSize != null ? { chunkSize: payload.chunkSize } : {}),
@@ -60,7 +65,7 @@ async function readTargetIndex(targetStore) {
   const index = new Map();
   for await (const points of targetStore._scrollPages({
     filter: CHUNK_ZERO_FILTER,
-    withPayload: { include: ['documentId', 'contentHash', 'hash'] },
+    withPayload: { include: ['documentId', 'contentHash', 'hash', 'validFrom', 'recordedAt', 'sourceRefs'] },
     pageSize: 1000
   })) {
     for (const point of points) {
@@ -75,7 +80,10 @@ function unchangedInTarget(targetIndex, payload) {
   const existing = targetIndex?.get(payload.documentId);
   return Boolean(existing)
     && (existing.contentHash || null) === (payload.contentHash || null)
-    && (existing.hash || null) === (payload.hash || null);
+    && (existing.hash || null) === (payload.hash || null)
+    && (existing.validFrom || null) === (payload.validFrom || null)
+    && (existing.recordedAt || null) === (payload.recordedAt || null)
+    && JSON.stringify(existing.sourceRefs || []) === JSON.stringify(payload.sourceRefs || []);
 }
 
 async function copyPayloadIndexes(sourceSchema, targetStore, summary) {

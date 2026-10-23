@@ -135,6 +135,8 @@ Instance configuration, data and deployment receipts remain outside Git.
   on `/mcp` share the same owner notes; sensitive identifiers leave note and
   journal text for the vault when its key is set. Agents file Markdown notes
   into the owner's vault inbox when the instance names one.
+  Reviewed notes and RAG memory documents retain fact validity separately from
+  recording time and keep candidate provenance through reads and reindexing.
   Historical source assertions have a separate review at `/dad/history`: source
   dates, event dates, attribution and revision-fenced decisions stay explicit.
   Retaining an action keeps it open; source review creates neither a personal

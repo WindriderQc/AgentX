@@ -90,6 +90,30 @@ beforeEach(() => {
 // ── POST /ingest ─────────────────────────────────────────
 
 describe('POST /api/rag/ingest', () => {
+  it('carries source fact metadata but never accepts a caller-supplied recording time', async () => {
+    mockStore.upsertDocumentWithChunks.mockResolvedValue({ documentId: 'dated', chunkCount: 1, status: 'created' });
+    const sourceRefs = [{ system: 'memory-review', id: 'run:candidate' }];
+    const res = await request(buildApp()).post('/api/rag/documents').send({ text: 'Synthetic late-reported fact',
+      validFrom: '2026-01-05T09:00:00+01:00', recordedAt: '1900-01-01T00:00:00Z', restoreFactMetadata: true, sourceRefs });
+    expect(res.status).toBe(200);
+    expect(mockStore.upsertDocumentWithChunks.mock.calls[0][1]).toMatchObject({ validFrom: '2026-01-05T08:00:00.000Z', sourceRefs });
+    expect(mockStore.upsertDocumentWithChunks.mock.calls[0][1]).not.toHaveProperty('recordedAt');
+    expect(mockStore.upsertDocumentWithChunks.mock.calls[0][1]).not.toHaveProperty('restoreFactMetadata');
+  });
+
+  it('reports a fact metadata deduplication conflict as 409', async () => {
+    mockStore.upsertDocumentWithChunks.mockRejectedValue(Object.assign(new Error('Synthetic metadata conflict'), { code: 'MEMORY_FACT_METADATA_CONFLICT' }));
+    const res = await request(buildApp()).post('/api/rag/documents').send({ text: 'Synthetic fact' });
+    expect(res.status).toBe(409);
+  });
+
+  it.each([{ validFrom: 'yesterday' }, { validFrom: '2026-01-01T12:00:00' },
+    { sourceRefs: [{ system: 'memory-review', id: 'x\nforged' }] }])('refuses malformed fact metadata before ingestion: %j', async metadata => {
+    const res = await request(buildApp()).post('/api/rag/documents').send({ text: 'Synthetic fact', ...metadata });
+    expect(res.status).toBe(400);
+    expect(mockStore.upsertDocumentWithChunks).not.toHaveBeenCalled();
+  });
+
   it('ingests valid text and returns result', async () => {
     mockStore.upsertDocumentWithChunks.mockResolvedValue({
       documentId: 'abc', chunkCount: 2, status: 'created',

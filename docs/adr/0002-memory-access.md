@@ -28,6 +28,13 @@ existing labels, and automatic deduplication cannot change a document's
 classification. Unlabelled historical data stays unclassified; the absence of a
 label is never permission to expose it to children.
 
+Memory-review writes also retain source fact validity (`validFrom`) separately
+from the store's first recording time (`recordedAt`) and bounded `sourceRefs`.
+The date of recording never fills an unknown fact date. Notes reuse their
+existing `createdAt`; RAG persists its recording timestamp through content
+updates and embedding-collection migration. This metadata preserves the same
+audience boundaries and standing automation policy; it grants no write authority.
+
 Core exposes an audience-bound memory read capability. Owner reads keep all
 information scopes, including private-domain and unclassified historical
 records. Household reads force `scope=household` and `sensitivity=normal` before
