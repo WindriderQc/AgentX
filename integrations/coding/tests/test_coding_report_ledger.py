@@ -45,6 +45,48 @@ def good_result():
 
 
 class LedgerTest(unittest.TestCase):
+    def test_identical_findings_keep_their_original_number_within_and_across_steps(self):
+        ledger = ledgers.new_ledger(snapshot())
+        result = good_result()
+        result['findings'].append(json.loads(json.dumps(result['findings'][0])))
+        first = ledgers.merge_step(ledger, ['docs/A.md'], result, source, 1)
+        self.assertEqual((first['findings'], first['duplicateFindings']), (1, 1))
+        repeated = good_result()
+        repeated['findings'][0]['evidence'][0]['check'] = 'Same source, reworded proof'
+        again = ledgers.merge_step(ledger, ['docs/A.md'], repeated, source, 2)
+        self.assertEqual((again['findings'], again['duplicateFindings']), (0, 1))
+        self.assertEqual([row['number'] for row in ledger['findings']], [1])
+        separate = good_result()
+        separate['findings'][0]['correction'] = 'A distinct proposed correction.'
+        ledgers.merge_step(ledger, ['docs/A.md'], separate, source, 3)
+        self.assertEqual([row['number'] for row in ledger['findings']], [1, 2])
+
+    def test_rendering_a_historical_duplicate_preserves_its_embedded_ledger(self):
+        ledger = ledgers.new_ledger(snapshot())
+        ledgers.merge_step(ledger, ['docs/A.md'], good_result(), source, 1)
+        duplicate = json.loads(json.dumps(ledger['findings'][0]))
+        duplicate.update(number=22, step=2)
+        ledger['findings'].append(duplicate)
+        original = json.dumps(ledger, sort_keys=True)
+        markdown = ledgers.render(ledger, 'Review')
+        self.assertIn('#### F1 — Retry limit', markdown)
+        self.assertNotIn('#### F22 — Retry limit', markdown)
+        self.assertIn('| 1 | 0 | 0 | 2 | 1 |', markdown)
+        self.assertEqual(ledgers.embedded(markdown), ledger)
+        self.assertEqual(json.dumps(ledger, sort_keys=True), original)
+        writer = steps.writer_prompt({**ledger, 'findings': ledgers.distinct_findings(ledger)}, '/out.json')
+        self.assertNotIn('F22', writer)
+
+    def test_duplicate_findings_still_require_valid_frozen_source_evidence(self):
+        ledger = ledgers.new_ledger(snapshot())
+        ledgers.merge_step(ledger, ['docs/A.md'], good_result(), source, 1)
+        before = json.dumps(ledger, sort_keys=True)
+        bad = good_result()
+        bad['findings'][0]['evidence'][0]['line'] = 999
+        with self.assertRaises(ledgers.LedgerError):
+            ledgers.merge_step(ledger, ['docs/A.md'], bad, source, 2)
+        self.assertEqual(json.dumps(ledger, sort_keys=True), before)
+
     def test_document_evidence_keeps_detailed_checks_up_to_core_coverage_bound(self):
         ledger = ledgers.new_ledger(snapshot())
         value = good_result()

@@ -128,6 +128,9 @@ and runs several short worker sessions in fresh context:
   leaving the task blocked instead of offering an incomplete report as delivered.
   A document can retain up to 100 source references, matching Core coverage;
   each finding remains bounded to 40 references. Every reference is checked.
+  Identical findings keep their first number across groups and executions. Older
+  duplicate rows remain in the embedded ledger but appear once in the report,
+  summary input and totals. Different claims or corrections remain separate.
   A model output limit fails that report step and retains its native receipt;
   after Core verifies termination, other groups may continue in the same
   budget. Operator stops, unresolved calls and execution deadlines still stop
