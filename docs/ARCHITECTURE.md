@@ -167,6 +167,11 @@ for it, and falls back to the local route, visibly, when that agent fails.
 
 ### Tasks
 
+[Work lifecycle](WORK_LIFECYCLE.md) defines routing between personal/family
+tasks, Pipeline, GitHub and resource planning, their fact ownership and the
+shared read-only heavy-work presentation. Shared storage does not merge domain
+permissions or completion rules.
+
 Core owns task persistence (`PipelineTask`, atomic `Counter`). Trusted server
 consumers receive bounded operations, never models or an ID allocator:
 

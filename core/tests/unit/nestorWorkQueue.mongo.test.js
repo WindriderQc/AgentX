@@ -65,8 +65,32 @@ test('Nestor planning keeps complete counts and cannot dispatch or use an execut
   await nestor.operate({ action: 'request', request: { ...request, key: 'two' } });
   const page = await nestor.operate({ action: 'list', limit: 1 });
   expect(page.count).toBe(2); expect(page.jobs).toHaveLength(1); expect(page.counts.requested).toBe(2);
+  expect(page.summary).toMatchObject({ total: 2, counts: { action_required: 2, automatic_queue: 0 }, reservations: { total: 0 } });
+  expect(page.jobs[0].presentation.nextAction).toMatchObject({ actor: 'operator', code: 'prepare_executor' });
+  expect(page.jobs[0].presentation.observedAt).toBe(page.observedAt);
+  expect(page.jobs[0].executor).toBeUndefined();
   await expect(nestor.operate({ action: 'begin', id: one.id })).rejects.toMatchObject({ statusCode: 400 });
   await nestor.operate({ action: 'cancel', id: one.id, expectedRevision: one.revision });
   expect((await notices.inbox()).count).toBe(0);
+  expect(await Runtime.countDocuments()).toBe(0);
+});
+
+test('Nestor and operator reads share automatic/action counts without changing native records', async () => {
+  const input = { ...fixture('auto'), kind: 'profiler', executor: { hostId: 'fixture' } };
+  const auto = await queue.submit(input, 'fixture');
+  await queue.reserve(auto.id, { expectedRevision: auto.revision, start: new Date(Date.now() + 60000).toISOString(), autoStart: true }, 'fixture');
+  await queue.submit({ ...fixture('proposal'), executor: null }, 'fixture');
+  const before = await Queue.findById('heavy-work').lean();
+  const operator = await queue.list();
+  const page = await nestor.operate({ action: 'list', offset: 1, limit: 1 });
+  expect(page.summary.counts).toEqual(operator.summary.counts);
+  expect(page.summary).toMatchObject({ total: 2, counts: { automatic_queue: 1, action_required: 1 }, reservations: { total: 1 } });
+  const shown = await nestor.operate({ action: 'show', id: auto.id });
+  expect(shown.presentation).toMatchObject({ phase: 'automatic_queue', nextAction: { actor: 'core', code: 'wait_slot' } });
+  expect(shown.executor).toBeUndefined();
+  const after = await Queue.findById('heavy-work').lean();
+  expect(after.revision).toBe(before.revision);
+  expect(after.jobs).toEqual(before.jobs);
+  expect(after.jobs.every(job => job.presentation === undefined)).toBe(true);
   expect(await Runtime.countDocuments()).toBe(0);
 });

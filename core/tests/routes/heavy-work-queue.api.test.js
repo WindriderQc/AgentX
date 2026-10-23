@@ -25,6 +25,10 @@ it('preserves private no-store receipts and native caller attribution', async ()
   expect(replay.body.data.id).toBe(created.body.data.id);
   const list = await request(app).get('/queue').expect(200);
   expect(list.body.data).toMatchObject({ authority: 'core.heavy-work-queue', count: 1 });
+  expect(list.body.data.summary).toMatchObject({ total: 1, counts: { automatic_queue: 0, action_required: 1 } });
+  const shown = await request(app).get(`/queue/${created.body.data.id}`).expect(200);
+  expect(shown.body.data.presentation).toMatchObject({ phase: 'action_required', nextAction: { code: 'plan_slot', actor: 'operator' } });
+  expect((await queue.get(created.body.data.id)).presentation).toBeUndefined();
 });
 
 it('refuses cross-site browser writes before creating a queue record', async () => {

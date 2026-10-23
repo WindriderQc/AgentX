@@ -5,6 +5,7 @@ const {createRequire}=require('node:module');
 const tree=path.resolve(__dirname,'../../..'),core=path.join(tree,'core'),req=createRequire(core+'/package.json');
 const express=req('express'),{chromium}=require('playwright'),{mount}=req('./routes/automations');
 const {buildProductNavigation}=require(tree+'/shared/productNavigation');
+const heavyReadModel=req('./src/services/heavyWorkQueueReadModel');
 const report=process.env.OPERATIONS_REPORT_DIR;
 if(!report||path.resolve(report).startsWith(tree+path.sep))throw Error('Set OPERATIONS_REPORT_DIR outside Git');
 fs.mkdirSync(report,{recursive:true});
@@ -39,7 +40,8 @@ const timeline=date=>ownerEntries.map(entry=>({...entry,slots:[{start:date+'T12:
    case '/api/cluster/schedule/live':data={hosts:[],evidence:{authority:'agentx.cluster-schedule-live-detail',scope:'loaded-model-and-vram-detail',observedAt:now,headlineAuthority:false}};break;
    case '/api/nerve-center/ecosystem':data={schemaVersion:2,authority:'agentx-product',readOnly:true,generatedAt:now,health:{configuredHosts:0,onlineHosts:0,offlineHosts:0,observedModels:0,status:'ok'}};break;
    case '/api/cluster/schedule/next':data={tasks:[]};break;
-   case '/api/cluster/schedule/work-queue':data={authority:'core.heavy-work-queue',jobs:heavyJobs,archivedCount:0};break;
+   case '/api/cluster/schedule/work-queue':data={authority:'core.heavy-work-queue',
+    jobs:heavyJobs.map(job=>heavyReadModel.project(job)),summary:heavyReadModel.summarize(heavyJobs),observedAt:now,archivedCount:0};break;
    case '/api/cluster/schedule/conflicts':data={conflicts:[]};break;
    case '/api/cluster/schedule/claims':data={claims:[]};break;
    case '/api/cluster/schedule/heatmap':data={hosts:[],days:[],cells:[],timeZone:'America/Toronto'};break;
@@ -62,6 +64,8 @@ const timeline=date=>ownerEntries.map(entry=>({...entry,slots:[{start:date+'T12:
  await page.locator('[data-queue-action="finished"]').click();assert.equal(await page.locator('[data-queue-id="old-receipt"]').count(),1);
  await page.locator('[data-queue-action="active"]').click();assert.equal(await page.locator('[data-queue-id="pending-request"]').count(),1);
  assert((await page.locator('[data-queue-id="lane-auto"]').innerText()).includes('Starts automatically at its time'));
+ assert((await page.locator('.cs-queue-summary').innerText()).includes('En file automatique · 1'));
+ assert((await page.locator('.cs-queue-summary').innerText()).includes('En attente d’action · 2'));
  assert.equal(await page.locator('[data-queue-id="lane-auto"] [data-queue-action="run"]').count(),0);
  assert.equal(await page.locator('[data-queue-id="lane-open"] [data-queue-action="run"]').count(),1);
  await page.locator('[data-queue-id="lane-open"] [data-queue-action="reserve"]').click();

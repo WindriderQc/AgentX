@@ -72,6 +72,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   operator CLI explicitly launches existing Benchmark plans and Profiler host
   queues, and tracks custom coding checks through explicit operator receipts.
   Accepted images queue before GPU work and start once within a bounded window.
+  Operator and Nestor reads share complete automatic/action-required phase
+  counts, responsible next actions and independent reservation counts through
+  the [work lifecycle contract](WORK_LIFECYCLE.md).
   Nestor can propose/read/cancel unstarted work and read durable result alerts;
   LeadX queues preparation and approved Benchmark starts through the same entrance.
   Confirmed migration preserves legacy QUEUE.md as an archive. Code tests are
@@ -424,6 +427,7 @@ Issues hold the current work and remaining acceptance:
 
 | Area | Tracking |
 |---|---|
+| Work intake, issue/task relationships and attributable authority | [#1011](https://github.com/WindriderQc/AgentX/issues/1011) |
 | Playground screen capture through canonical attachments | [#2](https://github.com/WindriderQc/AgentX/issues/2) |
 | Real-device acceptance for phone, microphone and voice | [#3](https://github.com/WindriderQc/AgentX/issues/3) |
 | Principal model selection and DSH Studio qualification | [#734](https://github.com/WindriderQc/AgentX/issues/734) |
