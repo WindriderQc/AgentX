@@ -8,6 +8,7 @@
   const MAX_BLOCKS = 30;
   const KIND_LABELS = { text: 'Note', list: 'List', table: 'Table', code: 'Code', link: 'Link', secret: 'Secret', image: 'Image', scene: '3D', page: 'Page' };
   const STAGE_WAIT_MS = 4000;
+  let sequence = 0;
 
   function node(tag, className, text) {
     const element = document.createElement(tag);
@@ -40,10 +41,11 @@
       .map(row => row.replace(/^\||\|$/g, '').split('|').map(cell => cell.trim()));
     if (!rows.length) return node('pre', 'display-block-text', body);
     const wrap = node('div', 'display-block-table');
+    wrap.tabIndex = 0; wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', 'Tableau');
     const table = node('table');
     rows.forEach((cells, index) => {
       const tr = node('tr');
-      cells.forEach(cell => tr.append(node(index === 0 ? 'th' : 'td', '', cell)));
+      cells.forEach(cell => tr.append(inlineText(node(index === 0 ? 'th' : 'td'), cell)));
       table.append(tr);
     });
     wrap.append(table);
@@ -158,6 +160,7 @@
     const pages = root.AgentXScreenPages;
     const href = pages.url(target);
     const holder = node('div', 'display-page-holder');
+    holder.dataset.state = 'loading';
     const open = node('a', 'display-block-action', 'Ouvrir dans un onglet');
     open.href = pages.url(target, { screen: false });
     open.target = '_blank'; open.rel = 'noopener noreferrer';
@@ -181,13 +184,14 @@
       // A cross-origin load event does not prove successful service rendering.
       try {
         const doc = frame.contentDocument;
+        holder.dataset.state = doc?.body && doc.location.href !== 'about:blank' ? 'visible' : 'unavailable';
         status.textContent = doc?.body && doc.location.href !== 'about:blank'
           ? 'Page ouverte à côté de la conversation.'
           : 'Le service contrôle son affichage intégré. Si la page reste vide, ouvrez-la dans un onglet.';
-      } catch { status.textContent = 'Le service contrôle son affichage intégré. Si la page reste vide, ouvrez-la dans un onglet.'; }
+      } catch { holder.dataset.state = 'external'; status.textContent = 'Le service contrôle son affichage intégré. Si la page reste vide, ouvrez-la dans un onglet.'; }
     });
-    frame.addEventListener('error', () => { status.textContent = 'Affichage intégré indisponible. Ouvrez le service dans un onglet.'; });
-    const expand = node('button', 'display-block-action', 'Agrandir');
+    frame.addEventListener('error', () => { holder.dataset.state = 'unavailable'; status.textContent = 'Affichage intégré indisponible. Ouvrez le service dans un onglet.'; });
+    const expand = node('button', 'display-block-action display-page-expand', 'Agrandir');
     expand.type = 'button';
     expand.addEventListener('click', () => {
       const expanded = frame.classList.contains('is-expanded');
@@ -207,10 +211,13 @@
     const target = block.kind === 'page' ? pageTarget(block, space) : null;
     if (block.kind === 'page' && !target) return null;
     const card = node('article', 'display-block');
+    card._displayBlock = block;
+    card.dataset.presentationId = root.crypto?.randomUUID?.() || 'content-' + Date.now().toString(36) + '-' + (++sequence);
     card.dataset.kind = block.kind;
     const header = node('header', 'display-block-header');
     header.append(node('span', 'display-block-kind', KIND_LABELS[block.kind] || KIND_LABELS.text));
     if (block.title) header.append(node('strong', 'display-block-title', block.title));
+    if (block.partial) header.append(node('span', 'display-block-note', 'Contenu partiel'));
     const actions = node('div', 'display-block-actions');
     header.append(actions);
     let content;
@@ -222,13 +229,16 @@
       if (block.kind === 'table') content = tableBody(block.body);
       else if (block.kind === 'link') content = linkBody(block.body, space);
       else if (block.kind === 'code') { content = node('pre', 'display-block-code'); content.append(node('code', '', block.body)); }
-      else content = inlineText(node('div', 'display-block-text'), block.body);
+      else content = root.AgentXPresentationMarkdown
+        ? root.AgentXPresentationMarkdown.render(node('div', 'display-block-text display-block-markdown'), block.body, { links: linksClickable(space) })
+        : inlineText(node('div', 'display-block-text'), block.body);
       actions.append(copyButton(block.body));
     }
     card.append(header, content);
     card._dispose = content._dispose;
     card._screenFrame = content._screenFrame;
     card._screenTarget = block.kind === 'page' ? target : null;
+    card._screenState = () => content.dataset.state;
     return card;
   }
 
@@ -258,7 +268,9 @@
       has: key => Array.from(list.children).some(child => child.dataset?.key === key),
       context() {
         if (container.hidden) return [];
-        return Array.from(list.children).filter(card => card._screenTarget && !card.hidden).slice(0, 3).map(card => {
+        const visible = Array.from(list.children).filter(card => !card.hidden);
+        if (root.AgentXPresentationObservation) return visible.slice(0, 1).map(root.AgentXPresentationObservation.observe);
+        return visible.filter(card => card._screenTarget).slice(0, 3).map(card => {
           const target = card._screenTarget, base = { page: target.page, status: 'unavailable' };
           if (!card._screenFrame) return { ...base, status: 'external' };
           try {
@@ -277,12 +289,18 @@
     return board;
   }
 
-  // Pages and pictures get the visual zone; everything else goes to the text zone.
+  // Nestor has one selected content workspace. Family retains its existing
+  // scoped boards and permissions; there is no second presentation store.
   function createScreen({ text, visual }, { secrets = false, space = 'personal' } = {}) {
     const presentation = space === 'personal' ? root.NestorPagePresentation?.mount({ visual }) : null;
+    if (presentation) {
+      text.hidden = visual.hidden = true;
+      const board = create(presentation.board, { secrets, space, heading: 'Contenu', onChange: presentation.update });
+      return { add: board.add, restore: board.restore, has: board.has,
+        context: () => presentation.active() ? board.context() : [], clear: board.clear };
+    }
     const boards = [create(text, { secrets, space, kinds: ['text', 'list', 'table', 'code', 'link', 'secret'] }),
-      create(visual, { secrets, space, kinds: presentation ? ['image', 'scene'] : ['page', 'image', 'scene'], heading: 'Pages and images' })];
-    if (presentation) boards.push(create(presentation.board, { secrets, space, kinds: ['page'], heading: 'Page', onChange: presentation.update }));
+      create(visual, { secrets, space, kinds: ['page', 'image', 'scene'], heading: 'Pages and images' })];
     return {
       // True when one of the zones drew the block.
       add: block => boards.map(board => board.add(block)).some(Boolean),

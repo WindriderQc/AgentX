@@ -318,8 +318,10 @@ function createPersonaTurnHandler({
           : { text: '', refs: [] };
         const contextBase = [systemPromptFor(pack, { ...context, contextOnly: true }), interruptedContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || ''].join('');
+        const screen = !pack.childSafe && !isLlmX && !consult ? require('./screen-context') : null;
+        entry.presentationContext = screen?.presentationEvidence(req.body?.screen, screenPages);
         const contextTail = [isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || '',
-          !pack.childSafe && !isLlmX && !consult ? require('./screen-context').screenContext(req.body?.screen, screenPages) : ''].join('');
+          screen?.screenContext(req.body?.screen, screenPages, entry.presentationContext) || ''].join('');
         const turnContext = [contextBase, brainAdvice.text, workAdvice.text, contextTail].join('').trim();
         const guardianContext = guardianSession ? dedicatedGuardian.selectedContext({
           base: contextBase, brain: brainAdvice, work: workAdvice, tail: contextTail }) : null;
@@ -484,6 +486,7 @@ function createPersonaTurnHandler({
         knowledgeSourceCount: knowledge.sourceCount,
         knowledgeCorpusFingerprint: knowledge.corpusFingerprint,
         personalContinuity: continuity.personal || null, toolEvidence,
+        ...(entry.presentationContext && { presentationContext: entry.presentationContext }),
         speakerAgentId: speaker?.agentId || '',
         ...(adviceRefs.length ? { adviceRefs } : {}),
         ...(speaker ? { speaker: { ...speaker, personaVersion: memberPersona?.version ?? null } } : {}),
@@ -597,7 +600,8 @@ function createPersonaTurnHandler({
             attachments: entry.attachments,
             inputSha256: crypto.createHash('sha256').update(userText).digest('hex'),
             replySha256: crypto.createHash('sha256').update(reply).digest('hex'),
-            ...entry.auditContext, durationMs: Date.now() - startedAt, ...(entry.workId ? { outcome: abort.signal.aborted ? 'cancelled' : 'failed' } : {})
+            ...entry.auditContext, ...(entry.presentationContext && { presentationContext: entry.presentationContext }),
+            durationMs: Date.now() - startedAt, ...(entry.workId ? { outcome: abort.signal.aborted ? 'cancelled' : 'failed' } : {})
           });
           if (entry.workId) await conversationWorks.guardianSettled(entry.workId, abort.signal.aborted ? 'cancelled' : 'failed');
         }

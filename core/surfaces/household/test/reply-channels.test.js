@@ -116,12 +116,20 @@ test('long-list summaries remove noisy tokens before shortening and leave explic
   const result = run(chunks(reply, 7), { language: 'en', allowSecrets: true });
   assert.equal(result.say, 'First items: First; Second; Third. The full list is on screen.');
   assert.doesNotMatch(result.streamed, /sk-|a1|https|\/srv/);
-  assert.equal(run([`<show kind="list">${reply}</show>`], { language: 'en' }).say, 'I put it on screen.');
+  assert.equal(run([`<show kind="list">${reply}</show>`], { language: 'en' }).say, 'Here is the content for your screen.');
 });
 
 test('a reply made only of screen content still says something', () => {
   const result = run(['<show kind="table">| a |</show>'], { language: 'en' });
-  assert.equal(result.say, 'I put it on screen.');
+  assert.equal(result.say, 'Here is the content for your screen.');
+});
+
+test('an interrupted display remains explicitly partial through storage and history', () => {
+  const result = run(['<show kind="list" title="Steps">- First\n- Sec']);
+  assert.equal(result.display[0].partial, true);
+  const stored = storedDisplay(result.display);
+  assert.equal(stored[0].partial, true);
+  assert.match(historyText(result.say, stored), /content is partial/);
 });
 
 test('ordinary prose streams before completion and keeps the complete answer', () => {

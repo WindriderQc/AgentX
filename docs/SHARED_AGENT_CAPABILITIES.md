@@ -61,6 +61,12 @@ consume the same bus with its native MCP client. Provider choice and the number
 of agent roles do not change the domain owner. Direct AgentX/Ollama inference
 does not become a tool-executing agent merely because a capability is published.
 
+The [presentation/read contract](CONTENT_PRESENTATION.md) follows this same
+ownership: Core projects and validates the exact Analytics view snapshot;
+Hermes uses `read_presentation` on this bus and OpenClaw relays it through its
+optional private-owner adapter. The runtime does not implement another page
+reader. Current selection and display observation do not grant domain access.
+
 ## Qualification
 
 Separate these observations:

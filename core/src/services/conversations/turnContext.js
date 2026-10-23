@@ -17,6 +17,7 @@ async function readTurnContext(conversations, query) {
     ...(row.display?.length && { display: row.display.filter(block => block.kind !== 'secret') }),
     ...(row.toolEvidence && { toolEvidence: row.toolEvidence }),
     ...(row.adviceRefs?.length && { adviceRefs: row.adviceRefs }),
+    ...(row.presentationContext && { historicalPresentation: row.presentationContext }),
     ...(row.speaker && { speaker: row.speaker }),
     ...(row.performedBy?.length && { performedBy: row.performedBy })
   }));

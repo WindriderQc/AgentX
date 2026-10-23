@@ -9,6 +9,16 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 ## On main
 
+- **Content presentation.** Personal Nestor selects pages, Markdown, lists,
+  tables, code and images in one content workspace with retained navigation,
+  copy, expansion and closure. Analytics' inference overview provides a bounded,
+  dated Core read of the same summary response and selected window. Current
+  browser selection, display observation and Core data remain distinct; their
+  evidence stays on the canonical turn. Shared MCP and an optional owner-only
+  OpenClaw adapter expose the reader. CPU/browser contracts are separate from
+  installed runtime and physical-device acceptance. See
+  [content presentation](CONTENT_PRESENTATION.md).
+
 - **Energy observability.** `/energy` is a read-only shared-meter timeline backed
   by Data's existing MQTT IoT history. Instances opt in with
   `ENERGY_IOT_DEVICE_ID`; measured energy stays separate from confidence-labelled

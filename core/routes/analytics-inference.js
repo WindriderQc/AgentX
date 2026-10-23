@@ -555,7 +555,7 @@ router.get('/summary', async (req, res) => {
       })
     };
 
-    envelope.success(res, {
+    const data = {
       window: { key, from, to },
       source: 'inferencelogs',
       scope: 'Every AgentX-routed inference call: chat, proxy, embedding, classification, benchmark.',
@@ -644,7 +644,9 @@ router.get('/summary', async (req, res) => {
         nonSuccesses: 'All calls whose terminal status is not success.'
       },
       currency: COST_CURRENCY
-    });
+    };
+    data.presentation = require('../src/services/presentationReadService').presentationReader.publishAnalytics(data);
+    envelope.success(res, data);
   } catch (err) {
     logger.error('Inference analytics summary failed', { error: err.message, stack: err.stack });
     envelope.error(res, 500, err.message);

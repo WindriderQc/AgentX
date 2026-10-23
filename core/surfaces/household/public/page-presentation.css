@@ -9,9 +9,22 @@
 .page-presentation-board > .display-board-list { display: block; max-height: none; overflow: visible; }
 .page-presentation .display-block { padding: 12px; }
 .page-presentation .display-block-actions { flex-wrap: wrap; }
-.page-presentation .display-block-actions button { display: none; }
+.page-presentation .display-page-expand { display: none; }
 .page-presentation .display-block-page { height: max(480px, calc(100dvh - 260px)); }
 .page-presentation .display-block-note { margin-bottom: 8px; font-size: .78rem; }
+.page-presentation-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.page-presentation .display-block-header { min-width: 0; }
+.page-presentation .display-block-text { max-height: 65dvh; overflow: auto; }
+.page-presentation .display-block-markdown { white-space: normal; }
+.display-block-markdown :is(pre, table) { max-width: 100%; overflow: auto; display: block; }
+.display-block-markdown pre { white-space: pre; padding: 12px; background: #06111a; }
+.display-block-markdown code { overflow-wrap: anywhere; }
+.display-block-markdown :is(h1,h2,h3,h4) { font-size: 1.05rem; margin-block: 1em .5em; }
+.display-block-markdown :is(ul,ol) { padding-inline-start: 1.5em; }
+.display-block-markdown th, .display-block-markdown td { padding: 6px 10px; border: 1px solid var(--line); }
+.page-presentation.is-expanded :is(.display-block-page, .display-block-text) { height: 80dvh; max-height: 80dvh; }
+.page-presentation select { min-width: 0; width: min(420px, 70vw); text-overflow: ellipsis; }
+.page-presentation [hidden] { display: none !important; }
 
 body:has(.page-presentation.is-active) #app { width: 100%; max-width: 1920px; margin-inline: auto; padding-block: 12px; }
 body:has(.page-presentation.is-active) .conversation-shell { max-width: none; padding-block: 0; }

@@ -16,6 +16,8 @@
     const holder = node('div'); holder.className = 'conversation-image';
     const status = node('p'); status.className = 'display-block-note'; status.setAttribute?.('role', 'status');
     holder.append(status);
+    let presentationState = 'unavailable';
+    holder._presentationState = () => presentationState;
     let operation = block.operation, timer, controller, disposed = false;
     holder._dispose = () => { disposed = true; clearTimeout(timer); controller?.abort(); };
     if (!valid(operation, space)) { status.textContent = block.body || 'Image request unavailable.'; return holder; }
@@ -34,11 +36,13 @@
       operation = op;
       const ready = op.state === 'completed' && op.runtimeRestored === true
         && /^[a-f0-9]{64}$/.test(op.artifact?.sha256 || '') && op.artifact.url === statusUrl + '/image';
+      presentationState = ready || ACTIVE.has(op.state) ? 'loading' : 'unavailable';
       status.textContent = ready ? LABELS.completed : op.state === 'completed' ? 'The image’s availability is still to be confirmed.' : label(op.state);
       if (ready && !figure) {
         figure = node('figure'); figure.className = 'display-block-figure';
         const img = node('img'); img.src = op.artifact.url; img.alt = block.title || block.body || 'Local creation'; img.loading = 'lazy'; img.decoding = 'async';
-        img.addEventListener('error', () => { figure.replaceChildren(node('p', 'This image is no longer available.')); }, { once: true });
+        img.addEventListener('load', () => { presentationState = 'visible'; }, { once: true });
+        img.addEventListener('error', () => { presentationState = 'unavailable'; figure.replaceChildren(node('p', 'This image is no longer available.')); }, { once: true });
         const download = node('a', 'Download the image'); download.href = op.artifact.url; download.download = `image-${id}.png`;
         figure.append(img, download); holder.append(figure);
       }
@@ -57,6 +61,7 @@
         if (!disposed && show(data.operation)) timer = setTimeout(poll, delay);
       } catch (error) {
         if (disposed) return;
+        presentationState = 'unavailable';
         status.textContent = error.terminal ? 'This request is no longer available in the conversation.'
           : 'Connection interrupted. Checking the drawing…';
         if (!error.terminal) timer = setTimeout(poll, 5000);

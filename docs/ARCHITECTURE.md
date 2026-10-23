@@ -854,8 +854,13 @@ pages and APIs retain the parental gateway guard.
   the model puts screen content in `<show kind="…">` blocks, and Core also
   diverts code, tables, long lists, links, paths and key-like tokens. Only the
   spoken text is streamed as `delta`, stored as `replyText` and sent to browser
-  TTS or native VoiX; blocks stream as `show` events to the page's "À l'écran"
-  zone (`display-board.js`) and are kept on the turn as `display`. Secrets are
+  TTS or native VoiX; blocks stream as `show` events to `display-board.js`
+  and are kept on the turn as `display`. Personal Nestor selects one common
+  content workspace; Family keeps its scoped boards. Analytics supplies a Core
+  read of the exact summary response behind the selected period, separately
+  from the untrusted browser display observation. Selection/read evidence stays
+  on the canonical turn, never in a parallel conversation store. See
+  [content presentation](CONTENT_PRESENTATION.md). Secrets are
   private-only, shown masked, and stored redacted. A `say_end` event follows
   the last spoken `delta`, before pictures are resolved and the turn is
   recorded, so the voice page says the reply's last clause without waiting for

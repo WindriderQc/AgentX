@@ -374,11 +374,16 @@
       $('analyticsWindow').value = windowKey;
       overview.dataset.state = state;
       overview.setAttribute('aria-busy', String(state === 'loading'));
+      // Only the committed response for this window may be discussed. Loading
+      // and failure immediately invalidate the old reference.
+      window.AgentXPresentedContent = { contract: 'agentx.presentation/v1', state,
+        filters: { window: windowKey }, selection: { groupBy, overlay }, read: state === 'ready' ? data?.presentation || null : null };
       if (state === 'ready') renderSummary(data);
       else clearSummary(state);
     });
     document.querySelectorAll('[data-ao-group]').forEach(button => button.addEventListener('click', () => {
       groupBy = button.dataset.aoGroup;
+      if (window.AgentXPresentedContent) window.AgentXPresentedContent.selection = { groupBy, overlay };
       document.querySelectorAll('[data-ao-group]').forEach(other => other.setAttribute('aria-pressed', String(other === button)));
       renderComparison();
     }));
@@ -389,6 +394,7 @@
     });
     document.querySelectorAll('[data-ao-overlay]').forEach(button => button.addEventListener('click', () => {
       overlay = button.dataset.aoOverlay;
+      if (window.AgentXPresentedContent) window.AgentXPresentedContent.selection = { groupBy, overlay };
       document.querySelectorAll('[data-ao-overlay]').forEach(other => other.setAttribute('aria-pressed', String(other === button)));
       if (summary) renderTrend(summary);
     }));

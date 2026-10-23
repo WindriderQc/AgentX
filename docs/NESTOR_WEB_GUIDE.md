@@ -14,22 +14,26 @@ Pipeline retains its bounded `status` and `task` focus. Unknown IDs, addresses
 and unrecognized focus arguments cannot become browser destinations. Family
 conversations have no private page catalogue or screen observations.
 
-Showing a page automatically opens a page workspace: the page takes the main
+Showing content automatically opens one content workspace: it takes the main
 column, messages and voice controls remain beside it, and the avatar becomes
 small. On tablet and phone widths, the conversation follows the page. Runtime
-diagnostics and conversation settings return with **Retour à la conversation**;
-**Afficher la page** reopens the workspace. The page selector switches between
-shown destinations without moving their frames or losing form and scroll state.
-Only the selected, displayed page contributes browser observations. Pictures
-and family conversations retain their existing display zones.
+diagnostics and conversation settings return with **Fermer le contenu**;
+**Afficher le contenu** reopens the workspace. The content selector switches
+between pages, Markdown, lists, tables, code, images and scenes without moving
+retained frames or losing form and scroll state. Only the selected, displayed
+content contributes browser observations. Family keeps its scoped boards.
 
 For AgentX pages under the same origin, a `view=screen` request allows framing
 by that origin and hides shared navigation. Normal page requests retain their
-existing framing policy. The personal conversation receives at most three
-browser observations with a title and six visible headings each; no form fields,
+existing framing policy. The personal conversation receives its selected
+browser observation with a title and six visible headings; no form fields,
 body HTML or arbitrary URLs are collected. These observations are untrusted
 reference data, not native tool evidence or action authorization. Nestor needs
-its native read tools for current application data beyond those headings.
+its domain read tools for current application data beyond those headings.
+Analytics' inference overview explicitly supplies a bounded Core snapshot of
+the same response/window; changing the period invalidates the older reference.
+See [content presentation and shared reading](CONTENT_PRESENTATION.md) for
+freshness, canonical turn evidence, runtime adapters and remaining read limits.
 
 ## Register an instance's services
 

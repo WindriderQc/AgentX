@@ -30,6 +30,9 @@ module.exports = new Schema({
     serverTimings: { type: Object, default: undefined },
     // Exact advisory references placed in this turn's selected context, not proof of influence.
     adviceRefs: { type: [Object], default: undefined },
+    // Selected presentation and its bounded Core read on this turn, historical
+    // evidence after the turn. Browser display and native data stay distinct.
+    presentationContext: { type: Object, default: undefined },
     inputPreview: String,
     replyPreview: String,
     inputSha256: String,
