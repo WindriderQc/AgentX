@@ -5,6 +5,7 @@ const { randomUUID } = require('node:crypto');
 const { acknowledged } = require('../conversations/writeFence');
 const { OWNER } = require('./contract');
 const FAILURE_REASONS = new Set(['native_authentication_failed', 'native_response_failed', 'native_response_incomplete']);
+const RETAINED_WRITER = new Set(['CONVERSATION_WRITE_BUSY', 'CONVERSATION_WRITE_RECOVERY_REQUIRED']);
 const validFailure = (receipt, attempt) => receipt?.source === 'openclaw/responses'
   && receipt.sessionKey === attempt.sessionKey && receipt.runId === attempt.runId
   && ['response.failed', 'response.incomplete'].includes(receipt.event) && FAILURE_REASONS.has(receipt.reason);
@@ -13,8 +14,9 @@ const validFailure = (receipt, attempt) => receipt?.source === 'openclaw/respons
 // loop. The durable gate has no timeout takeover: a lost dispatch is observed
 // through its exact native session before another work is admitted.
 function createWorkObserver({ works, execute, prepare = async value => value, observe, receive = async () => null,
-  agentFor = () => env.PERSONAL_CONVERSATION_WORK_AGENT_ID, env = process.env, logger, intervalMs = 1000 }) {
+  agentFor = () => env.PERSONAL_CONVERSATION_WORK_AGENT_ID, env = process.env, logger, intervalMs = 1000, now = Date.now }) {
   let running = false, timer, closed = false;
+  let recoverAfter = 0, recoverDelay = 30000;
   const gate = () => mongoose.connection.collection('conversation_work_dispatch');
   const clear = (id, processId) => gate().updateOne({ _id: OWNER, workId: id, ...(processId && { processId }) }, { $set: { workId: null },
     $unset: { claimedAt: '', processId: '', phase: '', attempt: '' } }, acknowledged);
@@ -141,7 +143,20 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
     if (closed || running || mongoose.connection.readyState !== 1) return;
     running = true;
     try {
-      await works.recover();
+      if (now() >= recoverAfter) {
+        try {
+          await works.recover();
+          recoverAfter = 0; recoverDelay = 30000;
+        } catch (cause) {
+          if (!RETAINED_WRITER.has(cause.code)) throw cause;
+          // The admitted content writer keeps its fence and uncertain receipt.
+          // Recovery of that exchange must not starve other accepted work or
+          // reconciliation of an already dispatched native run.
+          recoverAfter = now() + recoverDelay;
+          recoverDelay = Math.min(recoverDelay * 2, 300000);
+          logger?.warn?.('Conversation exchange recovery deferred to its content owner', { code: cause.code });
+        }
+      }
       const occupied = await gate().findOne({ _id: OWNER });
       if (occupied?.workId) {
         const row = await works.repo.getIncludingErased(occupied.workId);

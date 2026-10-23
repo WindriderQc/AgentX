@@ -59,7 +59,10 @@ test('only the active, loaded view receives matching Core data; browser numbers 
   const evidence = presentationEvidence([input, row({ title: 'OLD_PAGE' })], pages);
   assert.equal(evidence.read.totals.calls, 42); assert.equal(evidence.comparison, 'byConsumerContract');
   assert.equal(evidence.trend, 'latency');
-  assert.doesNotMatch(screenContext([input], pages), /PRIVATE_PASSWORD|PRIVATE_FORM|bad.test|999/);
+  const context = screenContext([input], pages);
+  assert.doesNotMatch(context, /PRIVATE_PASSWORD|PRIVATE_FORM|bad.test/);
+  // A generated receipt hash may legitimately contain the digits 999.
+  assert.doesNotMatch(context, /"calls":\s*999\b/);
   assert.equal(presentationEvidence([row({ read: ref, filters: { window: '24h' } })], pages).read.status, 'unavailable');
   for (const status of ['loading', 'unavailable', 'external']) {
     const data = presentationEvidence([row({ status, read: ref })], pages);
