@@ -1141,6 +1141,29 @@ test('retained task answers still require successful task evidence observed in t
   }
 });
 
+test('a failed list check preserves verified task creation instead of suggesting another capture', async () => {
+  const voice = { ...session, packId: 'personal_operator', scopeId: 'personal', agentId: 'main' };
+  const receipts = [{ tool: 'agentx__add_personal_task', status: 'verified', runId, resultRef: 'personal-task:0123' }];
+  for (const mixed of [false, true]) {
+    let requests = 0;
+    const client = createAgentClient({ env, settleMs: 0,
+      continuity: async () => ({ answer: answer('La tâche 0123 est enregistrée.'), run: { model: 'native' }, receipts }),
+      fetchImpl: async () => { requests++; return { ok: true, body: [created, completed] }; } });
+    const text = mixed ? 'Ajoute une tâche puis regarde mes tâches.' : 'Ajoute une tâche personnelle sans consulter de spécialiste.';
+    const result = await client({ session: voice, text });
+    assert.equal(requests, 1);
+    assert.match(result.text, /0123/);
+    assert.doesNotMatch(result.text, /Reessaie|Réessaie|Please try again/);
+    if (mixed) {
+      assert.match(result.text, /lecture de la liste.*pas été vérifiée/);
+      assert.equal(result.tools.verification.reason, 'task_check_missing');
+    } else {
+      assert.equal(result.text, 'La tâche 0123 est enregistrée.');
+      assert.equal(result.tools.verification, undefined);
+    }
+  }
+});
+
 test('canonical accepted work gives a truthful acknowledgment without inventing task data or redispatching', async () => {
   const hash = value => require('node:crypto').createHash('sha256').update(value).digest('hex');
   const voice = { ...session, packId: 'personal_operator', scopeId: 'personal', agentId: 'main' };
