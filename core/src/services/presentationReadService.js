@@ -49,19 +49,21 @@ function createPresentationReader({ now = Date.now, capacity = 128 } = {}) {
     for (const [id, row] of snapshots) if (Date.parse(row.expiresAt) <= now()) snapshots.delete(id);
     while (snapshots.size >= capacity) snapshots.delete(snapshots.keys().next().value);
   };
+  function publish(snapshot) {
+    if (!snapshot) return null;
+    const json = JSON.stringify(snapshot);
+    if (Buffer.byteLength(json) > MAX_BYTES) return null;
+    const revision = createHash('sha256').update(json).digest('hex');
+    const id = 'view_' + revision;
+    prune();
+    snapshots.set(id, JSON.parse(json));
+    return { contract: CONTRACT, id, revision, source: snapshot.source,
+      filters: snapshot.filters, observedAt: snapshot.observedAt, expiresAt: snapshot.expiresAt };
+  }
   return {
-    publishAnalytics(data) {
-      const snapshot = analyticsSnapshot(data);
-      if (!snapshot) return null;
-      const json = JSON.stringify(snapshot);
-      if (Buffer.byteLength(json) > MAX_BYTES) return null;
-      const revision = createHash('sha256').update(json).digest('hex');
-      const id = 'view_' + revision;
-      prune();
-      snapshots.set(id, JSON.parse(json));
-      return { contract: CONTRACT, id, revision, source: snapshot.source,
-        filters: snapshot.filters, observedAt: snapshot.observedAt, expiresAt: snapshot.expiresAt };
-    },
+    publishAnalytics: data => publish(analyticsSnapshot(data)),
+    publishRuntime: data => publish(require('./analyticsLivePresentation').runtimeSnapshot(data, now())),
+    publishGpus: data => publish(require('./analyticsLivePresentation').gpuSnapshot(data, now())),
     read({ id, revision } = {}) {
       const missing = reason => ({ contract: CONTRACT, status: 'unavailable', reason });
       if (!/^view_[a-f0-9]{64}$/.test(id || '') || !/^[a-f0-9]{64}$/.test(revision || '')) return missing('invalid_reference');
@@ -76,7 +78,7 @@ function createPresentationReader({ now = Date.now, capacity = 128 } = {}) {
 
 const presentationReader = createPresentationReader();
 const PRESENTATION_TOOLS = [{ name: 'read_presentation', title: 'Read Presented Content',
-  description: 'Read the exact Core Analytics overview snapshot referenced by the current screen context. Requires its id and revision. Never fetches a URL or re-executes a tool. A receipt does not prove browser display; unavailable requires refreshing the view, not guessing from history.',
+  description: 'Read the exact Core Analytics summary or live runtime/GPU snapshot referenced by the current screen context. Requires its id and revision. Each source has its own freshness and scope; live data is independent of historical filters. Never fetches a URL or re-executes a tool. A receipt does not prove browser display; unavailable requires refreshing the view.',
   inputSchema: { type: 'object', additionalProperties: false, required: ['id', 'revision'], properties: {
     id: { type: 'string', pattern: '^view_[a-f0-9]{64}$' }, revision: { type: 'string', pattern: '^[a-f0-9]{64}$' } } },
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false } }];

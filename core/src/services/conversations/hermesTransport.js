@@ -32,7 +32,7 @@ async function readEvents(body, consume, signal) {
       if (line.startsWith('data:')) frame.push(line.slice(5).trimStart());
       if (!line && frame.length) {
         const value = JSON.parse(frame.join('\n')); frame = [];
-        await consume(value);
+        if (await consume(value) === false) return;
       }
     }
   }
@@ -71,7 +71,11 @@ function createHermesTransport({ env = process.env, fetchImpl = globalThis.fetch
     if (!/^run_[a-zA-Z0-9_-]+$/.test(accepted.run_id || '')) throw fault('Hermes did not return a native run identity.');
     return save(request, { ...state, runId: accepted.run_id, state: 'running' });
   }
-  async function status(state, signal) { return json(pathFor(state), { signal }); }
+  async function status(state, signal) {
+    const observed = await json(pathFor(state), { signal, sessionKey: state.sessionKey });
+    if (observed.run_id && observed.run_id !== state.runId) throw fault('Hermes returned another run identity.', 'HERMES_RUN_MISMATCH');
+    return observed;
+  }
   async function terminal(request, state, observed, notify = true) {
     if (!TERMINAL.has(observed.status)) throw fault('The previous Hermes turn has not finished.');
     const { body, ...receipt } = state;
@@ -85,7 +89,14 @@ function createHermesTransport({ env = process.env, fetchImpl = globalThis.fetch
     if (!state.runId) state = await accept(request, state, signal);
     let observed = await status(state, signal);
     if (!TERMINAL.has(observed.status)) {
-      await json(pathFor(state) + '/stop', { method: 'POST', body: {}, signal });
+      try { await json(pathFor(state) + '/stop', { method: 'POST', body: {}, sessionKey: state.sessionKey, signal }); }
+      catch (error) {
+        // A lost stop response is not proof of termination. A fresh, read-only
+        // observation can confirm the original run; never send a second stop.
+        const observed = await status(state, AbortSignal.timeout(stopMs));
+        if (TERMINAL.has(observed.status)) return terminal(request, state, observed);
+        throw error;
+      }
       do { await delay(pollMs, undefined, { signal }); observed = await status(state, signal); }
       while (!TERMINAL.has(observed.status));
     }
@@ -110,7 +121,11 @@ function createHermesTransport({ env = process.env, fetchImpl = globalThis.fetch
         throw fault('Hermes did not complete this turn. Its native result was retained.', 'HERMES_RUN_' + observed.status.toUpperCase());
       }
       const text = typeof observed.output === 'string' ? observed.output : streamed;
-      if (!streamed && text) request.onDelta?.(text);
+      // The terminal receipt is authoritative after a disconnected/truncated
+      // stream. Feed the missing suffix through the same show/speech parser;
+      // returning text alone leaves its already-open display block incomplete.
+      if (!text.startsWith(streamed)) throw fault('Hermes returned a final answer inconsistent with its stream. Its receipt was retained.', 'HERMES_OUTPUT_MISMATCH');
+      if (text.length > streamed.length) request.onDelta?.(text.slice(streamed.length));
       const runtime = observed.runtime || {};
       return { backend: 'hermes', text, sessionKey,
         metadata: { model: runtime.model || '', provider: runtime.provider || '', routingSource: 'hermes/nestor', runId: state.runId,
@@ -141,7 +156,7 @@ function createHermesTransport({ env = process.env, fetchImpl = globalThis.fetch
     try {
       state = await accept(request, state, request.signal);
       await request.onStarted?.(sessionKey, state.runId);
-      const response = await http(pathFor(state) + '/events', { signal: request.signal });
+      const response = await http(pathFor(state) + '/events', { signal: request.signal, sessionKey });
       await readEvents(response.body, async event => {
         if (event.run_id && event.run_id !== state.runId) throw fault('Hermes returned an event for another run.');
         const type = event.event || event.type;
@@ -153,6 +168,9 @@ function createHermesTransport({ env = process.env, fetchImpl = globalThis.fetch
           status: event.error ? 'failed' : 'completed', runId: state.runId, authority: 'hermes' });
         if (type === 'approval.required' || type === 'approval.request') throw fault('Hermes needs approval in its native console.', 'HERMES_APPROVAL_REQUIRED');
         if (type === 'replay.truncated') throw fault('Hermes cannot replay this complete response.', 'HERMES_REPLAY_TRUNCATED');
+        // A terminal event ends this subscription even if an intermediary
+        // keeps the HTTP stream open. Status still supplies the native receipt.
+        if (['run.completed', 'run.failed', 'run.cancelled', 'run.interrupted'].includes(type)) return false;
       }, request.signal);
       const observed = await status(state, request.signal);
       await terminal(request, state, observed); settled = true;
@@ -161,7 +179,15 @@ function createHermesTransport({ env = process.env, fetchImpl = globalThis.fetch
       if (!settled) {
         let observed;
         try { observed = await stop(request, request.session.hermesRuntime || state); }
-        catch { throw fault('Hermes has not confirmed its stop. This conversation is paused until native reconciliation.'); }
+        catch (reconciliationError) {
+          const unconfirmed = fault('L’arrêt de Hermes n’est pas encore confirmé. La demande est conservée; la conversation attend sa réconciliation native.');
+          // Content-free diagnostics survive the generic user-facing message.
+          // Never log the request, context, tool arguments or bearer token.
+          unconfirmed.detail = { runId: (request.session.hermesRuntime || state).runId || null,
+            transportCode: error.code || error.name || 'Error',
+            reconciliationCode: reconciliationError.code || reconciliationError.name || 'Error' };
+          throw unconfirmed;
+        }
         if (!request.signal?.aborted && observed.status === 'completed') return result(observed, request.session.hermesRuntime, streamed, receipts);
       }
       throw error;

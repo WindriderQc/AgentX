@@ -485,7 +485,7 @@ describe('Nerve Center GPU status from Data', () => {
       expect(url).toMatch(/\/api\/v1\/hardware\/latest$/);
       return dataResponse({ ok: true, data: { hosts: [
         { hostId: 'gpu-primary', collectorId: 'gpu-agent', ollamaUrl: 'http://primary:11434', freshness: 'fresh',
-          ageMs: 4000, lastSampleAt: '2026-09-25T12:00:00.000Z', gpus: [gpu] },
+          ageMs: 4000, staleAfterMs: 90000, lastSampleAt: '2026-09-25T12:00:00.000Z', gpus: [gpu] },
         { hostId: 'gpu-secondary', ollamaUrl: 'http://secondary:11434', freshness: 'stale', ageMs: 3600000,
           lastError: 'ssh: connect timed out', consecutiveFailures: 40, gpus: [gpu],
           ollamaEnvironment: { source: 'systemd', unit: 'ollama.service', ok: true, observedAt: '2026-09-25T11:00:00Z',
@@ -495,6 +495,11 @@ describe('Nerve Center GPU status from Data', () => {
 
     const response = await request(createApp()).get('/inference/gpu-status').expect(200);
     const byId = Object.fromEntries(response.body.data.map(row => [row.hostId, row]));
+    const read = require('../../src/services/presentationReadService').presentationReader.read(response.body.presentation);
+    expect(read.status).toBe('available');
+    expect(read.source).toBe('analytics.live.gpus');
+    expect(read.gpus[0].utilization).toBe(64);
+    expect(JSON.stringify(read)).not.toMatch(/synthetic-secret|ssh: connect|http:/);
     expect(byId.primary).toMatchObject({
       gpuName: 'Synthetic GPU', utilization: 64, temperature: 61, gpuCount: 1,
       vramTotalMiB: 24576, vramUsedMiB: 9000, source: 'gpu-collector',

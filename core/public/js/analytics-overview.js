@@ -145,32 +145,8 @@
     return result;
   }
 
-  function runtimeView(data, now = Date.now()) {
-    if (!Array.isArray(data?.inferences) || !Array.isArray(data?.workloads)) return null;
-    const known = data.inferences.filter(row => row.active === true && !row.quarantined && Date.parse(row.expiresAt) > now);
-    return { active: known, uncertain: data.inferences.length - known.length, workloads: data.workloads.length, maintenance: Boolean(data.maintenance) };
-  }
-
-  function gpuRows(hosts, elapsedMs = 0) {
-    const seen = new Set(), rows = [];
-    for (const host of hosts || []) {
-      if (host.residency === 'cpu') continue;
-      const telemetry = host.telemetry || {};
-      const age = telemetry.ageMs == null ? null : telemetry.ageMs + elapsedMs;
-      const fresh = telemetry.status === 'fresh' && finite(age) && finite(telemetry.staleAfterMs) && age <= telemetry.staleAfterMs;
-      if (!fresh || !host.gpus?.length) {
-        rows.push({ label: host.hostname || host.hostId, fresh: false, state: telemetry.status === 'fresh' ? 'stale' : telemetry.status || 'unavailable' });
-        continue;
-      }
-      for (const gpu of host.gpus) {
-        const key = `${telemetry.collectorHostId || host.hostId}:${gpu.busId || gpu.index}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        rows.push({ ...gpu, label: `${host.hostname || host.hostId} / GPU ${gpu.index ?? '?'}`, fresh: true, age });
-      }
-    }
-    return rows;
-  }
+  const { runtimeView, gpuRows } = typeof module !== 'undefined' && module.exports
+    ? require('./analytics-live-values') : window.AgentXAnalyticsLiveValues;
 
   function renderComparison() {
     if (!summary) return;
@@ -320,12 +296,15 @@
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const body = await res.json();
     if (body.ok === false || body.status === 'error' || body.data == null) throw new Error('Unavailable');
-    return body.data;
+    return body;
   }
 
   async function refreshRuntime() {
+    window.AgentXPresentedLiveContent ||= {};
+    window.AgentXPresentedLiveContent.runtime = { status: 'loading' };
     try {
-      const view = runtimeView(await readJSON('/api/nerve-center/runtime-coordination/active'));
+      const body = await readJSON('/api/nerve-center/runtime-coordination/active');
+      const view = runtimeView(body.data);
       if (!view) throw new Error('Malformed runtime snapshot');
       set('ao-active', count(view.active.length));
       set('ao-live-status', [view.uncertain ? `${view.uncertain} uncertain; still held` : 'Core admissions, not GPU utilization', view.workloads ? `${view.workloads} workloads held` : '', view.maintenance ? 'Maintenance held' : ''].filter(Boolean).join(' · '));
@@ -334,7 +313,9 @@
       const rows = [...models.entries()];
       set('ao-active-models', rows.slice(0, 2).map(([model, n]) => `${n} × ${model}`).join(' · ') + (rows.length > 2 ? ` · +${rows.length - 2} models` : ''));
       set('ao-live-updated', `Core ${new Date().toLocaleTimeString()} · every 15 s`);
+      window.AgentXPresentedLiveContent.runtime = { status: 'visible', read: body.presentation || null };
     } catch {
+      window.AgentXPresentedLiveContent.runtime = { status: 'unavailable' };
       set('ao-active', '—');
       set('ao-live-status', 'Core activity unavailable; current work unknown');
       set('ao-active-models', '');
@@ -343,8 +324,11 @@
   }
 
   async function refreshGPUs() {
+    window.AgentXPresentedLiveContent ||= {};
+    window.AgentXPresentedLiveContent.gpus = { status: 'loading' };
     try {
-      const hosts = await readJSON('/api/nerve-center/inference/gpu-status');
+      const body = await readJSON('/api/nerve-center/inference/gpu-status');
+      const hosts = body.data;
       if (!Array.isArray(hosts)) throw new Error('Malformed GPU snapshot');
       const rows = gpuRows(hosts);
       $('ao-gpus').innerHTML = rows.map(row => {
@@ -354,7 +338,9 @@
         const memoryPct = finite(row.vramUsed) && row.vramTotal > 0 ? Math.min(100, Math.max(0, row.vramUsed / row.vramTotal * 100)) : null;
         return `<div class="ao-gpu"><span title="${esc(row.name)}">${esc(row.label)}</span><div class="ao-gpu-tracks"><div class="ao-meter" role="img" aria-label="GPU load ${esc(percent(utilization))}" title="GPU load: ${esc(percent(utilization))}"><span style="width:${utilization ?? 0}%"></span></div><div class="ao-meter ao-meter-memory" role="img" aria-label="VRAM allocation ${esc(percent(memoryPct))}" title="VRAM allocated: ${esc(percent(memoryPct))}"><span style="width:${memoryPct ?? 0}%"></span></div></div><strong>${finite(utilization) ? `${Math.round(utilization)}%` : '—'}</strong><small>${esc(vram)} · ${Math.round(row.age / 1000)}s old${finite(row.powerDraw) ? ` · ${Math.round(row.powerDraw)} W` : ''}</small></div>`;
       }).join('') || '<p class="ao-empty">No GPU collector evidence. Open Nerve Center for hosts.</p>';
+      window.AgentXPresentedLiveContent.gpus = { status: 'visible', read: body.presentation || null };
     } catch {
+      window.AgentXPresentedLiveContent.gpus = { status: 'unavailable' };
       $('ao-gpus').innerHTML = '<p class="ao-empty">GPU telemetry unavailable · utilization unknown</p>';
     }
   }

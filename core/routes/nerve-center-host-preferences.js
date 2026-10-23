@@ -552,7 +552,7 @@ router.get('/runtime-coordination/active', async (_req, res) => {
   try {
     const data = await runtimeCoordinationService.listActive();
     // drain: a recreate is announced; resumable background work pauses before its next unit (#253).
-    return res.json({ status: 'success', data: { ...data, drain: runtimeDrainIntent.current() } });
+    return res.json({ status: 'success', presentation: require('../src/services/presentationReadService').presentationReader.publishRuntime(data), data: { ...data, drain: runtimeDrainIntent.current() } });
   } catch (error) {
     return res.status(500).json({ status: 'error', code: 'RUNTIME_COORDINATION_STATUS_FAILED', message: error.message });
   }

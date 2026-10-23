@@ -583,8 +583,8 @@ function createPersonaTurnHandler({
         return;
       }
       if (abort.signal.aborted) return;
-      if (res.headersSent) { event('error', { message: error.message }); return res.end(); }
       logger?.error?.('Household persona turn failed', { error: error.message, ...(error.detail ? { detail: error.detail } : {}) });
+      if (res.headersSent) { event('error', { message: error.message }); return res.end(); }
       return fail(res, error.statusCode || 502, error.message || 'Voice persona turn failed', error.code || 'VOICE_PERSONA_INFERENCE_FAILED');
     } finally {
       try {
