@@ -409,6 +409,21 @@ class StepPlanTest(unittest.TestCase):
         self.assertIn('strict (core/config.js:1)', prompt)
         self.assertEqual(steps.plan_groups(ledger, sizes, budget, line_counts=lines), [])
 
+    def test_completing_a_stalled_range_keeps_its_evidence_and_opens_the_next_range(self):
+        ledger = ledgers.new_ledger(snapshot())
+        for path in ('docs/B.md', 'docs/sub/C.md'):
+            ledger['documents'][path]['state'] = 'reviewed'
+        row = ledger['documents']['docs/A.md']
+        row.update(state='partial', partialRounds=3, attempts=1)
+        result = good_result()
+        ledgers.merge_step(ledger, ['docs/A.md'], result, source, 4, line_range=(1, 150, False))
+        self.assertEqual(row['state'], 'partial')
+        self.assertEqual((row['attempts'], row['partialRounds']), (0, 0))
+        self.assertEqual(row['ranges'], [[1, 150]])
+        self.assertEqual(len(row['evidence']), 1)
+        planned = steps.plan_groups(ledger, {'docs/A.md': 72000}, {'docTokens': 10000}, line_counts={'docs/A.md': 300})
+        self.assertEqual(planned[0]['range'], (151, 300, True))
+
     def test_untouched_documents_run_before_a_started_one_even_after_a_continuation(self):
         ledger = ledgers.new_ledger(snapshot())
         sizes = {'docs/A.md': 3600, 'docs/B.md': 3600, 'docs/sub/C.md': 3600}

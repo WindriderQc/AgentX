@@ -204,6 +204,12 @@ allow it on its explicit report grant ("Allow cloud escalation of failed
 steps"). An execution started with both records the models and the task's
 remaining allowance, fixed for that run.
 
+The cloud receives the group's saved checks, remaining-scope note and latest
+operator context along with the sources. Long documents retain a separate
+escalation receipt for each assigned line range; completing a range resets its
+partial-round counter before planning the next range. Earlier receipts without
+a range continue to fence the whole group.
+
 After a group fails once on the local model, the runner sends one self-contained
 request: the group's documents and the source files they cite (or that define
 the identifiers they name), with line numbers, plus the result schema. Core

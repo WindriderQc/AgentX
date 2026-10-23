@@ -276,6 +276,7 @@ def merge_step(ledger, group, result, source_bytes, step_id, allow_empty=False, 
         if line_range and state == 'reviewed':
             start, end, last = line_range
             row.setdefault('ranges', []).append([start, end])
+            row['partialRounds'] = 0
             state = 'reviewed' if last else 'partial'
         elif line_range and state == 'partial':
             row['partialRounds'] = row.get('partialRounds', 0) + 1

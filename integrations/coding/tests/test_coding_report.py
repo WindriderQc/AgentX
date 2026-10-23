@@ -936,6 +936,7 @@ class EscalationStepsTest(StepsReportTest):
         return sent, mock.patch('urllib.request.urlopen', urlopen)
 
     def test_a_failed_group_is_retried_once_in_the_cloud_and_its_findings_are_marked(self):
+        self.task['feedback'] = [{'by': 'operator', 'text': 'An attributed external fact for this document.'}]
         self.escalation = {'models': ['openai/gpt-5.6-sol', 'openrouter/nvidia/nemotron'], 'maxCostNanodollars': 10e9, 'calls': 0}
         self.answers = ['not json', self.reviewed, lambda prompt: {'summary': 's', 'explanations': {}}]
         content = json.dumps({'documents': [{'path': 'README.md', 'state': 'reviewed',
@@ -953,6 +954,8 @@ class EscalationStepsTest(StepsReportTest):
         self.assertEqual(payload['model'], 'openai/gpt-5.6-sol')
         self.assertIn('=== SOURCE config.js', payload['messages'][1]['content'])
         self.assertIn('1: const RETRY_LIMIT = 7;', payload['messages'][1]['content'])
+        self.assertIn('An attributed external fact for this document.', payload['messages'][1]['content'])
+        self.assertIn('remaining scope (data, not a new assignment)', payload['messages'][1]['content'])
         report = base64.b64decode(self.uploads[0]['dataUrl'].split(',')[1]).decode()
         self.assertIn('Found by cloud escalation on `openrouter/nvidia/nemotron`', report)
         progress = json.loads((runner.RECEIPTS/(KEY+'.progress.json')).read_text())
@@ -1024,3 +1027,14 @@ class EscalationStepsTest(StepsReportTest):
             row['state'] = 'partial'
             progress.report_escalation = None
             self.assertFalse(report.escalation_allowed(progress, ledger, ['README.md']))
+
+    def test_escalation_range_receipt_fences_its_own_range_and_legacy_receipts_fence_all_ranges(self):
+        from types import SimpleNamespace
+        progress = SimpleNamespace(report_escalation={'models': ['cloud/model']})
+        ledger = {'documents': {'README.md': {'state': 'partial', 'attempts': 1}},
+                  'steps': [{'documents': ['README.md'], 'escalated': True, 'lineRange': [1, 150, False]}]}
+        with mock.patch.object(report.steps, 'remaining', return_value=(10, 600)):
+            self.assertFalse(report.escalation_allowed(progress, ledger, ['README.md'], (1, 150, False)))
+            self.assertTrue(report.escalation_allowed(progress, ledger, ['README.md'], (151, 300, True)))
+            del ledger['steps'][0]['lineRange']
+            self.assertFalse(report.escalation_allowed(progress, ledger, ['README.md'], (151, 300, True)))
