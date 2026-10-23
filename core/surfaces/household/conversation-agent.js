@@ -394,7 +394,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       let until = Date.now() + Math.min(settleMs, 3000);
       do {
         try {
-          const projected = await readEvidence();
+          const projected = await readEvidence(Math.max(1, until - Date.now()));
           rememberAnswer(projected);
           // Only the answer is retained. Fresh receipts/run remain independent
           // evidence; their last hook need not identify this answer's provider.
@@ -474,7 +474,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       if (signal?.aborted || !terminal || !runId || browserReply) throw error;
       const until = Date.now() + Math.min(settleMs, 3000);
       do {
-        try { evidence = await readEvidence(); } catch { break; }
+        try { evidence = await readEvidence(Math.max(1, until - Date.now())); } catch { break; }
         const imageDelivery = await imageReply();
         if (signal?.aborted) throw error;
         if (imageDelivery) return deliver(imageDelivery.text, imageDelivery);
