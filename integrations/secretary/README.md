@@ -333,6 +333,19 @@ changed source or review invalidates the old decision; conflicting decisions hol
 the message. Missing originals/copies, drafts, unknown dates and stale thread
 reviews cannot be waived by an analysis receipt.
 
+`retention_dispositions.py` writes owner dispositions
+(`agentx.secretary-retention-disposition/v1`) as an alternative to an exact
+analysis: per message, its value lane and the owner's decisions in Core's
+historical review for each of its findings, including consolidated souvenir
+candidates through their private manifests. The planner (`--dispositions`)
+accepts bulk mail whose actions, deliverables and invoices are decided, or
+person/important mail whose every finding the owner decided (kept, souvenir,
+dismissed, resolved); a finding the owner never saw keeps the message held, and
+no entry citing it may still be a candidate. Integrity, copies, provider,
+draft, date and unread-page blockers still apply; only bulk mail also waives
+attachment images and thread questions. The exact-analysis qualification is not
+required for this path. `--older-than-days` sets a rolling cutoff (midnight UTC).
+
 Use `verify_archive.py --tree-index <pinned-native-mirror-state>` on both copies
 to rehash the complete indexed archive, including metadata. Incremental mirrors
 may skip unchanged size/mtime entries; that shortcut is not a fresh integrity

@@ -28,6 +28,10 @@ QUALIFICATION_CASES = frozenset((
     "signature_information", "owner_aliases", "mime_alternatives", "external_references",
 ))
 ANALYSIS_CONTRACT = "agentx.secretary-retention-analysis/v1"
+DISPOSITION_CONTRACT = "agentx.secretary-retention-disposition/v1"
+DECIDED = frozenset(("retained", "resolved", "dismissed"))
+# Findings an owner disposition must cover even for bulk mail.
+OBLIGATIONS = frozenset(("actions", "deliverables", "invoices"))
 
 
 def aware(value):
@@ -35,6 +39,12 @@ def aware(value):
         return cutoff_date(value)
     except (ValueError, TypeError, AttributeError):
         return None
+
+
+def rolling_cutoff(days, clock=None):
+    """Midnight UTC at least `days` days before now: a cutoff that advances by itself."""
+    moment = (clock or datetime.now(timezone.utc)) - timedelta(days=days)
+    return moment.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def qualification_valid(receipt):
@@ -122,6 +132,41 @@ def _reasons_for_decision(row, decision, packet, qualification):
     return reasons
 
 
+def _reasons_for_disposition(row, disposition):
+    """An owner disposition: bulk mail, or every finding decided by the owner in Core.
+
+    It replaces the exact-message analysis only. Integrity, copies, provider,
+    draft, date and unread-page blockers still apply. A finding the owner never
+    saw (left out of Core) keeps the message held.
+    """
+    if disposition.get("schema") != DISPOSITION_CONTRACT:
+        return ["owner_disposition_missing"]
+    reasons = []
+    pins = {"messageId": row["messageId"], "threadId": row["threadId"], "sourceSha256": row["originalSha256"],
+            "evidenceHash": row["evidenceHash"], "reviewSha256": row["reviewSha256"]}
+    if any(disposition.get(key) != value for key, value in pins.items()) or not aware(disposition.get("at")):
+        reasons.append("owner_disposition_stale_or_wrong_source")
+    expected = {identity: section for section, identities in row["findingIds"].items() for identity in identities}
+    supplied = disposition.get("findings", {})
+    if set(supplied) != set(expected):
+        reasons.append("owner_disposition_findings_incomplete")
+    basis, lane = disposition.get("basis"), (disposition.get("lane") or {}).get("lane")
+    if disposition.get("undecidedEntries"):
+        reasons.append("owner_review_entries_undecided")
+    if basis == "bulk-lane" and lane == "bulk":
+        required = [i for i, s in expected.items() if s in OBLIGATIONS]
+    elif basis == "owner-decided" and lane in ("person", "important"):
+        required = list(expected)
+    else:
+        return reasons + ["owner_disposition_basis_invalid"]
+    for identity in required:
+        decided = (supplied.get(identity) or {}).get("decidedBy") or []
+        if not decided or any(entry.get("state") not in DECIDED for entry in decided):
+            reasons.append("finding_not_decided_by_owner")
+            break
+    return reasons
+
+
 def review_packet(archive, row):
     """Pin current page, attachment, finding and whole-thread question sets."""
     tid, mid = row["threadId"], row["messageId"]
@@ -145,15 +190,18 @@ def review_packet(archive, row):
     return packet
 
 
-def plan(archive, before, inventory, primary, mirror, qualification, decisions, *, clock=None):
+def plan(archive, before, inventory, primary, mirror, qualification, decisions, *, dispositions=(), clock=None):
     clock = clock or datetime.now(timezone.utc)
     report = coverage(archive, before, primary, mirror)
     global_reasons, provider_ids = inventory_checks(inventory, before, clock)
-    if not qualification_valid(qualification):
-        global_reasons.append("triage_process_not_qualified")
-    grouped = {}
+    # The triage qualification attests the exact-analysis process only; owner
+    # dispositions rest on the owner's own decisions instead.
+    analysis_unqualified = not qualification_valid(qualification)
+    grouped, owned = {}, {}
     for decision in decisions:
         grouped.setdefault(decision.get("messageId"), []).append(decision)
+    for disposition in dispositions:
+        owned.setdefault(disposition.get("messageId"), []).append(disposition)
     rows, counts = [], Counter()
     # These preliminary blockers are discharged only by exact, qualified
     # per-message review. Hash/copy/source/date/draft blockers cannot be waived.
@@ -162,7 +210,20 @@ def plan(archive, before, inventory, primary, mirror, qualification, decisions, 
                   "analysis_validation_required", "message_classification_proof_required"}
     for row in report["messages"]:
         packet = review_packet(archive, row)
-        reasons = list(global_reasons) + [b for b in row["blockers"] if b not in reviewable]
+        matching, disposed = grouped.get(row["messageId"], []), owned.get(row["messageId"], [])
+        owner_path = not matching and len(disposed) == 1
+        if owner_path:
+            # Unread pages are never waived; bulk mail also waives attachment
+            # images and thread questions, which person/important mail keeps.
+            waived = {"analysis_validation_required", "message_classification_proof_required",
+                      "action_findings_need_reconciliation", "information_disposition_not_verified"}
+            if disposed[0].get("basis") == "bulk-lane":
+                waived |= {"attachment_analysis_needs_review", "thread_questions_unresolved"}
+            reasons = list(global_reasons) + [b for b in row["blockers"] if b not in waived]
+        else:
+            reasons = list(global_reasons) + [b for b in row["blockers"] if b not in reviewable]
+            if analysis_unqualified:
+                reasons.append("triage_process_not_qualified")
         # Inventory/file integrity is not an analysis judgment and cannot be waived.
         if any(scope["status"] != "complete" or scope.get("errors")
                for scope in packet.get("compoundAttachments", {}).values()):
@@ -185,8 +246,9 @@ def plan(archive, before, inventory, primary, mirror, qualification, decisions, 
                 reasons.append("current_metadata_copies_not_verified")
         if row["messageId"] not in provider_ids:
             reasons.append("message_absent_from_provider_inventory")
-        matching = grouped.get(row["messageId"], [])
-        if len(matching) != 1:
+        if owner_path:
+            reasons.extend(_reasons_for_disposition(row, disposed[0]))
+        elif len(matching) != 1:
             reasons.append("analysis_missing_or_ambiguous")
         else:
             reasons.extend(_reasons_for_decision(row, matching[0], packet, qualification))
@@ -195,6 +257,7 @@ def plan(archive, before, inventory, primary, mirror, qualification, decisions, 
         reasons = sorted(set(reasons))
         counts.update(reasons)
         rows.append({**row, "reviewPacket": packet, "blockers": reasons,
+                     "basis": (disposed[0].get("basis") if owner_path else "exact-analysis" if len(matching) == 1 else None),
                      "candidateForOwnerReview": not reasons, "executionAllowed": False})
     archived_ids = {row["messageId"] for row in rows}
     missing = sorted(provider_ids - archived_ids)
@@ -208,7 +271,7 @@ def plan(archive, before, inventory, primary, mirror, qualification, decisions, 
             "providerMessagesWithoutHistoricalArchive": missing, "messages": rows,
             "inputHashes": {"inventory": content_hash(inventory), "primary": content_hash(primary),
                             "mirror": content_hash(mirror), "qualification": content_hash(qualification),
-                            "decisions": content_hash(decisions)},
+                            "decisions": content_hash(decisions), "dispositions": content_hash(list(dispositions))},
             "executionRequirements": ["fresh exact-message provider recheck", "preserved provider metadata",
                 "fresh candidate manifest and native one-time approval", "reversible Trash first",
                 "per-message effect reconciliation and archive retrieval after cleanup"]}
@@ -217,14 +280,21 @@ def plan(archive, before, inventory, primary, mirror, qualification, decisions, 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=DEFAULT_ROOT)
-    parser.add_argument("--before", type=cutoff_date, required=True)
+    when = parser.add_mutually_exclusive_group(required=True)
+    when.add_argument("--before", type=cutoff_date)
+    when.add_argument("--older-than-days", type=int, help="Rolling cutoff, e.g. 456 for 1.25 years")
     parser.add_argument("--inventory", type=Path, required=True)
     parser.add_argument("--primary-proof", type=Path)
     parser.add_argument("--mirror-proof", type=Path)
     parser.add_argument("--qualification", type=Path)
     parser.add_argument("--decisions", type=Path, help="Private immutable analysis/disposition receipts")
+    parser.add_argument("--dispositions", type=Path, help="Private owner dispositions from retention_dispositions.py")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    if args.older_than_days is not None:
+        if not 30 <= args.older_than_days <= 36500:
+            parser.error("older-than-days must be 30-36500")
+        args.before = rolling_cutoff(args.older_than_days)
     if args.output.resolve().is_relative_to(args.root.resolve()):
         parser.error("Retention reports stay outside the evidence archive")
     if args.output.exists():
@@ -232,7 +302,7 @@ def main():
     read = lambda p, fallback: load(p, fallback) if p else fallback
     result = plan(Archive(args.root, run=lambda _: (_ for _ in ()).throw(RuntimeError("Provider access disabled"))),
         args.before, read(args.inventory, {}), read(args.primary_proof, {}), read(args.mirror_proof, {}),
-        read(args.qualification, {}), read(args.decisions, []))
+        read(args.qualification, {}), read(args.decisions, []), dispositions=read(args.dispositions, []))
     save(args.output, result)
     print(json.dumps({k: v for k, v in result.items() if k not in ("messages", "providerMessagesWithoutHistoricalArchive")}, ensure_ascii=False))
 
