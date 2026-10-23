@@ -30,6 +30,24 @@ beforeEach(async () => {
     claimSeq: 2, sourceCommit: run.sourceCommit, specSha256: run.specSha256, inventorySha256: run.inventorySha256,
     confirmation: 'RECEIVE_ORIGINAL_CLOUD_PAYMENT_REFUSAL' };
 });
+
+test('exports a charged completed answer only after its original execution settles', async () => {
+  const completedRow = { ...row, state: 'completed', settlement: { state: 'completed', finishedAt: row.finishedAt } };
+  const call = { callId: row.callId, step: 1, model: 'fixture/model', nanodollars: 123000, costSource: 'runtime-estimate', billing: 'paid' };
+  await Run.updateOne({ _id: run._id }, { $set: { modelReceipts: [completedRow], pendingInferences: [], escalationCalls: [call] } });
+  expect(await resolutions(task._id)).toEqual([]);
+  await Run.updateOne({ _id: run._id }, { $set: { state: 'blocked' } });
+  expect(await resolutions(task._id)).toEqual([expect.objectContaining({ requestId: run._id, callId: row.callId,
+    step: 1, model: 'fixture/model', executionState: 'completed', evidenceSha256: expect.stringMatching(/^[a-f0-9]{64}$/) })]);
+  expect((await Run.findById(run._id).lean()).escalationCalls).toHaveLength(1);
+  expect((await Run.findById(run._id).lean()).escalationCalls[0].nanodollars).toBe(123000);
+  await Run.updateOne({ _id: run._id }, { $set: { pendingInferences: ['unresolved-original'] } });
+  expect(await resolutions(task._id)).toEqual([]);
+  await Run.updateOne({ _id: run._id }, { $set: { pendingInferences: [], 'modelReceipts.0.state': 'unknown' } });
+  expect(await resolutions(task._id)).toEqual([]);
+  await Run.updateOne({ _id: run._id }, { $set: { 'modelReceipts.0.state': 'completed', 'escalationCalls.0.nanodollars': null } });
+  expect(await resolutions(task._id)).toEqual([]);
+});
 async function archive() {
   const data = Buffer.from(JSON.stringify(log));
   const { receipt } = await files.register('0001', { by: 'synthetic-operator', name: 'synthetic-provider-refusal.json',

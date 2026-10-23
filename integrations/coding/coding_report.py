@@ -456,7 +456,7 @@ def escalation_call(r, args, progress, model, messages, step):
     return choice.get('message', {}).get('content'), outcome['value'].get('model') or model, None
 
 
-def escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source, task):
+def escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source, task, *, result_root=None):
     escalation = progress.report_escalation
     files = r.git(workspace, 'ls-tree', '-r', '--name-only', baseline).splitlines()
     doc_texts = {path: sources[path].decode('utf-8', errors='replace') for path in group}
@@ -477,20 +477,15 @@ def escalate_group(r, args, progress, workspace, baseline, ledger, group, line_r
                     hits[name] = hits.get(name, 0) + 1
         discovered = sorted(hits, key=lambda name: (-hits[name], name))[:20]
         cited_files = list(dict.fromkeys(steps.document_source_paths(scoped_texts, files) + discovered + cited_files))
-    texts, used = {}, 0
-    for cited in cited_files:
-        try:
-            text = scope.source_bytes(workspace, baseline, cited).decode('utf-8', errors='replace')[:steps.ESCALATION_FILE_CHARS]
-        except ValueError:
-            continue
-        if used + len(text) > steps.ESCALATION_SOURCE_CHARS:
-            continue
-        texts[cited] = text
-        used += len(text)
+    texts = steps.bounded_source_texts(cited_files, lambda name: scope.source_bytes(workspace, baseline, name),
+                                      getattr(progress, 'report_steps', None))
     content, model, reason = escalation_call(r, args, progress, escalation['models'][0],
                                              steps.escalation_prompt(ledger, group, doc_texts, texts, line_range,
                                                                      operator_notes=steps.latest_operator_notes(task)), number)
     value = None
+    saved = content is not None and result_root is not None and len(content.encode('utf-8')) <= steps.RESULT_BYTES
+    if saved:
+        steps.write_atomic(result_root / f'step-{number:02d}.json', content)
     if content is not None:
         value, reason = steps.parse_json_object(content)
     try:
@@ -505,6 +500,7 @@ def escalate_group(r, args, progress, workspace, baseline, ledger, group, line_r
         ledgers.record_failure(ledger, group, number, f'cloud escalation: {error}')
         ledger['steps'][-1].update(escalated=True, model=model)
     steps.escalation_receipt(ledger['steps'][-1], progress, args.request_id, line_range)
+    ledger['steps'][-1]['jsonResultAvailable'] = saved
 
 
 def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
@@ -607,7 +603,7 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
         group, line_range = groups[0]['documents'], groups[0]['range']
         prior_failure = bool(getattr(args, 'parent_request_id', None) and steps.prior_failed_group(ledger, group, line_range))
         if prior_failure and escalation_allowed(progress, ledger, group, line_range, prior_failure=True, request_id=args.request_id):
-            escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source, task)
+            escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source, task, result_root=root)
             save()
             continue
         value, reason = one(number, steps.group_prompt(ledger, group, f'{sandbox_root}/step-{number:02d}.json', task, note, line_range),
@@ -624,7 +620,7 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
                                        lineRange=list(line_range) if line_range else None)
         if escalation_allowed(progress, ledger, group, line_range, request_id=args.request_id):
             number += 1
-            escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source, task)
+            escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source, task, result_root=root)
         save()
     calls, seconds = steps.remaining(progress)
     if ledger['findings'] and calls >= steps.WRITER_CALLS and seconds >= steps.WRITER_SECONDS:
