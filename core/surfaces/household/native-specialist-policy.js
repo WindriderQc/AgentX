@@ -19,7 +19,11 @@ const SECRETARY_DIRECTIVE = 'This request belongs to Main and the Secretary, not
 // A conservative migration selector, never an authorization decision. Ambiguous
 // requests and effects retain the existing native owner/approval path.
 function requestsReadEffects(text) {
-  const input = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  // A complete, explicitly tool-free reply-style clause addresses this
+  // conversation. It must not force an external reply/action path. Addressed
+  // replies and effect verbs elsewhere in the request remain unchanged.
+  const input = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/(^|[.!?]\s*)(?:repond(?:s|ez)?|reply|respond|answer)\s+(?:(?:brievement|en une phrase|briefly|in one sentence)\s*,?\s*)?(?:sans (?:aucun )?outils?|without (?:any )?tools?)(?=\s*(?:[.!?]|$))/g, '$1');
   return /\b(?:envoi\w*|envoie|send\w*|repond\w*|reply|draft\w*|redig\w*|modifi\w*|modify|change\w*|supprim\w*|delet\w*|effac\w*|archiv\w*|tri\w*|organis\w*|marqu\w*|mark|cre\w*|add|ajout\w*|transfer\w*|forward|unsubscribe|desabonn\w*|achete\w*|buy|reserve\w*|book|publie\w*|publish)\b/.test(input);
 }
 

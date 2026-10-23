@@ -268,3 +268,21 @@ test.each(['CONVERSATION_WRITE_BUSY', 'CONVERSATION_WRITE_RECOVERY_REQUIRED'])(
       expect(recover).toHaveBeenCalledTimes(4); // successful recovery resumes ordinary observation
     } finally { observer.stop(); recover.mockRestore(); }
   });
+
+test.each([
+  'Bonjour Nestor. Pour cet échange, ma couleur choisie est le bleu. Réponds brièvement sans outil.',
+  'Quelle couleur ai-je choisie pour cet échange ? Réponds en une phrase sans outil.'
+])('tool-free conversational style keeps the guardian foreground and complete native Main review: %s', async text => {
+  const accepted = await works.intake({ session: current, turnId: randomUUID(), text });
+  expect(accepted.row).toMatchObject({ mode: 'native', classification: 'native_review', foreground: 'guardian',
+    performance: { profile: 'local' } });
+  expect(await works.nativeAcceptance(accepted.row._id)).toMatchObject({ accepted: true, foreground: 'guardian', mode: 'native' });
+});
+
+test.each(['Regarde mes tâches. Réponds brièvement sans outil.',
+  'Réponds à mon courriel. Réponds brièvement sans outil.'])(
+  'requested task reads and addressed mail retain their complete Main foreground: %s', async text => {
+    const accepted = await works.intake({ session: current, turnId: randomUUID(), text });
+    expect(accepted.row).toMatchObject({ mode: 'native', classification: 'native_work', foreground: 'acknowledge',
+      performance: { profile: 'local' } });
+  });
