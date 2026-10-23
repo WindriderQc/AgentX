@@ -76,11 +76,23 @@ function resolved(value, callId) {
 }
 async function resolutions(taskId) {
   const Run = require('../../models/PipelineReportRun');
-  const runs = await Run.find({ taskId: String(taskId), 'modelReceipts.terminationRecovery.schema': 'agentx.report-cloud-refusal-recovery/v1' })
-    .select('modelReceipts').lean();
-  return runs.flatMap(value => (value.modelReceipts || []).filter(row => resolved(value, row.callId)).map(row => ({
+  const runs = await Run.find({ taskId: String(taskId), $or: [
+    { 'modelReceipts.terminationRecovery.schema': 'agentx.report-cloud-refusal-recovery/v1' },
+    { 'escalationCalls.0': { $exists: true } }
+  ] }).select('modelReceipts pendingInferences state escalationCalls').lean();
+  const refused = runs.flatMap(value => (value.modelReceipts || []).filter(row => resolved(value, row.callId)).map(row => ({
     requestId: value._id, callId: row.callId, step: row.terminationRecovery.step, model: row.terminationRecovery.model,
     evidenceSha256: row.terminationRecovery.operatorMapping.evidence.sha256, executionState: 'not-dispatched'
   })));
+  const { digest } = require('./pipelineReportModelRecovery');
+  const completed = runs.filter(value => ['review', 'blocked'].includes(value.state) && !value.pendingInferences?.length
+    && (value.modelReceipts || []).every(row => ['completed', 'refused'].includes(row.state))).flatMap(value =>
+    (value.escalationCalls || []).flatMap(call => {
+      const row = (value.modelReceipts || []).find(item => item.callId === call.callId && item.state === 'completed' && item.settlement?.state === 'completed');
+      return row && Number.isSafeInteger(call.nanodollars) && call.nanodollars >= 0 && Number.isSafeInteger(call.step) && call.step > 0
+        ? [{ requestId: value._id, callId: call.callId, step: call.step, model: call.model,
+          evidenceSha256: digest({ call, row }), executionState: 'completed' }] : [];
+    }));
+  return [...refused, ...completed];
 }
 module.exports = { createRecovery, resolved, resolutions };

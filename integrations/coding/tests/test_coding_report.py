@@ -960,6 +960,48 @@ class StepsReportTest(unittest.TestCase):
 class EscalationStepsTest(StepsReportTest):
     """A group that fails locally is retried once on the cloud escalation path (#835)."""
 
+    def test_bounded_cloud_context_retains_rejected_json_for_local_correction(self):
+        from types import SimpleNamespace
+        (self.workspace/'src').mkdir()
+        (self.workspace/'src/big.js').write_text('const VALUE = 1;\n' * 10000 + 'const TAIL_SENTINEL = 2;\n')
+        (self.workspace/'README.md').write_text('# Project\nCheck `src/big.js`.\n')
+        runner.git(self.workspace, 'add', '.')
+        runner.git(self.workspace, *runner.AUTHOR, 'commit', '-qm', 'Add source fixture')
+        head = runner.git(self.workspace, 'rev-parse', 'HEAD')
+        snapshot = dict(report.scope.inventory(self.workspace, head), sha256='a'*64)
+        ledger = report.ledgers.new_ledger(snapshot)
+        self.out.mkdir(parents=True)
+        progress = SimpleNamespace(report_escalation={'models': ['cloud/model']}, report_steps={'stepContext': 8192})
+        args = SimpleNamespace(task_id='0001', request_id=KEY)
+        raw = json.dumps({'documents': [{'path': 'src/big.js', 'state': 'reviewed', 'evidence': []}], 'findings': []})
+        source = lambda path: report.scope.source_bytes(self.workspace, head, path)
+        with mock.patch.object(report, 'escalation_call', return_value=(raw, 'openclaw:model:cloud/model', None)) as call:
+            report.escalate_group(runner, args, progress, self.workspace, head, ledger, ['README.md'], None, 1,
+                {'README.md': source('README.md')}, source, self.task, result_root=self.out)
+        prompt = call.call_args.args[4][1]['content']
+        self.assertIn('const VALUE = 1;', prompt)
+        self.assertNotIn('TAIL_SENTINEL', prompt)
+        self.assertLess(len(prompt), 30000)
+        self.assertEqual((self.out/'step-01.json').read_text(), raw)
+        self.assertEqual(ledger['steps'][-1]['result'], 'failed')
+        self.assertTrue(ledger['steps'][-1]['jsonResultAvailable'])
+        self.assertNotEqual(ledger['documents']['README.md']['state'], 'reviewed')
+        retry = report.steps.retry_feedback(ledger, ['README.md'], f'/home/agent/deliverables/{KEY}/step-02.json')
+        self.assertIn('step-01.json', retry)
+
+    def test_received_completed_answer_allows_only_a_new_failed_scope_attempt(self):
+        row = {'requestId': 'previous', 'step': 1, 'documents': ['README.md'], 'result': 'failed',
+               'escalated': True, 'model': 'openclaw:model:cloud/model'}
+        proof = {'requestId': 'previous', 'step': 1, 'model': 'cloud/model', 'executionState': 'completed', 'evidenceSha256': 'a'*64}
+        blocks = report.steps.escalation_blocks
+        self.assertTrue(blocks(row, ['README.md'], None, KEY))
+        self.assertFalse(blocks(row, ['README.md'], None, KEY, [proof]))
+        self.assertTrue(blocks(row, ['README.md'], None, 'previous', [proof]))
+        for key, value in [('step', 2), ('model', 'cloud/other'), ('requestId', 'other'), ('executionState', 'unknown')]:
+            self.assertTrue(blocks(row, ['README.md'], None, KEY, [{**proof, key: value}]))
+        self.assertTrue(blocks({**row, 'uncertain': True}, ['README.md'], None, KEY, [proof]))
+        self.assertTrue(blocks({**row, 'result': 'merged'}, ['README.md'], None, KEY, [proof]))
+
     def escalation_answer(self, content=None, error=None):
         sent = []
         class Response:

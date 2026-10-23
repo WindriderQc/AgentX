@@ -34,3 +34,11 @@ escalation; the requested output limit and exact supplied context remain checked
 Known refused attempts do not disqualify later completed work in the same
 execution. A request containing only refusals still cannot deliver a report;
 unknown or pending calls always retain the publication fence.
+
+Completed cloud JSON is saved in the private step directory before validation,
+including a rejected answer, so a local correction can read the original bytes.
+Source excerpts use the current step's bounded context share; this is separate
+from native spend reservation. A later explicitly authorized execution may retry
+a failed answer only when Core supplies the exact original step/model completion
+receipt from a settled execution. Its original charge stays in the task total;
+partial accepted answers and uncertain calls keep their existing fences.

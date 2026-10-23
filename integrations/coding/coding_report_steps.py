@@ -305,6 +305,28 @@ ESCALATION_MAX_TOKENS = 8192
 PATH_PATTERN = r'(?<![\w/.-])([\w.-]+(?:/[\w.-]+)+\.(?:js|cjs|mjs|ts|py|json|ya?ml|sh|md|ejs|css|html))'
 
 
+def bounded_source_texts(paths, read_source, report_steps):
+    """Fit source excerpts to the existing step's source-context share.
+
+    This is a prompt-size limit, never a monetary/tokenizer estimate; native
+    spend reservation and the task's cumulative cap remain authoritative.
+    """
+    context = report_steps.get('stepContext') if isinstance(report_steps, dict) else None
+    context = context if type(context) is int and context > 0 else DEFAULT_STEP_CONTEXT
+    ceiling = min(ESCALATION_SOURCE_CHARS, int(min(MAX_STEP_CONTEXT, context) * CHARS_PER_TOKEN * (1 - DOC_SHARE)))
+    texts, used = {}, 0
+    for path in paths:
+        if used >= ceiling:
+            break
+        try:
+            text = read_source(path).decode('utf-8', errors='replace')[:min(ESCALATION_FILE_CHARS, ceiling - used)]
+        except ValueError:
+            continue
+        texts[path] = text
+        used += len(text)
+    return texts
+
+
 def referenced_sources(ledger, group, doc_texts, files):
     """Source files a document group cites or already used as evidence, in order."""
     import re
@@ -371,9 +393,11 @@ def escalation_blocks(row, group, line_range, request_id, resolutions=()):
     if row.get('requestId') != request_id and row.get('result') == 'failed':
         for proof in resolutions:
             if (proof.get('requestId') == row.get('requestId') and proof.get('step') == row.get('step')
-                    and proof.get('executionState') == 'not-dispatched'
                     and len(proof.get('evidenceSha256', '')) == 64
-                    and any(attempt.get('model') == proof.get('model') for attempt in row.get('attempts', []))):
+                    and ((proof.get('executionState') == 'not-dispatched'
+                          and any(attempt.get('model') == proof.get('model') for attempt in row.get('attempts', [])))
+                         or (proof.get('executionState') == 'completed' and not row.get('uncertain')
+                             and str(row.get('model', '')).removeprefix('openclaw:model:') == proof.get('model')))):
                 return False
     # Core verifies the previous execution's terminal receipts before a new one
     # can start. A refused/unavailable attempt may then try the newly authorized
