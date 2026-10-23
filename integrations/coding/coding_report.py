@@ -404,7 +404,7 @@ def initial_ledger(root, path, snapshot, baseline):
     return ledgers.new_ledger(snapshot, coverage, ledgers.legacy_narrative(restored) if restored else None)
 
 
-def escalation_allowed(progress, ledger, group):
+def escalation_allowed(progress, ledger, group, line_range=None, *, prior_failure=False):
     """Escalate once after a local failure or exhausted partial rounds, if allowed."""
     escalation = getattr(progress, 'report_escalation', None)
     if not escalation or not escalation.get('models'):
@@ -413,8 +413,10 @@ def escalation_allowed(progress, ledger, group):
     failed = all(ledger['documents'][path].get('attempts', 0) == 1 for path in group)
     stalled = all(ledger['documents'][path]['state'] == 'partial'
                   and ledger['documents'][path].get('partialRounds', 0) >= steps.MAX_PARTIAL_ROUNDS for path in group)
-    return (calls >= 1 + steps.WRITER_CALLS and seconds >= 300 and (failed or stalled)
-            and not any(row.get('escalated') and set(row.get('documents', [])) == set(group) for row in ledger['steps']))
+    return (calls >= 1 + steps.WRITER_CALLS and seconds >= 300 and (failed or stalled or prior_failure)
+            and not any(row.get('escalated') and set(row.get('documents', [])) == set(group)
+                        and (row.get('lineRange') is None or row['lineRange'] == list(line_range or ()))
+                        for row in ledger['steps']))
 
 
 def escalation_call(r, args, progress, model, messages, step):
@@ -453,7 +455,7 @@ def escalation_call(r, args, progress, model, messages, step):
     return choice.get('message', {}).get('content'), outcome['value'].get('model') or model, None
 
 
-def escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source):
+def escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source, task):
     escalation = progress.report_escalation
     files = r.git(workspace, 'ls-tree', '-r', '--name-only', baseline).splitlines()
     doc_texts = {path: sources[path].decode('utf-8', errors='replace') for path in group}
@@ -483,7 +485,8 @@ def escalate_group(r, args, progress, workspace, baseline, ledger, group, line_r
         texts[cited] = text
         used += len(text)
     content, model, reason = escalation_call(r, args, progress, escalation['models'][0],
-                                             steps.escalation_prompt(ledger, group, doc_texts, texts, line_range), number)
+                                             steps.escalation_prompt(ledger, group, doc_texts, texts, line_range,
+                                                                     operator_notes=steps.latest_operator_notes(task)), number)
     value = None
     if content is not None:
         value, reason = steps.parse_json_object(content)
@@ -498,6 +501,8 @@ def escalate_group(r, args, progress, workspace, baseline, ledger, group, line_r
     except ledgers.LedgerError as error:
         ledgers.record_failure(ledger, group, number, f'cloud escalation: {error}')
         ledger['steps'][-1].update(escalated=True, model=model)
+    if line_range:
+        ledger['steps'][-1]['lineRange'] = list(line_range)
 
 
 def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
@@ -596,6 +601,12 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
             return 'hard_budget'
         number += 1
         group, line_range = groups[0]['documents'], groups[0]['range']
+        prior_failure = bool(getattr(args, 'parent_request_id', None) and not line_range
+                             and steps.prior_failed_group(ledger, group))
+        if prior_failure and escalation_allowed(progress, ledger, group, prior_failure=True):
+            escalate_group(r, args, progress, workspace, baseline, ledger, group, None, number, sources, source, task)
+            save()
+            continue
         value, reason = one(number, steps.group_prompt(ledger, group, f'{sandbox_root}/step-{number:02d}.json', task, note, line_range),
                             budget['calls'], min(budget['seconds'], seconds - steps.WRITER_SECONDS))
         if reason == 'unverified':
@@ -607,9 +618,9 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
         except ledgers.LedgerError as error:
             ledgers.record_failure(ledger, group, number, str(error))
             ledger['steps'][-1].update(requestId=args.request_id, jsonResultAvailable=value is not None)
-        if escalation_allowed(progress, ledger, group):
+        if escalation_allowed(progress, ledger, group, line_range):
             number += 1
-            escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source)
+            escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source, task)
         save()
     calls, seconds = steps.remaining(progress)
     if ledger['findings'] and calls >= steps.WRITER_CALLS and seconds >= steps.WRITER_SECONDS:

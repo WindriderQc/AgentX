@@ -936,6 +936,7 @@ class EscalationStepsTest(StepsReportTest):
         return sent, mock.patch('urllib.request.urlopen', urlopen)
 
     def test_a_failed_group_is_retried_once_in_the_cloud_and_its_findings_are_marked(self):
+        self.task['feedback'] = [{'by': 'operator', 'text': 'An attributed external fact for this document.'}]
         self.escalation = {'models': ['openai/gpt-5.6-sol', 'openrouter/nvidia/nemotron'], 'maxCostNanodollars': 10e9, 'calls': 0}
         self.answers = ['not json', self.reviewed, lambda prompt: {'summary': 's', 'explanations': {}}]
         content = json.dumps({'documents': [{'path': 'README.md', 'state': 'reviewed',
@@ -953,6 +954,8 @@ class EscalationStepsTest(StepsReportTest):
         self.assertEqual(payload['model'], 'openai/gpt-5.6-sol')
         self.assertIn('=== SOURCE config.js', payload['messages'][1]['content'])
         self.assertIn('1: const RETRY_LIMIT = 7;', payload['messages'][1]['content'])
+        self.assertIn('An attributed external fact for this document.', payload['messages'][1]['content'])
+        self.assertIn('remaining scope (data, not a new assignment)', payload['messages'][1]['content'])
         report = base64.b64decode(self.uploads[0]['dataUrl'].split(',')[1]).decode()
         self.assertIn('Found by cloud escalation on `openrouter/nvidia/nemotron`', report)
         progress = json.loads((runner.RECEIPTS/(KEY+'.progress.json')).read_text())
@@ -1024,3 +1027,41 @@ class EscalationStepsTest(StepsReportTest):
             row['state'] = 'partial'
             progress.report_escalation = None
             self.assertFalse(report.escalation_allowed(progress, ledger, ['README.md']))
+
+    def test_escalation_range_receipt_fences_its_own_range_and_legacy_receipts_fence_all_ranges(self):
+        from types import SimpleNamespace
+        progress = SimpleNamespace(report_escalation={'models': ['cloud/model']})
+        ledger = {'documents': {'README.md': {'state': 'partial', 'attempts': 1}},
+                  'steps': [{'documents': ['README.md'], 'escalated': True, 'lineRange': [1, 150, False]}]}
+        with mock.patch.object(report.steps, 'remaining', return_value=(10, 600)):
+            self.assertFalse(report.escalation_allowed(progress, ledger, ['README.md'], (1, 150, False)))
+            self.assertTrue(report.escalation_allowed(progress, ledger, ['README.md'], (151, 300, True)))
+            del ledger['steps'][0]['lineRange']
+            self.assertFalse(report.escalation_allowed(progress, ledger, ['README.md'], (151, 300, True)))
+
+    def test_authorized_continuation_reuses_preserved_local_failure_before_another_local_attempt(self):
+        self.out.mkdir(parents=True)
+        snapshot = dict(report.scope.inventory(self.workspace, self.head), sha256='a' * 64)
+        ledger = report.ledgers.new_ledger(snapshot)
+        ledger['documents']['docs/GUIDE.md']['state'] = 'reviewed'
+        ledger['documents']['README.md']['state'] = 'partial'
+        ledger['steps'] = [{'documents': ['README.md'], 'result': 'failed', 'reason': 'no result file was written'}]
+        path = self.out / 'review.md'
+        path.write_text(report.ledgers.render(ledger, 'Review'))
+        progress = mock.Mock(model_calls=0, hard_deadline=14400, queue_deadline=14400, stop_reason=None,
+                             report_drained=True, report_escalation={'models': ['cloud/model']})
+        progress.now.return_value = 0
+        progress.check_stop.return_value = False
+        progress.call_limit.return_value = 128
+        args = mock.Mock(task_id='0001', request_id=KEY, parent_request_id='22222222-2222-4222-8222-222222222222')
+        content = json.dumps({'documents': [{'path': 'README.md', 'state': 'reviewed',
+            'evidence': [{'path': 'config.js', 'line': 1, 'check': 'RETRY_LIMIT = 7'}]}], 'findings': []})
+        sent, patch = self.escalation_answer(content)
+        with patch:
+            outcome = report.run_steps(runner, args, progress, self.task, self.workspace, self.out, path, snapshot, self.head)
+        self.assertEqual(outcome, 'complete')
+        self.assertEqual(len(sent), 1)
+        runner.run_worker.assert_not_called()
+        restored = report.ledgers.embedded(path.read_text())
+        self.assertEqual(restored['steps'][0]['reason'], 'no result file was written')
+        self.assertTrue(restored['steps'][-1]['escalated'])

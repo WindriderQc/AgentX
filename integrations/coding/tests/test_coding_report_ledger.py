@@ -45,6 +45,19 @@ def good_result():
 
 
 class LedgerTest(unittest.TestCase):
+    def test_prior_failure_eligibility_requires_each_open_document_and_a_local_failure(self):
+        ledger = ledgers.new_ledger(snapshot())
+        self.assertFalse(steps.prior_failed_group(ledger, ['docs/A.md']))
+        ledger['steps'] = [{'result': 'failed', 'documents': ['docs/A.md']}]
+        self.assertTrue(steps.prior_failed_group(ledger, ['docs/A.md']))
+        self.assertFalse(steps.prior_failed_group(ledger, ['docs/A.md', 'docs/B.md']))
+        ledger['documents']['docs/A.md']['state'] = 'reviewed'
+        self.assertFalse(steps.prior_failed_group(ledger, ['docs/A.md']))
+        ledger['documents']['docs/A.md']['state'] = 'partial'
+        ledger['steps'][0]['escalated'] = True
+        self.assertFalse(steps.prior_failed_group(ledger, ['docs/A.md']))
+        self.assertFalse(steps.prior_failed_group(ledger, []))
+
     def test_identical_findings_keep_their_original_number_within_and_across_steps(self):
         ledger = ledgers.new_ledger(snapshot())
         result = good_result()
@@ -408,6 +421,21 @@ class StepPlanTest(unittest.TestCase):
         self.assertIn('Review ONLY lines 151-300 of docs/A.md', prompt)
         self.assertIn('strict (core/config.js:1)', prompt)
         self.assertEqual(steps.plan_groups(ledger, sizes, budget, line_counts=lines), [])
+
+    def test_completing_a_stalled_range_keeps_its_evidence_and_opens_the_next_range(self):
+        ledger = ledgers.new_ledger(snapshot())
+        for path in ('docs/B.md', 'docs/sub/C.md'):
+            ledger['documents'][path]['state'] = 'reviewed'
+        row = ledger['documents']['docs/A.md']
+        row.update(state='partial', partialRounds=3, attempts=1)
+        result = good_result()
+        ledgers.merge_step(ledger, ['docs/A.md'], result, source, 4, line_range=(1, 150, False))
+        self.assertEqual(row['state'], 'partial')
+        self.assertEqual((row['attempts'], row['partialRounds']), (0, 0))
+        self.assertEqual(row['ranges'], [[1, 150]])
+        self.assertEqual(len(row['evidence']), 1)
+        planned = steps.plan_groups(ledger, {'docs/A.md': 72000}, {'docTokens': 10000}, line_counts={'docs/A.md': 300})
+        self.assertEqual(planned[0]['range'], (151, 300, True))
 
     def test_untouched_documents_run_before_a_started_one_even_after_a_continuation(self):
         ledger = ledgers.new_ledger(snapshot())
