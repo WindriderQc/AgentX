@@ -1,6 +1,25 @@
+/* Engine selection is scoped to the surface; credentials never enter the browser. */
+window.ConversationEngines = {
+  available(runtime, family) {
+    return [runtime?.openclawConfigured !== false && 'openclaw', 'agentx', !family && runtime?.hermesConfigured === true && 'hermes'].filter(Boolean);
+  },
+  choose(runtime, family, preferred) {
+    const available = this.available(runtime, family);
+    return [preferred, runtime?.defaultBackend, 'openclaw', 'agentx'].find(value => available.includes(value));
+  },
+  label(backend) { return ({ hermes: 'Hermes', openclaw: 'OpenClaw', agentx: 'AgentX / Ollama' })[backend] || 'Conversation engine'; },
+  observed(data) {
+    const backend = data?.routing?.backend;
+    const source = data?.routing?.source || data?.routingSource;
+    const engine = backend || (typeof source === 'string' && source.startsWith('hermes/') ? 'hermes' : null);
+    const value = typeof data?.model === 'string' ? data.model : data?.model?.model;
+    const model = typeof value === 'string' ? value.slice(0, 160) : '';
+    return engine ? this.label(engine) + (model ? ' · ' + model : '') : '';
+  }
+};
 /* One browser conversation: shared persona, existing household session, local mic. */
 window.mountConversation = async function ({ app, api, esc, space = 'personal', autoStart = true }) {
-  const P = PersonaPresentation;
+  const P = PersonaPresentation, engines = window.ConversationEngines;
   const family = space === 'family';
   const defaultListening = family ? 'wake' : 'open';
   const listeningKey = 'household.space.' + space + '.listening';
@@ -33,7 +52,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       <label for="conversationPersona">Style</label><select id="conversationPersona">${personas.map(p => `<option value="${esc(p.id)}" ${p.id === 'nestor' ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
       <p id="personaDescription" class="muted"></p><p class="muted">The style sets the tone. The member brings its tools and memories.</p>
       <details id="conversationAgentSettings"><summary id="conversationAgentHeading">Agent and model</summary>
-        <label for="conversationBackend">Conversation engine</label><select id="conversationBackend"><option value="openclaw" ${runtime?.openclawConfigured === false ? 'disabled' : ''}>OpenClaw</option><option value="agentx">AgentX / Ollama</option></select><p class="muted">Your memories stay in AgentX with both engines. OpenClaw adds its tools and actions.</p>
+        <label for="conversationBackend">Conversation engine</label><select id="conversationBackend"><option value="openclaw" ${runtime?.openclawConfigured === false ? 'disabled' : ''}>OpenClaw</option><option value="agentx">AgentX / Ollama</option>${!family && runtime?.hermesConfigured === true ? '<option value="hermes">Hermes</option>' : ''}</select><p class="muted">Conversations stay in AgentX. Each engine uses its configured model and capabilities.</p>
         <div id="conversationNativeAgent"><label for="conversationAgent">Team member</label><select id="conversationAgent">${agents.map(agent => `<option value="${esc(agent.id)}" ${agent.id === 'main' ? 'selected' : ''}>${esc(agent.name)} · ${esc(agent.id)}</option>`).join('')}</select>
         <p class="muted">Switching members opens a new conversation with that member’s tools and memories.</p>
         <a href="/api/openclaw/control-launch/chat" target="_blank" rel="noopener">Configure members in OpenClaw</a></div><p id="conversationAgentDescription" class="muted"></p>
@@ -61,7 +80,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       </section>
       <form id="conversationText" class="conversation-text"><label class="sr-only" for="conversationMessage">Message</label><textarea id="conversationMessage" rows="2" placeholder="Write a message…" required maxlength="4000"></textarea><button class="button" type="submit">Send</button></form>
       ${family ? '' : '<details class="conversation-attachments"><summary>Attach an image or document</summary><label class="sr-only" for="conversationFiles">Attachments</label><input id="conversationFiles" type="file" multiple accept="image/png,image/jpeg,.txt,.md,.csv,.json,.pdf"><p class="muted">Up to 3 files · JPEG or PNG photos up to 50 MB (Nestor receives a reduced copy; the original is archived) · text or text PDF up to 2 MB (20 pages, 24,000 characters maximum). Add a message to send them.</p><div id="conversationDraftFiles" aria-live="polite"></div></details>'}
-      <p id="conversationAgentContext" class="conversation-context muted"></p>
+      <p id="conversationExecution" class="conversation-context muted" role="status" hidden></p><p id="conversationAgentContext" class="conversation-context muted"></p>
     </div>${family ? '' : '<section id="conversationWorkflow" aria-label="Nestor component workflow"></section>'}</div></section></div></section>`;
   const el = id => document.getElementById(id);
   const composer = window.ConversationComposer.mount({ input: el('conversationMessage'), form: el('conversationText'), family });
@@ -81,7 +100,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     if (detail.space === (family ? 'family' : 'personal') && detail.scene) show({ key: 'scene', kind: 'scene', title: detail.caption || '', scene: detail.scene });
   });
   const backendPicker = el('conversationBackend');
-  backendPicker.value = runtime?.defaultBackend || 'openclaw';
+  backendPicker.value = engines.choose(runtime, family);
   const agentPicker = el('conversationAgent');
   agentPicker.disabled = family || !agentCatalog;
   if (family) { agentPicker.value = 'family'; el('conversationAgentSettings').hidden = true; app.querySelector('label[for=conversationPersona]').hidden = true; el('conversationPersona').hidden = true; el('conversationOpen').closest('label').hidden = true; }
@@ -163,9 +182,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   }
   const interruptedTurns = new Set();
   const openHold = new HouseholdOpen.OpenHold(hold => {
-    el('conversationOpenStatus').hidden = !openHold.active && !openHold.restoreUntil;
+    el('conversationOpenStatus').hidden = backendPicker.value === 'hermes' || !openHold.active && !openHold.restoreUntil;
     el('conversationOpenStatus').textContent = HouseholdOpen.describe(hold, openHold.active);
-    el('conversationOpenDetails').hidden = !openHold.active;
+    el('conversationOpenDetails').hidden = backendPicker.value === 'hermes' || !openHold.active;
     el('conversationOpenContext').textContent = 'Requested context: ' + (hold?.hold?.numCtx ?? 'unavailable')
       + ' · Loaded context: ' + (hold?.residentContextLength ?? 'unavailable');
     if (openHold.active && hold?.phase === 'blocked') {
@@ -177,6 +196,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   let storage;
   try { storage = window.localStorage; } catch { /* preferences remain usable in memory */ }
   let preferences = P.read(storage, catalog);
+  const backendKey = 'household.space.' + space + '.backend';
+  if (!family) { try { backendPicker.value = engines.choose(runtime, false, storage?.getItem(backendKey)); } catch {} }
   try { const savedListening = storage?.getItem(listeningKey); wake.checked = (['wake', 'open'].includes(savedListening) ? savedListening : defaultListening) === 'wake'; } catch {}
   const describeListening = () => { el('conversationListeningHint').textContent = wake.checked ? 'Say “Hey/Eille/Oh/Ah Nestor”, then speak naturally.' : 'Open conversation: speak freely while the mic is on.'; };
   wake.onchange = () => { conversation.setWakeWord(wake.checked); try { storage?.setItem(listeningKey, wake.checked ? 'wake' : 'open'); } catch {} describeListening(); };
@@ -202,8 +223,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   async function releaseOpen() {
     return openHold.release();
   }
-  const selection = () => ({ wakeWord: wake.checked, backend: backendPicker.value, agentId: family ? 'family' : selectedAgent().id, personaId: selected().id, personaVersion: selected().version,
-    inference: { open: !family && open.checked }, voice: { presentation: chosenVoice(), selections: preferences.profiles[picker.value]?.selections || {} }, language: language.value,
+  const selection = () => ({ wakeWord: wake.checked, backend: backendPicker.value, agentId: family ? 'family' : backendPicker.value === 'hermes' ? 'main' : selectedAgent().id, personaId: selected().id, personaVersion: selected().version,
+    inference: { open: !family && backendPicker.value !== 'hermes' && open.checked }, voice: { presentation: chosenVoice(), selections: preferences.profiles[picker.value]?.selections || {} }, language: language.value,
     visual: null, interruption: interruption.checked });
   // The team member answering this turn when it addressed one directly (#41); null for the conversation's agent.
   let turnSpeaker = null;
@@ -334,6 +355,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       void recap?.refresh(session.sessionId);
       personalNotes.show(result.continuity?.personal); degradedReply = result.routing?.fallbackUsed === true;
       showTools(result.tools);
+      showExecution(result);
       // The agent consulted a team member (#41): its answer is collected and said like a member's late reply.
       if (result.consult) void followMember(session, result.consult.turnId, result.consult.speaker);
       return { ...result.reply, sound: result.sound };
@@ -563,11 +585,16 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       personas: catalog, measurements: () => ({ ...latestVoiceTimings, ...lastPlaybackMetrics }), extraSettings: fallbackSettings, flow: family ? null : diagnosticFlow,
       onSaved: () => { conversation.stop(true); syncVoicePreferences(); } });
   };
+  function showExecution(data) {
+    const text = engines.observed(data);
+    el('conversationExecution').textContent = text;
+    el('conversationExecution').hidden = family || !text;
+  }
   function showTools(evidence) {
     const receipts = evidence?.receipts || [];
     const box = el('conversationTools'); box.hidden = !receipts.length && !['unavailable', 'not_supported'].includes(evidence?.status);
     if (box.hidden) return;
-    el('conversationToolsStatus').textContent = evidence.status === 'not_supported' ? 'AgentX / Ollama · answer with context, without OpenClaw tools.' : evidence.status === 'unavailable'
+    el('conversationToolsStatus').textContent = evidence.status === 'not_supported' ? engines.label(conversation.session?.backend || backendPicker.value) + ' · no tool receipts supported for this answer.' : evidence.status === 'unavailable'
       ? 'Tool receipts are unavailable.'
       : receipts.map(receipt => receipt.tool + (receipt.status === 'failed' ? ' · failed'
         : receipt.status === 'verified' ? ' · result received'
@@ -577,6 +604,13 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   // The team member this conversation is (or will be) with, and why settings are locked.
   function renderTeam(busy = false) {
     if (family) return '';
+    const backend = conversation.session?.backend || backendPicker.value;
+    if (backend === 'hermes') {
+      el('conversationTeam').hidden = true;
+      const notice = conversation.session ? 'Hermes · start a new conversation to change engines.' : '';
+      el('conversationLocked').textContent = notice; el('conversationLocked').hidden = !notice;
+      return notice;
+    }
     const activeAgentId = conversation.session?.agentId || agentPicker.value;
     const locked = !!conversation.session;
     ConversationTeam.render(el('conversationTeam'), { list: team, activeAgentId, locked: locked || busy, esc });
@@ -589,6 +623,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     const card = event.target.closest('button[data-agent]');
     if (!card || card.disabled || conversation.session) return;
     backendPicker.value = 'openclaw';
+    try { storage?.setItem(backendKey, 'openclaw'); } catch {}
     agentPicker.value = card.dataset.agent;
     picker.value = card.dataset.persona;
     picker.onchange();
@@ -596,7 +631,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   // The style picker offers what suits the chosen member; a resumed conversation keeps its own.
   function syncStyles() {
     if (family || conversation.session) return;
-    const offered = ConversationTeam.stylesFor(personas, agentPicker.value);
+    const offered = backendPicker.value === 'hermes' ? ConversationTeam.stylesFor(personas, 'main') : ConversationTeam.stylesFor(personas, agentPicker.value);
     if (!offered.length) return;
     const current = offered.some(p => p.id === picker.value) ? picker.value : (offered.find(p => p.agentId === agentPicker.value) || offered[0]).id;
     picker.replaceChildren(...offered.map(p => new Option(p.name, p.id)));
@@ -606,14 +641,17 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   function describe() {
     syncStyles(); renderTeam();
     const agent = agents.find(agent => agent.id === (conversation.session?.agentId || agentPicker.value)) || selectedAgent();
-    const native = (conversation.session?.backend || backendPicker.value) === 'openclaw';
+    const backend = conversation.session?.backend || backendPicker.value;
+    const native = backend === 'openclaw', hermes = backend === 'hermes';
+    open.closest('label').hidden = family || hermes;
+    if (hermes) { open.checked = false; el('conversationOpenStatus').hidden = true; el('conversationOpenDetails').hidden = true; }
     agentPicker.disabled = family || !native || !agentCatalog || !!conversation.session;
     el('conversationNativeAgent').hidden = !native;
-    el('conversationAgentHeading').textContent = native ? 'Agent and model · ' + agent.name : 'Agent and model · AgentX / Ollama';
-    el('conversationAgentDescription').textContent = !native ? 'AgentX routing chooses the model. Open uses the configured local alternate model.' : agentCatalog
+    el('conversationAgentHeading').textContent = native ? 'Agent and model · ' + agent.name : 'Agent and model · ' + engines.label(backend);
+    el('conversationAgentDescription').textContent = hermes ? 'Hermes uses its configured account and model. Voice, avatar and conversation history stay in AgentX. The local Open model override does not apply.' : !native ? 'AgentX routing chooses the model. Open uses the configured local alternate model.' : agentCatalog
       ? `OpenClaw model: ${agent.model || 'native default'}. Open replaces this model and turns off its fallback models for this conversation.`
       : 'Member configuration is unavailable. The main conversation is still available.';
-    el('conversationAgentContext').textContent = family ? 'Nestor · family conversations and memories.' : native ? agent.name + ' · conversations, tools and private memories.' : 'Conversation with the context provided to AgentX.';
+    el('conversationAgentContext').textContent = family ? 'Nestor · family conversations and memories.' : hermes ? 'Nestor · Hermes conversation with the context provided by AgentX.' : native ? agent.name + ' · conversations, tools and private memories.' : 'Conversation with the context provided to AgentX.';
     el('conversationNotes').hidden = family;
     if (family) { el('conversationAgentSettings').hidden = true; picker.hidden = true; open.checked = false; }
     if (family) { el('conversationNotes').open = false; personalNotes.show(null); }
@@ -629,7 +667,12 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     const profile = P.profile(preferences.profiles[picker.value]);
     language.value = profile.language;
   };
-  backendPicker.onchange = () => { describe(); };
+  backendPicker.onchange = () => {
+    if (!engines.available(runtime, family).includes(backendPicker.value)) backendPicker.value = engines.choose(runtime, family);
+    if (!family) { try { storage?.setItem(backendKey, backendPicker.value); } catch {} }
+    if (backendPicker.value === 'hermes') { open.checked = false; if (personas.some(p => p.id === 'nestor')) picker.value = 'nestor'; void releaseOpen(); }
+    restoreProfile(); describe();
+  };
   agentPicker.onchange = () => { savePreferences(); describe(); };
   picker.onchange = () => { restoreProfile(); savePreferences(); describe(); };
   for (const field of [language]) field.onchange = () => { savePreferences(); describe(); work?.refresh(); };
@@ -649,7 +692,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   el('conversationNew').onclick = () => {
     recap?.clear();
     el('conversationResume').hidden = true; setHistoryOpen(false); conversation.stop(); work?.reset(); workflow?.reset(); void releaseOpen(); partial = null;
-    transcript.innerHTML = '<p class="empty">Our conversation will appear here.</p>'; clearBoard(); brain.reset();
+    transcript.innerHTML = '<p class="empty">Our conversation will appear here.</p>'; clearBoard(); brain.reset(); showExecution(null);
     personalNotes.show(null);
     showTools(null); void recap?.refresh();
     el('conversationMessage').value = ''; composer.sync(); draftFiles = []; renderDraftFiles(); restoreProfile(); describe(); el('conversationMessage').focus();
@@ -757,7 +800,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         agents.push({ id: saved.agentId, name: saved.agentId }); agentPicker.add(new Option(saved.agentId, saved.agentId));
       }
       agentPicker.value = saved.agentId || 'main';
-      backendPicker.value = saved.backend || runtime?.defaultBackend || 'openclaw';
+      backendPicker.value = engines.choose(runtime, family, saved.backend);
+      if (!family && engines.available(runtime, false).includes(saved.backend)) { try { storage?.setItem(backendKey, saved.backend); } catch {} }
       picker.value = saved.persona?.id || 'nestor'; open.checked = !!saved.inference?.open;
       language.value = P.profile(data.session.voice).language;
       transcript.replaceChildren(); partial = null; clearBoard(); brain.reset();
@@ -776,6 +820,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         { current: () => conversation.session?.sessionId === data.session.sessionId }); // starting voice moves the epoch
       personalNotes.show(data.turns?.at(-1)?.personalContinuity);
       showTools(data.turns?.at(-1)?.toolEvidence);
+      showExecution(data.turns?.at(-1));
       void recap?.refresh();
       describe(); conversation.show('paused'); setHistoryOpen(false); el('conversationStart').focus();
       // Opening a conversation resumes it: no second press on Reprendre. As on arrival, voice starts

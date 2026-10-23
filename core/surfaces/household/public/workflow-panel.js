@@ -28,6 +28,13 @@
     return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`; };
   const safe = value => typeof value === 'string' ? value.slice(0, 160) : '';
 
+  function executionEvidence(data) {
+    const source = safe(data?.routing?.source || data?.routingSource);
+    const backend = safe(data?.routing?.backend) || (source.startsWith('hermes/') ? 'hermes' : '');
+    const model = safe(typeof data?.model === 'string' ? data.model : data?.model?.model);
+    return backend || model ? { backend, model } : null;
+  }
+
   function createModel() {
     let sessionId = null, gap = false, stale = false, order = 0;
     const turns = new Map(), works = new Map(), events = new Map();
@@ -78,6 +85,7 @@
       if (event.type === 'delta') row.firstText = true;
       if (event.type === 'done') { row.done = true; row.live = false; row.traceId = safe(event.data?.traceId) || row.traceId;
         row.serverTimings = event.data?.serverTimings || row.serverTimings;
+        row.execution = executionEvidence(event.data) || row.execution;
         row.adviceRefs = Array.isArray(event.data?.adviceRefs) ? event.data.adviceRefs : row.adviceRefs; }
       if (event.type === 'error') { row.error = true; row.live = false; }
       if (event.type === 'deferred') { row.deferred = true; row.live = false; }
@@ -102,6 +110,7 @@
         row.interrupted = item.interrupted === true;
         row.voiceTimings = item.voiceTimings || row.voiceTimings;
         row.serverTimings = item.serverTimings || row.serverTimings;
+        row.execution = executionEvidence(item) || row.execution;
         row.adviceRefs = Array.isArray(item.adviceRefs) ? item.adviceRefs : row.adviceRefs;
         if (item.toolEvidence) row.toolCount = Array.isArray(item.toolEvidence.receipts) ? item.toolEvidence.receipts.length : 0;
         row.speaker = safe(item.speakerAgentId || row.speaker);
@@ -536,6 +545,7 @@
       const latestWork = current?.works?.at(-1), toolReceipts = (current?.toolCount || 0) + (latestWork?.tools?.length || 0);
       const resource = (label, value) => { const item = node('div', 'workflow-resource'); item.append(node('small', '', label), node('strong', '', value)); resources.append(item); };
       resource('AGENT / RUN', latestWork?.attempt?.agentId ? `${latestWork.attempt.agentId}${latestWork.attempt.runId ? ` · ${latestWork.attempt.runId}` : ' · unknown run'}` : 'No run attested');
+      if (current?.execution) resource('ENGINE / MODEL', [current.execution.backend, current.execution.model].filter(Boolean).join(' · '));
       resource('TOOLS', toolReceipts ? `${toolReceipts} receipt${toolReceipts > 1 ? 's' : ''} observed` : 'No receipt');
       resource('CORE LOG', view.stale ? 'Not refreshed' : view.events.length ? `${view.events.length} event${view.events.length > 1 ? 's' : ''} received` : 'No event received');
       const passages = node('section', 'workflow-passages'); passages.setAttribute('aria-label', 'Latest attested steps');

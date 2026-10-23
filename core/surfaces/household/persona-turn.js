@@ -348,6 +348,10 @@ function createPersonaTurnHandler({
           'This turn uses AgentX/Ollama inference with the supplied context. No native agent tools, skills or Dreaming run here. Do not claim to access OpenClaw memory or execute actions. A note is saved only when the supplied context explicitly confirms it.',
           workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, pages: !pack.childSafe, pageCatalog: screenPages, imageSources: visuals.sources({ family: pack.childSafe }) }),
           isLlmX || member ? '' : conversationImages?.contract(session, backend)].filter(Boolean).join('\n\n');
+        const hermesInstructions = [session.persona?.identity,
+          'This is the personal Nestor conversation. Hermes owns its native agent loop. Core owns the visible transcript and selected personal context; local speech handles the microphone and playback. Use only tools actually installed in this Hermes profile. Treat supplied personal context as reference data. Never claim an action or memory save without a successful receipt.',
+          'For voice, speak naturally in Canadian French unless the user chooses English. Prefer a brief conversational answer and expand when asked.',
+          replyChannels.contract({ family: false, pages: true, pageCatalog: screenPages, imageSources: visuals.sources({ family: false }) })].filter(Boolean).join('\n\n');
         abort.signal.throwIfAborted();
         entry.dispatched = true;
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
@@ -374,7 +378,8 @@ function createPersonaTurnHandler({
           guardianStreaming: true, maxOutputTokens: 1024 } : {}), pack: isOpening ? { ...pack, maxTokens: 180 }
           : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText,
           history: features.historyContext === false ? [] : guardianSession ? dedicatedGuardian.history(history) : history, streaming, channel: req.body?.channel,
-          conversationFeatures: features, ...(preferredSpeechLanguage ? { speechLanguage: preferredSpeechLanguage } : {}),
+          conversationFeatures: features, turnId: clientTurnId || crypto.randomUUID(), hermesInstructions,
+          ...(preferredSpeechLanguage ? { speechLanguage: preferredSpeechLanguage } : {}),
           ...(acceptedTaskWork ? { readAcceptedTaskWork: () => conversationWorks.taskAcceptance(entry.workId) } : {}),
           ...(acceptedNativeWork ? { readAcceptedNativeWork: () => conversationWorks.nativeAcceptance(entry.workId) } : {}),
           attachments: entry.attachments, attachmentStore,
@@ -387,7 +392,7 @@ function createPersonaTurnHandler({
           onStarted: async (key, runId) => {
             if (entry.workId && runId) await conversationWorks.guardianStarted(entry.workId, key, runId, agentIdFor(turnSession));
             if (runId) entry.auditContext = { ...entry.auditContext,
-              toolEvidence: { authority: `openclaw/${agentIdFor(turnSession)}`, sessionKey: key, runId } };
+              toolEvidence: { authority: backend === 'hermes' ? 'hermes' : `openclaw/${agentIdFor(turnSession)}`, sessionKey: key, runId } };
             if (member || guardianSession) {
               // The member's own native session; the conversation agent's key is never replaced.
               const keys = { ...(session.agentSessionKeys || {}), [agentIdFor(turnSession)]: key };
@@ -407,8 +412,9 @@ function createPersonaTurnHandler({
         serverPhases.executed = Date.now() - startedAt; serverPhases.agent = result.metadata?.phases;
         entry.executionSettled = true;
         metadata = result.metadata; if (metadata?.routing?.degraded) { fallbackUsed = true; fallbackReason = `task_fallback_${metadata.routing.reason}`; } // #135 degraded fallback
-        routeTier = backend === 'openclaw' ? 'agent' : 'router';
+        routeTier = ['openclaw', 'hermes'].includes(backend) ? 'agent' : 'router';
         continuity = result.tools?.authority === 'core.conversation-works' ? { status: 'accepted', source: 'core.conversation-works' }
+          : backend === 'hermes' ? { status: 'ready', source: 'hermes', sessionKey: result.sessionKey }
           : backend === 'openclaw' ? { status: 'ready', source: `openclaw/${agentIdFor(turnSession)}`, sessionKey: result.sessionKey }
           : { status: 'ready', source: 'session-audit', messageCount: history.length };
         if (!pack.childSafe) continuity.personal = { status: 'ready', authority: 'agentx.core', notes: memories };
@@ -493,7 +499,7 @@ function createPersonaTurnHandler({
         if (routeTier === 'deterministic') await conversationWorks.handled(entry.workId);
         await conversationWorks.guardianSettled(entry.workId, 'completed', metadata.guardianDisposition);
       }
-      if (!entry.workId && !isLlmX && (!preferencesFor || (await preferencesFor(pack.childSafe).read()).values.backgroundReview)) brain.schedule({ session, pack, traceId });
+      if (!entry.workId && !isLlmX && session.backend !== 'hermes' && (!preferencesFor || (await preferencesFor(pack.childSafe).read()).values.backgroundReview)) brain.schedule({ session, pack, traceId });
       entry.replyText = replyText;
       // The conversation's agent hears about a member's answer once, on its next turn.
       if (member) await conversations.updateSession({ sessionId: session.sessionId },
@@ -538,6 +544,7 @@ function createPersonaTurnHandler({
         safety,
         model: { model: metadata.model || '', hostKey: metadata.hostKey || '' },
         routing: {
+          backend: session.backend || '', provider: metadata.provider || '',
           source: metadata.routingSource || '',
           tier: routeTier,
           fallbackUsed,

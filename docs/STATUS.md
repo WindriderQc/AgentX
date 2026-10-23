@@ -107,6 +107,7 @@ Instance configuration, data and deployment receipts remain outside Git.
   Playground, PsyX, personal Nestor and Famille. Their shared editor explains
   resource effects, offers presets and requires an explicit save; Famille
   controls live in the parental space.
+- **Optional Hermes conversation.** Personal Nestor can use Hermes behind the existing local voice and reactive avatar. Core keeps dispatch identity, transcript and terminal receipts; native cancellation and uncertain results remain fenced. Family and LLMx exclude this backend. See [Hermes conversation](HERMES_CONVERSATION.md).
 - **Nestor guardian and brain.** Optional personal voice work commits the human
   request before inference. Native mode sends all work to complete Main with its
   installed tools, memory, specialists and approval contracts while the guardian
