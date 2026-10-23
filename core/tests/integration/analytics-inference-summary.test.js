@@ -37,6 +37,35 @@ describe('inference summary aggregation', () => {
     expect(d.byBucket.reduce((sum, row) => sum + row.calls, 0)).toBe(d.totals.calls);
   });
 
+  test('consumer coverage reconciles legacy missing contracts and the filtered log drilldown', async () => {
+    const base = { model: 'local/test', host: 'http://192.0.2.1:11434', status: 'success', caller: 'proxy' };
+    await InferenceLog.insertMany([
+      base, { ...base, consumerContract: '' }, { ...base, consumerContract: 'unknown', caller: 'embedding' },
+      { ...base, consumerContract: 'desktop-runtime-v1' },
+      { ...base, consumerContract: 'core-ops-watch-v1', taskType: 'ops_watch' }
+    ]);
+    const { body: { data: d } } = await request(server).get('/api/analytics/inference/summary?window=24h').expect(200);
+    expect(d.attribution).toMatchObject({ calls: 5, identifiedCalls: 2, missingCalls: 3, identifiedPct: 40,
+      missingByCaller: [{ caller: 'proxy', calls: 2 }, { caller: 'embedding', calls: 1 }] });
+    expect(d.observedAt).toBe(d.window.to);
+    expect(d.ttlMs).toBe(300000);
+    for (const [flag, total] of [['true', 3], ['false', 2]]) {
+      const res = await request(server).get('/api/analytics/inference/logs').query({
+        consumerContractMissing: flag, from: d.window.from, to: d.window.to
+      }).expect(200);
+      expect(res.body.data.pagination.total).toBe(total);
+      expect(res.body.data.items).toHaveLength(total);
+      expect(res.body.data.filters.consumerContractMissing).toBe(flag);
+    }
+    await request(server).get('/api/analytics/inference/logs?consumerContractMissing=maybe').expect(400);
+    await request(server).get('/api/analytics/inference/logs?consumerContractMissing=true&consumerContract=desktop-runtime-v1').expect(400);
+  });
+
+  test('empty activity leaves the attribution percentage unobserved', async () => {
+    const { body: { data: d } } = await request(server).get('/api/analytics/inference/summary?window=24h').expect(200);
+    expect(d.attribution).toMatchObject({ calls: 0, identifiedCalls: 0, missingCalls: 0, identifiedPct: null });
+  });
+
   test('unmeasured duration is unknown rather than a zero-latency call', async () => {
     await InferenceLog.create({ model: 'local/legacy', host: 'http://192.0.2.1:11434', durationMs: 0 });
     const res = await request(server).get('/api/analytics/inference/summary?window=7d');

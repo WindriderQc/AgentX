@@ -162,7 +162,7 @@
       <span class="ao-model-name" style="--share:${Math.max(0, Math.min(100, row.share || 0))}%;--time-share:${Math.max(0, Math.min(100, row.timeShare || 0))}%" title="${esc(row.label)} · ${esc(percent(row.share))} of calls · ${esc(percent(row.timeShare))} of recorded elapsed time"><span>${esc(row.label)}</span></span>
       <span>${esc(count(row.calls))}</span><span>${row.other ? '—' : esc(duration(row.calls > 0 ? row.avgLatencyMs : null))}</span><span>${row.other ? '—' : esc(percent(row.calls > 0 ? row.errorRate : null))}</span></div>`).join('')
       : '<p class="ao-empty">No recorded activity in this window.</p>';
-    set('ao-model-note', 'Share of window total · durations include waits');
+    set('ao-model-note', groupBy === 'byConsumerContract' ? 'Server-attested consumers · unknown means contract missing' : 'Share of window total · durations include waits');
   }
 
   function renderTrend(data) {
@@ -257,6 +257,7 @@
     const focus = $('ao-error-focus'), refusals = data.failureAnalysis?.admissionRefusals;
     focus.hidden = !(t.errors > 0);
     focus.textContent = finite(refusals) ? `${count(refusals)} / ${count(t.errors)} errors: admission refused →` : 'Explore recorded errors →';
+    if (finite(data.failureAnalysis?.unclassified) && data.failureAnalysis.unclassified > 0) focus.textContent += ` · ${count(data.failureAnalysis.unclassified)} causes unrecorded`;
     focus.title = 'Recorded attempts, not failed user requests. Refusals do not dispatch inference; retries can create several records.';
     set('ao-local-calls', count(data.local?.calls));
     set('ao-local-share', hasCalls && finite(data.local?.calls) ? `${percent(data.local.calls / t.calls * 100)} of recorded calls` : 'No call share observed');
@@ -264,8 +265,10 @@
     const cloud = data.cloud || {};
     set('ao-cloud-cost', cloud.calls === 0 ? 'No calls' : finite(cloud.estimatedCostUsd) ? `$${cloud.estimatedCostUsd.toFixed(2)}` : 'Unpriced');
     set('ao-cloud-note', cloud.calls === 0 ? 'No recorded cloud traffic' : `${count(cloud.calls)} calls · ${cloud.unpricedModels?.length ? `${cloud.unpricedModels.length} unpriced models excluded` : 'USD estimate, configured rates'}`);
+    renderAttribution(data);
     const to = new Date(data.window.to);
-    set('ao-updated', `Snapshot ${to.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} · refresh on demand`);
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    set('ao-updated', `${new Date(data.window.from).toLocaleString()} → ${to.toLocaleString()} (${zone}) · refresh on demand`);
     const c = data.coverage;
     set('ao-coverage', `Recorded attempts, including admission refusals; retries may repeat one client request. Native calls bypassing Core are outside this view. ${c ? `${c.retentionDays}-day log retention${c.requestedDays > c.retentionDays ? ` limits this ${c.requestedDays}-day window` : ''}. ` : ''}Reported tokens may omit unreported usage. Summed call time is not GPU busy time.`);
     renderComparison();
@@ -273,8 +276,25 @@
     renderVisuals(data);
   }
 
+  function renderAttribution(data) {
+    const a = data.attribution, link = $('ao-attribution-logs');
+    link.hidden = true;
+    if (!a || !(a.calls > 0)) {
+      set('ao-attribution', a?.calls === 0 ? 'No recorded calls to attribute.' : 'Consumer attribution unavailable from this Core version.');
+      return;
+    }
+    const breakdown = (a.missingByCaller || []).map(row => `${count(row.calls)} ${row.caller}`).join(' · ');
+    set('ao-attribution', `${count(a.identifiedCalls)} / ${count(a.calls)} calls have an identified consumer · ${count(a.missingCalls)} missing${breakdown ? ` (${breakdown})` : ''}. Runtime and task type do not establish application identity.`);
+    if (a.missingCalls > 0) {
+      link.href = `/api/analytics/inference/logs?${new URLSearchParams({ consumerContractMissing: 'true', from: data.window.from, to: data.window.to })}`;
+      link.hidden = false;
+    }
+  }
+
   function clearSummary(state) {
     summary = null;
+    set('ao-attribution', 'Consumer attribution unavailable for this window');
+    $('ao-attribution-logs').hidden = true;
     if (trend) { trend.destroy(); trend = null; }
     $('ao-trend-chart').hidden = true;
     $('ao-trend-empty').hidden = false;

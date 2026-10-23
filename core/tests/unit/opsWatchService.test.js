@@ -71,6 +71,7 @@ describe('operations watch', () => {
     await watch.check();
     expect(execute).toHaveBeenCalledTimes(1);
     expect(execute.mock.calls[0][0]).toMatchObject({ taskType: 'ops_watch', think: false, stream: false, callerDetail: 'ops-watch' });
+    expect(execute.mock.calls[0][1]).toMatchObject({ consumerContract: 'core-ops-watch-v1' });
     expect(execute.mock.calls[0][0].system).toContain('Write in French.');
     expect(execute.mock.calls[0][0].prompt).toContain('[critical] Host B default is offline');
     expect(evaluateEvent).toHaveBeenCalledTimes(2);

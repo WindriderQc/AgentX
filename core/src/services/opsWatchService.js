@@ -100,7 +100,7 @@ function createOpsWatch(deps = {}) {
         system: `${SYSTEM} Write in ${language}.`,
         prompt: `Findings:\n${plainList(findings)}`,
         options: { temperature: 0, num_predict: 400 }
-      }, { timeoutMs: MODEL_TIMEOUT_MS });
+      }, { timeoutMs: MODEL_TIMEOUT_MS, consumerContract: 'core-ops-watch-v1' });
       if (!result?.ok) return { summary: null, model: null, reason: result?.body?.code || `status ${result?.status}` };
       const summary = String(result.body?.response || result.body?.message?.content || result.body?.content || '')
         .trim().slice(0, MAX_SUMMARY_CHARS);
