@@ -32,7 +32,8 @@ test('creating personal tasks without a specialist is not a request to read the 
   for (const text of [
     'Ajoute deux tâches personnelles, sans consulter de spécialiste. Confirme les identifiants enregistrés.',
     'Crée ma tâche hebdomadaire sans aller consulter Secretary.',
-    'Ajoute une tâche à ma liste sans vérifier le reste.'
+    'Ajoute une tâche à ma liste sans vérifier le reste.',
+    'Add a personal task to my list without consulting a specialist.'
   ]) assert.equal(requestsTaskCheck(text), false, text);
   assert.equal(requestsTaskCheck('Ajoute une tâche sans consulter Secretary, puis regarde mes tâches.'), true);
 });
