@@ -16,6 +16,12 @@ async function create(input = {}) {
   return response.body.data.task.pipelineId;
 }
 async function read(id) { return (await harness.request.get(`/api/pipeline/tasks/${id}`).expect(200)).body.data; }
+async function accept(id) {
+  const { task } = await read(id);
+  await require('../../src/services/taskIntakeService').decide(id, { state: 'accepted',
+    reason: 'Synthetic scope reviewed for this execution fixture.', by: 'fixture-operator', requestId: require('node:crypto').randomUUID(),
+    expectedRevision: task.intakeView.revision, expectedScopeFingerprint: task.intakeView.scopeFingerprint, confirm: true });
+}
 
 test('an empty UI classification creates an ungrouped, unassigned task with normal priority', async () => {
   const id = await create({ title: 'Start with a title', source: 'pipeline-ui', service: '', epic: '', spec: '' });
@@ -44,6 +50,7 @@ test('a preflight problem returns the exact queued ticket without consuming an a
 
 test('capacity deferral records the reason while retaining the queued task and its attempts', async () => {
   const id = await create();
+  await accept(id);
   const { task } = await read(id);
   const response = await harness.request.post(`/api/pipeline/tasks/${id}/feedback`).send({
     status: 'deferred', by: 'guarded-dispatch', text: 'AUTOMATION_SLOT_OCCUPIED: waiting for capacity',
@@ -69,6 +76,7 @@ test.each([undefined, 'invalid date'])('capacity deferral requires a valid obser
 
 test.each(['blocked', 'deferred'])('late %s preflight feedback cannot change a newly claimed task', async (verdict) => {
   const id = await create();
+  await accept(id);
   const { task } = await read(id);
   await harness.request.post(`/api/pipeline/tasks/${id}/claim`).send({ assignee: 'another-worker' }).expect(200);
   await harness.request.post(`/api/pipeline/tasks/${id}/feedback`).send({ status: verdict, by: 'guarded-dispatch', text: 'Stale preflight', expectedQueuedUpdatedAt: task.updatedAt }).expect(409);

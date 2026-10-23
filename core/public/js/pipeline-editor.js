@@ -58,7 +58,7 @@
     $('pipelineSavePreviewHeading').textContent = current ? 'Effet des modifications' : 'Après la création';
     $('pipelineSavePreview').textContent = current
       ? `${classification} ${deadline} L’état, le responsable et l’historique actuels sont conservés.`
-      : `${classification} ${schedule}, ${dependencies}. ${deadline} La tâche est ajoutée en file d’attente, sans responsable. ${privateService ? 'Elle apparaît dans le suivi personnel ou familial.' : 'Elle apparaît dans Pipeline.'} La prise en charge dépend ensuite des conditions de la file; ce bouton ne lance pas un agent.`;
+      : `${classification} ${schedule}, ${dependencies}. ${deadline} ${privateService ? 'La tâche apparaît dans le suivi personnel ou familial, selon ses règles propres.' : 'La demande apparaît dans Pipeline comme proposition à trier. Son acceptation et son autorisation d’exécution restent séparées.'} Ce bouton ne lance pas un agent.`;
   }
   function setRoadmap(items = [], selected = []) {
     const select = $(fields.planningItemIds);

@@ -46,11 +46,12 @@
     const stopped = task.status === 'blocked' ? outcomeApi?.describe(workerOutcome) : null;
     const resumeWorker = outcomeApi?.canResume(task, workerControl);
     const managed = Boolean(task.codingAutonomy || task.automation?.mode === 'review_only' || task.automationAttemptCount > 0 || task.automationAttempts?.length);
-    const canReply = !managed && !qualification && task.status === 'blocked' && codingTask && (!task.assignee || resumeWorker);
+    const intakeReady = task.intakeView?.claimGate !== 'decision_required';
+    const canReply = intakeReady && !managed && !qualification && task.status === 'blocked' && codingTask && (!task.assignee || resumeWorker);
     if (!qualification && managed && ['queued', 'blocked'].includes(task.status)) {
       actions.push('<p class="pipeline-drawer-context">This task uses the existing Coding Team correction loop. Review its authorization and resume through the Coding Team controls.</p>');
     }
-    if (!managed && !qualification && task.status === 'queued' && !task.assignee && codingTask) {
+    if (intakeReady && !managed && !qualification && task.status === 'queued' && !task.assignee && codingTask) {
       actions.push(`<form class="pipeline-drawer-action" data-drawer-action="give-to-team" data-profile-context="${profileContext}">
         ${window.PipelineLaunchController?.profileFields(task) || ''}
         <button type="submit" class="pipeline-btn primary">Give to the team</button></form>`);
@@ -199,6 +200,7 @@
         </div>
       </div>
       <p class="pipeline-drawer-byline">${escapeHtml(task.assignee ? `Assigned to ${task.assignee}` : 'Not assigned')}${task.dueAt ? ` · Due ${escapeHtml(formatDate(task.dueAt))}` : ''}</p>
+      ${window.PipelineIntake?.markup(task, reviewer) || ''}
       <div class="pipeline-drawer-workspace" data-dossier-mode="${mode}">
         <div class="pipeline-drawer-content">
           ${window.PipelineDossierActivity.markup(task, activity, formatDate)}

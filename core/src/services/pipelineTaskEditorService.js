@@ -58,8 +58,12 @@ async function applyTaskEdit(pipelineId, { changes, editToken: expectedToken, by
   const query = { pipelineId, $and: EDITABLE_FIELDS.map(key => ({
     [key]: current[key] === undefined ? { $exists: false } : { $eq: current[key] }
   })) };
+  const intakePolicy = require('./taskIntakePolicy');
+  const intake = !current.intake && !intakePolicy.applicable(current) && intakePolicy.applicable({ ...current, ...edits })
+    ? intakePolicy.initial({ ...current, ...edits }) : null;
+  if (intake) query['intake.revision'] = null;
   const updated = await PipelineTask.findOneAndUpdate(query, {
-    $set: Object.fromEntries(changed.map(key => [key, edits[key]])),
+    $set: { ...Object.fromEntries(changed.map(key => [key, edits[key]])), ...(intake && { intake }) },
     $inc: { __v: 1 },
     $push: { feedback: { by: String(by).trim().slice(0, 160) || 'operator', text: `Edited task: ${changed.join(', ')}.`, at: new Date() } }
   }, { new: true, runValidators: true }).lean();

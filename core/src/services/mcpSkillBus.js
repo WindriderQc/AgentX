@@ -86,7 +86,7 @@ const TOOLS = [
   {
     name: 'create_todo',
     title: 'Create TODO',
-    description: 'Save a task in the Mongo pipeline. Supply a title or objective; add steps and other details as needed. Does not dispatch or execute the task.',
+    description: 'Record an engineering proposal in the Core pipeline for explicit triage. Supply a title or objective; add details as needed. Creation does not accept a commitment, dispatch work or authorize execution. Use personal/family capabilities for their own tasks. Read the canonical intake decision and next action before preparing work.',
     inputSchema: { ...objectSchema({
       title: { type: 'string', maxLength: 120 },
       objective: { type: 'string', minLength: 1, maxLength: 3000 },

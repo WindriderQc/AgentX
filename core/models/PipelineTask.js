@@ -191,6 +191,7 @@ const TaskTransitionSchema = new mongoose.Schema({
 }, { _id: false });
 
 const PipelineTaskSchema = new mongoose.Schema({
+  intake: { type: require('./TaskIntakeSchema'), default: undefined },
   origin: { type: String, default: undefined },
   pipelineId: { type: String, required: true, unique: true, index: true }, // e.g. "0307"
   title: { type: String, required: true },

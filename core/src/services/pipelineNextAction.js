@@ -32,6 +32,15 @@ function taskNextAction(task, { now = new Date(), dependencyStatuses = new Map()
     'Consult the separate qualification receipt and original execution history.', { tone: 'attention' });
   if (task.status === 'done') return action('none', 'none', 'Closed task record',
     'Closure is recorded; it does not prove merge, deployment or device acceptance.', 'Consult the separate delivery receipts.');
+  const intake = require('./taskIntakePolicy').view(task);
+  if (['queued', 'blocked'].includes(task.status) && intake.claimGate === 'decision_required' && !require('./taskIntakePolicy').fenced(task)) {
+    const waiting = ['deferred', 'declined'].includes(intake.state);
+    return action(waiting ? 'intake_not_pursued' : 'intake_review', waiting ? 'none' : 'human', intake.label,
+      intake.reason || 'This request needs an intake decision before work is prepared or claimed.',
+      waiting ? 'Retain the reason and provenance. Reconsider deliberately; no automatic execution or reminder is scheduled.'
+        : 'Review the current request, then record acceptance, clarification, deferral or a reason not to pursue it. Acceptance grants no execution authority.',
+      { attention: !waiting, rank: waiting ? 9 : 2 });
+  }
   if (task.status === 'blocked') {
     const outcome = workerOutcome.latest(task);
     const explanation = workerOutcome.describe(outcome);

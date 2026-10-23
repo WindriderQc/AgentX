@@ -40,6 +40,16 @@ issues hold repository reports and discussion, including the owner's own when
 useful. Link an issue and task when both serve a purpose; creating either is
 not execution approval. Keep public summaries free of private context.
 
+New generic engineering captures start as proposals. Relay the canonical
+`intakeView` and `nextAction`: accepting the need, approving a plan and
+authorizing execution are separate decisions. Do not claim, prepare or launch
+work whose intake says `decision_required`; direct the owner to the task
+dossier. Keep clarification/deferral/decline reasons and source links. A changed
+accepted request needs review again; it does not authorize cancelling native
+work. Existing domain-approved promotions retain their recorded acceptance,
+and legacy work without a decision keeps its existing policy. Do not invent an
+old approval or authenticate a declared actor name.
+
 For heavy-work reads, use Core `summary.counts` before pagination to distinguish
 `automatic_queue` from `action_required`, recorded dispatch/execution and
 uncertainty. A reservation is independent of the start mode. Explain the actor

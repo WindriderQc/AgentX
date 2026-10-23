@@ -137,7 +137,8 @@ async function promoteToExecution(id, input = {}, deps = {}) {
   } else if (targetType === 'task') {
     const createTask = deps.createTask || require('./pipelineTaskService').createTaskInMongo;
     task = await createTask({ title, objective: summary, service: text(input.service, 120) || undefined,
-      source: 'planning-idea', sourceKey: `idea:${idea.id}` });
+      source: 'planning-idea', sourceKey: `idea:${idea.id}` }, { intakeAcceptance: {
+      by, reason: 'The operator promoted this reviewed idea into an engineering commitment.', ref: `planning-idea:${idea.id}` } });
   } else {
     const createPersonal = deps.createPersonalTask || require('./personalTaskService').createPersonalTask;
     task = await createPersonal({ title, note: summary, dueAt: input.dueAt, priority: input.priority,

@@ -71,6 +71,7 @@ function decide(task) {
 
 /** Whether Core's report authority could bind a continuation now (read-only). */
 async function allowance(task) {
+  if (!require('./taskIntakePolicy').accepted(task)) return { ok: false, reason: 'intake_decision_required' };
   const state = task.codingReportAuthority;
   if (!state?.grants?.length) return { ok: false, reason: 'no_grant' };
   const runs = await Run.find({ taskId: String(task._id) }).lean();

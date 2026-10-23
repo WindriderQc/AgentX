@@ -141,6 +141,7 @@ async function resume(pipelineId, input = {}) {
   if (input.retryCampaignId !== undefined && !UUID.test(input.retryCampaignId))
     throw fail('Name the exact failed campaign to retry', 'REPORT_RESUME_INVALID', 400);
   const task = await readTask(pipelineId);
+  require('./taskIntakePolicy').assertAccepted(task);
   reportTask(task);
   if (!['queued', 'blocked'].includes(task.status) || task.automationLease?.leaseId) throw fail('The task is running or awaiting review', 'REPORT_RESUME_BUSY', 409);
   if (!task.codingResult?.reportName) throw fail('Choose the report result once with the full form first', 'REPORT_RESUME_UNCONFIGURED', 409);
@@ -187,6 +188,7 @@ async function resume(pipelineId, input = {}) {
 /** Before the dispatch mark: the task must still be resumable from the same checkpoint. */
 async function preDispatch(job) {
   const task = await readTask(job.executor.pipelineId);
+  require('./taskIntakePolicy').assertAccepted(task);
   const state = task.reportResume;
   if (!state || state.queueRequestId !== job.id) throw fail('This campaign no longer belongs to the task\'s resume', 'REPORT_RESUME_CHANGED', 409);
   if ((checkpointOf(task)?.parentRequestId || 'initial') !== state.basis) throw fail('The saved report changed since the resume was planned', 'REPORT_RESUME_CHANGED', 409);
@@ -211,6 +213,7 @@ async function launchFromCampaign(job) {
 }
 async function launchWorker(job) {
   let task = await readTask(job.executor.pipelineId);
+  require('./taskIntakePolicy').assertAccepted(task);
   const state = task.reportResume;
   const requestId = uuidFrom(`report-resume:${task.pipelineId}:${job.id}`);
   const checkpoint = state.checkpoint || null;

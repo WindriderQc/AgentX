@@ -76,6 +76,7 @@ async function settled(task, runs, requestId) {
     throw fail('Reconcile the original allocated report request', 'REPORT_AUTHORITY_UNVERIFIED');
 }
 async function prepare(task, profile, grant) {
+  require('./taskIntakePolicy').assertAccepted(task);
   const runs = await Run.find({ taskId: String(task._id) }).lean();
   await settled(task, runs);
   const state = task.codingReportAuthority || { revision: 0, grants: [], bindings: [] };

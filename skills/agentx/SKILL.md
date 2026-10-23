@@ -46,6 +46,13 @@ issues hold repository discussion; link them when useful, without copying
 private context. Filing or assignment grants no execution authority. Ideas
 remain proposals unless the owner asks to record a commitment.
 
+New generic engineering captures have a separate intake decision. Read
+`intakeView` and the next action; `queued` is not an accepted commitment.
+The dossier records acceptance, clarification, deferral or non-pursuit with
+revision-checked reasons. Acceptance grants no execution power. A changed
+request needs review; legacy records and native approved promotions retain
+their existing rules. Triage never cancels or releases native effects.
+
 Heavy-work list `summary.counts` distinguishes automatic queue, action required,
 recorded dispatch/execution and uncertainty before pagination. Reservations are
 independent counts. Use each `presentation.nextAction` actor and step, not the
