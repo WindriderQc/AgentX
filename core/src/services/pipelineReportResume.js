@@ -121,7 +121,7 @@ async function preview(pipelineId) {
   const limit = task.codingResult?.modelCallLimit || 128;
   const campaign = task.reportResume?.queueRequestId ? await queue.get(task.reportResume.queueRequestId).catch(() => null) : null;
   return { pipelineId, reportName: task.codingResult?.reportName || latestOutcome(task)?.reportName || null,
-    checkpoint: checkpointOf(task), work, budget: budgetFor(work, limit), route: await target().catch(() => null),
+    checkpoint: checkpointOf(task), work, budget: budgetFor(work, limit), perExecutionModelCalls: limit, route: await target().catch(() => null),
     escalation: await require('./pipelineReportEscalation').policy().catch(() => null),
     retryCampaignId: retryable(task, campaign) ? campaign.id : null,
     resume: task.reportResume || null,

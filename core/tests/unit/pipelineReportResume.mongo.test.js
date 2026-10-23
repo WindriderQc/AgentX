@@ -162,3 +162,16 @@ it('does not retry an unknown launch or discard a committed grant', async () => 
   await expect(resume.resume('0939', input)).rejects.toMatchObject({ code: 'REPORT_RESUME_CHANGED' });
   expect((await queue.list()).jobs).toHaveLength(1);
 });
+
+it('reports the selected native ceiling without increasing additional credit or changing the planned grant', async () => {
+  await seed({ codingResult: { profile: 'report', reportName: 'DOCUMENTATION_PEER_REVIEW.md', modelCallLimit: 256 } });
+  const view = await resume.resume('0939', { confirm: true, when: 'asap' });
+  expect(view.perExecutionModelCalls).toBe(256);
+  expect(view.budget).toMatchObject({ modelCalls: 135, executions: 1 });
+  expect(view.resume.budget.modelCalls).toBe(135);
+  await Queue.updateOne({ _id: 'heavy-work', 'jobs.id': view.campaign.id },
+    { $set: { 'jobs.$.reservation.start': new Date(Date.now() - 1000).toISOString() } });
+  await launcher.dispatchDue();
+  expect(preparation.apply.mock.calls[0][0].reportGrant.budget.modelCalls).toBe(135);
+  expect(control.launch.mock.calls[0][0].modelCallLimit).toBe(256);
+});
