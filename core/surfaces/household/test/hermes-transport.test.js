@@ -236,6 +236,23 @@ test('inconsistent final output refuses success without repeating already stream
   assert.equal(f.saved().receipt.output, 'Another answer');
 });
 
+test('native boundary whitespace normalization still delivers the complete final suffix', async () => {
+  for (const [prefix, output, expected] of [
+    ['\n\nBonjour', 'Bonjour!', '\n\nBonjour!'],
+    ['Bonjour!\n\n', 'Bonjour!', 'Bonjour!\n\n']
+  ]) {
+    const f = fixture({ fetch: async path => {
+      if (path === '/v1/runs') return reply({ run_id: 'run_synthetic' });
+      if (path.endsWith('/events')) return stream([{ event: 'message.delta', delta: prefix }]);
+      return reply(completed({ output }));
+    } });
+    const result = await f.run(f.request);
+    assert.equal(result.text, output);
+    assert.equal(f.deltas.join(''), expected);
+    assert.equal(f.calls.filter(c => c.path === '/v1/runs').length, 1);
+  }
+});
+
 test('a foreign receipt never settles the native fence and diagnostics retain safe error codes', async () => {
   const f = fixture({ fetch: async path => {
     if (path === '/v1/runs') return reply({ run_id: 'run_synthetic' });

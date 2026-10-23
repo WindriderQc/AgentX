@@ -124,8 +124,15 @@ function createHermesTransport({ env = process.env, fetchImpl = globalThis.fetch
       // The terminal receipt is authoritative after a disconnected/truncated
       // stream. Feed the missing suffix through the same show/speech parser;
       // returning text alone leaves its already-open display block incomplete.
-      if (!text.startsWith(streamed)) throw fault('Hermes returned a final answer inconsistent with its stream. Its receipt was retained.', 'HERMES_OUTPUT_MISMATCH');
-      if (text.length > streamed.length) request.onDelta?.(text.slice(streamed.length));
+      // Hermes may emit blank lines between tool phases, then trim them in
+      // its final output. Ignore boundary whitespace for prefix matching only;
+      // keep interior text/Markdown exact and never repeat streamed words.
+      const prefix = streamed.trimStart(), canonical = text.trimStart();
+      if (!canonical.startsWith(prefix) && canonical.trimEnd() !== prefix.trimEnd()) {
+        throw fault('Hermes returned a final answer inconsistent with its stream. Its receipt was retained.', 'HERMES_OUTPUT_MISMATCH');
+      }
+      const suffix = streamed ? canonical.slice(prefix.length) : text;
+      if (suffix) request.onDelta?.(suffix);
       const runtime = observed.runtime || {};
       return { backend: 'hermes', text, sessionKey,
         metadata: { model: runtime.model || '', provider: runtime.provider || '', routingSource: 'hermes/nestor', runId: state.runId,
