@@ -12,7 +12,9 @@ Instance configuration, data and deployment receipts remain outside Git.
 - **Content presentation.** Personal Nestor selects pages, Markdown, lists,
   tables, code and images in one content workspace with retained navigation,
   copy, expansion and closure. Analytics' inference overview provides a bounded,
-  dated Core read of the same summary response and selected window. Current
+  dated Core read of the same summary response and selected window. Its live
+  runtime and GPU sections carry independent short-lived Core references to
+  their displayed data, with explicit collector freshness and unavailable reads. Current
   browser selection, display observation and Core data remain distinct; their
   evidence stays on the canonical turn. Shared MCP and an optional owner-only
   OpenClaw adapter expose the reader. CPU/browser contracts are separate from

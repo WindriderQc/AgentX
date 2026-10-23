@@ -18,7 +18,7 @@ const catalog = require('../../public/js/screen-pages').createCatalog([
   { id: 'analytics', label: 'Activity', href: '/analytics', mode: 'frame' },
   { id: 'service', label: 'External service', href: 'https://service.invalid', mode: 'link' }
 ]);
-let slow = false, fail = false, summaryRequests = 0;
+let slow = false, fail = false, failLive = false, summaryRequests = 0;
 const requests = [], errors = [];
 const summary = key => {
   const to = new Date(), from = new Date(+to - (key === '24h' ? 1 : 7) * 86400000);
@@ -82,6 +82,17 @@ const server = http.createServer(async (req, res) => {
     }
     if (p.startsWith('/api/')) {
       assert.equal(req.method, 'GET');
+      if (p.includes('runtime-coordination')) {
+        if (failLive) { res.statusCode = 503; return json({ ok: false }); }
+        const data = { inferences: [{ active: true, model: 'example-live', expiresAt: new Date(Date.now() + 60000).toISOString(), prompt: 'PRIVATE_PROMPT' }], workloads: [] };
+        return json({ ok: true, data, presentation: presentationReader.publishRuntime(data) });
+      }
+      if (p.includes('gpu-status')) {
+        if (failLive) { res.statusCode = 503; return json({ ok: false }); }
+        const data = [{ hostId: 'PRIVATE_HOST', telemetry: { status: 'fresh', collectorHostId: 'a', ageMs: 100, staleAfterMs: 90000 },
+          gpus: [{ index: 0, name: 'Example GPU', utilization: 42, vramUsed: 1000, vramTotal: 12000 }] }];
+        return json({ ok: true, data, presentation: presentationReader.publishGpus(data) });
+      }
       return json({ ok: true, data: p.includes('gpu-status') ? [] : p.includes('runtime-coordination') ? { inferences: [], workloads: [] } : {} });
     }
     if (p === '/analytics') {
@@ -90,7 +101,7 @@ const server = http.createServer(async (req, res) => {
         title: 'AI activity', service: 'core', activePage: 'analytics', pageView: '../pages/analytics',
         publicUrls: { core: '', rag: '/rag', benchmark: '/benchmark' }, agentxProfile: 'full', buildProductNavigation,
         headCss: '<link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/css/analytics-experience.css"><script src="/vendor/chart.js"></script>',
-        footerJs: '<script type="module" src="/js/analytics-inference.js"></script><script src="/js/analytics-experience.js"></script><script src="/js/analytics-overview.js"></script>'
+        footerJs: '<script type="module" src="/js/analytics-inference.js"></script><script src="/js/analytics-experience.js"></script><script src="/js/analytics-live-values.js"></script><script src="/js/analytics-overview.js"></script>'
       }));
     }
     let file = path.join(core, p.startsWith('/assets/household/') ? 'surfaces/household/public' : 'public', p.replace(/^\/assets\/household\//, ''));
@@ -109,9 +120,31 @@ const server = http.createServer(async (req, res) => {
     const page = await context.newPage(); page.on('pageerror', e => errors.push(e.message));
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     await page.evaluate(() => board.add({ kind: 'page', body: 'analytics', title: 'Activité IA' }));
-    await page.frameLocator('iframe').locator('#ao-calls').filter({ hasText: '42' }).waitFor();
+    await page.frameLocator('iframe').locator('#ao-calls').filter({ hasText: '42' }).waitFor({ timeout: 10000 }).catch(async error => {
+      console.error(JSON.stringify({ requests, errors, frames: await Promise.all(page.frames().map(frame => frame.evaluate(() => ({
+        title: document.title, body: document.body?.innerText.slice(0, 2000), scripts: [...document.scripts].map(s => s.src)
+      })))) }));
+      throw error;
+    });
     let current = await page.evaluate(() => read());
     assert.equal(current.read.totals.calls, 42); assert.equal(current.read.filters.window, '24h');
+    await page.frameLocator('iframe').locator('#ao-active').filter({ hasText: '1' }).waitFor();
+    await page.frameLocator('iframe').locator('#ao-gpus strong').filter({ hasText: '42%' }).waitFor();
+    current = await page.evaluate(() => read());
+    assert.equal(current.liveRead.runtime.active, 1);
+    assert.equal(current.liveRead.gpus.gpus[0].utilization, 42);
+    assert.doesNotMatch(JSON.stringify(current), /PRIVATE_PROMPT|PRIVATE_HOST/);
+    failLive = true;
+    await page.frames()[1].evaluate(() => document.dispatchEvent(new Event('analytics:refresh-live')));
+    await page.frameLocator('iframe').locator('#ao-live-status').filter({ hasText: 'unavailable' }).waitFor();
+    await page.frameLocator('iframe').locator('#ao-gpus').filter({ hasText: 'unavailable' }).waitFor();
+    current = await page.evaluate(() => read());
+    assert.equal(current.liveRead.runtime.status, 'unavailable');
+    assert.equal(current.liveRead.gpus.status, 'unavailable');
+    assert.equal(current.read.totals.calls, 42, 'independent live failure preserves the historical view');
+    failLive = false;
+    await page.frames()[1].evaluate(() => document.dispatchEvent(new Event('analytics:refresh-live')));
+    await page.frameLocator('iframe').locator('#ao-active').filter({ hasText: '1' }).waitFor();
     const old = current.read.revision;
     slow = true;
     await page.frameLocator('iframe').locator('#analyticsWindow').selectOption('7d');
@@ -172,5 +205,8 @@ const server = http.createServer(async (req, res) => {
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(report, 'result.json'), JSON.stringify({ ok: true, errors, summaryRequests, checks: 'selected snapshot, filter invalidation, canonical block restore, Markdown, copy, history without reload, close, keyboard, mobile widths, external/missing image, no business replay' }, null, 2));
     console.log(JSON.stringify({ ok: true, report, summaryRequests }));
-  } finally { await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+  } finally {
+    if (errors.length) console.error(JSON.stringify({ browserErrors: errors }));
+    await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+  }
 })().catch(error => { console.error(error.stack); process.exitCode = 1; });

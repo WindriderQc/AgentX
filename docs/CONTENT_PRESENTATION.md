@@ -18,7 +18,8 @@ images and active links are excluded. Copy retains the source text.
 
 | Content | Presentation | Agent reading/source | Limit |
 | --- | --- | --- | --- |
-| Analytics inference overview | Catalogue page in a retained frame | Core snapshot of the same `/api/analytics/inference/summary` response; exact period and window | Overview, comparison and UTC trend only; other detail panels/live GPU/runtime are not read |
+| Analytics inference overview | Catalogue page in a retained frame | Core snapshot of the same `/api/analytics/inference/summary` response; exact period and window | Overview, comparison and UTC trend; other detail panels retain their domain tools |
+| Analytics live inference and GPU cards | Same retained frame; refresh every 15 seconds | Separate Core references on the runtime-coordination and GPU-status responses used by the view | Independent of historical filters; at most 30 seconds, bounded further by collector freshness; failed refresh clears its reference |
 | Other AgentX pages | Validated catalogue destination | Same-origin title and six visible headings, or an existing domain tool | Headings do not supply values or prove an action |
 | External services | Validated frame or explicit tab link | Existing authorized domain tool, if available | External tabs are unseen; authentication/frame restrictions stay in force |
 | Text/Markdown, lists | Selected card | Original shown text, bounded to 8,000 characters in selected context; truncation/partial flags | Display/copy retains the complete body |
@@ -53,7 +54,8 @@ full denominator. Reported tokens, configured USD prices, retention and summed
 elapsed call time keep the existing Analytics interpretation.
 
 The reference consists of an immutable SHA-256 identity/revision. Core keeps at
-most 128 snapshots of at most 32 KiB for five minutes. Expiry, eviction, restart
+most 128 snapshots of at most 32 KiB. Historical summaries last five minutes;
+live runtime/GPU reads last at most 30 seconds. Expiry, eviction, restart
 or a revision mismatch returns `unavailable`; reading a reference never fetches
 a URL, recomputes Analytics or runs a business action. Refreshing the page is
 an explicit new read. This cache is not a conversation, memory or action store.
@@ -64,6 +66,16 @@ stored with the answer as `presentationContext` in the canonical Conversation
 audit. Complete-conversation context labels earlier records
 `historicalPresentation`; they remain evidence for that answer after cache
 expiry and disappear with normal conversation erasure.
+
+Live sections use the same shared projection as the browser: active admissions,
+uncertain admissions, workload count and maintenance presence; fresh GPU load,
+VRAM and power. They exclude prompts, host addresses, session/workload identities
+and upstream errors. GPUs use anonymized ordered labels, with CPU endpoints
+excluded and collector aliases deduplicated. Each live section resolves only its
+own Core source reference. A historical receipt cannot substitute for a live
+read. Collector age limits the GPU reference; missing freshness never becomes a
+numeric measurement. Browser loading/failure removes the corresponding live
+read even when the historical summary remains available.
 
 ## Runtime clients and qualification
 

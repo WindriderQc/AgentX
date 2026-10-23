@@ -42,6 +42,9 @@ test('the board stays hidden until something is shown, newest first', () => {
   assert.equal(container.hidden, false);
   const list = container.children[1];
   assert.deepEqual(list.children.map(card => card.dataset.kind), ['code', 'list']);
+  assert.equal(list.children[0].find(node => node.className === 'display-block-title').textContent, 'Code');
+  board.add({ kind: 'list', title: '   ', body: '- Un outil' });
+  assert.equal(list.children[0].find(node => node.className === 'display-block-title').textContent, 'Liste');
   board.clear();
   assert.equal(container.hidden, true);
 });

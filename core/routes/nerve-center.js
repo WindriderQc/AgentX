@@ -552,7 +552,7 @@ router.get('/inference/gpu-status', async (req, res) => {
       };
     });
 
-    res.json({ status: 'success', data });
+    res.json({ status: 'success', data, presentation: require('../src/services/presentationReadService').presentationReader.publishGpus(data) });
   } catch (err) {
     logger.error('[NerveCenter] gpu-status fetch failed', { error: err.message });
     res.status(500).json({ status: 'error', message: err.message });

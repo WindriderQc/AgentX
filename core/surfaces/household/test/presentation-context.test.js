@@ -77,3 +77,45 @@ test('selected notes are bounded; secrets and image pixels are never inferred', 
   const image = presentationEvidence([row({ kind: 'image', text: 'imagined pixels' })], pages);
   assert.equal(image.observation, 'pixels_not_supplied'); assert.equal(image.text, undefined);
 });
+
+test('live reads use the displayed runtime/GPU sources with independent freshness and no host payloads', () => {
+  let at = Date.now();
+  const reader = createPresentationReader({ now: () => at });
+  const runtime = reader.publishRuntime({ inferences: [
+    { active: true, model: 'example', expiresAt: new Date(at + 60000).toISOString(), prompt: 'PRIVATE_PROMPT', host: 'PRIVATE_HOST' },
+    { active: true, quarantined: true }
+  ], workloads: [{ body: 'PRIVATE_WORKLOAD' }], maintenance: { owner: 'PRIVATE_OWNER' } });
+  const gpu = { hostId: 'PRIVATE_ID', hostname: 'PRIVATE_HOST', telemetry: { status: 'fresh', collectorHostId: 'a', ageMs: 1000, staleAfterMs: 11000 },
+    gpus: [{ index: 0, busId: 'PRIVATE_BUS', name: 'Example card', utilization: 42, vramUsed: 4000, vramTotal: 12000, powerDraw: 120 }] };
+  const gpus = reader.publishGpus([gpu, { ...gpu, hostId: 'alias' }, { ...gpu, residency: 'cpu' },
+    { hostId: 'stale', telemetry: { status: 'stale' }, gpus: [{ utilization: 99 }] }]);
+  const read = reader.read(runtime), cards = reader.read(gpus);
+  assert.equal(read.active, 1); assert.equal(read.uncertain, 1); assert.equal(read.workloads, 1);
+  assert.equal(read.maintenance, true); assert.equal(read.filters, undefined);
+  assert.equal(cards.count, 2); assert.equal(cards.gpus[0].utilization, 42);
+  assert.equal(cards.gpus[1].fresh, false); assert.equal(cards.gpus[1].utilization, undefined);
+  assert.equal(cards.units.vramUsed, 'MiB');
+  assert.doesNotMatch(JSON.stringify({ read, cards }), /PRIVATE_/);
+  at += 10001;
+  assert.equal(reader.read(gpus).reason, 'expired', 'API read must not extend collector freshness');
+  assert.equal(reader.read(runtime).status, 'available');
+  at += 20000;
+  assert.equal(reader.read(runtime).reason, 'expired');
+});
+
+test('selected live references resolve through Core and cannot be swapped with historical or browser data', () => {
+  const ref = presentationReader.publishAnalytics(summary());
+  const runtime = presentationReader.publishRuntime({ inferences: [], workloads: [] });
+  const gpus = presentationReader.publishGpus([]);
+  const input = row({ read: ref, live: { runtime: { status: 'visible', read: runtime, active: 999 }, gpus: { status: 'visible', read: gpus } } });
+  const evidence = presentationEvidence([input], pages);
+  assert.equal(evidence.liveRead.runtime.active, 0);
+  assert.equal(evidence.liveRead.gpus.count, 0);
+  input.live.runtime.read = ref;
+  assert.equal(presentationEvidence([input], pages).liveRead.runtime.status, 'unavailable');
+  input.live.runtime = { status: 'loading', read: runtime };
+  assert.equal(presentationEvidence([input], pages).liveRead.runtime.reason, 'loading');
+  input.live.gpus.status = 'unavailable';
+  assert.equal(presentationEvidence([input], pages).liveRead.gpus.status, 'unavailable');
+  assert.equal(presentationEvidence([row({ kind: 'image', live: input.live })], pages).liveRead, undefined);
+});

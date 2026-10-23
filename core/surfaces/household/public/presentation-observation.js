@@ -5,7 +5,7 @@
   function observe(card) {
     const block = card._displayBlock;
     const base = { contract: 'agentx.presentation/v1', id: card.dataset.presentationId,
-      revision: card.dataset.presentationId, kind: block.kind, title: block.title || '', status: 'visible',
+      revision: card.dataset.presentationId, kind: block.kind, title: card.querySelector('.display-block-title')?.textContent || block.title || '', status: 'visible',
       ...(block.partial && { partial: true }) };
     if (block.kind === 'secret') return { ...base, status: 'unavailable' };
     if (block.kind !== 'page') {
@@ -32,7 +32,8 @@
         title: String(doc.title || base.title).slice(0, 160),
         headings: Array.from(doc.querySelectorAll('h1,h2,h3')).filter(el => el.getClientRects().length)
           .slice(0, 6).map(el => el.textContent.trim().slice(0, 160)),
-        ...(detail && { read: detail.read, filters: detail.filters, selection: detail.selection }) };
+        ...(detail && { read: detail.read, filters: detail.filters, selection: detail.selection }),
+        ...(target.page === 'analytics' && { live: card._screenFrame.contentWindow.AgentXPresentedLiveContent }) };
     } catch { return { ...base, status: 'external' }; }
   }
   root.AgentXPresentationObservation = Object.freeze({ observe });

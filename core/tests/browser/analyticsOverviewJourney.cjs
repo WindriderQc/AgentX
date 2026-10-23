@@ -102,7 +102,7 @@ const server = http.createServer(async (req, res) => {
         title: 'AgentX • AI activity', service: 'core', activePage: 'analytics', pageView: '../pages/analytics',
         publicUrls: { core: '', rag: '/rag', benchmark: '/benchmark' }, agentxProfile: url.searchParams.get('profile') === 'demo' ? 'demo' : 'full', buildProductNavigation,
         headCss: '<link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/css/analytics-experience.css"><script src="/vendor/chart.js/4.4.4/chart.umd.js"></script>',
-        footerJs: '<script type="module" src="/js/analytics-cost.js"></script><script type="module" src="/js/analytics-inference.js"></script><script src="/js/analytics-experience.js"></script><script src="/js/analytics-overview.js"></script>'
+        footerJs: '<script type="module" src="/js/analytics-cost.js"></script><script type="module" src="/js/analytics-inference.js"></script><script src="/js/analytics-experience.js"></script><script src="/js/analytics-live-values.js"></script><script src="/js/analytics-overview.js"></script>'
       }));
     }
     let file = path.join(core, 'public', p);

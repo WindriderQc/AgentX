@@ -216,7 +216,9 @@
     card.dataset.kind = block.kind;
     const header = node('header', 'display-block-header');
     header.append(node('span', 'display-block-kind', KIND_LABELS[block.kind] || KIND_LABELS.text));
-    if (block.title) header.append(node('strong', 'display-block-title', block.title));
+    const title = (typeof block.title === 'string' && block.title.trim()) || (target && root.AgentXScreenPages.label(target))
+      || ({ text: 'Note', list: 'Liste', table: 'Tableau', code: 'Code', image: 'Image', scene: 'Scène', secret: 'Secret', link: 'Liens' }[block.kind] || 'Contenu');
+    header.append(node('strong', 'display-block-title', title));
     if (block.partial) header.append(node('span', 'display-block-note', 'Contenu partiel'));
     const actions = node('div', 'display-block-actions');
     header.append(actions);
