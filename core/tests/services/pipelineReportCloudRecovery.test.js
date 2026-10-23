@@ -44,6 +44,7 @@ test('receives exact native payment refusal without clearing pending; native rec
   expect(received.modelReceipts[0]).toMatchObject({ state: 'unknown', settlement: { state: 'refused', finishedAt: row.finishedAt },
     terminationRecovery: { originalUnknownReceipt: row, nanodollars: 0, nativeJournal: log[0], operatorMapping: { authority: 'operator-attestation' } } });
   expect(received.escalationFailures).toEqual(run.toObject().escalationFailures);
+  expect(await resolutions(task._id)).toEqual([]);
   expect(await receiver.receive('0001', run._id, body)).toMatchObject({ idempotent: true });
   const terminal = await reports.reconcileModels('0001', run._id);
   expect(terminal).toMatchObject({ pendingInferences: [], terminationVerified: true, allCallsCompleted: false, escalation: { costUncertain: false } });
@@ -51,6 +52,14 @@ test('receives exact native payment refusal without clearing pending; native rec
   expect(resolved(settled, row.callId)).toBe(true);
   expect(await resolutions(task._id)).toEqual([expect.objectContaining({ requestId: run._id, callId: row.callId, step: 1, model: 'fixture/model' })]);
   expect(await receiver.receive('0001', run._id, body)).toMatchObject({ idempotent: true });
+  const Settings = require('../../models/PipelineReportContinuation');
+  await Settings.deleteMany({});
+  await Settings.create({ _id: 'report-continuation', escalation: { enabled: true, models: ['other/model'], maxCostUsdPerTask: 2 } });
+  const escalation = require('../../src/services/pipelineReportEscalation');
+  const granted = { _id: task._id, codingReportAuthority: { grants: [{ allowCloudEscalation: true }] } };
+  expect(await escalation.forRun(granted)).toMatchObject({ maxCostNanodollars: 2e9, models: ['other/model'],
+    refusalResolutions: [{ requestId: run._id, callId: row.callId, step: 1, model: 'fixture/model' }] });
+  expect(await escalation.forRun({ _id: task._id })).toBeUndefined();
 });
 test.each(['sourceCommit', 'inventorySha256', 'specSha256', 'expectedReceiptSha256', 'prepareId', 'claimSeq', 'confirmation', 'by'])('refuses changed %s', async field => {
   await archive(); body[field] = 'different';
