@@ -229,6 +229,7 @@ and an alert records each escalation. A multi-turn tool session is not used:
 OpenClaw's model mode accepts plain messages only.
 
 Core retains bounded refusal codes and dispatch states with the original call.
+Report status exposes the task's recorded cloud cost and flags uncertain costs.
 Only a confirmed refusal before dispatch can yield to the next configured
 model. A missing outcome or cost receipt keeps the original inference pending;
 it cannot dispatch a replacement. A completed unusable answer retains its cost.
