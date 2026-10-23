@@ -45,6 +45,19 @@ def good_result():
 
 
 class LedgerTest(unittest.TestCase):
+    def test_prior_failure_eligibility_requires_each_open_document_and_a_local_failure(self):
+        ledger = ledgers.new_ledger(snapshot())
+        self.assertFalse(steps.prior_failed_group(ledger, ['docs/A.md']))
+        ledger['steps'] = [{'result': 'failed', 'documents': ['docs/A.md']}]
+        self.assertTrue(steps.prior_failed_group(ledger, ['docs/A.md']))
+        self.assertFalse(steps.prior_failed_group(ledger, ['docs/A.md', 'docs/B.md']))
+        ledger['documents']['docs/A.md']['state'] = 'reviewed'
+        self.assertFalse(steps.prior_failed_group(ledger, ['docs/A.md']))
+        ledger['documents']['docs/A.md']['state'] = 'partial'
+        ledger['steps'][0]['escalated'] = True
+        self.assertFalse(steps.prior_failed_group(ledger, ['docs/A.md']))
+        self.assertFalse(steps.prior_failed_group(ledger, []))
+
     def test_identical_findings_keep_their_original_number_within_and_across_steps(self):
         ledger = ledgers.new_ledger(snapshot())
         result = good_result()

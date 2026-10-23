@@ -1038,3 +1038,30 @@ class EscalationStepsTest(StepsReportTest):
             self.assertTrue(report.escalation_allowed(progress, ledger, ['README.md'], (151, 300, True)))
             del ledger['steps'][0]['lineRange']
             self.assertFalse(report.escalation_allowed(progress, ledger, ['README.md'], (151, 300, True)))
+
+    def test_authorized_continuation_reuses_preserved_local_failure_before_another_local_attempt(self):
+        self.out.mkdir(parents=True)
+        snapshot = dict(report.scope.inventory(self.workspace, self.head), sha256='a' * 64)
+        ledger = report.ledgers.new_ledger(snapshot)
+        ledger['documents']['docs/GUIDE.md']['state'] = 'reviewed'
+        ledger['documents']['README.md']['state'] = 'partial'
+        ledger['steps'] = [{'documents': ['README.md'], 'result': 'failed', 'reason': 'no result file was written'}]
+        path = self.out / 'review.md'
+        path.write_text(report.ledgers.render(ledger, 'Review'))
+        progress = mock.Mock(model_calls=0, hard_deadline=14400, queue_deadline=14400, stop_reason=None,
+                             report_drained=True, report_escalation={'models': ['cloud/model']})
+        progress.now.return_value = 0
+        progress.check_stop.return_value = False
+        progress.call_limit.return_value = 128
+        args = mock.Mock(task_id='0001', request_id=KEY, parent_request_id='22222222-2222-4222-8222-222222222222')
+        content = json.dumps({'documents': [{'path': 'README.md', 'state': 'reviewed',
+            'evidence': [{'path': 'config.js', 'line': 1, 'check': 'RETRY_LIMIT = 7'}]}], 'findings': []})
+        sent, patch = self.escalation_answer(content)
+        with patch:
+            outcome = report.run_steps(runner, args, progress, self.task, self.workspace, self.out, path, snapshot, self.head)
+        self.assertEqual(outcome, 'complete')
+        self.assertEqual(len(sent), 1)
+        runner.run_worker.assert_not_called()
+        restored = report.ledgers.embedded(path.read_text())
+        self.assertEqual(restored['steps'][0]['reason'], 'no result file was written')
+        self.assertTrue(restored['steps'][-1]['escalated'])

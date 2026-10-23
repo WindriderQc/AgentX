@@ -209,6 +209,9 @@ operator context along with the sources. Long documents retain a separate
 escalation receipt for each assigned line range; completing a range resets its
 partial-round counter before planning the next range. Earlier receipts without
 a range continue to fence the whole group.
+An authorized continuation may use that one escalation immediately for a group
+of still-open whole documents with preserved local failures. Fresh documents
+and line ranges still take their own local attempt first.
 
 After a group fails once on the local model, the runner sends one self-contained
 request: the group's documents and the source files they cite (or that define

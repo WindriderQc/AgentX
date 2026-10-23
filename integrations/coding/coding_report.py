@@ -404,7 +404,7 @@ def initial_ledger(root, path, snapshot, baseline):
     return ledgers.new_ledger(snapshot, coverage, ledgers.legacy_narrative(restored) if restored else None)
 
 
-def escalation_allowed(progress, ledger, group, line_range=None):
+def escalation_allowed(progress, ledger, group, line_range=None, *, prior_failure=False):
     """Escalate once after a local failure or exhausted partial rounds, if allowed."""
     escalation = getattr(progress, 'report_escalation', None)
     if not escalation or not escalation.get('models'):
@@ -413,7 +413,7 @@ def escalation_allowed(progress, ledger, group, line_range=None):
     failed = all(ledger['documents'][path].get('attempts', 0) == 1 for path in group)
     stalled = all(ledger['documents'][path]['state'] == 'partial'
                   and ledger['documents'][path].get('partialRounds', 0) >= steps.MAX_PARTIAL_ROUNDS for path in group)
-    return (calls >= 1 + steps.WRITER_CALLS and seconds >= 300 and (failed or stalled)
+    return (calls >= 1 + steps.WRITER_CALLS and seconds >= 300 and (failed or stalled or prior_failure)
             and not any(row.get('escalated') and set(row.get('documents', [])) == set(group)
                         and (row.get('lineRange') is None or row['lineRange'] == list(line_range or ()))
                         for row in ledger['steps']))
@@ -601,6 +601,12 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
             return 'hard_budget'
         number += 1
         group, line_range = groups[0]['documents'], groups[0]['range']
+        prior_failure = bool(getattr(args, 'parent_request_id', None) and not line_range
+                             and steps.prior_failed_group(ledger, group))
+        if prior_failure and escalation_allowed(progress, ledger, group, prior_failure=True):
+            escalate_group(r, args, progress, workspace, baseline, ledger, group, None, number, sources, source, task)
+            save()
+            continue
         value, reason = one(number, steps.group_prompt(ledger, group, f'{sandbox_root}/step-{number:02d}.json', task, note, line_range),
                             budget['calls'], min(budget['seconds'], seconds - steps.WRITER_SECONDS))
         if reason == 'unverified':

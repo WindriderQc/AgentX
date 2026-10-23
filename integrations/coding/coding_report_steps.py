@@ -336,6 +336,13 @@ def code_terms(doc_texts, limit=12):
     return [term for term, _ in counts.most_common(limit)]
 
 
+def prior_failed_group(ledger, group):
+    """Every still-open document has a preserved local failure from an earlier pass."""
+    failed = {path for row in ledger['steps'] if row.get('result') == 'failed' and not row.get('escalated')
+              for path in row.get('documents', [])}
+    return bool(group) and all(path in failed and ledger['documents'][path]['state'] != 'reviewed' for path in group)
+
+
 def escalation_prompt(ledger, group, doc_texts, source_texts, line_range=None, *, operator_notes=''):
     """One self-contained request: the documents, the sources they cite, the schema."""
     parts = []
