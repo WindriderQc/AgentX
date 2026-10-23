@@ -55,7 +55,7 @@ Repeating tasks need `dueAt`, retain their first schedule anchor, and expose
 their repeat configuration through the existing list/briefing. Completing one
 with its exact `expectedDueAt` advances the same task to its next future
 occurrence, preserving local wall time and skipping missed dates. Monthly dates
-that do not exist are skipped. Count/until exhaustion closes the task. A replay
+and spring-forward wall times that do not exist are skipped. Count/until exhaustion closes the task. A replay
 of the last completed occurrence cannot advance it twice; stale concurrent edits
 still use the existing task revision fence. Clear `repeat` to stop repetition;
 `stopRepeat: true` explicitly closes the whole action. A task deadline alone

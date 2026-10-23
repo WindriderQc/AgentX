@@ -50,18 +50,27 @@ function nextPersonalOccurrence(repeat, anchor, after) {
   const options = RRule.parseString(repeatRule(normalized));
   options.dtstart = wall(start);
   if (normalized.until) options.until = wall(new Date(normalized.until));
-  const next = new RRule(options).after(wall(new Date(after)), false);
-  if (!next) return null;
+  const rule = new RRule(options);
+  let next = rule.after(wall(new Date(after)), false);
   const { zoneOffsetMs } = require('../domains/household/family');
-  let instant = +next;
-  for (let i = 0; i < 5; i += 1) {
-    const updated = +next - zoneOffsetMs(instant, normalized.timeZone);
-    if (updated === instant) break;
-    instant = updated;
+  for (let occurrence = 0; next && occurrence < 16; occurrence += 1) {
+    let instant = +next;
+    for (let i = 0; i < 5; i += 1) {
+      const updated = +next - zoneOffsetMs(instant, normalized.timeZone);
+      if (updated === instant) break;
+      instant = updated;
+    }
+    const result = new Date(instant);
+    // Skip nonexistent spring-forward times and the already-passed first
+    // instance of an ambiguous fall-back time. Never return a past deadline.
+    if (+wall(result) === +next && result > new Date(after)) {
+      if (normalized.until && result > new Date(normalized.until)) return null;
+      return result;
+    }
+    next = rule.after(next, false);
   }
-  const result = new Date(instant);
-  if (normalized.until && result > new Date(normalized.until)) return null;
-  return result;
+  if (next) throw bad('Could not resolve a future local occurrence.');
+  return null;
 }
 
 module.exports = { repeatSchema, normalizeRepeat, repeatRule, nextPersonalOccurrence };

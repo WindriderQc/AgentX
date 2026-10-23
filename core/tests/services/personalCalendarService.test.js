@@ -62,4 +62,7 @@ test('task repetitions preserve wall time across DST in every process zone, mont
   } finally { if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous; }
   expect(nextPersonalOccurrence({ frequency: 'monthly', timeZone: 'UTC' }, '2030-01-31T12:00:00Z', '2030-01-31T12:00:00Z').toISOString()).toBe('2030-03-31T12:00:00.000Z');
   expect(nextPersonalOccurrence({ frequency: 'daily', count: 1, timeZone: 'UTC' }, '2030-01-01T12:00:00Z', '2030-01-01T12:00:00Z')).toBeNull();
+  expect(nextPersonalOccurrence({ frequency: 'weekly', timeZone: 'America/Toronto' }, '2030-03-03T07:30:00Z', '2030-03-03T07:30:00Z').toISOString()).toBe('2030-03-17T06:30:00.000Z');
+  expect(nextPersonalOccurrence({ frequency: 'weekly', timeZone: 'America/Toronto' }, '2030-10-27T05:30:00Z', '2030-11-03T06:15:00Z').toISOString()).toBe('2030-11-10T06:30:00.000Z');
+  expect(nextPersonalOccurrence({ frequency: 'weekly', timeZone: 'America/Toronto' }, '2030-03-03T04:59:59.999Z', '2030-03-03T04:59:59.999Z').toISOString()).toBe('2030-03-10T04:59:59.999Z');
 });
