@@ -92,10 +92,12 @@ function register({ app, mongoose, standardJsonParser, envelope, fail, logger, o
 
   app.use(async (req, res, next) => {
     const token = req.cookies?.[COOKIE];
+    res.locals.familyDevicePinned = false;
     if (!token) return next();
     const device = await deviceFor(token).catch(() => ({ label: 'Family device', unverified: true }));
     if (!device) return next(); // unpinned elsewhere: the stale cookie grants nothing and blocks nothing
     req.familyDevice = { ...device, tokenHash: hashToken(token) };
+    res.locals.familyDevicePinned = true;
     if (STATIC_PATHS.some((pattern) => pattern.test(req.path))) return next();
     const until = device.unverified ? null : await unlockedUntil(req.familyDevice.tokenHash);
     if (until) {
