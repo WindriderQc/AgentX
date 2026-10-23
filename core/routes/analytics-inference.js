@@ -22,6 +22,7 @@
  */
 
 const { bucketFacet, summaryCoverage, MISSING_CONSUMER, attributionFacet, attributionCoverage } = require('../src/services/inferenceSummaryMetrics');
+const { timingFacet, shapeTiming } = require('../src/services/inferenceTimingSummary');
 const { failureFacets, shapeFailures } = require('../src/services/inferenceFailureAnalytics');
 const { analyticsDayKey } = require('../src/services/conversationActivityAnalytics');
 const express = require('express');
@@ -421,6 +422,7 @@ router.get('/summary', async (req, res) => {
       },
       {
         $facet: {
+          timing: timingFacet(),
           missingConsumers: attributionFacet(),
           totals: [{ $group: { _id: null, ...groupMetrics } }],
           // Last hour, whatever the window: a fresh outage must not be diluted by 30 days.
@@ -575,6 +577,7 @@ router.get('/summary', async (req, res) => {
       observedAt: to,
       ttlMs: SUMMARY_TTL_MS,
       attribution: attributionCoverage(facet?.missingConsumers, t.calls),
+      timing: shapeTiming(facet?.timing?.[0], t.calls),
       signals: Object.fromEntries(
         Object.entries(classifierSignals).map(([key, signal]) => [key, serializeSignal(signal)])
       ),

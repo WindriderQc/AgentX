@@ -31,6 +31,7 @@ function analyticsSnapshot(data) {
     byConsumerContract: (data.byConsumerContract || []).slice(0, 12).map(row => ({ consumerContract: clean(row.consumerContract), ...metrics(row, rowMetrics) })),
     topErrors: (data.topErrors || []).slice(0, 12).map(row => ({ reason: clean(row.reason), consumerContract: clean(row.consumerContract),
       model: clean(row.model), calls: number(row.calls), avgLatencyMs: number(row.avgLatencyMs) })),
+    timing: require('./inferenceTimingSummary').projectTiming(data.timing),
     attribution: data.attribution ? {
       ...metrics(data.attribution, ['calls', 'identifiedCalls', 'missingCalls', 'identifiedPct']),
       missingByCaller: (data.attribution.missingByCaller || []).slice(0, 7).map(row => ({
@@ -46,6 +47,7 @@ function analyticsSnapshot(data) {
       bucketCount: (data.byBucket || []).length, bucketsListed: buckets.length,
       retentionDays: number(data.coverage?.retentionDays), unpricedModels: (data.cloud?.unpricedModels || []).length },
     limits: ['Recorded attempts, including admission refusals; retries may repeat a user request.',
+      'Attempt error rates do not establish service reliability or the success rate of user requests.',
       'Consumer identity requires a server-attested contract. Runtime, caller and task type do not identify the application; missing historical contracts are not inferred.',
       'Calls bypassing Core are absent. Tokens are reported usage only. Null means unobserved.',
       'Elapsed call time includes waits; it is not GPU busy time. USD uses configured prices; unpriced models are excluded.',

@@ -96,6 +96,23 @@ does not establish that identity. This follows the existing private-LAN service
 attribution contract; native workload proof and admission remain required.
 Historical records without a contract remain unchanged.
 
+## Where call time goes
+
+The timing disclosure separates reported model loading, prompt evaluation and
+output generation. These values and **Other time** sum to elapsed time on the
+same subset of calls: all three phases must be non-negative and reported, elapsed
+time must be positive, and phase time cannot exceed it. Missing and inconsistent
+calls are counted separately. Empty or unreported timings stay unknown, never
+zero. Other time includes unisolated transport, routing, retries or runtime work;
+it is not proof of queueing or GPU idle time.
+
+Core admission, host-gate and recorded retry-backoff times are shown separately,
+each with its own measurement coverage. Admission and gate values describe the
+terminal attempt, not every retry. They are already inside elapsed time and must
+not be added to the phase breakdown. Upstream queueing is not isolated. Concurrent
+calls overlap, and runtime phase durations are not GPU busy time. The summary's
+`timing` object and bounded `read_presentation` receipt expose the same evidence.
+
 ## Live inference and GPU work
 
 In the full profile, **Live inference** reads Core's existing runtime-coordination

@@ -12,6 +12,7 @@ const core = path.join(root, 'core');
 const report = process.env.AGENTX_ANALYTICS_BROWSER_REPORT || fs.mkdtempSync(path.join(os.tmpdir(), 'agentx-analytics-'));
 const { buildProductNavigation } = require(path.join(root, 'shared/productNavigation'));
 const { bucketFacet, summaryCoverage, attributionCoverage } = require(path.join(core, 'src/services/inferenceSummaryMetrics'));
+const { shapeTiming } = require(path.join(core, 'src/services/inferenceTimingSummary'));
 const errors = [], requests = [];
 let failSummary = false, empty = false, staleGPU = false, failLive = false;
 let delayWindow = null;
@@ -53,6 +54,7 @@ function summary(key) {
       inferenceHours: elapsedMs / 3600000, inferenceSeconds: elapsedMs / 1000, avgLatencyMs: calls > 0 ? Math.round(elapsedMs / calls) : null, tokensOutPerSecond: 24.09, classifiedCalls: 0 },
     byModel: empty ? [] : models, byConsumerContract: empty ? [] : [{ consumerContract: 'native-conversation-v1', calls: 1000, avgLatencyMs: 20000, errorRate: .3 }],
     byDayCaller: [], byCaller: [], byRuntime: [], byTaskType: [], byFallbackUsed: [], byFallbackReason: [], byDegraded: [], topErrors: [],
+    ...(!legacySummary && { timing: shapeTiming({ calls, durationMs: elapsedMs, loadMs: elapsedMs * .01, promptEvalMs: elapsedMs * .2, evalMs: elapsedMs * .7, admissionCalls: calls, admissionMs: empty ? 0 : 30000, hostGateCalls: calls, hostGateMs: empty ? 0 : 10000 }, calls) }),
     ...(!legacySummary && { attribution: attributionCoverage(empty ? [] : [{ _id: 'proxy', calls: 400 }, { _id: 'embedding', calls: 81 }], calls) }),
     ...(!legacySummary && { failureAnalysis: { admissionRefusals: empty ? 0 : 3, unclassified: 0, byReason: empty ? [] : [
       { reason: 'workload_reserved', calls: 2 }, { reason: 'inference_recovery_required', calls: 1 },
@@ -145,6 +147,10 @@ const server = http.createServer(async (req, res) => {
     assert.equal(drilldown.searchParams.get('consumerContractMissing'), 'true');
     assert.ok(Date.parse(drilldown.searchParams.get('from')) < Date.parse(drilldown.searchParams.get('to')));
     assert.match(await page.locator('#ao-updated').textContent(), /→.*\(.*\)/);
+    await page.locator('#ao-timing > summary').click();
+    assert.match(await page.locator('#ao-timing-content').textContent(), /Other time.*not proven waiting/);
+    assert.match(await page.locator('#ao-timing-content').textContent(), /1,481.*calls measured/);
+    await page.locator('#ao-timing > summary').click();
     await page.evaluate(() => document.fonts.ready);
     for (const [width, height] of [[1920, 1080], [1440, 900], [1366, 768], [1280, 720], [820, 1000], [390, 844], [320, 800]]) {
       await page.setViewportSize({ width, height });
@@ -191,6 +197,7 @@ const server = http.createServer(async (req, res) => {
     await page.locator('#analytics-experience-refresh').click();
     await page.waitForFunction(() => document.getElementById('ao-comparison').textContent.includes('causes unavailable'));
     assert.match(await page.locator('#ao-error-focus').textContent(), /Explore recorded errors/);
+    assert.match(await page.locator('#ao-timing-summary').textContent(), /unavailable from this Core version/);
     assert.match(await page.locator('#ao-attribution').textContent(), /unavailable from this Core version/);
     assert.equal(await page.locator('#ao-attribution-logs').isVisible(), false);
     legacySummary = false;
@@ -213,6 +220,7 @@ const server = http.createServer(async (req, res) => {
     await page.locator('#analytics-experience-refresh').click();
     await page.waitForFunction(() => document.querySelector('.analytics-overview').dataset.state === 'error');
     assert.equal(await page.locator('#ao-calls').textContent(), '—');
+    assert.match(await page.locator('#ao-timing-summary').textContent(), /unavailable for this window/);
     assert.match(await page.locator('#ao-attribution').textContent(), /unavailable for this window/);
     assert.equal(await page.locator('#ao-attribution-logs').isVisible(), false);
     assert.equal(await page.locator('#ao-success').textContent(), '—');
@@ -261,6 +269,6 @@ const server = http.createServer(async (req, res) => {
     assert.deepEqual(errors, []);
     assert.ok(requests.some(p => p.includes('/summary?window=24h')));
     assert.ok(bucketFacet('24h', {})[0].$group._id.$dateToString.format.includes('%H'));
-    console.log(JSON.stringify({ ok: true, report, viewports: 7, scenarios: ['initial', 'comparison', 'error causes and consumer shares', 'legacy cause availability', 'consumer attribution and window drilldown', 'volume/latency overlay', 'visual evidence reset', 'window race', 'retention', 'failed read', 'empty', 'stale GPU', 'live failure', 'detail focus', 'demo profile', 'page-wide Period', 'lazy workbench', 'persistent Playground disclosure'], requests: requests.length }, null, 2));
+    console.log(JSON.stringify({ ok: true, report, viewports: 7, scenarios: ['initial', 'comparison', 'error causes and consumer shares', 'legacy cause availability', 'consumer attribution and window drilldown', 'phase and wait coverage', 'volume/latency overlay', 'visual evidence reset', 'window race', 'retention', 'failed read', 'empty', 'stale GPU', 'live failure', 'detail focus', 'demo profile', 'page-wide Period', 'lazy workbench', 'persistent Playground disclosure'], requests: requests.length }, null, 2));
   } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

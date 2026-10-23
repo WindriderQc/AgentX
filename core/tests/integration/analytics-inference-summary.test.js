@@ -74,6 +74,37 @@ describe('inference summary aggregation', () => {
     expect(d.attribution).toMatchObject({ calls: 0, identifiedCalls: 0, missingCalls: 0, identifiedPct: null });
   });
 
+  test('timing phases reconcile on one cohort and waits keep independent coverage', async () => {
+    const base = { model: 'local/test', host: 'http://192.0.2.1:11434' };
+    await InferenceLog.insertMany([
+      { ...base, durationMs: 1000, loadMs: 100, promptEvalMs: 200, evalMs: 500, admissionWaitMs: 20, hostGateWaitMs: 30 },
+      { ...base, durationMs: 2000, loadMs: 0, promptEvalMs: 0, evalMs: 0, admissionWaitMs: 0, hostGateWaitMs: 0, retry: { delayMs: 100 } },
+      { ...base, durationMs: 10000, evalMs: 200, admissionWaitMs: 10 },
+      { ...base, durationMs: 100, loadMs: 50, promptEvalMs: 50, evalMs: 50 },
+    ]);
+    const { body: { data: d } } = await request(server).get('/api/analytics/inference/summary?window=24h').expect(200);
+    expect(d.timing).toMatchObject({ unit: 'ms', totalCalls: 4,
+      phases: { calls: 2, elapsedMs: 3000, loadMs: 100, promptEvalMs: 200, evalMs: 500, otherMs: 2200, missingCalls: 1, inconsistentCalls: 1 },
+      waits: { admission: { calls: 3, totalMs: 30 }, hostGate: { calls: 2, totalMs: 30 }, retryBackoff: { calls: 1, totalMs: 100 } }
+    });
+    const read = require('../../src/services/presentationReadService').presentationReader.read(d.presentation);
+    expect(read.timing).toEqual(d.timing);
+    expect(d.timing.limits.join(' ')).toMatch(/not a measurement of waiting/);
+  });
+
+  test('unreported timing stays unknown and malformed legacy phases cannot break the summary', async () => {
+    const base = { model: 'local/legacy', host: 'http://192.0.2.1:11434', durationMs: 1000, timestamp: new Date() };
+    // Raw insert retains a legacy type that Mongoose would otherwise cast.
+    await InferenceLog.collection.insertMany([
+      base, { ...base, loadMs: 'provider prose', promptEvalMs: 5, evalMs: 10 },
+      { ...base, loadMs: -1, promptEvalMs: 5, evalMs: 10 },
+    ]);
+    const { body: { data: d } } = await request(server).get('/api/analytics/inference/summary?window=24h').expect(200);
+    expect(d.timing.phases).toMatchObject({ calls: 0, elapsedMs: null, loadMs: null, evalMs: null, otherMs: null, missingCalls: 3 });
+    expect(d.timing.waits.admission).toEqual({ calls: 0, totalMs: null });
+    expect(JSON.stringify(d.timing)).not.toContain('provider prose');
+  });
+
   test('unmeasured duration is unknown rather than a zero-latency call', async () => {
     await InferenceLog.create({ model: 'local/legacy', host: 'http://192.0.2.1:11434', durationMs: 0 });
     const res = await request(server).get('/api/analytics/inference/summary?window=7d');

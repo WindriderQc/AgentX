@@ -51,6 +51,10 @@
       <% if (locals.agentxProfile !== 'demo') { %><div class="ao-panel-foot"><a href="/nerve-center?focus=cluster">Actual GPU utilization &amp; VRAM →</a></div><% } %>
     </section>
   </div>
+  <details id="ao-timing" class="ao-panel ao-timing">
+    <summary>Where call time goes <span id="ao-timing-summary">Reading timing coverage…</span></summary>
+    <div id="ao-timing-content" aria-live="polite">Timing unavailable for this window.</div>
+  </details>
   <p class="ao-coverage"><span id="ao-attribution" role="status">Reading consumer attribution…</span> <a id="ao-attribution-logs" hidden>Inspect unattributed calls →</a></p>
   <p id="ao-coverage" class="ao-coverage">Recorded AgentX calls only. Native calls that bypass Core are outside this view. Elapsed call time is not GPU busy time.</p>
   <nav class="ao-links" aria-label="Related activity">

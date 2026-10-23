@@ -252,7 +252,7 @@
     set('ao-output', hasCalls ? compact(t.tokensOut) : '—');
     set('ao-input', hasCalls ? `${compact(t.tokensIn)} prompt tokens · reported usage only` : 'No token usage observed');
     set('ao-latency', duration(hasCalls ? t.avgLatencyMs : null));
-    set('ao-time', hasCalls ? `${hours(t.inferenceHours)} summed call time · includes waits` : 'No call duration observed');
+    set('ao-time', hasCalls ? `${hours(t.inferenceHours)} summed end-to-end time · breakdown below` : 'No call duration observed');
     if (hasCalls && finite(t.timedCalls) && t.timedCalls < t.calls) set('ao-time', `${count(t.timedCalls)} / ${count(t.calls)} calls timed · includes waits`);
     set('ao-fallbacks', `${count(t.fallbackCalls)} fallbacks${hasCalls ? ` · ${percent(t.fallbackRate)}` : ''}`);
     const focus = $('ao-error-focus'), refusals = data.failureAnalysis?.admissionRefusals;
@@ -267,6 +267,7 @@
     set('ao-cloud-cost', cloud.calls === 0 ? 'No calls' : finite(cloud.estimatedCostUsd) ? `$${cloud.estimatedCostUsd.toFixed(2)}` : 'Unpriced');
     set('ao-cloud-note', cloud.calls === 0 ? 'No recorded cloud traffic' : `${count(cloud.calls)} calls · ${cloud.unpricedModels?.length ? `${cloud.unpricedModels.length} unpriced models excluded` : 'USD estimate, configured rates'}`);
     renderAttribution(data);
+    renderTiming(data);
     const to = new Date(data.window.to);
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     set('ao-updated', `${new Date(data.window.from).toLocaleString()} → ${to.toLocaleString()} (${zone}) · refresh on demand`);
@@ -275,6 +276,24 @@
     renderComparison();
     renderTrend(data);
     renderVisuals(data);
+  }
+
+  function renderTiming(data) {
+    const t = data.timing, p = t?.phases;
+    if (!p) {
+      set('ao-timing-summary', 'Timing detail unavailable from this Core version');
+      set('ao-timing-content', 'No timing breakdown available.');
+      return;
+    }
+    set('ao-timing-summary', `${count(p.calls)} / ${count(t.totalCalls)} calls have consistent runtime phases`);
+    const elapsed = ms => !finite(ms) ? '—' : ms >= 3600000 ? hours(ms / 3600000) : ms >= 60000 ? `${(ms / 60000).toFixed(1)} min` : duration(ms);
+    const fields = [['Model loading', p.loadMs], ['Reading the prompt', p.promptEvalMs], ['Generating output', p.evalMs], ['Other time · not proven waiting', p.otherMs]];
+    const phaseRows = p.calls > 0 ? fields.map(([label, value]) => `<div><span>${esc(label)}</span><strong>${esc(elapsed(value))}</strong></div>`).join('') : '<p>No complete runtime phases observed.</p>';
+    const waitRows = [['Core admission', 'admission'], ['Core host gate', 'hostGate'], ['Recorded retry backoff', 'retryBackoff']].map(([label, key]) => {
+      const wait = t.waits[key];
+      return `<div><span>${esc(label)} <small>${esc(count(wait.calls))} / ${esc(count(t.totalCalls))} calls measured</small></span><strong>${esc(elapsed(wait.totalMs))}</strong></div>`;
+    }).join('');
+    $('ao-timing-content').innerHTML = `<p>Runtime phases: ${esc(elapsed(p.elapsedMs))} end-to-end on these same ${esc(count(p.calls))} calls. ${esc(count(p.missingCalls))} calls lack complete timing; ${esc(count(p.inconsistentCalls))} have inconsistent phase totals.</p><div class="ao-timing-rows">${phaseRows}</div><p>Core waits · measured separately, already included in call time. Coverage varies; do not add these values to the phases above.</p><div class="ao-timing-rows">${waitRows}</div><p>Admission and host-gate measurements cover the terminal attempt. Other attempts and upstream queueing are not fully isolated. Concurrent calls overlap; none of these sums measures GPU busy time.</p>`;
   }
 
   function renderAttribution(data) {
@@ -294,6 +313,8 @@
 
   function clearSummary(state) {
     summary = null;
+    set('ao-timing-summary', 'Timing unavailable for this window');
+    set('ao-timing-content', 'No timing breakdown available.');
     set('ao-attribution', 'Consumer attribution unavailable for this window');
     $('ao-attribution-logs').hidden = true;
     if (trend) { trend.destroy(); trend = null; }

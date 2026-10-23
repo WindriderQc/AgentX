@@ -236,3 +236,12 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
 }
 .analytics-split > * { min-width: 0; }
+
+.ao-timing { margin-top: 10px; font-size: .72rem; }
+.ao-timing summary { cursor: pointer; padding: 12px 17px; }
+.ao-timing summary span { color: var(--ao-muted); margin-left: 12px; }
+#ao-timing-content { padding: 0 17px 12px; color: var(--ao-muted); }
+.ao-timing-rows { display: grid; gap: 7px; }
+.ao-timing-rows > div { display: flex; justify-content: space-between; gap: 12px; }
+.ao-timing-rows strong { color: #e5edf9; white-space: nowrap; }
+.ao-timing-rows small { display: block; }
