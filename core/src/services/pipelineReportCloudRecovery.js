@@ -78,6 +78,7 @@ async function resolutions(taskId) {
   const Run = require('../../models/PipelineReportRun');
   const runs = await Run.find({ taskId: String(taskId), $or: [
     { 'modelReceipts.terminationRecovery.schema': 'agentx.report-cloud-refusal-recovery/v1' },
+    { 'modelReceipts.terminationRecovery.schema': 'agentx.report-cloud-terminal-failure/v1' },
     { 'escalationCalls.0': { $exists: true } }
   ] }).select('modelReceipts pendingInferences state escalationCalls').lean();
   const refused = runs.flatMap(value => (value.modelReceipts || []).filter(row => resolved(value, row.callId)).map(row => ({
@@ -93,6 +94,40 @@ async function resolutions(taskId) {
         ? [{ requestId: value._id, callId: call.callId, step: call.step, model: call.model,
           evidenceSha256: digest({ call, row }), executionState: 'completed' }] : [];
     }));
-  return [...refused, ...completed];
+  const terminated = runs.filter(value => ['review', 'blocked'].includes(value.state) && !value.pendingInferences?.length
+    && (value.modelReceipts || []).every(row => ['completed', 'refused'].includes(row.state))).flatMap(value => (value.modelReceipts || []).filter(row => row.state === 'completed'
+    && row.settlement?.terminationOnly === true && row.terminationRecovery?.schema === 'agentx.report-cloud-terminal-failure/v1')
+    .map(row => ({ requestId: value._id, callId: row.callId, step: row.terminationRecovery.nativeFailure.step,
+      model: row.terminationRecovery.nativeFailure.attempts[0].model,
+      evidenceSha256: digest(row.terminationRecovery), executionState: 'terminated-unusable' })));
+  return [...refused, ...completed, ...terminated];
 }
-module.exports = { createRecovery, resolved, resolutions };
+
+// This exact native error is emitted only after the SDK stream ended with a
+// final result and the adapter inspected its usage. Receive termination, not
+// usable output or a price. Network, cancellation and generic SDK errors keep
+// their original UNKNOWN fence. The inactive native owner must confirm scope.
+async function receiveTerminalFailure(value, row, control) {
+  const failure = value.escalationFailures?.find(item => item.callId === row.callId);
+  if (value.state !== 'active' || value.finalKind || row.state !== 'unknown' || row.settlement
+    || failure?.executionState !== 'unknown' || failure.attempts?.length !== 1
+    || failure.attempts[0].code !== 'OPENCLAW_USAGE_UNOBSERVED' || failure.attempts[0].executionState !== 'unknown'
+    || !Number.isSafeInteger(failure.step) || failure.step < 1
+    || !(Date.parse(row.startedAt) <= Date.parse(failure.at) && Date.parse(failure.at) <= Date.parse(row.finishedAt))) return false;
+  const observed = control && await control.status({ requestId: value._id });
+  if (observed?.busy !== false || observed.run?.requestId !== value._id || observed.run.pipelineId !== value.pipelineId
+    || observed.run.phase !== 'unknown' || observed.run.progress?.checkpoint !== value.sourceCommit) return false;
+  const Run = require('../../models/PipelineReportRun'), Task = require('../../models/PipelineTask');
+  require('./pipelineManualReportClaim').query(await Task.findById(value.taskId).lean() || {}, value, ['in_progress', 'blocked']);
+  const recovery = { schema: 'agentx.report-cloud-terminal-failure/v1', terminationOnly: true,
+    originalUnknownReceipt: row, nativeFailure: failure, receivedAt: new Date().toISOString(), costUncertain: true };
+  const saved = await Run.updateOne({ _id: value._id, revision: value.revision, state: 'active', finalKind: { $exists: false },
+    modelReceipts: { $elemMatch: { callId: row.callId, prepareId: row.prepareId, state: 'unknown', settlement: { $exists: false } } } },
+  { $set: { 'modelReceipts.$[call].state': 'completed', 'modelReceipts.$[call].terminationRecovery': recovery,
+    'modelReceipts.$[call].settlement': { state: 'completed', finishedAt: row.finishedAt, terminationOnly: true, recovered: true } },
+    $pull: { pendingInferences: row.callId }, $inc: { revision: 1 } },
+  { arrayFilters: [{ 'call.callId': row.callId, 'call.prepareId': row.prepareId, 'call.state': 'unknown' }], writeConcern: { w: 1, j: true } });
+  if (saved.acknowledged !== true || saved.modifiedCount !== 1) throw require('./pipelineManualReportClaim').fail('Reconcile the original terminal failure acknowledgement');
+  return true;
+}
+module.exports = { createRecovery, resolved, resolutions, receiveTerminalFailure };

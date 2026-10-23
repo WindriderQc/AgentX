@@ -127,8 +127,10 @@ test('native plugin routes require gateway auth and preserve one SSE completion 
       yield { type: 'done', message: { provider: model.provider, model: model.id, stopReason: 'stop', content: [{ type: 'text', text: 'answer' }],
         usage: { input: 7, output: 2, cacheRead: 0, cacheWrite: 0, totalTokens: 9 } } };
     })() }) };
-  registerExecutionRoutes({ pluginConfig: { maxRequestBytes: 4096 }, registerHttpRoute: value => routes.push(value) }, { backend });
-  assert.equal(routes.length, 2); assert.ok(routes.every(route => route.auth === 'gateway' && route.match === 'exact'));
+  const reads = [];
+  registerExecutionRoutes({ pluginConfig: { maxRequestBytes: 4096 }, registerHttpRoute: value => routes.push(value) }, { backend,
+    terminalStore: { record: async () => {}, read: async ref => { reads.push(ref); return { ref, evidence: { validation: 'rejected' } }; } } });
+  assert.equal(routes.length, 3); assert.ok(routes.every(route => route.auth === 'gateway' && route.match === 'exact'));
   const invoke = async (body, method = 'POST') => {
     const req = Readable.from([Buffer.from(body)]); req.method = method;
     const res = new EventEmitter(); res.headers = {}; res.chunks = []; res.headersSent = false;
@@ -147,4 +149,8 @@ test('native plugin routes require gateway auth and preserve one SSE completion 
   assert.equal(partial.statusCode, 502); assert.equal(JSON.parse(partial.chunks.join('')).partialResponse, 'answer');
   assert.ok(!partial.chunks.join('').includes('private provider details'));
   const tooLarge = await invoke('x'.repeat(4097)); assert.equal(tooLarge.statusCode, 413);
+  const res = new EventEmitter(); res.setHeader = () => {}; res.end = value => { res.body = value; };
+  await routes[2].handler({ method: 'GET', url: '/api/agentx/execution/model-terminal?ref=original' }, res);
+  assert.equal(res.statusCode, 200); assert.deepEqual(reads, ['original']);
+  assert.deepEqual(JSON.parse(res.body), { ref: 'original', evidence: { validation: 'rejected' } });
 });

@@ -1002,6 +1002,19 @@ class EscalationStepsTest(StepsReportTest):
         self.assertTrue(blocks({**row, 'uncertain': True}, ['README.md'], None, KEY, [proof]))
         self.assertTrue(blocks({**row, 'result': 'merged'}, ['README.md'], None, KEY, [proof]))
 
+    def test_received_terminal_failure_keeps_unknown_history_but_allows_new_scope_execution(self):
+        row = {'requestId': 'previous', 'step': 1, 'documents': ['README.md'], 'result': 'failed',
+               'escalated': True, 'uncertain': True, 'attempts': [{'model': 'cloud/model'}]}
+        proof = {'requestId': 'previous', 'step': 1, 'model': 'cloud/model',
+                 'executionState': 'terminated-unusable', 'evidenceSha256': 'a'*64}
+        blocks = report.steps.escalation_blocks
+        self.assertTrue(blocks(row, ['README.md'], None, KEY))
+        self.assertFalse(blocks(row, ['README.md'], None, KEY, [proof]))
+        self.assertTrue(row['uncertain'])
+        self.assertTrue(blocks(row, ['README.md'], None, 'previous', [proof]))
+        for key, value in [('step', 2), ('model', 'cloud/other'), ('requestId', 'other')]:
+            self.assertTrue(blocks(row, ['README.md'], None, KEY, [{**proof, key: value}]))
+
     def escalation_answer(self, content=None, error=None):
         sent = []
         class Response:

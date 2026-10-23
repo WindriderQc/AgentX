@@ -23,3 +23,14 @@ tests before adding it there or refreshing benchmark pins.
 
 See [execution sources](../../../docs/EXECUTION_SOURCES.md) for the API,
 ownership, budgets, benchmark isolation and observable limitations.
+
+When an SDK final result fails validation, the native plugin saves its exact
+result and raw usage privately under
+`OPENCLAW_STATE_DIR/agentx-model-execution/terminal-evidence/` (default:
+`~/.openclaw/agentx-model-execution/terminal-evidence/`). Files use mode 0600.
+The error carries a hash and opaque reference; authenticated operators can read
+that reference with `GET /api/agentx/execution/model-terminal?ref=...` without
+calling a provider. Core retains this reference with the original failed call.
+It proves custody of the SDK result, not valid usage, known cost or successful
+execution. Unknown billing and retry fences remain in force. Results lost by
+older plugin versions cannot be reconstructed by this feature.

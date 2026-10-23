@@ -66,9 +66,14 @@ async function forRun(task) {
   const grant = task.codingReportAuthority?.grants?.at(-1);
   if (!current.enabled || grant?.allowCloudEscalation !== true) return undefined;
   const remaining = Math.floor(current.maxCostUsdPerTask * NANO) - await spentNanodollars(task._id);
-  if (remaining <= 0) return undefined;
+  const previous = await Run.find({ taskId: String(task._id), 'escalationFailures.0': { $exists: true } })
+    .select('escalationFailures modelReceipts').lean();
+  const freeOnly = previous.some(value => value.escalationFailures?.some(row => row.executionState === 'unknown'
+    && !require('./pipelineReportCloudRecovery').resolved(value, row.callId)));
+  if (remaining <= 0 && !freeOnly) return undefined;
   const refusalResolutions = await require('./pipelineReportCloudRecovery').resolutions(task._id);
-  return { models: current.models, maxCostNanodollars: remaining, policyRevision: current.revision,
+  return { models: current.models, maxCostNanodollars: freeOnly ? 0 : remaining, policyRevision: current.revision,
+    ...(freeOnly && { freeOnly: true }),
     ...(refusalResolutions.length ? { refusalResolutions } : {}) };
 }
 
@@ -78,6 +83,9 @@ function assertCall(run, model) {
   if (!escalation || !escalation.models.includes(model))
     throw fail('This report execution does not allow that escalation model', 'REPORT_ESCALATION_REFUSED', 403);
   const spent = (run.escalationCalls || []).reduce((sum, call) => sum + (Number(call.nanodollars) || 0), 0);
+  // Unknown prior billing never authorizes another paid call. Native catalogue
+  // billing and its conservative reservation enforce this zero-cost budget.
+  if (escalation.freeOnly === true && spent === 0) return 0;
   if (spent >= escalation.maxCostNanodollars) throw fail('The task escalation cost cap is reached', 'REPORT_ESCALATION_BUDGET', 409);
   return escalation.maxCostNanodollars - spent;
 }
@@ -106,6 +114,7 @@ async function execute({ identity, messages, maxTokens, requestId, remainingNano
       const state = error.executionState === 'not-dispatched' || (!error.executionState && PRE_DISPATCH.has(error.code)) ? 'not-dispatched'
         : error.executionState === 'completed' && cost !== null ? 'completed' : 'unknown';
       attempts.push({ model, code: safeCode(error), executionState: state,
+        ...(error.terminalEvidence ? { terminalEvidence: error.terminalEvidence } : {}),
         ...(error.refusalReceipt ? { refusalReceipt: error.refusalReceipt } : {}) });
       if (state === 'completed') await journal(identity, 'escalationCalls', {
         callId: identity.callId, step: identity.step, model, attempts, at: new Date().toISOString(),
