@@ -532,7 +532,7 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
         progress.report_steps = {'escalated': sum(1 for row in ledger['steps'] if row.get('escalated')),
                                  'done': sum(1 for row in ledger['steps'] if row['result'] == 'merged'),
                                  'failed': sum(1 for row in ledger['steps'] if row['result'] == 'failed'),
-                                 'counts': ledgers.counts(ledger), 'findings': len(ledger['findings']),
+                                 'counts': ledgers.counts(ledger), 'findings': len(ledgers.distinct_findings(ledger)),
                                  'stepContext': budget['stepContext'], 'budgetSource': budget['source']}
 
     def one(number, prompt, calls, seconds, *, save_pass=True):
@@ -612,7 +612,7 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
     calls, seconds = steps.remaining(progress)
     if ledger['findings'] and calls >= steps.WRITER_CALLS and seconds >= steps.WRITER_SECONDS:
         number += 1
-        value, reason = one(number, steps.writer_prompt(ledger, f'{sandbox_root}/step-{number:02d}.json'),
+        value, reason = one(number, steps.writer_prompt({**ledger, 'findings': ledgers.distinct_findings(ledger)}, f'{sandbox_root}/step-{number:02d}.json'),
                             steps.WRITER_CALLS, steps.WRITER_SECONDS, save_pass=False)
         if reason == 'unverified':
             return 'unverified'

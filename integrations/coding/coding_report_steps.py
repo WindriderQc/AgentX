@@ -243,8 +243,8 @@ def writer_prompt(ledger, output):
     for row in ledger['documents'].values():
         tally[row['state']] = tally.get(row['state'], 0) + 1
     return (
-        'You write the prose of a documentation review report. The runner already verified every finding below and '
-        'generates all tables. Write JSON to ' + output + ' shaped {"summary": "<one paragraph: what was reviewed, '
+        'You write the prose of a documentation review report. The runner checked the frozen source references below and '
+        'generates all tables; semantic accuracy still requires independent review. Write JSON to ' + output + ' shaped {"summary": "<one paragraph: what was reviewed, '
         'the most important problems, what remains>", "explanations": {"F<n>": "<two or three sentences: why it '
         'matters and what a reader would get wrong>"}}. Do not invent findings or numbers; use only these.\n\n'
         f'Coverage: {json.dumps(tally, sort_keys=True)}\nFindings:\n{json.dumps(findings, indent=1)}\n'
