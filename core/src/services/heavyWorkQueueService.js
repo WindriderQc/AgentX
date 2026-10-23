@@ -130,19 +130,25 @@ function slotFor(state, job, when, at, now = Date.now()) {
   if (!WHEN.includes(when)) throw fail('when needs asap, tonight or at');
   const notBefore = job.notBefore ? Date.parse(job.notBefore) : -Infinity;
   const startBefore = job.startBefore ? Date.parse(job.startBefore) : Infinity;
+  const machines = new Set(job.hosts.map(placement.machineOf));
+  // An active dispatch holds its resources until native release is recorded.
+  // Its estimated end cannot promise a future reservable slot.
+  const related = state.jobs.filter(other => other.id !== job.id && placement.BUSY_STATES.includes(other.state)
+    && ((other.hosts || []).some(host => machines.has(placement.machineOf(host))) || sameResources(other, job)));
+  const active = related.filter(other => ACTIVE.includes(other.state));
+  if (active.length) throw fail('Heavy-work placement waits for active requests to release their resources',
+    409, 'HEAVY_QUEUE_CONFLICT', { conflicts: active.map(({ id, title, state: status, reservation }) =>
+      ({ id, title, state: status, reservation })) });
   if (when === 'at') {
     const start = Date.parse(instant(at, 'at'));
     return { start, end: start + job.estimatedMinutes * MINUTE, when };
   }
   const night = when === 'tonight' ? nightOf(now) : null;
   const from = Math.ceil(Math.max(now + MINUTE, notBefore, night ? night.start : -Infinity) / MINUTE) * MINUTE;
-  const machines = new Set(job.hosts.map(placement.machineOf));
   // Work on the same machine or the same physical device holds the slot.
-  const related = state.jobs.filter(other => other.id !== job.id && placement.BUSY_STATES.includes(other.state)
-    && (other.hosts || []).some(host => machines.has(placement.machineOf(host)) || sameResources(other, job)))
-    .map(other => ({ ...other, hosts: job.hosts }));
   const [slot] = placement.planSlots([{ hosts: job.hosts, minutes: job.estimatedMinutes }],
-    { windowStart: from, windowEnd: night ? night.end : Infinity, minutes: job.estimatedMinutes, jobs: related, now });
+    { windowStart: from, windowEnd: night ? night.end : Infinity, minutes: job.estimatedMinutes,
+      jobs: related.map(other => ({ ...other, hosts: job.hosts })), now });
   const start = Date.parse(slot.start), end = Date.parse(slot.end);
   const fits = start < startBefore && (!night || end <= night.end);
   return { start, end, when, fits, ...(night && { night: { start: new Date(night.start).toISOString(), end: new Date(night.end).toISOString() } }) };
