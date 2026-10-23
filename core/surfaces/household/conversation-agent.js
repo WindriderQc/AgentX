@@ -3,7 +3,7 @@ const { conversationInput, browserReplyTool, sceneReply } = require('./llmx-conv
 const { nativePerformedBy } = require('./native-attribution');
 const { acceptedImageReply } = require('./accepted-images');
 const { scoreSpeechLanguage } = require('../../public/js/voice/speech-language');
-const { requestsTaskCheck, taskCheckObserved, confirmedLoop, checkFailure } = require('./tool-turn-guard');
+const { requestsTaskCheck, taskCheckObserved, confirmedLoop, checkFailure, recordedTaskReply } = require('./tool-turn-guard');
 const { requestsSecretary, SECRETARY_DIRECTIVE } = require('./native-specialist-policy');
 const { nativeResponseFailure } = require('./native-response-failure');
 
@@ -439,7 +439,11 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
           const acknowledgment = personalVoice(session, channel) ? await require('./task-work-acceptance').taskWorkAcknowledgment(
             readAcceptedTaskWork, { session, text, language: language.decided ? language.language : 'fr' }) : null;
           if (acknowledgment) { answer = acknowledgment.text; acceptedTaskWork = acknowledgment.acceptedWork; }
-          else { verificationFailure = 'task_check_missing'; answer = checkFailure(language.decided ? language.language : 'fr'); }
+          else {
+            verificationFailure = 'task_check_missing';
+            const replyLanguage = language.decided ? language.language : 'fr';
+            answer = recordedTaskReply(evidence, runId, replyLanguage) || checkFailure(replyLanguage);
+          }
         }
         if (personalVoice(session, channel) && unfinishedToolPreamble(answer)) {
           answer = /^(?:i|let me)\b/i.test(answer) || scoreSpeechLanguage(answer).language === 'en'
