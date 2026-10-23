@@ -106,6 +106,22 @@ describe('POST /api/inference/embed', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it.each([200, 400])('records the RAG service identity for embedding upstream HTTP %i', async status => {
+    fetch.mockResolvedValue({ ok: status === 200, status,
+      text: async () => JSON.stringify(status === 200 ? { embeddings: [[0.1, 0.2]] } : { error: 'invalid input' }) });
+    await request(app).post('/api/inference/embed').set('X-AgentX-Caller', 'rag-service')
+      .send({ model: 'nomic-embed-text:v1.5', prompt: 'synthetic text' }).expect(status === 200 ? 200 : 502);
+    expect(recordInference).toHaveBeenCalledWith(expect.objectContaining({ consumerContract: 'rag-service-v1',
+      routeDecision: expect.objectContaining({ attribution: expect.objectContaining({ consumerContract: 'rag-service-v1' }) }) }));
+  });
+
+  it('does not infer a RAG identity from caller detail or request-body contracts', async () => {
+    fetch.mockResolvedValue({ ok: true, text: async () => JSON.stringify({ embeddings: [[0.1, 0.2]] }) });
+    await request(app).post('/api/inference/embed')
+      .send({ model: 'nomic-embed-text:v1.5', prompt: 'synthetic text', callerDetail: 'rag', consumerContract: 'rag-service-v1' }).expect(200);
+    expect(recordInference.mock.calls[0][0].consumerContract).toBeNull();
+  });
+
   it('proxies embeddings to the routed Ollama host', async () => {
     fetch.mockResolvedValue({
       ok: true,

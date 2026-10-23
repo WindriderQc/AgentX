@@ -125,3 +125,10 @@ viewports, window races, failures, empty activity, stale telemetry, keyboard
 detail access and the demo profile. Run it from the repository with Playwright
 available, or set `AGENTX_PLAYWRIGHT_MODULE` to its installed module path.
 `AGENTX_ANALYTICS_BROWSER_REPORT` selects an out-of-Git screenshot directory.
+
+RAG's Core-bound embedding, query-expansion, reranking and compression requests
+declare the existing `rag-service` principal. Core maps it to `rag-service-v1`
+and records the same contract on embedding attempts and their route decisions,
+including failures. This is the existing private-LAN attribution boundary, not
+an authentication change; caller detail and request-body contracts do not
+establish service identity. Direct native calls and historical rows are unchanged.

@@ -454,6 +454,14 @@ describe('POST /api/inference/generate — behaviour contract', () => {
         routeDecision: { attribution: { consumerContract: 'nestor-v1' } } });
     });
 
+    test('records the RAG service identity on generated search helpers', async () => {
+      mockOllamaOk();
+      await request(app).post('/api/inference/generate').set('X-AgentX-Caller', 'rag-service')
+        .send({ model: 'test-model', prompt: 'synthetic search helper' }).expect(200);
+      expect(recordInference.mock.calls[0][0]).toMatchObject({ consumerContract: 'rag-service-v1',
+        routeDecision: { attribution: { consumerContract: 'rag-service-v1' } } });
+    });
+
     test('forwards native tool schemas only for an admitted benchmark campaign', async () => {
       mockOllamaOk();
       const tools = [{ type: 'function', function: { name: 'lookup', parameters: { type: 'object' } } }];

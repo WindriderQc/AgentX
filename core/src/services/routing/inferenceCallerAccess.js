@@ -1,7 +1,15 @@
 'use strict';
 
 const { requestPrincipal } = require('../../helpers/requestCaller');
+const { trustedNestorConsumer } = require('../nestorConsumerAttribution');
 const { resolveCallerPolicy } = require('./callerPolicy');
+
+const SERVICE_CONTRACTS = Object.freeze({ 'benchmark-service': 'benchmark-service-v1', 'rag-service': 'rag-service-v1' });
+const serviceContract = principal => Object.hasOwn(SERVICE_CONTRACTS, principal) ? SERVICE_CONTRACTS[principal] : null;
+
+function resolveInferenceConsumer(req) {
+  return trustedNestorConsumer(req) || serviceContract(requestPrincipal(req));
+}
 
 function inferenceCallerPrincipal(req) {
   return requestPrincipal(req);
@@ -31,11 +39,12 @@ function resolveExecutionCaller(body, callerContext, consumerContract) {
     callerContext = { principal: 'core-inference', requestedPolicy: policy, effectivePolicy: policy };
   }
   return { callerContext, consumerContract: consumerContract
-    || (callerContext.principal === 'benchmark-service' ? 'benchmark-service-v1' : null) };
+    || serviceContract(callerContext.principal) };
 }
 
 module.exports = {
   inferenceCallerPrincipal,
   resolveInferenceRequestCaller,
-  resolveExecutionCaller
+  resolveExecutionCaller,
+  resolveInferenceConsumer
 };

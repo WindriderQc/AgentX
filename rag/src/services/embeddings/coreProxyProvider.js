@@ -76,7 +76,7 @@ class CoreProxyProvider {
     try {
       const response = await fetchWithTimeout(`${this.coreProxyUrl}/api/inference/embed`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-AgentX-Caller': 'rag-service' },
         body: JSON.stringify(body),
       }, EMBEDDING_TIMEOUT, {
         expectedOrigins: [this.coreProxyUrl],
