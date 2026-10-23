@@ -204,3 +204,5 @@ async function acknowledge(ids = []) {
 }
 
 module.exports = { evaluate, refresh, report, list, acknowledge, settings, deadlineAlerts };
+
+require('./financeAccess').guard(module.exports, ['evaluate', 'refresh', 'report', 'list', 'acknowledge']);

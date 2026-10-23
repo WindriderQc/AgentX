@@ -212,3 +212,5 @@ async function tags({ ledger } = {}) {
 }
 
 module.exports = { transactions, monthly, merchants, byCategory, coverage, tags, balances, statements, transactionFilter, FinanceQueryError };
+
+require('./financeAccess').guard(module.exports, ['transactions', 'monthly', 'merchants', 'byCategory', 'coverage', 'tags', 'balances', 'statements']);

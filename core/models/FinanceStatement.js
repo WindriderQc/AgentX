@@ -41,3 +41,5 @@ financeStatementSchema.index({ status: 1, periodEnd: -1 });
 
 module.exports = mongoose.models.FinanceStatement
   || mongoose.model('FinanceStatement', financeStatementSchema, 'finance_statements');
+
+module.exports = require('../src/services/finance/financeModelGuard')(module.exports);

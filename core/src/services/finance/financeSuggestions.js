@@ -115,3 +115,5 @@ async function suggest({ limit, ledger } = {}, {
 }
 
 module.exports = { suggest };
+
+require('./financeAccess').guard(module.exports, ['suggest']);

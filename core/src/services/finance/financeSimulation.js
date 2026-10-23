@@ -153,3 +153,5 @@ async function categoryMonths(query = {}) {
 }
 
 module.exports = { debtTrajectory, forecast, balanceHistory, categoryMonths, runTrajectory, addMonths };
+
+require('./financeAccess').guard(module.exports, ['debtTrajectory', 'forecast', 'balanceHistory', 'categoryMonths']);
