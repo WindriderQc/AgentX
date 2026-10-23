@@ -25,7 +25,7 @@ function createRecovery({ coreRoot, control } = {}) {
         || row.state !== 'unknown' || row.settlement || body.expectedReceiptSha256 !== digest(row)
         || body.claimSeq !== value.claimSeq || body.specSha256 !== value.specSha256 || body.sourceCommit !== value.sourceCommit
         || body.inventorySha256 !== value.inventorySha256 || !/^[a-f0-9]{64}$/.test(body.inventorySha256 || '')
-        || body.confirmation !== 'RECEIVE_ORIGINAL_CLOUD_PAYMENT_REFUSAL'
+        || !['RECEIVE_ORIGINAL_CLOUD_PAYMENT_REFUSAL', 'RECEIVE_ORIGINAL_CLOUD_PROVIDER_REFUSAL'].includes(body.confirmation)
         || typeof body.by !== 'string' || !body.by.trim() || body.by.length > 160 || body.by === 'coding-team'
         || failure?.executionState !== 'unknown' || failure.attempts?.length !== 1
         || (value.escalationCalls || []).some(x => x.callId === row.callId)) throw fail();
@@ -44,16 +44,16 @@ function createRecovery({ coreRoot, control } = {}) {
     // claim that a provider signed the Core call ID or supplied a success.
     if (!Array.isArray(entries) || entries.length !== 1) throw fail();
     const entry = entries[0];
-    const match = /^\S+ \[provider-transport-fetch\] \[model-fetch\] response provider=([a-z0-9-]+) api=([a-z-]+) model=([A-Za-z0-9._:/-]+) status=402 elapsedMs=(\d+) dispatcher=\w+ contentType=application\/json$/.exec(entry.message || '');
+    const match = /^\S+ \[provider-transport-fetch\] \[model-fetch\] response provider=([a-z0-9-]+) api=([a-z-]+) model=([A-Za-z0-9._:/-]+) status=(400|401|402|403|404|422|429) elapsedMs=(\d+) dispatcher=\w+ contentType=application\/json$/.exec(entry.message || '');
     const started = Date.parse(row.startedAt), finished = Date.parse(row.finishedAt), responseAt = Number(entry.timestamp) / 1000;
-    if (!match || entry.unit !== 'openclaw-gateway.service' || !/^\d+$/.test(entry.pid || '')
-        || `${match[1]}/${match[3]}` !== failure.attempts[0].model || match[2] !== 'openai-completions'
+    if (!match || (body.confirmation === 'RECEIVE_ORIGINAL_CLOUD_PAYMENT_REFUSAL' && match[4] !== '402') || entry.unit !== 'openclaw-gateway.service' || !/^\d+$/.test(entry.pid || '')
+        || `${match[1]}/${match[3]}` !== failure.attempts[0].model || !['openai-completions', 'openai-responses', 'anthropic-messages'].includes(match[2])
         || ![started, finished, responseAt].every(Number.isFinite) || finished < started
-        || responseAt < started || responseAt > finished || responseAt - Number(match[4]) < started) throw fail();
+        || responseAt < started || responseAt > finished || responseAt - Number(match[5]) < started) throw fail();
     const recovery = { schema: 'agentx.report-cloud-refusal-recovery/v1', originalUnknownReceipt: row,
-      receivedAt: new Date().toISOString(), executionState: 'not-dispatched', httpStatus: 402,
+      receivedAt: new Date().toISOString(), executionState: 'not-dispatched', httpStatus: Number(match[4]),
       model: failure.attempts[0].model, step: failure.step, nanodollars: 0,
-      costSource: 'provider-payment-refusal', nativeJournal: entry,
+      costSource: 'provider-http-refusal', nativeJournal: entry,
       operatorMapping: { authority: 'operator-attestation', intentHash, by: body.by, evidence: body.evidence,
         originalUnknownReceiptSha256: body.expectedReceiptSha256 } };
     const saved = await Run.updateOne({ _id: key, revision: value.revision, state: 'active', finalKind: { $exists: false },

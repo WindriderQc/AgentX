@@ -2,7 +2,7 @@
 
 An unknown report cloud call remains fenced until its native owner supplies
 terminal evidence. `POST /api/pipeline/tasks/:id/reports/:requestId/receive-cloud-refusal`
-receives an explicit operator mapping of a single native OpenClaw HTTP 402
+receives an explicit operator mapping of a single native OpenClaw HTTP refusal (400, 401, 402, 403, 404, 422 or 429)
 journal response, archived as a JSON task deliverable. It validates the exact
 claim, source/inventory digests, unknown receipt hash, provider/model and call
 timing, and requires the original worker to be inactive. The historical unknown
@@ -19,3 +19,18 @@ the same receiver without starting a model, worker or deployment. Stage the
 reviewed files and retain their revision/hashes with the private receipt.
 A new report execution can retry only the exact step covered by a received
 refusal, within its new explicit provider policy and the original task cap.
+
+Native model mode observes HTTP status through Node's request diagnostics,
+correlated by the exact request object and execution context. It does not replace
+the native SDK's transport, authentication or retries. One explicit negative
+acknowledgement with no output carries a bounded refusal receipt to Core and
+records a known zero amount; multiple attempts, server errors and missing status
+retain UNKNOWN. Pre-dispatch payload validation does not count as a paid call.
+The native gateway journal records the receipt's request ID and safe machine
+fields, never upstream bodies or prompts. Core retains it in the step's attempts.
+Sampling temperature is left to the native provider configuration for report
+escalation; the requested output limit and exact supplied context remain checked.
+
+Known refused attempts do not disqualify later completed work in the same
+execution. A request containing only refusals still cannot deliver a report;
+unknown or pending calls always retain the publication fence.
