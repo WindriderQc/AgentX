@@ -918,6 +918,44 @@ class StepsReportTest(unittest.TestCase):
         self.assertIn('agentx-report-ledger:v1', partial)
         self.assertIn('1 documents are not fully reviewed.', partial)
 
+    def test_short_window_runs_bounded_steps_without_losing_the_writer_reserve(self):
+        self.out.mkdir(parents=True)
+        clock = [0]
+        progress = runner.coding_progress.Progress('0001', KEY, now=lambda: clock[0])
+        progress.phase = 'running'
+        progress.report_mode = True
+        progress.hard_deadline = progress.queue_deadline = progress.soft_deadline = 900
+        args = mock.Mock(task_id='0001', request_id=KEY, parent_request_id=None)
+        snapshot = dict(report.scope.inventory(self.workspace, self.head), sha256='a'*64)
+        self.answers = [self.reviewed, self.reviewed, lambda prompt: {'summary': 'Done.', 'explanations': {}}]
+        caps = []
+        original = self.worker
+        def worker(workspace, prompt, seconds, observed, *, read_only):
+            caps.append(seconds)
+            clock[0] += 30
+            return original(workspace, prompt, seconds, observed, read_only=read_only)
+        with mock.patch.object(runner, 'run_worker', side_effect=worker):
+            outcome = report.run_steps(runner, args, progress, self.task, self.workspace, self.out,
+                self.out/'review.md', snapshot, self.head)
+        self.assertEqual(outcome, 'complete')
+        self.assertEqual(caps, [420, 390, report.steps.WRITER_SECONDS])
+        self.assertEqual(progress.hard_deadline, 900)
+        self.assertTrue(report.ledgers.coverage(report.ledgers.embedded((self.out/'review.md').read_text()))['declaredComplete'])
+
+    def test_short_window_without_writer_and_minimum_step_time_saves_without_launch(self):
+        self.out.mkdir(parents=True)
+        progress = mock.Mock(model_calls=0, hard_deadline=539, queue_deadline=539, stop_reason=None)
+        progress.now.return_value = 0
+        progress.call_limit.return_value = 128
+        progress.check_stop.return_value = False
+        args = mock.Mock(task_id='0001', request_id=KEY, parent_request_id=None)
+        snapshot = dict(report.scope.inventory(self.workspace, self.head), sha256='a'*64)
+        outcome = report.run_steps(runner, args, progress, self.task, self.workspace, self.out,
+            self.out/'review.md', snapshot, self.head)
+        self.assertEqual(outcome, 'hard_budget')
+        runner.run_worker.assert_not_called()
+        self.assertFalse(report.ledgers.coverage(report.ledgers.embedded((self.out/'review.md').read_text()))['declaredComplete'])
+
 
 class EscalationStepsTest(StepsReportTest):
     """A group that fails locally is retried once on the cloud escalation path (#835)."""

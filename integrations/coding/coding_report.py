@@ -598,7 +598,9 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
         if calls < budget['calls'] + steps.WRITER_CALLS:
             save()
             return 'model_call_limit'
-        if seconds < min(budget['seconds'], 600) + steps.WRITER_SECONDS:
+        # The next session is capped below by the actual remaining time. Keep
+        # the writer reserve without requiring a full ten-minute step upfront.
+        if seconds < 60 + steps.WRITER_SECONDS:
             save()
             return 'hard_budget'
         number += 1
