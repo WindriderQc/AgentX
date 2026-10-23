@@ -45,3 +45,5 @@ async function payrollCoverage({ ledger } = {}) {
 }
 
 module.exports = { PAYROLL_ACCOUNT, payrollCoverage, coversMonth, lastDayOf, dayAfter, DAY_MS };
+
+require('./financeAccess').guard(module.exports, ['payrollCoverage']);

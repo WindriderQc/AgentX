@@ -30,3 +30,5 @@ financeTransactionSchema.index({ date: -1 });
 
 module.exports = mongoose.models.FinanceTransaction
   || mongoose.model('FinanceTransaction', financeTransactionSchema, 'finance_transactions');
+
+module.exports = require('../src/services/finance/financeModelGuard')(module.exports);

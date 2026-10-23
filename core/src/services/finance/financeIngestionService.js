@@ -174,3 +174,5 @@ async function setArchivePath(statementId, archivePath) {
 }
 
 module.exports = { ingestDocument, readPdfText, setArchivePath, backfillFlow, statementKeyOf, accountKeyOf, fingerprintOf };
+
+require('./financeAccess').guard(module.exports, ['ingestDocument', 'backfillFlow', 'setArchivePath']);

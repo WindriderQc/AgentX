@@ -54,7 +54,7 @@ async function exportCsv(query = {}) {
   const filter = transactionFilter(query);
   const parts = ['finances', query.tag, query.category, query.q, query.from, query.to]
     .filter(Boolean).map((part) => String(part).normalize('NFD').replace(/\p{M}/gu, '').replace(/[^A-Za-z0-9-]+/g, '-'));
-  return { fileName: `${parts.join('_').slice(0, 100)}.csv`, chunks: csvChunks(filter) };
+  return { fileName: `${parts.join('_').slice(0, 100)}.csv`, chunks: require('./financeAccess').iterator(csvChunks(filter)) };
 }
 
 module.exports = { exportCsv, amount };

@@ -202,6 +202,12 @@ personal ledger. Core never writes to it.
 
 ## Operating it
 
+Reviewed historical book repairs use the bounded native
+[Finance repair executor](FINANCE_REPAIR.md): persisted read/write exclusion,
+immutable intent and receipts, same-identity recovery and exact scoped rollback.
+It supports one statement, one row and its owner decision without re-ingestion
+or account-number normalization. Testing or installing it does not apply a repair.
+
 - Configuration: `FINANCE_INBOX_PATH`, `FINANCE_ARCHIVE_PATH`,
   `FINANCE_REVIEW_PATH`, `FINANCE_INBOX_POLL_MS`, `FINANCE_EXTRACTION_MODEL`,
   `FINANCE_EXTRACTION_RETRIES`, `FINANCE_ALERT_*` (see `OPERATIONS.md`). Keep
