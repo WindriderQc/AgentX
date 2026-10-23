@@ -22,6 +22,25 @@ The operator chooses the fallback provider in Hermes; a local Core inference
 endpoint retains Core's ordinary model routing and admission. Do not lock
 each request to a provider/model when native fallback is required.
 
+## Shared tools and usage guidance
+
+Hermes consumes AgentX capabilities; it does not own a parallel tool library.
+Follow [the shared capability contract](SHARED_AGENT_CAPABILITIES.md) when
+developing tools from any coding client or runtime. Configure its native MCP
+client against Core's private `/mcp` bus and explicitly select the toolset and
+tools appropriate to the profile. Keep the narrower `/mcp/memory` endpoint for
+memory-only consumers. Never expose the owner bus to a family profile.
+
+Install the reviewed [AgentX Core skill](../skills/agentx-core/SKILL.md) through
+the native Hermes skill mechanism. The same source is suitable for other
+authorized clients. Native skill-reading tools and API toolsets must be enabled
+explicitly; a copied skill alone does not activate Core tools. Keep native
+sampling disabled unless the instance deliberately admits that extra inference.
+
+Qualify discovery and real tool execution separately. Core's catalogue is not
+evidence that the current Hermes turn can call it, and a configured MCP URL is
+not a completed capability check.
+
 ## Turns and interruption
 
 Core records a dispatch fence in the canonical conversation before admission.
