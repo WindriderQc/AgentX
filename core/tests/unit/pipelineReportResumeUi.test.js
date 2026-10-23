@@ -44,3 +44,11 @@ it('says where a planned, running or stopped resume stands', () => {
   const neverStarted = ui.stateText({ resume: { state: 'stopped' }, campaign: { state: 'failed', releaseReceipt: { receiptRef: 'core:not-started: x' } } });
   expect(neverStarted).toContain('The worker never started');
 });
+
+it('binds the retry button to the exact unstarted campaign and explains its refusal', () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const html = ui.render(view({ retryCampaignId: id, resume: { state: 'planned' },
+    campaign: { state: 'failed', releaseReceipt: { receiptRef: 'core:not-started: Checkpoint storage is full' } } }));
+  expect(html).toContain(`data-retry-campaign-id="${id}"`);
+  expect(html).toContain('Checkpoint storage is full');
+});

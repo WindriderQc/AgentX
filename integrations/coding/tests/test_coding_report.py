@@ -650,6 +650,21 @@ class StepsReportTest(unittest.TestCase):
                 self.assertEqual(ledger['legacy'], 'Six families.')
                 self.correction_progress.useful.assert_not_called()
 
+    def test_exhausted_partial_scope_is_archived_instead_of_offered_as_complete(self):
+        def stalled(prompt):
+            result = self.reviewed(prompt)
+            for document in result['documents']:
+                document['state'] = 'partial'
+                document['note'] = 'Requested source claims remain unchecked.'
+            return result
+        self.answers = [stalled] * 8
+        with mock.patch('builtins.print'):
+            self.assertEqual(runner.main(), 1)
+        self.assertEqual(self.uploads, [])
+        self.assertEqual(self.stops[-1]['workerOutcome']['reason'], 'no_useful_progress')
+        self.assertFalse(self.stops[-1]['coverage']['declaredComplete'])
+        self.assertIn('partial', self.stops[-1])
+
     def test_successful_correction_checkpoint_skips_same_notes_but_applies_new_notes(self):
         answer = lambda prompt: {'legacyEdits': [{'find': 'Six families.', 'replace': 'Eight families.'}]}
         outcome, ledger = self.correction_step(answer)
@@ -782,8 +797,8 @@ class StepsReportTest(unittest.TestCase):
 
     def test_a_failing_group_is_retried_alone_then_blocked_without_stopping_the_others(self):
         self.answers=[self.reviewed, 'not json', '{"documents": []}', lambda prompt:{'summary':'x','explanations':{}}]
-        with mock.patch('builtins.print'):self.assertEqual(runner.main(),0)
-        coverage = self.uploads[0]['coverage']
+        with mock.patch('builtins.print'):self.assertEqual(runner.main(),1)
+        coverage = self.stops[0]['coverage']
         states = {row['path']: row['state'] for row in coverage['documents']}
         self.assertEqual(sorted(states.values()), ['blocked','reviewed'])
         self.assertFalse(coverage['declaredComplete'])
@@ -855,14 +870,14 @@ class StepsReportTest(unittest.TestCase):
             return value
         with mock.patch.object(runner, 'run_worker', side_effect=worker), \
                 mock.patch.object(runner, 'request', side_effect=request), mock.patch('builtins.print'):
-            self.assertEqual(runner.main(), 0)
-        coverage = self.uploads[0]['coverage']
+            self.assertEqual(runner.main(), 1)
+        coverage = self.stops[0]['coverage']
         self.assertEqual({row['path']: row['state'] for row in coverage['documents']},
                          {'README.md': 'blocked', 'docs/GUIDE.md': 'reviewed'})
         self.assertFalse(coverage['declaredComplete'])
         progress = json.loads((runner.RECEIPTS/f'{KEY}.progress.json').read_text())
         self.assertEqual(progress['modelCalls'], 4)
-        ledger = report.ledgers.embedded(base64.b64decode(self.uploads[0]['dataUrl'].split(',')[1]).decode())
+        ledger = report.ledgers.embedded(base64.b64decode(self.stops[0]['partial']['dataUrl'].split(',')[1]).decode())
         self.assertEqual([row['reason'] for row in ledger['steps'] if row['result'] == 'failed'],
                          ['model_output_limit', 'model_output_limit'])
         receipts = list(runner.RECEIPTS.glob(f'{KEY}.report-step-*.output-limit.json'))
@@ -956,9 +971,9 @@ class EscalationStepsTest(StepsReportTest):
         self.answers = ['not json', self.reviewed, lambda prompt: {'summary': 's', 'explanations': {}}]
         sent, patch = self.escalation_answer(error='connection refused')
         with patch, mock.patch('builtins.print'):
-            self.assertEqual(runner.main(), 0)
+            self.assertEqual(runner.main(), 1)
         self.assertEqual(len(sent), 1)
-        states = sorted(row['state'] for row in self.uploads[0]['coverage']['documents'])
+        states = sorted(row['state'] for row in self.stops[0]['coverage']['documents'])
         self.assertEqual(states, ['blocked', 'reviewed'])
 
     def test_no_escalation_without_permission_from_core(self):
@@ -966,5 +981,5 @@ class EscalationStepsTest(StepsReportTest):
         self.answers = ['not json', self.reviewed, '{"documents": []}', lambda prompt: {'summary': 's', 'explanations': {}}]
         sent, patch = self.escalation_answer('{}')
         with patch, mock.patch('builtins.print'):
-            self.assertEqual(runner.main(), 0)
+            self.assertEqual(runner.main(), 1)
         self.assertEqual(sent, [])

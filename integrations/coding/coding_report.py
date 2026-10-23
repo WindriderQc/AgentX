@@ -619,7 +619,11 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
         if value is not None:
             steps.apply_writer(ledger, value)
     save()
-    return 'worker_exit' if ledger.get('legacyReviewPending') else 'complete'
+    if ledger.get('legacyReviewPending'):
+        return 'worker_exit'
+    if any(row['state'] != 'reviewed' for row in ledger['documents'].values()):
+        return 'no_useful_progress'
+    return 'complete'
 
 
 def reconcile(r,task_id,key):

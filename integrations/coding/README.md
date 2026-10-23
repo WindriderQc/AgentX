@@ -122,7 +122,10 @@ and runs several short worker sessions in fresh context:
   line against the frozen snapshot, computes source digests itself and merges
   the step whole or not at all. A group that fails twice marks its documents
   `blocked` with the reason. A document still partial after three steps
-  without new evidence stays partial and is reported as remaining scope.
+  without new source references stays partial and is reported as remaining scope.
+  Rewording a check against the same source line does not reset that limit.
+  Exhausted partial or blocked scope is archived with `no_useful_progress`,
+  leaving the task blocked instead of offering an incomplete report as delivered.
   A document can retain up to 100 source references, matching Core coverage;
   each finding remains bounded to 40 references. Every reference is checked.
   A model output limit fails that report step and retains its native receipt;
@@ -281,7 +284,8 @@ The dossier exposes the whole task budget, saved files, source and coverage.
 
 All file deposits share task-owned capacity reservations. A report grant is
 refused if its workers cannot retain their checkpoints within the file limit;
-ordinary uploads cannot consume promised report slots. Partial files remain
+ordinary uploads cannot consume promised report slots. The task limit is 160 files,
+covering the 32 grants of up to four workers plus earlier uploads. Partial files remain
 immutable, and a terminal execution with no file does not reserve space forever.
 
 Legacy code checkpoints can be received through the Core archive endpoint

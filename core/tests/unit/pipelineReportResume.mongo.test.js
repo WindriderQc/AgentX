@@ -127,3 +127,38 @@ it('refuses a delivered report, a running task and a changed checkpoint at the s
   await Task.updateOne({ pipelineId: '0939' }, { $push: { feedback: stopped('11111111-1111-4111-8111-111111111111') } });
   await expect(resume.preDispatch(await queue.get(view.campaign.id))).rejects.toMatchObject({ code: 'REPORT_RESUME_CHANGED' });
 });
+
+it('retries an unstarted failure under an explicit new campaign and replays that identity', async () => {
+  await seed();
+  const original = await resume.resume('0939', { confirm: true, when: 'asap' });
+  await Queue.updateOne({ _id: 'heavy-work', 'jobs.id': original.campaign.id },
+    { $set: { 'jobs.$.reservation.start': new Date(Date.now() - 1000).toISOString() } });
+  preparation.apply.mockRejectedValueOnce(Object.assign(new Error('Checkpoint storage is full'), { code: 'REPORT_CHECKPOINT_CAPACITY' }));
+  await launcher.dispatchDue();
+  const failed = await resume.preview('0939');
+  expect(failed.retryCampaignId).toBe(original.campaign.id);
+  const input = { confirm: true, when: 'asap', retryCampaignId: original.campaign.id };
+  const renewed = await resume.resume('0939', input);
+  expect(renewed.campaign.id).not.toBe(original.campaign.id);
+  expect(renewed.resume.grantKey).not.toBe(original.resume.grantKey);
+  expect(renewed.resume).toMatchObject({ retryOfCampaignId: original.campaign.id, checkpoint: original.checkpoint });
+  const replay = await resume.resume('0939', input);
+  expect(replay.campaign.id).toBe(renewed.campaign.id);
+  expect((await queue.get(original.campaign.id)).state).toBe('failed');
+  expect((await queue.list()).jobs).toHaveLength(2);
+  expect(control.launch).not.toHaveBeenCalled();
+});
+
+it('does not retry an unknown launch or discard a committed grant', async () => {
+  await seed();
+  const original = await resume.resume('0939', { confirm: true, when: 'asap' });
+  const input = { confirm: true, when: 'asap', retryCampaignId: original.campaign.id };
+  await expect(resume.resume('0939', input)).rejects.toMatchObject({ code: 'REPORT_RESUME_CHANGED' });
+  await Queue.updateOne({ _id: 'heavy-work', 'jobs.id': original.campaign.id },
+    { $set: { 'jobs.$.state': 'failed', 'jobs.$.releaseReceipt': { receiptRef: 'core:not-started: fixture' } } });
+  await Task.updateOne({ pipelineId: '0939' }, { $set: { codingReportAuthority: {
+    revision: 1, grants: [{ key: original.resume.grantKey }], bindings: [] } } });
+  expect((await resume.preview('0939')).retryCampaignId).toBeNull();
+  await expect(resume.resume('0939', input)).rejects.toMatchObject({ code: 'REPORT_RESUME_CHANGED' });
+  expect((await queue.list()).jobs).toHaveLength(1);
+});

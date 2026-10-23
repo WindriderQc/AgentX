@@ -168,14 +168,14 @@ test('a rejected review candidate becomes the next grant parent and keeps its cu
 });
 test('ordinary uploads honor a report checkpoint reservation even at the shared file limit', async () => {
   const { task } = await fixture();
-  for (let n = 0; n < 19; n++) await files.register('0001', upload('# Existing ' + n, `existing-${n}.md`));
+  for (let n = 0; n < files.MAX_PER_TASK - 1; n++) await files.register('0001', upload('# Existing ' + n, `existing-${n}.md`));
   const key = id(); await reports.start('0001', key, await claim(task));
   const results = await Promise.allSettled([
     files.register('0001', upload('# Competing operator file', 'extra.md')),
     reports.stop('0001', key, stopped(key, upload('# Saved model partial\n'))),
   ]);
   expect(results[0]).toMatchObject({ status: 'rejected', reason: { code: 'DELIVERABLE_LIMIT' } });
-  expect(results[1].status).toBe('fulfilled'); expect(await File.countDocuments({})).toBe(20);
+  expect(results[1].status).toBe('fulfilled'); expect(await File.countDocuments({})).toBe(files.MAX_PER_TASK);
   expect((await files.verify('0001', results[1].value.outcome.partial.deliverableId)).availability.hashVerified).toBe(true);
 });
 test('successful report accounting includes the native runner start and freezes it at final intent', async () => {
@@ -271,4 +271,26 @@ describe('cloud escalation authority (#835)', () => {
     const key = await started(false);
     await expect(inference.prepare(headers(key, '1'), NEMO)).rejects.toMatchObject({ code: 'REPORT_ESCALATION_REFUSED' });
   });
+});
+
+test('retains twenty historical files while granting and saving another report checkpoint', async () => {
+  const { task } = await fixture();
+  // Ordinary uploads must leave the already promised checkpoint slot available.
+  for (let n = 0; n < 20; n++) {
+    const data = Buffer.from(`Historical report ${n}`);
+    await files.register('0001', { by: 'operator', name: `historical-${n}.md`, sha256: digest(data),
+      dataUrl: `data:text/markdown;base64,${data.toString('base64')}` });
+  }
+  const intent = await claim(task), key = id();
+  await reports.start('0001', key, intent);
+  await (await inference.prepare({ 'x-agentx-report-task': '0001', 'x-agentx-report-request': key, 'x-agentx-coding-call': id() }, 'fixture-model')).finish('completed');
+  const data = Buffer.from('# Complete fixture report');
+  const result = await reports.submit('0001', key, { sha256: digest(data),
+    dataUrl: `data:text/markdown;base64,${data.toString('base64')}`,
+    coverage: { inventorySha256: (await Run.findById(key).lean()).inventory.sha256,
+      documents: [{ path: 'README.md', sha256: digest('fixture markdown'), state: 'reviewed',
+        evidence: [{ path: 'source.js', sha256: 'f'.repeat(64), line: 1, check: 'Fixture source checked' }] }] } });
+  expect(result.reportReadyForReview).toBe(true);
+  expect(await File.countDocuments({ pipelineId: '0001' })).toBe(21);
+  expect((await files.verify('0001', result.receipt.id)).availability.hashVerified).toBe(true);
 });
