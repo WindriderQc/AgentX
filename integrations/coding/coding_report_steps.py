@@ -361,11 +361,20 @@ def prior_failed_group(ledger, group, line_range=None):
     return bool(group) and all(path in failed and ledger['documents'][path]['state'] != 'reviewed' for path in group)
 
 
-def escalation_blocks(row, group, line_range, request_id):
+def escalation_blocks(row, group, line_range, request_id, resolutions=()):
     if not row.get('escalated') or set(row.get('documents', [])) != set(group):
         return False
     if row.get('lineRange') is not None and row['lineRange'] != list(line_range or ()):
         return False
+    # A received native refusal resolves only its exact old execution and step.
+    # Keep the original uncertain observation in the ledger for audit.
+    if row.get('requestId') != request_id and row.get('result') == 'failed':
+        for proof in resolutions:
+            if (proof.get('requestId') == row.get('requestId') and proof.get('step') == row.get('step')
+                    and proof.get('executionState') == 'not-dispatched'
+                    and len(proof.get('evidenceSha256', '')) == 64
+                    and any(attempt.get('model') == proof.get('model') for attempt in row.get('attempts', []))):
+                return False
     # Core verifies the previous execution's terminal receipts before a new one
     # can start. A refused/unavailable attempt may then try the newly authorized
     # policy once; answers and uncertain outcomes retain their original fence.

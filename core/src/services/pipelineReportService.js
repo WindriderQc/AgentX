@@ -54,7 +54,9 @@ async function status(id, key) {
     escalation: value.escalation ? { models: value.escalation.models, maxCostNanodollars: value.escalation.maxCostNanodollars,
       calls: (value.escalationCalls || []).length, failures: (value.escalationFailures || []).slice(-4),
       taskSpentNanodollars: await require('./pipelineReportEscalation').spentNanodollars(value.taskId),
-      costUncertain: (value.escalationFailures || []).some(row => row.executionState === 'unknown') } : null,
+      refusalResolutions: value.escalation.refusalResolutions || [],
+      costUncertain: (value.escalationFailures || []).some(row => row.executionState === 'unknown'
+        && !require('./pipelineReportCloudRecovery').resolved(value, row.callId)) } : null,
     cumulativeUsage: await authority.projection(await ownerOrNull(id) || { _id: value.taskId, feedback: [] }) };
 }
 async function start(id, key, body) {

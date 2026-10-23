@@ -50,6 +50,15 @@ router.post('/tasks/:id/reports/:requestId/map-native-termination', validId, asy
   try { return envelope.success(res, await require('../src/services/pipelineReportModelRecovery').mapLegacy(req.params.id, req.params.requestId, req.body || {})); }
   catch (error) { return sendError(res, error); }
 });
+router.post('/tasks/:id/reports/:requestId/receive-cloud-refusal', validId, async (req, res) => {
+  if (req.get('x-agentx-caller') !== 'operator' || req.get('x-agentx-report-request'))
+    return envelope.error(res, 403, 'Explicit operator recovery is required', 'REPORT_OPERATOR_REQUIRED');
+  try {
+    const control = { status: input => require('../src/services/pipelineReportModelRecovery').nativeStatus(input) };
+    const receiver = require('../src/services/pipelineReportCloudRecovery').createRecovery({ control });
+    return envelope.success(res, await receiver.receive(req.params.id, req.params.requestId, req.body || {}));
+  } catch (error) { return sendError(res, error); }
+});
 router.post('/tasks/:id/reports/:requestId/preflight-result', validId, async (req, res) => {
   try {
     const receipt = await require('../src/services/pipelineReportPreflight').receive(req.params.id, req.params.requestId, req.body || {},

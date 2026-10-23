@@ -414,7 +414,7 @@ def escalation_allowed(progress, ledger, group, line_range=None, *, prior_failur
     stalled = all(ledger['documents'][path]['state'] == 'partial'
                   and ledger['documents'][path].get('partialRounds', 0) >= steps.MAX_PARTIAL_ROUNDS for path in group)
     return (calls >= 1 + steps.WRITER_CALLS and seconds >= 300 and (failed or stalled or prior_failure)
-            and not any(steps.escalation_blocks(row, group, line_range, request_id)
+            and not any(steps.escalation_blocks(row, group, line_range, request_id, escalation.get('refusalResolutions', ()))
                         for row in ledger['steps']))
 
 

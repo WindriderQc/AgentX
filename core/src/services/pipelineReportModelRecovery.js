@@ -188,4 +188,4 @@ async function mapLegacy(id, key, body) {
   await receive(value, row, [binding]);
   return { recovered: true, terminationOnly: true };
 }
-module.exports = { configureControl, bind, reconcile, observe, mapLegacy, digest };
+module.exports = { configureControl, bind, reconcile, observe, mapLegacy, digest, nativeStatus: input => control?.status(input) };

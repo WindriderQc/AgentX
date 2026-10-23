@@ -67,7 +67,9 @@ async function forRun(task) {
   if (!current.enabled || grant?.allowCloudEscalation !== true) return undefined;
   const remaining = Math.floor(current.maxCostUsdPerTask * NANO) - await spentNanodollars(task._id);
   if (remaining <= 0) return undefined;
-  return { models: current.models, maxCostNanodollars: remaining, policyRevision: current.revision };
+  const refusalResolutions = await require('./pipelineReportCloudRecovery').resolutions(task._id);
+  return { models: current.models, maxCostNanodollars: remaining, policyRevision: current.revision,
+    ...(refusalResolutions.length ? { refusalResolutions } : {}) };
 }
 
 /** Refuse an escalated call that this execution does not allow. */
