@@ -71,3 +71,35 @@ test('missing, malformed, unrelated and non-final histories never claim a read f
     assert.equal(projection.answerObservation, undefined);
   }
 });
+
+test('a native failed-before-reply marker settles the exact run even without an agent_end capsule', async t => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'agentx-native-terminal-'));
+  t.after(() => rm(workspace, { recursive: true }));
+  const marker = { role: 'custom', customType: 'run-failed-before-reply',
+    details: { runId, error: 'Private provider authentication diagnostic' }, timestamp: 1700000000000,
+    __openclaw: { id: 'native-terminal-message', recordTimestampMs: 1700000000000 } };
+  let history = { sessionKey, messages: [marker] };
+  const operate = continuityOperations({ workspace, readHistory: async () => history });
+  const result = await operate({ operation: 'turn', sessionKey, runId });
+  assert.equal(result.run?.status, 'failed');
+  assert.equal(result.run.runId, runId);
+  assert.equal(result.run.sessionKey, sessionKey);
+  assert.equal(result.run.source, 'openclaw/sessions.get');
+  assert.equal(result.run.messageId, marker.__openclaw.id);
+  assert.equal(result.run.model, null, 'do not invent the effective model from current configuration');
+  assert.equal(result.answer.status, 'unavailable');
+  assert.equal(JSON.stringify(result).includes('Private provider'), false);
+  for (const change of [
+    { sessionKey: 'foreign-session', messages: [marker] },
+    { sessionKey, messages: [{ ...marker, role: 'user' }] },
+    { sessionKey, messages: [{ ...marker, customType: 'other' }] },
+    { sessionKey, messages: [{ ...marker, details: { runId: 'resp_33333333-3333-4333-8333-333333333333' } }] },
+    { sessionKey, messages: [{ ...marker, __openclaw: undefined }] }
+  ]) {
+    history = change;
+    assert.equal((await operate({ operation: 'turn', sessionKey, runId })).run, null);
+  }
+  history = { sessionKey, messages: [marker] };
+  await updateState(workspace, () => ({ schemaVersion: 1, receipts: [], runs: [{ runId, sessionKey, status: 'failed', source: 'agent_end' }] }));
+  assert.equal((await operate({ operation: 'turn', sessionKey, runId })).run.source, 'agent_end', 'retain the native hook when it exists');
+});
