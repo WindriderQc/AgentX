@@ -15,7 +15,7 @@ function requestsTaskCheck(text) {
   // an explicit subsequent "puis regarde mes tâches" still requires evidence.
   const readInput = input.replace(/\bsans\s+(?:aller\s+)?(?:regarder|verifier|consulter|lister|montrer)\b/g, '')
     .replace(/\b((?:ma|mon|mes|notre|nos|my|our|la|le|les|une?|des|the|a)\s+)list(?:e)?\b/g, '$1');
-  const read = /\b(?:regard(?:e|er|ez|ons)|verifi(?:e|er|ez|ons)|consult(?:e|er|ez|ons)|list(?:e|er|ez|ons)|montr(?:e|er|ez)|combien|quels?|quelles?|quoi|prioritaires?|check|look|list|show|how many|what|which|read|count|review)\b/.test(readInput);
+  const read = /\b(?:lis|lire|lisez|lisons|regard(?:e|er|ez|ons)|verifi(?:e|er|ez|ons)|consult(?:e|er|ez|ons)|list(?:e|er|ez|ons)|montr(?:e|er|ez)|combien|quels?|quelles?|quoi|prioritaires?|check|look|list|show|how many|what|which|read|count|review)\b/.test(readInput);
   const personal = /\b(?:mes|nos|ma|mon|my|our|personal|personnelles?)\b/.test(input);
   return topic && read && personal;
 }

@@ -10,7 +10,7 @@ const { resolveProfile } = require('./performance');
 const { isNativeToolCallId } = require('../../../../shared/nativeToolCallId.cjs');
 
 function createConversationWorks({ conversations, tasks, env = process.env, repository = createRepository(), classify = () => false, nativeOnly = () => false, nativeRead = () => false,
-  nativeBudget = () => null, nativeForeground = () => true, guardianNeedsMain = () => false,
+  nativeBudget = () => null, nativeForeground = () => true, nativeTaskRead = () => false, guardianNeedsMain = () => false,
   presentResult = null, exchangeStore = exchanges, now = () => new Date() } = {}) {
   const repo = repository;
   let wake = () => {};
@@ -185,9 +185,10 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     conversation.coverage.workResultCount = rows.length;
     return conversation;
   }
-  async function readTasks(context, input, callId) {
-    const row = await binding(context);
-    if (row.mode !== 'read' || !['running', 'dispatching'].includes(row.state)) throw fail('CONVERSATION_WORK_READ_DENIED', 'This work cannot read tasks.', 403);
+  async function readTasks(context, input, callId, role = 'worker') {
+    const row = await binding(context, role);
+    if ((role === 'boss' ? row.mode !== 'native' : row.mode !== 'read')
+        || !['running', 'dispatching'].includes(row.state)) throw fail('CONVERSATION_WORK_READ_DENIED', 'This work cannot read tasks.', 403);
     if (!isNativeToolCallId(callId) || !input || Object.keys(input).some(key => !['limit', 'includeDone'].includes(key))
       || (input.limit !== undefined && (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 50))
       || (input.includeDone !== undefined && typeof input.includeDone !== 'boolean')) throw fail('CONVERSATION_WORK_READ_INVALID', 'Choose a bounded task read.');
@@ -198,7 +199,9 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       const previous = current.tools.find(tool => tool.id === id);
       if (previous) { if (previous.fingerprint !== fingerprint) throw fail('CONVERSATION_WORK_TOOL_CONFLICT', 'The tool identity belongs to other parameters.', 409); return null; }
       if (current.tools.length >= LIMITS.tools) throw fail('CONVERSATION_WORK_TOOL_LIMIT', 'The read budget is exhausted.', 409);
-      const result = await tasks.list(normalized);
+      let result;
+      try { result = await tasks.list(normalized); }
+      catch { throw fail('CONVERSATION_WORK_READ_UNAVAILABLE', 'The Core task read is unavailable.', 503); }
       if (!result || !Array.isArray(result.tasks) || !Number.isInteger(result.totalCount) || result.totalCount < result.tasks.length) throw fail('CONVERSATION_WORK_READ_UNAVAILABLE', 'The Core task read returned no verified task list.', 503);
       const payloadRef = await repo.payload(current, result, fence);
       return { fields: { tools: [...current.tools, { id, tool: 'tasks.personal.list',
@@ -207,6 +210,23 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     const receipt = saved.tools.find(tool => tool.id === id);
     return { authority: 'core.conversation-works', receipt: { id, tool: receipt.tool, status: 'verified',
       runId: receipt.runId, at: receipt.at }, data: await repo.read(saved, receipt.payloadRef) };
+  }
+  async function contextForNative(context, callId) {
+    const canonical = await contextForWorker(context, 'boss');
+    // Reuse the same canonical reader inside Main's mandatory context call.
+    // The exact owner request, not model-supplied input or other turns, selects
+    // this read. Legacy context reads without a native call id remain read-only.
+    if (!isNativeToolCallId(callId) || !nativeTaskRead(canonical.request)) return canonical;
+    try {
+      const read = await readTasks(context, {}, callId, 'boss');
+      return { ...canonical, receiptIds: [...new Set([...canonical.receiptIds, read.receipt.id])],
+        receipt: read.receipt, data: read.data };
+    } catch (cause) {
+      // A domain outage does not remove the rest of Main's shared context.
+      // Binding, erasure and write-fence failures retain their native refusal.
+      if (cause.code !== 'CONVERSATION_WORK_READ_UNAVAILABLE') throw cause;
+      return { ...canonical, taskRead: { status: 'unavailable', code: cause.code } };
+    }
   }
   async function publish(context, input) {
     const row = await binding(context), result = validateResult(input);
@@ -373,7 +393,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       const turn = await conversations.getTurn({ ...query(row.sessionId), traceId: row.turnId });
       return turn && hash(turn.inputText) === row.requestSha256 ? turn.inputText : null;
     },
-    contextForNative: context => contextForWorker(context, 'boss'), guardianTool,
+    contextForNative, guardianTool,
     nativeOwner: async context => { const row = await binding(context, 'boss');
       return { authority: 'core.conversation-works', id: row._id, sessionId: row.sessionId }; },
     admitNativeTool: require('./native-budget').createNativeBudget({ repo, conversations, session, query, policy: nativeBudget, now }),

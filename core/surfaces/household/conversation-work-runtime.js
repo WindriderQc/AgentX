@@ -5,6 +5,7 @@ const { requestsSecretary, requestsSecretaryRead, requestsReadEffects } = requir
 const { requestsWebRead } = require('./native-web-policy');
 const { requestsScreenVisit } = require('./screen-services');
 const { requestsPipelineRead } = require('./native-pipeline-policy');
+const { requestsTaskContextRead } = require('./native-task-policy');
 const { awaitingMain } = require('./guardian-reply');
 const { PERSONAL_OPERATOR_SURFACE_CONTRACT } = require('./packs');
 const { LIMITS, hash, MODES, nativeWork } = require('../../src/services/conversationWorks/contract');
@@ -25,7 +26,7 @@ function registerWorkRuntime({ router, conversations, tasks, agentClient, contin
       const language = turn?.speechLanguage || require('./persona-prompt').spokenReplyLanguage(result.text, turn?.inputText || '');
       return require('./work-result-presentation').workResultPresentation(result, { language, pageCatalog: screenPages });
     },
-    guardianNeedsMain: awaitingMain,
+    guardianNeedsMain: awaitingMain, nativeTaskRead: requestsTaskContextRead,
     nativeOnly: text => requestsSecretary(text) || requestsScreenVisit(text, screenPages), nativeRead: text => requestsSecretaryRead(text) || requestsWebRead(text),
     nativeForeground: text => requestsTaskCheck(text) || requestsPipelineRead(text) || requestsSecretary(text) || requestsWebRead(text) || requestsReadEffects(text) || requestsScreenVisit(text, screenPages),
     nativeBudget: (text, mode) => requestsWebRead(text) && !requestsSecretaryRead(text) && !requestsTaskCheck(text)
