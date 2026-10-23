@@ -421,6 +421,9 @@ describe('POST /api/inference/generate — behaviour contract', () => {
         })
         .expect(200);
 
+      expect(recordInference.mock.calls[0][0]).toMatchObject({ consumerContract: 'benchmark-service-v1',
+        routeDecision: { attribution: { consumerContract: 'benchmark-service-v1' } } });
+
       // Bench/profiler self-sequence per host, but passive tracking is required
       // so a claim snapshot cannot race a direct request already in flight.
       const entry = hostGate.stats().entries['http://primary:11434::test-model'];
@@ -430,6 +433,25 @@ describe('POST /api/inference/generate — behaviour contract', () => {
         trackedInFlight: 0,
         inFlight: 0
       });
+    });
+
+    test('a benchmark-like callerDetail or request contract does not establish service identity', async () => {
+      mockOllamaOk();
+      await request(app).post('/api/inference/generate').send({
+        model: 'test-model', prompt: 'hello', callerDetail: 'benchmark-batch-example',
+        consumerContract: 'benchmark-service-v1'
+      }).expect(200);
+      expect(recordInference.mock.calls[0][0].consumerContract).toBeNull();
+      expect(recordInference.mock.calls[0][0].routeDecision.attribution.consumerContract).toBeNull();
+    });
+
+    test('preserves an internal Nestor consumer contract', async () => {
+      mockOllamaOk();
+      await request(app).post('/api/inference/generate')
+        .set(require('../../src/services/nestorConsumerAttribution').internalNestorInferenceHeaders())
+        .send({ model: 'test-model', prompt: 'hello' }).expect(200);
+      expect(recordInference.mock.calls[0][0]).toMatchObject({ consumerContract: 'nestor-v1',
+        routeDecision: { attribution: { consumerContract: 'nestor-v1' } } });
     });
 
     test('forwards native tool schemas only for an admitted benchmark campaign', async () => {

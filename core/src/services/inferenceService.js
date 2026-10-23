@@ -14,7 +14,7 @@ const { executeAdmittedOllamaAttempt, settleAdmissionFailure } = require('./rout
 const { buildInferenceClientData, classifyHttpRetryFailure, buildInferenceResponseHeaders, setRouteOutcomeHeader } = require('./routing/inferenceResponsePresenter');
 const { prepareInferenceRuntime } = require('./inferenceRuntimePolicy');
 const lanePolicy = require('./inferenceLanePolicy');
-const { resolveCallerPolicy } = require('./routing/callerPolicy');
+const { resolveExecutionCaller } = require('./routing/inferenceCallerAccess');
 const { assertHostAvailableForConsumer, workloadReservesHost } = require('./benchmarkClaimGuard');
 const { fallbackAfterRefusal, refusedBeforeDispatch } = require('./routing/taskFallbackLadder');
 const { createGenerateRouteDecisionBuilder, observeRouteDecision, createAttemptRecorder } = require('./routing/inferenceRouteRecorder');
@@ -59,10 +59,7 @@ async function executeInferenceOnce(body = {}, {
     };
     const isCancelled = () => signal?.aborted === true;
     if (isCancelled()) return undefined;
-    if (!callerContext) {
-        const policy = resolveCallerPolicy(body.callerDetail || '');
-        callerContext = { principal: 'core-inference', requestedPolicy: policy, effectivePolicy: policy };
-    }
+    ({ callerContext, consumerContract } = resolveExecutionCaller(body, callerContext, consumerContract));
     const startedAt = Date.now();
     const requestedModel = typeof body.model === 'string' ? body.model.trim() : '';
     const taskType = typeof body.taskType === 'string' ? body.taskType.trim() : '';
