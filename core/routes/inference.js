@@ -32,13 +32,12 @@ const { buildRouteDecision, DECISION_MODES, REJECTION_REASONS, ROUTE_OUTCOME_COD
 
 const { resolveEmbeddingKeepAlive } = require('../src/services/inferenceRuntimePolicy');
 
-const { resolveInferenceRequestCaller } = require('../src/services/routing/inferenceCallerAccess');
+const { resolveInferenceRequestCaller, resolveInferenceConsumer } = require('../src/services/routing/inferenceCallerAccess');
 const { embedFailureReason } = require('../src/services/routing/admissionRefusal');
 
 const { resolveInferenceContractSnapshot } = require('../src/services/inferenceContractService');
 const { telemetryContextFromRequest } = require('../src/helpers/llmTelemetryContext');
 const { beginInferenceAdmission } = require('../src/services/inferenceAdmissionService');
-const { trustedNestorConsumer } = require('../src/services/nestorConsumerAttribution');
 const alertService = require('../src/services/alertService');
 const { EMBED_TIMEOUT_MS, embeddingHostCandidates, prepareEmbeddingPayload, isEmbedHostLive, emitEmbedHostFailure, isModelMissingResponse, _resetEmbedLiveness } = require('../src/services/embeddingHostChain');
 
@@ -193,7 +192,8 @@ router.post('/inference/embed', async (req, res) => {
      * full failover story. Pure and wrapped: telemetry must never break an
      * embed call.
      */
-    const consumerContract = trustedNestorConsumer(req);
+    const consumerContract = resolveInferenceConsumer(req);
+    const recordEmbedding = entry => recordInference({ ...entry, consumerContract });
     const telemetryContext = telemetryContextFromRequest(req, 'agentx');
     const rejections = [];
     const buildEmbedDecision = ({
@@ -260,7 +260,7 @@ router.post('/inference/embed', async (req, res) => {
     let lastFailureReason = null;
     let embedAdmission = null;
     // One error row per abandoned candidate, so telemetry tells the whole failover.
-    const recordAttemptFailure = (candidate, candidateIndex, fallbackReason, status, reasonCode) => recordInference({
+    const recordAttemptFailure = (candidate, candidateIndex, fallbackReason, status, reasonCode) => recordEmbedding({
         host: candidate,
         routedHostUrl: routedTarget,
         model,
@@ -420,7 +420,7 @@ router.post('/inference/embed', async (req, res) => {
         const EMBED_SOURCE = 'n/a';
 
         if (!response.ok) {
-            recordInference({
+            recordEmbedding({
                 host: target,
                 model,
                 caller: 'embedding',
@@ -440,7 +440,7 @@ router.post('/inference/embed', async (req, res) => {
         }
 
         if (!data || data.embeddings?.length !== 1 || !Array.isArray(data.embeddings[0])) {
-            recordInference({
+            recordEmbedding({
                 host: target,
                 model,
                 caller: 'embedding',
@@ -459,7 +459,7 @@ router.post('/inference/embed', async (req, res) => {
         }
 
         data.embedding = data.embeddings[0];
-        recordInference({
+        recordEmbedding({
             host: target,
             routedHostUrl: routedTarget,
             model,
@@ -511,7 +511,7 @@ router.post('/inference/embed', async (req, res) => {
         // with the rejection list carrying which hosts were tried and why.
         const exhaustedFallback = hostUrlKey(attemptTarget) !== hostUrlKey(routedTarget);
         const terminalStatus = lastFailureReason === 'pre_response_timeout' ? 'timeout' : 'error';
-        recordInference({
+        recordEmbedding({
             host: target,
             model,
             caller: 'embedding',
@@ -604,7 +604,7 @@ router.post('/inference/generate', async (req, res) => {
     try {
         const result = await executeInference(req.body || {}, {
             callerContext: req.inferenceCallerContext || resolveInferenceRequestCaller(req),
-            consumerContract: trustedNestorConsumer(req),
+            consumerContract: resolveInferenceConsumer(req),
             telemetryContext: telemetryContextFromRequest(req, 'agentx'),
             signal: disconnect.signal,
         });

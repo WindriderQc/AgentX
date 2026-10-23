@@ -39,7 +39,7 @@ describe('queryExpansion', () => {
         expect.stringContaining('/api/inference/generate'),
         expect.objectContaining({
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
+          headers: { 'Content-Type': 'application/json', 'X-AgentX-Caller': 'rag-service' }
         }),
         expect.any(Number),
         expect.objectContaining({ operationId: 'rag.query-expansion.generate' })

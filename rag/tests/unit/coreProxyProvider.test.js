@@ -77,6 +77,7 @@ describe('embed', () => {
     expect(result).toEqual([0.1, 0.2, 0.3]);
 
     const [url, opts] = fetch.mock.calls[0];
+    expect(opts.headers).toMatchObject({ 'X-AgentX-Caller': 'rag-service' });
     expect(url).toBe('http://core:3080/api/inference/embed');
     expect(opts.method).toBe('POST');
     const body = JSON.parse(opts.body);

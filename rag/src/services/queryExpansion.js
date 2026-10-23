@@ -40,7 +40,7 @@ Return ONLY the queries, one per line, without numbering or explanation.`;
 
     const response = await fetchWithTimeout(`${CORE_PROXY_URL}/api/inference/generate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-AgentX-Caller': 'rag-service' },
       body: JSON.stringify({
         taskType: 'rag_query_expansion',
         prompt,
