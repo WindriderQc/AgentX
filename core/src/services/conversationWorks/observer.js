@@ -164,7 +164,15 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
         else if (row) await reconcile(row);
         return;
       }
-      const [row] = await works.repo.find({ state: 'queued', contextReady: true }, 1);
+      const queued = { state: 'queued', contextReady: true };
+      let [row] = await works.repo.find(queued, 1);
+      // A completed guardian reply is reviewed in the background. Requested
+      // work whose answer is still awaited goes first, without interrupting
+      // the active owner or discarding any review. Each class keeps FIFO.
+      if (row?.classification === 'native_review') {
+        const [awaited] = await works.repo.find({ ...queued, classification: { $ne: 'native_review' } }, 1);
+        if (awaited) row = awaited;
+      }
       if (row) await run(row);
     } catch (cause) { logger?.warn?.('Conversation work observer unavailable', { code: cause.code || 'WORK_OBSERVER_UNAVAILABLE' }); }
     finally { running = false; }

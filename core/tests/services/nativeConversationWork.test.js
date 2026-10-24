@@ -11,6 +11,7 @@ const { createWorkDelivery } = require('../../src/services/conversationWorks/del
 const { createWorkControl } = require('../../src/services/conversationWorks/control');
 const { OWNER, EXCHANGE_SCOPE, hash, NO_WORK } = require('../../src/services/conversationWorks/contract');
 const Model = require('../../models/ConversationWorkState');
+const { createWorkObserver } = require('../../src/services/conversationWorks/observer');
 const conversations = forSurface('household');
 const env = { PERSONAL_CONVERSATION_WORK_MODE: 'native', PERSONAL_CONVERSATION_WORK_AGENT_ID: 'nestor-worker',
   PERSONAL_CONVERSATION_WORK_TOKEN: 'synthetic-native-conversation-binding-token' };
@@ -44,6 +45,70 @@ beforeEach(async () => {
     agentClient: execute, continuity, env, capability });
 });
 afterEach(() => works.observer.stop());
+
+test('awaited work precedes queued native reviews, retaining FIFO and completing every original once', async () => {
+  works.observer.stop();
+  const list = jest.fn(async () => ({ tasks: [], totalCount: 0 }));
+  works = registerWorkRuntime({ router: express.Router(), conversations, tasks: { list }, agentClient: execute, continuity, env, capability });
+  works.observer.stop();
+  const reviews = [], awaited = [];
+  for (let index = 0; index < 2; index++) {
+    const job = await works.intake(input('Bonjour.'));
+    await works.prepare(job.row._id, `Complete review context ${index}`);
+    await conversations.settleTurn({ ...works.query(current.sessionId), traceId: job.row.turnId, replyText: 'Bonjour !' });
+    await works.guardianSettled(job.row._id, 'completed', 'answered');
+    reviews.push(job.row._id);
+  }
+  for (let index = 0; index < 2; index++) {
+    const job = await works.intake(input('Lis mes tâches personnelles ouvertes.'));
+    await works.prepare(job.row._id, `Complete awaited context ${index}`);
+    awaited.push(job.row._id);
+  }
+  const sent = [], evidence = new Map();
+  const native = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
+  const observer = createWorkObserver({ works, env, agentFor: () => 'main',
+    execute: async ({ row, onStarted }) => {
+      const runId = 'resp_' + randomUUID();
+      await onStarted(row.attempt.sessionKey, runId);
+      const saved = await works.repo.get(row._id);
+      const canonical = await works.contextForNative(context(saved), 'call_' + row._id);
+      const value = proof(saved.attempt, row.classification === 'native_review' ? NO_WORK : 'There are zero open tasks.', ['conversation_work']);
+      if (canonical.receipt) value.receipts = [{ tool: 'conversation_work', status: 'verified', runId,
+        workRead: { id: canonical.receipt.id, tool: 'tasks.personal.list' } }];
+      evidence.set(runId, value); sent.push(row._id);
+    }, observe: async attempt => evidence.get(attempt.runId), receive: request => native.receive(request) });
+  try {
+    for (let index = 0; index < 5; index++) await observer.tick();
+    expect(sent).toEqual([...awaited, ...reviews]);
+    expect(new Set(sent).size).toBe(4);
+    expect(list).toHaveBeenCalledTimes(2);
+    for (const id of sent) {
+      const row = await works.repo.get(id);
+      expect(row.state).toBe('completed');
+      expect(row.attempt.terminal).toBe('completed');
+    }
+    expect((await works.conversationContext(current.sessionId)).coverage).toMatchObject({ complete: true, turnCount: 4, workResultCount: 2 });
+  } finally { observer.stop(); }
+});
+
+test('an already admitted review retains its original owner when awaited work arrives', async () => {
+  works.observer.stop();
+  const running = await admitted('Bonjour.');
+  await mongoose.connection.collection('conversation_work_dispatch').updateOne({ _id: OWNER },
+    { $set: { workId: running._id, phase: 'dispatching', attempt: running.attempt } }, { upsert: true });
+  const waiting = await works.intake(input('Lis mes tâches personnelles ouvertes.'));
+  await works.prepare(waiting.row._id, 'Complete waiting context');
+  const dispatch = jest.fn();
+  const observer = createWorkObserver({ works, env, execute: dispatch,
+    observe: async attempt => ({ run: { sessionKey: attempt.sessionKey, runId: attempt.runId, status: 'running' } }) });
+  try {
+    await observer.tick(); await observer.tick();
+    expect(dispatch).not.toHaveBeenCalled();
+    expect((await works.repo.get(running._id)).attempt).toEqual(running.attempt);
+    expect((await works.repo.get(waiting.row._id)).state).toBe('queued');
+    expect((await mongoose.connection.collection('conversation_work_dispatch').findOne({ _id: OWNER })).workId).toBe(running._id);
+  } finally { observer.stop(); }
+});
 
 test('the mandatory native context call includes one replay-safe canonical task read for an explicit request', async () => {
   works.observer.stop();
