@@ -79,6 +79,15 @@ Each session receives only its exact paths, focused-test targets and the verifie
 commit summary of earlier steps; it cannot choose a shell verifier, expand scope,
 commit or publish.
 
+Source implementation sessions request no reasoning and at most 4096 output
+tokens per model response. DSH advertises this output limit; the runner's relay
+enforces it for either harness, preserving any smaller caller allowance. Core
+maps the explicit OpenAI `reasoning_effort: none` to Ollama `think: false`.
+These per-request controls preserve the resident model and context. Read-only
+planning and report sessions keep their separate contracts. Shorter replies
+do not establish model competence or replace cumulative budgets, useful-progress
+checks, native completion receipts or independent verification.
+
 For every step the runner builds the focused invocation from the installed
 verification profile. Only a clean passing result becomes one commit with the
 exact prepared parent. Failed, out-of-scope or dependency-changing edits are

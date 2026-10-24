@@ -287,6 +287,7 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
       max_completion_tokens: body.max_completion_tokens,
       response_format: body.response_format,
       reasoning_effort: body.reasoning_effort,
+      ...(body.reasoning_effort === 'none' && { think: false }),
       stop: body.stop,
       seed: body.seed,
       presence_penalty: body.presence_penalty,
