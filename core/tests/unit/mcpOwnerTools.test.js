@@ -20,3 +20,13 @@ test('unknown failures never expose private transport details', async () => {
   expect(response.result).toMatchObject({ isError: true, structuredContent: { error: 'OWNER_TOOL_UNAVAILABLE' } });
   expect(JSON.stringify(response)).not.toContain('private transport');
 });
+test('relationship inspection uses the same Core owner and rejects ambiguous reads', async () => {
+  const service = require('../../src/services/pipelineWorkReferences');
+  const lookup = jest.spyOn(service, 'lookup').mockResolvedValueOnce({ matchedCount: 2, tasks: [], truncated: true });
+  const reference = { kind: 'github_issue', repository: 'example/project', number: 42 };
+  expect((await call('work_relationships', { action: 'lookup', reference, limit: 1 })).result.structuredContent.matchedCount).toBe(2);
+  expect(lookup).toHaveBeenCalledWith(reference, 1);
+  const invalid = await call('work_relationships', { action: 'lookup', reference, pipelineId: '0001' });
+  expect(invalid.result.isError).toBe(true); expect(lookup).toHaveBeenCalledTimes(1);
+  lookup.mockRestore();
+});

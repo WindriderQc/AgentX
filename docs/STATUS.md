@@ -89,6 +89,14 @@ Instance configuration, data and deployment receipts remain outside Git.
   keeps its native policy without invented history, and native reviewed source
   promotions retain their acceptance. See [work lifecycle](WORK_LIFECYCLE.md).
 
+- **Work relationships.** Pipeline links qualified issue/conversation reports and
+  related engineering tasks with scoped reasons and retained history. Exact
+  lookup identifies shared work; replay-safe report admission records one
+  proposal per stable report/scope identity. Native PR observations remain
+  separate from task closure, installation and final acceptance. The owner MCP
+  read shares Core's contract. No external status synchronization or public
+  export occurs. See [work references](WORK_RELATIONSHIPS.md).
+
 - **Execution sources.** Playground and the existing inference contract select local
   Ollama or OpenClaw, with distinct model and native agent modes. Provider
   credentials and catalogues belong to OpenClaw. Model receipts attest supplied

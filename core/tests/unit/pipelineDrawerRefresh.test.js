@@ -38,6 +38,15 @@ test('an intake decision is bound to its reviewed revision while the unsent rati
   expect(reason.value).toBe('Keep this rationale');
   expect(draft.fields[0].contextBound).toBe(true);
 });
+test('a relationship operation clears after a scope change while its unsent reference and reason survive', () => {
+  const api = load();
+  const field = (name, value, scope) => ({ name, value, closest: () => ({ dataset: { workLinks: '', revision: '2', scope } }) });
+  const body = fields => ({ querySelectorAll: query => query === 'details' ? [] : fields });
+  const draft = api.preserveDrawerDraft(body([field('workOperation', 'add', 'old'), field('workReason', 'Keep the rationale', 'old')]));
+  const operation = field('workOperation', '', 'new'), reason = field('workReason', '', 'new');
+  api.restoreDrawerDraft(body([operation, reason]), draft);
+  expect(operation.value).toBe(''); expect(reason.value).toBe('Keep the rationale');
+});
 test('a correction disclosure is reopened before its draft field receives focus', () => {
   const api = load(), detail = { open: false }, rebuilt = field('');
   rebuilt.focus.mockImplementation(() => { expect(detail.open).toBe(true); });

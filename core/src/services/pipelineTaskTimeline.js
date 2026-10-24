@@ -29,9 +29,10 @@ function taskTimeline(task) {
 }
 
 function taskSummaryWithTimeline(task, options) {
-  const { automationAttempts, transitions, feedback, spec, profileId, origin, ...summary } = task;
+  const { automationAttempts, transitions, feedback, spec, profileId, origin, workLinks, ...summary } = task;
   return {
     ...summary,
+    workView: require('./pipelineWorkReferencePolicy').view(task, { summary: true }),
     intakeView: require('./taskIntakePolicy').view(task),
     timeline: taskTimeline(task),
     transitionLog: transitionLog(task),

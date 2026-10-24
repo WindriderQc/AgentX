@@ -53,6 +53,14 @@ revision-checked reasons. Acceptance grants no execution power. A changed
 request needs review; legacy records and native approved promotions retain
 their existing rules. Triage never cancels or releases native effects.
 
+Before filing engineering work from an issue or conversation, inspect its
+qualified reference through Core/owner `work_relationships` when available.
+One report can require several scoped tasks and several reports can share
+work. Titles do not establish duplicates. Keep report-admission request UUID
+and scopeKey stable across retries; links and their scope reviews grant no
+execution authority and mirror no external status. A native PR observation is
+not a deployment or final acceptance receipt. See `docs/WORK_RELATIONSHIPS.md`.
+
 Heavy-work list `summary.counts` distinguishes automatic queue, action required,
 recorded dispatch/execution and uncertainty before pagination. Reservations are
 independent counts. Use each `presentation.nextAction` actor and step, not the

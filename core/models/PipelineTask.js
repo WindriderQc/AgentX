@@ -289,6 +289,8 @@ const PipelineTaskSchema = new mongoose.Schema({
   // Optional caller-owned idempotency key. The compound partial index lets a
   // reviewed memory candidate safely retry task creation after a lost reply.
   sourceKey: { type: String, default: null, maxlength: 200 },
+  workLinks: { type: require('./TaskWorkLinksSchema'), default: undefined },
+  workAdmission: { type: mongoose.Schema.Types.Mixed, default: undefined },
 }, { timestamps: true });
 
 PipelineTaskSchema.index(
@@ -299,5 +301,9 @@ PipelineTaskSchema.index({ 'automation.mode': 1, status: 1, priority: 1 });
 PipelineTaskSchema.index({ personalCaptureId: 1 }, { unique: true, partialFilterExpression: { personalCaptureId: { $type: 'string' } } });
 PipelineTaskSchema.index({ 'automationLease.expiresAt': 1 });
 PipelineTaskSchema.index({ 'automationAttempts.acquiredAt': 1 });
+PipelineTaskSchema.index({ 'workLinks.entries.key': 1 });
+PipelineTaskSchema.index({ 'workAdmission.referenceKey': 1 });
+PipelineTaskSchema.index({ 'workAdmission.requestId': 1 }, { unique: true,
+  partialFilterExpression: { 'workAdmission.requestId': { $type: 'string' } } });
 
 module.exports = mongoose.model('PipelineTask', PipelineTaskSchema);

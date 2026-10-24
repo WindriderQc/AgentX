@@ -598,9 +598,10 @@ async function claimEligibleTask(pipelineId, assignee, now = new Date(), options
  * git file, no ROADMAP append, no id race. Every supplied task field follows
  * the same authoring path, including lightweight and partially structured tasks.
  */
-async function createTaskInMongo(input = {}, { intakeAcceptance = null } = {}) {
+async function createTaskInMongo(input = {}, { intakeAcceptance = null, reportAdmission = null } = {}) {
   const req = validateRequest(input);
   const source = String(input.source || 'api').slice(0, 80);
+  if (source === 'work-report-intake' && !reportAdmission) throw Object.assign(new Error('Use the guarded report admission entrance.'), { status: 400, code: 'WORK_ADMISSION_REQUIRED' });
   const sourceKey = input.sourceKey == null ? null : String(input.sourceKey).trim().slice(0, 200);
   if (sourceKey) {
     const existing = await PipelineTask.findOne({ source, sourceKey }).lean();
@@ -625,14 +626,19 @@ async function createTaskInMongo(input = {}, { intakeAcceptance = null } = {}) {
   await assertNoDependencyCycle(pipelineId, routingMetadata.dependsOn || []);
   const spec = suppliedSpec === undefined ? renderTodo({ id: pipelineId, ...req }) : suppliedSpec;
   const intakeDecision = intake.initial({ title: req.title, spec, service: req.service || '', source }, new Date(), intakeAcceptance);
+  const workOrigin = reportAdmission ? require('./pipelineWorkAdmission').initial(reportAdmission,
+    { title: req.title, spec, service: req.service || '', source, sourceKey }) : {};
   try {
-    await PipelineTask.create({
+    const taskDocument = {
       pipelineId, title: req.title, spec, service: req.service || '',
       status: 'queued', epic: input.epic ?? 'MCP Inbox', source, sourceKey,
       ...(intakeDecision && { intake: intakeDecision }),
+      ...workOrigin,
       ...routingMetadata,
       ...initialTransition(pipelineId),
-    });
+    };
+    if (reportAdmission) await PipelineTask.create([taskDocument], { writeConcern: { w: 1, j: true } });
+    else await PipelineTask.create(taskDocument);
   } catch (err) {
     if (sourceKey && err?.code === 11000) {
       const existing = await PipelineTask.findOne({ source, sourceKey }).lean();

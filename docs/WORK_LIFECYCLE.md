@@ -107,8 +107,12 @@ engineering investigation open.
 
 A need can have several reports and scoped tasks. A task can have several
 attempts, artifacts and resource requests. Several reports can concern one
-defect. These are conceptual relationships, not a second store or a claim of
-an implemented universal work graph.
+defect. Core stores bounded report and related-work references on the existing
+Pipeline task, with reviewed scope, attributable reasons and replayable
+decisions. Exact-reference lookup finds shared work before another capture;
+report admission creates a proposal and source receipt atomically. See
+[work references and report admission](WORK_RELATIONSHIPS.md) for the APIs,
+limits and native outcome observations. This is not a universal work graph.
 
 Use qualified references: repository plus issue number, Pipeline task ID,
 queue request ID and native execution ID. Matching numbers or similar titles
