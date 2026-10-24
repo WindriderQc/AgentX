@@ -1,4 +1,5 @@
 'use strict';
+const { executionWindowOpen } = require('./heavyWorkQueueWindow');
 
 const fs = require('node:fs/promises');
 const crypto = require('node:crypto');
@@ -252,8 +253,7 @@ async function cancel(id, body, actor) {
 async function assertDispatch(id, dispatchId) {
   const job = await get(id);
   const now = new Date().toISOString();
-  if (job.state !== 'dispatching' || job.dispatchId !== dispatchId || now < job.reservation.start
-    || now >= job.reservation.end || (job.startBefore && now >= job.startBefore)) {
+  if (job.state !== 'dispatching' || job.dispatchId !== dispatchId || !executionWindowOpen(job, now)) {
     throw fail('Dispatch identity or execution window is no longer valid', 409, 'HEAVY_QUEUE_WINDOW_CLOSED');
   }
   const state = await Queue.findById('heavy-work').lean();

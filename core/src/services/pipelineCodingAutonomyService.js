@@ -1,4 +1,5 @@
 'use strict';
+const { executionWindowOpen } = require('./heavyWorkQueueWindow');
 const { randomUUID } = require('node:crypto');
 const Task = require('../../models/PipelineTask');
 const Settings = require('../../models/PipelineCodingAutonomy');
@@ -179,8 +180,7 @@ async function campaign(task, host) {
   const job = await require('./heavyWorkQueueService').get(task.codingAutonomy.queueRequestId);
   const now = new Date().toISOString();
   if (!['dispatching', 'running'].includes(job.state) || job.executor?.mode !== 'operator' || job.source?.type !== 'coding'
-    || !job.source.ref || !job.reservation || now < job.reservation.start || now >= job.reservation.end
-    || (job.startBefore && now >= job.startBefore) || (host && !job.hosts.includes(host.replace(/\/+$/, ''))))
+    || !job.source.ref || !executionWindowOpen(job, now) || (host && !job.hosts.includes(host.replace(/\/+$/, ''))))
     throw policy.fail('The approved coding campaign is not within its active queue window', 'CODING_AUTONOMY_QUEUE_WAIT');
   return job;
 }
