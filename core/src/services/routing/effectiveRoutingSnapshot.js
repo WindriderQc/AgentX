@@ -31,9 +31,9 @@ function sanitizeHostPreference(pref, getPinnedEntries) {
   };
 }
 
-function buildTaskSnapshot(taskType, task, routerConfig, preferencesByHost, modelsMatch) {
+function buildTaskSnapshot(taskType, task, routerConfig, preferencesByHost, modelsMatch, endpointUrl = null) {
   const hostKey = task?.host || null;
-  const hostUrl = hostKey ? routerConfig.hosts?.[hostKey] || null : null;
+  const hostUrl = (hostKey ? routerConfig.hosts?.[hostKey] || null : null) || endpointUrl;
   const preference = hostUrl ? preferencesByHost.get(hostUrl) || null : null;
   const pin = preference?.pinnedModels?.find((entry) => modelsMatch(entry.model, task?.model)) || null;
   return {
@@ -48,6 +48,25 @@ function buildTaskSnapshot(taskType, task, routerConfig, preferencesByHost, mode
     pinAligned: Boolean(pin),
     hostPreference: preference
   };
+}
+
+// A role route (#360) is served by the first pin of the endpoint its role
+// resolved to; an unresolved role has no model, so nothing routes to it.
+function buildRoleTaskSnapshot(taskType, role, resolution, routerConfig, preferencesByHost, modelsMatch) {
+  const topology = {
+    role, group: resolution?.group || null, mode: resolution?.mode || null,
+    reason: resolution?.ok ? null : (resolution?.reason || 'unresolved'),
+    laneContext: resolution?.laneContext ?? null
+  };
+  if (!resolution?.ok) {
+    return {
+      taskType, model: null, configuredModel: null, hostKey: null, hostUrl: null, contextSize: null,
+      contextSource: 'unresolved', keepAlive: null, pinAligned: false, hostPreference: null, topology
+    };
+  }
+  const resolved = buildTaskSnapshot(taskType, { model: resolution.model, host: resolution.host },
+    routerConfig, preferencesByHost, modelsMatch, resolution.url);
+  return { ...resolved, configuredModel: null, topology };
 }
 
 function throwIfAborted(signal) {
@@ -120,7 +139,10 @@ async function buildEffectiveRoutingSnapshot(deps, options = {}) {
   for (const [taskType, task] of Object.entries(routerConfig.taskModels || {})) {
     // A departed caller must not open further host reads.
     throwIfAborted(signal);
-    const resolved = buildTaskSnapshot(taskType, task, routerConfig, preferencesByHost, deps.modelsMatch);
+    const resolved = task?.role
+      ? buildRoleTaskSnapshot(taskType, task.role, routerConfig.topology?.resolutions?.[taskType],
+        routerConfig, preferencesByHost, deps.modelsMatch)
+      : buildTaskSnapshot(taskType, task, routerConfig, preferencesByHost, deps.modelsMatch);
     if (resolved.model) {
       try {
         await resolveTaskEvidence(deps, resolved, options);
@@ -131,6 +153,22 @@ async function buildEffectiveRoutingSnapshot(deps, options = {}) {
     tasks[taskType] = resolved;
   }
   throwIfAborted(signal);
+
+  // The principal alias follows the topology only when its route names a role.
+  let principalTopology = null;
+  const principal = routerConfig.topology?.principal;
+  if (principal) {
+    principalTopology = buildRoleTaskSnapshot('daily_operator', principal.requestedRole || principal.role, principal,
+      routerConfig, preferencesByHost, deps.modelsMatch);
+    if (principalTopology.model) {
+      try {
+        await resolveTaskEvidence(deps, principalTopology, options);
+      } catch (error) {
+        principalTopology.resolutionError = String(error?.message || 'routing capability resolution failed');
+      }
+    }
+    throwIfAborted(signal);
+  }
 
   let catalog = [];
   if (options.includeCatalog !== false) {
@@ -147,6 +185,7 @@ async function buildEffectiveRoutingSnapshot(deps, options = {}) {
     authority: routerConfig.authority || null,
     hosts: routerConfig.hosts || {},
     tasks,
+    ...(principalTopology && { principalTopology }),
     hostPreferences,
     catalog,
     warnings

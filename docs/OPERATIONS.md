@@ -1813,11 +1813,54 @@ declared mode:
 active. If several are, it reads "conflict"; if one is half started, it reads
 "transitional".
 
-Core resolves a role to the active mode's endpoint
-(`runtimeTopologyService.resolveRole`), but routing does not use that yet.
-Declaring modes changes no route, pin or admission, and nothing in this phase
-switches a mode. An invalid declaration is reported as invalid without its
-content.
+Declaring modes changes no route, pin or admission, and nothing switches a
+mode yet. An invalid declaration is reported as invalid without its content.
+
+#### Routing by role
+
+A task route may name a **role** instead of a host (#360, phase 2). The route
+then follows whichever endpoint serves that role in its group's active mode.
+
+- **Saving.** A route sets either `host` (with `model`) or `role`, never both.
+  A role route names no model: it uses the **first pin** of the resolved
+  endpoint, because the host pin owns what its host loads. Add `group` only
+  when more than one group is declared. Saving a role route needs a valid
+  declaration. In the Nerve Center routing editor, the host list then also
+  offers "Role: conversation / background / pooled". The row shows the
+  endpoint the role resolves to, or why it does not.
+- **Resolution.** Core observes the topology at most every 5 seconds and shares
+  that observation between requests, so a request does not read `/api/ps` itself.
+  A role route bypasses the scheduler, the same-model host preference and any
+  fallback ladder: only the active mode moves it.
+- **Unresolved role.** If the role has no endpoint now, the request is refused
+  with HTTP 503 and `code: TOPOLOGY_ROLE_UNRESOLVED`. `data.reason` is one of:
+  - `transitional`, `none_active`, `conflict`: the group has no single active mode;
+  - `role_not_in_active_mode`: the active mode has no endpoint with that role;
+  - `endpoint_has_no_pin`: the endpoint has no pin;
+  - `topology_not_declared`, `topology_invalid`, `topology_unavailable`,
+    `unknown_group` or `group_required`: the declaration is missing, invalid,
+    unreadable, or does not name the route's group.
+
+  Nothing falls back to another host or model.
+- **Lane overflow.** Before dispatch, Core compares the estimated input tokens
+  plus the output budget (`contextBudget.output.reservedTokens`) with the
+  resolved pin's `contextSize`. Fitting exactly is allowed. If the request is
+  larger, it is refused with HTTP 413 and `code: LANE_CONTEXT_EXCEEDED`.
+  `data` carries `estimatedInputTokens`, `outputBudget`, `laneContext`, `role`,
+  `mode` and a `suggestion`: `queue_for_pooled` for a lane, `reduce_input` for
+  the pooled role. Nothing is truncated. The refusal is logged with the
+  topology evidence, so the Nerve Center routing log and failure summaries show
+  it. Host routes are never checked this way.
+- **Principal alias.** When the principal route (`daily_operator`) names a
+  role, `agentx-primary` follows that role. For `conversation`, the alias uses
+  the pooled pin when the active mode has no conversation role. An unresolved
+  role refuses the alias with `PRINCIPAL_MODEL_UNAVAILABLE` and the reason.
+  While the principal route names a host, the alias behaves as before. The
+  Standard/Abliterated choice stays separate from the role.
+
+Without a declared topology, or without any route naming a role, routing is
+unchanged: no topology read, the same route shapes and the same routing
+configuration version.
 
 ### Inference log timings and prompt cache
 

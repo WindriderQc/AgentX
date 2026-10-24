@@ -58,6 +58,7 @@ const {
     CLASSIFICATION_HOST,
     staysOnConfiguredHost, sameResidencyAs
 } = require('./modelRouterDefaults');
+const roleRouting = require('./routing/topologyRoleRouting');
 
 // ── Pin cache: model → hostUrl — loaded async from HostPreference ────────
 // Prevents bare-model chat calls (no taskType, no host) from arbitrarily
@@ -168,7 +169,8 @@ function canonicalRoutingConfig() {
             .sort(([left], [right]) => left.localeCompare(right))
             .map(([taskType, entry]) => [taskType, {
                 model: entry?.model || null,
-                host: entry?.host || null
+                host: entry?.host || null,
+                ...roleFields(entry)
             }])
     );
     return {
@@ -241,12 +243,21 @@ async function resolveClassificationConfig() {
     return config;
 }
 
+// A role route (#360) carries `role` and, with several topology groups,
+// `group`. Host routes keep exactly their historical `{ model, host }` shape.
+function roleFields(entry) {
+    if (!roleRouting.isRoleRoute(entry)) return {};
+    return entry.group ? { role: entry.role, group: entry.group } : { role: entry.role };
+}
+
+function routeEntry(entry) {
+    if (roleRouting.isRoleRoute(entry)) return { model: null, host: null, ...roleFields(entry) };
+    return { model: entry.model, host: entry.host };
+}
+
 function cloneTaskModels(taskModels) {
     return Object.fromEntries(
-        Object.entries(taskModels || {}).map(([taskType, entry]) => [taskType, {
-            model: entry.model,
-            host: entry.host
-        }])
+        Object.entries(taskModels || {}).map(([taskType, entry]) => [taskType, routeEntry(entry)])
     );
 }
 
@@ -307,7 +318,7 @@ function rebuildTaskModels() {
 
     Object.entries(taskModelOverrides).forEach(([taskType, entry]) => {
         if (isKnownTaskType(taskType)) {
-            merged[taskType] = { model: entry.model, host: entry.host };
+            merged[taskType] = routeEntry(entry);
         }
     });
 
@@ -319,12 +330,16 @@ function getHostPinFollowers() {
     return [...HOST_PIN_FOLLOWERS.keys()];
 }
 
-function normalizeTaskOverride(taskType, entry) {
+function normalizeTaskOverride(taskType, entry, { requireTopology = false } = {}) {
     if (!isKnownTaskType(taskType)) {
         const error = new Error(`Unknown task type: ${taskType}`);
         error.statusCode = 404;
         throw error;
     }
+
+    // A route names either a host or a topology role, never both (#360).
+    const roleTarget = roleRouting.normalizeRoleTarget(entry, { requireTopology });
+    if (roleTarget) return roleTarget;
 
     const model = typeof entry?.model === 'string' ? entry.model.trim() : '';
     const host = typeof entry?.host === 'string' ? entry.host.trim() : '';
@@ -345,6 +360,7 @@ function normalizeTaskOverride(taskType, entry) {
 }
 
 function isDefaultMapping(taskType, entry) {
+    if (roleRouting.isRoleRoute(entry)) return false;
     const defaults = DEFAULT_TASK_MODELS[taskType];
     return defaults.model === entry.model && defaults.host === entry.host;
 }
@@ -357,8 +373,8 @@ function getTaskModelConfigState() {
 
         return [taskType, {
             default: { model: defaults.model, host: defaults.host },
-            override: override ? { model: override.model, host: override.host } : null,
-            effective: { model: effective.model, host: effective.host },
+            override: override ? routeEntry(override) : null,
+            effective: routeEntry(effective),
             isOverride: !!override,
             followsHostPin: HOST_PIN_FOLLOWERS.has(taskType)
         }];
@@ -420,15 +436,32 @@ async function ensureTaskModelOverridesLoaded(options = {}) {
 
 async function saveTaskModelOverride(taskType, entry) {
     const RouterTaskConfig = require('../../models/RouterTaskConfig');
-    const normalized = normalizeTaskOverride(require('./routing/editableTasks').assertEditableTask(taskType), entry);
+    const normalized = normalizeTaskOverride(require('./routing/editableTasks').assertEditableTask(taskType), entry,
+        { requireTopology: true });
 
     if (isDefaultMapping(taskType, normalized)) {
         await RouterTaskConfig.deleteOne({ taskType });
         delete taskModelOverrides[taskType];
-    } else {
+    } else if (roleRouting.isRoleRoute(normalized)) {
         await RouterTaskConfig.findOneAndUpdate(
             { taskType },
-            { taskType, model: normalized.model, host: normalized.host },
+            {
+                $set: { taskType, ...normalized },
+                $unset: { model: 1, host: 1, ...(normalized.group ? {} : { group: 1 }) }
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        taskModelOverrides[taskType] = normalized;
+    } else {
+        // A host route replacing a role route drops the role fields; a host
+        // route replacing a host route keeps its historical write unchanged.
+        const replacesRole = roleRouting.isRoleRoute(taskModelOverrides[taskType]);
+        await RouterTaskConfig.findOneAndUpdate(
+            { taskType },
+            {
+                taskType, model: normalized.model, host: normalized.host,
+                ...(replacesRole && { $unset: { role: 1, group: 1 } })
+            },
             { upsert: true, new: true, setDefaultsOnInsert: true }
         );
         taskModelOverrides[taskType] = normalized;
@@ -517,8 +550,56 @@ async function buildRouterConfigPayload(options = {}) {
             taskModels: getTaskModelOverrides()
         },
         taskConfigState: getTaskModelConfigState(),
-        availableModels: await getAvailableRoutingModels()
+        availableModels: await getAvailableRoutingModels(),
+        ...await topologyPayload()
     };
+}
+
+// Role routing state for the editor and the routing snapshot. Present only
+// when a topology is declared; the topology is observed only for role routes.
+async function topologyPayload() {
+    const runtimeTopology = require('./runtimeTopologyService');
+    let declared;
+    try {
+        declared = runtimeTopology.parseTopology();
+    } catch {
+        return { topology: { declared: true, valid: false, roles: [], groups: [], resolutions: {}, principal: null } };
+    }
+    if (!declared.configured) return {};
+    const resolutions = {};
+    for (const [taskType, entry] of Object.entries(TASK_MODELS)) {
+        if (roleRouting.isRoleRoute(entry)) resolutions[taskType] = await resolveRoleEntry(entry);
+    }
+    return {
+        topology: {
+            declared: true, valid: true, roles: [...runtimeTopology.ROLES],
+            groups: declared.groups.map(group => ({ id: group.id, label: group.label })),
+            resolutions,
+            principal: await resolvePrincipalTopology()
+        }
+    };
+}
+
+function resolveRoleEntry(entry) {
+    refreshHosts();
+    return roleRouting.resolveRoleRoute(roleFields(entry), { hosts: HOSTS });
+}
+
+/**
+ * The principal alias target when the principal route (`daily_operator`)
+ * names a role: that role in the active mode, and for `conversation` the
+ * pooled pin when the active mode has no conversation role. Null when the
+ * principal route names a host, so the alias keeps its historical behaviour.
+ */
+async function resolvePrincipalTopology() {
+    const entry = TASK_MODELS.daily_operator;
+    if (!roleRouting.isRoleRoute(entry)) return null;
+    const resolution = await resolveRoleEntry(entry);
+    if (!resolution.ok && entry.role === 'conversation' && resolution.reason === 'role_not_in_active_mode') {
+        const pooled = await resolveRoleEntry({ ...entry, role: 'pooled' });
+        if (pooled.ok) return { ...pooled, requestedRole: 'conversation' };
+    }
+    return resolution;
 }
 
 function getTargetForModel(model) {
@@ -573,6 +654,16 @@ async function getAdvisoryTargetForModel(model, options = {}) {
 function getModelForTask(taskType) {
     refreshHosts();
     const task = TASK_MODELS[taskType] || TASK_MODELS.general_chat;
+    if (roleRouting.isRoleRoute(task)) {
+        // Synchronous readers see the last resolution; dispatch resolves again.
+        const last = roleRouting.peekRoleRoute(roleFields(task));
+        return {
+            model: last?.ok ? last.model : null,
+            host: last?.ok ? last.host : null,
+            url: last?.ok ? last.url : null,
+            ...roleFields(task)
+        };
+    }
     return {
         model: task.model,
         host: task.host,
@@ -583,6 +674,19 @@ function getModelForTask(taskType) {
 async function resolvePreferredTaskEntry(taskType, options = {}) {
     refreshHosts();
     const configured = TASK_MODELS[taskType] || TASK_MODELS.general_chat;
+
+    if (roleRouting.isRoleRoute(configured)) {
+        const recommendation = roleRouting.roleRecommendation(await resolveRoleEntry(configured));
+        return {
+            model: recommendation.model,
+            host: recommendation.host,
+            url: recommendation.url,
+            readiness: null,
+            fallbackApplied: false,
+            topology: recommendation.topology,
+            ...(recommendation.refusal && { refusal: recommendation.refusal })
+        };
+    }
 
     if (staysOnConfiguredHost(taskType, configured.host)) {
         return {
@@ -665,11 +769,18 @@ async function resolvePreferredTaskEntry(taskType, options = {}) {
 // A configured fallback ladder may replace an unavailable primary (#135).
 async function getAdvisoryModelForTask(taskType, options = {}) {
     const primary = await resolveTaskAdvisory(taskType, options);
+    // A role route never degrades to another host or model (#360).
+    if (primary?.topology) return primary;
     return require('./routing/taskFallbackLadder').applyTaskFallbackLadder(taskType, primary);
 }
 
 async function resolveTaskAdvisory(taskType, options = {}) {
     refreshHosts();
+    const configured = TASK_MODELS[taskType] || TASK_MODELS.general_chat;
+    // The role fixes the endpoint; only the active mode changes it.
+    if (roleRouting.isRoleRoute(configured)) {
+        return roleRouting.roleRecommendation(await resolveRoleEntry(configured));
+    }
     const task = await resolvePreferredTaskEntry(taskType);
 
     if (staysOnConfiguredHost(taskType, task.host)) {
@@ -752,6 +863,7 @@ module.exports = {
     stopPinCacheRefresh,
     lookupPinnedHost,
     getHostPinFollowers,
+    resolvePrincipalTopology,
     _setPinCacheForTests: (entries) => {
         _pinCache = new Map(Object.entries(entries || {}).map(([k, v]) => [k.toLowerCase(), v]));
     }

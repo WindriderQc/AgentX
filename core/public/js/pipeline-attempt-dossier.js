@@ -15,6 +15,8 @@
   function inferenceSummary(progress) {
     const causes = {
       workload_reserved: 'the host is reserved by another workload',
+      lane_context_exceeded: 'the request does not fit the lane context; it was refused, not truncated',
+      topology_role_unresolved: 'the routed topology role has no active endpoint',
       maintenance_active: 'host maintenance is active',
       inference_active: 'another inference holds the host',
       inference_residency_active: 'another active inference uses incompatible model settings',

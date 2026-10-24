@@ -109,6 +109,7 @@
     upstream_timeout: 'Timeout', upstream_error: 'Upstream error',
     unclassified_error: 'Cause unrecorded', runtime_inference_admission_denied: 'Admission refused',
     runtime_inference_recovery_required: 'Runtime recovery', benchmark_claim_active: 'Benchmark reserved',
+    lane_context_exceeded: 'Lane context exceeded', topology_role_unresolved: 'Topology role unresolved',
   };
   const failureLabel = reason => failureLabels[reason] || String(reason || 'unclassified_error').replaceAll('_', ' ');
   function failureRows(data, limit = 3) {

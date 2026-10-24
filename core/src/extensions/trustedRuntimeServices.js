@@ -13,6 +13,7 @@ const { publicDegradedMarker, servedRungMarker } = require('../services/routing/
 const { buildEffectiveRoutingSnapshot } = require('../services/routing/effectiveRoutingSnapshot');
 const { frozenCopy } = require('../helpers/frozenCopy');
 const { buildLocalPayload } = require('../services/routing/trustedRuntimePayload');
+const { checkLaneContract } = require('../services/routing/topologyRoleRouting');
 
 const DEFAULT_TIMEOUT_MS = 600_000;
 const MIN_TIMEOUT_MS = 1_000;
@@ -26,6 +27,8 @@ const INFERENCE_REFUSALS = Object.freeze({
   RUNTIME_INFERENCE_ADMISSION_DENIED: 'Inference host is busy with another workload or incompatible model residency.',
   RUNTIME_INFERENCE_RECOVERY_REQUIRED: 'Inference host requires recovery before accepting new requests.'
 });
+// Topology role routing refusals (#360): typed, before dispatch, never retried elsewhere.
+const TOPOLOGY_REFUSALS = new Set(['TOPOLOGY_ROLE_UNRESOLVED', 'LANE_CONTEXT_EXCEEDED']);
 const CONSUMER_CONTRACT_PATTERN = /^[a-z][a-z0-9-]{0,63}$/;
 const ATTRIBUTION_IDENTIFIER_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,159}$/;
 const ATTRIBUTION_RUNTIME_VALUES = new Set(['agentx', 'codex', 'claude-code', 'external', 'other']);
@@ -51,6 +54,12 @@ class TrustedRuntimeServiceError extends Error {
       if (cause.retry) this.retry = frozenCopy(cause.retry);
     }
   }
+}
+
+function topologyRefusal(refusal) {
+  const error = new TrustedRuntimeServiceError(refusal.message, { code: refusal.code, statusCode: refusal.status });
+  error.details = frozenCopy(refusal.data);
+  return error;
 }
 
 function positiveInteger(value) {
@@ -259,6 +268,7 @@ async function executeRoutedInference(deps, request, options = {}) {
   let hostKey = null;
   let routingSource = 'model_router';
   let taskFallback = servedRungMarker(options.degraded, requestedModel); // a ladder rung serves this call (#135, #143)
+  let roleTarget = null; // a topology role route resolved this call (#360)
 
   if (!model && taskType) {
     const recommendation = options.ladderRetry || await deps.getAdvisoryModelForTask(taskType, {
@@ -266,6 +276,10 @@ async function executeRoutedInference(deps, request, options = {}) {
       durationMs: boundedTimeout(request.timeoutMs),
       createSoftClaim: true
     });
+    if (recommendation?.topology && !options.hostUrl) {
+      if (recommendation.refusal) throw topologyRefusal(recommendation.refusal);
+      roleTarget = recommendation.topology;
+    }
     model = recommendation?.model || '';
     hostUrl = recommendation?.url || null;
     hostKey = recommendation?.host || null;
@@ -370,7 +384,8 @@ async function executeRoutedInference(deps, request, options = {}) {
     options: runtimeOptions,
     numCtxSource,
     inferenceContract,
-    ...(taskFallback && { routing: taskFallback })
+    ...(taskFallback && { routing: taskFallback }),
+    ...(roleTarget && { topology: roleTarget })
   });
   // Opt-in, telemetry-only prompt structure: it never enters the Ollama payload.
   const observePrefix = options.observePromptPrefix === true && request.mode === 'chat'
@@ -385,6 +400,9 @@ async function executeRoutedInference(deps, request, options = {}) {
   const abortBridge = createAbortBridge(options.signal, timeoutMs);
 
   try {
+    // The lane must hold the input estimate plus the output budget (#360).
+    const laneRefusal = roleTarget ? checkLaneContract(roleTarget, inferenceContract) : null;
+    if (laneRefusal) throw topologyRefusal(laneRefusal);
     const execute = request.stream === true ? executeAdmittedOllamaStream : executeAdmittedOllamaAttempt;
     const attempt = await withInferenceRetry(async () => {
       await assertClaim();
@@ -476,16 +494,17 @@ async function executeRoutedInference(deps, request, options = {}) {
     const cancelled = options.signal?.aborted === true;
     const timedOut = abortBridge.signal.aborted && !cancelled;
     // #135: a light task refused before any output goes to the next rung, once.
-    const ladderRetry = !cancelled && !timedOut && !options.ladderRetry && !options.hostUrl && !requestedModel && taskType
+    const ladderRetry = !cancelled && !timedOut && !options.ladderRetry && !options.hostUrl && !requestedModel && taskType && !roleTarget
       && deps.refusedBeforeDispatch?.(error) && await deps.fallbackAfterRefusal?.(taskType,
         { model, host: hostKey, url: hostUrl, degraded: taskFallback });
     void record(telemetryEntry(
       request, { ...metadata, errorCode: error.code, failure: error.failure, retry: error.retry, waits: error.inferenceWaits, promptCache: error.inferencePromptCache }, startedAt, timedOut ? 'timeout' : 'error', null,
       cancelled ? 'cancelled' : (timedOut ? `timeout_${timeoutMs}ms`
-        : (Object.hasOwn(INFERENCE_REFUSALS, error.code) ? error.code : error.message)),
+        : (Object.hasOwn(INFERENCE_REFUSALS, error.code) || TOPOLOGY_REFUSALS.has(error.code) ? error.code : error.message)),
       attribution
     ));
     if (ladderRetry) return executeRoutedInference(deps, request, { ...options, ladderRetry });
+    if (!cancelled && !timedOut && TOPOLOGY_REFUSALS.has(error.code)) throw error;
     // Admission refusals happen before provider generation. Keep their reason
     // distinct from network failures so consumers can avoid transport retries.
     if (!cancelled && !timedOut && Object.hasOwn(INFERENCE_REFUSALS, error.code)) {
