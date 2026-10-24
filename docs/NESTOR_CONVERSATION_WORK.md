@@ -12,6 +12,12 @@ Core owns acceptance, complete requests, execution metadata, verified task reads
 structured results and presentation receipts. OpenClaw owns the native agent/tool
 loop. Polling the browser projection never starts inference.
 
+When the native dispatch owner is free, queued awaited work precedes queued
+background reviews of an already answered guardian turn. Both classes retain
+their original FIFO order. Reviews remain accepted and run after awaited work;
+an active or uncertain native attempt keeps its owner and is never preempted.
+This changes waiting order, not Main's capabilities or the complete context.
+
 The private browser work list identifies each card by the exact canonical human
 request, receipt time and a short work reference. Long requests expand in place.
 It distinguishes waiting, running, paused, failed and unconfirmed execution,
