@@ -32,12 +32,54 @@
         return [...known].sort();
     }
 
+    // Role targets (#360) appear only when the instance declares a runtime
+    // topology. Option values are `role:<group>:<role>`; the group is empty
+    // when one group is declared, so the saved route names only the role.
+    function routingTopology(config) {
+        const topology = config.topology;
+        return topology?.declared === true && topology.valid !== false && Array.isArray(topology.roles) ? topology : null;
+    }
+
+    function roleOptionValue(topology, role, group) {
+        const groups = topology.groups || [];
+        return `role:${groups.length > 1 ? (group || '') : ''}:${role}`;
+    }
+
+    function parseRoleTarget(value) {
+        const match = /^role:([^:]*):([a-z]+)$/.exec(String(value || ''));
+        if (!match) return null;
+        return match[1] ? { role: match[2], group: match[1] } : { role: match[2] };
+    }
+
+    function buildRoleOptions(topology, entry) {
+        const groups = topology.groups || [];
+        const scoped = groups.length > 1 ? groups : [null];
+        return scoped.map(group => topology.roles.map(role => {
+            const value = roleOptionValue(topology, role, group?.id);
+            const selected = entry.role === role && (groups.length <= 1 || entry.group === group?.id);
+            const label = group ? `Role: ${role} (${group.label || group.id})` : `Role: ${role}`;
+            return `<option value="${shared.escapeHtml(value)}" ${selected ? 'selected' : ''}>${shared.escapeHtml(label)}</option>`;
+        }).join('')).join('');
+    }
+
+    function buildRoleResolution(topology, task, entry) {
+        if (!entry.role) return '';
+        const resolution = topology.resolutions?.[task];
+        const text = resolution?.ok
+            ? `Resolves to ${String(resolution.host || resolution.url || '--').toUpperCase()} in mode ${resolution.mode}`
+                + ` · pin ${shared.shortModel(resolution.model)}${resolution.laneContext ? ` · ${resolution.laneContext} ctx` : ''}`
+            : `Not resolved: ${resolution?.reason || 'unknown'} · requests are refused, not rerouted`;
+        const color = resolution?.ok ? 'var(--muted)' : '#f87171';
+        return `<div class="nc-task-role-resolution" style="margin-top:4px;font-size:0.72rem;color:${color};">${shared.escapeHtml(text)}</div>`;
+    }
+
     function buildTaskRoutingTable(config) {
         const availableModels = Array.isArray(config.availableModels) && config.availableModels.length > 0
             ? config.availableModels
             : getKnownModels(config);
         const hostKeys = shared.sortHostKeys(Object.keys(config.hosts || {}).filter(key => config.hosts[key]));
         const taskTypes = getTaskTypes(config);
+        const topology = routingTopology(config);
         let taskRows = '';
         taskTypes.forEach(task => {
             const state = config.taskConfigState?.[task] || {};
@@ -63,7 +105,8 @@
                         </div>
                     </td>
                     <td class="nc-td-md nc-task-model">
-                        <select class="nc-inline-select nc-task-model-select" data-task="${shared.escapeHtml(task)}" aria-label="Model for ${shared.escapeHtml(task)}" style="min-width:210px;">
+                        <select class="nc-inline-select nc-task-model-select" data-task="${shared.escapeHtml(task)}" aria-label="Model for ${shared.escapeHtml(task)}" style="min-width:210px;"${topology && entry.role ? ' disabled' : ''}>
+                            ${topology && entry.role ? '<option value="" selected>Endpoint pin</option>' : ''}
                             ${availableModels.map(model => (
                                 `<option value="${shared.escapeHtml(model)}" ${model === entry.model ? 'selected' : ''}>${shared.escapeHtml(shared.shortModel(model))}</option>`
                             )).join('')}
@@ -71,11 +114,13 @@
                     </td>
                     <td class="nc-td-md nc-task-host">
                         <select class="nc-inline-select nc-task-host-select" data-task="${shared.escapeHtml(task)}" aria-label="Host for ${shared.escapeHtml(task)}" style="min-width:120px;">
-                            ${hostKeys.includes(entry.host) ? '' : `<option value="" selected disabled>${shared.escapeHtml(String(entry.host || 'none').toUpperCase())} · not configured</option>`}
+                            ${hostKeys.includes(entry.host) || (topology && entry.role) ? '' : `<option value="" selected disabled>${shared.escapeHtml(String(entry.host || 'none').toUpperCase())} · not configured</option>`}
                             ${hostKeys.map(hostKey => (
                                 `<option value="${shared.escapeHtml(hostKey)}" ${hostKey === entry.host ? 'selected' : ''}>${shared.escapeHtml(hostKey.toUpperCase())}</option>`
                             )).join('')}
+                            ${topology ? buildRoleOptions(topology, entry) : ''}
                         </select>
+                        ${topology ? buildRoleResolution(topology, task, entry) : ''}
                     </td>
                     <td style="padding:8px 10px;text-align:center;white-space:nowrap;">
                         <button class="nc-btn nc-task-save" data-task="${task}" aria-label="Save routing for ${shared.escapeHtml(task)}" style="font-size:10px;padding:3px 10px;margin-right:4px;">
@@ -97,7 +142,7 @@
                     <tr>
                         <th scope="col">Task Type</th>
                         <th>Model</th>
-                        <th>Host</th>
+                        <th>${topology ? 'Host or role' : 'Host'}</th>
                         <th style="text-align:center;width:180px;">Actions</th>
                     </tr>
                 </thead>
@@ -308,6 +353,21 @@
             </div>`;
     }
 
+    // Role routing evidence (#360): the role, its mode and any lane refusal.
+    function buildTopologyTraceItems(topology) {
+        if (!topology?.role) return [];
+        const refusal = topology.laneRefusal;
+        return [
+            { label: 'Topology role', value: `${topology.role} · mode ${topology.mode || '--'}` },
+            { label: 'Lane context', value: topology.laneContext ? String(topology.laneContext) : '--' },
+            ...(refusal ? [{
+                label: 'LANE_CONTEXT_EXCEEDED',
+                value: `input ${refusal.estimatedInputTokens} + output ${refusal.outputBudget} > ${refusal.laneContext} · ${refusal.suggestion}`,
+                weight: 600
+            }] : [])
+        ];
+    }
+
     function buildRoutingDetail(log) {
         const trace = getRoutingTrace(log);
         const decision = getRouteDecision(log);
@@ -390,7 +450,8 @@
                     { label: 'Artifact Digest', value: artifact.digest || '--' },
                     { label: 'Registry Qualified', value: artifact.registryQualified === true ? 'Yes' : (artifact.registryQualified === false ? 'No' : '--') },
                     { label: 'Ollama Endpoint', value: trace.ollama?.endpoint || '--' },
-                    { label: 'keep_alive', value: trace.ollama?.keepAliveConfigured === true ? 'Configured' : 'Default' }
+                    { label: 'keep_alive', value: trace.ollama?.keepAliveConfigured === true ? 'Configured' : 'Default' },
+                    ...buildTopologyTraceItems(trace.topology)
                 ])}
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-top:12px;">
                     <div>
@@ -591,18 +652,29 @@
     }
 
     function attachTaskRoutingHandlers(config) {
+        const topology = routingTopology(config);
+        if (topology) {
+            // A role route serves its endpoint's pin: the model is not chosen.
+            document.querySelectorAll('.nc-task-host-select').forEach(select => {
+                select.addEventListener('change', () => {
+                    const modelSelect = document.querySelector(`.nc-task-model-select[data-task="${select.dataset.task}"]`);
+                    if (modelSelect) modelSelect.disabled = Boolean(parseRoleTarget(select.value));
+                });
+            });
+        }
         document.querySelectorAll('.nc-task-save').forEach(button => {
             button.addEventListener('click', async () => {
                 const task = button.dataset.task;
                 const model = document.querySelector(`.nc-task-model-select[data-task="${task}"]`)?.value;
                 const host = document.querySelector(`.nc-task-host-select[data-task="${task}"]`)?.value;
+                const role = topology ? parseRoleTarget(host) : null;
 
                 button.disabled = true;
                 try {
                     const data = await shared.fetchJson(`/api/router/config/tasks/${encodeURIComponent(task)}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ model, host })
+                        body: JSON.stringify(role || { model, host })
                     });
                     if (data.status === 'success') {
                         Toast.success(`Saved routing for ${formatTaskLabel(task, config.taskMetadata?.[task] || {})}`);

@@ -25,6 +25,11 @@ const HARNESS_VERSION = '1.2.0';
 function approvedModels(snapshot) {
   const models = new Set(uniqueEffectiveModels(snapshot).map((task) => task.model));
   if (snapshot.tasks?.daily_operator?.model) models.add(PRINCIPAL_MODEL_ALIAS);
+  // A role-routed principal may resolve to the pooled pin (#360).
+  if (snapshot.principalTopology?.model) {
+    models.add(PRINCIPAL_MODEL_ALIAS);
+    models.add(snapshot.principalTopology.model);
+  }
   const authority = String(process.env.HERMES_AUTHORITY_MODEL || '').trim();
   if (authority) models.add(authority);
   return [...models];

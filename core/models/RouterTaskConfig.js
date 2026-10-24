@@ -1,5 +1,11 @@
 const mongoose = require('mongoose');
 
+// A stored route names a model on a host, or a runtime topology role whose
+// endpoint pin serves it (#360): host xor role, checked by the router config.
+function hostRoute() {
+  return !this.role;
+}
+
 const RouterTaskConfigSchema = new mongoose.Schema({
   taskType: {
     type: String,
@@ -10,12 +16,21 @@ const RouterTaskConfigSchema = new mongoose.Schema({
   },
   model: {
     type: String,
-    required: true,
+    required: hostRoute,
     trim: true
   },
   host: {
     type: String,
-    required: true,
+    required: hostRoute,
+    trim: true
+  },
+  role: {
+    type: String,
+    enum: ['conversation', 'background', 'pooled'],
+    trim: true
+  },
+  group: {
+    type: String,
     trim: true
   }
 }, {
