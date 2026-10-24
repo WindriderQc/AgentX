@@ -59,6 +59,19 @@ def with_request_policy(body: bytes, policy: dict | None) -> bytes:
                    and tool['function'].get('name') in {'edit', 'write', 'apply_patch'}]
         if not allowed:
             raise ValueError('The harness has no supported editing tool')
+        paths = policy.get('read_paths', [])
+        if paths:
+            read_tool = next((tool for tool in tools if isinstance(tool, dict)
+                             and tool.get('type') == 'function'
+                             and isinstance(tool.get('function'), dict)
+                             and tool['function'].get('name') == 'read'), None)
+            if read_tool is None:
+                raise ValueError('The editing phase needs read-before-edit support')
+            allowed.insert(0, {'type': 'function', 'function': {
+                'name': 'read', 'description': 'Read an authorized file once before editing it.',
+                'parameters': {'type': 'object', 'properties': {
+                    'file_path': {'type': 'string', 'enum': paths}},
+                    'required': ['file_path'], 'additionalProperties': False}}})
         value['tools'] = allowed
         value['tool_choice'] = 'auto'
     return json.dumps(value, ensure_ascii=False, separators=(',', ':')).encode()
@@ -253,10 +266,17 @@ def serve(socket_path: str, model_url: str, observer=None, runner_headers=None, 
         raise ValueError('A report relay budget requires a nonnegative call count and step identity')
     if request_policy is not None and (not isinstance(request_policy, dict)
             or not {'max_tokens', 'reasoning_effort'} <= set(request_policy)
-            or set(request_policy) - {'max_tokens', 'reasoning_effort', 'tools'}
+            or set(request_policy) - {'max_tokens', 'reasoning_effort', 'tools', 'read_paths'}
             or type(request_policy['max_tokens']) is not int or not 1 <= request_policy['max_tokens'] <= 32768
             or request_policy['reasoning_effort'] != 'none'
-            or ('tools' in request_policy and request_policy['tools'] != 'edit_only')):
+            or ('tools' in request_policy and request_policy['tools'] != 'edit_only')
+            or ('read_paths' in request_policy and (
+                request_policy.get('tools') != 'edit_only'
+                or not isinstance(request_policy['read_paths'], list)
+                or not 1 <= len(request_policy['read_paths']) <= 2
+                or any(not isinstance(p, str) or not p.startswith('/workspace/')
+                       or any(part in {'', '.', '..'} for part in p[len('/workspace/'):].split('/'))
+                       for p in request_policy['read_paths'])))):
         raise ValueError('A source relay policy requires a bounded output allowance and disabled reasoning')
     if os.path.exists(socket_path):
         os.unlink(socket_path)

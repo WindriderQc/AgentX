@@ -445,6 +445,7 @@ def execute(r, args, progress):
             progress.begin_step(calls, seconds, f"code-step:{step['id']}", result_kind='source')
             if editing_only:
                 progress.step['sourceContext'] = 'complete_pair'
+                progress.step['sourcePaths'] = list(step['paths'])
             try:
                 run = r.run_worker(workspace, prompt, seconds, progress, model=r.MODEL)
             finally:

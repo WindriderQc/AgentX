@@ -44,7 +44,7 @@ class BoundedPairTest(unittest.TestCase):
         files = json.loads(text[text.index('[{'):])
         self.assertEqual(files, [{'path': self.source, 'content': 'VALUE = "quoted"\n'},
                                  {'path': self.test, 'content': 'VALUE = 1\n'}])
-        self.assertIn('only editing tools', text)
+        self.assertIn('FIRST call read once', text)
 
     def test_context_refuses_links_binary_missing_and_excessive_files(self):
         path = self.root / self.source

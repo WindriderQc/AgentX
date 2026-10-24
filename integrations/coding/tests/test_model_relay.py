@@ -201,11 +201,29 @@ class RelayStopTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             relay.with_request_policy(json.dumps(body).encode(), policy)
 
+    def test_editing_phase_exposes_scoped_read_without_numeric_offsets(self):
+        body = {'tools': [{'type': 'function', 'function': {'name': n}}
+                          for n in ['read', 'edit', 'bash', 'grep']]}
+        policy = {'max_tokens': 4096, 'reasoning_effort': 'none', 'tools': 'edit_only',
+                  'read_paths': ['/workspace/source.py', '/workspace/test.py']}
+        result = json.loads(relay.with_request_policy(json.dumps(body).encode(), policy))
+        self.assertEqual([t['function']['name'] for t in result['tools']], ['read', 'edit'])
+        schema = result['tools'][0]['function']['parameters']
+        self.assertEqual(schema['properties'], {'file_path': {'type': 'string', 'enum': policy['read_paths']}})
+        self.assertFalse(schema['additionalProperties'])
+        self.assertEqual(schema['required'], ['file_path'])
+        body['tools'].pop(0)
+        with self.assertRaises(ValueError):
+            relay.with_request_policy(json.dumps(body).encode(), policy)
+
     def test_invalid_runner_policy_preserves_an_existing_socket_path(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'model.sock'; path.write_bytes(b'existing owner')
             for policy in [{'max_tokens': 0, 'reasoning_effort': 'none'},
-                           {'max_tokens': 4096, 'reasoning_effort': 'high'}, {'max_tokens': 4096}]:
+                           {'max_tokens': 4096, 'reasoning_effort': 'high'}, {'max_tokens': 4096},
+                           {'max_tokens': 4096, 'reasoning_effort': 'none', 'tools': 'edit_only', 'read_paths': []},
+                           {'max_tokens': 4096, 'reasoning_effort': 'none', 'tools': 'edit_only', 'read_paths': ['/workspace/../escape']},
+                           {'max_tokens': 4096, 'reasoning_effort': 'none', 'tools': 'edit_only', 'read_paths': [True]}]:
                 with self.subTest(policy=policy), self.assertRaises(ValueError):
                     relay.serve(str(path), 'http://127.0.0.1:9/v1', request_policy=policy)
                 self.assertEqual(path.read_bytes(), b'existing owner')
