@@ -62,14 +62,21 @@ def doc_tokens(size_bytes):
 
 
 def _next_range(row, lines, chunk):
-    done = {tuple(r) for r in row.get('ranges', [])}
+    """Select the first uncovered interval, bounded by chunk and accepted work.
+
+    Accepted line intervals remain valid when the planning chunk changes.
+    Stop before the next accepted interval, even when it falls inside a chunk.
+    """
     start = 1
-    while start <= lines:
-        end = min(lines, start + chunk - 1)
-        if (start, end) not in done:
-            return (start, end, end >= lines)
-        start = end + 1
-    return None
+    for acc_start, acc_end in sorted(row.get('ranges', [])):
+        if acc_start > start:
+            end = min(lines, start + chunk - 1, acc_start - 1)
+            return start, end, end == lines
+        start = max(start, acc_end + 1)
+    if start > lines:
+        return None
+    end = min(lines, start + chunk - 1)
+    return start, end, end == lines
 
 
 def _range_chunk(lines, tokens, doc_budget):

@@ -401,6 +401,65 @@ class StepPlanTest(unittest.TestCase):
         self.assertEqual(ledger['documents']['docs/A.md']['ranges'], [])
         self.assertEqual(ledger['steps'][0]['reason'], 'no result file was written')
 
+    def test_a_changed_chunk_size_never_reschedules_accepted_lines(self):
+        # Accepted 1..200 in a 400-line source: a chunk of 100 schedules 201..300.
+        self.assertEqual(steps._next_range({'ranges': [[1, 200]]}, 400, 100), (201, 300, False))
+        # The same accepted prefix under a larger chunk stays just after line 200.
+        self.assertEqual(steps._next_range({'ranges': [[1, 200]]}, 400, 300), (201, 400, True))
+        # The same accepted prefix under a smaller chunk is bounded by it.
+        self.assertEqual(steps._next_range({'ranges': [[1, 200]]}, 400, 40), (201, 240, False))
+        # An internal gap selects the earliest uncovered bounded interval.
+        self.assertEqual(steps._next_range({'ranges': [[1, 100], [201, 300]]}, 300, 100), (101, 200, False))
+        # Full accepted coverage yields no range.
+        self.assertIsNone(steps._next_range({'ranges': [[1, 200], [201, 400]]}, 400, 100))
+        self.assertIsNone(steps._next_range({'ranges': [[1, 400]]}, 400, 100))
+        # A source with no accepted ranges starts at line 1.
+        self.assertEqual(steps._next_range({}, 400, 100), (1, 100, False))
+        self.assertEqual(steps._next_range({'ranges': []}, 20, 100), (1, 20, True))
+        # The final flag is true exactly when the selected range reaches the end.
+        self.assertEqual(steps._next_range({'ranges': [[1, 300]]}, 400, 100), (301, 400, True))
+
+    def test_chunk_size_changes_between_steps_preserve_the_accepted_intervals(self):
+        ledger = ledgers.new_ledger(snapshot())
+        for path in ('docs/B.md', 'docs/sub/C.md'):
+            ledger['documents'][path]['state'] = 'reviewed'
+        result = {'documents': [{'path': 'docs/A.md', 'state': 'reviewed',
+                                 'evidence': [{'path': 'core/config.js', 'line': 1, 'check': 'strict'}]}]}
+        # 300 lines, budget 10000 tokens: the first chunk is 150 lines.
+        planned = steps.plan_groups(ledger, {'docs/A.md': 72000}, {'docTokens': 10000}, line_counts={'docs/A.md': 300})
+        self.assertEqual(planned[0]['range'], (1, 150, False))
+        ledgers.merge_step(ledger, ['docs/A.md'], result, source, 1, line_range=planned[0]['range'])
+        # A different step budget shrinks the chunk to 120 lines but must not
+        # reschedule the already accepted lines 1..150.
+        planned = steps.plan_groups(ledger, {'docs/A.md': 72000}, {'docTokens': 8000}, line_counts={'docs/A.md': 300})
+        self.assertEqual(planned[0]['range'], (151, 270, False))
+        ledgers.merge_step(ledger, ['docs/A.md'], result, source, 2, line_range=planned[0]['range'])
+        # The remaining interval ends at the source end and is final.
+        planned = steps.plan_groups(ledger, {'docs/A.md': 72000}, {'docTokens': 8000}, line_counts={'docs/A.md': 300})
+        self.assertEqual(planned[0]['range'], (271, 300, True))
+        ledgers.merge_step(ledger, ['docs/A.md'], result, source, 3, line_range=planned[0]['range'])
+        self.assertEqual(ledger['documents']['docs/A.md']['state'], 'reviewed')
+        self.assertEqual(ledger['documents']['docs/A.md']['ranges'], [[1, 150], [151, 270], [271, 300]])
+        self.assertEqual(steps.plan_groups(ledger, {'docs/A.md': 72000}, {'docTokens': 8000},
+                                           line_counts={'docs/A.md': 300}), [])
+
+    def test_internal_gap_is_recovered_before_later_uncovered_lines(self):
+        # A historical ledger can hold a non-prefix accepted range; the earliest
+        # uncovered bounded interval is scheduled first, and accepted lines are
+        # never selected again by any chunk size.
+        self.assertEqual(steps._next_range({'ranges': [[151, 300]]}, 300, 150), (1, 150, False))
+        self.assertEqual(steps._next_range({'ranges': [[151, 300]]}, 300, 200), (1, 150, False))
+        self.assertEqual(steps._next_range({'ranges': [[151, 300]]}, 300, 250), (1, 150, False))
+        self.assertEqual(steps._next_range({'ranges': [[151, 300]]}, 300, 100), (1, 100, False))
+
+    def test_empty_sources_have_no_uncovered_range(self):
+        self.assertIsNone(steps._next_range({'ranges': []}, 0, 25))
+
+    def test_overlapping_unsorted_ranges_extend_the_accepted_prefix(self):
+        row = {'ranges': [[51, 100], [1, 30], [20, 60], [130, 180], [1, 30]]}
+        self.assertEqual(steps._next_range(row, 200, 80), (101, 129, False))
+        self.assertIsNone(steps._next_range({'ranges': [[51, 100], [1, 60]]}, 100, 25))
+
     def test_reviews_a_large_document_in_line_ranges_until_every_range_is_done(self):
         ledger = ledgers.new_ledger(snapshot())
         for path in ('docs/B.md', 'docs/sub/C.md'):
