@@ -118,7 +118,8 @@ def plan_groups(ledger, sizes, budget, limit=None, line_counts=None):
     as remaining scope instead of being planned again."""
     line_counts = line_counts or {}
     todo = [path for path, row in sorted(ledger['documents'].items())
-            if row['state'] in ('pending', 'partial') and row.get('partialRounds', 0) < MAX_PARTIAL_ROUNDS]
+            if row['state'] in ('pending', 'partial') and not row.get('retryExhausted')
+            and row.get('partialRounds', 0) < MAX_PARTIAL_ROUNDS]
     fresh, started, ranged_fresh, ranged_started, retries = [], [], [], [], []
     for path in todo:
         row = ledger['documents'][path]

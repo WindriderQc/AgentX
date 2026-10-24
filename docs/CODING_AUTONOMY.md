@@ -123,6 +123,72 @@ just to wait.
 
 ## Operator procedure
 
+### Feasibility before authorization
+
+An autonomous task needs reviewed observable acceptance criteria, its required
+capabilities and an estimate distinct from the authorized ceiling. Pipeline's
+authorization form records this `qualification` with the exact task and source
+scope. Missing criteria require clarification. Missing or mismatched verifiers
+are prerequisites; estimates above the work/call envelope require decomposition.
+Network, private-data access, live inference, deployment and physical-device
+work are unsupported by this offline coding worker. Split those effects into
+their existing native workflow instead of retrying them in its sandbox.
+
+`GET /api/pipeline/coding-autonomy/tasks/:id/readiness` reads the saved review.
+`POST` to the same path previews proposed `scope`, `verificationProfile`, `limits`
+and `qualification`. Both are read-only assessments: they create no task
+authorization, campaign, grant or model request. A synthetic qualification is:
+
+```json
+{
+  "acceptanceCriteria": ["Invalid input is refused and valid input still succeeds."],
+  "requiredCapabilities": ["source_read", "source_write", "cpu_tests"],
+  "estimate": {"workSeconds": 600, "modelCalls": 20}
+}
+```
+
+Include that object as `qualification` when authorizing. Core refuses an
+unready task before saving its execution authority, rechecks before selecting
+or supplying the native manifest, and exposes concrete next actions. Old
+authorizations without a current qualification cannot start another worker;
+existing native effects still require their original reconciliation/recovery.
+An explicit continuation must supply `qualification` when the original review
+is missing or stale. Core assesses the remaining envelope including the proposed
+credit and the effective verifier before recording a continuation fence or
+grant. A current definition may be retained; a reviewed attempt-limit amendment
+binds it to the resulting intent. Identical grant retries retain their original
+fingerprint and receipts without adding credit.
+Readiness is a necessary contract check, not proof of model competence or a
+replacement for dependency eligibility, native admission and independent review.
+The installed Core verifier covers only `inferenceRuntimePolicy` source/tests;
+it cannot certify arbitrary `core/` changes. Other code needs a matching native
+verification profile.
+
+### Report progress and bounded retries
+
+Automatic report continuation requires new accepted source coverage. Core
+compares reviewed document identities, source path/digest/line references and
+accepted line ranges against the exact parent. Notes, wording, receipt changes,
+array order and a different Markdown digest do not establish progress. New
+interval endpoints cannot turn a smaller covered subset into progress. A run
+that loses accepted coverage cannot automatically continue, even if it adds
+other references; review the regression before another execution. New
+outcomes retain a Core-derived comparison; older immutable outcomes use their
+native stored coverage, failing closed when that comparison is unavailable.
+
+The runner retains per-document stalled-execution counts in its private
+checkpoint. Two attempted executions with no new coverage exhaust that
+obligation; another continuation cannot reset it. Untouched documents are not
+charged as stalled. Other source groups may continue. When only exhausted scope
+remains, no model or optional writer is started: the partial report is retained
+and the run stops for review or decomposition into a new bounded task.
+
+New resume forms do not preselect chaining. Turning the global continuation
+switch off still preserves explicit task-specific agreements; its UI states
+that scope. Stops, native termination, release and billing remain distinct.
+
+### Start and receive an authorized task
+
 1. Review one engineering task, its public source scope and dependencies. Use
    exact file paths and an installed independent verification profile. Scope
    changes invalidate execution authority instead of silently widening it.

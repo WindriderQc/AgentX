@@ -123,8 +123,10 @@ it('at the slot, grants the campaign and launches the worker from the checkpoint
 
   // Still running: the campaign stays open.
   expect((await evidence.reconcile(view.campaign.id, 'test')).state).toBe('running');
-  // The worker stopped with the same saved bytes as its parent: no progress.
-  await Task.updateOne({ pipelineId: '0939' }, { $set: { status: 'blocked' }, $push: { feedback: stopped(requestId, 'model_call_limit') } });
+  // New server receipts attest coverage, independently of administrative bytes.
+  const outcome = stopped(requestId, 'model_call_limit');
+  outcome.reportOutcome.progress = { verified: true, advanced: false };
+  await Task.updateOne({ pipelineId: '0939' }, { $set: { status: 'blocked' }, $push: { feedback: outcome } });
   const settled = await evidence.reconcile(view.campaign.id, 'test');
   expect(settled).toMatchObject({ state: 'failed', releaseReceipt: { authority: 'core.pipeline-report', outcome: { requestId, reason: 'model_call_limit' } } });
   expect((await Task.findOne({ pipelineId: '0939' }).lean()).reportResume).toMatchObject({ state: 'stopped', result: { decision: 'no_progress' } });

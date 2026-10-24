@@ -18,6 +18,12 @@ Pipeline also provides the explicitly authorized, disabled-by-default
 claims/capacity, prepares current Git versions, verifies and updates the same
 PR, observes exact-commit CI and gives the Coding Team bounded correction turns.
 Its cumulative budgets and durable publication/native receipts survive resumes.
+Autonomous authorization also requires Core's deterministic
+[feasibility assessment](../../docs/CODING_AUTONOMY.md#feasibility-before-authorization):
+observable acceptance criteria, required capabilities and reviewed estimates.
+The planner and implementation sessions receive those criteria. This catches
+unsupported access, mismatched verification and work outside its envelope
+without invoking a model; it does not predict whether a model will solve it.
 The manual path below stays available; it does not turn routing or idea intake
 into autonomous authorization.
 
@@ -168,6 +174,14 @@ and runs several short worker sessions in fresh context:
   Corrections can also replace an existing evidence check exactly, after the
   runner verifies its source hash and line. They retain the original text in
   the step receipt and cannot change coverage states or source references.
+
+Core uses accepted coverage, including line ranges, to decide whether another
+execution made material progress. Different report bytes alone are insufficient.
+Per-document stall counts survive continuations: two attempted executions that
+add no source coverage exhaust that obligation. Untouched groups keep their
+allowance. If only exhausted scope remains, the runner saves the partial result
+without starting another model or final writer; review or split that remaining
+work before a new bounded task.
 
 When calls or time run short with documents left, the execution stops with
 `model_call_limit` or `hard_budget` and archives the partial report for a

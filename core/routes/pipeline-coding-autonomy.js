@@ -13,6 +13,9 @@ function route(handler) {
 router.get('/coding-autonomy', route(() => service.status()));
 router.post('/coding-autonomy/config', route(req => service.configure(req.body || {})));
 router.post('/coding-autonomy/tasks/:id/authorization', route(req => service.authorize(req.params.id, req.body || {})));
+router.get('/coding-autonomy/tasks/:id/readiness', route(req => service.assessReadiness(req.params.id)));
+// POST is a proposal preview only: no task write, reservation or model call.
+router.post('/coding-autonomy/tasks/:id/readiness', route(req => service.assessReadiness(req.params.id, req.body || {})));
 router.post('/coding-autonomy/tasks/:id/disposition', route(async req => service.projection(
   await require('../src/services/pipelineCodingDisposition').archive(req.params.id, req.body || {}))));
 router.post('/coding-autonomy/tasks/:id/review', route(req => service.recordReview(req.params.id, req.body || {})));
