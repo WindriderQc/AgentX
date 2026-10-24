@@ -30,3 +30,12 @@ test('relationship inspection uses the same Core owner and rejects ambiguous rea
   expect(invalid.result.isError).toBe(true); expect(lookup).toHaveBeenCalledTimes(1);
   lookup.mockRestore();
 });
+test('authority inspection reuses Core and cannot add a caller identity or grant', async () => {
+  const service = require('../../src/services/pipelineWorkAuthorityView');
+  const read = jest.spyOn(service, 'read').mockResolvedValueOnce({ schema: 'agentx.work-authority/v1', authorization: 'none' });
+  const result = await call('work_authority', { pipelineId: '0991' });
+  expect(result.result.structuredContent.authorization).toBe('none');
+  expect(read).toHaveBeenCalledWith('0991');
+  expect((await call('work_authority', { pipelineId: '0991', authenticated: 'operator' })).result.isError).toBe(true);
+  expect(read).toHaveBeenCalledTimes(1);
+});

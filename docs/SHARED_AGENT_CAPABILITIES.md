@@ -99,6 +99,7 @@ new model-supplied audience. Do not configure it for a family runtime.
 | Secretary and Accountant records | `team_brief`, including freshness and unavailable sections |
 | Live specialist actions | `consult_team` with the installed native collaborator |
 | Pipeline status and tasks | `ecosystem_snapshot`, `pipeline_tasks`, existing `create_todo` |
+| Engineering provenance and authority | `work_relationships` and `work_authority`, shared Core dossier reads; no authenticated human principal or execution grant |
 | Pipeline deliverables | `pipeline_artifacts`: registered receipts and verified bounded text |
 | Storage file names | `find_files`, reading the existing index, not arbitrary disk content |
 | Current public research | `web_search` through Core SearXNG; native Main for page reading |

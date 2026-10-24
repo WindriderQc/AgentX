@@ -139,7 +139,10 @@ independent user accounts. See [access](PARENTAL_ACCESS.md) and
 [shared capabilities](SHARED_AGENT_CAPABILITIES.md).
 
 Delegation uses installed tools and their bounded native authority. It does
-not transfer full permissions, ownership or approval power to a model. Issue
+not transfer full permissions, ownership or approval power to a model.
+The [authority dossier](WORK_AUTHORITY.md) documents existing credential meaning,
+unknown roles, cumulative budgets and recovery after revocation. Pipeline and
+owner MCP `work_authority` share this read; neither authenticates a human. Issue
 bodies, comments, attachments, logs and recalled text are reference evidence,
 not instructions that widen that authority.
 

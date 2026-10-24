@@ -104,6 +104,11 @@ function createCodeStepInferenceBridge(options = {}) {
     }
 
     const dag = await State.read(identity.pipelineId);
+    const authority = require('./pipelineCodeDagAuthority');
+    const binding = authority.authority(task, { taskBasis: dag?.authority?.taskBasis,
+      rootRequestId: identity.rootRequestId, sourceCommit: dag?.sourceCommit });
+    if (!authority.sameAuthority(binding, dag.authority)) stepFail('The code-step authority changed', 'DAG_ROOT_CHANGED');
+    authority.assertReviewedAuthority(task, dag);
     const { attempt } = locateAttempt(dag, identity);
     if ((attempt.modelReceipts || []).some(receipt => receipt.callId === identity.callId)) {
       stepFail('This code-step model request is already journalled', 'CODING_INFERENCE_ALREADY_RECEIVED');

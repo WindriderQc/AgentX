@@ -7,7 +7,7 @@ const SOURCE = '1'.repeat(40);
 const ROOT = '11111111-2222-4333-8444-555555555555';
 const NEXT_ROOT = '22222222-3333-4444-8555-666666666666';
 const NEXT_SOURCE = '2'.repeat(40);
-const BASIS = 'a'.repeat(64);
+const BASIS = require('../../src/services/pipelineCodingAutonomyPolicy').basis({});
 const T0 = '2026-10-22T12:00:00.000Z';
 
 function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
@@ -24,8 +24,10 @@ class FakeTaskModel {
   static task = null;
   static writes = [];
   static loseNextAck = false;
+  static beforeWrite = null;
   static findOne(filter) { return Promise.resolve(matches(this.task, filter) ? clone(this.task) : null); }
   static findOneAndUpdate(filter, update) {
+    if (this.beforeWrite) { const hook = this.beforeWrite; this.beforeWrite = null; hook(this.task); }
     this.writes.push({ filter: clone(filter), update: clone(update) });
     if (!matches(this.task, filter)) return Promise.resolve(null);
     Object.assign(this.task, clone(update.$set));
@@ -83,6 +85,7 @@ beforeEach(() => {
   FakeTaskModel.task = task();
   FakeTaskModel.writes = [];
   FakeTaskModel.loseNextAck = false;
+  FakeTaskModel.beforeWrite = null;
   service = createPipelineCodeDagStateService(FakeTaskModel);
 });
 
@@ -268,4 +271,53 @@ test('a changed or completed root fences every later DAG mutation', async () => 
     requestId: 'step-request-01', baseCommit: SOURCE, budget: budget(10, 10, 10, 1), startedAt: T0 }))
     .rejects.toMatchObject({ code: 'DAG_ROOT_NOT_ACTIVE' });
   expect(FakeTaskModel.task.codeStepDag.revision).toBe(0);
+});
+
+test.each(['revocation', 'content', 'private_domain', 'intake', 'reviewed_scope'])(
+  '%s blocks new effects while preserving exact inference and child result settlement', async change => {
+    await service.create('0946', createInput());
+    await service.startAttempt('0946', { expectedRevision: 0, stepId: 'step-01', executorId: 'worker',
+      requestId: 'original-request', baseCommit: SOURCE, budget: budget(10, 10, 10, 2), startedAt: T0 });
+    await service.startInference('0946', { expectedRevision: 1, stepId: 'step-01', requestId: 'original-request',
+      callId: 'original-call', model: 'synthetic', reservedSeconds: 5, startedAt: T0 });
+    const record = FakeTaskModel.task;
+    if (change === 'revocation') { record.codingAutonomy.authorized = false; record.codingAutonomy.revision += 1; }
+    if (change === 'content') record.title = 'New request content';
+    if (change === 'private_domain') record.origin = 'family';
+    if (change === 'intake') record.intake = { state: 'needs_clarification', revision: 2 };
+    if (change === 'reviewed_scope') record.automation.scope = ['src/one.js'];
+    await expect(service.startAttempt('0946', { expectedRevision: 2, stepId: 'step-02', executorId: 'other',
+      requestId: 'new-request', baseCommit: SOURCE, budget: budget(10, 10, 10, 1), startedAt: T0 })).rejects.toBeDefined();
+    const done = await service.settleInference('0946', { expectedRevision: 2, stepId: 'step-01', requestId: 'original-request',
+      callId: 'original-call', outcome: 'failed', durationSeconds: 2, finishedAt: T0, receipt: { code: 'runtime_refused' } });
+    expect(done.dag.steps[0].attempts[0].pendingInferences).toEqual([]);
+    const terminal = await service.settleAttempt('0946', { expectedRevision: 3, requestId: 'original-request',
+      outcome: 'failed', actualUsage: budget(2, 2, 2, 1), receipt: { code: 'stopped', finishedAt: T0 } });
+    expect(terminal.dag.steps[0].state).toBe('failed');
+    expect(terminal.dag.steps[1].attempts).toHaveLength(0);
+    await expect(service.startInference('0946', { expectedRevision: 4, stepId: 'step-01', requestId: 'original-request',
+      callId: 'replacement-call', model: 'synthetic', reservedSeconds: 1, startedAt: T0 })).rejects.toBeDefined();
+  });
+
+test('the atomic write rejects content, intake and private-domain changes after the authority read', async () => {
+  for (const mutate of [record => { record.title = 'Raced'; }, record => { record.source = 'household-requests'; },
+    record => { record.intake = { revision: 9, state: 'declined' }; },
+    record => { record.automation.scope = ['src/other.js']; }]) {
+    FakeTaskModel.task = task();
+    await service.create('0946', createInput());
+    FakeTaskModel.beforeWrite = mutate;
+    await expect(service.startAttempt('0946', { expectedRevision: 0, stepId: 'step-01', executorId: 'worker',
+      requestId: 'raced-request', baseCommit: SOURCE, budget: budget(10, 10, 10, 1), startedAt: T0 })).rejects.toBeDefined();
+    expect(FakeTaskModel.task.codeStepDag.revision).toBe(0);
+    expect(FakeTaskModel.task.codeStepDag.steps[0].attempts).toHaveLength(0);
+  }
+});
+
+test('revocation cannot turn an unrelated root into settlement authority', async () => {
+  await service.create('0946', createInput());
+  FakeTaskModel.task.codingAutonomy.authorized = false;
+  FakeTaskModel.task.codingAutonomy.runs[0].requestId = NEXT_ROOT;
+  await expect(service.settleAttempt('0946', { expectedRevision: 0, requestId: 'nonexistent', outcome: 'failed',
+    actualUsage: budget(0, 0, 0, 0), receipt: { code: 'stopped', finishedAt: T0 } }))
+    .rejects.toMatchObject({ code: 'DAG_ROOT_CHANGED' });
 });

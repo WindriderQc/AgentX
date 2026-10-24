@@ -50,6 +50,14 @@ work. Existing domain-approved promotions retain their recorded acceptance,
 and legacy work without a decision keeps its existing policy. Do not invent an
 old approval or authenticate a declared actor name.
 
+To inspect who acts and within which authority, use owner `work_authority`
+with the exact Pipeline ID. It shares the dossier's recorded roles, native
+executor, current scope, cumulative budget and unresolved original requests.
+Declared names and caller headers do not prove human identity. Missing ownership
+stays unknown. Revocation blocks new effects; reconcile existing results and
+partial stops with their original native owner. This read grants no authority.
+See `docs/WORK_AUTHORITY.md` for the current private-LAN and review limits.
+
 To inspect work already linked to a report, use the owner `work_relationships` capability
 when advertised, or Core's exact-reference lookup. Qualify GitHub issues by
 repository and number; conversations need runtime, stable originating account/

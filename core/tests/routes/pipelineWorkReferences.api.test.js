@@ -211,3 +211,20 @@ test.each([
   await expect(service.decide(task.pipelineId, decision(await stored(task.pipelineId), { reference }))).rejects.toMatchObject({ code: 'INVALID_WORK_REFERENCE' });
   expect((await stored(task.pipelineId)).workLinks).toBeUndefined();
 });
+
+test('Pipeline and owner MCP read the same authority facts without writes or family-domain access', async () => {
+  const task = await create();
+  const before = await stored(task.pipelineId);
+  const response = await request(app).get(`/api/pipeline/tasks/${task.pipelineId}`).set('x-agentx-caller', 'verified-human').expect(200);
+  const { handleOwnerMcp } = require('../../src/services/mcpOwnerTools');
+  const call = pipelineId => handleOwnerMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call',
+    params: { name: 'work_authority', arguments: { pipelineId } } });
+  const { observedAt: apiTime, ...api } = response.body.data.task.workView.authorityView;
+  const mcp = await call(task.pipelineId);
+  const { observedAt: mcpTime, ...owner } = mcp.result.structuredContent;
+  expect(owner).toEqual(api); expect(api.identity.authenticatedPerson).toBeNull();
+  expect(await stored(task.pipelineId)).toEqual(before);
+  await Task.updateOne({ pipelineId: task.pipelineId }, { $set: { source: 'household-parent' } });
+  expect((await call(task.pipelineId)).result.isError).toBe(true);
+  expect((await request(app).get(`/api/pipeline/tasks/${task.pipelineId}`).expect(200)).body.data.task.workView).toBeNull();
+});

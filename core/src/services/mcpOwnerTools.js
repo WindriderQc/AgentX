@@ -29,6 +29,8 @@ const TOOLS = [
     { pipelineId: string(120), query: string(120), limit: integer(50) }),
   tool('pipeline_artifacts', 'List a task\'s registered deliverables or read one verified UTF-8 text deliverable. Lists distinguish present-unverified from verified content. Binary files return their registered receipt, not invented content.',
     { pipelineId: string(120), deliverableId: string(24) }, ['pipelineId']),
+  tool('work_authority', 'Read the same engineering authority dossier as Pipeline: declared roles versus native executor identity, current scope, cumulative native budgets, unresolved original requests and revocation limits. Private LAN has no authenticated human principal; agent names, caller headers and this read grant no authority. Personal and household tasks remain in their native domain.',
+    { pipelineId: string(4) }, ['pipelineId']),
   tool('work_relationships', 'Inspect Core engineering source links and native outcome observations, or find tasks by an exact qualified report reference before filing duplicate work. Title similarity is not identity. Conversation references are declared provenance, not transcript access. This read never contacts GitHub, synchronizes status, accepts work or grants execution.',
     { action: { type: 'string', enum: ['task', 'lookup'] }, pipelineId: string(4), limit: integer(50), offset: integer(64, 0),
       reference: object({ kind: { type: 'string', enum: ['github_issue', 'conversation', 'pipeline_task'] }, repository: string(201),
@@ -73,6 +75,7 @@ const HANDLERS = {
   work_queue: input => require('./nestorWorkQueue').operate(input, 'owner-mcp'),
   pipeline_tasks: pipelineTasks,
   pipeline_artifacts: pipelineArtifacts,
+  work_authority: input => require('./pipelineWorkAuthorityView').read(input.pipelineId),
   work_relationships: input => {
     const service = require('./pipelineWorkReferences');
     if (input.action === 'task' && input.pipelineId && !input.reference) return service.read(input.pipelineId, { limit: input.limit, offset: input.offset });

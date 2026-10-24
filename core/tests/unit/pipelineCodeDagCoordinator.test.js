@@ -21,11 +21,11 @@ function fixture({ lostLaunch = false, limit = budget() } = {}) {
   const memory = { dag: domain.create({ pipelineId: '0946', rootRequestId: ROOT, sourceCommit: SOURCE, plan,
     reviewedScope: plan.steps.map(item => item.paths[0]), reviewedLockKeys: [], budget: limit, createdAt: T0 }) };
   const taskRecord = { pipelineId: '0946', title: 'Synthetic DAG', spec: 'Public fake work', service: 'agentx-coding',
-    automation: { fingerprint: 'f'.repeat(64), verificationProfile: 'agentx-core-runner-tests/v1' }, automationAttemptCount: 1,
+    automation: { scope: plan.steps.map(item => item.paths[0]), lockKeys: [], fingerprint: 'f'.repeat(64), verificationProfile: 'agentx-core-runner-tests/v1' }, automationAttemptCount: 1,
     automationLease: { leaseId: 'root-lease' }, codingCapacity: { model: 'qwen3-coder:30b' } };
   const basis = policy.basis(taskRecord);
   memory.dag.authority = { taskBasis: basis, rootRequestId: ROOT, sourceCommit: SOURCE, runIndex: 0,
-    sourceField: 'sourceCommit', coordinator: { id: 'ugfrank', label: 'ugFrank', harness: 'opencode' } };
+    sourceField: 'sourceCommit', coordinator: { id: 'ugfrank', label: 'ugfrank', harness: 'opencode' } };
   memory.dag.coordination = { schema: 'agentx.pipeline-code-step-coordination/v1',
     assemblyRequestId: deterministicUuid(ROOT, 'assembly'), requestedAt: null };
   const transition = operation => async (_pipelineId, input) => {
@@ -106,7 +106,7 @@ function fixture({ lostLaunch = false, limit = budget() } = {}) {
         id: artifact.id, sha256: artifact.sha256, sizeBytes: artifact.sizeBytes, format: artifact.format }, finishedAt: T0 } });
     return attempt.requestId;
   };
-  return { memory, stateService, TaskModel, control, launches, runs, create, verify };
+  return { memory, taskRecord, stateService, TaskModel, control, launches, runs, create, verify };
 }
 
 function submissionFixture(executors, initialDag = null, unavailableExecutors = []) {
@@ -479,4 +479,38 @@ test('terminalizes a settled failed step after its bounded attempts are exhauste
   expect(f.launches).toEqual([]);
   expect(failed).toMatchObject({ state: 'failed', terminalFailure: {
     code: 'step_attempts_exhausted', stepId: 'step-01' } });
+});
+
+test.each(['revoked', 'changed_scope', 'family'])('observes original children after %s without launch, resume or assembly', async reason => {
+  const f = fixture(); const coordinator = f.create();
+  await coordinator.tick('0946');
+  const originalRequests = f.launches.map(item => item.requestId);
+  if (reason === 'revoked') f.taskRecord.codingAutonomy.authorized = false;
+  if (reason === 'changed_scope') f.taskRecord.spec = 'Changed after review';
+  if (reason === 'family') f.taskRecord.origin = 'family';
+  f.runs.set(originalRequests[0], { requestId: originalRequests[0], phase: 'resumable' });
+  f.control.launch.mockClear(); f.control.status.mockClear();
+  const result = await coordinator.tick('0946');
+  expect(f.control.launch).not.toHaveBeenCalled();
+  expect(f.control.status.mock.calls.map(([input]) => input.requestId)).toEqual(originalRequests);
+  expect(result.coordination.requestedAt).toBeNull();
+  await f.verify(coordinator, 'step-02', 'b'.repeat(40), 'b');
+  expect(f.memory.dag.steps[1].state).toBe('verified');
+  await coordinator.tick('0946');
+  expect(f.control.launch).not.toHaveBeenCalled();
+  expect(f.memory.dag.steps[2].attempts).toHaveLength(0);
+});
+
+test('partial cancellation preserves unknown children and never treats an absent or refused receipt as accepted', async () => {
+  const f = fixture(); const coordinator = f.create(); await coordinator.tick('0946');
+  const before = clone(f.memory.dag);
+  f.control.stop.mockResolvedValueOnce({ accepted: true }).mockRejectedValueOnce(
+    Object.assign(new Error('lost stop'), { code: 'CODING_DISPATCH_OUTCOME_UNKNOWN' }));
+  expect(await coordinator.stopChildren('0946')).toEqual([
+    { requestId: f.launches[0].requestId, accepted: true },
+    { requestId: f.launches[1].requestId, accepted: false, code: 'CODING_DISPATCH_OUTCOME_UNKNOWN' }]);
+  expect(f.memory.dag).toEqual(before);
+  f.control.stop.mockResolvedValue(undefined);
+  expect((await coordinator.stopChildren('0946')).every(receipt => receipt.accepted === false)).toBe(true);
+  expect(f.memory.dag).toEqual(before);
 });
