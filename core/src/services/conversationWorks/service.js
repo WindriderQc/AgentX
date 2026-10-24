@@ -192,7 +192,8 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     if (!isNativeToolCallId(callId) || !input || Object.keys(input).some(key => !['limit', 'includeDone'].includes(key))
       || (input.limit !== undefined && (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 50))
       || (input.includeDone !== undefined && typeof input.includeDone !== 'boolean')) throw fail('CONVERSATION_WORK_READ_INVALID', 'Choose a bounded task read.');
-    const normalized = { limit: input.limit ?? 25, includeDone: input.includeDone ?? false };
+    const normalized = { limit: input.limit ?? 25, includeDone: input.includeDone ?? false,
+      ...(role === 'boss' ? { scope: 'active' } : {}) };
     const id = hash(row.attempt.id + '\n' + callId), fingerprint = hash(JSON.stringify(normalized));
     const saved = await repo.mutate(row._id, async (current, fence) => {
       if (!['running', 'dispatching'].includes(current.state) || current.attempt?.runId !== context.runId) throw notFound();

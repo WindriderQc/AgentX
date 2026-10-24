@@ -10,7 +10,9 @@ test('only the explicit open personal-task scope can reuse the context read', ()
     assert.equal(requestsTaskContextRead(request), true, request);
   }
   for (const request of ['Ne lis pas mes tâches.', 'Crée ma tâche.', 'Lis mes tâches terminées.', 'Read my completed tasks.',
-    'Montre mes tâches du Pipeline.', 'Lis les tâches de mes enfants.', 'Comment organiser mes tâches ?', 'Bonjour.']) {
+    'Montre mes tâches du Pipeline.', 'Lis les tâches de mes enfants.', 'Comment organiser mes tâches ?', 'Bonjour.',
+    'Lis mes tâches à revoir.', 'Read my tasks in the review scope.', 'Lis mes tâches dans toutes les catégories.',
+    'Lis les tâches extraites des courriels.']) {
     assert.equal(requestsTaskContextRead(request), false, request);
   }
 });
