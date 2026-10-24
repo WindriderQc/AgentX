@@ -112,13 +112,13 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
       check.validateScope(state,m,record.after);
       await observeDispatches(state,'apply');
       check.assertSignatures(check.derive(state,m,record.after),record.expectedApplied);
-      for (let i=0;i<3;i++) await dispatch(i,'apply');
+      for (let i=0;i<m.updates.length;i++) await dispatch(i,'apply');
       state = await check.snapshot(db);
       check.assertSignatures(state,record.expectedApplied);
       check.assertBalances(m,record.balances,await check.nativeViews());
       await storage.immutable(path.join(directory,'after.json'),state);
       await checkpoint('verified');
-      return finish('applied',{ documents: 3, inserted: 0, deleted: 0,
+      return finish('applied',{ documents: m.updates.length, inserted: 0, deleted: 0,
         appliedAtUtc: record.appliedAt.toISOString(),
         sourcePdfSha256: m.verifiedIdentity.pdfSha256, backupSha256: record.backupSha256,
         stateSignatures: record.expectedApplied, arithmeticResidualCents: 0, latestBalancesUnchanged: true });
@@ -146,12 +146,12 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
       const state = await check.snapshot(db);
       check.assertImages(check.images(state,m),[record.before,record.after]);
       check.assertSignatures(check.derive(state,m,record.before),record.expectedRollback);
-      for (const i of [2,1,0]) await dispatch(i,'rollback');
+      for (const i of m.updates.map((_,i) => i).reverse()) await dispatch(i,'rollback');
       const restored = await check.snapshot(db);
       check.assertSignatures(restored,record.expectedRollback);
       check.assertBalances(m,record.rollbackBalances,await check.nativeViews());
       await storage.immutable(path.join(directory,'restored.json'),restored);
-      return finish('rolled_back',{ documents: 3, inserted: 0, deleted: 0,
+      return finish('rolled_back',{ documents: m.updates.length, inserted: 0, deleted: 0,
         stateSignatures: record.expectedRollback, exactBeforeImagesRestored: true });
     }
     try {
