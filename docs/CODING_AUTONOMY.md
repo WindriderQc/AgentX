@@ -65,10 +65,16 @@ Core profile runs `inferenceRuntimePolicy`. Neither replaces full PR CI or
 product acceptance. Dependency edits require separate operator handling.
 
 The autonomous execution receives Core's remaining cumulative work, test, model
-duration and model-call budgets. A fresh read-only planner first writes a bounded
-JSON plan using only authorized paths. The runner validates and freezes it in a
-private ledger, sizes it from the selected lane's measured agent context or speed
-knee, and starts one fresh implementation session per dependency-ready step.
+duration and model-call budgets. For a reviewed pair of existing source/test
+files totalling at most 64 KiB, with one matching native test target and a lane
+allowing both files, the runner creates one integrated step without a planning
+model call. Its private plan-source receipt identifies this strategy. Other
+scopes use the bounded read-only planner, whose source root is `/workspace` and
+whose output directory is separate. Planning allowance exhaustion is recorded
+as `planner_budget_exhausted`; it grants no extra calls or automatic retry.
+Both paths freeze the same validated JSON plan in a private ledger. The selected
+lane's measured agent context or speed knee sizes each step. The runner starts
+one fresh implementation session per dependency-ready step.
 Each session receives only its exact paths, focused-test targets and the verified
 commit summary of earlier steps; it cannot choose a shell verifier, expand scope,
 commit or publish.

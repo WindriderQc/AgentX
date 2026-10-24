@@ -374,9 +374,14 @@ background request would compete with the coding turn.
 An inactive host unit without a terminal receipt remains `unknown`; it is not
 evidence that the task completed.
 
-Autonomous code changes are runner-owned steps. A read-only planning role writes
-one bounded private plan from the authorized file manifest. The runner validates
-it, keeps an atomic private ledger and launches a fresh coding context for each
+Autonomous code changes are runner-owned steps. A reviewed pair of existing
+source/test files totalling at most 64 KiB, with one matching native test target
+and sufficient lane file capacity, becomes one runner-owned step without a model
+planning call. A private plan-source receipt identifies this path. Other scopes
+use the bounded read-only planner with `/workspace` as its source root. Exhausting
+that local allowance records `planner_budget_exhausted`, without extra credit.
+The runner validates either plan, keeps an atomic private ledger and launches
+a fresh coding context for each
 dependency-ready step. Each successful step has exactly one runner-created commit
 and one focused-test receipt. The planner and implementers cannot supply commands,
 broaden paths, commit or publish. Failed edits are retained in a private stash
