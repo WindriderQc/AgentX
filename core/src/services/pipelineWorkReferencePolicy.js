@@ -26,10 +26,11 @@ function reference(value) {
       throw fail('Name a qualified owner/repository and positive issue number.');
     ref = { kind: value.kind, repository, number: value.number };
   } else if (value?.kind === 'conversation') {
-    only(value, ['kind', 'runtime', 'id']);
-    if (!RUNTIMES.includes(value.runtime) || typeof value.id !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,159}$/.test(value.id))
-      throw fail('Name the conversation runtime and its opaque identity; never paste conversation text or a credential.');
-    ref = { kind: value.kind, runtime: value.runtime, id: value.id };
+    only(value, ['kind', 'runtime', 'namespace', 'id']);
+    if (!RUNTIMES.includes(value.runtime) || typeof value.namespace !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,79}$/.test(value.namespace)
+      || typeof value.id !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,159}$/.test(value.id))
+      throw fail('Name the conversation runtime, originating account/instance namespace and opaque identity; never paste transcript text or a credential.');
+    ref = { kind: value.kind, runtime: value.runtime, namespace: value.namespace, id: value.id };
   } else if (value?.kind === 'pipeline_task') {
     only(value, ['kind', 'pipelineId']);
     if (typeof value.pipelineId !== 'string' || !/^\d{3,4}$/.test(value.pipelineId)) throw fail('Use an exact Core Pipeline task ID.');
@@ -61,7 +62,7 @@ function entry(ref, relation, task, actor, reason, at = new Date()) {
 function describe(ref) {
   if (ref.kind === 'github_issue') return { label: `${ref.repository}#${ref.number}`, href: `https://github.com/${ref.repository}/issues/${ref.number}` };
   if (ref.kind === 'pipeline_task') return { label: `Core #${ref.pipelineId}`, href: `/pipeline?task=${ref.pipelineId}` };
-  return { label: `${ref.runtime} · ${ref.id}`, href: null };
+  return { label: `${ref.runtime}/${ref.namespace} · ${ref.id}`, href: null };
 }
 function view(task, { outcomes = false, summary = false } = {}) {
   if (!intake.applicable(task)) return null;

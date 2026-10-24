@@ -33,7 +33,7 @@ const TOOLS = [
     { action: { type: 'string', enum: ['task', 'lookup'] }, pipelineId: string(4), limit: integer(50), offset: integer(64, 0),
       reference: object({ kind: { type: 'string', enum: ['github_issue', 'conversation', 'pipeline_task'] }, repository: string(201),
         number: integer(Number.MAX_SAFE_INTEGER), runtime: { type: 'string', enum: ['agentx', 'codex', 'claude', 'openclaw', 'hermes', 'chatgpt'] },
-        id: string(160), pipelineId: string(4) }, ['kind']) }, ['action']),
+        namespace: string(80), id: string(160), pipelineId: string(4) }, ['kind']) }, ['action']),
   tool('consult_team', 'Consult an installed native collaborator with its tools and permissions. secretary: live Gmail/actions; comptable: ledger/budgets/alerts; leadx: Pipeline; cloudx: approved heavy reasoning; main: existing SuperDad workflows including Web reading and coding delegation. Use direct Core tools when sufficient. request starts one async run; status reads its result. Generate one UUID requestId per authorized request and retain it across all retries. Poll status; dispatch/running/uncertain is NOT completion. Never replace an uncertain request. Include the full owner request and relevant context. Mail sending and destructive actions require explicit owner authorization; existing specialist approvals and heavy-work admission remain in force.',
     { action: { type: 'string', enum: ['request', 'status'] }, requestId: { type: 'string', format: 'uuid' },
       member: { type: 'string', enum: ['secretary', 'comptable', 'leadx', 'cloudx', 'main'] }, question: string(8000) }, ['action', 'requestId'], false),

@@ -1,7 +1,7 @@
 'use strict';
 const { Schema } = require('mongoose');
 const reference = new Schema({ kind: { type: String, enum: ['github_issue', 'conversation', 'pipeline_task'], required: true },
-  repository: String, number: Number, runtime: String, id: String, pipelineId: String }, { _id: false });
+  repository: String, number: Number, runtime: String, namespace: String, id: String, pipelineId: String }, { _id: false });
 const actor = new Schema({ declared: String, authenticated: { type: String, default: null }, channel: String }, { _id: false });
 const entry = new Schema({ key: { type: String, required: true }, reference: { type: reference, required: true },
   relation: { type: String, enum: ['report', 'duplicate_report', 'related_work'], required: true },

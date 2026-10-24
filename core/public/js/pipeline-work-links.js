@@ -32,7 +32,7 @@
         <label>Type de référence<select name="workKind"><option value="github_issue">Issue GitHub</option><option value="pipeline_task">Tâche Core</option><option value="conversation">Conversation déclarée</option></select></label>
         <fieldset data-work-kind="github_issue"><label>Dépôt (propriétaire/dépôt)<input name="workRepository" maxlength="201" required></label><label>Numéro de l’issue<input name="workNumber" type="number" min="1" step="1" required></label></fieldset>
         <fieldset data-work-kind="pipeline_task" hidden disabled><label>Identifiant de tâche Core<input name="workPipelineId" pattern="[0-9]{3,4}" required></label></fieldset>
-        <fieldset data-work-kind="conversation" hidden disabled><label>Runtime<select name="workRuntime">${['agentx', 'codex', 'claude', 'openclaw', 'hermes', 'chatgpt'].map(name => `<option>${name}</option>`).join('')}</select></label><label>Identifiant de conversation<input name="workConversationId" maxlength="160" required></label><p>Référence déclarée seulement ; aucun contenu de conversation n’est importé.</p></fieldset>
+        <fieldset data-work-kind="conversation" hidden disabled><label>Runtime<select name="workRuntime">${['agentx', 'codex', 'claude', 'openclaw', 'hermes', 'chatgpt'].map(name => `<option>${name}</option>`).join('')}</select></label><label>Origine stable (compte ou instance)<input name="workNamespace" maxlength="80" required></label><label>Identifiant de conversation<input name="workConversationId" maxlength="160" required></label><p>Référence déclarée seulement ; aucun contenu de conversation n’est importé.</p></fieldset>
         <label>Relation<select name="workRelation"><option value="report">Signalement source</option><option value="duplicate_report">Signalement en doublon</option><option value="related_work" disabled>Travail lié</option></select></label>
         <button type="button" class="pipeline-btn compact" data-work-lookup>Chercher les travaux liés à cette référence</button>
         <div data-work-matches role="status"></div>
@@ -53,7 +53,7 @@
     const fields = form.elements, kind = fields.workKind.value;
     if (kind === 'github_issue') return { kind, repository: fields.workRepository.value, number: Number(fields.workNumber.value) };
     if (kind === 'pipeline_task') return { kind, pipelineId: fields.workPipelineId.value };
-    return { kind, runtime: fields.workRuntime.value, id: fields.workConversationId.value };
+    return { kind, runtime: fields.workRuntime.value, namespace: fields.workNamespace.value, id: fields.workConversationId.value };
   }
   async function readResponse(response) {
     const result = await response.json();
@@ -70,7 +70,7 @@
       if (fill) {
         const form = fill.closest('details').querySelector('form[data-work-links]'), ref = JSON.parse(fill.dataset.workFill);
         form.elements.workKind.value = ref.kind; updateKind(form);
-        const names = { repository: 'workRepository', number: 'workNumber', pipelineId: 'workPipelineId', runtime: 'workRuntime', id: 'workConversationId' };
+        const names = { repository: 'workRepository', number: 'workNumber', pipelineId: 'workPipelineId', runtime: 'workRuntime', namespace: 'workNamespace', id: 'workConversationId' };
         for (const [key, name] of Object.entries(names)) if (ref[key] !== undefined) form.elements[name].value = ref[key];
         form.elements.workRelation.value = fill.dataset.relation; form.elements.workOperation.value = 'review';
         form.elements.workReason.focus(); return;

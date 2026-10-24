@@ -8,7 +8,7 @@ const policy = require('../../src/services/pipelineWorkReferencePolicy');
 const intake = require('../../src/services/taskIntakePolicy');
 const app = express().use(express.json()).use('/api/pipeline', require('../../routes/pipeline'));
 const report = { kind: 'github_issue', repository: 'example/project', number: 42 };
-const conversation = { kind: 'conversation', runtime: 'codex', id: 'synthetic-conversation-1' };
+const conversation = { kind: 'conversation', runtime: 'codex', namespace: 'synthetic-workstation', id: 'synthetic-conversation-1' };
 const create = async (extra = {}) => require('../../src/services/pipelineTaskService').createTaskInMongo({
   title: 'Synthetic requested outcome', spec: 'Inspect and fix a bounded synthetic fixture.', service: 'core', ...extra });
 const stored = id => Task.findOne({ pipelineId: id }).lean();
@@ -63,6 +63,7 @@ test('conversation provenance is exact and does not import a transcript or infer
   const lookup = await service.lookup(conversation);
   expect(lookup.matchedCount).toBe(1); expect(lookup.tasks[0].pipelineId).toBe(one.pipelineId);
   expect((await service.lookup({ ...conversation, runtime: 'hermes' })).matchedCount).toBe(0);
+  expect((await service.lookup({ ...conversation, namespace: 'another-synthetic-workstation' })).matchedCount).toBe(0);
   expect(JSON.stringify(lookup)).not.toContain('transcript');
 });
 

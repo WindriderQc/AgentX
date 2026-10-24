@@ -13,11 +13,14 @@ A reference has one of these exact identities:
 | Kind | Fields | Interpretation |
 |---|---|---|
 | `github_issue` | `repository: owner/repository`, positive integer `number` | A qualified GitHub issue; repository case is normalized |
-| `conversation` | `runtime`, opaque `id` | Operator-declared conversation provenance; no transcript read, import or authenticated caller claim |
+| `conversation` | `runtime`, originating account/instance `namespace`, opaque `id` | Operator-declared conversation provenance; no transcript read, import or authenticated caller claim |
 | `pipeline_task` | exact `pipelineId` | Related engineering work in this Core instance |
 
 Conversation runtimes are `agentx`, `codex`, `claude`, `openclaw`, `hermes` and
-`chatgpt`. Their IDs retain case. A title, a URL pasted into a reason, or the
+`chatgpt`. Namespace (1–80 characters) and ID (1–160) retain case and contain
+letters, digits, dots, underscores, colons or hyphens. Namespace distinguishes
+separate accounts/instances of the same runtime; it is attribution, not an
+authenticated identity. A title, a URL pasted into a reason, or the
 same number in another repository does not identify the same report.
 
 `GET /api/pipeline/work-references?kind=github_issue&repository=example/project&number=42`

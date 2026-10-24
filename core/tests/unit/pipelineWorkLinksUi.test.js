@@ -13,7 +13,7 @@ test('the relationship form separates explicit decisions, scope review and obser
 });
 test('reference reasons remain escaped data, not markup or instructions', () => {
   const markup = ui.markup({ pipelineId: '0001', workView: { revision: 1, scopeFingerprint: 'a'.repeat(64), entries: [{
-    reference: { kind: 'conversation', runtime: 'codex', id: 'fixture' }, relation: 'report', label: '<script>fixture</script>',
+    reference: { kind: 'conversation', runtime: 'codex', namespace: 'synthetic', id: 'fixture' }, relation: 'report', label: '<script>fixture</script>',
     reason: '<img src=x onerror=fixture()>', scopeCurrent: true }] } });
   expect(markup).not.toContain('<script>'); expect(markup).not.toContain('<img'); expect(markup).toContain('&lt;img');
 });

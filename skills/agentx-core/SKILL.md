@@ -52,7 +52,8 @@ old approval or authenticate a declared actor name.
 
 To inspect work already linked to a report, use the owner `work_relationships` capability
 when advertised, or Core's exact-reference lookup. Qualify GitHub issues by
-repository and number; conversation references need runtime and opaque ID.
+repository and number; conversations need runtime, stable originating account/
+instance namespace and opaque ID.
 Similar titles are not identity. Inspect existing scope before linking or
 proposing another task. Report admission retains its original UUID and stable
 scopeKey across retries. Never replace an uncertain result with another UUID.
