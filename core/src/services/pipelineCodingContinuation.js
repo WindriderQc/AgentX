@@ -1,4 +1,5 @@
 'use strict';
+const { executionWindowOpen } = require('./heavyWorkQueueWindow');
 const Task = require('../../models/PipelineTask');
 const Settings = require('../../models/PipelineCodingAutonomy');
 const Runtime = require('../../models/RuntimeCoordination');
@@ -124,8 +125,7 @@ async function evidence(task, requestId, wanted, control) {
   if (job.id !== wanted.queueRequestId || job.id === state.queueRequestId || job.executor?.mode !== 'operator'
     || (!native && previous.id !== run.recovery.campaignId) || previous.source?.type !== 'coding'
     || job.source?.type !== 'coding' || !job.source.ref || job.source.ref !== previous.source.ref || job.source.taskId !== task.pipelineId
-    || !['dispatching', 'running'].includes(job.state) || !job.hosts?.length || !Array.isArray(job.resourceIds) || !job.reservation
-    || now < job.reservation.start || now >= job.reservation.end || (job.startBefore && now >= job.startBefore))
+    || !executionWindowOpen(job, now) || !job.hosts?.length || !Array.isArray(job.resourceIds))
     throw fail('A new approved active operator campaign must name this same task and coding session');
   if (native && (previous.state !== 'failed' || !Number.isFinite(Date.parse(previous.finishedAt))
     || previous.source.taskId !== task.pipelineId || previous.releaseReceipt?.authority !== 'operator-attestation'

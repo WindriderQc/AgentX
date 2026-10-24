@@ -18,7 +18,8 @@ const HOST = 'http://model.invalid:11434';
 let job, control;
 beforeEach(async () => {
   await Promise.all([Task.deleteMany({}), Run.deleteMany({}), File.deleteMany({})]);
-  job = { id: id(), dispatchId: id(), state: 'running', executor: { mode: 'operator' },
+  job = { id: id(), dispatchId: id(), state: 'running',
+    dispatchedAt: new Date(Date.now() - 30000).toISOString(), startBefore: new Date(Date.now() - 1000).toISOString(), executor: { mode: 'operator' },
     source: { type: 'coding', ref: 'synthetic-coding-session', taskId: '0001' }, hosts: [HOST],
     reservation: { start: new Date(Date.now() - 60000).toISOString(), end: new Date(Date.now() + 14400000).toISOString() } };
   jest.spyOn(queue, 'get').mockImplementation(async () => job);
@@ -96,9 +97,11 @@ test('an allocation whose acknowledgement was lost is reconciled by its original
   expect(replay.requestId).toBe(key);
   expect((await Task.findById(task._id).lean()).codingReportAuthority.bindings).toHaveLength(1);
 });
-test.each(['expired', 'host', 'task', 'dispatch'])('the native report rejects a changed campaign %s before model admission', async change => {
+test.each(['expired', 'host', 'task', 'dispatch', 'late-dispatch', 'missing-dispatch-time'])('the native report rejects a changed campaign %s before model admission', async change => {
   const { task } = await fixture(), intent = await claim(task), key = id();
   await reports.start('0001', key, intent);
+  if (change === 'late-dispatch') job.dispatchedAt = job.startBefore;
+  if (change === 'missing-dispatch-time') delete job.dispatchedAt;
   if (change === 'expired') job.reservation.end = new Date(Date.now() - 1).toISOString();
   if (change === 'host') job.hosts = ['http://other.invalid:11434'];
   if (change === 'task') job.source.taskId = '0002';

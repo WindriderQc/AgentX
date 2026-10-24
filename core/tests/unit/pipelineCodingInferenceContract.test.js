@@ -113,7 +113,8 @@ function interceptSettlement(replace) {
 beforeEach(async () => {
   await Promise.all([Task.deleteMany({}), Settings.deleteMany({}), Slots.deleteMany({})]);
   autonomy.configureControl({ status: jest.fn(async () => ({ available: true, busy: false })) });
-  queue.get.mockResolvedValue({ state: 'dispatching', executor: { mode: 'operator' },
+  queue.get.mockResolvedValue({ state: 'dispatching', dispatchId: QUEUE,
+    dispatchedAt: new Date(Date.now() - 5000).toISOString(), startBefore: new Date(Date.now() - 1000).toISOString(), executor: { mode: 'operator' },
     source: { type: 'coding', ref: 'synthetic-cpu-session' }, hosts: [HOST],
     reservation: { start: new Date(Date.now() - 10000).toISOString(), end: new Date(Date.now() + 600000).toISOString() } });
 });

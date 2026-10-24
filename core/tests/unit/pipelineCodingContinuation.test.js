@@ -105,7 +105,8 @@ beforeEach(async () => {
   await Settings.updateOne({ _id: 'coding-autonomy' }, { $set: { active: null } });
   const previousJob = structuredClone(job);
   queue.get.mockImplementation(async id => structuredClone(id === QUEUE ? previousJob : job));
-  job = { id: NEXT_QUEUE, state: 'dispatching', source: { type: 'coding', ref: 'synthetic-session', taskId: '0001' },
+  job = { id: NEXT_QUEUE, state: 'dispatching', dispatchId: DISPATCH,
+    dispatchedAt: new Date(Date.now() - 5000).toISOString(), startBefore: new Date(Date.now() - 1000).toISOString(), source: { type: 'coding', ref: 'synthetic-session', taskId: '0001' },
     hosts: [HOST], resourceIds: [], executor: { mode: 'operator' }, reservation: {
       start: new Date(Date.now() - 10000).toISOString(), end: new Date(Date.now() + 3600000).toISOString() } };
   control.status.mockResolvedValue({ busy: false, run: { pipelineId: '0001', requestId: REQUEST, phase: 'finished',
