@@ -326,7 +326,10 @@ The guardian’s next selected context includes canonical statuses and received
 results from the same conversation, so it can follow up on the worker’s work.
 For an explicit read of the owner's open personal tasks, Main's native
 `conversation_work context` call also returns the existing canonical task read
-and its same-run receipt. Repeating the same native call identity reuses that
+and its same-run receipt. This read selects the active owner-action scope;
+unreviewed email extractions and other findings are not owner commitments.
+Explicit review/category requests retain the existing task tools.
+Repeating the same native call identity reuses that
 receipt. Other scopes and filters keep Main's existing tools; missing task data
 does not remove the complete shared context. Main retains its installed model,
 memory, tool inventory and native result validation.

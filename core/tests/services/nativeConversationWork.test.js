@@ -60,6 +60,7 @@ test('the mandatory native context call includes one replay-safe canonical task 
   expect(read.data).toMatchObject({ totalCount: 8, tasks: [{ id: 'synthetic-1' }] });
   expect((await works.contextForNative(identity, callId)).receipt).toEqual(read.receipt);
   expect(list).toHaveBeenCalledTimes(1);
+  expect(list).toHaveBeenCalledWith({ limit: 25, includeDone: false, scope: 'active' });
   await expect(works.contextForNative({ ...identity, runId: 'resp_' + randomUUID() }, callId)).rejects.toMatchObject({ statusCode: 404 });
   await expect(works.readTasks(identity, {}, 'call_direct')).rejects.toMatchObject({ statusCode: 404 });
   const evidence = proof(row.attempt, 'Eight tasks, three requested titles.', ['conversation_work']);
@@ -68,6 +69,27 @@ test('the mandatory native context call includes one replay-safe canonical task 
   const runtime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
   expect(await runtime.receive({ row: await works.repo.get(row._id), evidence })).toEqual({ published: true });
   expect((await works.repo.get(row._id)).state).toBe('result_ready');
+});
+
+test('the native personal task context counts owner actions without promoting extracted findings', async () => {
+  const PipelineTask = require('../../models/PipelineTask');
+  const personal = require('../../src/services/personalTaskService');
+  await PipelineTask.deleteMany({});
+  await PipelineTask.insertMany([
+    { pipelineId: 'native-owner-action', service: 'personal', title: 'Call the garage', source: 'household-dad-desk' },
+    { pipelineId: 'native-extracted-finding', service: 'personal', title: 'Continuer la lecture du document (offset 8000/24000)' },
+  ]);
+  const before = JSON.stringify(await PipelineTask.find().sort({ pipelineId: 1 }).lean());
+  expect((await personal.listPersonalTasks()).totalCount).toBe(2);
+  works.observer.stop();
+  works = registerWorkRuntime({ router: express.Router(), conversations, tasks: { list: personal.listPersonalTasks },
+    agentClient: execute, continuity, env, capability });
+  const row = await admitted('Lis mes tâches personnelles ouvertes et donne leur nombre.');
+  const read = await works.contextForNative(context(row), 'call_owner_scope');
+  expect(read.data).toMatchObject({ count: 1, totalCount: 1, hasMore: false });
+  expect(read.data.tasks.map(task => task.id)).toEqual(['native-owner-action']);
+  expect(JSON.stringify(await PipelineTask.find().sort({ pipelineId: 1 }).lean())).toBe(before);
+  await PipelineTask.deleteMany({});
 });
 
 test('native task context forwards the native call id over HTTP and denies another run before reading', async () => {
