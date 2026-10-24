@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const { randomUUID } = require('node:crypto');
 const { acknowledged } = require('../conversations/writeFence');
 const { OWNER } = require('./contract');
+const { selectQueuedWork } = require('./admission');
 const FAILURE_REASONS = new Set(['native_authentication_failed', 'native_response_failed', 'native_response_incomplete']);
 const RETAINED_WRITER = new Set(['CONVERSATION_WRITE_BUSY', 'CONVERSATION_WRITE_RECOVERY_REQUIRED']);
 const validFailure = (receipt, attempt) => receipt?.source === 'openclaw/responses'
@@ -102,7 +103,7 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
     // A restart may revoke an unfinished preparation with an exact CAS. Only
     // this acknowledged dispatch fence permits the single outbound native call.
     const dispatch = await gate().updateOne({ _id: OWNER, workId: row._id, processId, phase: 'preparing' },
-      { $set: { phase: 'dispatching' } }, acknowledged);
+      { $set: { phase: 'dispatching', lastClassification: row.classification } }, acknowledged);
     if (dispatch.matchedCount !== 1) return;
     try {
       await execute({ ...prepared, row,
@@ -164,15 +165,7 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
         else if (row) await reconcile(row);
         return;
       }
-      const queued = { state: 'queued', contextReady: true };
-      let [row] = await works.repo.find(queued, 1);
-      // A completed guardian reply is reviewed in the background. Requested
-      // work whose answer is still awaited goes first, without interrupting
-      // the active owner or discarding any review. Each class keeps FIFO.
-      if (row?.classification === 'native_review') {
-        const [awaited] = await works.repo.find({ ...queued, classification: { $ne: 'native_review' } }, 1);
-        if (awaited) row = awaited;
-      }
+      const row = await selectQueuedWork(works.repo, { now: now(), lastClassification: occupied?.lastClassification });
       if (row) await run(row);
     } catch (cause) { logger?.warn?.('Conversation work observer unavailable', { code: cause.code || 'WORK_OBSERVER_UNAVAILABLE' }); }
     finally { running = false; }

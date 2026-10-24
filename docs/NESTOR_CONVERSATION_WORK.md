@@ -13,10 +13,30 @@ structured results and presentation receipts. OpenClaw owns the native agent/too
 loop. Polling the browser projection never starts inference.
 
 When the native dispatch owner is free, queued awaited work precedes queued
-background reviews of an already answered guardian turn. Both classes retain
-their original FIFO order. Reviews remain accepted and run after awaited work;
-an active or uncertain native attempt keeps its owner and is never preempted.
-This changes waiting order, not Main's capabilities or the complete context.
+background reviews. A native review whose guardian has explicitly completed and
+answered waits for 30 seconds of quiet after its own preparation/settlement and
+the latest accepted turn's intake/preparation/settlement. A pending latest
+guardian also defers that review. Requested work and an explicit Main handoff do
+not wait for quiet. Interrupted, failed, unknown and legacy guardian outcomes
+keep their existing dispatch behavior.
+
+Deferral cannot indefinitely reset a review's eligibility: 120 seconds after
+that review's original acceptance it is eligible at the next
+free gate, even if conversation continues. When both classes remain queued,
+one oldest overdue review alternates with one oldest awaited work. The last
+dispatched classification survives restart in the existing dispatch record;
+each class keeps FIFO. These are admission bounds, not completion deadlines or
+permission to expire a native owner. Every original review remains durable,
+with its complete context and result contract; deferral creates no native
+attempt and no replacement request. The existing observer checks eligibility
+without another agent or scheduling loop. This native admission policy does not
+change the optional legacy background review preferences.
+
+An active or uncertain native attempt keeps its owner and is never preempted.
+Admission cannot predict a future human arrival or remove the cost of an
+already admitted review. The policy changes waiting order, not Main's model,
+tools, memory, complete context or total inference work. Qualify latency and
+physical playback separately from deterministic admission tests.
 
 The private browser work list identifies each card by the exact canonical human
 request, receipt time and a short work reference. Long requests expand in place.
