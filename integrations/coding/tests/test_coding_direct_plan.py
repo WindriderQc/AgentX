@@ -1,5 +1,6 @@
 import importlib.util
 import copy
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -36,6 +37,27 @@ class BoundedPairTest(unittest.TestCase):
         command = direct.verification.focused_command(self.root, self.manifest['verificationProfile'], step['testTargets'])
         self.assertEqual(command, ['python3', '-m', 'unittest', self.test])
         self.assertEqual(self.manifest, before)
+
+    def test_complete_pair_context_preserves_current_source_and_test_bytes(self):
+        (self.root / self.source).write_text('VALUE = "quoted"\n')
+        text = direct.source_context(self.root, self.manifest['scope'])
+        files = json.loads(text[text.index('[{'):])
+        self.assertEqual(files, [{'path': self.source, 'content': 'VALUE = "quoted"\n'},
+                                 {'path': self.test, 'content': 'VALUE = 1\n'}])
+        self.assertIn('only editing tools', text)
+
+    def test_context_refuses_links_binary_missing_and_excessive_files(self):
+        path = self.root / self.source
+        for content in [b'\0', b'\xff', b'x' * (2 * direct.MAX_PAIR_BYTES)]:
+            path.write_bytes(content)
+            with self.assertRaises(direct.steps.CodePlanError):
+                direct.source_context(self.root, self.manifest['scope'])
+        path.unlink(); path.symlink_to(self.root / self.test)
+        with self.assertRaises(direct.steps.CodePlanError):
+            direct.source_context(self.root, self.manifest['scope'])
+        path.unlink()
+        with self.assertRaises(direct.steps.CodePlanError):
+            direct.source_context(self.root, self.manifest['scope'])
 
     def test_missing_review_or_tighter_native_lane_defers_without_widening_it(self):
         self.manifest.pop('qualification')

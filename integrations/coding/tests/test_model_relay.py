@@ -186,6 +186,21 @@ class RelayStopTest(unittest.TestCase):
                 relay.with_request_policy(json.dumps(value).encode(), policy)
         self.assertEqual(relay.with_request_policy(b'{ "messages": [] }', None), b'{ "messages": [] }')
 
+    def test_editing_phase_filters_discovery_without_changing_model_history_or_context(self):
+        body = {'model': 'fixture', 'messages': [{'role': 'user', 'content': 'Complete sources'}],
+                'tools': [{'type': 'function', 'function': {'name': name}} for name in
+                          ['read', 'edit', 'write', 'bash', 'apply_patch', 'web_search']],
+                'tool_choice': 'none', 'options': {'num_ctx': 196608}}
+        policy = {'max_tokens': 4096, 'reasoning_effort': 'none', 'tools': 'edit_only'}
+        result = json.loads(relay.with_request_policy(json.dumps(body).encode(), policy))
+        self.assertEqual([t['function']['name'] for t in result['tools']], ['edit', 'write', 'apply_patch'])
+        self.assertEqual(result['tool_choice'], 'auto')
+        for key in ['model', 'messages', 'options']:
+            self.assertEqual(result[key], body[key])
+        body['tools'] = [{'type': 'function', 'function': {'name': 'read'}}]
+        with self.assertRaises(ValueError):
+            relay.with_request_policy(json.dumps(body).encode(), policy)
+
     def test_invalid_runner_policy_preserves_an_existing_socket_path(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'model.sock'; path.write_bytes(b'existing owner')

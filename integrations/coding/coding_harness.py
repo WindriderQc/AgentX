@@ -20,7 +20,10 @@ def implementation_policy(progress, *, read_only=False):
     if (read_only or getattr(progress, 'report_mode', False) or not isinstance(step, dict)
             or step.get('resultKind') != 'source'):
         return None
-    return {'max_tokens': IMPLEMENTATION_OUTPUT_TOKENS, 'reasoning_effort': 'none'}
+    policy = {'max_tokens': IMPLEMENTATION_OUTPUT_TOKENS, 'reasoning_effort': 'none'}
+    if step.get('sourceContext') == 'complete_pair':
+        policy['tools'] = 'edit_only'
+    return policy
 
 
 def dsh_patch(model: str, context_size: int | None = None, relay_port=8377, *, max_tokens=None) -> list[dict]:

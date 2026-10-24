@@ -508,7 +508,8 @@ class RunnerOwnedCodeStepTest(unittest.TestCase):
         home = root / '.home-task-0001'
         calls = []
         def run_worker(_workspace, prompt, _seconds, progress, model=None, read_only=False):
-            calls.append({'prompt': prompt, 'read_only': read_only, 'model': model})
+            calls.append({'prompt': prompt, 'read_only': read_only, 'model': model,
+                          'policy': runner.coding_harness.implementation_policy(progress, read_only=read_only)})
             if read_only:
                 output = home / 'deliverables' / KEY / 'code-plan.json'
                 output.parent.mkdir(parents=True, exist_ok=True)
@@ -638,6 +639,9 @@ class RunnerOwnedCodeStepTest(unittest.TestCase):
                     patch.object(autonomous.coding_publication, 'publish', return_value={'url': 'https://example.invalid/pr/1'}) as publish:
                 self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 0)
             self.assertEqual([call['read_only'] for call in calls], [False])
+            self.assertEqual(calls[0]['policy']['tools'], 'edit_only')
+            self.assertIn('ONE = 1', calls[0]['prompt'])
+            self.assertIn('Complete current contents', calls[0]['prompt'])
             self.assertEqual(len(tests), 2)
             self.assertEqual(tests[0][-1], 'integrations/coding/tests/test_one.py')
             self.assertIn('discover', tests[1])
