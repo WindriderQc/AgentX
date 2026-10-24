@@ -239,11 +239,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     el('conversationSettingsSummary').textContent = parts.join(' · ');
     el('conversationSettingsToggle').dataset.abliterated = String(!family && open.checked && backendPicker.value !== 'hermes');
   }
-  const settingsPanel = el('conversationSettings'), settingsToggle = el('conversationSettingsToggle');
-  const setSettingsOpen = visible => { settingsPanel.hidden = !visible; settingsToggle.setAttribute('aria-expanded', String(visible)); };
-  settingsToggle.onclick = () => setSettingsOpen(settingsPanel.hidden);
-  settingsPanel.addEventListener('keydown', event => { if (event.key === 'Escape') { setSettingsOpen(false); settingsToggle.focus(); } });
-  el('conversationLockedNew').onclick = () => el('conversationNew').click();
+  // Settings disclosure also reveals the engine choice after starting afresh.
+  window.ConversationSettings.mount({ panel: el('conversationSettings'), toggle: el('conversationSettingsToggle'),
+    engine: backendPicker, newButton: el('conversationLockedNew'), startNew: () => el('conversationNew').click() });
   wake.onchange = () => { conversation.setWakeWord(wake.checked); try { storage?.setItem(listeningKey, wake.checked ? 'wake' : 'open'); } catch {} describeListening(); };
   describeListening();
   picker.value = family ? 'nestor' : preferences.personaId;
