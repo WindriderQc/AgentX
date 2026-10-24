@@ -703,8 +703,14 @@ Core's optional image capability owns `ImageOperation`, idempotent action
 identities, execution state, GPU admission and verified archive references.
 The full-profile `/images` page and private native `local_image` tool compose
 that capability. Household composes the same service for simple family drawings
-after inference settles, through a bounded display directive. The family agent
-receives no private native tools. Core persists the server-resolved conversation
+after inference settles, through a bounded display directive. That directive
+may name a picture already on screen by its number in Core's list of recent
+pictures; Core reads the picture back from where it resolved it (a web result
+from a public address without redirects, a mounted photo or media file, a
+relayed generated picture or a local creation), fits it to a 1,536-pixel JPEG
+and accepts it as the only reference of an edit. Every conversation engine and
+both spaces use this path; OpenClaw keeps `local_image` for new images. The
+family agent receives no private native tools. Core persists the server-resolved conversation
 scope with each operation; Household's read routes verify all scope fields.
 Private native Household creates use the same binding. ComfyUI only executes
 bounded server-owned graphs; callers cannot submit arbitrary workflows.
