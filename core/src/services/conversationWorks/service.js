@@ -6,6 +6,7 @@ const { OWNER, SCOPED, EXCHANGE_SCOPE, ACTIVE, LIMITS, hash, fail, notFound,
   MODES, nativeWork, simple, eligible, sessionScope, validateResult } = require('./contract');
 const { createRepository } = require('./repository');
 const { readTurnContext, assertContextSize } = require('../conversations/turnContext');
+const { shareToolEvidence } = require('../conversations/sharedToolEvidence');
 const { resolveProfile } = require('./performance');
 const { isNativeToolCallId } = require('../../../../shared/nativeToolCallId.cjs');
 
@@ -148,7 +149,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     const turn = await conversations.getTurn({ ...query(row.sessionId), traceId: row.turnId });
     if (!turn || hash(turn.inputText) !== row.requestSha256) throw fail('CONVERSATION_WORK_CONTEXT_UNAVAILABLE', 'The complete canonical request is unavailable.', 503);
     const selected = row.contextRef ? await repo.read(row, row.contextRef) : { selectedContext: '' };
-    const conversation = await conversationContext(row.sessionId);
+    const conversation = shareToolEvidence(await conversationContext(row.sessionId));
     assertContextSize(selected.selectedContext + JSON.stringify(conversation), LIMITS.context);
     return { authority: 'core.conversation-works', id: row._id, turnId: row.turnId,
       request: turn.inputText, guardianReply: turn.replyText, guardianOutcome: turn.outcome,

@@ -137,6 +137,26 @@ test('large retained work evidence counts toward the complete-context budget', a
   await expect(works.contextForWorker(job.context)).rejects.toMatchObject({ code: 'CONVERSATION_CONTEXT_REQUIRED' });
 });
 
+test('repeated full source data shares inline values while retaining each work and canonical receipt', async () => {
+  const data = { tasks: [{ id: 'shared-source', title: 'x'.repeat(35000) + ' FINAL_SOURCE_DETAIL' }], totalCount: 1 };
+  tasks.list.mockImplementation(async () => structuredClone(data));
+  for (let index = 0; index < 3; index++) await result();
+  const latest = await startWork('Read the earlier results without losing their evidence.');
+  const expanded = await works.conversationContext(current.sessionId);
+  expect(JSON.stringify(expanded).length).toBeGreaterThan(96000);
+  const received = await works.contextForWorker(latest.context);
+  expect(received.conversation.coverage).toMatchObject({ complete: true, turnCount: 4, workResultCount: 3 });
+  expect(Object.values(received.conversation.sharedToolEvidence)).toEqual([data]);
+  const references = received.conversation.turns.flatMap(turn => turn.workResults || []).map(work => work.toolEvidence[0]);
+  expect(new Set(references.map(receipt => receipt.id)).size).toBe(3);
+  for (const receipt of references) expect(received.conversation.sharedToolEvidence[receipt.data.$ref.split('/').at(-1)]).toEqual(data);
+  expect(await works.conversationContext(current.sessionId)).toEqual(expanded);
+  expect(tasks.list).toHaveBeenCalledTimes(3);
+  const other = await conversations.createSession({ sessionId: randomUUID(), packId: 'personal_operator', scopeId: 'personal',
+    modeId: 'standard', status: 'active', agentId: 'main', backend: 'openclaw', turnCount: 0 });
+  expect((await works.conversationContext(other.sessionId)).turns).toEqual([]);
+});
+
 test('a greeting remains eligible for background review after the Gardien settles', async () => {
   const accepted = await works.intake(input('Bonjour.'));
   expect(accepted.row).toMatchObject({ classification: 'unclassified', state: 'received' });

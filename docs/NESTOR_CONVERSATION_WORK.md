@@ -175,6 +175,15 @@ consultations receive the same complete conversation. The complete
 current human request is always retained and returned. Inputs outside the
 4,000-character intake budget refuse instead of truncating.
 
+Repeated identical large tool-result data use a lossless per-response inline
+dictionary in the model context: each receipt retains its identity, native run,
+order and presentation, with `data.$ref` pointing into `sharedToolEvidence` in
+that same conversation. The complete value is supplied once in the same block;
+no follow-up fetch, summary or history window replaces it. Canonical conversation
+and receipt storage, and the ordinary conversation read, remain expanded.
+Changed results are distinct. This reduces repeated reference data; source tests
+do not establish model comprehension or a live latency gain.
+
 The combined selected-memory and conversation reference block must fit the
 existing 96,000-character work-context budget. Preparation refuses with
 `CONVERSATION_CONTEXT_REQUIRED` before native dispatch if it does not fit;

@@ -128,6 +128,27 @@ for (const mode of ['read', 'native']) test(`${mode} Main refuses an oversized c
     error => error.code === 'CONVERSATION_CONTEXT_REQUIRED');
 });
 
+test('native preparation includes repeated complete tool evidence once and retains every historical result', async () => {
+  const text = 'Review the complete conversation.';
+  const data = { tasks: [{ title: 'x'.repeat(35000) + ' FINAL_SOURCE_DETAIL' }] };
+  const conversation = { authority: 'core.conversations', coverage: { complete: true, turnCount: 3 },
+    turns: Array.from({ length: 3 }, (_, index) => ({ turnId: `turn-${index}`, inputText: `Restriction ${index}`,
+      workResults: [{ workId: `work-${index}`, text: `Answer ${index}`, toolEvidence: [{ id: `receipt-${index}`, data }] }] })) };
+  const runtime = nativeWorkRuntime({ works: { query: sessionId => ({ sessionId }), conversationContext: async () => conversation },
+    continuity: async () => ({ capabilities: { isolatedWork: true, nativeConversation: true } }),
+    conversations: { getTurn: async () => ({ inputText: text }) }, agentClient: () => assert.fail('Preparation cannot invoke inference') });
+  const prepared = await runtime.prepare({ row: { mode: 'native', sessionId: 'session', requestSha256: hash(text),
+    attempt: { sessionId: 'isolated-main', agentId: 'main' } }, session: {}, selectedContext: 'Complete selected memory.' });
+  assert.ok(prepared.turnContext.length < 96000);
+  assert.equal(prepared.turnContext.split('FINAL_SOURCE_DETAIL').length - 1, 1);
+  for (let index = 0; index < 3; index++) for (const value of [`Restriction ${index}`, `Answer ${index}`, `receipt-${index}`]) {
+    assert.ok(prepared.turnContext.includes(value));
+  }
+  assert.match(prepared.turnContext, /Complete selected memory/);
+  assert.match(prepared.turnContext, /Every complete value is inline/);
+  assert.equal(conversation.sharedToolEvidence, undefined);
+});
+
 test('a mismatched installed native adapter refuses preparation before any model or tool request', async () => {
   const runtime = nativeWorkRuntime({ continuity: async () => ({ agents: [] }),
     conversations: { getTurn: () => assert.fail('Unsupported adapter must refuse before preparing dispatch') },
