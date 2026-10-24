@@ -366,6 +366,26 @@ Keep manifests and all qualification/analysis receipts outside Git.
 python3 integrations/secretary/retention_plan.py --root "$GMAIL_SECRETARY_ROOT" --before "$HISTORICAL_CUTOFF" --inventory "$PRIVATE_GMAIL_INVENTORY" --primary-proof "$PRIVATE_PRIMARY_PROOF" --mirror-proof "$PRIVATE_MIRROR_PROOF" --qualification "$PRIVATE_QUALIFICATION" --decisions "$PRIVATE_ANALYSIS_RECEIPTS" --output "$PRIVATE_RETENTION_PLAN"
 ```
 
+### Labelling an approved retention batch
+
+`retention_label.py` is the first mailbox step of a cleanup and the only one it
+performs: it puts the Gmail label `AgentX/À retirer` on the messages of one batch
+of a retention manifest, so the owner can browse them in Gmail before any Trash.
+`prepare` reads each message again at Gmail (read-only) and holds drafts,
+messages already in Trash, gone messages and changed threads. `apply` requires
+the batch fingerprint the owner approved and who approved it, refuses a check
+older than one hour, records its dispatch before the first change, adds only
+that label to the exact ready messages (`label_gmail` allows nothing else),
+and reads every message back: the effect receipt lists labelled messages and any
+other label change. An uncertain answer is never retried; `reconcile` reads
+back. `remove` takes the label off the same messages. It never archives,
+trashes or deletes; Trash is a separate step after the owner's review.
+
+```bash
+python3 integrations/secretary/retention_label.py prepare --manifest "$PRIVATE_MANIFEST" --batch 2024-1 --out "$PRIVATE_BATCH_DIR"
+python3 integrations/secretary/retention_label.py apply --out "$PRIVATE_BATCH_DIR" --approve "$BATCH_FINGERPRINT" --approved-by "$OWNER_APPROVAL" --create-label
+```
+
 ### People registry
 
 `people_import.py` records, in Core's owner people registry, the From of received
