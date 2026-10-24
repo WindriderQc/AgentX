@@ -62,11 +62,13 @@ test('awaited work precedes queued native reviews, retaining FIFO and completing
   for (let index = 0; index < 2; index++) {
     const job = await works.intake(input('Lis mes tâches personnelles ouvertes.'));
     await works.prepare(job.row._id, `Complete awaited context ${index}`);
+    await conversations.settleTurn({ ...works.query(current.sessionId), traceId: job.row.turnId, replyText: 'La lecture est acceptée.' });
+    await works.guardianSettled(job.row._id, 'completed', 'awaiting_main');
     awaited.push(job.row._id);
   }
   const sent = [], evidence = new Map();
   const native = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
-  const observer = createWorkObserver({ works, env, agentFor: () => 'main',
+  const observer = createWorkObserver({ works, env, agentFor: () => 'main', now: () => Date.now() + 31000,
     execute: async ({ row, onStarted }) => {
       const runId = 'resp_' + randomUUID();
       await onStarted(row.attempt.sessionKey, runId);
@@ -682,6 +684,12 @@ test('the dedicated guardian uses a compact per-turn session, preserves Main his
     const bound = { agentId: 'nestor-guardian', sessionKey: row.guardian.sessionKey, runId: row.guardian.runId };
     expect(await works.guardianTool(bound)).toMatchObject({ delegated: true });
     await expect(works.guardianTool({ ...bound, agentId: 'main' })).rejects.toMatchObject({ statusCode: 404 });
+    await works.observer.tick();
+    expect((await works.repo.get(row._id)).attempt).toBeUndefined();
+    // Advance only this disposable review's recorded eligibility times.
+    await Model.collection.updateOne({ _id: row._id }, { $set: {
+      receivedAt: new Date(new Date(row.receivedAt).getTime() - 31000),
+      events: row.events.map(event => ({ ...event, at: new Date(new Date(event.at).getTime() - 31000) })) } });
     await works.observer.tick();
     const reviewed = await works.repo.get(row._id);
     expect(reviewed.attempt.agentId).toBe('main');
