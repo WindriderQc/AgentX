@@ -219,8 +219,13 @@ def plan_prompt(task, manifest, output_path, budget):
     }
     return (
         "Create a bounded implementation plan. Do not edit source files.\n"
+        "The read-only repository is /workspace; manifest paths are relative to /workspace. "
+        "Your current directory is a separate writable deliverable directory, not the repository.\n"
         "Use only exact paths from the manifest. Order dependencies backward; a step may depend only on earlier ids. "
         "Every step must be independently testable and name at least one focused test.\n"
+        "The runner requires passing focused tests before committing each step. Keep a source fix and its "
+        "regression tests in the same step; do not create a failing-test-only step or a verification-only step. "
+        "Independent pre-patch checks are external acceptance evidence, not a separate failing commit.\n"
         f"Runner limits:\n{_json_for_prompt(safe_budget)}\n"
         f"Task:\n{_json_for_prompt(task)}\n"
         f"Authorized manifest:\n{_json_for_prompt({'paths': paths})}\n"
