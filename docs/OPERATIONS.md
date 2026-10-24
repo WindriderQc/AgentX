@@ -756,6 +756,36 @@ reorders the queue: Benchmark starts the measurement itself, in its quiet
 hours, when the runtime is idle. The agent chooses what, Benchmark chooses
 when.
 
+`iss_passes` answers "when does the ISS pass over the house?" from what Data
+already holds: the ISS element set of its CelesTrak `satellites` feed and the
+household weather location, rounded to 0.01°. It makes no outbound call and
+never returns the coordinates. Each pass has local rise, culmination and set
+times (in `PLANNING_TIME_ZONE`), directions and height, and is classified as
+observable to the naked eye (at least 10° high, station sunlit, Sun at -6° or
+lower at the house) or only geometric, with the reason. Weather, obstacles,
+light pollution and brightness are not modelled. The answer carries the TLE
+epoch and retrieval time and flags elements older than three days or not
+renewed for 18 hours. Missing elements or location fail with
+`ISS_DATA_UNAVAILABLE` rather than an estimate. Arguments: `hours` (1-108,
+default 72), `visible_only`, `max_passes` (1-12, default 8). `ISS_VIEW_URL`
+(HTTPS) adds a link to a page that shows the passes. Pass times match PyEphem
+within 3 seconds and 0.3° in `core/tests/unit/mcpIssTools.test.js`.
+
+The `super-dad-memory` plugin relays it as `nestor_iss` to the owner and to
+household sessions of configured family agents (the result holds no private
+data). It is an optional plugin tool: an instance enables it by adding
+`nestor_iss` to the `tools.alsoAllow` of the agents that may answer, then
+reloading the plugin.
+
+Famille conversations on the AgentX engine run no tools; they receive approved
+context. With `HOUSEHOLD_FAMILY_ISS_PASSES=true`, a Famille turn whose message
+asks about the ISS (`ISS`, `station spatiale`, `space station`) receives a short
+French summary of the same computation: the visible passes in the next 72
+hours, the count of passes that will not be visible and why, the computation
+and TLE dates, and the `ISS_VIEW_URL` link as a `link` show block. When the
+computation fails, the context tells Nestor to give no time. Unset, Famille
+receives nothing about the ISS.
+
 The personal finance capability is described for a new maintainer in
 [FINANCE.md](FINANCE.md). The personal finance ledger ingests bank and credit-card statements dropped in
 `FINANCE_INBOX_PATH`. Core reads the PDF text layer (`pdftotext -layout`), a

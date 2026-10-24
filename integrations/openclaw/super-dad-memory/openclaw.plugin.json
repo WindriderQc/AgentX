@@ -27,7 +27,8 @@
       "conversation_work",
       "mail_recall",
       "nestor_photos",
-      "nestor_read_presentation"
+      "nestor_read_presentation",
+      "nestor_iss"
     ]
   },
   "toolMetadata": {
@@ -80,6 +81,9 @@
       "optional": true
     },
     "nestor_photos": {
+      "optional": true
+    },
+    "nestor_iss": {
       "optional": true
     }
   },

@@ -78,8 +78,9 @@ describe('mcpSkillBus product tools', () => {
       'photo_details',
       'photo_names',
       'read_presentation',
+      'iss_passes',
     ]);
-    expect(TOOLS).toHaveLength(15);
+    expect(TOOLS).toHaveLength(16);
   });
 
   test('rag_search uses an injected RAG client and returns structured content', async () => {

@@ -12,7 +12,7 @@ const { agentInstructions, agentIdFor, personalVoice } = require('./conversation
 const { conversationBackend } = require('./conversation-executor');
 const { workshopContext, workshopPrompt } = require('./kidx-workshop');
 const llmx = require('./llmx-conversation');
-const { FAMILY_TONE, familyTurn, householdMembers } = require('./family-context');
+const { FAMILY_TONE, familyIssEnabled, familyTurn, householdMembers } = require('./family-context');
 const { mathTurnFor } = require('./math-scene');
 const replyChannels = require('./reply-channels');
 const { plainReply } = replyChannels;
@@ -264,7 +264,11 @@ function createPersonaTurnHandler({
           const notes = notesFor(pack, session.scopeId);
           if (!pack.childSafe && features.householdContext !== false) members = await householdMembers(familyTasks, { logger });
           // Kids Room routines, and a child's idea or reminder kept for Dad (#41, #13).
-          if (pack.childSafe) ({ savedNow, ...family } = await familyTurn({ userText, notes, familyTasks, detectMemoryRequest, logger, plants: runtimeServices.household?.plants, withChores: features.householdContext !== false && pack.id === VOIX_FAMILY_PACK_ID }));
+          if (pack.childSafe) {
+            const familySpace = features.householdContext !== false && pack.id === VOIX_FAMILY_PACK_ID;
+            ({ savedNow, ...family } = await familyTurn({ userText, notes, familyTasks, detectMemoryRequest, logger, plants: runtimeServices.household?.plants,
+              withChores: familySpace, withIss: familySpace && familyIssEnabled() }));
+          }
           try {
             if (features.memoryContext !== false) memories = (await notes.search(userText, voiceRecallOptions(userText, personalVoice(session, req.body?.channel), MEMORY_RECALL_LIMIT))).notes;
           } catch (error) {
@@ -282,7 +286,7 @@ function createPersonaTurnHandler({
         // depends on a model calling a tool: the voice model announced the sound and called nothing.
         sound = (pack.childSafe ? !requiredSession || requiredSession.browser === true : browserSoundPlayback) ? sounds.select(userText) : null;
         const preselected = Boolean(sound);
-        const context = { memories, savedNow, captured: family.captured, knowledgeContext: [members, knowledge.context, family.chores, family.plants].filter(Boolean).join('\n\n'),
+        const context = { memories, savedNow, captured: family.captured, knowledgeContext: [members, knowledge.context, family.chores, family.plants, family.iss].filter(Boolean).join('\n\n'),
           modeId: session.modeId, sound, latestUserText: userText,
           speechLanguage: preferredSpeechLanguage };
         let lastProposal = null, previousBrowserOutput = null;
