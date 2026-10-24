@@ -390,6 +390,15 @@ loads the same ledger and resumes the first unfinished step. Pipeline receives a
 bounded summary only. Once all steps pass, the runner executes the full profile
 and publishes one draft PR.
 
+For runner-owned source implementation steps, DSH advertises a 4096-token output
+allowance and the model relay enforces that ceiling for either harness on every
+request. Smaller supplied limits remain smaller, including conflicting output
+aliases. Requests use `reasoning_effort: none`, which Core translates to Ollama
+`think: false`; the model, pinned context, tools and native admission remain the
+same. The policy does not apply to read-only planners or report sessions. It
+grants no calls, retries or time, and does not prove that a model will complete
+the task within the existing useful-progress window.
+
 A run has a two-hour soft budget by default. New source content or a new test
 result against that content can extend it by 30 minutes, up to a four-hour
 hard ceiling. Cache churn, touching files, repeated source states, repeated

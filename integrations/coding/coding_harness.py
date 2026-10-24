@@ -11,12 +11,24 @@ from pathlib import Path
 import re
 
 HARNESSES = ('dsh', 'opencode')
+IMPLEMENTATION_OUTPUT_TOKENS = 4096
 
 
-def dsh_patch(model: str, context_size: int | None = None, relay_port=8377) -> list[dict]:
+def implementation_policy(progress, *, read_only=False):
+    """The runner's source step owns this policy, independently of the harness."""
+    step = getattr(progress, 'step', None)
+    if (read_only or getattr(progress, 'report_mode', False) or not isinstance(step, dict)
+            or step.get('resultKind') != 'source'):
+        return None
+    return {'max_tokens': IMPLEMENTATION_OUTPUT_TOKENS, 'reasoning_effort': 'none'}
+
+
+def dsh_patch(model: str, context_size: int | None = None, relay_port=8377, *, max_tokens=None) -> list[dict]:
     if context_size is not None and (type(context_size) is not int or context_size <= 0):
         raise RuntimeError('Coding context is unavailable')
-    model_config = {'id': model, 'maxTokens': 32768}
+    if max_tokens is not None and (type(max_tokens) is not int or not 1 <= max_tokens <= 32768):
+        raise RuntimeError('Coding output allowance is invalid')
+    model_config = {'id': model, 'maxTokens': 32768 if max_tokens is None else max_tokens}
     if context_size is not None:
         model_config['contextWindow'] = context_size
     return [

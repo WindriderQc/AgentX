@@ -517,23 +517,26 @@ print(json.dumps({
 
 
 class ReportDrainTest(unittest.TestCase):
-    def drained_seconds(self, cumulative_limits, report_mode=True):
+    def drained_seconds(self, cumulative_limits, report_mode=True, source_step=False):
         relay = mock.Mock()
         relay.drain.return_value = True
         progress = mock.Mock(report_mode=report_mode, request_id='11111111-2222-4333-8444-555555555555',
-                             cumulative_limits=cumulative_limits, model_context_size=4096,
+                             cumulative_limits=cumulative_limits, model_context_size=196608,
                              hard_deadline=1600.0, queue_deadline=1900.0, relay_headers={})
         progress.now.return_value = 1000.0
         progress.model_remaining.return_value = 900
+        progress.step = {'resultKind': 'source'} if source_step else None
         with tempfile.TemporaryDirectory() as root, \
                 mock.patch.object(runner, 'WORKSPACES', Path(root)), \
-                mock.patch.object(runner.model_relay, 'serve', return_value=relay), \
+                mock.patch.object(runner.model_relay, 'serve', return_value=relay) as serve, \
                 mock.patch.object(runner, 'GATEWAY_TOKEN', 'coding-team-test-token-01'), \
                 mock.patch.object(runner, 'sandbox', return_value=[]), \
                 mock.patch.object(runner, 'supervise', return_value=subprocess.CompletedProcess([], 0)):
             workspace = Path(root) / 'task-0001'
             workspace.mkdir()
             runner.run_worker(workspace, 'Review', 600, progress, read_only=cumulative_limits is None)
+            self.last_policy = serve.call_args.kwargs['request_policy']
+            self.last_model = json.loads((runner.worker_home(workspace) / '.dsh/agentx.patch.json').read_text())[0]['config']['providers']['agentx-core']['models'][0]
         return relay.drain.call_args.args[0]
 
     def test_report_drain_waits_for_a_slow_call_until_core_deadline(self):
@@ -547,6 +550,15 @@ class ReportDrainTest(unittest.TestCase):
 
     def test_cumulative_coding_drain_keeps_its_short_model_bound(self):
         self.assertEqual(self.drained_seconds({'modelSeconds': 1}), 120)
+
+    def test_source_worker_installs_the_same_output_cap_in_dsh_and_the_relay(self):
+        self.assertEqual(self.drained_seconds({'modelSeconds': 1}, report_mode=False, source_step=True), 120)
+        self.assertEqual(self.last_policy, {'max_tokens': 4096, 'reasoning_effort': 'none'})
+        self.assertEqual(self.last_model['maxTokens'], 4096)
+        self.assertEqual(self.last_model['contextWindow'], 196608)
+        self.drained_seconds(None, report_mode=False)
+        self.assertIsNone(self.last_policy)
+        self.assertEqual(self.last_model['maxTokens'], 32768)
 
 class LaneCapabilityReceiptTest(unittest.TestCase):
     KEY = '11111111-2222-4333-8444-555555555555'
