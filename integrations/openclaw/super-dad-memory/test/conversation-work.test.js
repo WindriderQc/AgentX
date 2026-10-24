@@ -56,6 +56,24 @@ test('Main refreshes shared context through its actual native call and cannot us
   assert.equal(h.posted[0].body.input, undefined);
   for (const operation of ['publish', 'tasks']) await assert.rejects(tool.execute('context', { operation }), /role cannot/);
 });
+
+test('inline shared evidence crosses the native context adapter unchanged for both roles', async () => {
+  const shared = { tasks: [{ title: 'Complete source '.repeat(150) + ' FINAL_DETAIL' }] };
+  const data = { authority: 'core.conversation-works', conversation: {
+    coverage: { complete: true, turnCount: 2 }, evidenceEncoding: { name: 'core.shared-tool-evidence/v1' },
+    turns: [0, 1].map(index => ({ turnId: `turn-${index}`, workResults: [{ workId: `work-${index}`,
+      toolEvidence: [{ id: `receipt-${index}`, data: { $ref: '#/sharedToolEvidence/synthetic' } }] }] })),
+    sharedToolEvidence: { synthetic: shared } } };
+  for (const agentId of ['main', 'worker']) {
+    const h = setup(async () => ({ ok: true, json: async () => ({ ok: true, data }) }));
+    const context = native(agentId), tool = h.factory(context);
+    await h.hooks.before_tool_call({ toolName: 'conversation_work', toolCallId: 'context', runId }, context);
+    const result = await tool.execute('context', { operation: 'context' });
+    assert.deepEqual(result.details, data);
+    assert.deepEqual(JSON.parse(result.content[0].text), data);
+    assert.equal(h.posted.length, 1);
+  }
+});
 test('the guardian legacy read is blocked only when Core owns that current turn', async () => {
   const h = setup(), context = native('main');
   const blocked = await h.hooks.before_tool_call({ toolName: 'list_personal_tasks', toolCallId: 'read', runId }, context);

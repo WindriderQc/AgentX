@@ -115,6 +115,32 @@ test('ordinary native conversation context never speculatively reads tasks', asy
   expect(result.receipt).toBeUndefined();
 });
 
+test('native context shares repeated inline evidence without merging original runs or replaying reads', async () => {
+  works.observer.stop();
+  const data = { tasks: [{ id: 'shared-owner-action', title: 'x'.repeat(35000) + ' FINAL_SOURCE_DETAIL' }], totalCount: 1 };
+  const list = jest.fn(async () => structuredClone(data));
+  works = registerWorkRuntime({ router: express.Router(), conversations, tasks: { list }, agentClient: execute, continuity, env, capability });
+  works.observer.stop();
+  const runs = [];
+  for (let index = 0; index < 3; index++) {
+    const row = await admitted('Lis mes tâches ouvertes.');
+    await works.readTasks(context(row), {}, 'synthetic-read', 'boss');
+    await works.publishNative(row._id, proof(row.attempt, `Verified result ${index}`, ['conversation_work']));
+    runs.push(row.attempt.runId);
+  }
+  const current = await admitted('Help me choose a colour.');
+  const read = await works.contextForNative(context(current), 'synthetic-refresh');
+  expect(read.nativeOwner).toBe('main');
+  expect(read.conversation.coverage).toMatchObject({ complete: true, turnCount: 4, workResultCount: 3 });
+  expect(Object.values(read.conversation.sharedToolEvidence)).toEqual([data]);
+  const historical = read.conversation.turns.flatMap(turn => turn.workResults || []);
+  expect(historical.map(work => work.text)).toEqual(['Verified result 0', 'Verified result 1', 'Verified result 2']);
+  expect(historical.map(work => work.toolEvidence[0].runId)).toEqual(runs);
+  expect(list).toHaveBeenCalledTimes(3);
+  await expect(works.contextForNative({ ...context(current), runId: 'resp_' + randomUUID() })).rejects.toMatchObject({ statusCode: 404 });
+  expect((await works.conversationContext(current.sessionId)).sharedToolEvidence).toBeUndefined();
+});
+
 test('an unavailable contextual task read preserves complete context without inventing a receipt', async () => {
   const row = await admitted('Lis mes tâches ouvertes.');
   const result = await works.contextForNative(context(row), 'call_unavailable_tasks');
