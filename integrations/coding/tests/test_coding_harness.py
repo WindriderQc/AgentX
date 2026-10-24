@@ -34,9 +34,9 @@ class HarnessAdapterTest(unittest.TestCase):
                 harness.dsh_patch('local-model', max_tokens=cap)
 
     def test_complete_context_source_phase_exposes_only_editing_tools(self):
-        p = SimpleNamespace(step={'resultKind': 'source', 'sourceContext': 'complete_pair'})
+        p = SimpleNamespace(step={'resultKind': 'source', 'sourceContext': 'complete_pair', 'sourcePaths': ['source.py', 'test.py']})
         self.assertEqual(harness.implementation_policy(p),
-                         {'max_tokens': 4096, 'reasoning_effort': 'none', 'tools': 'edit_only'})
+                         {'max_tokens': 4096, 'reasoning_effort': 'none', 'tools': 'edit_only', 'read_paths': ['/workspace/source.py', '/workspace/test.py']})
         self.assertIsNone(harness.implementation_policy(p, read_only=True))
 
     def test_dsh_keeps_the_existing_headless_contract(self):

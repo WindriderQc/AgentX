@@ -23,6 +23,7 @@ def implementation_policy(progress, *, read_only=False):
     policy = {'max_tokens': IMPLEMENTATION_OUTPUT_TOKENS, 'reasoning_effort': 'none'}
     if step.get('sourceContext') == 'complete_pair':
         policy['tools'] = 'edit_only'
+        policy['read_paths'] = ['/workspace/' + path for path in step['sourcePaths']]
     return policy
 
 

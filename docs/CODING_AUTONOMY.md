@@ -89,10 +89,9 @@ do not establish model competence or replace cumulative budgets, useful-progress
 checks, native completion receipts or independent verification.
 
 For the reviewed small pair, the runner supplies both current files before the
-implementation turn and exposes only `edit`, `write` or `apply_patch` through
+implementation turn and advertises `read`, `edit`, `write` or `apply_patch` through
 the relay. Discovery and shell tools remain available to other roles. This
-keeps small implementation sessions from spending their allowance rereading
-the repository; the runner still performs focused/full tests and publication.
+focuses small implementation sessions on the authorized files; the runner still performs focused/full tests and publication.
 Missing, linked, binary or excessive context refuses before model dispatch.
 The initial pair remains limited to 64 KiB; a repeated step permits bounded
 growth up to 128 KiB without widening its authorized paths or work budget.
@@ -606,3 +605,5 @@ release receipt and no committed grant, then derives a new campaign and grant
 identity from that predecessor. Repeating that request returns the same new
 campaign. Original receipts and cumulative costs remain intact; an uncertain
 launch or an already allocated grant still requires reconciliation.
+
+For the complete source/test pair, the runner advertises `read` with a path-only schema enumerating the authorized files. DSH must receive its own successful read before `edit`; embedded source text does not populate that cache. The runner still validates the resulting diff and scope.
