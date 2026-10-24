@@ -71,6 +71,19 @@ test('a change edits the named picture, fitted, in its own shape', async () => {
   assert.equal(events.length, 1);
 });
 
+test('a WebP, GIF or AVIF picture from the web is converted before the edit', async () => {
+  const sharp = require('sharp');
+  const raw = { raw: { width: 400, height: 200, channels: 3 } }, pixels = Buffer.alloc(400 * 200 * 3, 120);
+  for (const format of ['webp', 'gif', 'avif']) {
+    const { calls, events, complete } = fixture({ bytes: await sharp(pixels, raw)[format]().toBuffer() });
+    await complete([change(1)]);
+    assert.equal(calls.length, 1, format);
+    const reference = jpeg.decode(Buffer.from(calls[0].body.references[0], 'base64'));
+    assert.deepEqual([reference.width, reference.height], [400, 200], format);
+    assert.equal(events[0].status, 'accepted', format);
+  }
+});
+
 test('a local creation is read back from the image service', async () => {
   const { calls, reads, complete } = fixture();
   await complete([change(2)]);
