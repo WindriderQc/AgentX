@@ -1768,6 +1768,57 @@ weights: prefer mixture-of-experts models with few active parameters. One CPU
 instance serves one request at a time; a second parallel request adds no
 throughput.
 
+### Runtime topology modes
+
+`AGENTX_RUNTIME_TOPOLOGY_JSON` optionally declares the modes a GPU host group
+can run in (#360). One example: two single-GPU lanes for daily work, or one
+endpoint pooling both GPUs for large models and long contexts. Keep the actual
+declaration in the external instance env file; the Configuration view hides
+its value. A generic example:
+
+```json
+{"groups":[{"id":"dual-gpu","label":"Dual GPU host","modes":[
+  {"id":"lanes","label":"Two lanes","endpoints":[
+    {"url":"http://gpu-host:11437","role":"conversation"},
+    {"url":"http://gpu-host:11438","role":"background"}]},
+  {"id":"pooled","label":"Pooled","endpoints":[
+    {"url":"http://gpu-host:11434","role":"pooled"}]}]}]}
+```
+
+- **Roles.** A role is `conversation`, `background` or `pooled`. A mode gives
+  each role to at most one endpoint, and an endpoint belongs to one group.
+- **Endpoints.** Each endpoint is an HTTP(S) origin, as in the physical GPU map.
+  Register it as an inference host and pin its model, with its context, as
+  usual.
+- **Limits.** Up to 8 groups, 6 modes per group and 8 endpoints per mode.
+  Labels default to ids.
+
+This phase is read-only. `GET /api/nerve-center/runtime-topology` and the
+**Runtime topology** card in the Nerve Center routing section show, for each
+declared mode:
+
+- each endpoint, with its role;
+- whether it is a registered host;
+- the physical GPUs it maps to;
+- its pins;
+- whether those pins are resident now.
+
+**Mode status.**
+- **Active**: every endpoint of the mode is registered, reachable and has all
+  its pins loaded.
+- **Partly running**: some endpoints are ready, but not all.
+- **Inactive**: no endpoint of the mode is ready.
+
+**Group status.** A group has an active mode only when exactly one mode is
+active. If several are, it reads "conflict"; if one is half started, it reads
+"transitional".
+
+Core resolves a role to the active mode's endpoint
+(`runtimeTopologyService.resolveRole`), but routing does not use that yet.
+Declaring modes changes no route, pin or admission, and nothing in this phase
+switches a mode. An invalid declaration is reported as invalid without its
+content.
+
 ### Inference log timings and prompt cache
 
 Each `inferencelogs` row keeps Core's wall clock in `durationMs` (routing and

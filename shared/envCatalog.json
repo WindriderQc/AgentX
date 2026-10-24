@@ -255,6 +255,16 @@
       "secret": true,
       "description": "Private physical GPU IDs with their consumer endpoint URLs. Unset: endpoint-only coordination. Invalid or changed mappings refuse new admissions while existing work remains fenced."
     },
+    "AGENTX_RUNTIME_TOPOLOGY_JSON": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "inference",
+      "secret": true,
+      "description": "Private declaration of runtime topology modes per GPU host group (#360): each mode lists its endpoints and the role each serves (conversation, background, pooled). Read-only: the Nerve Center shows which mode runs; routing does not use it yet. Unset: no modes declared. Invalid: reported as invalid, never echoed."
+    },
     "AGENTX_TASK_FALLBACK_WAIT_MS": {
       "services": [
         "core"
