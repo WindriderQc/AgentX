@@ -6,6 +6,7 @@
 // or completes a chore, and no personal task or code work is reachable.
 const defaultIdeaInbox = require('../../src/services/ideaInboxService');
 const { ageInYears, birthdayLabel, instanceToday } = require('../../src/domains/household/familyBirthDate');
+const { issPasses: defaultIssPasses } = require('../../src/services/mcpIssTools');
 
 const IDEA_REQUEST = /(j'?\s?ai une (?:super |bonne |petite )?id[ée]e|(?:note|garde|ajoute|[ée]cris)[sz]?(?:-moi)?\s+(?:une|mon|cette|l')\s*id[ée]e|id[ée]e pour (?:papa|la maison|plus tard)|i have an idea|(?:save|keep|write down) (?:my|this|an) idea)/i;
 const REMINDER_REQUEST = /(rappelle[sz]?[- ]moi|fais[- ]moi penser|n'?oublie pas de me rappeler|(?:note|ajoute|garde)[sz]?(?:-moi)?\s+(?:un|ce)\s+rappel|remind me)/i;
@@ -77,6 +78,49 @@ async function plantSummary(plants, { logger } = {}) {
   }
 }
 
+// ISS passes over the house, only when the child asks about the station and
+// the instance enabled it (HOUSEHOLD_FAMILY_ISS_PASSES=true). The times come
+// from Core's dated computation; without it Nestor must say it does not know.
+const ISS_QUESTION = /(\bISS\b|station spatiale|space station)/i;
+const MAX_ISS_LISTED = 3;
+
+function familyIssEnabled(env = process.env) {
+  return String(env.HOUSEHOLD_FAMILY_ISS_PASSES || '').trim().toLowerCase() === 'true';
+}
+
+function isIssQuestion(text) {
+  return ISS_QUESTION.test(String(text || ''));
+}
+
+function visibleLine(pass) {
+  const v = pass.visible;
+  const minutes = Math.max(1, Math.round(v.durationSec / 60));
+  return `${v.startLocal} → ${v.endLocal.replace(/^.*?(\d{2} h \d{2})$/, '$1')}, du ${v.start.direction} vers ${v.end.direction}, ${String(v.maxElDeg).replace('.', ',')}° de hauteur max, environ ${minutes} min`;
+}
+
+async function issSummary(userText, { readPasses = defaultIssPasses, logger } = {}) {
+  if (!isIssQuestion(userText)) return '';
+  try {
+    const result = await readPasses({ hours: 72, max_passes: 12 });
+    const visible = result.passes.filter(p => p.observable);
+    const lines = [
+      `Passages de la Station spatiale internationale au-dessus de la maison (calcul AgentX du ${result.computedAtLocal}, éléments orbitaux CelesTrak du ${result.tle.epochLocal}${result.tle.stale ? ', anciens : dis que l’heure peut être moins précise' : ''}). Cite ces jours et heures exactement, n’en invente aucune. La météo n’est pas connue : dis « si le ciel est dégagé ».`,
+    ];
+    if (visible.length) {
+      lines.push(`Visibles à l’œil nu dans les 72 prochaines heures : ${visible.slice(0, MAX_ISS_LISTED).map(visibleLine).join(' ; ')}.`);
+    } else {
+      lines.push('Aucun passage visible à l’œil nu dans les 72 prochaines heures.');
+    }
+    const hidden = result.counts.geometric - result.counts.observable;
+    if (hidden > 0) lines.push(`${hidden} autre(s) passage(s) au-dessus de l’horizon ne seront pas visibles (en plein jour, trop bas, ou ISS dans l’ombre de la Terre).`);
+    if (result.view) lines.push(`Une vue 3D montre ces passages : propose-la avec <show kind="link" title="${result.view.label}">${result.view.url}</show>.`);
+    return lines.join('\n').slice(0, MAX_CHARACTERS);
+  } catch (error) {
+    logger?.warn?.('Family ISS passes unavailable', { error: error.message });
+    return 'Les passages de l’ISS sont indisponibles pour l’instant : dis-le simplement et ne donne aucune heure.';
+  }
+}
+
 // How Nestor sounds with children (#121). Famille keeps the Nestor
 // personality, whose adult temperament (a dry-witted majordomo) read flat to a
 // child; this replaces that temperament in family conversations only. It is
@@ -122,8 +166,8 @@ async function householdMembers(familyTasks, { logger, now = new Date() } = {}) 
 
 // One explicit request per turn: an idea or reminder goes to the parent's
 // inbox; otherwise an explicit "remember" keeps a family note as before.
-async function familyTurn({ userText, notes, familyTasks, detectMemoryRequest, logger, ideaInbox = defaultIdeaInbox, withChores = true, plants = null }) {
-  const result = { savedNow: false, captured: null, chores: '', plants: '' };
+async function familyTurn({ userText, notes, familyTasks, detectMemoryRequest, logger, ideaInbox = defaultIdeaInbox, withChores = true, plants = null, withIss = false, readIssPasses }) {
+  const result = { savedNow: false, captured: null, chores: '', plants: '', iss: '' };
   const kind = familyCaptureKind(userText);
   if (kind) {
     try {
@@ -143,6 +187,7 @@ async function familyTurn({ userText, notes, familyTasks, detectMemoryRequest, l
     result.chores = await choreSummary(familyTasks, { logger });
     result.plants = await plantSummary(plants, { logger });
   }
+  if (withIss) result.iss = await issSummary(userText, { logger, readPasses: readIssPasses });
   return result;
 }
 
@@ -153,4 +198,4 @@ function capturedPrompt(captured) {
   return ` The child asked to keep ${captured === 'reminder' ? 'a reminder' : 'an idea'} and it has been saved for Dad to review; confirm plainly that Dad will see it, without promising that he will act on it.`;
 }
 
-module.exports = { FAMILY_TONE, capturedPrompt, choreSummary, familyCaptureKind, familyTurn, householdMembers, plantSummary };
+module.exports = { FAMILY_TONE, capturedPrompt, choreSummary, familyCaptureKind, familyIssEnabled, familyTurn, householdMembers, isIssQuestion, issSummary, plantSummary };

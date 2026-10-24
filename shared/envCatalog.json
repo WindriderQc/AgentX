@@ -1654,6 +1654,16 @@
       "secret": false,
       "description": "Household conversation engine: auto, agentx or openclaw. auto selects OpenClaw only when its gateway URL and token are set. Unset: auto."
     },
+    "HOUSEHOLD_FAMILY_ISS_PASSES": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "true adds Core's dated ISS passes over the house to a Famille turn on the AgentX engine when the child asks about the ISS. Unset or anything else: Famille receives no ISS context."
+    },
     "HOUSEHOLD_HERMES_TOKEN": {
       "services": [
         "core"
@@ -1927,6 +1937,16 @@
       "category": "operations",
       "secret": false,
       "description": "Maximum stored ISS positions. Unset: 8000."
+    },
+    "ISS_VIEW_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "HTTPS address of a page showing the ISS passes, returned by the iss_passes tool so an agent can offer it. Unset: no link."
     },
     "JANITOR_AI_TIMEOUT_MS": {
       "services": [

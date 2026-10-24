@@ -52,6 +52,12 @@ The adapter owns no snapshot, Analytics query or page reader. Expiry remains an
 unavailable read rather than a repeated action. See
 [content presentation](../../../docs/CONTENT_PRESENTATION.md).
 
+`nestor_iss` relays Core's read-only `iss_passes`: dated ISS passes over the
+house, each observable or only geometric with the reason, from the elements
+and location Data already holds, without coordinates. The owner and household
+sessions of configured family agents receive it; grant it in
+`tools.alsoAllow` to the agents that may answer.
+
 `nestor_photos` answers household photo questions through Core's
 `/api/photos` (Immich behind Core; no Immich key here): search by words or
 exact filters, count, one photo's details, the known names, and `show`, which

@@ -24,7 +24,8 @@
     "guardian-work.js",
     "native-read-budget.js",
     "photos.js",
-    "presentation.js"
+    "presentation.js",
+    "iss.js"
   ],
   "scripts": {
     "test": "node --test test/*.test.js"
