@@ -5,6 +5,7 @@ const dagService = require('./pipelineCodeDagService');
 const dagTerminal = require('./pipelineCodeDagTerminalService');
 const { fingerprint } = require('../../../shared/codeStepDagContract');
 const graphSummary = require('../../../shared/codeStepGraphSummary');
+const { authority, authorityFilter, sameAuthority, frozenAuthority, assertReviewedAuthority, SETTLEMENT_OPERATIONS } = require('./pipelineCodeDagAuthority');
 
 const WC = { w: 1, j: true };
 const HISTORY_LIMIT = 8;
@@ -33,77 +34,6 @@ function same(left, right) {
 
 function queryResult(value) {
   return value && typeof value.lean === 'function' ? value.lean() : value;
-}
-
-function latestRun(task) {
-  const runs = task?.codingAutonomy?.runs;
-  return Array.isArray(runs) && runs.length ? { run: runs[runs.length - 1], index: runs.length - 1 } : null;
-}
-
-function sourceBinding(run) {
-  if (/^[a-f0-9]{40}$/.test(run?.sourceCommit || '')) return { field: 'sourceCommit', value: run.sourceCommit };
-  if (/^[a-f0-9]{40}$/.test(run?.head || '')) return { field: 'head', value: run.head };
-  return null;
-}
-
-function authority(task, input) {
-  const current = latestRun(task);
-  const state = task?.codingAutonomy;
-  if (!current || state?.authorized !== true || current.run.finishedAt) {
-    fail('DAG_ROOT_NOT_ACTIVE', 'The task has no active autonomous root run');
-  }
-  if (state.basis !== input.taskBasis || current.run.requestId !== input.rootRequestId) {
-    fail('DAG_ROOT_CHANGED', 'The autonomous task basis or root request changed');
-  }
-  const source = sourceBinding(current.run);
-  if (!source || source.value !== input.sourceCommit) {
-    fail('DAG_SOURCE_CHANGED', 'The root run source commit changed or was not recorded');
-  }
-  return {
-    taskBasis: state.basis,
-    autonomyRevision: state.revision,
-    rootRequestId: current.run.requestId,
-    sourceCommit: source.value,
-    runIndex: current.index,
-    sourceField: source.field,
-    coordinator: {
-      id: current.run.executorId || 'coordinator',
-      label: current.run.executorId || 'Coordinator',
-      harness: current.run.harness || 'unknown',
-    },
-  };
-}
-
-function authorityFilter(task, binding) {
-  return {
-    pipelineId: task.pipelineId,
-    'codingAutonomy.authorized': true,
-    'codingAutonomy.basis': binding.taskBasis,
-    'codingAutonomy.revision': binding.autonomyRevision,
-    [`codingAutonomy.runs.${binding.runIndex}.requestId`]: binding.rootRequestId,
-    [`codingAutonomy.runs.${binding.runIndex}.${binding.sourceField}`]: binding.sourceCommit,
-    [`codingAutonomy.runs.${binding.runIndex}.finishedAt`]: { $exists: false },
-    [`codingAutonomy.runs.${binding.runIndex + 1}`]: { $exists: false },
-  };
-}
-
-function sameAuthority(current, frozen) {
-  if (!frozen) return false;
-  const fields = ['taskBasis', 'rootRequestId', 'sourceCommit', 'runIndex', 'sourceField', 'coordinator'];
-  return same(Object.fromEntries(fields.map(field => [field, current[field]])),
-    Object.fromEntries(fields.map(field => [field, frozen[field]])));
-}
-
-function frozenAuthority(binding) {
-  const fields = ['taskBasis', 'rootRequestId', 'sourceCommit', 'runIndex', 'sourceField', 'coordinator'];
-  return Object.fromEntries(fields.map(field => [field, clone(binding[field])]));
-}
-
-function assertReviewedAuthority(task, dag) {
-  if (!task.automation || !same(dag.plan.reviewedScope, [...(task.automation.scope || [])].sort())
-    || !same(dag.plan.reviewedLockKeys, [...(task.automation.lockKeys || [])].sort())) {
-    fail('DAG_REVIEWED_SCOPE_CHANGED', 'The DAG scope or locks differ from the current reviewed task intent');
-  }
 }
 
 function publicBudget(value) {
@@ -314,18 +244,20 @@ function createPipelineCodeDagStateService(Model = Task) {
     if (dag.terminalFailure && operation !== 'terminalize') {
       fail('DAG_TERMINAL', 'The code-step graph already has a durable terminal result');
     }
+    const mode = { settlement: SETTLEMENT_OPERATIONS.has(operation) };
     const binding = authority(task, {
       taskBasis: dag.authority?.taskBasis,
       rootRequestId: dag.rootRequestId,
       sourceCommit: dag.sourceCommit,
-    });
+    }, mode);
+    if (!mode.settlement) assertReviewedAuthority(task, dag);
     if (!sameAuthority(binding, dag.authority)) fail('DAG_ROOT_CHANGED', 'The persisted DAG authority no longer matches the root run');
     const operationService = operation === 'terminalize' ? dagTerminal : dagService;
     const result = operationService[operation](dag, input);
     if (result.replayed) return { dag: result.dag, summary: project(result.dag), replayed: true };
     const resultSummary = project(result.dag);
     const saved = await queryResult(Model.findOneAndUpdate(
-      { ...authorityFilter(task, binding), 'codeStepDag.revision': input.expectedRevision,
+      { ...authorityFilter(task, binding, mode), 'codeStepDag.revision': input.expectedRevision,
         'codeStepDag.rootRequestId': binding.rootRequestId },
       { $set: { codeStepDag: result.dag } },
       { new: true, runValidators: true, writeConcern: WC },
@@ -338,7 +270,8 @@ function createPipelineCodeDagStateService(Model = Task) {
         taskBasis: current.codeStepDag.authority?.taskBasis,
         rootRequestId: current.codeStepDag.rootRequestId,
         sourceCommit: current.codeStepDag.sourceCommit,
-      });
+      }, mode);
+      if (!mode.settlement) assertReviewedAuthority(current, current.codeStepDag);
       if (!sameAuthority(currentBinding, current.codeStepDag.authority)) {
         fail('DAG_ROOT_CHANGED', 'The persisted DAG authority no longer matches the root run');
       }

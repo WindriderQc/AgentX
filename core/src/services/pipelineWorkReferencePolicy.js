@@ -72,7 +72,7 @@ function view(task, { outcomes = false, summary = false } = {}) {
     entries: (task.workLinks?.entries || []).map(row => ({ ...(summary ? {
       key: row.key, reference: row.reference, relation: row.relation } : row), ...describe(row.reference),
       scopeCurrent: row.scopeFingerprint === fingerprint, referenceObservation: 'operator_declared' })),
-    ...(outcomes && { outcomes: require('./pipelineWorkOutcomeView').view(task) }),
+    ...(outcomes && { outcomes: require('./pipelineWorkOutcomeView').view(task), authorityView: require('./pipelineWorkAuthorityView').view(task) }),
     authorization: 'none', externalWrites: 'none', statusSynchronization: 'none' };
 }
 module.exports = { UUID, RUNTIMES, MAX_LINKS, MAX_HISTORY, fail, hash, only, text, reference, key,

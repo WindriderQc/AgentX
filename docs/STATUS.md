@@ -97,6 +97,13 @@ Instance configuration, data and deployment receipts remain outside Git.
   read shares Core's contract. No external status synchronization or public
   export occurs. See [work references](WORK_RELATIONSHIPS.md).
 
+- **Work authority.** Pipeline and owner MCP distinguish declared roles from
+  native executors and expose current scope, cumulative native budgets and
+  unresolved requests. Revocation blocks new delegated effects while retaining
+  original receipts and observation; partial stops retain unconfirmed children.
+  Private-LAN access has no authenticated human principal or independent-person
+  review guarantee. See [work authority](WORK_AUTHORITY.md).
+
 - **Execution sources.** Playground and the existing inference contract select local
   Ollama or OpenClaw, with distinct model and native agent modes. Provider
   credentials and catalogues belong to OpenClaw. Model receipts attest supplied

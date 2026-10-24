@@ -1,4 +1,5 @@
 'use strict';
+const dagAuthority = require('./pipelineCodeDagAuthority');
 
 const crypto = require('node:crypto');
 const Task = require('../../models/PipelineTask');
@@ -148,16 +149,18 @@ function createPipelineCodeDagCoordinator(options = {}) {
     return value;
   }
 
-  async function activeDagTask(pipelineId, dag) {
+  async function boundDagTask(pipelineId, dag, settlement = false) {
     const value = await task(pipelineId);
-    const run = value.codingAutonomy?.runs?.at(-1);
-    if (!value.codingAutonomy?.authorized || run?.requestId !== dag.rootRequestId || run.finishedAt
-      || run.sourceCommit !== dag.sourceCommit || value.codingAutonomy.basis !== dag.authority?.taskBasis
-      || value.codingAutonomy.basis !== policy.basis(value)) {
-      fail('DAG_ROOT_NOT_ACTIVE', 'The code-step DAG no longer has its exact active root authority');
+    const binding = dagAuthority.authority(value, { taskBasis: dag.authority?.taskBasis,
+      rootRequestId: dag.rootRequestId, sourceCommit: dag.sourceCommit }, { settlement });
+    if (!dagAuthority.sameAuthority(binding, dag.authority)) {
+      fail('DAG_ROOT_CHANGED', 'The code-step DAG no longer matches its original root');
     }
+    if (!settlement) dagAuthority.assertReviewedAuthority(value, dag);
     return value;
   }
+
+  const activeDagTask = (pipelineId, dag) => boundDagTask(pipelineId, dag);
 
   async function runtimeManifestFields(value) {
     const model = value.codingCapacity?.model;
@@ -345,7 +348,7 @@ function createPipelineCodeDagCoordinator(options = {}) {
 
   async function storeArtifact(pipelineId, requestId, stepId, bytes) {
     const dag = await state.read(pipelineId);
-    if (dag) await activeDagTask(pipelineId, dag);
+    if (dag) await boundDagTask(pipelineId, dag, true);
     const located = dag && findAttempt(dag, requestId);
     if (!located || located.step.id !== stepId || !['running', 'unknown'].includes(located.attempt.state)) {
       fail('CODE_STEP_REQUEST_NOT_ACTIVE', 'The exact code-step request is not active', 409);
@@ -355,7 +358,7 @@ function createPipelineCodeDagCoordinator(options = {}) {
 
   async function downloadArtifact(pipelineId, requestId, artifactId) {
     const dag = await state.read(pipelineId);
-    if (dag) await activeDagTask(pipelineId, dag);
+    if (dag) await boundDagTask(pipelineId, dag, true);
     const located = dag && findAttempt(dag, requestId);
     if (!located?.step.verifiedReceipt || located.step.verifiedReceipt.artifact.id !== artifactId) {
       fail('CODE_STEP_ARTIFACT_NOT_OWNED', 'The exact verified step does not own this artifact', 404);
@@ -382,7 +385,7 @@ function createPipelineCodeDagCoordinator(options = {}) {
 
   async function settleStep(pipelineId, requestId, input) {
     let dag = await state.read(pipelineId);
-    if (dag) await activeDagTask(pipelineId, dag);
+    if (dag) await boundDagTask(pipelineId, dag, true);
     let located = dag && findAttempt(dag, requestId);
     if (!located) fail('CODE_STEP_ATTEMPT_NOT_FOUND', 'Code-step attempt not found', 404);
     if (!['verified', 'failed'].includes(input?.outcome)) fail('CODE_STEP_RESULT_INVALID', 'Outcome must be verified or failed', 400);
@@ -416,9 +419,9 @@ function createPipelineCodeDagCoordinator(options = {}) {
   async function assertAssemblyIdentity(pipelineId, requestId) {
     const dag = await state.read(pipelineId);
     if (!dag) fail('DAG_NOT_FOUND', 'The task has no code-step DAG', 404);
-    await activeDagTask(pipelineId, dag);
-    const coordination = await ensureCoordination(pipelineId, dag);
-    if (requestId !== coordination.assemblyRequestId) fail('ASSEMBLY_REQUEST_MISMATCH', 'The exact assembly request is required', 409);
+    await boundDagTask(pipelineId, dag, true);
+    const coordination = dag.coordination;
+    if (!coordination || requestId !== coordination.assemblyRequestId) fail('ASSEMBLY_REQUEST_MISMATCH', 'The exact assembly request is required', 409);
     return dag;
   }
 
@@ -470,7 +473,7 @@ function createPipelineCodeDagCoordinator(options = {}) {
     return current;
   }
 
-  async function observeAttempt(pipelineId, dag, step) {
+  async function observeAttempt(pipelineId, dag, step, allowLaunch = true) {
     const attempt = latestAttempt(step);
     let host;
     try { host = await control.status({ requestId: attempt.requestId, executorId: attempt.executorId }); }
@@ -494,7 +497,7 @@ function createPipelineCodeDagCoordinator(options = {}) {
       return state.settleAttempt(pipelineId, { expectedRevision: dag.revision, requestId: attempt.requestId,
         outcome: 'unknown', actualUsage: clone(ZERO_USAGE), receipt: { reason: 'executor_outcome_unknown', observedAt: iso(clock) } });
     }
-    if (attempt.state === 'running' && ['not_received', 'resumable'].includes(phase)) {
+    if (allowLaunch && attempt.state === 'running' && ['not_received', 'resumable'].includes(phase)) {
       const workerManifest = await manifest(pipelineId, attempt.requestId);
       try {
         await control.launch({ pipelineId, requestId: attempt.requestId, expectedAttemptCount: workerManifest.expectedAttemptCount,
@@ -528,14 +531,21 @@ function createPipelineCodeDagCoordinator(options = {}) {
     if (!control) return null;
     let dag = await state.read(pipelineId);
     if (!dag || ['published', 'failed', 'blocked'].includes(dag.state)) return dag;
-    await activeDagTask(pipelineId, dag);
-    await ensureCoordination(pipelineId, dag);
+    await boundDagTask(pipelineId, dag, true);
+    let allowLaunch = true;
+    try { await activeDagTask(pipelineId, dag); }
+    catch (error) {
+      if (!['DAG_ROOT_NOT_ACTIVE', 'DAG_PRIVATE_SCOPE', 'TASK_INTAKE_REQUIRED', 'DAG_REVIEWED_SCOPE_CHANGED'].includes(error.code)) throw error;
+      allowLaunch = false;
+    }
+    if (allowLaunch) await ensureCoordination(pipelineId, dag);
     dag = await state.read(pipelineId);
 
     for (const step of dag.steps.filter(candidate => ['running', 'unknown'].includes(candidate.state))) {
-      const changed = await observeAttempt(pipelineId, dag, step);
+      const changed = await observeAttempt(pipelineId, dag, step, allowLaunch);
       if (changed) dag = changed.dag;
     }
+    if (!allowLaunch) return dag;
     const unsettled = dag.steps.some(step => ['running', 'unknown'].includes(step.state));
     const exhausted = dag.steps.find(step => step.state === 'failed' && step.attempts.length >= dagDomain.MAX_ATTEMPTS);
     if (!unsettled && exhausted) {
@@ -582,7 +592,8 @@ function createPipelineCodeDagCoordinator(options = {}) {
       const attempt = latestAttempt(step);
       if (!attempt || !['running', 'unknown'].includes(attempt.state)) return [];
       return [control.stop({ pipelineId, requestId: attempt.requestId, executorId: attempt.executorId, confirm: true })
-        .then(() => ({ requestId: attempt.requestId, accepted: true }))
+        .then(receipt => ({ requestId: attempt.requestId, accepted: receipt?.accepted === true,
+          ...(receipt?.accepted !== true && { code: 'CODING_DISPATCH_OUTCOME_UNKNOWN' }) }))
         .catch(error => ({ requestId: attempt.requestId, accepted: false, code: error?.code || 'CODING_DISPATCH_OUTCOME_UNKNOWN' }))];
     }));
   }

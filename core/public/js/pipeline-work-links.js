@@ -17,11 +17,26 @@
       <p>Installation : preuve à consulter séparément. Acceptation du résultat : non déduite de la fermeture du dossier ou de la fusion.</p>
       <p>Les tentatives et les fichiers conservent leurs propres preuves dans ce dossier.</p></section>`;
   }
+  function authorityMarkup(view) {
+    if (!view) return '';
+    const labels = { requester: 'Demandeur', accountableOwner: 'Responsable du résultat', assignee: 'Assigné à',
+      authorizer: 'Autorisation native', executor: 'Exécuteur natif', reviewer: 'Dernière revue' };
+    const grant = view.delegation;
+    return `<section aria-label="Acteurs et autorité"><h4>Acteurs et autorité</h4>
+      <p>Accès LAN privé : aucune identité humaine authentifiée. Les noms sont déclarés ; une identité d’exécuteur ou un bail ne prouve pas l’identité d’une personne.</p>
+      <dl>${Object.entries(labels).map(([key, label]) => `<dt>${label}</dt><dd>${esc(view.roles[key]?.nativeId || view.roles[key]?.declared || 'Non enregistré')}${view.roles[key]?.nativeId ? ' · identité native' : ''}</dd>`).join('')}</dl>
+      <p>${grant ? `Délégation : ${grant.currentScope ? 'périmètre courant, sous réserve des contrôles natifs' : 'nouveaux effets bloqués'} · révision ${esc(grant.revision)}.
+        Périmètre : ${esc(grant.scope.join(', ') || 'non enregistré')}. Budgets cumulés : ${esc(grant.cumulative.limits.modelCalls ?? '?')} appels modèle,
+        ${esc(grant.cumulative.limits.modelSeconds ?? '?')} s modèle. Compléments enregistrés : ${esc(grant.cumulative.grantCount)}.` : 'Aucune délégation de code enregistrée.'}</p>
+      <p>Une révocation bloque les nouveaux effets. Les reçus et résultats incertains se réconcilient auprès du propriétaire natif ; arrêter une exécution est une action distincte.</p>
+      <p>Demandes en cours ou à réconcilier : ${esc(view.unresolved.length)}. ${view.review.required ? 'Revue attendue.' : ''} La séparation de revue vérifie les noms déclarés ; elle ne prouve pas deux personnes distinctes.</p></section>`;
+  }
   function markup(task, reviewer = '') {
     const view = task.workView;
     if (!view) return '';
     return `<details class="pipeline-drawer-section pipeline-work-links" data-drawer-disclosure="work-links"><summary>Signalements, liens et résultats (${view.entries.length})</summary>
       <p>Un lien conserve la provenance. Il ne ferme aucun dossier et n’accorde aucune autorisation.</p>
+      ${authorityMarkup(view.authorityView)}
       <ul>${view.entries.map(row => `<li>${esc(relationLabels[row.relation] || row.relation)} : ${row.href
         ? `<a href="${esc(row.href)}"${row.reference.kind === 'github_issue' ? ' target="_blank" rel="noopener noreferrer"' : ''}>${esc(row.label)}</a>` : esc(row.label)}
         ${row.scopeCurrent ? '' : '<strong> · périmètre à relire</strong>'}
