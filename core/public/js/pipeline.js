@@ -650,6 +650,7 @@
 
   function drawerFieldKey(el) {
     const form = el.closest('form')?.dataset || {};
+    if (form.workLinks !== undefined) return `work:${el.name}${el.name === 'workOperation' ? `:${form.revision}:${form.scope}` : ''}`;
     if (form.intakeDecision !== undefined) return `intake:${el.name}${el.name === 'state' ? `:${form.revision}:${form.scope}` : ''}`;
     const context = el.name === 'reportScopeComplete' ? form.reportContext
       : ['reportName', 'modelCallLimit', 'resumeReport'].includes(el.name) ? form.profileContext : null;
@@ -662,6 +663,7 @@
       scrollTop: body.scrollTop,
       fields: fields.map(el => ({ key: drawerFieldKey(el), value: el.value,
         contextBound: ['reportScopeComplete', 'reportName', 'modelCallLimit', 'resumeReport'].includes(el.name)
+          || (el.name === 'workOperation' && el.closest('form')?.dataset?.workLinks !== undefined)
           || (el.name === 'state' && el.closest('form')?.dataset?.intakeDecision !== undefined),
         checked: el.checked, focused: el === document.activeElement, start: el.selectionStart, end: el.selectionEnd })),
       details: Array.from(body.querySelectorAll('details')).map((el, index) => ({ key: drawerDisclosureKey(el, index), open: el.open }))

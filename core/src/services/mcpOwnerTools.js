@@ -29,6 +29,11 @@ const TOOLS = [
     { pipelineId: string(120), query: string(120), limit: integer(50) }),
   tool('pipeline_artifacts', 'List a task\'s registered deliverables or read one verified UTF-8 text deliverable. Lists distinguish present-unverified from verified content. Binary files return their registered receipt, not invented content.',
     { pipelineId: string(120), deliverableId: string(24) }, ['pipelineId']),
+  tool('work_relationships', 'Inspect Core engineering source links and native outcome observations, or find tasks by an exact qualified report reference before filing duplicate work. Title similarity is not identity. Conversation references are declared provenance, not transcript access. This read never contacts GitHub, synchronizes status, accepts work or grants execution.',
+    { action: { type: 'string', enum: ['task', 'lookup'] }, pipelineId: string(4), limit: integer(50), offset: integer(64, 0),
+      reference: object({ kind: { type: 'string', enum: ['github_issue', 'conversation', 'pipeline_task'] }, repository: string(201),
+        number: integer(Number.MAX_SAFE_INTEGER), runtime: { type: 'string', enum: ['agentx', 'codex', 'claude', 'openclaw', 'hermes', 'chatgpt'] },
+        id: string(160), pipelineId: string(4) }, ['kind']) }, ['action']),
   tool('consult_team', 'Consult an installed native collaborator with its tools and permissions. secretary: live Gmail/actions; comptable: ledger/budgets/alerts; leadx: Pipeline; cloudx: approved heavy reasoning; main: existing SuperDad workflows including Web reading and coding delegation. Use direct Core tools when sufficient. request starts one async run; status reads its result. Generate one UUID requestId per authorized request and retain it across all retries. Poll status; dispatch/running/uncertain is NOT completion. Never replace an uncertain request. Include the full owner request and relevant context. Mail sending and destructive actions require explicit owner authorization; existing specialist approvals and heavy-work admission remain in force.',
     { action: { type: 'string', enum: ['request', 'status'] }, requestId: { type: 'string', format: 'uuid' },
       member: { type: 'string', enum: ['secretary', 'comptable', 'leadx', 'cloudx', 'main'] }, question: string(8000) }, ['action', 'requestId'], false),
@@ -68,6 +73,12 @@ const HANDLERS = {
   work_queue: input => require('./nestorWorkQueue').operate(input, 'owner-mcp'),
   pipeline_tasks: pipelineTasks,
   pipeline_artifacts: pipelineArtifacts,
+  work_relationships: input => {
+    const service = require('./pipelineWorkReferences');
+    if (input.action === 'task' && input.pipelineId && !input.reference) return service.read(input.pipelineId, { limit: input.limit, offset: input.offset });
+    if (input.action === 'lookup' && input.reference && !input.pipelineId && input.offset === undefined) return service.lookup(input.reference, input.limit);
+    throw bad('Choose one task ID or one exact reference for lookup.');
+  },
   consult_team: async input => {
     if (input.action === 'request' && input.member === 'cloudx') {
       const gate = await require('./mcpSkillBus').callTool({ name: 'get_escalation_recommendation', arguments: {} });

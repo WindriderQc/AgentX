@@ -16,7 +16,8 @@ const SUMMARY_FIELD_LIST = [
   'automationAttempts.evidence.inference.state automationAttempts.evidence.inference.cause transitionSeq',
   'codingAutonomy.authorized codingAutonomy.disposition.kind codingAutonomy.disposition.outcome',
   'feedback.workerOutcome feedback.reportOutcome codingResult',
-  'spec profileId origin intake.state intake.revision intake.scopeFingerprint'
+  'spec profileId origin intake.state intake.revision intake.scopeFingerprint workLinks.revision',
+  'workLinks.entries.key workLinks.entries.reference workLinks.entries.relation workLinks.entries.scopeFingerprint'
 ].join(' ');
 // Summary reads carry only the most recent transitions; the store keeps more.
 const SUMMARY_FIELDS = {
@@ -53,7 +54,7 @@ async function projectTaskRows(tasks, { summary = false, now = new Date(), refer
   const dependencyStatuses = await loadDependencyStatuses(tasks);
   const options = { now, dependencyStatuses };
   return Promise.all(tasks.map(async task => redactTaskLeaseIds(summary ? taskSummaryWithTimeline(task, options)
-    : { ...task, intakeView: intake.view(task), nextAction: taskNextAction(task, options), transitionLog: transitionLog(task), plan: planView(task),
+    : { ...task, workView: require('./pipelineWorkReferencePolicy').view(task, { outcomes: true }), intakeView: intake.view(task), nextAction: taskNextAction(task, options), transitionLog: transitionLog(task), plan: planView(task),
       ...(task.codingReportAuthority ? { reportBudget: await require('./pipelineReportAuthority').projection(task) } : {}),
       ...(references ? { evidenceReferences: taskEvidenceReferences(task) } : {}) })));
 }

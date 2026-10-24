@@ -50,6 +50,16 @@ work. Existing domain-approved promotions retain their recorded acceptance,
 and legacy work without a decision keeps its existing policy. Do not invent an
 old approval or authenticate a declared actor name.
 
+To inspect work already linked to a report, use the owner `work_relationships` capability
+when advertised, or Core's exact-reference lookup. Qualify GitHub issues by
+repository and number; conversation references need runtime and opaque ID.
+Similar titles are not identity. Inspect existing scope before linking or
+proposing another task. Report admission retains its original UUID and stable
+scopeKey across retries. Never replace an uncertain result with another UUID.
+Link review does not accept a need, cancel a native attempt or authorize
+external status changes. Preserve the separate observations for task closure,
+PR merge, installation and outcome acceptance. See `docs/WORK_RELATIONSHIPS.md`.
+
 For heavy-work reads, use Core `summary.counts` before pagination to distinguish
 `automatic_queue` from `action_required`, recorded dispatch/execution and
 uncertainty. A reservation is independent of the start mode. Explain the actor

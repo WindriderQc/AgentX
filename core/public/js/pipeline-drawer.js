@@ -201,6 +201,7 @@
       </div>
       <p class="pipeline-drawer-byline">${escapeHtml(task.assignee ? `Assigned to ${task.assignee}` : 'Not assigned')}${task.dueAt ? ` · Due ${escapeHtml(formatDate(task.dueAt))}` : ''}</p>
       ${window.PipelineIntake?.markup(task, reviewer) || ''}
+      ${window.PipelineWorkLinks?.markup(task, reviewer) || ''}
       <div class="pipeline-drawer-workspace" data-dossier-mode="${mode}">
         <div class="pipeline-drawer-content">
           ${window.PipelineDossierActivity.markup(task, activity, formatDate)}
@@ -261,6 +262,8 @@
       </div></details>
     `;
     if (draft) restoreDrawerDraft(body, draft);
+    const workForm = window.PipelineWorkLinks ? body.querySelector('form[data-work-links]') : null;
+    if (workForm) window.PipelineWorkLinks?.updateKind(workForm);
     window.PipelineWorkerMonitor?.render({ $: id => document.getElementById(id), controller: state.launchController, task });
     const unsentAnswer = draft?.fields.find(field => field.key === 'reply-resume:answer' && field.value.trim());
     if (unsentAnswer && !body.querySelector('form[data-drawer-action="reply-resume"]')) {

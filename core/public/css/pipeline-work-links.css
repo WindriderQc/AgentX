@@ -1,0 +1,9 @@
+.pipeline-work-links { overflow-wrap: anywhere; }
+.pipeline-work-links > summary { cursor: pointer; font-weight: 600; }
+.pipeline-work-links a { color: var(--accent, #74dfec); }
+.pipeline-work-links > ul { padding-inline-start: 1.3rem; }
+.pipeline-work-links li { margin-block: .8rem; }
+.pipeline-work-links li p { color: var(--text-secondary, #b7c2d0); font-size: .9rem; }
+.pipeline-work-links fieldset { border: 0; padding: 0; margin: 0; min-inline-size: 0; }
+.pipeline-work-links fieldset:not([hidden]) { display: grid; gap: .8rem; }
+.pipeline-work-links input, .pipeline-work-links select, .pipeline-work-links textarea { min-width: 0; }
