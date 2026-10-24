@@ -221,13 +221,16 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     if (!isNativeToolCallId(callId) || !nativeTaskRead(canonical.request)) return canonical;
     try {
       const read = await readTasks(context, {}, callId, 'boss');
-      return { ...canonical, receiptIds: [...new Set([...canonical.receiptIds, read.receipt.id])],
-        receipt: read.receipt, data: read.data };
+      // Native tool relays may bound their rendered output. Put the fresh
+      // verified read before the complete retained historical context, whose
+      // earlier counts must not obscure this request's authoritative result.
+      return { receipt: read.receipt, data: read.data, ...canonical,
+        receiptIds: [...new Set([...canonical.receiptIds, read.receipt.id])] };
     } catch (cause) {
       // A domain outage does not remove the rest of Main's shared context.
       // Binding, erasure and write-fence failures retain their native refusal.
       if (cause.code !== 'CONVERSATION_WORK_READ_UNAVAILABLE') throw cause;
-      return { ...canonical, taskRead: { status: 'unavailable', code: cause.code } };
+      return { taskRead: { status: 'unavailable', code: cause.code }, ...canonical };
     }
   }
   async function publish(context, input) {

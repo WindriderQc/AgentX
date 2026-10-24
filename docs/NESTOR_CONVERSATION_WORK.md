@@ -105,6 +105,12 @@ intent-amendment or native-approval bridge tracked in #664.
 The complete-context and capacity guarantees below apply to native Main and
 legacy workers alike, preserving each mode's execution permissions.
 
+For a verified contextual task read, Core serializes the current receipt and
+data before historical context. An unavailable read likewise appears first.
+This keeps the current observation visible in a native relay's bounded rendered
+head; the complete Core response and initial Main context remain available and
+unchanged. Earlier historical counts are not a substitute for the current read.
+
 The host-only `native_owner` probe resolves image operations to the original
 canonical owner session. Both `local_image` and `imagex` preserve the actual
 native run/call action identity; their model parameters cannot select an owner.
