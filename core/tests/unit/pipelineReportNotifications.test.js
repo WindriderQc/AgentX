@@ -32,9 +32,9 @@ describe('private report alerts', () => {
 
 describe('continuation switch display', () => {
   it('states the switch, the active continuation and an unavailable runner plainly', () => {
-    expect(ui.statusText({ enabled: false, available: true, active: null })).toBe('Off · nothing in progress');
+    expect(ui.statusText({ enabled: false, available: true, active: null })).toBe('Global chaining off; task-specific agreements still apply · nothing in progress');
     expect(ui.statusText({ enabled: true, available: true, active: { pipelineId: '0939', requestId: 'abc' } }))
-      .toBe('On · continuing task 0939 (request abc)');
+      .toBe('Global chaining on · continuing task 0939 (request abc)');
     expect(ui.statusText({ enabled: true, available: false, active: null })).toContain('the coding runner is unavailable');
   });
 });

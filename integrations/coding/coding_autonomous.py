@@ -16,6 +16,7 @@ def load(name):
 coding_git = load('coding_git')
 coding_publication = load('coding_publication')
 coding_code_steps = load('coding_code_steps')
+coding_direct_plan = load('coding_direct_plan')
 coding_code_ledger = load('coding_code_ledger')
 coding_verification = load('coding_verification')
 coding_step_progress = load('coding_step_progress')
@@ -38,6 +39,7 @@ def _bounded_task(task, manifest):
             'spec': str(task.get('spec') or '')[:8_000],
             'discussion': discussion[-4_000:],
             'planning': str((task.get('planningContext') or {}).get('text') or '')[:3_000],
+            'acceptanceCriteria': (manifest.get('qualification') or {}).get('acceptanceCriteria', []),
             'correction': manifest.get('correction') if isinstance(manifest.get('correction'), dict) else None}
 
 
@@ -215,6 +217,13 @@ def _prepare_ledger(r, workspace, task_id, key, task, manifest, progress, budget
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     output = root / 'code-plan.json'
     if not output.exists():
+        direct = coding_direct_plan.build(workspace, manifest, capability)
+        if direct is not None:
+            r.coding_dispatch_control.atomic_json(output, direct)
+            r.coding_dispatch_control.atomic_json(root / 'code-plan-source.json', {
+                'schema': 'agentx.coding-plan-source/v1', 'strategy': 'runner_bounded_pair',
+                'planningModelCalls': 0, 'planSha256': hashlib.sha256(output.read_bytes()).hexdigest()})
+    if not output.exists():
         calls_left = progress.call_limit() - progress.model_calls
         implementation_reserve = max(IMPLEMENTATION_CALL_RESERVE,
                                      min(budget['maxSteps'], max(0, calls_left - 1)))
@@ -228,6 +237,7 @@ def _prepare_ledger(r, workspace, task_id, key, task, manifest, progress, budget
         calls = min(PLANNER_CALLS, available)
         seconds = min(PLANNER_SECONDS, max(1, int(min(progress.hard_deadline, progress.queue_deadline) - progress.now())))
         progress.begin_step(calls, seconds, f'/home/agent/deliverables/{key}/code-plan.json')
+        started_calls = progress.model_calls
         try:
             run = r.run_worker(workspace, prompt, seconds, progress, model=r.MODEL, read_only=True)
         finally:
@@ -235,6 +245,8 @@ def _prepare_ledger(r, workspace, task_id, key, task, manifest, progress, budget
         if not getattr(progress, 'role_drained', True):
             raise RuntimeError('Planner model termination is unverified')
         if run.returncode or progress.check_stop():
+            if not progress.stop_reason and progress.model_calls - started_calls >= calls:
+                progress.stop_reason = 'planner_budget_exhausted'
             raise RuntimeError('The planner stopped before writing a code-step plan')
     if not output.is_file() or output.is_symlink() or output.stat().st_size > coding_code_steps.MAX_PLAN_BYTES:
         raise coding_code_steps.CodePlanError('Planner did not write one bounded regular plan file')

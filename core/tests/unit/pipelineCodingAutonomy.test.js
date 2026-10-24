@@ -20,8 +20,8 @@ let observations;
 const app = express().use(express.json()).use('/api/pipeline', require('../../routes/pipeline-feedback'));
 function intent() {
   return normalizePipelineAutomationIntent({ schema: 'agentx.pipeline-automation/v1', mode: 'review_only',
-    policyRef: 'reviewed/v1', dataClassification: 'public', operations: ['update'], scope: ['source.js'],
-    lockKeys: ['file:source.js'], executionProfile: 'coding-sandbox/v1', verificationProfile: 'agentx-dispatcher-tests/v1',
+    policyRef: 'reviewed/v1', dataClassification: 'public', operations: ['update'], scope: ['integrations/coding/source.py'],
+    lockKeys: ['file:integrations/coding/source.py'], executionProfile: 'coding-sandbox/v1', verificationProfile: 'agentx-dispatcher-tests/v1',
     budgets: { maxDurationMs: 14400000, maxAttempts: 3, maxCostNanodollars: 0 }, humanGates: ['review', 'merge', 'deploy'] });
 }
 async function task(id = '0001', extra = {}) {
@@ -29,7 +29,9 @@ async function task(id = '0001', extra = {}) {
     service: 'agentx-coding', status: 'queued', risk: 'low', assignee: null, automation: intent(), ...extra });
 }
 async function authorize(id = '0001', limits) {
-  return service.authorize(id, { authorized: true, confirm: true, expectedRevision: 0, queueRequestId: QUEUE, limits });
+  return service.authorize(id, { authorized: true, confirm: true, expectedRevision: 0, queueRequestId: QUEUE, limits,
+    qualification: { acceptanceCriteria: ['The fixture behavior passes independent checks.'], requiredCapabilities: ['source_read', 'source_write', 'cpu_tests'],
+      estimate: { modelCalls: 1, workSeconds: 10 } } });
 }
 async function enable() { const state = await service.settings(); return service.configure({ enabled: true, confirm: true, expectedRevision: state.revision }); }
 async function selected() { return (await service.status()).active; }

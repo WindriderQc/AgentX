@@ -3,6 +3,7 @@ const { randomUUID } = require('node:crypto');
 const Task = require('../../models/PipelineTask');
 const Settings = require('../../models/PipelineCodingAutonomy');
 const policy = require('./pipelineCodingAutonomyPolicy');
+const readiness = require('./pipelineCodingReadiness');
 const { taskEligibilityReasons } = require('./pipelineTaskEligibility');
 const { loadDependencyStatuses } = require('./pipelineTaskService');
 const { recordTransition, buildTransition } = require('./pipelineTaskTransitions');
@@ -25,6 +26,14 @@ async function readTask(id) {
   const task = await Task.findOne({ pipelineId: id }).lean();
   if (!task) throw policy.fail('Task not found', 'NOT_FOUND', 404);
   return task;
+}
+async function assessReadiness(id, input = {}) {
+  const task = await readTask(id);
+  const state = task.codingAutonomy;
+  if (input.scope || input.verificationProfile) task.automation = { ...task.automation,
+    ...(input.scope && { scope: input.scope }), ...(input.verificationProfile && { verificationProfile: input.verificationProfile }) };
+  const proposed = input.qualification ?? (state?.qualification?.taskBasis === readiness.taskBasis(task) ? state.qualification.definition : null);
+  return readiness.assess(task, input.limits ? policy.limits(input.limits) : state ? policy.totalLimits(state) : null, proposed);
 }
 async function save(task, state, extra = {}, transition, guard = {}) {
   const query = { ...guard, pipelineId: task.pipelineId, 'codingAutonomy.revision': task.codingAutonomy?.revision ?? null };
@@ -82,15 +91,17 @@ async function authorize(id, input) {
     throw policy.fail('Autonomy scope is full; preserve its existing history');
   if (existing?.runs?.length && input.authorized) throw policy.fail('Completed/stopped campaigns cannot be reset; reconcile their original evidence');
   if (input.authorized && !UUID.test(input.queueRequestId || '')) throw policy.fail('Name the approved heavy-work campaign', 'CODING_AUTONOMY_INVALID', 400);
+  const qualification = input.authorized ? readiness.assertReady(task, policy.limits(input.limits), input.qualification) : null;
   const state = existing || { schema: 'agentx.pipeline-coding-autonomy/v1', revision: 0, runs: [], spent: {},
     observations: [], seenDiagnostics: [], seenStates: [], seenTests: [], manualInterventions: [] };
   if (!input.authorized) state.spent = ciSpent(state);
   Object.assign(state, { authorized: input.authorized, authorizedAt: state.authorizedAt || new Date().toISOString(),
     state: input.authorized ? 'queued' : 'stopped', reason: input.authorized ? null : 'authorization_removed' });
-  if (input.authorized) Object.assign(state, { basis: policy.basis(task), limits: policy.limits(input.limits), queueRequestId: input.queueRequestId });
+  if (input.authorized) Object.assign(state, { basis: policy.basis(task), limits: policy.limits(input.limits), queueRequestId: input.queueRequestId,
+    qualification: { taskBasis: qualification.taskBasis, definition: qualification.definition } });
   // Removing authorization fences future resumes. An active worker is separately stopped.
   return projection(await save(task, state, extra, undefined,
-    input.authorized ? require('./taskIntakePolicy').guard({}, task) : {}));
+    input.authorized ? require('./taskIntakePolicy').guard({ updatedAt: task.updatedAt }, task) : { updatedAt: task.updatedAt }));
 }
 function failedCIWatch(state) {
   return state.authorized && state.correction?.kind === 'failure'
@@ -136,6 +147,7 @@ function projection(task) {
     ciObservationActive: Boolean(state.pr && last?.finishedAt && !task.automationLease && !task.codingCapacity
       && ['review', 'blocked'].includes(task.status) && (state.state === 'waiting_ci' || failedCIWatch(state))),
     scope: task.automation.scope, verificationProfile: state.verificationProfile || task.automation.verificationProfile,
+    readiness: readiness.assess(task, policy.totalLimits(state), state.qualification?.taskBasis === readiness.taskBasis(task) ? state.qualification.definition : null),
     queueRequestId: state.queueRequestId, limits: state.limits, totalLimits: policy.totalLimits(state), budgetGrants: state.budgetGrants || [],
     authorizationRevision: state.revision, authorized: state.authorized, state: state.state, reason: state.reason,
     resumes: Math.max(0, state.runs.length - 1), remaining, pr: state.pr || null,
@@ -182,13 +194,15 @@ async function workerManifest(id, requestId) {
   policy.assertTask(task);
   if (!state?.authorized || terminal.has(state.state) || run?.requestId !== requestId || !config.active
     || config.active.requestId !== requestId || state.basis !== policy.basis(task)) throw policy.fail('This execution no longer has task authority');
+  readiness.assertReady(task, policy.totalLimits(state), state.qualification?.taskBasis === readiness.taskBasis(task) ? state.qualification.definition : null);
   const job = await campaign(task, task.codingCapacity?.host);
   return { queueEndAt: job.reservation.end, pipelineId: id, requestId, parentRequestId: run.parentRequestId, remaining: policy.remaining(task),
     limits: { ...state.limits, maxResumes: policy.totalLimits(state).maxResumes }, verificationProfile: state.verificationProfile || task.automation.verificationProfile, spent: policy.spent(state), lastUsefulWorkSeconds: state.lastUsefulWorkSeconds || 0,
     progressWindowStartedAtWorkSeconds: state.progressWindowStartedAtWorkSeconds || 0,
     continuationCheckpoint: (state.budgetGrants || []).find(grant => grant.parentRequestId === run.parentRequestId)?.head || null,
     seenStates: state.seenStates, seenTests: state.seenTests, pr: state.pr || null,
-    scope: task.automation.scope, correction: state.correction || null, queueRequestId: state.queueRequestId };
+    scope: task.automation.scope, qualification: state.qualification.definition,
+    correction: state.correction || null, queueRequestId: state.queueRequestId };
 }
 async function clearActive(requestId) {
   await Settings.updateOne({ _id: ID, 'active.requestId': requestId, 'active.recovery': { $exists: false } },
@@ -273,6 +287,9 @@ async function select(config) {
         { to: 'queued', kind: 'requeued', channel: 'task_preparation', reason: 'Core bounded correction', declaredActor: 'core-coding-autonomy' });
     }
     if (policy.exhausted(task)) { await block(task, `cumulative_${policy.exhausted(task)}`); continue; }
+    try { readiness.assertReady(task, policy.totalLimits(task.codingAutonomy),
+      task.codingAutonomy.qualification?.taskBasis === readiness.taskBasis(task) ? task.codingAutonomy.qualification.definition : null); }
+    catch (error) { await block(task, error.code || 'CODING_TASK_NOT_READY'); continue; }
     if (taskEligibilityReasons(task, { now: new Date(), automated: true, dependencyStatuses: dependencies }).length) continue;
     try { await campaign(task); } catch { continue; }
     let executor = null;
@@ -511,7 +528,7 @@ async function tick() {
   } finally { ticking = false; }
 }
 module.exports = { configureControl, settings, configure, authorize, status, projection, workerManifest,
-  stop, recordReview, recover, continueRecovered, tick, campaign, save, readTask, UUID,
+  stop, recordReview, recover, continueRecovered, tick, campaign, save, readTask, assessReadiness, UUID,
   submitCodeStepPlan: codeDagCoordinator.submitPlan,
   storeCodeStepArtifact: codeDagCoordinator.storeArtifact,
   downloadCodeStepArtifact: codeDagCoordinator.downloadArtifact,

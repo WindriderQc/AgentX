@@ -280,7 +280,7 @@ async function observeCampaign(job) {
   const outcome = latestOutcome(task);
   if (!outcome || !ours.has(outcome.requestId)) return { terminal: false, operationId };
   const continuation = require('./pipelineReportContinuationService');
-  const decision = continuation.decide(task);
+  const decision = await continuation.decision(task);
   const pending = (task.reportContinuation?.runs || []).some(row => !row.finishedAt);
   const windowOpen = Date.now() < Date.parse(job.reservation.end);
   if (pending || (decision.action === 'continue' && windowOpen && await continuation.wouldContinue(task))) return { terminal: false, operationId };

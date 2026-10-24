@@ -289,7 +289,8 @@ async function stop(id, key, body) {
     archived = { deliverableId: receipt.id, sha256: receipt.sha256, size: receipt.size };
   }
   const summary = { schema: 'agentx.pipeline-report-result/v1', requestId: key, claimSeq: value.claimSeq, kind: 'blocked', reason: workerOutcome.reason,
-    reportName: value.reportName, sourceCommit: value.sourceCommit, specSha256: value.specSha256, ...(archived ? { partial: archived } : {}) };
+    reportName: value.reportName, sourceCommit: value.sourceCommit, specSha256: value.specSha256,
+    progress: await require('./pipelineReportProgress').read(value), ...(archived ? { partial: archived } : {}) };
   const entry = { by: 'coding-team', at: new Date(), reportOutcome: summary, workerOutcome,
     text: archived ? 'Report worker stopped. Its partial draft is saved in task files; requested scope remains incomplete.'
       : 'Report worker stopped without a registered partial draft; requested scope remains incomplete.' };

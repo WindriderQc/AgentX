@@ -18,6 +18,12 @@ Pipeline also provides the explicitly authorized, disabled-by-default
 claims/capacity, prepares current Git versions, verifies and updates the same
 PR, observes exact-commit CI and gives the Coding Team bounded correction turns.
 Its cumulative budgets and durable publication/native receipts survive resumes.
+Autonomous authorization also requires Core's deterministic
+[feasibility assessment](../../docs/CODING_AUTONOMY.md#feasibility-before-authorization):
+observable acceptance criteria, required capabilities and reviewed estimates.
+The planner and implementation sessions receive those criteria. This catches
+unsupported access, mismatched verification and work outside its envelope
+without invoking a model; it does not predict whether a model will solve it.
 The manual path below stays available; it does not turn routing or idea intake
 into autonomous authorization.
 
@@ -168,6 +174,14 @@ and runs several short worker sessions in fresh context:
   Corrections can also replace an existing evidence check exactly, after the
   runner verifies its source hash and line. They retain the original text in
   the step receipt and cannot change coverage states or source references.
+
+Core uses accepted coverage, including line ranges, to decide whether another
+execution made material progress. Different report bytes alone are insufficient.
+Per-document stall counts survive continuations: two attempted executions that
+add no source coverage exhaust that obligation. Untouched groups keep their
+allowance. If only exhausted scope remains, the runner saves the partial result
+without starting another model or final writer; review or split that remaining
+work before a new bounded task.
 
 When calls or time run short with documents left, the execution stops with
 `model_call_limit` or `hard_budget` and archives the partial report for a
@@ -360,9 +374,14 @@ background request would compete with the coding turn.
 An inactive host unit without a terminal receipt remains `unknown`; it is not
 evidence that the task completed.
 
-Autonomous code changes are runner-owned steps. A read-only planning role writes
-one bounded private plan from the authorized file manifest. The runner validates
-it, keeps an atomic private ledger and launches a fresh coding context for each
+Autonomous code changes are runner-owned steps. A reviewed pair of existing
+source/test files totalling at most 64 KiB, with one matching native test target
+and sufficient lane file capacity, becomes one runner-owned step without a model
+planning call. A private plan-source receipt identifies this path. Other scopes
+use the bounded read-only planner with `/workspace` as its source root. Exhausting
+that local allowance records `planner_budget_exhausted`, without extra credit.
+The runner validates either plan, keeps an atomic private ledger and launches
+a fresh coding context for each
 dependency-ready step. Each successful step has exactly one runner-created commit
 and one focused-test receipt. The planner and implementers cannot supply commands,
 broaden paths, commit or publish. Failed edits are retained in a private stash

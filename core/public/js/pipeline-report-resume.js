@@ -71,7 +71,7 @@
       </fieldset>
       <p class="pipeline-resume-budget">Up to <strong>${esc(maximumCalls)}</strong> model calls in <strong>${esc(budget.executions)}</strong> ${budget.executions === 1 ? 'execution' : 'executions'}, about <strong>${esc(duration(budget.minutes || 0))}</strong> of work${route}.
         This is a safety net: it ends sooner when the report is done, and stops with an alert when a pass saves nothing new. The remaining task budget also applies.</p>
-      <label class="pipeline-resume-check"><input type="checkbox" name="autoContinue" checked> Chain the executions automatically until the report is done</label>
+      <label class="pipeline-resume-check"><input type="checkbox" name="autoContinue"${view.campaign?.state === 'reserved' && view.resume?.autoContinue === true ? ' checked' : ''}> Allow another execution only while verified source coverage advances</label>
       <label class="pipeline-resume-check"><input type="checkbox" name="allowCloudEscalation"> Send failed steps to the cloud${cap ? ` (cap ${esc(cap)} per task)` : ''}${view.escalation && !view.escalation.enabled ? ' · cloud escalation is off globally, so this applies once it is on' : ''}</label>
       <div class="pipeline-resume-actions"><button type="submit" class="pipeline-btn primary">${view.campaign?.state === 'reserved' ? 'Replan' : 'Resume'}</button>
         <span class="pipeline-resume-error" role="alert"></span></div>` : ''}

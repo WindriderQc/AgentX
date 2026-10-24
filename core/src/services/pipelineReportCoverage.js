@@ -26,8 +26,14 @@ function coverage(value, snapshot) {
         || !HASH.test(ref.sha256 || '') || !Number.isSafeInteger(ref.line) || ref.line < 1
         || typeof ref.check !== 'string' || !ref.check.trim() || ref.check.length > 1000))
       throw fail('Reviewed documents need concrete source references; unresolved scope stays visible', 'REPORT_COVERAGE_INVALID', 400);
+    const ranges = row.ranges;
+    if (ranges !== undefined && (!Array.isArray(ranges) || ranges.length > 2000 || ranges.some((range, index) =>
+      !Array.isArray(range) || range.length !== 2 || !range.every(Number.isSafeInteger)
+      || range[0] < 1 || range[1] < range[0] || range[1] > 1000000 || (index && range[0] <= ranges[index - 1][1]))))
+      throw fail('Reviewed ranges must be ordered, bounded and non-overlapping', 'REPORT_COVERAGE_INVALID', 400);
     return { path: row.path, sha256: row.sha256, state: row.state,
-      evidence: row.evidence.map(ref => ({ path: ref.path, sha256: ref.sha256, line: ref.line, check: ref.check })) };
+      evidence: row.evidence.map(ref => ({ path: ref.path, sha256: ref.sha256, line: ref.line, check: ref.check })),
+      ...(ranges !== undefined && { ranges: ranges.map(range => [...range]) }) };
   });
   return { inventorySha256: snapshot.sha256, documents,
     declaredComplete: documents.every(row => row.state === 'reviewed'), acceptance: 'independent_review_required' };

@@ -107,6 +107,8 @@ class PlanValidationTest(unittest.TestCase):
         prompt = steps.plan_prompt({"title": "Bound work"}, {"scope": self.scope}, "/private/plan.json", budget)
         self.assertIn("Do not edit source files", prompt)
         self.assertIn("/private/plan.json", prompt)
+        self.assertIn('repository is /workspace', prompt)
+        self.assertIn('passing focused tests before committing each step', prompt)
         self.assertIn("core/src/parser.js", prompt)
         self.assertNotIn("focused test command", prompt)
         turn = steps.step_prompt({"title": "Bound work"}, proposed_plan()["steps"][0],

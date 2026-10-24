@@ -114,12 +114,17 @@ test('reviewed continuation sends the original checkpoint and intent with explic
   expect(form).toBeDefined();
   const field = title => descendants(form).find(n => n.textContent === title).children[0];
   field('New approved coding campaign').value = KEY;
+  field('Observable acceptance criteria, one per line').value = 'The exact preserved failure is corrected.';
+  field('Estimated remaining work minutes').value = '10';
+  field('Estimated remaining model calls').value = '8';
   descendants(form).find(n => n.textContent.startsWith('Correction based')).children[0].value = 'Fix the exact preserved test failure.';
   await form.events.submit({ preventDefault() {} }); await flush();
   const mutation = calls.find(call => call.options.method === 'POST');
   expect(mutation.url).toBe(`/api/pipeline/coding-autonomy/tasks/0001/runs/${KEY}/continuation`);
   expect(JSON.parse(mutation.options.body)).toMatchObject({ expectedRevision: 12, expectedNativeAttemptLimit: 3,
     nativeAttemptLimit: 4, expectedAutomationFingerprint: 'b'.repeat(64), head: 'a'.repeat(40), additionalRuns: 1,
+    qualification: { acceptanceCriteria: ['The exact preserved failure is corrected.'],
+      requiredCapabilities: ['source_read', 'source_write', 'cpu_tests'], estimate: { workSeconds: 600, modelCalls: 8 } },
     budget: { workSeconds: 3600, testSeconds: 900, modelSeconds: 1800, modelCalls: 32, ciSeconds: 900 } });
 });
 test('a merged PR offers authorization withdrawal and refuses another review correction in the UI', async () => {
@@ -189,6 +194,8 @@ test('authorization submits reduced cumulative budgets and the installed Benchma
   form.values = authorizationValues({ pipelineId: '0001', queueRequestId: KEY,
     scope: ' benchmark/src/services/benchmark/artifactComparison.js \n\nbenchmark/tests/unit/benchmark/artifactComparison.test.js',
     verificationProfile: 'agentx-benchmark-artifact-tests/v1', maxResumes: '0', workMinutes: '20',
+    acceptanceCriteria: 'Expected artifact comparison is reproduced.\nExisting behavior remains valid.',
+    requiredCapabilities: 'source_read\nsource_write\ncpu_tests', estimatedWorkMinutes: '10', estimatedModelCalls: '12',
     testMinutes: '5', modelMinutes: '10', modelCalls: '17', ciMinutes: '8', noProgressMinutes: '3' });
   form.events.submit({ target: form, preventDefault() {} }); await flush();
   expect(calls.some(call => call.options.method === 'POST')).toBe(false);
@@ -200,6 +207,8 @@ test('authorization submits reduced cumulative budgets and the installed Benchma
   expect(body).toMatchObject({ confirm: true, authorized: true, lowRisk: true, expectedRevision: 12,
     queueRequestId: KEY, verificationProfile: 'agentx-benchmark-artifact-tests/v1',
     scope: ['benchmark/src/services/benchmark/artifactComparison.js', 'benchmark/tests/unit/benchmark/artifactComparison.test.js'],
+    qualification: { acceptanceCriteria: ['Expected artifact comparison is reproduced.', 'Existing behavior remains valid.'],
+      requiredCapabilities: ['source_read', 'source_write', 'cpu_tests'], estimate: { workSeconds: 600, modelCalls: 12 } },
     limits: { maxResumes: 0, workSeconds: 1200, testSeconds: 300, modelSeconds: 600,
       modelCalls: 17, ciSeconds: 480, noProgressSeconds: 180 } });
   expect(require('../../src/services/pipelineCodingAutonomyPolicy').limits(body.limits)).toEqual(body.limits);

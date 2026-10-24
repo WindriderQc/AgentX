@@ -137,6 +137,19 @@ function stopped(key, partial) {
 function upload(text, name = 'fixture.md') {
   return { by: 'operator-fixture', name, sha256: digest(text), dataUrl: 'data:text/markdown;base64,' + Buffer.from(text).toString('base64') };
 }
+test('Core derives stop progress from accepted coverage and ignores a caller claim about report bytes', async () => {
+  const { task } = await fixture(), intent = await claim(task), key = id();
+  await reports.start('0001', key, intent);
+  const body = stopped(key, upload('# Administrative changes only\n'));
+  body.progress = { verified: true, advanced: true, addedUnits: 999 };
+  const result = await reports.stop('0001', key, body);
+  expect(result.outcome.progress).toMatchObject({ verified: true, advanced: false, addedUnits: 0 });
+  expect((await Run.findById(key).lean()).result.progress).toEqual(result.outcome.progress);
+  body.progress.advanced = false;
+  const replay = await reports.stop('0001', key, body);
+  expect(replay).toMatchObject({ alreadyRecorded: true, outcome: result.outcome });
+  expect(control.launch).not.toHaveBeenCalled();
+});
 async function nextGrant(task, key, selected) {
   control.status.mockResolvedValue({ busy: false, run: { pipelineId: '0001', requestId: key, phase: 'finished',
     progress: { phase: 'finished', coreRecorded: true } } });

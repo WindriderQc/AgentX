@@ -107,7 +107,12 @@ reserves a slot Core chooses (`GET /:id/place?when=…` previews it, read-only):
   (`HEAVY_WORK_NIGHT_WINDOW`, default `23:00-06:00`, in `PLANNING_TIME_ZONE`);
 - `at`: exactly `at`.
 
-Placement treats a machine as one resource: work reserved or running on any of
+Both operations return `HEAVY_QUEUE_CONFLICT` with the blocking requests while
+related work is dispatching, running or uncertain. An estimated end does not
+promise a reservable slot before that work records its native release. Once
+released, the original waiting request can be placed with its current revision.
+
+Placement treats a machine as one resource: work reserved on any of
 its endpoints, or on the same physical device, pushes the slot after it. It
 honours the request's `notBefore`/`startBefore`; when nothing fits it answers
 `HEAVY_QUEUE_NO_SLOT` with the earliest possible start and books nothing. The

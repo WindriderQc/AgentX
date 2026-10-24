@@ -58,8 +58,8 @@ function dependencies() {
 
 async function fixture({ modelSeconds = 3600, execute, deps = dependencies() } = {}) {
   const automation = normalizePipelineAutomationIntent({ schema: 'agentx.pipeline-automation/v1', mode: 'review_only',
-    policyRef: 'synthetic/v1', dataClassification: 'public', operations: ['update'], scope: ['synthetic.js'],
-    lockKeys: ['file:synthetic.js'], executionProfile: 'coding-sandbox/v1', verificationProfile: 'agentx-dispatcher-tests/v1',
+    policyRef: 'synthetic/v1', dataClassification: 'public', operations: ['update'], scope: ['integrations/coding/synthetic.py'],
+    lockKeys: ['file:integrations/coding/synthetic.py'], executionProfile: 'coding-sandbox/v1', verificationProfile: 'agentx-dispatcher-tests/v1',
     budgets: { maxDurationMs: 14400000, maxAttempts: 3, maxCostNanodollars: 0 }, humanGates: ['review', 'merge', 'deploy'] });
   await Task.create({ pipelineId: '0001', title: 'Synthetic inference contract', spec: 'CPU fixture only',
     service: 'agentx-coding', status: 'queued', risk: 'low', assignee: null, automation });
@@ -67,7 +67,8 @@ async function fixture({ modelSeconds = 3600, execute, deps = dependencies() } =
     service: 'agentx-coding', status: 'in_progress', assignee: 'other-owner' });
   const otherBefore = await Task.findOne({ pipelineId: '0002' }).lean();
   await autonomy.authorize('0001', { authorized: true, confirm: true, expectedRevision: 0, queueRequestId: QUEUE,
-    limits: { modelSeconds } });
+    limits: { modelSeconds }, qualification: { acceptanceCriteria: ['Synthetic output matches the fixture.'],
+      requiredCapabilities: ['source_read'], estimate: { modelCalls: 1, workSeconds: 10 } } });
   await autonomy.configure({ confirm: true, enabled: true, expectedRevision: 0 });
   await autonomy.tick();
   const { active, revision } = await autonomy.settings();

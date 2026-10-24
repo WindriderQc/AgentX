@@ -47,8 +47,8 @@ beforeEach(async () => {
   const start = new Date(Date.now() - 95000).toISOString();
   const end = new Date(Date.now() - 40000).toISOString();
   const automation = normalizePipelineAutomationIntent({ schema: 'agentx.pipeline-automation/v1', mode: 'review_only',
-    policyRef: 'synthetic/v1', dataClassification: 'public', operations: ['update'], scope: ['synthetic.py'],
-    lockKeys: ['file:synthetic.py'], executionProfile: 'coding-sandbox/v1', verificationProfile: 'agentx-dispatcher-tests/v1',
+    policyRef: 'synthetic/v1', dataClassification: 'public', operations: ['update'], scope: ['integrations/coding/synthetic.py'],
+    lockKeys: ['file:integrations/coding/synthetic.py'], executionProfile: 'coding-sandbox/v1', verificationProfile: 'agentx-dispatcher-tests/v1',
     budgets: { maxDurationMs: 7200000, maxAttempts: 2, maxCostNanodollars: 0 }, humanGates: ['review', 'merge', 'deploy'] });
   await Task.create({ pipelineId: '0001', title: 'Synthetic stopped coding task', spec: 'Disposable CPU fixture',
     service: 'agentx-coding', status: 'blocked', assignee: 'coding-team', risk: 'low', automation,
@@ -89,6 +89,8 @@ const HEAD = 'f'.repeat(40);
 const grantBody = extra => ({ confirm: true, confirmation: continuation.CONFIRMATION,
   key: 'synthetic-budget-grant', expectedRevision: 10, head: HEAD, queueRequestId: NEXT_QUEUE,
   additionalRuns: 1, verificationProfile: 'agentx-dispatcher-tests/v1', text: 'Correct the reviewed defects.',
+  qualification: { acceptanceCriteria: ['The reviewed failure is reproduced and corrected by CPU tests.'],
+    requiredCapabilities: ['source_read', 'source_write', 'cpu_tests'], estimate: { workSeconds: 600, modelCalls: 10 } },
   budget: { workSeconds: 3600, testSeconds: 300, modelSeconds: 1800, modelCalls: 20, ciSeconds: 600 }, ...extra });
 const grant = input => continuation.continueRecovered('0001', REQUEST, input || grantBody(), control);
 beforeEach(async () => {
@@ -158,6 +160,28 @@ test('new dispatch is a linked second run on the same card and consumes its own 
   const manifest = await autonomy.workerManifest('0001', fresh.codingAutonomy.runs[1].requestId);
   expect(manifest.continuationCheckpoint).toBe(HEAD);
   expect(manifest.verificationProfile).toBe('agentx-dispatcher-tests/v1');
+  expect(manifest.qualification).toEqual(require('../../src/services/pipelineCodingReadiness').definition(grantBody().qualification));
+});
+test.each(['missing', 'unsupported', 'verifier', 'budget'])('continuation refuses %s feasibility before a fence, credit or worker', async kind => {
+  const input = grantBody();
+  if (kind === 'missing') delete input.qualification;
+  if (kind === 'unsupported') input.qualification.requiredCapabilities.push('network');
+  if (kind === 'verifier') input.verificationProfile = 'agentx-core-runner-tests/v1';
+  if (kind === 'budget') input.qualification.estimate.modelCalls = 100000;
+  const before = await task(), config = await settings();
+  await expect(grant(input)).rejects.toMatchObject({ code: 'CODING_TASK_NOT_READY' });
+  expect(await task()).toEqual(before); expect(await settings()).toEqual(config);
+  expect(control.launch).not.toHaveBeenCalled();
+});
+test('a continuation can retain a current reviewed definition and binds it to the amended intent', async () => {
+  const readiness = require('../../src/services/pipelineCodingReadiness');
+  const current = await task();
+  await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.qualification': {
+    taskBasis: readiness.taskBasis(current), definition: grantBody().qualification } } });
+  const input = grantBody(); delete input.qualification;
+  const after = await grant(input);
+  expect(after.codingAutonomy.qualification.taskBasis).toBe(readiness.taskBasis(after));
+  await expect(grant({ ...input, qualification: grantBody().qualification })).rejects.toThrow('different');
 });
 
 const nativeBody = extra => grantBody({ confirmation: continuation.NATIVE_CONFIRMATION, ...extra });

@@ -31,6 +31,12 @@ it('shows the remaining work, the When choice and the safety budget, with no num
   expect(html).not.toMatch(/name="(reportCalls|reportWorkSeconds|reportCampaign|reportRuns)"/);
 });
 
+it('does not preselect chaining for a new attempt, while preserving a reserved agreement on replan', () => {
+  expect(ui.render(view())).not.toContain('name="autoContinue" checked');
+  expect(ui.render(view({ campaign: { state: 'reserved' }, resume: { autoContinue: true } })))
+    .toContain('name="autoContinue" checked');
+});
+
 it('says where a planned, running or stopped resume stands', () => {
   const planned = ui.render(view({ resume: { state: 'planned' }, campaign: { state: 'reserved', reservation: { start: '2026-10-20T03:00:00Z', end: '2026-10-20T04:47:00Z' } } }));
   expect(planned).toContain('starts automatically');
