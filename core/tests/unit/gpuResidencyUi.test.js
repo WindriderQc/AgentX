@@ -15,8 +15,8 @@ test('shows per-pin CPU degradation beside a separate HTTP observation', () => {
     entries: [{ model: '<synthetic-embedder>', loaded: true, status: 'cpu' }] });
   expect(html).toContain('GPU residency degraded'); expect(html).toContain('On CPU');
   expect(html).toContain('&lt;synthetic-embedder>');
-  expect(html).toContain('HTTP reachability and GPU residency are separate');
+  expect(html).toContain('HTTP reachability is checked separately');
 });
 test('runtime ownership keeps qualification unknown', () => {
-  expect(render({ status: 'unknown', reason: 'runtime_owner_active', checkedAt: new Date().toISOString() })).toContain('Pin health is not qualified');
+  expect(render({ status: 'unknown', reason: 'runtime_owner_active', checkedAt: new Date().toISOString() })).toContain('checks are paused');
 });
