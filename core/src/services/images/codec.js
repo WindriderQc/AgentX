@@ -52,4 +52,15 @@ function fitReference(bytes, { maxSide = 1536, quality = 90 } = {}) {
   return { bytes: jpeg.encode({ data, width, height }, quality).data, width, height };
 }
 
-module.exports = { decode, reference, referenceWithin, fitReference };
+// Web pictures are often WebP, GIF or AVIF: libvips converts those, first frame only, to PNG
+// so the checks above apply unchanged. PNG and JPEG pass through untouched.
+const CONVERTIBLE = new Set(['image/webp', 'image/gif', 'image/avif', 'image/heif']);
+async function decodable(bytes, maxPixels = 24 * 1024 * 1024) {
+  const mimeType = sniff(bytes);
+  if (mimeType === 'image/png' || mimeType === 'image/jpeg') return bytes;
+  if (!CONVERTIBLE.has(mimeType)) throw new Error('Unsupported picture format');
+  const sharp = require('sharp');
+  return sharp(bytes, { limitInputPixels: maxPixels, animated: false, failOn: 'error' }).png().toBuffer();
+}
+
+module.exports = { decode, reference, referenceWithin, fitReference, decodable };
