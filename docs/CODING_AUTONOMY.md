@@ -152,6 +152,12 @@ unready task before saving its execution authority, rechecks before selecting
 or supplying the native manifest, and exposes concrete next actions. Old
 authorizations without a current qualification cannot start another worker;
 existing native effects still require their original reconciliation/recovery.
+An explicit continuation must supply `qualification` when the original review
+is missing or stale. Core assesses the remaining envelope including the proposed
+credit and the effective verifier before recording a continuation fence or
+grant. A current definition may be retained; a reviewed attempt-limit amendment
+binds it to the resulting intent. Identical grant retries retain their original
+fingerprint and receipts without adding credit.
 Readiness is a necessary contract check, not proof of model competence or a
 replacement for dependency eligibility, native admission and independent review.
 The installed Core verifier covers only `inferenceRuntimePolicy` source/tests;
@@ -164,6 +170,9 @@ Automatic report continuation requires new accepted source coverage. Core
 compares reviewed document identities, source path/digest/line references and
 accepted line ranges against the exact parent. Notes, wording, receipt changes,
 array order and a different Markdown digest do not establish progress. New
+interval endpoints cannot turn a smaller covered subset into progress. A run
+that loses accepted coverage cannot automatically continue, even if it adds
+other references; review the regression before another execution. New
 outcomes retain a Core-derived comparison; older immutable outcomes use their
 native stored coverage, failing closed when that comparison is unavailable.
 

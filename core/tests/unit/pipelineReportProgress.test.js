@@ -34,6 +34,20 @@ test('repartitioning the same accepted line coverage does not justify a continua
   after.coverage.documents[0].ranges = [[1, 10], [11, 20]];
   expect(progress.compare(after, before)).toMatchObject({ verified: true, advanced: false });
 });
+test.each([[[1, 10]], [[2, 19]], [[1, 5], [16, 20]], []].map(ranges => [ranges]))('shrinking accepted ranges %j cannot manufacture progress', ranges => {
+  const before = run(), after = run();
+  before.coverage.documents[0].ranges = [[1, 20]];
+  after.coverage.documents[0].ranges = ranges;
+  expect(progress.compare(after, before)).toMatchObject({ verified: true, advanced: false, addedUnits: 0 });
+});
+test('extending a range or filling its gap advances only if the prior coverage is preserved', () => {
+  const before = run(), after = run();
+  before.coverage.documents[0].ranges = [[1, 5], [10, 20]];
+  after.coverage.documents[0].ranges = [[1, 20]];
+  expect(progress.compare(after, before)).toMatchObject({ advanced: true, addedUnits: 1, removedUnits: 0 });
+  after.coverage.documents[0].ranges = [[2, 30]];
+  expect(progress.compare(after, before)).toMatchObject({ advanced: false, reason: 'coverage_regressed' });
+});
 test('missing parent coverage and changed scope fail closed; a fresh empty run makes no progress', () => {
   expect(progress.compare(run(), run({ sourceCommit: 'f'.repeat(40) })).verified).toBe(false);
   expect(progress.compare(run(), run({ coverage: null })).verified).toBe(false);

@@ -114,12 +114,17 @@ test('reviewed continuation sends the original checkpoint and intent with explic
   expect(form).toBeDefined();
   const field = title => descendants(form).find(n => n.textContent === title).children[0];
   field('New approved coding campaign').value = KEY;
+  field('Observable acceptance criteria, one per line').value = 'The exact preserved failure is corrected.';
+  field('Estimated remaining work minutes').value = '10';
+  field('Estimated remaining model calls').value = '8';
   descendants(form).find(n => n.textContent.startsWith('Correction based')).children[0].value = 'Fix the exact preserved test failure.';
   await form.events.submit({ preventDefault() {} }); await flush();
   const mutation = calls.find(call => call.options.method === 'POST');
   expect(mutation.url).toBe(`/api/pipeline/coding-autonomy/tasks/0001/runs/${KEY}/continuation`);
   expect(JSON.parse(mutation.options.body)).toMatchObject({ expectedRevision: 12, expectedNativeAttemptLimit: 3,
     nativeAttemptLimit: 4, expectedAutomationFingerprint: 'b'.repeat(64), head: 'a'.repeat(40), additionalRuns: 1,
+    qualification: { acceptanceCriteria: ['The exact preserved failure is corrected.'],
+      requiredCapabilities: ['source_read', 'source_write', 'cpu_tests'], estimate: { workSeconds: 600, modelCalls: 8 } },
     budget: { workSeconds: 3600, testSeconds: 900, modelSeconds: 1800, modelCalls: 32, ciSeconds: 900 } });
 });
 test('a merged PR offers authorization withdrawal and refuses another review correction in the UI', async () => {

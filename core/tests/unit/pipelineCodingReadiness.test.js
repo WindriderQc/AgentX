@@ -50,3 +50,9 @@ test('the review basis includes scope and verifier even when a proposal retains 
   input.automation.scope = ['core/tests/unit/inferenceRuntimePolicy.test.js'];
   expect(readiness.assess(input, limits, definition()).taskBasis).not.toBe(before);
 });
+test('a continuation verifier override is assessed and invalidates the earlier review basis', () => {
+  const input = task(); const before = readiness.taskBasis(input);
+  input.codingAutonomy = { verificationProfile: 'agentx-dispatcher-tests/v1' };
+  expect(readiness.taskBasis(input)).not.toBe(before);
+  expect(readiness.assess(input, limits, definition()).issues[0].code).toBe('verification_scope_mismatch');
+});

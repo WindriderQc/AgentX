@@ -12,8 +12,9 @@ const PROFILES = Object.freeze({
 });
 const SUPPORTED = new Set(['source_read', 'source_write', 'cpu_tests']);
 const CAPABILITIES = [...SUPPORTED, 'network', 'private_data', 'live_inference', 'deployment', 'physical_device'];
+const verificationProfile = task => task.codingAutonomy?.verificationProfile || task.automation?.verificationProfile;
 const taskBasis = task => createHash('sha256').update(JSON.stringify([basis(task),
-  (Array.isArray(task.automation?.scope) ? [...task.automation.scope].sort() : []), task.automation?.verificationProfile || null])).digest('hex');
+  (Array.isArray(task.automation?.scope) ? [...task.automation.scope].sort() : []), verificationProfile(task) || null])).digest('hex');
 function invalid(message) {
   return Object.assign(new Error(message), { code: 'CODING_READINESS_INVALID', statusCode: 400 });
 }
@@ -51,7 +52,7 @@ function assess(task, limits, proposed) {
   if (!declared) add('acceptance_not_defined', 'needs_clarification',
     'The task has no reviewed acceptance criteria or capability requirements.',
     'Describe observable success, required access and estimated work before authorizing a worker.');
-  const profile = task.automation?.verificationProfile;
+  const profile = verificationProfile(task);
   if (!limits) add('budget_missing', 'needs_clarification', 'No work envelope has been selected.', 'Select work and model-call limits for this assessment.');
   const covered = PROFILES[profile];
   if (!covered) add('verification_unavailable', 'missing_prerequisite',
