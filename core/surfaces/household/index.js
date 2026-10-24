@@ -433,7 +433,7 @@ function register(api) {
     catch (error) { return fail(res, error.statusCode || 500, error.statusCode ? error.message : 'Deletion incomplete. Try again to finish.', error.code); }
   });
   require('./attachment-routes').registerAttachmentRoutes(personas, { express, personalAttachments, envelope, fail });
-  const conversationImages = require('./conversation-images').createConversationImages({ conversations });
+  const conversationImages = require('./conversation-images').createConversationImages({ conversations, visuals });
   conversationImages.register(personas);
   // The opening warm-up builds its instructions through the turn handler, so both send the same prompt prefix.
   const warmup = createVoiceWarmup({ conversations, executeConversation, conversationBackend, conversationEnv, packById, requireNativeAgent,

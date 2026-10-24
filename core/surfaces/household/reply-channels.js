@@ -51,7 +51,9 @@ function attributes(source) {
   for (const [, name, value] of String(source || '').matchAll(/([a-z]+)\s*=\s*"([^"]*)"/gi)) values[name.toLowerCase()] = value;
   const kind = KINDS.includes(values.kind) || values.kind === 'consult' || values.kind === 'page' ? values.kind : 'text';
   return { kind, title: values.title?.trim().slice(0, LIMITS.title) || '',
-    ...(kind === 'image' ? { source: String(values.source || '').trim().toLowerCase().slice(0, 20) } : {}) };
+    ...(kind === 'image' ? { source: String(values.source || '').trim().toLowerCase().slice(0, 20),
+      // A drawing may name a picture already on screen by its number (#1026).
+      ...(/^[1-9]$/.test(String(values.from || '').trim()) ? { from: Number(values.from.trim()) } : {}) } : {}) };
 }
 
 // The longest end of `text` that could still become `marker`, so a tag split
@@ -131,8 +133,8 @@ function createReplyChannels({ allowSecrets = false, allowPages = false, pageCat
   const screenCue = shown => (shown ? ON_SCREEN[lang] : '');
   const say = emit;
   const showBlock = (body, partial = false) => {
-    const { kind, title, source } = showAttributes;
-    addBlock(kind, title, body, { ...(source === undefined ? {} : { source }), ...(partial ? { partial: true } : {}) });
+    const { kind, title, source, from } = showAttributes;
+    addBlock(kind, title, body, { ...(source === undefined ? {} : { source }), ...(from ? { from } : {}), ...(partial ? { partial: true } : {}) });
     if (readAloud && !['secret', 'consult', 'image', 'page'].includes(kind)) {
       feedSpoken('\n'); closeGroup();
       speakProse((kind === 'table' ? spokenTable(body.split('\n')) : body) + '\n');

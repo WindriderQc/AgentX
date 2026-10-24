@@ -26,4 +26,30 @@ function referenceWithin(bytes, maxPixels) {
 }
 function reference(bytes) { return referenceWithin(bytes, 4194304); }
 
-module.exports = { decode, reference, referenceWithin };
+// A picture taken from the screen as an editing reference: at most `maxSide` pixels on its
+// longest side (area-averaged), flattened on white and re-encoded as JPEG without metadata.
+function fitReference(bytes, { maxSide = 1536, quality = 90 } = {}) {
+  const source = decode(bytes, 24 * 1024 * 1024);
+  const scale = Math.min(1, maxSide / Math.max(source.width, source.height));
+  const width = Math.max(1, Math.round(source.width * scale)), height = Math.max(1, Math.round(source.height * scale));
+  const data = Buffer.alloc(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    const top = Math.floor(y / scale), bottom = Math.max(top + 1, Math.min(source.height, Math.ceil((y + 1) / scale)));
+    for (let x = 0; x < width; x++) {
+      const left = Math.floor(x / scale), right = Math.max(left + 1, Math.min(source.width, Math.ceil((x + 1) / scale)));
+      let r = 0, g = 0, b = 0, count = 0;
+      for (let sy = top; sy < bottom; sy++) {
+        for (let sx = left; sx < right; sx++) {
+          const i = (sy * source.width + sx) * 4, alpha = source.data[i + 3] / 255;
+          r += source.data[i] * alpha + 255 * (1 - alpha); g += source.data[i + 1] * alpha + 255 * (1 - alpha); b += source.data[i + 2] * alpha + 255 * (1 - alpha);
+          count++;
+        }
+      }
+      const o = (y * width + x) * 4;
+      data[o] = Math.round(r / count); data[o + 1] = Math.round(g / count); data[o + 2] = Math.round(b / count); data[o + 3] = 255;
+    }
+  }
+  return { bytes: jpeg.encode({ data, width, height }, quality).data, width, height };
+}
+
+module.exports = { decode, reference, referenceWithin, fitReference };
