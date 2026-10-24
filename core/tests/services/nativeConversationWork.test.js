@@ -92,6 +92,36 @@ test('the native personal task context counts owner actions without promoting ex
   await PipelineTask.deleteMany({});
 });
 
+test.each([false, true])('the current task read is visible before a long historical context, unavailable=%s', async unavailable => {
+  works.observer.stop();
+  const list = jest.fn(async () => {
+    if (unavailable) throw new Error('Synthetic domain outage');
+    return { tasks: [{ id: 'current-task', title: 'Current verified task' }], totalCount: 2 };
+  });
+  works = registerWorkRuntime({ router: express.Router(), conversations, tasks: { list }, agentClient: execute, continuity, env, capability });
+  works.observer.stop();
+  const older = await conversations.recordTurn({ ...works.query(current.sessionId), traceId: randomUUID(), outcome: 'completed',
+    inputText: 'Earlier task read.', replyText: 'Earlier count: 99. ' + 'x'.repeat(35000) + ' LAST_HISTORICAL_DETAIL' });
+  const row = await admitted('Lis mes tâches personnelles ouvertes et donne leur nombre.');
+  const read = await works.contextForNative(context(row), 'call_current_read');
+  // A relay's rendered head must expose the current result, rather than only
+  // old history. The complete response and canonical record remain intact.
+  const renderedHead = JSON.stringify(read, null, 2).slice(0, 2048);
+  if (unavailable) {
+    expect(renderedHead).toContain('"status": "unavailable"');
+    expect(read.receipt).toBeUndefined();
+  } else {
+    expect(renderedHead).toContain('"totalCount": 2');
+    expect(renderedHead).toContain(read.receipt.id);
+    expect(read.receipt.runId).toBe(row.attempt.runId);
+    expect((await works.contextForNative(context(row), 'call_current_read')).receipt).toEqual(read.receipt);
+  }
+  expect(read.conversation.turns[0].replyText).toBe(older.replyText);
+  expect(read.conversation.coverage).toMatchObject({ complete: true, turnCount: 2 });
+  expect((await conversations.getTurn({ ...works.query(current.sessionId), traceId: older.traceId })).replyText).toBe(older.replyText);
+  expect(list).toHaveBeenCalledTimes(1);
+});
+
 test('native task context forwards the native call id over HTTP and denies another run before reading', async () => {
   works.observer.stop();
   const list = jest.fn(async () => ({ tasks: [], totalCount: 0 }));
