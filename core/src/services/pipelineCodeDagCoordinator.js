@@ -1,4 +1,5 @@
 'use strict';
+const { executionWindowOpen } = require('./heavyWorkQueueWindow');
 const dagAuthority = require('./pipelineCodeDagAuthority');
 
 const crypto = require('node:crypto');
@@ -173,9 +174,7 @@ function createPipelineCodeDagCoordinator(options = {}) {
     const job = await campaignReader(value.codingAutonomy.queueRequestId);
     const now = iso(clock);
     if (!job || !['dispatching', 'running'].includes(job.state) || job.executor?.mode !== 'operator'
-      || job.source?.type !== 'coding' || !job.source.ref || !job.reservation
-      || now < job.reservation.start || now >= job.reservation.end
-      || (job.startBefore && now >= job.startBefore)) {
+      || job.source?.type !== 'coding' || !job.source.ref || !executionWindowOpen(job, now)) {
       fail('CODING_AUTONOMY_QUEUE_WAIT', 'The approved coding campaign is not within its active queue window');
     }
     return { task: { pipelineId: value.pipelineId, title: value.title, spec: value.spec }, verificationProfile,

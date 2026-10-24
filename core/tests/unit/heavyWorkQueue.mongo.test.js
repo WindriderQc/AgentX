@@ -76,6 +76,21 @@ describe('durable heavy-work planning and dispatch fences', () => {
     expect((await queue.get(ready.id)).state).toBe('reserved');
   });
 
+  it('retains an exact timely dispatch after startBefore until its reserved end', async () => {
+    const deadline = Date.now() + 5000;
+    const job = await begin(await reserve(await queue.submit({ ...request('cross-start'),
+      startBefore: new Date(deadline).toISOString() }, 'test')));
+    try {
+      jest.useFakeTimers({ now: deadline + 1000, doNotFake: ['hrtime', 'nextTick', 'performance',
+        'queueMicrotask', 'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] });
+      await expect(queue.assertDispatch(job.id, job.dispatchId)).resolves.toMatchObject({ admitted: true });
+      await expect(queue.assertDispatch(job.id, 'wrong-dispatch')).rejects.toMatchObject({ code: 'HEAVY_QUEUE_WINDOW_CLOSED' });
+      jest.setSystemTime(new Date(job.reservation.end));
+      await expect(queue.assertDispatch(job.id, job.dispatchId)).rejects.toMatchObject({ code: 'HEAVY_QUEUE_WINDOW_CLOSED' });
+    } finally { jest.useRealTimers(); }
+    expect((await queue.get(job.id)).state).toBe('dispatching');
+  });
+
   it('allows exactly one dispatch when two operator sessions race', async () => {
     const ready = await reserve(await queue.submit(request('race'), 'test'));
     const results = await Promise.allSettled([begin(ready), begin(ready)]);

@@ -88,7 +88,8 @@ function fixture({ lostLaunch = false, limit = budget() } = {}) {
   const requestIds = ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
     'cccccccc-cccc-4ccc-8ccc-cccccccccccc'];
   const create = () => createPipelineCodeDagCoordinator({ TaskModel, stateService, artifactService, control,
-    campaignReader: async () => ({ state: 'running', executor: { mode: 'operator' }, source: { type: 'coding', ref: 'fake' },
+    campaignReader: async () => ({ state: 'running', dispatchId: ROOT,
+      dispatchedAt: '2026-10-22T11:59:00.000Z', startBefore: T0, executor: { mode: 'operator' }, source: { type: 'coding', ref: 'fake' },
       reservation: { start: '2026-10-22T11:00:00.000Z', end: '2026-10-22T13:00:00.000Z' } }),
     clock: () => Date.parse(T0) + counter * 1000, randomUUID: () => requestIds[counter++] });
   const addArtifact = (stepId, requestId, commit, letter) => {

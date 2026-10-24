@@ -1,4 +1,5 @@
 'use strict';
+const { executionWindowOpen } = require('./heavyWorkQueueWindow');
 // Report execution authority belongs to the original Pipeline task. Grants and
 // bindings are append-only; an acknowledgement loss never creates fresh credit.
 const Task = require('../../models/PipelineTask');
@@ -23,8 +24,7 @@ async function campaign(id, host, taskId) {
   const owned = job.executor?.mode === 'pipeline-report' && job.executor.pipelineId === taskId;
   if (!['dispatching', 'running'].includes(job.state) || (job.executor?.mode !== 'operator' && !owned)
     || job.source?.type !== 'coding' || job.source.taskId !== taskId || !job.source.ref
-    || !job.dispatchId || !job.reservation || now < job.reservation.start || now >= job.reservation.end
-    || (job.startBefore && now >= job.startBefore) || (host && !job.hosts.includes(host.replace(/\/+$/, ''))))
+    || !executionWindowOpen(job, now) || (host && !job.hosts.includes(host.replace(/\/+$/, ''))))
     throw fail('The report needs its active task campaign, host and permitted window', 'REPORT_CAMPAIGN_UNVERIFIED');
   return job;
 }

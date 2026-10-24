@@ -62,7 +62,7 @@ async function complete(active, head = HEAD, usage = { workSeconds: 10, testSeco
 beforeEach(async () => {
   await Promise.all([Task.deleteMany({}), Settings.deleteMany({}), Slots.deleteMany({})]);
   receipts = new Map(); observations = new Map();
-  queue.get.mockResolvedValue({ state: 'dispatching', executor: { mode: 'operator' }, source: { type: 'coding', ref: 'synthetic-session' },
+  queue.get.mockResolvedValue({ state: 'dispatching', dispatchId: QUEUE, dispatchedAt: new Date(Date.now() - 5000).toISOString(), executor: { mode: 'operator' }, source: { type: 'coding', ref: 'synthetic-session' },
     hosts: ['http://127.0.0.1:9'], reservation: { start: new Date(Date.now() - 10000).toISOString(), end: new Date(Date.now() + 600000).toISOString() } });
   control = {
     status: jest.fn(async ({ requestId }) => ({ busy: false, run: receipts.get(requestId) || { requestId, phase: 'not_received' } })),
@@ -760,4 +760,18 @@ test.each(['tests_failed', 'hard_budget', 'operator_stop'])('only exact native u
     expect(after.codingAutonomy.runs[1].parentRequestId).toBe(active.requestId);
     expect(after.codingAutonomy.correction).toEqual({ kind: 'local_tests', head: HEAD, text: 'Original reviewed guidance', by: 'operator' });
   } else expect(after.codingAutonomy.runs).toHaveLength(1);
+});
+
+
+test('campaign retains a timely dispatch after its start deadline, while enforcing end and host', async () => {
+  const value = { codingAutonomy: { queueRequestId: QUEUE } };
+  const base = await queue.get(QUEUE);
+  base.startBefore = new Date(Date.now() - 1000).toISOString();
+  queue.get.mockResolvedValue(base);
+  await expect(service.campaign(value, base.hosts[0])).resolves.toMatchObject({ dispatchId: QUEUE });
+  await expect(service.campaign(value, 'http://outside:11434')).rejects.toMatchObject({ code: 'CODING_AUTONOMY_QUEUE_WAIT' });
+  queue.get.mockResolvedValue({ ...base, dispatchedAt: base.startBefore });
+  await expect(service.campaign(value)).rejects.toMatchObject({ code: 'CODING_AUTONOMY_QUEUE_WAIT' });
+  queue.get.mockResolvedValue({ ...base, reservation: { ...base.reservation, end: base.startBefore } });
+  await expect(service.campaign(value)).rejects.toMatchObject({ code: 'CODING_AUTONOMY_QUEUE_WAIT' });
 });

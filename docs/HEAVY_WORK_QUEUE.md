@@ -87,7 +87,7 @@ current revision. One Mongo CAS serializes all planned host/device windows using
 Core's physical-resource aliases; unmapped endpoints remain independent.
 
 The dispatch mark is durable before the effect. Concurrent sessions cannot both
-begin a request. Early/expired manual/API starts refuse. Running/uncertain work
+begin a request. Early/expired manual/API starts refuse. `startBefore` bounds the durable dispatch time, not every subsequent inference. A dispatch recorded within its start window may continue only until its reservation end; it does not admit a late or replacement dispatch. Running/uncertain work
 stays fenced after the estimated end. Topology changes require reconciliation.
 The Core observer reads existing executor receipts every 15 seconds. It also
 dispatches images explicitly accepted by the image service, once, within their

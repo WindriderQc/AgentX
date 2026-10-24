@@ -42,7 +42,7 @@ afterAll(async () => { await harness?.close(); });
 beforeEach(async () => {
   await Promise.all([Task.deleteMany({}), Run.deleteMany({}), File.deleteMany({}), require('../../models/PipelineReportAdmission').deleteMany({})]);
   authority.configureControl({status: async () => ({busy:false})});
-  jest.spyOn(queue, 'get').mockResolvedValue({id:NEXT,dispatchId:CALL,state:'running',executor:{mode:'operator'},source:{type:'coding',ref:'synthetic-session',taskId:'0001'},hosts:['http://ollama.invalid:11434'],reservation:{start:new Date(Date.now()-60000).toISOString(),end:new Date(Date.now()+14400000).toISOString()}});
+  jest.spyOn(queue, 'get').mockResolvedValue({id:NEXT,dispatchId:CALL,dispatchedAt:new Date(Date.now()-30000).toISOString(),startBefore:new Date(Date.now()-1000).toISOString(),state:'running',executor:{mode:'operator'},source:{type:'coding',ref:'synthetic-session',taskId:'0001'},hosts:['http://ollama.invalid:11434'],reservation:{start:new Date(Date.now()-60000).toISOString(),end:new Date(Date.now()+14400000).toISOString()}});
   jest.spyOn(config, 'ensureTaskModelOverridesLoaded').mockResolvedValue();
   jest.spyOn(config, 'getModelForTask').mockReturnValue({ model: 'synthetic-local-model', url: 'http://ollama.invalid:11434' });
 });
