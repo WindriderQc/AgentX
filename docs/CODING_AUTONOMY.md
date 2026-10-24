@@ -88,6 +88,15 @@ planning and report sessions keep their separate contracts. Shorter replies
 do not establish model competence or replace cumulative budgets, useful-progress
 checks, native completion receipts or independent verification.
 
+For the reviewed small pair, the runner supplies both current files before the
+implementation turn and exposes only `edit`, `write` or `apply_patch` through
+the relay. Discovery and shell tools remain available to other roles. This
+keeps small implementation sessions from spending their allowance rereading
+the repository; the runner still performs focused/full tests and publication.
+Missing, linked, binary or excessive context refuses before model dispatch.
+The initial pair remains limited to 64 KiB; a repeated step permits bounded
+growth up to 128 KiB without widening its authorized paths or work budget.
+
 For every step the runner builds the focused invocation from the installed
 verification profile. Only a clean passing result becomes one commit with the
 exact prepared parent. Failed, out-of-scope or dependency-changing edits are

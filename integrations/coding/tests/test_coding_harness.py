@@ -33,6 +33,12 @@ class HarnessAdapterTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'output allowance'):
                 harness.dsh_patch('local-model', max_tokens=cap)
 
+    def test_complete_context_source_phase_exposes_only_editing_tools(self):
+        p = SimpleNamespace(step={'resultKind': 'source', 'sourceContext': 'complete_pair'})
+        self.assertEqual(harness.implementation_policy(p),
+                         {'max_tokens': 4096, 'reasoning_effort': 'none', 'tools': 'edit_only'})
+        self.assertIsNone(harness.implementation_policy(p, read_only=True))
+
     def test_dsh_keeps_the_existing_headless_contract(self):
         value = harness.invocation('dsh', '/tmp/prompt', 'local-model', 32768, dsh_root=Path('/reviewed/dsh'))
         self.assertIn('/opt/dsh/node_modules/.bin/dsh', value['command'])

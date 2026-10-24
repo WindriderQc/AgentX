@@ -29,7 +29,7 @@ UPSTREAM_TIMEOUT_SECONDS = 3600
 
 
 def with_request_policy(body: bytes, policy: dict | None) -> bytes:
-    """Apply the runner-owned source allowance without changing context or tools."""
+    """Apply runner-owned output and optional editing policy; retain context."""
     if policy is None:
         return body
     value = json.loads(body)
@@ -50,6 +50,17 @@ def with_request_policy(body: bytes, policy: dict | None) -> bytes:
     if 'num_predict' in options:
         options['num_predict'] = cap
     value['reasoning_effort'] = policy['reasoning_effort']
+    if policy.get('tools') == 'edit_only':
+        tools = value.get('tools')
+        if not isinstance(tools, list):
+            raise ValueError('The editing phase needs callable editing tools')
+        allowed = [tool for tool in tools if isinstance(tool, dict)
+                   and tool.get('type') == 'function' and isinstance(tool.get('function'), dict)
+                   and tool['function'].get('name') in {'edit', 'write', 'apply_patch'}]
+        if not allowed:
+            raise ValueError('The harness has no supported editing tool')
+        value['tools'] = allowed
+        value['tool_choice'] = 'auto'
     return json.dumps(value, ensure_ascii=False, separators=(',', ':')).encode()
 
 
@@ -241,9 +252,11 @@ def serve(socket_path: str, model_url: str, observer=None, runner_headers=None, 
             or not isinstance(request_budget.get('key'), str) or not request_budget['key']):
         raise ValueError('A report relay budget requires a nonnegative call count and step identity')
     if request_policy is not None and (not isinstance(request_policy, dict)
-            or set(request_policy) != {'max_tokens', 'reasoning_effort'}
+            or not {'max_tokens', 'reasoning_effort'} <= set(request_policy)
+            or set(request_policy) - {'max_tokens', 'reasoning_effort', 'tools'}
             or type(request_policy['max_tokens']) is not int or not 1 <= request_policy['max_tokens'] <= 32768
-            or request_policy['reasoning_effort'] != 'none'):
+            or request_policy['reasoning_effort'] != 'none'
+            or ('tools' in request_policy and request_policy['tools'] != 'edit_only')):
         raise ValueError('A source relay policy requires a bounded output allowance and disabled reasoning')
     if os.path.exists(socket_path):
         os.unlink(socket_path)

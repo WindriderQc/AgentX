@@ -407,6 +407,7 @@ def execute(r, args, progress):
         # worker receives them. Same-step tests may intentionally be new.
         _validate_planned_targets(workspace, profile, ledger)
         _project(progress, ledger, budget)
+        complete_pair = coding_direct_plan.build(workspace, manifest, capability) is not None
         distributed = coding_distributed_root.execute(r, args, progress, endpoint, task, ledger)
         if distributed is not None:
             return coding_distributed_root.finalize(r, args, progress, lease, distributed, native_verdict)
@@ -438,7 +439,12 @@ def execute(r, args, progress):
                 _bounded_task(task, manifest), step, coding_code_ledger.summary(ledger),
                 {'id': profile, 'focusedTestTargets': step['testTargets'],
                  'runnerOwned': True, 'fullVerificationAfterAssembly': True})
+            editing_only = complete_pair and set(step['paths']) == set(manifest['scope'])
+            if editing_only:
+                prompt += coding_direct_plan.source_context(workspace, step['paths'])
             progress.begin_step(calls, seconds, f"code-step:{step['id']}", result_kind='source')
+            if editing_only:
+                progress.step['sourceContext'] = 'complete_pair'
             try:
                 run = r.run_worker(workspace, prompt, seconds, progress, model=r.MODEL)
             finally:
