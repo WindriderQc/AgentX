@@ -26,6 +26,18 @@ test('background rebuild retains an unsent answer, selection, focus, open detail
   expect(rebuilt.setSelectionRange).toHaveBeenCalledWith(2, 5);
   expect(detail.open).toBe(true); expect(after.scrollTop).toBe(218);
 });
+
+test('an intake decision is bound to its reviewed revision while the unsent rationale survives a changed scope', () => {
+  const api = load();
+  const field = (name, value, scope) => ({ name, value, closest: () => ({ dataset: { intakeDecision: '', revision: '2', scope } }) });
+  const body = fields => ({ querySelectorAll: query => query === 'details' ? [] : fields });
+  const draft = api.preserveDrawerDraft(body([field('state', 'accepted', 'old-scope'), field('reason', 'Keep this rationale', 'old-scope')]));
+  const decision = field('state', '', 'changed-scope'), reason = field('reason', '', 'changed-scope');
+  api.restoreDrawerDraft(body([decision, reason]), draft);
+  expect(decision.value).toBe('');
+  expect(reason.value).toBe('Keep this rationale');
+  expect(draft.fields[0].contextBound).toBe(true);
+});
 test('a correction disclosure is reopened before its draft field receives focus', () => {
   const api = load(), detail = { open: false }, rebuilt = field('');
   rebuilt.focus.mockImplementation(() => { expect(detail.open).toBe(true); });

@@ -89,6 +89,9 @@ def is_private_task(task: dict) -> bool:
 
 
 def can_start(task: dict, *, autonomous=False) -> bool:
+    # Consume Core's decision projection; the adapter does not decide intake.
+    if (task.get('intakeView') or {}).get('claimGate') == 'decision_required':
+        return False
     if not (task.get('status') == 'queued' and not task.get('assignee')
             and task.get('service') == CODING_SERVICE and not is_private_task(task)):
         return False

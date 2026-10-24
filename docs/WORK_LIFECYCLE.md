@@ -14,7 +14,7 @@ backlog, scheduler, identity system or execution grant.
 | Appointment or reminder notification | `personal_calendar`, through its native calendar owner | Calendar event/reminder, distinct from a task |
 | Family chore or routine | Core Household tasks | Family scope, check-in, recurrence and parent review rules apply |
 | Report or discuss a repository defect or feature | GitHub issue | Repository discussion, not automatic admission or authorization |
-| Accepted scoped engineering, investigation or report work | Core/Pipeline, through the available task creation capability | Work record; creation or assignment grants no execution authority |
+| Engineering, investigation or report request | Core/Pipeline, through the available task creation capability | Proposal for triage, or acceptance carried from a native review; creation or assignment grants no execution authority |
 | Schedule live inference, models, images, Benchmark/Profiler or long shared compute | Core heavy-work queue linked to the relevant work/session | Resource planning; native approval, admission and release still apply |
 | Observe an attempt or delivery | Native attempt, artifact, PR, deployment and acceptance receipts | Evidence for the stated stage, not all later stages |
 
@@ -28,6 +28,57 @@ someone else's request until the owner accepts a commitment. Honor an explicit
 destination; clarify ambiguity affecting scope, privacy or effects. If a
 capability is absent, report that limit instead of inventing a successful filing
 or silently substituting another workflow.
+
+## Decide on a request before executing it
+
+Supported generic engineering creation (`POST /api/pipeline/tasks`, the legacy
+TODO route and `create_todo`) records a `proposed` intake decision. The stored
+task remains `queued`; that status alone no longer makes the new request
+claimable. The dossier and agent reads expose `intakeView` and a next action.
+Task storage, IDs, source links and attempt history remain in Core.
+
+| Decision | Meaning |
+|---|---|
+| `proposed` | Recorded for triage; no commitment accepted |
+| `needs_clarification` | The requested outcome needs clarification or changed after acceptance |
+| `accepted` | The current title and requested-result text were accepted as work to pursue |
+| `deferred` | Deliberately put aside, retaining its reason; no automatic reminder or acceptance |
+| `declined` | Not pursued, with its reason and provenance retained |
+
+Existing records without intake evidence retain their native eligibility and
+display `legacy_unrecorded`. This is compatibility, not a fabricated acceptance.
+Personal `personalReview`, Household parent approval and recurrence retain their
+domain rules. A private record moved into engineering starts as a proposal.
+Supersession uses the existing guarded operation and resolution; it is displayed
+as `superseded` without treating replacement as delivery.
+
+A human's existing idea promotion or explicitly reviewed memory follow-up can
+carry its native acceptance into the new task through a server-only adapter,
+with a `domain_review` event and source evidence reference. HTTP/tool input
+cannot supply that internal acceptance. Automated proposals still need triage.
+Preserving a reviewed commitment grants no model, resource or publication power.
+
+`POST /api/pipeline/tasks/:id/intake` records a decision with `state`, `reason`
+(8–1000 characters), declared `by`, a stable UUID `requestId`, `confirm: true`,
+and the observed `expectedRevision` and `expectedScopeFingerprint` from
+`intakeView`. Revision and exact content are checked together with ownership.
+Matching retries return the original receipt plus the current view; changed
+arguments under the same identity refuse. The history is bounded at 64 records;
+new decisions then refuse instead of discarding evidence. Exact replays remain
+readable. A declared name remains attribution, not authenticated identity.
+
+Acceptance binds the title and requested-result text. Changing either makes the
+accepted decision stale in reads and blocks further claims/preparation until
+the revised need is accepted. Earlier decisions remain unchanged. Planning and
+service routing retain their existing separate scope/authorization checks.
+Editing content grants no authority and does not stop an existing executor.
+
+Claim selection, atomic claims, operator transitions into execution, coding
+preparation, autonomous authorization and new report launches retain the intake
+gate. The native coding adapter consumes Core's projection rather than deriving
+an acceptance itself. Decisions cannot remove an owner, expired lease, pending
+model receipt, report allocation, budget or grant. Reconcile native work first.
+Existing result observation and release remain available after scope changes.
 
 ## Authority belongs to a fact
 
@@ -150,13 +201,20 @@ coordination records or clear quarantine to force progress.
 
 ## Qualification and limits
 
+Intake qualification uses disposable storage and synthetic requests: scoped
+decisions, concurrent claims, exact retry receipts, native ownership fences,
+unchanged personal/family workflows and result reconciliation after an amended
+need. A browser journey covers desktop/mobile decisions and a network failure
+followed by a dossier refresh, retaining the rationale and request identity.
+It invokes no executor or model.
+
 Synthetic source tests cover automatic/manual reservations, native images,
 supported and unsupported executors, expired/invalid windows, uncertain
 attempts, pagination and read-only behavior. They establish neither live model
 acceptance nor deployment or device acceptance. Runtime guidance copies need
 their own reviewed installation and qualification.
 
-Stored task states remain unchanged. There are no new generic decision states,
-issue synchronization, universal outcome graph or multi-user grants. Product
-evolution and remaining journeys are tracked in
+Stored task execution states remain unchanged. Intake decisions are separate;
+they do not introduce issue synchronization, a universal outcome graph or
+multi-user grants. Product evolution and remaining journeys are tracked in
 [#1011](https://github.com/WindriderQc/AgentX/issues/1011).

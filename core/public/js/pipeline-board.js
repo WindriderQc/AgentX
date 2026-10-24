@@ -176,6 +176,7 @@
             <div class="pipeline-title-meta">
               ${task.epic ? `<span class="pipeline-subtle">${escapeHtml(task.epic)}</span>` : ''}
               ${riskChip(task.risk)}
+              ${task.intakeView && !['legacy_unrecorded', 'native_domain'].includes(task.intakeView.state) ? `<span class="pipeline-chip">${escapeHtml(task.intakeView.label)}</span>` : ''}
               ${archivedQualification(task) ? `<span class="pipeline-subtle">Archived qualification · ${escapeHtml(task.codingAutonomy.disposition.outcome)}</span>` : ''}
               ${depsChip}
             </div>

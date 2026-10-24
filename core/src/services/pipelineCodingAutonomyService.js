@@ -100,7 +100,8 @@ async function authorize(id, input) {
   if (input.authorized) Object.assign(state, { basis: policy.basis(task), limits: policy.limits(input.limits), queueRequestId: input.queueRequestId,
     qualification: { taskBasis: qualification.taskBasis, definition: qualification.definition } });
   // Removing authorization fences future resumes. An active worker is separately stopped.
-  return projection(await save(task, state, extra, undefined, { updatedAt: task.updatedAt }));
+  return projection(await save(task, state, extra, undefined,
+    input.authorized ? require('./taskIntakePolicy').guard({ updatedAt: task.updatedAt }, task) : { updatedAt: task.updatedAt }));
 }
 function failedCIWatch(state) {
   return state.authorized && state.correction?.kind === 'failure'

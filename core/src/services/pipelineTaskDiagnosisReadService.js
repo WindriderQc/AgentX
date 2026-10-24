@@ -14,6 +14,7 @@ const MAX_LIMIT = 100;
 // Most ambiguous first; routine waits and observed execution are counted only.
 const LISTED = ['recovery_required', 'unknown', 'human_decision', 'dependency'];
 const DIAGNOSIS_FIELDS = {
+  title: 1, spec: 1, intake: 1, profileId: 1, origin: 1,
   pipelineId: 1, status: 1, assignee: 1, heartbeatAt: 1, service: 1, source: 1, dependsOn: 1,
   notBefore: 1, dueAt: 1, risk: 1, automation: 1, automationAttemptCount: 1, automationLease: 1,
   'automationAttempts.attempt': 1, 'automationAttempts.completedAt': 1, 'automationAttempts.finalState': 1,

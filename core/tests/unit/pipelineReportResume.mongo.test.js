@@ -87,6 +87,24 @@ it('previews the remaining work and a safety budget instead of asking for number
   expect(view.route).toEqual({ model: 'coder:27b-q8_0', host: 'http://10.0.0.5:11434' });
 });
 
+it('reconciles the original result after accepted scope changes while refusing new launches', async () => {
+  const intake = require('../../src/services/taskIntakePolicy');
+  const job = { id: 'f2222222-2222-4222-8222-222222222222', executor: { pipelineId: '0939' },
+    reservation: { end: new Date(Date.now() + 60000).toISOString() } };
+  const scope = { title: 'Documentation peer review', spec: 'Original synthetic report scope.', service: 'agentx-coding' };
+  await seed({ ...scope, intake: intake.initial(scope, new Date(), { by: 'fixture-operator',
+    reason: 'Reviewed the original synthetic report scope.', ref: 'synthetic-review:original' }),
+  reportResume: { queueRequestId: job.id, launch: { requestId: PARENT } } });
+  await Task.updateOne({ pipelineId: '0939' }, { $set: { spec: 'Changed synthetic report scope.' } });
+  expect(intake.view(await Task.findOne({ pipelineId: '0939' }).lean()).claimGate).toBe('decision_required');
+  await expect(resume.resume('0939', { confirm: true, when: 'asap' })).rejects.toMatchObject({ code: 'TASK_INTAKE_REQUIRED' });
+  await expect(resume.preDispatch(job)).rejects.toMatchObject({ code: 'TASK_INTAKE_REQUIRED' });
+  expect(await resume.observeCampaign(job)).toMatchObject({ terminal: true, state: 'failed', operationId: PARENT,
+    outcome: { requestId: PARENT, reason: 'runner_error' } });
+  expect(control.launch).not.toHaveBeenCalled();
+  expect((await Task.findOne({ pipelineId: '0939' }).lean()).reportResume.result.requestId).toBe(PARENT);
+});
+
 it('plans a Core-owned campaign as soon as possible, once per checkpoint, starting automatically', async () => {
   await seed();
   await expect(resume.resume('0939', { when: 'asap' })).rejects.toMatchObject({ code: 'REPORT_RESUME_INVALID' });

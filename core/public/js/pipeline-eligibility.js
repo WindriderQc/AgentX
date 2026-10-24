@@ -1,6 +1,7 @@
 (function () {
   'use strict';
   const reasons = {
+    intake_decision_required: 'The current request needs an explicit intake acceptance before work can be claimed.',
     task_unavailable: 'The task is already owned or is outside the queue.',
     not_before: 'The earliest start time has not arrived.',
     dependencies_incomplete: 'Dependencies are incomplete or unavailable in this task lane.',

@@ -16,6 +16,7 @@
 
   /** Whether the drawer should offer the one-click resume for this task. */
   function eligible(task) {
+    if (task?.intakeView?.claimGate === 'decision_required') return false;
     const latest = (task?.feedback || []).map(row => row.reportOutcome).filter(Boolean).at(-1);
     const report = task?.codingResult?.profile === 'report' || Boolean(latest);
     const managed = Boolean(task?.codingAutonomy || task?.automation?.mode === 'review_only');

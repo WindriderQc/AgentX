@@ -72,6 +72,7 @@ describe('family task domain in the canonical Core store', () => {
 
   test('persists a family launch, child check-in, parent approval and recurring rollover in the canonical model', async () => {
     const work = await createTaskInMongo({ title: 'Synthetic engineering task', service: 'core' });
+    await require('../helpers/acceptedEngineeringTask')(work.pipelineId);
     const started = await family.launch({
       profile: { profileId: 'sample-child', displayName: 'Sample child', ageBand: 'school' },
       routines: [{ title: 'Synthetic once', stars: 2 }, { title: 'Synthetic daily', cadence: 'daily', stars: 3 }]

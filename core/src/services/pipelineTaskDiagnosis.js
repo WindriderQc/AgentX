@@ -259,6 +259,14 @@ function classify(task, context) {
       summary: receipt ? 'A worker verdict with an attempt receipt waits for human review.' : 'A result waits for human review.',
       action: 'Inspect the dossier and record an independent decision.', missingEvidence: receipt ? [] : missing(['attempt_receipt']) };
   }
+  const intake = require('./taskIntakePolicy').view(task);
+  if (['queued', 'blocked'].includes(task.status) && intake.claimGate === 'decision_required' && !require('./taskIntakePolicy').fenced(task)) {
+    const waiting = ['deferred', 'declined'].includes(intake.state);
+    return { category: waiting ? 'planned_wait' : 'human_decision', code: waiting ? 'intake_not_pursued' : 'intake_review',
+      owner: waiting ? 'none' : 'human', summary: intake.label,
+      action: waiting ? 'Retain the reason; reconsider deliberately. No automatic execution is scheduled.'
+        : 'Read the current request and record an intake decision. Acceptance grants no execution authority.', missingEvidence: [] };
+  }
   if (task.status === 'blocked') {
     const failures = latestAttempt(task)?.evidence?.failureCodes;
     return { category: 'human_decision', code: 'blocked', owner: 'human',

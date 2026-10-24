@@ -102,8 +102,12 @@ router.post('/tasks/:id/feedback', async (req, res) => {
       }
     }
     if (FEEDBACK_STATUS[terminalVerdict]) update.$set = { status: FEEDBACK_STATUS[terminalVerdict] };
+    if (update.$set?.status === 'in_progress' && current.status !== 'in_progress') {
+      require('../src/services/taskIntakePolicy').assertAccepted(current);
+    }
 
     const query = { pipelineId: req.params.id };
+    if (update.$set?.status === 'in_progress' && current.status !== 'in_progress') require('../src/services/taskIntakePolicy').guard(query, current);
     const options = { new: true };
     if (b.manualWorkerClaim != null) {
       if (lease || b.manualReportClaim != null || entry.by !== 'coding-team' || !FEEDBACK_STATUS[b.status])
@@ -199,7 +203,7 @@ router.post('/tasks/:id/feedback', async (req, res) => {
         attempt, leaseId: lease.leaseId, dispatchRequestId }), verdict: terminalVerdict });
     }
     return envelope.success(res, { task: redactTaskLeaseIds(task) });
-  } catch (err) { return envelope.error(res, 500, err.message); }
+  } catch (err) { return envelope.error(res, err.status || err.statusCode || 500, err.message, err.code); }
 });
 
 module.exports = router;

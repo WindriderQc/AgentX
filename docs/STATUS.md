@@ -82,6 +82,13 @@ Instance configuration, data and deployment receipts remain outside Git.
   [heavy work](HEAVY_WORK_QUEUE.md), tracked in
   [#566](https://github.com/WindriderQc/AgentX/issues/566).
 
+- **Engineering intake.** New generic Pipeline/TODO requests start as proposals.
+  The task dossier records acceptance, clarification, deferral or a reason not
+  to pursue the need, separately from execution and budgets. Acceptance is bound
+  to the reviewed request text; changed content requires review. Existing work
+  keeps its native policy without invented history, and native reviewed source
+  promotions retain their acceptance. See [work lifecycle](WORK_LIFECYCLE.md).
+
 - **Execution sources.** Playground and the existing inference contract select local
   Ollama or OpenClaw, with distinct model and native agent modes. Provider
   credentials and catalogues belong to OpenClaw. Model receipts attest supplied

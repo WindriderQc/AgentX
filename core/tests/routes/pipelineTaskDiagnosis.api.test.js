@@ -23,6 +23,7 @@ function automation(maxDurationMs = 60000) {
 }
 async function createTask(input = {}) {
   const response = await harness.request.post('/api/pipeline/tasks').send({ title: 'Diagnosis task', spec: '', ...input }).expect(201);
+  await require('../helpers/acceptedEngineeringTask')(response.body.data.task.pipelineId);
   return response.body.data.task.pipelineId;
 }
 const diagnose = async id => (await harness.request.get(`/api/pipeline/tasks/${id}/diagnosis`).expect(200)).body.data.diagnosis;

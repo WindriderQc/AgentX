@@ -69,3 +69,23 @@ test('a concurrent task edit cannot receive an authorization assessed against th
   const changed = await Task.findOne({ pipelineId: '0001' }).lean();
   expect(changed.spec).toBe('Another reviewed request'); expect(changed.codingAutonomy).toBeUndefined();
 });
+
+test.each(['intake_decision', 'risk_review'])('authorization retains the %s concurrency guard alongside readiness', async kind => {
+  const intake = require('../../src/services/taskIntakePolicy');
+  const task = await Task.findOne({ pipelineId: '0001' }).lean();
+  await Task.updateOne({ pipelineId: task.pipelineId }, { $set: { intake: intake.initial(task, new Date(), {
+    by: 'fixture-operator', reason: 'Reviewed the synthetic authorization request.', ref: 'synthetic-review:authorization' }) } });
+  const original = Task.findOneAndUpdate;
+  jest.spyOn(Task, 'findOneAndUpdate').mockImplementation(function(query, update, options) {
+    return { lean: async () => {
+      const changes = kind === 'intake_decision' ? { 'intake.state': 'deferred', 'intake.revision': 2 }
+        : { risk: 'critical', updatedAt: new Date(Date.now() + 1000) };
+      await Task.updateOne({ pipelineId: task.pipelineId }, { $set: changes }, { timestamps: false });
+      return original.call(Task, query, update, options).lean();
+    } };
+  });
+  const response = await request(app).post(url + '/authorization').send(proposal());
+  expect(response.status).toBe(409);
+  expect((await Task.findOne({ pipelineId: task.pipelineId }).lean()).codingAutonomy).toBeUndefined();
+  expect(control.launch).not.toHaveBeenCalled();
+});

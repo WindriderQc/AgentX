@@ -6,6 +6,7 @@ const { taskSummaryWithTimeline } = require('./pipelineTaskTimeline');
 const { taskEvidenceReferences } = require('./pipelineEvidenceReferences');
 const { TIMELINE_TRANSITIONS, transitionLog } = require('./pipelineTaskTransitions');
 const { planView } = require('./pipelineTaskPlans');
+const intake = require('./taskIntakePolicy');
 const SUMMARY_FIELD_LIST = [
   'pipelineId title service status assignee heartbeatAt epic source priority dependsOn notBefore dueAt risk',
   'automation automationAttemptCount automationLease.expiresAt codingCapacity planningItemIds scheduleEntryIds createdAt updatedAt resolution',
@@ -14,12 +15,14 @@ const SUMMARY_FIELD_LIST = [
   'automationAttempts.evidence.failureCodes automationAttempts.evidence.verification.status',
   'automationAttempts.evidence.inference.state automationAttempts.evidence.inference.cause transitionSeq',
   'codingAutonomy.authorized codingAutonomy.disposition.kind codingAutonomy.disposition.outcome',
-  'feedback.workerOutcome feedback.reportOutcome codingResult'
+  'feedback.workerOutcome feedback.reportOutcome codingResult',
+  'spec profileId origin intake.state intake.revision intake.scopeFingerprint'
 ].join(' ');
 // Summary reads carry only the most recent transitions; the store keeps more.
 const SUMMARY_FIELDS = {
   ...Object.fromEntries(SUMMARY_FIELD_LIST.split(' ').map((field) => [field, 1])),
   transitions: { $slice: -TIMELINE_TRANSITIONS },
+  'intake.history': { $slice: -1 },
 };
 
 function withoutLeaseId(value) {
@@ -50,7 +53,7 @@ async function projectTaskRows(tasks, { summary = false, now = new Date(), refer
   const dependencyStatuses = await loadDependencyStatuses(tasks);
   const options = { now, dependencyStatuses };
   return Promise.all(tasks.map(async task => redactTaskLeaseIds(summary ? taskSummaryWithTimeline(task, options)
-    : { ...task, nextAction: taskNextAction(task, options), transitionLog: transitionLog(task), plan: planView(task),
+    : { ...task, intakeView: intake.view(task), nextAction: taskNextAction(task, options), transitionLog: transitionLog(task), plan: planView(task),
       ...(task.codingReportAuthority ? { reportBudget: await require('./pipelineReportAuthority').projection(task) } : {}),
       ...(references ? { evidenceReferences: taskEvidenceReferences(task) } : {}) })));
 }

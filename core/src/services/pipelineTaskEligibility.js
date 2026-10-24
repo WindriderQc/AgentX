@@ -5,6 +5,7 @@ const { automationAdmissionReasons } = require('../../../shared/pipelineAutomati
 function taskEligibilityReasons(task, { now = new Date(), dependencyStatuses = new Map(), automated = false,
   activeLockKeys, protectedPathPrefixes } = {}) {
   const reasons = [];
+  if (!require('./taskIntakePolicy').accepted(task)) reasons.push({ code: 'intake_decision_required' });
   if (task.status !== 'queued' || task.assignee) reasons.push({ code: 'task_unavailable' });
   if (task.notBefore && new Date(task.notBefore).getTime() > now.getTime()) {
     reasons.push({ code: 'not_before', notBefore: new Date(task.notBefore).toISOString() });
