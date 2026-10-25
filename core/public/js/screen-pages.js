@@ -38,6 +38,12 @@
         const [key, value = ''] = word.split('=');
         if (key === 'status' && STATUSES.includes(value) || key === 'task' && /^\d{3,4}$/.test(value)) focus[key] = value;
       }
+      if (page === 'diskx') for (const word of words.slice(1)) {
+        const [key, value = ''] = word.split('=');
+        if (key === 'group' && /^[a-f0-9]{64}$/.test(value)) focus.group = value;
+        if (key === 'report' && /^\d{4}-\d\d-\d\dt\d\d:\d\d:\d\d(?:\.\d{1,3})?z$/.test(value)
+            && Number.isFinite(Date.parse(value))) focus.report = new Date(value).toISOString();
+      }
       return { page, focus };
     }
     function url(target, { screen = true } = {}) {

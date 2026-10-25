@@ -66,7 +66,7 @@ describe('DiskX access', () => {
       expect(page.status).toBe(302);
       expect(page.headers.location).toBe('/panel');
     }
-    for (const path of ['/api/diskx/diskx.js', '/api/data-toolbox/janitor/strategy/latest']) {
+    for (const path of ['/api/diskx/diskx.js', '/api/diskx/presentation?report=2026-01-01T00:00:00Z', '/api/data-toolbox/janitor/strategy/latest']) {
       const answer = await tablet.get(path);
       expect(answer.status).toBe(403);
       expect(answer.body.code).toBe('FAMILY_DEVICE_PINNED');

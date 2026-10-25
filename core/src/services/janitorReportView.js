@@ -18,6 +18,7 @@ const GROUPS_ROUTE = `${STRATEGY_ROUTE}/groups`;
 const REQUEST_TIMEOUT_MS = 6000;
 const SHA256 = /^[0-9a-f]{64}$/;
 const DISKX_PATH = '/diskx';
+const { reportDate, requireReport } = require('./janitorPresentation');
 
 const SURVIVOR_WORDS = Object.freeze({
   canonical_active: 'la copie active de l’emplacement canonique',
@@ -71,8 +72,8 @@ function checkArguments(args) {
  * The DiskX page link. CORE_PUBLIC_URL is the browser-facing Core address on
  * the private network; without a usable one the link stays a Core path.
  */
-function diskxLink({ group } = {}, env = process.env) {
-  const query = new URLSearchParams({ janitor: 'latest', ...(group ? { group } : {}) }).toString();
+function diskxLink({ group, report } = {}, env = process.env) {
+  const query = new URLSearchParams({ janitor: 'latest', ...(group ? { group } : {}), ...(reportDate(report) ? { report: reportDate(report) } : {}) }).toString();
   const relative = `${DISKX_PATH}?${query}`;
   try {
     const base = new URL(String(env.CORE_PUBLIC_URL || '').trim());
@@ -129,6 +130,7 @@ async function readJanitorReportView(args = {}, deps = {}) {
   if (!response.ok && !notFound) throw unavailable(`Data answered ${response.status}`);
   const report = project(notFound ? {} : body);
   const generated = report.generatedAt ? new Date(report.generatedAt).getTime() : NaN;
+  if (deps.expectedReport) requireReport(report.generatedAt, deps.expectedReport);
   const provenSavings = count(report.summary.provenSavingsBytes);
 
   const view = {
@@ -158,14 +160,18 @@ async function readJanitorReportView(args = {}, deps = {}) {
   if (input.group && view.available) {
     const page = await readData(fetchData, GROUPS_ROUTE, new URLSearchParams({ sha256: input.group }).toString());
     if (!page.response.ok) throw unavailable(`Data answered ${page.response.status}`);
-    group = groupView(page.body?.data ?? page.body, input.group);
+    const data = page.body?.data ?? page.body;
+    requireReport(data?.report?.generatedAt, view.generatedAt);
+    group = groupView(data, input.group);
   }
 
   return {
     summary: sentence({ view, group }),
     ...view,
     ...(group ? { group } : {}),
-    link: view.available ? diskxLink({ group: group?.found ? group.sha256 : undefined }, deps.env || process.env) : null,
+    screenPage: view.available ? ['diskx', ...(group?.found ? [`group=${group.sha256}`] : []),
+      ...(view.generatedAt ? [`report=${view.generatedAt}`] : [])].join(' ') : null,
+    link: view.available ? diskxLink({ group: group?.found ? group.sha256 : undefined, report: view.generatedAt }, deps.env || process.env) : null,
     linkScope: 'private_network',
     notes: [NOTES.survivorRule, NOTES.logicalBytes],
     readOnly: true

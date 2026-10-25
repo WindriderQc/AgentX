@@ -15,6 +15,14 @@ test('services preserve structured results and validate fields before effects', 
   expect((await call('team_brief', { member: 'arbitrary-agent' }, { team_brief })).result.isError).toBe(true);
   expect(team_brief).toHaveBeenCalledTimes(1);
 });
+test('the owner Janitor reader reuses its domain service and rejects extra capabilities', async () => {
+  const service = require('../../src/services/janitorReportView');
+  const read = jest.spyOn(service, 'readJanitorReportView').mockResolvedValueOnce({ readOnly: true, screenPage: 'diskx' });
+  expect((await call('janitor_report_view', {})).result.structuredContent.readOnly).toBe(true);
+  expect((await call('janitor_report_view', { approve: true })).result.isError).toBe(true);
+  expect((await call('janitor_report_view', { group: 'bad' })).result.isError).toBe(true);
+  expect(read).toHaveBeenCalledTimes(1); read.mockRestore();
+});
 test('unknown failures never expose private transport details', async () => {
   const response = await call('web_search', { query: 'Synthetic' }, { web_search: async () => { throw new Error('private transport'); } });
   expect(response.result).toMatchObject({ isError: true, structuredContent: { error: 'OWNER_TOOL_UNAVAILABLE' } });

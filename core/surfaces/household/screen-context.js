@@ -25,6 +25,17 @@ function presentationEvidence(value, catalog) {
       const read = target.page === 'analytics' ? presentationReader.read(row.read || {}) : null;
       if (read?.status === 'available' && read.source === 'analytics.inference.summary' && row.filters?.window === read.filters.window) selected.read = read;
       else selected.read = { status: 'unavailable', reason: read?.reason || 'no_matching_reader' };
+      if (target.page === 'diskx') {
+        const report = presentationReader.read(row.read || {});
+        const expected = { report: require('../../src/services/janitorPresentation').reportDate(row.filters?.report),
+          group: /^[a-f0-9]{64}$/.test(row.filters?.group || '') ? row.filters.group : null };
+        selected.filters = expected;
+        selected.read = report?.status === 'available' && report.source === 'janitor.report'
+          && report.filters.report === expected.report && report.filters.group === expected.group
+          && (!target.focus?.report || target.focus.report === expected.report)
+          ? report : { status: 'unavailable', reason: report?.reason || 'report_selection_mismatch' };
+        if (Number.isSafeInteger(row.selection?.outside) && row.selection.outside >= 0) selected.outside = row.selection.outside;
+      }
       if (row.filters && ['24h', '7d', '30d', '90d'].includes(row.filters.window)) selected.filters = { window: row.filters.window };
       const groups = ['byModel', 'byConsumerContract', 'byErrors'];
       if (groups.includes(row.selection?.groupBy)) selected.comparison = row.selection.groupBy;

@@ -13,6 +13,7 @@
 
 const path = require('path');
 const { createScriptRelay, configuredModuleUrl } = require('../household/asset-relay');
+const { reportDate } = require('../../src/services/janitorPresentation');
 
 const PAGE = '/diskx';
 const MODULE_ROUTE = '/api/diskx/diskx.js';
@@ -76,9 +77,16 @@ const single = (value) => (Array.isArray(value) ? value[0] : value);
  * under one of the roots.
  */
 function checkQuery(query = {}, roots = []) {
-  const unknown = Object.keys(query).filter((key) => !['janitor', 'group', 'focus'].includes(key));
+  const unknown = Object.keys(query).filter((key) => !['janitor', 'group', 'focus', 'report', 'view', 'from'].includes(key));
   if (unknown.length) throw invalid(`Unknown parameter: ${unknown[0].slice(0, 40)}`);
+  if (query.view !== undefined && single(query.view) !== 'screen') throw invalid('view must be screen');
+  if (query.from !== undefined && single(query.from) !== 'nestor') throw invalid('from must be nestor');
   const attributes = {};
+  if (query.report !== undefined) {
+    const report = reportDate(single(query.report));
+    if (!report) throw invalid('report must be a UTC report date');
+    attributes.report = report;
+  }
   const janitor = single(query.janitor);
   if (janitor !== undefined && janitor !== '') {
     if (janitor !== 'latest') throw invalid('janitor must be latest');
@@ -155,6 +163,21 @@ function errorPage(message) {
 
 function register({ app, express, fetchWithTimeout, fetchData, env = process.env }) {
   app.use('/assets/diskx', express.static(path.join(__dirname, 'public'), { fallthrough: false, maxAge: '5m' }));
+
+  app.get('/api/diskx/presentation', async (req, res) => {
+    res.set('Cache-Control', 'private, no-store');
+    try {
+      if (Object.keys(req.query).some(key => !['group', 'report'].includes(key))) throw invalid('Unknown presentation parameter');
+      const attributes = checkQuery(req.query);
+      if (!attributes.report) throw invalid('A displayed report date is required');
+      const view = await require('../../src/services/janitorReportView').readJanitorReportView(
+        attributes.group ? { group: attributes.group } : {}, { fetchData, env, expectedReport: attributes.report });
+      const read = require('../../src/services/presentationReadService').presentationReader.publishJanitor(view);
+      return res.json({ ok: true, data: { read, filters: { report: attributes.report, group: attributes.group || null } } });
+    } catch (error) {
+      return res.status(error.status || 502).json({ ok: false, code: error.code || 'DISKX_READ_UNAVAILABLE', message: error.message });
+    }
+  });
 
   app.get('/diskx', async (req, res) => {
     const roots = await resolveRoots({ env, fetchData });

@@ -120,7 +120,8 @@ test('the page assets are served and the status script shows only presentation r
   const page = await request(server).get('/assets/diskx/diskx-page.js').expect(200);
   for (const event of ['diskx-ready', 'diskx-group-shown', 'diskx-error']) assert.match(page.text, new RegExp(`'${event}'`));
   assert.match(page.text, /pas une autorisation/);
-  assert.doesNotMatch(page.text, /fetch\(|method:/);
+  assert.match(page.text, /fetch\('\/api\/diskx\/presentation\?/);
+  assert.doesNotMatch(page.text, /method:\s*['"](?:POST|PUT|PATCH|DELETE)/);
 });
 
 test('a family-pinned device and the demo profile reach neither the page, the module nor its data', () => {
