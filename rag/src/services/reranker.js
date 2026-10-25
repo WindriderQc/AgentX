@@ -88,7 +88,7 @@ async function rerankResults(query, results, topK = 5) {
       try {
         const response = await fetchWithTimeout(`${CORE_PROXY_URL}/api/inference/generate`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-AgentX-Caller': 'rag-service' },
           body: JSON.stringify({
             taskType: 'rag_reranking',
             prompt,

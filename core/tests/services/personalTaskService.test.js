@@ -46,6 +46,7 @@ describe('personal tasks in the canonical Core store', () => {
 
   test('shares the canonical sequence and preserves the personal create, list, update and complete journey', async () => {
     const work = await createTaskInMongo({ title: 'Synthetic coding task', service: 'core' });
+    await require('../helpers/acceptedEngineeringTask')(work.pipelineId);
     const created = await personal.create({ title: 'Synthetic reminder', note: 'Synthetic private note', priority: 2 });
     expect(Number(created.id)).toBe(Number(work.id) + 1);
     const row = await PipelineTask.findOne({ pipelineId: created.id }).lean();

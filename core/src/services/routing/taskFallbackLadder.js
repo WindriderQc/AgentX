@@ -69,6 +69,8 @@ const PRINCIPAL_LADDER_TASK = 'daily_operator';
 const UNAVAILABLE_REASONS = Object.freeze({
   HOST_UNCONFIGURED: 'host_unconfigured',
   HOST_DOWN: 'host_down',
+  // The endpoint belongs to a topology mode that is not running (#360).
+  HOST_PARKED: 'host_parked',
   HOST_DEGRADED: 'host_gpu_degraded',
   MODEL_MISSING: 'model_missing',
   BENCHMARK_CLAIM: 'benchmark_claim',
@@ -297,6 +299,9 @@ function coordinationBlock(runtime, hostUrl, nowMs, { busyCounts = false, model 
 async function probeTarget({ model, host, url = null }, deps, { requireModel = false, busyCounts = false, requirePin = false } = {}) {
   const hostUrl = url || HOSTS[host] || null;
   if (!hostUrl) return { available: false, reason: UNAVAILABLE_REASONS.HOST_UNCONFIGURED };
+  if (require('../runtimeTopologyParking').isParkedHost(hostUrl)) {
+    return { available: false, reason: UNAVAILABLE_REASONS.HOST_PARKED };
+  }
   try {
     await deps.assertHostAvailable(hostUrl, model);
   } catch (err) {

@@ -85,7 +85,7 @@ _spec.loader.exec_module(coding_worker_prompt)
 _spec = importlib.util.spec_from_file_location("coding_harness", HERE / "coding_harness.py")
 coding_harness = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(coding_harness)
-worker_patch = lambda model, context_size=None: coding_harness.dsh_patch(model, context_size, RELAY_PORT)
+worker_patch = lambda model, context_size=None, max_tokens=None: coding_harness.dsh_patch(model, context_size, RELAY_PORT, max_tokens=max_tokens)
 _spec = importlib.util.spec_from_file_location("coding_sandbox", HERE / "coding_sandbox.py")
 coding_sandbox = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(coding_sandbox)
@@ -335,10 +335,13 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
         lambda: request(f"{CORE}/api/nerve-center/agent-runtime-config/export?includeCapability=true").get("data", {}).get("lanes", {}),
         remember=read_only)
     record_lane_capability(progress, selected_model, lanes)
+    policy = coding_harness.implementation_policy(progress, read_only=read_only)
     if harness == 'dsh':
-        (home / ".dsh/agentx.patch.json").write_text(json.dumps(worker_patch(selected_model, context_size)))
+        (home / ".dsh/agentx.patch.json").write_text(json.dumps(
+            worker_patch(selected_model, context_size, (policy or {}).get('max_tokens'))))
     if progress:
         progress.model_worker_active = True
+        progress.role_drained = False
         progress.baseline(home, workspace)
         progress.set_stage("model_wait")
     if not GATEWAY_TOKEN and not os.environ.get("AGENTX_CODING_MODEL_URL"):
@@ -348,7 +351,8 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
                              {**(getattr(progress, "relay_headers", None) or {}),
                               **({"Authorization": f"Bearer {GATEWAY_TOKEN}"} if GATEWAY_TOKEN else {})},
                              drain_on_disconnect=bool(progress and (read_only or progress.cumulative_limits or getattr(progress, 'report_mode', False))),
-                             budget_guidance=getattr(progress, "model_guidance", None), request_budget=progress.relay_call_budget() if progress else None)
+                             budget_guidance=getattr(progress, "model_guidance", None), request_budget=progress.relay_call_budget() if progress else None,
+                             request_policy=policy)
     try:
         return coding_worker_prompt.run(SimpleNamespace(sandbox=sandbox, supervise=supervise,
             relay_port=RELAY_PORT, harness=coding_harness, dsh_root=DSH_ROOT), workspace, home, prompt, timeout_seconds, progress,
@@ -366,8 +370,9 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
                 # call unverified and the execution stuck until manual reconcile.
                 remaining += REPORT_SETTLE_GRACE_SECONDS
             drained = relay.drain(remaining, heartbeat=progress.tick)
+            progress.role_drained = drained
             if read_only:
-                progress.role_drained = progress.report_drained = drained
+                progress.report_drained = drained
         relay.shutdown()
         relay.server_close()
         if progress:

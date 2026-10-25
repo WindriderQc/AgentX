@@ -200,3 +200,5 @@ async function deposit(ids) {
 }
 
 module.exports = { classifyStatements, deposit, sourceFile, safeName, issuerMatches, last4Of, distance, resolve };
+
+require('./financeAccess').guard(module.exports, ['classifyStatements', 'deposit']);

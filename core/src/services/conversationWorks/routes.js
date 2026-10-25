@@ -23,7 +23,7 @@ function registerConversationWorkRoutes(router, { works, env = process.env }) {
     if (Object.keys(req.body || {}).some(key => !['operation', 'context', 'input', 'callId'].includes(key))) throw fail('CONVERSATION_WORK_REQUEST_INVALID', 'Invalid work request.');
     if (operation === 'request') return works.request(context);
     if (operation === 'context') return works.contextForWorker(context);
-    if (operation === 'native_context') return works.contextForNative(context);
+    if (operation === 'native_context') return works.contextForNative(context, callId);
     if (operation === 'native_owner') return works.nativeOwner(context);
     if (operation === 'guardian_tool') return works.guardianTool(context);
     if (operation === 'tasks') return works.readTasks(context, input, callId);

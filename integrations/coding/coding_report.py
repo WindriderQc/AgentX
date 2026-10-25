@@ -404,15 +404,18 @@ def initial_ledger(root, path, snapshot, baseline):
     return ledgers.new_ledger(snapshot, coverage, ledgers.legacy_narrative(restored) if restored else None)
 
 
-def escalation_allowed(progress, ledger, group):
-    """Escalate a group once, after its first local failure, if this run may (#835)."""
+def escalation_allowed(progress, ledger, group, line_range=None, *, prior_failure=False, request_id=None):
+    """Escalate once after a local failure or exhausted partial rounds, if allowed."""
     escalation = getattr(progress, 'report_escalation', None)
     if not escalation or not escalation.get('models'):
         return False
     calls, seconds = steps.remaining(progress)
-    return (calls >= 1 + steps.WRITER_CALLS and seconds >= 300
-            and all(ledger['documents'][path].get('attempts', 0) == 1 for path in group)
-            and not any(row.get('escalated') and set(row.get('documents', [])) == set(group) for row in ledger['steps']))
+    failed = all(ledger['documents'][path].get('attempts', 0) == 1 for path in group)
+    stalled = all(ledger['documents'][path]['state'] == 'partial'
+                  and ledger['documents'][path].get('partialRounds', 0) >= steps.MAX_PARTIAL_ROUNDS for path in group)
+    return (calls >= 1 + steps.WRITER_CALLS and seconds >= 2 * steps.SOURCE_SAVE_SECONDS and (failed or stalled or prior_failure)
+            and not any(steps.escalation_blocks(row, group, line_range, request_id, escalation.get('refusalResolutions', ()))
+                        for row in ledger['steps']))
 
 
 def escalation_call(r, args, progress, model, messages, step):
@@ -428,17 +431,19 @@ def escalation_call(r, args, progress, model, messages, step):
     # The gateway door needs the Coding Team's token, as the relay adds it for workers.
     if getattr(r, 'GATEWAY_TOKEN', ''):
         headers['Authorization'] = f'Bearer {r.GATEWAY_TOKEN}'
-    timeout = max(60, min(900, steps.remaining(progress)[1] - steps.WRITER_SECONDS))
+    timeout = max(60, min(900, steps.remaining(progress)[1] - steps.SOURCE_SAVE_SECONDS))
     outcome = {}
+    progress.last_escalation_failure = None
 
     def send():
         try:
             with urlopen(Request(f'{r.MODEL_URL}/chat/completions', data=body, headers=headers, method='POST'), timeout=timeout) as response:
                 outcome['value'] = json.load(response)
         except HTTPError as error:
-            outcome['error'] = f'HTTP {error.code}'
+            outcome['error'], progress.last_escalation_failure = steps.escalation_error(error)
         except (OSError, ValueError) as error:
             outcome['error'] = type(error).__name__
+            progress.last_escalation_failure = {'executionState': 'unknown'}
     worker = threading.Thread(target=send, daemon=True)
     worker.start()
     while worker.is_alive():
@@ -451,38 +456,36 @@ def escalation_call(r, args, progress, model, messages, step):
     return choice.get('message', {}).get('content'), outcome['value'].get('model') or model, None
 
 
-def escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source):
+def escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source, task, *, result_root=None):
     escalation = progress.report_escalation
     files = r.git(workspace, 'ls-tree', '-r', '--name-only', baseline).splitlines()
     doc_texts = {path: sources[path].decode('utf-8', errors='replace') for path in group}
-    cited_files = steps.referenced_sources(ledger, group, doc_texts, files)
-    if not cited_files:
+    scoped_texts = steps.scoped_texts(doc_texts, line_range)
+    cited_files = steps.referenced_sources(ledger, group, scoped_texts, files)
+    if not cited_files or line_range:
         # No path cited and no earlier evidence: find the files that define the
         # identifiers the documents name, in the frozen snapshot only.
         hits = {}
-        for term in steps.code_terms(doc_texts):
+        for term in steps.code_terms(scoped_texts):
             try:
                 found = r.git(workspace, 'grep', '-l', '-F', '-e', term, baseline, '--').splitlines()
             except Exception:
                 continue
             for line in found:
                 name = line.split(':', 1)[1] if ':' in line else line
-                if name not in group:
+                if name not in group and not name.startswith('.review-work/'):
                     hits[name] = hits.get(name, 0) + 1
-        cited_files = sorted(hits, key=lambda name: (-hits[name], name))[:20]
-    texts, used = {}, 0
-    for cited in cited_files:
-        try:
-            text = scope.source_bytes(workspace, baseline, cited).decode('utf-8', errors='replace')[:steps.ESCALATION_FILE_CHARS]
-        except ValueError:
-            continue
-        if used + len(text) > steps.ESCALATION_SOURCE_CHARS:
-            break
-        texts[cited] = text
-        used += len(text)
+        discovered = sorted(hits, key=lambda name: (-hits[name], name))[:20]
+        cited_files = list(dict.fromkeys(steps.document_source_paths(scoped_texts, files) + discovered + cited_files))
+    texts = steps.bounded_source_texts(cited_files, lambda name: scope.source_bytes(workspace, baseline, name),
+                                      getattr(progress, 'report_steps', None))
     content, model, reason = escalation_call(r, args, progress, escalation['models'][0],
-                                             steps.escalation_prompt(ledger, group, doc_texts, texts, line_range), number)
+                                             steps.escalation_prompt(ledger, group, doc_texts, texts, line_range,
+                                                                     operator_notes=steps.latest_operator_notes(task)), number)
     value = None
+    saved = content is not None and result_root is not None and len(content.encode('utf-8')) <= steps.RESULT_BYTES
+    if saved:
+        steps.write_atomic(result_root / f'step-{number:02d}.json', content)
     if content is not None:
         value, reason = steps.parse_json_object(content)
     try:
@@ -496,6 +499,8 @@ def escalate_group(r, args, progress, workspace, baseline, ledger, group, line_r
     except ledgers.LedgerError as error:
         ledgers.record_failure(ledger, group, number, f'cloud escalation: {error}')
         ledger['steps'][-1].update(escalated=True, model=model)
+    steps.escalation_receipt(ledger['steps'][-1], progress, args.request_id, line_range)
+    ledger['steps'][-1]['jsonResultAvailable'] = saved
 
 
 def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
@@ -532,7 +537,7 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
         progress.report_steps = {'escalated': sum(1 for row in ledger['steps'] if row.get('escalated')),
                                  'done': sum(1 for row in ledger['steps'] if row['result'] == 'merged'),
                                  'failed': sum(1 for row in ledger['steps'] if row['result'] == 'failed'),
-                                 'counts': ledgers.counts(ledger), 'findings': len(ledger['findings']),
+                                 'counts': ledgers.counts(ledger), 'findings': len(ledgers.distinct_findings(ledger)),
                                  'stepContext': budget['stepContext'], 'budgetSource': budget['source']}
 
     def one(number, prompt, calls, seconds, *, save_pass=True):
@@ -570,6 +575,9 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
 
     save()
     number = 0
+    unresolved = [row for row in ledger['documents'].values() if row['state'] != 'reviewed']
+    if unresolved and all(row.get('retryExhausted') for row in unresolved):
+        return 'no_useful_progress'
     source = lambda name: scope.source_bytes(workspace, baseline, name)
     if ledgers.legacy_review_required(ledger, notes, review_evidence=review_evidence):
         number += 1
@@ -589,13 +597,20 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
         if calls < budget['calls'] + steps.WRITER_CALLS:
             save()
             return 'model_call_limit'
-        if seconds < min(budget['seconds'], 600) + steps.WRITER_SECONDS:
+        # Checkpoint/rendering is mandatory. The final prose rewrite below is
+        # optional and must not consume the time needed to finish source checks.
+        if seconds < 60 + steps.SOURCE_SAVE_SECONDS:
             save()
             return 'hard_budget'
         number += 1
         group, line_range = groups[0]['documents'], groups[0]['range']
+        prior_failure = bool(getattr(args, 'parent_request_id', None) and steps.prior_failed_group(ledger, group, line_range))
+        if prior_failure and escalation_allowed(progress, ledger, group, line_range, prior_failure=True, request_id=args.request_id):
+            escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source, task, result_root=root)
+            save()
+            continue
         value, reason = one(number, steps.group_prompt(ledger, group, f'{sandbox_root}/step-{number:02d}.json', task, note, line_range),
-                            budget['calls'], min(budget['seconds'], seconds - steps.WRITER_SECONDS))
+                            budget['calls'], min(budget['seconds'], seconds - steps.SOURCE_SAVE_SECONDS))
         if reason == 'unverified':
             return 'unverified'
         try:
@@ -604,22 +619,27 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
             ledgers.merge_step(ledger, group, value, source, number, line_range=line_range)
         except ledgers.LedgerError as error:
             ledgers.record_failure(ledger, group, number, str(error))
-            ledger['steps'][-1].update(requestId=args.request_id, jsonResultAvailable=value is not None)
-            if escalation_allowed(progress, ledger, group):
-                number += 1
-                escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source)
+            ledger['steps'][-1].update(requestId=args.request_id, jsonResultAvailable=value is not None,
+                                       lineRange=list(line_range) if line_range else None)
+        if escalation_allowed(progress, ledger, group, line_range, request_id=args.request_id):
+            number += 1
+            escalate_group(r, args, progress, workspace, baseline, ledger, group, line_range, number, sources, source, task, result_root=root)
         save()
     calls, seconds = steps.remaining(progress)
     if ledger['findings'] and calls >= steps.WRITER_CALLS and seconds >= steps.WRITER_SECONDS:
         number += 1
-        value, reason = one(number, steps.writer_prompt(ledger, f'{sandbox_root}/step-{number:02d}.json'),
+        value, reason = one(number, steps.writer_prompt({**ledger, 'findings': ledgers.distinct_findings(ledger)}, f'{sandbox_root}/step-{number:02d}.json'),
                             steps.WRITER_CALLS, steps.WRITER_SECONDS, save_pass=False)
         if reason == 'unverified':
             return 'unverified'
         if value is not None:
             steps.apply_writer(ledger, value)
     save()
-    return 'worker_exit' if ledger.get('legacyReviewPending') else 'complete'
+    if ledger.get('legacyReviewPending'):
+        return 'worker_exit'
+    if any(row['state'] != 'reviewed' for row in ledger['documents'].values()):
+        return 'no_useful_progress'
+    return 'complete'
 
 
 def reconcile(r,task_id,key):

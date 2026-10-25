@@ -11,6 +11,7 @@ const { createWorkDelivery } = require('../../src/services/conversationWorks/del
 const { createWorkControl } = require('../../src/services/conversationWorks/control');
 const { OWNER, EXCHANGE_SCOPE, hash, NO_WORK } = require('../../src/services/conversationWorks/contract');
 const Model = require('../../models/ConversationWorkState');
+const { createWorkObserver } = require('../../src/services/conversationWorks/observer');
 const conversations = forSurface('household');
 const env = { PERSONAL_CONVERSATION_WORK_MODE: 'native', PERSONAL_CONVERSATION_WORK_AGENT_ID: 'nestor-worker',
   PERSONAL_CONVERSATION_WORK_TOKEN: 'synthetic-native-conversation-binding-token' };
@@ -44,6 +45,209 @@ beforeEach(async () => {
     agentClient: execute, continuity, env, capability });
 });
 afterEach(() => works.observer.stop());
+
+test('awaited work precedes queued native reviews, retaining FIFO and completing every original once', async () => {
+  works.observer.stop();
+  const list = jest.fn(async () => ({ tasks: [], totalCount: 0 }));
+  works = registerWorkRuntime({ router: express.Router(), conversations, tasks: { list }, agentClient: execute, continuity, env, capability });
+  works.observer.stop();
+  const reviews = [], awaited = [];
+  for (let index = 0; index < 2; index++) {
+    const job = await works.intake(input('Bonjour.'));
+    await works.prepare(job.row._id, `Complete review context ${index}`);
+    await conversations.settleTurn({ ...works.query(current.sessionId), traceId: job.row.turnId, replyText: 'Bonjour !' });
+    await works.guardianSettled(job.row._id, 'completed', 'answered');
+    reviews.push(job.row._id);
+  }
+  for (let index = 0; index < 2; index++) {
+    const job = await works.intake(input('Lis mes tâches personnelles ouvertes.'));
+    await works.prepare(job.row._id, `Complete awaited context ${index}`);
+    await conversations.settleTurn({ ...works.query(current.sessionId), traceId: job.row.turnId, replyText: 'La lecture est acceptée.' });
+    await works.guardianSettled(job.row._id, 'completed', 'awaiting_main');
+    awaited.push(job.row._id);
+  }
+  const sent = [], evidence = new Map();
+  const native = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
+  const observer = createWorkObserver({ works, env, agentFor: () => 'main', now: () => Date.now() + 31000,
+    execute: async ({ row, onStarted }) => {
+      const runId = 'resp_' + randomUUID();
+      await onStarted(row.attempt.sessionKey, runId);
+      const saved = await works.repo.get(row._id);
+      const canonical = await works.contextForNative(context(saved), 'call_' + row._id);
+      const value = proof(saved.attempt, row.classification === 'native_review' ? NO_WORK : 'There are zero open tasks.', ['conversation_work']);
+      if (canonical.receipt) value.receipts = [{ tool: 'conversation_work', status: 'verified', runId,
+        workRead: { id: canonical.receipt.id, tool: 'tasks.personal.list' } }];
+      evidence.set(runId, value); sent.push(row._id);
+    }, observe: async attempt => evidence.get(attempt.runId), receive: request => native.receive(request) });
+  try {
+    for (let index = 0; index < 5; index++) await observer.tick();
+    expect(sent).toEqual([...awaited, ...reviews]);
+    expect(new Set(sent).size).toBe(4);
+    expect(list).toHaveBeenCalledTimes(2);
+    for (const id of sent) {
+      const row = await works.repo.get(id);
+      expect(row.state).toBe('completed');
+      expect(row.attempt.terminal).toBe('completed');
+    }
+    expect((await works.conversationContext(current.sessionId)).coverage).toMatchObject({ complete: true, turnCount: 4, workResultCount: 2 });
+  } finally { observer.stop(); }
+});
+
+test('an already admitted review retains its original owner when awaited work arrives', async () => {
+  works.observer.stop();
+  const running = await admitted('Bonjour.');
+  await mongoose.connection.collection('conversation_work_dispatch').updateOne({ _id: OWNER },
+    { $set: { workId: running._id, phase: 'dispatching', attempt: running.attempt } }, { upsert: true });
+  const waiting = await works.intake(input('Lis mes tâches personnelles ouvertes.'));
+  await works.prepare(waiting.row._id, 'Complete waiting context');
+  const dispatch = jest.fn();
+  const observer = createWorkObserver({ works, env, execute: dispatch,
+    observe: async attempt => ({ run: { sessionKey: attempt.sessionKey, runId: attempt.runId, status: 'running' } }) });
+  try {
+    await observer.tick(); await observer.tick();
+    expect(dispatch).not.toHaveBeenCalled();
+    expect((await works.repo.get(running._id)).attempt).toEqual(running.attempt);
+    expect((await works.repo.get(waiting.row._id)).state).toBe('queued');
+    expect((await mongoose.connection.collection('conversation_work_dispatch').findOne({ _id: OWNER })).workId).toBe(running._id);
+  } finally { observer.stop(); }
+});
+
+test('the mandatory native context call includes one replay-safe canonical task read for an explicit request', async () => {
+  works.observer.stop();
+  const list = jest.fn(async () => ({ tasks: [{ id: 'synthetic-1', title: 'Synthetic task' }], totalCount: 8 }));
+  works = registerWorkRuntime({ router: express.Router(), conversations, tasks: { list }, agentClient: execute, continuity, env, capability });
+  const row = await admitted('Lis ma liste de tâches personnelles ouvertes et donne le total, puis au plus trois titres. Ne modifie rien.');
+  const identity = context(row), callId = 'call_synthetic_context|fc_tasks';
+  const read = await works.contextForNative(identity, callId);
+  expect(read.request).toBe('Lis ma liste de tâches personnelles ouvertes et donne le total, puis au plus trois titres. Ne modifie rien.');
+  expect(read.selectedContext).toBe('Selected owner context.');
+  expect(read.conversation.coverage.complete).toBe(true);
+  expect(read.receipt).toMatchObject({ tool: 'tasks.personal.list', status: 'verified', runId: identity.runId });
+  expect(read.receiptIds).toContain(read.receipt.id);
+  expect(read.data).toMatchObject({ totalCount: 8, tasks: [{ id: 'synthetic-1' }] });
+  expect((await works.contextForNative(identity, callId)).receipt).toEqual(read.receipt);
+  expect(list).toHaveBeenCalledTimes(1);
+  expect(list).toHaveBeenCalledWith({ limit: 25, includeDone: false, scope: 'active' });
+  await expect(works.contextForNative({ ...identity, runId: 'resp_' + randomUUID() }, callId)).rejects.toMatchObject({ statusCode: 404 });
+  await expect(works.readTasks(identity, {}, 'call_direct')).rejects.toMatchObject({ statusCode: 404 });
+  const evidence = proof(row.attempt, 'Eight tasks, three requested titles.', ['conversation_work']);
+  evidence.receipts = [{ tool: 'conversation_work', status: 'verified', runId: identity.runId,
+    workRead: { id: read.receipt.id, tool: 'tasks.personal.list' } }];
+  const runtime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
+  expect(await runtime.receive({ row: await works.repo.get(row._id), evidence })).toEqual({ published: true });
+  expect((await works.repo.get(row._id)).state).toBe('result_ready');
+});
+
+test('the native personal task context counts owner actions without promoting extracted findings', async () => {
+  const PipelineTask = require('../../models/PipelineTask');
+  const personal = require('../../src/services/personalTaskService');
+  await PipelineTask.deleteMany({});
+  await PipelineTask.insertMany([
+    { pipelineId: 'native-owner-action', service: 'personal', title: 'Call the garage', source: 'household-dad-desk' },
+    { pipelineId: 'native-extracted-finding', service: 'personal', title: 'Continuer la lecture du document (offset 8000/24000)' },
+  ]);
+  const before = JSON.stringify(await PipelineTask.find().sort({ pipelineId: 1 }).lean());
+  expect((await personal.listPersonalTasks()).totalCount).toBe(2);
+  works.observer.stop();
+  works = registerWorkRuntime({ router: express.Router(), conversations, tasks: { list: personal.listPersonalTasks },
+    agentClient: execute, continuity, env, capability });
+  const row = await admitted('Lis mes tâches personnelles ouvertes et donne leur nombre.');
+  const read = await works.contextForNative(context(row), 'call_owner_scope');
+  expect(read.data).toMatchObject({ count: 1, totalCount: 1, hasMore: false });
+  expect(read.data.tasks.map(task => task.id)).toEqual(['native-owner-action']);
+  expect(JSON.stringify(await PipelineTask.find().sort({ pipelineId: 1 }).lean())).toBe(before);
+  await PipelineTask.deleteMany({});
+});
+
+test.each([false, true])('the current task read is visible before a long historical context, unavailable=%s', async unavailable => {
+  works.observer.stop();
+  const list = jest.fn(async () => {
+    if (unavailable) throw new Error('Synthetic domain outage');
+    return { tasks: [{ id: 'current-task', title: 'Current verified task' }], totalCount: 2 };
+  });
+  works = registerWorkRuntime({ router: express.Router(), conversations, tasks: { list }, agentClient: execute, continuity, env, capability });
+  works.observer.stop();
+  const older = await conversations.recordTurn({ ...works.query(current.sessionId), traceId: randomUUID(), outcome: 'completed',
+    inputText: 'Earlier task read.', replyText: 'Earlier count: 99. ' + 'x'.repeat(35000) + ' LAST_HISTORICAL_DETAIL' });
+  const row = await admitted('Lis mes tâches personnelles ouvertes et donne leur nombre.');
+  const read = await works.contextForNative(context(row), 'call_current_read');
+  // A relay's rendered head must expose the current result, rather than only
+  // old history. The complete response and canonical record remain intact.
+  const renderedHead = JSON.stringify(read, null, 2).slice(0, 2048);
+  if (unavailable) {
+    expect(renderedHead).toContain('"status": "unavailable"');
+    expect(read.receipt).toBeUndefined();
+  } else {
+    expect(renderedHead).toContain('"totalCount": 2');
+    expect(renderedHead).toContain(read.receipt.id);
+    expect(read.receipt.runId).toBe(row.attempt.runId);
+    expect((await works.contextForNative(context(row), 'call_current_read')).receipt).toEqual(read.receipt);
+  }
+  expect(read.conversation.turns[0].replyText).toBe(older.replyText);
+  expect(read.conversation.coverage).toMatchObject({ complete: true, turnCount: 2 });
+  expect((await conversations.getTurn({ ...works.query(current.sessionId), traceId: older.traceId })).replyText).toBe(older.replyText);
+  expect(list).toHaveBeenCalledTimes(1);
+});
+
+test('native task context forwards the native call id over HTTP and denies another run before reading', async () => {
+  works.observer.stop();
+  const list = jest.fn(async () => ({ tasks: [], totalCount: 0 }));
+  router = express.Router();
+  works = registerWorkRuntime({ router, conversations, tasks: { list }, agentClient: execute, continuity, env, capability });
+  const row = await admitted('Regarde mes tâches ouvertes.');
+  const app = express(); app.use(express.json()); app.use(router);
+  const body = { operation: 'native_context', context: context(row), callId: 'call_context_http' };
+  const post = value => request(app).post('/native/work').set('Authorization', 'Bearer ' + env.PERSONAL_CONVERSATION_WORK_TOKEN).send(value);
+  expect((await post({ ...body, context: { ...body.context, agentId: 'family' } })).status).toBe(404);
+  expect(list).not.toHaveBeenCalled();
+  expect((await post(body)).body.data.receipt.status).toBe('verified');
+  expect((await post(body)).body.data.data.totalCount).toBe(0);
+  expect(list).toHaveBeenCalledTimes(1);
+});
+
+test('ordinary native conversation context never speculatively reads tasks', async () => {
+  const row = await admitted('Help me choose a colour.');
+  const result = await works.contextForNative(context(row), 'call_colour_context');
+  expect(result.data).toBeUndefined();
+  expect(result.receipt).toBeUndefined();
+});
+
+test('native context shares repeated inline evidence without merging original runs or replaying reads', async () => {
+  works.observer.stop();
+  const data = { tasks: [{ id: 'shared-owner-action', title: 'x'.repeat(35000) + ' FINAL_SOURCE_DETAIL' }], totalCount: 1 };
+  const list = jest.fn(async () => structuredClone(data));
+  works = registerWorkRuntime({ router: express.Router(), conversations, tasks: { list }, agentClient: execute, continuity, env, capability });
+  works.observer.stop();
+  const runs = [];
+  for (let index = 0; index < 3; index++) {
+    const row = await admitted('Lis mes tâches ouvertes.');
+    await works.readTasks(context(row), {}, 'synthetic-read', 'boss');
+    await works.publishNative(row._id, proof(row.attempt, `Verified result ${index}`, ['conversation_work']));
+    runs.push(row.attempt.runId);
+  }
+  const current = await admitted('Help me choose a colour.');
+  const read = await works.contextForNative(context(current), 'synthetic-refresh');
+  expect(read.nativeOwner).toBe('main');
+  expect(read.conversation.coverage).toMatchObject({ complete: true, turnCount: 4, workResultCount: 3 });
+  expect(Object.values(read.conversation.sharedToolEvidence)).toEqual([data]);
+  const historical = read.conversation.turns.flatMap(turn => turn.workResults || []);
+  expect(historical.map(work => work.text)).toEqual(['Verified result 0', 'Verified result 1', 'Verified result 2']);
+  expect(historical.map(work => work.toolEvidence[0].runId)).toEqual(runs);
+  expect(list).toHaveBeenCalledTimes(3);
+  await expect(works.contextForNative({ ...context(current), runId: 'resp_' + randomUUID() })).rejects.toMatchObject({ statusCode: 404 });
+  expect((await works.conversationContext(current.sessionId)).sharedToolEvidence).toBeUndefined();
+});
+
+test('an unavailable contextual task read preserves complete context without inventing a receipt', async () => {
+  const row = await admitted('Lis mes tâches ouvertes.');
+  const result = await works.contextForNative(context(row), 'call_unavailable_tasks');
+  expect(result.request).toBe('Lis mes tâches ouvertes.');
+  expect(result.selectedContext).toBe('Selected owner context.');
+  expect(result.conversation.coverage.complete).toBe(true);
+  expect(result.taskRead).toEqual({ status: 'unavailable', code: 'CONVERSATION_WORK_READ_UNAVAILABLE' });
+  expect(result.receipt).toBeUndefined();
+  expect((await works.repo.get(row._id)).tools).toHaveLength(0);
+});
 
 test('composite native call identities keep exact replay, budget and run ownership', async () => {
   const row = await admitted('Lis https://example.test et vérifie sur le web.');
@@ -480,6 +684,12 @@ test('the dedicated guardian uses a compact per-turn session, preserves Main his
     const bound = { agentId: 'nestor-guardian', sessionKey: row.guardian.sessionKey, runId: row.guardian.runId };
     expect(await works.guardianTool(bound)).toMatchObject({ delegated: true });
     await expect(works.guardianTool({ ...bound, agentId: 'main' })).rejects.toMatchObject({ statusCode: 404 });
+    await works.observer.tick();
+    expect((await works.repo.get(row._id)).attempt).toBeUndefined();
+    // Advance only this disposable review's recorded eligibility times.
+    await Model.collection.updateOne({ _id: row._id }, { $set: {
+      receivedAt: new Date(new Date(row.receivedAt).getTime() - 31000),
+      events: row.events.map(event => ({ ...event, at: new Date(new Date(event.at).getTime() - 31000) })) } });
     await works.observer.tick();
     const reviewed = await works.repo.get(row._id);
     expect(reviewed.attempt.agentId).toBe('main');

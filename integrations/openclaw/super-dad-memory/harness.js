@@ -1,4 +1,5 @@
 import { digest, nowIso, readState, updateState } from "./store.js";
+import { verifiedIssResult } from './iss-evidence.js';
 import { nativeActionProvenance } from '../action-provenance.mjs';
 
 export function decodeResult(result) {
@@ -13,7 +14,7 @@ export function decodeResult(result) {
 }
 
 export async function agentxRead(baseUrl, name, args, fetchImpl = fetch) {
-  if (!["list_personal_tasks", "personal_briefing", "rag_search", "network_devices", "storage_summary", "find_files", "gpu_status", "janitor_report_view"].includes(name)) throw new Error("Unsupported Nestor read");
+  if (!["list_personal_tasks", "personal_briefing", "rag_search", "network_devices", "storage_summary", "find_files", "gpu_status", "read_presentation", "iss_passes", "janitor_report_view"].includes(name)) throw new Error("Unsupported Nestor read");
   const response = await fetchImpl(new URL("/mcp", baseUrl), {
     method: "POST", redirect: "error", signal: AbortSignal.timeout(8000),
     headers: { "content-type": "application/json" },
@@ -95,7 +96,8 @@ export async function recordTool(workspace, event, context, { config, pluginConf
     && data.receipt.runId === (context.runId || event.runId) && /^[a-f0-9]{64}$/.test(data.receipt.id || '');
   const workPublished = tool === 'conversation_work' && data?.authority === 'core.conversation-works'
     && data.published === true && /^[a-f0-9]{64}$/.test(data.id || '') && data.resultVersion === 1;
-  const proved = acceptedWork || workRead || workPublished || (localImage ? data.operation.state === 'completed' && data.operation.runtimeRestored === true && Boolean(data.operation.artifact?.sha256)
+  const issRead = ['nestor_iss', 'iss_passes', 'agentx__iss_passes'].includes(tool) && verifiedIssResult(data);
+  const proved = issRead || acceptedWork || workRead || workPublished || (localImage ? data.operation.state === 'completed' && data.operation.runtimeRestored === true && Boolean(data.operation.artifact?.sha256)
     : tool === 'work_queue' ? Boolean(queueRequest || queueRead)
     : tool === "personal_memory" ? data?.ok === true
     : soundTool ? Boolean(soundId)

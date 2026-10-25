@@ -19,6 +19,7 @@ const simulation = require('../src/services/finance/financeSimulation');
 const documentLinks = require('../src/services/finance/financeDocumentLinks');
 const brief = require('../src/services/finance/financeBrief');
 const statementDeposit = require('../src/services/finance/financeStatementDeposit');
+const access = require('../src/services/finance/financeAccess');
 const goals = require('../src/services/finance/financeGoals');
 
 function sendError(res, error) {
@@ -33,9 +34,18 @@ function sendError(res, error) {
 
 function createFinanceRoutes({ inbox = financeInbox } = {}) {
   const router = express.Router();
+  // Coordination proof only: no figures or mutations. It remains observable
+  // while ordinary Finance reads are fenced for the native operator executor.
+  router.get('/maintenance', async (_req,res) => {
+    try {
+      const state = await access.state();
+      return res.json({status:'success',data:{protocol:require('../src/services/finance/financeRepairCoreProof').PROTOCOL,
+        databaseIdentity:state.identity,held:Boolean(state.repair)}});
+    } catch (e) { return sendError(res,e); }
+  });
   const handle = (fn) => async (req, res) => {
     try {
-      return res.json({ status: 'success', data: await fn(req) });
+      return res.json({ status: 'success', data: await access.withAccess(() => fn(req)) });
     } catch (error) {
       return sendError(res, error);
     }
@@ -72,7 +82,7 @@ function createFinanceRoutes({ inbox = financeInbox } = {}) {
   router.get('/export.csv', async (req, res) => {
     let exported;
     try {
-      exported = await exportCsv(req.query);
+      exported = await access.withAccess(() => exportCsv(req.query));
     } catch (error) {
       return sendError(res, error);
     }
@@ -94,14 +104,16 @@ function createFinanceRoutes({ inbox = financeInbox } = {}) {
 
   // Ingestion can take minutes per statement; the scan runs in the background
   // and its results appear on GET /inbox.
-  router.post('/inbox/scan', (req, res) => {
+  router.post('/inbox/scan', async (req, res) => {
+    try { return await access.withAccess(async () => {
     const target = inbox();
     if (!target.settings.enabled) {
       return sendError(res, Object.assign(new Error('Finance inbox is not configured'), { code: 'FINANCE_INBOX_DISABLED', status: 409 }));
     }
     if (target.status().running) return res.status(409).json({ status: 'error', code: 'FINANCE_SCAN_RUNNING', message: 'A scan is already running' });
-    target.scanOnce().catch((error) => console.error('[finance] inbox scan failed:', error.message));
+    access.detached(() => target.scanOnce()).catch((error) => console.error('[finance] inbox scan failed:', error.message));
     return res.status(202).json({ status: 'success', data: { started: true } });
+    }); } catch (error) { return sendError(res, error); }
   });
 
   return router;

@@ -73,3 +73,16 @@ streaming, local-fallback attribution, lost responses, idempotency expiry and
 confirmed cancellation. Live conversation and speech checks require the
 instance's heavy-work queue and native admission. Physical microphone/playback
 acceptance remains distinct from synthetic tests and a healthy API listener.
+
+## Stream completion and uncertain stops
+
+A terminal native receipt completes any missing streamed suffix through the same
+speech/display parser, without repeating the prefix. A divergent terminal answer
+refuses success and retains its receipt. A terminal SSE event ends the subscription
+even if the HTTP connection stays open; Core still reads the terminal status.
+
+A failed stop response never authorizes another turn. Core can confirm the original
+run by a fresh status read, without repeating the stop. If it remains uncertain,
+the original fence stays held. Content-free error codes and run identity accompany
+the error in server diagnostics, including failures after HTTP streaming began.
+These fixtures do not establish the root cause of a historical transport failure.

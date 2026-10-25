@@ -3,8 +3,6 @@ let heavyQueuePage = 0;
 let heavyQueueData = null;
 let heavyQueueView = 'active';
 const HEAVY_QUEUE_API = '/api/cluster/schedule/work-queue';
-// Kinds Core launches itself at their slot (Run now, or the owner's automatic start).
-const CORE_LAUNCHED_KINDS = ['profiler', 'embedding-reindex'];
 
 async function loadHeavyQueue() {
   const container = document.getElementById('heavyQueueList');
@@ -61,41 +59,61 @@ function renderCoreHeavyQueue(container, queue) {
     : pending.sort((a, b) => rank(a) - rank(b) || a.priority - b.priority || String(a.reservation?.start || a.createdAt).localeCompare(String(b.reservation?.start || b.createdAt)));
   const size = 10;
   heavyQueuePage = Math.min(heavyQueuePage, Math.max(0, Math.ceil(jobs.length / size) - 1));
-  let html = `<div class="cs-queue-actions" role="group" aria-label="Demandes de travaux lourds">
+  if (typeof setRailCount === 'function') setRailCount('queue', pending.length);
+  let html = `<div class="cs-queue-head">
+    <div class="cs-queue-actions cs-queue-segment" role="group" aria-label="Demandes de travaux lourds">
     <button type="button" class="cs-queue-button" data-queue-action="active" aria-pressed="${heavyQueueView === 'active'}">À traiter · ${pending.length}</button>
-    <button type="button" class="cs-queue-button" data-queue-action="finished" aria-pressed="${heavyQueueView === 'finished'}">Terminées · ${finished.length}</button></div>`;
-  html += '<div class="cs-queue-note">Demandes de Nestor et des sessions de code. Les créneaux sont estimés; Core vérifie la disponibilité au lancement.</div>';
-  html += `<div class="cs-queue-note"><a href="${HEAVY_QUEUE_API}/export">Exporter la file</a> · ${Number(queue.archivedCount || 0)} archivées</div>`;
+    <button type="button" class="cs-queue-button" data-queue-action="finished" aria-pressed="${heavyQueueView === 'finished'}">Terminées · ${finished.length}</button></div>
+    <a class="cs-queue-export" href="${HEAVY_QUEUE_API}/export" title="${Number(queue.archivedCount || 0)} archivées">Exporter</a></div>`;
+  html += '<div class="cs-queue-note">Demandes de Nestor et des sessions de code. Créneaux estimés ; Core vérifie la disponibilité au lancement.</div>';
+  if (queue.observedAt) html += `<div class="cs-queue-note">Lecture : ${esc(formatEvidenceTime(queue.observedAt))}. Le lancement revérifie les conditions.</div>`;
+  if (queue.summary) {
+    const counts = queue.summary.counts;
+    html += `<div class="cs-next-meta cs-queue-summary" aria-label="Suite des demandes">
+      <span>En file automatique · ${Number(counts.automatic_queue)}</span>
+      <span>En attente d’action · ${Number(counts.action_required)}</span>
+      <span>Acheminement · ${Number(counts.dispatching)}</span>
+      <span>Exécution enregistrée · ${Number(counts.running)}</span>
+      <span>À vérifier · ${Number(counts.uncertain) + Number(counts.unknown)}</span></div>`;
+    html += `<div class="cs-queue-note">${Number(queue.summary.reservations.total)} créneau(x) réservé(s), comptés séparément du mode de démarrage.</div>`;
+  }
   html += jobs.slice(heavyQueuePage * size, (heavyQueuePage + 1) * size).map(job => {
     const editable = ['requested', 'reserved'].includes(job.state);
     const active = ['dispatching', 'running', 'uncertain'].includes(job.state);
-    const expired = job.state === 'reserved' && Date.parse(job.reservation.end) <= Date.now();
+    const view = job.presentation;
+    const expired = editable && view?.schedule.state === 'expired';
     const overrun = active && job.reservation && Date.parse(job.reservation.end) < Date.now();
-    const launchable = CORE_LAUNCHED_KINDS.includes(job.kind) && Boolean(job.executor);
-    const now = Date.now();
-    const runnable = launchable && job.state === 'reserved' && Date.parse(job.reservation.start) <= now
-      && now < Date.parse(job.reservation.end) && (!job.startBefore || now < Date.parse(job.startBefore));
+    const runnable = view?.capabilities.runNow === true;
+    const state = view?.label || 'État à actualiser';
+    const hosts = job.hosts.length ? queueHostLabels(job.hosts) : (job.legacyRow?.hosts || 'Hosts need review');
     return `<article class="cs-next-item cs-queue-item" data-queue-id="${esc(job.id)}">
       <div>
-        <div class="cs-next-name">${esc(job.title)}</div>
-        <div class="cs-next-meta"><span>P${Number(job.priority)} · ${esc(job.kind)} · ${esc(expired ? 'window expired' : job.state)}</span></div>
-        <div class="cs-next-meta">${esc(job.hosts.join(', ') || job.legacyRow?.hosts || 'Hosts need review')}</div>
-        ${job.reservation ? `<div class="cs-next-meta">${esc(formatEvidenceTime(job.reservation.start))} → ${esc(formatEvidenceTime(job.reservation.end))} (estimated)${job.reservation.when === 'asap' ? ' · as soon as possible' : job.reservation.when === 'tonight' ? ' · tonight' : ''}</div>` : ''}
-        ${job.state === 'reserved' && !expired ? `<div class="cs-queue-start${job.reservation.autoStart ? ' is-auto' : ''}">${job.reservation.autoStart
-          ? '<i class="fas fa-play-circle" aria-hidden="true"></i> Starts automatically at its time'
-          : launchable ? '<i class="fas fa-hand-pointer" aria-hidden="true"></i> Waits for you: use Run now during its slot' : '<i class="fas fa-terminal" aria-hidden="true"></i> Started by its own executor'}</div>` : ''}
-        ${job.dispatchedAt ? `<div class="cs-next-meta">Dispatch recorded ${esc(formatEvidenceTime(job.dispatchedAt))}${job.finishedAt ? ` · settled ${esc(formatEvidenceTime(job.finishedAt))}` : ''}</div>` : ''}
-        ${job.releaseReceipt ? `<div class="cs-next-meta">Receipt: ${esc(job.releaseReceipt.authority)}</div>` : ''}
-        ${overrun ? '<div class="cs-queue-note">Past estimated end; waiting for an executor and release receipt.</div>' : ''}
-        <div class="cs-next-meta">${esc(job.source.type)} ${esc(job.source.ref || '')} ${esc(job.source.taskId || '')}</div>
-        ${job.source.issueUrl ? `<a href="${esc(job.source.issueUrl)}" target="_blank" rel="noopener">GitHub issue</a>` : ''}
-        ${job.operation ? `<div class="cs-next-meta">Operation ${esc(job.operation.id)}</div>` : ''}
-        ${job.reason ? `<div class="cs-queue-note">${esc(job.reason)}</div>` : ''}
-        <details><summary>Request and receipts</summary><pre class="cs-queue-receipt">${esc(JSON.stringify(job, null, 2))}</pre></details>
+        <div class="cs-queue-title-row">
+          <div class="cs-next-name">${esc(job.title)}</div>
+          <span class="cs-queue-state" data-state="${esc(expired ? 'expired' : job.state)}">${esc(state)}</span>
+        </div>
+        <div class="cs-next-meta"><span class="cs-source-chip cadence">P${Number(job.priority)}</span><span>${esc(job.kind)}</span><span aria-hidden="true">·</span><span title="${esc(job.hosts.join(', '))}"><i class="fas fa-server" aria-hidden="true"></i> ${esc(hosts)}</span></div>
+        ${job.reservation ? `<div class="cs-next-meta cs-queue-time" title="${esc(formatEvidenceTime(job.reservation.start))} → ${esc(formatEvidenceTime(job.reservation.end))}"><i class="far fa-clock" aria-hidden="true"></i> ${esc(queueWindowText(job.reservation.start, job.reservation.end))} (estimated)${job.reservation.when === 'asap' ? ' · as soon as possible' : job.reservation.when === 'tonight' ? ' · tonight' : ''}</div>` : ''}
+        ${view ? `<div class="cs-queue-start${view.phase === 'automatic_queue' ? ' is-auto' : ''}">
+          <span>${esc(view.nextAction.detail)}</span> <span class="cs-queue-note">Responsable : ${esc({ core: 'Core (automatique)', operator: 'opérateur', native_executor: 'exécuteur actuel', none: 'aucune action requise' }[view.nextAction.actor] || view.nextAction.actor)}</span></div>`
+          : '<div class="cs-queue-note">Actualisez les données Core pour connaître la prochaine action.</div>'}
+        ${expired && editable ? '<div class="cs-queue-note cs-queue-warn">window expired · revoir la fenêtre autorisée</div>' : ''}
+        ${overrun ? '<div class="cs-queue-note cs-queue-warn">Past estimated end; waiting for an executor and release receipt.</div>' : ''}
+        <details class="cs-queue-more"><summary>Détails</summary>
+          <div class="cs-next-meta">État enregistré : ${esc(job.state)} · Démarrage : ${esc(view?.startMode || 'unknown')}</div>
+          ${job.reason ? `<p class="cs-queue-reason">${esc(job.reason)}</p>` : ''}
+          <div class="cs-next-meta">Source : ${esc(job.source.type)} ${esc(job.source.ref || '')} ${esc(job.source.taskId || '')}</div>
+          ${job.source.issueUrl ? `<a href="${esc(job.source.issueUrl)}" target="_blank" rel="noopener">GitHub issue</a>` : ''}
+          ${job.dispatchedAt ? `<div class="cs-next-meta">Dispatch recorded ${esc(formatEvidenceTime(job.dispatchedAt))}${job.finishedAt ? ` · settled ${esc(formatEvidenceTime(job.finishedAt))}` : ''}</div>` : ''}
+          ${job.releaseReceipt ? `<div class="cs-next-meta">Receipt: ${esc(job.releaseReceipt.authority)}</div>` : ''}
+          ${job.operation ? `<div class="cs-next-meta">Operation ${esc(job.operation.id)}</div>` : ''}
+          <div class="cs-next-meta">Hôtes : ${esc(job.hosts.join(', ') || '—')}</div>
+          <details><summary>Request and receipts</summary><pre class="cs-queue-receipt">${esc(JSON.stringify(job, null, 2))}</pre></details>
+        </details>
         <div class="cs-queue-actions">
           ${runnable ? '<button type="button" class="cs-queue-button cs-queue-button--primary" data-queue-action="run">Run now</button>' : ''}
           ${editable && job.hosts.length ? `<button type="button" class="cs-queue-button" data-queue-action="reserve">${job.state === 'reserved' ? 'Change slot' : 'Plan a slot'}</button>` : ''}
-          ${editable ? '<button type="button" class="cs-queue-button" data-queue-action="cancel">Cancel request</button>' : ''}
+          ${editable ? '<button type="button" class="cs-queue-button cs-queue-button--quiet" data-queue-action="cancel">Cancel request</button>' : ''}
           ${active ? '<button type="button" class="cs-queue-button" data-queue-action="reconcile">Check executor result</button>' : ''}
         </div>
       </div>
@@ -107,6 +125,24 @@ function renderCoreHeavyQueue(container, queue) {
     <span>${heavyQueuePage * size + 1}–${Math.min((heavyQueuePage + 1) * size, jobs.length)} / ${jobs.length}</span>
     <button type="button" class="cs-queue-button" data-queue-action="next" ${(heavyQueuePage + 1) * size >= jobs.length ? 'disabled' : ''}>Next</button></div>`;
   container.innerHTML = html;
+}
+
+// Short window for a card: "Fri 16:29 → 16:59", with the end day only when it differs.
+function queueWindowText(start, end) {
+  const from = new Date(start), to = new Date(end);
+  if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime())) return `${start} → ${end}`;
+  const clock = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+  const day = date => date.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+  const sameDay = from.toDateString() === to.toDateString();
+  return `${day(from)} ${from.toLocaleTimeString([], clock)} → ${sameDay ? '' : `${day(to)} `}${to.toLocaleTimeString([], clock)}`;
+}
+
+// Show host names instead of raw Ollama URLs when the page knows the host.
+function queueHostLabels(hosts) {
+  const known = typeof liveHostsData !== 'undefined' && Array.isArray(liveHostsData) ? liveHostsData : [];
+  const labels = hosts.map(value => known.find(host => host.url === value || host.id === value)?.name
+    || String(value).replace(/^https?:\/\//, ''));
+  return [...new Set(labels)].join(', ');
 }
 
 async function queueWrite(suffix, body) {
@@ -150,7 +186,7 @@ function openQueueReservation(job) {
   form.elements.start.value = localInput(job.reservation?.start);
   form.elements.priority.value = job.priority;
   const auto = form.querySelector('[data-queue-auto]');
-  const launchable = CORE_LAUNCHED_KINDS.includes(job.kind) && Boolean(job.executor);
+  const launchable = job.presentation?.capabilities.configureAutoStart === true;
   auto.hidden = !launchable;
   form.elements.autoStart.checked = launchable && (job.reservation ? job.reservation.autoStart === true : true);
   dialog.querySelector('[data-queue-title]').textContent = job.title;

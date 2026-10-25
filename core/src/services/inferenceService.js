@@ -14,7 +14,7 @@ const { executeAdmittedOllamaAttempt, settleAdmissionFailure } = require('./rout
 const { buildInferenceClientData, classifyHttpRetryFailure, buildInferenceResponseHeaders, setRouteOutcomeHeader } = require('./routing/inferenceResponsePresenter');
 const { prepareInferenceRuntime } = require('./inferenceRuntimePolicy');
 const lanePolicy = require('./inferenceLanePolicy');
-const { resolveCallerPolicy } = require('./routing/callerPolicy');
+const { resolveExecutionCaller } = require('./routing/inferenceCallerAccess');
 const { assertHostAvailableForConsumer, workloadReservesHost } = require('./benchmarkClaimGuard');
 const { fallbackAfterRefusal, refusedBeforeDispatch } = require('./routing/taskFallbackLadder');
 const { createGenerateRouteDecisionBuilder, observeRouteDecision, createAttemptRecorder } = require('./routing/inferenceRouteRecorder');
@@ -23,6 +23,7 @@ const { createGenerateRoutingTrace } = require('./routing/generateRoutingTrace')
 const { buildClaimAdmissionRejection } = require('./routing/claimAdmissionRejection');
 const { resolveInferenceTimeout } = require('./routing/inferenceTimeoutPolicy');
 const { shrinkMessageImages } = require('./inferenceImageResize');
+const { checkLaneContract } = require('./routing/topologyRoleRouting');
 
 const LADDER_RETRY = Symbol('taskFallbackLadderRetry');
 
@@ -52,17 +53,14 @@ async function executeInferenceOnce(body = {}, {
     const headers = {};
     const result = (status, data) => ({ ok: status >= 200 && status < 300, status, body: data, headers });
     const refusedResult = (err, response) => {
-        if (lane.route && !requestedModel && !hostOverride && !ladderTarget && taskType && refusedBeforeDispatch(err)) {
+        if (lane.route && !requestedModel && !hostOverride && !ladderTarget && !roleTarget && taskType && refusedBeforeDispatch(err)) {
             response[LADDER_RETRY] = { model, host: routedHostKey, url: target, degraded: taskFallback };
         }
         return response;
     };
     const isCancelled = () => signal?.aborted === true;
     if (isCancelled()) return undefined;
-    if (!callerContext) {
-        const policy = resolveCallerPolicy(body.callerDetail || '');
-        callerContext = { principal: 'core-inference', requestedPolicy: policy, effectivePolicy: policy };
-    }
+    ({ callerContext, consumerContract } = resolveExecutionCaller(body, callerContext, consumerContract));
     const startedAt = Date.now();
     const requestedModel = typeof body.model === 'string' ? body.model.trim() : '';
     const taskType = typeof body.taskType === 'string' ? body.taskType.trim() : '';
@@ -124,6 +122,7 @@ async function executeInferenceOnce(body = {}, {
     let safeRequestedHost = null;
     let routingSource = hostOverride ? 'host_override' : 'model_router';
     let taskFallback = null; // set when a fallback ladder rung serves this task (#135)
+    let roleTarget = null; // set when a topology role route resolved this task (#360)
 
     let decisionMode = DECISION_MODES.DEFAULT;
     if (hostOverride || (requestedModel && !taskType)) decisionMode = DECISION_MODES.EXPLICIT_MODEL;
@@ -203,6 +202,22 @@ async function executeInferenceOnce(body = {}, {
             createSoftClaim: true
         });
         routingTrace.recommendation = summarizeRecommendation(recommendation);
+        if (recommendation.topology && !hostOverride) {
+            routingTrace.topology = { ...recommendation.topology };
+            // A role that does not resolve is refused with its reason (#360).
+            if (recommendation.refusal) {
+                const refusal = recommendation.refusal;
+                return rejectRoute({
+                    status: refusal.status,
+                    outcomeStage: ROUTE_OUTCOME_STAGES.SELECTION,
+                    outcomeCode: ROUTE_OUTCOME_CODES.TOPOLOGY_ROLE_UNRESOLVED,
+                    outcomeReasonCode: 'topology_role_unresolved',
+                    rejections: [{ reason: REJECTION_REASONS.ROLE_UNRESOLVED }],
+                    payload: { status: 'error', code: refusal.code, message: refusal.message, data: refusal.data },
+                });
+            }
+            roleTarget = recommendation.topology;
+        }
         model = recommendation.model;
         target = hostOverride
             ? normalizeHostUrl(allowlistedHostOverride)
@@ -483,6 +498,43 @@ async function executeInferenceOnce(body = {}, {
         signal,
         callerPrincipal: callerContext.principal,
     });
+
+    // A role route's lane must hold the input estimate plus the output budget;
+    // otherwise the request is refused before dispatch, never truncated (#360).
+    const laneRefusal = roleTarget ? checkLaneContract(roleTarget, inferenceContract) : null;
+    if (laneRefusal) {
+        routingTrace.topology = { ...routingTrace.topology, laneRefusal: laneRefusal.data };
+        dispatchPrimaryAttemptRecord({
+            hostUrl: target,
+            hostKey: routedHostKey || resolveHostKey(target),
+            attemptModel: model,
+            attempt: telemetryContext.attempt,
+            attemptTrace: routingTrace,
+            attemptOptions: options,
+            attemptNumCtxSource: numCtxSource,
+            durationMs: Date.now() - startedAt,
+            status: 'error',
+            error: 'lane_context_exceeded',
+            outcomeCode: ROUTE_OUTCOME_CODES.LANE_CONTEXT_EXCEEDED,
+            outcomeReasonCode: 'lane_context_exceeded',
+        });
+        return rejectRoute({
+            status: laneRefusal.status,
+            outcomeStage: ROUTE_OUTCOME_STAGES.ADMISSION,
+            outcomeCode: ROUTE_OUTCOME_CODES.LANE_CONTEXT_EXCEEDED,
+            outcomeReasonCode: 'lane_context_exceeded',
+            rejections: [{
+                model,
+                host: routedHostKey || resolveHostKey(target),
+                hostUrl: target,
+                reason: REJECTION_REASONS.CONTEXT_TOO_SMALL,
+            }],
+            payload: {
+                status: 'error', code: laneRefusal.code, message: laneRefusal.message,
+                data: laneRefusal.data, suggestion: laneRefusal.suggestion,
+            },
+        });
+    }
 
     try {
         const primaryAttempt = await executeAdmittedOllamaAttempt({

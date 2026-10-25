@@ -17,12 +17,14 @@ async function load(pipelineId) {
 }
 async function read(pipelineId) {
   const task = await load(pipelineId);
+  require('./taskIntakePolicy').assertAccepted(task);
   return { task, editToken: editToken(task), planningContext: await safePlanningWorkerContext(task) };
 }
 
 // The deployment owns planning; Core owns every write to the canonical task.
 async function apply({ pipelineId, expectedUpdatedAt, automation, question, answer, plan, contextNotice, handoff = false, result, reportGrant }) {
   const task = await load(pipelineId);
+  require('./taskIntakePolicy').assertAccepted(task);
   if (!['queued', 'blocked'].includes(task.status) || task.automationLease?.leaseId) throw conflict('The task is already running or awaiting review.');
   // A ticket the coding worker left blocked returns to the queue with the operator's answer.
   if (task.assignee && !(task.status === 'blocked' && (task.automation?.mode === 'review_only' || task.assignee === 'coding-team'))) throw conflict('Another worker owns this task.');
@@ -66,6 +68,7 @@ async function apply({ pipelineId, expectedUpdatedAt, automation, question, answ
     'automationLease.leaseId': null,
     $and: [workerTaskScope(), { service: task.service ?? null, source: task.source ?? null }] };
   preparationTransition(query, update, task, { question: Boolean(question), at });
+  require('./taskIntakePolicy').guard(query, task);
   // The plan becomes a new, undecided revision bound to the scope written here.
   // It authorizes nothing: the operator's explicit launch still starts the work.
   if (plan && String(plan).trim()) recordPlanRevision(query, update, task, buildRevision(task, { text: plan, channel: 'task_preparation',

@@ -14,6 +14,7 @@ afterEach(() => jest.restoreAllMocks());
 async function claimed(input = {}) {
   const created = await harness.request.post('/api/pipeline/tasks').send({ title: 'Review documentation', service: 'core' }).expect(201);
   const id = created.body.data.task.pipelineId;
+  await require('../helpers/acceptedEngineeringTask')(id);
   await harness.request.post(`/api/pipeline/tasks/${id}/claim`).send({ assignee: 'coding-team' }).expect(200);
   if (Object.keys(input).length) await PipelineTask.updateOne({ pipelineId: id }, { $set: input });
   return id;

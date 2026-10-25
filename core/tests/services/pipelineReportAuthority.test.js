@@ -18,7 +18,8 @@ const HOST = 'http://model.invalid:11434';
 let job, control;
 beforeEach(async () => {
   await Promise.all([Task.deleteMany({}), Run.deleteMany({}), File.deleteMany({})]);
-  job = { id: id(), dispatchId: id(), state: 'running', executor: { mode: 'operator' },
+  job = { id: id(), dispatchId: id(), state: 'running',
+    dispatchedAt: new Date(Date.now() - 30000).toISOString(), startBefore: new Date(Date.now() - 1000).toISOString(), executor: { mode: 'operator' },
     source: { type: 'coding', ref: 'synthetic-coding-session', taskId: '0001' }, hosts: [HOST],
     reservation: { start: new Date(Date.now() - 60000).toISOString(), end: new Date(Date.now() + 14400000).toISOString() } };
   jest.spyOn(queue, 'get').mockImplementation(async () => job);
@@ -96,9 +97,11 @@ test('an allocation whose acknowledgement was lost is reconciled by its original
   expect(replay.requestId).toBe(key);
   expect((await Task.findById(task._id).lean()).codingReportAuthority.bindings).toHaveLength(1);
 });
-test.each(['expired', 'host', 'task', 'dispatch'])('the native report rejects a changed campaign %s before model admission', async change => {
+test.each(['expired', 'host', 'task', 'dispatch', 'late-dispatch', 'missing-dispatch-time'])('the native report rejects a changed campaign %s before model admission', async change => {
   const { task } = await fixture(), intent = await claim(task), key = id();
   await reports.start('0001', key, intent);
+  if (change === 'late-dispatch') job.dispatchedAt = job.startBefore;
+  if (change === 'missing-dispatch-time') delete job.dispatchedAt;
   if (change === 'expired') job.reservation.end = new Date(Date.now() - 1).toISOString();
   if (change === 'host') job.hosts = ['http://other.invalid:11434'];
   if (change === 'task') job.source.taskId = '0002';
@@ -137,6 +140,19 @@ function stopped(key, partial) {
 function upload(text, name = 'fixture.md') {
   return { by: 'operator-fixture', name, sha256: digest(text), dataUrl: 'data:text/markdown;base64,' + Buffer.from(text).toString('base64') };
 }
+test('Core derives stop progress from accepted coverage and ignores a caller claim about report bytes', async () => {
+  const { task } = await fixture(), intent = await claim(task), key = id();
+  await reports.start('0001', key, intent);
+  const body = stopped(key, upload('# Administrative changes only\n'));
+  body.progress = { verified: true, advanced: true, addedUnits: 999 };
+  const result = await reports.stop('0001', key, body);
+  expect(result.outcome.progress).toMatchObject({ verified: true, advanced: false, addedUnits: 0 });
+  expect((await Run.findById(key).lean()).result.progress).toEqual(result.outcome.progress);
+  body.progress.advanced = false;
+  const replay = await reports.stop('0001', key, body);
+  expect(replay).toMatchObject({ alreadyRecorded: true, outcome: result.outcome });
+  expect(control.launch).not.toHaveBeenCalled();
+});
 async function nextGrant(task, key, selected) {
   control.status.mockResolvedValue({ busy: false, run: { pipelineId: '0001', requestId: key, phase: 'finished',
     progress: { phase: 'finished', coreRecorded: true } } });
@@ -168,14 +184,14 @@ test('a rejected review candidate becomes the next grant parent and keeps its cu
 });
 test('ordinary uploads honor a report checkpoint reservation even at the shared file limit', async () => {
   const { task } = await fixture();
-  for (let n = 0; n < 19; n++) await files.register('0001', upload('# Existing ' + n, `existing-${n}.md`));
+  for (let n = 0; n < files.MAX_PER_TASK - 1; n++) await files.register('0001', upload('# Existing ' + n, `existing-${n}.md`));
   const key = id(); await reports.start('0001', key, await claim(task));
   const results = await Promise.allSettled([
     files.register('0001', upload('# Competing operator file', 'extra.md')),
     reports.stop('0001', key, stopped(key, upload('# Saved model partial\n'))),
   ]);
   expect(results[0]).toMatchObject({ status: 'rejected', reason: { code: 'DELIVERABLE_LIMIT' } });
-  expect(results[1].status).toBe('fulfilled'); expect(await File.countDocuments({})).toBe(20);
+  expect(results[1].status).toBe('fulfilled'); expect(await File.countDocuments({})).toBe(files.MAX_PER_TASK);
   expect((await files.verify('0001', results[1].value.outcome.partial.deliverableId)).availability.hashVerified).toBe(true);
 });
 test('successful report accounting includes the native runner start and freezes it at final intent', async () => {
@@ -245,7 +261,12 @@ describe('cloud escalation authority (#835)', () => {
   test('a run records escalation only when the owner policy and its grant both allow it', async () => {
     const key = await started(true);
     expect((await Run.findById(key).lean()).escalation).toEqual({ models: [SOL, NEMO], maxCostNanodollars: 10e9, policyRevision: 0 });
-    expect((await reports.status('0001', key)).escalation).toEqual({ models: [SOL, NEMO], maxCostNanodollars: 10e9, calls: 0 });
+    expect((await reports.status('0001', key)).escalation).toEqual({ models: [SOL, NEMO], maxCostNanodollars: 10e9,
+      calls: 0, failures: [], taskSpentNanodollars: 0, costUncertain: false });
+    await Run.updateOne({ _id: key }, { $push: { escalationCalls: { nanodollars: 1234 },
+      escalationFailures: { callId: 'original-cloud-call', executionState: 'unknown' } } });
+    expect((await reports.status('0001', key)).escalation).toMatchObject({ taskSpentNanodollars: 1234, costUncertain: true,
+      failures: [{ callId: 'original-cloud-call', executionState: 'unknown' }] });
     await Promise.all([Task.deleteMany({}), Run.deleteMany({})]);
     const refused = await started(false);
     expect((await Run.findById(refused).lean()).escalation).toBeUndefined();
@@ -271,4 +292,26 @@ describe('cloud escalation authority (#835)', () => {
     const key = await started(false);
     await expect(inference.prepare(headers(key, '1'), NEMO)).rejects.toMatchObject({ code: 'REPORT_ESCALATION_REFUSED' });
   });
+});
+
+test('retains twenty historical files while granting and saving another report checkpoint', async () => {
+  const { task } = await fixture();
+  // Ordinary uploads must leave the already promised checkpoint slot available.
+  for (let n = 0; n < 20; n++) {
+    const data = Buffer.from(`Historical report ${n}`);
+    await files.register('0001', { by: 'operator', name: `historical-${n}.md`, sha256: digest(data),
+      dataUrl: `data:text/markdown;base64,${data.toString('base64')}` });
+  }
+  const intent = await claim(task), key = id();
+  await reports.start('0001', key, intent);
+  await (await inference.prepare({ 'x-agentx-report-task': '0001', 'x-agentx-report-request': key, 'x-agentx-coding-call': id() }, 'fixture-model')).finish('completed');
+  const data = Buffer.from('# Complete fixture report');
+  const result = await reports.submit('0001', key, { sha256: digest(data),
+    dataUrl: `data:text/markdown;base64,${data.toString('base64')}`,
+    coverage: { inventorySha256: (await Run.findById(key).lean()).inventory.sha256,
+      documents: [{ path: 'README.md', sha256: digest('fixture markdown'), state: 'reviewed',
+        evidence: [{ path: 'source.js', sha256: 'f'.repeat(64), line: 1, check: 'Fixture source checked' }] }] } });
+  expect(result.reportReadyForReview).toBe(true);
+  expect(await File.countDocuments({ pipelineId: '0001' })).toBe(21);
+  expect((await files.verify('0001', result.receipt.id)).availability.hashVerified).toBe(true);
 });

@@ -15,7 +15,7 @@ body.automations-surface{background:#0a0e18;background-image:none}
 .oj-calendar-shell .cs-heatmap-container,.oj-calendar-shell .cs-sidebar-card,.oj-calendar-shell .cs-services-strip{background:var(--oj-card);border:1px solid var(--oj-line)}
 .oj-calendar-shell .cs-timeline-filters{background:var(--oj-card);border-color:var(--oj-line);padding:14px 16px;gap:18px}
 .oj-calendar-shell .cs-filter-label{font-size:12px}
-.oj-calendar-shell .cs-two-col{gap:20px;grid-template-columns:minmax(0,1fr) 300px}
+.oj-calendar-shell .cs-two-col{gap:20px;grid-template-columns:minmax(0,1fr) 380px}
 .oj-calendar-shell .cs-main,.oj-calendar-shell .cs-sidebar{min-width:0}
 .oj-calendar-shell .cs-hm-label{font-size:12px}
 .oj-calendar-shell .cs-label-name{font-size:12px}
@@ -30,8 +30,8 @@ body.automations-surface{background:#0a0e18;background-image:none}
 .oj-calendar-shell .cs-queue-note{overflow-wrap:anywhere}
 .oj-calendar-shell .cs-sidebar-header{font-size:13px}
 .oj-calendar-shell .cs-eyebrow{color:var(--oj-accent);letter-spacing:1.5px}
-@media(max-width:1050px){.oj-calendar-shell .cs-header-row{flex-direction:column}.oj-calendar-shell .cs-header-controls{width:100%;justify-content:flex-start}.oj-calendar-shell .cs-two-col{grid-template-columns:minmax(0,1fr)}.oj-calendar-shell .cs-sidebar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.oj-calendar-shell .cs-sidebar-card{margin-bottom:0}}
-@media(max-width:600px){.oj-calendar-shell{padding:26px 18px 50px}.oj-calendar-shell .cs-page-header{padding:17px}.oj-calendar-shell .cs-page-header h2{font-size:20px}.oj-calendar-shell .cs-date-nav{flex-wrap:wrap;gap:5px;width:100%;justify-content:space-between}.oj-calendar-shell .cs-date-label{font-size:13px}.oj-calendar-shell .cs-sidebar{grid-template-columns:minmax(0,1fr)}.oj-calendar-shell .cs-filter-label{white-space:normal!important;line-height:1.5}.oj-calendar-shell .cs-timeline-filters{gap:12px}.oj-calendar-shell .cs-actual-tabs{flex-wrap:wrap}}
+@media(max-width:1050px){.oj-calendar-shell .cs-header-row{flex-direction:column}.oj-calendar-shell .cs-header-controls{width:100%;justify-content:flex-start}.oj-calendar-shell .cs-two-col{grid-template-columns:minmax(0,1fr)}.oj-calendar-shell .cs-sidebar-card{margin-bottom:0}}
+@media(max-width:600px){.oj-calendar-shell{padding:26px 18px 50px}.oj-calendar-shell .cs-page-header{padding:17px}.oj-calendar-shell .cs-page-header h2{font-size:20px}.oj-calendar-shell .cs-date-nav{flex-wrap:wrap;gap:5px;width:100%;justify-content:space-between}.oj-calendar-shell .cs-date-label{font-size:13px}.oj-calendar-shell .cs-filter-label{white-space:normal!important;line-height:1.5}.oj-calendar-shell .cs-timeline-filters{gap:12px}.oj-calendar-shell .cs-actual-tabs{flex-wrap:wrap}}
 
 .cs-catalogue-filters{display:flex;gap:12px;align-items:center;margin:0 0 12px;flex-wrap:wrap}
 .cs-catalogue-filters .oj-search{margin:0;flex:1;min-width:180px}
@@ -42,3 +42,106 @@ body.automations-surface{background:#0a0e18;background-image:none}
 .oj-calendar-shell .cs-queue-button[aria-pressed=true]{background:#173b35;border-color:#3b7667;color:var(--oj-accent)}
 .cs-measurements .cs-live-evidence{margin:0;padding:12px 16px}
 .oj-calendar-shell .cs-measurements .cs-live-bar{margin:0;padding:0 16px 16px}
+
+/* ── Page layout: alerts on top, calendar left, one tabbed rail right ── */
+
+/* Alerts strip: full width, above the calendar. */
+.cs-attention-strip{display:flex;align-items:center;gap:14px 18px;flex-wrap:wrap;margin:0 0 18px;padding:12px 16px;border:1px solid var(--oj-line);border-left:3px solid var(--oj-line);border-radius:12px;background:var(--oj-card)}
+.cs-attention-strip[data-state=alert]{border-left-color:#f59e0b;background:linear-gradient(90deg,rgba(245,158,11,.07),var(--oj-card) 40%)}
+.cs-attention-strip[data-state=ok]{border-left-color:#22c55e;padding-top:9px;padding-bottom:9px}
+.cs-attention-title{display:flex;align-items:center;gap:8px;margin:0;font-size:13px;font-weight:600;white-space:nowrap;color:var(--oj-text)}
+.cs-attention-title i{color:var(--oj-accent);font-size:12px}
+.cs-attention-strip[data-state=alert] .cs-attention-title i{color:#f59e0b}
+.cs-attention-strip .cs-attention-list{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:8px;padding:0}
+.cs-attention-strip .cs-attn-item{flex:0 1 auto;max-width:520px;align-items:flex-start;gap:10px;padding:7px 12px;border:1px solid rgba(248,113,113,.28);border-radius:9px;background:rgba(248,113,113,.06)}
+.cs-attention-strip .cs-attn-item:last-child{border-bottom:1px solid rgba(248,113,113,.28)}
+.cs-attention-strip .cs-attn-item.warn,.cs-attention-strip .cs-attn-item.warn:last-child{border-color:rgba(245,158,11,.3);background:rgba(245,158,11,.06)}
+.cs-attention-strip .cs-attn-icon{color:#f87171}
+.cs-attention-strip .cs-attn-item.warn .cs-attn-icon{color:#f59e0b}
+.cs-attention-strip .cs-attn-body{min-width:0}
+.cs-attention-strip .cs-attn-label{font-size:12.5px}
+.cs-attention-strip .cs-attn-detail{font-size:12px;line-height:1.45}
+.cs-attention-strip .cs-attn-ok{display:flex;align-items:center;flex-wrap:wrap;gap:4px 14px;padding:4px 0}
+.cs-attention-strip .cs-attn-ok-title{margin:0;font-size:12.5px}
+.cs-attention-strip .cs-attn-ok-list{display:inline;font-size:12px;color:var(--oj-muted)}
+
+/* One toolbar card: search, owner and the two timeline filters. */
+.cs-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;margin:0 0 12px;padding:10px 12px;border:1px solid var(--oj-line);border-radius:12px;background:var(--oj-card)}
+.cs-toolbar .cs-catalogue-filters{flex:1 1 360px;margin:0}
+.oj-calendar-shell .cs-toolbar .cs-timeline-filters{margin:0;padding:0;border:0;background:none;gap:16px}
+
+/* Legend under the calendar, on one wrapping line. */
+.cs-legend-row{display:flex;align-items:flex-start;gap:10px 16px;flex-wrap:wrap;margin:-8px 0 10px;padding:10px 14px;border:1px solid var(--oj-line);border-radius:10px;background:var(--oj-card)}
+.cs-legend-row-title{display:flex;align-items:center;gap:7px;padding-top:3px;font-size:12px;font-weight:600;color:var(--oj-text);white-space:nowrap}
+.cs-legend-row-title i{color:var(--oj-accent);font-size:11px}
+.cs-legend-row .cs-legend{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:8px 22px;padding:0}
+.cs-legend-row .cs-legend-section{display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px;margin:0}
+.cs-legend-row .cs-legend-title{margin:0;font-size:10.5px}
+.cs-legend-row .cs-legend-item{gap:6px;padding:2px 0;font-size:12px}
+.cs-legend-row .cs-legend-count{margin-left:0}
+.cs-legend-row .cs-legend-empty{padding:2px 0;font-size:12px}
+
+/* The rail: sticky, one scroll area, tabs on top. */
+.oj-calendar-shell .cs-rail{position:sticky;top:16px;display:flex;flex-direction:column;flex-wrap:nowrap;gap:0;max-height:calc(100vh - 32px);border:1px solid var(--oj-line);border-radius:13px;background:var(--oj-card);overflow:hidden}
+/* components.css stretches every sidebar child below 1100px; the rail keeps its own sizes. */
+.oj-calendar-shell .cs-rail>*{flex:none;min-width:0}
+.oj-calendar-shell .cs-rail>.cs-rail-panel{flex:1 1 auto}
+.cs-rail-tabs{display:flex;gap:4px;padding:6px;border-bottom:1px solid var(--oj-line);background:var(--oj-bg)}
+.cs-rail-tab{flex:1 1 auto;min-width:0;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:38px;padding:6px 8px;border:1px solid transparent;border-radius:8px;background:none;color:var(--oj-muted);font:inherit;font-size:12.5px;font-weight:600;white-space:nowrap;cursor:pointer}
+.cs-rail-tab i{display:none}
+.cs-rail-tab:hover{color:var(--oj-text);background:var(--oj-raised)}
+.cs-rail-tab[aria-selected=true]{color:var(--oj-accent);background:#173b35;border-color:#3b7667}
+.cs-rail-tab:focus-visible{outline:2px solid var(--oj-accent);outline-offset:1px}
+.cs-rail-count{min-width:18px;padding:0 6px;border-radius:9px;background:rgba(255,255,255,.08);color:inherit;font-size:11px;line-height:18px;text-align:center}
+.cs-rail-count:empty{display:none}
+.cs-rail-panel{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.cs-rail-panel[hidden]{display:none}
+.oj-calendar-shell .cs-rail .cs-next-list{max-height:none;overflow:visible;padding:10px 14px 14px}
+.cs-rail .cs-claims-list{padding:14px}
+.cs-rail .cs-claims-empty{padding:28px 12px}
+
+/* Heavy-work cards: essentials visible, the rest under Détails. */
+.cs-queue-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 0 4px}
+.oj-calendar-shell .cs-queue-segment{margin:0;gap:4px;padding:3px;border:1px solid var(--oj-line);border-radius:9px;background:var(--oj-bg)}
+.oj-calendar-shell .cs-queue-segment .cs-queue-button{min-height:30px;padding:4px 10px;border-color:transparent;background:none;font-size:12px}
+.oj-calendar-shell .cs-queue-segment .cs-queue-button[aria-pressed=true]{background:#173b35;border-color:#3b7667}
+.cs-queue-export{font-size:12px;color:var(--oj-muted)}
+.cs-queue-export:hover{color:var(--oj-accent)}
+.cs-rail .cs-queue-note{padding:4px 0 8px}
+.cs-rail .cs-queue-item{margin:0 0 10px;padding:12px;border:1px solid var(--oj-line);border-radius:10px;background:rgba(255,255,255,.02)}
+.cs-rail .cs-queue-item:last-of-type{border-bottom:1px solid var(--oj-line)}
+.cs-queue-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.cs-queue-title-row .cs-next-name{font-size:13px;line-height:1.4}
+.cs-queue-state{flex:0 0 auto;padding:2px 8px;border-radius:6px;background:rgba(255,255,255,.07);color:var(--oj-muted);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.cs-queue-state[data-state=running],.cs-queue-state[data-state=dispatching]{background:rgba(34,197,94,.14);color:#4ade80}
+.cs-queue-state[data-state=reserved]{background:rgba(124,240,200,.12);color:var(--oj-accent)}
+.cs-queue-state[data-state=uncertain],.cs-queue-state[data-state=expired],.cs-queue-state[data-state=failed]{background:rgba(245,158,11,.14);color:#fbbf24}
+.cs-queue-item .cs-next-meta{gap:6px;margin-top:6px;font-size:12px}
+.cs-queue-item .cs-next-meta i{font-size:10px;opacity:.8}
+.cs-queue-item .cs-queue-time{display:block;color:var(--oj-text)}
+.cs-queue-warn{color:#fbbf24}
+.cs-queue-more{margin-top:8px;font-size:12px}
+.cs-queue-more>summary{color:var(--oj-muted);cursor:pointer;width:max-content}
+.cs-queue-more>summary:hover{color:var(--oj-accent)}
+.cs-queue-more[open]{padding:8px 10px;border-radius:8px;background:var(--oj-bg)}
+.cs-queue-reason{margin:6px 0;line-height:1.5;color:var(--oj-text);overflow-wrap:anywhere}
+.cs-queue-more details{margin-top:6px}
+.cs-queue-item .cs-queue-actions{gap:6px;margin-top:10px}
+.oj-calendar-shell .cs-queue-item .cs-queue-button{min-height:32px;padding:5px 11px;font-size:12px}
+.oj-calendar-shell .cs-queue-button--quiet{background:none;border-color:transparent;color:var(--oj-muted)}
+.oj-calendar-shell .cs-queue-button--quiet:hover{color:#f87171}
+@media (pointer:coarse){.oj-calendar-shell .cs-queue-item .cs-queue-button,.oj-calendar-shell .cs-queue-segment .cs-queue-button,.cs-rail-tab{min-height:44px}}
+
+/* Departures in the rail: one line per job, countdown on the right. */
+.cs-rail #nextList .cs-next-item{padding:9px 4px}
+
+/* Narrow screens: the rail goes under the calendar and stops being sticky. */
+@media(max-width:1050px){
+  .oj-calendar-shell .cs-rail{position:static;max-height:none}
+  .cs-rail-panel{max-height:70vh}
+}
+@media(max-width:600px){
+  .cs-rail-tab{font-size:12px;gap:4px;padding:6px 4px}
+  .cs-attention-strip{padding:12px}
+  .cs-attention-strip .cs-attn-item{max-width:none;flex-basis:100%}
+}

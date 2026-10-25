@@ -57,4 +57,4 @@ async function lineage(value) {
   }
   return { executions, modelCalls, budgetScope: 'current_execution_only' };
 }
-module.exports = { selection, load, read, lineage };
+module.exports = { selection, load, read, lineage, find };

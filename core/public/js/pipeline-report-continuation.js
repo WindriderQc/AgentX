@@ -8,7 +8,7 @@
 
   function statusText(state) {
     if (!state) return 'Continuation state unavailable.';
-    const switchText = state.enabled ? 'On' : 'Off';
+    const switchText = state.enabled ? 'Global chaining on' : 'Global chaining off; task-specific agreements still apply';
     const runner = state.available ? '' : ' · the coding runner is unavailable, so nothing can start';
     const active = state.active ? ` · continuing task ${state.active.pipelineId} (request ${state.active.requestId})` : ' · nothing in progress';
     return `${switchText}${active}${runner}`;

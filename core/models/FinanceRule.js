@@ -14,3 +14,5 @@ const financeRuleSchema = new mongoose.Schema({
 
 module.exports = mongoose.models.FinanceRule
   || mongoose.model('FinanceRule', financeRuleSchema, 'finance_rules');
+
+module.exports = require('../src/services/finance/financeModelGuard')(module.exports);

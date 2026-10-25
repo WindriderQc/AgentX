@@ -8,7 +8,7 @@ ENV AGENTX_BUILD_REVISION=${AGENTX_BUILD_REVISION}
 WORKDIR /app
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssh-client ca-certificates libcurl4 libgssapi-krb5-2 tar poppler-utils \
+  && apt-get install -y --no-install-recommends openssh-client ca-certificates libcurl4 libgssapi-krb5-2 tar poppler-utils util-linux \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=mongo-tools /usr/bin/mongodump /usr/local/bin/mongodump

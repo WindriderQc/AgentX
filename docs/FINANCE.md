@@ -41,6 +41,13 @@ guard answers `/api/finance/*` and `/finance` with 404
    reconciled: `needs_review`, file under `FINANCE_REVIEW_PATH`, alert raised.
    A busy inference host leaves the file for the next scan.
 
+A different PDF cannot replace a reconciled issuer/period when the extracted
+account number is missing: it stays in review even if its arithmetic balances.
+A hash already reconciled in the other ledger is refused before extraction;
+depositing it again never moves its accounting ownership. Archiving a duplicate
+in the same ledger refreshes its original-file link without rewriting rows or
+owner decisions. These guards do not repair historical account assignments.
+
 ## Data model (MongoDB, instance database)
 
 | Collection | Holds |
@@ -194,6 +201,12 @@ personal ledger. Core never writes to it.
   that spending.
 
 ## Operating it
+
+Reviewed historical book repairs use the bounded native
+[Finance repair executor](FINANCE_REPAIR.md): persisted read/write exclusion,
+immutable intent and receipts, same-identity recovery and exact scoped rollback.
+It supports one statement, one row and its owner decision without re-ingestion
+or account-number normalization. Testing or installing it does not apply a repair.
 
 - Configuration: `FINANCE_INBOX_PATH`, `FINANCE_ARCHIVE_PATH`,
   `FINANCE_REVIEW_PATH`, `FINANCE_INBOX_POLL_MS`, `FINANCE_EXTRACTION_MODEL`,

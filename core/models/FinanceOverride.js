@@ -19,3 +19,5 @@ financeOverrideSchema.index({ accountKey: 1, date: 1, fingerprint: 1, occurrence
 
 module.exports = mongoose.models.FinanceOverride
   || mongoose.model('FinanceOverride', financeOverrideSchema, 'finance_overrides');
+
+module.exports = require('../src/services/finance/financeModelGuard')(module.exports);

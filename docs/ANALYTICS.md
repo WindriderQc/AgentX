@@ -55,7 +55,10 @@ exceeds it; retention configuration does not prove complete collection.
 The chart footer links to the error comparison and reports how many errors were
 admission refusals. A reservation, active incompatible inference or recovery
 quarantine can refuse an attempt before inference is dispatched; this is not
-evidence that the model failed. Refusals remain in the totals. These historical
+evidence that the model failed. Refusals remain in the totals. The embedding path's stable `admission_refused` reason also counts as an admission
+refusal, even on legacy rows whose broad outcome code says upstream or fallback
+failure. Its specific blocking cause remains unspecified; raw error prose never
+establishes the cause. These historical
 causes do not establish that the host is still blocked; use Live inference for
 the current state.
 
@@ -67,11 +70,38 @@ when its attempt, zero retry delay and admission-only timing support it. Earlier
 retries cannot explain a later provider failure. Missing evidence stays
 **Cause unrecorded**; an older Core without these fields shows causes unavailable.
 
-Historical values are snapshots refreshed on demand. The snapshot time stays
+The consumer attribution line reports identified versus missing contracts and
+breaks missing calls down by caller category. Its inspection link opens the
+canonical paged log API for that exact time window with
+`consumerContractMissing=true`; `false` selects identified contracts. This filter
+cannot be combined with an exact `consumerContract`. Missing means absent,
+null, empty, or the legacy `unknown` label. Runtime, caller category and task
+type do not prove application identity; historical contracts are not inferred.
+`attribution` in the summary exposes these same counts and a nullable percentage
+for an empty window. Core Ops Watch stamps `core-ops-watch-v1` on new calls.
+The error link also discloses causes that remain unrecorded. The bounded
+`read_presentation` receipt carries attribution counts and unclassified errors
+to clients reading the exact selected summary.
+
+Historical values are snapshots refreshed on demand. The exact window and browser timezone stay
 visible; after five minutes the status asks for a refresh. Failed reads clear
 the overview's prior values. Later responses for a superseded period are ignored.
 Playground conversation panels retain their separately labeled period and
 cover conversations, not platform-wide calls.
+
+Core generation binds new calls from its resolved `benchmark-service` principal
+to `benchmark-service-v1`. Existing explicit internal consumer contracts are
+preserved. A benchmark-like `callerDetail` or a contract in the request body
+does not establish that identity. This follows the existing private-LAN service
+attribution contract; native workload proof and admission remain required.
+Historical records without a contract remain unchanged.
+
+Benchmark generation and judge calls carry the same bounded
+`workItemId=benchmark-workload/<workload-id>` through Core's existing telemetry.
+Use the existing `/api/analytics/inference/logs?workItemId=…` filter to inspect
+one operation. This links calls without another task store or dashboard panel;
+native workload proof and admission are unchanged. Older rows and calls with
+no valid workload identity remain unlinked.
 
 ## Live inference and GPU work
 
@@ -102,3 +132,10 @@ viewports, window races, failures, empty activity, stale telemetry, keyboard
 detail access and the demo profile. Run it from the repository with Playwright
 available, or set `AGENTX_PLAYWRIGHT_MODULE` to its installed module path.
 `AGENTX_ANALYTICS_BROWSER_REPORT` selects an out-of-Git screenshot directory.
+
+RAG's Core-bound embedding, query-expansion, reranking and compression requests
+declare the existing `rag-service` principal. Core maps it to `rag-service-v1`
+and records the same contract on embedding attempts and their route decisions,
+including failures. This is the existing private-LAN attribution boundary, not
+an authentication change; caller detail and request-body contracts do not
+establish service identity. Direct native calls and historical rows are unchanged.

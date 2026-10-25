@@ -23,3 +23,5 @@ financeDocumentLinkSchema.index({ transactionKey: 1, status: 1 });
 
 module.exports = mongoose.models.FinanceDocumentLink
   || mongoose.model('FinanceDocumentLink', financeDocumentLinkSchema, 'finance_document_links');
+
+module.exports = require('../src/services/finance/financeModelGuard')(module.exports);

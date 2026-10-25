@@ -18,6 +18,12 @@ Pipeline also provides the explicitly authorized, disabled-by-default
 claims/capacity, prepares current Git versions, verifies and updates the same
 PR, observes exact-commit CI and gives the Coding Team bounded correction turns.
 Its cumulative budgets and durable publication/native receipts survive resumes.
+Autonomous authorization also requires Core's deterministic
+[feasibility assessment](../../docs/CODING_AUTONOMY.md#feasibility-before-authorization):
+observable acceptance criteria, required capabilities and reviewed estimates.
+The planner and implementation sessions receive those criteria. This catches
+unsupported access, mismatched verification and work outside its envelope
+without invoking a model; it does not predict whether a model will solve it.
 The manual path below stays available; it does not turn routing or idea intake
 into autonomous authorization.
 
@@ -122,9 +128,15 @@ and runs several short worker sessions in fresh context:
   line against the frozen snapshot, computes source digests itself and merges
   the step whole or not at all. A group that fails twice marks its documents
   `blocked` with the reason. A document still partial after three steps
-  without new evidence stays partial and is reported as remaining scope.
+  without new source references stays partial and is reported as remaining scope.
+  Rewording a check against the same source line does not reset that limit.
+  Exhausted partial or blocked scope is archived with `no_useful_progress`,
+  leaving the task blocked instead of offering an incomplete report as delivered.
   A document can retain up to 100 source references, matching Core coverage;
   each finding remains bounded to 40 references. Every reference is checked.
+  Identical findings keep their first number across groups and executions. Older
+  duplicate rows remain in the embedded ledger but appear once in the report,
+  summary input and totals. Different claims or corrections remain separate.
   A model output limit fails that report step and retains its native receipt;
   after Core verifies termination, other groups may continue in the same
   budget. Operator stops, unresolved calls and execution deadlines still stop
@@ -155,9 +167,21 @@ and runs several short worker sessions in fresh context:
   continuation restored from Core's checkpoint resumes it exactly. A report
   written before steps keeps its findings verbatim in an "earlier executions"
   section; reviewer corrections apply to it only as exact text replacements.
+  A deletion or plain-text edit copied from the displayed archive can also be
+  received when the runner proves one exact original match and an identical
+  rendered result. Only its own two-level heading nesting is normalized; changed
+  text, ambiguous matches and display-based heading replacements still refuse.
   Corrections can also replace an existing evidence check exactly, after the
   runner verifies its source hash and line. They retain the original text in
   the step receipt and cannot change coverage states or source references.
+
+Core uses accepted coverage, including line ranges, to decide whether another
+execution made material progress. Different report bytes alone are insufficient.
+Per-document stall counts survive continuations: two attempted executions that
+add no source coverage exhaust that obligation. Untouched groups keep their
+allowance. If only exhausted scope remains, the runner saves the partial result
+without starting another model or final writer; review or split that remaining
+work before a new bounded task.
 
 When calls or time run short with documents left, the execution stops with
 `model_call_limit` or `hard_budget` and archives the partial report for a
@@ -182,12 +206,29 @@ review.
 
 ### Cloud escalation of a failed step
 
+A valid partial result also becomes eligible when it exhausts the planner's
+three partial rounds without sufficient progress. The same explicit permission,
+remaining call/time budget, and once-per-group guard apply. Escalation still
+verifies its evidence and does not turn an incomplete answer into completion.
+
 Off by default. The owner sets the ordered models and a cost cap per task in the
 same panel (default: `openai/gpt-5.6-sol`, then
 `openrouter/nvidia/nemotron-3-super-120b-a12b:free`, $10), and each task must
 allow it on its explicit report grant ("Allow cloud escalation of failed
 steps"). An execution started with both records the models and the task's
 remaining allowance, fixed for that run.
+
+The cloud receives the group's saved checks, remaining-scope note and latest
+operator context along with the sources. Long documents retain a separate
+escalation receipt for each assigned line range; completing a range resets its
+partial-round counter before planning the next range. Earlier receipts without
+a range continue to fence the whole group.
+An authorized continuation may use that one escalation immediately for scope
+contained in preserved local failures. A document-wide failure covers its still
+unreviewed ranges; a recorded ranged failure covers only that range. Fresh
+documents and ranges outside the earlier failed scope take a local attempt first.
+Range context prioritizes that range's cited sources and identifiers before
+earlier evidence, so old sections do not consume its source allowance.
 
 After a group fails once on the local model, the runner sends one self-contained
 request: the group's documents and the source files they cite (or that define
@@ -200,6 +241,20 @@ verification as a local step; a second failure blocks the group. Escalated
 findings are marked in the report, the Pipeline monitor counts escalated steps
 and an alert records each escalation. A multi-turn tool session is not used:
 OpenClaw's model mode accepts plain messages only.
+
+Core retains bounded refusal codes and dispatch states with the original call.
+Report status exposes the task's recorded cloud cost and flags uncertain costs.
+Only a confirmed refusal before dispatch can yield to the next configured
+model. A missing outcome or cost receipt keeps the original inference pending;
+it cannot dispatch a replacement. A completed unusable answer retains its cost.
+An unavailable group may use its one attempt again in a newly authorized
+execution after Core has verified the earlier native release. The same
+execution, actual answers and uncertain outcomes keep their original fence.
+
+If a worker exits at checkpoint delivery before its relay drains, the campaign
+observer can receive that same checkpoint through the native owner once Core
+proves termination and no inference remains pending. It does not clear native
+coordination or launch another worker; the next observation receives the outcome.
 
 `AGENTX_REPORT_MODE=single` restores the previous single-session worker, whose
 prompt asks the model to choose groups, save, and keep the table and totals
@@ -281,7 +336,8 @@ The dossier exposes the whole task budget, saved files, source and coverage.
 
 All file deposits share task-owned capacity reservations. A report grant is
 refused if its workers cannot retain their checkpoints within the file limit;
-ordinary uploads cannot consume promised report slots. Partial files remain
+ordinary uploads cannot consume promised report slots. The task limit is 160 files,
+covering the 32 grants of up to four workers plus earlier uploads. Partial files remain
 immutable, and a terminal execution with no file does not reserve space forever.
 
 Legacy code checkpoints can be received through the Core archive endpoint
@@ -318,9 +374,14 @@ background request would compete with the coding turn.
 An inactive host unit without a terminal receipt remains `unknown`; it is not
 evidence that the task completed.
 
-Autonomous code changes are runner-owned steps. A read-only planning role writes
-one bounded private plan from the authorized file manifest. The runner validates
-it, keeps an atomic private ledger and launches a fresh coding context for each
+Autonomous code changes are runner-owned steps. A reviewed pair of existing
+source/test files totalling at most 64 KiB, with one matching native test target
+and sufficient lane file capacity, becomes one runner-owned step without a model
+planning call. A private plan-source receipt identifies this path. Other scopes
+use the bounded read-only planner with `/workspace` as its source root. Exhausting
+that local allowance records `planner_budget_exhausted`, without extra credit.
+The runner validates either plan, keeps an atomic private ledger and launches
+a fresh coding context for each
 dependency-ready step. Each successful step has exactly one runner-created commit
 and one focused-test receipt. The planner and implementers cannot supply commands,
 broaden paths, commit or publish. Failed edits are retained in a private stash
@@ -328,6 +389,15 @@ while the assembly branch stays at its last verified commit; an exact continuati
 loads the same ledger and resumes the first unfinished step. Pipeline receives a
 bounded summary only. Once all steps pass, the runner executes the full profile
 and publishes one draft PR.
+
+For runner-owned source implementation steps, DSH advertises a 4096-token output
+allowance and the model relay enforces that ceiling for either harness on every
+request. Smaller supplied limits remain smaller, including conflicting output
+aliases. Requests use `reasoning_effort: none`, which Core translates to Ollama
+`think: false`; the model, pinned context, tools and native admission remain the
+same. The policy does not apply to read-only planners or report sessions. It
+grants no calls, retries or time, and does not prove that a model will complete
+the task within the existing useful-progress window.
 
 A run has a two-hour soft budget by default. New source content or a new test
 result against that content can extend it by 30 minutes, up to a four-hour

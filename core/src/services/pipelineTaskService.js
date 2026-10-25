@@ -16,6 +16,7 @@ const logger = require('../../config/logger');
 const { attemptLogReference, exactRequestId } = require('./pipelineEvidenceReferences');
 const { buildTransition, recordTransition, initialTransition } = require('./pipelineTaskTransitions');
 const codingCapacity = require('./pipelineCodingCapacity');
+const intake = require('./taskIntakePolicy');
 
 const VALID_RISKS = new Set(['', 'low', 'medium', 'high', 'critical']);
 const PIPELINE_ID_RE = /^\d{3,4}$/;
@@ -420,6 +421,7 @@ async function claimEligibleTask(pipelineId, assignee, now = new Date(), options
       task_unavailable: ['Task not available (already claimed or not queued)', 'TASK_UNAVAILABLE'],
       not_before: [`Task is not eligible before ${reason.notBefore}`, 'TASK_NOT_READY'],
       dependencies_incomplete: ['Task dependencies are not complete', 'TASK_DEPENDENCIES_BLOCKED'],
+      intake_decision_required: ['Accept the current request before claiming work', 'TASK_INTAKE_REQUIRED'],
     };
     throw pipelineConflict(...errors[reason.code]);
   }
@@ -509,6 +511,7 @@ async function claimEligibleTask(pipelineId, assignee, now = new Date(), options
   }
 
   const claimUpdate = automatedUpdate?.update || { $set: { assignee, status: 'in_progress', heartbeatAt: now } };
+  intake.guard(claimQuery, current);
   const lease = automatedUpdate?.lease;
 
 
@@ -595,9 +598,10 @@ async function claimEligibleTask(pipelineId, assignee, now = new Date(), options
  * git file, no ROADMAP append, no id race. Every supplied task field follows
  * the same authoring path, including lightweight and partially structured tasks.
  */
-async function createTaskInMongo(input = {}) {
+async function createTaskInMongo(input = {}, { intakeAcceptance = null, reportAdmission = null } = {}) {
   const req = validateRequest(input);
   const source = String(input.source || 'api').slice(0, 80);
+  if (source === 'work-report-intake' && !reportAdmission) throw Object.assign(new Error('Use the guarded report admission entrance.'), { status: 400, code: 'WORK_ADMISSION_REQUIRED' });
   const sourceKey = input.sourceKey == null ? null : String(input.sourceKey).trim().slice(0, 200);
   if (sourceKey) {
     const existing = await PipelineTask.findOne({ source, sourceKey }).lean();
@@ -609,6 +613,7 @@ async function createTaskInMongo(input = {}) {
         service: existing.service || '',
         status: existing.status,
         alreadyExisting: true,
+        intakeView: intake.view(existing),
       };
     }
   }
@@ -620,13 +625,20 @@ async function createTaskInMongo(input = {}) {
   const pipelineId = String(seq).padStart(4, '0');
   await assertNoDependencyCycle(pipelineId, routingMetadata.dependsOn || []);
   const spec = suppliedSpec === undefined ? renderTodo({ id: pipelineId, ...req }) : suppliedSpec;
+  const intakeDecision = intake.initial({ title: req.title, spec, service: req.service || '', source }, new Date(), intakeAcceptance);
+  const workOrigin = reportAdmission ? require('./pipelineWorkAdmission').initial(reportAdmission,
+    { title: req.title, spec, service: req.service || '', source, sourceKey }) : {};
   try {
-    await PipelineTask.create({
+    const taskDocument = {
       pipelineId, title: req.title, spec, service: req.service || '',
       status: 'queued', epic: input.epic ?? 'MCP Inbox', source, sourceKey,
+      ...(intakeDecision && { intake: intakeDecision }),
+      ...workOrigin,
       ...routingMetadata,
       ...initialTransition(pipelineId),
-    });
+    };
+    if (reportAdmission) await PipelineTask.create([taskDocument], { writeConcern: { w: 1, j: true } });
+    else await PipelineTask.create(taskDocument);
   } catch (err) {
     if (sourceKey && err?.code === 11000) {
       const existing = await PipelineTask.findOne({ source, sourceKey }).lean();
@@ -638,6 +650,7 @@ async function createTaskInMongo(input = {}) {
           service: existing.service || '',
           status: existing.status,
           alreadyExisting: true,
+          intakeView: intake.view(existing),
         };
       }
     }
@@ -649,6 +662,7 @@ async function createTaskInMongo(input = {}) {
     title: req.title,
     service: req.service || '',
     status: 'queued',
+    ...(intakeDecision && { intake: intakeDecision, intakeView: intake.view({ title: req.title, spec, service: req.service || '', source, status: 'queued', intake: intakeDecision }) }),
     ...routingMetadata,
   };
 }

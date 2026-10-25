@@ -205,3 +205,5 @@ async function decide(ids, status, decidedBy = 'owner') {
 }
 
 module.exports = { documents, decide, confirmedFor, syncLinks, transactionKey, supplierTokens };
+
+require('./financeAccess').guard(module.exports, ['documents', 'decide', 'confirmedFor', 'syncLinks']);

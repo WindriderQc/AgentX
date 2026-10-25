@@ -151,6 +151,25 @@ test('chat completions run under the client identity and the principal alias con
   assert.equal(options.hostUrl, 'http://model-host.test:11434');
 });
 
+test('explicit no-reasoning reaches native inference without changing other callers or the principal context', async () => {
+  const { calls, handler } = gateway(async () => ({
+    ok: true, status: 200, body: { message: { content: 'ok' }, done: true }, metadata: {}
+  }));
+  for (const effort of [undefined, 'none', 'low']) {
+    const res = new Response();
+    await handler('post', '/v1/chat/completions')(new Request({ headers: AUTH, body: {
+      model: 'agentx-primary', messages: [{ role: 'user', content: 'Make the reviewed change' }],
+      max_tokens: 4096, ...(effort && { reasoning_effort: effort })
+    } }), res);
+    assert.equal(res.statusCode, 200);
+    const { request } = calls.at(-1);
+    assert.equal(request.think, effort === 'none' ? false : undefined);
+    assert.equal(request.reasoning_effort, effort);
+    assert.equal(request.max_tokens, 4096);
+    assert.deepEqual(request.options, { num_ctx: 196608 });
+  }
+});
+
 test('a Codex Responses request becomes chat messages and plain function tools', () => {
   const { chat, names } = chatRequest({
     model: 'agentx-primary', instructions: 'You are Codex.', stream: true, store: false,

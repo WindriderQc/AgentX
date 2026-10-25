@@ -91,7 +91,7 @@ function thinkingStatus(contract) {
 }
 
 function laneFromTask(role, taskType, snapshot) {
-  const task = snapshot.tasks?.[taskType] || null;
+  const task = (taskType === 'daily_operator' && snapshot.principalTopology) || snapshot.tasks?.[taskType] || null;
   const warnings = [];
   if (!task?.model) warnings.push(`No effective model is configured for task ${taskType}.`);
   if (!task?.hostUrl && !String(task?.model || '').includes('/')) {

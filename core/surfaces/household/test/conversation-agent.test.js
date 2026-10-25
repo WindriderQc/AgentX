@@ -111,7 +111,7 @@ test('one native session owns tools and history; presentation and model remain i
   const requests = [], starts = [], deltas = [];
   const client = createAgentClient({ env, continuity: async req => {
     assert.equal(req.runId, runId); assert.equal(req.sessionKey, sessionKeyFor(session));
-    return { answer: answer('Trouvé.'), run: { model: 'local', provider: 'ollama' }, receipts: [{ tool: 'agentx__rag_search', observed: true }] };
+    return { answer: answer('Trouvé.'), run: { model: 'local', provider: 'ollama' }, receipts: [{ tool: 'agentx__rag_search', observed: true }], toolChecks: { status: 'observed', runId, completedTools: ['agentx__rag_search'], loop: null } };
   }, fetchImpl: async (url, options) => {
     requests.push({ url, options, body: JSON.parse(options.body) });
     return { ok: true, body: (async function* () {
@@ -125,6 +125,7 @@ test('one native session owns tools and history; presentation and model remain i
   const first = await client(call);
   assert.equal(first.text, 'Trouvé.'); assert.deepEqual(deltas, ['Trouvé.']);
   assert.equal(first.tools.receipts[0].tool, 'agentx__rag_search');
+  assert.deepEqual(first.tools.toolChecks.completedTools, ['agentx__rag_search']);
   assert.equal(requests[0].url.pathname, '/v1/responses');
   assert.equal(requests[0].body.model, 'openclaw/main');
   assert.equal(requests[0].body.input.length, 2);
@@ -1140,6 +1141,29 @@ test('retained task answers still require successful task evidence observed in t
   }
 });
 
+test('a failed list check preserves verified task creation instead of suggesting another capture', async () => {
+  const voice = { ...session, packId: 'personal_operator', scopeId: 'personal', agentId: 'main' };
+  const receipts = [{ tool: 'agentx__add_personal_task', status: 'verified', runId, resultRef: 'personal-task:0123' }];
+  for (const mixed of [false, true]) {
+    let requests = 0;
+    const client = createAgentClient({ env, settleMs: 0,
+      continuity: async () => ({ answer: answer('La tâche 0123 est enregistrée.'), run: { model: 'native' }, receipts }),
+      fetchImpl: async () => { requests++; return { ok: true, body: [created, completed] }; } });
+    const text = mixed ? 'Ajoute une tâche puis regarde mes tâches.' : 'Ajoute une tâche personnelle sans consulter de spécialiste.';
+    const result = await client({ session: voice, text });
+    assert.equal(requests, 1);
+    assert.match(result.text, /0123/);
+    assert.doesNotMatch(result.text, /Reessaie|Réessaie|Please try again/);
+    if (mixed) {
+      assert.match(result.text, /lecture de la liste.*pas été vérifiée/);
+      assert.equal(result.tools.verification.reason, 'task_check_missing');
+    } else {
+      assert.equal(result.text, 'La tâche 0123 est enregistrée.');
+      assert.equal(result.tools.verification, undefined);
+    }
+  }
+});
+
 test('canonical accepted work gives a truthful acknowledgment without inventing task data or redispatching', async () => {
   const hash = value => require('node:crypto').createHash('sha256').update(value).digest('hex');
   const voice = { ...session, packId: 'personal_operator', scopeId: 'personal', agentId: 'main' };
@@ -1269,3 +1293,31 @@ test('guardian cancellation stops live deltas and retains the original run witho
     signal: abort.signal, onDelta(delta) { deltas.push(delta); abort.abort(new Error('Stop')); } }), /stop is not confirmed/i);
   assert.deepEqual(deltas, ['Beginning.']); assert.equal(stream.requests(), 1);
 });
+
+for (const unavailable of ['failed', 'stalled']) {
+  test(`a rewritten terminal response bounds an open body when evidence is ${unavailable}`, async () => {
+    const stream = heldNativeStream([created, row({ type: 'response.failed', response: { id: runId,
+      error: { message: 'Final text cannot be represented as an append-only response stream' } } })]);
+    const caller = new AbortController(), deltas = [];
+    let settled = 0, readAborted = false;
+    const client = createAgentClient({ env, settleMs: 20, evidenceReadMs: 20,
+      progressMs: 5, streamGraceMs: 10, streamDrainMs: 20, fetchImpl: stream.fetch,
+      continuity: async (_request, signal) => {
+        if (unavailable === 'failed') throw new Error('Evidence unavailable');
+        signal.addEventListener('abort', () => { readAborted = true; });
+        await new Promise(() => {});
+      } });
+    const timeout = setTimeout(() => caller.abort(new Error('Test deadline reached')), 400);
+    try {
+      await assert.rejects(client({ session, text: 'Regarde mes tâches.', signal: caller.signal,
+        onDelta: delta => deltas.push(delta), onSettled: () => settled++ }), /rewrote its answer and it could not be recovered/);
+      assert.equal(caller.signal.aborted, false, 'the terminal transport receipt bounds the wait');
+      assert.equal(settled, 1);
+      assert.equal(stream.requests(), 1, 'no replacement native dispatch');
+      assert.deepEqual(deltas, [], 'unverified prose is never delivered');
+      if (unavailable === 'stalled') assert.equal(readAborted, true);
+      await new Promise(resolve => setTimeout(resolve, 35));
+      assert.equal(settled, 1, 'drain cannot settle again');
+    } finally { clearTimeout(timeout); stream.close(); }
+  });
+}

@@ -18,6 +18,8 @@ import { registerConversationWork } from './conversation-work.js';
 import { registerNativeReadBudget } from './native-read-budget.js';
 import { registerMailRecall } from './core-recall.js';
 import { registerPhotos } from './photos.js';
+import { registerPresentation } from './presentation.js';
+import { registerIss } from './iss.js';
 const receipt = value => ({ content: [{ type: "text", text: JSON.stringify(value) }], details: value });
 export default definePluginEntry({
   id: "super-dad-memory",
@@ -31,6 +33,8 @@ export default definePluginEntry({
     registerConversationWork(api);
     registerNativeReadBudget(api);
     registerPhotos(api);
+    registerPresentation(api);
+    registerIss(api);
     const resolveWorkspace = id => resolveAgentWorkspaceDir(api.config, id);
     const workspaceFor = () => resolveWorkspace('main');
     const readNotes = createCoreNotesClient({ baseUrl: api.pluginConfig?.agentxUrl });

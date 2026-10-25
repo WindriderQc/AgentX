@@ -119,7 +119,7 @@ describe('owner private recall corpus', () => {
     expect(rag.calls).toEqual([]);
   });
 
-  test('only the Nestor owner contract selects the private audience; MCP and Family never reach the corpus', () => {
+  test('only Nestor owner transports select the private audience; general MCP and Family never reach the corpus', () => {
     const core = path.resolve(__dirname, '../..');
     const files = dir => fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => entry.isDirectory()
       ? (entry.name === 'node_modules' || entry.name === 'public' ? [] : files(path.join(dir, entry.name)))
@@ -127,7 +127,7 @@ describe('owner private recall corpus', () => {
     const users = (pattern) => ['src', 'routes', 'surfaces'].flatMap(dir => files(path.join(core, dir)))
       .filter(file => !file.includes(`${path.sep}test${path.sep}`) && pattern.test(fs.readFileSync(file, 'utf8')))
       .map(file => path.relative(core, file).split(path.sep).join('/')).sort();
-    expect(users(/'owner-private'/)).toEqual(['routes/nestor-consumer-v1.js', 'src/services/memoryReadService.js']);
+    expect(users(/'owner-private'/)).toEqual(['routes/nestor-consumer-v1.js', 'src/services/mcpOwnerTools.js', 'src/services/memoryReadService.js']);
     expect(users(/ownerRecallService/)).toEqual(['src/services/memoryReadService.js', 'surfaces/household/secretary-recall.js']);
     expect(users(/owner-mail|OWNER_MAIL_RAG_TOKEN/)).toEqual(['src/services/ownerRecallService.js']);
   });

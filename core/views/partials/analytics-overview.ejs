@@ -1,6 +1,6 @@
 <section class="analytics-overview" aria-labelledby="analytics-experience-title" aria-busy="true">
   <header class="ao-header">
-    <div><span class="ao-eyebrow">Intelligence / Overview</span><h1 id="analytics-experience-title">Every call. The whole picture.</h1></div>
+    <div><span class="ao-eyebrow">Intelligence / Overview</span><h1 id="analytics-experience-title">Recorded AI activity.</h1></div>
     <div class="ao-controls">
       <label for="analyticsWindow">Period for the whole page</label>
       <select id="analyticsWindow"><option value="24h" selected>Last 24 hours</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option></select>
@@ -51,6 +51,7 @@
       <% if (locals.agentxProfile !== 'demo') { %><div class="ao-panel-foot"><a href="/nerve-center?focus=cluster">Actual GPU utilization &amp; VRAM →</a></div><% } %>
     </section>
   </div>
+  <p class="ao-coverage"><span id="ao-attribution" role="status">Reading consumer attribution…</span> <a id="ao-attribution-logs" hidden>Inspect unattributed calls →</a></p>
   <p id="ao-coverage" class="ao-coverage">Recorded AgentX calls only. Native calls that bypass Core are outside this view. Elapsed call time is not GPU busy time.</p>
   <nav class="ao-links" aria-label="Related activity">
     <button type="button" data-analytics-target="chatLaneHeading"><i class="fas fa-comments" aria-hidden="true"></i> Playground conversations <small id="analytics-chat-detail">Conversations in this period</small></button>

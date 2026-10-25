@@ -172,6 +172,24 @@ function sanitizeScoredCandidates(value) {
     }));
 }
 
+// Topology role evidence (#360): role, mode, lane context and a lane refusal's sizes.
+function sanitizeTopologyTrace(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const refusal = value.laneRefusal && typeof value.laneRefusal === 'object' ? value.laneRefusal : null;
+    return {
+        role: enumValue(value.role, new Set(['conversation', 'background', 'pooled'])),
+        group: operationalIdentifier(value.group, 64),
+        mode: operationalIdentifier(value.mode, 64),
+        laneContext: finiteNumber(value.laneContext),
+        laneRefusal: refusal ? {
+            estimatedInputTokens: finiteNumber(refusal.estimatedInputTokens),
+            outputBudget: finiteNumber(refusal.outputBudget),
+            laneContext: finiteNumber(refusal.laneContext),
+            suggestion: enumValue(refusal.suggestion, new Set(['queue_for_pooled', 'reduce_input'])),
+        } : null,
+    };
+}
+
 function sanitizeRecommendation(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
     const scheduler = value.scheduler && typeof value.scheduler === 'object'
@@ -325,6 +343,7 @@ function sanitizeRoutingTrace(trace, { fingerprintRawOptions = true } = {}) {
             trace.options || trace.runtimeOptions,
             fingerprintRawOptions
         ),
+        ...(trace.topology && { topology: sanitizeTopologyTrace(trace.topology) }),
     };
 }
 

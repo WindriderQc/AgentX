@@ -167,6 +167,11 @@ for it, and falls back to the local route, visibly, when that agent fails.
 
 ### Tasks
 
+[Work lifecycle](WORK_LIFECYCLE.md) defines routing between personal/family
+tasks, Pipeline, GitHub and resource planning, their fact ownership and the
+shared read-only heavy-work presentation. Shared storage does not merge domain
+permissions or completion rules.
+
 Core owns task persistence (`PipelineTask`, atomic `Counter`). Trusted server
 consumers receive bounded operations, never models or an ID allocator:
 
@@ -258,6 +263,13 @@ both interval fields.
   in three steps: choose the species, apply or edit the care card (toxicity
   confirmation, care actions assignable only to children old enough), then
   publish with a preview of what the children will see.
+
+Google Calendar owns personal events, recurring series and standard reminders.
+Core's shared `personal_calendar` tool uses one native credential-host transport;
+personal runtimes select it through their existing MCP grants. Calendar creates
+retain a stable Google event ID for recovery, with no mirror store or parallel
+scheduler. Core owns actions to check off and their occurrence-fenced repeating
+completion. See [personal calendar](PERSONAL_CALENDAR.md).
 
 Personal-task deadlines follow one contract on every write path (the
 Household `POST /api/secretary/tasks` and `POST /api/secretary/tasks/update`
@@ -691,8 +703,15 @@ Core's optional image capability owns `ImageOperation`, idempotent action
 identities, execution state, GPU admission and verified archive references.
 The full-profile `/images` page and private native `local_image` tool compose
 that capability. Household composes the same service for simple family drawings
-after inference settles, through a bounded display directive. The family agent
-receives no private native tools. Core persists the server-resolved conversation
+after inference settles, through a bounded display directive. That directive
+may name a picture already on screen by its number in Core's list of recent
+pictures; Core reads the picture back from where it resolved it (a web result
+from a public address without redirects, a mounted photo or media file, a
+relayed generated picture or a local creation), converts WebP, GIF or AVIF
+to PNG (first frame), fits it to a 1,536-pixel JPEG
+and accepts it as the only reference of an edit. Every conversation engine and
+both spaces use this path; OpenClaw keeps `local_image` for new images. The
+family agent receives no private native tools. Core persists the server-resolved conversation
 scope with each operation; Household's read routes verify all scope fields.
 Private native Household creates use the same binding. ComfyUI only executes
 bounded server-owned graphs; callers cannot submit arbitrary workflows.
@@ -854,8 +873,13 @@ pages and APIs retain the parental gateway guard.
   the model puts screen content in `<show kind="…">` blocks, and Core also
   diverts code, tables, long lists, links, paths and key-like tokens. Only the
   spoken text is streamed as `delta`, stored as `replyText` and sent to browser
-  TTS or native VoiX; blocks stream as `show` events to the page's "À l'écran"
-  zone (`display-board.js`) and are kept on the turn as `display`. Secrets are
+  TTS or native VoiX; blocks stream as `show` events to `display-board.js`
+  and are kept on the turn as `display`. Personal Nestor selects one common
+  content workspace; Family keeps its scoped boards. Analytics supplies a Core
+  read of the exact summary response behind the selected period, separately
+  from the untrusted browser display observation. Selection/read evidence stays
+  on the canonical turn, never in a parallel conversation store. See
+  [content presentation](CONTENT_PRESENTATION.md). Secrets are
   private-only, shown masked, and stored redacted. A `say_end` event follows
   the last spoken `delta`, before pictures are resolved and the turn is
   recorded, so the voice page says the reply's last clause without waiting for

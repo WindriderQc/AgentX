@@ -14,7 +14,9 @@ const { leaseReference } = require('./pipelineEvidenceReferences');
 // this registry never sends a file anywhere and never indexes it as memory).
 const RECEIPT_SCHEMA = 'agentx.pipeline-task-deliverable-receipt/v1';
 const STORE = 'mongodb:pipeline_task_deliverables';
-const MAX_PER_TASK = 20;
+// A task can authorize 32 grants of four report executions. Keep their
+// immutable checkpoints plus room for earlier uploads; never discard history.
+const MAX_PER_TASK = 160;
 const MAX_BYTES = 2 * 1024 * 1024; // the same per-file cap as conversation attachments
 const SHA_RE = /^[a-f0-9]{64}$/;
 const EXTERNAL_DELIVERY = Object.freeze({

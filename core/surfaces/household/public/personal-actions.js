@@ -79,7 +79,7 @@
       if (button.dataset.actionDone && !button.dataset.confirmed) { button.dataset.confirmed = 'true'; button.classList.add('confirming'); button.innerHTML = 'Confirmer'; button.setAttribute('aria-label', `Confirmer la fin de : ${task.title}`); return; }
       busy = true; button.disabled = true;
       try {
-        if (button.dataset.actionDone) await api('/api/secretary/tasks/complete', { method: 'POST', body: JSON.stringify({ ref: task.id, by: 'household-dad-desk' }) });
+        if (button.dataset.actionDone) await api('/api/secretary/tasks/complete', { method: 'POST', body: JSON.stringify({ ref: task.id, expectedDueAt: task.dueAt, by: 'household-dad-desk' }) });
         else { const day = new Date(); day.setDate(day.getDate() + Number(button.dataset.schedule)); await edit(task, { dueAt: `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}` }); }
         status.textContent = button.dataset.actionDone ? 'Action terminée.' : 'Date mise à jour.'; await onChanged();
       } catch (error) { status.textContent = error.message; button.disabled = false; }

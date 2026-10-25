@@ -16,10 +16,12 @@ def load(name):
 coding_git = load('coding_git')
 coding_publication = load('coding_publication')
 coding_code_steps = load('coding_code_steps')
+coding_direct_plan = load('coding_direct_plan')
 coding_code_ledger = load('coding_code_ledger')
 coding_verification = load('coding_verification')
 coding_step_progress = load('coding_step_progress')
 coding_distributed_root = load('coding_distributed_root')
+coding_candidate_verification = load('coding_candidate_verification')
 VERIFICATION_COMMANDS = coding_verification.FULL_COMMANDS
 
 PLANNER_CALLS = 8
@@ -38,6 +40,7 @@ def _bounded_task(task, manifest):
             'spec': str(task.get('spec') or '')[:8_000],
             'discussion': discussion[-4_000:],
             'planning': str((task.get('planningContext') or {}).get('text') or '')[:3_000],
+            'acceptanceCriteria': (manifest.get('qualification') or {}).get('acceptanceCriteria', []),
             'correction': manifest.get('correction') if isinstance(manifest.get('correction'), dict) else None}
 
 
@@ -215,6 +218,13 @@ def _prepare_ledger(r, workspace, task_id, key, task, manifest, progress, budget
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     output = root / 'code-plan.json'
     if not output.exists():
+        direct = coding_direct_plan.build(workspace, manifest, capability)
+        if direct is not None:
+            r.coding_dispatch_control.atomic_json(output, direct)
+            r.coding_dispatch_control.atomic_json(root / 'code-plan-source.json', {
+                'schema': 'agentx.coding-plan-source/v1', 'strategy': 'runner_bounded_pair',
+                'planningModelCalls': 0, 'planSha256': hashlib.sha256(output.read_bytes()).hexdigest()})
+    if not output.exists():
         calls_left = progress.call_limit() - progress.model_calls
         implementation_reserve = max(IMPLEMENTATION_CALL_RESERVE,
                                      min(budget['maxSteps'], max(0, calls_left - 1)))
@@ -228,6 +238,7 @@ def _prepare_ledger(r, workspace, task_id, key, task, manifest, progress, budget
         calls = min(PLANNER_CALLS, available)
         seconds = min(PLANNER_SECONDS, max(1, int(min(progress.hard_deadline, progress.queue_deadline) - progress.now())))
         progress.begin_step(calls, seconds, f'/home/agent/deliverables/{key}/code-plan.json')
+        started_calls = progress.model_calls
         try:
             run = r.run_worker(workspace, prompt, seconds, progress, model=r.MODEL, read_only=True)
         finally:
@@ -235,6 +246,8 @@ def _prepare_ledger(r, workspace, task_id, key, task, manifest, progress, budget
         if not getattr(progress, 'role_drained', True):
             raise RuntimeError('Planner model termination is unverified')
         if run.returncode or progress.check_stop():
+            if not progress.stop_reason and progress.model_calls - started_calls >= calls:
+                progress.stop_reason = 'planner_budget_exhausted'
             raise RuntimeError('The planner stopped before writing a code-step plan')
     if not output.is_file() or output.is_symlink() or output.stat().st_size > coding_code_steps.MAX_PLAN_BYTES:
         raise coding_code_steps.CodePlanError('Planner did not write one bounded regular plan file')
@@ -326,6 +339,7 @@ def execute(r, args, progress):
     verification = 'unknown'
     summary = 'Worker was not started.'
     active_step = store = ledger = budget = root_request_id = None
+    cpu_verification = None
     try:
         if progress.check_stop():
             raise RuntimeError('Operator stopped before preparation')
@@ -395,6 +409,7 @@ def execute(r, args, progress):
         # worker receives them. Same-step tests may intentionally be new.
         _validate_planned_targets(workspace, profile, ledger)
         _project(progress, ledger, budget)
+        complete_pair = coding_direct_plan.build(workspace, manifest, capability) is not None
         distributed = coding_distributed_root.execute(r, args, progress, endpoint, task, ledger)
         if distributed is not None:
             return coding_distributed_root.finalize(r, args, progress, lease, distributed, native_verdict)
@@ -426,7 +441,13 @@ def execute(r, args, progress):
                 _bounded_task(task, manifest), step, coding_code_ledger.summary(ledger),
                 {'id': profile, 'focusedTestTargets': step['testTargets'],
                  'runnerOwned': True, 'fullVerificationAfterAssembly': True})
+            editing_only = complete_pair and set(step['paths']) == set(manifest['scope'])
+            if editing_only:
+                prompt += coding_direct_plan.source_context(workspace, step['paths'])
             progress.begin_step(calls, seconds, f"code-step:{step['id']}", result_kind='source')
+            if editing_only:
+                progress.step['sourceContext'] = 'complete_pair'
+                progress.step['sourcePaths'] = list(step['paths'])
             try:
                 run = r.run_worker(workspace, prompt, seconds, progress, model=r.MODEL)
             finally:
@@ -435,7 +456,8 @@ def execute(r, args, progress):
             changed = _changed_paths(r, workspace)
             active_step['changed'] = changed
             outside = sorted(set(changed) - set(step['paths']))
-            if run.returncode or progress.check_stop() or getattr(progress, 'last_step_failure', None):
+            reserve_candidate = progress.check_stop() == 'model_budget_reserve'
+            if not reserve_candidate and (run.returncode or progress.check_stop() or getattr(progress, 'last_step_failure', None)):
                 ledger = store.record_failure(step['id'], progress.stop_reason or
                     getattr(progress, 'last_step_failure', None) or 'worker_exit', ledger['revision'])
                 _stash_failed_step(r, workspace, step['id'])
@@ -459,19 +481,29 @@ def execute(r, args, progress):
                 _project(progress, ledger, budget)
                 reason = 'dependencies_changed'
                 raise RuntimeError('Dependency changes need separate operator approval')
+            if reserve_candidate:
+                if not coding_candidate_verification.material_change(r, workspace, changed):
+                    reason = 'no_changes'
+                    raise RuntimeError('A model-reserve handoff requires a material source diff')
+                progress.set_stage('checkpoint')
+                cpu_verification = coding_candidate_verification.CPUVerification(
+                    r, progress, endpoint, lease, manifest, run)
+            verifier = cpu_verification or progress
             source_before_test = r.coding_progress.source_state(workspace)
             progress.set_stage('test')
             command = coding_verification.focused_command(workspace, profile, step['testTargets'])
+            test_timeout = cpu_verification.timeout() if cpu_verification else max(1, int(progress.test_remaining()))
             started_test = time.monotonic()
             try:
                 test = r.supervise(r.sandbox(workspace, r.worker_home(workspace), command, network=False,
-                                             timeout_seconds=max(1, int(progress.test_remaining()))), progress)
+                                             timeout_seconds=test_timeout), verifier,
+                                   **({'deadline': progress.now() + test_timeout} if cpu_verification else {}))
             except Exception:
                 ledger = store.record_failure(step['id'], 'focused_test_runner_error', ledger['revision'])
                 _stash_failed_step(r, workspace, step['id'])
                 _project(progress, ledger, budget)
                 raise
-            outcome = 'passed' if test.returncode == 0 and not progress.check_stop() else 'failed'
+            outcome = 'passed' if test.returncode == 0 and not verifier.check_stop() else 'failed'
             receipt = {'profile': profile, 'targets': step['testTargets'], 'outcome': outcome,
                        'exitCode': test.returncode, 'durationMs': max(0, int((time.monotonic() - started_test) * 1000))}
             active_step['verification'] = receipt
@@ -485,8 +517,10 @@ def execute(r, args, progress):
                 _project(progress, ledger, budget)
                 summary = ('Focused verification failed (untrusted test output):\n' +
                            (getattr(test, 'stdout', '') or getattr(test, 'stderr', '') or '(no output)')[-2000:])
-                reason = progress.stop_reason or 'tests_failed'
+                reason = verifier.check_stop() or 'tests_failed'
                 raise RuntimeError('Runner-owned focused verification did not pass cleanly')
+            if cpu_verification:
+                cpu_verification.require()
             progress.set_stage('checkpoint')
             commit = _commit_step(r, workspace, step, changed)
             if before_head == commit:
@@ -507,9 +541,12 @@ def execute(r, args, progress):
         # Reuse the reviewed verification profile; commands are native constants,
         # never GitHub logs or task-provided shell fragments.
         source_before_test = r.coding_progress.source_state(workspace)
+        verifier = cpu_verification or progress
+        test_timeout = cpu_verification.timeout() if cpu_verification else max(1, int(progress.test_remaining()))
         try:
             test = r.supervise(r.sandbox(workspace, r.worker_home(workspace), coding_verification.full_command(profile), network=False,
-                                      timeout_seconds=max(1, int(progress.test_remaining()))), progress)
+                                      timeout_seconds=test_timeout), verifier,
+                               **({'deadline': progress.now() + test_timeout} if cpu_verification else {}))
         except Exception:
             if r.coding_progress.source_state(workspace) != source_before_test:
                 _stash_failed_step(r, workspace, 'full-verification')
@@ -517,11 +554,11 @@ def execute(r, args, progress):
         source_changed_by_test = r.coding_progress.source_state(workspace) != source_before_test
         if source_changed_by_test:
             _stash_failed_step(r, workspace, 'full-verification')
-        verification = 'passed' if test.returncode == 0 and not progress.check_stop() else 'failed'
+        verification = 'passed' if test.returncode == 0 and not verifier.check_stop() else 'failed'
         progress.last_test = {'name': 'unittest' if profile == 'agentx-dispatcher-tests/v1' else 'jest', 'outcome': verification}
         if verification != 'passed':
             summary = 'Independent verification failed (untrusted test output):\n' + (getattr(test, 'stdout', '') or getattr(test, 'stderr', '') or '(no output)')[-2000:] + '\n' + summary[-1500:]
-            reason = progress.stop_reason or 'tests_failed'
+            reason = verifier.check_stop() or 'tests_failed'
             raise RuntimeError('Independent tests did not pass')
         if source_changed_by_test:
             reason = 'tests_failed'
@@ -548,7 +585,9 @@ def execute(r, args, progress):
                   'title': f'Coding delivery (task {task_id})', 'stage': 'prepared',
                   'diffFingerprint': coding_git.diff_identity(r.git, workspace, f'origin/{r.BASE_BRANCH}'),
                   'verdict': native_verdict(r, task_id, key, lease, current, progress, 'review', verification, None)}
-        if not r.begin_publication(progress):
+        if cpu_verification:
+            cpu_verification.require()
+        if not r.begin_publication(verifier):
             raise RuntimeError('Operator stop before publication')
         pr = coding_publication.publish(r, workspace, intent, progress.path.parent / f'{key}.publication.json', token)
         result = 'review'
@@ -556,6 +595,8 @@ def execute(r, args, progress):
         progress.write()
         return 2  # Durable intent; Core reconciles GET observations, never reruns the worker.
     except Exception as error:
+        if isinstance(error, coding_candidate_verification.VerificationRefusal):
+            reason = error.reason
         if active_step is not None and store is not None and budget is not None:
             try:
                 ledger = _recover_active_step(r, workspace, store, active_step, progress, budget)
@@ -570,6 +611,8 @@ def execute(r, args, progress):
         reason = reason or progress.stop_reason or ('git_reconciliation' if isinstance(error, coding_git.GitRefusal) else 'runner_error')
         summary = f'Attempt stopped: {type(error).__name__}; {reason}. Source and private receipts are preserved.\n' + summary
     progress.pr = pr
+    if cpu_verification:
+        cpu_verification.write()
     return coding_distributed_root.deliver_native(
         r, progress, task_id, key, lease, result, verification, reason, summary, native_verdict)
 

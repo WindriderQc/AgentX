@@ -20,6 +20,27 @@ const ID = 'report-continuation';
 const WC = { w: 1, j: true };
 const NANO = 1e9;
 const MODEL = /^[a-z0-9-]+\/[A-Za-z0-9._:/-]{1,120}$/;
+const PRE_DISPATCH = new Set(['OPENCLAW_MODEL_TRANSPORT_UNQUALIFIED', 'OPENCLAW_MODEL_UNAVAILABLE',
+  'OPENCLAW_UNAVAILABLE', 'EXECUTION_SOURCE_INVALID']);
+const safeCode = error => /^[A-Z][A-Z_0-9]{0,79}$/.test(error?.code || '') ? error.code : 'ESCALATION_FAILED';
+
+function executionError(attempts, executionState, model) {
+  return Object.assign(new Error(executionState === 'unknown' ? 'Reconcile the original cloud escalation call' : 'No escalation model answered'),
+    { code: executionState === 'unknown' ? 'REPORT_ESCALATION_UNCERTAIN' : 'REPORT_ESCALATION_UNAVAILABLE',
+      statusCode: executionState === 'unknown' ? 503 : 502, attempts, executionState, ...(model && { model }) });
+}
+
+async function journal(identity, field, row) {
+  const saved = await Run.updateOne({ _id: identity.requestId }, { $push: { [field]: row } }, { writeConcern: WC });
+  if (saved?.acknowledged !== true || saved.modifiedCount !== 1)
+    throw executionError(row.attempts || [], 'unknown', row.model);
+}
+
+function observedCost(receipt) {
+  const cost = receipt?.cost?.nanodollars;
+  if (Number.isSafeInteger(cost) && cost >= 0) return cost;
+  return ['free', 'included', 'local'].includes(receipt?.billing?.kind) ? 0 : null;
+}
 
 async function policy() {
   const doc = await Settings.findById(ID).lean();
@@ -45,8 +66,15 @@ async function forRun(task) {
   const grant = task.codingReportAuthority?.grants?.at(-1);
   if (!current.enabled || grant?.allowCloudEscalation !== true) return undefined;
   const remaining = Math.floor(current.maxCostUsdPerTask * NANO) - await spentNanodollars(task._id);
-  if (remaining <= 0) return undefined;
-  return { models: current.models, maxCostNanodollars: remaining, policyRevision: current.revision };
+  const previous = await Run.find({ taskId: String(task._id), 'escalationFailures.0': { $exists: true } })
+    .select('escalationFailures modelReceipts').lean();
+  const freeOnly = previous.some(value => value.escalationFailures?.some(row => row.executionState === 'unknown'
+    && !require('./pipelineReportCloudRecovery').resolved(value, row.callId)));
+  if (remaining <= 0 && !freeOnly) return undefined;
+  const refusalResolutions = await require('./pipelineReportCloudRecovery').resolutions(task._id);
+  return { models: current.models, maxCostNanodollars: freeOnly ? 0 : remaining, policyRevision: current.revision,
+    ...(freeOnly && { freeOnly: true }),
+    ...(refusalResolutions.length ? { refusalResolutions } : {}) };
 }
 
 /** Refuse an escalated call that this execution does not allow. */
@@ -55,6 +83,9 @@ function assertCall(run, model) {
   if (!escalation || !escalation.models.includes(model))
     throw fail('This report execution does not allow that escalation model', 'REPORT_ESCALATION_REFUSED', 403);
   const spent = (run.escalationCalls || []).reduce((sum, call) => sum + (Number(call.nanodollars) || 0), 0);
+  // Unknown prior billing never authorizes another paid call. Native catalogue
+  // billing and its conservative reservation enforce this zero-cost budget.
+  if (escalation.freeOnly === true && spent === 0) return 0;
   if (spent >= escalation.maxCostNanodollars) throw fail('The task escalation cost cap is reached', 'REPORT_ESCALATION_BUDGET', 409);
   return escalation.maxCostNanodollars - spent;
 }
@@ -71,24 +102,52 @@ async function execute({ identity, messages, maxTokens, requestId, remainingNano
   const models = value.escalation.models.slice(value.escalation.models.indexOf(identity.model));
   const attempts = [];
   for (const model of models) {
+    let result;
     try {
-      const result = await run({ mode: 'chat', model: `openclaw:model:${model}`, messages, stream: false, requestId,
-        options: { num_predict: maxTokens, temperature: 0 }, budget: { maxCalls: 1, maxCostNanodollars: remainingNanodollars } });
-      if (!result.ok) throw Object.assign(new Error('Escalation model refused the request'), { code: result.body?.error?.code || `HTTP_${result.status}` });
-      const receipt = result.metadata?.receipt || result.body?.executionReceipt || {};
-      const call = { callId: identity.callId, step: identity.step, model, attempts, at: new Date().toISOString(),
-        nanodollars: Number(receipt.cost?.nanodollars) || 0, costSource: receipt.cost?.source || 'none',
-        billing: receipt.billing?.kind || null, usage: receipt.usage || null };
-      await Run.updateOne({ _id: identity.requestId }, { $push: { escalationCalls: call } }, { writeConcern: WC });
-      await require('./pipelineReportNotifications').publish({ pipelineId: identity.pipelineId }, 'escalated', identity.requestId,
-        { model, step: identity.step, usd: call.nanodollars / NANO }).catch(() => null);
-      return { body: result.body, model, call };
+      result = await run({ mode: 'chat', model: `openclaw:model:${model}`, messages, stream: false, requestId,
+        options: { num_predict: maxTokens }, budget: { maxCalls: 1, maxCostNanodollars: remainingNanodollars } });
+      if (!result.ok) throw Object.assign(new Error('Escalation model refused the request'), {
+        code: result.body?.error?.code || `HTTP_${result.status}`, executionState: result.body?.executionState });
     } catch (error) {
-      if (signal?.aborted) throw error;
-      attempts.push({ model, code: String(error.code || 'ESCALATION_FAILED').slice(0, 80) });
+      const receipt = error.executionReceipt;
+      const cost = observedCost(receipt);
+      const state = error.executionState === 'not-dispatched' || (!error.executionState && PRE_DISPATCH.has(error.code)) ? 'not-dispatched'
+        : error.executionState === 'completed' && cost !== null ? 'completed' : 'unknown';
+      attempts.push({ model, code: safeCode(error), executionState: state,
+        ...(error.terminalEvidence ? { terminalEvidence: error.terminalEvidence } : {}),
+        ...(error.refusalReceipt ? { refusalReceipt: error.refusalReceipt } : {}) });
+      if (state === 'completed') await journal(identity, 'escalationCalls', {
+        callId: identity.callId, step: identity.step, model, attempts, at: new Date().toISOString(),
+        nanodollars: cost, costSource: receipt.cost?.source || 'billing-kind', billing: receipt.billing?.kind,
+        usage: receipt.usage || null, outcome: 'unusable_answer' });
+      if (state !== 'not-dispatched' || signal?.aborted) {
+        await journal(identity, 'escalationFailures', { callId: identity.callId, step: identity.step,
+          attempts, executionState: state, at: new Date().toISOString() });
+        throw executionError(attempts, state, model);
+      }
+      continue;
     }
+    const receipt = result.metadata?.receipt || result.body?.executionReceipt || {};
+    const cost = observedCost(receipt);
+    if (cost === null) {
+      attempts.push({ model, code: 'REPORT_ESCALATION_COST_UNVERIFIED', executionState: 'unknown' });
+      await journal(identity, 'escalationFailures', { callId: identity.callId, step: identity.step,
+        attempts, executionState: 'unknown', at: new Date().toISOString() });
+      throw executionError(attempts, 'unknown', model);
+    }
+    const call = { callId: identity.callId, step: identity.step, model, attempts, at: new Date().toISOString(),
+      nanodollars: cost, costSource: receipt.cost?.source || 'billing-kind',
+      billing: receipt.billing?.kind || null, usage: receipt.usage || null };
+    // A lost journal acknowledgement must never send the already answered call to another provider.
+    try { await journal(identity, 'escalationCalls', call); }
+    catch { throw executionError(attempts, 'unknown', model); }
+    await require('./pipelineReportNotifications').publish({ pipelineId: identity.pipelineId }, 'escalated', identity.requestId,
+      { model, step: identity.step, usd: call.nanodollars / NANO }).catch(() => null);
+    return { body: result.body, model, call };
   }
-  throw Object.assign(new Error('No escalation model answered'), { code: 'REPORT_ESCALATION_UNAVAILABLE', statusCode: 502, attempts });
+  await journal(identity, 'escalationFailures', { callId: identity.callId, step: identity.step,
+    attempts, executionState: 'not-dispatched', at: new Date().toISOString() });
+  throw executionError(attempts, 'not-dispatched');
 }
 
 async function configure(input) {

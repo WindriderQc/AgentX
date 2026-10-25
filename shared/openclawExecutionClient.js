@@ -2,6 +2,8 @@
 
 const { randomUUID } = require('node:crypto');
 const { parseExecutionSource } = require('./executionSource');
+const { nativeRefusal } = require('./openclawRefusal');
+const { nativeTerminalEvidence } = require('./openclawTerminalEvidence');
 
 const MODEL_API = '/api/agentx/execution';
 const CATALOG_SCHEMA = 'agentx.openclaw-execution-catalog/v1';
@@ -57,10 +59,14 @@ function createOpenClawExecutionClient({ env = process.env, fetchImpl = fetch } 
     if (!response.ok) {
       let body; try { body = await response.json(); } catch { /* private upstream body is discarded */ }
       const nativeCode = /^OPENCLAW_[A-Z_]{1,80}$/.test(body?.code || '') ? body.code : null;
+      const receipt = nativeRefusal(body?.refusalReceipt);
       const code = nativeCode || (response.status === 404 ? 'OPENCLAW_MODEL_API_UNAVAILABLE' : 'OPENCLAW_EXECUTION_REJECTED');
       throw failure(code, `OpenClaw refused execution (HTTP ${response.status}).`, response.status === 404 ? 503 : response.status,
-        { executionState: ['unknown', 'not-dispatched'].includes(body?.executionState) ? body.executionState : 'unknown',
+        { executionState: body?.code === 'OPENCLAW_PROVIDER_REQUEST_REFUSED' && (!receipt || body.partialResponse || body.partialThinking)
+            ? 'unknown' : ['unknown', 'not-dispatched'].includes(body?.executionState) ? body.executionState : 'unknown',
           ...(body?.schema === 'agentx.openclaw-model-error/v1' ? {
+            refusalReceipt: receipt,
+            terminalEvidence: nativeTerminalEvidence(body.terminalEvidence),
             partialResponse: typeof body.partialResponse === 'string' ? body.partialResponse.slice(0, 2000000) : '',
             partialThinking: typeof body.partialThinking === 'string' ? body.partialThinking.slice(0, 2000000) : '' } : {}) });
     }
@@ -95,7 +101,8 @@ function createOpenClawExecutionClient({ env = process.env, fetchImpl = fetch } 
             if (event.type === 'text_delta') { if (typeof event.delta !== 'string') throw failure('OPENCLAW_STREAM_INVALID', 'Invalid text event.'); text += event.delta; await onToken?.(event.delta); }
             else if (event.type === 'thinking_delta') { if (typeof event.delta !== 'string') throw failure('OPENCLAW_STREAM_INVALID', 'Invalid thinking event.'); thinking += event.delta; await onThinking?.(event.delta); }
             else if (event.type === 'completed') { result = event.result; terminal = true; }
-            else if (event.type === 'error') throw failure(/^OPENCLAW_[A-Z_]{1,80}$/.test(event.code || '') ? event.code : 'OPENCLAW_EXECUTION_FAILED', 'OpenClaw model execution failed.');
+            else if (event.type === 'error') throw failure(/^OPENCLAW_[A-Z_]{1,80}$/.test(event.code || '') ? event.code : 'OPENCLAW_EXECUTION_FAILED', 'OpenClaw model execution failed.', 502,
+              { terminalEvidence: nativeTerminalEvidence(event.terminalEvidence), executionState: 'unknown' });
           });
         } else { result = await response.json(); terminal = true; }
         if (!terminal || result?.schema !== RESULT_SCHEMA || result.requestId !== id || result.model !== selection.model
@@ -142,6 +149,11 @@ function createOpenClawExecutionClient({ env = process.env, fetchImpl = fetch } 
           requested: selection, observed: null, usage: result.usage || null, cost: null,
           isolation: null, completion: 'completed', finishReason: null } };
     } catch (error) {
+      if (error.refusalReceipt && (error.refusalReceipt.requestId !== id || error.refusalReceipt.model !== selection.model)) {
+        error.refusalReceipt = null; error.executionState = 'unknown';
+      }
+      if (error.terminalEvidence && (error.terminalEvidence.requestId !== id || error.terminalEvidence.model !== selection.model))
+        error.terminalEvidence = null;
       error.partialResponse ??= text;
       error.partialThinking ??= thinking;
       error.executionState ??= terminal ? 'completed' : 'unknown';

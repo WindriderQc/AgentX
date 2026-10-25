@@ -40,6 +40,8 @@ function initialDag() {
 
 function memoryState() {
   let dag = initialDag();
+  dag.authority = { taskBasis: task().codingAutonomy.basis, rootRequestId: ROOT, sourceCommit: SOURCE,
+    runIndex: 0, sourceField: 'sourceCommit', coordinator: { id: 'coordinator', label: 'Coordinator', harness: 'unknown' } };
   return {
     read: jest.fn(async () => clone(dag)),
     startInference: jest.fn(async (_pipelineId, input) => {
@@ -64,10 +66,12 @@ function memoryState() {
 }
 
 function task() {
-  return { pipelineId: '0946', automationLease: { leaseId: LEASE, attempt: 7 },
+  const value = { pipelineId: '0946', automation: { scope: ['src/one.js', 'src/two.js'], lockKeys: ['file:src/one.js', 'file:src/two.js'] }, automationLease: { leaseId: LEASE, attempt: 7 },
     codingCapacity: { model: MODEL, admissionId: 'parent-admission', requestId: ROOT,
       host: 'http://ollama.invalid:11434' },
-    codingAutonomy: { authorized: true, runs: [{ requestId: ROOT }] } };
+    codingAutonomy: { authorized: true, runs: [{ requestId: ROOT, sourceCommit: SOURCE }] } };
+  value.codingAutonomy.basis = require('../../src/services/pipelineCodingAutonomyPolicy').basis(value);
+  return value;
 }
 
 function headers({ step = 'step-01', request = REQUEST_ONE, executor = 'ugalien', call = CALL_ONE,
@@ -80,6 +84,7 @@ function headers({ step = 'step-01', request = REQUEST_ONE, executor = 'ugalien'
 
 function fixture() {
   const state = memoryState();
+  const record = task();
   let now = Date.parse(T0);
   const assertLease = jest.fn((value, proof) => {
     if (value.automationLease?.leaseId !== proof.leaseId) {
@@ -87,8 +92,8 @@ function fixture() {
     }
   });
   const bridge = createCodeStepInferenceBridge({ stateService: state,
-    readTask: jest.fn(async () => clone(task())), assertLease, clock: () => now });
-  return { state, bridge, assertLease, advance: seconds => { now += seconds * 1000; } };
+    readTask: jest.fn(async () => clone(record)), assertLease, clock: () => now });
+  return { state, record, bridge, assertLease, advance: seconds => { now += seconds * 1000; } };
 }
 
 test('two independent step attempts call concurrently under the parent capacity and settle their own budgets', async () => {
@@ -146,4 +151,16 @@ test.each([
   const f = fixture();
   await expect(f.bridge.prepareCodeStep(inputHeaders, model)).rejects.toMatchObject({ code });
   expect(f.state.startInference).not.toHaveBeenCalled();
+});
+
+test.each(['revocation', 'scope', 'family'])('an in-flight receipt survives %s while future model calls refuse', async reason => {
+  const f = fixture(); const first = await f.bridge.prepareCodeStep(headers(), MODEL);
+  if (reason === 'revocation') f.record.codingAutonomy.authorized = false;
+  if (reason === 'scope') f.record.title = 'Changed scope';
+  if (reason === 'family') f.record.origin = 'family';
+  await expect(f.bridge.prepareCodeStep(headers({ step: 'step-02', request: REQUEST_TWO,
+    executor: 'ugbrutal', call: CALL_TWO }), MODEL)).rejects.toBeDefined();
+  f.advance(2); await first.finish('completed');
+  expect(f.state.current().steps[0].attempts[0].modelReceipts[0].state).toBe('completed');
+  expect(f.state.current().steps[1].attempts[0].modelReceipts).toHaveLength(0);
 });

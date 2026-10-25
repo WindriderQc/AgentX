@@ -1,9 +1,11 @@
 'use strict';
+const { executionWindowOpen } = require('./heavyWorkQueueWindow');
 const Task = require('../../models/PipelineTask');
 const Settings = require('../../models/PipelineCodingAutonomy');
 const Runtime = require('../../models/RuntimeCoordination');
 const queue = require('./heavyWorkQueueService');
 const policy = require('./pipelineCodingAutonomyPolicy');
+const readiness = require('./pipelineCodingReadiness');
 const { normalizePipelineAutomationIntent } = require('../../../shared/pipelineAutomationContract');
 const { resourceTopology, resourcesFor, topologyMatches } = require('./runtimePhysicalResources');
 const { hostUrlKey } = require('../../../shared/ollamaHostConfig');
@@ -40,8 +42,22 @@ function intent(input, requestId) {
     ...(reviewed && { attemptLimit: { before: input.expectedNativeAttemptLimit, after: input.nativeAttemptLimit,
       originalFingerprint: input.expectedAutomationFingerprint } }),
     verificationProfile: input.verificationProfile, additionalRuns: input.additionalRuns,
+    ...(input.qualification !== undefined && { qualification: readiness.definition(input.qualification) }),
     budget: Object.fromEntries(CREDITS.map(key => [key, input.budget[key]])), text: input.text.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '') };
   return { ...value, fingerprint: policy.digest(value) };
+}
+function preparedTask(task, wanted) {
+  const { fingerprint, ...originalIntent } = task.automation;
+  return { ...task, automation: wanted.attemptLimit ? normalizePipelineAutomationIntent({ ...originalIntent,
+    budgets: { ...originalIntent.budgets, maxAttempts: wanted.attemptLimit.after } }) : task.automation,
+  codingAutonomy: { ...task.codingAutonomy, verificationProfile: wanted.verificationProfile,
+    budgetGrants: [...(task.codingAutonomy.budgetGrants || []), wanted] } };
+}
+function qualify(task, wanted) {
+  const saved = task.codingAutonomy.qualification;
+  const proposed = wanted.qualification ?? (saved?.taskBasis === readiness.taskBasis(task) ? saved.definition : null);
+  const prepared = preparedTask(task, wanted);
+  return readiness.assertReady(prepared, policy.remaining(prepared), proposed);
 }
 async function evidence(task, requestId, wanted, control) {
   policy.assertTask(task);
@@ -93,6 +109,7 @@ async function evidence(task, requestId, wanted, control) {
   if (wanted.verificationProfile === 'agentx-benchmark-artifact-tests/v1'
     && task.automation.scope.some(path => !/^benchmark\/(src\/services\/benchmark|tests\/unit\/benchmark)\/[^/]+\.(js|cjs)$/.test(path)))
     throw fail('The Benchmark verification profile requires its reviewed service and unit-test scope');
+  qualify(task, wanted);
   const host = await control.status({ requestId });
   if (host.busy !== false || host.run?.phase !== 'finished' || host.run.pipelineId !== task.pipelineId
     || host.run.requestId !== requestId || host.run.progress?.phase !== 'finished'
@@ -108,8 +125,7 @@ async function evidence(task, requestId, wanted, control) {
   if (job.id !== wanted.queueRequestId || job.id === state.queueRequestId || job.executor?.mode !== 'operator'
     || (!native && previous.id !== run.recovery.campaignId) || previous.source?.type !== 'coding'
     || job.source?.type !== 'coding' || !job.source.ref || job.source.ref !== previous.source.ref || job.source.taskId !== task.pipelineId
-    || !['dispatching', 'running'].includes(job.state) || !job.hosts?.length || !Array.isArray(job.resourceIds) || !job.reservation
-    || now < job.reservation.start || now >= job.reservation.end || (job.startBefore && now >= job.startBefore))
+    || !executionWindowOpen(job, now) || !job.hosts?.length || !Array.isArray(job.resourceIds))
     throw fail('A new approved active operator campaign must name this same task and coding session');
   if (native && (previous.state !== 'failed' || !Number.isFinite(Date.parse(previous.finishedAt))
     || previous.source.taskId !== task.pipelineId || previous.releaseReceipt?.authority !== 'operator-attestation'
@@ -200,9 +216,9 @@ async function continueRecovered(pipelineId, requestId, input, control) {
     throw error;
   }
   const state = task.codingAutonomy, at = new Date().toISOString();
-  const { fingerprint: originalFingerprint, ...originalIntent } = task.automation;
-  const automation = wanted.attemptLimit ? normalizePipelineAutomationIntent({ ...originalIntent,
-    budgets: { ...originalIntent.budgets, maxAttempts: wanted.attemptLimit.after } }) : task.automation;
+  const originalFingerprint = task.automation.fingerprint;
+  const { automation } = preparedTask(task, wanted);
+  const qualification = qualify(task, wanted);
   const grant = { ...wanted, schema: 'agentx.coding-budget-grant/v1', authority: 'operator-continuation', at,
     ...(wanted.attemptLimit && { originalAutomation: task.automation, originalBasis: state.basis,
       amendedAutomationFingerprint: automation.fingerprint }),
@@ -213,6 +229,7 @@ async function continueRecovered(pipelineId, requestId, input, control) {
     automationLease: { $exists: false }, codingCapacity: { $exists: false } },
   { $set: { ...(wanted.attemptLimit && { automation }), codingAutonomy: { ...state,
     basis: policy.basis({ ...task, automation }), revision: state.revision + 1, authorized: true, state: 'correction', reason: null,
+    qualification: { taskBasis: qualification.taskBasis, definition: qualification.definition },
     budgetGrants: [...(state.budgetGrants || []), grant], resumeCeiling: state.runs.length - 1 + wanted.additionalRuns,
     progressWindowStartedAtWorkSeconds: policy.spent(state).workSeconds || 0,
     queueRequestId: wanted.queueRequestId, verificationProfile: wanted.verificationProfile,

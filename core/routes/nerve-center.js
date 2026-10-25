@@ -10,7 +10,7 @@
 const express = require('express');
 const { requestPrincipal } = require('../src/helpers/requestCaller');
 const router = express.Router();
-router.use(require('./nerve-center-principal-model'), require('./nerve-center-embeddings'));
+router.use(require('./nerve-center-principal-model'), require('./nerve-center-embeddings'), require('./nerve-center-runtime-topology'));
 const logger = require('../config/logger');
 
 const { getAllModelsHealth } = require('../src/services/modelRouter');
@@ -552,7 +552,7 @@ router.get('/inference/gpu-status', async (req, res) => {
       };
     });
 
-    res.json({ status: 'success', data });
+    res.json({ status: 'success', data, presentation: require('../src/services/presentationReadService').presentationReader.publishGpus(data) });
   } catch (err) {
     logger.error('[NerveCenter] gpu-status fetch failed', { error: err.message });
     res.status(500).json({ status: 'error', message: err.message });

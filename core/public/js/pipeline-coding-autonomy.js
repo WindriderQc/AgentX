@@ -76,6 +76,15 @@
     input('additionalRuns', 'Additional workers (maximum 3)', 1); fields.additionalRuns.max = 3;
     for (const [key, label, value] of [['workSeconds', 'Additional work minutes', 60], ['testSeconds', 'Additional test minutes', 15],
       ['modelSeconds', 'Additional model minutes', 30], ['modelCalls', 'Additional model calls', 32], ['ciSeconds', 'Additional CI minutes', 15]]) input(key, label, value);
+    const reviewed = task.readiness?.definition;
+    const lines = (key, title, value) => {
+      const label = element('label', title), field = document.createElement('textarea');
+      field.required = true; field.value = value; label.append(field); form.append(label); fields[key] = field;
+    };
+    lines('acceptanceCriteria', 'Observable acceptance criteria, one per line', (reviewed?.acceptanceCriteria || []).join('\n'));
+    lines('requiredCapabilities', 'Required capabilities, one per line', (reviewed?.requiredCapabilities || ['source_read', 'source_write', 'cpu_tests']).join('\n'));
+    input('estimatedWorkMinutes', 'Estimated remaining work minutes', reviewed ? Math.ceil(reviewed.estimate.workSeconds / 60) : '');
+    input('estimatedModelCalls', 'Estimated remaining model calls', reviewed?.estimate.modelCalls || '');
     const label = element('label', 'Correction based on the preserved checkpoint and test evidence');
     const text = document.createElement('textarea'); text.required = true; text.maxLength = 4000; label.append(text); form.append(label);
     const send = element('button', 'Record reviewed continuation'); send.type = 'submit'; send.className = 'pipeline-btn'; form.append(send);
@@ -85,6 +94,9 @@
       expectedAutomationFingerprint: task.automationFingerprint, expectedNativeAttemptLimit: task.nativeAttemptLimit,
       nativeAttemptLimit: Number(fields.nativeAttemptLimit.value), additionalRuns: Number(fields.additionalRuns.value),
       head: run.head, queueRequestId: fields.queueRequestId.value, verificationProfile: task.verificationProfile,
+      qualification: { acceptanceCriteria: fields.acceptanceCriteria.value.split('\n').map(value => value.trim()).filter(Boolean),
+        requiredCapabilities: fields.requiredCapabilities.value.split('\n').map(value => value.trim()).filter(Boolean),
+        estimate: { workSeconds: Number(fields.estimatedWorkMinutes.value) * 60, modelCalls: Number(fields.estimatedModelCalls.value) } },
       text: text.value, budget: Object.fromEntries(['workSeconds', 'testSeconds', 'modelSeconds', 'modelCalls', 'ciSeconds']
         .map(key => [key, Number(fields[key].value) * (key === 'modelCalls' ? 1 : 60)])) })); });
     return form;
@@ -117,6 +129,8 @@
         element('p', `Remaining: ${remaining(task.remaining.workSeconds)} work, ${remaining(task.remaining.testSeconds)} tests, ${remaining(task.remaining.modelSeconds)} model, ${task.remaining.modelCalls} calls, ${remaining(task.remaining.ciSeconds)} CI`),
         element('p', `Last useful progress: ${task.lastUsefulProgressAt || 'none recorded'} · manual interventions: ${task.manualInterventions.length}`));
       article.append(element('p', `Authorized files: ${task.scope.join(', ')} · campaign ${task.queueRequestId}`));
+      if (task.readiness && !task.readiness.canAuthorize)
+        for (const issue of task.readiness.issues) article.append(element('p', `${issue.message} ${issue.nextAction}`));
       appendCodeStepGraph(article, task.codeStepGraph);
       if (task.nativeAttemptLimit) article.append(element('p', `Native attempts: ${task.nativeAttemptCount}/${task.nativeAttemptLimit} · remaining worker corrections: ${task.remaining.maxResumes}`));
       const exhausted = [['workSeconds', 'work'], ['testSeconds', 'tests'], ['modelSeconds', 'model time'],
@@ -260,6 +274,11 @@
         queueRequestId: data.get('queueRequestId'), lowRisk: true,
         scope: String(data.get('scope')).split('\n').map(p => p.trim()).filter(Boolean),
         verificationProfile: data.get('verificationProfile'),
+        qualification: {
+          acceptanceCriteria: String(data.get('acceptanceCriteria') || '').split('\n').map(text => text.trim()).filter(Boolean),
+          requiredCapabilities: String(data.get('requiredCapabilities') || '').split('\n').map(text => text.trim()).filter(Boolean),
+          estimate: { workSeconds: Number(data.get('estimatedWorkMinutes')) * 60, modelCalls: Number(data.get('estimatedModelCalls')) }
+        },
         limits: { maxResumes: Number(data.get('maxResumes')), workSeconds: Number(data.get('workMinutes')) * 60,
           testSeconds: Number(data.get('testMinutes')) * 60, modelSeconds: Number(data.get('modelMinutes')) * 60,
           modelCalls: Number(data.get('modelCalls')), ciSeconds: Number(data.get('ciMinutes')) * 60,

@@ -5,6 +5,7 @@ jest.mock('../../src/services/modelRouterConfig', () => ({
   getModelForTask: jest.fn(() => ({ model: 'coder:27b-q8_0', url: 'http://10.0.0.5:11434/' }))
 }));
 jest.mock('../../src/services/pipelineReportEscalation', () => ({ policy: jest.fn(async () => ({ enabled: false, maxCostNanodollars: 1e10 })) }));
+jest.mock('../../src/services/pipelineReportService', () => ({ status: jest.fn() }));
 
 const Task = require('../../models/PipelineTask');
 const Run = require('../../models/PipelineReportRun');
@@ -37,7 +38,7 @@ async function seed(extra = {}) {
 function wire() {
   control = { target: 'host',
     status: jest.fn(async ({ requestId } = {}) => (requestId ? { run: null } : { busy: false, candidates: [{ pipelineId: '0939', expectedAttemptCount: 3 }] })),
-    launch: jest.fn(async () => ({ accepted: true })) };
+    launch: jest.fn(async () => ({ accepted: true })), reconcile: jest.fn(async () => ({ reconciled: true })) };
   preparation = { apply: jest.fn(async input => {
     await Task.updateOne({ pipelineId: input.pipelineId }, { $set: { status: 'queued', codingResult: { ...input.result } } });
     return Task.findOne({ pipelineId: input.pipelineId }).lean();
@@ -48,6 +49,31 @@ function wire() {
 beforeEach(async () => {
   await Promise.all([Task.deleteMany({}), Run.deleteMany({}), Queue.deleteMany({}), Archive.deleteMany({}), Runtime.deleteMany({}), Continuation.deleteMany({})]);
   wire();
+  require('../../src/services/pipelineReportService').status.mockReset();
+});
+
+it('receives the original checkpoint after a drain race only when Core proves all calls terminated', async () => {
+  const job = { id: 'f2222222-2222-4222-8222-222222222222', executor: { pipelineId: '0939' },
+    reservation: { end: new Date(Date.now() + 60000).toISOString() } };
+  await seed({ status: 'in_progress', reportResume: { queueRequestId: job.id, launch: { requestId: PARENT, executorId: 'fixture-executor' } } });
+  await Run.updateOne({ _id: PARENT }, { $set: { state: 'active' } });
+  control.status.mockResolvedValue({ busy: false, run: { requestId: PARENT, phase: 'unknown', canReconcile: true,
+    progress: { stage: 'checkpoint' } } });
+  const reports = require('../../src/services/pipelineReportService');
+  reports.status.mockResolvedValue({ requestId: PARENT, state: 'active', terminationVerified: false, pendingInferences: ['original-call'] });
+  expect(await resume.observeCampaign(job)).toMatchObject({ terminal: false, operationId: PARENT });
+  expect(control.reconcile).not.toHaveBeenCalled();
+  reports.status.mockResolvedValue({ requestId: PARENT, state: 'active', terminationVerified: true, pendingInferences: [] });
+  // A lost receive reply keeps the same identity and does not release the campaign.
+  control.reconcile.mockRejectedValueOnce(new Error('response lost'));
+  expect(await resume.observeCampaign(job)).toMatchObject({ terminal: false, operationId: PARENT });
+  expect(control.reconcile).toHaveBeenCalledWith({ pipelineId: '0939', requestId: PARENT, executorId: 'fixture-executor' });
+  expect(control.launch).not.toHaveBeenCalled();
+  await Run.updateOne({ _id: PARENT }, { $set: { state: 'blocked' } });
+  await Task.updateOne({ pipelineId: '0939' }, { $set: { status: 'blocked' }, $push: { feedback: stopped(PARENT, 'runner_error', 'c'.repeat(64)) } });
+  const result = await resume.observeCampaign(job);
+  expect(result).toMatchObject({ terminal: true, state: 'failed', operationId: PARENT });
+  expect(control.reconcile).toHaveBeenCalledTimes(1);
 });
 
 it('previews the remaining work and a safety budget instead of asking for numbers', async () => {
@@ -59,6 +85,24 @@ it('previews the remaining work and a safety budget instead of asking for number
   expect(view.budget).toMatchObject({ modelCalls: 135, executions: 2, basis: 'remaining_documents' });
   expect(view.budget.workSeconds).toBe(Math.ceil((14 * 240 + 900) * 1.5));
   expect(view.route).toEqual({ model: 'coder:27b-q8_0', host: 'http://10.0.0.5:11434' });
+});
+
+it('reconciles the original result after accepted scope changes while refusing new launches', async () => {
+  const intake = require('../../src/services/taskIntakePolicy');
+  const job = { id: 'f2222222-2222-4222-8222-222222222222', executor: { pipelineId: '0939' },
+    reservation: { end: new Date(Date.now() + 60000).toISOString() } };
+  const scope = { title: 'Documentation peer review', spec: 'Original synthetic report scope.', service: 'agentx-coding' };
+  await seed({ ...scope, intake: intake.initial(scope, new Date(), { by: 'fixture-operator',
+    reason: 'Reviewed the original synthetic report scope.', ref: 'synthetic-review:original' }),
+  reportResume: { queueRequestId: job.id, launch: { requestId: PARENT } } });
+  await Task.updateOne({ pipelineId: '0939' }, { $set: { spec: 'Changed synthetic report scope.' } });
+  expect(intake.view(await Task.findOne({ pipelineId: '0939' }).lean()).claimGate).toBe('decision_required');
+  await expect(resume.resume('0939', { confirm: true, when: 'asap' })).rejects.toMatchObject({ code: 'TASK_INTAKE_REQUIRED' });
+  await expect(resume.preDispatch(job)).rejects.toMatchObject({ code: 'TASK_INTAKE_REQUIRED' });
+  expect(await resume.observeCampaign(job)).toMatchObject({ terminal: true, state: 'failed', operationId: PARENT,
+    outcome: { requestId: PARENT, reason: 'runner_error' } });
+  expect(control.launch).not.toHaveBeenCalled();
+  expect((await Task.findOne({ pipelineId: '0939' }).lean()).reportResume.result.requestId).toBe(PARENT);
 });
 
 it('plans a Core-owned campaign as soon as possible, once per checkpoint, starting automatically', async () => {
@@ -97,8 +141,10 @@ it('at the slot, grants the campaign and launches the worker from the checkpoint
 
   // Still running: the campaign stays open.
   expect((await evidence.reconcile(view.campaign.id, 'test')).state).toBe('running');
-  // The worker stopped with the same saved bytes as its parent: no progress.
-  await Task.updateOne({ pipelineId: '0939' }, { $set: { status: 'blocked' }, $push: { feedback: stopped(requestId, 'model_call_limit') } });
+  // New server receipts attest coverage, independently of administrative bytes.
+  const outcome = stopped(requestId, 'model_call_limit');
+  outcome.reportOutcome.progress = { verified: true, advanced: false };
+  await Task.updateOne({ pipelineId: '0939' }, { $set: { status: 'blocked' }, $push: { feedback: outcome } });
   const settled = await evidence.reconcile(view.campaign.id, 'test');
   expect(settled).toMatchObject({ state: 'failed', releaseReceipt: { authority: 'core.pipeline-report', outcome: { requestId, reason: 'model_call_limit' } } });
   expect((await Task.findOne({ pipelineId: '0939' }).lean()).reportResume).toMatchObject({ state: 'stopped', result: { decision: 'no_progress' } });
@@ -126,4 +172,52 @@ it('refuses a delivered report, a running task and a changed checkpoint at the s
   const view = await resume.resume('0939', { confirm: true, when: 'asap' });
   await Task.updateOne({ pipelineId: '0939' }, { $push: { feedback: stopped('11111111-1111-4111-8111-111111111111') } });
   await expect(resume.preDispatch(await queue.get(view.campaign.id))).rejects.toMatchObject({ code: 'REPORT_RESUME_CHANGED' });
+});
+
+it('retries an unstarted failure under an explicit new campaign and replays that identity', async () => {
+  await seed();
+  const original = await resume.resume('0939', { confirm: true, when: 'asap' });
+  await Queue.updateOne({ _id: 'heavy-work', 'jobs.id': original.campaign.id },
+    { $set: { 'jobs.$.reservation.start': new Date(Date.now() - 1000).toISOString() } });
+  preparation.apply.mockRejectedValueOnce(Object.assign(new Error('Checkpoint storage is full'), { code: 'REPORT_CHECKPOINT_CAPACITY' }));
+  await launcher.dispatchDue();
+  const failed = await resume.preview('0939');
+  expect(failed.retryCampaignId).toBe(original.campaign.id);
+  const input = { confirm: true, when: 'asap', retryCampaignId: original.campaign.id };
+  const renewed = await resume.resume('0939', input);
+  expect(renewed.campaign.id).not.toBe(original.campaign.id);
+  expect(renewed.resume.grantKey).not.toBe(original.resume.grantKey);
+  expect(renewed.resume).toMatchObject({ retryOfCampaignId: original.campaign.id, checkpoint: original.checkpoint });
+  const replay = await resume.resume('0939', input);
+  expect(replay.campaign.id).toBe(renewed.campaign.id);
+  expect((await queue.get(original.campaign.id)).state).toBe('failed');
+  expect((await queue.list()).jobs).toHaveLength(2);
+  expect(control.launch).not.toHaveBeenCalled();
+});
+
+it('does not retry an unknown launch or discard a committed grant', async () => {
+  await seed();
+  const original = await resume.resume('0939', { confirm: true, when: 'asap' });
+  const input = { confirm: true, when: 'asap', retryCampaignId: original.campaign.id };
+  await expect(resume.resume('0939', input)).rejects.toMatchObject({ code: 'REPORT_RESUME_CHANGED' });
+  await Queue.updateOne({ _id: 'heavy-work', 'jobs.id': original.campaign.id },
+    { $set: { 'jobs.$.state': 'failed', 'jobs.$.releaseReceipt': { receiptRef: 'core:not-started: fixture' } } });
+  await Task.updateOne({ pipelineId: '0939' }, { $set: { codingReportAuthority: {
+    revision: 1, grants: [{ key: original.resume.grantKey }], bindings: [] } } });
+  expect((await resume.preview('0939')).retryCampaignId).toBeNull();
+  await expect(resume.resume('0939', input)).rejects.toMatchObject({ code: 'REPORT_RESUME_CHANGED' });
+  expect((await queue.list()).jobs).toHaveLength(1);
+});
+
+it('reports the selected native ceiling without increasing additional credit or changing the planned grant', async () => {
+  await seed({ codingResult: { profile: 'report', reportName: 'DOCUMENTATION_PEER_REVIEW.md', modelCallLimit: 256 } });
+  const view = await resume.resume('0939', { confirm: true, when: 'asap' });
+  expect(view.perExecutionModelCalls).toBe(256);
+  expect(view.budget).toMatchObject({ modelCalls: 135, executions: 1 });
+  expect(view.resume.budget.modelCalls).toBe(135);
+  await Queue.updateOne({ _id: 'heavy-work', 'jobs.id': view.campaign.id },
+    { $set: { 'jobs.$.reservation.start': new Date(Date.now() - 1000).toISOString() } });
+  await launcher.dispatchDue();
+  expect(preparation.apply.mock.calls[0][0].reportGrant.budget.modelCalls).toBe(135);
+  expect(control.launch.mock.calls[0][0].modelCallLimit).toBe(256);
 });

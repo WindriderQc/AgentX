@@ -7,6 +7,7 @@ const { composePersonalBriefing } = require('./personalBriefing');
 const { initialTransition } = require('./pipelineTaskTransitions');
 const { commitLaneTask } = require('./pipelineLaneTaskMutationService');
 const { personalReview, reviewReason } = require('./personalTaskReview');
+const { normalizeRepeat, nextPersonalOccurrence } = require('./personalRepeat');
 
 const OPEN_TASK_STATUSES = Object.freeze(['queued', 'in_progress', 'review', 'blocked']);
 
@@ -82,7 +83,7 @@ async function personalTaskSnapshot(input = {}, now = new Date()) {
   if (input.includeDone !== true && String(input.includeDone || '') !== 'true') query.status = { $in: OPEN_TASK_STATUSES };
   // Classify before paging: old imported reminders must not hide a newly
   // captured deadline. Project only the fields needed by the public view.
-  const tasks = await PipelineTask.find(query).select('pipelineId title status priority spec dueAt relevantUntil origin source createdAt updatedAt personalReview __v').lean();
+  const tasks = await PipelineTask.find(query).select('pipelineId title status priority spec dueAt relevantUntil origin source createdAt updatedAt personalReview personalRepeat personalLastCompletedOccurrence __v').lean();
   const attention = { today: 0, overdue: 1, upcoming: 2, inbox: 3, recheck: 4, expired: 5, review: 6, done: 7, dismissed: 8 };
   return sortedPersonalTasks(tasks, now).filter(task => input.includeDone === true || String(input.includeDone) === 'true' || input.scope === 'dismissed' || task.lane !== 'dismissed')
     .sort((a, b) => attention[a.lane] - attention[b.lane]);
@@ -125,8 +126,26 @@ async function createPersonalTask(input = {}, { ownerCapture = false } = {}) {
   if (origin && !TASK_ORIGINS.includes(origin)) throw new PersonalTaskError('origin must be chat, email or manual', { code: 'SECRETARY_BAD_ORIGIN' });
   const reason = reviewReason({ title, origin, note: input.note });
   const ownerAccepted = ownerCapture && reason === 'email';
+  const dueAt = parseDueAt(input.dueAt);
+  const repeat = normalizeRepeat(input.repeat);
+  if (repeat && (!dueAt || input.relevantUntil)) throw new PersonalTaskError('A repeating task needs dueAt and cannot have relevantUntil.', { code: 'PERSONAL_REPEAT_INVALID' });
+  if (repeat?.until && new Date(repeat.until) < dueAt) throw new PersonalTaskError('Repeat until precedes the first due date.', { code: 'PERSONAL_REPEAT_INVALID' });
+  if (input.requestId && !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(input.requestId)) throw new PersonalTaskError('requestId must be a UUID.', { code: 'PERSONAL_CAPTURE_INVALID' });
+  const captureId = input.requestId?.toLowerCase();
+  const captureFingerprint = require('crypto').createHash('sha256').update(JSON.stringify({ title, dueAt, repeat,
+    note: boundedText(input.note, 2000), priority: parsePriority(input.priority), origin,
+    relevantUntil: parseRelevantUntil(input.relevantUntil) })).digest('hex');
+  const replay = async () => {
+    const previous = captureId && await PipelineTask.findOne({ personalCaptureId: captureId, service: 'personal' });
+    if (!previous) return null;
+    if (previous.personalCaptureFingerprint !== captureFingerprint) throw new PersonalTaskError('This requestId belongs to different task details.', { code: 'PERSONAL_CAPTURE_CONFLICT', status: 409 });
+    return publicTask(previous);
+  };
+  const previous = await replay();
+  if (previous) return previous;
   const pipelineId = String(await Counter.next('pipelineTask')).padStart(4, '0');
-  const task = await PipelineTask.create({
+  let task;
+  try { task = await PipelineTask.create({
     pipelineId,
     title,
     spec: boundedText(input.note, 2000),
@@ -134,7 +153,9 @@ async function createPersonalTask(input = {}, { ownerCapture = false } = {}) {
     status: 'queued',
     epic: 'Personal',
     priority: parsePriority(input.priority),
-    dueAt: parseDueAt(input.dueAt),
+    dueAt,
+    ...(repeat ? { personalRepeat: repeat, personalRepeatAnchor: dueAt } : {}),
+    ...(captureId ? { personalCaptureId: captureId, personalCaptureFingerprint: captureFingerprint } : {}),
     relevantUntil: parseRelevantUntil(input.relevantUntil) || undefined,
     source: boundedText(input.source || 'household-secretary', 120),
     origin: origin || taskOrigin({ source: input.source, spec: input.note }),
@@ -144,7 +165,10 @@ async function createPersonalTask(input = {}, { ownerCapture = false } = {}) {
         reviewedAt: ownerAccepted ? new Date() : null }
     } : {}),
     ...initialTransition(pipelineId, { channel: 'personal_surface', declaredActor: input.by || null })
-  });
+  }); } catch (error) {
+    if (captureId && error.code === 11000) { const captured = await replay(); if (captured) return captured; }
+    throw error;
+  }
   return publicTask(task);
 }
 
@@ -177,7 +201,8 @@ async function updatePersonalTask(input = {}) {
   const hasDueAt = Object.prototype.hasOwnProperty.call(input, 'dueAt');
   const hasPriority = Object.prototype.hasOwnProperty.call(input, 'priority');
   const hasRelevantUntil = Object.prototype.hasOwnProperty.call(input, 'relevantUntil');
-  if (!hasDueAt && !hasPriority && !hasRelevantUntil) {
+  const hasRepeat = Object.prototype.hasOwnProperty.call(input, 'repeat');
+  if (!hasDueAt && !hasPriority && !hasRelevantUntil && !hasRepeat) {
     throw new PersonalTaskError('dueAt, priority or relevantUntil is required', { code: 'SECRETARY_UPDATE_REQUIRED' });
   }
   const task = await resolvePersonalTask(raw, { openOnly: true });
@@ -195,6 +220,11 @@ async function updatePersonalTask(input = {}) {
     fields.relevantUntil = parseRelevantUntil(input.relevantUntil);
     changes.push(fields.relevantUntil ? `relevant until ${fields.relevantUntil.toISOString()}` : 'relevance date cleared');
   }
+  if (hasRepeat) { fields.personalRepeat = normalizeRepeat(input.repeat); changes.push('repeat updated'); }
+  const repeat = hasRepeat ? fields.personalRepeat : task.personalRepeat;
+  const dueAt = hasDueAt ? fields.dueAt : task.dueAt;
+  if (repeat && (!dueAt || (hasRelevantUntil ? fields.relevantUntil : task.relevantUntil))) throw new PersonalTaskError('A repeating task needs dueAt and cannot have relevantUntil.', { code: 'PERSONAL_REPEAT_INVALID' });
+  if (repeat && (hasRepeat || hasDueAt)) fields.personalRepeatAnchor = dueAt;
   const updated = await commitLaneTask(task, { fields, channel: 'personal_surface',
     feedback: { by: boundedText(input.by || 'household-dad-desk', 120), text: `Personal desk update: ${changes.join(', ')}.` } });
   return publicTask(updated);
@@ -205,6 +235,18 @@ async function completePersonalTask(input = {}) {
   if (task.status === 'done') return { alreadyDone: true, task: publicTask(task) };
   if (personalReview(task).state !== 'accepted') {
     throw new PersonalTaskError('Review this proposal in My day before completing it.', { status: 409, code: 'SECRETARY_REVIEW_REQUIRED' });
+  }
+  if (task.personalRepeat && input.stopRepeat !== true) {
+    const expected = parseDate(input.expectedDueAt, 'expectedDueAt', 'PERSONAL_OCCURRENCE_REQUIRED');
+    if (!expected) throw new PersonalTaskError('Read the task and pass its dueAt as expectedDueAt for a repeating completion.', { code: 'PERSONAL_OCCURRENCE_REQUIRED' });
+    if (task.personalLastCompletedOccurrence && +expected === +task.personalLastCompletedOccurrence) return { alreadyDone: true, task: publicTask(task) };
+    if (+expected !== +task.dueAt) throw new PersonalTaskError('The task occurrence has changed; read it again.', { code: 'PERSONAL_OCCURRENCE_CONFLICT', status: 409 });
+    const next = nextPersonalOccurrence(task.personalRepeat, task.personalRepeatAnchor || task.dueAt,
+      new Date(Math.max(+task.dueAt, Date.now())));
+    const updated = await commitLaneTask(task, { fields: { status: next ? 'queued' : 'done',
+      ...(next ? { dueAt: next } : {}), personalLastCompletedOccurrence: task.dueAt }, channel: 'personal_surface',
+      feedback: { by: boundedText(input.by || 'nestor-secretary', 120), text: next ? `Occurrence completed; next due ${next.toISOString()}.` : 'Final occurrence completed.' } });
+    return { alreadyDone: false, recurring: Boolean(next), task: publicTask(updated) };
   }
   const by = boundedText(input.by || 'household-secretary', 120);
   const updated = await commitLaneTask(task, {
@@ -234,8 +276,11 @@ async function editPersonalAction(input = {}) {
   if (['platform', 'assistant'].includes(reviewReason({ title }))) {
     throw new PersonalTaskError('Ce suivi appartient au dossier technique ou au Secrétariat.', { code: 'SECRETARY_NOT_PERSONAL_ACTION' });
   }
+  const dueAt = parseDueAt(input.dueAt);
+  if (task.personalRepeat && !dueAt) throw new PersonalTaskError('A repeating task needs a due date.', { code: 'PERSONAL_REPEAT_INVALID' });
   const updated = await commitLaneTask(task, { channel: 'personal_surface',
-    fields: { title, dueAt: parseDueAt(input.dueAt), priority: parsePriority(input.priority, { strict: true }) },
+    fields: { title, dueAt, priority: parsePriority(input.priority, { strict: true }),
+      ...(task.personalRepeat && +dueAt !== +task.dueAt ? { personalRepeatAnchor: dueAt } : {}) },
     feedback: { by: 'household-dad-desk', text: `Personal action edited; previous wording: ${task.title}; previous deadline: ${task.dueAt?.toISOString() || 'none'}; previous priority: ${task.priority}.` } });
   return publicTask(updated);
 }

@@ -23,6 +23,7 @@ const AUTOMATION = {
 
 async function create(input = {}) {
   const response = await harness.request.post('/api/pipeline/tasks').send({ title: 'Plan task', spec: 'Show the plan', service: 'core', ...input }).expect(201);
+  await require('../helpers/acceptedEngineeringTask')(response.body.data.task.pipelineId);
   return response.body.data.task.pipelineId;
 }
 const raw = (id) => PipelineTask.findOne({ pipelineId: id }).lean();

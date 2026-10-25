@@ -12,6 +12,32 @@ Core owns acceptance, complete requests, execution metadata, verified task reads
 structured results and presentation receipts. OpenClaw owns the native agent/tool
 loop. Polling the browser projection never starts inference.
 
+When the native dispatch owner is free, queued awaited work precedes queued
+background reviews. A native review whose guardian has explicitly completed and
+answered waits for 30 seconds of quiet after its own preparation/settlement and
+the latest accepted turn's intake/preparation/settlement. A pending latest
+guardian also defers that review. Requested work and an explicit Main handoff do
+not wait for quiet. Interrupted, failed, unknown and legacy guardian outcomes
+keep their existing dispatch behavior.
+
+Deferral cannot indefinitely reset a review's eligibility: 120 seconds after
+that review's original acceptance it is eligible at the next
+free gate, even if conversation continues. When both classes remain queued,
+one oldest overdue review alternates with one oldest awaited work. The last
+dispatched classification survives restart in the existing dispatch record;
+each class keeps FIFO. These are admission bounds, not completion deadlines or
+permission to expire a native owner. Every original review remains durable,
+with its complete context and result contract; deferral creates no native
+attempt and no replacement request. The existing observer checks eligibility
+without another agent or scheduling loop. This native admission policy does not
+change the optional legacy background review preferences.
+
+An active or uncertain native attempt keeps its owner and is never preempted.
+Admission cannot predict a future human arrival or remove the cost of an
+already admitted review. The policy changes waiting order, not Main's model,
+tools, memory, complete context or total inference work. Qualify latency and
+physical playback separately from deterministic admission tests.
+
 The private browser work list identifies each card by the exact canonical human
 request, receipt time and a short work reference. Long requests expand in place.
 It distinguishes waiting, running, paused, failed and unconfirmed execution,
@@ -105,6 +131,12 @@ intent-amendment or native-approval bridge tracked in #664.
 The complete-context and capacity guarantees below apply to native Main and
 legacy workers alike, preserving each mode's execution permissions.
 
+For a verified contextual task read, Core serializes the current receipt and
+data before historical context. An unavailable read likewise appears first.
+This keeps the current observation visible in a native relay's bounded rendered
+head; the complete Core response and initial Main context remain available and
+unchanged. Earlier historical counts are not a substitute for the current read.
+
 The host-only `native_owner` probe resolves image operations to the original
 canonical owner session. Both `local_image` and `imagex` preserve the actual
 native run/call action identity; their model parameters cannot select an owner.
@@ -174,6 +206,15 @@ nor a recent-turn window define the boss's context. Isolated native Main
 consultations receive the same complete conversation. The complete
 current human request is always retained and returned. Inputs outside the
 4,000-character intake budget refuse instead of truncating.
+
+Repeated identical large tool-result data use a lossless per-response inline
+dictionary in the model context: each receipt retains its identity, native run,
+order and presentation, with `data.$ref` pointing into `sharedToolEvidence` in
+that same conversation. The complete value is supplied once in the same block;
+no follow-up fetch, summary or history window replaces it. Canonical conversation
+and receipt storage, and the ordinary conversation read, remain expanded.
+Changed results are distinct. This reduces repeated reference data; source tests
+do not establish model comprehension or a live latency gain.
 
 The combined selected-memory and conversation reference block must fit the
 existing 96,000-character work-context budget. Preparation refuses with
@@ -324,12 +365,25 @@ receipt and is never inferred from timing or a reply.
 
 The guardian’s next selected context includes canonical statuses and received
 results from the same conversation, so it can follow up on the worker’s work.
+For an explicit read of the owner's open personal tasks, Main's native
+`conversation_work context` call also returns the existing canonical task read
+and its same-run receipt. This read selects the active owner-action scope;
+unreviewed email extractions and other findings are not owner commitments.
+Explicit review/category requests retain the existing task tools.
+Repeating the same native call identity reuses that
+receipt. Other scopes and filters keep Main's existing tools; missing task data
+does not remove the complete shared context. Main retains its installed model,
+memory, tool inventory and native result validation.
 A trusted surface derives `spokenText`, `readingText` and `displayText` from the
 retained result when projecting it. Conversation and explanations stay complete;
 a document's spoken summary and full screen content remain distinct. Explicit
 Listen uses the full reading view and the original turn’s language, even if the
 browser preference changes while Main works. These views do not rewrite the native result,
 change its version or authorize a new execution.
+An explicit maximum number of list items in the original human request bounds
+the list's screen and reading views, including nested detail of omitted items.
+Counts remain independent of this presentation cap. Unconstrained lists remain
+complete, and the native answer and its receipts stay unchanged.
 The accepted canonical turn retains its selected French/English `speechLanguage`
 before either brain starts; duplicate intake cannot replace it. Older turns
 without that metadata fall back to the received answer's inferred language.

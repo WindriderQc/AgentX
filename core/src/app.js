@@ -571,7 +571,7 @@ app.get('/nerve-center', (req, res) => {
     footerJs: [
       '<script src="/js/nerve-center-mode.js"></script>',
       '<script src="/js/nerve-center.js"></script>',
-      '<script src="/js/nerve-center-principal-model.js"></script>',
+      '<script src="/js/nerve-center-principal-model.js"></script><script src="/js/nerve-center-runtime-topology.js"></script>',
       '<script src="/js/nerve-center-routing.js"></script>',
       '<script src="/js/nerve-center-gpu-health.js"></script><script src="/js/nerve-center-gpu-occupancy.js"></script><script src="/js/nerve-center-cluster.js"></script><script src="/js/nerve-center-hosts.js"></script><script src="/js/nerve-center-ops-watch.js"></script>',
       '<script src="/js/nerve-center-health.js"></script>',
@@ -687,7 +687,7 @@ app.get('/analytics', (req, res) => {
     footerJs: [
       '<script type="module" src="/js/analytics-cost.js"></script>',
       '<script type="module" src="/js/analytics-inference.js"></script>',
-      '<script src="/js/analytics-experience.js"></script><script src="/js/analytics-overview.js"></script>'
+      '<script src="/js/analytics-experience.js"></script><script src="/js/analytics-live-values.js"></script><script src="/js/analytics-overview.js"></script>'
     ].join('\n')
   });
 });

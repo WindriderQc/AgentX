@@ -45,6 +45,61 @@ def good_result():
 
 
 class LedgerTest(unittest.TestCase):
+    def test_prior_failure_eligibility_requires_each_open_document_and_a_local_failure(self):
+        ledger = ledgers.new_ledger(snapshot())
+        self.assertFalse(steps.prior_failed_group(ledger, ['docs/A.md']))
+        ledger['steps'] = [{'result': 'failed', 'documents': ['docs/A.md']}]
+        self.assertTrue(steps.prior_failed_group(ledger, ['docs/A.md']))
+        self.assertFalse(steps.prior_failed_group(ledger, ['docs/A.md', 'docs/B.md']))
+        ledger['documents']['docs/A.md']['state'] = 'reviewed'
+        self.assertFalse(steps.prior_failed_group(ledger, ['docs/A.md']))
+        ledger['documents']['docs/A.md']['state'] = 'partial'
+        ledger['steps'][0]['escalated'] = True
+        self.assertFalse(steps.prior_failed_group(ledger, ['docs/A.md']))
+        self.assertFalse(steps.prior_failed_group(ledger, []))
+
+    def test_identical_findings_keep_their_original_number_within_and_across_steps(self):
+        ledger = ledgers.new_ledger(snapshot())
+        result = good_result()
+        result['findings'].append(json.loads(json.dumps(result['findings'][0])))
+        first = ledgers.merge_step(ledger, ['docs/A.md'], result, source, 1)
+        self.assertEqual((first['findings'], first['duplicateFindings']), (1, 1))
+        repeated = good_result()
+        repeated['findings'][0]['evidence'][0]['check'] = 'Same source, reworded proof'
+        again = ledgers.merge_step(ledger, ['docs/A.md'], repeated, source, 2)
+        self.assertEqual((again['findings'], again['duplicateFindings']), (0, 1))
+        self.assertEqual([row['number'] for row in ledger['findings']], [1])
+        separate = good_result()
+        separate['findings'][0]['correction'] = 'A distinct proposed correction.'
+        ledgers.merge_step(ledger, ['docs/A.md'], separate, source, 3)
+        self.assertEqual([row['number'] for row in ledger['findings']], [1, 2])
+
+    def test_rendering_a_historical_duplicate_preserves_its_embedded_ledger(self):
+        ledger = ledgers.new_ledger(snapshot())
+        ledgers.merge_step(ledger, ['docs/A.md'], good_result(), source, 1)
+        duplicate = json.loads(json.dumps(ledger['findings'][0]))
+        duplicate.update(number=22, step=2)
+        ledger['findings'].append(duplicate)
+        original = json.dumps(ledger, sort_keys=True)
+        markdown = ledgers.render(ledger, 'Review')
+        self.assertIn('#### F1 — Retry limit', markdown)
+        self.assertNotIn('#### F22 — Retry limit', markdown)
+        self.assertIn('| 1 | 0 | 0 | 2 | 1 |', markdown)
+        self.assertEqual(ledgers.embedded(markdown), ledger)
+        self.assertEqual(json.dumps(ledger, sort_keys=True), original)
+        writer = steps.writer_prompt({**ledger, 'findings': ledgers.distinct_findings(ledger)}, '/out.json')
+        self.assertNotIn('F22', writer)
+
+    def test_duplicate_findings_still_require_valid_frozen_source_evidence(self):
+        ledger = ledgers.new_ledger(snapshot())
+        ledgers.merge_step(ledger, ['docs/A.md'], good_result(), source, 1)
+        before = json.dumps(ledger, sort_keys=True)
+        bad = good_result()
+        bad['findings'][0]['evidence'][0]['line'] = 999
+        with self.assertRaises(ledgers.LedgerError):
+            ledgers.merge_step(ledger, ['docs/A.md'], bad, source, 2)
+        self.assertEqual(json.dumps(ledger, sort_keys=True), before)
+
     def test_document_evidence_keeps_detailed_checks_up_to_core_coverage_bound(self):
         ledger = ledgers.new_ledger(snapshot())
         value = good_result()
@@ -346,6 +401,65 @@ class StepPlanTest(unittest.TestCase):
         self.assertEqual(ledger['documents']['docs/A.md']['ranges'], [])
         self.assertEqual(ledger['steps'][0]['reason'], 'no result file was written')
 
+    def test_a_changed_chunk_size_never_reschedules_accepted_lines(self):
+        # Accepted 1..200 in a 400-line source: a chunk of 100 schedules 201..300.
+        self.assertEqual(steps._next_range({'ranges': [[1, 200]]}, 400, 100), (201, 300, False))
+        # The same accepted prefix under a larger chunk stays just after line 200.
+        self.assertEqual(steps._next_range({'ranges': [[1, 200]]}, 400, 300), (201, 400, True))
+        # The same accepted prefix under a smaller chunk is bounded by it.
+        self.assertEqual(steps._next_range({'ranges': [[1, 200]]}, 400, 40), (201, 240, False))
+        # An internal gap selects the earliest uncovered bounded interval.
+        self.assertEqual(steps._next_range({'ranges': [[1, 100], [201, 300]]}, 300, 100), (101, 200, False))
+        # Full accepted coverage yields no range.
+        self.assertIsNone(steps._next_range({'ranges': [[1, 200], [201, 400]]}, 400, 100))
+        self.assertIsNone(steps._next_range({'ranges': [[1, 400]]}, 400, 100))
+        # A source with no accepted ranges starts at line 1.
+        self.assertEqual(steps._next_range({}, 400, 100), (1, 100, False))
+        self.assertEqual(steps._next_range({'ranges': []}, 20, 100), (1, 20, True))
+        # The final flag is true exactly when the selected range reaches the end.
+        self.assertEqual(steps._next_range({'ranges': [[1, 300]]}, 400, 100), (301, 400, True))
+
+    def test_chunk_size_changes_between_steps_preserve_the_accepted_intervals(self):
+        ledger = ledgers.new_ledger(snapshot())
+        for path in ('docs/B.md', 'docs/sub/C.md'):
+            ledger['documents'][path]['state'] = 'reviewed'
+        result = {'documents': [{'path': 'docs/A.md', 'state': 'reviewed',
+                                 'evidence': [{'path': 'core/config.js', 'line': 1, 'check': 'strict'}]}]}
+        # 300 lines, budget 10000 tokens: the first chunk is 150 lines.
+        planned = steps.plan_groups(ledger, {'docs/A.md': 72000}, {'docTokens': 10000}, line_counts={'docs/A.md': 300})
+        self.assertEqual(planned[0]['range'], (1, 150, False))
+        ledgers.merge_step(ledger, ['docs/A.md'], result, source, 1, line_range=planned[0]['range'])
+        # A different step budget shrinks the chunk to 120 lines but must not
+        # reschedule the already accepted lines 1..150.
+        planned = steps.plan_groups(ledger, {'docs/A.md': 72000}, {'docTokens': 8000}, line_counts={'docs/A.md': 300})
+        self.assertEqual(planned[0]['range'], (151, 270, False))
+        ledgers.merge_step(ledger, ['docs/A.md'], result, source, 2, line_range=planned[0]['range'])
+        # The remaining interval ends at the source end and is final.
+        planned = steps.plan_groups(ledger, {'docs/A.md': 72000}, {'docTokens': 8000}, line_counts={'docs/A.md': 300})
+        self.assertEqual(planned[0]['range'], (271, 300, True))
+        ledgers.merge_step(ledger, ['docs/A.md'], result, source, 3, line_range=planned[0]['range'])
+        self.assertEqual(ledger['documents']['docs/A.md']['state'], 'reviewed')
+        self.assertEqual(ledger['documents']['docs/A.md']['ranges'], [[1, 150], [151, 270], [271, 300]])
+        self.assertEqual(steps.plan_groups(ledger, {'docs/A.md': 72000}, {'docTokens': 8000},
+                                           line_counts={'docs/A.md': 300}), [])
+
+    def test_internal_gap_is_recovered_before_later_uncovered_lines(self):
+        # A historical ledger can hold a non-prefix accepted range; the earliest
+        # uncovered bounded interval is scheduled first, and accepted lines are
+        # never selected again by any chunk size.
+        self.assertEqual(steps._next_range({'ranges': [[151, 300]]}, 300, 150), (1, 150, False))
+        self.assertEqual(steps._next_range({'ranges': [[151, 300]]}, 300, 200), (1, 150, False))
+        self.assertEqual(steps._next_range({'ranges': [[151, 300]]}, 300, 250), (1, 150, False))
+        self.assertEqual(steps._next_range({'ranges': [[151, 300]]}, 300, 100), (1, 100, False))
+
+    def test_empty_sources_have_no_uncovered_range(self):
+        self.assertIsNone(steps._next_range({'ranges': []}, 0, 25))
+
+    def test_overlapping_unsorted_ranges_extend_the_accepted_prefix(self):
+        row = {'ranges': [[51, 100], [1, 30], [20, 60], [130, 180], [1, 30]]}
+        self.assertEqual(steps._next_range(row, 200, 80), (101, 129, False))
+        self.assertIsNone(steps._next_range({'ranges': [[51, 100], [1, 60]]}, 100, 25))
+
     def test_reviews_a_large_document_in_line_ranges_until_every_range_is_done(self):
         ledger = ledgers.new_ledger(snapshot())
         for path in ('docs/B.md', 'docs/sub/C.md'):
@@ -366,6 +480,21 @@ class StepPlanTest(unittest.TestCase):
         self.assertIn('Review ONLY lines 151-300 of docs/A.md', prompt)
         self.assertIn('strict (core/config.js:1)', prompt)
         self.assertEqual(steps.plan_groups(ledger, sizes, budget, line_counts=lines), [])
+
+    def test_completing_a_stalled_range_keeps_its_evidence_and_opens_the_next_range(self):
+        ledger = ledgers.new_ledger(snapshot())
+        for path in ('docs/B.md', 'docs/sub/C.md'):
+            ledger['documents'][path]['state'] = 'reviewed'
+        row = ledger['documents']['docs/A.md']
+        row.update(state='partial', partialRounds=3, attempts=1)
+        result = good_result()
+        ledgers.merge_step(ledger, ['docs/A.md'], result, source, 4, line_range=(1, 150, False))
+        self.assertEqual(row['state'], 'partial')
+        self.assertEqual((row['attempts'], row['partialRounds']), (0, 0))
+        self.assertEqual(row['ranges'], [[1, 150]])
+        self.assertEqual(len(row['evidence']), 1)
+        planned = steps.plan_groups(ledger, {'docs/A.md': 72000}, {'docTokens': 10000}, line_counts={'docs/A.md': 300})
+        self.assertEqual(planned[0]['range'], (151, 300, True))
 
     def test_untouched_documents_run_before_a_started_one_even_after_a_continuation(self):
         ledger = ledgers.new_ledger(snapshot())
@@ -448,6 +577,17 @@ class StepPlanTest(unittest.TestCase):
         self.assertNotIn(['docs/B.md'], planned)
         self.assertIn('route table unchecked', ledgers.render(ledger, 'Review', []))
 
+    def test_rewording_the_same_source_cannot_reset_the_partial_round_limit(self):
+        ledger = ledgers.new_ledger(snapshot())
+        for step in range(1, 5):
+            result = {'documents': [{'path': 'docs/B.md', 'state': 'partial',
+                'evidence': [{'path': 'core/config.js', 'line': 1, 'check': f'Same source, wording {step}'}]}]}
+            ledgers.merge_step(ledger, ['docs/B.md'], result, source, step)
+        self.assertEqual(ledger['documents']['docs/B.md']['partialRounds'], 3)
+        planned = steps.plan_groups(ledger, {}, {'docTokens': 50000})
+        self.assertNotIn(['docs/B.md'], [row['documents'] for row in planned])
+        self.assertEqual(len(ledger['documents']['docs/B.md']['evidence']), 4)
+
     def test_prompts_carry_only_the_group_and_the_verified_findings(self):
         ledger = ledgers.new_ledger(snapshot())
         ledgers.merge_step(ledger, ['docs/A.md'], good_result(), source, 1)
@@ -465,6 +605,27 @@ class StepPlanTest(unittest.TestCase):
 
 
 class EscalationContextTest(unittest.TestCase):
+    def test_a_range_selects_its_cited_source_before_earlier_evidence(self):
+        ledger = ledgers.new_ledger(snapshot())
+        ledgers.merge_step(ledger, ['docs/A.md'], good_result(), source, 1)
+        docs = {'docs/A.md': 'See core/config.js and EARLY_ONLY.\nSee core/later.js and `LATER_ONLY`.'}
+        scoped = steps.scoped_texts(docs, (2, 2, True))
+        self.assertNotIn('EARLY_ONLY', scoped['docs/A.md'])
+        self.assertEqual(steps.code_terms(scoped), ['LATER_ONLY'])
+        self.assertEqual(steps.referenced_sources(ledger, ['docs/A.md'], scoped,
+            ['core/config.js', 'core/later.js']), ['core/later.js', 'core/config.js'])
+
+    def test_prior_local_failures_cover_only_their_recorded_scope(self):
+        ledger = ledgers.new_ledger(snapshot())
+        ledger['steps'] = [{'result': 'failed', 'documents': ['docs/A.md'], 'lineRange': [1, 150, False]}]
+        self.assertTrue(steps.prior_failed_group(ledger, ['docs/A.md'], (1, 150, False)))
+        self.assertFalse(steps.prior_failed_group(ledger, ['docs/A.md'], (151, 300, True)))
+        self.assertFalse(steps.prior_failed_group(ledger, ['docs/A.md']))
+        del ledger['steps'][0]['lineRange']
+        self.assertTrue(steps.prior_failed_group(ledger, ['docs/A.md'], (151, 300, True)))
+        ledger['documents']['docs/A.md']['state'] = 'reviewed'
+        self.assertFalse(steps.prior_failed_group(ledger, ['docs/A.md'], (151, 300, True)))
+
     def test_finds_the_sources_a_group_cites_or_names(self):
         ledger = ledgers.new_ledger(snapshot())
         ledgers.merge_step(ledger, ['docs/A.md'], good_result(), source, 1)

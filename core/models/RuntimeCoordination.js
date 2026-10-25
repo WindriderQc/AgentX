@@ -11,6 +11,9 @@ const MaintenanceLeaseSchema = new mongoose.Schema({
   // A host-scoped lease (#933) fences only these endpoints and devices.
   hosts: { type: [String], default: [] },
   resourceIds: { type: [String], default: [] },
+  // Why the hosts are fenced, from a closed list (e.g. 'topology-switch',
+  // #360): inference refused there names it. Null for ordinary maintenance.
+  purpose: { type: String, default: null, maxlength: 80 },
   acquiredAt: { type: Date, required: true },
   heartbeatAt: { type: Date, required: true },
   expiresAt: { type: Date, required: true },

@@ -342,5 +342,6 @@ module.exports = {
   nextRoutineDue,
   routineIntervalDays,
   subjectRefInput,
-  winterSeason
+  winterSeason,
+  zoneOffsetMs
 };

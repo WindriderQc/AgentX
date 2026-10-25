@@ -37,7 +37,7 @@ async function run(id, key) {
 function termination(value) {
   return value.pendingInferences.length === 0 && value.modelReceipts.every(row => ['completed', 'refused'].includes(row.state));
 }
-function completed(value) { return termination(value) && value.modelReceipts.length > 0 && value.modelReceipts.every(row => row.state === 'completed'); }
+function completed(value) { return termination(value) && value.modelReceipts.some(row => row.state === 'completed'); }
 async function status(id, key) {
   // Read only this accepted execution's receipts. Later task edits/deletion do
   // not erase custody of an outstanding inference; no task content is exposed.
@@ -52,7 +52,11 @@ async function status(id, key) {
     reportName: value.reportName, sourceCommit: value.sourceCommit, parentRequestId: value.parentRequestId || null, parentSha256: value.parentSha256 || null,
     authority: value.authority || null, inventory: value.inventory || null, coverage: value.coverage || null,
     escalation: value.escalation ? { models: value.escalation.models, maxCostNanodollars: value.escalation.maxCostNanodollars,
-      calls: (value.escalationCalls || []).length } : null,
+      calls: (value.escalationCalls || []).length, failures: (value.escalationFailures || []).slice(-4),
+      taskSpentNanodollars: await require('./pipelineReportEscalation').spentNanodollars(value.taskId),
+      ...(value.escalation.refusalResolutions?.length ? { refusalResolutions: value.escalation.refusalResolutions } : {}),
+      costUncertain: (value.escalationFailures || []).some(row => row.executionState === 'unknown'
+        && !require('./pipelineReportCloudRecovery').resolved(value, row.callId)) } : null,
     cumulativeUsage: await authority.projection(await ownerOrNull(id) || { _id: value.taskId, feedback: [] }) };
 }
 async function start(id, key, body) {
@@ -285,7 +289,8 @@ async function stop(id, key, body) {
     archived = { deliverableId: receipt.id, sha256: receipt.sha256, size: receipt.size };
   }
   const summary = { schema: 'agentx.pipeline-report-result/v1', requestId: key, claimSeq: value.claimSeq, kind: 'blocked', reason: workerOutcome.reason,
-    reportName: value.reportName, sourceCommit: value.sourceCommit, specSha256: value.specSha256, ...(archived ? { partial: archived } : {}) };
+    reportName: value.reportName, sourceCommit: value.sourceCommit, specSha256: value.specSha256,
+    progress: await require('./pipelineReportProgress').read(value), ...(archived ? { partial: archived } : {}) };
   const entry = { by: 'coding-team', at: new Date(), reportOutcome: summary, workerOutcome,
     text: archived ? 'Report worker stopped. Its partial draft is saved in task files; requested scope remains incomplete.'
       : 'Report worker stopped without a registered partial draft; requested scope remains incomplete.' };

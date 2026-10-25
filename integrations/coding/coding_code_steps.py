@@ -80,7 +80,9 @@ def repository_path(value, label="path"):
     """Canonicalize one exact repository-relative path or refuse it."""
     if not isinstance(value, str) or not value or len(value) > 500:
         raise CodePlanError(f"{label} must be a nonempty repository-relative path")
-    if "\x00" in value or "\\" in value or value.startswith(("/", "~")):
+    if re.search(r"[\x00-\x1f\x7f]", value):
+        raise CodePlanError(f"{label} must be one display line free of ASCII control characters")
+    if "\\" in value or value.startswith(("/", "~")):
         raise CodePlanError(f"{label} must be a repository-relative POSIX path")
     if value != value.strip() or value.endswith("/"):
         raise CodePlanError(f"{label} is not canonical")
@@ -219,8 +221,13 @@ def plan_prompt(task, manifest, output_path, budget):
     }
     return (
         "Create a bounded implementation plan. Do not edit source files.\n"
+        "The read-only repository is /workspace; manifest paths are relative to /workspace. "
+        "Your current directory is a separate writable deliverable directory, not the repository.\n"
         "Use only exact paths from the manifest. Order dependencies backward; a step may depend only on earlier ids. "
         "Every step must be independently testable and name at least one focused test.\n"
+        "The runner requires passing focused tests before committing each step. Keep a source fix and its "
+        "regression tests in the same step; do not create a failing-test-only step or a verification-only step. "
+        "Independent pre-patch checks are external acceptance evidence, not a separate failing commit.\n"
         f"Runner limits:\n{_json_for_prompt(safe_budget)}\n"
         f"Task:\n{_json_for_prompt(task)}\n"
         f"Authorized manifest:\n{_json_for_prompt({'paths': paths})}\n"

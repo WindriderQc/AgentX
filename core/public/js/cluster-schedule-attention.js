@@ -23,15 +23,12 @@ function renderAttention() {
       detail: `Expected at ${formatClockTime(entry.expectedAt)}; last recorded run ${formatEvidenceTime(entry.lastRun)}` });
   }
 
+  container.closest?.('.cs-attention-strip')?.setAttribute('data-state', items.length ? 'alert' : 'ok');
   if (items.length === 0) {
     container.innerHTML = `
       <div class="cs-attn-ok">
-        <div class="cs-attn-ok-title"><i class="fas fa-check-circle"></i> No issues detected</div>
-        <ul class="cs-attn-ok-list">
-          <li><i class="fas fa-check"></i> No projected VRAM overflows</li>
-          <li><i class="fas fa-check"></i> No overdue jobs with a recorded run</li>
-          <li><i class="fas fa-check"></i> No unreachable hosts</li>
-        </ul>
+        <span class="cs-attn-ok-title"><i class="fas fa-check-circle"></i> No issues detected</span>
+        <span class="cs-attn-ok-list">No projected VRAM overflow · no overdue job with a recorded run · no unreachable host</span>
       </div>`;
     return;
   }
@@ -39,8 +36,10 @@ function renderAttention() {
   container.innerHTML = items.map(it => `
     <div class="cs-attn-item${it.type === 'warn' ? ' warn' : ''}">
       <span class="cs-attn-icon"><i class="fas ${it.icon}"></i></span>
-      <span class="cs-attn-label">${esc(it.label)}</span>
-      <div class="cs-attn-detail">${esc(it.detail)}</div>
+      <div class="cs-attn-body">
+        <span class="cs-attn-label">${esc(it.label)}</span>
+        <div class="cs-attn-detail">${esc(it.detail)}</div>
+      </div>
     </div>
   `).join('');
 }

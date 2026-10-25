@@ -9,6 +9,30 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 ## On main
 
+- **Personal agenda.** The shared `personal_calendar` tool creates Google Calendar
+  events and actual reminders, once or repeating, through the host's existing
+  native Google authorization. Google owns series and popup delivery; stable
+  request identities reconcile creation. Edits, moves, cancellation, explicit
+  occurrence/series scope, guest changes and self-only RSVP share the same tool.
+  Google ETags fence concurrent edits; Core action receipts fence uncertain
+  replays. Guest effects require explicit intent and exact recipients.
+  Existing Core personal tasks accept
+  repeating schedules and advance once on occurrence completion. Runtime grants
+  and device notification acceptance remain separate. See
+  [personal calendar](PERSONAL_CALENDAR.md).
+
+- **Content presentation.** Personal Nestor selects pages, Markdown, lists,
+  tables, code and images in one content workspace with retained navigation,
+  copy, expansion and closure. Analytics' inference overview provides a bounded,
+  dated Core read of the same summary response and selected window. Its live
+  runtime and GPU sections carry independent short-lived Core references to
+  their displayed data, with explicit collector freshness and unavailable reads. Current
+  browser selection, display observation and Core data remain distinct; their
+  evidence stays on the canonical turn. Shared MCP and an optional owner-only
+  OpenClaw adapter expose the reader. CPU/browser contracts are separate from
+  installed runtime and physical-device acceptance. See
+  [content presentation](CONTENT_PRESENTATION.md).
+
 - **Energy observability.** `/energy` is a read-only shared-meter timeline backed
   by Data's existing MQTT IoT history. Instances opt in with
   `ENERGY_IOT_DEVICE_ID`; measured energy stays separate from confidence-labelled
@@ -48,12 +72,37 @@ Instance configuration, data and deployment receipts remain outside Git.
   operator CLI explicitly launches existing Benchmark plans and Profiler host
   queues, and tracks custom coding checks through explicit operator receipts.
   Accepted images queue before GPU work and start once within a bounded window.
+  Operator and Nestor reads share complete automatic/action-required phase
+  counts, responsible next actions and independent reservation counts through
+  the [work lifecycle contract](WORK_LIFECYCLE.md).
   Nestor can propose/read/cancel unstarted work and read durable result alerts;
   LeadX queues preparation and approved Benchmark starts through the same entrance.
   Confirmed migration preserves legacy QUEUE.md as an archive. Code tests are
   separate from instance migration and live qualification. See
   [heavy work](HEAVY_WORK_QUEUE.md), tracked in
   [#566](https://github.com/WindriderQc/AgentX/issues/566).
+
+- **Engineering intake.** New generic Pipeline/TODO requests start as proposals.
+  The task dossier records acceptance, clarification, deferral or a reason not
+  to pursue the need, separately from execution and budgets. Acceptance is bound
+  to the reviewed request text; changed content requires review. Existing work
+  keeps its native policy without invented history, and native reviewed source
+  promotions retain their acceptance. See [work lifecycle](WORK_LIFECYCLE.md).
+
+- **Work relationships.** Pipeline links qualified issue/conversation reports and
+  related engineering tasks with scoped reasons and retained history. Exact
+  lookup identifies shared work; replay-safe report admission records one
+  proposal per stable report/scope identity. Native PR observations remain
+  separate from task closure, installation and final acceptance. The owner MCP
+  read shares Core's contract. No external status synchronization or public
+  export occurs. See [work references](WORK_RELATIONSHIPS.md).
+
+- **Work authority.** Pipeline and owner MCP distinguish declared roles from
+  native executors and expose current scope, cumulative native budgets and
+  unresolved requests. Revocation blocks new delegated effects while retaining
+  original receipts and observation; partial stops retain unconfirmed children.
+  Private-LAN access has no authenticated human principal or independent-person
+  review guarantee. See [work authority](WORK_AUTHORITY.md).
 
 - **Execution sources.** Playground and the existing inference contract select local
   Ollama or OpenClaw, with distinct model and native agent modes. Provider
@@ -402,6 +451,7 @@ Issues hold the current work and remaining acceptance:
 
 | Area | Tracking |
 |---|---|
+| Work intake, issue/task relationships and attributable authority | [#1011](https://github.com/WindriderQc/AgentX/issues/1011) |
 | Playground screen capture through canonical attachments | [#2](https://github.com/WindriderQc/AgentX/issues/2) |
 | Real-device acceptance for phone, microphone and voice | [#3](https://github.com/WindriderQc/AgentX/issues/3) |
 | Principal model selection and DSH Studio qualification | [#734](https://github.com/WindriderQc/AgentX/issues/734) |

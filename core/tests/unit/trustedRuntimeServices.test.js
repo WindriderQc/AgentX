@@ -108,6 +108,24 @@ describe('trusted runtime services', () => {
     }));
   });
 
+  test('source output and disabled thinking reach Ollama while the resident context stays pinned', async () => {
+    const deps = inferenceDeps();
+    deps.hostPreferenceService.getByHost.mockResolvedValue({ pinnedModels: [
+      { model: 'model-a', contextSize: 196608, keepAlive: -1 }
+    ] });
+    const messages = [{ role: 'user', content: 'Implement the reviewed source step' }];
+    const tools = [{ type: 'function', function: { name: 'edit', parameters: { type: 'object' } } }];
+    await executeRoutedInference(deps, { mode: 'chat', model: 'model-a', messages, tools,
+      max_tokens: 4096, reasoning_effort: 'none', think: false });
+    const payload = JSON.parse(deps.fetch.mock.calls[0][1].body);
+    expect(payload.think).toBe(false);
+    expect(payload.options).toEqual({ num_ctx: 196608, num_predict: 4096 });
+    expect(payload.keep_alive).toBe(-1);
+    expect(payload.messages).toEqual(messages);
+    expect(payload.tools).toEqual(tools);
+    expect(deps.hostPreferenceService.prepareExclusiveModel).not.toHaveBeenCalled();
+  });
+
   test('vision is verified on the exact routed model and images reach the same admitted request', async () => {
     const deps = inferenceDeps();
     deps.fetch.mockResolvedValueOnce(response({ body: { capabilities: ['completion', 'vision'] } }));

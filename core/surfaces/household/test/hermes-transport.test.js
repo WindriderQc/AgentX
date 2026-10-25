@@ -25,7 +25,7 @@ function fixture(options = {}) {
       { event: 'run.completed' }
     ]);
     if (path.endsWith('/stop')) { stop = true; return reply({ status: 'stopping' }); }
-    return reply(stop ? { status: 'cancelled' } : completed(options.terminal));
+    return reply(stop ? { status: 'cancelled' } : completed({ run_id: path.split('/').at(-1), ...options.terminal }));
   };
   const request = { backend: 'hermes', turnId: 'synthetic-turn',
     session: { sessionId: 'synthetic-session', packId: 'personal_operator', scopeId: 'personal' },
@@ -178,4 +178,92 @@ test('a different turn archives the previous recovered answer before replacing i
   assert.equal(f.archived[0].runId, 'run_previous');
   assert.equal(f.archived[0].receipt.output, 'Bonjour!');
   assert.equal(f.saved().turnId, 'synthetic-turn');
+});
+
+test('a recovered terminal answer completes the streamed show block exactly once', async () => {
+  const { createReplyChannels } = require('../reply-channels');
+  const prefix = 'Voici.\n<show kind="list" title="Outils">- Premier\n';
+  const output = prefix + '- Deuxième\n</show>';
+  const f = fixture({ fetch: async path => {
+    if (path === '/v1/runs') return reply({ run_id: 'run_synthetic' });
+    if (path.endsWith('/events')) return stream([{ event: 'message.delta', delta: prefix }]);
+    return reply(completed({ output }));
+  } });
+  const channels = createReplyChannels();
+  f.request.onDelta = delta => { f.deltas.push(delta); channels.push(delta); };
+  await f.run(f.request);
+  assert.equal(f.deltas.join(''), output);
+  const parsed = channels.end();
+  assert.equal(parsed.display.length, 1);
+  assert.equal(parsed.display[0].body, '- Premier\n- Deuxième');
+  assert.equal(parsed.display[0].partial, undefined);
+  assert.equal(f.calls.filter(c => c.path === '/v1/runs').length, 1);
+});
+
+test('a terminal SSE event does not wait for a connection that stays open', async () => {
+  let cancelled = false;
+  const f = fixture({ fetch: async path => {
+    if (path === '/v1/runs') return reply({ run_id: 'run_synthetic' });
+    if (path.endsWith('/events')) return new Response(new ReadableStream({
+      start(controller) { controller.enqueue(new TextEncoder().encode('data: {"event":"run.completed"}\n\n')); },
+      cancel() { cancelled = true; }
+    }));
+    return reply(completed());
+  } });
+  f.request.signal = AbortSignal.timeout(1000);
+  assert.equal((await f.run(f.request)).text, 'Bonjour!');
+  assert.equal(cancelled, true);
+});
+
+test('a lost stop response can settle only through a terminal read of the original run', async () => {
+  let stopped = false;
+  const f = fixture({ fetch: async path => {
+    if (path === '/v1/runs') return reply({ run_id: 'run_synthetic' });
+    if (path.endsWith('/events')) throw new Error('Synthetic stream failure');
+    if (path.endsWith('/stop')) { stopped = true; throw new Error('Synthetic lost stop reply'); }
+    return reply(stopped ? completed() : { status: 'running' });
+  } });
+  assert.equal((await f.run(f.request)).text, 'Bonjour!');
+  assert.equal(f.saved().state, 'completed');
+  assert.equal(f.calls.filter(c => c.path.endsWith('/stop')).length, 1);
+  assert.equal(f.calls.filter(c => c.path === '/v1/runs').length, 1);
+});
+
+test('inconsistent final output refuses success without repeating already streamed words', async () => {
+  const f = fixture({ terminal: { output: 'Another answer' } });
+  await assert.rejects(f.run(f.request), { code: 'HERMES_OUTPUT_MISMATCH' });
+  assert.deepEqual(f.deltas, ['Bonjour!']);
+  assert.equal(f.saved().receipt.output, 'Another answer');
+});
+
+test('native boundary whitespace normalization still delivers the complete final suffix', async () => {
+  for (const [prefix, output, expected] of [
+    ['\n\nBonjour', 'Bonjour!', '\n\nBonjour!'],
+    ['Bonjour!\n\n', 'Bonjour!', 'Bonjour!\n\n']
+  ]) {
+    const f = fixture({ fetch: async path => {
+      if (path === '/v1/runs') return reply({ run_id: 'run_synthetic' });
+      if (path.endsWith('/events')) return stream([{ event: 'message.delta', delta: prefix }]);
+      return reply(completed({ output }));
+    } });
+    const result = await f.run(f.request);
+    assert.equal(result.text, output);
+    assert.equal(f.deltas.join(''), expected);
+    assert.equal(f.calls.filter(c => c.path === '/v1/runs').length, 1);
+  }
+});
+
+test('a foreign receipt never settles the native fence and diagnostics retain safe error codes', async () => {
+  const f = fixture({ fetch: async path => {
+    if (path === '/v1/runs') return reply({ run_id: 'run_synthetic' });
+    if (path.endsWith('/events')) throw Object.assign(new Error('PRIVATE_PAYLOAD'), { code: 'ECONNRESET' });
+    return reply(completed({ run_id: 'run_foreign' }));
+  } });
+  await assert.rejects(f.run(f.request), error => {
+    assert.equal(error.code, 'HERMES_UNCONFIRMED');
+    assert.deepEqual(error.detail, { runId: 'run_synthetic', transportCode: 'ECONNRESET', reconciliationCode: 'HERMES_RUN_MISMATCH' });
+    assert.doesNotMatch(JSON.stringify(error), /PRIVATE_PAYLOAD|synthetic-only/);
+    return true;
+  });
+  assert.equal(f.saved().state, 'running');
 });

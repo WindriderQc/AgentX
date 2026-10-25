@@ -12,7 +12,7 @@ const { agentInstructions, agentIdFor, personalVoice } = require('./conversation
 const { conversationBackend } = require('./conversation-executor');
 const { workshopContext, workshopPrompt } = require('./kidx-workshop');
 const llmx = require('./llmx-conversation');
-const { FAMILY_TONE, familyTurn, householdMembers } = require('./family-context');
+const { FAMILY_TONE, familyIssEnabled, familyTurn, householdMembers } = require('./family-context');
 const { mathTurnFor } = require('./math-scene');
 const replyChannels = require('./reply-channels');
 const { plainReply } = replyChannels;
@@ -76,7 +76,7 @@ function createPersonaTurnHandler({
       return fail(res, 400, 'language must be fr or en', 'VOICE_PERSONA_INVALID_LANGUAGE');
     }
     if (!consult && activePersonaTurns.has(req.params.sessionId)) return fail(res, 409, 'Wait for this conversation to finish its reply.', 'VOICE_TURN_IN_PROGRESS');
-    let clientTurnId = consult ? consult.turnId : (isLlmX || ((access === 'private' || requiredSession?.browser === true) && req.body?.channel === 'voice'
+    let clientTurnId = consult ? consult.turnId : (isLlmX || (access === 'private' && req.body?.channel === 'text') || ((access === 'private' || requiredSession?.browser === true) && req.body?.channel === 'voice'
       && (req.body?.stream === true || ['read', 'observe'].includes(conversationEnv.PERSONAL_CONVERSATION_WORK_MODE))))
       && validClientTurnId(req.body?.turnId) ? req.body.turnId : '';
     const startedAt = Date.now();
@@ -264,7 +264,11 @@ function createPersonaTurnHandler({
           const notes = notesFor(pack, session.scopeId);
           if (!pack.childSafe && features.householdContext !== false) members = await householdMembers(familyTasks, { logger });
           // Kids Room routines, and a child's idea or reminder kept for Dad (#41, #13).
-          if (pack.childSafe) ({ savedNow, ...family } = await familyTurn({ userText, notes, familyTasks, detectMemoryRequest, logger, plants: runtimeServices.household?.plants, withChores: features.householdContext !== false && pack.id === VOIX_FAMILY_PACK_ID }));
+          if (pack.childSafe) {
+            const familySpace = features.householdContext !== false && pack.id === VOIX_FAMILY_PACK_ID;
+            ({ savedNow, ...family } = await familyTurn({ userText, notes, familyTasks, detectMemoryRequest, logger, plants: runtimeServices.household?.plants,
+              withChores: familySpace, withIss: familySpace && familyIssEnabled() }));
+          }
           try {
             if (features.memoryContext !== false) memories = (await notes.search(userText, voiceRecallOptions(userText, personalVoice(session, req.body?.channel), MEMORY_RECALL_LIMIT))).notes;
           } catch (error) {
@@ -282,7 +286,7 @@ function createPersonaTurnHandler({
         // depends on a model calling a tool: the voice model announced the sound and called nothing.
         sound = (pack.childSafe ? !requiredSession || requiredSession.browser === true : browserSoundPlayback) ? sounds.select(userText) : null;
         const preselected = Boolean(sound);
-        const context = { memories, savedNow, captured: family.captured, knowledgeContext: [members, knowledge.context, family.chores, family.plants].filter(Boolean).join('\n\n'),
+        const context = { memories, savedNow, captured: family.captured, knowledgeContext: [members, knowledge.context, family.chores, family.plants, family.iss].filter(Boolean).join('\n\n'),
           modeId: session.modeId, sound, latestUserText: userText,
           speechLanguage: preferredSpeechLanguage };
         let lastProposal = null, previousBrowserOutput = null;
@@ -318,8 +322,10 @@ function createPersonaTurnHandler({
           : { text: '', refs: [] };
         const contextBase = [systemPromptFor(pack, { ...context, contextOnly: true }), interruptedContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || ''].join('');
+        const screen = !pack.childSafe && !isLlmX && !consult ? require('./screen-context') : null;
+        entry.presentationContext = screen?.presentationEvidence(req.body?.screen, screenPages);
         const contextTail = [isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || '',
-          !pack.childSafe && !isLlmX && !consult ? require('./screen-context').screenContext(req.body?.screen, screenPages) : ''].join('');
+          screen?.screenContext(req.body?.screen, screenPages, entry.presentationContext) || ''].join('');
         const turnContext = [contextBase, brainAdvice.text, workAdvice.text, contextTail].join('').trim();
         const guardianContext = guardianSession ? dedicatedGuardian.selectedContext({
           base: contextBase, brain: brainAdvice, work: workAdvice, tail: contextTail }) : null;
@@ -484,6 +490,7 @@ function createPersonaTurnHandler({
         knowledgeSourceCount: knowledge.sourceCount,
         knowledgeCorpusFingerprint: knowledge.corpusFingerprint,
         personalContinuity: continuity.personal || null, toolEvidence,
+        ...(entry.presentationContext && { presentationContext: entry.presentationContext }),
         speakerAgentId: speaker?.agentId || '',
         ...(adviceRefs.length ? { adviceRefs } : {}),
         ...(speaker ? { speaker: { ...speaker, personaVersion: memberPersona?.version ?? null } } : {}),
@@ -580,8 +587,8 @@ function createPersonaTurnHandler({
         return;
       }
       if (abort.signal.aborted) return;
-      if (res.headersSent) { event('error', { message: error.message }); return res.end(); }
       logger?.error?.('Household persona turn failed', { error: error.message, ...(error.detail ? { detail: error.detail } : {}) });
+      if (res.headersSent) { event('error', { message: error.message }); return res.end(); }
       return fail(res, error.statusCode || 502, error.message || 'Voice persona turn failed', error.code || 'VOICE_PERSONA_INFERENCE_FAILED');
     } finally {
       try {
@@ -597,7 +604,8 @@ function createPersonaTurnHandler({
             attachments: entry.attachments,
             inputSha256: crypto.createHash('sha256').update(userText).digest('hex'),
             replySha256: crypto.createHash('sha256').update(reply).digest('hex'),
-            ...entry.auditContext, durationMs: Date.now() - startedAt, ...(entry.workId ? { outcome: abort.signal.aborted ? 'cancelled' : 'failed' } : {})
+            ...entry.auditContext, ...(entry.presentationContext && { presentationContext: entry.presentationContext }),
+            durationMs: Date.now() - startedAt, ...(entry.workId ? { outcome: abort.signal.aborted ? 'cancelled' : 'failed' } : {})
           });
           if (entry.workId) await conversationWorks.guardianSettled(entry.workId, abort.signal.aborted ? 'cancelled' : 'failed');
         }

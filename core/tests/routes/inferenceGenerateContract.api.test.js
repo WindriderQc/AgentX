@@ -416,10 +416,15 @@ describe('POST /api/inference/generate — behaviour contract', () => {
           model: 'test-model',
           prompt: 'hello',
           callerDetail: 'benchmark-batch-abc123',
+          workItemId: 'benchmark-workload/abc123',
           workloadAdmissionId: 'workload-admission-abc123',
           workloadGeneration: 'workload-generation-abc123'
         })
         .expect(200);
+
+      expect(recordInference.mock.calls[0][0]).toMatchObject({ consumerContract: 'benchmark-service-v1',
+        workItemId: 'benchmark-workload/abc123',
+        routeDecision: { attribution: { consumerContract: 'benchmark-service-v1', workItemId: 'benchmark-workload/abc123' } } });
 
       // Bench/profiler self-sequence per host, but passive tracking is required
       // so a claim snapshot cannot race a direct request already in flight.
@@ -430,6 +435,33 @@ describe('POST /api/inference/generate — behaviour contract', () => {
         trackedInFlight: 0,
         inFlight: 0
       });
+    });
+
+    test('a benchmark-like callerDetail or request contract does not establish service identity', async () => {
+      mockOllamaOk();
+      await request(app).post('/api/inference/generate').send({
+        model: 'test-model', prompt: 'hello', callerDetail: 'benchmark-batch-example',
+        consumerContract: 'benchmark-service-v1'
+      }).expect(200);
+      expect(recordInference.mock.calls[0][0].consumerContract).toBeNull();
+      expect(recordInference.mock.calls[0][0].routeDecision.attribution.consumerContract).toBeNull();
+    });
+
+    test('preserves an internal Nestor consumer contract', async () => {
+      mockOllamaOk();
+      await request(app).post('/api/inference/generate')
+        .set(require('../../src/services/nestorConsumerAttribution').internalNestorInferenceHeaders())
+        .send({ model: 'test-model', prompt: 'hello' }).expect(200);
+      expect(recordInference.mock.calls[0][0]).toMatchObject({ consumerContract: 'nestor-v1',
+        routeDecision: { attribution: { consumerContract: 'nestor-v1' } } });
+    });
+
+    test('records the RAG service identity on generated search helpers', async () => {
+      mockOllamaOk();
+      await request(app).post('/api/inference/generate').set('X-AgentX-Caller', 'rag-service')
+        .send({ model: 'test-model', prompt: 'synthetic search helper' }).expect(200);
+      expect(recordInference.mock.calls[0][0]).toMatchObject({ consumerContract: 'rag-service-v1',
+        routeDecision: { attribution: { consumerContract: 'rag-service-v1' } } });
     });
 
     test('forwards native tool schemas only for an admitted benchmark campaign', async () => {

@@ -48,6 +48,7 @@ const REJECTION_REASONS = Object.freeze({
   CAPABILITY_UNQUALIFIED: 'capability_unqualified',
   POLICY_EXCLUDED: 'policy_excluded',
   BENCHMARK_CLAIMED: 'benchmark_claimed',
+  ROLE_UNRESOLVED: 'role_unresolved',
   UNKNOWN: 'unknown',
 });
 
@@ -101,6 +102,10 @@ const ROUTE_OUTCOME_CODES = Object.freeze({
   FALLBACK_SUCCEEDED: 'fallback_succeeded',
   FALLBACK_FAILED: 'fallback_failed',
   FALLBACK_REFUSED: 'fallback_refused',
+  // Topology role routing (#360): the role has no endpoint now, or the
+  // request does not fit the lane's pinned context.
+  TOPOLOGY_ROLE_UNRESOLVED: 'topology_role_unresolved',
+  LANE_CONTEXT_EXCEEDED: 'lane_context_exceeded',
   UNKNOWN: 'unknown',
 });
 
@@ -185,6 +190,9 @@ const SELECTION_SOURCE_BASES = new Set([
   'host_override',
   'trusted_host_override',
   'task_fallback_ladder',
+  // Topology role routing (#360).
+  'topology_role',
+  'topology_role_unresolved',
 ]);
 const SELECTION_SOURCE_SUFFIXES = new Set([
   'pin-ctx',

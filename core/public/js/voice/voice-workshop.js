@@ -83,7 +83,9 @@
       field('inputDeviceId').value = prefs.inputDeviceId;
       for (const [key, value] of Object.entries(prefs.capture)) find(`[data-capture="${key}"]`).value = value;
       role('owner').textContent = prefs.owner;
-      role('psyx').hidden = scope !== 'psyx'; role('wake').hidden = !['personal','family'].includes(scope); role('links').hidden = scope !== 'family'; role('interrupt').hidden = !['personal','family'].includes(scope);
+      role('psyx').hidden = scope !== 'psyx'; const space = ['personal','family'].includes(scope);
+      // Opened from a conversation, listening and interruption live in its Settings panel.
+      role('wake').hidden = !space || embedded; role('links').hidden = scope !== 'family'; role('interrupt').hidden = !space || embedded; role('spaceSettings').hidden = !space || !embedded;
     }
     function showTab(value) {
       const selected = Object.hasOwn(tabs, value) ? value : 'microphone'; state.tab = selected;

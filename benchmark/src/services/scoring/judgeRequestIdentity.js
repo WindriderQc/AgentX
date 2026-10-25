@@ -1,6 +1,7 @@
 'use strict';
 
 const { getBenchmarkClaimIdentity, getWorkloadAdmissionIdentity } = require('../../clients/coreApiClient');
+const { inferenceWorkIdentity } = require('../../helpers/inferenceWorkIdentity');
 const { enterInference } = require('../benchmark/workloadYield');
 
 function judgeWorkloadId(config = {}) {
@@ -12,6 +13,7 @@ function judgeWorkloadId(config = {}) {
 function judgeRequestIdentity(config = {}) {
     const workloadId = judgeWorkloadId(config);
     return {
+        ...inferenceWorkIdentity(workloadId),
         ...(getWorkloadAdmissionIdentity(workloadId) || {}),
         ...(getBenchmarkClaimIdentity(config.host, workloadId) || {})
     };

@@ -27,7 +27,7 @@ const { expectedStatusGuard } = require('../src/services/pipelineExpectedStatus'
 const STATUSES = ['queued', 'in_progress', 'review', 'blocked', 'done'];
 
 const ACTIVE_STATUSES = ['queued', 'in_progress', 'review', 'blocked'];
-router.use(require('./pipeline-diagnostics'), require('./pipeline-deliverables'), require('./pipeline-plans'), require('./pipeline-coding-autonomy'));
+router.use(require('./pipeline-diagnostics'), require('./pipeline-deliverables'), require('./pipeline-plans'), require('./pipeline-coding-autonomy'), require('./pipeline-intake'), require('./pipeline-work-references'));
 
 // One-release compatibility shim. Board integrations are separately deployed
 // adapters and consume the product-owned task API instead of running in Core.
@@ -238,6 +238,7 @@ router.get('/tasks/:id/worker', async (req, res) => {
       return envelope.error(res, 404, 'Task is unavailable to this worker identity', 'WORKER_TASK_UNAVAILABLE');
     }
     // Bounded Planning "why", computed at read time; reference data only.
+    if (task.status === 'queued') require('../src/services/taskIntakePolicy').assertAccepted(task);
     return envelope.success(res, { task: { ...task, planningContext: await safePlanningWorkerContext(task) } });
   } catch (err) { return envelope.error(res, err.status || 500, err.message, err.code); }
 });
@@ -410,6 +411,8 @@ router.post('/tasks/:id/status', async (req, res) => {
     const current = await PipelineTask.findOne({ pipelineId: req.params.id });
     if (!current) return envelope.error(res, 404, 'Task not found', 'NOT_FOUND');
 
+    if (status === 'in_progress' && current.status !== 'in_progress') require('../src/services/taskIntakePolicy').assertAccepted(current);
+
     // A superseded task never leaves `done` by accident: reopening it is a
     // separate, explicit decision.
     if (current.resolution?.kind === 'superseded' && status !== 'done' && b.reopen !== true) {
@@ -487,6 +490,7 @@ router.post('/tasks/:id/status', async (req, res) => {
     }
 
     const mutationQuery = { pipelineId: req.params.id };
+    if (status === 'in_progress' && current.status !== 'in_progress') require('../src/services/taskIntakePolicy').guard(mutationQuery, current);
     if (b.expected !== undefined) {
       try { Object.assign(mutationQuery, expectedStatusGuard(current, b.expected)); }
       catch (err) { return envelope.error(res, err.status || 400, err.message, err.code || 'INVALID_EXPECTED_VERSION'); }

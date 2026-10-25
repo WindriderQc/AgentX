@@ -488,7 +488,13 @@ async function restorePinnedModel(host, hostPrefService, primaryPin) {
  * Run one probe cycle across all configured hosts.
  */
 async function probeCycle(isStopped = () => false) {
-  const hosts = getConfiguredHosts();
+  const { isParkedHost } = require('./runtimeTopologyParking');
+  const configured = getConfiguredHosts();
+  // Endpoints of an inactive topology mode are stopped on purpose (#360).
+  for (const host of configured) {
+    if (isParkedHost(host.url)) observeHost(host, { reason: 'topology_parked' }, false);
+  }
+  const hosts = configured.filter(host => !isParkedHost(host.url));
   if (hosts.length === 0) return;
 
   _stats.lastProbeAt = new Date().toISOString();

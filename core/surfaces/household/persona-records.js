@@ -132,6 +132,7 @@ function publicAudit(doc) {
     knowledgeCorpusFingerprint: doc?.knowledgeCorpusFingerprint || null,
     personalContinuity: doc?.personalContinuity || null,
     toolEvidence: doc?.toolEvidence || null,
+    ...(doc?.presentationContext && { presentationContext: doc.presentationContext }),
     speakerAgentId: doc?.speakerAgentId || '',
     speaker: doc?.speaker || null,
     performedBy: doc?.performedBy || [],

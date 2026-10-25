@@ -178,3 +178,111 @@ test('engineering activity bypasses unverified guardian answers and requests nat
   const directive = body.input[0].content.find(part => part.text?.includes('For this current pipeline read')).text;
   expect(directive).toContain('"mode":"pipeline"');
 });
+
+test('an older uncertain dispatch settles from its exact persisted native failure without a replacement', async () => {
+  const first = await accept(), next = await accept();
+  const attempt = await occupied(first);
+  const terminal = { runId: attempt.runId, sessionKey: attempt.sessionKey, status: 'failed',
+    source: 'openclaw/sessions.get', messageId: 'native-terminal-marker', model: null, provider: null };
+  for (const run of [{ ...terminal, runId: 'resp_' + randomUUID() }, { ...terminal, sessionKey: 'foreign-session' }]) {
+    nativeEvidence.set(attempt.runId, { run });
+    await works.observer.tick();
+    expect((await works.repo.dispatchOwner()).workId).toBe(first._id);
+    expect((await works.repo.get(first._id)).state).toBe('uncertain');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  }
+  nativeEvidence.set(attempt.runId, { run: terminal,
+    answer: { status: 'unavailable', source: 'openclaw/sessions.get', runId: attempt.runId } });
+  await works.observer.tick();
+  const settled = await works.repo.get(first._id);
+  expect(settled).toMatchObject({ state: 'failed', attempt: { id: attempt.id,
+    runId: attempt.runId, terminal: 'failed', settledAt: expect.any(Date) } });
+  expect((await works.repo.dispatchOwner()).workId).toBeNull();
+  expect((await works.repo.get(next._id)).state).toBe('queued');
+  expect(fetchImpl).not.toHaveBeenCalled();
+  expect((await createWorkDelivery(works).snapshot(current.sessionId)).items.find(item => item.id === first._id))
+    .toMatchObject({ state: 'failed', pending: false });
+});
+
+async function holdAcceptedExchange(saved) {
+  let enter, release;
+  const entered = new Promise(resolve => { enter = resolve; });
+  const blocked = new Promise(resolve => { release = resolve; });
+  const held = require('../../src/services/conversations/writeFence').withOwnerWrite('exchange:' + saved.exchangeId,
+    async () => { enter(); await blocked; });
+  await entered;
+  return { release: async () => { release(); await held; } };
+}
+async function retainedFailedRequest() {
+  const saved = await accept('Synthetic previous failed request.');
+  await works.repo.mutate(saved._id, () => ({ fields: { state: 'failed', reason: 'synthetic_native_failure' }, event: 'fixture_terminal' }));
+  return saved;
+}
+
+test('an unrelated retained exchange writer cannot starve an already accepted ready request', async () => {
+  const previous = await retainedFailedRequest(), next = await accept();
+  const held = await holdAcceptedExchange(previous);
+  const fences = mongoose.connection.collection('conversation_write_fences');
+  const before = await fences.findOne({ _id: 'exchange:' + previous.exchangeId });
+  try {
+    await works.observer.tick();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect((await works.repo.get(next._id)).state).toBe('failed');
+    expect((await works.repo.get(previous._id)).reason).toBe('synthetic_native_failure');
+    expect(await fences.findOne({ _id: before._id })).toEqual(before);
+    expect(await mongoose.connection.collection('conversation_exchange_receipts').findOne({ _id: previous.exchangeId }))
+      .toMatchObject({ state: 'accepted' });
+  } finally { await held.release(); }
+});
+
+test('an unrelated retained exchange writer cannot prevent reconciliation of the original native failure', async () => {
+  const previous = await retainedFailedRequest(), original = await accept();
+  const attempt = await occupied(original, failure), held = await holdAcceptedExchange(previous);
+  try {
+    await works.observer.tick();
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(await works.repo.get(original._id)).toMatchObject({ state: 'failed', attempt: { id: attempt.id,
+      runId: attempt.runId, terminal: 'failed' } });
+    expect((await works.repo.dispatchOwner()).workId).toBeNull();
+  } finally { await held.release(); }
+});
+
+test.each(['CONVERSATION_WRITE_BUSY', 'CONVERSATION_WRITE_RECOVERY_REQUIRED'])(
+  'idle recovery backs off %s and resumes after successful recovery', async code => {
+    let clock = 0;
+    const recover = jest.spyOn(works, 'recover').mockRejectedValue(Object.assign(new Error('Retained synthetic writer'), { code }));
+    const logger = { warn: jest.fn() };
+    const observer = require('../../src/services/conversationWorks/observer').createWorkObserver({
+      works, env, execute: jest.fn(), observe: async () => null, logger, now: () => clock });
+    try {
+      await observer.tick(); await observer.tick();
+      expect(recover).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      clock = 30000; await observer.tick(); await observer.tick();
+      expect(recover).toHaveBeenCalledTimes(2);
+      clock = 60000; await observer.tick();
+      expect(recover).toHaveBeenCalledTimes(2); // second interval is 60 seconds
+      recover.mockResolvedValue(); clock = 90000; await observer.tick();
+      expect(recover).toHaveBeenCalledTimes(3);
+      clock = 90001; await observer.tick();
+      expect(recover).toHaveBeenCalledTimes(4); // successful recovery resumes ordinary observation
+    } finally { observer.stop(); recover.mockRestore(); }
+  });
+
+test.each([
+  'Bonjour Nestor. Pour cet échange, ma couleur choisie est le bleu. Réponds brièvement sans outil.',
+  'Quelle couleur ai-je choisie pour cet échange ? Réponds en une phrase sans outil.'
+])('tool-free conversational style keeps the guardian foreground and complete native Main review: %s', async text => {
+  const accepted = await works.intake({ session: current, turnId: randomUUID(), text });
+  expect(accepted.row).toMatchObject({ mode: 'native', classification: 'native_review', foreground: 'guardian',
+    performance: { profile: 'local' } });
+  expect(await works.nativeAcceptance(accepted.row._id)).toMatchObject({ accepted: true, foreground: 'guardian', mode: 'native' });
+});
+
+test.each(['Regarde mes tâches. Réponds brièvement sans outil.',
+  'Réponds à mon courriel. Réponds brièvement sans outil.'])(
+  'requested task reads and addressed mail retain their complete Main foreground: %s', async text => {
+    const accepted = await works.intake({ session: current, turnId: randomUUID(), text });
+    expect(accepted.row).toMatchObject({ mode: 'native', classification: 'native_work', foreground: 'acknowledge',
+      performance: { profile: 'local' } });
+  });

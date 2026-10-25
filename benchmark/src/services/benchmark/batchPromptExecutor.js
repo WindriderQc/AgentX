@@ -1,3 +1,4 @@
+const { inferenceWorkIdentity } = require('../../helpers/inferenceWorkIdentity');
 /**
  * Executes one local Ollama benchmark prompt through Core inference and
  * persists its result. Created per batch by the orchestrator.
@@ -123,6 +124,7 @@ function createPromptExecutor(context) {
                 timeoutMs: testTimeoutMs,
                 callerDetail: `benchmark-batch-${batchId}`,
                 ...(claimIdentityFor(hostUrl) || {}),
+                ...inferenceWorkIdentity(batchId),
                 options: ollamaOptions,
                 ...(sendThink ? {
                     suppressThinking: !think,

@@ -170,7 +170,7 @@ Extract the most relevant sentences:`;
 
       const response = await fetchWithTimeout(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-AgentX-Caller': 'rag-service' },
         body: JSON.stringify({
           taskType: 'rag_compression',
           prompt: userPrompt,

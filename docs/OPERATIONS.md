@@ -160,6 +160,20 @@ replacement or move its worktree between hosts.
 Manual one-task launch remains available. Merge, installation and persistent
 activation remain separate operator decisions.
 
+### Personal Google Calendar
+
+The existing private Core MCP bus exposes `personal_calendar` to explicitly
+granted personal runtimes. Its bounded host helper reuses native gog Google
+authorization; no account token enters Core. Install the helper from the same
+reviewed product checkout (all Calendar helper modules together) and publish
+the shared AgentX Core skill. Conditional writes require Linux anonymous
+memory descriptors and a current native gog token; they fail closed when
+unavailable. Core's durable operation journal has no TTL; never clear uncertain
+receipts to retry a mutation. Calendar scope, runtime grants and provider/device
+acceptance are separate observations.
+Connection settings, retry identities and repeating task behavior are described
+in [personal calendar](PERSONAL_CALENDAR.md).
+
 ### Bounded maintenance actions
 
 `./agentx action <name>` runs one action from a closed list on a running
@@ -178,6 +192,7 @@ Benchmark launch not yet reconciled), 4 refused (held, busy or not admitted).
 | `lease --actor <who> --claim <purpose>` | Takes the configured `AGENTX_LEAD_FILE` only when free and keeps it held after the command. The actor is a stable session identifier. |
 | `lease --actor <same-who> --release <summary>` | Releases only that actor's current lease, records its summary and preserves every earlier note. Another holder or a free lease refuses. |
 | `deploy --services core,benchmark[,...] [--revision origin/main] [--wait-minutes 10] [--queue-minutes 0]` | Deploys take turns, and one deploy carries every commit merged before it fetched. A held `LEAD.md` or a running deploy refuses at once, or is waited for up to `--queue-minutes`, checked every 10 s. Before taking the lease the action looks at what is served. A service is up to date when it reports the revision, a descendant, or a commit with the same build (nothing its Dockerfile copies, the Dockerfile, the compose file or `.dockerignore` differs), from a container created after the instance env file and override last changed; a service that reports no revision (`benchmark-runner`) never is. When every requested service is up to date and the checkout holds the revision, the action completes with `alreadyServed: true`, without the lease, a build or a recreate; a queued action leaves that way as soon as the deploy ahead of it serves its revision. Otherwise the action takes the lease and needs a clean tree, a revision on `origin/main` and a fast-forward of the checkout; fast-forwards to `origin/main` as fetched at that moment and, when a merge of docs, integrations or another service left every requested image unchanged, completes there with `alreadyServed: true`; otherwise it builds the images first (building touches no running container), then waits for the instance to be idle and recreates with `./agentx up --no-deps`, without rebuilding, through Core's runtime lease. Automated inferences start again within seconds, so a lease refusal is retried every 10 s until a gap appears; `--wait-minutes` bounds the idle wait and the retries together, after which the action stops refused (exit 4) with the images built and the checkout already on the new revision. Any other launcher failure stops at once. Nothing running is cut; it then reads each service's `/health` every 2 s, for up to 60 s, until all report the revision. A service that still reports another revision, or does not answer, fails the action with that last reading. |
+| `reload-openclaw --request-id <stable-id> [--wait-minutes 5]` | Takes LEAD, then uses the configured native OpenClaw suspension fence to pause new scheduling and drain existing work, preserving terminals. Renews one native suspension while waiting, resumes it and refuses at the deadline. Once idle, sends one predecessor-bound native restart with an indefinite drain, never systemctl or force. Readiness requires a new lock owner and HTTP healthz/readyz. Persisted intent prevents redispatch after any uncertain result. Requires `AGENTX_OPENCLAW_LOCK_FILE` (the installed native lock path), `AGENTX_ACTION_RECEIPTS_DIR`, and optionally `AGENTX_OPENCLAW_COMMAND` (default `openclaw`). Queue live work separately before use. Missing native support refuses; no fallback to plain restart. |
 | `recover-quarantine --host <ollama url>` | For an UNKNOWN inference on a local Ollama: refuses while an inference or a workload is active there, restarts the unit named for that host in `AGENTX_ACTION_OLLAMA_UNITS` (`{"<url>": {"unit": "...", "scope": "system"\|"user"}}`, `sudo -n` for system units), checks a new process answers, then attests each UNKNOWN admission with `recover-runtime-restart`. Workloads keep the profiler procedure below. |
 | `recalibrate-judges [--host <url> --model <name>]` | Runs Benchmark's quick judge calibration (the default judge when no target is given) and returns its report. |
 | `benchmark-batch-prepare --host <ollama url> --model <name> --categories coding,agent [--levels 1,2,3,4,5] [--repeats 1-5] [--judge-host <url> --judge-model <name>] [--name <run name>] [--tag <tag>]` | Starts nothing and takes no lease. Checks the request against Benchmark as it is now and records a plan: see "Benchmark batches from an action" below. |
@@ -750,6 +765,56 @@ others, with a reason and a priority, or withdraws the request. A request only
 reorders the queue: Benchmark starts the measurement itself, in its quiet
 hours, when the runtime is idle. The agent chooses what, Benchmark chooses
 when.
+
+`iss_passes` answers "when does the ISS pass?" from Data's on-demand TLE route,
+which reads its stored feed or cached CelesTrak source. During a rolling
+upgrade, a 404 for that route uses the legacy `satellites/latest` feed. The
+observer location is rounded to 0.01°. Optional `lat` and `lon` together take
+priority over the household weather location. If no usable location is known,
+`OBSERVER_DEFAULT_LOCATION_JSON` supplies an optional instance default
+(`lat`, `lon`, optional `name`); no city is built into the product. Invalid or
+partial explicit coordinates refuse instead of falling back. The returned
+`observer.source`, `label` and `defaulted` distinguish supplied coordinates,
+known weather location and default; announce the default rather than claiming
+to know the person's position. The same validation and selection are used by
+Data's on-demand weather and tides routes. Core contacts only Data; Data may
+refresh CelesTrak on demand. The tool omits coordinates unless the instance explicitly enables the viewer fragment handoff described below.
+Each pass has local rise, culmination and set
+times (in `PLANNING_TIME_ZONE`), directions and height, and is classified as
+observable to the naked eye (at least 10° high, station sunlit, Sun at -6° or
+lower at the house) or only geometric, with the reason. Weather, obstacles,
+light pollution and brightness are not modelled. The answer carries the TLE
+epoch and retrieval time and flags elements older than three days or not
+renewed for 18 hours. Missing elements or location fail with
+`ISS_DATA_UNAVAILABLE` rather than an estimate. Arguments: `hours` (1-108,
+default 72), `visible_only`, `max_passes` (1-12, default 8). `ISS_VIEW_URL`
+(HTTPS) adds a link to a page that shows the passes. `ISS_VIEW_OBSERVER_MODE=fragment-v1` opts into a compatible viewer’s `#passages?observer=v1:<lat>,<lon>` contract using the same rounded observer as Core. Enable only after qualifying that viewer: it must validate the pair, apply it to both globe and pass list, consume the fragment with `history.replaceState`, and keep it out of requests and persistent storage. The fragment is not sent in HTTP requests or Referer headers, but remains part of the tool result and initially the browser URL; it is not secret storage. `view.observerSynchronized` reports whether this handoff was applied. The viewer recalculates times; independently refreshed elements or windows can differ. Unset keeps the static link and its separately configured location. Pass times match PyEphem
+within 3 seconds and 0.3° in `core/tests/unit/mcpIssTools.test.js`.
+
+`iss_passes` is one Core capability, available through the same MCP bus to
+Hermes, OpenClaw and other clients. Runtime allowlists select exposure; they
+do not replace server-side authorization. Omitting coordinates does not make
+the result public: the passes still concern the configured household location.
+Only compare passes within the returned `window`, even when the list is shorter.
+
+The optional `super-dad-memory` adapter relays it as `nestor_iss`, with no
+orbital calculation or separate store. In addition to per-agent
+`tools.alsoAllow`, it verifies the owner/household session identity and refuses
+scheduled, delegated and unrelated sessions. A direct OpenClaw MCP connection
+can expose the shared tool as `agentx__iss_passes`; use it when native policies
+preserve the intended session scope. Adding `iss_passes` to a global server
+filter alone is not evidence of that equivalence. Preserve existing grants
+until the replacement's allowed and denied paths are verified. See the
+[shared capability contract](SHARED_AGENT_CAPABILITIES.md).
+
+Famille conversations on the AgentX engine run no tools; they receive approved
+context. With `HOUSEHOLD_FAMILY_ISS_PASSES=true`, a Famille turn whose message
+asks about the ISS (`ISS`, `station spatiale`, `space station`) receives a short
+French summary of the same computation: the visible passes in the next 72
+hours, the count of passes that will not be visible and why, the computation
+and TLE dates, and the `ISS_VIEW_URL` link as a `link` show block. When the
+computation fails, the context tells Nestor to give no time. Unset, Famille
+receives nothing about the ISS.
 
 The personal finance capability is described for a new maintainer in
 [FINANCE.md](FINANCE.md). The personal finance ledger ingests bank and credit-card statements dropped in
@@ -1775,6 +1840,324 @@ models. On CPU, generation speed follows memory bandwidth divided by active
 weights: prefer mixture-of-experts models with few active parameters. One CPU
 instance serves one request at a time; a second parallel request adds no
 throughput.
+
+### Runtime topology modes
+
+`AGENTX_RUNTIME_TOPOLOGY_JSON` optionally declares the modes a GPU host group
+can run in (#360). One example: two single-GPU lanes for daily work, or one
+endpoint pooling both GPUs for large models and long contexts. Keep the actual
+declaration in the external instance env file; the Configuration view hides
+its value. A generic example:
+
+```json
+{"groups":[{"id":"dual-gpu","label":"Dual GPU host","modes":[
+  {"id":"lanes","label":"Two lanes","endpoints":[
+    {"url":"http://gpu-host:11437","role":"conversation"},
+    {"url":"http://gpu-host:11438","role":"background"}]},
+  {"id":"pooled","label":"Pooled","endpoints":[
+    {"url":"http://gpu-host:11434","role":"pooled"}]}]}]}
+```
+
+- **Roles.** A role is `conversation`, `background` or `pooled`. A mode gives
+  each role to at most one endpoint, and an endpoint belongs to one group.
+- **Endpoints.** Each endpoint is an HTTP(S) origin, as in the physical GPU map.
+  Register it as an inference host and pin its model, with its context, as
+  usual.
+- **Limits.** Up to 8 groups, 6 modes per group and 8 endpoints per mode.
+  Labels default to ids.
+
+`GET /api/nerve-center/runtime-topology` and the **Runtime topology** card in
+the Nerve Center routing section show, for each declared mode:
+
+- each endpoint, with its role;
+- whether it is a registered host;
+- the physical GPUs it maps to;
+- its pins;
+- whether those pins are resident now.
+
+**Mode status.**
+- **Active**: every endpoint of the mode is registered, reachable and has all
+  its pins loaded.
+- **Partly running**: some endpoints are ready, but not all.
+- **Inactive**: no endpoint of the mode is ready.
+
+**Group status.** A group has an active mode only when exactly one mode is
+active. If several are, it reads "conflict"; if one is half started, it reads
+"transitional".
+
+Declaring modes changes no route, pin or admission. Moving a group to another
+mode is a switch (below). An invalid declaration is reported as invalid
+without its content.
+
+#### Routing by role
+
+A task route may name a **role** instead of a host (#360, phase 2). The route
+then follows whichever endpoint serves that role in its group's active mode.
+
+- **Saving.** A route sets either `host` (with `model`) or `role`, never both.
+  A role route names no model: it uses the **first pin** of the resolved
+  endpoint, because the host pin owns what its host loads. Add `group` only
+  when more than one group is declared. Saving a role route needs a valid
+  declaration. In the Nerve Center routing editor, the host list then also
+  offers "Role: conversation / background / pooled". The row shows the
+  endpoint the role resolves to, or why it does not.
+- **Resolution.** Core observes the topology at most every 5 seconds and shares
+  that observation between requests, so a request does not read `/api/ps` itself.
+  A role route bypasses the scheduler, the same-model host preference and any
+  fallback ladder: only the active mode moves it.
+- **Unresolved role.** If the role has no endpoint now, the request is refused
+  with HTTP 503 and `code: TOPOLOGY_ROLE_UNRESOLVED`. `data.reason` is one of:
+  - `transitional`, `none_active`, `conflict`: the group has no single active mode;
+  - `role_not_in_active_mode`: the active mode has no endpoint with that role;
+  - `endpoint_has_no_pin`: the endpoint has no pin;
+  - `topology_not_declared`, `topology_invalid`, `topology_unavailable`,
+    `unknown_group` or `group_required`: the declaration is missing, invalid,
+    unreadable, or does not name the route's group.
+
+  Nothing falls back to another host or model.
+- **Lane overflow.** Before dispatch, Core compares the estimated input tokens
+  plus the output budget (`contextBudget.output.reservedTokens`) with the
+  resolved pin's `contextSize`. Fitting exactly is allowed. If the request is
+  larger, it is refused with HTTP 413 and `code: LANE_CONTEXT_EXCEEDED`.
+  `data` carries `estimatedInputTokens`, `outputBudget`, `laneContext`, `role`,
+  `mode` and a `suggestion`: `queue_for_pooled` for a lane, `reduce_input` for
+  the pooled role. Nothing is truncated. The refusal is logged with the
+  topology evidence, so the Nerve Center routing log and failure summaries show
+  it. Host routes are never checked this way.
+- **Principal alias.** When the principal route (`daily_operator`) names a
+  role, `agentx-primary` follows that role. For `conversation`, the alias uses
+  the pooled pin when the active mode has no conversation role. An unresolved
+  role refuses the alias with `PRINCIPAL_MODEL_UNAVAILABLE` and the reason.
+  Both runtime bridges retain the resolved role's lane context and refuse
+  overflow before dispatch. OpenClaw does not borrow a conversation fallback
+  for a role-routed alias. Discovery and runtime exports use its resolved
+  endpoint, including the pooled pin.
+  While the principal route names a host, the alias behaves as before. The
+  Standard/Abliterated choice stays separate from the role.
+
+Without a declared topology, or without any route naming a role, routing is
+unchanged: no topology read, the same route shapes and the same routing
+configuration version.
+
+#### Host actuator
+
+A mode switch changes which runtime services run on the GPU host. Core has no
+shell there. Instead, a small actuator on the host
+(`integrations/topology-actuator/`) accepts four commands and nothing else (#360,
+phase 3):
+
+- `status`: which declared units run, the mode they form, the last confirmed
+  mode, the safety timer and memory per GPU;
+- `activate <mode>`: stop the other modes' units, wait until the mode's GPUs
+  are free, start its units and wait until each endpoint answers;
+- `confirm`: Core has verified the new mode; cancel the safety timer and make
+  the mode the one that starts at boot;
+- `rollback`: return to the last confirmed mode.
+
+Each call returns one JSON receipt (`agentx.runtime-topology-actuation/v1`)
+with the request id, both modes, the units stopped and started, the GPUs,
+timings, the outcome and the safety timer state.
+
+- **Safety timer.** `activate` arms a systemd timer before it stops anything.
+  Without `confirm` within the configured bound (20 minutes by default), the
+  timer rolls back to the last confirmed mode. Boot enablement changes only on
+  `confirm`, so a reboot during a switch comes back in the confirmed mode.
+- **Failures.** A failed `activate` restores the previous mode at once. A lost
+  answer is read back with `status --request-id`; repeating a command with the
+  same id returns its stored receipt and never acts twice.
+- **Configuration.** The mode → units map belongs to the instance: a root-owned
+  JSON file on the host and the systemd units it names. The actuator holds no
+  host, port or model. A unit the map does not list, such as a CPU Ollama, is
+  never touched.
+- **Transport.** Core runs in a container, usually on another machine, and
+  already reaches remote hosts over SSH. The actuator is reached the same way,
+  with a dedicated key whose `authorized_keys` entry is
+  `restrict,from="<core host>",command="…/ssh-entry.sh"`. The entry passes the
+  client's command to the actuator through one `sudo` rule, and the actuator
+  checks it against its grammar. This adds no listening port and no secret
+  beside the key, and the pinned host key identifies the machine. A loopback
+  HTTP agent would need its own port, token, and TLS or a tunnel to be
+  reachable from the Core container.
+
+Installation, the configuration fields, exit codes and the full receipt are in
+the integration's README. Installing the actuator and its units is an operator
+change on the GPU host; the unit tests use a fake systemd and do not qualify
+it.
+
+#### Switching modes
+
+A switch moves a group from its active mode to another declared mode (#360,
+phase 4). Core runs it as a workload with a durable record, so the host never
+runs two modes at once and an interrupted switch ends in a known state.
+
+`POST /api/nerve-center/runtime-topology/switch` with
+`{ "groupId", "targetMode", "expectedActiveMode", "requestId" }` returns 202 and
+the record. `GET /api/nerve-center/runtime-topology/switch/<requestId>` reads
+it, and `GET …/runtime-topology/switches?groupId=` lists the latest. The
+request id makes the call idempotent: after a lost answer, read the same id;
+never send a second switch.
+
+**States.** Each transition is stored with its time.
+
+1. **requested**: the request passed its checks (below).
+2. **draining**: Core takes a host-scoped maintenance lease over every
+   endpoint of the group, in both modes, with the purpose `topology-switch`.
+   It is granted only when nothing runs there.
+   - A Benchmark claim, a workload or another maintenance lease refuses the
+     switch at once. Core never takes over another owner's hold.
+   - Running inferences and session holds are waited for, up to 5 minutes.
+   - While the lease is held, inference there is refused with
+     `RUNTIME_INFERENCE_ADMISSION_DENIED` and cause
+     `topology_switch_in_progress`. Role routes of the group answer
+     `TOPOLOGY_ROLE_UNRESOLVED` with reason `topology_switch_in_progress`.
+3. **actuating**: Core calls the host actuator, `activate <targetMode>`, with
+   the switch's request id, and keeps the receipt. The actuator arms its safety
+   timer before stopping anything.
+4. **loading**: Core warms each target endpoint's pins through the pin
+   service, under the lease.
+5. **verifying**: the target must be the group's only active mode. Every pin
+   must be fully on GPU at exactly its pinned context. One short inference must
+   answer on each endpoint's first pin, sent directly with Core's runner
+   settings (no truncation, no context shift, the pin's context and
+   keep-alive). Pin drift must be `ok`; `partial`, where a source such as
+   OpenClaw was not checked, is accepted and recorded. Core polls for up to
+   4 minutes.
+6. **active**: Core confirms to the actuator, which cancels its safety timer
+   and moves boot enablement. The group's intended mode changes, and the lease
+   is released.
+
+**Failures.**
+- **Before actuation**, a refusal changes nothing: the switch ends `refused`
+  with its reason and, for a busy host, the blockers. This includes a drain
+  timeout, an actuator refusal, or an actuator that was never reached.
+- **After actuation**, a load, verify, smoke or drift failure goes to
+  `rolling_back`. The actuator returns to the previous mode, Core restores and
+  verifies that mode's pins, then releases the lease: `rolled_back`. An
+  actuator failure that the actuator restored itself also ends `rolled_back`.
+- **Uncertain.** When Core cannot establish what happened, the switch ends
+  `uncertain`. Examples: an actuator answer lost and unreadable by id, a
+  confirmation lost, a failed rollback, an unverified restore, or Core
+  restarting mid-switch. Core then marks the lease UNKNOWN through the existing
+  maintenance recovery, so the group stays fenced, and it never retries.
+- **Alerts.** `rolled_back` and `uncertain` raise the `topology-switch-failure`
+  alert. An uncertain switch also raises the usual quarantine alert.
+
+**Recovering an uncertain switch.**
+1. Read the switch record and the actuator's `status --request-id <id>`.
+2. Bring the host to one known mode: with the actuator's `rollback`, or by
+   waiting for its safety timer.
+3. Recover the maintenance lease with
+   `POST /api/nerve-center/maintenance-leases/<leaseId>/recover` and the
+   `agentx.maintenance-recovery/v1` receipt.
+
+Until then, a new switch for that group is refused with
+`TOPOLOGY_SWITCH_UNCERTAIN`.
+
+**Checks before a switch starts.** Each failed check refuses the request
+without touching anything.
+- The group and mode are declared.
+- The group has an actuator in `AGENTX_TOPOLOGY_ACTUATORS_JSON`.
+- No other switch of the group is open, and the last one did not end uncertain
+  with its lease still held.
+- The group has exactly one active mode, equal to `expectedActiveMode` when one
+  is given.
+- **Every endpoint of every mode is a registered inference host with a pin,
+  and is in `AGENTX_RUNTIME_RESOURCES_JSON`.** The lease fences physical GPUs,
+  so an endpoint missing from the map cannot be drained. Change the map only
+  when no admission is held (see "Physical GPU admission").
+
+A target that is already active is recorded as `active` with reason
+`already_active`, and nothing runs.
+
+**The actuator target.** `AGENTX_TOPOLOGY_ACTUATORS_JSON` names, per group, the
+SSH target, the key and the `known_hosts` file, all private and mounted
+read-only into the Core container:
+`{"<group>": {"sshTarget": "user@host", "keyPath": "/run/…/id_ed25519", "knownHostsPath": "/run/…/known_hosts"}}`.
+Core always checks the host key and uses only that key. Optional `port` and
+`timeoutsMs` (`status`, `activate`, `confirm`, `rollback`) are accepted.
+
+**The Nerve Center control.** The **Runtime topology** card shows each
+group's current mode and, when the group has an actuator, a target-mode
+selector and **Apply**.
+- **Confirmation.** Applying asks for a typed confirmation
+  (`SWITCH <group> TO <mode>`), because the switch drains the group.
+- **Progress.** The card then follows the switch through its states, with
+  the reason for any wait or refusal. Once it ends, it shows the last switch
+  receipt: residency, the test answer, pin drift and the duration.
+- **Read-only.** Reading the card never calls the actuator, so it stays
+  readable when the actuator is unreachable.
+- **Separate choice.** The card sits beside the Standard/Abliterated choice and
+  is independent of it.
+
+**Pooled windows.** For planned heavy work, a `topology` request on the
+heavy-work queue switches a group for its slot and returns it afterwards, with
+the requests that need that mode reserved inside the window. The overflow
+refusal `LANE_CONTEXT_EXCEEDED` names the next planned pooled window
+(`data.nextPooledWindow`). See "Topology windows" in
+[the heavy-work queue](HEAVY_WORK_QUEUE.md). Nothing switches automatically on
+a single request.
+
+**Parked hosts.** The endpoints of a group's inactive modes are stopped on
+purpose: they are *parked*, not down. During a switch, every endpoint of the
+group is parked until it ends.
+- **The intended mode** is the target of the last completed switch, or the
+  mode first observed active, stored in `runtime_topology_intents`. A crash of
+  the intended mode is not a switch: its endpoints keep their alerts.
+- **What stays quiet.** The pin reconciler, startup warm-up, pin restore, the
+  watchdog, GPU health, telemetry polling, router host health, the ecosystem
+  summary, the implicit embedding chain and the light-task fallback ladder
+  skip parked hosts, or report them as `parked`.
+- **Saving a pin** on a parked host stores it without loading it, so the lane
+  hosts can be registered and pinned while the pooled mode runs.
+- **The principal switch** (Standard/Abliterated) on a parked principal host is
+  refused with `PRINCIPAL_HOST_PARKED`.
+- **Reading it.** `GET /api/nerve-center/runtime-topology` lists the parked
+  hosts and, per group, the intended mode, an open switch and the last switch
+  record.
+
+#### Local conversation continuity
+
+An instance can retain a limited local conversation while the principal is
+unavailable without changing `agentx-primary`'s strict resolution contract.
+Core exposes this shared capability as `runtimeServices.inference.conversation`.
+The OpenClaw transport opts in only when both `x-agentx-continuity: conversation`
+and `x-agentx-busy-reply: conversation` are present. Plain providers, family
+providers without these headers, reserved Benchmark turns and Pipeline keep
+their existing behavior. The OpenAI coding gateway remains strict.
+
+Set `AGENTX_CONVERSATION_CONTINUITY_JSON` to a bounded policy, for example:
+
+```json
+{"hosts":["secondary","tertiary"],"models":["agentx-primary"],"maxOutputTokens":384,"maxInputChars":12000}
+```
+
+`hosts` lists one to four registered local/LAN host keys. The first pin of
+each candidate must already be resident at its pinned context. Unregistered,
+cloud, unpinned or context-mismatched candidates are skipped; nothing downloads,
+unloads a model, evicts a pin or changes a mode. Native claims and admission
+remain authoritative. The policy is absent by default; invalid policies retain
+strict routing. Add an existing guardian model to `models` only when that
+consumer should receive the same continuity service.
+
+Each turn tries the normal principal first, without asking active workloads to
+yield. A proven refusal before dispatch may use a resident backup. The backup
+receives a bounded recent text-only dialogue with no tools, tool results or
+full memory envelope, and a limited output budget. Core preserves the current
+human message in full or returns a status reply; it never clips it to make it
+fit. The canonical conversation remains intact. The backup's pin context is
+checked before dispatch and its native terminal/release receipt stays required.
+Timeouts, partial output and uncertain attempts never launch another model.
+The next human turn tries the principal again.
+
+The reply explicitly announces the local backup and reduced context. Its
+operational explanation comes from Core's actual refusal and matching active
+heavy-work records, not the model. Planned jobs are not described as running;
+an absent native completion estimate remains unknown. If no backup can accept
+the turn, a deterministic `agentx-status` answer requires no inference. It also
+works when routing reads are unavailable. `X-AgentX-Conversation-State` is
+`primary`, `backup` or `status_only`; degraded responses also carry
+`X-AgentX-Degraded: true`. Core telemetry retains the continuity state beside
+the usual fallback marker. This feature sends nothing to a cloud provider.
 
 ### Inference log timings and prompt cache
 

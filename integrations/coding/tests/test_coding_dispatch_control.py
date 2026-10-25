@@ -188,6 +188,14 @@ class ControlTest(unittest.TestCase):
         self.assertTrue(control.can_start({**base,'dependsOn':['0010'],'nextAction':{'code':'await_claim'}}))
         self.assertTrue(control.can_start({**base,'codingAutonomy':{'authorized':True}},autonomous=True))
 
+    def test_intake_admission_comes_from_core_for_manual_and_autonomous_candidates(self):
+        base = {"pipelineId": "0123", "title": "Synthetic request", "status": "queued", "service": "agentx-coding"}
+        for autonomous in (False, True):
+            with self.subTest(autonomous=autonomous):
+                self.assertFalse(control.can_start({**base, "intakeView": {"claimGate": "decision_required"}}, autonomous=autonomous))
+                self.assertTrue(control.can_start({**base, "intakeView": {"claimGate": "accepted_scope"}}, autonomous=autonomous))
+                self.assertTrue(control.can_start(base, autonomous=autonomous))  # Existing Core contract retained.
+
     def test_finished_report_without_core_result_stays_unknown_and_cannot_unlock_a_replacement(self):
         control.save_receipt({'requestId':KEY,'pipelineId':'0001','phase':'accepted','reportName':'review.md'})
         self.write_progress(self.terminal(coreRecorded=False))

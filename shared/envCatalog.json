@@ -255,6 +255,26 @@
       "secret": true,
       "description": "Private physical GPU IDs with their consumer endpoint URLs. Unset: endpoint-only coordination. Invalid or changed mappings refuse new admissions while existing work remains fenced."
     },
+    "AGENTX_RUNTIME_TOPOLOGY_JSON": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "inference",
+      "secret": true,
+      "description": "Private declaration of runtime topology modes per GPU host group (#360): each mode lists its endpoints and the role each serves (conversation, background, pooled). Role routes resolve through it, a switch moves a group between its modes, and the endpoints of an inactive mode are parked (no alerts). Unset: no modes declared. Invalid: reported as invalid, never echoed."
+    },
+    "AGENTX_TOPOLOGY_ACTUATORS_JSON": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "inference",
+      "secret": true,
+      "description": "Private SSH targets of the runtime topology host actuators, per topology group (#360 phase 4): {\"<group>\": {\"sshTarget\", \"keyPath\", \"knownHostsPath\", \"port\"?}}. Host keys are always checked. Unset: no switch can run. Invalid: reported as invalid, never echoed."
+    },
     "AGENTX_TASK_FALLBACK_WAIT_MS": {
       "services": [
         "core"
@@ -264,6 +284,14 @@
       "category": "routing",
       "secret": false,
       "description": "How long a busy, claimed or blocked primary is re-checked before a light task degrades to its fallback ladder, at most 10000. Unset: 2000 ms."
+    },
+    "AGENTX_CONVERSATION_CONTINUITY_JSON": {
+      "services": ["core"],
+      "forwarded": true,
+      "default": null,
+      "category": "routing",
+      "secret": false,
+      "description": "Opt-in local conversation continuity policy: JSON {hosts:[registered host keys],models:[eligible local models or agentx-primary],maxOutputTokens:384,maxInputChars:12000}. Requires x-agentx-continuity: conversation and the conversation busy-reply header. Uses resident pins only; no tools, cloud or automatic primary-mode changes. Unset or invalid: existing strict routing."
     },
     "AGENTX_TASK_FALLBACKS_JSON": {
       "services": [
@@ -1390,6 +1418,26 @@
       "secret": false,
       "description": "Enables shared admission gate state (1, true, yes, on). Unset: off."
     },
+    "GOOGLE_CALENDAR_REMOTE_ROOT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "integration",
+      "secret": false,
+      "description": "Optional product checkout on the Google credential host; falls back to SECRETARY_MAIL_REMOTE_ROOT then CODING_DISPATCHER_REMOTE_ROOT. Contains the bounded Calendar provider, never credentials."
+    },
+    "GOOGLE_CALENDAR_SSH_TARGET": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "integration",
+      "secret": false,
+      "description": "Optional SSH target hosting native gog Google authorization. Falls back to OPENCLAW_INVENTORY_SSH_TARGET; no Google credential is copied into Core."
+    },
     "HEALTH_CHECK_INTERVAL_MS": {
       "services": [
         "core"
@@ -1643,6 +1691,16 @@
       "category": "household",
       "secret": false,
       "description": "Household conversation engine: auto, agentx or openclaw. auto selects OpenClaw only when its gateway URL and token are set. Unset: auto."
+    },
+    "HOUSEHOLD_FAMILY_ISS_PASSES": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "true adds Core's dated ISS passes over the house to a Famille turn on the AgentX engine when the child asks about the ISS. Unset or anything else: Famille receives no ISS context."
     },
     "HOUSEHOLD_HERMES_TOKEN": {
       "services": [
@@ -1917,6 +1975,26 @@
       "category": "operations",
       "secret": false,
       "description": "Maximum stored ISS positions. Unset: 8000."
+    },
+    "ISS_VIEW_OBSERVER_MODE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Opt-in viewer contract: fragment-v1 passes the rounded observer in a browser-only URL fragment. Enable only after the HTTPS viewer supports and consumes it. Unset keeps a static link."
+    },
+    "ISS_VIEW_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "HTTPS address of a page showing the ISS passes, returned by the iss_passes tool so an agent can offer it. Unset: no link."
     },
     "JANITOR_AI_TIMEOUT_MS": {
       "services": [
@@ -2321,6 +2399,17 @@
       "category": "operations",
       "secret": false,
       "description": "Default IPv4 address or CIDR target of the Data network scan. Unset: a scan needs an explicit target in the request."
+    },
+    "OBSERVER_DEFAULT_LOCATION_JSON": {
+      "services": [
+        "core",
+        "data"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Optional default observer as JSON with lat, lon and optional name. Core ISS passes and Data on-demand tides/weather use it only without explicit coordinates or a usable known weather location, and disclose the fallback. No city is built in. Keep instance coordinates outside public Git."
     },
     "OBSIDIAN_VAULT_POLICY_PATH": {
       "services": [
@@ -3439,6 +3528,26 @@
       "category": "operations",
       "secret": false,
       "description": "Poll interval of the Data weather feed. Unset: 60000 ms."
+    },
+    "WORLDTIDES_API_KEY": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": true,
+      "description": "Optional WorldTides API credential for Data's on-demand tides route (GET /api/v1/livedata/tides). Each upstream call spends account credits; answers are cached. Unset: the route answers 503 and calls nothing. Supply through an external Data environment override; keep the credential outside Git."
+    },
+    "WORLDTIDES_CACHE_MS": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "How long Data keeps a WorldTides answer for one rounded position, day count and UTC day, at least 60000. Unset: 21600000 (6 h)."
     },
     "OWNER_MAIL_RAG_TOKEN": {
       "services": [

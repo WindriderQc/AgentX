@@ -16,6 +16,8 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const dns = require('node:dns').promises;
+const net = require('node:net');
 const { fetchData } = require('../../src/services/dataServiceClient');
 
 const FILE_SOURCES = Object.freeze(['photos', 'media']);
@@ -24,6 +26,7 @@ const IMAGE_PREFERENCE = Object.freeze({ jpg: 3, jpeg: 3, webp: 2, png: 2, gif: 
 const LIMITS = Object.freeze({ query: 200, candidates: 25, timeoutMs: 8000, terms: 4 });
 const SOURCE_LABELS = Object.freeze({ web: 'Internet', photos: 'Family photos', media: 'Household media', generated: 'Generated image' });
 const MAX_GENERATED_BYTES = 20 * 1024 * 1024;
+const MAX_REFERENCE_BYTES = 20 * 1024 * 1024;
 
 function parseRoots(value) {
   try {
@@ -58,8 +61,23 @@ function httpsImage(value) {
   } catch { return ''; }
 }
 
+// A web picture is fetched for editing only from a public address: never loopback, the LAN,
+// link-local, carrier-grade NAT, multicast or their IPv4-mapped IPv6 forms.
+function publicAddress(address) {
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address);
+  if (mapped) return publicAddress(mapped[1]);
+  if (net.isIPv4(address)) {
+    const [a, b] = address.split('.').map(Number);
+    return !(a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127)
+      || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168));
+  }
+  if (!net.isIPv6(address)) return false;
+  const lower = address.toLowerCase();
+  return !(lower === '::' || lower === '::1' || /^f[cd]/.test(lower) || /^fe[89ab]/.test(lower) || /^ff/.test(lower));
+}
+
 // Settings are read on each use, like the rest of Household's optional services.
-function createVisuals({ env = process.env, fetchImpl = (...args) => globalThis.fetch(...args), dataFetch = fetchData, logger = null } = {}) {
+function createVisuals({ env = process.env, fetchImpl = (...args) => globalThis.fetch(...args), dataFetch = fetchData, logger = null, lookup = (host) => dns.lookup(host, { all: true, verbatim: true }) } = {}) {
   const settings = () => ({
     searxng: String(env.SEARXNG_URL || '').trim().replace(/\/+$/, ''),
     roots: parseRoots(env.HOUSEHOLD_IMAGE_ROOTS_JSON),
@@ -159,38 +177,49 @@ function createVisuals({ env = process.env, fetchImpl = (...args) => globalThis.
     return block;
   }
 
-  function sendFile(req, res, { family }) {
-    const source = String(req.query.source || '');
-    const relative = String(req.query.path || '');
-    const notFound = () => res.status(404).json({ status: 'error', code: 'HOUSEHOLD_IMAGE_NOT_FOUND', message: 'Image unavailable' });
-    if (!FILE_SOURCES.includes(source) || !sources({ family }).includes(source)) return notFound();
+  // The real file behind a photo/media picture, only inside Core's mount of an allowed root.
+  function localFile(source, relative, { family }) {
+    if (!FILE_SOURCES.includes(source) || !sources({ family }).includes(source)) return null;
     const type = IMAGE_TYPES[extensionOf(relative)];
-    if (!type || relative.includes('\0') || path.posix.isAbsolute(relative)) return notFound();
+    if (!type || relative.includes('\0') || path.posix.isAbsolute(relative)) return null;
     const root = path.join(settings().mountBase, source);
-    let file;
     try {
       const realRoot = fs.realpathSync(root);
-      file = fs.realpathSync(path.join(root, relative));
-      if (!file.startsWith(realRoot + path.sep) || !fs.statSync(file).isFile()) return notFound();
-    } catch { return notFound(); }
+      const file = fs.realpathSync(path.join(root, relative));
+      return file.startsWith(realRoot + path.sep) && fs.statSync(file).isFile() ? { file, type } : null;
+    } catch { return null; }
+  }
+
+  function sendFile(req, res, { family }) {
+    const notFound = () => res.status(404).json({ status: 'error', code: 'HOUSEHOLD_IMAGE_NOT_FOUND', message: 'Image unavailable' });
+    const found = localFile(String(req.query.source || ''), String(req.query.path || ''), { family });
+    if (!found) return notFound();
+    const { file, type } = found;
     res.set({ 'Content-Type': type, 'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
     return fs.createReadStream(file).on('error', () => { if (!res.headersSent) notFound(); else res.destroy(); }).pipe(res);
+  }
+
+  // A generated picture relayed from the gateway's read-only media route, or null.
+  async function fetchGenerated(ref) {
+    const { gateway } = settings();
+    const url = new URL('/api/nestor/media', gateway.url);
+    url.searchParams.set('path', ref);
+    const upstream = await fetchImpl(url, { redirect: 'error', signal: AbortSignal.timeout(LIMITS.timeoutMs),
+      headers: { Authorization: `Bearer ${gateway.token}` } });
+    const type = String(upstream.headers.get('content-type') || '').split(';')[0].trim();
+    if (!upstream.ok || !Object.values(IMAGE_TYPES).includes(type)) return null;
+    const bytes = Buffer.from(await upstream.arrayBuffer());
+    return bytes.length > MAX_GENERATED_BYTES ? null : { type, bytes };
   }
 
   async function sendGenerated(req, res, { family }) {
     const notFound = () => res.status(404).json({ status: 'error', code: 'HOUSEHOLD_IMAGE_NOT_FOUND', message: 'Image unavailable' });
     const ref = generatedAllowed(family) ? generatedRef(req.query.path) : '';
     if (!ref) return notFound();
-    const { gateway } = settings();
     try {
-      const url = new URL('/api/nestor/media', gateway.url);
-      url.searchParams.set('path', ref);
-      const upstream = await fetchImpl(url, { redirect: 'error', signal: AbortSignal.timeout(LIMITS.timeoutMs),
-        headers: { Authorization: `Bearer ${gateway.token}` } });
-      const type = String(upstream.headers.get('content-type') || '').split(';')[0].trim();
-      if (!upstream.ok || !Object.values(IMAGE_TYPES).includes(type)) return notFound();
-      const bytes = Buffer.from(await upstream.arrayBuffer());
-      if (bytes.length > MAX_GENERATED_BYTES) return notFound();
+      const fetched = await fetchGenerated(ref);
+      if (!fetched) return notFound();
+      const { type, bytes } = fetched;
       // Every generated picture shown to the family is also kept, full quality, in the image archive.
       void require('../../src/services/imageArchive').defaultArchive().store({ bytes, name: path.posix.basename(ref), origin: 'generated',
         context: { ref, space: family ? 'family' : 'personal' } }).catch(error => logger?.warn?.('Generated image archive failed', { error: error.message }));
@@ -202,6 +231,38 @@ function createVisuals({ env = process.env, fetchImpl = (...args) => globalThis.
     }
   }
 
+  async function fetchWeb(href) {
+    const url = new URL(httpsImage(href) || 'invalid:');
+    const host = url.hostname.replace(/^\[|\]$/g, '');
+    const addresses = net.isIP(host) ? [{ address: host }] : await lookup(host);
+    if (!addresses.length || !addresses.every(entry => publicAddress(entry.address))) throw new Error('Picture address is not public');
+    const response = await fetchImpl(url.href, { redirect: 'error', referrerPolicy: 'no-referrer', signal: AbortSignal.timeout(LIMITS.timeoutMs) });
+    const declared = Number(response.headers.get('content-length') || 0);
+    if (!response.ok || declared > MAX_REFERENCE_BYTES) throw new Error(`Picture unavailable (${response.status})`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > MAX_REFERENCE_BYTES) throw new Error('Picture too large');
+    return bytes;
+  }
+
+  // The bytes of a picture Core showed, read back from where Core resolved it (#1026).
+  // Only addresses this module produced are accepted; anything else is refused.
+  async function bytesFor(image, { family = false } = {}) {
+    const href = String(image?.url || '');
+    if (/^https:/i.test(href)) return fetchWeb(href);
+    const local = /^\/api\/voice-personas\/(?:family|private)\/visuals\/(file|generated)\?(.*)$/.exec(href);
+    if (!local) throw new Error('Unknown picture address');
+    const query = new URLSearchParams(local[2]);
+    if (local[1] === 'file') {
+      const found = localFile(query.get('source') || '', query.get('path') || '', { family });
+      if (!found || fs.statSync(found.file).size > MAX_REFERENCE_BYTES) throw new Error('Picture file unavailable');
+      return fs.promises.readFile(found.file);
+    }
+    const ref = generatedAllowed(family) ? generatedRef(query.get('path')) : '';
+    const fetched = ref ? await fetchGenerated(ref) : null;
+    if (!fetched) throw new Error('Generated picture unavailable');
+    return fetched.bytes;
+  }
+
   function register(router) {
     router.get('/private/visuals/file', (req, res) => sendFile(req, res, { family: false }));
     router.get('/family/visuals/file', (req, res) => sendFile(req, res, { family: true }));
@@ -209,7 +270,7 @@ function createVisuals({ env = process.env, fetchImpl = (...args) => globalThis.
     router.get('/family/visuals/generated', (req, res) => sendGenerated(req, res, { family: true }));
   }
 
-  return { sources, present, register, sendFile, sendGenerated };
+  return { sources, present, register, sendFile, sendGenerated, bytesFor };
 }
 
-module.exports = { createVisuals, searchTerms, parseRoots, IMAGE_TYPES, SOURCE_LABELS };
+module.exports = { createVisuals, searchTerms, parseRoots, publicAddress, IMAGE_TYPES, SOURCE_LABELS };

@@ -64,13 +64,24 @@ function decide(task) {
   // A delivered report carries its deliverable; a stopped one has kind 'blocked'.
   if (latest.kind !== 'blocked') return latest.deliverableId && latest.sha256 ? { action: 'completed', outcome: latest } : { action: 'none' };
   if (!CONTINUE_REASONS.has(latest.reason) || !latest.partial?.sha256) return { action: 'failed', outcome: latest };
-  const previous = outcomes.at(-2);
-  if (previous?.partial?.sha256 && previous.partial.sha256 === latest.partial.sha256) return { action: 'no_progress', outcome: latest };
+  if (latest.progress?.verified !== true) return { action: 'failed', outcome: latest, reason: 'coverage_comparison_unverified' };
+  if (latest.progress.advanced !== true) return { action: 'no_progress', outcome: latest };
   return { action: 'continue', outcome: latest };
+}
+
+// Older results remain immutable. Read their accepted native coverage instead
+// of treating a changed Markdown digest as proof of work or rewriting history.
+async function decision(task) {
+  const latest = reportOutcomes(task).at(-1);
+  if (!latest || latest.progress || !CONTINUE_REASONS.has(latest.reason) || !latest.partial?.sha256) return decide(task);
+  const run = await Run.findById(latest.requestId).lean();
+  const progress = await require('./pipelineReportProgress').read(run?.pipelineId === task.pipelineId && run.taskId === String(task._id) ? run : null);
+  return decide({ ...task, feedback: [{ reportOutcome: { ...latest, progress } }] });
 }
 
 /** Whether Core's report authority could bind a continuation now (read-only). */
 async function allowance(task) {
+  if (!require('./taskIntakePolicy').accepted(task)) return { ok: false, reason: 'intake_decision_required' };
   const state = task.codingReportAuthority;
   if (!state?.grants?.length) return { ok: false, reason: 'no_grant' };
   const runs = await Run.find({ taskId: String(task._id) }).lean();
@@ -116,7 +127,7 @@ async function observeOutcome(task, decision) {
   const blocked = await blockedDocuments(outcome.requestId);
   if (blocked.length) await notifications.publish(task, 'documents_blocked', outcome.requestId, { paths: blocked });
   if (decision.action === 'completed') await notifications.publish(task, 'completed', outcome.requestId);
-  if (decision.action === 'failed') await notifications.publish(task, 'execution_failed', outcome.requestId, { reason: outcome.reason || 'unknown' });
+  if (decision.action === 'failed') await notifications.publish(task, 'execution_failed', outcome.requestId, { reason: decision.reason || outcome.reason || 'unknown' });
   if (decision.action === 'no_progress') await notifications.publish(task, 'no_progress', outcome.requestId);
 }
 
@@ -129,7 +140,7 @@ const chaining = (config, task) => config.enabled === true || task?.reportResume
 
 /** Whether a continuation would be launched for this task now (read-only). */
 async function wouldContinue(task) {
-  if (!chaining(await settings(), task) || decide(task).action !== 'continue') return false;
+  if (!chaining(await settings(), task) || (await decision(task)).action !== 'continue') return false;
   return (await allowance(task)).ok;
 }
 
@@ -137,11 +148,11 @@ async function select(config) {
   const tasks = await Task.find({ 'codingResult.profile': 'report', 'codingReportAuthority.grants.0': { $exists: true },
     status: { $in: ['blocked', 'review'] } }).lean();
   for (const task of tasks) {
-    const decision = decide(task);
-    if (decision.action === 'none') continue;
-    await observeOutcome(task, decision);
-    if (decision.action !== 'continue' || !chaining(config, task)) continue;
-    const parent = decision.outcome;
+    const next = await decision(task);
+    if (next.action === 'none') continue;
+    await observeOutcome(task, next);
+    if (next.action !== 'continue' || !chaining(config, task)) continue;
+    const parent = next.outcome;
     const state = task.reportContinuation || { runs: [] };
     if ((state.runs || []).some(run => run.parentRequestId === parent.requestId)) continue;
     if (task.status !== 'blocked' || task.automationLease) continue;
@@ -248,4 +259,4 @@ async function status() {
     available: Boolean(control && control.target !== ''), escalation: await require('./pipelineReportEscalation').policy() };
 }
 
-module.exports = { configure, tick, configureSwitch, status, decide, continuationId, allowance, wouldContinue, CONTINUE_REASONS };
+module.exports = { configure, tick, configureSwitch, status, decide, decision, continuationId, allowance, wouldContinue, CONTINUE_REASONS };

@@ -118,8 +118,12 @@ async function checkAndReloadDefaults(isStopped = () => false) {
   const { getAll, setHostStatus, warmDefaultModel, updateLoadedModel } = hostPrefService;
 
   const prefs = await getAll();
+  const { isParkedHost } = require('./runtimeTopologyParking');
   for (let pref of prefs) {
     if (isStopped()) return;
+    // An endpoint of an inactive topology mode is stopped on purpose (#360):
+    // no probe, no restore, no offline status, no incident.
+    if (isParkedHost(pref.hostUrl)) continue;
     try {
       const response = await fetch(`${pref.hostUrl}/api/ps`, {
         signal: AbortSignal.timeout(5_000)

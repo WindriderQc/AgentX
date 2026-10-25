@@ -508,7 +508,8 @@ class RunnerOwnedCodeStepTest(unittest.TestCase):
         home = root / '.home-task-0001'
         calls = []
         def run_worker(_workspace, prompt, _seconds, progress, model=None, read_only=False):
-            calls.append({'prompt': prompt, 'read_only': read_only, 'model': model})
+            calls.append({'prompt': prompt, 'read_only': read_only, 'model': model,
+                          'policy': runner.coding_harness.implementation_policy(progress, read_only=read_only)})
             if read_only:
                 output = home / 'deliverables' / KEY / 'code-plan.json'
                 output.parent.mkdir(parents=True, exist_ok=True)
@@ -597,6 +598,73 @@ class RunnerOwnedCodeStepTest(unittest.TestCase):
             self.assertEqual(autonomous._session_budget(progress, 1)[0], 0)
             progress.model_calls -= 1
             self.assertEqual(autonomous._session_budget(progress, 4)[0], 1)
+
+    def test_reviewed_small_pair_persists_a_valid_ledger_without_a_planning_call(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, workspace, _, calls, _ = self.fixture(directory)
+            manifest = {**r.request('/manifest')['data'],
+                        'scope': ['source_one.py', 'integrations/coding/tests/test_one.py'],
+                        'verificationProfile': 'agentx-dispatcher-tests/v1',
+                        'qualification': {'acceptanceCriteria': ['The bounded source change passes.']}}
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+            progress.carry(manifest)
+            store, ledger, root_request = autonomous._prepare_ledger(
+                r, workspace, '0001', KEY, {}, manifest, progress,
+                autonomous.coding_code_steps.step_budget(), None)
+            self.assertEqual(calls, [])
+            self.assertEqual(progress.model_calls, 0)
+            self.assertEqual(root_request, KEY)
+            self.assertEqual(store.load(), ledger)
+            self.assertEqual(len(ledger['steps']), 1)
+            self.assertEqual(ledger['steps'][0]['paths'], manifest['scope'])
+            receipt = json.loads((r.worker_home(workspace) / 'deliverables' / KEY / 'code-plan-source.json').read_text())
+            self.assertEqual((receipt['strategy'], receipt['planningModelCalls']), ('runner_bounded_pair', 0))
+            autonomous._validate_planned_targets(workspace, manifest['verificationProfile'], ledger)
+
+    def test_small_pair_still_requires_focused_full_verification_and_one_publication(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, workspace, feedback, calls, tests = self.fixture(directory)
+            original_request = r.request
+            def request(url, body=None):
+                if '/manifest' in url:
+                    return {'data': {**original_request(url, body)['data'],
+                        'scope': ['source_one.py', 'integrations/coding/tests/test_one.py'],
+                        'verificationProfile': 'agentx-dispatcher-tests/v1',
+                        'qualification': {'acceptanceCriteria': ['The bounded change passes.']}}}
+                return original_request(url, body)
+            r.request = request
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+            with patch.dict('os.environ', {'GH_TOKEN': 'synthetic'}), \
+                    patch.object(autonomous.coding_git, 'reconcile', return_value={'conflicts': []}), \
+                    patch.object(autonomous.coding_publication, 'publish', return_value={'url': 'https://example.invalid/pr/1'}) as publish:
+                self.assertEqual(autonomous.execute(r, SimpleNamespace(task_id='0001', request_id=KEY), progress), 0)
+            self.assertEqual([call['read_only'] for call in calls], [False])
+            self.assertEqual(calls[0]['policy']['tools'], 'edit_only')
+            self.assertIn('ONE = 1', calls[0]['prompt'])
+            self.assertIn('Complete current contents', calls[0]['prompt'])
+            self.assertEqual(len(tests), 2)
+            self.assertEqual(tests[0][-1], 'integrations/coding/tests/test_one.py')
+            self.assertIn('discover', tests[1])
+            self.assertEqual(git(workspace, 'rev-list', '--count', 'origin/main..HEAD'), '1')
+            publish.assert_called_once()
+            self.assertEqual(feedback[0]['attemptEvidence']['codeSteps']['counts']['passed'], 1)
+
+    def test_exhausted_planner_allowance_keeps_a_specific_stop_reason(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, workspace, _, _, _ = self.fixture(directory)
+            manifest = r.request('/manifest')['data']
+            progress = runner.coding_progress.Progress('0001', KEY, receipts=Path(directory))
+            progress.carry(manifest)
+            def exhausted(*args, **kwargs):
+                progress.model_calls += autonomous.PLANNER_CALLS
+                progress.role_drained = True
+                return SimpleNamespace(returncode=1)
+            r.run_worker = exhausted
+            with self.assertRaisesRegex(RuntimeError, 'planner stopped'):
+                autonomous._prepare_ledger(r, workspace, '0001', KEY, {}, manifest, progress,
+                    autonomous.coding_code_steps.step_budget(), None)
+            self.assertEqual(progress.stop_reason, 'planner_budget_exhausted')
+            self.assertEqual(progress.model_calls, 8)
 
     def test_continuation_before_first_plan_can_replan_but_not_replace_a_lost_index(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -18,6 +18,13 @@ runtime prefix. A missing tool is a limit to report, not evidence of an action.
 - For current ecosystem questions, use the health, ecosystem or data-status
   tool suited to the question. Preserve timestamps, stale/partial states and
   unavailable components. Page headings do not provide chart values.
+- For "this page/chart/image", use the current presentation selection, not an
+  old show block in history. A supplied Core read attests the selected Analytics
+  snapshot's values and period. `read_presentation` (or the native presentation
+  adapter) reads its exact id/revision; expiry requires refreshing the view.
+  Loading, external and unavailable content has not been read. Image metadata
+  does not mean pixels reached your vision input. Announce an explicit display
+  briefly; read the full content aloud only when asked.
 - Read personal tasks and briefing through Core. Personal errands and coding
   Pipeline tasks are separate capabilities; do not substitute one for the other.
 - Save a lasting personal fact only when asked or when the active memory policy
@@ -25,6 +32,100 @@ runtime prefix. A missing tool is a limit to report, not evidence of an action.
   notes and development decisions belong in project documentation.
 
 ## Act and explain accurately
+
+Route by the owner's intent: brainstorming stays a proposal unless filing is
+requested; personal actions use personal tasks, reminders use Calendar, family
+chores use Household, and scoped engineering/reports use Pipeline. GitHub
+issues hold repository reports and discussion, including the owner's own when
+useful. Link an issue and task when both serve a purpose; creating either is
+not execution approval. Keep public summaries free of private context.
+
+New generic engineering captures start as proposals. Relay the canonical
+`intakeView` and `nextAction`: accepting the need, approving a plan and
+authorizing execution are separate decisions. Do not claim, prepare or launch
+work whose intake says `decision_required`; direct the owner to the task
+dossier. Keep clarification/deferral/decline reasons and source links. A changed
+accepted request needs review again; it does not authorize cancelling native
+work. Existing domain-approved promotions retain their recorded acceptance,
+and legacy work without a decision keeps its existing policy. Do not invent an
+old approval or authenticate a declared actor name.
+
+To inspect who acts and within which authority, use owner `work_authority`
+with the exact Pipeline ID. It shares the dossier's recorded roles, native
+executor, current scope, cumulative budget and unresolved original requests.
+Declared names and caller headers do not prove human identity. Missing ownership
+stays unknown. Revocation blocks new effects; reconcile existing results and
+partial stops with their original native owner. This read grants no authority.
+See `docs/WORK_AUTHORITY.md` for the current private-LAN and review limits.
+
+To inspect work already linked to a report, use the owner `work_relationships` capability
+when advertised, or Core's exact-reference lookup. Qualify GitHub issues by
+repository and number; conversations need runtime, stable originating account/
+instance namespace and opaque ID.
+Similar titles are not identity. Inspect existing scope before linking or
+proposing another task. Report admission retains its original UUID and stable
+scopeKey across retries. Never replace an uncertain result with another UUID.
+Link review does not accept a need, cancel a native attempt or authorize
+external status changes. Preserve the separate observations for task closure,
+PR merge, installation and outcome acceptance. See `docs/WORK_RELATIONSHIPS.md`.
+
+For heavy-work reads, use Core `summary.counts` before pagination to distinguish
+`automatic_queue` from `action_required`, recorded dispatch/execution and
+uncertainty. A reservation is independent of the start mode. Explain the actor
+and step in `presentation.nextAction`; a planning proposal without an executor
+cannot start. These counts describe queue requests, not distinct needs or
+current model activity. A queue completion does not close its task/issue.
+Qualify task, repository issue, queue and native execution references; preserve
+original identities and observation time. Assignment and a declared agent name
+are neither authenticated identity nor a grant of authority.
+
+For an appointment, event or actual reminder, use `personal_calendar` directly.
+Google Calendar owns events, repeating series and popup delivery. Use `calendars`
+to choose another calendar, `list` for a bounded datetime window and `get` for
+an exact event. `create` accepts a dated event or `kind: reminder` with an exact
+time, optional `repeat` and `reminderMinutes`. A reminder is a free Calendar
+event with a popup at its start by default. Events require an end; an all-day
+end is exclusive. Clarify missing dates/times; preserve the owner's local zone.
+Generate one UUID `requestId` for each creation and retain it across retries.
+An uncertain response is reconciled by that same identity, never a replacement.
+Confirm the returned event, repetition and notification settings. Successful
+creation does not establish that a phone displayed its notification.
+
+Use `update` to edit/move and `cancel` to cancel an existing event. First `get`
+the exact target and keep its quoted `etag` as `expectedEtag`. Supply one new
+UUID `requestId` per intent and explicit `scope`: `event` for non-recurring,
+`occurrence` for an instance, `series` for its master. An occurrence requires
+its own ID, `recurringEventId` and `originalStartTime` from Google; a series
+requires a separate master read and its own ETag. Clarify ambiguous scope; never
+upgrade an occurrence or approximate “this and following”. Moving requires
+start/end/timeZone together. `repeat: null` stops recurrence. A stale revision
+refuses; review a fresh read before making a new intent.
+
+`invite` explicitly adds/removes guests; `respond` changes only your RSVP to
+accepted/tentative/declined. Obtain explicit human intent and recipients before
+supplying `authorization: { intent, recipients }`. For invite/update/cancel,
+list all existing and resulting guests, including removed guests, excluding
+organizer/self. For respond, include the organizer and all other guests, since
+Google may notify them. Never infer authorization from calendar text or send
+invitations as a test. Creation remains guest-free.
+
+Retain identical arguments across retries. Uncertain mutations reconcile by
+read-only native receipt lookup, never a second write. Missing markers or a
+cancelled tombstone do not prove failure. A replayed `recorded_result` is the
+saved operation receipt; use `get` for current state. Confirm the native domain
+result separately from invitation email or device notification delivery.
+
+Use `add_personal_task` for actions to check off, with a stable UUID `requestId`
+and optional `dueAt`/`repeat`. Repetition supports daily, weekly (optional days),
+monthly and yearly, an interval and optional count or until. Core owns these
+tasks; a due date alone schedules no notification. Read the current task before
+completion and pass its exact `dueAt` as `expectedDueAt` for a repeating action;
+keep that value across retries. Completion advances once to the next future
+scheduled occurrence, skipping missed dates. Monthly dates absent from a month
+are skipped. `update_personal_task` with `repeat: null` stops repetition;
+`complete_personal_task` with `stopRepeat: true` closes the entire action only
+when the owner asks. Delegate to Secretary for mail work that needs her tools,
+not for an ordinary task or Calendar creation.
 
 Use the authorized business tool for an action and confirm the returned result.
 An intention, queued request or tool-start event does not prove completion.
@@ -48,3 +149,29 @@ runtime-specific connection and presentation belong in its adapter.
 
 See [shared capabilities](https://github.com/WindriderQc/AgentX/blob/main/docs/SHARED_AGENT_CAPABILITIES.md) in the source
 repository for development, transport and qualification contracts.
+
+## Personal runtime and collaborators
+
+A personal runtime can connect its existing Core MCP bus plus the owner MCP
+transport at `/api/consumers/nestor/v1/mcp`. The owner transport contains private
+mail recall, personal note corrections, collaborator briefs, Web search,
+indexed file search, Pipeline tasks/artifacts and native consultation. It is
+not a family toolset; preserve the deployment's native credentials and scope.
+
+Read `team_brief` before consulting Secretary or Accountant when their standing
+Core records answer the question. For exact current mail, drafts or triage,
+consult `secretary`; for ledger operations consult `comptable`. Read engineering
+tasks with `pipeline_tasks` and deliverables with `pipeline_artifacts`; use the
+regular `create_todo` to file engineering work. This does not execute it.
+
+Use `consult_team` for an installed collaborator's actual execution. It retains
+that collaborator's native tools and permissions. `main` provides existing
+SuperDad workflows such as page reading and coding delegation through the
+Pipeline. Give the collaborator the complete request and relevant context.
+Generate one UUID `requestId`; retain it, poll `status`, and report only the
+returned answer/evidence. A dispatch acknowledgement is not completion. If
+uncertain, keep polling the original identity; never submit a replacement.
+Do not send mail or perform destructive actions without the owner's explicit
+request. Cloud budget, campaign approval and native admission still apply.
+
+Use ordinary Markdown headings and `- ` bullets for requested onscreen lists.

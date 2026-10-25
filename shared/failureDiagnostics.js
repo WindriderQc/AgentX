@@ -72,7 +72,7 @@ register('configuration', ['INFERENCE_HOST_INVALID', 'RUNTIME_INFERENCE_HOST_INV
   'automation_invalid', 'automation_missing', 'automation_manual', 'attribution_requested_model_invalid']);
 register('admission', ['BENCHMARK_CLAIM_ACTIVE', 'HOST_SESSION_HOLD_BUSY',
   'workload_reserved', 'workload_yielded',
-  'maintenance_active', 'inference_active', 'inference_residency_active', 'task_unavailable',
+  'maintenance_active', 'topology_switch_in_progress', 'inference_active', 'inference_residency_active', 'task_unavailable',
   'not_before', 'dependencies_incomplete', 'resource_lock_conflict']);
 register('admissionProof', ['BENCHMARK_CLAIM_PROOF_INVALID', 'workload_proof_invalid']);
 register('admissionRecovery', ['RUNTIME_INFERENCE_RECOVERY_REQUIRED', 'RUNTIME_INFERENCE_ADMISSION_LOST',

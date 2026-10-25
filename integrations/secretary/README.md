@@ -333,6 +333,20 @@ changed source or review invalidates the old decision; conflicting decisions hol
 the message. Missing originals/copies, drafts, unknown dates and stale thread
 reviews cannot be waived by an analysis receipt.
 
+`retention_dispositions.py` writes owner dispositions
+(`agentx.secretary-retention-disposition/v1`) as an alternative to an exact
+analysis: per message, its value lane and the owner's decisions in Core's
+historical review for each of its findings, including consolidated souvenir
+candidates through their private manifests. The planner (`--dispositions`)
+accepts bulk mail whose actions, deliverables and invoices are decided, or
+person/important mail whose every finding the owner decided (kept, souvenir,
+dismissed, resolved); mail with no finding to decide waits for a separate owner
+validation (`no_owner_decision_yet`); a finding the owner never saw keeps the message held, and
+no entry citing it may still be a candidate. Integrity, copies, provider,
+draft, date and unread-page blockers still apply; only bulk mail also waives
+attachment images and thread questions. The exact-analysis qualification is not
+required for this path. `--older-than-days` sets a rolling cutoff (midnight UTC).
+
 Use `verify_archive.py --tree-index <pinned-native-mirror-state>` on both copies
 to rehash the complete indexed archive, including metadata. Incremental mirrors
 may skip unchanged size/mtime entries; that shortcut is not a fresh integrity
@@ -350,6 +364,26 @@ Keep manifests and all qualification/analysis receipts outside Git.
 
 ```bash
 python3 integrations/secretary/retention_plan.py --root "$GMAIL_SECRETARY_ROOT" --before "$HISTORICAL_CUTOFF" --inventory "$PRIVATE_GMAIL_INVENTORY" --primary-proof "$PRIVATE_PRIMARY_PROOF" --mirror-proof "$PRIVATE_MIRROR_PROOF" --qualification "$PRIVATE_QUALIFICATION" --decisions "$PRIVATE_ANALYSIS_RECEIPTS" --output "$PRIVATE_RETENTION_PLAN"
+```
+
+### Labelling an approved retention batch
+
+`retention_label.py` is the first mailbox step of a cleanup and the only one it
+performs: it puts the Gmail label `AgentX/À retirer` on the messages of one batch
+of a retention manifest, so the owner can browse them in Gmail before any Trash.
+`prepare` reads each message again at Gmail (read-only) and holds drafts,
+messages already in Trash, gone messages and changed threads. `apply` requires
+the batch fingerprint the owner approved and who approved it, refuses a check
+older than one hour, records its dispatch before the first change, adds only
+that label to the exact ready messages (`label_gmail` allows nothing else),
+and reads every message back: the effect receipt lists labelled messages and any
+other label change. An uncertain answer is never retried; `reconcile` reads
+back. `remove` takes the label off the same messages. It never archives,
+trashes or deletes; Trash is a separate step after the owner's review.
+
+```bash
+python3 integrations/secretary/retention_label.py prepare --manifest "$PRIVATE_MANIFEST" --batch 2024-1 --out "$PRIVATE_BATCH_DIR"
+python3 integrations/secretary/retention_label.py apply --out "$PRIVATE_BATCH_DIR" --approve "$BATCH_FINGERPRINT" --approved-by "$OWNER_APPROVAL" --create-label
 ```
 
 ### People registry

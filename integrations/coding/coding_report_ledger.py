@@ -145,6 +145,55 @@ def _evidence(refs, source_bytes, label, *, limit=MAX_EVIDENCE):
     return checked
 
 
+def finding_identity(finding):
+    """Exact finding content, independent of its step, number and proof wording.
+
+    Keep different claims or corrections at the same document line separate.
+    The source anchors are frozen and verified before this identity is used.
+    """
+    return (finding['kind'], finding['severity'], finding['title'], finding['correction'],
+            finding['document']['path'], finding['document']['line'],
+            tuple(sorted({(ref['path'], ref['sha256'], ref['line']) for ref in finding['evidence']})))
+
+
+def distinct_findings(ledger):
+    """Present old duplicate checkpoints once without rewriting their history."""
+    seen, findings = set(), []
+    for finding in ledger['findings']:
+        identity = finding_identity(finding)
+        if identity not in seen:
+            seen.add(identity)
+            findings.append(finding)
+    return findings
+
+
+def render_legacy(legacy):
+    """The displayed copy of an earlier report, nested under its archive heading."""
+    return re.sub(r'^(#{1,4})\s', lambda m: '#' * (len(m.group(1)) + 2) + ' ', legacy, flags=re.M)
+
+
+def legacy_edit(legacy, find, replace, index):
+    """Accept one exact source edit or a uniquely proven edit from its display.
+
+    The runner adds two heading levels when displaying earlier findings. A
+    worker may copy that display while preparing a deletion or plain-text
+    replacement. Require exact correspondence in both representations; no
+    whitespace, wording or source ambiguity is repaired here.
+    """
+    count = legacy.count(find)
+    if count == 1:
+        return legacy.replace(find, replace, 1), False
+    if count == 0 and not re.search(r'^#{1,6}\s', replace, flags=re.M):
+        original = re.sub(r'^(#{3,6})(?=\s)', lambda m: m.group(1)[2:], find, flags=re.M)
+        displayed = render_legacy(legacy)
+        if original != find and legacy.count(original) == 1 and displayed.count(find) == 1:
+            updated = legacy.replace(original, replace, 1)
+            if render_legacy(updated) == displayed.replace(find, replace, 1):
+                return updated, True
+    raise LedgerError(f'legacy edit {index}: the exact text to replace must occur once (found {count}); '
+                      'use the original narrative for heading changes')
+
+
 def merge_step(ledger, group, result, source_bytes, step_id, allow_empty=False, line_range=None):
     """Verify one step result for `group` (document paths) and merge it.
 
@@ -202,6 +251,7 @@ def merge_step(ledger, group, result, source_bytes, step_id, allow_empty=False, 
     if not isinstance(edits, list) or len(edits) > MAX_LEGACY_EDITS:
         raise LedgerError(f'legacyEdits must be a list of at most {MAX_LEGACY_EDITS}')
     legacy = ledger.get('legacy')
+    rendered_edits = []
     for index, edit in enumerate(edits):
         if not isinstance(edit, dict):
             raise LedgerError(f'legacy edit {index + 1} must be an object')
@@ -209,14 +259,16 @@ def merge_step(ledger, group, result, source_bytes, step_id, allow_empty=False, 
         replace = (edit or {}).get('replace')
         if not isinstance(replace, str) or len(replace) > 4000:
             raise LedgerError(f'legacy edit {index + 1}: replace must be text of at most 4000 characters')
-        if legacy.count(find) != 1:
-            raise LedgerError(f'legacy edit {index + 1}: the exact text to replace must occur once (found {legacy.count(find)})')
-        legacy = legacy.replace(find, replace, 1)
+        legacy, rendered = legacy_edit(legacy, find, replace, index + 1)
+        if rendered:
+            rendered_edits.append(index + 1)
 
     for path, update in updates.items():
         row = ledger['documents'][path]
         seen = {(ref['path'], ref['line'], ref['check']) for ref in row['evidence']}
         added = [ref for ref in update['evidence'] if (ref['path'], ref['line'], ref['check']) not in seen]
+        anchors = {(ref['path'], ref['sha256'], ref['line']) for ref in row['evidence']}
+        new_source = any((ref['path'], ref['sha256'], ref['line']) not in anchors for ref in added)
         row['evidence'] = (row['evidence'] + added)[-MAX_DOC_EVIDENCE:]
         if update['note']:
             row['note'] = update['note']
@@ -224,22 +276,34 @@ def merge_step(ledger, group, result, source_bytes, step_id, allow_empty=False, 
         if line_range and state == 'reviewed':
             start, end, last = line_range
             row.setdefault('ranges', []).append([start, end])
+            row['partialRounds'] = 0
             state = 'reviewed' if last else 'partial'
         elif line_range and state == 'partial':
             row['partialRounds'] = row.get('partialRounds', 0) + 1
         elif state == 'partial':
             # A document still partial after a step with nothing new counts
             # toward its limit, so it cannot be planned forever.
-            row['partialRounds'] = row.get('partialRounds', 0) + (0 if added else 1)
+            row['partialRounds'] = row.get('partialRounds', 0) + (0 if new_source else 1)
         row['state'] = state
     for path in group:
         ledger['documents'][path]['attempts'] = 0
     base = 1 + max([0] + [int(m) for m in re.findall(r'\bF(\d+)\b', ledger.get('legacy') or '')]
                    + [finding['number'] for finding in ledger['findings']])
-    for offset, finding in enumerate(accepted):
-        ledger['findings'].append({**finding, 'number': base + offset})
+    seen = {finding_identity(finding) for finding in ledger['findings']}
+    added_findings = 0
+    for finding in accepted:
+        identity = finding_identity(finding)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        ledger['findings'].append({**finding, 'number': base + added_findings})
+        added_findings += 1
     ledger['legacy'] = legacy
-    receipt = {'step': step_id, 'documents': sorted(updates), 'findings': len(accepted), 'legacyEdits': len(edits)}
+    receipt = {'step': step_id, 'documents': sorted(updates), 'findings': added_findings, 'legacyEdits': len(edits)}
+    if added_findings != len(accepted):
+        receipt['duplicateFindings'] = len(accepted) - added_findings
+    if rendered_edits:
+        receipt['renderedLegacyEdits'] = rendered_edits
     ledger['steps'].append({**receipt, 'result': 'merged'})
     return receipt
 
@@ -275,16 +339,44 @@ def legacy_review_required(ledger, notes, *, review_evidence=False):
                         for edit in review.get('evidenceCorrections', [])))
 
 
+def _document_units(row):
+    return sorted({json.dumps(['source', ref['path'], ref['sha256'], ref['line']])
+                   for ref in row.get('evidence', [])}
+                  | {json.dumps(['range', *span]) for span in row.get('ranges', [])}
+                  | ({'reviewed'} if row['state'] == 'reviewed' else set()))
+
+
 def continuation_retries(ledger, request_id, parent_request_id):
     """Give an explicitly authorized new execution its bounded local attempts.
 
     Native/Core authority is checked before the restored ledger reaches here.
     Preserve every failed step and reviewed range; this grants no model calls.
     """
-    if not parent_request_id or request_id == parent_request_id or ledger.get('continuationRequestId') == request_id:
+    baseline = ledger.get('executionBaseline') or {}
+    if (request_id == parent_request_id or ledger.get('continuationRequestId') == request_id
+            or (not parent_request_id and baseline.get('requestId') == request_id)):
+        return
+    # Only attempted documents count as stalled. Untouched pending work cannot
+    # exhaust its retries while another document consumes an execution.
+    touched = {path for step in ledger['steps'][baseline.get('stepOffset', len(ledger['steps'])):]
+               if step.get('result') in ('merged', 'failed') and step.get('kind') != 'legacy'
+               for path in step.get('documents', [])}
+    for path, row in ledger['documents'].items():
+        previous = baseline.get('documents', {}).get(path)
+        if previous is not None and path in touched and row['state'] != 'reviewed':
+            advanced = bool(set(_document_units(row)) - set(previous))
+            row['stalledExecutions'] = 0 if advanced else row.get('stalledExecutions', 0) + 1
+            if row['stalledExecutions'] >= 2:
+                row.update(state='blocked', retryExhausted=True,
+                           note='Two attempted executions added no verified source coverage. Split or review this obligation before a new task.')
+    ledger['executionBaseline'] = {'requestId': request_id, 'stepOffset': len(ledger['steps']),
+                                  'documents': {path: _document_units(row) for path, row in ledger['documents'].items()}}
+    if not parent_request_id or ledger.get('continuationRequestId') == request_id:
         return
     resets = []
     for path, row in ledger['documents'].items():
+        if row.get('retryExhausted'):
+            continue
         if row['state'] not in ('blocked', 'partial', 'pending') or not (row.get('attempts') or row.get('partialRounds')):
             continue
         resets.append({'path': path, **{key: row.get(key) for key in ('state', 'attempts', 'partialRounds', 'note')}})
@@ -417,7 +509,8 @@ def coverage(ledger):
     """coverage.json in the shape Core's report contract validates."""
     tally = counts(ledger)
     return {'inventorySha256': ledger['inventorySha256'],
-            'documents': [{'path': path, 'sha256': row['sha256'], 'state': row['state'], 'evidence': row['evidence']}
+            'documents': [{'path': path, 'sha256': row['sha256'], 'state': row['state'], 'evidence': row['evidence'],
+                           'ranges': sorted(row.get('ranges', []))}
                           for path, row in sorted(ledger['documents'].items())],
             'declaredComplete': tally['reviewed'] == len(ledger['documents']) and not ledger.get('legacyReviewPending'),
             'acceptance': 'independent_review_required'}
@@ -431,7 +524,7 @@ def render(ledger, title, next_groups=()):
     """The Markdown report, generated entirely from the ledger."""
     tally = counts(ledger)
     total = len(ledger['documents'])
-    findings = ledger['findings']
+    findings = distinct_findings(ledger)
     out = [f'# {title}', '',
            f'Source snapshot `{ledger["sourceCommit"]}` · {total} documents in the frozen inventory. '
            'Structure, tables and totals are generated by the AgentX runner from a verified ledger; every cited '
@@ -462,7 +555,7 @@ def render(ledger, title, next_groups=()):
     if ledger.get('legacy'):
         out += ['## Findings from earlier executions (preserved)', '',
                 'Kept verbatim from earlier runs, with only the corrections recorded in the ledger applied.', '',
-                re.sub(r'^(#{1,4})\s', lambda m: '#' * min(6, len(m.group(1)) + 2) + ' ', ledger['legacy'], flags=re.M), '']
+                render_legacy(ledger['legacy']), '']
     out += ['## Coverage', '', '| Document | State | Evidence checked |', '|---|---|---|']
     for path, row in sorted(ledger['documents'].items()):
         checks = '; '.join(f'`{ref["path"]}:{ref["line"]}` {ref["check"]}' for ref in row['evidence'][:4])

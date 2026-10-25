@@ -73,3 +73,5 @@ async function summary({ now = new Date() } = {}) {
 }
 
 module.exports = { summary, clean, shortLabel, seriesLabel };
+
+require('./financeAccess').guard(module.exports, ['summary']);

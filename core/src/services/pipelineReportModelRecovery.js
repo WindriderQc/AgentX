@@ -102,6 +102,7 @@ async function receive(value, row, bindings) {
 async function reconcile(value) {
   for (const row of value.modelReceipts) {
     if (row.state !== 'unknown' || row.settlement) continue;
+    if (await require('./pipelineReportCloudRecovery').receiveTerminalFailure(value, row, control)) continue;
     const bindings = await Binding.find(scope(value, row)).lean();
     if (!bindings.length) continue; // Legacy calls require explicit operator mapping.
     const current = await Run.findById(value._id).lean();
@@ -128,7 +129,7 @@ async function observe() {
     // Capture native owner recovery before its bounded recent-receipt journal
     // rotates. This settles custody only; it never launches a worker or model.
     const values = await Run.find({ state: 'active', modelReceipts: { $elemMatch: { state: 'unknown' } } })
-      .select('pipelineId taskId claimSeq specSha256 sourceCommit host model revision modelReceipts').limit(32).lean();
+      .select('pipelineId taskId claimSeq specSha256 sourceCommit host model revision modelReceipts escalationFailures state finalKind').limit(32).lean();
     for (const value of values) await reconcile(value);
   } finally { observing = false; }
 }
@@ -188,4 +189,4 @@ async function mapLegacy(id, key, body) {
   await receive(value, row, [binding]);
   return { recovered: true, terminationOnly: true };
 }
-module.exports = { configureControl, bind, reconcile, observe, mapLegacy, digest };
+module.exports = { configureControl, bind, reconcile, observe, mapLegacy, digest, nativeStatus: input => control?.status(input) };

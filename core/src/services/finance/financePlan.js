@@ -344,3 +344,5 @@ async function situation({ months } = {}) {
 }
 
 module.exports = { getPlan, savePlan, saveSection, applyOps, situation, cleanPlan, FinancePlanError, SECTIONS };
+
+require('./financeAccess').guard(module.exports, ['getPlan', 'savePlan', 'saveSection', 'applyOps', 'situation']);

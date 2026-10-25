@@ -10,6 +10,7 @@ const { setTimeout: delay } = require('node:timers/promises');
 const {
   applyRoutingHeaders,
   pipeRuntimeStream,
+  publicError,
   requestAbort,
   sendRuntimeError,
   uniqueEffectiveModels
@@ -25,6 +26,11 @@ const HARNESS_VERSION = '1.2.0';
 function approvedModels(snapshot) {
   const models = new Set(uniqueEffectiveModels(snapshot).map((task) => task.model));
   if (snapshot.tasks?.daily_operator?.model) models.add(PRINCIPAL_MODEL_ALIAS);
+  // A role-routed principal may resolve to the pooled pin (#360).
+  if (snapshot.principalTopology?.model) {
+    models.add(PRINCIPAL_MODEL_ALIAS);
+    models.add(snapshot.principalTopology.model);
+  }
   const authority = String(process.env.HERMES_AUTHORITY_MODEL || '').trim();
   if (authority) models.add(authority);
   return [...models];
@@ -257,8 +263,10 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
           remainingNanodollars: escalation.remainingNanodollars, signal: coding.options.signal,
           timeoutMs: Math.max(1, coding.options.reportDeadlineAt - Date.now()) });
       } catch (error) {
-        await settleCoding('refused');
-        return res.status(error.statusCode || 502).json({ error: { message: error.message, type: 'upstream_error', code: error.code } });
+        const state = error.executionState;
+        await settleCoding(state === 'not-dispatched' ? 'refused' : state === 'completed' ? 'completed' : 'unknown');
+        return res.status(error.statusCode || 502).json({ error: { message: error.message, type: 'upstream_error', code: error.code,
+          executionState: state || 'unknown', attempts: error.attempts || [], ...(error.model && { model: error.model }) } });
       }
       await settleCoding('completed');
       res.set('X-AgentX-Resolved-Model-Version', answered.model);
@@ -269,6 +277,7 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
       consumerContract: client.consumerContract,
       observePromptPrefix: true,
       ...(principalTarget && { hostUrl: principalTarget.hostUrl }),
+      ...(principalTarget?.topology && { topology: principalTarget.topology }),
       ...(coding?.options || {})
     };
     const execute = () => runtimeServices.inference.execute({
@@ -285,6 +294,7 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
       max_completion_tokens: body.max_completion_tokens,
       response_format: body.response_format,
       reasoning_effort: body.reasoning_effort,
+      ...(body.reasoning_effort === 'none' && { think: false }),
       stop: body.stop,
       seed: body.seed,
       presence_penalty: body.presence_penalty,
@@ -368,10 +378,12 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
       res.set('x-agentx-inference-outcome', 'host-busy');
       return res.status(409).json({ error: { message: busyMessage(error), type: 'host_busy', code: error.code } });
     }
-    const safeStatus = Number(error?.statusCode || 500);
+    const safe = publicError(error);
+    const safeStatus = safe.status;
     if (!res.headersSent && safeStatus < 500) {
       return res.status(safeStatus).json({
-        error: { message: error.message, type: 'invalid_request_error', code: error.code || undefined }
+        error: { message: safe.message, type: 'invalid_request_error', code: error.code || undefined,
+          ...(safe.data && { data: safe.data }) }
       });
     }
     return sendRuntimeError(res, error, logger, `${client.label} inference`);

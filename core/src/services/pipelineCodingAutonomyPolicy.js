@@ -23,6 +23,7 @@ function limits(raw = {}) {
 function assertTask(task) {
   if (!task || task.service !== 'agentx-coding' || !workerScope.contains(task) || task.profileId || task.origin === 'family')
     throw fail('Only explicitly routed engineering tasks can be authorized', 'CODING_AUTONOMY_PRIVATE');
+  require('./taskIntakePolicy').assertAccepted(task);
   const automation = normalizePipelineAutomationIntent(task.automation);
   if (automation.mode !== 'review_only' || task.risk !== 'low' || !['public', 'internal'].includes(automation.dataClassification))
     throw fail('A reviewed low-risk public/internal automation scope is required', 'CODING_AUTONOMY_SCOPE');

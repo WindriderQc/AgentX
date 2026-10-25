@@ -393,6 +393,32 @@ async function startServer() {
     console.log(`   ⚠ Ollama Enrichment: ${err.message}`);
   }
 
+  // Runtime topology (#360): every process observes which endpoints are parked
+  // (an inactive mode's hosts raise no alert); one process recovers switches
+  // whose driver stopped.
+  try {
+    if (process.env.AGENTX_RUNTIME_TOPOLOGY_JSON) {
+      require('./src/services/runtimeTopologyParking').defaultParking.start();
+      let topologyRecoveryTimer = null;
+      await startCoreSingletonDaemon({
+        name: 'runtime-topology-switch-recovery',
+        label: 'Topology switch recovery',
+        start: async () => {
+          const { getTopologySwitchService } = require('./src/services/runtimeTopologySwitchService');
+          const tick = () => getTopologySwitchService().recoverInterrupted()
+            .catch(err => console.warn('Topology switch recovery failed:', err.message));
+          tick();
+          topologyRecoveryTimer = setInterval(tick, 60_000);
+          topologyRecoveryTimer.unref?.();
+          console.log('   ✓ Topology switch recovery: Active');
+        },
+        stop: async () => { if (topologyRecoveryTimer) clearInterval(topologyRecoveryTimer); topologyRecoveryTimer = null; }
+      });
+    }
+  } catch (err) {
+    console.log(`   ⚠ Runtime topology: ${err.message}`);
+  }
+
   // Start Ollama Watchdog (inference jam detection + auto-recovery)
   try {
     const ollamaWatchdog = require('./src/services/ollamaWatchdogService');

@@ -31,6 +31,12 @@ it('shows the remaining work, the When choice and the safety budget, with no num
   expect(html).not.toMatch(/name="(reportCalls|reportWorkSeconds|reportCampaign|reportRuns)"/);
 });
 
+it('does not preselect chaining for a new attempt, while preserving a reserved agreement on replan', () => {
+  expect(ui.render(view())).not.toContain('name="autoContinue" checked');
+  expect(ui.render(view({ campaign: { state: 'reserved' }, resume: { autoContinue: true } })))
+    .toContain('name="autoContinue" checked');
+});
+
 it('says where a planned, running or stopped resume stands', () => {
   const planned = ui.render(view({ resume: { state: 'planned' }, campaign: { state: 'reserved', reservation: { start: '2026-10-20T03:00:00Z', end: '2026-10-20T04:47:00Z' } } }));
   expect(planned).toContain('starts automatically');
@@ -43,4 +49,20 @@ it('says where a planned, running or stopped resume stands', () => {
   expect(stalled).toContain('name="when"');
   const neverStarted = ui.stateText({ resume: { state: 'stopped' }, campaign: { state: 'failed', releaseReceipt: { receiptRef: 'core:not-started: x' } } });
   expect(neverStarted).toContain('The worker never started');
+});
+
+it('binds the retry button to the exact unstarted campaign and explains its refusal', () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const html = ui.render(view({ retryCampaignId: id, resume: { state: 'planned' },
+    campaign: { state: 'failed', releaseReceipt: { receiptRef: 'core:not-started: Checkpoint storage is full' } } }));
+  expect(html).toContain(`data-retry-campaign-id="${id}"`);
+  expect(html).toContain('Checkpoint storage is full');
+});
+
+it('shows the native execution ceiling when earlier task credit exceeds the added grant', () => {
+  const html = ui.render(view({ perExecutionModelCalls: 256,
+    budget: { modelCalls: 128, executions: 1, minutes: 65 } }));
+  expect(html).toContain('Up to <strong>256</strong> model calls in <strong>1</strong> execution');
+  expect(html).toContain('The remaining task budget also applies');
+  expect(html).not.toContain('Up to <strong>128</strong>');
 });

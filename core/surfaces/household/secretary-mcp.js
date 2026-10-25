@@ -4,6 +4,8 @@
 const { ACTION_CATEGORIES, EmailActionError, addEmailAction } = require('./email-action');
 const { dayLabel } = require('../../src/services/personalBriefing');
 const { familyTimeZone } = require('../../src/domains/household/family');
+const { repeatSchema } = require('../../src/services/personalRepeat');
+const { CALENDAR_TOOL } = require('../../src/services/personalCalendarTool');
 
 const SECRETARY_MCP_META = Object.freeze({
   'agentx/owner': 'agentx-household',
@@ -16,6 +18,7 @@ function objectSchema(properties, required = []) {
 }
 
 const SECRETARY_TOOLS = Object.freeze([
+  Object.freeze({ ...CALENDAR_TOOL, _meta: SECRETARY_MCP_META }),
   Object.freeze({
     name: 'get_sound',
     title: 'Get Animal Sound Recording',
@@ -30,6 +33,8 @@ const SECRETARY_TOOLS = Object.freeze([
     description: 'Add one real-life action explicitly requested by Dad. Mail-derived actions are proposals awaiting human review, never confirmed commitments; relay needsReview honestly. Identify who actually must act, distinguish the latest message from quoted history, check replies and existing tasks. Another person\'s request or statement does not establish Dad\'s agreement; missing resolution is not evidence an action is still open. Use a short neutral verb and object in the title, with attribution and source details in note. Never invent a deadline. CI, deployments, security notifications and platform work belong in Pipeline; your own reading and analysis stay in the evidence dossier. Skip past activities and duplicates. Use add_idea for uncertain suggestions.',
     inputSchema: objectSchema({
       title: { type: 'string', minLength: 1, maxLength: 200 },
+      requestId: { type: 'string', format: 'uuid', description: 'Generate one UUID for this capture and retain it across retries to prevent duplicates.' },
+      repeat: { ...repeatSchema, description: 'Optional repeating task. Completing the current occurrence advances dueAt; it does not schedule a notification. Use personal_calendar for actual reminders.' },
       note: { type: 'string', maxLength: 2000 },
       dueAt: { type: 'string', maxLength: 40, description: 'When Dad must act. ISO date (YYYY-MM-DD) or full ISO datetime. A date means the whole household day, due at its end (23:59:59.999 local); a full datetime keeps its exact instant.' },
       relevantUntil: { type: 'string', maxLength: 40, description: 'Date of the activity or event the task serves (e.g. the camp day for its form or lunch). The task becomes pointless once that day begins. Distinct from dueAt: do not use it as a deadline. Omit when the task stays useful regardless of any event.' },
@@ -102,6 +107,7 @@ const SECRETARY_TOOLS = Object.freeze([
     description: 'Change the due date, priority or activity date (relevantUntil) of one open personal task by numeric id. Pass null to clear a date. Use it when Dad says a late task still matters until a given day.',
     inputSchema: objectSchema({
       ref: { type: 'string', pattern: '^[0-9]{1,4}$' },
+      repeat: { anyOf: [repeatSchema, { type: 'null' }], description: 'Change repetition; null stops repetition.' },
       dueAt: { type: ['string', 'null'], maxLength: 40, description: 'ISO date (whole household day, due at its end) or full ISO datetime (exact instant); null clears it.' },
       priority: { type: 'integer', minimum: 1, maximum: 5 },
       relevantUntil: { type: ['string', 'null'], maxLength: 40, description: 'Date the task stops serving its activity; null clears it. Not a deadline.' }
@@ -171,9 +177,11 @@ const SECRETARY_TOOLS = Object.freeze([
   Object.freeze({
     name: 'complete_personal_task',
     title: 'Complete Personal Task',
-    description: 'Mark exactly one personal task done by numeric id or distinctive title phrase. Ambiguous phrases fail with candidates instead of guessing.',
+    description: 'Complete one personal task by id or distinctive title. For a repeating task first read its current dueAt and pass that exact value as expectedDueAt; completion advances its next occurrence. Retain expectedDueAt across retries. Ambiguous phrases fail with candidates.',
     inputSchema: objectSchema({
       ref: { type: 'string', minLength: 1, maxLength: 200 },
+      expectedDueAt: { type: 'string', maxLength: 40 },
+      stopRepeat: { type: 'boolean', description: 'Only when the owner explicitly asks to close the entire repeating task, rather than complete one occurrence.' },
       note: { type: 'string', maxLength: 2000 },
       by: { type: 'string', maxLength: 120 }
     }, ['ref']),
@@ -263,6 +271,7 @@ function plainArguments(value) {
 async function callSecretaryTool(name, args, deps) {
   try {
     const input = plainArguments(args || {});
+    if (name === 'personal_calendar') return textResult(await (deps.calendar || require('../../src/services/personalCalendarService')).operate(input));
     if (name === 'get_sound') {
       if (typeof input.query !== 'string' || !input.query.trim() || input.query.length > 500) {
         throw Object.assign(new Error('query must contain 1-500 characters'), { code: 'INVALID_ARGUMENTS' });

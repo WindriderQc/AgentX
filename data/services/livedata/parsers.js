@@ -7,6 +7,8 @@
  * { feed, location?, topic? }.
  */
 
+const { parseTleText } = require('./tleText');
+
 const asNumber = (v) => { const n = Number(v); return Number.isFinite(n) ? n : v; };
 
 // ── seeded feeds ─────────────────────────────────────────────────
@@ -53,19 +55,10 @@ async function openMeteoPressure(res, ctx = {}) {
 // { name, noradId, tle1, tle2 }. Sub-satellite lat/lon is propagated in-browser
 // (satellite.js) in the UI — server stores the raw elements.
 async function celestrakTle(res) {
-  const text = await res.text();
-  const lines = text.split(/\r?\n/).map(l => l.replace(/\s+$/, '')).filter(Boolean);
-  const out = [];
-  for (let i = 0; i + 2 < lines.length + 1; i += 3) {
-    const name = lines[i];
-    const l1 = lines[i + 1];
-    const l2 = lines[i + 2];
-    if (!l1 || !l2 || !l1.startsWith('1 ') || !l2.startsWith('2 ')) continue;
-    const noradId = l1.slice(2, 7).trim();
-    out.push({ ts: new Date(), payload: { name: (name || '').trim(), noradId, tle1: l1, tle2: l2 } });
-  }
-  return out;
+  const now = new Date();
+  return parseTleText(await res.text()).map(payload => ({ ts: now, payload }));
 }
+
 
 // Open-Meteo air quality (keyless) — one location's `current` block → one point.
 async function openMeteoAqi(res, ctx = {}) {

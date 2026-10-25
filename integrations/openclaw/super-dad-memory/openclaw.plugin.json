@@ -27,10 +27,15 @@
       "conversation_work",
       "mail_recall",
       "nestor_photos",
+      "nestor_read_presentation",
+      "nestor_iss",
       "nestor_janitor_report"
     ]
   },
   "toolMetadata": {
+    "nestor_read_presentation": {
+      "optional": true
+    },
     "personal_memory": {
       "optional": true
     },
@@ -77,6 +82,9 @@
       "optional": true
     },
     "nestor_photos": {
+      "optional": true
+    },
+    "nestor_iss": {
       "optional": true
     },
     "nestor_janitor_report": {

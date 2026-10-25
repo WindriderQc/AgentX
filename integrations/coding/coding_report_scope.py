@@ -58,6 +58,16 @@ def read(read_bytes, workspace, root, snapshot):
             raise ValueError('Coverage needs an explicit document state and evidence list')
         if row['state'] == 'reviewed' and not row['evidence']:
             raise ValueError('Reviewed documents require source evidence')
+        ranges = row.get('ranges', [])
+        lines = len(source_bytes(workspace, snapshot['sourceCommit'], row['path']).splitlines()) if ranges else 0
+        if not isinstance(ranges, list) or len(ranges) > 2000:
+            raise ValueError('Reviewed ranges must be bounded')
+        end = 0
+        for span in ranges:
+            if (not isinstance(span, list) or len(span) != 2 or any(type(n) is not int for n in span)
+                    or not end < span[0] <= span[1] <= lines):
+                raise ValueError('Reviewed ranges must belong to the frozen document and not overlap')
+            end = span[1]
         for ref in row['evidence']:
             if not isinstance(ref, dict) or not isinstance(ref.get('path'), str):
                 raise ValueError('Coverage references need exact source paths')

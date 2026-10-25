@@ -16,6 +16,7 @@ afterEach(() => jest.restoreAllMocks());
 
 async function create(input = {}) {
   const response = await harness.request.post('/api/pipeline/tasks').send({ title: 'Transition task', spec: '', ...input }).expect(201);
+  await require('../helpers/acceptedEngineeringTask')(response.body.data.task.pipelineId);
   return response.body.data.task.pipelineId;
 }
 async function read(id) { return (await harness.request.get(`/api/pipeline/tasks/${id}`).expect(200)).body.data.task; }

@@ -20,8 +20,8 @@ let observations;
 const app = express().use(express.json()).use('/api/pipeline', require('../../routes/pipeline-feedback'));
 function intent() {
   return normalizePipelineAutomationIntent({ schema: 'agentx.pipeline-automation/v1', mode: 'review_only',
-    policyRef: 'reviewed/v1', dataClassification: 'public', operations: ['update'], scope: ['source.js'],
-    lockKeys: ['file:source.js'], executionProfile: 'coding-sandbox/v1', verificationProfile: 'agentx-dispatcher-tests/v1',
+    policyRef: 'reviewed/v1', dataClassification: 'public', operations: ['update'], scope: ['integrations/coding/source.py'],
+    lockKeys: ['file:integrations/coding/source.py'], executionProfile: 'coding-sandbox/v1', verificationProfile: 'agentx-dispatcher-tests/v1',
     budgets: { maxDurationMs: 14400000, maxAttempts: 3, maxCostNanodollars: 0 }, humanGates: ['review', 'merge', 'deploy'] });
 }
 async function task(id = '0001', extra = {}) {
@@ -29,7 +29,9 @@ async function task(id = '0001', extra = {}) {
     service: 'agentx-coding', status: 'queued', risk: 'low', assignee: null, automation: intent(), ...extra });
 }
 async function authorize(id = '0001', limits) {
-  return service.authorize(id, { authorized: true, confirm: true, expectedRevision: 0, queueRequestId: QUEUE, limits });
+  return service.authorize(id, { authorized: true, confirm: true, expectedRevision: 0, queueRequestId: QUEUE, limits,
+    qualification: { acceptanceCriteria: ['The fixture behavior passes independent checks.'], requiredCapabilities: ['source_read', 'source_write', 'cpu_tests'],
+      estimate: { modelCalls: 1, workSeconds: 10 } } });
 }
 async function enable() { const state = await service.settings(); return service.configure({ enabled: true, confirm: true, expectedRevision: state.revision }); }
 async function selected() { return (await service.status()).active; }
@@ -60,7 +62,7 @@ async function complete(active, head = HEAD, usage = { workSeconds: 10, testSeco
 beforeEach(async () => {
   await Promise.all([Task.deleteMany({}), Settings.deleteMany({}), Slots.deleteMany({})]);
   receipts = new Map(); observations = new Map();
-  queue.get.mockResolvedValue({ state: 'dispatching', executor: { mode: 'operator' }, source: { type: 'coding', ref: 'synthetic-session' },
+  queue.get.mockResolvedValue({ state: 'dispatching', dispatchId: QUEUE, dispatchedAt: new Date(Date.now() - 5000).toISOString(), executor: { mode: 'operator' }, source: { type: 'coding', ref: 'synthetic-session' },
     hosts: ['http://127.0.0.1:9'], reservation: { start: new Date(Date.now() - 10000).toISOString(), end: new Date(Date.now() + 600000).toISOString() } });
   control = {
     status: jest.fn(async ({ requestId }) => ({ busy: false, run: receipts.get(requestId) || { requestId, phase: 'not_received' } })),
@@ -758,4 +760,18 @@ test.each(['tests_failed', 'hard_budget', 'operator_stop'])('only exact native u
     expect(after.codingAutonomy.runs[1].parentRequestId).toBe(active.requestId);
     expect(after.codingAutonomy.correction).toEqual({ kind: 'local_tests', head: HEAD, text: 'Original reviewed guidance', by: 'operator' });
   } else expect(after.codingAutonomy.runs).toHaveLength(1);
+});
+
+
+test('campaign retains a timely dispatch after its start deadline, while enforcing end and host', async () => {
+  const value = { codingAutonomy: { queueRequestId: QUEUE } };
+  const base = await queue.get(QUEUE);
+  base.startBefore = new Date(Date.now() - 1000).toISOString();
+  queue.get.mockResolvedValue(base);
+  await expect(service.campaign(value, base.hosts[0])).resolves.toMatchObject({ dispatchId: QUEUE });
+  await expect(service.campaign(value, 'http://outside:11434')).rejects.toMatchObject({ code: 'CODING_AUTONOMY_QUEUE_WAIT' });
+  queue.get.mockResolvedValue({ ...base, dispatchedAt: base.startBefore });
+  await expect(service.campaign(value)).rejects.toMatchObject({ code: 'CODING_AUTONOMY_QUEUE_WAIT' });
+  queue.get.mockResolvedValue({ ...base, reservation: { ...base.reservation, end: base.startBefore } });
+  await expect(service.campaign(value)).rejects.toMatchObject({ code: 'CODING_AUTONOMY_QUEUE_WAIT' });
 });

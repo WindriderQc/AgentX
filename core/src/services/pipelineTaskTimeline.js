@@ -21,6 +21,7 @@ function taskTimeline(task) {
     }
   }
   if (task.resolution?.kind === 'superseded') add(task.resolution.at, 'superseded', 'Closed by supersession');
+  for (const decision of task.intake?.history || []) add(decision.at, 'intake_decision', `Intake decision: ${decision.to}`);
   if (task.updatedAt && String(task.updatedAt) !== String(task.createdAt)) add(task.updatedAt, 'updated', 'Task record updated');
   // Recorded status transitions only; a task without a log gets none.
   events.push(...transitionTimelineEvents(task));
@@ -28,9 +29,11 @@ function taskTimeline(task) {
 }
 
 function taskSummaryWithTimeline(task, options) {
-  const { automationAttempts, transitions, feedback, ...summary } = task;
+  const { automationAttempts, transitions, feedback, spec, profileId, origin, workLinks, ...summary } = task;
   return {
     ...summary,
+    workView: require('./pipelineWorkReferencePolicy').view(task, { summary: true }),
+    intakeView: require('./taskIntakePolicy').view(task),
     timeline: taskTimeline(task),
     transitionLog: transitionLog(task),
     nextAction: taskNextAction(task, options),

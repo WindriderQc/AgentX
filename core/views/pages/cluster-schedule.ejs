@@ -43,29 +43,43 @@
             <div id="servicesGrid" class="cs-services-grid"></div>
         </div>
 
-        <!-- Two-Column Layout: Main + Sidebar -->
+        <!-- Alerts first, across the full width: they are what needs a decision. -->
+        <section class="cs-attention-strip" aria-labelledby="attentionTitle">
+            <h3 id="attentionTitle" class="cs-attention-title"><i class="fas fa-bell" aria-hidden="true"></i> À surveiller</h3>
+            <div id="attentionList" class="cs-attention-list" aria-live="polite"></div>
+        </section>
+
+        <!-- Two-Column Layout: calendar + one tabbed rail -->
         <div class="cs-two-col">
 
             <!-- Main Column -->
             <div class="cs-main">
 
-                <div class="cs-catalogue-filters" aria-label="Filtrer le calendrier">
-                    <label class="oj-search"><i class="fas fa-search" aria-hidden="true"></i><span class="oj-sr-only">Rechercher un job, un agent ou un hôte</span><input id="scheduleSearch" type="search" placeholder="Job, agent, hôte…" autocomplete="off"></label>
-                    <label class="oj-filter"><span class="oj-sr-only">Propriétaire du job</span><select id="scheduleOwner"><option value="all">Tous les propriétaires</option><option value="operations">AgentX</option><option value="openclaw">OpenClaw</option><option value="core">Core</option><option value="infrastructure">Hôtes</option></select></label>
-                </div>
-                <!-- Timeline Filters -->
-                <div id="timelineFilters" class="cs-timeline-filters" style="display:none">
-                    <label class="cs-filter-label">
-                        <input id="highFreqFilter" type="checkbox"> Inclure les jobs légers fréquents
-                    </label>
-                    <label class="cs-filter-label">
-                        <input id="noGpuFilter" type="checkbox" checked> Inclure les tâches sans GPU
-                    </label>
+                <div class="cs-toolbar">
+                    <div class="cs-catalogue-filters" aria-label="Filtrer le calendrier">
+                        <label class="oj-search"><i class="fas fa-search" aria-hidden="true"></i><span class="oj-sr-only">Rechercher un job, un agent ou un hôte</span><input id="scheduleSearch" type="search" placeholder="Job, agent, hôte…" autocomplete="off"></label>
+                        <label class="oj-filter"><span class="oj-sr-only">Propriétaire du job</span><select id="scheduleOwner"><option value="all">Tous les propriétaires</option><option value="operations">AgentX</option><option value="openclaw">OpenClaw</option><option value="core">Core</option><option value="infrastructure">Hôtes</option></select></label>
+                    </div>
+                    <!-- Timeline Filters -->
+                    <div id="timelineFilters" class="cs-timeline-filters" style="display:none">
+                        <label class="cs-filter-label">
+                            <input id="highFreqFilter" type="checkbox"> Inclure les jobs légers fréquents
+                        </label>
+                        <label class="cs-filter-label">
+                            <input id="noGpuFilter" type="checkbox" checked> Inclure les tâches sans GPU
+                        </label>
+                    </div>
                 </div>
 
                 <!-- Heatmap / Timeline -->
                 <div id="heatmapContainer" class="cs-heatmap-container">
                     <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Chargement du calendrier…</div>
+                </div>
+
+                <!-- The legend explains the calendar, so it sits right under it. -->
+                <div class="cs-legend-row">
+                    <span class="cs-legend-row-title"><i class="fas fa-palette" aria-hidden="true"></i> Légende</span>
+                    <div id="legend" class="cs-legend"></div>
                 </div>
 
 <p class="cs-plan-note">Les marqueurs courts indiquent un départ prévu. Les durées sont estimées ; la consommation observée est dans « Utilisation mesurée ».</p>
@@ -107,83 +121,64 @@
                 </details>
             </div>
 
-            <!-- Sidebar -->
-            <div class="cs-sidebar">
-
-                <!-- Conflict Banner -->
-                <div id="conflictBanner" class="cs-conflict-banner hidden">
-                    <div class="cs-conflict-header"><i class="fas fa-exclamation-triangle"></i> VRAM overflows</div>
-                    <div id="conflictText" class="cs-conflict-text"></div>
+            <!-- One rail, three tabs, one scroll area. It follows the calendar while scrolling. -->
+            <aside class="cs-sidebar cs-rail" aria-label="File et départs">
+                <div class="cs-rail-tabs" role="tablist" aria-label="Vues de la colonne">
+                    <button type="button" role="tab" id="railTabQueue" class="cs-rail-tab" aria-selected="true" aria-controls="railQueue" data-rail-tab="queue">
+                        Travaux lourds <span class="cs-rail-count" data-rail-count="queue"></span>
+                    </button>
+                    <button type="button" role="tab" id="railTabNext" class="cs-rail-tab" aria-selected="false" aria-controls="railNext" data-rail-tab="next" tabindex="-1">
+                        Départs <span class="cs-rail-count" data-rail-count="next"></span>
+                    </button>
+                    <button type="button" role="tab" id="railTabClaims" class="cs-rail-tab" aria-selected="false" aria-controls="railClaims" data-rail-tab="claims" tabindex="-1">
+                        Réservations <span class="cs-rail-count" data-rail-count="claims"></span>
+                    </button>
                 </div>
 
-                <div class="cs-panel">
-                    <div class="cs-panel-header">
-                        <h3><i class="fas fa-list-check"></i> Travaux lourds</h3>
-                    </div>
+                <div id="railQueue" class="cs-rail-panel" role="tabpanel" aria-labelledby="railTabQueue">
                     <div id="heavyQueueList" class="cs-next-list" aria-live="polite">
                         <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Chargement de la file…</div>
                     </div>
                     <p id="heavyQueueError" class="cs-queue-note" role="alert"></p>
-                    <dialog id="heavyQueueReservation" class="cs-queue-dialog">
-                        <form>
-                            <h3 data-queue-title></h3>
-                            <p data-queue-zone></p>
-                            <fieldset class="cs-queue-when">
-                                <legend>When</legend>
-                                <label><input type="radio" name="when" value="asap" checked> As soon as possible</label>
-                                <label><input type="radio" name="when" value="tonight"> Tonight</label>
-                                <label><input type="radio" name="when" value="at"> At a time</label>
-                            </fieldset>
-                            <label data-queue-at hidden>Planned start <input type="datetime-local" name="start"></label>
-                            <p class="cs-queue-slot" data-queue-slot aria-live="polite"></p>
-                            <label>Priority (1 first, 9 last) <input type="number" name="priority" min="1" max="9" required></label>
-                            <label class="cs-queue-check" data-queue-auto hidden><input type="checkbox" name="autoStart"> Start it automatically at this time</label>
-                            <p>Planning a slot acquires no runtime resources. Without an automatic start, nothing runs until someone starts it during the slot; Core checks the window, the host and the model again at launch.</p>
-                            <p role="alert"></p>
-                            <div class="cs-queue-actions">
-                                <button type="submit" class="cs-queue-button">Enregistrer le créneau</button>
-                                <button type="submit" class="cs-queue-button" value="cancel" formnovalidate>Fermer</button>
-                            </div>
-                        </form>
-                    </dialog>
                 </div>
 
-                <!-- Prochains départs -->
-                <div class="cs-panel">
-                    <div class="cs-panel-header">
-                        <h3><i class="fas fa-clock"></i> Prochains départs</h3>
-                    </div>
+                <div id="railNext" class="cs-rail-panel" role="tabpanel" aria-labelledby="railTabNext" hidden>
                     <div id="nextList" class="cs-next-list">
-                        <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+                        <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Chargement…</div>
                     </div>
                 </div>
 
-                <div class="cs-panel">
-                    <div class="cs-panel-header">
-                        <h3><i class="fas fa-hand"></i> Réservations actives</h3>
-                    </div>
+                <div id="railClaims" class="cs-rail-panel" role="tabpanel" aria-labelledby="railTabClaims" hidden>
                     <div id="claimsList" class="cs-claims-list">
-                        <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+                        <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Chargement…</div>
                     </div>
                 </div>
-
-                <!-- À surveiller Items -->
-                <div class="cs-panel">
-                    <div class="cs-panel-header">
-                        <h3><i class="fas fa-bell"></i> À surveiller</h3>
-                    </div>
-                    <div id="attentionList" class="cs-attention-list"></div>
-                </div>
-
-                <!-- Légende -->
-                <div class="cs-panel">
-                    <div class="cs-panel-header">
-                        <h3><i class="fas fa-palette"></i> Légende</h3>
-                    </div>
-                    <div id="legend" class="cs-legend"></div>
-                </div>
-            </div>
+            </aside>
         </div>
+
+        <!-- Kept outside the tabbed rail so it opens whichever tab is shown. -->
+        <dialog id="heavyQueueReservation" class="cs-queue-dialog">
+            <form>
+                <h3 data-queue-title></h3>
+                <p data-queue-zone></p>
+                <fieldset class="cs-queue-when">
+                    <legend>When</legend>
+                    <label><input type="radio" name="when" value="asap" checked> As soon as possible</label>
+                    <label><input type="radio" name="when" value="tonight"> Tonight</label>
+                    <label><input type="radio" name="when" value="at"> At a time</label>
+                </fieldset>
+                <label data-queue-at hidden>Planned start <input type="datetime-local" name="start"></label>
+                <p class="cs-queue-slot" data-queue-slot aria-live="polite"></p>
+                <label>Priority (1 first, 9 last) <input type="number" name="priority" min="1" max="9" required></label>
+                <label class="cs-queue-check" data-queue-auto hidden><input type="checkbox" name="autoStart"> Start it automatically at this time</label>
+                <p>Planning a slot acquires no runtime resources. Without an automatic start, nothing runs until someone starts it during the slot; Core checks the window, the host and the model again at launch.</p>
+                <p role="alert"></p>
+                <div class="cs-queue-actions">
+                    <button type="submit" class="cs-queue-button">Enregistrer le créneau</button>
+                    <button type="submit" class="cs-queue-button" value="cancel" formnovalidate>Fermer</button>
+                </div>
+            </form>
+        </dialog>
     </div>
 
     <!-- Tooltip (hidden by default) -->

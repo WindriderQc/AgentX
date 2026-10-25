@@ -16,8 +16,9 @@
     <label class="pipeline-autonomy-confirm"><input type="checkbox" id="reportContinuationConfirm"> I approve continuing saved reports within their existing grants</label>
     <div class="pipeline-autonomy-actions">
       <button type="button" class="pipeline-btn compact" data-report-continuation="true">Continue reports automatically</button>
-      <button type="button" class="pipeline-btn compact" data-report-continuation="false">Pause automatic continuation</button>
+      <button type="button" class="pipeline-btn compact" data-report-continuation="false">Pause global chaining</button>
     </div>
+    <p class="pipeline-subtle">This switch does not revoke a task-specific continuation agreement. Stop an active worker from its exact task; ending a transport is not proof of native termination or release.</p>
     <form id="reportEscalationForm" class="pipeline-report-escalation">
       <h4>Cloud escalation of failed report steps</h4>
       <p class="pipeline-subtle">After a step group fails once on the local model, the runner sends that group's documents and the source files they cite to a cloud model in one request, then verifies every cited line as for any step. Only tasks whose report grant allows it are affected. Models are tried in order; one OpenClaw cannot call directly is skipped.</p>
@@ -50,6 +51,15 @@
         <option value="agentx-core-runner-tests/v1">Bounded Core coding tests</option>
         <option value="agentx-benchmark-artifact-tests/v1">Benchmark artifact comparison tests</option>
       </select></label></p></fieldset>
+      <fieldset><legend>Check feasibility before authorizing</legend>
+      <p class="pipeline-subtle">Define observable success. These checks catch missing access and incompatible budgets; they do not predict whether the model will solve the task.</p>
+      <p><label>Acceptance criteria, one per line <textarea name="acceptanceCriteria" rows="3" required maxlength="6000"></textarea></label></p>
+      <p><label>Required capabilities, one per line <textarea name="requiredCapabilities" rows="3" required>source_read
+source_write
+cpu_tests</textarea></label></p>
+      <p class="pipeline-subtle">The worker supports source_read, source_write and cpu_tests. Network, private_data, live_inference, deployment and physical_device work need separate native execution.</p>
+      <p><label>Estimated work minutes <input name="estimatedWorkMinutes" type="number" min="1" value="20" required></label>
+        <label>Estimated model calls <input name="estimatedModelCalls" type="number" min="1" value="32" required></label></p></fieldset>
       <fieldset><legend>3. Set cumulative work limits</legend>
       <p class="pipeline-subtle">These are total budgets for this authorization, including corrections.</p>
       <p><label>Maximum corrections <input name="maxResumes" type="number" min="0" max="2" value="2" required></label>

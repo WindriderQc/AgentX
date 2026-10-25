@@ -246,6 +246,16 @@ async function classifyQuery(message, timeout = 10000) {
     }
 }
 
+// A role route (#360) that does not resolve is refused with its typed reason;
+// the caller never receives an empty target to fill in with a default.
+function refuseUnresolvedRole(recommendation) {
+    const refusal = recommendation?.refusal;
+    if (!refusal) return;
+    throw Object.assign(new Error(refusal.message), {
+        code: refusal.code, statusCode: refusal.status, details: refusal.data
+    });
+}
+
 /**
  * Smart routing: classify query and determine best model/host
  * @param {string} message - User message
@@ -304,6 +314,7 @@ async function resolveRouteTarget(message, options = {}) {
             durationMs,
             createSoftClaim: true
         });
+        refuseUnresolvedRole(recommendation);
         return {
             model: recommendation.model,
             target: recommendation.url,
@@ -327,6 +338,7 @@ async function resolveRouteTarget(message, options = {}) {
                 durationMs,
                 createSoftClaim: true
             });
+            refuseUnresolvedRole(recommendation);
             return {
                 model: recommendation.model,
                 target: recommendation.url,
@@ -350,6 +362,7 @@ async function resolveRouteTarget(message, options = {}) {
             durationMs,
             createSoftClaim: true
         });
+        refuseUnresolvedRole(recommendation);
         return {
             model: recommendation.model,
             target: recommendation.url,
@@ -433,6 +446,9 @@ async function checkHostHealth(hostKey) {
 
     if (!host) {
         return { status: 'unknown', models: [], latency: -1 };
+    }
+    if (require('./runtimeTopologyParking').isParkedHost(host)) {
+        return { status: 'parked', models: [], latency: -1, reason: 'topology_parked' };
     }
 
     const start = Date.now();

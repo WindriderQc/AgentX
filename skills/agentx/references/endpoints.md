@@ -22,7 +22,7 @@ Base: the Core entry given in `references/instance.md`.
 `/api/pipeline/tasks` · `/api/pipeline/tasks/next` · `/api/prompts` · `/api/history` · `/api/history/conversations` · `/api/conversations` · `/api/roundtable` · `/api/roundtable/defaults` · `/api/roundtable/active`
 
 **Analytics, alerts, budget**
-`/api/analytics/usage` · `/stats` · `/costs` · `/feedback` · `/rag-stats` · `/api/analytics/inference/summary?window=7d` · `/api/analytics/inference/logs?limit=N` · `/api/alerts` · `/api/alerts/statistics` · `/api/budget/status` · `/api/budget/escalation-recommendation`
+`/api/analytics/usage` · `/stats` · `/costs` · `/feedback` · `/rag-stats` · `/api/analytics/inference/summary?window=7d` · `/api/analytics/inference/logs?pageSize=N` · `/api/alerts` · `/api/alerts/statistics` · `/api/budget/status` · `/api/budget/escalation-recommendation`
 
 **Other services through Core**
 `/api/rag/status` · `/api/rag/metrics` · `/api/data-toolbox/network/devices` · `/api/data-toolbox/storage/summary` · `/api/data-toolbox/hardware/latest` · `/api/voix/health` · `/api/llm/v1/models` (OpenAI-compatible list; needs a gateway client token)
@@ -76,3 +76,11 @@ Answered 200 from the private network on 2026-10-08, without a token:
 ## Gone since the July notes
 
 These paths answered 404 and were removed from the skill: `/api/hosts*`, `/api/host-monitor`, `/api/host-capacity`, `/api/cluster`, `/api/ollama-vram`, `/api/metrics`, `/api/telemetry`, `/api/performance`, `/api/todos`, `/api/prompt-templates`, `/api/reports`, `/api/docs-steward`, `/api/nestor/memory`, `/api/openclaw`, `/api/panel`, `/api/buddy`, `/api/custom-models`, `/api/hermes`, `/api/voice`, `/api/voice-personas`, `/api/nerve-center/routing/config`, `/api/models/registry/export/openclaw`, `/api/data-toolbox/live-data`. A 404 on a bare prefix does not prove every sub-route is gone.
+
+When commenting on Analytics, use the summary's exact window, `observedAt`,
+`ttlMs`, scope and attribution coverage. Missing consumer contracts do not prove
+an unknown runtime; runtime categories do not identify applications. Inspect
+`/api/analytics/inference/logs?consumerContractMissing=true&from=ISO&to=ISO`
+for the same window. Separate admission refusals, unrecorded error causes and
+cancellations. No recorded cloud traffic does not establish no cloud usage.
+A low attempt error rate alone is not a service reliability assessment.

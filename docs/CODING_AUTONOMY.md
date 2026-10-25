@@ -65,13 +65,36 @@ Core profile runs `inferenceRuntimePolicy`. Neither replaces full PR CI or
 product acceptance. Dependency edits require separate operator handling.
 
 The autonomous execution receives Core's remaining cumulative work, test, model
-duration and model-call budgets. A fresh read-only planner first writes a bounded
-JSON plan using only authorized paths. The runner validates and freezes it in a
-private ledger, sizes it from the selected lane's measured agent context or speed
-knee, and starts one fresh implementation session per dependency-ready step.
+duration and model-call budgets. For a reviewed pair of existing source/test
+files totalling at most 64 KiB, with one matching native test target and a lane
+allowing both files, the runner creates one integrated step without a planning
+model call. Its private plan-source receipt identifies this strategy. Other
+scopes use the bounded read-only planner, whose source root is `/workspace` and
+whose output directory is separate. Planning allowance exhaustion is recorded
+as `planner_budget_exhausted`; it grants no extra calls or automatic retry.
+Both paths freeze the same validated JSON plan in a private ledger. The selected
+lane's measured agent context or speed knee sizes each step. The runner starts
+one fresh implementation session per dependency-ready step.
 Each session receives only its exact paths, focused-test targets and the verified
 commit summary of earlier steps; it cannot choose a shell verifier, expand scope,
 commit or publish.
+
+Source implementation sessions request no reasoning and at most 4096 output
+tokens per model response. DSH advertises this output limit; the runner's relay
+enforces it for either harness, preserving any smaller caller allowance. Core
+maps the explicit OpenAI `reasoning_effort: none` to Ollama `think: false`.
+These per-request controls preserve the resident model and context. Read-only
+planning and report sessions keep their separate contracts. Shorter replies
+do not establish model competence or replace cumulative budgets, useful-progress
+checks, native completion receipts or independent verification.
+
+For the reviewed small pair, the runner supplies both current files before the
+implementation turn and advertises `read`, `edit`, `write` or `apply_patch` through
+the relay. Discovery and shell tools remain available to other roles. This
+focuses small implementation sessions on the authorized files; the runner still performs focused/full tests and publication.
+Missing, linked, binary or excessive context refuses before model dispatch.
+The initial pair remains limited to 64 KiB; a repeated step permits bounded
+growth up to 128 KiB without widening its authorized paths or work budget.
 
 For every step the runner builds the focused invocation from the installed
 verification profile. Only a clean passing result becomes one commit with the
@@ -95,6 +118,18 @@ Model waiting and reasoning consume the model duration budget even when the
 work deadline is longer. Focused and full commands are runner-owned constants
 derived from the same profile. Unknown profiles or incompatible focused targets
 refuse before a writable implementation session begins.
+
+A material exact-scope candidate stopped specifically by `model_budget_reserve`
+may enter CPU verification after the original manifest, lease and completed
+native inference settlements are reconciled. The worker relay must be drained.
+The original model stop and spent counters remain in a private handoff receipt;
+no further worker session or model request is permitted. Focused and full tests
+reuse the offline sandbox, check source hashes and consume only the remaining
+work/test budgets and original reservation. Operator stops, hard limits,
+revoked authority, unknown termination and arbitrary worker exits still block.
+Passing verification retains the normal checkpoint, publication, CI and review
+gates. A lost publication or native acknowledgement uses the original durable
+intent and read-only reconciliation, never another push or worker execution.
 
 Before publication the runner checks exact authorized paths, all unpublished
 commit blobs (including added-then-removed artifacts), credentials, private
@@ -122,6 +157,72 @@ Repeated diagnostics against the same diff block. The loop makes no model call
 just to wait.
 
 ## Operator procedure
+
+### Feasibility before authorization
+
+An autonomous task needs reviewed observable acceptance criteria, its required
+capabilities and an estimate distinct from the authorized ceiling. Pipeline's
+authorization form records this `qualification` with the exact task and source
+scope. Missing criteria require clarification. Missing or mismatched verifiers
+are prerequisites; estimates above the work/call envelope require decomposition.
+Network, private-data access, live inference, deployment and physical-device
+work are unsupported by this offline coding worker. Split those effects into
+their existing native workflow instead of retrying them in its sandbox.
+
+`GET /api/pipeline/coding-autonomy/tasks/:id/readiness` reads the saved review.
+`POST` to the same path previews proposed `scope`, `verificationProfile`, `limits`
+and `qualification`. Both are read-only assessments: they create no task
+authorization, campaign, grant or model request. A synthetic qualification is:
+
+```json
+{
+  "acceptanceCriteria": ["Invalid input is refused and valid input still succeeds."],
+  "requiredCapabilities": ["source_read", "source_write", "cpu_tests"],
+  "estimate": {"workSeconds": 600, "modelCalls": 20}
+}
+```
+
+Include that object as `qualification` when authorizing. Core refuses an
+unready task before saving its execution authority, rechecks before selecting
+or supplying the native manifest, and exposes concrete next actions. Old
+authorizations without a current qualification cannot start another worker;
+existing native effects still require their original reconciliation/recovery.
+An explicit continuation must supply `qualification` when the original review
+is missing or stale. Core assesses the remaining envelope including the proposed
+credit and the effective verifier before recording a continuation fence or
+grant. A current definition may be retained; a reviewed attempt-limit amendment
+binds it to the resulting intent. Identical grant retries retain their original
+fingerprint and receipts without adding credit.
+Readiness is a necessary contract check, not proof of model competence or a
+replacement for dependency eligibility, native admission and independent review.
+The installed Core verifier covers only `inferenceRuntimePolicy` source/tests;
+it cannot certify arbitrary `core/` changes. Other code needs a matching native
+verification profile.
+
+### Report progress and bounded retries
+
+Automatic report continuation requires new accepted source coverage. Core
+compares reviewed document identities, source path/digest/line references and
+accepted line ranges against the exact parent. Notes, wording, receipt changes,
+array order and a different Markdown digest do not establish progress. New
+interval endpoints cannot turn a smaller covered subset into progress. A run
+that loses accepted coverage cannot automatically continue, even if it adds
+other references; review the regression before another execution. New
+outcomes retain a Core-derived comparison; older immutable outcomes use their
+native stored coverage, failing closed when that comparison is unavailable.
+
+The runner retains per-document stalled-execution counts in its private
+checkpoint. Two attempted executions with no new coverage exhaust that
+obligation; another continuation cannot reset it. Untouched documents are not
+charged as stalled. Other source groups may continue. When only exhausted scope
+remains, no model or optional writer is started: the partial report is retained
+and the run stops for review or decomposition into a new bounded task.
+
+New resume forms do not preselect chaining. Turning the global continuation
+switch off still preserves explicit task-specific agreements; its UI states
+that scope. Stops, native termination, release and billing remain distinct.
+
+### Start and receive an authorized task
 
 1. Review one engineering task, its public source scope and dependencies. Use
    exact file paths and an installed independent verification profile. Scope
@@ -508,3 +609,13 @@ the continuation loop chain this task even while the global switch is off.
 Cloud escalation stays an explicit per-task choice under the owner's cost cap.
 The full form (manual campaign, limits, scope, instructions) stays under
 Advanced.
+
+A campaign refused before its grant and worker launch can be retried explicitly
+from the same saved report. The resume request names `retryCampaignId`, the
+exact failed campaign shown in the preview. Core requires its `core:not-started`
+release receipt and no committed grant, then derives a new campaign and grant
+identity from that predecessor. Repeating that request returns the same new
+campaign. Original receipts and cumulative costs remain intact; an uncertain
+launch or an already allocated grant still requires reconciliation.
+
+For the complete source/test pair, the runner advertises `read` with a path-only schema enumerating the authorized files. DSH must receive its own successful read before `edit`; embedded source text does not populate that cache. The runner still validates the resulting diff and scope.

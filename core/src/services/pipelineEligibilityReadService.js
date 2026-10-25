@@ -8,7 +8,7 @@ const { taskEligibilityReasons } = require('./pipelineTaskEligibility');
 
 async function readTaskEligibility(pipelineId, { automated = false, now = new Date() } = {}) {
   const task = await PipelineTask.findOne({ pipelineId, ...workerTaskScope() })
-    .select('pipelineId status assignee notBefore dependsOn risk automation automationAttemptCount').lean();
+    .select('pipelineId title spec service source profileId origin resolution intake status assignee notBefore dependsOn risk automation automationAttemptCount').lean();
   if (!task) return null;
   const dependencyStatuses = await loadDependencyStatuses([task]);
   const reasons = taskEligibilityReasons(task, { now, dependencyStatuses, automated })

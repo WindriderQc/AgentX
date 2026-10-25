@@ -16,6 +16,7 @@
 
   /** Whether the drawer should offer the one-click resume for this task. */
   function eligible(task) {
+    if (task?.intakeView?.claimGate === 'decision_required') return false;
     const latest = (task?.feedback || []).map(row => row.reportOutcome).filter(Boolean).at(-1);
     const report = task?.codingResult?.profile === 'report' || Boolean(latest);
     const managed = Boolean(task?.codingAutonomy || task?.automation?.mode === 'review_only');
@@ -44,7 +45,7 @@
       running: 'Running now. Progress shows in the worker panel.',
       uncertain: 'Launch outcome unknown; it is not retried. Check it in Automations.',
       completed: 'Finished: the report was delivered. Review it below.',
-      failed: `Stopped${resume.result?.decision === 'no_progress' ? ': the last pass saved nothing new' : resume.result?.reason ? ` (${resume.result.reason})` : ''}. ${campaign.releaseReceipt?.receiptRef?.startsWith('core:not-started') ? 'The worker never started. ' : ''}Resume again when ready.`,
+      failed: `Stopped${resume.result?.decision === 'no_progress' ? ': the last pass saved nothing new' : resume.result?.reason ? ` (${resume.result.reason})` : ''}. ${campaign.releaseReceipt?.receiptRef?.startsWith('core:not-started') ? `The worker never started. ${campaign.releaseReceipt.receiptRef.slice('core:not-started:'.length).trim()}. ` : ''}Resume again when ready.`,
       cancelled: 'The planned resume was cancelled.'
     };
     const tone = ['failed', 'uncertain'].includes(campaign.state) ? 'warn' : ['reserved', 'running', 'dispatching'].includes(campaign.state) ? 'live' : '';
@@ -54,10 +55,11 @@
   function render(view) {
     if (!view) return '';
     const budget = view.budget || {};
+    const maximumCalls = view.perExecutionModelCalls ? view.perExecutionModelCalls * budget.executions : budget.modelCalls;
     const cap = view.escalation?.maxCostNanodollars ? `${(view.escalation.maxCostNanodollars / 1e9).toFixed(2).replace(/\.00$/, '')} $` : null;
     const open = !view.campaign || ['completed', 'failed', 'cancelled'].includes(view.campaign.state) || view.campaign.state === 'reserved';
     const route = view.route ? ` on <code>${esc(view.route.model)}</code>` : '';
-    return `<form class="pipeline-drawer-action pipeline-resume" data-report-resume-form="${esc(view.pipelineId)}">
+    return `<form class="pipeline-drawer-action pipeline-resume" data-report-resume-form="${esc(view.pipelineId)}"${view.retryCampaignId ? ` data-retry-campaign-id="${esc(view.retryCampaignId)}"` : ''}>
       <h3>Resume the report</h3>
       <p>${workText(view.work, view.checkpoint)}</p>
       ${stateText(view)}
@@ -67,9 +69,9 @@
         <label><input type="radio" name="when" value="at"> At a time</label>
         <label class="pipeline-resume-at" hidden><span>Start</span><input type="datetime-local" name="at"></label>
       </fieldset>
-      <p class="pipeline-resume-budget">Up to <strong>${esc(budget.modelCalls)}</strong> model calls in <strong>${esc(budget.executions)}</strong> ${budget.executions === 1 ? 'execution' : 'executions'}, about <strong>${esc(duration(budget.minutes || 0))}</strong> of work${route}.
-        This is a safety net: it ends sooner when the report is done, and stops with an alert when a pass saves nothing new.</p>
-      <label class="pipeline-resume-check"><input type="checkbox" name="autoContinue" checked> Chain the executions automatically until the report is done</label>
+      <p class="pipeline-resume-budget">Up to <strong>${esc(maximumCalls)}</strong> model calls in <strong>${esc(budget.executions)}</strong> ${budget.executions === 1 ? 'execution' : 'executions'}, about <strong>${esc(duration(budget.minutes || 0))}</strong> of work${route}.
+        This is a safety net: it ends sooner when the report is done, and stops with an alert when a pass saves nothing new. The remaining task budget also applies.</p>
+      <label class="pipeline-resume-check"><input type="checkbox" name="autoContinue"${view.campaign?.state === 'reserved' && view.resume?.autoContinue === true ? ' checked' : ''}> Allow another execution only while verified source coverage advances</label>
       <label class="pipeline-resume-check"><input type="checkbox" name="allowCloudEscalation"> Send failed steps to the cloud${cap ? ` (cap ${esc(cap)} per task)` : ''}${view.escalation && !view.escalation.enabled ? ' · cloud escalation is off globally, so this applies once it is on' : ''}</label>
       <div class="pipeline-resume-actions"><button type="submit" class="pipeline-btn primary">${view.campaign?.state === 'reserved' ? 'Replan' : 'Resume'}</button>
         <span class="pipeline-resume-error" role="alert"></span></div>` : ''}
@@ -115,6 +117,7 @@
       const error = form.querySelector('.pipeline-resume-error');
       const choice = form.elements.when.value;
       const body = { confirm: true, when: choice, autoContinue: form.elements.autoContinue.checked, allowCloudEscalation: form.elements.allowCloudEscalation.checked };
+      if (form.dataset.retryCampaignId) body.retryCampaignId = form.dataset.retryCampaignId;
       if (choice === 'at') {
         const start = new Date(form.elements.at.value);
         if (!Number.isFinite(start.getTime())) { error.textContent = 'Choose a start time.'; return; }

@@ -10,7 +10,12 @@ function requestsTaskCheck(text) {
   if (/\b(?:comment|how to|explain|explique|conseils?|advice|histoire|story)\b/.test(input)) return false;
   if (/\b(?:ne|don't|do not)\b[^.!?]{0,40}\b(?:pas|check|look|list|read)\b/.test(input)) return false;
   const topic = /\b(?:taches?|tasks?|to[ -]?do(?: list)?)\b/.test(input);
-  const read = /\b(?:regard(?:e|er|ez|ons)|verifi(?:e|er|ez|ons)|consult(?:e|er|ez|ons)|list(?:e|er|ez|ons)|montr(?:e|er|ez)|combien|quels?|quelles?|quoi|prioritaires?|check|look|list|show|how many|what|which|read|count|review)\b/.test(input);
+  // A request to create tasks "sans consulter de spécialiste" is not a
+  // request to read the personal list. Ignore only the negated read verb;
+  // an explicit subsequent "puis regarde mes tâches" still requires evidence.
+  const readInput = input.replace(/\bsans\s+(?:aller\s+)?(?:regarder|verifier|consulter|lister|montrer)\b/g, '')
+    .replace(/\b((?:ma|mon|mes|notre|nos|my|our|la|le|les|une?|des|the|a)\s+)list(?:e)?\b/g, '$1');
+  const read = /\b(?:lis|lire|lisez|lisons|regard(?:e|er|ez|ons)|verifi(?:e|er|ez|ons)|consult(?:e|er|ez|ons)|list(?:e|er|ez|ons)|montr(?:e|er|ez)|combien|quels?|quelles?|quoi|prioritaires?|check|look|list|show|how many|what|which|read|count|review)\b/.test(readInput);
   const personal = /\b(?:mes|nos|ma|mon|my|our|personal|personnelles?)\b/.test(input);
   return topic && read && personal;
 }
@@ -30,7 +35,17 @@ function confirmedLoop(evidence, runId) {
 }
 
 const checkFailure = language => language === 'en'
-  ? 'I could not complete that check. No verified result is available. Please try again.'
-  : 'La vérification n’a pas abouti. Je n’ai pas de résultat vérifié. Réessaie ta demande.';
+  ? 'I could not complete that check. Verify the original request outcome before trying again.'
+  : 'La vérification n’a pas abouti. Vérifie le résultat de la demande initiale avant de la relancer.';
 
-module.exports = { requestsTaskCheck, taskCheckObserved, confirmedLoop, checkFailure };
+function recordedTaskReply(evidence, runId, language) {
+  const ids = [...new Set((evidence?.receipts || []).filter(row => row.runId === runId && row.status === 'verified'
+    && ['add_personal_task', 'agentx__add_personal_task'].includes(row.tool)
+    && /^personal-task:\d{1,12}$/.test(row.resultRef || '')).map(row => row.resultRef.split(':')[1]))];
+  if (!ids.length) return null;
+  return language === 'en'
+    ? `Recorded personal task IDs: ${ids.join(', ')}. The requested list check was not verified. Keep these tasks; do not create them again.`
+    : `Tâches personnelles enregistrées : ${ids.join(', ')}. La lecture de la liste demandée n’a pas été vérifiée. Ces tâches sont conservées; ne les recrée pas.`;
+}
+
+module.exports = { requestsTaskCheck, taskCheckObserved, confirmedLoop, checkFailure, recordedTaskReply };

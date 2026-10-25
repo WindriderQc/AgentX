@@ -107,3 +107,5 @@ async function monthlyReview({ now = new Date() } = {}) {
 }
 
 module.exports = { goals, monthlyReview, projection, completeWindow, monthsUntil };
+
+require('./financeAccess').guard(module.exports, ['goals', 'monthlyReview']);

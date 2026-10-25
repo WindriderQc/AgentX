@@ -89,6 +89,9 @@ def is_private_task(task: dict) -> bool:
 
 
 def can_start(task: dict, *, autonomous=False) -> bool:
+    # Consume Core's decision projection; the adapter does not decide intake.
+    if (task.get('intakeView') or {}).get('claimGate') == 'decision_required':
+        return False
     if not (task.get('status') == 'queued' and not task.get('assignee')
             and task.get('service') == CODING_SERVICE and not is_private_task(task)):
         return False
@@ -584,7 +587,7 @@ def reconcile(pipeline_id, key):
     value = json.loads(path.read_text())
     value.update(coreRecorded=True, phase="finished", result="review" if body.get("status") == "done" else "blocked",
                  stopReason=(body.get("attemptEvidence") or {}).get("failureCodes", [None])[0]
-                 if (body.get("attemptEvidence") or {}).get("failureCodes") else None)
+                 if (body.get("attemptEvidence") or {}).get("failureCodes") else value.get("stopReason"))
     atomic_json(path, value)
     return {"reconciled": True, "pipelineId": pipeline_id, "requestId": key}
 

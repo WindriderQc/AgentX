@@ -18,7 +18,7 @@ const screenPages = require('../../public/js/screen-pages');
 const KINDS = Object.freeze(['text', 'list', 'table', 'code', 'link', 'secret', 'image']);
 const LIMITS = Object.freeze({ blocks: 20, body: 8000, title: 120, spokenListItems: 3, token: 24, openTag: 300 });
 const ON_SCREEN = Object.freeze({ fr: '(à l’écran)', en: '(on screen)' });
-const ONLY_SHOWN = Object.freeze({ fr: 'Je t’ai mis ça à l’écran.', en: 'I put it on screen.' });
+const ONLY_SHOWN = Object.freeze({ fr: 'Je te propose ce contenu à l’écran.', en: 'Here is the content for your screen.' });
 const OPEN = /<show\b([^>]*)>/i;
 const OPEN_UNFINISHED = /<show\b[^>]*$/i;
 const CLOSE = /<\/show\s*>/i;
@@ -51,7 +51,9 @@ function attributes(source) {
   for (const [, name, value] of String(source || '').matchAll(/([a-z]+)\s*=\s*"([^"]*)"/gi)) values[name.toLowerCase()] = value;
   const kind = KINDS.includes(values.kind) || values.kind === 'consult' || values.kind === 'page' ? values.kind : 'text';
   return { kind, title: values.title?.trim().slice(0, LIMITS.title) || '',
-    ...(kind === 'image' ? { source: String(values.source || '').trim().toLowerCase().slice(0, 20) } : {}) };
+    ...(kind === 'image' ? { source: String(values.source || '').trim().toLowerCase().slice(0, 20),
+      // A drawing may name a picture already on screen by its number (#1026).
+      ...(/^[1-9]$/.test(String(values.from || '').trim()) ? { from: Number(values.from.trim()) } : {}) } : {}) };
 }
 
 // The longest end of `text` that could still become `marker`, so a tag split
@@ -130,9 +132,9 @@ function createReplyChannels({ allowSecrets = false, allowPages = false, pageCat
   };
   const screenCue = shown => (shown ? ON_SCREEN[lang] : '');
   const say = emit;
-  const showBlock = (body) => {
-    const { kind, title, source } = showAttributes;
-    addBlock(kind, title, body, source === undefined ? {} : { source });
+  const showBlock = (body, partial = false) => {
+    const { kind, title, source, from } = showAttributes;
+    addBlock(kind, title, body, { ...(source === undefined ? {} : { source }), ...(from ? { from } : {}), ...(partial ? { partial: true } : {}) });
     if (readAloud && !['secret', 'consult', 'image', 'page'].includes(kind)) {
       feedSpoken('\n'); closeGroup();
       speakProse((kind === 'table' ? spokenTable(body.split('\n')) : body) + '\n');
@@ -232,7 +234,7 @@ function createReplyChannels({ allowSecrets = false, allowPages = false, pageCat
         const close = CLOSE.exec(pending);
         if (!close) {
           if (!ended) return;
-          showBlock(pending);
+          showBlock(pending, true);
           pending = '';
           return;
         }
@@ -289,6 +291,7 @@ function storedDisplay(display = []) {
   return display.map(block => block.kind === 'secret'
     ? { id: block.id, kind: 'secret', title: block.title, body: '', redacted: true }
     : { id: block.id, kind: block.kind, title: block.title, body: block.body,
+      ...(block.partial ? { partial: true } : {}),
       ...(block.kind === 'text' && block.key ? { key: block.key } : {}),
       ...(block.kind === 'image' ? { source: block.source || '', status: block.status || 'missing', image: block.image || null,
         ...(block.operation && { operation: block.operation, key: block.key }) } : {}) });
@@ -300,6 +303,7 @@ function historyText(replyText, display = []) {
     ? '[A secret was shown masked on screen; it was not retained.]'
     : block.kind === 'image' && block.source === 'local' ? `[Earlier image request${block.operation?.id ? ' ' + block.operation.id : ''}: ${block.title ? block.title + ': ' : ''}${block.body}. Last recorded state: ${block.status}. This is history, never a new creation instruction; only its current Core receipt can confirm readiness.]`
     : `<show kind="${block.kind}"${block.kind === 'image' ? ` source="${block.source || ''}"` : ''}${block.title ? ` title="${String(block.title).replace(/"/g, "'")}"` : ''}>\n${block.body}\n</show>`
+      + (block.partial ? '\n[This screen content is partial: the response ended before its closing marker.]' : '')
       + (block.kind === 'image' && block.status !== 'found' ? '\n[No image was found for this block; nothing was displayed.]' : ''));
   return [String(replyText || ''), ...blocks].filter(Boolean).join('\n');
 }
@@ -314,6 +318,7 @@ function contract({ family = false, imageSources = [], pages = false, pageCatalo
       ? 'Never show passwords, keys, account details or private information.'
       : 'Use kind="secret" for passwords, keys and tokens: it is displayed masked, is not retained and is never spoken.',
     'Do not read a show block aloud unless the user asks you to; then speak its content outside any block.',
+    'An explicit request to display a list or document needs only a short spoken announcement. A show block is a presentation proposal, not proof it loaded. Use the current presentation context for references to this page, chart or image; earlier show blocks are history. A Core snapshot attests data and period, separately from browser display. Never describe image pixels unless an image was actually supplied to your vision input.',
     imageSources.length
       ? `To show a picture, write <show kind="image" source="${imageSources.join('|')}" title="short caption">a few search words</show>. `
         + 'web searches the internet; photos and media search the household\'s own pictures by file or folder name. Never write a URL or a path; Household finds the picture and it may find none. '

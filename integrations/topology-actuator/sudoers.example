@@ -1,0 +1,3 @@
+# /etc/sudoers.d/agentx-topology-actuator  (install with visudo -cf first)
+# The actuator account may run the actuator's SSH entry as root, and nothing else.
+agentx-topology ALL=(root) NOPASSWD: /usr/local/sbin/agentx-topology-actuator ssh -- *

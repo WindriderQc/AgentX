@@ -4,6 +4,7 @@
 const images = require('../../src/services/images/imageService');
 const { createHash } = require('node:crypto');
 const { assessSafety, childBoundaryReply } = require('./persona-prompt');
+const shownImages = require('./shown-images');
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const FAMILY_UNSUITABLE = /\b(?:porn\w*|sex\w*|naked|nude\w*|nu|nue|nus|nues|genital\w*|penis|vagin\w*|breasts?|seins?|gore|dismember\w*|demembr\w*)\b/i;
 const scopeFor = session => ({ surface: 'household', sessionId: session.sessionId, packId: session.packId, scopeId: session.scopeId });
@@ -13,7 +14,7 @@ function spaceFor(session) {
   if (session.packId === 'personal_operator' && session.scopeId === 'personal' && (session.agentId || 'main') === 'main') return 'private';
   return null;
 }
-function createConversationImages({ conversations, service = images }) {
+function createConversationImages({ conversations, service = images, visuals = null }) {
   const configuration = () => { try { return service.status(); } catch { return { configured: false, conversationProfile: null }; } };
   function view(operation, session) {
     const base = `/api/voice-personas/${spaceFor(session)}/sessions/${encodeURIComponent(session.sessionId)}/images/${operation.id}`;
@@ -29,13 +30,19 @@ function createConversationImages({ conversations, service = images }) {
     if (!spaceFor(session)) return '';
     const config = configuration();
     if (!config.configured) return 'Local image creation is unavailable in this conversation. Do not emit a draw block or claim to create an image.';
-    if (spaceFor(session) === 'private' && backend === 'openclaw') return 'When the user requests a new image, use local_image create once, then end this turn so image preparation can start. Core selects a quick conversation preset by default when available. The application displays progress and the result automatically. Never poll in this same turn or claim completion without its verified receipt.';
+    // Changing a picture already on screen is the same request for every engine (#1026).
+    const edit = 'To change a picture already on screen, use its number from the list of pictures on screen: emit <show kind="image" source="draw" from="N" title="short caption">the change to make</show>. The application edits that picture itself, as the reference, after your reply. Say in one short sentence what you will change and start it; never ask for confirmation.';
+    if (spaceFor(session) === 'private' && backend === 'openclaw') return (config.conversationProfile ? edit + ' Do not use local_image for such a change. ' : '') + 'When the user requests a new image, use local_image create once, then end this turn so image preparation can start. Core selects a quick conversation preset by default when available. The application displays progress and the result automatically. Never poll in this same turn or claim completion without its verified receipt.';
     if (!config.conversationProfile) return 'Local drawing is unavailable in this conversation. Do not emit a draw block or claim to create an image.';
-    return 'Only when the user asks you to create or change a drawing, emit one <show kind="image" source="draw" title="short caption">a precise standalone description of the requested image</show>. This is a bounded application request, not a native tool. Preserve requested objects, counts and relations; do not insert private information. For a change, describe the whole revised scene; this produces a new illustration, not a faithful edit of the old image. Say you are asking for the drawing, never that it is ready. The application accepts at most one new drawing per turn, after your reply. It displays progress, the result and an atelier link. Never use draw for an image search or to replay an earlier request.'
-      + (spaceFor(session) === 'family' ? ' Family drawings must be age-appropriate, non-sexual and non-graphic. Apply the family safety rules to the drawing description as well as to speech. Offer a safe alternative or refuse an unsafe request without emitting draw. No uploads, photos, references or custom generation settings are accepted here.' : ' No file references or custom generation settings are accepted in a draw block.');
+    return 'Only when the user asks you to create a drawing or change a picture, emit one <show kind="image" source="draw" title="short caption">a precise standalone description of the requested image</show>. This is a bounded application request, not a native tool. Preserve requested objects, counts and relations; do not insert private information. ' + edit + ' Without from, describe the whole scene; this produces a new illustration. Never say the image is ready. The application accepts at most one drawing or change per turn, after your reply. It displays progress, the result and an atelier link. Never use draw for an image search or to replay an earlier request.'
+      + (spaceFor(session) === 'family' ? ' Family drawings must be age-appropriate, non-sexual and non-graphic. Apply the family safety rules to the drawing description and to every change, as well as to speech. Offer a safe alternative or refuse an unsafe request without emitting draw. No uploads or custom generation settings are accepted here; only a picture on screen can be named, by its number.' : ' No file paths, addresses or custom generation settings are accepted in a draw block; only a picture on screen can be named, by its number.');
   }
   async function contextFor(session) {
     if (!spaceFor(session)) return '';
+    const shown = await shownImages.recentShown({ conversations, session }).then(shownImages.contextText).catch(() => '');
+    return shown + await receiptsFor(session);
+  }
+  async function receiptsFor(session) {
     try {
       const operations = await service.listForConversation(scopeFor(session));
       if (!operations.length) return '';
@@ -59,23 +66,45 @@ function createConversationImages({ conversations, service = images }) {
       try {
         signal.throwIfAborted();
         const config = configuration(), quick = config.conversationProfile;
-        if (!space || native || requested || !config.configured || !quick) throw Object.assign(new Error('Drawing unavailable in this turn.'), { statusCode: 409 });
+        if (!space || (native && !block.from) || requested || !config.configured || !quick) throw Object.assign(new Error('Drawing unavailable in this turn.'), { statusCode: 409 });
         requested = true;
         const safety = assessSafety(description);
         if (space === 'family' && (safety.deterministicEscalation || childBoundaryReply(pack, safety, description)
           || FAMILY_UNSUITABLE.test(description.normalize('NFD').replace(/[\u0300-\u036f]/g, '')))) throw Object.assign(new Error('Choose another drawing idea.'), { statusCode: 400 });
-        const prompt = space === 'family' ? 'Age-appropriate illustration for children.\n' + description : description;
+        // A change names a picture on screen; Core reads it back as the only reference (#1026).
+        const edit = block.from ? await editReference(block.from, session, space, quick) : null;
+        delete block.from;
+        signal.throwIfAborted();
+        const prompt = (space === 'family' ? 'Age-appropriate illustration for children.\n' : '')
+          + (edit ? 'Edit the reference image. Keep its subject, composition and style, except for this change:\n' : '') + description;
         const actionKey = 'household:' + createHash('sha256').update(JSON.stringify([scopeFor(session), turnId, 'image'])).digest('hex');
-        const operation = await service.accept({ actionKey, prompt,
-          profile: quick.id, width: quick.width, height: quick.height }, { conversation: scopeFor(session), signal });
+        const request = { actionKey, prompt, profile: quick.id, width: quick.width, height: quick.height,
+          ...(edit && { ...edit.size, references: [edit.reference] }) };
+        const options = { conversation: scopeFor(session), signal };
+        // A profile that only qualifies its square preset still edits, in that preset.
+        const operation = await service.accept(request, options).catch(error => {
+          if (!edit || !/Resolution not qualified/.test(error.message)) throw error;
+          return service.accept({ ...request, width: quick.width, height: quick.height }, options);
+        });
         Object.assign(block, card(operation, session, block.title || 'Your drawing', description));
       } catch (error) {
         if (signal.aborted) return;
-        Object.assign(block, { source: 'local', status: error.statusCode ? 'failed' : 'unknown', body: error.statusCode
+        Object.assign(block, { source: 'local', status: error.statusCode ? 'failed' : 'unknown', body: error.code === 'IMAGE_REFERENCE'
+          ? 'This picture cannot be used for a change. Choose another picture, or ask for a new drawing.' : error.statusCode
           ? 'The drawing was not accepted. Try again when the workshop is available, or choose another idea.'
           : 'The request could not be confirmed. Check this conversation’s images before asking for another drawing.' });
       }
       onShow(block);
+    }
+  }
+  async function editReference(from, session, space, quick) {
+    try {
+      const picked = (await shownImages.recentShown({ conversations, session }))[from - 1];
+      if (!picked || !visuals) throw new Error('No such picture on screen');
+      const fitted = await shownImages.referenceFor(picked, { visuals, service, conversation: scopeFor(session), family: space === 'family' });
+      return { reference: fitted.reference, size: shownImages.editSize(quick, fitted) };
+    } catch (error) {
+      throw Object.assign(new Error('Picture unavailable for a change: ' + error.message), { statusCode: 422, code: 'IMAGE_REFERENCE' });
     }
   }
   function register(router) {

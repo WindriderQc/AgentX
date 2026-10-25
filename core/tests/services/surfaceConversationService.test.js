@@ -35,6 +35,19 @@ describe('surface conversations in the canonical Core store', () => {
     await expect(conversations.recordTurn(turn(session, { scopeId: 'family' }))).rejects.toMatchObject({ statusCode: 404 });
   });
 
+  test('retains the selected read with its answer as historical evidence in the canonical conversation', async () => {
+    const presentationContext = { contract: 'agentx.presentation/v1', kind: 'page', page: 'analytics', status: 'visible',
+      read: { status: 'available', revision: 'a'.repeat(64), filters: { window: '24h' }, totals: { calls: 42 } } };
+    const recorded = await conversations.recordTurn(turn(session, { presentationContext }));
+    expect((await conversations.getTurn({ traceId: recorded.traceId })).presentationContext).toEqual(presentationContext);
+    const context = await require('../../src/services/conversations/turnContext').readTurnContext(conversations,
+      { sessionId: session.sessionId, packId: session.packId, scopeId: session.scopeId });
+    expect(context.turns[0].historicalPresentation).toEqual(presentationContext);
+    expect(context.turns[0].presentationContext).toBeUndefined();
+    await conversations.deleteSession({ sessionId: session.sessionId, packId: session.packId, scopeId: session.scopeId });
+    expect(await conversations.getTurn({ traceId: recorded.traceId })).toBeNull();
+  });
+
   test('trusted context reads preserve every turn beyond UI limits in canonical order', async () => {
     const messages = [], ids = [];
     for (let index = 0; index < 501; index++) {

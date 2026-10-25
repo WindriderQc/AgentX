@@ -70,6 +70,22 @@ export function nativeTurnAnswer(history, sessionKey, runId) {
   return text ? { status: 'ready', source: 'openclaw/sessions.get', runId, messageId: message.__openclaw.id, text } : unavailable;
 }
 
+// A provider can fail before agent_end. OpenClaw persists this terminal
+// custom row in the original transcript even when no lifecycle hook ran.
+// Project that native failure only for its exact run; absence is not a stop.
+export function nativeTurnFailure(history, sessionKey, runId) {
+  if (history?.sessionKey !== sessionKey || !Array.isArray(history.messages)) return null;
+  const marker = history.messages.findLast(row => row?.role === 'custom'
+    && row.customType === 'run-failed-before-reply' && row.details?.runId === runId
+    && typeof row.__openclaw?.id === 'string' && row.__openclaw.id.length > 0
+    && row.__openclaw.id.length <= 200);
+  if (!marker) return null;
+  const at = marker.__openclaw.recordTimestampMs ?? marker.timestamp;
+  return { runId, sessionKey, status: 'failed', model: null, provider: null,
+    at: Number.isFinite(at) && Math.abs(at) <= 8640000000000000 ? new Date(at).toISOString() : null,
+    durationMs: null, source: 'openclaw/sessions.get', messageId: marker.__openclaw.id };
+}
+
 // What the run is doing, for a spoken progress line: tool names and a target
 // agent id only. Arguments, results and commentary never leave OpenClaw.
 const safeName = value => typeof value === 'string' && /^[a-zA-Z0-9_.:-]{1,120}$/.test(value) ? value : null;
@@ -100,7 +116,7 @@ export function continuityOperations({ workspace, config, resolveWorkspace, mode
         capabilities: { isolatedWork: true, nativeReadBudget: true, nativeConversation: true } };
     } else if (operation === 'work_attempt') {
       const match = householdKey.exec(request.sessionKey || '');
-      const isolatedMain = match?.[1] === 'main';
+      const isolatedMain = match?.[1] === 'main' || request.isolatedConsultation === true && ['secretary', 'comptable', 'leadx', 'cloudx'].includes(match?.[1]);
       if (!isolatedMain && (!workAgentId || match?.[1] !== workAgentId)) throw invalid('A configured worker attempt is required');
       const agentWorkspace = householdWorkspace({ agentId: match[1], sessionKey: request.sessionKey }, config, resolveWorkspace);
       if (!agentWorkspace) throw invalid('The native worker is unavailable');
@@ -139,6 +155,7 @@ export function continuityOperations({ workspace, config, resolveWorkspace, mode
         result.answerObservation = { status: 'unavailable', reason: 'read_failed',
           source: 'openclaw/sessions.get', runId: request.runId, sessionKey: request.sessionKey };
       }
+      result.run ||= nativeTurnFailure(history, request.sessionKey, request.runId);
       result.answer = nativeTurnAnswer(history, request.sessionKey, request.runId);
       result.progress = nativeTurnProgress(history, request.sessionKey, request.runId);
       result.toolChecks = nativeToolChecks(history, request.sessionKey, request.runId);

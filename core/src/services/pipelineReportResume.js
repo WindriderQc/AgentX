@@ -31,6 +31,12 @@ const { fail } = require('./pipelineManualReportClaim');
 
 const WC = { w: 1, j: true };
 const WHEN = ['asap', 'tonight', 'at'];
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+function retryable(task, job) {
+  return job?.state === 'failed' && !task.reportResume?.launch
+    && job.releaseReceipt?.receiptRef?.startsWith('core:not-started:')
+    && !(task.codingReportAuthority?.grants || []).some(row => row.key === task.reportResume?.grantKey);
+}
 // Conservative cost of one document step when the lane has no agent
 // measurement yet, plus the final writer step. MARGIN makes the budget a
 // safety net rather than a target.
@@ -115,8 +121,9 @@ async function preview(pipelineId) {
   const limit = task.codingResult?.modelCallLimit || 128;
   const campaign = task.reportResume?.queueRequestId ? await queue.get(task.reportResume.queueRequestId).catch(() => null) : null;
   return { pipelineId, reportName: task.codingResult?.reportName || latestOutcome(task)?.reportName || null,
-    checkpoint: checkpointOf(task), work, budget: budgetFor(work, limit), route: await target().catch(() => null),
+    checkpoint: checkpointOf(task), work, budget: budgetFor(work, limit), perExecutionModelCalls: limit, route: await target().catch(() => null),
     escalation: await require('./pipelineReportEscalation').policy().catch(() => null),
+    retryCampaignId: retryable(task, campaign) ? campaign.id : null,
     resume: task.reportResume || null,
     campaign: campaign ? { id: campaign.id, state: campaign.state, reservation: campaign.reservation, reason: campaign.reason || null,
       releaseReceipt: campaign.releaseReceipt || null } : null };
@@ -131,7 +138,10 @@ async function resume(pipelineId, input = {}) {
   for (const flag of ['autoContinue', 'allowCloudEscalation']) {
     if (input[flag] !== undefined && typeof input[flag] !== 'boolean') throw fail(`${flag} needs true or false`, 'REPORT_RESUME_INVALID', 400);
   }
+  if (input.retryCampaignId !== undefined && !UUID.test(input.retryCampaignId))
+    throw fail('Name the exact failed campaign to retry', 'REPORT_RESUME_INVALID', 400);
   const task = await readTask(pipelineId);
+  require('./taskIntakePolicy').assertAccepted(task);
   reportTask(task);
   if (!['queued', 'blocked'].includes(task.status) || task.automationLease?.leaseId) throw fail('The task is running or awaiting review', 'REPORT_RESUME_BUSY', 409);
   if (!task.codingResult?.reportName) throw fail('Choose the report result once with the full form first', 'REPORT_RESUME_UNCONFIGURED', 409);
@@ -145,8 +155,15 @@ async function resume(pipelineId, input = {}) {
     const job = await queue.get(prior.queueRequestId).catch(() => null);
     if (job && ['dispatching', 'running', 'uncertain'].includes(job.state)) throw fail('This resume is already running', 'REPORT_RESUME_BUSY', 409);
   }
+  let retryOfCampaignId = prior?.basis === basis ? prior.retryOfCampaignId || null : null;
+  if (input.retryCampaignId && input.retryCampaignId !== retryOfCampaignId) {
+    const failed = prior?.queueRequestId === input.retryCampaignId && prior.basis === basis
+      ? await queue.get(input.retryCampaignId).catch(() => null) : null;
+    if (!retryable(task, failed)) throw fail('Refresh the exact campaign; only an unstarted, unallocated failure can be retried', 'REPORT_RESUME_CHANGED', 409);
+    retryOfCampaignId = input.retryCampaignId;
+  }
   const request = {
-    key: `report-campaign:${pipelineId}:${basis}`,
+    key: `report-campaign:${pipelineId}:${basis}${retryOfCampaignId ? `:retry:${retryOfCampaignId}` : ''}`,
     title: `Report ${task.codingResult.reportName}: resume task ${pipelineId}`,
     kind: 'other', hosts: [route.host], estimatedMinutes: budget.minutes,
     source: { type: 'coding', ref: 'pipeline-report-resume', taskId: pipelineId },
@@ -157,7 +174,8 @@ async function resume(pipelineId, input = {}) {
     throw fail('This checkpoint already had a campaign; its outcome is in the queue history', 'REPORT_RESUME_DONE', 409);
   }
   job = await queue.place(job.id, { expectedRevision: job.revision, when: input.when, at: input.at, autoStart: true }, 'pipeline-report-resume');
-  const state = { basis, queueRequestId: job.id, grantKey: prior?.basis === basis && prior.grantKey ? prior.grantKey : uuidFrom(`report-grant:${pipelineId}:${job.id}`),
+  const state = { basis, queueRequestId: job.id, grantKey: uuidFrom(`report-grant:${pipelineId}:${job.id}`),
+    ...(retryOfCampaignId && { retryOfCampaignId }),
     when: input.when, budget, work, checkpoint, model: route.model, host: route.host,
     autoContinue: input.autoContinue === true, allowCloudEscalation: input.allowCloudEscalation === true,
     requestedAt: new Date().toISOString(), state: 'planned', launch: null };
@@ -170,6 +188,7 @@ async function resume(pipelineId, input = {}) {
 /** Before the dispatch mark: the task must still be resumable from the same checkpoint. */
 async function preDispatch(job) {
   const task = await readTask(job.executor.pipelineId);
+  require('./taskIntakePolicy').assertAccepted(task);
   const state = task.reportResume;
   if (!state || state.queueRequestId !== job.id) throw fail('This campaign no longer belongs to the task\'s resume', 'REPORT_RESUME_CHANGED', 409);
   if ((checkpointOf(task)?.parentRequestId || 'initial') !== state.basis) throw fail('The saved report changed since the resume was planned', 'REPORT_RESUME_CHANGED', 409);
@@ -194,6 +213,7 @@ async function launchFromCampaign(job) {
 }
 async function launchWorker(job) {
   let task = await readTask(job.executor.pipelineId);
+  require('./taskIntakePolicy').assertAccepted(task);
   const state = task.reportResume;
   const requestId = uuidFrom(`report-resume:${task.pipelineId}:${job.id}`);
   const checkpoint = state.checkpoint || null;
@@ -243,12 +263,24 @@ async function observeCampaign(job) {
       { timestamps: false, writeConcern: WC });
     return { terminal: true, operationId, state: 'failed', outcome: { requestId: operationId, kind: 'rejected', reason: host.run.reason || 'launch_rejected' } };
   }
+  if (active && host?.busy === false && host.run?.requestId === operationId && host.run.phase === 'unknown'
+    && host.run.canReconcile === true && host.run.progress?.stage === 'checkpoint' && control?.reconcile) {
+    const receipt = await require('./pipelineReportService').status(task.pipelineId, operationId).catch(() => null);
+    if (receipt?.requestId === operationId && receipt.state === 'active' && receipt.terminationVerified === true
+      && Array.isArray(receipt.pendingInferences) && receipt.pendingInferences.length === 0) {
+      // Receive the same saved result through its native owner after a drain
+      // race. Never clear coordination, replace the request or launch work.
+      await control.reconcile({ pipelineId: task.pipelineId, requestId: operationId,
+        ...(state.launch.executorId && { executorId: state.launch.executorId }) }).catch(() => null);
+      return { terminal: false, operationId };
+    }
+  }
   if (active || host?.busy === true || task.automationLease?.leaseId) return { terminal: false, operationId };
   const ours = new Set([operationId, ...((task.reportContinuation?.runs || []).map(row => row.requestId))]);
   const outcome = latestOutcome(task);
   if (!outcome || !ours.has(outcome.requestId)) return { terminal: false, operationId };
   const continuation = require('./pipelineReportContinuationService');
-  const decision = continuation.decide(task);
+  const decision = await continuation.decision(task);
   const pending = (task.reportContinuation?.runs || []).some(row => !row.finishedAt);
   const windowOpen = Date.now() < Date.parse(job.reservation.end);
   if (pending || (decision.action === 'continue' && windowOpen && await continuation.wouldContinue(task))) return { terminal: false, operationId };

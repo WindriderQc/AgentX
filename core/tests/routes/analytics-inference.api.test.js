@@ -53,6 +53,18 @@ describe('inference analytics summary', () => {
 
   beforeEach(() => jest.clearAllMocks());
 
+  test('attests the same scoped response for presentation without another database read', async () => {
+    InferenceLog.aggregate.mockResolvedValue(facet());
+    const res = await request(server).get('/api/analytics/inference/summary?window=24h');
+    const { presentationReader } = require('../../src/services/presentationReadService');
+    const read = presentationReader.read(res.body.data.presentation);
+    expect(read.status).toBe('available');
+    expect(read.totals.calls).toBe(res.body.data.totals.calls);
+    expect(read.period.to).toBe(res.body.data.window.to);
+    expect(read.filters.window).toBe('24h');
+    expect(InferenceLog.aggregate).toHaveBeenCalledTimes(1);
+  });
+
   test('returns a single-level envelope the client can read directly', async () => {
     InferenceLog.aggregate.mockResolvedValue(facet());
     const res = await request(server).get('/api/analytics/inference/summary?window=7d');

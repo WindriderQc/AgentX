@@ -43,3 +43,18 @@ test('ambiguous isolated Main history remains unknown, while a known original ru
   assert.equal((await operate({ operation: 'work_attempt', sessionKey })).runId, null);
   assert.deepEqual((await operate({ operation: 'work_attempt', sessionKey, runId })).run, run);
 });
+
+test('isolated specialist consultation recovers one original run but refuses ambiguous history', async t => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'agentx-specialist-consult-'));
+  t.after(() => rm(workspace, { recursive: true }));
+  const sessionKey = `agent:secretary:household:direct:${sessionId}`;
+  const run = { runId, sessionKey, status: 'completed' };
+  await updateState(workspace, () => ({ schemaVersion: 1, runs: [run], receipts: [] }));
+  let ids = [runId];
+  const operate = continuityOperations({ workspace, config: { agents: { entries: { secretary: { workspace } } } },
+    readHistory: async () => ({ sessionKey, messages: ids.map(runId => ({ role: 'assistant', __openclaw: { runId } })) }) });
+  await assert.rejects(operate({ operation: 'work_attempt', sessionKey }), /configured worker attempt/);
+  assert.equal((await operate({ operation: 'work_attempt', isolatedConsultation: true, sessionKey })).runId, runId);
+  ids.push('resp_33333333-3333-4333-8333-333333333333');
+  assert.equal((await operate({ operation: 'work_attempt', isolatedConsultation: true, sessionKey })).runId, null);
+});

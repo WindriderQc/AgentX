@@ -159,3 +159,5 @@ async function uncategorized({ limit, ledger } = {}) {
 
 module.exports = { CATEGORIES, descriptionKey, cleanRule, matchRule, applyRules, listRules, saveRules, deleteRule, uncategorized,
   setTransactions, FinanceCategoryError };
+
+require('./financeAccess').guard(module.exports, ['applyRules', 'listRules', 'saveRules', 'deleteRule', 'uncategorized', 'setTransactions']);

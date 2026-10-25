@@ -17,3 +17,5 @@ financeAlertSchema.index({ acknowledgedAt: 1, createdAt: -1 });
 
 module.exports = mongoose.models.FinanceAlert
   || mongoose.model('FinanceAlert', financeAlertSchema, 'finance_alerts');
+
+module.exports = require('../src/services/finance/financeModelGuard')(module.exports);

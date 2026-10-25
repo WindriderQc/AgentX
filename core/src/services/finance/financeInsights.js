@@ -152,3 +152,5 @@ async function insights(query = {}) {
 }
 
 module.exports = { insights, yearly, recurringCharges, monthsBack };
+
+require('./financeAccess').guard(module.exports, ['insights', 'yearly']);

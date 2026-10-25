@@ -28,6 +28,55 @@ MAX_REQUEST_BYTES = 64 * 1024 * 1024
 UPSTREAM_TIMEOUT_SECONDS = 3600
 
 
+def with_request_policy(body: bytes, policy: dict | None) -> bytes:
+    """Apply runner-owned output and optional editing policy; retain context."""
+    if policy is None:
+        return body
+    value = json.loads(body)
+    if not isinstance(value, dict) or ('options' in value and not isinstance(value['options'], dict)):
+        raise ValueError('Invalid source model request')
+    caps = [policy['max_tokens']]
+    options = value.get('options', {})
+    for container, key in [(value, 'max_tokens'), (value, 'max_completion_tokens'), (options, 'num_predict')]:
+        if key in container:
+            item = container[key]
+            if type(item) is not int or item <= 0:
+                raise ValueError('Invalid source output allowance')
+            caps.append(item)
+    cap = min(caps)
+    value['max_tokens'] = cap
+    if 'max_completion_tokens' in value:
+        value['max_completion_tokens'] = cap
+    if 'num_predict' in options:
+        options['num_predict'] = cap
+    value['reasoning_effort'] = policy['reasoning_effort']
+    if policy.get('tools') == 'edit_only':
+        tools = value.get('tools')
+        if not isinstance(tools, list):
+            raise ValueError('The editing phase needs callable editing tools')
+        allowed = [tool for tool in tools if isinstance(tool, dict)
+                   and tool.get('type') == 'function' and isinstance(tool.get('function'), dict)
+                   and tool['function'].get('name') in {'edit', 'write', 'apply_patch'}]
+        if not allowed:
+            raise ValueError('The harness has no supported editing tool')
+        paths = policy.get('read_paths', [])
+        if paths:
+            read_tool = next((tool for tool in tools if isinstance(tool, dict)
+                             and tool.get('type') == 'function'
+                             and isinstance(tool.get('function'), dict)
+                             and tool['function'].get('name') == 'read'), None)
+            if read_tool is None:
+                raise ValueError('The editing phase needs read-before-edit support')
+            allowed.insert(0, {'type': 'function', 'function': {
+                'name': 'read', 'description': 'Read an authorized file once before editing it.',
+                'parameters': {'type': 'object', 'properties': {
+                    'file_path': {'type': 'string', 'enum': paths}},
+                    'required': ['file_path'], 'additionalProperties': False}}})
+        value['tools'] = allowed
+        value['tool_choice'] = 'auto'
+    return json.dumps(value, ensure_ascii=False, separators=(',', ':')).encode()
+
+
 def with_budget_guidance(body: bytes, guidance: str | None) -> bytes:
     """Add ephemeral runner context; preserve the harness history and model options."""
     if not isinstance(guidance, str) or not guidance or len(guidance) > 2000:
@@ -51,10 +100,11 @@ class ModelOnly(BaseHTTPRequestHandler):
     runner_headers = {}
     drain_on_disconnect = False
     budget_guidance = staticmethod(lambda: None)
+    request_policy = None
 
-    def refuse(self) -> None:
-        body = b'{"error":{"message":"The coding worker can reach the model route only.","type":"invalid_request_error"}}'
-        self.send_response(403)
+    def refuse(self, status=403, message='The coding worker can reach the model route only.') -> None:
+        body = json.dumps({'error': {'message': message, 'type': 'invalid_request_error'}}).encode()
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -66,6 +116,11 @@ class ModelOnly(BaseHTTPRequestHandler):
             self.refuse()
             return
         body = self.rfile.read(length)
+        try:
+            body = with_request_policy(body, self.request_policy)
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            self.refuse(400, 'A source request requires valid JSON and positive output allowances.')
+            return
         body = with_budget_guidance(body, self.budget_guidance())
         if len(body) > MAX_REQUEST_BYTES:
             self.refuse()
@@ -203,17 +258,32 @@ class UnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
 
 
 def serve(socket_path: str, model_url: str, observer=None, runner_headers=None, drain_on_disconnect=False,
-          budget_guidance=None, request_budget=None) -> UnixServer:
+          budget_guidance=None, request_budget=None, request_policy=None) -> UnixServer:
     """Start the runner-side relay; the caller shuts it down."""
     if request_budget is not None and (not isinstance(request_budget, dict)
             or type(request_budget.get('calls')) is not int or request_budget['calls'] < 0
             or not isinstance(request_budget.get('key'), str) or not request_budget['key']):
         raise ValueError('A report relay budget requires a nonnegative call count and step identity')
+    if request_policy is not None and (not isinstance(request_policy, dict)
+            or not {'max_tokens', 'reasoning_effort'} <= set(request_policy)
+            or set(request_policy) - {'max_tokens', 'reasoning_effort', 'tools', 'read_paths'}
+            or type(request_policy['max_tokens']) is not int or not 1 <= request_policy['max_tokens'] <= 32768
+            or request_policy['reasoning_effort'] != 'none'
+            or ('tools' in request_policy and request_policy['tools'] != 'edit_only')
+            or ('read_paths' in request_policy and (
+                request_policy.get('tools') != 'edit_only'
+                or not isinstance(request_policy['read_paths'], list)
+                or not 1 <= len(request_policy['read_paths']) <= 2
+                or any(not isinstance(p, str) or not p.startswith('/workspace/')
+                       or any(part in {'', '.', '..'} for part in p[len('/workspace/'):].split('/'))
+                       for p in request_policy['read_paths'])))):
+        raise ValueError('A source relay policy requires a bounded output allowance and disabled reasoning')
     if os.path.exists(socket_path):
         os.unlink(socket_path)
     handler = type("Handler", (ModelOnly,), {"model_url": model_url.rstrip("/"),
                     "observer": staticmethod(observer or (lambda _event: None)), "runner_headers": runner_headers or {},
                     "drain_on_disconnect": drain_on_disconnect,
+                    "request_policy": dict(request_policy) if request_policy is not None else None,
                     "budget_guidance": staticmethod(budget_guidance or (lambda: None))})
     server = UnixServer(socket_path, handler)
     server.request_budget = dict(request_budget) if request_budget is not None else None

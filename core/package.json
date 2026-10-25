@@ -29,6 +29,7 @@
     "@fontsource-variable/space-grotesk": "5.3.0",
     "@fontsource/ibm-plex-mono": "5.3.0",
     "@fortawesome/fontawesome-free": "6.4.0",
+    "ajv": "^8.20.0",
     "chart.js": "4.4.4",
     "chartjs-4-5-1": "npm:chart.js@4.5.1",
     "compression": "^1.8.1",
@@ -48,6 +49,9 @@
     "node-fetch": "^2.7.0",
     "pdf-parse": "^2.4.5",
     "pngjs": "7.0.0",
+    "rrule": "^2.8.1",
+    "satellite.js": "4.0.0",
+    "sharp": "0.35.5",
     "winston": "^3.19.0"
   },
   "devDependencies": {

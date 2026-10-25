@@ -40,6 +40,34 @@ Canonical envelope `{ ok: true, data }` or `{ ok: false, error }`. Older routes 
 
 ## Common reads
 
+Route personal actions to Core personal tasks, notifications to Calendar,
+family chores to Household and engineering/report work to Pipeline. GitHub
+issues hold repository discussion; link them when useful, without copying
+private context. Filing or assignment grants no execution authority. Ideas
+remain proposals unless the owner asks to record a commitment.
+
+New generic engineering captures have a separate intake decision. Read
+`intakeView` and the next action; `queued` is not an accepted commitment.
+The dossier records acceptance, clarification, deferral or non-pursuit with
+revision-checked reasons. Acceptance grants no execution power. A changed
+request needs review; legacy records and native approved promotions retain
+their existing rules. Triage never cancels or releases native effects.
+
+Before filing engineering work from an issue or conversation, inspect its
+qualified reference through Core/owner `work_relationships` when available.
+One report can require several scoped tasks and several reports can share
+work. Titles do not establish duplicates. Keep report-admission request UUID
+and scopeKey stable across retries; links and their scope reviews grant no
+execution authority and mirror no external status. A native PR observation is
+not a deployment or final acceptance receipt. See `docs/WORK_RELATIONSHIPS.md`.
+
+Heavy-work list `summary.counts` distinguishes automatic queue, action required,
+recorded dispatch/execution and uncertainty before pagination. Reservations are
+independent counts. Use each `presentation.nextAction` actor and step, not the
+stored state alone. Queue completion does not close its task/issue, and a read
+does not prove current model activity. See the product's
+[work lifecycle](https://github.com/WindriderQc/AgentX/blob/main/docs/WORK_LIFECYCLE.md).
+
 - **Health**: `GET /health`, `/benchmark/health` and `/rag/health`; `GET /api/operations/health`; `GET /api/nerve-center/ecosystem`; `GET /api/nerve-center/inference-health`.
 - **Hosts and models**: `GET /api/models/cluster-summary` (what is loaded and pinned on each host), `/api/models/all`, `/api/models/registry` (filters: category, tag, vendor, status), `/api/ollama-hosts`.
 - **Routing**: `GET /api/router/config` (which model and host serve each task type).

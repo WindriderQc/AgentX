@@ -685,6 +685,9 @@ describe('apply gating and adapters', () => {
     const task = await PipelineTask.findOne({ pipelineId });
     expect(task).toBeTruthy();
     expect(task.source).toBe('memory-review');
+    expect(task.intake).toMatchObject({ state: 'accepted', history: [{ actor: { channel: 'domain_review' } }] });
+    expect(task.intake.history[0].evidenceRef).toContain(candidateId);
+    expect(task.automationAttemptCount).toBe(0);
     expect(task.spec).toContain('memory-review candidate');
     // Sections are separated so headings render, and the approval is dated readably.
     expect(task.spec).toMatch(/\n\n## Objective\nDurable fact for test-apply-task\.\n\n/);

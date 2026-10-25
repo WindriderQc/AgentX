@@ -25,3 +25,5 @@ const financePlanSchema = new mongoose.Schema({
 
 module.exports = mongoose.models.FinancePlan
   || mongoose.model('FinancePlan', financePlanSchema, 'finance_plan');
+
+module.exports = require('../src/services/finance/financeModelGuard')(module.exports);

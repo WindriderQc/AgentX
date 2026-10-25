@@ -2,10 +2,13 @@ import { definePluginEntry } from 'openclaw/plugin-sdk/core';
 import { createNativeBackend } from './native.mjs';
 import { createExecutionService } from './service.mjs';
 import { createSpendLedger } from './ledger.mjs';
+import { createTerminalEvidenceStore } from './terminal-evidence.mjs';
 
-export function registerExecutionRoutes(api, { backend = createNativeBackend(api), ledger = createSpendLedger() } = {}) {
+export function registerExecutionRoutes(api, { backend = createNativeBackend(api), ledger = createSpendLedger(), terminalStore = createTerminalEvidenceStore() } = {}) {
   const service = createExecutionService({ backend, catalogTtlSeconds: api.pluginConfig?.catalogTtlSeconds || 300,
-    maxRequestCostNanodollars: api.pluginConfig?.maxRequestCostNanodollars || 0, ledger });
+    maxRequestCostNanodollars: api.pluginConfig?.maxRequestCostNanodollars || 0, ledger,
+    recordRefusal: receipt => api.logger?.warn?.('[agentx-model-refusal] ' + JSON.stringify(receipt)),
+    recordTerminal: terminalStore.record });
   const send = (res, status, body) => { res.statusCode = status; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(body)); };
   api.registerHttpRoute({ path: '/api/agentx/execution/models', auth: 'gateway', match: 'exact', handler: async (req, res) => {
     if (req.method !== 'GET') return send(res, 405, { code: 'METHOD_NOT_ALLOWED' });
@@ -38,10 +41,17 @@ export function registerExecutionRoutes(api, { backend = createNativeBackend(api
     } catch (error) {
       const body = { schema: 'agentx.openclaw-model-error/v1',
         partialResponse: error.partialResponse || '', partialThinking: error.partialThinking || '', code: error.code || (error instanceof SyntaxError ? 'OPENCLAW_REQUEST_INVALID' : 'OPENCLAW_EXECUTION_FAILED'),
-        executionState: error.executionState || 'not-dispatched', reservation: error.reservation || null };
+        executionState: error.executionState || 'not-dispatched', reservation: error.reservation || null,
+        ...(error.refusalReceipt ? { refusalReceipt: error.refusalReceipt } : {}),
+        ...(error.terminalEvidence ? { terminalEvidence: error.terminalEvidence } : {}) };
       if (res.headersSent) { if (!controller.signal.aborted) res.end(`data: ${JSON.stringify({ type: 'error', ...body })}\n\n`); }
       else send(res, error.statusCode || 400, body);
     } finally { res.removeListener('close', abort); }
+  } });
+  api.registerHttpRoute({ path: '/api/agentx/execution/model-terminal', auth: 'gateway', match: 'exact', handler: async (req, res) => {
+    if (req.method !== 'GET') return send(res, 405, { code: 'METHOD_NOT_ALLOWED' });
+    try { send(res, 200, await terminalStore.read(new URL(req.url, 'http://native.invalid').searchParams.get('ref'))); }
+    catch (error) { send(res, error.statusCode || (error.code === 'ENOENT' ? 404 : 503), { code: 'OPENCLAW_TERMINAL_EVIDENCE_UNAVAILABLE' }); }
   } });
 }
 

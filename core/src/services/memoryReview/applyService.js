@@ -206,7 +206,9 @@ async function applyPipelineTask(run, candidate, deps, { headline } = {}) {
     epic: 'Memory Review',
     source: 'memory-review',
     sourceKey: `candidate:${candidate.candidateId}`,
-  });
+  }, !candidate.apply?.automated && candidate.review?.by ? { intakeAcceptance: { by: candidate.review.by,
+    reason: 'The operator approved and applied this engineering follow-up through memory review.',
+    ref: `memory-review:${run.runId}:${candidate.candidateId}` } } : {});
   return {
     result: `pipeline task ${created.pipelineId} created`,
     rollbackRef: `pipeline task ${created.pipelineId} (close as cancelled)`,

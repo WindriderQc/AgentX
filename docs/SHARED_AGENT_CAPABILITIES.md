@@ -33,6 +33,10 @@ execution history and session memory; these are not a replacement store for
 Core's shared personal facts, tasks or documents. An action is confirmed only
 after its successful result, with the available domain and execution receipts.
 
+[Work lifecycle](WORK_LIFECYCLE.md) defines task/issue routing, fact ownership,
+actor roles and queue interpretation. Runtime adapters preserve Core's read
+projections rather than infer automatic execution from a stored status.
+
 Selected context sent to a cloud model crosses that boundary even when the
 source service remains local. Expose the capability set intentionally and do
 not treat all private data as automatically needed for every conversation.
@@ -61,6 +65,12 @@ consume the same bus with its native MCP client. Provider choice and the number
 of agent roles do not change the domain owner. Direct AgentX/Ollama inference
 does not become a tool-executing agent merely because a capability is published.
 
+The [presentation/read contract](CONTENT_PRESENTATION.md) follows this same
+ownership: Core projects and validates the exact Analytics view snapshot;
+Hermes uses `read_presentation` on this bus and OpenClaw relays it through its
+optional private-owner adapter. The runtime does not implement another page
+reader. Current selection and display observation do not grant domain access.
+
 ## Qualification
 
 Separate these observations:
@@ -74,3 +84,34 @@ Use isolated fixtures for source checks. Queue live model and shared-compute
 qualification through [the heavy-work procedure](HEAVY_WORK_QUEUE.md). Retain
 native admission, stable request identity and recovery rules. Do not replay a
 possibly executed mutation to compensate for an uncertain transport result.
+
+## Personal runtime parity
+
+Personal harnesses retain the general Core MCP bus and may additionally connect
+`/api/consumers/nestor/v1/mcp`. This owner transport is intentionally absent from
+`/mcp` and `/mcp/memory`; family and narrow memory clients do not discover it.
+It uses the existing Nestor consumer network/native access boundary, not a
+new model-supplied audience. Do not configure it for a family runtime.
+
+| Capability | Shared execution |
+| --- | --- |
+| Owner notes, mail journal and archive | Existing Core note, journal and owner-private recall services |
+| Secretary and Accountant records | `team_brief`, including freshness and unavailable sections |
+| Live specialist actions | `consult_team` with the installed native collaborator |
+| Pipeline status and tasks | `ecosystem_snapshot`, `pipeline_tasks`, existing `create_todo` |
+| Engineering provenance and authority | `work_relationships` and `work_authority`, shared Core dossier reads; no authenticated human principal or execution grant |
+| Pipeline deliverables | `pipeline_artifacts`: registered receipts and verified bounded text |
+| Storage file names | `find_files`, reading the existing index, not arbitrary disk content |
+| Current public research | `web_search` through Core SearXNG; native Main for page reading |
+| Heavy-work observation | `work_queue`, without dispatch or resource ownership |
+| Existing coding and assistant workflows | Native Main consultation retains its installed tools and Pipeline policies |
+
+Consultation requests require a stable UUID. Core stores the complete question,
+dispatch fence, exact native session/run, answer and tool evidence in canonical
+conversations. Duplicate delivery replays the same request; changed content
+under its identity refuses. The asynchronous response must be polled. Lost
+acceptance is reconciled by reading the original native session; ambiguity
+retains the fence. No absence, timeout or process restart permits relaunch.
+This transport does not grant shell access, bypass campaign approval or turn a
+queued request into proof that work finished. Source tests validate contracts;
+installation and live runtime parity require separate acceptance receipts.
