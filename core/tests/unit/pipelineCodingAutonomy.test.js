@@ -775,3 +775,46 @@ test('campaign retains a timely dispatch after its start deadline, while enforci
   queue.get.mockResolvedValue({ ...base, reservation: { ...base.reservation, end: base.startBefore } });
   await expect(service.campaign(value)).rejects.toMatchObject({ code: 'CODING_AUTONOMY_QUEUE_WAIT' });
 });
+
+test('one local-test correction retains both attempts and remaining budgets without a third dispatch', async () => {
+  await task();
+  await authorize('0001', { maxResumes: 1, workSeconds: 100, testSeconds: 50, modelSeconds: 60, modelCalls: 6 });
+  await enable();
+  async function failFocused(active) {
+    const claimed = await claimEligibleTask(active.pipelineId, 'coding-team', new Date(),
+      { automated: true, dispatchRequestId: active.requestId });
+    const value = await Task.findOne({ pipelineId: active.pipelineId }).lean();
+    const runs = value.codingAutonomy.runs.map(run => run.requestId === active.requestId ? { ...run,
+      modelReceipts: [{ callId: active.requestId, state: 'completed',
+        startedAt: new Date(Date.now() - 2000).toISOString(), finishedAt: new Date().toISOString() }] } : run);
+    await Task.updateOne({ pipelineId: active.pipelineId }, { $set: { 'codingAutonomy.runs': runs } });
+    const response = await request(app).post(`/api/pipeline/tasks/${active.pipelineId}/feedback`).send({
+      by: 'coding-team', assignee: 'coding-team', leaseId: claimed.automationLease.leaseId,
+      text: 'Focused test rejected the candidate; private receipt retained.', status: 'blocked',
+      attemptEvidence: { schema: 'agentx.pipeline-automation-evidence/v1', verification: { status: 'failed' },
+        changes: {}, usage: {}, failureCodes: ['tests_failed'], source: 'coding-autonomous/v1',
+        workerReceiptFingerprint: 'b'.repeat(64), routing: { status: 'verified', provider: 'ollama', effectiveModel: 'synthetic-model',
+          requestCount: 1, sessionCallCount: 1, evidenceFingerprint: 'c'.repeat(64) } } });
+    expect(response.status).toBe(200);
+    receipts.set(active.requestId, { pipelineId: active.pipelineId, requestId: active.requestId, phase: 'finished',
+      progress: terminalProgress(active, { result: 'blocked', stopReason: 'tests_failed', pr: null,
+        lastTest: { name: 'unittest', outcome: 'failed' } }) });
+    await service.tick();
+  }
+  const first = await launch();
+  await failFocused(first);
+  const second = await selected();
+  expect(second.requestId).not.toBe(first.requestId);
+  await service.tick();
+  const manifest = await service.workerManifest('0001', second.requestId);
+  expect(manifest.parentRequestId).toBe(first.requestId);
+  expect(manifest.remaining).toMatchObject({ workSeconds: 90, testSeconds: 47, modelSeconds: 56, modelCalls: 5 });
+  await failFocused(second);
+  await service.tick();
+  const final = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(final.codingAutonomy.runs).toHaveLength(2);
+  expect(final.codingAutonomy.spent).toMatchObject({ workSeconds: 20, testSeconds: 6, modelSeconds: 8, modelCalls: 2 });
+  expect(final.codingAutonomy.reason).toBe('resume_limit');
+  expect(await selected()).toBeNull();
+  expect(control.launch).toHaveBeenCalledTimes(2);
+});

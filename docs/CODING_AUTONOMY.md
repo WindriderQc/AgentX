@@ -107,6 +107,24 @@ commits and test profile/outcomes; paths, commands, prompts, output and the full
 ledger remain private. After every step passes, the runner runs the full profile
 once and publishes one draft PR.
 
+For an authorized correction after an ordinary focused-test failure, the runner
+reuses the original plan, failed-step history and attempt count. A private receipt
+binds the rejected Git stash to its task, parent request, prepared commit, plan,
+step, verification and dependency state. The next fresh implementation session
+receives the rejected files and bounded test output as untrusted reference data;
+the failed patch is never applied to the assembly. Rejected source context is
+limited to 64 KiB. Missing or mismatched receipts, dirty or unrelated checkpoints,
+changed dependencies and exhausted step limits refuse before another worker.
+An upstream descendant may advance only when the frozen source/test paths remain
+unchanged. Fully verified plans that fail the final profile keep the existing
+fresh-plan correction path against their committed source.
+
+Core still owns whether a linked correction may run: the original authorization,
+resume limit, queue/admission, completed model settlements and remaining cumulative
+budgets apply. A private failure receipt supplies context, never an extra attempt
+or a budget grant. Raw rejected source and diagnostics remain outside public Git
+and Pipeline projections.
+
 Before each model request, the relay adds a fresh runner budget advisory with
 the remaining durations, model calls and no-progress window. It preserves the
 worker's complete history and model options; the advisory is not saved back into
