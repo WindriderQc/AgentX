@@ -3,13 +3,15 @@
 // Read-only ISS pass tool for the Core MCP bus.
 //
 // Data owns orbital-source reads and caching. Core computes passes locally
-// and never returns observer coordinates. Every answer is dated so an agent
+// and omits observer coordinates except in an explicitly enabled viewer fragment. Every answer is dated so an agent
 // can quote times without inventing them.
 
 const { fetchData: defaultFetchData } = require('./dataServiceClient');
 const { computePasses, tleEpoch } = require('./iss/issPasses');
 const { familyTimeZone } = require('../domains/household/family');
 const { parsePosition, resolvePosition, locationMetadata } = require('../../../shared/observerLocation');
+
+const { observerView } = require('./iss/observerView');
 
 const ISS_NORAD_ID = '25544';
 const TLE_STALE_EPOCH_MS = 3 * 24 * 3600 * 1000;
@@ -21,7 +23,7 @@ const ISS_TOOLS = [
   {
     name: 'iss_passes',
     title: 'ISS Passes',
-    description: 'Next International Space Station passes from Data orbital elements. Location: explicit lat/lon, otherwise the household weather location, otherwise the configured default. Disclose the returned observer label, especially a default location. Each pass says whether it is observable to the naked eye (at least 10° high, station sunlit, dark enough sky) or only geometric (above the horizon), with local times, directions and height. Weather is not known: say "si le ciel est dégagé". Quote the returned times and search window exactly; never estimate a pass time yourself or call it the best of the week when the window is shorter. Offer view.url when present; its observer location is configured separately.',
+    description: 'Next International Space Station passes from Data orbital elements. Location: explicit lat/lon, otherwise the household weather location, otherwise the configured default. Disclose the returned observer label, especially a default location. Each pass says whether it is observable to the naked eye (at least 10° high, station sunlit, dark enough sky) or only geometric (above the horizon), with local times, directions and height. Weather is not known: say "si le ciel est dégagé". Quote the returned times and search window exactly; never estimate a pass time yourself or call it the best of the week when the window is shorter. Offer view.url when present; check view.observerSynchronized before claiming the view uses the same location; the view recalculates its own times.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -133,17 +135,6 @@ function localFormatter(timeZone) {
   return (iso) => fmt.format(new Date(iso));
 }
 
-function viewUrl(env = process.env) {
-  const raw = String(env.ISS_VIEW_URL || '').trim();
-  if (!raw) return null;
-  try {
-    const url = new URL(raw);
-    return url.protocol === 'https:' && !url.username && !url.password ? url.toString() : null;
-  } catch (_error) {
-    return null;
-  }
-}
-
 async function issPasses(args, deps = {}) {
   const input = parseArgs(args);
   const fetchData = deps.fetchData || defaultFetchData;
@@ -204,8 +195,8 @@ async function issPasses(args, deps = {}) {
       visible: p.visible && { ...p.visible, startLocal: local(p.visible.start.time), endLocal: local(p.visible.end.time) },
       notObservableBecause: p.reason ? p.reason.text : null,
     })),
-    view: viewUrl(deps.env) ? { url: viewUrl(deps.env), label: 'Vue 3D de l’ISS et des passages' } : null,
-    answerRules: 'Donne les heures locales telles quelles avec leur jour et la fenêtre calculée. Limite toute comparaison à la fenêtre window, jamais à une semaine entière si elle n’a pas été calculée. Les counts portent sur toute la fenêtre; la liste passes peut être limitée. Pour obtenir les prochains passages visibles, utilise visible_only=true plutôt que filtrer une liste géométrique tronquée. Une liste partielle ne prouve ni que ses passages sont les seuls ni qu’un passage est le meilleur de toute la période. Indique le lieu utilisé; si observer.defaulted est vrai, annonce explicitement que ce lieu par défaut ne prouve pas la position de la personne. Distingue « visible à l’œil nu si le ciel est dégagé » et « passe au-dessus de l’horizon mais pas visible ». Mentionne la date des éléments orbitaux si stale est vrai. Propose view.url quand il est présent. La vue 3D liée règle son lieu séparément : ses passages ne sont pas synchronisés avec ce calcul.',
+    view: observerView(observer, deps.env),
+    answerRules: 'Donne les heures locales telles quelles avec leur jour et la fenêtre calculée. Limite toute comparaison à la fenêtre window, jamais à une semaine entière si elle n’a pas été calculée. Les counts portent sur toute la fenêtre; la liste passes peut être limitée. Pour obtenir les prochains passages visibles, utilise visible_only=true plutôt que filtrer une liste géométrique tronquée. Une liste partielle ne prouve ni que ses passages sont les seuls ni qu’un passage est le meilleur de toute la période. Indique le lieu utilisé; si observer.defaulted est vrai, annonce explicitement que ce lieu par défaut ne prouve pas la position de la personne. Distingue « visible à l’œil nu si le ciel est dégagé » et « passe au-dessus de l’horizon mais pas visible ». Mentionne la date des éléments orbitaux si stale est vrai. Propose view.url quand il est présent. Si view.observerSynchronized est vrai, le lien transmet le même lieu arrondi au navigateur; conserve le lien exact. Sinon la vue règle son lieu séparément. La vue recalcule ses passages : ses heures peuvent différer si les éléments orbitaux ou la fenêtre changent.',
   };
 }
 

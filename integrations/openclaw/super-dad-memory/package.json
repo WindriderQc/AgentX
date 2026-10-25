@@ -25,7 +25,8 @@
     "native-read-budget.js",
     "photos.js",
     "presentation.js",
-    "iss.js"
+    "iss.js",
+    "iss-evidence.js"
   ],
   "scripts": {
     "test": "node --test test/*.test.js"

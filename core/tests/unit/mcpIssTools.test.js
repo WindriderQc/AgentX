@@ -94,7 +94,7 @@ describe('iss_passes tool', () => {
     expect(out.timeZone).toBe('America/Toronto');
     expect(out.nextVisible).toMatchObject({ from: 'N', to: 'ENE', maxElDeg: 34.1 });
     expect(out.nextVisible.startLocal).toMatch(/dim\. 25 oct\..*05 h 16/);
-    expect(out.view).toEqual({ url: 'https://example.test/iss#passages', label: expect.any(String) });
+    expect(out.view).toEqual({ url: 'https://example.test/iss#passages', label: expect.any(String), observerSynchronized: false });
     expect(out.counts.observable).toBeGreaterThan(0);
     expect(out.passes.length).toBeLessThanOrEqual(8);
   });

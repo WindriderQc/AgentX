@@ -116,7 +116,7 @@ async function issSummary(userText, { readPasses = defaultIssPasses, logger } = 
     }
     const hidden = result.counts.geometric - result.counts.observable;
     if (hidden > 0) lines.push(`${hidden} autre(s) passage(s) au-dessus de l’horizon ne seront pas visibles (en plein jour, trop bas, ou ISS dans l’ombre de la Terre).`);
-    if (result.view) lines.push(`Une vue 3D de l’ISS est disponible ; son lieu d’observation se règle séparément et n’est pas synchronisé avec ce calcul. Propose-la avec <show kind="link" title="${result.view.label}">${result.view.url}</show>.`);
+    if (result.view) lines.push(`Une vue 3D de l’ISS est disponible ; ${result.view.observerSynchronized ? "le lien transmet le même lieu arrondi au navigateur. La vue recalcule ses heures avec ses éléments orbitaux." : "son lieu d’observation se règle séparément et n’est pas synchronisé avec ce calcul."} Conserve le lien exact. Propose-la avec <show kind="link" title="${result.view.label}">${result.view.url}</show>.`);
     return lines.join('\n').slice(0, MAX_CHARACTERS);
   } catch (error) {
     logger?.warn?.('Family ISS passes unavailable', { error: error.message });
