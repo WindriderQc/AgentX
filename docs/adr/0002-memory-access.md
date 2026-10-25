@@ -44,7 +44,14 @@ Reviewed `supersedes` candidates bind to exact Core-observed owner-note conflict
 and preserve their classification. Individual review, audited run authorization
 and server apply mode remain mandatory; this type never auto-applies. Durable
 staging resumes the same mutation after a lost response, and an explicit restore
-refuses changed sources or successors. RAG replacement/history remains under #896.
+refuses changed sources or successors.
+
+RAG documents carry the same `invalidatedAt` and `supersededBy`, preserved
+through rewrites and embedding-collection migration. Every RAG retrieval mode
+excludes facts invalidated by now; Core rechecks returned rows so an older RAG
+service cannot reintroduce them. Only the owner audience may request
+`includeHistory`, which marks each row current or not with its successor and
+sources. The reviewed RAG replacement apply and restore remain under #896.
 
 Core exposes an audience-bound memory read capability. Owner reads keep all
 information scopes, including private-domain and unclassified historical

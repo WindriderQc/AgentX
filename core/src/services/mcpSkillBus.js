@@ -63,6 +63,7 @@ const TOOLS = [
       hybrid: { type: 'boolean', default: false },
       rerank: { type: 'boolean', default: false },
       compress: { type: 'boolean', default: false },
+      includeHistory: { type: 'boolean', default: false, description: 'Owner only: also return replaced facts, each marked current or not, with its successor and source.' },
     }, ['query']),
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
   },
@@ -184,6 +185,7 @@ async function ragSearch(args, deps) {
     hybrid: input.hybrid === true,
     rerank: input.rerank === true,
     compress: input.compress === true,
+    includeHistory: input.includeHistory === true,
   });
   return { query, count: results.length, results };
 }

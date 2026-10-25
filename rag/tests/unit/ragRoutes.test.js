@@ -250,6 +250,17 @@ describe('POST /api/rag/search', () => {
     expect(res.body.data.applied).toEqual({ hybrid: false, expand: false });
   });
 
+  it('passes an explicit history read and refuses a non-boolean one', async () => {
+    mockStore.search.mockResolvedValue({ results: [], applied: { hybrid: false, expand: false } });
+    await request(buildApp()).post('/api/rag/search').send({ query: 'backup' }).expect(200);
+    expect(mockStore.search.mock.calls.at(-1)[1].includeHistory).toBe(false);
+    await request(buildApp()).post('/api/rag/search').send({ query: 'backup', includeHistory: true }).expect(200);
+    expect(mockStore.search.mock.calls.at(-1)[1].includeHistory).toBe(true);
+    const res = await request(buildApp()).post('/api/rag/search').send({ query: 'backup', includeHistory: 'yes' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/includeHistory must be a boolean/);
+  });
+
   it('returns 400 when query is missing', async () => {
     const res = await request(buildApp())
       .post('/api/rag/search')

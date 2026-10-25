@@ -745,3 +745,104 @@ describe('RagStore Markdown documents', () => {
     expect((await store.upsertDocumentWithChunks(NOTE, { ...metadata, format: 'markdown' })).unchanged).toBe(true);
   });
 });
+
+describe('RagStore replaced facts (#896)', () => {
+  const embedding = [0.1, 0.2, 0.3, 0.4, 0.5];
+  const owner = { source: 'agent-artifacts', scope: 'owner', sensitivity: 'private' };
+  const sourceRefs = [{ system: 'memory-review', id: 'synthetic-run:candidate' }];
+  let store;
+
+  beforeEach(() => {
+    store = new RagStore({ type: 'memory' });
+    store.embeddingsService = { embedBatch: jest.fn(async (texts) => texts.map(() => [...embedding])) };
+  });
+
+  async function replacedPair() {
+    await store.upsertDocumentWithChunks('Synthetic backup runs on host A', {
+      ...owner, documentId: 'backup-a', validFrom: '2026-01-05T00:00:00.000Z', sourceRefs });
+    await store.upsertDocumentWithChunks('Synthetic backup runs on host B', {
+      ...owner, documentId: 'backup-b', validFrom: '2026-03-01T00:00:00.000Z',
+      sourceRefs: [{ system: 'memory-review', id: 'synthetic-run:successor' }] });
+    // Same text: only the replacement validity changes on the predecessor.
+    return store.upsertDocumentWithChunks('Synthetic backup runs on host A', {
+      ...owner, documentId: 'backup-a', invalidatedAt: '2026-03-01T00:00:00.000Z', supersededBy: 'backup-b' });
+  }
+
+  test.each([
+    ['vector', {}],
+    ['hybrid', { hybrid: true }],
+    ['expanded', { expand: true }],
+  ])('%s recall returns the current fact and keeps the replaced one as history', async (_mode, mode) => {
+    const write = await replacedPair();
+    expect(write.unchanged).toBeUndefined();
+    const current = (await store.search('backup host', { ...mode, topK: 10 })).results;
+    expect([...new Set(current.map((r) => r.metadata.documentId))]).toEqual(['backup-b']);
+
+    const history = (await store.search('backup host', { ...mode, topK: 10, includeHistory: true })).results;
+    const old = history.find((r) => r.metadata.documentId === 'backup-a');
+    const now = history.find((r) => r.metadata.documentId === 'backup-b');
+    expect(old.metadata).toMatchObject({ current: false, invalidatedAt: '2026-03-01T00:00:00.000Z',
+      supersededBy: 'backup-b', validFrom: '2026-01-05T00:00:00.000Z', sourceRefs });
+    expect(now.metadata).toMatchObject({ current: true, invalidatedAt: null, supersededBy: null });
+  });
+
+  test('keyword-only recall applies the same boundary', async () => {
+    await replacedPair();
+    store.vectorStore.searchSimilar = jest.fn(async () => []);
+    const hybrid = (await store.search('backup', { hybrid: true, topK: 10 })).results;
+    expect(hybrid.map((r) => r.metadata.documentId)).toEqual(['backup-b']);
+    const history = (await store.search('backup', { hybrid: true, topK: 10, includeHistory: true })).results;
+    expect(history.map((r) => r.metadata.documentId).sort()).toEqual(['backup-a', 'backup-b']);
+  });
+
+  test('the document read keeps text, provenance, recording time and the successor link', async () => {
+    const before = await store.upsertDocumentWithChunks('Synthetic backup runs on host A', {
+      ...owner, documentId: 'backup-a', validFrom: '2026-01-05T00:00:00.000Z', sourceRefs });
+    expect(before.status).toBe('created');
+    const recordedAt = (await store.getDocument('backup-a')).recordedAt;
+    await store.upsertDocumentWithChunks('Synthetic backup runs on host B', { ...owner, documentId: 'backup-b' });
+    await store.upsertDocumentWithChunks('Synthetic backup runs on host A', {
+      ...owner, documentId: 'backup-a', invalidatedAt: '2026-03-01T00:00:00.000Z', supersededBy: 'backup-b' });
+    expect(await store.getDocument('backup-a')).toMatchObject({ validFrom: '2026-01-05T00:00:00.000Z',
+      recordedAt, sourceRefs, invalidatedAt: '2026-03-01T00:00:00.000Z', supersededBy: 'backup-b' });
+    expect((await store.getDocumentChunks('backup-a'))[0].text).toBe('Synthetic backup runs on host A');
+  });
+
+  test('an unrelated rewrite keeps the replacement; an explicit null restores the fact', async () => {
+    await replacedPair();
+    await store.upsertDocumentWithChunks('Synthetic backup runs on host A, nightly', { ...owner, documentId: 'backup-a' });
+    expect(await store.getDocument('backup-a')).toMatchObject({ invalidatedAt: '2026-03-01T00:00:00.000Z', supersededBy: 'backup-b' });
+    await store.upsertDocumentWithChunks('Synthetic backup runs on host A, nightly', {
+      ...owner, documentId: 'backup-a', invalidatedAt: null, supersededBy: null });
+    expect(await store.getDocument('backup-a')).toMatchObject({ invalidatedAt: null, supersededBy: null });
+    const ids = (await store.search('backup host', { topK: 10 })).results.map((r) => r.metadata.documentId);
+    expect(new Set(ids)).toEqual(new Set(['backup-a', 'backup-b']));
+  });
+
+  test('a scheduled invalidation takes effect only at its stated instant; unknown stays current', async () => {
+    await store.upsertDocumentWithChunks('Synthetic lease ends later', {
+      ...owner, documentId: 'lease', invalidatedAt: '2999-01-01T00:00:00.000Z' });
+    await store.upsertDocumentWithChunks('Synthetic legacy lease note', { ...owner, documentId: 'legacy' });
+    const ids = (await store.search('lease', { topK: 10 })).results.map((r) => r.metadata.documentId);
+    expect(new Set(ids)).toEqual(new Set(['lease', 'legacy']));
+  });
+
+  test.each([
+    [{ supersededBy: 'other' }, /requires invalidatedAt/],
+    [{ invalidatedAt: '2026-03-01T00:00:00.000Z', supersededBy: 'self' }, /cannot replace itself/],
+    [{ validFrom: '2026-03-01T00:00:00.000Z', invalidatedAt: '2026-01-01T00:00:00.000Z' }, /cannot precede validFrom/],
+    [{ invalidatedAt: 'yesterday' }, /invalidatedAt must be an ISO instant/],
+    [{ invalidatedAt: '2026-03-01T00:00:00.000Z', supersededBy: 'a\nb' }, /supersededBy must name/],
+  ])('refuses incoherent replacement validity %#', async (validity, message) => {
+    await expect(store.upsertDocumentWithChunks('Synthetic fact', { ...owner, documentId: 'self', ...validity }))
+      .rejects.toMatchObject({ code: 'INVALID_MEMORY_FACT_METADATA', message: expect.stringMatching(message) });
+    expect(await store.getDocument('self')).toBeNull();
+  });
+
+  test('automatic deduplication does not merge a replaced fact into a current one', async () => {
+    await store.upsertDocumentWithChunks('Synthetic shared fact', { ...owner });
+    await expect(store.upsertDocumentWithChunks('Synthetic shared fact', {
+      ...owner, invalidatedAt: '2026-03-01T00:00:00.000Z' }))
+      .rejects.toMatchObject({ code: 'MEMORY_FACT_METADATA_CONFLICT' });
+  });
+});

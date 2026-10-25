@@ -201,7 +201,7 @@ describe('keywordSearch', () => {
     const store = makeMockStore(docs, chunks);
     await keywordSearch(store, 'MongoDB de serveur', { topK: 10, filters: { scope: 'household' } });
     expect(store.findKeywordCandidates).toHaveBeenCalledTimes(1);
-    expect(store.findKeywordCandidates).toHaveBeenCalledWith(['mongodb', 'serveur'], { filters: { scope: 'household' }, limit: 500 });
+    expect(store.findKeywordCandidates).toHaveBeenCalledWith(['mongodb', 'serveur'], { filters: { scope: 'household' }, limit: 500, includeHistory: false });
   });
 
   it('propagates store errors to the caller', async () => {

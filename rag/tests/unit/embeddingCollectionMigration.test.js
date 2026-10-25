@@ -38,6 +38,17 @@ describe('embedding collection migration hooks', () => {
       validFrom: original.validFrom, recordedAt: original.recordedAt, sourceRefs,
     }));
   });
+  test('a delta copies replacement validity even when text and fact dates are unchanged', async () => {
+    const replaced = { ...doc('old', 'same'), invalidatedAt: '2026-03-01T00:00:00.000Z', supersededBy: 'new' };
+    const { deps } = stores([replaced], [doc('old', 'same')]);
+    const upsert = jest.fn().mockResolvedValue({});
+    deps.targetRagStore.upsertDocumentWithChunks = upsert;
+    const summary = await migrateEmbeddingCollection({ source: 'a', target: 'b', delta: true }, deps);
+    expect(summary.migrated).toBe(1);
+    expect(upsert).toHaveBeenCalledWith('same', expect.objectContaining({
+      invalidatedAt: replaced.invalidatedAt, supersededBy: 'new', restoreFactMetadata: true,
+    }));
+  });
   test('a pruning delta pass copies changes and removes documents deleted from the source', async () => {
     const { deps, deleted, upserts } = stores(
       [doc('kept', 'same'), doc('changed', 'new text')],

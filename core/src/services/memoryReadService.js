@@ -2,6 +2,7 @@
 
 const { getRagServiceClient } = require('./ragServiceClient');
 const { scoreFloor } = require('../helpers/scoreFloor');
+const { isCurrentFact } = require('../../../shared/memoryFactMetadata');
 
 // Vector similarity floor applied when a caller does not choose one, so an
 // unrelated question returns nothing instead of the nearest noise. Measured on
@@ -37,6 +38,9 @@ function forAudience(audience, { ragClient = getRagServiceClient(), minScore = d
         ['minScore', 'filters', 'timeoutMs', 'expand', 'hybrid', 'rerank', 'compress', 'followLinks']
           .filter(key => Object.hasOwn(options, key)).map(key => [key, options[key]])
       );
+      // Replaced facts are history: only the owner audience may ask for them.
+      const history = audience === 'owner' && options.includeHistory === true;
+      if (history) searchOptions.includeHistory = true;
       searchOptions.topK = Math.max(1, Math.min(Math.trunc(Number(options.topK)) || 5, 20));
       if (!Object.hasOwn(searchOptions, 'minScore') && options.hybrid !== true) searchOptions.minScore = minScore;
       if (audience === 'household') {
@@ -47,8 +51,11 @@ function forAudience(audience, { ragClient = getRagServiceClient(), minScore = d
       const results = await ragClient.searchSimilarChunks(query.trim(), searchOptions);
       // Recheck returned labels before text can enter a prompt or UI. Missing
       // labels are not a family grant, even if an upstream adapter ignores its filter.
-      return (Array.isArray(results) ? results : []).filter(result => audience === 'owner'
-        || (result?.metadata?.scope === 'household' && result?.metadata?.sensitivity === 'normal'));
+      // An older RAG service may not filter replaced facts yet; recheck them too.
+      const now = new Date();
+      return (Array.isArray(results) ? results : []).filter(result => (audience === 'owner'
+        || (result?.metadata?.scope === 'household' && result?.metadata?.sensitivity === 'normal'))
+        && (history || isCurrentFact(result?.metadata || {}, now)));
     }
   });
 }

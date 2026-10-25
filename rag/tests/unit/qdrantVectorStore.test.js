@@ -39,7 +39,7 @@ describe('bounded corpus traversal payloads', () => {
     const result = await store.listDocuments();
     const { hash, ...listedMetadata } = metadata;
     expect(result).toEqual({ total: 1, documents: [{ ...listedMetadata, chunkCount: 1,
-      validFrom: null, recordedAt: null, sourceRefs: [] }], sources: [listedMetadata.source] });
+      validFrom: null, recordedAt: null, sourceRefs: [], invalidatedAt: null, supersededBy: null }], sources: [listedMetadata.source] });
     expect(await store.getDocument('doc-1')).toMatchObject(metadata);
     for (const body of requests) {
       expect(body.with_payload.include).not.toEqual(expect.arrayContaining(['text']));
@@ -534,13 +534,29 @@ describe('QdrantVectorStore.searchSimilar', () => {
     ]);
   });
 
-  it('omits filter when no filters provided', async () => {
+  it('without caller filters, excludes only facts invalidated by now', async () => {
     fetch.mockResolvedValueOnce(mockOk({ result: [] }));
-
+    const before = Date.now();
     await store.searchSimilar([0.1]);
 
     const body = JSON.parse(fetch.mock.calls[0][1].body);
-    expect(body.filter).toBeUndefined();
+    expect(body.filter.must).toBeUndefined();
+    expect(body.filter.must_not).toEqual([{ key: 'invalidatedAtMs', range: { lte: expect.any(Number) } }]);
+    expect(body.filter.must_not[0].range.lte).toBeGreaterThanOrEqual(before);
+  });
+
+  it('an explicit history read omits the current-fact exclusion', async () => {
+    fetch.mockResolvedValueOnce(mockOk({ result: [] }));
+    await store.searchSimilar([0.1], { includeHistory: true });
+    expect(JSON.parse(fetch.mock.calls[0][1].body).filter).toBeUndefined();
+  });
+
+  it('keeps caller filters beside the current-fact exclusion', async () => {
+    fetch.mockResolvedValueOnce(mockOk({ result: [] }));
+    await store.searchSimilar([0.1], { filters: { scope: 'household' } });
+    const { filter } = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(filter.must).toEqual([{ key: 'scope', match: { value: 'household' } }]);
+    expect(filter.must_not).toEqual([{ key: 'invalidatedAtMs', range: { lte: expect.any(Number) } }]);
   });
 
   it('throws on search failure', async () => {
@@ -585,7 +601,7 @@ describe('QdrantVectorStore.getDocument', () => {
       source: 'api',
       tags: ['test'],
       hash: 'abc123',
-      validFrom: null, recordedAt: null, sourceRefs: [],
+      validFrom: null, recordedAt: null, sourceRefs: [], invalidatedAt: null, supersededBy: null,
       chunkCount: 1
     });
   });
@@ -628,14 +644,14 @@ describe('QdrantVectorStore.listDocuments', () => {
       documentId: 'doc-a',
       source: 'api',
       tags: ['x'],
-      validFrom: null, recordedAt: null, sourceRefs: [],
+      validFrom: null, recordedAt: null, sourceRefs: [], invalidatedAt: null, supersededBy: null,
       chunkCount: 2
     });
     expect(documents[1]).toEqual({
       documentId: 'doc-b',
       source: 'file',
       tags: [],
-      validFrom: null, recordedAt: null, sourceRefs: [],
+      validFrom: null, recordedAt: null, sourceRefs: [], invalidatedAt: null, supersededBy: null,
       chunkCount: 1
     });
   });
@@ -950,5 +966,33 @@ describe('QdrantVectorStore.healthCheck', () => {
       type: 'qdrant',
       error: 'ECONNREFUSED'
     });
+  });
+});
+
+describe('QdrantVectorStore replaced facts (#896)', () => {
+  let store;
+  beforeEach(() => {
+    fetch.mockReset();
+    store = new QdrantVectorStore({ qdrantUrl: 'http://qdrant:6333', collectionName: 'test' });
+  });
+
+  test('keyword candidates keep the current-fact exclusion unless history is requested', async () => {
+    const bodies = [];
+    fetch.mockImplementation(async (url, options = {}) => {
+      if (url.endsWith('/scroll')) {
+        bodies.push(JSON.parse(options.body));
+        return mockOk({ result: { points: [], next_page_offset: null } });
+      }
+      return mockIndexedCollection();
+    });
+    await store.findKeywordCandidates(['backup']);
+    await store.findKeywordCandidates(['backup'], { includeHistory: true });
+    expect(bodies[0].filter.must_not).toEqual([{ key: 'invalidatedAtMs', range: { lte: expect.any(Number) } }]);
+    expect(bodies[0].with_payload.include).toEqual(expect.arrayContaining(['invalidatedAt', 'supersededBy']));
+    expect(bodies[1].filter.must_not).toBeUndefined();
+  });
+
+  test('the numeric twin of invalidatedAt is indexed for range filters', () => {
+    expect(QdrantVectorStore.PAYLOAD_INDEXES.invalidatedAtMs).toBe('integer');
   });
 });

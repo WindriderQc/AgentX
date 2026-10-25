@@ -20,7 +20,7 @@ class CancelledError extends Error {}
 const CHUNK_ZERO_FIELDS = [
   'documentId', 'originalText', 'source', 'tags', 'scope', 'sensitivity', 'format',
   'chunkSize', 'chunkOverlap', 'hash', 'title', 'sourceIdentityKind', 'contentHash',
-  'validFrom', 'recordedAt', 'sourceRefs'
+  'validFrom', 'recordedAt', 'sourceRefs', 'invalidatedAt', 'supersededBy'
 ];
 // One page holds whole original texts (up to 2 M characters each) under the
 // 32 MiB scroll response cap.
@@ -49,6 +49,8 @@ function buildUpsertMetadata(payload) {
       validFrom: payload.validFrom || null,
       recordedAt: payload.recordedAt || null,
       sourceRefs: payload.sourceRefs || [],
+      invalidatedAt: payload.invalidatedAt || null,
+      supersededBy: payload.supersededBy || null,
       restoreFactMetadata: true,
       ...(hasScope ? { scope: payload.scope, sensitivity: payload.sensitivity } : {}),
       ...(payload.format ? { format: payload.format } : {}),
@@ -65,7 +67,7 @@ async function readTargetIndex(targetStore) {
   const index = new Map();
   for await (const points of targetStore._scrollPages({
     filter: CHUNK_ZERO_FILTER,
-    withPayload: { include: ['documentId', 'contentHash', 'hash', 'validFrom', 'recordedAt', 'sourceRefs'] },
+    withPayload: { include: ['documentId', 'contentHash', 'hash', 'validFrom', 'recordedAt', 'sourceRefs', 'invalidatedAt', 'supersededBy'] },
     pageSize: 1000
   })) {
     for (const point of points) {
@@ -83,7 +85,9 @@ function unchangedInTarget(targetIndex, payload) {
     && (existing.hash || null) === (payload.hash || null)
     && (existing.validFrom || null) === (payload.validFrom || null)
     && (existing.recordedAt || null) === (payload.recordedAt || null)
-    && JSON.stringify(existing.sourceRefs || []) === JSON.stringify(payload.sourceRefs || []);
+    && JSON.stringify(existing.sourceRefs || []) === JSON.stringify(payload.sourceRefs || [])
+    && (existing.invalidatedAt || null) === (payload.invalidatedAt || null)
+    && (existing.supersededBy || null) === (payload.supersededBy || null);
 }
 
 async function copyPayloadIndexes(sourceSchema, targetStore, summary) {

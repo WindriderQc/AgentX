@@ -63,7 +63,8 @@ class RagServiceClient {
         hybrid: options.hybrid || undefined,
         rerank: options.rerank || undefined,
         compress: options.compress || undefined,
-        followLinks: options.followLinks || undefined
+        followLinks: options.followLinks || undefined,
+        includeHistory: options.includeHistory === true || undefined
       }
     });
     const data = payload?.data || payload;
@@ -85,6 +86,8 @@ class RagServiceClient {
         sensitivity: metadata.sensitivity,
         validFrom: metadata.validFrom,
         sourceRefs: metadata.sourceRefs,
+        invalidatedAt: metadata.invalidatedAt,
+        supersededBy: metadata.supersededBy,
         tags: metadata.tags,
         chunkSize: metadata.chunkSize,
         chunkOverlap: metadata.chunkOverlap,

@@ -6,7 +6,10 @@ const path = require('path');
 
 const logger = require('../../config/logger');
 const { memoryClassification } = require('../../../shared/memoryClassification');
-const { memoryFactInput, memoryFactProjection, mergeMemoryFactMetadata } = require('../../../shared/memoryFactMetadata');
+const {
+  memoryFactInput, memoryFactProjection, mergeMemoryFactMetadata,
+  memoryValidityInput, memoryValidityProjection, mergeMemoryValidity, isCurrentFact
+} = require('../../../shared/memoryFactMetadata');
 const { getEmbeddingsService } = require('./embeddings');
 const { createVectorStore } = require('./vectorStore/factory');
 const {
@@ -196,6 +199,8 @@ class RagStore {
       ? requestedClassification : memoryClassification(stored || {});
     const restoring = metadata.restoreFactMetadata === true;
     const fact = mergeMemoryFactMetadata(metadata, restoring ? {} : stored || {});
+    const validity = mergeMemoryValidity(metadata, restoring ? {} : stored || {},
+      { recordId: documentId, validFrom: fact.validFrom });
     // Public ingestion cannot set recordedAt. Internal collection migration
     // carries the original value (including unknown), instead of dating an
     // old fact as newly learned when its vectors are rebuilt.
@@ -203,7 +208,8 @@ class RagStore {
       : stored ? memoryFactProjection(stored).recordedAt : new Date().toISOString();
     const sameFact = !existing || JSON.stringify({
       validFrom: existing.validFrom || null, sourceRefs: existing.sourceRefs || [],
-    }) === JSON.stringify(fact);
+      ...memoryValidityProjection(existing),
+    }) === JSON.stringify({ ...fact, ...validity });
     const sameClassification = !existing || (existing.scope === classification.scope
       && existing.sensitivity === classification.sensitivity);
     if (existing && !sameClassification && (identity.sourceIdentityKind !== 'document_id'
@@ -254,6 +260,9 @@ class RagStore {
       source: identity.source,
       ...classification,
       ...fact,
+      ...validity,
+      // Numeric twin of invalidatedAt: stores filter current facts on it.
+      invalidatedAtMs: validity.invalidatedAt ? Date.parse(validity.invalidatedAt) : null,
       recordedAt,
       tags: note ? [...new Set([...(metadata.tags || []), ...note.tags])] : metadata.tags || [],
       ...(note ? {
@@ -315,6 +324,7 @@ class RagStore {
 
   async _upsertDocumentWithChunks(text, metadata) {
     memoryFactInput(metadata);
+    memoryValidityInput(metadata);
     const identity = buildDocumentIdentity(metadata.source || 'unknown', text, metadata.documentId);
     const identityKey = identity.sourceIdentity;
     return this._withIdentityLock(
@@ -359,7 +369,8 @@ class RagStore {
         keywordSearch(this.vectorStore, query, {
           topK: candidateTopK * 2,
           filters: options.filters,
-          minScore: options.minScore
+          minScore: options.minScore,
+          includeHistory: options.includeHistory === true
         }).catch((error) => {
           // Fall back to vector results, but say so in the response.
           logger.error('Keyword search failed; hybrid search uses vector results only', { error: error.message });
@@ -438,6 +449,16 @@ class RagStore {
       results = results.concat(await this._linkedResults(query, results, options));
     }
 
+    // An explicit history read says, per result, whether the fact still holds.
+    if (options.includeHistory === true) {
+      const now = new Date();
+      results = results.map((result) => ({
+        ...result,
+        metadata: { ...result.metadata, ...memoryValidityProjection(result.metadata || {}),
+          current: isCurrentFact(result.metadata || {}, now) }
+      }));
+    }
+
     // ── Contextual compression: extract relevant sentences via LLM ──
     if (useCompress && results.length > 0) {
       try {
@@ -468,7 +489,8 @@ class RagStore {
     const hits = await this.vectorStore.searchSimilar(embedding, {
       topK: 20,
       minScore: 0,
-      filters: { ...filters, linkTarget: targets }
+      filters: { ...filters, linkTarget: targets },
+      includeHistory: options.includeHistory === true
     });
     const linked = [];
     for (const hit of hits) {
