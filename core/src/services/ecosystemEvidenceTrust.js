@@ -99,7 +99,8 @@ function assessEcosystemEvidence(snapshot, options = {}) {
   const onlineHosts = cluster.filter((host) => host?.status === 'online').length;
   recordMismatch(contradictions, 'cluster-configured-hosts', cluster.length, Number(health.configuredHosts));
   recordMismatch(contradictions, 'cluster-online-hosts', onlineHosts, Number(health.onlineHosts));
-  recordMismatch(contradictions, 'cluster-offline-hosts', cluster.length - onlineHosts, Number(health.offlineHosts));
+  const parkedHosts = cluster.filter((host) => host?.status === 'parked').length;
+  recordMismatch(contradictions, 'cluster-offline-hosts', cluster.length - onlineHosts - parkedHosts, Number(health.offlineHosts));
   recordMismatch(contradictions, 'cluster-observed-models', observedModelCount(cluster), Number(health.observedModels));
 
   const timestampSources = [

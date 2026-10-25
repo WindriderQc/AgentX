@@ -105,7 +105,7 @@
     workload_reserved: 'Workload reserved', workload_yielded: 'Workload yielded',
     inference_recovery_required: 'Inference recovery', maintenance_recovery_required: 'Maintenance recovery',
     workload_recovery_required: 'Workload recovery', inference_active: 'Inference active',
-    inference_residency_active: 'Residency conflict', maintenance_active: 'Maintenance active',
+    inference_residency_active: 'Residency conflict', maintenance_active: 'Maintenance active', topology_switch_in_progress: 'Topology switch in progress',
     upstream_timeout: 'Timeout', upstream_error: 'Upstream error',
     unclassified_error: 'Cause unrecorded', runtime_inference_admission_denied: 'Admission refused',
     runtime_inference_recovery_required: 'Runtime recovery', benchmark_claim_active: 'Benchmark reserved',

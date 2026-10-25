@@ -71,6 +71,9 @@ async function saveChoice({ option, model, expectedRevision, expectedModel, prin
   const name = choicesStore.validateChoice(choicesStoreView(initial), { option, model });
   if (expectedRevision !== initial.choicesRevision) throw refusal('The choices changed; reload and retry', 'PRINCIPAL_CHOICES_CHANGED');
   if (!initial.hostUrl) throw refusal('The principal host is not configured');
+  if (require('./runtimeTopologyParking').isParkedHost(initial.hostUrl)) {
+    throw refusal('The principal host is parked: its topology mode is not running. Switch the topology first.', 'PRINCIPAL_HOST_PARKED');
+  }
   const installed = await listInstalledModels(initial.hostUrl);
   if (!installed.length) {
     throw Object.assign(refusal(`Cannot list the models of ${initial.hostUrl}; retry when it answers`, 'PRINCIPAL_HOST_UNREACHABLE'), { statusCode: 503 });
@@ -117,6 +120,9 @@ async function movePrincipal({ targetModel, expectedModel, principal, requestId,
     if (hasActiveSessionHold(preference) || hostPrefs.hasActiveBenchmarkClaim(preference)
       || await hostHeldByWorkload(current.hostUrl)) {
       return { error: refusal('The principal host has an active session or workload; retry when it finishes', 'PRINCIPAL_HOST_BUSY') };
+    }
+    if (require('./runtimeTopologyParking').isParkedHost(current.hostUrl)) {
+      return { error: refusal('The principal host is parked: its topology mode is not running. Switch the topology first.', 'PRINCIPAL_HOST_PARKED') };
     }
     const configs = routerConfig.getEffectiveTaskModels();
     if (current.divergentRoutes.length) {

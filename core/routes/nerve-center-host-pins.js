@@ -39,6 +39,11 @@ module.exports = function createHostPinRouter(resolveHostPreferenceUrl) {
         throw error;
       }
       if (!updated || !restore) return updated;
+      // A parked endpoint (inactive topology mode, #360) keeps its pin for the
+      // next switch: the configuration is saved, nothing is loaded now.
+      if (require('../src/services/runtimeTopologyParking').isParkedHost(hostUrl)) {
+        return { ...updated, status: 'parked', parked: true, verification: null };
+      }
       try {
         const restored = await hostPrefService.restorePinnedModels(hostUrl, {
           signal, assertAuthorityActive: assertActive

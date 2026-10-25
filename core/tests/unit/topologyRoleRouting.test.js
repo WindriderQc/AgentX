@@ -164,6 +164,33 @@ describe('refusal shapes for each unresolved reason', () => {
   });
 });
 
+describe('during a topology switch (#360 phase 4)', () => {
+  it('refuses with topology_switch_in_progress and never reads the topology', async () => {
+    const describe = jest.fn(async () => description());
+    let switching = { id: 'sw-1', targetMode: 'pooled' };
+    const instance = createRoleResolver({ describe, now: () => 0, readRaw: () => ONE_GROUP,
+      switchInProgress: () => switching });
+    const refused = await instance.resolve({ role: 'conversation' });
+    expect(refused).toMatchObject({ ok: false, reason: 'topology_switch_in_progress', mode: 'pooled' });
+    expect(roleRecommendation(refused).refusal).toMatchObject({ status: 503, code: ROLE_UNRESOLVED_CODE,
+      reason: 'topology_switch_in_progress' });
+    expect(describe).not.toHaveBeenCalled();
+    switching = null;
+    expect(await instance.resolve({ role: 'conversation' })).toMatchObject({ ok: true, url: LANE_A });
+  });
+
+  it('a cleared cache observes the new mode at once', async () => {
+    let current = description({ activeMode: 'pooled' });
+    const instance = createRoleResolver({ describe: async () => current, now: () => 0, readRaw: () => ONE_GROUP,
+      switchInProgress: () => null });
+    expect(await instance.resolve({ role: 'pooled' })).toMatchObject({ ok: true, url: POOLED });
+    current = description({ activeMode: 'lanes' });
+    expect(await instance.resolve({ role: 'pooled' })).toMatchObject({ ok: true, url: POOLED });
+    instance.clear();
+    expect(await instance.resolve({ role: 'pooled' })).toMatchObject({ ok: false, reason: 'role_not_in_active_mode' });
+  });
+});
+
 describe('LANE_CONTEXT_EXCEEDED boundary', () => {
   const lane = { laneContext: 98304, role: 'conversation', mode: 'lanes', group: 'dual-gpu' };
 

@@ -84,6 +84,8 @@ function assertServiceStatusContract(value) {
 
 function summarizeCluster(cluster) {
   const onlineHosts = cluster.filter((host) => host?.status === 'online').length;
+  // Endpoints of an inactive topology mode (#360) are stopped on purpose.
+  const parkedHosts = cluster.filter((host) => host?.status === 'parked').length;
   const modelNames = new Set();
   for (const host of cluster) {
     for (const model of Array.isArray(host?.models) ? host.models : []) {
@@ -92,10 +94,11 @@ function summarizeCluster(cluster) {
     }
   }
   return {
-    status: cluster.length > 0 && onlineHosts === cluster.length ? 'ok' : 'degraded',
+    status: cluster.length > 0 && onlineHosts + parkedHosts === cluster.length ? 'ok' : 'degraded',
     configuredHosts: cluster.length,
     onlineHosts,
-    offlineHosts: cluster.length - onlineHosts,
+    ...(parkedHosts ? { parkedHosts } : {}),
+    offlineHosts: cluster.length - onlineHosts - parkedHosts,
     observedModels: modelNames.size
   };
 }
@@ -154,6 +157,8 @@ function summarizeOperationalAttention({ clusterHealth, serviceHealth, identityC
     const status = String(preference?.status || 'unknown').toLowerCase();
     preferenceStatuses[status] = (preferenceStatuses[status] || 0) + 1;
     const hasPins = Array.isArray(preference?.pinnedModels) && preference.pinnedModels.length > 0;
+    // A parked endpoint (inactive topology mode, #360) raises no issue.
+    if (preference?.hostUrl && require('./runtimeTopologyParking').isParkedHost(preference.hostUrl)) continue;
     if (status === 'offline') {
       addIssue('host_preference_offline', 'critical', `${preference.displayName || preference.hostKey || 'Host'} default is offline`, {
         hostKey: preference.hostKey || null,

@@ -283,6 +283,10 @@ async function warmAllDefaults(options = {}) {
   for (const pref of prefs) {
     const primary = getPinnedEntries(pref)[0];
     if (!primary) continue;
+    if (require('./runtimeTopologyParking').isParkedHost(pref.hostUrl)) {
+      results.push({ host: pref.hostUrl, model: primary.model, status: 'parked' });
+      continue;
+    }
     try {
       const hostResults = await runHostModelOperation({
         host: pref.hostUrl, model: primary.model,
@@ -325,6 +329,11 @@ async function getPinnedModelsMap() {
  * are actually resident before reporting success.
  */
 async function restorePinnedModels(hostUrl, options = {}) {
+  // A parked endpoint (inactive topology mode, #360) is not restored and
+  // raises no incident. The topology switch warms its own target explicitly.
+  if (!options.allowParked && require('./runtimeTopologyParking').isParkedHost(hostUrl)) {
+    return { host: hostUrl, status: 'parked', parked: true, verified: false, results: [] };
+  }
   const claim = options.benchmarkClaim || null;
   const restoreKey = claim
     ? `${hostUrl}\n${claim.batchId}\n${claim.claimGeneration}`

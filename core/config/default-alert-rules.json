@@ -235,5 +235,27 @@
         ],
         "renotifyMs": 1800000,
         "description": "Observe-only signal while a workload, maintenance lease or benchmark claim holds a host in a state only operator recovery releases. Consumer inference there is refused meanwhile."
+    },
+    {
+        "id": "topology-switch-failure",
+        "name": "Runtime topology switch failed",
+        "enabled": true,
+        "severity": "critical",
+        "title": "Topology switch {{failureCode}} — {{host}}",
+        "message": "Switch {{campaignId}}. {{remediation}}",
+        "conditions": {
+            "all": [
+                {
+                    "fact": "metric",
+                    "operator": "equal",
+                    "value": "topology_switch_failure"
+                }
+            ]
+        },
+        "channels": [
+            "local_log"
+        ],
+        "renotifyMs": 1800000,
+        "description": "A runtime topology switch (#360) ended rolled back or uncertain. Rolled back: the previous mode serves again. Uncertain: the host group stays fenced until operator recovery."
     }
 ]

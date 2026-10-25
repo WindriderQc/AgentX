@@ -27,6 +27,9 @@ function assessHostGpuHealth(pref, runningModels, telemetry, checkedAt = new Dat
 }
 
 async function readHostGpuHealth(host, { pref, runningModels, telemetry, checkedAt = new Date().toISOString() } = {}) {
+  if (require('./runtimeTopologyParking').isParkedHost(host)) {
+    return { schema: 'agentx.host-gpu-health/v1', host, status: 'not_applicable', reason: 'topology_parked', checkedAt };
+  }
   try {
     if (pref === undefined) {
       const mongoose = require('mongoose');

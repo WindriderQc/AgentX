@@ -33,7 +33,11 @@ function embeddingHostCandidates(target, explicitHost = false) {
             if (!checked.valid || !checked.host) throw new Error('AGENTX_EMBEDDING_HOST_CHAIN contains an unconfigured host');
             return checked.host;
         });
-    } else hosts = [target, ...getHostUrls()];
+    } else {
+        // Endpoints of an inactive topology mode are stopped on purpose (#360).
+        const { isParkedHost } = require('./runtimeTopologyParking');
+        hosts = [target, ...getHostUrls().filter(host => !isParkedHost(host))];
+    }
     const unique = new Map();
     for (const host of hosts) {
         const normalized = normalizeHostUrl(host);

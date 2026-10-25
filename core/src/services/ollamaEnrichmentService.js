@@ -141,7 +141,9 @@ async function pollAll() {
   const hosts = getConfiguredHosts();
   if (hosts.length === 0) return;
 
+  const { isParkedHost } = require('./runtimeTopologyParking');
   for (const hostConfig of hosts) {
+    if (hostConfig.url && isParkedHost(hostConfig.url)) continue;
     try {
       const result = await pollHost(hostConfig);
       _state.set(hostConfig.id, result);
