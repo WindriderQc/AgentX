@@ -9,6 +9,7 @@
 'use strict';
 
 const logger = require('../../config/logger');
+const { memoryFactProjection } = require('../../../shared/memoryFactMetadata');
 
 // Two-letter function words dropped from queries (French and English). Other
 // two-letter tokens such as "IA" or "AI" are kept.
@@ -102,6 +103,7 @@ async function keywordSearch(vectorStore, query, options = {}) {
           documentId: meta.documentId,
           chunkIndex: chunk.chunkIndex || 0,
           source: meta.source,
+          ...memoryFactProjection(meta),
           ...(meta.scope ? { scope: meta.scope, sensitivity: meta.sensitivity } : {}),
           title: meta.title,
           searchType: 'keyword'
