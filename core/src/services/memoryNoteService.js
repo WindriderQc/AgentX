@@ -4,6 +4,7 @@ const { createHash } = require('node:crypto');
 const MemoryNote = require('../../models/MemoryNote');
 const { sealText } = require('./identifierVault');
 const { createIndex } = require('./memoryNoteIndex');
+const { currentFactFilter } = require('./memoryNoteValidity');
 const { scoreFloor } = require('../helpers/scoreFloor');
 const { memoryFactInput, memoryFactProjection, mergeMemoryFactMetadata } = require('../../../shared/memoryFactMetadata');
 
@@ -86,6 +87,7 @@ function project(row) {
     topic: row.topic, packId: row.packId, scopeId: row.scopeId, scope: row.scope,
     sensitivity: row.sensitivity, source: row.source, createdAt: row.createdAt,
     updatedAt: row.updatedAt, expiresAt: row.expiresAt || null,
+    invalidatedAt: row.invalidatedAt || null, supersededBy: row.supersededBy || null,
     ...memoryFactProjection(row),
     ...(row.kind === 'souvenir' ? { eventDate: row.eventDate || '', eventDatePrecision: row.eventDatePrecision || 'unknown',
       people: row.people || [], places: row.places || [], revision: row.revision || 0 } : {}) };
@@ -103,14 +105,21 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
   const classification = audience === 'owner'
     ? { scope: 'owner', sensitivity: 'private' } : { scope: 'household', sensitivity: 'normal' };
   const boundary = { scopeId, packId: { $in: packs }, ...(audience === 'household' ? classification : {}) };
-  const active = () => ({ ...boundary, status: { $ne: 'forgotten' },
-    $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] });
+  const active = (includeHistory = false) => {
+    if (typeof includeHistory !== 'boolean') throw error('includeHistory must be a boolean');
+    if (includeHistory && audience !== 'owner') throw error('Memory history belongs to the owner', 403);
+    const now = new Date();
+    return { ...boundary, status: { $ne: 'forgotten' }, $and: [
+      { $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }] },
+      ...(!includeHistory ? [currentFactFilter(now)] : [])
+    ] };
+  };
   // The note is saved first and stays valid without its vector: an embedding
   // host that is busy or down delays the index, never the memory.
   const indexLater = row => { index.indexNote(row._id, row.text).catch(() => {}); };
 
-  async function list({ limit, offset = 0, query, kind } = {}) {
-    const filter = active();
+  async function list({ limit, offset = 0, query, kind, includeHistory = false } = {}) {
+    const filter = active(includeHistory);
     if (kind !== undefined) {
       if (!['fact', 'preference', 'decision', 'souvenir'].includes(kind)) throw error('Choose fact, preference, decision or souvenir');
       filter.kind = kind;
@@ -137,6 +146,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     const { text, sealed } = await seal(raw);
     const id = input.id === undefined ? digest([scopeId, packs[0], text].join('\n')).slice(0, 24) : noteId(input.id);
     const existing = await MemoryNote.findOne({ ...boundary, _id: id }).lean();
+    if (existing?.invalidatedAt || existing?.supersededBy) throw error('A replaced fact cannot be rewritten through the general note editor', 409);
     // A kept souvenir retains its original sources, including through the
     // general note editor. Only ordinary facts accumulate review references.
     const fact = mergeMemoryFactMetadata(existing?.kind === 'souvenir' ? { validFrom: input.validFrom } : input, existing || {});
@@ -159,7 +169,8 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
       ? { ...classification, sensitivity: 'highly_private' } : classification;
     const labels = existing?.scope && existing?.sensitivity
       ? { scope: existing.scope, sensitivity: existing.sensitivity } : stricter;
-    const filter = { ...boundary, _id: id, ...(input.id === undefined ? {} : { status: { $ne: 'forgotten' } }) };
+    const filter = { ...boundary, _id: id, invalidatedAt: null, supersededBy: null,
+      ...(input.id === undefined ? {} : { status: { $ne: 'forgotten' } }) };
     const update = { $set: {
       text, kind, ...labels, ...fact, expiresAt, status: 'active', forgottenAt: null,
       contentHash: digest(text.toLowerCase())
@@ -214,6 +225,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
       { new: true, upsert: true, runValidators: true, includeResultMetadata: true });
     const row = result.value;
     if (row.status === 'forgotten') throw error('This souvenir was forgotten', 409);
+    if (row.invalidatedAt || row.supersededBy) throw error('This souvenir was replaced', 409);
     if (!row.embeddedHash) indexLater(row);
     return { ok: true, authority: 'agentx.core', ...project(row), created: Boolean(result.lastErrorObject?.upserted) };
   }
@@ -227,6 +239,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     if (!Number.isSafeInteger(input.revision) || input.revision < 0) throw error('The current souvenir revision is required');
     const existing = await MemoryNote.findOne({ ...boundary, _id: id, kind: 'souvenir' }).lean();
     if (!existing || existing.status === 'forgotten') throw error('The selected souvenir no longer exists', 404);
+    if (existing.invalidatedAt || existing.supersededBy) throw error('This souvenir was replaced', 409);
     const current = existing.revision || 0;
     if (input.revision !== current) throw error('Souvenir changed; reload before correcting it', 409);
     const sealAll = async values => Promise.all(labels(values).map(async value => (await seal(value)).text));
@@ -247,7 +260,8 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     if (!Object.keys(changes).length) return { ok: true, authority: 'agentx.core', ...project(existing), changed: false };
     // A note without a revision yet matches revision 0 (null also matches a missing field).
     const fence = current === 0 ? { revision: { $in: [0, null] } } : { revision: current };
-    const row = await MemoryNote.findOneAndUpdate({ ...boundary, _id: id, kind: 'souvenir', status: 'active', ...fence },
+    const row = await MemoryNote.findOneAndUpdate({ ...boundary, _id: id, kind: 'souvenir', status: 'active',
+      invalidatedAt: null, supersededBy: null, ...fence },
       { $set: { ...changes, revision: current + 1 } }, { new: true, runValidators: true }).lean();
     if (!row) throw error('Souvenir changed; reload before correcting it', 409);
     if (changes.text) indexLater(row);
@@ -258,7 +272,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
   async function souvenirs(ids = []) {
     const wanted = [...new Set(ids)].filter(id => typeof id === 'string' && /^[a-f0-9]{24}$/.test(id)).slice(0, 500);
     if (!wanted.length) return [];
-    const rows = await MemoryNote.find({ ...boundary, _id: { $in: wanted }, kind: 'souvenir', status: 'active' }).lean();
+    const rows = await MemoryNote.find({ ...active(), _id: { $in: wanted }, kind: 'souvenir', status: 'active' }).lean();
     return rows.map(project);
   }
 

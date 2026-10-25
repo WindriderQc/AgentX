@@ -67,8 +67,15 @@ RAG stores its first recording time in the chunk payload. Content edits, retries
 and embedding-collection migrations preserve it. Legacy RAG documents without
 that timestamp retain an unknown value. Each applied candidate adds a bounded
 `sourceRefs` entry `{ system: 'memory-review', id: '<runId>:<candidateId>' }`.
-These fields carry provenance, not approval or precedence: replacement chains
-and automatic supersession remain tracked in [#896](https://github.com/WindriderQc/AgentX/issues/896).
+Selected notes also retain nullable `invalidatedAt` and `supersededBy` fields.
+Ordinary note lists, recall, similarity and context exclude facts whose
+`invalidatedAt` has arrived. An explicit owner list with `includeHistory: true`
+retains those predecessors and their successor references, within the same
+space; forgotten and expired notes remain excluded. Household lists cannot
+request history. The general editor cannot rewrite a replaced predecessor.
+These read contracts do not authorize replacements: the reviewed replacement
+writer, rollback and equivalent RAG history remain tracked in
+[#896](https://github.com/WindriderQc/AgentX/issues/896).
 
 The 167 synthetic tests cover filtering of owner versus harness/tool content,
 secret sanitation, bounded/resumable collection, API retries, idempotent watermarks,

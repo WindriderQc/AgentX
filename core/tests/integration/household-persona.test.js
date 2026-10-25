@@ -20,6 +20,21 @@ const turn = async (id, body = {}) => (await request(app).post(`${privateBase}/$
   .send({ text: 'Bonjour.', ...body }).expect(200));
 
 describe('Household live personality through server-bound LAN space routes', () => {
+  test('the private note route offers explicit history while ordinary listing excludes replaced facts', async () => {
+    const MemoryNote = require('../../models/MemoryNote');
+    const old = await MemoryNote.create({ packId: 'personal_operator', scopeId: 'personal', scope: 'owner',
+      sensitivity: 'private', text: 'Synthetic API predecessor', invalidatedAt: new Date('2025-01-01T00:00:00Z'),
+      supersededBy: 'a'.repeat(24) });
+    const endpoint = '/api/voice-personas/private/notes';
+    try {
+      const current = (await request(app).post(endpoint).send({ operation: 'list' }).expect(200)).body.data;
+      expect(current.notes.some(note => note.id === String(old._id))).toBe(false);
+      const history = (await request(app).post(endpoint).send({ operation: 'list', includeHistory: true }).expect(200)).body.data;
+      expect(history.notes.find(note => note.id === String(old._id))).toMatchObject({ supersededBy: 'a'.repeat(24) });
+      await request(app).post(endpoint).send({ operation: 'list', includeHistory: 'false' }).expect(400);
+    } finally { await MemoryNote.deleteOne({ _id: old._id }); }
+  });
+
   test('independent Core preferences omit optional personal context without erasing history or weakening family access', async () => {
     const endpoint = '/api/voice-personas/preferences';
     const current = (await request(app).get(endpoint).expect(200)).body.data;
