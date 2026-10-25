@@ -224,6 +224,18 @@ target another text reference. Original caller markers disable this projection;
 short, changed and unique strings stay distinct. The context refresh and initial
 native preparation use the same projection. No storage or context limit changes.
 
+Otherwise changed evidence payloads may share exact unchanged nested objects or
+arrays using `sharedValueEncoding` (`core.shared-context-values/v1`). A later
+copy is `{ "$valueRef": "#/path/to/first/value" }`. An object with `$valueBase`
+and `$valuePatch` copies its retained base and replaces exactly the listed fields;
+all changed values stay explicit. Patches require identical ordered property
+names, so no deletion or ordering change is implied. Each version reconstructs
+independently. References point only to already retained values; the whole-result
+dictionary's forward references cannot become bases or create cycles. Turn, work
+and receipt envelopes stay expanded. Literal caller `$valueRef`, `$valueBase` or
+`$valuePatch` markers disable this projection. This stage precedes text sharing,
+so text references always target retained strings.
+
 The combined selected-memory and conversation reference block must fit the
 existing 96,000-character work-context budget. Preparation refuses with
 `CONVERSATION_CONTEXT_REQUIRED` before native dispatch if it does not fit;

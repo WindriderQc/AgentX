@@ -2,6 +2,7 @@
 
 const { createHash } = require('node:crypto');
 const { shareContextText } = require('./sharedContextText');
+const { shareContextValues } = require('./sharedContextValues');
 
 // This is a lossless, per-response wire representation. Canonical turns and
 // receipts stay untouched, and every shared value remains inline in this same
@@ -40,6 +41,7 @@ function shareWholeToolEvidence(conversation) {
   return JSON.stringify(projected).length < JSON.stringify(conversation).length ? projected : conversation;
 }
 
-const shareToolEvidence = conversation => shareContextText(shareWholeToolEvidence(conversation));
+const shareToolEvidence = conversation => conversation.sharedValueEncoding || conversation.sharedTextEncoding
+  ? conversation : shareContextText(shareContextValues(shareWholeToolEvidence(conversation)));
 
 module.exports = { shareToolEvidence };
