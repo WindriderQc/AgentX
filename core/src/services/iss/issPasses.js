@@ -19,7 +19,7 @@ const DEFAULTS = Object.freeze({
   stepSec: 20,
   minObservableElevationDeg: 10,
   maxSunElevationDeg: -6,
-  maxPasses: 24,
+  maxPasses: Infinity,
 });
 
 const DIRECTIONS_FR = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSO', 'SO', 'OSO', 'O', 'ONO', 'NO', 'NNO'];

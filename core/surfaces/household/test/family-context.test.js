@@ -141,6 +141,37 @@ test('ISS passes reach Famille only when enabled and asked about, with the compu
   assert.match(text, /si le ciel est dégagé/);
   assert.match(text, /4 autre\(s\) passage\(s\)/);
   assert.match(text, /<show kind="link" title="Vue 3D">https:\/\/example\.test\/iss#passages<\/show>/);
+  const fallback = await issSummary("Quand passe l'ISS?", { readPasses: async () => ({ ...result,
+    observer: { label: 'Québec', source: 'default', defaulted: true } }) });
+  assert.match(fallback, /pour Québec \(lieu par défaut/);
+  assert.match(fallback, /la position de la personne n’est pas connue/);
+  assert.doesNotMatch(fallback, /au-dessus de la maison/);
+});
+
+test('ISS summary selects observable passes before limiting the list', async () => {
+  const visible = { start: { direction: 'N' }, end: { direction: 'E' }, maxElDeg: 30, durationSec: 120,
+    startLocal: 'lun. 26 oct., 06 h 03', endLocal: 'lun. 26 oct., 06 h 05' };
+  const all = [...Array.from({ length: 12 }, () => ({ observable: false })), { observable: true, visible }];
+  const readPasses = async args => ({ computedAtLocal: 'dim. 25 oct., 10 h 00',
+    tle: { epochLocal: 'sam. 24 oct., 01 h 01', stale: false }, counts: { geometric: 13, observable: 1 },
+    passes: (args.visible_only ? all.filter(p => p.observable) : all).slice(0, args.max_passes), view: null });
+  const text = await issSummary("Quand passe l'ISS?", { readPasses });
+  assert.match(text, /lun\. 26 oct\., 06 h 03/);
+  assert.doesNotMatch(text, /Aucun passage visible/);
+  assert.match(text, /12 autre\(s\) passage\(s\)/);
+});
+
+test('ISS summary distinguishes the full visible count from its partial chronological list', async () => {
+  const visible = { start: { direction: 'N' }, end: { direction: 'E' }, maxElDeg: 30, durationSec: 120,
+    startLocal: 'lun. 26 oct., 06 h 03', endLocal: 'lun. 26 oct., 06 h 05' };
+  const readPasses = async () => ({ computedAtLocal: 'dim. 25 oct., 10 h 00',
+    tle: { epochLocal: 'sam. 24 oct., 01 h 01', stale: false }, counts: { geometric: 19, observable: 5 },
+    passes: Array.from({ length: 3 }, () => ({ observable: true, visible })), view: null });
+  const text = await issSummary("Quand passe l'ISS?", { readPasses });
+  assert.match(text, /5 passage\(s\) visible\(s\).*au total/);
+  assert.match(text, /les 3 prochain\(s\)/);
+  assert.match(text, /liste est partielle, pas un classement/);
+  assert.match(text, /ni l’un d’eux comme le meilleur/);
 });
 
 test('an unavailable ISS computation tells Nestor to give no time', async () => {

@@ -756,10 +756,20 @@ reorders the queue: Benchmark starts the measurement itself, in its quiet
 hours, when the runtime is idle. The agent chooses what, Benchmark chooses
 when.
 
-`iss_passes` answers "when does the ISS pass over the house?" from what Data
-already holds: the ISS element set of its CelesTrak `satellites` feed and the
-household weather location, rounded to 0.01°. It makes no outbound call and
-never returns the coordinates. Each pass has local rise, culmination and set
+`iss_passes` answers "when does the ISS pass?" from Data's on-demand TLE route,
+which reads its stored feed or cached CelesTrak source. During a rolling
+upgrade, a 404 for that route uses the legacy `satellites/latest` feed. The
+observer location is rounded to 0.01°. Optional `lat` and `lon` together take
+priority over the household weather location. If no usable location is known,
+`OBSERVER_DEFAULT_LOCATION_JSON` supplies an optional instance default
+(`lat`, `lon`, optional `name`); no city is built into the product. Invalid or
+partial explicit coordinates refuse instead of falling back. The returned
+`observer.source`, `label` and `defaulted` distinguish supplied coordinates,
+known weather location and default; announce the default rather than claiming
+to know the person's position. The same validation and selection are used by
+Data's on-demand weather and tides routes. Core contacts only Data; Data may
+refresh CelesTrak on demand. The tool never returns the coordinates.
+Each pass has local rise, culmination and set
 times (in `PLANNING_TIME_ZONE`), directions and height, and is classified as
 observable to the naked eye (at least 10° high, station sunlit, Sun at -6° or
 lower at the house) or only geometric, with the reason. Weather, obstacles,
@@ -771,11 +781,21 @@ default 72), `visible_only`, `max_passes` (1-12, default 8). `ISS_VIEW_URL`
 (HTTPS) adds a link to a page that shows the passes. Pass times match PyEphem
 within 3 seconds and 0.3° in `core/tests/unit/mcpIssTools.test.js`.
 
-The `super-dad-memory` plugin relays it as `nestor_iss` to the owner and to
-household sessions of configured family agents (the result holds no private
-data). It is an optional plugin tool: an instance enables it by adding
-`nestor_iss` to the `tools.alsoAllow` of the agents that may answer, then
-reloading the plugin.
+`iss_passes` is one Core capability, available through the same MCP bus to
+Hermes, OpenClaw and other clients. Runtime allowlists select exposure; they
+do not replace server-side authorization. Omitting coordinates does not make
+the result public: the passes still concern the configured household location.
+Only compare passes within the returned `window`, even when the list is shorter.
+
+The optional `super-dad-memory` adapter relays it as `nestor_iss`, with no
+orbital calculation or separate store. In addition to per-agent
+`tools.alsoAllow`, it verifies the owner/household session identity and refuses
+scheduled, delegated and unrelated sessions. A direct OpenClaw MCP connection
+can expose the shared tool as `agentx__iss_passes`; use it when native policies
+preserve the intended session scope. Adding `iss_passes` to a global server
+filter alone is not evidence of that equivalence. Preserve existing grants
+until the replacement's allowed and denied paths are verified. See the
+[shared capability contract](SHARED_AGENT_CAPABILITIES.md).
 
 Famille conversations on the AgentX engine run no tools; they receive approved
 context. With `HOUSEHOLD_FAMILY_ISS_PASSES=true`, a Famille turn whose message
@@ -1896,6 +1916,51 @@ Without a declared topology, or without any route naming a role, routing is
 unchanged: no topology read, the same route shapes and the same routing
 configuration version.
 
+#### Host actuator
+
+A mode switch changes which runtime services run on the GPU host. Core has no
+shell there. Instead, a small actuator on the host
+(`integrations/topology-actuator/`) accepts four commands and nothing else (#360,
+phase 3):
+
+- `status`: which declared units run, the mode they form, the last confirmed
+  mode, the safety timer and memory per GPU;
+- `activate <mode>`: stop the other modes' units, wait until the mode's GPUs
+  are free, start its units and wait until each endpoint answers;
+- `confirm`: Core has verified the new mode; cancel the safety timer and make
+  the mode the one that starts at boot;
+- `rollback`: return to the last confirmed mode.
+
+Each call returns one JSON receipt (`agentx.runtime-topology-actuation/v1`)
+with the request id, both modes, the units stopped and started, the GPUs,
+timings, the outcome and the safety timer state.
+
+- **Safety timer.** `activate` arms a systemd timer before it stops anything.
+  Without `confirm` within the configured bound (20 minutes by default), the
+  timer rolls back to the last confirmed mode. Boot enablement changes only on
+  `confirm`, so a reboot during a switch comes back in the confirmed mode.
+- **Failures.** A failed `activate` restores the previous mode at once. A lost
+  answer is read back with `status --request-id`; repeating a command with the
+  same id returns its stored receipt and never acts twice.
+- **Configuration.** The mode → units map belongs to the instance: a root-owned
+  JSON file on the host and the systemd units it names. The actuator holds no
+  host, port or model. A unit the map does not list, such as a CPU Ollama, is
+  never touched.
+- **Transport.** Core runs in a container, usually on another machine, and
+  already reaches remote hosts over SSH. The actuator is reached the same way,
+  with a dedicated key whose `authorized_keys` entry is
+  `restrict,from="<core host>",command="…/ssh-entry.sh"`. The entry passes the
+  client's command to the actuator through one `sudo` rule, and the actuator
+  checks it against its grammar. This adds no listening port and no secret
+  beside the key, and the pinned host key identifies the machine. A loopback
+  HTTP agent would need its own port, token, and TLS or a tunnel to be
+  reachable from the Core container.
+
+Installation, the configuration fields, exit codes and the full receipt are in
+the integration's README. Installing the actuator and its units is an operator
+change on the GPU host; the unit tests use a fake systemd and do not qualify
+it.
+
 #### Switching modes
 
 A switch moves a group from its active mode to another declared mode (#360,
@@ -2005,6 +2070,50 @@ group is parked until it ends.
 - **Reading it.** `GET /api/nerve-center/runtime-topology` lists the parked
   hosts and, per group, the intended mode, an open switch and the last switch
   record.
+
+#### Local conversation continuity
+
+An instance can retain a limited local conversation while the principal is
+unavailable without changing `agentx-primary`'s strict resolution contract.
+Core exposes this shared capability as `runtimeServices.inference.conversation`.
+The OpenClaw transport opts in only when both `x-agentx-continuity: conversation`
+and `x-agentx-busy-reply: conversation` are present. Plain providers, family
+providers without these headers, reserved Benchmark turns and Pipeline keep
+their existing behavior. The OpenAI coding gateway remains strict.
+
+Set `AGENTX_CONVERSATION_CONTINUITY_JSON` to a bounded policy, for example:
+
+```json
+{"hosts":["secondary","tertiary"],"models":["agentx-primary"],"maxOutputTokens":384,"maxInputChars":12000}
+```
+
+`hosts` lists one to four registered local/LAN host keys. The first pin of
+each candidate must already be resident at its pinned context. Unregistered,
+cloud, unpinned or context-mismatched candidates are skipped; nothing downloads,
+unloads a model, evicts a pin or changes a mode. Native claims and admission
+remain authoritative. The policy is absent by default; invalid policies retain
+strict routing. Add an existing guardian model to `models` only when that
+consumer should receive the same continuity service.
+
+Each turn tries the normal principal first, without asking active workloads to
+yield. A proven refusal before dispatch may use a resident backup. The backup
+receives a bounded recent text-only dialogue with no tools, tool results or
+full memory envelope, and a limited output budget. Core preserves the current
+human message in full or returns a status reply; it never clips it to make it
+fit. The canonical conversation remains intact. The backup's pin context is
+checked before dispatch and its native terminal/release receipt stays required.
+Timeouts, partial output and uncertain attempts never launch another model.
+The next human turn tries the principal again.
+
+The reply explicitly announces the local backup and reduced context. Its
+operational explanation comes from Core's actual refusal and matching active
+heavy-work records, not the model. Planned jobs are not described as running;
+an absent native completion estimate remains unknown. If no backup can accept
+the turn, a deterministic `agentx-status` answer requires no inference. It also
+works when routing reads are unavailable. `X-AgentX-Conversation-State` is
+`primary`, `backup` or `status_only`; degraded responses also carry
+`X-AgentX-Degraded: true`. Core telemetry retains the continuity state beside
+the usual fallback marker. This feature sends nothing to a cloud provider.
 
 ### Inference log timings and prompt cache
 

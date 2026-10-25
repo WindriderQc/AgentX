@@ -93,7 +93,16 @@ documents; `/stream` still pushes every message. Sensor history is kept by the
 
 Three on-demand sources answer one question at a time, without the master
 switch, and store nothing: they keep answers in memory until Data restarts.
-The position is taken from the query and is neither logged nor stored.
+Explicit `lat` and `lon` take priority. When both are omitted, the tides and
+city-weather routes use the first registered `weatherLocations` record (ordered
+by `_id`), then `OBSERVER_DEFAULT_LOCATION_JSON` if no usable record is available.
+This optional instance setting is a JSON object with `lat`, `lon` and an optional
+`name`. There is no built-in city and no IP/browser geolocation. Partial or
+invalid coordinates return 400 instead of falling back. Each answer adds
+`location: {source: explicit|known|default, label, defaulted}` without the query
+coordinates; a default must be announced as such. Positions are not persisted
+or included in request logs; rounded positions remain in the in-memory cache
+keys and are sent to the selected upstream provider.
 
 - `GET /api/v1/livedata/tle?norad=25544` returns one satellite's two-line
   elements (default: the ISS) with their `epoch`, `epochAgeHours`, `source`
@@ -102,6 +111,7 @@ The position is taken from the query and is neither logged nor stored.
   cached 2 hours as CelesTrak asks. When CelesTrak fails it returns the last
   set known here, marked `stale` with a `note`, or 502 if there is none.
   `stale` is also true when the epoch is more than 72 hours old.
+  A MongoDB read failure still permits the CelesTrak read and cached fallback.
   `&format=tle` returns the three text lines, with `X-TLE-Epoch`,
   `X-TLE-Source` and `X-TLE-Stale` headers.
 - `GET /api/v1/livedata/tides?lat=&lon=&days=2` returns WorldTides heights
@@ -117,7 +127,8 @@ The position is taken from the query and is neither logged nor stored.
   current conditions, period forecasts, the 24-hour forecast, warnings,
   sunrise and sunset, in French or English, with the page's `distanceKm`. It is
   kept 10 minutes. Positions with no city page within about 2.5° (outside
-  Canada) answer 404 (`not_found`).
+  Canada) answer 404 (`not_found`). Missing or nonnumeric measurements remain
+  `null`; a measured zero remains `0`.
 
 The Toolbox Live Data tab draws these feeds on a world map with the existing
 `GET` routes only (`/latest` for ISS, pressure, air quality and sensors,

@@ -102,6 +102,46 @@ class PlanValidationTest(unittest.TestCase):
         with self.assertRaisesRegex(steps.CodePlanError, "paths must contain 1-1"):
             steps.validate_plan(plan, self.scope, capability)
 
+    def test_refuses_ascii_control_characters_inside_path_components(self):
+        for control in ("\x00", "\x01", "\t", "\n", "\x1f", "\x7f"):
+            with self.subTest(control=repr(control)):
+                for position in ("core/src/parser" + control + ".js",
+                                 "core/src/par" + control + "ser.js",
+                                 "core/" + control + "parser.js"):
+                    with self.assertRaisesRegex(steps.CodePlanError, "ASCII control"):
+                        steps.repository_path(position)
+                    plan = proposed_plan()
+                    plan["steps"][0]["paths"][0] = position
+                    with self.assertRaisesRegex(steps.CodePlanError, "ASCII control"):
+                        steps.validate_plan(plan, self.scope)
+
+    def test_keeps_canonical_utf8_paths_and_preserves_existing_path_refusals(self):
+        for path in ("core/src/pa rser.js", "core/src/ünïcødé.js", "core/src/note.md", "core/src/résumé ☺.js"):
+            with self.subTest(path=path):
+                self.assertEqual(steps.repository_path(path), path)
+        for path in ("/absolute.js", "a/../b.js", "a\\b.js", "a/", "a/./b.js", " a.js"):
+            with self.subTest(path=repr(path)):
+                with self.assertRaises(steps.CodePlanError):
+                    steps.repository_path(path)
+        utf8_scope = ["docs/résumé ☺.js", "docs/a b.md"]
+        plan = proposed_plan()
+        plan["steps"][0]["paths"] = ["docs/a b.md"]
+        plan["steps"][1]["paths"] = ["docs/résumé ☺.js"]
+        self.assertEqual(steps.validate_plan(plan, utf8_scope)["steps"][1]["paths"], ["docs/résumé ☺.js"])
+
+    def test_refuses_a_controlled_path_even_when_it_is_in_the_allowed_scope(self):
+        controlled = "core/src/parser\x1b.js"
+        with self.assertRaisesRegex(steps.CodePlanError, "ASCII control"):
+            steps.validate_plan(proposed_plan(), [controlled])
+        plan = proposed_plan()
+        plan["steps"][0]["paths"][0] = "core/src/parser\x1b.js"
+        with self.assertRaisesRegex(steps.CodePlanError, "ASCII control"):
+            steps.validate_plan(plan, ["core/src/parser\x1b.js"])
+        plan = proposed_plan()
+        plan["steps"][0]["testTargets"][0] = "core/tests/parser\x1b.test.js"
+        with self.assertRaisesRegex(steps.CodePlanError, "ASCII control"):
+            steps.validate_plan(plan, self.scope)
+
     def test_plan_and_step_prompts_preserve_runner_ownership(self):
         budget = steps.step_budget()
         prompt = steps.plan_prompt({"title": "Bound work"}, {"scope": self.scope}, "/private/plan.json", budget)

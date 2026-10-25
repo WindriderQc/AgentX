@@ -32,7 +32,10 @@ function pick(field, lang) {
 }
 
 const num = (field, lang) => {
-  const v = Number(pick(field, lang));
+  const raw = pick(field, lang);
+  if (typeof raw !== 'number' && typeof raw !== 'string') return null;
+  if (typeof raw === 'string' && !raw.trim()) return null;
+  const v = Number(raw);
   return Number.isFinite(v) ? v : null;
 };
 

@@ -33,11 +33,11 @@ function response(body, { status = 200, json = true } = {}) {
   };
 }
 
-function buildApp(feedPoints = []) {
+function buildApp(feedPoints = [], knownLocation = null) {
   const app = express();
   app.use(express.json());
   const toArray = jest.fn().mockResolvedValue(feedPoints);
-  const col = { find: jest.fn(() => ({ sort: () => ({ limit: () => ({ toArray }) }) })) };
+  const col = { findOne: jest.fn().mockResolvedValue(knownLocation), find: jest.fn(() => ({ sort: () => ({ limit: () => ({ toArray }) }) })) };
   app.locals.db = { collection: jest.fn(() => col) };
   app.use('/api/v1/livedata', livedataRoutes);
   app.use(errorHandler);
@@ -54,6 +54,7 @@ beforeEach(() => {
   tides._resetCache();
   delete process.env.WORLDTIDES_API_KEY;
   delete process.env.WORLDTIDES_CACHE_MS;
+  delete process.env.OBSERVER_DEFAULT_LOCATION_JSON;
   nowSpy = jest.spyOn(Date, 'now').mockReturnValue(EPOCH_MS + 6 * 3_600_000);
 });
 
@@ -101,6 +102,22 @@ describe('GET /api/v1/livedata/tle', () => {
     expect(res.headers['x-tle-epoch']).toBe(new Date(EPOCH_MS).toISOString());
     expect(res.headers['x-tle-source']).toBe('celestrak');
     expect(res.text).toBe(ISS_TEXT);
+  });
+
+  test('still uses CelesTrak and its cache when MongoDB is unavailable', async () => {
+    const app = buildApp();
+    app.locals.db.collection().find().sort().limit().toArray.mockRejectedValue(new Error('database unavailable'));
+    global.fetch.mockResolvedValue(response(ISS_TEXT));
+    const first = await request(app).get('/api/v1/livedata/tle').expect(200);
+    expect(first.body.data).toMatchObject({ source: 'celestrak', cached: false, stale: false });
+    const cached = await request(app).get('/api/v1/livedata/tle').expect(200);
+    expect(cached.body.data.cached).toBe(true);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    nowSpy.mockReturnValue(EPOCH_MS + 9 * 3_600_000);
+    global.fetch.mockResolvedValue(response('unavailable', { status: 503 }));
+    const fallback = await request(app).get('/api/v1/livedata/tle').expect(200);
+    expect(fallback.body.data).toMatchObject({ source: 'celestrak', cached: true, stale: true });
   });
 
   test('falls back to the last known element set, marked stale, when CelesTrak fails', async () => {
@@ -179,6 +196,19 @@ describe('GET /api/v1/livedata/tides', () => {
     await request(buildApp()).get('/api/v1/livedata/tides?lat=99&lon=0').expect(400);
     await request(buildApp()).get('/api/v1/livedata/tides?lat=46.8&lon=-71.2&days=30').expect(400);
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test('keeps default and explicit location provenance separate for the same cached tide data', async () => {
+    process.env.WORLDTIDES_API_KEY = 'test-key-123';
+    process.env.OBSERVER_DEFAULT_LOCATION_JSON = JSON.stringify({ name: 'Québec', lat: 46.81, lon: -71.21 });
+    global.fetch.mockResolvedValue(response(body));
+    const app = buildApp();
+    const fallback = await request(app).get('/api/v1/livedata/tides').expect(200);
+    const explicit = await request(app).get('/api/v1/livedata/tides?lat=46.81&lon=-71.21').expect(200);
+    expect(fallback.body.data.location).toMatchObject({ source: 'default', label: 'Québec', defaulted: true });
+    expect(explicit.body.data.location).toMatchObject({ source: 'explicit', defaulted: false });
+    expect(explicit.body.data.cached).toBe(true);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -262,5 +292,56 @@ describe('GET /api/v1/livedata/ec-weather', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(en.body.data.current.condition).toBe('Mainly Sunny');
     await request(app).get('/api/v1/livedata/ec-weather?lat=46.81&lon=-71.21&lang=de').expect(400);
+  });
+
+  test('keeps unavailable measurements null while preserving actual zeroes', async () => {
+    const page = feature('qc-133', -71.21, 46.81, 'Québec');
+    page.properties.currentConditions = {
+      temperature: { value: t(null) }, dewpoint: { value: t('') },
+      windChill: { value: t('   ') }, humidex: { value: t(false) },
+      pressure: { value: t([]) }, relativeHumidity: { value: t(0) },
+      wind: { speed: { value: t('0') } }
+    };
+    delete page.properties.forecastGroup.forecasts[0].abbreviatedForecast.pop;
+    page.properties.hourlyForecastGroup.hourlyForecasts[0].temperature = { value: t(null) };
+    global.fetch.mockResolvedValue(response({ features: [page] }));
+    const res = await request(buildApp()).get('/api/v1/livedata/ec-weather?lat=46.81&lon=-71.21').expect(200);
+    expect(res.body.data.current).toMatchObject({
+      temperatureC: null, dewpointC: null, windChill: null, humidex: null,
+      pressureKPa: null, gustKmh: null, humidityPct: 0, windKmh: 0
+    });
+    expect(res.body.data.forecasts[0].precipitationChancePct).toBeNull();
+    expect(res.body.data.hourly[0]).toMatchObject({ temperatureC: null, precipitationChancePct: 0 });
+  });
+
+  test('uses the known weather location before the configured default', async () => {
+    process.env.OBSERVER_DEFAULT_LOCATION_JSON = JSON.stringify({ name: 'Other city', lat: 45.5, lon: -73.5 });
+    global.fetch.mockResolvedValue(response({ features: [feature('qc-133', -71.21, 46.81, 'Québec')] }));
+    const res = await request(buildApp([], { lat: 46.81, lon: -71.21 })).get('/api/v1/livedata/ec-weather').expect(200);
+    expect(global.fetch.mock.calls[0][0]).toContain('bbox=-71.9600,46.0600,-70.4600,47.5600');
+    expect(res.body.data.location).toMatchObject({ source: 'known', defaulted: false });
+  });
+
+  test('discloses a default location without storing it, including during a database outage', async () => {
+    process.env.OBSERVER_DEFAULT_LOCATION_JSON = JSON.stringify({ name: 'Québec', lat: 46.81, lon: -71.21 });
+    global.fetch.mockResolvedValue(response({ features: [feature('qc-133', -71.21, 46.81, 'Québec')] }));
+    const app = buildApp();
+    app.locals.db.collection.mockImplementation(() => { throw new Error('database down'); });
+    const res = await request(app).get('/api/v1/livedata/ec-weather').expect(200);
+    expect(res.body.data.location).toEqual({ source: 'default', label: 'Québec', defaulted: true });
+    expect(JSON.stringify(res.body.data.location)).not.toMatch(/lat|lon/);
+  });
+
+  test('explicit coordinates bypass location reads; invalid pairs never fall back', async () => {
+    process.env.OBSERVER_DEFAULT_LOCATION_JSON = JSON.stringify({ name: 'Québec', lat: 46.81, lon: -71.21 });
+    global.fetch.mockResolvedValue(response({ features: [feature('qc-133', -71.21, 46.81, 'Québec')] }));
+    const app = buildApp();
+    const res = await request(app).get('/api/v1/livedata/ec-weather?lat=46.82&lon=-71.22').expect(200);
+    expect(res.body.data.location).toMatchObject({ source: 'explicit', defaulted: false });
+    expect(app.locals.db.collection).not.toHaveBeenCalled();
+    for (const query of ['lat=46', 'lat=&lon=0', 'lat=0&lon=181', 'lat=1&lat=2&lon=0']) {
+      await request(app).get(`/api/v1/livedata/ec-weather?${query}`).expect(400);
+    }
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 });

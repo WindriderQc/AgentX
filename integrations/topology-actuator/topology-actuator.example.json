@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "group": "dual-gpu",
+  "defaultMode": "pooled",
+  "modes": {
+    "pooled": {
+      "units": ["ollama.service"],
+      "endpoints": ["http://127.0.0.1:11434"],
+      "gpus": [0, 1]
+    },
+    "lanes": {
+      "units": ["ollama-lane0.service", "ollama-lane1.service"],
+      "endpoints": ["http://127.0.0.1:11437", "http://127.0.0.1:11438"],
+      "gpus": [0, 1]
+    }
+  },
+  "limits": {
+    "unitTimeoutSec": 120,
+    "gpuReleaseTimeoutSec": 90,
+    "gpuFreeMiB": 1024,
+    "readyTimeoutSec": 120,
+    "safetyTimeoutSec": 1200,
+    "lockTimeoutSec": 15
+  },
+  "stateDir": "/var/lib/agentx-topology-actuator",
+  "safetyUnit": "agentx-topology-safety",
+  "executable": "/usr/local/sbin/agentx-topology-actuator"
+}

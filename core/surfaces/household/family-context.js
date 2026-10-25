@@ -101,19 +101,22 @@ function visibleLine(pass) {
 async function issSummary(userText, { readPasses = defaultIssPasses, logger } = {}) {
   if (!isIssQuestion(userText)) return '';
   try {
-    const result = await readPasses({ hours: 72, max_passes: 12 });
+    const result = await readPasses({ hours: 72, visible_only: true, max_passes: MAX_ISS_LISTED });
     const visible = result.passes.filter(p => p.observable);
+    const place = result.observer?.label || 'la maison';
     const lines = [
-      `Passages de la Station spatiale internationale au-dessus de la maison (calcul AgentX du ${result.computedAtLocal}, éléments orbitaux CelesTrak du ${result.tle.epochLocal}${result.tle.stale ? ', anciens : dis que l’heure peut être moins précise' : ''}). Cite ces jours et heures exactement, n’en invente aucune. La météo n’est pas connue : dis « si le ciel est dégagé ».`,
+      `Passages de la Station spatiale internationale pour ${place}${result.observer?.defaulted ? ' (lieu par défaut : annonce-le, la position de la personne n’est pas connue)' : ''} (calcul AgentX du ${result.computedAtLocal}, éléments orbitaux CelesTrak du ${result.tle.epochLocal}${result.tle.stale ? ', anciens : dis que l’heure peut être moins précise' : ''}). Cite ces jours et heures exactement, n’en invente aucune. La météo n’est pas connue : dis « si le ciel est dégagé ».`,
     ];
     if (visible.length) {
-      lines.push(`Visibles à l’œil nu dans les 72 prochaines heures : ${visible.slice(0, MAX_ISS_LISTED).map(visibleLine).join(' ; ')}.`);
+      const listed = visible.slice(0, MAX_ISS_LISTED);
+      lines.push(`${result.counts.observable} passage(s) visible(s) à l’œil nu au total dans les 72 prochaines heures. Voici les ${listed.length} prochain(s) : ${listed.map(visibleLine).join(' ; ')}.`);
+      if (listed.length < result.counts.observable) lines.push('Cette liste est partielle, pas un classement : ne présente pas ces passages comme les seuls ni l’un d’eux comme le meilleur de toute la période.');
     } else {
       lines.push('Aucun passage visible à l’œil nu dans les 72 prochaines heures.');
     }
     const hidden = result.counts.geometric - result.counts.observable;
     if (hidden > 0) lines.push(`${hidden} autre(s) passage(s) au-dessus de l’horizon ne seront pas visibles (en plein jour, trop bas, ou ISS dans l’ombre de la Terre).`);
-    if (result.view) lines.push(`Une vue 3D montre ces passages : propose-la avec <show kind="link" title="${result.view.label}">${result.view.url}</show>.`);
+    if (result.view) lines.push(`Une vue 3D de l’ISS est disponible ; son lieu d’observation se règle séparément et n’est pas synchronisé avec ce calcul. Propose-la avec <show kind="link" title="${result.view.label}">${result.view.url}</show>.`);
     return lines.join('\n').slice(0, MAX_CHARACTERS);
   } catch (error) {
     logger?.warn?.('Family ISS passes unavailable', { error: error.message });
