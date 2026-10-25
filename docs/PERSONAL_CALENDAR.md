@@ -8,6 +8,24 @@ Google Calendar owns the event, its recurrence and its standard notifications.
 Core stores no mirror calendar or scheduled copies of the series. Creating an
 event does not send invitations. Guest effects use explicit, separate intents.
 
+## Presented agenda
+
+The full-profile `/dad/calendar` page reads the owner's primary calendar through
+the same service. Nestor opens it with the `personal-calendar` screen destination;
+optional `start=YYYY-MM-DD end=YYYY-MM-DD` selects up to 31 calendar days, with
+an exclusive end. The default is seven days in `PLANNING_TIME_ZONE` (UTC when
+unset). Timed events show the UTC offset; all-day events retain their date.
+The view lists at most 50 events and reports partial coverage when Google has
+another page. Shorten the period to inspect more events. Other calendars,
+descriptions, guests and reminder settings are outside this presentation.
+
+The API `/api/personal-calendar/view` accepts only GET date-window reads and
+returns a short-lived Core presentation reference with the displayed projection.
+The selected-view context resolves its exact id/revision through the existing
+`read_presentation` service. Loading, failed, expired or mismatched reads do not
+attest event contents. The page retains the native family-device boundary and
+temporary owner unlock. Opening it changes no event and sends no invitation.
+
 ## Native connection
 
 Core invokes `integrations/google/calendar_provider.py` on the credential host

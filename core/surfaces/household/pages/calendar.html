@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Agenda personnel</title>
+  <link rel="stylesheet" href="/assets/household/calendar.css">
+  <script defer src="/assets/household/calendar.js"></script>
+</head>
+<body>
+  <!-- product-navigation -->
+  <main>
+    <header><h1>Agenda personnel</h1><a href="/dad" target="_top">Nestor</a></header>
+    <form id="calendar-period">
+      <label>Du <input type="date" name="start" required></label>
+      <label>Jusqu’au (exclu) <input type="date" name="end" required></label>
+      <button type="submit">Afficher</button>
+    </form>
+    <p id="calendar-status" role="status" aria-live="polite">Lecture de l’agenda…</p>
+    <p id="calendar-zone"></p>
+    <p id="calendar-coverage"></p>
+    <ol id="calendar-events"></ol>
+    <noscript>JavaScript est nécessaire pour consulter l’agenda.</noscript>
+  </main>
+</body>
+</html>

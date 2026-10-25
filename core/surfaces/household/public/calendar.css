@@ -1,0 +1,16 @@
+:root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101827; color: #edf2fa; }
+body { margin: 0; }
+main { max-width: 58rem; margin: auto; padding: 1.25rem; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+h1 { font-size: 1.6rem; }
+a { color: #a5dcff; padding: .75rem; }
+form { display: flex; flex-wrap: wrap; gap: 1rem; align-items: end; }
+label { display: grid; gap: .4rem; }
+input, button { font: inherit; min-height: 44px; padding: .4rem .7rem; box-sizing: border-box; border: 1px solid #7391ae; border-radius: .5rem; }
+button { cursor: pointer; background: #a5dcff; color: #102134; }
+ol { list-style: none; padding: 0; display: grid; gap: .8rem; }
+li { background: #1a2940; border-left: 4px solid #83caff; padding: 1rem; border-radius: .5rem; overflow-wrap: anywhere; }
+h2 { font-size: 1.15rem; margin: 0; }
+li p { margin: .5rem 0 0; }
+#calendar-zone, #calendar-coverage { color: #c1cedf; }
+@media (max-width: 480px) { main { padding: .8rem; } label, button { flex: 1 1 100%; } input { width: 100%; } }

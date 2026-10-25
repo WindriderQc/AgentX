@@ -36,6 +36,13 @@ function presentationEvidence(value, catalog) {
           ? report : { status: 'unavailable', reason: report?.reason || 'report_selection_mismatch' };
         if (Number.isSafeInteger(row.selection?.outside) && row.selection.outside >= 0) selected.outside = row.selection.outside;
       }
+      if (target.page === 'personal-calendar') {
+        const agenda = presentationReader.read(row.read || {});
+        const matches = agenda?.status === 'available' && agenda.source === 'calendar.primary'
+          && ['start', 'end', 'timeZone', 'calendarId'].every(key => row.filters?.[key] === agenda.filters[key]);
+        selected.read = matches ? agenda : { status: 'unavailable', reason: agenda?.reason || 'calendar_selection_mismatch' };
+        if (matches) selected.filters = agenda.filters;
+      }
       if (row.filters && ['24h', '7d', '30d', '90d'].includes(row.filters.window)) selected.filters = { window: row.filters.window };
       const groups = ['byModel', 'byConsumerContract', 'byErrors'];
       if (groups.includes(row.selection?.groupBy)) selected.comparison = row.selection.groupBy;

@@ -44,6 +44,11 @@
         if (key === 'report' && /^\d{4}-\d\d-\d\dt\d\d:\d\d:\d\d(?:\.\d{1,3})?z$/.test(value)
             && Number.isFinite(Date.parse(value))) focus.report = new Date(value).toISOString();
       }
+      if (page === 'personal-calendar') for (const word of words.slice(1)) {
+        const [key, value = ''] = word.split('=');
+        if (['start', 'end'].includes(key) && /^\d{4}-\d\d-\d\d$/.test(value)
+            && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value) focus[key] = value;
+      }
       return { page, focus };
     }
     function url(target, { screen = true } = {}) {

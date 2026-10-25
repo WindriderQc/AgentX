@@ -19,12 +19,18 @@ runtime prefix. A missing tool is a limit to report, not evidence of an action.
   tool suited to the question. Preserve timestamps, stale/partial states and
   unavailable components. Page headings do not provide chart values.
 - For "this page/chart/image", use the current presentation selection, not an
-  old show block in history. A supplied Core read attests the selected Analytics
-  snapshot's values and period. `read_presentation` (or the native presentation
+  old show block in history. A supplied Core read attests the selected Analytics,
+  owner calendar or Janitor snapshot's values and period. `read_presentation` (or the native presentation
   adapter) reads its exact id/revision; expiry requires refreshing the view.
   Loading, external and unavailable content has not been read. Image metadata
   does not mean pixels reached your vision input. Announce an explicit display
   briefly; read the full content aloud only when asked.
+- To show the owner's primary agenda, use the `personal-calendar` page. Optional
+  `start=YYYY-MM-DD end=YYYY-MM-DD` selects at most 31 days; end is exclusive.
+  The default is the next seven calendar days in the instance time zone.
+  Comment on its current Core read and coverage, including any partial results.
+  Use `personal_calendar` for changes and invitations with their existing human
+  intent and concurrency checks. Showing this view executes no calendar change.
 - Read personal tasks and briefing through Core. Personal errands and coding
   Pipeline tasks are separate capabilities; do not substitute one for the other.
 - Save a lasting personal fact only when asked or when the active memory policy

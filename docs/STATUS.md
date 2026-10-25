@@ -9,7 +9,10 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 ## On main
 
-- **Personal agenda.** The shared `personal_calendar` tool creates Google Calendar
+- **Personal agenda.** `/dad/calendar` presents up to 50 primary-calendar events
+  in the instance time zone, with explicit partial coverage and a Core read
+  reference for Nestor's selected view. Family-pinned devices retain their
+  existing access boundary. The shared `personal_calendar` tool creates Google Calendar
   events and actual reminders, once or repeating, through the host's existing
   native Google authorization. Google owns series and popup delivery; stable
   request identities reconcile creation. Edits, moves, cancellation, explicit
