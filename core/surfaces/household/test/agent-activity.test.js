@@ -39,4 +39,5 @@ test('storage, file and GPU reads are spoken', () => {
     assert.deepEqual(describe({ kind: 'tool', tool }), { text: 'Je consulte l’index des fichiers.', spoken: true });
   }
   assert.deepEqual(describe({ kind: 'tool', tool: 'nestor_gpus' }), { text: 'Je regarde les cartes graphiques.', spoken: true });
+  assert.deepEqual(describe({ kind: 'tool', tool: 'nestor_janitor_report' }), { text: 'Je lis le dernier rapport Janitor.', spoken: true });
 });

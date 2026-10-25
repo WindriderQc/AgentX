@@ -17,10 +17,10 @@ function register(fetchImpl = async () => assert.fail('must not call AgentX')) {
   return factories;
 }
 
-test('the three Data tools are optional plugin tools declared in the manifest', async () => {
+test('the four Data tools are optional plugin tools declared in the manifest', async () => {
   const factories = register();
-  assert.deepEqual([...factories.keys()], ['nestor_storage', 'nestor_files', 'nestor_gpus']);
-  assert.deepEqual(DATA_TOOL_NAMES, ['nestor_storage', 'nestor_files', 'nestor_gpus']);
+  assert.deepEqual([...factories.keys()], ['nestor_storage', 'nestor_files', 'nestor_gpus', 'nestor_janitor_report']);
+  assert.deepEqual(DATA_TOOL_NAMES, ['nestor_storage', 'nestor_files', 'nestor_gpus', 'nestor_janitor_report']);
   const manifest = JSON.parse(await readFile(new URL('../openclaw.plugin.json', import.meta.url), 'utf8'));
   const pack = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   assert.ok(pack.files.includes('data-tools.js'));
@@ -31,7 +31,7 @@ test('the three Data tools are optional plugin tools declared in the manifest', 
   }
 });
 
-test('only the owner\'s personal assistant receives the storage, file and GPU tools', () => {
+test('only the owner\'s personal assistant receives the storage, file, GPU and Janitor report tools', () => {
   const offered = [household, telegram, { ...telegram, sessionKey: `agent:main:telegram:direct:${OWNER}:thread:7` }];
   const refused = [
     // The family and child agents, in the same kind of session and even on the owner's own session key.
@@ -67,10 +67,12 @@ test('each tool relays one named Core read with only its declared arguments', as
   await run('nestor_storage', { anything: 'ignored' });
   await run('nestor_files', { query: 'hydro', extension: 'pdf', limit: 5, includeContent: true, path: '/etc' });
   const gpus = await run('nestor_gpus', { host: 'host-a', includeOccupancy: true, write: true });
+  await run('nestor_janitor_report', { group: 'a'.repeat(64), approve: true, delete: ['/srv/x'] });
   assert.deepEqual(calls.map(call => call.params), [
     { name: 'storage_summary', arguments: {} },
     { name: 'find_files', arguments: { query: 'hydro', extension: 'pdf', limit: 5 } },
     { name: 'gpu_status', arguments: { host: 'host-a', includeOccupancy: true } },
+    { name: 'janitor_report_view', arguments: { group: 'a'.repeat(64) } },
   ]);
   assert.ok(calls.every(call => call.url === 'http://127.0.0.1:3180/mcp' && call.method === 'POST'));
   assert.deepEqual(gpus.details, { summary: 'ok', files: [] });
@@ -81,6 +83,10 @@ test('each tool relays one named Core read with only its declared arguments', as
   }
   assert.equal(factories.get('nestor_files').factory(household).parameters.properties.limit.maximum, 25);
   assert.equal(factories.get('nestor_files').factory(household).parameters.properties.query.maxLength, 80);
+  const janitor = factories.get('nestor_janitor_report').factory(household).description;
+  assert.match(janitor, /never an authorization/);
+  assert.match(janitor, /logical bytes, the physical space freed is not measured/);
+  assert.match(janitor, /never scans, runs, generates, approves, moves or deletes/);
 });
 
 test('hostile file names are relayed as data inside the receipt', async () => {
