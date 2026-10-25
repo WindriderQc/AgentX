@@ -13,7 +13,7 @@ const KINDS = [
   'created', 'claimed', 'worker_verdict', 'review_accepted', 'review_rejected',
   'requeued', 'reopened', 'superseded', 'operator_set', 'prepared',
   'family_check_in', 'family_approved', 'family_rolled_over', 'family_cancelled',
-  'personal_completed',
+  'personal_completed', 'personal_dossier_decision',
 ];
 // Which Core path performed the write. `automation_lease` means the caller
 // presented the active server-issued lease; that proves lease possession, not

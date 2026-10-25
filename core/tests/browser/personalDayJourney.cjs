@@ -15,6 +15,12 @@ const { MongoMemoryServer } = req('mongodb-memory-server');
 const { chromium } = require('playwright');
 const service = req('./src/services/personalTaskService');
 const PipelineTask = req('./models/PipelineTask');
+const dossierService = req('./src/services/personalTaskDossierService');
+const sourceId = 'gmail:aaaaaaaaaaaaaaa2:0';
+const dossierDeps = { mail: { dossier: async () => ({ sourceHash: 'a'.repeat(64), complete: true, documentsComplete: true,
+  sources: [{ id: sourceId, date: '2030-02-19T15:00:00Z', direction: 'received', relation: 'authored',
+    text: 'Meeting confirmed. Please prepare the documents.', url: 'https://mail.google.com/mail/#all/aaaaaaaaaaaaaaa2', sourceHash: 'a'.repeat(64) }] }) },
+  calendar: { operate: async () => ({ events: [] }) } };
 const { registerSecretaryRoutes } = req('./surfaces/household/secretary-routes');
 let mongo, server, browser;
 const errors = [], checks = [];
@@ -28,6 +34,7 @@ const errors = [], checks = [];
   app.get('/api/secretary/mail', (_q, res) => res.json({ ok: true, data: { count: 0, threads: [] } }));
   app.get('/api/voice-personas/knowledge/status', (_q, res) => res.json({ data: { knowledge: { enabled: false, pathsIncluded: false, contentIncluded: false, legacySourcesEligible: false, documentCount: 0 } } }));
   registerSecretaryRoutes(app, { express, standardJsonParser: express.json(),
+    dossiers: { get: dossierService.get, operate: input => dossierService.operate(input, dossierDeps), decide: input => dossierService.decide(input, dossierDeps) },
     envelope: (res, data, status = 200) => res.status(status).json({ ok: true, data }),
     fail: (res, status, message, code) => res.status(status).json({ ok: false, message, code }),
     personalTasks: personal, CORE_SELF_URL: () => `http://127.0.0.1:${server.address().port}`,
@@ -47,7 +54,7 @@ const errors = [], checks = [];
   server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
-  for (const [device, viewport] of [['desktop', { width: 1440, height: 1100 }], ['mobile', { width: 390, height: 844 }]]) {
+  for (const [device, viewport] of [['desktop', { width: 1440, height: 1100 }], ['mobile', { width: 390, height: 844 }], ['mobile-narrow', { width: 320, height: 780 }]]) {
     await PipelineTask.deleteMany({});
     await PipelineTask.insertMany([
       { pipelineId: '0001', service: 'personal', title: 'Call the garage', source: 'household-dad-desk' },
@@ -135,7 +142,7 @@ const errors = [], checks = [];
     await page.waitForFunction(() => document.querySelector('[data-review-status]').textContent.includes('changed'));
     assert.equal(await page.locator('form[data-proposal] [name="title"]').inputValue(), 'Confirm the office meeting');
     assert.notEqual((await PipelineTask.findOne({ pipelineId: '0003' }).lean()).personalReview?.state, 'accepted');
-    if (device === 'mobile') { await page.locator('[data-review-back]').click(); assert.equal(await page.locator('[data-review-list]').isVisible(), true); }
+    if (device.startsWith('mobile')) { await page.locator('[data-review-back]').click(); assert.equal(await page.locator('[data-review-list]').isVisible(), true); }
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
     await page.screenshot({ path: path.join(reportDir, `journey-${device}.png`), fullPage: true });
     checks.push({ device, fullSearchBeyondFirstApiPage: true, groupedSource: true, literalSource: true, acceptance: true, dateNotInferred: true, reversibleDismissal: true, staleRevisionRefused: true, keyboardFocus: true, actionEditor: true, exactDeadlineRetained: true, staleActionEditorRefused: true, noOverflow: true });
@@ -147,6 +154,35 @@ const errors = [], checks = [];
     assert.match(await page.locator('[data-actions-list]').textContent(), /Complete-list marker étoile/);
     assert.equal(await page.locator('[data-actions-list] .dad-task').count(), 1);
     checks.at(-1).completeActionSearchBeyondFirstApiPage = true;
+    const evidence = await dossierService.read({ ref: '0001', threadIds: ['aaaaaaaaaaaaaaa1'] }, dossierDeps);
+    const proposed = await dossierService.propose({ id: evidence.id, state: 'superseded', action: 'update',
+      summary: 'Meeting booked; prepare the documents.', actor: 'Example Person', title: 'Prepare the confirmed meeting', dueAt: '2030-02-26',
+      schedulingDecision: 'Date agreed.', appointment: 'Confirmed by the dated source.', remainingWork: ['Prepare documents.'],
+      openQuestions: ['Room and duration are unknown; the draft is unsent.'],
+      citations: [{ sourceId, quote: 'Meeting confirmed.' }] });
+    await page.reload();
+    await page.locator('[data-actions-search]').fill('garage');
+    await page.locator('.action-dossier > summary').click();
+    assert.match(await page.locator('.action-dossier').textContent(), /Meeting booked; prepare the documents/);
+    assert.match(await page.locator('.action-dossier').textContent(), /Questions ouvertes, sans engagement de relance/);
+    assert.equal(await page.locator('.action-dossier blockquote a').getAttribute('href'), 'https://mail.google.com/mail/#all/aaaaaaaaaaaaaaa2');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
+    await page.screenshot({ path: path.join(reportDir, `dossier-${device}.png`), fullPage: true });
+    const apply = page.locator('[data-dossier-apply="0001"]');
+    await apply.click();
+    assert.equal((await PipelineTask.findOne({ pipelineId: '0001' })).title, 'Call the garage');
+    await apply.click();
+    await page.waitForFunction(() => document.querySelector('[data-actions-status]').textContent.includes('Décision enregistrée'));
+    const retained = await PipelineTask.findOne({ pipelineId: '0001' }).lean();
+    assert.equal(retained.title, 'Prepare the confirmed meeting');
+    assert.equal(retained.personalDossierDecisions[0].dossierId, proposed.id);
+    assert.equal(await PipelineTask.countDocuments({ pipelineId: '0001' }), 1);
+    await page.locator('[data-actions-search]').fill('Prepare the confirmed');
+    await page.locator('.action-dossier > summary').click();
+    assert.match(await page.locator('.action-dossier').textContent(), /preuves conservées/);
+    assert.equal(await page.locator('[data-dossier-apply]').count(), 0);
+    assert.equal(await page.locator('.action-dossier blockquote a').getAttribute('href'), 'https://mail.google.com/mail/#all/aaaaaaaaaaaaaaa2');
+    checks.at(-1).dossierCitationsAndHumanDecision = true;
     await page.close();
   }
   assert.deepEqual(errors, []);

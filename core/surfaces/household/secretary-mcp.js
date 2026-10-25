@@ -37,7 +37,7 @@ const SECRETARY_TOOLS = Object.freeze([
       repeat: { ...repeatSchema, description: 'Optional repeating task. Completing the current occurrence advances dueAt; it does not schedule a notification. Use personal_calendar for actual reminders.' },
       note: { type: 'string', maxLength: 2000 },
       dueAt: { type: 'string', maxLength: 40, description: 'When Dad must act. ISO date (YYYY-MM-DD) or full ISO datetime. A date means the whole household day, due at its end (23:59:59.999 local); a full datetime keeps its exact instant.' },
-      relevantUntil: { type: 'string', maxLength: 40, description: 'Date of the activity or event the task serves (e.g. the camp day for its form or lunch). The task becomes pointless once that day begins. Distinct from dueAt: do not use it as a deadline. Omit when the task stays useful regardless of any event.' },
+      relevantUntil: { type: 'string', maxLength: 40, description: 'Date of the activity or event the task serves (e.g. the camp day for its form or lunch). A passed activity date requests source review; it does not prove completion, cancellation or that no work remains. Distinct from dueAt: do not use it as a deadline. Omit when the task stays useful regardless of any event.' },
       priority: { type: 'integer', minimum: 1, maximum: 5, default: 3 },
       origin: { type: 'string', enum: ['chat', 'email'], description: 'email only when the task comes from a Gmail thread you inspected; otherwise omit.' }
     }, ['title']),
@@ -89,7 +89,7 @@ const SECRETARY_TOOLS = Object.freeze([
   Object.freeze({
     name: 'list_personal_tasks',
     title: 'List Personal Tasks',
-    description: 'Read all personal actions and extracted findings from Core, grouped by category: action (owner action), email (request to clarify), platform (technical follow-up), assistant (the Secretary\'s own reading). needsReview means the extraction is uncertain, not a confirmed commitment or overdue work. scope active selects owner actions; scope review selects extractions. categoryCounts covers the full snapshot, totalCount covers the selected scope/category, count covers this page, and nextOffset pages through hasMore results. Check existing findings before capturing another mail action. Attribute requests and uncertainty in your answer. Name days exactly as dueLocal, relevantUntilLocal and todayLocal give them.',
+    description: 'Read all personal actions and extracted findings from Core, grouped by category: action (owner action), email (request to clarify), platform (technical follow-up), assistant (the Secretary\'s own reading). needsReview means the extraction is uncertain, not a confirmed commitment or overdue work. scope active selects owner actions; scope review selects extractions. categoryCounts covers the full snapshot, totalCount covers the selected scope/category, count covers this page, and nextOffset pages through hasMore results. Check existing findings before capturing another mail action. expired/recheck are date-based review signals, never proof of closure. currentness unchecked means the latest sources have not been reconciled. Read pending dossierReview references with personal_task_dossier before recommending a change; keep them distinct from an applied dossierHistory decision. Attribute requests and uncertainty in your answer. Name days exactly as dueLocal, relevantUntilLocal and todayLocal give them.',
     inputSchema: objectSchema({
       includeDone: { type: 'boolean', default: false },
       includeNotes: { type: 'boolean', default: false },
@@ -107,10 +107,11 @@ const SECRETARY_TOOLS = Object.freeze([
     description: 'Change the due date, priority or activity date (relevantUntil) of one open personal task by numeric id. Pass null to clear a date. Use it when Dad says a late task still matters until a given day.',
     inputSchema: objectSchema({
       ref: { type: 'string', pattern: '^[0-9]{1,4}$' },
+      revision: { type: 'integer', minimum: 0, description: 'Revision from the task read; refuses a stale update.' },
       repeat: { anyOf: [repeatSchema, { type: 'null' }], description: 'Change repetition; null stops repetition.' },
       dueAt: { type: ['string', 'null'], maxLength: 40, description: 'ISO date (whole household day, due at its end) or full ISO datetime (exact instant); null clears it.' },
       priority: { type: 'integer', minimum: 1, maximum: 5 },
-      relevantUntil: { type: ['string', 'null'], maxLength: 40, description: 'Date the task stops serving its activity; null clears it. Not a deadline.' }
+      relevantUntil: { type: ['string', 'null'], maxLength: 40, description: 'Activity date that requests source review once passed; null clears it. Not a deadline or proof of closure.' }
     }, ['ref']),
     annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
     _meta: SECRETARY_MCP_META
@@ -118,7 +119,7 @@ const SECRETARY_TOOLS = Object.freeze([
   Object.freeze({
     name: 'personal_briefing',
     title: 'Personal Morning Briefing',
-    description: 'Compose Dad\'s French morning brief (at most six lines) from all open personal tasks: late and today items, the next preparation, old deadlines to confirm, tasks whose activity has passed, and undated tasks. Relay its text as is. Read-only; delivers nothing.',
+    description: 'Compose Dad\'s French morning brief (at most six lines) from recorded personal tasks: pending dossier decisions, late and today items, the next preparation and old dates requiring source review. It is a task-list view; sourceCoverage discloses that other sources were not freshly reconciled for every task. Relay its text as is. Read-only; delivers nothing.',
     inputSchema: objectSchema({}),
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     _meta: SECRETARY_MCP_META

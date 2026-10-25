@@ -18,11 +18,13 @@ test('threads and handled reach the host with a closed vocabulary only', async (
   await control.threads('Needs-Reply');
   await control.handled({ threadId: '1A0A72C7F639BCCF', label: 'urgent' });
   await control.senders();
+  await control.dossier({ threadId: '1A0A72C7F639BCCF' });
   assert.deepEqual(commands, [
     `${script} threads --label urgent`,
     `${script} threads --label needs-reply`,
     `${script} handled --label urgent --thread 1a0a72c7f639bccf`,
-    `${script} senders`
+    `${script} senders`,
+    `${script} dossier --thread 1a0a72c7f639bccf`
   ]);
 });
 
@@ -33,6 +35,7 @@ test('anything outside the vocabulary is refused before the host is contacted', 
   }
   for (const threadId of ['', '123', '1a0a72c7f639bccf; reboot', '$(reboot)', 'zzzzzzzzzzzzzzzz']) {
     await assert.rejects(() => control.handled({ threadId, label: 'urgent' }), error => error.statusCode === 400 && error.code === 'SECRETARY_MAIL_BAD_THREAD');
+    await assert.rejects(() => control.dossier({ threadId }), error => error.statusCode === 400 && error.code === 'SECRETARY_MAIL_BAD_THREAD');
   }
   assert.throws(() => new SecretaryMailControl({ remoteRoot: '/srv/../etc' }), error => error.code === 'SECRETARY_MAIL_CONFIGURATION_INVALID');
 });

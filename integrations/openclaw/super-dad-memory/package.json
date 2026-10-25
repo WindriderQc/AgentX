@@ -9,6 +9,7 @@
     "openclaw.plugin.json",
     "README.md",
     "harness.js",
+    "core-dossier.js",
     "continuity.js",
     "tool-evidence.js",
     "media.js",

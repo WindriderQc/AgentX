@@ -83,10 +83,11 @@ async function personalTaskSnapshot(input = {}, now = new Date()) {
   if (input.includeDone !== true && String(input.includeDone || '') !== 'true') query.status = { $in: OPEN_TASK_STATUSES };
   // Classify before paging: old imported reminders must not hide a newly
   // captured deadline. Project only the fields needed by the public view.
-  const tasks = await PipelineTask.find(query).select('pipelineId title status priority spec dueAt relevantUntil origin source createdAt updatedAt personalReview personalRepeat personalLastCompletedOccurrence __v').lean();
+  const tasks = await PipelineTask.find(query).select('pipelineId title status priority spec dueAt relevantUntil origin source createdAt updatedAt personalReview personalRepeat personalLastCompletedOccurrence personalDossierDecisions __v').lean();
   const attention = { today: 0, overdue: 1, upcoming: 2, inbox: 3, recheck: 4, expired: 5, review: 6, done: 7, dismissed: 8 };
-  return sortedPersonalTasks(tasks, now).filter(task => input.includeDone === true || String(input.includeDone) === 'true' || input.scope === 'dismissed' || task.lane !== 'dismissed')
+  const snapshot = sortedPersonalTasks(tasks, now).filter(task => input.includeDone === true || String(input.includeDone) === 'true' || input.scope === 'dismissed' || task.lane !== 'dismissed')
     .sort((a, b) => attention[a.lane] - attention[b.lane]);
+  return require('./personalTaskDossierService').summaries(snapshot);
 }
 
 async function listPersonalTasks(input = {}, now = new Date()) {
@@ -206,6 +207,9 @@ async function updatePersonalTask(input = {}) {
     throw new PersonalTaskError('dueAt, priority or relevantUntil is required', { code: 'SECRETARY_UPDATE_REQUIRED' });
   }
   const task = await resolvePersonalTask(raw, { openOnly: true });
+  if (Object.hasOwn(input, 'revision') && (!Number.isInteger(input.revision) || input.revision !== (task.__v ?? 0))) {
+    throw new PersonalTaskError('Cette action a changé. Actualisez la liste avant de réessayer.', { status: 409, code: 'SECRETARY_EDIT_CONFLICT' });
+  }
   const changes = [];
   const fields = {};
   if (hasDueAt) {

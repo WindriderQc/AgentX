@@ -16,23 +16,31 @@ const failure = (status, code, message) => Object.assign(new Error(message), { s
 function proposalIdea(body = {}) {
   const label = LABELS[body.kind];
   if (!label) throw failure(400, 'CATCHUP_PROPOSAL_BAD_KIND', 'kind must be action or memory');
-  const words = clean(body.text, 600);
+  const words = clean(body.text, 4001);
   if (!words) throw failure(400, 'CATCHUP_PROPOSAL_TEXT_REQUIRED', 'text is required');
+  if (words.length > 1200) throw failure(400, 'CATCHUP_PROPOSAL_TOO_LONG', 'Shorten the finding without losing its actor or conditions; keep the source linked.');
   if (!KEY.test(String(body.key || ''))) throw failure(400, 'CATCHUP_PROPOSAL_BAD_KEY', 'key is invalid');
+  if (body.findingKey !== undefined && !KEY.test(body.findingKey)) throw failure(400, 'CATCHUP_PROPOSAL_BAD_KEY', 'findingKey is invalid');
   const due = clean(body.due, 40);
   const url = GMAIL_URL.test(String(body.gmailUrl || '')) ? body.gmailUrl : '';
+  const owner = clean(body.owner, 300);
+  const attribution = body.kind === 'action' && owner
+    ? ` — ${/^(owner|propriétaire|unknown|inconnu)$/i.test(owner) ? 'Acteur à clarifier' : `Demande attribuée à ${owner} (à confirmer)`}` : '';
+  const sourceDate = body.sourceDate && Number.isFinite(Date.parse(body.sourceDate)) ? new Date(body.sourceDate).toISOString() : '';
   return {
-    text: `${label} : ${words}${due ? ` (échéance : ${due})` : ''}${url ? ` — ${url}` : ''}`,
+    text: `${label} : ${words}${due ? ` (échéance : ${due})` : ''}${attribution}${sourceDate ? ` — source du ${sourceDate}` : ''}${url ? ` — ${url}` : ''}`,
     origin: 'secretary',
     kind: due ? 'reminder' : 'idea',
     tags: ['secretary-catchup', body.kind === 'memory' ? 'memoire' : 'action'],
-    sourceKey: `catchup-${body.key}`
+    sourceKey: `catchup-${body.findingKey || body.key}`
   };
 }
 
 function registerSecretaryCatchupRoutes({ router, envelope, fail, ideaInbox = null }) {
   router.post('/catchup/proposals', async (req, res) => {
     try {
+      const signal = await require('../../src/services/personalTaskEvidenceSignalService').route(req.body || {});
+      if (signal) return envelope(res, signal, signal.duplicate ? 200 : 201);
       const captured = await (ideaInbox || defaultIdeaInbox()).captureIdea(proposalIdea(req.body || {}));
       return envelope(res, captured, captured.duplicate ? 200 : 201);
     } catch (error) {

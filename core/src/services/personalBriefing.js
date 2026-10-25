@@ -45,14 +45,16 @@ function composePersonalBriefing(tasks = [], now = new Date(), options = {}) {
   const categories = Object.fromEntries(['email', 'platform', 'assistant'].map(category => [category, findings.filter(task => task.category === category).length]));
   const open = tasks.filter((task) => task && !['done', 'cancelled'].includes(task.status)
     && !['done', 'dismissed', 'review'].includes(task.lane) && !task.needsReview);
+  const dossierReviews = open.filter(task => task.dossierReview);
+  const scheduled = open.filter(task => !task.dossierReview || task.dossierReview.action === 'keep');
   const byDue = (left, right) => new Date(left.dueAt) - new Date(right.dueAt) || left.priority - right.priority;
-  const overdue = open.filter((task) => task.overdue).sort(byDue);
-  const dueToday = open.filter((task) => task.dueToday && !task.overdue).sort(byDue);
-  const recheck = open.filter((task) => task.recheck).sort(byDue);
-  const expired = open.filter((task) => task.expired);
-  const unscheduled = open.filter((task) => task.unscheduled);
+  const overdue = scheduled.filter((task) => task.overdue).sort(byDue);
+  const dueToday = scheduled.filter((task) => task.dueToday && !task.overdue).sort(byDue);
+  const recheck = scheduled.filter((task) => task.recheck).sort(byDue);
+  const expired = scheduled.filter((task) => task.expired);
+  const unscheduled = scheduled.filter((task) => task.unscheduled);
   const fresh = unscheduled.filter((task) => task.createdAt && now - new Date(task.createdAt) < 86400000);
-  const upcoming = open
+  const upcoming = scheduled
     .filter((task) => task.lane === 'upcoming' && new Date(task.dueAt) - now <= PREPARE_WINDOW_MS)
     .sort(byDue)[0] || null;
 
@@ -63,7 +65,7 @@ function composePersonalBriefing(tasks = [], now = new Date(), options = {}) {
   const shown = urgent.slice(0, MAX_URGENT);
   const focusTask = shown[0]?.task || null;
   const lines = ["Bonjour Dad — voici l'essentiel."];
-  if (!shown.length) lines.push("Rien d'urgent aujourd'hui.");
+  if (!shown.length) lines.push(dossierReviews.length ? 'Une revue de dossier attend votre décision.' : "Rien d'urgent dans la liste aujourd'hui.");
   for (const { task, prefix } of shown) lines.push(`${prefix} : ${clipTitle(task.title)}`);
   // The scheduled delivery and Dad's reply may use different agent sessions.
   if (focusTask) lines.push(`Pour la tâche #${focusTask.id} : faite, à reporter (avec une date) ou encore utile ?`);
@@ -71,17 +73,19 @@ function composePersonalBriefing(tasks = [], now = new Date(), options = {}) {
   const hidden = urgent.length - shown.length;
   // Order is priority: when six lines overflow, the last ones drop first.
   const optional = [
+    dossierReviews.length ? `Dossiers à revoir : ${dossierReviews.length}. #${dossierReviews[0].id} : ${clipTitle(dossierReviews[0].dossierReview.summary, 95)} (preuves et décision dans Ma journée).` : null,
     findings.length ? `À classer : ${categories.email} demandes à clarifier · ${categories.platform} suivis techniques · ${categories.assistant} étapes de lecture du secrétaire.` : null,
-    recheck.length ? `À confirmer : ${recheck.length} ${plural(recheck.length, 'vieille échéance', 'vieilles échéances')}${example(recheck)}. Encore ${plural(recheck.length, 'utile')} ?` : null,
+    recheck.length ? `À recouper : ${recheck.length} ${plural(recheck.length, 'ancienne échéance', 'anciennes échéances')}${example(recheck)}. Vérifier les derniers échanges.` : null,
     upcoming ? `À préparer : ${clipTitle(upcoming.title)} (${dayLabel(new Date(upcoming.dueAt), timeZone)}).` : null,
     hidden > 0 ? `+${hidden} ${plural(hidden, 'autre')} en retard ou pour aujourd'hui.` : null,
-    expired.length ? `Activité passée : ${expired.length} ${plural(expired.length, 'tâche')} à fermer${example(expired)}.` : null,
+    expired.length ? `Activité passée : ${expired.length} ${plural(expired.length, 'dossier')} à vérifier${example(expired)}. La date seule ne prouve pas la clôture.` : null,
     unscheduled.length ? `${unscheduled.length} ${plural(unscheduled.length, 'tâche')} sans date${fresh.length ? `, dont ${fresh.length} ${plural(fresh.length, 'nouvelle')}` : ''}.` : null
   ].filter(Boolean);
   lines.push(...optional.slice(0, MAX_LINES - lines.length));
 
   return {
     generatedAt: new Date(now).toISOString(),
+    sourceCoverage: { tasks: 'read', mail: 'not_checked', calendar: 'not_checked', documents: 'not_checked' },
     language: 'fr',
     text: lines.join('\n'),
     lines,
@@ -96,6 +100,7 @@ function composePersonalBriefing(tasks = [], now = new Date(), options = {}) {
       total: open.length + findings.length,
       review: findings.length,
       categories,
+      dossierReview: dossierReviews.length,
       overdue: overdue.length,
       dueToday: dueToday.length,
       recheck: recheck.length,

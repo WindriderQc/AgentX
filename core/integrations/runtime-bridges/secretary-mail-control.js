@@ -95,6 +95,10 @@ class SecretaryMailControl {
     return this.call(`threads --label ${exactLabel(label)}`);
   }
 
+  async dossier({ threadId } = {}) {
+    return this.call(`dossier --thread ${exactThreadId(threadId)}`);
+  }
+
   async handled({ threadId, label } = {}) {
     return this.call(`handled --label ${exactLabel(label)} --thread ${exactThreadId(threadId)}`);
   }

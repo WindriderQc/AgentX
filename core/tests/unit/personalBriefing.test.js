@@ -8,9 +8,10 @@ const task = (fields) => ({ pipelineId: fields.id, status: 'queued', createdAt: 
 const brief = (rows) => composePersonalBriefing(sortedPersonalTasks(rows.map(task), NOW), NOW);
 
 describe('personal task relevance', () => {
-  test('a task whose activity has passed is closed business, not an emergency', () => {
+  test('a passed activity requests source review without proving closure', () => {
     const lunch = publicTask(task({ id: '0760', title: 'Lunch', dueAt: '2026-06-05', relevantUntil: '2026-06-05' }), NOW);
-    expect(lunch).toMatchObject({ lane: 'expired', expired: true, overdue: false, recheck: false });
+    expect(lunch).toMatchObject({ lane: 'expired', expired: true, overdue: false, recheck: false,
+      status: 'queued', currentness: { state: 'unchecked', reason: 'activity_date_elapsed' } });
   });
 
   test('a missed form deadline stays late while its activity is still ahead', () => {
@@ -47,9 +48,9 @@ describe('the morning brief', () => {
       "Bonjour Dad — voici l'essentiel.",
       'En retard : Rapporter les contenants de collations',
       'Pour la tâche #0751 : faite, à reporter (avec une date) ou encore utile ?',
-      'À confirmer : 1 vieille échéance (ex. « Réserver la séance »). Encore utile ?',
+      'À recouper : 1 ancienne échéance (ex. « Réserver la séance »). Vérifier les derniers échanges.',
       'À préparer : Ramener le kimono (jeudi 24 septembre).',
-      'Activité passée : 1 tâche à fermer (ex. « Lunch froid journée pédagogique »).'
+      'Activité passée : 1 dossier à vérifier (ex. « Lunch froid journée pédagogique »). La date seule ne prouve pas la clôture.'
     ]);
     expect(result.focus).toMatchObject({ id: '0751', lane: 'overdue' });
     expect(result.counts).toMatchObject({ overdue: 1, recheck: 1, expired: 1, unscheduled: 2, newUnscheduled: 1 });
@@ -71,7 +72,7 @@ describe('the morning brief', () => {
       { id: '0999', title: 'Sans date' }]);
     expect(result.lines).toHaveLength(6);
     expect(result.lines.slice(4)).toEqual([
-      'À confirmer : 1 vieille échéance (ex. « Vieux courriel »). Encore utile ?',
+      'À recouper : 1 ancienne échéance (ex. « Vieux courriel »). Vérifier les derniers échanges.',
       'À préparer : Rendez-vous (jeudi 24 septembre).'
     ]);
     expect(result.counts.hiddenUrgent).toBe(3);
@@ -95,7 +96,7 @@ describe('the morning brief', () => {
 
   test('says when nothing is urgent', () => {
     const result = brief([]);
-    expect(result.text).toBe("Bonjour Dad — voici l'essentiel.\nRien d'urgent aujourd'hui.");
+    expect(result.text).toBe("Bonjour Dad — voici l'essentiel.\nRien d'urgent dans la liste aujourd'hui.");
     expect(result.focus).toBeNull();
   });
 
@@ -106,5 +107,14 @@ describe('the morning brief', () => {
     expect(clipped.endsWith('…')).toBe(true);
     expect(title.startsWith(clipped.slice(0, -1))).toBe(true);
     expect(title[clipped.length - 1]).toBe(' ');
+  });
+
+  test('a proposed replacement is presented for decision instead of repeating the old action as an urgent commitment', () => {
+    const old = publicTask(task({ id: '0700', title: 'Choose a meeting date', dueAt: '2026-09-22T12:00:00Z', createdAt: '2026-09-20T12:00:00Z' }), NOW);
+    const result = composePersonalBriefing([{ ...old, dossierReview: { action: 'update', summary: 'Date confirmed; prepare the documents.' } }], NOW);
+    expect(result.focus).toBeNull();
+    expect(result.counts).toMatchObject({ open: 1, dossierReview: 1, overdue: 0 });
+    expect(result.text).toContain('Date confirmed; prepare the documents.');
+    expect(result.text).not.toContain('En retard : Choose a meeting date');
   });
 });

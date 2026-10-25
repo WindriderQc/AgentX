@@ -37,6 +37,10 @@
 .action-filters button span { color: inherit; font-size: 10px; opacity: .8; }
 .action-status { font-size: 12px; color: #b9e8d2; margin: 0; }
 .action-status:not(:empty) { padding-top: 14px; }
+.action-dossier { margin-top: 10px; overflow-wrap: anywhere; white-space: normal; font-size: 12px; }
+.action-dossier summary { cursor: pointer; color: #b9e8d2; }
+.action-dossier blockquote { margin: 12px 0; padding-left: 12px; border-left: 2px solid #42625a; }
+.dad-day-page .dad-task:has(.action-dossier[open]) { align-items: flex-start; }
 .dad-day-page .dad-task { display: flex; flex-wrap: nowrap; padding: 20px 0; border: 0; border-bottom: 1px solid var(--day-border); border-radius: 0; background: transparent; gap: 14px; }
 .dad-day-page .dad-task:last-of-type { border-bottom: 0; }
 .dad-day-page .dad-task-main { display: grid; grid-template-columns: minmax(0,1fr); gap: 0; flex: 1; min-width: 0; }

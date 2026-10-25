@@ -46,3 +46,19 @@ test('context does not consult unrequested sources or include unscoped receipts'
   assert.equal(result.sources.personal_memory, 'not_consulted');
   assert.equal(result.tasks, undefined);
 });
+
+test('context preserves Core currentness and review references instead of presenting old titles without their pending decision', async t => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'agentx-dossier-context-'));
+  t.after(() => rm(workspace, { recursive: true }));
+  const review = { id: 'a'.repeat(24), state: 'superseded', action: 'update', observedAt: '2030-02-20T15:00:00Z',
+    citations: [{ quote: 'Private evidence stays at its Core read owner.' }] };
+  const result = await contextFor(workspace, 'synthetic', { includeTasks: true, readTasks: async () => ({
+    tasks: [{ id: '0001', title: 'Old date decision', status: 'queued', currentness: { state: 'unchecked' },
+      evidenceSignals: { count: 1, state: 'needs_reconciliation' }, dossierReview: review }], totalCount: 1
+  }) });
+  assert.deepEqual(result.tasks[0].currentness, { state: 'unchecked' });
+  assert.equal(result.tasks[0].evidenceSignals.count, 1);
+  assert.deepEqual(result.tasks[0].dossierReview, { id: review.id, state: 'superseded', action: 'update',
+    observedAt: review.observedAt, fullReadTool: 'personal_task_dossier' });
+  assert.equal(JSON.stringify(result).includes('Private evidence stays'), false);
+});

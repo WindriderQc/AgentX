@@ -54,7 +54,8 @@ function publicTask(task, now = new Date(), timeZone) {
   const actionable = open && !needsReview;
   const { todayKey, dueKey } = zonedDayKeys(now, dueAt, timeZone);
   const ageDays = createdAt ? Math.max(0, Math.floor((now - createdAt) / 86400000)) : null;
-  // The activity it serves is over: nothing left to do, only to close it.
+  // A passed activity date is a reason to review sources. It does not prove
+  // completion, cancellation or that preparation/follow-up is no longer needed.
   const expired = Boolean(actionable && relevantUntil && relevantUntil < today);
   const late = Boolean(dueAt && dueAt < now && actionable && !expired);
   // Without a known activity date, a task captured already late (an old email)
@@ -80,6 +81,8 @@ function publicTask(task, now = new Date(), timeZone) {
     needsReview: open && needsReview,
     revision: task?.__v ?? task?.revision ?? 0,
     sourceUrl: sourceUrl(task),
+    currentness: { state: 'unchecked', reason: expired ? 'activity_date_elapsed' : recheck ? 'old_due_date' : 'sources_not_reconciled' },
+    lastDossierDecision: task?.personalDossierDecisions?.length ? task.personalDossierDecisions.at(-1) : null,
     overdue,
     dueToday,
     expired,
