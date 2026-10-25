@@ -1916,6 +1916,50 @@ Without a declared topology, or without any route naming a role, routing is
 unchanged: no topology read, the same route shapes and the same routing
 configuration version.
 
+#### Local conversation continuity
+
+An instance can retain a limited local conversation while the principal is
+unavailable without changing `agentx-primary`'s strict resolution contract.
+Core exposes this shared capability as `runtimeServices.inference.conversation`.
+The OpenClaw transport opts in only when both `x-agentx-continuity: conversation`
+and `x-agentx-busy-reply: conversation` are present. Plain providers, family
+providers without these headers, reserved Benchmark turns and Pipeline keep
+their existing behavior. The OpenAI coding gateway remains strict.
+
+Set `AGENTX_CONVERSATION_CONTINUITY_JSON` to a bounded policy, for example:
+
+```json
+{"hosts":["secondary","tertiary"],"models":["agentx-primary"],"maxOutputTokens":384,"maxInputChars":12000}
+```
+
+`hosts` lists one to four registered local/LAN host keys. The first pin of
+each candidate must already be resident at its pinned context. Unregistered,
+cloud, unpinned or context-mismatched candidates are skipped; nothing downloads,
+unloads a model, evicts a pin or changes a mode. Native claims and admission
+remain authoritative. The policy is absent by default; invalid policies retain
+strict routing. Add an existing guardian model to `models` only when that
+consumer should receive the same continuity service.
+
+Each turn tries the normal principal first, without asking active workloads to
+yield. A proven refusal before dispatch may use a resident backup. The backup
+receives a bounded recent text-only dialogue with no tools, tool results or
+full memory envelope, and a limited output budget. Core preserves the current
+human message in full or returns a status reply; it never clips it to make it
+fit. The canonical conversation remains intact. The backup's pin context is
+checked before dispatch and its native terminal/release receipt stays required.
+Timeouts, partial output and uncertain attempts never launch another model.
+The next human turn tries the principal again.
+
+The reply explicitly announces the local backup and reduced context. Its
+operational explanation comes from Core's actual refusal and matching active
+heavy-work records, not the model. Planned jobs are not described as running;
+an absent native completion estimate remains unknown. If no backup can accept
+the turn, a deterministic `agentx-status` answer requires no inference. It also
+works when routing reads are unavailable. `X-AgentX-Conversation-State` is
+`primary`, `backup` or `status_only`; degraded responses also carry
+`X-AgentX-Degraded: true`. Core telemetry retains the continuity state beside
+the usual fallback marker. This feature sends nothing to a cloud provider.
+
 ### Inference log timings and prompt cache
 
 Each `inferencelogs` row keeps Core's wall clock in `durationMs` (routing and
