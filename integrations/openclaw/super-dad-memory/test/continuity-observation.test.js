@@ -9,6 +9,35 @@ import { updateState } from '../store.js';
 const sessionKey = 'agent:main:household:direct:11111111-1111-4111-8111-111111111111';
 const runId = 'resp_22222222-2222-4222-8222-222222222222';
 
+test('an exact native terminal error overrides a completed lifecycle capsule without leaking diagnostics', async t => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'agentx-native-error-'));
+  t.after(() => rm(workspace, { recursive: true }));
+  await updateState(workspace, () => ({ schemaVersion: 1, receipts: [],
+    runs: [{ runId, sessionKey, status: 'completed', source: 'agent_end' }] }));
+  const terminal = { role: 'assistant', stopReason: 'error',
+    __openclaw: { runId, id: 'terminal-error', recordTimestampMs: 1700000000000 },
+    content: [{ type: 'text', text: 'Private provider failure' }] };
+  let history = { sessionKey, messages: [terminal] };
+  const operate = continuityOperations({ workspace, config: { agents: { list: [{ id: 'main', workspace }] } }, readHistory: async () => history });
+  const failed = await operate({ operation: 'turn', sessionKey, runId });
+  assert.equal(failed.run.status, 'failed');
+  assert.equal(failed.run.messageId, 'terminal-error');
+  assert.equal((await operate({ operation: 'work_attempt', sessionKey, runId })).run.status, 'failed');
+  assert.equal(failed.answer.status, 'unavailable');
+  assert.doesNotMatch(JSON.stringify(failed), /Private provider failure/);
+  for (const foreign of [{ sessionKey: 'other', messages: [terminal] },
+    { sessionKey, messages: [{ ...terminal, __openclaw: { ...terminal.__openclaw, runId: 'other' } }] },
+    { sessionKey, messages: [{ ...terminal, __openclaw: { runId } }] }]) {
+    history = foreign;
+    assert.equal((await operate({ operation: 'turn', sessionKey, runId })).run.status, 'completed');
+  }
+  history = { sessionKey, messages: [terminal, { ...terminal, stopReason: 'stop',
+    content: [{ type: 'text', text: 'Later native final answer' }] }] };
+  const recovered = await operate({ operation: 'turn', sessionKey, runId });
+  assert.equal(recovered.run.status, 'completed');
+  assert.equal(recovered.answer.status, 'ready');
+});
+
 test('progress retains the complete composite native identity while tool names stay strict', () => {
   const id = 'call_synthetic_shared|fc_synthetic_item';
   const messages = [{ role: 'assistant', __openclaw: { runId, id: 'native-message' }, content: [
