@@ -35,6 +35,13 @@ function presentationEvidence(value, catalog) {
           && (!target.focus?.report || target.focus.report === expected.report)
           ? report : { status: 'unavailable', reason: report?.reason || 'report_selection_mismatch' };
         if (Number.isSafeInteger(row.selection?.outside) && row.selection.outside >= 0) selected.outside = row.selection.outside;
+        // Which step of the DiskX animation list is on screen: a display observation, not a read.
+        const scene = row.selection?.scene;
+        if (scene && ['overview', 'duplicates', 'pairs', 'target', 'summary', 'tour', 'group'].includes(scene.kind)
+            && Number.isSafeInteger(scene.count) && scene.count > 0 && scene.count <= 64
+            && Number.isSafeInteger(scene.index) && scene.index >= 0 && scene.index < scene.count) {
+          selected.scene = { kind: scene.kind, index: scene.index, count: scene.count, playing: scene.playing === true };
+        }
       }
       if (target.page === 'personal-calendar') {
         const agenda = presentationReader.read(row.read || {});

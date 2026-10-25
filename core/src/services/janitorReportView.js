@@ -18,7 +18,7 @@ const GROUPS_ROUTE = `${STRATEGY_ROUTE}/groups`;
 const REQUEST_TIMEOUT_MS = 6000;
 const SHA256 = /^[0-9a-f]{64}$/;
 const DISKX_PATH = '/diskx';
-const { reportDate, requireReport } = require('./janitorPresentation');
+const { reportDate, requireReport, diskxPlay } = require('./janitorPresentation');
 
 const SURVIVOR_WORDS = Object.freeze({
   canonical_active: 'la copie active de l’emplacement canonique',
@@ -60,20 +60,27 @@ const count = (value) => (value !== null && value !== '' && Number.isFinite(Numb
 
 function checkArguments(args) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) throw invalid('arguments must be an object');
-  const unknown = Object.keys(args).filter((key) => key !== 'group');
+  const unknown = Object.keys(args).filter((key) => key !== 'group' && key !== 'play');
   if (unknown.length) throw invalid(`unknown argument: ${unknown[0].slice(0, 40)}`);
-  if (args.group === undefined || args.group === null || args.group === '') return {};
+  const checked = {};
+  if (args.play !== undefined && args.play !== null && args.play !== '') {
+    const play = diskxPlay(String(args.play));
+    if (!play) throw invalid('play must list DiskX steps: overview, duplicates, pairs, target, summary, tour-N (1-20), group-<sha256>');
+    checked.play = play;
+  }
+  if (args.group === undefined || args.group === null || args.group === '') return checked;
   const group = String(args.group).toLowerCase();
   if (!SHA256.test(group)) throw invalid('group must be one SHA-256 (64 hexadecimal characters)');
-  return { group };
+  return { ...checked, group };
 }
 
 /**
  * The DiskX page link. CORE_PUBLIC_URL is the browser-facing Core address on
  * the private network; without a usable one the link stays a Core path.
  */
-function diskxLink({ group, report } = {}, env = process.env) {
-  const query = new URLSearchParams({ janitor: 'latest', ...(group ? { group } : {}), ...(reportDate(report) ? { report: reportDate(report) } : {}) }).toString();
+function diskxLink({ group, report, play } = {}, env = process.env) {
+  const query = new URLSearchParams({ janitor: 'latest', ...(group ? { group } : {}), ...(reportDate(report) ? { report: reportDate(report) } : {}),
+    ...(diskxPlay(play || '') ? { play: diskxPlay(play) } : {}) }).toString();
   const relative = `${DISKX_PATH}?${query}`;
   try {
     const base = new URL(String(env.CORE_PUBLIC_URL || '').trim());
@@ -170,8 +177,9 @@ async function readJanitorReportView(args = {}, deps = {}) {
     ...view,
     ...(group ? { group } : {}),
     screenPage: view.available ? ['diskx', ...(group?.found ? [`group=${group.sha256}`] : []),
-      ...(view.generatedAt ? [`report=${view.generatedAt}`] : [])].join(' ') : null,
-    link: view.available ? diskxLink({ group: group?.found ? group.sha256 : undefined, report: view.generatedAt }, deps.env || process.env) : null,
+      ...(view.generatedAt ? [`report=${view.generatedAt}`] : []), ...(input.play ? [`play=${input.play}`] : [])].join(' ') : null,
+    ...(input.play && view.available ? { play: input.play } : {}),
+    link: view.available ? diskxLink({ group: group?.found ? group.sha256 : undefined, report: view.generatedAt, play: input.play }, deps.env || process.env) : null,
     linkScope: 'private_network',
     notes: [NOTES.survivorRule, NOTES.logicalBytes],
     readOnly: true

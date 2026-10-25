@@ -4,6 +4,15 @@
   const STATUSES = Object.freeze(['queued', 'in_progress', 'review', 'blocked', 'done']);
   const ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
   const fallback = [{ id: 'pipeline', label: 'Pipeline', href: '/pipeline', mode: 'frame' }];
+  // DiskX animation list (GraphysX <diskx-city play>): presentation steps only, never actions.
+  const SHOW_SCENES = Object.freeze(['overview', 'duplicates', 'pairs', 'target', 'summary']);
+  function diskxPlay(value) {
+    if (typeof value !== 'string' || !value || value.length > 2000) return null;
+    const words = value.split(',').map(word => word.trim().toLowerCase()).filter(Boolean);
+    if (!words.length || words.length > 24) return null;
+    const known = word => SHOW_SCENES.includes(word) || /^tour-(?:[1-9]|1\d|20)$/.test(word) || /^group-[a-f0-9]{64}$/.test(word);
+    return words.every(known) ? words.join(',') : null;
+  }
   function destination(value) {
     if (!value || !ID.test(value.id) || typeof value.label !== 'string' || !value.label.trim()
         || value.label.length > 80 || /[\u0000-\u001f\u007f]/.test(value.label)
@@ -41,6 +50,7 @@
       if (page === 'diskx') for (const word of words.slice(1)) {
         const [key, value = ''] = word.split('=');
         if (key === 'group' && /^[a-f0-9]{64}$/.test(value)) focus.group = value;
+        if (key === 'play' && diskxPlay(value)) focus.play = diskxPlay(value);
         if (key === 'report' && /^\d{4}-\d\d-\d\dt\d\d:\d\d:\d\d(?:\.\d{1,3})?z$/.test(value)
             && Number.isFinite(Date.parse(value))) focus.report = new Date(value).toISOString();
       }
@@ -67,7 +77,7 @@
     return Object.freeze({ PAGES, STATUSES, parse, canonical, url, label, mode, keepsConversation, entries: Object.freeze(Object.values(PAGES)) });
   }
   let current = createCatalog();
-  const api = Object.freeze({ STATUSES, createCatalog, destination, canonical,
+  const api = Object.freeze({ STATUSES, SHOW_SCENES, diskxPlay, createCatalog, destination, canonical,
     configure(entries) { current = createCatalog(entries); },
     get PAGES() { return current.PAGES; }, get entries() { return current.entries; },
     parse: body => current.parse(body), url: (target, options) => current.url(target, options),

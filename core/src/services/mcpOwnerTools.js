@@ -9,7 +9,7 @@ const tool = (name, description, properties, required = [], readOnlyHint = true)
   inputSchema: object(properties, required), annotations: { readOnlyHint, openWorldHint: false } });
 const TOOLS = [
   tool('janitor_report_view', 'Read the stored Janitor report and its logical savings; never scans, approves, moves or deletes. Use screenPage in a page show block to display DiskX inside Nestor. A link or graphical receipt is not file execution evidence.',
-    { group: { type: 'string', pattern: '^[a-fA-F0-9]{64}$' } }),
+    { group: { type: 'string', pattern: '^[a-fA-F0-9]{64}$' }, play: { type: 'string', maxLength: 2000, description: 'Optional DiskX animation list played on screen, comma-separated presentation steps: overview, duplicates (only duplicate bytes remain), pairs (extra copies linked to the kept copy), target (the level without extra copies), summary, tour-N (the N largest groups, 1-20), group-<sha256>. Compose it from the conversation. Steps only show; actions on files happen in Data Toolbox.' } }),
   require('./personalTaskDossierTool').DOSSIER_TOOL,
   tool('team_brief', 'Read Core records from the Secretary or Accountant, including freshness, formatted monetary amounts, provenance and unavailable sections. Relay Display amounts exactly. For exact/current messages or actions consult the specialist.',
     { member: { enum: ['secretary', 'comptable'], type: 'string' }, days: integer(90) }, ['member']),

@@ -40,11 +40,12 @@ function fakeData({ strategy = () => ok(report), groups, calls = [] } = {}) {
   };
 }
 
-test('janitor_report_view is a read-only, owner-relayed tool with one optional group', () => {
+test('janitor_report_view is a read-only, owner-relayed tool with an optional group and animation list', () => {
   const tool = SECRETARY_TOOLS.find((item) => item.name === 'janitor_report_view');
   assert.equal(tool.annotations.readOnlyHint, true);
   assert.equal(tool.inputSchema.additionalProperties, false);
-  assert.deepEqual(Object.keys(tool.inputSchema.properties), ['group']);
+  assert.deepEqual(Object.keys(tool.inputSchema.properties), ['group', 'play']);
+  assert.match(tool.inputSchema.properties.play.description, /actions on files happen in Data Toolbox/);
   assert.deepEqual(tool.inputSchema.required, []);
   assert.match(tool.description, /never an authorization/);
   assert.match(tool.description, /logical bytes: the physical space freed is not measured/);
@@ -92,6 +93,14 @@ test('a named group adds its copy count and opens DiskX on it; an unknown group 
   assert.deepEqual(missing.group, { sha256: other, found: false });
   assert.equal(missing.link, '/diskx?janitor=latest&' + REPORT_QUERY);
   assert.match(missing.summary, /n’est pas dans le dernier rapport/);
+});
+
+test('an animation list composed by Nestor travels in screenPage and the link, validated', async () => {
+  const view = await readJanitorReportView({ play: 'Duplicates,pairs,tour-3' }, { fetchData: fakeData({}), now: () => now, env: {} });
+  assert.equal(view.play, 'duplicates,pairs,tour-3');
+  assert.match(view.screenPage, / play=duplicates,pairs,tour-3$/);
+  assert.equal(view.link, `/diskx?janitor=latest&${REPORT_QUERY}&play=duplicates%2Cpairs%2Ctour-3`);
+  await assert.rejects(readJanitorReportView({ play: 'duplicates,delete' }, { fetchData: async () => assert.fail('no read') }), { code: 'INVALID_ARGUMENTS' });
 });
 
 test('no report yet, Data down and refused arguments are said as such', async () => {

@@ -35,4 +35,7 @@ function janitorSnapshot(view, now) {
     limits: ['Read-only report, not authorization or execution evidence.', 'Logical bytes, not physically freed space.'] };
 }
 
-module.exports = { reportDate, requireReport, janitorSnapshot };
+// The DiskX animation list shares the screen catalog's validator: one vocabulary.
+const { diskxPlay } = require('../../public/js/screen-pages');
+
+module.exports = { reportDate, requireReport, janitorSnapshot, diskxPlay };
