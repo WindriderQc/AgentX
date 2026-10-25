@@ -11,6 +11,7 @@
       wait: 'Work has not started. No completion estimate is available.',
       blocked: 'Blocked before start', blockedDetail: 'An earlier execution must be verified before Main can start this request.',
       reviewQueued: 'Answer review waiting to start', authFailure: 'Authentication was refused for this attempt. It failed and was not restarted.',
+      contextFailure: 'I could not verify this request with the complete conversation. I have no verified result to present.',
       running: 'Work has started. No completion estimate is available.',
       paused: 'This request will wait until you resume it.', cancelled: 'This request was cancelled before execution.',
       controls: 'These controls apply only to this request. Voice controls are above.',
@@ -34,6 +35,7 @@
       wait: 'Le travail n’a pas commencé. Aucun délai de fin n’est disponible.',
       blocked: 'Bloquée avant démarrage', blockedDetail: 'Une exécution précédente doit être vérifiée avant que Main puisse commencer cette demande.',
       reviewQueued: 'Vérification de réponse en attente', authFailure: 'L’authentification a été refusée pour cette tentative. Elle a échoué et n’a pas été relancée.',
+      contextFailure: 'Je n’ai pas pu vérifier cette demande avec l’historique complet. Je n’ai aucun résultat vérifié à te présenter.',
       running: 'Le travail a commencé. Aucun délai de fin n’est disponible.',
       paused: 'Cette demande attendra que vous la repreniez.', cancelled: 'Cette demande a été annulée avant son exécution.',
       controls: 'Ces commandes concernent cette demande seulement. Les commandes vocales sont en haut.',
@@ -103,6 +105,7 @@
         : c[item.state] || '';
       if (blocked) detail = c.blockedDetail;
       if (item.reason === 'native_authentication_failed') detail = c.authFailure;
+      if (item.reason === 'CONVERSATION_CONTEXT_REQUIRED') detail = c.contextFailure;
       if (item.result) detail = '';
       if (detail) card.append(node('p', 'conversation-work-detail', detail));
       if (item.pending && item.updatedAt) card.append(node('p', 'conversation-work-meta', `${c.updated} : ${timestamp(item.updatedAt)}`));

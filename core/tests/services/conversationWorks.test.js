@@ -95,7 +95,7 @@ test('the original speech language survives duplicate intake and a new service i
 
 test('oversized worker context explicitly refuses instead of returning only recent turns', async () => {
   for (let index = 0; index < 7; index++) await conversations.recordTurn({ sessionId: current.sessionId,
-    packId: 'personal_operator', scopeId: 'personal', traceId: randomUUID(), inputText: 'x'.repeat(15000), replyText: 'Reply' });
+    packId: 'personal_operator', scopeId: 'personal', traceId: randomUUID(), inputText: String(index).repeat(15000), replyText: 'Reply' });
   const job = await startWork();
   await expect(works.contextForWorker(job.context)).rejects.toMatchObject({ code: 'CONVERSATION_CONTEXT_REQUIRED', statusCode: 409 });
 });

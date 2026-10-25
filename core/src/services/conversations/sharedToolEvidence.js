@@ -1,11 +1,12 @@
 'use strict';
 
 const { createHash } = require('node:crypto');
+const { shareContextText } = require('./sharedContextText');
 
 // This is a lossless, per-response wire representation. Canonical turns and
 // receipts stay untouched, and every shared value remains inline in this same
 // conversation. Receipt identity, order and presentation are never coalesced.
-function shareToolEvidence(conversation) {
+function shareWholeToolEvidence(conversation) {
   if (conversation.sharedToolEvidence || conversation.evidenceEncoding) return conversation;
   const candidates = new Map();
   for (const turn of conversation.turns || []) for (const result of turn.workResults || []) {
@@ -38,5 +39,7 @@ function shareToolEvidence(conversation) {
   }, sharedToolEvidence: Object.fromEntries([...shared].map(([id, value]) => [id, value.data])) };
   return JSON.stringify(projected).length < JSON.stringify(conversation).length ? projected : conversation;
 }
+
+const shareToolEvidence = conversation => shareContextText(shareWholeToolEvidence(conversation));
 
 module.exports = { shareToolEvidence };

@@ -214,7 +214,25 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       runId: receipt.runId, at: receipt.at }, data: await repo.read(saved, receipt.payloadRef) };
   }
   async function contextForNative(context, callId) {
-    const canonical = await contextForWorker(context, 'boss');
+    let canonical;
+    try { canonical = await contextForWorker(context, 'boss'); }
+    catch (error) {
+      if (error.code === 'CONVERSATION_CONTEXT_REQUIRED') {
+        const row = await binding(context, 'boss');
+        await repo.mutate(row._id, current => {
+          if (current.attempt?.id !== row.attempt?.id || current.result
+              || !['dispatching', 'running', 'uncertain'].includes(current.state)) return null;
+          return { fields: { reason: error.code }, event: 'native_context_refused',
+            eventData: { requiredChars: error.requiredChars, maxChars: error.maxChars } };
+        });
+      }
+      throw error;
+    }
+    const row = await binding(context, 'boss');
+    if (row.reason === 'CONVERSATION_CONTEXT_REQUIRED') await repo.mutate(row._id, current =>
+      current.attempt?.id === row.attempt?.id && current.reason === 'CONVERSATION_CONTEXT_REQUIRED'
+        && ['dispatching', 'running', 'uncertain'].includes(current.state)
+        ? { fields: { reason: '' }, event: 'native_context_recovered' } : null);
     // Reuse the same canonical reader inside Main's mandatory context call.
     // The exact owner request, not model-supplied input or other turns, selects
     // this read. Legacy context reads without a native call id remain read-only.

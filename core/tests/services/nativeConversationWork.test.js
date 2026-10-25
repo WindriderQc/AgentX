@@ -212,6 +212,46 @@ test('ordinary native conversation context never speculatively reads tasks', asy
   expect(result.receipt).toBeUndefined();
 });
 
+test('a context that grows beyond budget retains its exact refusal after native completion and never accepts an old task answer', async () => {
+  works.observer.stop();
+  const row = await admitted('Lis mes tâches ouvertes.');
+  for (let index = 0; index < 7; index++) await conversations.recordTurn({ ...works.query(current.sessionId), traceId: randomUUID(),
+    inputText: 'NEW_COMPLETE_DETAIL ' + String(index).repeat(15000), replyText: 'New response' });
+  await expect(works.contextForNative(context(row), 'call_growing_context'))
+    .rejects.toMatchObject({ code: 'CONVERSATION_CONTEXT_REQUIRED', maxChars: 96000 });
+  const refused = await works.repo.get(row._id);
+  expect(refused.reason).toBe('CONVERSATION_CONTEXT_REQUIRED');
+  expect(refused.tools).toHaveLength(0);
+  expect(refused.events.at(-1)).toMatchObject({ type: 'native_context_refused', maxChars: 96000,
+    requiredChars: expect.any(Number) });
+  await mongoose.connection.collection('conversation_work_dispatch').insertOne({ _id: OWNER,
+    workId: row._id, processId: randomUUID(), phase: 'dispatching', attempt: row.attempt });
+  const native = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
+  const dispatch = jest.fn();
+  const observer = createWorkObserver({ works, env, execute: dispatch,
+    observe: async () => proof(row.attempt, 'There were eight tasks earlier.', []),
+    receive: request => native.receive(request) });
+  try {
+    await observer.tick();
+    expect(await works.repo.get(row._id)).toMatchObject({ state: 'failed',
+      reason: 'CONVERSATION_CONTEXT_REQUIRED', attempt: { terminal: 'completed' } });
+    expect((await works.repo.get(row._id)).result).toBeUndefined();
+    expect((await works.repo.dispatchOwner()).workId).toBeNull();
+    expect(dispatch).not.toHaveBeenCalled();
+  } finally { observer.stop(); }
+});
+
+test('a successful canonical refresh clears only its own former budget refusal', async () => {
+  const row = await admitted('Help me choose a colour.');
+  await works.repo.mutate(row._id, () => ({ fields: { reason: 'CONVERSATION_CONTEXT_REQUIRED' }, event: 'fixture_prior_refusal' }));
+  const refreshed = await works.contextForNative(context(row), 'call_recovered_context');
+  expect(refreshed.request).toBe('Help me choose a colour.');
+  expect((await works.repo.get(row._id)).reason).toBe('');
+  await works.repo.mutate(row._id, () => ({ fields: { reason: 'another_refusal' }, event: 'fixture_other_refusal' }));
+  await works.contextForNative(context(row), 'call_ordinary_context');
+  expect((await works.repo.get(row._id)).reason).toBe('another_refusal');
+});
+
 test('native context shares repeated inline evidence without merging original runs or replaying reads', async () => {
   works.observer.stop();
   const data = { tasks: [{ id: 'shared-owner-action', title: 'x'.repeat(35000) + ' FINAL_SOURCE_DETAIL' }], totalCount: 1 };

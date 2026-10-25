@@ -65,7 +65,8 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
     row = await works.repo.get(workId);
     if (!row) { await clear(workId); return; }
     await works.repo.mutate(row._id, current => ({ fields: {
-      state: current.result ? 'completed' : 'failed', reason: current.result ? '' : 'native_result_not_published',
+      state: current.result ? 'completed' : 'failed', reason: current.result ? ''
+        : current.reason === 'CONVERSATION_CONTEXT_REQUIRED' ? current.reason : 'native_result_not_published',
       attempt: { ...current.attempt, settledAt: new Date(), terminal: native.status } }, event: 'native_settled' }));
     await clear(row._id);
     await works.finalize(await works.repo.get(row._id));

@@ -29,6 +29,23 @@ const snapshot = (cursor, text = 'Saved result') => ({ cursor, hasMore: false,
   items: [{ id: 'work', sessionId: 'session', state: 'completed', revision: 1,
     result: { version: 1, deliveryId: 'delivery', text, presentation: 'completed' } }] });
 
+test('a genuine context refusal explains the failure without presenting an old answer or replaying work', async () => {
+  const requests = [];
+  const h = panel(async (url, options) => {
+    requests.push({ url, method: options?.method || 'GET' });
+    return { cursor: 1, hasMore: false, items: [{ id: 'original', state: 'failed',
+      reason: 'CONVERSATION_CONTEXT_REQUIRED', requestText: 'Read current tasks', pending: false }] };
+  });
+  try {
+    h.work.follow('session'); await tick();
+    const detail = h.cards[0].children.find(node => node.className === 'conversation-work-detail').textContent;
+    assert.match(detail, /complete conversation/);
+    assert.match(detail, /no verified result/);
+    assert.equal(h.cards[0].children.some(node => node.className === 'conversation-work-answer'), false);
+    assert.equal(requests.every(request => request.method === 'GET'), true);
+  } finally { h.work.dispose(); }
+});
+
 test('an unchanged queued request reflects a blocked dispatcher and its later release', async () => {
   let response = { cursor: 7, hasMore: false, dispatch: null,
     items: [{ id: 'waiting', state: 'queued', classification: 'native_work', pending: true }] };
