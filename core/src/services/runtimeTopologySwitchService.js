@@ -115,6 +115,9 @@ function createTopologySwitchService(deps = {}) {
   const hostPrefs = deps.hostPrefs || require('./hostPreferenceService');
   // hostPreferenceService uses this check but does not export it.
   const verifyResidency = deps.verifyResidency || require('./hostPinPrimitives').verifyPinnedEntriesLoaded;
+  // The Profiler's verified context for an endpoint's artifact (evidence only).
+  const contextInfo = deps.contextInfo
+    || ((model, url) => require('./modelContextInfoService').getContextInfo(model, url));
   const sessionHolds = deps.sessionHolds || require('./hostSessionHoldService');
   const physical = deps.physical || require('./runtimePhysicalResources');
   const actuator = deps.actuator || require('./runtimeTopologyActuator').createActuatorClient();
@@ -459,6 +462,7 @@ function createTopologySwitchService(deps = {}) {
             throw typed('TOPOLOGY_PIN_DRIFT', `Pin drift is ${last.drift.status}`, 409, last);
           }
         }
+        last.context = await contextEvidence(residency);
         timing(record, modeId === record.targetMode ? 'verifyMs' : 'restoreVerifyMs', started);
         return last;
       }
@@ -466,6 +470,27 @@ function createTopologySwitchService(deps = {}) {
       await save(record, { verification: last });
       await sleep(options.verifyPollMs);
     }
+  }
+
+  /**
+   * Whether each endpoint's first pin is covered by the Profiler's verified
+   * context for that artifact there. Recorded, not enforced: a new lane has
+   * no profile until the Profiler measures it in that mode.
+   */
+  async function contextEvidence(residency) {
+    const rows = [];
+    for (const item of residency) {
+      const pin = item.entries[0];
+      let verified = null;
+      try {
+        const info = await contextInfo(pin.model, item.url);
+        verified = Number(info?.verifiedMaxContext) > 0 ? Number(info.verifiedMaxContext) : null;
+      } catch { verified = null; }
+      const pinned = Number(pin.contextSize) > 0 ? Number(pin.contextSize) : null;
+      rows.push({ url: item.url, model: pin.model, pinnedContext: pinned, verifiedContext: verified,
+        status: !verified ? 'unverified' : pinned && pinned > verified ? 'exceeds_verified' : 'verified' });
+    }
+    return rows;
   }
 
   async function confirm(record) {

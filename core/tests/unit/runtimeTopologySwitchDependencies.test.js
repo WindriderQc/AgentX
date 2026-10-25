@@ -6,6 +6,7 @@
 const CONTRACT = {
   '../../src/services/hostPreferenceService': ['getAll', 'getByHost', 'getPinnedEntries', 'hasActiveBenchmarkClaim', 'restorePinnedModels'],
   '../../src/services/hostPinPrimitives': ['verifyPinnedEntriesLoaded'],
+  '../../src/services/modelContextInfoService': ['getContextInfo'],
   '../../src/services/runtimeCoordinationService': ['acquireMaintenance', 'heartbeat', 'listActive', 'markMaintenanceUnknown',
     'release', 'recoverMaintenanceAfterOperatorReconciliation'],
   '../../src/services/hostSessionHoldService': ['isHostHeld'],

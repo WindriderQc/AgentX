@@ -2033,7 +2033,10 @@ never send a second switch.
    settings (no truncation, no context shift, the pin's context and
    keep-alive). Pin drift must be `ok`; `partial`, where a source such as
    OpenClaw was not checked, is accepted and recorded. Core polls for up to
-   4 minutes.
+   4 minutes. The record also notes, per endpoint, whether its pin is covered
+   by the Profiler's verified context for that artifact (`verification.context`:
+   `verified`, `exceeds_verified` or `unverified`). This is evidence, not a
+   gate: a new lane has no profile until the Profiler measures it in that mode.
 6. **active**: Core confirms to the actuator, which cancels its safety timer
    and moves boot enablement. The group's intended mode changes, and the lease
    is released.
@@ -2115,6 +2118,22 @@ refusal `LANE_CONTEXT_EXCEEDED` names the next planned pooled window
 (`data.nextPooledWindow`). See "Topology windows" in
 [the heavy-work queue](HEAVY_WORK_QUEUE.md). Nothing switches automatically on
 a single request.
+
+**Context everywhere.** The context a runtime is told comes from what the
+lane holds: the pin, never more, and never more than the Profiler verified for
+that artifact on that endpoint.
+- **The runtime configuration export.** It advertises the pin, or the verified
+  context when the pin exceeds it (`contextSource: profiler_verified`). It
+  never advertises a larger verified maximum.
+- **OpenClaw.** Its model entries may declare *less* than the lane holds:
+  that is safe in every topology mode, and pin drift reports it as `narrower`.
+  More than the lane holds, or no value at all, is drift: OpenClaw would size
+  its history past the lane, or fall back to its own default. Every provider
+  routed through Core that lists the model is checked.
+- **One value for both modes.** For a group that switches modes, give OpenClaw
+  the smallest verified context of its modes, once. Nothing then changes in
+  OpenClaw at a switch. OpenClaw applies model changes live, mid-session, so
+  changing it at each switch could cut a running conversation.
 
 **Parked hosts.** The endpoints of a group's inactive modes are stopped on
 purpose: they are *parked*, not down. During a switch, every endpoint of the

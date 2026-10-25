@@ -111,6 +111,10 @@
             const smoke = verification.smoke ? (verification.smoke.every(item => item.ok) ? 'test answer ok' : 'test answer failed') : null;
             const drift = verification.drift ? `pin drift ${verification.drift.status}` : null;
             lines.push(esc([resident, smoke, drift].filter(Boolean).join(' · ')));
+            const unverified = (verification.context || []).filter(item => item.status !== 'verified');
+            if (unverified.length) {
+                lines.push(esc(`Context not yet measured by the Profiler: ${unverified.map(item => `${item.url} (${item.pinnedContext || '?'})`).join(', ')}`));
+            }
         }
         if (record.timings?.totalMs) lines.push(`Took ${esc(Math.round(record.timings.totalMs / 1000))} s.`);
         if (record.state === 'uncertain') {
