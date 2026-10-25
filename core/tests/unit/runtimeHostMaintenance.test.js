@@ -62,6 +62,22 @@ describe('host-scoped maintenance lease', () => {
       workloadGeneration: parent.generation })).toMatchObject({ acquired: true });
   });
 
+  test('a topology switch lease names itself in the refusal (#360)', async () => {
+    const lease = await service.acquireMaintenance({ principal: 'core-topology-switch', requestId: 'switch-1',
+      scope: 'host', hosts: [a], ttl: 900_000, purpose: 'topology-switch' });
+    expect(lease).toMatchObject({ acquired: true, purpose: 'topology-switch' });
+    expect(await inference(a)).toMatchObject({ acquired: false, failure: { cause: 'topology_switch_in_progress',
+      retryable: true, holder: { type: 'maintenance', kind: 'topology-switch' } } });
+    expect(await inference(b)).toMatchObject({ acquired: true });
+  });
+
+  test('an unknown purpose is not stored', async () => {
+    const lease = await service.acquireMaintenance({ principal: 'operator', requestId: 'x', scope: 'host',
+      hosts: [a], ttl: 900_000, purpose: 'anything else' });
+    expect(lease.purpose).toBeNull();
+    expect(await inference(a)).toMatchObject({ failure: { cause: 'maintenance_active' } });
+  });
+
   test('ordinary inference on another host keeps working while held', async () => {
     expect(await hostLease([a])).toMatchObject({ acquired: true });
     expect(await inference(b)).toMatchObject({ acquired: true });

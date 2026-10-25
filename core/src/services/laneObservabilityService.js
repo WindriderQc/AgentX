@@ -24,6 +24,7 @@ const METRICS = Object.freeze({
   PIN_VRAM_SPILL: 'pin_vram_spill',
   LATENCY_DRIFT: 'lane_latency_drift',
   RUNTIME_QUARANTINE: 'runtime_recovery_quarantine',
+  TOPOLOGY_SWITCH_FAILURE: 'topology_switch_failure',
 });
 const RULE_IDS = Object.freeze([
   'lane-context-mismatch',
@@ -33,6 +34,7 @@ const RULE_IDS = Object.freeze([
   'pin-vram-spill',
   'lane-latency-drift',
   'runtime-recovery-quarantine',
+  'topology-switch-failure',
 ]);
 // Callers whose answer is not an output by design: Benchmark's host-test
 // warm-up asks one token (num_predict 1) only to load and prime the model, so
@@ -621,6 +623,42 @@ function stop() {
   scanInterval = null;
 }
 
+/**
+ * One incident per runtime topology switch (#360) that ended rolled back or
+ * uncertain. Rolled back: the previous mode runs again and serves. Uncertain:
+ * the group stays fenced by the switch's quarantined maintenance lease until an
+ * operator reconciles the host and recovers that lease.
+ */
+async function observeTopologySwitchFailure(input = {}) {
+  try {
+    const groupId = bounded(input.groupId, 64);
+    const requestId = bounded(input.requestId, 160);
+    const state = input.state === 'uncertain' ? 'uncertain' : 'rolled_back';
+    if (!groupId || !requestId) return { emitted: 0, matched: 0 };
+    const event = buildEvent(METRICS.TOPOLOGY_SWITCH_FAILURE, { host: groupId, campaignId: requestId }, {
+      detector: 'topology_switch',
+      incidentKey: `topology-switch:${requestId}`,
+      failureCode: bounded(input.reason, 64) || state,
+      value: 1,
+      threshold: 0,
+      remediation: state === 'uncertain'
+        ? 'The switch outcome is unknown and the host group stays fenced. Read the actuator status for this request, bring the host to a known mode, then recover the maintenance lease (docs/OPERATIONS.md, Runtime topology switch).'
+        : 'The previous topology mode was restored and serves again. Read the switch receipt for the failed step before trying again.',
+      evidence: {
+        state,
+        fromMode: bounded(input.fromMode, 64),
+        targetMode: bounded(input.targetMode, 64),
+        step: bounded(input.step, 40),
+        source: 'runtime-topology-switch',
+      },
+    });
+    return evaluateEvents([event]);
+  } catch (err) {
+    logger.warn('[LaneObservability] topology switch observation failed (non-fatal)', { error: err.message });
+    return { emitted: 0, matched: 0, error: true };
+  }
+}
+
 module.exports = {
   SCHEMA_VERSION,
   METRICS,
@@ -635,6 +673,7 @@ module.exports = {
   observePinRestoreFailure,
   observePinVramSpill,
   observeRuntimeQuarantine,
+  observeTopologySwitchFailure,
   resolvePinVramSpill,
   scanLatencyDrift,
   summarizeOllamaOutcome,

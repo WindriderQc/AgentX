@@ -447,6 +447,9 @@ async function checkHostHealth(hostKey) {
     if (!host) {
         return { status: 'unknown', models: [], latency: -1 };
     }
+    if (require('./runtimeTopologyParking').isParkedHost(host)) {
+        return { status: 'parked', models: [], latency: -1, reason: 'topology_parked' };
+    }
 
     const start = Date.now();
     const controller = new AbortController();

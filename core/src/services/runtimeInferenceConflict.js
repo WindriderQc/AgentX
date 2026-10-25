@@ -26,7 +26,7 @@ function holderOf(type, item) {
   if (!item) return null;
   return {
     type,
-    kind: clean(item.kind, 80),
+    kind: clean(item.kind || item.purpose, 80),
     principal: clean(item.principal, 80),
     model: type === 'inference' ? clean(item.model, 120) : null,
     since: since(item.acquiredAt)
@@ -38,9 +38,13 @@ function holderOf(type, item) {
 function inferenceConflict(state, request, now) {
   const failure = (cause, retryable = false, holder = null) => ({ cause, retryable, safeToRetry: true,
     retryAfterMs: retryable ? 2000 : null, holder, diagnostic: describeFailure(cause) });
-  if (state?.maintenance && fencesHost(state.maintenance, request.host, request.resourceIds || [])) return failure(state.maintenance.state === 'UNKNOWN'
-    ? 'maintenance_recovery_required' : 'maintenance_active', state.maintenance.state !== 'UNKNOWN',
-  holderOf('maintenance', state.maintenance));
+  if (state?.maintenance && fencesHost(state.maintenance, request.host, request.resourceIds || [])) {
+    const unknown = state.maintenance.state === 'UNKNOWN';
+    // A topology switch (#360) drains its host group: say so, not "maintenance".
+    const cause = unknown ? 'maintenance_recovery_required'
+      : state.maintenance.purpose === 'topology-switch' ? 'topology_switch_in_progress' : 'maintenance_active';
+    return failure(cause, !unknown, holderOf('maintenance', state.maintenance));
+  }
   const inferences = (state?.inferences || []).filter(item => overlaps(item, request.host, request.resourceIds || []));
   if (inferences.some(item => item.state !== 'ACTIVE' || new Date(item.expiresAt) <= now)) {
     return failure('inference_recovery_required');

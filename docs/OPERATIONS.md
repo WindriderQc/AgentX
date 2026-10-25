@@ -1823,9 +1823,8 @@ its value. A generic example:
 - **Limits.** Up to 8 groups, 6 modes per group and 8 endpoints per mode.
   Labels default to ids.
 
-This phase is read-only. `GET /api/nerve-center/runtime-topology` and the
-**Runtime topology** card in the Nerve Center routing section show, for each
-declared mode:
+`GET /api/nerve-center/runtime-topology` and the **Runtime topology** card in
+the Nerve Center routing section show, for each declared mode:
 
 - each endpoint, with its role;
 - whether it is a registered host;
@@ -1843,8 +1842,9 @@ declared mode:
 active. If several are, it reads "conflict"; if one is half started, it reads
 "transitional".
 
-Declaring modes changes no route, pin or admission, and nothing switches a
-mode yet. An invalid declaration is reported as invalid without its content.
+Declaring modes changes no route, pin or admission. Moving a group to another
+mode is a switch (below). An invalid declaration is reported as invalid
+without its content.
 
 #### Routing by role
 
@@ -1895,6 +1895,116 @@ then follows whichever endpoint serves that role in its group's active mode.
 Without a declared topology, or without any route naming a role, routing is
 unchanged: no topology read, the same route shapes and the same routing
 configuration version.
+
+#### Switching modes
+
+A switch moves a group from its active mode to another declared mode (#360,
+phase 4). Core runs it as a workload with a durable record, so the host never
+runs two modes at once and an interrupted switch ends in a known state.
+
+`POST /api/nerve-center/runtime-topology/switch` with
+`{ "groupId", "targetMode", "expectedActiveMode", "requestId" }` returns 202 and
+the record. `GET /api/nerve-center/runtime-topology/switch/<requestId>` reads
+it, and `GET …/runtime-topology/switches?groupId=` lists the latest. The
+request id makes the call idempotent: after a lost answer, read the same id;
+never send a second switch.
+
+**States.** Each transition is stored with its time.
+
+1. **requested**: the request passed its checks (below).
+2. **draining**: Core takes a host-scoped maintenance lease over every
+   endpoint of the group, in both modes, with the purpose `topology-switch`.
+   It is granted only when nothing runs there.
+   - A Benchmark claim, a workload or another maintenance lease refuses the
+     switch at once. Core never takes over another owner's hold.
+   - Running inferences and session holds are waited for, up to 5 minutes.
+   - While the lease is held, inference there is refused with
+     `RUNTIME_INFERENCE_ADMISSION_DENIED` and cause
+     `topology_switch_in_progress`. Role routes of the group answer
+     `TOPOLOGY_ROLE_UNRESOLVED` with reason `topology_switch_in_progress`.
+3. **actuating**: Core calls the host actuator, `activate <targetMode>`, with
+   the switch's request id, and keeps the receipt. The actuator arms its safety
+   timer before stopping anything.
+4. **loading**: Core warms each target endpoint's pins through the pin
+   service, under the lease.
+5. **verifying**: the target must be the group's only active mode. Every pin
+   must be fully on GPU at exactly its pinned context. One short inference must
+   answer on each endpoint's first pin, sent directly with Core's runner
+   settings (no truncation, no context shift, the pin's context and
+   keep-alive). Pin drift must be `ok`; `partial`, where a source such as
+   OpenClaw was not checked, is accepted and recorded. Core polls for up to
+   4 minutes.
+6. **active**: Core confirms to the actuator, which cancels its safety timer
+   and moves boot enablement. The group's intended mode changes, and the lease
+   is released.
+
+**Failures.**
+- **Before actuation**, a refusal changes nothing: the switch ends `refused`
+  with its reason and, for a busy host, the blockers. This includes a drain
+  timeout, an actuator refusal, or an actuator that was never reached.
+- **After actuation**, a load, verify, smoke or drift failure goes to
+  `rolling_back`. The actuator returns to the previous mode, Core restores and
+  verifies that mode's pins, then releases the lease: `rolled_back`. An
+  actuator failure that the actuator restored itself also ends `rolled_back`.
+- **Uncertain.** When Core cannot establish what happened, the switch ends
+  `uncertain`. Examples: an actuator answer lost and unreadable by id, a
+  confirmation lost, a failed rollback, an unverified restore, or Core
+  restarting mid-switch. Core then marks the lease UNKNOWN through the existing
+  maintenance recovery, so the group stays fenced, and it never retries.
+- **Alerts.** `rolled_back` and `uncertain` raise the `topology-switch-failure`
+  alert. An uncertain switch also raises the usual quarantine alert.
+
+**Recovering an uncertain switch.**
+1. Read the switch record and the actuator's `status --request-id <id>`.
+2. Bring the host to one known mode: with the actuator's `rollback`, or by
+   waiting for its safety timer.
+3. Recover the maintenance lease with
+   `POST /api/nerve-center/maintenance-leases/<leaseId>/recover` and the
+   `agentx.maintenance-recovery/v1` receipt.
+
+Until then, a new switch for that group is refused with
+`TOPOLOGY_SWITCH_UNCERTAIN`.
+
+**Checks before a switch starts.** Each failed check refuses the request
+without touching anything.
+- The group and mode are declared.
+- The group has an actuator in `AGENTX_TOPOLOGY_ACTUATORS_JSON`.
+- No other switch of the group is open, and the last one did not end uncertain
+  with its lease still held.
+- The group has exactly one active mode, equal to `expectedActiveMode` when one
+  is given.
+- **Every endpoint of every mode is a registered inference host with a pin,
+  and is in `AGENTX_RUNTIME_RESOURCES_JSON`.** The lease fences physical GPUs,
+  so an endpoint missing from the map cannot be drained. Change the map only
+  when no admission is held (see "Physical GPU admission").
+
+A target that is already active is recorded as `active` with reason
+`already_active`, and nothing runs.
+
+**The actuator target.** `AGENTX_TOPOLOGY_ACTUATORS_JSON` names, per group, the
+SSH target, the key and the `known_hosts` file, all private and mounted
+read-only into the Core container:
+`{"<group>": {"sshTarget": "user@host", "keyPath": "/run/…/id_ed25519", "knownHostsPath": "/run/…/known_hosts"}}`.
+Core always checks the host key and uses only that key. Optional `port` and
+`timeoutsMs` (`status`, `activate`, `confirm`, `rollback`) are accepted.
+
+**Parked hosts.** The endpoints of a group's inactive modes are stopped on
+purpose: they are *parked*, not down. During a switch, every endpoint of the
+group is parked until it ends.
+- **The intended mode** is the target of the last completed switch, or the
+  mode first observed active, stored in `runtime_topology_intents`. A crash of
+  the intended mode is not a switch: its endpoints keep their alerts.
+- **What stays quiet.** The pin reconciler, startup warm-up, pin restore, the
+  watchdog, GPU health, telemetry polling, router host health, the ecosystem
+  summary, the implicit embedding chain and the light-task fallback ladder
+  skip parked hosts, or report them as `parked`.
+- **Saving a pin** on a parked host stores it without loading it, so the lane
+  hosts can be registered and pinned while the pooled mode runs.
+- **The principal switch** (Standard/Abliterated) on a parked principal host is
+  refused with `PRINCIPAL_HOST_PARKED`.
+- **Reading it.** `GET /api/nerve-center/runtime-topology` lists the parked
+  hosts and, per group, the intended mode, an open switch and the last switch
+  record.
 
 ### Inference log timings and prompt cache
 

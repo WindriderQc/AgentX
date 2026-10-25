@@ -33,7 +33,9 @@ const GROUP_ID = /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$/;
 // Reasons a role does not resolve. Stable strings: refusals and logs carry them.
 const UNRESOLVED_REASONS = Object.freeze([
   'topology_not_declared', 'topology_invalid', 'topology_unavailable', 'unknown_role', 'unknown_group',
-  'group_required', 'conflict', 'transitional', 'none_active', 'role_not_in_active_mode', 'endpoint_has_no_pin'
+  'group_required', 'conflict', 'transitional', 'none_active', 'role_not_in_active_mode', 'endpoint_has_no_pin',
+  // Phase 4: the group is switching modes; no endpoint serves until it ends.
+  'topology_switch_in_progress'
 ]);
 
 function isRoleRoute(entry) {
@@ -101,7 +103,9 @@ function createRoleResolver({
   describe = options => topology.describeTopology(options),
   now = Date.now,
   ttlMs = DESCRIPTION_TTL_MS,
-  readRaw = () => process.env.AGENTX_RUNTIME_TOPOLOGY_JSON || ''
+  readRaw = () => process.env.AGENTX_RUNTIME_TOPOLOGY_JSON || '',
+  // Lazy: the parking module observes the topology through this one.
+  switchInProgress = groupId => require('../runtimeTopologyParking').defaultParking.switchInProgress(groupId)
 } = {}) {
   let held = null; // { raw, description, at }
   let pending = null; // { raw, promise }
@@ -147,6 +151,8 @@ function createRoleResolver({
       if (declared.groups.length !== 1) return refused(route, null, 'group_required');
       groupId = declared.groups[0].id;
     }
+    const switching = switchInProgress(groupId);
+    if (switching) return refused(route, groupId, 'topology_switch_in_progress', switching.targetMode || null);
     let observed;
     try { observed = await description(); } catch { return refused(route, groupId, 'topology_unavailable'); }
     if (observed?.valid === false) return refused(route, groupId, 'topology_invalid');

@@ -263,7 +263,17 @@
       "default": null,
       "category": "inference",
       "secret": true,
-      "description": "Private declaration of runtime topology modes per GPU host group (#360): each mode lists its endpoints and the role each serves (conversation, background, pooled). Read-only: the Nerve Center shows which mode runs; routing does not use it yet. Unset: no modes declared. Invalid: reported as invalid, never echoed."
+      "description": "Private declaration of runtime topology modes per GPU host group (#360): each mode lists its endpoints and the role each serves (conversation, background, pooled). Role routes resolve through it, a switch moves a group between its modes, and the endpoints of an inactive mode are parked (no alerts). Unset: no modes declared. Invalid: reported as invalid, never echoed."
+    },
+    "AGENTX_TOPOLOGY_ACTUATORS_JSON": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "inference",
+      "secret": true,
+      "description": "Private SSH targets of the runtime topology host actuators, per topology group (#360 phase 4): {\"<group>\": {\"sshTarget\", \"keyPath\", \"knownHostsPath\", \"port\"?}}. Host keys are always checked. Unset: no switch can run. Invalid: reported as invalid, never echoed."
     },
     "AGENTX_TASK_FALLBACK_WAIT_MS": {
       "services": [

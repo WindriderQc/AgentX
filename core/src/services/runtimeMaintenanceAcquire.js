@@ -27,6 +27,9 @@ function hostWorkFilter(hosts, resourceIds) {
   ] };
 }
 
+// Purposes a maintenance lease may state; anything else is stored as null.
+const MAINTENANCE_PURPOSES = Object.freeze(['topology-switch']);
+
 function maintenanceService(scope) {
   return scope === CORE_RECREATE_SCOPE ? 'core' : 'all';
 }
@@ -45,7 +48,8 @@ function createMaintenanceAcquisition({ clean, ttlMs, secret, reapExpired }) {
     return { acquired: true, ...existing, idempotent: true };
   }
 
-  async function acquireMaintenance({ principal, requestId, scope, hosts, ttl } = {}) {
+  async function acquireMaintenance({ principal, requestId, scope, hosts, ttl, purpose } = {}) {
+    purpose = MAINTENANCE_PURPOSES.includes(purpose) ? purpose : null;
     principal = clean(principal);
     requestId = clean(requestId);
     scope = clean(scope) || 'runtime-deploy';
@@ -73,6 +77,7 @@ function createMaintenanceAcquisition({ clean, ttlMs, secret, reapExpired }) {
       scope,
       hosts,
       resourceIds,
+      purpose,
       acquiredAt: now,
       heartbeatAt: now,
       expiresAt: new Date(now.getTime() + ttlMs(ttl)),
@@ -131,4 +136,4 @@ function createMaintenanceAcquisition({ clean, ttlMs, secret, reapExpired }) {
   return { acquireMaintenance, listDeployBlockers };
 }
 
-module.exports = { createMaintenanceAcquisition };
+module.exports = { createMaintenanceAcquisition, MAINTENANCE_PURPOSES };
