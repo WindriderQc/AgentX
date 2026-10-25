@@ -74,6 +74,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     senders = commands.add_parser("senders")
     senders.add_argument("--max", type=int, default=SENDER_SAMPLE)
     commands.add_parser("catchup")
+    dossier = commands.add_parser("dossier")
+    dossier.add_argument("--thread", required=True)
     archived = commands.add_parser("archived")
     archived.add_argument("--message", required=True)
     archived.add_argument("--sha256", required=True)
@@ -303,7 +305,19 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if not args.account or not args.keyring_password_file:
             raise MailDeskError("Configure the Secretary account and keyring password file", "SECRETARY_MAIL_CONFIGURATION_INVALID")
-        data = {"threads": list_threads, "handled": mark_handled, "backlog": backlog, "senders": review_senders}[args.command](args)
+        if args.command == "dossier":
+            from dossier_sources import read_dossier
+            from secretary_evidence import Archive
+            if not THREAD_ID.fullmatch(args.thread):
+                raise MailDeskError("Invalid thread ID", "SECRETARY_MAIL_BAD_THREAD", 400)
+            # Archive uses the same native provider/keyring configuration. It
+            # only reads; no collection, OCR or model operation is invoked.
+            try:
+                data = read_dossier(Archive(args.evidence_root, run=lambda command: run_gog(args, "gmail.thread.get", command)), args.thread)
+            except (OSError, ValueError, RuntimeError, KeyError):
+                raise MailDeskError("The current correspondence could not be read", "SECRETARY_DOSSIER_SOURCE_UNAVAILABLE") from None
+        else:
+            data = {"threads": list_threads, "handled": mark_handled, "backlog": backlog, "senders": review_senders}[args.command](args)
         print(json.dumps({"status": "success", "data": data}, ensure_ascii=False))
     except MailDeskError as exc:
         # Exit 0 with an error envelope: the SSH caller parses stdout either way.

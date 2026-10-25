@@ -21,48 +21,6 @@
     host.lastElementChild.addEventListener('click', () => { host.dataset.expanded = 'true'; rows.forEach((row) => { row.hidden = false; }); host.lastElementChild.remove(); });
   }
 
-  // Bulk close for a backlog list: rows carry data-task-ref (and data-task-age in days).
-  // Nothing closes before a second, explicit click on the confirm button.
-  function selectable(list, { close, done, label = 'task' }) {
-    const previous = list.previousElementSibling;
-    if (previous?.classList.contains('dad-bulk')) previous.remove();
-    const rows = [...list.querySelectorAll(':scope > [data-task-ref]')];
-    if (rows.length < 2) return;
-    rows.forEach((row) => row.insertAdjacentHTML('afterbegin', `<input type="checkbox" class="dad-select" aria-label="Select #${row.dataset.taskRef}">`));
-    const old = rows.filter((row) => Number(row.dataset.taskAge) > 182).length;
-    list.insertAdjacentHTML('beforebegin', `<div class="row wrap dad-bulk"><label class="dad-bulk-all"><input type="checkbox" data-bulk-all> All</label>${old ? `<button type="button" class="compact" data-bulk-old>Check the ${old} older than 6 months</button>` : ''}<button type="button" class="compact dad-done" data-bulk-close disabled>Close selection</button><span data-bulk-status class="muted" role="status"></span></div>`);
-    const bar = list.previousElementSibling;
-    const closeButton = bar.querySelector('[data-bulk-close]');
-    const boxes = () => rows.map((row) => row.querySelector('.dad-select'));
-    const chosen = () => rows.filter((row) => row.querySelector('.dad-select').checked);
-    const reveal = () => list.querySelector(':scope > .dad-more')?.click();
-    const sync = () => {
-      const count = chosen().length;
-      delete closeButton.dataset.confirm;
-      closeButton.disabled = count === 0;
-      closeButton.textContent = count ? `Close selection (${count})` : 'Close selection';
-      bar.querySelector('[data-bulk-all]').checked = count === rows.length;
-    };
-    list.onchange = (event) => { if (event.target.classList.contains('dad-select')) sync(); };
-    bar.querySelector('[data-bulk-all]').addEventListener('change', (event) => { reveal(); boxes().forEach((box) => { box.checked = event.target.checked; }); sync(); });
-    bar.querySelector('[data-bulk-old]')?.addEventListener('click', () => { reveal(); rows.forEach((row) => { row.querySelector('.dad-select').checked = Number(row.dataset.taskAge) > 182; }); sync(); });
-    closeButton.addEventListener('click', async () => {
-      const refs = chosen().map((row) => row.dataset.taskRef);
-      if (!closeButton.dataset.confirm) {
-        closeButton.dataset.confirm = 'true';
-        closeButton.textContent = `Confirm: close ${plural(refs.length, label, `${label}s`)}`;
-        return;
-      }
-      closeButton.disabled = true;
-      const status = bar.querySelector('[data-bulk-status]');
-      let closed = 0;
-      try {
-        for (const ref of refs) { await close(ref); closed += 1; status.textContent = `${closed} / ${refs.length} closed…`; }
-      } catch (error) { status.textContent = `${closed} closed, then: ${error.message}`; }
-      await done(closed);
-    });
-  }
-
   function familyKnowledgeStarter() {
     return `---
 title: Nestor Family Handbook
@@ -422,5 +380,5 @@ It excludes live tasks, schedules, secrets, exact locations, medical information
     if (location.hash) reveal(location.hash);
   }
 
-  window.HouseholdDadDay = { load, clamp, selectable };
+  window.HouseholdDadDay = { load, clamp };
 }());

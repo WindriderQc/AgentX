@@ -5,13 +5,15 @@ Reviews every unread evidence page back to back, by priority lane, through
 Core's task-routed inference with schema-constrained JSON, then records it with
 the same validation as the agent's single-page cursor. No OpenClaw session or
 transcript is created, nothing is written to the owner's tasks or memory:
-current actions and personal facts from recent mail go to Dad's idea inbox
-through Core, to promote or set aside. The job yields to benchmark and maintenance work, then stops
+current actions and personal facts from recent mail go through Core's existing
+inbox/reconciliation entrance; other action findings request dossier review.
+The job yields to benchmark and maintenance work, then stops
 by itself. Status files hold counts and identifiers only, never message content.
 """
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -164,13 +166,15 @@ class CoreClient:
         return f"{', '.join(kinds)} running" if kinds else None
 
     def propose(self, proposal):
-        """Queue one finding in Dad's idea inbox; Core ignores a key it already holds."""
-        body = {key: proposal.get(key) for key in ("kind", "text", "due", "gmailUrl", "key")}
+        """Core reconciles an existing action before considering a new idea."""
+        body = {key: proposal.get(key) for key in ("kind", "text", "due", "gmailUrl", "key", "owner",
+                "threadId", "messageId", "sourceDate", "sourceStatus", "findingKey")}
         _, reply, _ = self._call("POST", "/api/secretary/catchup/proposals", body)
-        idea = (reply.get("data") or {}).get("idea") or {}
-        if not idea.get("id"):
-            raise RuntimeError("Core did not return the queued idea")
-        return idea["id"]
+        data = reply.get("data") or {}
+        for kind in ("signal", "idea"):
+            if (data.get(kind) or {}).get("id"):
+                return {"kind": kind, "id": data[kind]["id"]}
+        raise RuntimeError("Core did not return a durable finding receipt")
 
     def extract(self, system, prompt, light=False, request_id=None):
         body = {"messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
@@ -272,15 +276,29 @@ def to_review(page, raw):
 
 
 def proposals_for(page, value, clock=time.time):
-    """Current findings from recent mail, queued for the owner instead of written to tasks or memory."""
-    if not page.get("internalDate") or clock() * 1000 - page["internalDate"] > CURRENT_DAYS * 86_400_000:
+    """Current ideas and reconciliation signals, never accepted commitments.
+
+    Resolved/waiting/historical findings can matter to an existing task. Keep
+    their identity and source date; Core asks for a fresh dossier read instead
+    of creating another action or silently closing the existing one.
+    """
+    if not page.get("internalDate") or (page.get("sourceContext") or {}).get("messageDirection") == "draft":
         return []
+    recent = clock() * 1000 - page["internalDate"] <= CURRENT_DAYS * 86_400_000
+    # Without a finding span, a mixed/quoted page cannot establish which
+    # container author/date applies to the extraction. Ask for reconciliation.
+    quoted = any(span.get("relation") == "quoted" for span in (page.get("sourceContext") or {}).get("segments", []))
+    source_date = datetime.fromtimestamp(page["internalDate"] / 1000, timezone.utc).isoformat()
     return [{"kind": kind, "text": item["text"], "due": item.get("due"), "owner": item.get("owner"),
+             "sourceStatus": item["status"], "sourceDate": source_date,
              "messageId": page["messageId"], "threadId": page["threadId"], "gmailUrl": page["gmailUrl"],
              "pageId": page["pageId"], "foundAt": now(), "state": "pending",
+             "findingKey": hashlib.sha256(json.dumps([page["threadId"], page["messageId"], section,
+                 " ".join((item.get("owner") or "").casefold().split()), " ".join(item["text"].casefold().split())], ensure_ascii=False).encode()).hexdigest()[:32],
              "key": hashlib.sha256(f"{page['pageId']}|{kind}|{item['text']}".encode()).hexdigest()[:32]}
-            for section, kind in (("actions", "action"), ("memories", "memory"))
-            for item in value[section] if item["status"] == "current"]
+            for section in ("actions", "memories") for item in value[section]
+            for kind in (["action" if recent and not quoted and item["status"] == "current" else "recheck"] if section == "actions"
+                         else ["memory"] if recent and not quoted and item["status"] == "current" else [])]
 
 
 def forward_proposals(client, proposals):
@@ -290,7 +308,13 @@ def forward_proposals(client, proposals):
         if proposal.get("state") != "pending" or not proposal.get("key"):
             continue
         try:
-            proposal["ideaId"] = client.propose(proposal)
+            receipt = client.propose(proposal)
+            if isinstance(receipt, str):  # Older compatible clients return an idea ID.
+                receipt = {"kind": "idea", "id": receipt}
+            proposal["receiptId"] = receipt["id"]
+            proposal["destination"] = receipt["kind"]
+            if receipt["kind"] == "idea":
+                proposal["ideaId"] = receipt["id"]
         except (Busy, RuntimeError, ValueError):
             break
         proposal.update(state="queued", queuedAt=now())

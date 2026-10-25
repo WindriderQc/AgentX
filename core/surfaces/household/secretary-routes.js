@@ -14,6 +14,7 @@ const { registerSecretaryHistoryRoutes } = require('./secretary-history');
 const { registerSecretaryPeopleRoutes } = require('./secretary-people');
 const { registerSecretaryRecallRoutes } = require('./secretary-recall');
 const { registerSecretarySouvenirRoutes } = require('./secretary-souvenirs');
+const { registerSecretaryDossierRoutes } = require('./secretary-dossier');
 
 // A slow or unreachable host never delays the desk; its late answer shows on the next refresh.
 const hostRead = (read, pending) => Promise.race([
@@ -23,7 +24,7 @@ const hostRead = (read, pending) => Promise.race([
 
 function registerSecretaryRoutes(app, {
   express, standardJsonParser, envelope, personalTasks, fail, CORE_SELF_URL,
-  bridgeProjection, secretaryMail, familyTasks, models, knowledgeState, mongoose
+  bridgeProjection, secretaryMail, familyTasks, models, knowledgeState, mongoose, dossiers
 }) {
   const secretary = express.Router();
   secretary.use(standardJsonParser);
@@ -102,6 +103,7 @@ function registerSecretaryRoutes(app, {
   registerSecretaryPeopleRoutes({ router: secretary, envelope, fail });
   registerSecretaryRecallRoutes({ router: secretary, envelope, fail });
   registerSecretarySouvenirRoutes({ router: secretary, envelope, fail });
+  registerSecretaryDossierRoutes({ router: secretary, envelope, fail, dossiers });
   secretary.get('/email-action/readiness', async (_req, res) => {
     const readiness = await checkEmailActionReadiness();
     if (readiness.code === 'EMAIL_ACTION_READY') return envelope(res, { readiness });

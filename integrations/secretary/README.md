@@ -113,12 +113,17 @@ pauses while maintenance or a benchmark workload is active; Core refusals and
 outages also pause on the same page instead of failing it. Invalid model output
 is logged in `catchup-errors.json`; several failures in a row stop the run.
 
-Nothing is written to the owner's tasks or memory. A finding the model marks
-`current` in mail from the last 30 days is kept in `catchup-proposals.json` and
-sent to Core's `POST /api/secretary/catchup/proposals`, which files it once (by
-its key) as an idea in Dad's inbox to promote or set aside; the file then marks
-it `queued` with the idea id, and an unreachable Core leaves it `pending` for the
-next try. Dad's desk shows the job's progress from `secretary_mail_desk.py
+Nothing is written to the owner's tasks or memory. Findings retain their source
+date and actor in `catchup-proposals.json` and go to Core's
+`POST /api/secretary/catchup/proposals`. Current findings from recent authored
+mail can become inbox ideas. Actions already linked to an existing task and
+resolved/waiting/historical/uncertain findings become reconciliation signals,
+never another accepted task or an automatic closure. Quoted/mixed pages require
+reconciliation; drafts establish no sent action. Exact repeated assertions in
+one message share a finding identity across pages. The file retains the Core
+receipt and destination; an unreachable Core leaves it `pending` for the
+next try. See [personal dossier review](../../docs/SECRETARY_DOSSIER_REVIEW.md).
+Dad's desk shows the job's progress from `secretary_mail_desk.py
 catchup` (counts only). `--instructions-file` adds private
 owner instructions kept outside Git (for example which correspondence matters).
 While `catchup.lock` is fresh, `native_next` only collects new mail and returns

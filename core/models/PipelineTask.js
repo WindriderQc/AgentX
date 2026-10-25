@@ -215,8 +215,8 @@ const PipelineTaskSchema = new mongoose.Schema({
   personalLastCompletedOccurrence: { type: Date, default: undefined },
   personalCaptureId: { type: String, default: undefined },
   personalCaptureFingerprint: { type: String, default: undefined },
-  // Personal tasks only: the day of the activity the task serves. Once it has
-  // passed the task is pointless, even when its own dueAt was never met.
+  // Personal tasks only: activity date, a review signal rather than evidence
+  // of completion or cancellation. Keep it distinct from the action deadline.
   relevantUntil: { type: Date, default: undefined },
   personalReview: {
     type: new mongoose.Schema({
@@ -226,6 +226,11 @@ const PipelineTaskSchema = new mongoose.Schema({
     }, { _id: false }),
     default: undefined,
   },
+  // The exact human review is committed with the task update/transition. A
+  // retry reads this receipt rather than repeating an uncertain mutation.
+  personalDossierDecisions: { type: [new mongoose.Schema({
+    dossierId: String, proposalHash: String, decision: String, action: String, at: Date
+  }, { _id: false })], default: undefined },
   // Household routines use the same canonical task lifecycle and ID sequence.
   // Domain fields are optional so engineering/personal tasks stay unchanged.
   profileId: { type: String, index: true },

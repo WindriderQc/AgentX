@@ -19,8 +19,8 @@
   // ---- To sort: old deadlines to confirm and tasks whose activity passed ----
   function mountTriage(host) {
     host.dataset.mounted = 'true';
-    host.innerHTML = `<div class="row"><div class="grow"><p class="card-kicker">To sort</p><h2>Still useful?</h2>
-      <p class="muted">Old due dates (often taken from old emails) and tasks whose activity has passed. Nothing closes on its own: close it, give the date of the activity it serves, or set a new due date.</p></div>
+    host.innerHTML = `<div class="row"><div class="grow"><p class="card-kicker">To sort</p><h2>Dossiers à recouper</h2>
+      <p class="muted">Une date ancienne ou une activité passée demande une relecture des derniers courriels, de l’agenda et des documents. Elle ne prouve pas que le dossier est réglé. Les propositions et leurs preuves apparaissent dans Mes actions.</p></div>
       <span data-triage-count class="pill">…</span></div><p data-triage-status class="muted" role="status"></p><div data-triage-list class="stack"></div>`;
     const list = host.querySelector('[data-triage-list]');
     const status = (message) => { host.querySelector('[data-triage-status]').textContent = message; };
@@ -28,11 +28,9 @@
       const why = task.lane === 'expired'
         ? `activity passed on ${day(task.relevantUntil)}`
         : `due ${day(task.dueAt)}${task.createdAt ? ` · captured ${day(task.createdAt)}` : ''}`;
-      const since = Date.parse(task.lane === 'expired' ? task.relevantUntil : task.dueAt);
-      const age = Number.isFinite(since) ? Math.floor((Date.now() - since) / 86400000) : '';
-      return `<div class="dad-task ${task.lane === 'expired' ? '' : 'stale'}" data-ref="${esc(task.id)}" data-task-ref="${esc(task.id)}" data-task-age="${age}">
+      return `<div class="dad-task ${task.lane === 'expired' ? '' : 'stale'}" data-ref="${esc(task.id)}" data-task-ref="${esc(task.id)}" data-task-revision="${Number(task.revision)}">
         <div class="dad-task-main"><span class="dad-task-id">#${esc(task.id)}</span><div><strong>${esc(task.title)}</strong><small>${esc(why)}</small></div></div>
-        <div class="row wrap dad-task-actions"><button class="compact dad-done" data-triage="close">Close</button>
+        <div class="row wrap dad-task-actions"><a class="button compact" href="/dad">Relire avec Nestor</a>
         <input type="date" data-triage-date aria-label="Date for #${esc(task.id)}">
         <button class="compact" data-triage="relevant" title="The task stays useful until this date (day of the activity)">Useful until</button>
         <button class="compact" data-triage="due" title="New date to do the task">New due date</button></div></div>`;
@@ -48,7 +46,6 @@
         list.innerHTML = tasks.length ? tasks.map(row).join('')
           : '<div class="dad-clear"><span>✓</span><strong>Nothing to sort.</strong><small>No old due date or past activity.</small></div>';
         window.HouseholdDadDay?.clamp?.(list, 3);
-        window.HouseholdDadDay?.selectable?.(list, { close: (ref) => post('/api/secretary/tasks/complete', { ref, stopRepeat: true, note: 'Fermée en lot depuis Dad\'s Desk : plus utile.', by: 'household-dad-desk' }), done: (closed) => { host.dataset.touched = 'true'; status(`${closed} task${closed === 1 ? '' : 's'} closed.`); return load(); } });
       } catch (error) { status(error.message); }
     }
     list.addEventListener('click', async (event) => {
@@ -56,16 +53,16 @@
       if (!button) return;
       const item = button.closest('[data-ref]');
       const ref = item.dataset.ref;
+      const revision = Number(item.dataset.taskRevision);
       const date = item.querySelector('[data-triage-date]').value;
       const action = button.dataset.triage;
-      if (action !== 'close' && !date) { status('Choose a date first.'); return; }
+      if (!date) { status('Choose a date first.'); return; }
       button.disabled = true;
       host.dataset.touched = 'true';
       try {
-        if (action === 'close') await post('/api/secretary/tasks/complete', { ref, stopRepeat: true, note: 'Fermée depuis Dad\'s Desk : plus utile.', by: 'household-dad-desk' });
-        if (action === 'relevant') await post('/api/secretary/tasks/update', { ref, relevantUntil: noon(date), by: 'household-dad-desk' });
-        if (action === 'due') await post('/api/secretary/tasks/update', { ref, dueAt: noon(date), by: 'household-dad-desk' });
-        status(`#${ref}: ${action === 'close' ? 'closed' : action === 'relevant' ? `useful until ${day(noon(date))}` : `new due date ${day(noon(date))}`}.`);
+        if (action === 'relevant') await post('/api/secretary/tasks/update', { ref, revision, relevantUntil: noon(date), by: 'household-dad-desk' });
+        if (action === 'due') await post('/api/secretary/tasks/update', { ref, revision, dueAt: date, by: 'household-dad-desk' });
+        status(`#${ref}: ${action === 'relevant' ? `useful until ${day(noon(date))}` : `new due date ${day(noon(date))}`}.`);
         await load();
       } catch (error) { button.disabled = false; status(error.message); }
     });

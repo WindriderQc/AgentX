@@ -50,8 +50,13 @@ export async function contextFor(workspace, query, { includeMemory = false, incl
       const data = await readTasks();
       if (!Array.isArray(data.tasks)) throw new Error("Invalid task response");
       result.tasks = data.tasks.slice(0, 12).map(({ id, title, status, dueAt, dueLocal, relevantUntilLocal,
-        priority, lane, dueToday, overdue, recheck, expired }) =>
-        ({ id, title, status, dueAt, dueLocal, relevantUntilLocal, priority, lane, dueToday, overdue, recheck, expired }));
+        priority, lane, dueToday, overdue, recheck, expired, currentness, evidenceSignals, dossierReview, dossierHistory }) =>
+        ({ id, title, status, dueAt, dueLocal, relevantUntilLocal, priority, lane, dueToday, overdue, recheck, expired,
+          ...(currentness && { currentness }), ...(evidenceSignals && { evidenceSignals }),
+          ...(dossierReview && { dossierReview: { id: dossierReview.id, state: dossierReview.state,
+            action: dossierReview.action, observedAt: dossierReview.observedAt, fullReadTool: 'personal_task_dossier' } }),
+          ...(dossierHistory && { dossierHistory: { id: dossierHistory.id, decision: dossierHistory.decision,
+            observedAt: dossierHistory.observedAt, fullReadTool: 'personal_task_dossier' } }) }));
       result.sources.personal_tasks = "available";
       result.taskCoverage = { returned: result.tasks.length,
         total: Number.isInteger(data.totalCount) ? data.totalCount : null,

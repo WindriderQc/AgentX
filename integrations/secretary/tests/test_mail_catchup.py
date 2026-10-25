@@ -171,17 +171,19 @@ class CatchupTests(unittest.TestCase):
         self.assertEqual(self.run_catchup(client)["phase"], "uncertain")
         self.assertEqual(len(client.calls), 1)
 
-    def test_only_current_findings_from_recent_mail_are_queued_for_the_owner(self):
+    def test_old_findings_signal_reconciliation_without_creating_another_owner_action(self):
         self.thread("thread-recent", "Please send the signed form")
         self.thread("thread-old", "Please send the old form", internal="1000")
         action = {"text": "Envoyer le formulaire signé", "status": "current", "owner": "owner", "due": "unknown"}
         client = FakeClient(replies=lambda _: review(actions=[dict(action)]))
         status = self.run_catchup(client)
         proposals = catchup.load(self.root / catchup.PROPOSALS_NAME)
-        self.assertEqual((status["proposals"], len(proposals)), (1, 1))
+        self.assertEqual((status["proposals"], len(proposals)), (2, 2))
+        self.assertEqual(proposals[1]["kind"], "recheck")
+        self.assertEqual(proposals[1]["sourceStatus"], "current")
         self.assertEqual((proposals[0]["threadId"], proposals[0]["state"], proposals[0]["due"]), ("thread-recent", "queued", None))
         self.assertEqual((proposals[0]["state"], proposals[0]["ideaId"], len(proposals[0]["key"])), ("queued", "idea-" + proposals[0]["key"][:6], 32))
-        self.assertEqual(client.proposed, [proposals[0]["key"]])
+        self.assertEqual(client.proposed, [p["key"] for p in proposals])
         saved = catchup.load(self.root / "reviews/thread-old.json")["actions"][0]
         self.assertEqual((saved["status"], saved["messageId"]), ("current", "thread-old-m"))
 
@@ -211,6 +213,27 @@ class CatchupTests(unittest.TestCase):
         client.core_down = False
         self.run_catchup(client)
         self.assertEqual(catchup.load(self.root / catchup.PROPOSALS_NAME)[0]["state"], "queued")
+
+    def test_resolved_waiting_and_uncertain_findings_survive_as_recheck_signals_but_drafts_do_not(self):
+        page = {"pageId": "p1", "messageId": "aaaaaaaaaaaaaaa1", "threadId": "bbbbbbbbbbbbbbbb",
+                "gmailUrl": "https://mail.google.com/mail/#all/bbbbbbbbbbbbbbbb", "internalDate": int(time.time() * 1000)}
+        value = review(actions=[{"text": state, "status": state, "owner": "Person A"} for state in ("resolved", "waiting", "uncertain")])
+        proposals = catchup.proposals_for(page, value)
+        self.assertEqual([p["kind"] for p in proposals], ["recheck"] * 3)
+        self.assertEqual([p["sourceStatus"] for p in proposals], ["resolved", "waiting", "uncertain"])
+        self.assertTrue(all(p["sourceDate"] and p["owner"] == "Person A" for p in proposals))
+        self.assertEqual(catchup.proposals_for({**page, "sourceContext": {"messageDirection": "draft"}}, value), [])
+
+    def test_quoted_pages_cannot_create_new_actions_and_exact_findings_keep_one_identity_across_pages(self):
+        page = {"pageId": "p1", "messageId": "aaaaaaaaaaaaaaa1", "threadId": "bbbbbbbbbbbbbbbb",
+                "gmailUrl": "https://mail.google.com/mail/#all/bbbbbbbbbbbbbbbb", "internalDate": int(time.time() * 1000)}
+        value = review(actions=[{"text": "Bring the papers", "status": "current", "owner": "Person A"}])
+        first = catchup.proposals_for(page, value)[0]
+        second = catchup.proposals_for({**page, "pageId": "p2"}, value)[0]
+        self.assertEqual(first["findingKey"], second["findingKey"])
+        self.assertNotEqual(first["key"], second["key"])
+        quoted = catchup.proposals_for({**page, "sourceContext": {"segments": [{"relation": "quoted"}]}}, value)
+        self.assertEqual(quoted[0]["kind"], "recheck")
 
     def test_review_normalizes_unknowns_and_cites_the_page_attachment(self):
         page = {"pageId": "p1", "messageId": "m1", "attachment": {"sha256": "a" * 64}}

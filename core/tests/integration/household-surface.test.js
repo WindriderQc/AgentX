@@ -673,7 +673,8 @@ describe('built-in Household surface on Core', () => {
     expect(updated.body.result.structuredContent).toMatchObject({ id: task.id, lane: 'expired' });
     const briefed = await request(app).post('/mcp').send({ jsonrpc: '2.0', id: 4, method: 'tools/call',
       params: { name: 'personal_briefing', arguments: {} } }).expect(200);
-    expect(briefed.body.result.structuredContent.text).toContain('Activité passée : 1 tâche à fermer');
+    expect(briefed.body.result.structuredContent.text).toContain('Activité passée : 1 dossier à vérifier');
+    expect(briefed.body.result.structuredContent.sourceCoverage.mail).toBe('not_checked');
     await request(app).post('/mcp').send({ jsonrpc: '2.0', id: 2, method: 'tools/call',
       params: { name: 'complete_personal_task', arguments: { ref: task.id } } }).expect(200);
     expect((await PipelineTask.findOne({ pipelineId: task.id })).status).toBe('done');

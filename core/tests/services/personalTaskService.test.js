@@ -90,6 +90,14 @@ describe('personal tasks in the canonical Core store', () => {
     expect(saved.feedback).toHaveLength(1);
   });
 
+  test('a date edit can bind the revision displayed to the owner', async () => {
+    const created = await personal.create({ title: 'Synthetic dated action' });
+    await personal.update({ ref: created.id, revision: created.revision, priority: 1 });
+    await expect(personal.update({ ref: created.id, revision: created.revision, dueAt: '2030-02-26' }))
+      .rejects.toMatchObject({ code: 'SECRETARY_EDIT_CONFLICT', status: 409 });
+    expect((await PipelineTask.findOne({ pipelineId: created.id })).dueAt).toBeNull();
+  });
+
   describe('the date-only deadline contract (#287)', () => {
     const previousZone = process.env.PLANNING_TIME_ZONE;
     afterEach(() => {

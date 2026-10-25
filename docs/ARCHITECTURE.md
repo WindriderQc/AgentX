@@ -290,8 +290,9 @@ tools, which share `personalTaskService.parseDueAt`). `dueAt` accepts a date
   unparseable values are rejected, not silently stored.
 
 `relevantUntil` stays distinct: it dates the activity the task serves and
-closes the task once that household day begins; it is never a deadline and
-keeps its midnight instant. Day lanes (due today, overdue, briefing) remain
+requests source review when it has passed; it never proves completion,
+cancellation or that no follow-up remains. It is never a deadline and
+keeps its stored instant. Day lanes (due today, overdue, briefing) remain
 computed in the same household zone as the stored deadline (#292).
 
 Coding-worker selection (`/tasks/next`), the exact worker read
@@ -325,6 +326,21 @@ headers remain unverified source text; unknown authorship is explicit, and
 container headers never stand in for quoted authors. This is a conservative
 reading aid, not a semantic currentness or duplicate-resolution authority.
 Historical receipts are not invalidated or replayed when metadata is added.
+
+Personal dossier review reconciles an existing accepted task through Core
+(`personalTaskDossierService`). A saved read gathers fresh selected Gmail
+threads, selected calendar windows, open personal tasks and existing verified
+attachment extractions. Missing, partial, draft and quoted evidence stays
+explicit. The shared `personal_task_dossier` tool reads and proposes; it cannot
+apply decisions. My day shows attributed proposals with dated source excerpts.
+Its human decision rechecks native source versions and the task revision, then
+commits the update and decision receipt together on the same task. Retries read
+that receipt. Appointment confirmation and remaining preparation stay separate.
+The morning briefing presents a pending replacement for review instead of
+repeating the superseded wording as an urgent commitment. Extraction signals
+from catch-up link by exact source thread; they request review without creating
+another task or treating a page's status as the task's current state. See
+[dossier review](SECRETARY_DOSSIER_REVIEW.md) for scope and transport contracts.
 
 `GET /api/pipeline/tasks/:id/eligibility?automation=true` explains the current
 engineering-task admission snapshot with the same dependency, time and automation

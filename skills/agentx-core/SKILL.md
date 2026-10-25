@@ -115,6 +115,19 @@ cancelled tombstone do not prove failure. A replayed `recorded_result` is the
 saved operation receipt; use `get` for current state. Confirm the native domain
 result separately from invitation email or device notification delivery.
 
+Before recommending changes to an existing personal action, use
+`personal_task_dossier` when it is advertised. Search recent related mail first;
+read the selected threads, calendars, tasks and document coverage. A missing
+source, unread document, draft or quotation stays explicit. Age and silence
+prove neither resolution nor an open obligation. Attribute commitments to the
+actual person. Keep a settled choice of date separate from a confirmed meeting
+and remaining preparation. Cite exact dated passages, propose one decision and
+show it to the owner in My day. The tool cannot apply it. Never claim the task
+changed until the human decision receipt exists; preserve its identity and
+history. If the tool is unavailable, disclose the gap and read available native
+sources before offering advice. A task deadline alone does not schedule a
+reminder or authorize a follow-up message.
+
 Use `add_personal_task` for actions to check off, with a stable UUID `requestId`
 and optional `dueAt`/`repeat`. Repetition supports daily, weekly (optional days),
 monthly and yearly, an interval and optional count or until. Core owns these
