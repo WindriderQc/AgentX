@@ -71,6 +71,7 @@ function createPresentationReader({ now = Date.now, capacity = 128 } = {}) {
   }
   return {
     publishAnalytics: data => publish(analyticsSnapshot(data)),
+    publishJanitor: view => publish(require('./janitorPresentation').janitorSnapshot(view, now())),
     publishRuntime: data => publish(require('./analyticsLivePresentation').runtimeSnapshot(data, now())),
     publishGpus: data => publish(require('./analyticsLivePresentation').gpuSnapshot(data, now())),
     read({ id, revision } = {}) {
@@ -87,7 +88,7 @@ function createPresentationReader({ now = Date.now, capacity = 128 } = {}) {
 
 const presentationReader = createPresentationReader();
 const PRESENTATION_TOOLS = [{ name: 'read_presentation', title: 'Read Presented Content',
-  description: 'Read the exact Core Analytics summary or live runtime/GPU snapshot referenced by the current screen context. Requires its id and revision. Each source has its own freshness and scope; live data is independent of historical filters. Never fetches a URL or re-executes a tool. A receipt does not prove browser display; unavailable requires refreshing the view.',
+  description: 'Read the exact Core Analytics, live runtime/GPU or Janitor report snapshot referenced by the current screen context. Requires its id and revision. Each source has its own freshness and scope; live data is independent of historical filters. Never fetches a URL or re-executes a tool. A receipt does not prove browser display; unavailable requires refreshing the view.',
   inputSchema: { type: 'object', additionalProperties: false, required: ['id', 'revision'], properties: {
     id: { type: 'string', pattern: '^view_[a-f0-9]{64}$' }, revision: { type: 'string', pattern: '^[a-f0-9]{64}$' } } },
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false } }];

@@ -1093,10 +1093,20 @@ only the Data Toolbox's GET routes under `/api/data-toolbox`; it never edits a
 file or the scene document. It opens on `DISKX_ROOTS` (comma-separated absolute
 roots), or on the canonical roots of the storage sources Data declares; with
 no root known the page answers 503 and mounts nothing. The
-query takes `janitor=latest`, `group=<sha256>` and `focus=<folder under a
-root>`; any other value is refused with 400. The page is full-profile only and,
+query takes `janitor=latest`, `group=<sha256>`, `report=<UTC report date>` and
+`focus=<folder under a root>`, plus the catalogue's exact `view=screen` and
+`from=nestor` markers; other parameters are refused with 400. Nestor's tool
+returns `screenPage` for a page show block and a dated fallback link. A report
+change between summary, group and presentation reads refuses with 409 rather
+than combining versions. The page reads bounded, path-free Core snapshots at
+`GET /api/diskx/presentation?report=…[&group=…]` after the embed's report/group
+event, and exposes their reference through the existing presentation contract.
+The same domain reader is available on the dedicated owner MCP transport;
+it stays absent from the general and memory catalogues. The page is full-profile only and,
 like the Data Toolbox, a family-pinned device cannot open it: file paths stay on
 the private network and out of Famille.
+Only the DiskX document adds `wasm-unsafe-eval` to its existing `script-src`
+policy, for the world's Rapier engine; it does not permit JavaScript eval.
 Pictures beside Nestor come only from sources Core can resolve. `SEARXNG_URL`
 enables internet image search (strict SafeSearch in Famille; the browser loads the
 https image directly without a referrer). Household photos and media need both a

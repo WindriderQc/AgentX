@@ -6,6 +6,7 @@ const { readJanitorReportView, diskxLink } = require('../../../src/services/jani
 
 const now = new Date('2026-10-25T12:00:00Z');
 const SHA = 'c'.repeat(64);
+const REPORT_QUERY = 'report=' + encodeURIComponent('2026-10-25T09:00:00.000Z');
 const STRATEGY = '/api/v1/janitor/profiles/shared-drive/strategy/latest';
 const ok = (body) => ({ response: { ok: true, status: 200 }, body });
 
@@ -64,7 +65,7 @@ test('the summary gives counts, logical savings, status and the DiskX link, and 
   assert.equal(result.physicalSpaceMeasured, false);
   assert.equal(result.survivorRule, 'canonical_active');
   assert.equal(result.survivorRuleAuthorizes, false);
-  assert.equal(result.link, 'https://agentx.lan/diskx?janitor=latest');
+  assert.equal(result.link, 'https://agentx.lan/diskx?janitor=latest&' + REPORT_QUERY);
   assert.equal(result.readOnly, true);
   assert.match(result.summary, /42 groupes de doublons vérifiés par SHA-256, 97 fichiers, 5,00 Go d’économie logique prouvée/);
   assert.match(result.summary, /0 action\(s\) exécutable\(s\), 1 décision\(s\)/);
@@ -77,11 +78,11 @@ test('the summary gives counts, logical savings, status and the DiskX link, and 
 
 test('a named group adds its copy count and opens DiskX on it; an unknown group says so', async () => {
   const calls = [];
-  const groups = (query) => ok({ status: 'success', data: { groups: query === `sha256=${SHA}`
+  const groups = (query) => ok({ status: 'success', data: { report: { generatedAt: '2026-10-25T09:00:00Z' }, groups: query === `sha256=${SHA}`
     ? [{ sha256: SHA, count: 3, provenSavingsBytes: 2048, files: [{ path: '/srv/lake/a' }] }] : [] } });
   const found = await readJanitorReportView({ group: SHA.toUpperCase() }, { fetchData: fakeData({ groups, calls }), now: () => now, env: {} });
   assert.deepEqual(found.group, { sha256: SHA, found: true, copies: 3, provenSavingsBytes: 2048, provenSavingsLabel: '2,00 Ko' });
-  assert.equal(found.link, `/diskx?janitor=latest&group=${SHA}`);
+  assert.equal(found.link, `/diskx?janitor=latest&group=${SHA}&${REPORT_QUERY}`);
   assert.match(found.summary, /Groupe cccccccccccc… : 3 copies, 2,00 Ko logiques/);
   assert.doesNotMatch(JSON.stringify(found), /\/srv\//);
   assert.ok(calls.every((call) => call.method === 'GET'));
@@ -89,7 +90,7 @@ test('a named group adds its copy count and opens DiskX on it; an unknown group 
   const other = 'd'.repeat(64);
   const missing = await readJanitorReportView({ group: other }, { fetchData: fakeData({ groups }), now: () => now, env: {} });
   assert.deepEqual(missing.group, { sha256: other, found: false });
-  assert.equal(missing.link, '/diskx?janitor=latest');
+  assert.equal(missing.link, '/diskx?janitor=latest&' + REPORT_QUERY);
   assert.match(missing.summary, /n’est pas dans le dernier rapport/);
 });
 
@@ -125,5 +126,5 @@ test('the tool is answered for the owner relay but never listed to MCP clients',
     { method: 'POST', body: { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'janitor_report_view', arguments: {} } } },
     res, () => assert.fail('the secretary middleware answers it'));
   assert.equal(answer.result.isError, false);
-  assert.equal(answer.result.structuredContent.link, '/diskx?janitor=latest');
+  assert.equal(answer.result.structuredContent.link, '/diskx?janitor=latest&' + REPORT_QUERY);
 });
