@@ -80,7 +80,9 @@ def repository_path(value, label="path"):
     """Canonicalize one exact repository-relative path or refuse it."""
     if not isinstance(value, str) or not value or len(value) > 500:
         raise CodePlanError(f"{label} must be a nonempty repository-relative path")
-    if "\x00" in value or "\\" in value or value.startswith(("/", "~")):
+    if re.search(r"[\x00-\x1f\x7f]", value):
+        raise CodePlanError(f"{label} must be one display line free of ASCII control characters")
+    if "\\" in value or value.startswith(("/", "~")):
         raise CodePlanError(f"{label} must be a repository-relative POSIX path")
     if value != value.strip() or value.endswith("/"):
         raise CodePlanError(f"{label} is not canonical")

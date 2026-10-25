@@ -17,7 +17,7 @@ function dataBaseUrl(env = process.env) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function fetchData(relativePath, { query = '', timeoutMs = 10000, method = 'GET', payload } = {}) {
+async function fetchData(relativePath, { query = '', timeoutMs = 10000, method = 'GET', payload, acceptNotFound = false } = {}) {
   const suffix = query ? `?${query}` : '';
   const url = `${dataBaseUrl()}${relativePath}${suffix}`;
   const headers = { Accept: 'application/json' };
@@ -26,6 +26,9 @@ async function fetchData(relativePath, { query = '', timeoutMs = 10000, method =
     method, headers, body: payload === undefined ? undefined : JSON.stringify(payload), signal: AbortSignal.timeout(timeoutMs),
   });
   const text = await response.text();
+  // Optional routes introduced during rolling upgrades may get Express's HTML
+  // 404 from an older Data. Only callers opting into that contract accept it.
+  if (acceptNotFound && response.status === 404) return { response, body: { status: 'error' } };
   let body;
   try { body = JSON.parse(text); }
   catch { throw new Error('Data service returned an unreadable response'); }

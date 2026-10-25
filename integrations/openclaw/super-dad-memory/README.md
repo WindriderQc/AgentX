@@ -56,7 +56,11 @@ unavailable read rather than a repeated action. See
 house, each observable or only geometric with the reason, from the elements
 and location Data already holds, without coordinates. The owner and household
 sessions of configured family agents receive it; grant it in
-`tools.alsoAllow` to the agents that may answer.
+`tools.alsoAllow` to the agents that may answer. Coordinates are omitted, but
+the result is still about the household location. This adapter also rejects
+scheduled, delegated and unrelated sessions. A native `agentx__iss_passes`
+connection can reuse Core directly when native policies preserve that scope;
+the global MCP server filter alone does not establish session access.
 
 `nestor_photos` answers household photo questions through Core's
 `/api/photos` (Immich behind Core; no Immich key here): search by words or

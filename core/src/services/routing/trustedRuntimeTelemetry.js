@@ -32,6 +32,7 @@ function telemetryEntry(
     routingTrace: {
       selected: { routingSource: metadata.routingSource || null },
       ...(metadata.topology && { topology: metadata.topology }),
+      ...(metadata.conversationContinuity && { continuity: metadata.conversationContinuity }),
       ...(metadata.retry && { retry: metadata.retry })
     },
     fallbackUsed: metadata.routing?.degraded === true,

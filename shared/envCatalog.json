@@ -285,6 +285,14 @@
       "secret": false,
       "description": "How long a busy, claimed or blocked primary is re-checked before a light task degrades to its fallback ladder, at most 10000. Unset: 2000 ms."
     },
+    "AGENTX_CONVERSATION_CONTINUITY_JSON": {
+      "services": ["core"],
+      "forwarded": true,
+      "default": null,
+      "category": "routing",
+      "secret": false,
+      "description": "Opt-in local conversation continuity policy: JSON {hosts:[registered host keys],models:[eligible local models or agentx-primary],maxOutputTokens:384,maxInputChars:12000}. Requires x-agentx-continuity: conversation and the conversation busy-reply header. Uses resident pins only; no tools, cloud or automatic primary-mode changes. Unset or invalid: existing strict routing."
+    },
     "AGENTX_TASK_FALLBACKS_JSON": {
       "services": [
         "core"
@@ -2361,6 +2369,17 @@
       "category": "operations",
       "secret": false,
       "description": "Default IPv4 address or CIDR target of the Data network scan. Unset: a scan needs an explicit target in the request."
+    },
+    "OBSERVER_DEFAULT_LOCATION_JSON": {
+      "services": [
+        "core",
+        "data"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Optional default observer as JSON with lat, lon and optional name. Core ISS passes and Data on-demand tides/weather use it only without explicit coordinates or a usable known weather location, and disclose the fallback. No city is built in. Keep instance coordinates outside public Git."
     },
     "OBSIDIAN_VAULT_POLICY_PATH": {
       "services": [

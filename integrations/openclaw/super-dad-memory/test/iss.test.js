@@ -36,13 +36,17 @@ test('offered to the owner and household family sessions only', () => {
   assert.equal(factory({ ...family, sandboxed: true }), null);
   assert.equal(factory({ agentId: 'stranger', sessionKey: `agent:stranger:household:direct:${SESSION}` }), null);
   assert.equal(factory({ agentId: 'main', sessionKey: 'agent:main:cron:briefing' }), null);
+  assert.equal(factory({ agentId: 'main', sessionKey: `agent:main:subagent:${SESSION}` }), null);
+  assert.equal(factory({ ...owner, sandboxed: true }), null);
+  assert.equal(factory({ agentId: 'main', sessionKey: 'agent:main:telegram:group:-100000000' }), null);
+  assert.equal(factory({ agentId: 'main', sessionKey: family.sessionKey }), null);
 });
 
 test('relays only the bounded arguments to Core iss_passes and returns its dated result', async () => {
   const { factory, calls } = setup(() => mcp(result));
-  const out = await factory(family).execute('call-1', { hours: 24, visible_only: true, lat: 1 });
+  const out = await factory(family).execute('call-1', { hours: 24, visible_only: true, lat: 1, lon: 2, ignored: 'value' });
   assert.equal(calls[0].url, 'http://core.test:3180/mcp');
-  assert.deepEqual(calls[0].body.params, { name: 'iss_passes', arguments: { hours: 24, visible_only: true } });
+  assert.deepEqual(calls[0].body.params, { name: 'iss_passes', arguments: { hours: 24, visible_only: true, lat: 1, lon: 2 } });
   assert.equal(out.details.nextVisible.startLocal, 'dim. 25 oct., 05 h 16');
 });
 
