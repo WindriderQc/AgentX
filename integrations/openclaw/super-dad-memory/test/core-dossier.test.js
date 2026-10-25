@@ -9,6 +9,7 @@ function setup(fetchImpl) {
   return factory;
 }
 const owner = { agentId: 'main', sessionKey: 'agent:main:household:direct:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' };
+const secretary = { agentId: 'secretary', sessionKey: owner.sessionKey.replace('main', 'secretary') };
 
 test('the native dossier adapter stays exclusive to the private owner context', () => {
   const factory = setup(() => assert.fail('must not contact Core'));
@@ -50,4 +51,41 @@ test('a Core refusal remains a refusal and never triggers another request', asyn
     structuredContent: { error: 'PERSONAL_DOSSIER_EVIDENCE_REQUIRED', message: 'Read a dated source.' } } }) }; });
   await assert.rejects(() => factory(owner).execute('native-call', { request: { action: 'propose' } }), { code: 'PERSONAL_DOSSIER_EVIDENCE_REQUIRED' });
   assert.equal(calls, 1);
+});
+
+test('Secretary reads the exact Core task receipt only from a private consultation', async () => {
+  const request = { action: 'read', ref: '0001' };
+  const receipt = { id: 'b'.repeat(24), task: { ref: '0001', revision: 7 }, sources: [] };
+  let calls = 0;
+  const factory = setup(async (_url, options) => {
+    calls++;
+    assert.deepEqual(JSON.parse(options.body).params, { name: 'personal_task_dossier', arguments: request });
+    return { ok: true, json: async () => ({ result: { structuredContent: receipt } }) };
+  });
+  for (const denied of [
+    { ...secretary, sandboxed: true }, { ...secretary, sessionKey: owner.sessionKey },
+    { ...secretary, agentId: 'family' }, { ...secretary, sessionKey: 'agent:secretary:cron:mail' },
+    { ...secretary, sessionKey: 'agent:secretary:telegram:group:123' },
+    { ...secretary, sessionKey: secretary.sessionKey + ':subagent' },
+  ]) assert.equal(factory(denied), null);
+  const tool = factory(secretary);
+  assert.deepEqual(tool.parameters.properties.request.properties.action.enum, ['read', 'get']);
+  assert.deepEqual((await tool.execute('read-task', { request })).details, receipt);
+  assert.equal(calls, 1);
+});
+
+test('Secretary pages sources unchanged and cannot save a proposal or decision even bypassing schema validation', async () => {
+  let calls = 0;
+  const request = { action: 'get', id: 'b'.repeat(24), view: 'source', sourceId: 'mail-1', offset: 100, expectedHash: 'sha' };
+  const page = { content: 'next source bytes', nextOffset: 117, complete: false, contentHash: 'sha' };
+  const tool = setup(async (_url, options) => {
+    calls++;
+    assert.deepEqual(JSON.parse(options.body).params.arguments, request);
+    return { ok: true, json: async () => ({ result: { structuredContent: page } }) };
+  })(secretary);
+  assert.deepEqual((await tool.execute('source-page', { request })).details, page);
+  for (const action of ['propose', 'decide', 'apply', 'send', undefined]) {
+    await assert.rejects(() => tool.execute('refused', { request: { action } }), { code: 'PERSONAL_DOSSIER_READ_ONLY' });
+  }
+  assert.equal(calls, 1, 'refused effects never reach Core');
 });

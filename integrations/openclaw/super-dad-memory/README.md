@@ -12,6 +12,13 @@ A key (`agent:<id>:...`) names the agent that owns the job, so a dedicated mail
 agent's triage job can record personal notes without any other agent gaining them.
 The existing owner Telegram/Household context checks remain in effect.
 
+`personal_task_dossier` also accepts private Household consultations of the
+`secretary` agent when explicitly granted in `tools.alsoAllow`. That scope
+only exposes `read` (save an evidence snapshot) and `get` (page the saved task
+and sources); other actions are refused before contacting Core. It cannot
+save a proposal or change a task. Scheduled, delegated, sandboxed and other
+agents' sessions do not gain this access. Recommendations stay in the reply.
+
 `personal_memory` uses `/api/consumers/nestor/v1/memory/notes`. A failed or
 ambiguous write is never retried automatically or redirected to a local note
 file. List/search coverage and Core receipts are returned to the native tool.
