@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 import signal
 
 
@@ -51,11 +52,19 @@ def native_candidate(r, endpoint, task_id, key, lease, manifest):
                        >= datetime.fromisoformat(row['startedAt'].replace('Z', '+00:00'))
                        for row in receipts)
         unique = len({row['callId'] for row in receipts}) == len(receipts)
+        identifiers = all(r.coding_progress.REQUEST_ID.fullmatch(row['callId']) for row in receipts)
     except (KeyError, TypeError, ValueError):
-        complete = unique = False
-    if run.get('pendingInferences') != [] or not receipts or not complete or not unique:
+        complete = unique = identifiers = False
+    if run.get('pendingInferences') != [] or not receipts or not complete or not unique or not identifiers:
         raise VerificationRefusal('model_termination_unverified')
-    return fresh, hashlib.sha256(json.dumps(receipts, sort_keys=True).encode()).hexdigest()
+    intervals = sorted((datetime.fromisoformat(row['startedAt'].replace('Z', '+00:00')).timestamp(),
+                        datetime.fromisoformat(row['finishedAt'].replace('Z', '+00:00')).timestamp()) for row in receipts)
+    seconds, last_end = 0, 0
+    for start, end in intervals:
+        seconds += max(0, end - max(start, last_end))
+        last_end = max(last_end, end)
+    native_usage = {'modelCalls': len(receipts), 'modelSeconds': math.ceil(seconds)}
+    return fresh, hashlib.sha256(json.dumps(receipts, sort_keys=True).encode()).hexdigest(), native_usage
 
 
 class CPUVerification:
@@ -104,6 +113,8 @@ class CPUVerification:
             self._failure = 'model_termination_unverified'
         elif p.now() >= p.queue_deadline:
             self._failure = 'queue_window_closed'
+        elif p.model_calls >= p.call_limit():
+            self._failure = 'model_call_limit'
         elif (p.now() >= min(p.hard_deadline, p.soft_deadline)
               or p.test_remaining() < 1 or p.model_remaining() <= 0):
             self._failure = 'hard_budget'
@@ -116,13 +127,20 @@ class CPUVerification:
         if self.check_stop():
             raise VerificationRefusal(self._failure)
         try:
-            fresh, fingerprint = native_candidate(self._r, self._endpoint, self.task_id,
-                                                  self.request_id, self._lease, self._manifest)
+            fresh, fingerprint, native_usage = native_candidate(
+                self._r, self._endpoint, self.task_id, self.request_id, self._lease, self._manifest)
             if self._native_fingerprint is not None and fingerprint != self._native_fingerprint:
                 raise VerificationRefusal('model_termination_unverified')
             # Never extend the original reservation even if Core moves a slot.
             if fresh['queueEndAt'] != self._manifest['queueEndAt']:
                 raise VerificationRefusal('queue_window_closed')
+            if native_usage['modelCalls'] < self._calls:
+                raise VerificationRefusal('model_termination_unverified')
+            if native_usage['modelCalls'] >= self.call_limit():
+                raise VerificationRefusal('model_call_limit')
+            if native_usage['modelSeconds'] >= self.cumulative_limits['modelSeconds']:
+                raise VerificationRefusal('hard_budget')
+            self._receipt['nativeUsage'] = native_usage
             self._native_fingerprint = fingerprint
             self._last_native_check = self.now()
         except Exception as error:

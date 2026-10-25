@@ -69,6 +69,10 @@ class CandidateVerificationTest(unittest.TestCase):
             if case == 'expired': p.queue_deadline = p.now() - 1
             if case == 'lease_expired': task['automationLease']['expiresAt'] = '2026-01-01T00:00:00Z'
             if case == 'work_budget': p.hard_deadline = p.now() - 1
+            if case == 'call_budget': p.model_calls = p.call_limit()
+            if case == 'native_budget':
+                row = task['codingAutonomy']['runs'][0]['modelReceipts'][0]
+                row['finishedAt'] = row['settlement']['finishedAt'] = '2026-01-01T00:03:00Z'
             if case in {'pending', 'unknown', 'mismatched_lease', 'mismatched_request', 'lost_settlement'}:
                 run = task['codingAutonomy']['runs'][0]
                 if case == 'pending': run['pendingInferences'] = [CALL]
@@ -127,7 +131,7 @@ class CandidateVerificationTest(unittest.TestCase):
 
     def test_refusals_preserve_candidate_without_tests_or_publication(self):
         for case in ('no_diff', 'mode_only', 'outside', 'dependencies', 'dependency_drift', 'operator', 'hard', 'unknown_stop',
-                     'test_budget', 'work_budget', 'expired', 'pending', 'unknown', 'lost_settlement',
+                     'test_budget', 'work_budget', 'call_budget', 'native_budget', 'expired', 'pending', 'unknown', 'lost_settlement',
                      'undrained', 'mismatched_lease', 'lease_expired', 'mismatched_request', 'revoked', 'lost_native_reply', 'crash'):
             with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
                 r, workspace, progress, calls, tests, feedback = self.fixture(directory, case)
@@ -139,7 +143,7 @@ class CandidateVerificationTest(unittest.TestCase):
                 self.assertEqual(fixtures.git(workspace, 'status', '--porcelain'), '')
                 self.assertEqual(fixtures.git(workspace, 'rev-list', '--count', 'origin/main..HEAD'), '0')
                 if case != 'no_diff': self.assertTrue(fixtures.git(workspace, 'stash', 'list'))
-                self.assertEqual(progress.model_calls, 1)
+                self.assertEqual(progress.model_calls, progress.call_limit() if case == 'call_budget' else 1)
 
     def test_bad_candidate_or_changed_source_or_new_fence_cannot_publish(self):
         for case in ('incorrect', 'test_mutation', 'stop_during_tests', 'budget_during_tests'):
