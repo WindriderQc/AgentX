@@ -70,16 +70,18 @@ export function nativeTurnAnswer(history, sessionKey, runId) {
   return text ? { status: 'ready', source: 'openclaw/sessions.get', runId, messageId: message.__openclaw.id, text } : unavailable;
 }
 
-// A provider can fail before agent_end. OpenClaw persists this terminal
-// custom row in the original transcript even when no lifecycle hook ran.
-// Project that native failure only for its exact run; absence is not a stop.
+// A provider can persist an assistant terminal error or a failed-before-reply
+// marker even when agent_end is missing or reports success. The exact native
+// transcript is authoritative; absence is not a stop.
 export function nativeTurnFailure(history, sessionKey, runId) {
   if (history?.sessionKey !== sessionKey || !Array.isArray(history.messages)) return null;
-  const marker = history.messages.findLast(row => row?.role === 'custom'
+  const terminal = history.messages.findLast(row => row?.role === 'assistant' && row.__openclaw?.runId === runId);
+  if (finalText(terminal)) return null;
+  const marker = terminal?.stopReason === 'error' ? terminal : history.messages.findLast(row => row?.role === 'custom'
     && row.customType === 'run-failed-before-reply' && row.details?.runId === runId
     && typeof row.__openclaw?.id === 'string' && row.__openclaw.id.length > 0
     && row.__openclaw.id.length <= 200);
-  if (!marker) return null;
+  if (!marker || typeof marker.__openclaw?.id !== 'string' || !marker.__openclaw.id || marker.__openclaw.id.length > 200) return null;
   const at = marker.__openclaw.recordTimestampMs ?? marker.timestamp;
   return { runId, sessionKey, status: 'failed', model: null, provider: null,
     at: Number.isFinite(at) && Math.abs(at) <= 8640000000000000 ? new Date(at).toISOString() : null,
@@ -130,7 +132,9 @@ export function continuityOperations({ workspace, config, resolveWorkspace, mode
       // A work session owns one initial Responses run. Ambiguity is retained,
       // never resolved by choosing a later run or starting another attempt.
       const runId = request.runId || (isolatedMain ? candidates.length === 1 ? candidates[0] : null : ids.at(-1) || runs.at(-1)?.runId) || null;
-      result = { sessionKey: request.sessionKey, runId, run: runs.find(run => run.runId === runId) || null,
+      const capsule = runs.find(run => run.runId === runId) || null;
+      const failure = nativeTurnFailure(history, request.sessionKey, runId);
+      result = { sessionKey: request.sessionKey, runId, run: capsule?.status === 'failed' ? capsule : failure || capsule,
         status: runId ? 'observed' : 'unknown', source: 'openclaw/sessions.get' };
       // No history or capsule absence is a proof that a request was not sent.
     } else if (operation === "turn") {
@@ -155,7 +159,8 @@ export function continuityOperations({ workspace, config, resolveWorkspace, mode
         result.answerObservation = { status: 'unavailable', reason: 'read_failed',
           source: 'openclaw/sessions.get', runId: request.runId, sessionKey: request.sessionKey };
       }
-      result.run ||= nativeTurnFailure(history, request.sessionKey, request.runId);
+      const failure = nativeTurnFailure(history, request.sessionKey, request.runId);
+      if (result.run?.status !== 'failed' && failure) result.run = failure;
       result.answer = nativeTurnAnswer(history, request.sessionKey, request.runId);
       result.progress = nativeTurnProgress(history, request.sessionKey, request.runId);
       result.toolChecks = nativeToolChecks(history, request.sessionKey, request.runId);
