@@ -5,9 +5,9 @@
   const $ = id => document.getElementById(id);
   const API = '/api/operations/jobs';
   const PENDING_KEY = 'agentx.operations.pending.v1';
-  const icons = {'codex-usage': 'fa-chart-simple', 'memory-review-submit': 'fa-brain', 'offhost-backup': 'fa-box-archive', 'archive-mirror': 'fa-copy', 'bundle-delivery': 'fa-file-invoice'};
-  const colors = {'codex-usage': '#83b3ff', 'memory-review-submit': '#baa3ff', 'offhost-backup': '#ffd180', 'archive-mirror': '#66e0c0', 'bundle-delivery': '#ffb3d3'};
-  const categories = {'codex-usage': 'Activité', 'memory-review-submit': 'Mémoire', 'offhost-backup': 'Sauvegarde', 'archive-mirror': 'Archives', 'bundle-delivery': 'Livraison'};
+  const icons = {'codex-usage': 'fa-chart-simple', 'memory-review-submit': 'fa-brain', 'offhost-backup': 'fa-box-archive', 'archive-mirror': 'fa-copy', 'bundle-delivery': 'fa-file-invoice', 'session-archive': 'fa-comments'};
+  const colors = {'codex-usage': '#83b3ff', 'memory-review-submit': '#baa3ff', 'offhost-backup': '#ffd180', 'archive-mirror': '#66e0c0', 'bundle-delivery': '#ffb3d3', 'session-archive': '#9fd8ff'};
+  const categories = {'codex-usage': 'Activité', 'memory-review-submit': 'Mémoire', 'offhost-backup': 'Sauvegarde', 'archive-mirror': 'Archives', 'bundle-delivery': 'Livraison', 'session-archive': 'Sessions'};
   const labels = {accepted: 'Acceptée', running: 'En cours', completed: 'Réussie', failed: 'En erreur', cancelled: 'Annulée', unknown: 'À vérifier', 'waiting-host': 'Poste indisponible', never: 'À valider', attention: 'Intervention requise', paused: 'En pause', enabled: 'Activée', disabled: 'Désactivée'};
   const activeStates = new Set(['accepted', 'running', 'unknown', 'waiting-host']);
   const errors = {REVISION_CONFLICT: 'Les réglages ont changé. Actualisez puis recommencez.', JOB_ACTIVE: 'Une demande est déjà en cours pour ce traitement.',

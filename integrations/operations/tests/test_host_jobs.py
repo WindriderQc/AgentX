@@ -177,6 +177,23 @@ class OperationsTests(unittest.TestCase):
         self.assertIn("2026-01-01T03:00:38Z", command)
         self.assertIn("-ApplyRetention", command)
 
+    def test_session_archive_handler_passes_named_sources_and_reads_its_receipt(self):
+        from host_jobs.handlers import metrics, prepare
+        state = self.root / "sessions-state"
+        job = {"kind": "session-archive", "options": {"python": "python", "script": "session_archive.py", "hostLabel": "brutal",
+                                                       "destinationHost": "operator@archive", "destinationRoot": "/archive/sessions",
+                                                       "stateRoot": str(state), "sources": [{"label": "claude-projects", "path": "C:/Users/o/.claude/projects"},
+                                                                                            {"label": "codex-sessions", "path": "C:/Users/o/.codex/sessions"}]}}
+        command, cwd, _, receipt = prepare(job, self.request())
+        self.assertEqual(command[:3], ["python", "session_archive.py", "send"])
+        self.assertIn("claude-projects=C:/Users/o/.claude/projects", command)
+        self.assertIn("codex-sessions=C:/Users/o/.codex/sessions", command)
+        self.assertEqual(receipt, state / "latest-run.json")
+        save(receipt, {"status": "verified", "new": 2, "grown": 1, "versioned": 0, "bytesSent": 30, "unchanged": 5,
+                       "sourceFiles": 8, "missingAtSource": 1, "host": "brutal"})
+        self.assertEqual(metrics(job, receipt, ""), {"files": 3, "bytes": 30, "unchanged": 5, "sourceFiles": 8,
+                                                     "missingAtSource": 1, "verified": True})
+
     def test_handlers_drop_stale_openssh_descriptors_but_preserve_their_environment(self):
         from unittest.mock import patch
         from host_jobs.handlers import prepare

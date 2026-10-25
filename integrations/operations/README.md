@@ -21,7 +21,39 @@ It installs no jobs until an operator configures its native runtime.
 | `offhost-backup-replication.ps1` | Required `SourceHost`, `SourceRoot`, private `DestinationRoot` | Copies Mongo, configuration, Qdrant and native-state archives; verifies hashes; retention is opt-in |
 | `host_jobs_control.py` / `host_job_worker.py` | External native configuration and state roots | Server recurrence, bounded workstation adapters, replay-safe receipts and inventory |
 | `bundle_delivery.py` | Published source, private staging and local destination | Verified non-destructive delivery into a local workspace |
+| `session_archive.py` | `--host-label`, one `--source label=path` per directory or file, `--destination-host`, existing `--destination-root`, private `--state-dir`; optional `--dry-run` | Append-only push of local Claude Code / Codex session transcripts from the host that holds them; verifies each file by SHA-256 on arrival, replaces a session that only grew, keeps any other replaced version, never deletes, never reads credential files |
 | `archive_mirror.py` | Required `--source-host`, `--source-root`, private `--destination`; optional `--latest-zfs-snapshot`, `--remote-receipt` | Append-only pull of a private archive directory (for example the Secretary evidence archive); copies new and changed files, verifies each by SHA-256, keeps replaced versions, never deletes |
+
+## Session transcript archive
+
+`session_archive.py send` runs on the host where the transcripts live (Windows or
+Linux) and needs only Python and SSH to the archive host, whose `python3` runs the
+receiving half of the same file, sent with each call. Each source has a label:
+
+```
+python3 session_archive.py send --host-label devx \
+  --source claude-projects=$HOME/.claude/projects \
+  --source codex-sessions=$HOME/.codex/sessions \
+  --source codex-archived=$HOME/.codex/archived_sessions \
+  --source codex-history=$HOME/.codex/history.jsonl \
+  --destination-host archive-host --destination-root /archive/agent-sessions \
+  --state-dir $HOME/.local/state/agentx/session-archive
+```
+
+The archive root must already exist. The tool writes `live/<host>/<label>/<path>`
+(the current copy), `versions/<host>/<run>/<path>` (a copy replaced by a
+non-append change) and `receipts/<host>/<run>.json` plus `latest-run.json`;
+directories are `0700` and files `0600`. A file that disappeared at the source,
+for example through a client's own transcript retention, stays archived and is
+counted as `missingAtSource`. `.credentials.json`, `credentials.json`, `auth.json`
+and `*.tmp`/`*.partial`/`*.lock` files are never read. The local state directory
+keeps the size and modification time already archived, so an unchanged file is
+not read again; delete it only to force a full re-verification. Transcripts are
+verbatim and may contain secrets: keep the archive owner-only and out of RAG.
+
+On a Windows workstation the operations worker runs it as the `session-archive`
+handler. On a Linux host use an existing user timer, for example hourly
+(`OnCalendar=hourly`, `Persistent=true`), calling the command above.
 
 Core defaults to loopback port 3180; Data defaults to 3183. Linux helpers on the
 same host use the internal/loopback endpoint. Windows consumers may use the private
