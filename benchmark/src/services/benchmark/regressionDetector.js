@@ -68,10 +68,15 @@ async function getBatchPromptScores(batchId) {
         }
         const entry = map.get(key);
         const promptName = row._id.prompt_name || `__unnamed_${entry.count}`;
-        entry.prompts[promptName] = {
-            q: row.avg_quality,
-            category: row._id.category || null
-        };
+        Object.defineProperty(entry.prompts, promptName, {
+            value: {
+                q: row.avg_quality,
+                category: row._id.category || null
+            },
+            enumerable: true,
+            configurable: true,
+            writable: true
+        });
         entry._sum += row.avg_quality;
         entry.count += 1;
     }
@@ -127,14 +132,23 @@ function avgOf(prompts) {
     return values.reduce((sum, value) => sum + value.q, 0) / values.length;
 }
 
+function readOwnPrompt(source, name) {
+    return Object.prototype.hasOwnProperty.call(source, name) ? source[name] : undefined;
+}
+
 function pairedModelCompare(currentEntry, previousEntry) {
     const curPrompts = currentEntry.prompts || {};
     const prevPrompts = previousEntry.prompts || {};
-    const shared = Object.keys(curPrompts).filter((name) => prevPrompts[name] !== undefined);
+    // Pair only prompt names that are own observations in both batches; an
+    // inherited property (constructor, toString, ...) must not create a pair,
+    // and a legitimate __proto__ prompt name stays an own property.
+    const shared = Object.keys(curPrompts).filter(
+        (name) => Object.prototype.hasOwnProperty.call(prevPrompts, name)
+    );
 
     if (shared.length < MIN_PAIRED_PROMPTS) {
-        const cur = (currentEntry.avg_quality ?? avgOf(curPrompts)) * 10;
-        const prev = (previousEntry.avg_quality ?? avgOf(prevPrompts)) * 10;
+        const cur = (readOwnPrompt(currentEntry, 'avg_quality') ?? avgOf(curPrompts)) * 10;
+        const prev = (readOwnPrompt(previousEntry, 'avg_quality') ?? avgOf(prevPrompts)) * 10;
         return {
             method: 'unpaired_low_confidence',
             n_pairs: shared.length,
@@ -153,14 +167,16 @@ function pairedModelCompare(currentEntry, previousEntry) {
     const byCategory = {};
 
     for (const name of shared) {
-        const current = curPrompts[name].q * 10;
-        const previous = prevPrompts[name].q * 10;
+        const currentRow = curPrompts[name];
+        const previousRow = prevPrompts[name];
+        const current = currentRow.q * 10;
+        const previous = previousRow.q * 10;
         const delta = current - previous;
         deltas.push(delta);
         curSum += current;
         prevSum += previous;
 
-        const category = curPrompts[name].category || prevPrompts[name].category || 'uncategorized';
+        const category = readOwnPrompt(currentRow, 'category') ?? readOwnPrompt(previousRow, 'category') ?? 'uncategorized';
         if (!byCategory[category]) byCategory[category] = { deltas: [], curSum: 0, prevSum: 0 };
         byCategory[category].deltas.push(delta);
         byCategory[category].curSum += current;
