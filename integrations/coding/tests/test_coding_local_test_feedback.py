@@ -137,6 +137,13 @@ class LocalTestFeedbackTest(unittest.TestCase):
     def test_two_native_executions_reuse_context_history_and_remaining_budget(self):
         self.scenario()
 
+    def test_exhausted_step_limit_never_replans_with_a_fresh_attempt_history(self):
+        original = autonomous.coding_code_ledger.CodeStepLedger.create
+        def one_attempt(store, *args, **kwargs):
+            return original(store, *args, **{**kwargs, 'max_attempts': 1})
+        with patch.object(autonomous.coding_code_ledger.CodeStepLedger, 'create', one_attempt):
+            self.scenario('blocked_step')
+
     def test_a_second_failed_candidate_stays_isolated_without_publication(self):
         self.scenario('second_failure')
 
