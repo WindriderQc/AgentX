@@ -22,6 +22,7 @@ coding_verification = load('coding_verification')
 coding_step_progress = load('coding_step_progress')
 coding_distributed_root = load('coding_distributed_root')
 coding_candidate_verification = load('coding_candidate_verification')
+coding_test_feedback = load('coding_test_feedback')
 VERIFICATION_COMMANDS = coding_verification.FULL_COMMANDS
 
 PLANNER_CALLS = 8
@@ -197,6 +198,22 @@ def _recover_active_step(r, workspace, store, active, progress, budget):
 
 def _prepare_ledger(r, workspace, task_id, key, task, manifest, progress, budget, capability):
     index_file = _index_path(progress, task_id)
+    if not manifest.get('continuationCheckpoint') and (manifest.get('correction') or {}).get('kind') == 'local_tests':
+        index = _read_index(index_file, task_id)
+        if not index:
+            raise coding_test_feedback.FeedbackRefusal('Local-test correction lost its original plan index')
+        store = coding_code_ledger.CodeStepLedger(progress.path.parent / index['ledgerFile'])
+        ledger = store.load()
+        if (ledger['taskId'] != task_id or ledger['planFingerprint'] != index['planFingerprint']
+                or index['head'] != manifest['correction'].get('head')):
+            raise coding_test_feedback.FeedbackRefusal('Local-test correction plan identity changed')
+        failed = next((s for s in ledger['steps'] if s['state'] == 'failed'), None)
+        if failed:
+            if failed['attempts'] >= ledger['maxAttempts']:
+                raise coding_test_feedback.FeedbackRefusal('Local code-step attempt limit reached')
+            progress.local_test_feedback = (failed['id'], coding_test_feedback.context(
+                r, workspace, progress, index['rootRequestId'], ledger, failed, manifest))
+            return store, ledger, index['rootRequestId']
     if manifest.get('continuationCheckpoint'):
         index = _read_index(index_file, task_id)
         if index:
@@ -441,6 +458,9 @@ def execute(r, args, progress):
                 _bounded_task(task, manifest), step, coding_code_ledger.summary(ledger),
                 {'id': profile, 'focusedTestTargets': step['testTargets'],
                  'runnerOwned': True, 'fullVerificationAfterAssembly': True})
+            rejected = getattr(progress, 'local_test_feedback', None)
+            if rejected and rejected[0] == step['id']:
+                prompt += rejected[1]
             editing_only = complete_pair and set(step['paths']) == set(manifest['scope'])
             if editing_only:
                 prompt += coding_direct_plan.source_context(workspace, step['paths'])
@@ -509,11 +529,16 @@ def execute(r, args, progress):
             active_step['verification'] = receipt
             progress.last_test = {'name': 'unittest' if profile == 'agentx-dispatcher-tests/v1' else 'jest',
                                   'outcome': outcome}
-            if outcome != 'passed' or r.coding_progress.source_state(workspace) != source_before_test:
+            source_modified = r.coding_progress.source_state(workspace) != source_before_test
+            if outcome != 'passed' or source_modified:
                 failure = 'focused_tests_failed' if outcome != 'passed' else 'focused_tests_modified_source'
                 verification = 'failed'
                 ledger = store.record_failure(step['id'], failure, ledger['revision'], verification=[receipt])
                 _stash_failed_step(r, workspace, step['id'])
+                if test.returncode == 1 and not verifier.check_stop() and not source_modified:
+                    reason = 'local_test_feedback_unverified'
+                    coding_test_feedback.capture(r, workspace, progress, root_request_id, ledger, step, test, before_head)
+                    reason = None
                 _project(progress, ledger, budget)
                 summary = ('Focused verification failed (untrusted test output):\n' +
                            (getattr(test, 'stdout', '') or getattr(test, 'stderr', '') or '(no output)')[-2000:])
@@ -595,6 +620,8 @@ def execute(r, args, progress):
         progress.write()
         return 2  # Durable intent; Core reconciles GET observations, never reruns the worker.
     except Exception as error:
+        if isinstance(error, coding_test_feedback.FeedbackRefusal):
+            reason = 'local_test_feedback_unverified'
         if isinstance(error, coding_candidate_verification.VerificationRefusal):
             reason = error.reason
         if active_step is not None and store is not None and budget is not None:
