@@ -103,8 +103,9 @@ async function issSummary(userText, { readPasses = defaultIssPasses, logger } = 
   try {
     const result = await readPasses({ hours: 72, max_passes: 12 });
     const visible = result.passes.filter(p => p.observable);
+    const place = result.observer?.label || 'la maison';
     const lines = [
-      `Passages de la Station spatiale internationale au-dessus de la maison (calcul AgentX du ${result.computedAtLocal}, éléments orbitaux CelesTrak du ${result.tle.epochLocal}${result.tle.stale ? ', anciens : dis que l’heure peut être moins précise' : ''}). Cite ces jours et heures exactement, n’en invente aucune. La météo n’est pas connue : dis « si le ciel est dégagé ».`,
+      `Passages de la Station spatiale internationale pour ${place}${result.observer?.defaulted ? ' (lieu par défaut : annonce-le, la position de la personne n’est pas connue)' : ''} (calcul AgentX du ${result.computedAtLocal}, éléments orbitaux CelesTrak du ${result.tle.epochLocal}${result.tle.stale ? ', anciens : dis que l’heure peut être moins précise' : ''}). Cite ces jours et heures exactement, n’en invente aucune. La météo n’est pas connue : dis « si le ciel est dégagé ».`,
     ];
     if (visible.length) {
       lines.push(`Visibles à l’œil nu dans les 72 prochaines heures : ${visible.slice(0, MAX_ISS_LISTED).map(visibleLine).join(' ; ')}.`);
@@ -113,7 +114,7 @@ async function issSummary(userText, { readPasses = defaultIssPasses, logger } = 
     }
     const hidden = result.counts.geometric - result.counts.observable;
     if (hidden > 0) lines.push(`${hidden} autre(s) passage(s) au-dessus de l’horizon ne seront pas visibles (en plein jour, trop bas, ou ISS dans l’ombre de la Terre).`);
-    if (result.view) lines.push(`Une vue 3D montre ces passages : propose-la avec <show kind="link" title="${result.view.label}">${result.view.url}</show>.`);
+    if (result.view) lines.push(`Une vue 3D de l’ISS est disponible ; son lieu d’observation se règle séparément et n’est pas synchronisé avec ce calcul. Propose-la avec <show kind="link" title="${result.view.label}">${result.view.url}</show>.`);
     return lines.join('\n').slice(0, MAX_CHARACTERS);
   } catch (error) {
     logger?.warn?.('Family ISS passes unavailable', { error: error.message });

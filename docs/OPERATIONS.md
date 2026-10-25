@@ -756,10 +756,20 @@ reorders the queue: Benchmark starts the measurement itself, in its quiet
 hours, when the runtime is idle. The agent chooses what, Benchmark chooses
 when.
 
-`iss_passes` answers "when does the ISS pass over the house?" from what Data
-already holds: the ISS element set of its CelesTrak `satellites` feed and the
-household weather location, rounded to 0.01°. It makes no outbound call and
-never returns the coordinates. Each pass has local rise, culmination and set
+`iss_passes` answers "when does the ISS pass?" from Data's on-demand TLE route,
+which reads its stored feed or cached CelesTrak source. During a rolling
+upgrade, a 404 for that route uses the legacy `satellites/latest` feed. The
+observer location is rounded to 0.01°. Optional `lat` and `lon` together take
+priority over the household weather location. If no usable location is known,
+`OBSERVER_DEFAULT_LOCATION_JSON` supplies an optional instance default
+(`lat`, `lon`, optional `name`); no city is built into the product. Invalid or
+partial explicit coordinates refuse instead of falling back. The returned
+`observer.source`, `label` and `defaulted` distinguish supplied coordinates,
+known weather location and default; announce the default rather than claiming
+to know the person's position. The same validation and selection are used by
+Data's on-demand weather and tides routes. Core contacts only Data; Data may
+refresh CelesTrak on demand. The tool never returns the coordinates.
+Each pass has local rise, culmination and set
 times (in `PLANNING_TIME_ZONE`), directions and height, and is classified as
 observable to the naked eye (at least 10° high, station sunlit, Sun at -6° or
 lower at the house) or only geometric, with the reason. Weather, obstacles,
