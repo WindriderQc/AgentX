@@ -104,11 +104,19 @@ function laneFromTask(role, taskType, snapshot) {
   );
   let contextSize = positiveInteger(task?.contextSize);
   let contextSource = task?.contextSource || 'unresolved';
-  if (contractContext && contextSize && contractContext !== contextSize && task?.pinAligned) {
+  // Advertise what the lane really holds: the pin, never more, and never more
+  // than the Profiler verified for this artifact on this endpoint (#360).
+  if (contractContext && contextSize && contractContext < contextSize) {
+    warnings.push(
+      `Pinned ${role} context ${contextSize} exceeds the verified context ${contractContext}; advertising the verified context.`
+    );
+    contextSize = contractContext;
+    contextSource = 'profiler_verified';
+  } else if (contractContext && contextSize && contractContext > contextSize) {
     warnings.push(
       `Pinned ${role} context ${contextSize} differs from inference-contract context ${contractContext}; preserving the operator pin.`
     );
-  } else if (contractContext && contractContext !== contextSize) {
+  } else if (contractContext && !contextSize) {
     contextSize = contractContext;
     contextSource = `inference_contract_${task?.inferenceContract?.contextBudget?.resolvedSource || 'resolved'}`;
   }
@@ -394,26 +402,34 @@ function compareOpenClawConfig(currentConfig, expectedOpenClaw) {
       ));
     }
   }
+  // Every provider routed through Core that lists the model is checked, not
+  // only the main one. A context smaller than what the lane holds is safe (it
+  // stays valid in every topology mode) and is reported as narrower; a larger
+  // or missing one is drift: OpenClaw would size history past the lane, or
+  // fall back to its own default.
+  const narrower = [];
+  const routed = coreRoutedProviderIds(providers, [expectedOpenClaw.providerId]);
+  const contextFields = [['contextWindow', (model) => model.contextWindow, (wanted) => wanted.contextWindow],
+    ['params.num_ctx', (model) => model.params?.num_ctx, (wanted) => wanted.params?.num_ctx]];
   for (const expected of expectedOpenClaw.provider.models) {
-    const match = candidates.map((candidate) => ({
-      candidate,
-      model: (candidate.provider.models || []).find((model) => model?.id === expected.id)
-    })).find((row) => row.model);
-    if (!match) {
+    const rows = Object.entries(providers).filter(([id]) => routed.has(id))
+      .map(([id, provider]) => ({ candidate: { id, provider },
+        model: (provider?.models || []).find((model) => model?.id === expected.id) }))
+      .filter((row) => row.model);
+    const primary = rows.find((row) => row.candidate.id === expectedOpenClaw.providerId) || rows[0];
+    if (!primary) {
       drift.push(diffField(`models.providers.${expectedOpenClaw.providerId}.models[${expected.id}]`, null, 'model entry present'));
       continue;
     }
-    if (expected.contextWindow != null && positiveInteger(match.model.contextWindow) !== expected.contextWindow) {
-      drift.push(diffField(
-        `models.providers.${match.candidate.id}.models[${expected.id}].contextWindow`,
-        positiveInteger(match.model.contextWindow), expected.contextWindow
-      ));
-    }
-    if (expected.params?.num_ctx != null && positiveInteger(match.model.params?.num_ctx) !== expected.params.num_ctx) {
-      drift.push(diffField(
-        `models.providers.${match.candidate.id}.models[${expected.id}].params.num_ctx`,
-        positiveInteger(match.model.params?.num_ctx), expected.params.num_ctx
-      ));
+    for (const row of rows) {
+      for (const [field, read, want] of contextFields) {
+        const wanted = positiveInteger(want(expected));
+        if (!wanted) continue;
+        const actual = positiveInteger(read(row.model));
+        const path = `models.providers.${row.candidate.id}.models[${expected.id}].${field}`;
+        if (!actual || actual > wanted) drift.push(diffField(path, actual, wanted));
+        else if (actual < wanted) narrower.push({ path, actual, available: wanted });
+      }
     }
   }
   const agentsRoot = currentConfig.agents && !Array.isArray(currentConfig.agents)
@@ -440,6 +456,7 @@ function compareOpenClawConfig(currentConfig, expectedOpenClaw) {
     return {
       status: drift.length ? 'drift' : 'not_checked',
       drift,
+      narrower,
       missing: ['agents.entries or agents.list'],
       agentModels: { status: 'not_checked', checked: 0, degraded: 0, agents: [], issues: [] }
     };
@@ -512,6 +529,7 @@ function compareOpenClawConfig(currentConfig, expectedOpenClaw) {
   return {
     status: drift.length ? 'drift' : (degraded ? 'degraded' : 'ok'),
     drift,
+    narrower,
     agentModels: {
       status: degraded ? 'degraded' : 'ok',
       checked: agentModels.length,

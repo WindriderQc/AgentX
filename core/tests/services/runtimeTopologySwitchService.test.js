@@ -126,6 +126,7 @@ function makeWorld(overrides = {}) {
     describe,
     coordination, hostPrefs, actuator, parking,
     verifyResidency: (url, entries) => verifyResidency.check(url, entries),
+    contextInfo: async (model, url) => (url === POOLED ? { verifiedMaxContext: 262144 } : (world.laneVerified ? { verifiedMaxContext: world.laneVerified } : {})),
     sessionHolds: { isHostHeld: () => null },
     physical: { resourceTopology: () => ({}), resourcesFor: (_, urls) => urls.map(() => 'gpu-x') },
     alerts: { observeTopologySwitchFailure: async event => { world.alerts.push(event); } },
@@ -165,6 +166,9 @@ describe('runtime topology switch', () => {
     expect(world.actuatorCalls.map(call => call[0])).toEqual(['activate', 'confirm']);
     expect(world.smokes).toEqual([[LANE_A, 'lane-model', 98304], [LANE_B, 'lane-model', 98304]]);
     expect(record.verification.drift.status).toBe('ok');
+    expect(record.verification.context).toEqual([
+      expect.objectContaining({ url: LANE_A, pinnedContext: 98304, verifiedContext: null, status: 'unverified' }),
+      expect.objectContaining({ url: LANE_B, status: 'unverified' })]);
     expect(record.verification.residency.every(item => item.ok)).toBe(true);
     expect(world.released).toHaveLength(1);
     expect(world.parking.intended.get('dual')).toBe('lanes');
@@ -182,6 +186,7 @@ describe('runtime topology switch', () => {
     const { record } = await run(world, { targetMode: 'pooled', expectedActiveMode: 'lanes', requestId: 'sw-2' });
     expect(record.state).toBe('active');
     expect(world.smokes).toEqual([[POOLED, 'pooled-model', 196608]]);
+    expect(record.verification.context).toEqual([expect.objectContaining({ url: POOLED, verifiedContext: 262144, status: 'verified' })]);
     expect(world.parking.intended.get('dual')).toBe('pooled');
   });
 
