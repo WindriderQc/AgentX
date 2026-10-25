@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { registerDossier } from '../core-dossier.js';
 
 function setup(fetchImpl) {
@@ -15,6 +16,20 @@ test('the native dossier adapter stays exclusive to the private owner context', 
   assert.equal(factory({ ...owner, sandboxed: true }), null);
   assert.equal(factory({ ...owner, sessionKey: 'agent:main:telegram:group:123' }), null);
   assert.equal(factory(owner).name, 'personal_task_dossier');
+});
+
+test('the registered owner tool is declared in the native contract, optional metadata and package', async () => {
+  let options, factory;
+  registerDossier({ config: {}, registerTool(value, declaration) { factory = value; options = declaration; } },
+    { fetchImpl: () => assert.fail('Discovery must not invoke Core') });
+  const manifest = JSON.parse(await readFile(new URL('../openclaw.plugin.json', import.meta.url), 'utf8'));
+  const pack = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(options.name, factory(owner).name);
+  assert.equal(options.optional, true);
+  assert.ok(manifest.contracts.tools.includes(options.name), 'OpenClaw rejects registered tools absent from contracts.tools');
+  assert.deepEqual(manifest.toolMetadata[options.name], { optional: true });
+  assert.ok(pack.files.includes('core-dossier.js'));
+  assert.equal(manifest.version, pack.version);
 });
 
 test('native Local forwards the Core request and preserves the same structured owner receipt as Hermes', async () => {
