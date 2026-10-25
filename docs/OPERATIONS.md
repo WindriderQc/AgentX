@@ -1096,7 +1096,9 @@ no root known the page answers 503 and mounts nothing. The
 query takes `janitor=latest`, `group=<sha256>` and `focus=<folder under a
 root>`; any other value is refused with 400. The page is full-profile only and,
 like the Data Toolbox, a family-pinned device cannot open it: file paths stay on
-the private network and out of Famille.
+the private network and out of Famille. The module compiles WebAssembly, so this
+page alone adds `'wasm-unsafe-eval'` to Core's `script-src`; it allows
+WebAssembly compilation, not `eval()` of JavaScript.
 Pictures beside Nestor come only from sources Core can resolve. `SEARXNG_URL`
 enables internet image search (strict SafeSearch in Famille; the browser loads the
 https image directly without a referrer). Household photos and media need both a
