@@ -135,6 +135,13 @@ routines, captures, math picture and sounds still compose with it. Spoken Core
 turns use the configurable `HOUSEHOLD_VOICE_TASK` (default
 `voice_persona_chat`), except LLMx scenes. Typed turns keep their pack's task.
 
+Family follow-ups receive the most recent deterministic math picture in the
+existing bounded Core history, on both conversation backends. Core recomputes
+the picture from that recorded turn and supplies its matching browser receipt
+as historical reference: applied, rejected or unconfirmed. This does not select
+the current screen or prove that a child saw the picture. Browser receipt text
+and owner screen content are not included.
+
 The fast personal voice lane with a single `delegate` tool is an **offline
 qualification definition**, not an enabled production conversation route. Its
 rule delegates actions, live checks and memory changes instead of promising to

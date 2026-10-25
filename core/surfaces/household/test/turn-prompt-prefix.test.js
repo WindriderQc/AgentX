@@ -339,3 +339,34 @@ for (const backend of ['agentx', 'openclaw']) {
     assert.doesNotMatch(family.sent[0].request + family.sent[0].prefix, /PRIVATE_SCREEN|home-assistant/);
   });
 }
+
+for (const backend of ['agentx', 'openclaw']) {
+  for (const status of ['applied', 'rejected', 'missing']) {
+    test(`Family ${backend} receives the historical math picture with ${status} display evidence`, async () => {
+      const h = harness({ packId: 'kidx_nestor', backend });
+      await h.turn('Bonjour Nestor', 'text'); // Native history already exists before the deterministic turn.
+      await h.turn('Combien font 8 + 5 ?', 'text');
+      const math = h.turns[0];
+      if (status !== 'missing') math.sceneReceipt = {
+        schema: 'agentx.math-scene.v1', kind: 'add', a: 8, b: 5, status,
+        reason: 'synthetic-untrusted-reason'
+      };
+      const count = h.sent.length;
+      await h.turn('Explique les cubes orange.', 'text', {
+        screen: { kind: 'text', text: 'Synthetic private screen content' }
+      });
+      assert.equal(h.sent.length, count + 1);
+      const context = h.sent.at(-1).request;
+      assert.match(context, /Earlier math picture in this Family conversation/);
+      assert.match(context, /"kind":"add","a":8,"b":5/);
+      assert.match(context, /historical.*not the current screen/s);
+      if (status === 'applied') assert.match(context, /browser reported that the renderer applied this picture/);
+      if (status === 'rejected') assert.match(context, /browser reported that the renderer rejected this picture/);
+      if (status === 'missing') assert.match(context, /Display is unconfirmed/);
+      assert.doesNotMatch(context, /Synthetic private screen content|synthetic-untrusted-reason/);
+      assert.equal(h.turns[0].inputText, 'Explique les cubes orange.');
+      assert.doesNotMatch(h.turns[0].inputText, /Earlier math picture/);
+      assert.equal(h.sent[0].prefix, h.sent.at(-1).prefix);
+    });
+  }
+}
