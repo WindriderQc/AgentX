@@ -536,6 +536,8 @@ class ReportDrainTest(unittest.TestCase):
             workspace.mkdir()
             runner.run_worker(workspace, 'Review', 600, progress, read_only=cumulative_limits is None)
             self.last_policy = serve.call_args.kwargs['request_policy']
+            self.assertTrue(progress.role_drained)
+            self.assertFalse(progress.model_worker_active)
             self.last_model = json.loads((runner.worker_home(workspace) / '.dsh/agentx.patch.json').read_text())[0]['config']['providers']['agentx-core']['models'][0]
         return relay.drain.call_args.args[0]
 

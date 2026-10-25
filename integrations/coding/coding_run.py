@@ -341,6 +341,7 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
             worker_patch(selected_model, context_size, (policy or {}).get('max_tokens'))))
     if progress:
         progress.model_worker_active = True
+        progress.role_drained = False
         progress.baseline(home, workspace)
         progress.set_stage("model_wait")
     if not GATEWAY_TOKEN and not os.environ.get("AGENTX_CODING_MODEL_URL"):
@@ -369,8 +370,9 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
                 # call unverified and the execution stuck until manual reconcile.
                 remaining += REPORT_SETTLE_GRACE_SECONDS
             drained = relay.drain(remaining, heartbeat=progress.tick)
+            progress.role_drained = drained
             if read_only:
-                progress.role_drained = progress.report_drained = drained
+                progress.report_drained = drained
         relay.shutdown()
         relay.server_close()
         if progress:

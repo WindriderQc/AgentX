@@ -119,6 +119,18 @@ work deadline is longer. Focused and full commands are runner-owned constants
 derived from the same profile. Unknown profiles or incompatible focused targets
 refuse before a writable implementation session begins.
 
+A material exact-scope candidate stopped specifically by `model_budget_reserve`
+may enter CPU verification after the original manifest, lease and completed
+native inference settlements are reconciled. The worker relay must be drained.
+The original model stop and spent counters remain in a private handoff receipt;
+no further worker session or model request is permitted. Focused and full tests
+reuse the offline sandbox, check source hashes and consume only the remaining
+work/test budgets and original reservation. Operator stops, hard limits,
+revoked authority, unknown termination and arbitrary worker exits still block.
+Passing verification retains the normal checkpoint, publication, CI and review
+gates. A lost publication or native acknowledgement uses the original durable
+intent and read-only reconciliation, never another push or worker execution.
+
 Before publication the runner checks exact authorized paths, all unpublished
 commit blobs (including added-then-removed artifacts), credentials, private
 paths, generated content, links/submodules, source size rules, test results and
