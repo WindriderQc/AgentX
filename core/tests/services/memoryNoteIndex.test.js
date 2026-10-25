@@ -25,6 +25,17 @@ describe('memory note meaning index with real Mongo', () => {
     family = forSpace({ audience: 'household', scopeId: 'family', packIds: ['kidx_nestor'], index });
   });
 
+  test('a rebuild does not send a staged replacement to the embedding owner before activation', async () => {
+    const staged = await MemoryNote.create({ packId: 'personal_operator', scopeId: 'personal', scope: 'owner',
+      sensitivity: 'private', text: 'Synthetic staged garden fact', status: 'pending' });
+    expect(await owner.reindex()).toMatchObject({ notes: 0, indexed: 0 });
+    expect(embed).not.toHaveBeenCalled();
+    expect((await owner.list()).total).toBe(0);
+    await MemoryNote.updateOne({ _id: staged._id }, { $set: { status: 'active' } });
+    expect(await owner.reindex()).toMatchObject({ notes: 1, indexed: 1 });
+    expect(embed).toHaveBeenCalledTimes(1);
+  });
+
   test('a note is found by meaning without a word in common', async () => {
     await owner.remember({ text: 'I never touch espresso in the morning' });
     await owner.remember({ text: 'The tomatoes need water twice a week' });
