@@ -53,9 +53,23 @@ function createConsultations({ conversations, execute, observe, env = process.en
           if (sessionKey !== row.consultation.sessionKey || !/^resp_[a-f0-9-]{36}$/.test(runId || '')) throw fail('Native consultation identity mismatch.');
           await conversations.updateSession({ ...query(row.sessionId), 'consultation.state': 'dispatching' },
             { $set: { 'consultation.state': 'running', 'consultation.runId': runId } });
+        },
+        onTerminalFailure: async receipt => {
+          const current = await conversations.getSession(query(row.sessionId));
+          if (!receipt || receipt.source !== 'openclaw/responses' || !/^resp_[a-f0-9-]{36}$/.test(receipt.runId || '')
+            || receipt.sessionKey !== current.consultation.sessionKey || receipt.runId !== current.consultation.runId
+            || !['response.failed', 'response.incomplete'].includes(receipt.event)
+            || !['native_authentication_failed', 'native_response_failed', 'native_response_incomplete'].includes(receipt.reason)) return;
+          // The native client already authenticated this terminal event. Keep
+          // its exact identity without retaining private provider diagnostics.
+          const failureReceipt = Object.fromEntries(['source', 'sessionKey', 'runId', 'event', 'reason'].map(key => [key, receipt[key]]));
+          await conversations.updateSession({ ...query(row.sessionId), 'consultation.runId': receipt.runId,
+            'consultation.state': { $in: ['dispatching', 'running', 'uncertain'] } },
+          { $set: { 'consultation.state': 'failed', 'consultation.reason': receipt.reason, 'consultation.failureReceipt': failureReceipt } });
         } });
       const current = await conversations.getSession(query(row.sessionId));
-      if (reply.sessionKey !== current.consultation.sessionKey || reply.runId !== current.consultation.runId || reply.interrupted) {
+      if (current.consultation.state === 'failed' || reply.sessionKey !== current.consultation.sessionKey
+        || reply.runId !== current.consultation.runId || reply.interrupted) {
         throw fail('Native consultation did not return its exact result.');
       }
       await complete(current, reply.text, reply.tools);
@@ -65,6 +79,7 @@ function createConsultations({ conversations, execute, observe, env = process.en
     }
   }
   async function status(row) {
+    if (row.consultation.state === 'failed' && row.consultation.failureReceipt) return view(row);
     if (row.consultation.state === 'completed') return result(row);
     if (pending.has(row.sessionId)) {
       let timer;
