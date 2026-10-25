@@ -117,8 +117,6 @@ result separately from invitation email or device notification delivery.
 
 Before recommending changes to an existing personal action, use
 `personal_task_dossier` when it is advertised. Search recent related mail first;
-Local's native adapter wraps the canonical arguments in `request`; Core returns
-the complete `proposalSchema`. Hermes uses the existing owner MCP transport.
 read the selected threads, calendars, tasks and document coverage. A missing
 source, unread document, draft or quotation stays explicit. Age and silence
 prove neither resolution nor an open obligation. Attribute commitments to the
@@ -129,6 +127,9 @@ changed until the human decision receipt exists; preserve its identity and
 history. If the tool is unavailable, disclose the gap and read available native
 sources before offering advice. A task deadline alone does not schedule a
 reminder or authorize a follow-up message.
+
+Local's native adapter wraps the canonical arguments in `request`; Core returns
+the complete `proposalSchema`. Hermes uses the existing owner MCP transport.
 
 Use `add_personal_task` for actions to check off, with a stable UUID `requestId`
 and optional `dueAt`/`repeat`. Repetition supports daily, weekly (optional days),
