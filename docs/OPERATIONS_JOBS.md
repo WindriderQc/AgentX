@@ -43,12 +43,15 @@ these named adapters. Its systemd timer continues when Core is unavailable; an
 acknowledged complete backup marker may be cached for recovery transfer.
 
 Supported handlers are usage counters, submit-only memory collection, off-host
-backup replication, archive mirroring and bundle delivery. The memory handler
+backup replication, archive mirroring, session transcript archiving and bundle
+delivery. The memory handler
 preserves the native source filters and watermarks and never synthesizes or applies
 memory. Existing synthesis remains under its native owner. These handlers do not
 invoke inference or change model pins. Heavy coding/qualification work still uses
 [the heavy-work queue](HEAVY_WORK_QUEUE.md) and existing native ownership.
 
+Session transcript archiving runs beside the transcripts and pushes only new or
+changed files; it has no source gate because its own state skips unchanged files.
 Backup copies require a recorded complete Core backup. Archive mirroring requires
 an available snapshot; bundle delivery requires a published manifest. An unchanged
 source does not cause another scheduled copy. Manual runs retain the source gate.

@@ -84,7 +84,7 @@ async function defaultRunner(target, command) {
 async function mirrorSnapshot(snapshot) {
   const cluster = require('./clusterScheduleService');
   const entries = snapshot.jobs.map(job => ({ source: 'agentx-system', sourceId: `operations-${job.id}`, name: job.name,
-    taskType: ['offhost-backup', 'archive-mirror'].includes(job.kind) ? 'backup' : 'sync', host: null, model: null, agent: null,
+    taskType: ['offhost-backup', 'archive-mirror', 'session-archive'].includes(job.kind) ? 'backup' : 'sync', host: null, model: null, agent: null,
     schedule: job.schedule.type === 'daily'
       ? {type: 'cron', cron: `${Number(job.schedule.at.slice(3))} ${Number(job.schedule.at.slice(0, 2))} * * *`, timezone: job.schedule.timezone}
       : {type: 'interval', intervalMs: job.schedule.minutes * 60_000, timezone: job.schedule.timezone},

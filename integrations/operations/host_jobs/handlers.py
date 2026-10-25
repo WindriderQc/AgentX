@@ -45,6 +45,13 @@ def prepare(job, request_id, source_at=None):
         if options.get("remoteReceipt"):
             command += ["--remote-receipt", options["remoteReceipt"]]
         receipt = Path(options["destination"]) / "latest-run.json"
+    elif kind == "session-archive":
+        command = [options["python"], options["script"], "send", "--host-label", options["hostLabel"],
+                   "--destination-host", options["destinationHost"], "--destination-root", options["destinationRoot"],
+                   "--state-dir", options["stateRoot"]]
+        for source in options["sources"]:
+            command += ["--source", f"{source['label']}={source['path']}"]
+        receipt = Path(options["stateRoot"]) / "latest-run.json"
     elif kind == "bundle-delivery":
         command = [options["python"], options["script"], "--source-host", options["sourceHost"], "--source-root", options["sourceRoot"],
                    "--staging", options["staging"], "--destination", options["destination"]]
@@ -63,6 +70,10 @@ def metrics(job, receipt, stdout):
     elif job["kind"] == "archive-mirror":
         result = {"files": value.get("copied", 0), "bytes": value.get("bytesCopied", 0), "unchanged": value.get("unchanged", 0),
                   "verified": value.get("status") == "verified", "sourceFiles": value.get("sourceFiles", 0)}
+    elif job["kind"] == "session-archive":
+        result = {"files": sum(value.get(key, 0) for key in ("new", "grown", "versioned")), "bytes": value.get("bytesSent", 0),
+                  "unchanged": value.get("unchanged", 0), "sourceFiles": value.get("sourceFiles", 0),
+                  "missingAtSource": value.get("missingAtSource", 0), "verified": value.get("status") == "verified"}
     elif job["kind"] == "bundle-delivery":
         result = {key: value.get(key, 0) for key in ("files", "bytes", "unchanged")}
         result["verified"] = value.get("status") == "delivered"
