@@ -66,7 +66,11 @@ function describe(set, { source, fetchedAt, cached, stale = false, note = null, 
 }
 
 async function getTle({ db, noradId = DEFAULT_NORAD_ID, now = Date.now() } = {}) {
-  const feedPoint = await readFeedPoint(db, noradId);
+  // The persisted feed is optional: a database outage must not disable the
+  // independent CelesTrak read or the last good in-memory element set.
+  let feedPoint = null;
+  try { feedPoint = await readFeedPoint(db, noradId); }
+  catch (_) { /* Continue through the same cache/upstream fallback. */ }
   if (feedPoint && now - new Date(feedPoint.ts).getTime() < FEED_FRESH_MS) {
     return describe(feedPoint.payload, { source: 'feed', fetchedAt: feedPoint.ts, cached: true, now });
   }
