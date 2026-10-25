@@ -20,6 +20,7 @@ import { registerMailRecall } from './core-recall.js';
 import { registerPhotos } from './photos.js';
 import { registerPresentation } from './presentation.js';
 import { registerIss } from './iss.js';
+import { registerDossier } from './core-dossier.js';
 const receipt = value => ({ content: [{ type: "text", text: JSON.stringify(value) }], details: value });
 export default definePluginEntry({
   id: "super-dad-memory",
@@ -35,6 +36,7 @@ export default definePluginEntry({
     registerPhotos(api);
     registerPresentation(api);
     registerIss(api);
+    registerDossier(api);
     const resolveWorkspace = id => resolveAgentWorkspaceDir(api.config, id);
     const workspaceFor = () => resolveWorkspace('main');
     const readNotes = createCoreNotesClient({ baseUrl: api.pluginConfig?.agentxUrl });

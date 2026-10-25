@@ -117,6 +117,8 @@ result separately from invitation email or device notification delivery.
 
 Before recommending changes to an existing personal action, use
 `personal_task_dossier` when it is advertised. Search recent related mail first;
+Local's native adapter wraps the canonical arguments in `request`; Core returns
+the complete `proposalSchema`. Hermes uses the existing owner MCP transport.
 read the selected threads, calendars, tasks and document coverage. A missing
 source, unread document, draft or quotation stays explicit. Age and silence
 prove neither resolution nor an open obligation. Attribute commitments to the

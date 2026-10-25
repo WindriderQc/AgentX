@@ -31,7 +31,8 @@ client against Core's private `/mcp` bus and explicitly select the toolset and
 tools appropriate to the profile. Keep the narrower `/mcp/memory` endpoint for
 memory-only consumers. Never expose the owner bus to a family profile.
 
-An owner profile can select `personal_task_dossier` on that same bus for
+An owner profile can select `personal_task_dossier` on Core's personal
+`/api/consumers/nestor/v1/mcp` transport for
 evidence-based personal-task review. Its read/propose operations are shared
 with Local; the human decision remains in My day. Explicitly add the tool to
 the native profile's selected MCP tools when installing this capability.

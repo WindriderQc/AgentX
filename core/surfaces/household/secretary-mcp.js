@@ -6,7 +6,6 @@ const { dayLabel } = require('../../src/services/personalBriefing');
 const { familyTimeZone } = require('../../src/domains/household/family');
 const { repeatSchema } = require('../../src/services/personalRepeat');
 const { CALENDAR_TOOL } = require('../../src/services/personalCalendarTool');
-const { DOSSIER_TOOL } = require('../../src/services/personalTaskDossierTool');
 
 const SECRETARY_MCP_META = Object.freeze({
   'agentx/owner': 'agentx-household',
@@ -20,7 +19,6 @@ function objectSchema(properties, required = []) {
 
 const SECRETARY_TOOLS = Object.freeze([
   Object.freeze({ ...CALENDAR_TOOL, _meta: SECRETARY_MCP_META }),
-  Object.freeze({ ...DOSSIER_TOOL, _meta: SECRETARY_MCP_META }),
   Object.freeze({
     name: 'get_sound',
     title: 'Get Animal Sound Recording',
@@ -275,7 +273,6 @@ async function callSecretaryTool(name, args, deps) {
   try {
     const input = plainArguments(args || {});
     if (name === 'personal_calendar') return textResult(await (deps.calendar || require('../../src/services/personalCalendarService')).operate(input));
-    if (name === 'personal_task_dossier') return textResult(await (deps.dossiers || require('../../src/services/personalTaskDossierService')).operate(input));
     if (name === 'get_sound') {
       if (typeof input.query !== 'string' || !input.query.trim() || input.query.length > 500) {
         throw Object.assign(new Error('query must contain 1-500 characters'), { code: 'INVALID_ARGUMENTS' });

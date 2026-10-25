@@ -59,6 +59,7 @@ async function get(id) {
   const task = await tasks().resolvePersonalTask(row.taskId);
   const decision = (task.personalDossierDecisions || []).find(receipt => receipt.dossierId === id);
   return { id, ...row.snapshot, proposal: row.proposal, proposalHash: row.proposalHash,
+    proposalSchema: require('./personalTaskDossierTool').DOSSIER_TOOL.inputSchema.properties.proposal,
     decision: decision || null,
     stale: !decision && (task.__v || 0) !== row.taskRevision };
 }
