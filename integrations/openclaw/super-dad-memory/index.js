@@ -71,6 +71,7 @@ export default definePluginEntry({
             id: { type: "string", pattern: "^[a-f0-9]{24}$" },
             kind: { type: "string", enum: ["fact", "preference", "decision"] },
             expiresAt: { type: "string", maxLength: 40 },
+            includeHistory: { type: "boolean", description: "Explicit list only: include replaced facts and successor links within this owner space." },
           },
           required: ["action"],
           additionalProperties: false,

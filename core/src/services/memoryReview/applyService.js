@@ -68,6 +68,17 @@ function evidenceSummaryLines(candidate) {
 
 async function applySharedFact(run, candidate, deps) {
   const statement = effectiveStatement(candidate);
+  if (candidate.type === 'supersedes') {
+    const old = candidate.supersedes;
+    if (old?.authority !== 'local_memory' || !old.fingerprint || !candidate.review?.at || candidate.apply?.automated) {
+      throw new MemoryReviewError('A supersession requires an individually reviewed exact owner source');
+    }
+    const key = `memory-review:${run.runId}:${candidate.candidateId}`;
+    const note = await (deps.ownerNotes || personal()).supersede({ id: old.ref, expectedFingerprint: old.fingerprint,
+      key, text: statement, scope: candidate.scope, sensitivity: candidate.sensitivity, ...factMetadata(run, candidate) });
+    return { result: `owner note ${old.ref} replaced by ${note.id}`,
+      rollbackRef: `POST /api/memory-review/runs/${run.runId}/candidates/${candidate.candidateId}/rollback` };
+  }
   // The same sentence always lands on the same note, so a retry after a lost
   // response writes nothing twice.
   const note = await (deps.ownerNotes || personal()).remember({

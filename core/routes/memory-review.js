@@ -184,4 +184,13 @@ router.post('/runs/:runId/candidates/:candidateId/apply', async (req, res) => {
   } catch (err) { fail(res, err, 'MEMORY_REVIEW_APPLY_FAILED'); }
 });
 
+router.post('/runs/:runId/candidates/:candidateId/rollback', async (req, res) => {
+  try {
+    policy.assertKnownKeys(req.body || {}, ['by'], 'rollback');
+    const data = await require('../src/services/memoryReview/rollbackService').rollbackCandidate(
+      req.params.runId, req.params.candidateId, { by: requestPrincipal(req) });
+    res.json({ status: 'success', data });
+  } catch (err) { fail(res, err, 'MEMORY_REVIEW_ROLLBACK_FAILED'); }
+});
+
 module.exports = router;

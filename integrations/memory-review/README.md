@@ -73,11 +73,30 @@ Ordinary note lists, recall, similarity and context exclude facts whose
 retains those predecessors and their successor references, within the same
 space; forgotten and expired notes remain excluded. Household lists cannot
 request history. The general editor cannot rewrite a replaced predecessor.
-These read contracts do not authorize replacements: the reviewed replacement
-writer, rollback and equivalent RAG history remain tracked in
+The owner `personal_memory` tool exposes the same explicit history list through
+Core MCP and OpenClaw. Ordinary context and search keep current facts only.
+
+A `supersedes` candidate targets `shared_fact` and names an exact `local_memory`
+reference found by Core's deduplication in that run. Core captures the source
+fingerprint itself; the synthesis cannot provide one or self-certify a conflict.
+This type always requires individual review, server apply mode and an audited
+run authorization. Apply rechecks the source, space and exact classification.
+An undated reviewed replacement takes effect at its first apply instant;
+an explicitly dated replacement keeps that date separately from recording time.
+Future-effective replacements and reversed date ranges are refused.
+
+The predecessor owns a durable replacement receipt, and the staged successor
+stays hidden until linking. A lost reply resumes the same operation key.
+The Dreaming Review restore action calls the candidate's `/rollback` endpoint:
+it restores the unchanged predecessor and forgets the unchanged successor using
+the existing derivative cleanup. Changed successors or later replacements
+refuse rollback. Interrupted apply/rollback remains reviewable under its original
+identity; never create a replacement attempt to bypass it.
+
+Equivalent RAG replacement metadata/filter/history remains under
 [#896](https://github.com/WindriderQc/AgentX/issues/896).
 
-The 167 synthetic tests cover filtering of owner versus harness/tool content,
+The synthetic tests cover filtering of owner versus harness/tool content,
 secret sanitation, bounded/resumable collection, API retries, idempotent watermarks,
 candidate validation and accepted Git evidence. No personal transcript or model
 is used. Native runtime formats, schedules and live acceptance are verified per

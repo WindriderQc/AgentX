@@ -162,7 +162,7 @@ function summarizeRuns(runs, limit, now = new Date(), {
       add(distributions.targets, candidate.target?.kind);
       add(distributions.statuses, candidate.status);
       add(distributions.automation, candidate.automation?.disposition);
-      if (['proposed', 'deferred', 'apply_failed'].includes(candidate.status)) totals.pending += 1;
+      if (['proposed', 'deferred', 'apply_failed', 'rollback_failed'].includes(candidate.status)) totals.pending += 1;
       if (['approved', 'rejected', 'applied', 'apply_failed'].includes(candidate.status) && !candidate.apply?.automated) totals.reviewed += 1;
       if (['approved', 'applied', 'apply_failed'].includes(candidate.status) && !candidate.apply?.automated) quality.approved += 1;
       if (candidate.status === 'rejected') quality.rejected += 1;
@@ -267,7 +267,7 @@ function summarizeRuns(runs, limit, now = new Date(), {
       createdAt: latest.createdAt,
       completedAt: latest.completedAt,
       candidates: (latest.candidates || []).length,
-      pending: (latest.candidates || []).filter((candidate) => ['proposed', 'deferred', 'apply_failed'].includes(candidate.status)).length,
+      pending: (latest.candidates || []).filter((candidate) => ['proposed', 'deferred', 'apply_failed', 'rollback_failed'].includes(candidate.status)).length,
       modelCalled: !!latest.summary?.modelCalled,
       quiet: !!latest.summary?.noEligibleObservations,
       // Cadence facts, so "quiet" can be judged against when evidence last

@@ -8,6 +8,20 @@ import { privateOwnerContext, readState } from '../store.js';
 import { contextFor, recordRun, recordTool } from '../harness.js';
 import { continuityOperations, nativeTurnAnswer } from '../continuity.js';
 
+test('native personal_memory transports an explicit owner history list without adding write operations', async () => {
+  let body;
+  const client = createCoreNotesClient({ baseUrl: 'http://127.0.0.1:3180', fetchImpl: async (_, options) => {
+    body = JSON.parse(options.body);
+    return { ok: true, json: async () => ({ status: 'success', data: {
+      ok: true, authority: 'agentx.core', operation: 'list', notes: [{ id: 'a'.repeat(24), supersededBy: 'b'.repeat(24) }]
+    } }) };
+  } });
+  const result = await client({ action: 'list', includeHistory: true, audience: 'household' });
+  assert.deepEqual(body, { action: 'list', includeHistory: true });
+  assert.equal(result.notes[0].supersededBy, 'b'.repeat(24));
+  await assert.rejects(client({ action: 'supersede', text: 'No new write grant' }), /Unsupported/);
+});
+
 test('native personal_memory forwards only note inputs and validates the Core receipt without retry', async () => {
   let captured, calls = 0;
   const id = 'a'.repeat(24);

@@ -88,6 +88,7 @@ function project(row) {
     sensitivity: row.sensitivity, source: row.source, createdAt: row.createdAt,
     updatedAt: row.updatedAt, expiresAt: row.expiresAt || null,
     invalidatedAt: row.invalidatedAt || null, supersededBy: row.supersededBy || null,
+    ...(row.replaces && { replaces: row.replaces }),
     ...memoryFactProjection(row),
     ...(row.kind === 'souvenir' ? { eventDate: row.eventDate || '', eventDatePrecision: row.eventDatePrecision || 'unknown',
       people: row.people || [], places: row.places || [], revision: row.revision || 0 } : {}) };
@@ -109,7 +110,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     if (typeof includeHistory !== 'boolean') throw error('includeHistory must be a boolean');
     if (includeHistory && audience !== 'owner') throw error('Memory history belongs to the owner', 403);
     const now = new Date();
-    return { ...boundary, status: { $ne: 'forgotten' }, $and: [
+    return { ...boundary, status: { $nin: ['forgotten', 'pending'] }, $and: [
       { $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }] },
       ...(!includeHistory ? [currentFactFilter(now)] : [])
     ] };
@@ -147,6 +148,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     const id = input.id === undefined ? digest([scopeId, packs[0], text].join('\n')).slice(0, 24) : noteId(input.id);
     const existing = await MemoryNote.findOne({ ...boundary, _id: id }).lean();
     if (existing?.invalidatedAt || existing?.supersededBy) throw error('A replaced fact cannot be rewritten through the general note editor', 409);
+    if (existing?.status === 'pending' || ['preparing', 'linked', 'undoing'].includes(existing?.replacement?.phase)) throw error('This fact has an unfinished replacement', 409);
     // A kept souvenir retains its original sources, including through the
     // general note editor. Only ordinary facts accumulate review references.
     const fact = mergeMemoryFactMetadata(existing?.kind === 'souvenir' ? { validFrom: input.validFrom } : input, existing || {});
@@ -170,6 +172,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     const labels = existing?.scope && existing?.sensitivity
       ? { scope: existing.scope, sensitivity: existing.sensitivity } : stricter;
     const filter = { ...boundary, _id: id, invalidatedAt: null, supersededBy: null,
+      'replacement.phase': { $nin: ['preparing', 'linked', 'undoing'] },
       ...(input.id === undefined ? {} : { status: { $ne: 'forgotten' } }) };
     const update = { $set: {
       text, kind, ...labels, ...fact, expiresAt, status: 'active', forgottenAt: null,
@@ -339,13 +342,17 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
   }
   const reindex = () => index.rebuild(boundary);
 
-  return Object.freeze({ list, remember, record, keepSouvenir, editSouvenir, souvenirs, forget, search, similar, reindex, count: () => MemoryNote.countDocuments(active()) });
+  const replacements = require('./memoryNoteReplacement').forNotes({ audience, boundary, seal, indexLater, forget });
+  return Object.freeze({ list, remember, record, keepSouvenir, editSouvenir, souvenirs, forget, search, similar, reindex,
+    ...replacements, count: () => MemoryNote.countDocuments(active()) });
 }
 
 const personal = () => forSpace({ audience: 'owner', scopeId: 'personal', packIds: ['personal_operator'] });
 async function operatePersonal(input = {}) {
   const notes = personal();
   const operation = input.operation || input.action;
+  if (input.includeHistory !== undefined && (typeof input.includeHistory !== 'boolean'
+      || input.includeHistory && operation !== 'list')) throw error('History requires an explicit owner list');
   let result;
   if (operation === 'list') result = await notes.list(input);
   else if (operation === 'search') result = await notes.search(input.query, input);
