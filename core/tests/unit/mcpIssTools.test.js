@@ -155,6 +155,19 @@ describe('iss_passes tool', () => {
     expect(out.passes.length).toBeGreaterThan(0);
   });
 
+  test('the production Data client accepts a legacy HTML 404 before reading the stored feed', async () => {
+    const realFetch = global.fetch;
+    global.fetch = jest.fn(async url => String(url).includes('/tle?')
+      ? new Response('<!DOCTYPE html><p>Cannot GET /api/v1/livedata/tle</p>', { status: 404 })
+      : new Response(JSON.stringify({ status: 'success', data: SATELLITES }), { status: 200 }));
+    try {
+      const out = await issPasses({ lat: 46.81, lon: -71.21, hours: 1 }, { now, env });
+      expect(out.status).toBe('ok');
+      expect(global.fetch.mock.calls.map(([url]) => new URL(url).pathname))
+        .toEqual(['/api/v1/livedata/tle', '/api/v1/livedata/satellites/latest']);
+    } finally { global.fetch = realFetch; }
+  });
+
   test('reports missing sources instead of inventing passes', async () => {
     await expect(issPasses({}, { ...dataStub({ satellites: SATELLITES.slice(0, 1), weather: WEATHER }), now, env }))
       .rejects.toMatchObject({ code: 'ISS_DATA_UNAVAILABLE', message: expect.stringMatching(/no ISS orbital elements/) });

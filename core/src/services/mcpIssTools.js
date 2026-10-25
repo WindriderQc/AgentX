@@ -95,7 +95,7 @@ async function readStoredIssTle(fetchData) {
 async function readIssTle(fetchData) {
   let result;
   try {
-    result = await fetchData('/api/v1/livedata/tle', { query: 'norad=25544', timeoutMs: 40000 });
+    result = await fetchData('/api/v1/livedata/tle', { query: 'norad=25544', timeoutMs: 40000, acceptNotFound: true });
   } catch (error) {
     throw unavailable(`Data did not answer the ISS orbital-element request (${error.name === 'TimeoutError' ? 'timeout' : 'unreachable'})`);
   }
