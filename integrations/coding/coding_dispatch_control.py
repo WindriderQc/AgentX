@@ -587,7 +587,7 @@ def reconcile(pipeline_id, key):
     value = json.loads(path.read_text())
     value.update(coreRecorded=True, phase="finished", result="review" if body.get("status") == "done" else "blocked",
                  stopReason=(body.get("attemptEvidence") or {}).get("failureCodes", [None])[0]
-                 if (body.get("attemptEvidence") or {}).get("failureCodes") else None)
+                 if (body.get("attemptEvidence") or {}).get("failureCodes") else value.get("stopReason"))
     atomic_json(path, value)
     return {"reconciled": True, "pipelineId": pipeline_id, "requestId": key}
 

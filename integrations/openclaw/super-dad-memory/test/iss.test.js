@@ -44,9 +44,9 @@ test('offered to the owner and household family sessions only', () => {
 
 test('relays only the bounded arguments to Core iss_passes and returns its dated result', async () => {
   const { factory, calls } = setup(() => mcp(result));
-  const out = await factory(family).execute('call-1', { hours: 24, visible_only: true, lat: 1 });
+  const out = await factory(family).execute('call-1', { hours: 24, visible_only: true, lat: 1, lon: 2, ignored: 'value' });
   assert.equal(calls[0].url, 'http://core.test:3180/mcp');
-  assert.deepEqual(calls[0].body.params, { name: 'iss_passes', arguments: { hours: 24, visible_only: true } });
+  assert.deepEqual(calls[0].body.params, { name: 'iss_passes', arguments: { hours: 24, visible_only: true, lat: 1, lon: 2 } });
   assert.equal(out.details.nextVisible.startLocal, 'dim. 25 oct., 05 h 16');
 });
 

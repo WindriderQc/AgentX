@@ -22,6 +22,7 @@ export function registerIss(api, { fetchImpl = fetch, name = 'nestor_iss' } = {}
         'Follow Core answerRules; limit comparisons to the returned search window.',
         'If tle.stale is true, mention how old the orbital data is. If view.url is present, offer it in a show block of kind link.',
         'visible_only=true keeps observable passes; hours sets the window (default 72, at most 108). Read-only.',
+        'Optional lat and lon choose an observer; otherwise the known weather location or configured default is used. Announce the returned observer label, especially a default location.',
       ].join(' '),
       parameters: {
         type: 'object', additionalProperties: false,
@@ -29,11 +30,13 @@ export function registerIss(api, { fetchImpl = fetch, name = 'nestor_iss' } = {}
           hours: { type: 'integer', minimum: 1, maximum: 108 },
           visible_only: { type: 'boolean' },
           max_passes: { type: 'integer', minimum: 1, maximum: 12 },
+          lat: { type: 'number', minimum: -90, maximum: 90 },
+          lon: { type: 'number', minimum: -180, maximum: 180 },
         },
       },
       async execute(_id, params = {}) {
         const args = {};
-        for (const key of ['hours', 'visible_only', 'max_passes']) if (params[key] !== undefined) args[key] = params[key];
+        for (const key of ['hours', 'visible_only', 'max_passes', 'lat', 'lon']) if (params[key] !== undefined) args[key] = params[key];
         return receipt(await agentxRead(api.pluginConfig?.agentxUrl, 'iss_passes', args, fetchImpl));
       },
     };

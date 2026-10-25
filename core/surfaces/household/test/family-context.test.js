@@ -141,6 +141,11 @@ test('ISS passes reach Famille only when enabled and asked about, with the compu
   assert.match(text, /si le ciel est dégagé/);
   assert.match(text, /4 autre\(s\) passage\(s\)/);
   assert.match(text, /<show kind="link" title="Vue 3D">https:\/\/example\.test\/iss#passages<\/show>/);
+  const fallback = await issSummary("Quand passe l'ISS?", { readPasses: async () => ({ ...result,
+    observer: { label: 'Québec', source: 'default', defaulted: true } }) });
+  assert.match(fallback, /pour Québec \(lieu par défaut/);
+  assert.match(fallback, /la position de la personne n’est pas connue/);
+  assert.doesNotMatch(fallback, /au-dessus de la maison/);
 });
 
 test('ISS summary selects observable passes before limiting the list', async () => {
