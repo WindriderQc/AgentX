@@ -101,6 +101,25 @@ function checkQuery(query = {}, roots = []) {
   return attributes;
 }
 
+/**
+ * The page's Content-Security-Policy with 'wasm-unsafe-eval' added to
+ * script-src. The DiskX module compiles WebAssembly (Manifold geometry);
+ * 'wasm-unsafe-eval' allows WebAssembly compilation only, not eval() of
+ * JavaScript, and only on this page. Without a policy nothing changes.
+ */
+function allowWasm(policy) {
+  if (!policy) return policy;
+  const directives = String(policy).split(';').map((part) => part.trim()).filter(Boolean);
+  const index = directives.findIndex((part) => /^script-src(\s|$)/i.test(part));
+  if (index === -1) {
+    const fallback = directives.find((part) => /^default-src(\s|$)/i.test(part));
+    directives.push(`script-src${fallback ? fallback.slice('default-src'.length) : " 'self'"} 'wasm-unsafe-eval'`);
+  } else if (!/'wasm-unsafe-eval'/i.test(directives[index])) {
+    directives[index] = `${directives[index]} 'wasm-unsafe-eval'`;
+  }
+  return directives.join(';');
+}
+
 const escapeAttribute = (value) => String(value)
   .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -147,6 +166,8 @@ function register({ app, express, fetchWithTimeout, fetchData, env = process.env
     let attributes;
     try { attributes = checkQuery(req.query, roots); }
     catch (error) { return res.status(error.status || 400).type('html').send(errorPage(error.message)); }
+    const policy = res.getHeader('Content-Security-Policy');
+    if (policy) res.set('Content-Security-Policy', allowWasm(policy));
     return res.type('html').set('Cache-Control', 'no-store').send(renderPage({ roots, attributes }));
   });
 
@@ -161,4 +182,4 @@ function register({ app, express, fetchWithTimeout, fetchData, env = process.env
   }));
 }
 
-module.exports = { register, diskxModuleUrl, resolveRoots, parseRoots, checkQuery, renderPage, PAGE, MODULE_ROUTE, API_BASE, MODULE_MAX_BYTES };
+module.exports = { register, allowWasm, diskxModuleUrl, resolveRoots, parseRoots, checkQuery, renderPage, PAGE, MODULE_ROUTE, API_BASE, MODULE_MAX_BYTES };

@@ -133,3 +133,21 @@ test('a family-pinned device and the demo profile reach neither the page, the mo
   assert.equal(allowedForFamilyDevice({ path: '/panel', method: 'GET', query: {} }), true);
   for (const path of ['/diskx', '/api/diskx/diskx.js']) assert.equal(demoSurfaceDisabled(path), true, path);
 });
+
+test('only the DiskX page lets the module compile WebAssembly, never eval JavaScript', async () => {
+  const base = "default-src 'self';script-src 'self' 'unsafe-inline';script-src-attr 'none';object-src 'none'";
+  assert.equal(diskx.allowWasm(base), "default-src 'self';script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval';script-src-attr 'none';object-src 'none'");
+  assert.equal(diskx.allowWasm(diskx.allowWasm(base)), diskx.allowWasm(base), 'added once');
+  assert.equal(diskx.allowWasm("default-src 'self'"), "default-src 'self';script-src 'self' 'wasm-unsafe-eval'");
+  assert.equal(diskx.allowWasm(undefined), undefined);
+  assert.doesNotMatch(diskx.allowWasm(base), /'unsafe-eval'/);
+
+  // Through the app, as helmet sets the header before the routes.
+  const server = express();
+  server.use((_req, res, next) => { res.set('Content-Security-Policy', base); next(); });
+  diskx.register({ app: server, express, env: { DISKX_ROOTS: '/mnt/a', DISKX_MODULE_URL: MODULE }, fetchWithTimeout: async () => js() });
+  server.get('/other', (_req, res) => res.send('other'));
+  assert.match((await request(server).get('/diskx').expect(200)).headers['content-security-policy'], /script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval';/);
+  assert.equal((await request(server).get('/other')).headers['content-security-policy'], base);
+  assert.equal((await request(server).get('/api/diskx/diskx.js').expect(200)).headers['content-security-policy'], base);
+});
