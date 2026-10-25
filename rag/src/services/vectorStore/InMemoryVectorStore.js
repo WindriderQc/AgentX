@@ -5,6 +5,7 @@
 const VectorStoreAdapter = require('./VectorStoreAdapter');
 const { distinctSources, sortDocuments } = require('./documentListing');
 const { cosineSimilarity } = require('../../utils/cosineSimilarity');
+const { isCurrentFact } = require('../../../../shared/memoryFactMetadata');
 
 class InMemoryVectorStore extends VectorStoreAdapter {
   constructor(config = {}) {
@@ -49,21 +50,27 @@ class InMemoryVectorStore extends VectorStoreAdapter {
     const minScore = options.minScore !== undefined ? options.minScore : 0.0;
     const filters = options.filters || {};
 
-    const results = this._filterByMetadata(this.vectors.map(vec => ({
+    const results = this._currentFacts(this._filterByMetadata(this.vectors.map(vec => ({
       text: vec.text,
       score: cosineSimilarity(queryEmbedding, vec.embedding),
       metadata: vec.metadata
-    })), filters);
+    })), filters), options);
 
     return results.filter(r => r.score >= minScore).sort((a, b) => b.score - a.score).slice(0, topK);
   }
 
   /** Chunks whose lowercased text contains any of `terms` (a superset of word matches). */
-  async findKeywordCandidates(terms, { filters = {}, limit = 500 } = {}) {
+  async findKeywordCandidates(terms, { filters = {}, limit = 500, includeHistory = false } = {}) {
     const chunks = this.vectors
       .filter(vec => terms.some(term => vec.text.normalize('NFC').toLowerCase().includes(term)))
       .map(vec => ({ text: vec.text, chunkIndex: vec.chunkIndex || 0, metadata: vec.metadata }));
-    return this._filterByMetadata(chunks, filters).slice(0, limit);
+    return this._currentFacts(this._filterByMetadata(chunks, filters), { includeHistory }).slice(0, limit);
+  }
+
+  _currentFacts(results, options = {}) {
+    if (options.includeHistory === true) return results;
+    const now = new Date();
+    return results.filter(r => isCurrentFact(r.metadata || {}, now));
   }
 
   _filterByMetadata(results, filters) {

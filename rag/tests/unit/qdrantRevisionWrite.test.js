@@ -134,7 +134,7 @@ describe('legacy points without a revision', () => {
     const qdrant = store();
     expect(await qdrant.getDocument('note')).toEqual({
       documentId: 'note', source: 'notes/note.md', tags: undefined, hash: 'old', chunkCount: 3,
-      validFrom: null, recordedAt: null, sourceRefs: []
+      validFrom: null, recordedAt: null, sourceRefs: [], invalidatedAt: null, supersededBy: null
     });
     await qdrant.upsertDocument('note', { hash: 'new' }, chunks(2, 'new'));
     expect(stored(state).map(payload => payload.text).sort()).toEqual(['new-0', 'new-1']);

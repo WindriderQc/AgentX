@@ -75,3 +75,35 @@ test('memory reads apply a similarity floor unless the caller chooses one or use
   expect(defaultMinScore('2')).toBe(DEFAULT_MIN_SCORE);
   expect(defaultMinScore('')).toBe(DEFAULT_MIN_SCORE);
 });
+
+describe('replaced RAG facts (#896)', () => {
+  const rows = [
+    { text: 'Synthetic backup on host A', metadata: { scope: 'household', sensitivity: 'normal',
+      invalidatedAt: '2026-03-01T00:00:00.000Z', supersededBy: 'backup-b' } },
+    { text: 'Synthetic backup on host B', metadata: { scope: 'household', sensitivity: 'normal', invalidatedAt: null } },
+    { text: 'Synthetic lease until later', metadata: { scope: 'household', sensitivity: 'normal',
+      invalidatedAt: '2999-01-01T00:00:00.000Z' } },
+  ];
+  beforeEach(() => fetch.mockResolvedValue({ ok: true,
+    text: async () => JSON.stringify({ ok: true, data: { results: rows } }) }));
+
+  test('ordinary recall drops facts already replaced, even if an older RAG returns them', async () => {
+    expect(await forAudience('owner').search('Synthetic backup')).toEqual([rows[1], rows[2]]);
+    expect(await forAudience('household').search('Synthetic backup')).toEqual([rows[1], rows[2]]);
+    expect(JSON.parse(fetch.mock.calls[0][1].body).includeHistory).toBeUndefined();
+  });
+
+  test('only the owner audience can ask for history', async () => {
+    expect(await forAudience('owner').search('Synthetic backup', { includeHistory: true })).toEqual(rows);
+    expect(JSON.parse(fetch.mock.calls[0][1].body).includeHistory).toBe(true);
+    expect(await forAudience('household').search('Synthetic backup', { includeHistory: true })).toEqual([rows[1], rows[2]]);
+    expect(JSON.parse(fetch.mock.calls[1][1].body).includeHistory).toBeUndefined();
+  });
+
+  test('rag_search forwards an explicit owner history read', async () => {
+    const tool = await handleMcpMessage({ jsonrpc: '2.0', id: 7, method: 'tools/call',
+      params: { name: 'rag_search', arguments: { query: 'Synthetic backup', includeHistory: true } } }, {});
+    expect(tool.result.structuredContent.results).toEqual(rows);
+    expect(JSON.parse(fetch.mock.calls[0][1].body).includeHistory).toBe(true);
+  });
+});

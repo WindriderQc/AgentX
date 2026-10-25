@@ -42,3 +42,15 @@ test('an unavailable metrics request aborts at its deadline without another upst
   expect(await outcome).toMatchObject({ status: 504, code: 'RAG_SERVICE_ERROR_TIMEOUT' });
   expect(fetch).toHaveBeenCalledTimes(1);
 });
+
+test('replacement validity and history requests cross the Core-to-RAG boundary unchanged', async () => {
+  fetch.mockResolvedValue({ ok: true, text: async () => JSON.stringify({ ok: true, data: { results: [] } }) });
+  const client = new RagServiceClient();
+  await client.upsertDocumentWithChunks('Synthetic old fact', { documentId: 'old', scope: 'owner', sensitivity: 'private',
+    invalidatedAt: '2026-03-01T00:00:00.000Z', supersededBy: 'new' });
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ invalidatedAt: '2026-03-01T00:00:00.000Z', supersededBy: 'new' });
+  await client.searchSimilarChunks('Synthetic', { includeHistory: true });
+  expect(JSON.parse(fetch.mock.calls[1][1].body).includeHistory).toBe(true);
+  await client.searchSimilarChunks('Synthetic', {});
+  expect(JSON.parse(fetch.mock.calls[2][1].body).includeHistory).toBeUndefined();
+});

@@ -13,7 +13,7 @@ const {
 } = require('../../clients/serviceOutboundClient');
 const crypto = require('crypto');
 const logger = require('../../../config/logger');
-const { memoryFactProjection } = require('../../../../shared/memoryFactMetadata');
+const { memoryFactProjection, memoryValidityProjection } = require('../../../../shared/memoryFactMetadata');
 
 const QDRANT_TIMEOUT = SERVICE_OUTBOUND_TIMEOUTS[
   SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_COLLECTION_READ
@@ -21,7 +21,7 @@ const QDRANT_TIMEOUT = SERVICE_OUTBOUND_TIMEOUTS[
 const DOCUMENT_METADATA_FIELDS = [
   'documentId', 'source', 'tags', 'sourceIdentity', 'sourceIdentityKind',
   'contentHash', 'identityVersion', 'chunkSize', 'chunkOverlap', 'scope', 'sensitivity',
-  'format', 'title', 'validFrom', 'recordedAt', 'sourceRefs'
+  'format', 'title', 'validFrom', 'recordedAt', 'sourceRefs', 'invalidatedAt', 'supersededBy'
 ];
 const METADATA_PAGE_SIZE = 1000;
 // Facts every point of one stored revision shares. Points that disagree mean
@@ -42,9 +42,15 @@ const PAYLOAD_INDEXES = Object.freeze({
   contentHash: 'keyword',
   noteName: 'keyword',
   aliases: 'keyword',
+  invalidatedAtMs: 'integer',
   text: TEXT_INDEX_SCHEMA
 });
-const KEYWORD_RESULT_FIELDS = ['text', 'chunkIndex', 'documentId', 'source', 'scope', 'sensitivity', 'title', 'validFrom', 'recordedAt', 'sourceRefs'];
+const KEYWORD_RESULT_FIELDS = ['text', 'chunkIndex', 'documentId', 'source', 'scope', 'sensitivity', 'title', 'validFrom', 'recordedAt', 'sourceRefs', 'invalidatedAt', 'supersededBy'];
+// A missing, null or future invalidation keeps a fact current; a range match
+// on the numeric twin excludes only facts that stopped holding by now.
+function currentFactExclusion(options = {}) {
+  return options.includeHistory === true ? [] : [{ key: 'invalidatedAtMs', range: { lte: Date.now() } }];
+}
 
 class QdrantVectorStore extends VectorStoreAdapter {
   constructor(config = {}) {
@@ -248,6 +254,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
     const minScore = options.minScore !== undefined ? options.minScore : 0.0;
     const filters = options.filters || {};
     const must = this._buildMustFilters(filters);
+    const mustNot = currentFactExclusion(options);
 
     const body = {
       vector: queryEmbedding,
@@ -255,7 +262,9 @@ class QdrantVectorStore extends VectorStoreAdapter {
       score_threshold: minScore,
       with_payload: true,
     };
-    if (must.length > 0) body.filter = { must };
+    if (must.length > 0 || mustNot.length > 0) {
+      body.filter = { ...(must.length ? { must } : {}), ...(mustNot.length ? { must_not: mustNot } : {}) };
+    }
 
     const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/points/search`, {
       method: 'POST',
@@ -300,6 +309,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
       source: payload.source,
       tags: payload.tags,
       ...memoryFactProjection(payload),
+      ...memoryValidityProjection(payload),
       ...(payload.scope ? { scope: payload.scope, sensitivity: payload.sensitivity } : {}),
       hash: payload.hash,
       ...(payload.sourceIdentity ? { sourceIdentity: payload.sourceIdentity } : {}),
@@ -331,6 +341,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
             source: pt.payload.source,
             tags: pt.payload.tags,
             ...memoryFactProjection(pt.payload),
+            ...memoryValidityProjection(pt.payload),
             ...(pt.payload.scope ? { scope: pt.payload.scope, sensitivity: pt.payload.sensitivity } : {}),
             ...(pt.payload.sourceIdentity ? { sourceIdentity: pt.payload.sourceIdentity } : {}),
             ...(pt.payload.sourceIdentityKind ? { sourceIdentityKind: pt.payload.sourceIdentityKind } : {}),
@@ -374,7 +385,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
    * the full-text payload index in one bounded scroll. Without that index
    * Qdrant would match case-sensitive substrings, so the read fails instead.
    */
-  async findKeywordCandidates(terms, { filters = {}, limit = 500 } = {}) {
+  async findKeywordCandidates(terms, { filters = {}, limit = 500, includeHistory = false } = {}) {
     if (!terms.length) return [];
     if (!this._textIndexReady) {
       const info = await this.getCollectionInfo();
@@ -385,6 +396,8 @@ class QdrantVectorStore extends VectorStoreAdapter {
     const must = this._buildMustFilters(filters);
     const filter = { should: terms.map(term => ({ key: 'text', match: { text: term } })) };
     if (must.length) filter.must = must;
+    const mustNot = currentFactExclusion({ includeHistory });
+    if (mustNot.length) filter.must_not = mustNot;
     const candidates = [];
     for await (const points of this._scrollPages({
       filter, limit, withPayload: { include: KEYWORD_RESULT_FIELDS }, pageSize: limit

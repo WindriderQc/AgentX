@@ -17,7 +17,7 @@
 
 const crypto = require('crypto');
 const { memoryClassification } = require('../../shared/memoryClassification');
-const { memoryFactInput } = require('../../shared/memoryFactMetadata');
+const { memoryFactInput, memoryValidityInput } = require('../../shared/memoryFactMetadata');
 const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
@@ -87,10 +87,11 @@ function validateIngestDocument(document) {
   if (source != null && typeof source !== 'string') {
     return { error: 'source must be a string' };
   }
-  let classification, fact;
+  let classification, fact, validity;
   try {
     classification = memoryClassification(document);
     fact = memoryFactInput(document);
+    validity = memoryValidityInput(document);
   } catch (error) {
     return { error: error.message };
   }
@@ -118,6 +119,7 @@ function validateIngestDocument(document) {
   return { metadata: {
     ...classification,
     ...fact,
+    ...validity,
     source: source || 'api', tags: tags || [], documentId,
     chunkSize: resolvedChunkSize, chunkOverlap: resolvedChunkOverlap
   } };

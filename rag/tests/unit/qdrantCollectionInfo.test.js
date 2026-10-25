@@ -82,7 +82,8 @@ describe('Qdrant payload indexes', () => {
     const body = JSON.parse(fetch.mock.calls[0][1].body);
     expect(body.filter).toEqual({
       should: [{ key: 'text', match: { text: 'ia' } }, { key: 'text', match: { text: 'locale' } }],
-      must: [{ key: 'scope', match: { value: 'household' } }]
+      must: [{ key: 'scope', match: { value: 'household' } }],
+      must_not: [{ key: 'invalidatedAtMs', range: { lte: expect.any(Number) } }]
     });
     expect(body.limit).toBe(500);
     expect(body.with_payload.include).toEqual(expect.arrayContaining(['text', 'documentId']));

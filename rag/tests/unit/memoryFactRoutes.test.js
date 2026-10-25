@@ -4,7 +4,8 @@ jest.mock('../../src/services/ragStore', () => ({ getRagStore: () => ({
   getDocument: async () => ({ documentId: 'synthetic', source: 'agent-artifacts',
     scope: 'owner', sensitivity: 'private',
     validFrom: '2026-01-05T00:00:00.000Z', recordedAt: '2026-01-20T00:00:00.000Z',
-    sourceRefs: [{ system: 'memory-review', id: 'run:candidate' }] }),
+    sourceRefs: [{ system: 'memory-review', id: 'run:candidate' }],
+    invalidatedAt: '2026-03-01T00:00:00.000Z', supersededBy: 'successor' }),
   getDocumentChunks: async () => [{ chunkIndex: 0, text: 'Synthetic late-reported fact' }],
 }) }));
 
@@ -19,5 +20,6 @@ test.each(['', '/chunks'])('document read %s exposes the source fact date separa
   expect(metadata).toMatchObject({
     validFrom: '2026-01-05T00:00:00.000Z', recordedAt: '2026-01-20T00:00:00.000Z',
     sourceRefs: [{ system: 'memory-review', id: 'run:candidate' }], scope: 'owner', sensitivity: 'private',
+    invalidatedAt: '2026-03-01T00:00:00.000Z', supersededBy: 'successor',
   });
 });

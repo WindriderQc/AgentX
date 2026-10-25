@@ -73,10 +73,19 @@ Ingest a text document (chunk + embed + store). `POST /api/rag/documents` is an 
 | documentId | string | no | MD5 auto | Stable ID; re-ingest replaces |
 | scope | string | no | -- | Supply together with sensitivity; see classification below |
 | sensitivity | string | no | -- | Supply together with scope; see classification below |
+| validFrom | ISO instant or null | no | unknown | When the fact became true; never filled from the recording time |
+| sourceRefs | `{system,id}`[] | no | `[]` | At most 20 bounded source references |
+| invalidatedAt | ISO instant or null | no | unknown | When the fact stopped holding; set only by an explicit correction or replacement |
+| supersededBy | string or null | no | -- | Successor record id; requires `invalidatedAt` and cannot name the document itself |
 
 Classification uses `scope`: `project`, `ecosystem`, `workflow`, `owner`,
 `household`, `private_domain`; and `sensitivity`: `normal`, `private`,
 `highly_private`. Both fields must be supplied together with valid values.
+`invalidatedAt` and `supersededBy` survive a later rewrite that omits them; an
+explicit `null` clears them. Repeating the same text with a changed value
+rewrites the document and keeps its first recording time. `invalidatedAt` may
+not precede `validFrom`.
+
 Re-ingesting an existing identity with a different classification returns
 409 `MEMORY_CLASSIFICATION_CONFLICT`; ingestion does not implicitly relabel it.
 These labels describe content, not authentication or an access grant.
@@ -231,6 +240,7 @@ Semantic vector search across chunks.
 | rerank | bool | no | false | LLM judge re-ranking; adds inference work |
 | compress | bool | no | false | Extract query-relevant sentences after retrieval; fail-soft |
 | followLinks | bool or number | no | false | Follow retrieved Markdown links; true adds up to 2 notes, numeric values are truncated/clamped to 0-3 |
+| includeHistory | bool | no | false | Also return facts invalidated by now, each with `metadata.current`; Core grants it only to the owner audience |
 
 Optional search stages have variable costs depending on the corpus, model and
 available inference host; these options do not promise fixed added latency.
@@ -249,6 +259,11 @@ curl -X POST http://127.0.0.1:3182/api/rag/search \
   "applied": { "hybrid": false, "expand": false }
 } }
 ```
+
+Every retrieval mode (vector, keyword, hybrid, expansion and followed links)
+excludes facts whose `invalidatedAt` has passed. A missing date stays current;
+a future `invalidatedAt` takes effect at its instant. Results carry
+`validFrom`, `recordedAt`, `sourceRefs`, `invalidatedAt` and `supersededBy`.
 
 `applied` reports the retrieval modes that ran. Hybrid search and query
 expansion do not compose: when both are requested, hybrid runs and

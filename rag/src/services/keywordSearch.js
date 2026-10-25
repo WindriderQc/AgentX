@@ -9,7 +9,7 @@
 'use strict';
 
 const logger = require('../../config/logger');
-const { memoryFactProjection } = require('../../../shared/memoryFactMetadata');
+const { memoryFactProjection, memoryValidityProjection } = require('../../../shared/memoryFactMetadata');
 
 // Two-letter function words dropped from queries (French and English). Other
 // two-letter tokens such as "IA" or "AI" are kept.
@@ -86,7 +86,9 @@ async function keywordSearch(vectorStore, query, options = {}) {
     return [];
   }
 
-  const candidates = await vectorStore.findKeywordCandidates(queryTerms, { filters, limit: CANDIDATE_LIMIT });
+  const candidates = await vectorStore.findKeywordCandidates(queryTerms, {
+    filters, limit: CANDIDATE_LIMIT, includeHistory: options.includeHistory === true
+  });
   const results = [];
 
   for (const chunk of candidates || []) {
@@ -104,6 +106,7 @@ async function keywordSearch(vectorStore, query, options = {}) {
           chunkIndex: chunk.chunkIndex || 0,
           source: meta.source,
           ...memoryFactProjection(meta),
+          ...memoryValidityProjection(meta),
           ...(meta.scope ? { scope: meta.scope, sensitivity: meta.sensitivity } : {}),
           title: meta.title,
           searchType: 'keyword'

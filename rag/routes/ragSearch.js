@@ -16,7 +16,7 @@ const TOP_K_MAX = 20;
 
 async function handleSearch(req, res) {
   try {
-    const { query, topK, minScore, filters, expand, hybrid, rerank, compress, followLinks } = req.body;
+    const { query, topK, minScore, filters, expand, hybrid, rerank, compress, followLinks, includeHistory } = req.body;
     if (!query || typeof query !== 'string' || query.trim().length === 0) {
       return res.status(400).json({ ok: false, error: 'query is required and must be a non-empty string' });
     }
@@ -34,6 +34,10 @@ async function handleSearch(req, res) {
     if (!Number.isFinite(safeMinScore) || safeMinScore < 0) safeMinScore = 0;
     if (safeMinScore > 1) safeMinScore = 1;
 
+    if (includeHistory !== undefined && typeof includeHistory !== 'boolean') {
+      return res.status(400).json({ ok: false, error: 'includeHistory must be a boolean' });
+    }
+
     // Validate filters is a plain object (not array, not string)
     if (filters !== undefined && filters !== null) {
       if (typeof filters !== 'object' || Array.isArray(filters)) {
@@ -50,7 +54,9 @@ async function handleSearch(req, res) {
       expand: expand === true,
       hybrid: hybrid === true,
       rerank: rerank === true,
-      compress: compress === true, followLinks
+      compress: compress === true, followLinks,
+      // Replaced facts stay out of ordinary recall; the caller asks for history.
+      includeHistory: includeHistory === true
     };
     // Bounded, server-attested search telemetry. No query text, no passages.
     const searchEventBase = {
