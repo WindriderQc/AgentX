@@ -3,23 +3,9 @@
 const { shareToolEvidence } = require('../../src/services/conversations/sharedToolEvidence');
 const { shareContextText } = require('../../src/services/conversations/sharedContextText');
 const { assertContextSize, formatTurnContext } = require('../../src/services/conversations/turnContext');
+const { expandedContext } = require('../helpers/expandedContext');
 
-// Decode only the documented wire contract, independently of the encoder.
-function expandText(encoded) {
-  function visit(value) {
-    if (!value || typeof value !== 'object' || value instanceof Date) return value;
-    if (Object.keys(value).length === 1 && Object.hasOwn(value, '$textRef')) {
-      const target = value.$textRef.slice(2).split('/').map(key => key.replace(/~1/g, '/').replace(/~0/g, '~'))
-        .reduce((parent, key) => parent[key], encoded);
-      expect(typeof target).toBe('string');
-      return target;
-    }
-    if (Array.isArray(value)) return value.map(visit);
-    return Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'sharedTextEncoding')
-      .map(([key, item]) => [key, visit(item)]));
-  }
-  return visit(encoded);
-}
+const expandText = expandedContext;
 
 test('growing complete conversation fits by sharing repeated native answer text without dropping its tail', () => {
   const answer = 'École 🐈 and owner restriction. '.repeat(180) + ' LAST_CANONICAL_DETAIL';
