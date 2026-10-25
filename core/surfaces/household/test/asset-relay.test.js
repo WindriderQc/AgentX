@@ -60,3 +60,24 @@ test('an unconfigured or failing relay answers through the caller without cachin
   await broken({}, response());
   assert.deepEqual(failures, ['AVATAR_NOT_CONFIGURED', 'Upstream answered 502']);
 });
+
+test('one relay may require a JavaScript answer and set its own size cap', async () => {
+  const typed = (type, body) => async () => ({ ok: true, headers: new Map([['content-type', type]]), text: async () => body });
+  const failures = [];
+  const unavailable = (res, error) => { failures.push([error.status, error.message]); return res; };
+  let upstream = typed('text/html; charset=utf-8', '<!doctype html><title>app</title>');
+  const strict = createScriptRelay({ resolveUrl: () => 'https://graphysx.example/embed/diskx.js', fetchWithTimeout: (...args) => upstream(...args),
+    unavailable, requireScriptType: true, maxBytes: 16 });
+  assert.equal((await strict({}, response())).body, undefined, 'an HTML fallback is not relayed');
+  upstream = typed('text/javascript', 'export const too_long = 1;');
+  await strict({}, response());
+  upstream = typed('application/javascript; charset=utf-8', 'export {};');
+  assert.equal((await strict({}, response())).body, 'export {};');
+  assert.deepEqual(failures, [[502, 'Upstream did not answer with JavaScript'], [502, 'Relayed script is too large']]);
+
+  // Existing relays keep the default: no type check, the shared 4 MB cap.
+  const lenient = createScriptRelay({ resolveUrl: () => 'http://voix.lan/assets/voice-audio.js',
+    fetchWithTimeout: async () => ({ ok: true, text: async () => 'x'.repeat(1024) }), unavailable });
+  assert.equal((await lenient({}, response())).body.length, 1024);
+  assert.equal(failures.length, 2);
+});

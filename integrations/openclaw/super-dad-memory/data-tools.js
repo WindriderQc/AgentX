@@ -29,6 +29,12 @@ const TOOLS = [
       includeOccupancy: { type: 'boolean' },
     }, additionalProperties: false },
     args: params => pick(params, ['host', 'includeOccupancy']) },
+  { name: 'nestor_janitor_report', label: 'Nestor Janitor Report', core: 'janitor_report_view',
+    description: 'Summarise the latest Janitor duplicate report from AgentX: status and age, SHA-256 verified duplicate groups and files, proven logical savings, executable actions and pending policy decisions, with a link to the DiskX 3D view of the report (home network only). Optional group (one SHA-256 from the report) adds its copy count and opens DiskX on it. Use it for "montre-moi le dernier rapport Janitor": relay the summary sentence and give the link as is. The survivor rule is the copy the report would keep, never an authorization; savings are logical bytes, the physical space freed is not measured. Reads the stored report only: never scans, runs, generates, approves, moves or deletes anything. Read-only.',
+    parameters: { type: 'object', properties: {
+      group: { type: 'string', pattern: '^[0-9A-Fa-f]{64}$' },
+    }, additionalProperties: false },
+    args: params => pick(params, ['group']) },
 ];
 
 function pick(params, keys) {

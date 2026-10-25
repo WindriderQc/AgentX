@@ -11,7 +11,7 @@ function testFiles(directory) {
   }).sort();
 }
 
-for (const component of ['surfaces/household', 'surfaces/data-toolbox', 'surfaces/psyx', 'integrations/runtime-bridges']) {
+for (const component of ['surfaces/household', 'surfaces/data-toolbox', 'surfaces/diskx', 'surfaces/psyx', 'integrations/runtime-bridges']) {
   const cwd = path.join(__dirname, '..', component);
   // Node's default discovery also executes support servers in test/ directories.
   const result = spawnSync(process.execPath, ['--test', '--test-concurrency=1', ...process.argv.slice(2), ...testFiles(path.join(cwd, 'test'))], {

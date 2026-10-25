@@ -165,6 +165,16 @@ const SECRETARY_TOOLS = Object.freeze([
     _meta: SECRETARY_MCP_META
   }),
   Object.freeze({
+    name: 'janitor_report_view',
+    title: 'Latest Janitor Duplicate Report',
+    description: 'Summarise the latest Janitor duplicate report Data stored for the shared drive: its status and age, SHA-256 verified duplicate groups and files, proven savings, executable actions and pending policy decisions, plus a link to the DiskX 3D view of that report on the home network. Optional group (one SHA-256 from the report) adds that group\'s copy count and links DiskX to it. Use it for "montre-moi le dernier rapport Janitor". Always relay the summary sentence and give the link as is. Say that the report\'s survivor rule is the copy it would keep, never an authorization, and that savings are logical bytes: the physical space freed is not measured. It reads the stored report only: it never scans, runs or generates a report, approves, moves or deletes anything, and returns no file path. Read-only.',
+    inputSchema: objectSchema({
+      group: { type: 'string', pattern: '^[0-9A-Fa-f]{64}$', description: 'SHA-256 of one verified duplicate group in the latest report.' }
+    }),
+    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    _meta: SECRETARY_MCP_META
+  }),
+  Object.freeze({
     name: 'complete_personal_task',
     title: 'Complete Personal Task',
     description: 'Complete one personal task by id or distinctive title. For a repeating task first read its current dueAt and pass that exact value as expectedDueAt; completion advances its next occurrence. Retain expectedDueAt across retries. Ambiguous phrases fail with candidates.',
@@ -213,7 +223,9 @@ const SECRETARY_TOOLS = Object.freeze([
 // client (a family or lead agent with this server, an external agent) is offered
 // them. Core's MCP endpoint has no caller identity: reaching it is bounded by
 // the private network (docs/LAN_ACCESS_SCOPE.md), not by this list.
-const OWNER_RELAY_ONLY = Object.freeze(['find_files']);
+// The Janitor report view names the owner's scanned roots and links the page
+// that draws their paths, so it is relayed for the owner only as well.
+const OWNER_RELAY_ONLY = Object.freeze(['find_files', 'janitor_report_view']);
 const LISTED_SECRETARY_TOOLS = Object.freeze(SECRETARY_TOOLS.filter((tool) => !OWNER_RELAY_ONLY.includes(tool.name)));
 
 function textResult(structuredContent) {
@@ -290,6 +302,10 @@ async function callSecretaryTool(name, args, deps) {
     if (name === 'find_files') {
       const find = deps.findFiles || require('../../src/services/storageIndex').findFiles;
       return textResult(await find(input));
+    }
+    if (name === 'janitor_report_view') {
+      const read = deps.janitorReportView || require('../../src/services/janitorReportView').readJanitorReportView;
+      return textResult(await read(input));
     }
     if (name === 'gpu_status') {
       const read = deps.gpuStatus || require('../../src/services/gpuStatus').readGpuStatus;

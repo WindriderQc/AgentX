@@ -258,6 +258,7 @@ if (!isDemoProfile(agentxProfile)) {
     extensionRoot: path.join(__dirname, '../surfaces/household')
   });
   require('../surfaces/data-toolbox').register({ contractVersion: 2, app, express });
+  require('../surfaces/diskx').register({ app, express });
   require('../surfaces/psyx').register({ app, mongoose, runtimeServices, conversationLifecycle, logger });
   // Optional host integrations use the same admitted Core runtime and models.
   // Instance configuration and native harness processes remain external.

@@ -775,7 +775,7 @@ async function janitor() {
   const organizationCounts = comparison.organization?.counts || {};
   state.janitorReportGeneratedAt = report.generatedAt || null;
   restoreJanitorReviewDraft(state.janitorReportGeneratedAt);
-  const actions = `<div class="actions"><a class="button" href="/api/data-toolbox/janitor/strategy/latest/raw" target="_blank" rel="noopener">Open full JSON</a><a class="button" href="/api/data-toolbox/janitor/strategy/latest/raw" download="shared-drive-janitor-latest.json">Download full JSON</a><button class="button" data-action="refresh">Refresh</button></div>`;
+  const actions = `<div class="actions"><a class="button" href="/diskx?janitor=latest" target="_blank" rel="noopener">View in DiskX</a><a class="button" href="/api/data-toolbox/janitor/strategy/latest/raw" target="_blank" rel="noopener">Open full JSON</a><a class="button" href="/api/data-toolbox/janitor/strategy/latest/raw" download="shared-drive-janitor-latest.json">Download full JSON</a><button class="button" data-action="refresh">Refresh</button></div>`;
   content.innerHTML = `${heading('Shared-drive Janitor', `Portfolio report ${report.status || 'unavailable'} · generated ${date(report.generatedAt)}.`, actions)}
     ${report.available === false ? '<div class="notice"><strong>No strategy report yet.</strong> The scheduled shared-drive assessment generates it; profiles and their latest runs are listed below.</div>' : ''}
     <div class="notice success"${report.available === false ? ' hidden' : ''}><strong>Portfolio evidence ready for policy review.</strong> This is not an executable deletion plan. Exact candidates come from a current profile run and still require a separate SHA-256 preview; this dashboard is read-only.</div>

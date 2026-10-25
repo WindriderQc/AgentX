@@ -14,6 +14,7 @@ a design proposal, not a delivered capability.
 | HTTPS LAN `/benchmark`, `/benchmark/*` | Benchmark on loopback 3181 | Caddy forward auth to Core | Benchmark admission, leases, execution limits and qualification |
 | HTTPS LAN `/rag`, `/rag/*` | RAG on loopback 3182 | Caddy forward auth to Core | Retrieval classifications, ingestion policy and destructive confirmations |
 | HTTPS LAN `/data-toolbox` | Core projection → internal Data 3083 | Core adult gate | Toolbox allowlist: reads, network device record edit, network scan request, MQTT publish, storage scan request, Janitor review decisions (store, import, remove; no file is deleted), report generation and report deletion (in Data's own report store); Data owns mutations |
+| HTTPS LAN `/diskx`, `/api/diskx/diskx.js` | Core page and GraphysX module relay; the page reads the Toolbox GET routes | None: added after the adult gate's removal | Same as the Toolbox: private-LAN access, refused on a family-pinned device unless the owner's spoken unlock is active; full profile only; presentation only, no write route |
 | Optional HTTPS LAN Data entry | Data on loopback 3183 | Gateway deployment dependent | Data preview/approval/evidence rules; native collectors remain unchanged |
 
 All four services use `shared/browserOriginGuard.js`. Compose publishes only
