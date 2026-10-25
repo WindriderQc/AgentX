@@ -83,6 +83,24 @@ describe('owner private recall corpus', () => {
     expect(rag.docs.has(`souvenir:${kept.id}`)).toBe(false);
   });
 
+  test('a replaced souvenir is hidden from derived recall and people immediately while owner history retains its text', async () => {
+    const rag = fakeRag();
+    const kept = await personal().keepSouvenir({ text: 'Synthetic canoe trip on the lake',
+      people: ['Synthetic Friend'], sourceRefs: [{ system: 'gmail', id: sha(1) }] });
+    await people.observe([{ source: 'gmail-header', role: 'from', direction: 'received', name: 'Synthetic Friend',
+      email: 'friend@example.test', occurredAt: '2016-07-20T12:00:00Z',
+      ref: { threadId: 'thread0001', messageId: 'message0001', sourceSha256: sha(1) } }]);
+    const [person] = (await people.list()).people;
+    await recall.sync({}, rag.deps);
+    await MemoryNote.updateOne({ _id: kept.id }, { $set: { invalidatedAt: new Date('2025-01-01T00:00:00Z') } });
+    expect((await recall.search('canoe lake', {}, rag.deps)).results).toEqual([]);
+    expect((await people.show(person.id)).souvenirs).toEqual([]);
+    expect(await personal().souvenirs([kept.id])).toEqual([]);
+    await recall.sync({}, rag.deps);
+    expect(rag.docs.has(`souvenir:${kept.id}`)).toBe(false);
+    expect((await personal().list({ includeHistory: true })).notes[0]).toMatchObject({ id: kept.id, text: kept.text });
+  });
+
   test('a full-length document stays within the corpus limit, and a RAG refusal is a 400', async () => {
     const rag = fakeRag();
     await recall.index([mail(4, 'x'.repeat(200000))], rag.deps);

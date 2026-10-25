@@ -35,6 +35,13 @@ existing `createdAt`; RAG persists its recording timestamp through content
 updates and embedding-collection migration. This metadata preserves the same
 audience boundaries and standing automation policy; it grants no write authority.
 
+Selected notes retain `invalidatedAt` and `supersededBy`. Current recall excludes
+invalidated facts, including derived souvenir recall and people views. An
+explicit owner note list may set `includeHistory: true` to read predecessors
+inside the same space, while forgotten and expired notes stay hidden. Household
+reads cannot request this history. The general editor preserves predecessors;
+reviewed replacement writes, rollback and RAG history remain open under #896.
+
 Core exposes an audience-bound memory read capability. Owner reads keep all
 information scopes, including private-domain and unclassified historical
 records. Household reads force `scope=household` and `sensitivity=normal` before
