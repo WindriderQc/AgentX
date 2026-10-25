@@ -10,6 +10,21 @@ The owner tool `personal_task_dossier` is available on the existing Core MCP
 personal transport, `/api/consumers/nestor/v1/mcp`. Local's private native
 adapter, Hermes and other authorized owner clients use the same implementation.
 The shared and memory-only buses do not advertise this tool.
+Model tool replies default to bounded metadata (`view: summary`), not source
+text. `get` with `view: sources` reads the source index; `view: source` and an
+exact `sourceId` reads one saved source. `view: proposal` reads all proposal
+fields, gaps and source selection; `schema` reads the proposal schema, `tasks`
+reads existing actions, and `document` pages the entire saved receipt.
+Paged views return exact JSON fragments with `contentHash`, `offset`,
+`nextOffset`, `totalChars` and `complete`. Continue using the returned offset
+and hash; a changed value refuses rather than mixing versions. Concatenating
+the fragments recovers every original character. Each serialized page stays
+within 6,000 characters and preserves Unicode pairs. A partial read remains
+explicit and is not proof of complete source coverage. `view: full` retains
+the legacy complete model reply; human review and internal services continue
+to read the full saved dossier unchanged. Reading another page neither calls
+the mail/calendar providers again nor creates another dossier.
+
 It supports:
 
 - `read`: an exact numeric task `ref`, up to three `threadIds`, up to five

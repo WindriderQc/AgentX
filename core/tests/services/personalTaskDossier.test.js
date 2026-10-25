@@ -32,6 +32,31 @@ describe('personal dossier evidence and human decisions in Core', () => {
   const decide = (review, decision = 'apply') => dossiers.decide({ id: review.id, proposalHash: review.proposalHash,
     revision: review.task.revision, decision }, deps);
 
+  test('owner tool defaults to bounded metadata and pages the same saved evidence without rereading providers or changing a task', async () => {
+    native.sources[0].text += ' Exact retained source. '.repeat(3000);
+    const summary = await dossiers.operate({ action: 'read', ref: task.id, threadIds: [threadId] }, deps);
+    expect(summary).toMatchObject({ view: 'summary', sourceCount: 1, task: { id: task.id, revision: 0 } });
+    expect(summary.sources).toBeUndefined();
+    expect(JSON.stringify(summary).length).toBeLessThanOrEqual(6000);
+    const before = await Task.findOne({ pipelineId: task.id }).lean();
+    const original = await dossiers.get(summary.id);
+    let offset = 0, expectedHash, serialized = '';
+    do {
+      const page = await dossiers.operate({ action: 'get', id: summary.id, view: 'source', sourceId: source().id,
+        offset, ...(expectedHash && { expectedHash }) });
+      serialized += page.content;
+      if (page.complete) break;
+      offset = page.nextOffset; expectedHash = page.contentHash;
+    } while (offset < 100000);
+    expect(JSON.parse(serialized)).toEqual(original.sources[0]);
+    expect(await dossiers.operate({ action: 'get', id: summary.id, view: 'full' })).toEqual(original);
+    expect(deps.mail.dossier).toHaveBeenCalledTimes(1);
+    expect(await Dossier.countDocuments()).toBe(1);
+    expect(await Task.findOne({ pipelineId: task.id }).lean()).toEqual(before);
+    await expect(dossiers.operate({ action: 'read', ref: task.id, view: 'source', sourceId: source().id }, deps)).rejects.toMatchObject({ code: 'PERSONAL_DOSSIER_VIEW_INVALID' });
+    expect(await Dossier.countDocuments()).toBe(1);
+  });
+
   test('reconciles first, proposes without mutation, then updates the same action with its original context and replay receipt', async () => {
     const review = await read();
     expect(deps.mail.dossier).toHaveBeenCalledWith({ threadId });

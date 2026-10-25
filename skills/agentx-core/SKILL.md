@@ -117,6 +117,16 @@ result separately from invitation email or device notification delivery.
 
 Before recommending changes to an existing personal action, use
 `personal_task_dossier` when it is advertised. Search recent related mail first;
+`read`, `get` and `propose` return a bounded metadata summary by default; it is
+not the source text. Use `get` with `view: sources` for the index, then
+`view: source` and the exact `sourceId`, and `view: proposal` for full proposal
+details, gaps and selection. `view: schema` reads the canonical proposal schema;
+`view: tasks` reads existing actions and `view: document` pages the entire saved
+receipt. Concatenate exact JSON `content` pages, following
+`nextOffset` as `offset` and `contentHash` as `expectedHash` until `complete`.
+The saved sources are unchanged; `view: full` retains the legacy complete
+response and proposal schema. Do not replace unread evidence with a task summary
+or start another agent merely to work around a response limit.
 read the selected threads, calendars, tasks and document coverage. A missing
 source, unread document, draft or quotation stays explicit. Age and silence
 prove neither resolution nor an open obligation. Attribute commitments to the
