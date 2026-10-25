@@ -108,7 +108,9 @@ async function issSummary(userText, { readPasses = defaultIssPasses, logger } = 
       `Passages de la Station spatiale internationale pour ${place}${result.observer?.defaulted ? ' (lieu par défaut : annonce-le, la position de la personne n’est pas connue)' : ''} (calcul AgentX du ${result.computedAtLocal}, éléments orbitaux CelesTrak du ${result.tle.epochLocal}${result.tle.stale ? ', anciens : dis que l’heure peut être moins précise' : ''}). Cite ces jours et heures exactement, n’en invente aucune. La météo n’est pas connue : dis « si le ciel est dégagé ».`,
     ];
     if (visible.length) {
-      lines.push(`Visibles à l’œil nu dans les 72 prochaines heures : ${visible.slice(0, MAX_ISS_LISTED).map(visibleLine).join(' ; ')}.`);
+      const listed = visible.slice(0, MAX_ISS_LISTED);
+      lines.push(`${result.counts.observable} passage(s) visible(s) à l’œil nu au total dans les 72 prochaines heures. Voici les ${listed.length} prochain(s) : ${listed.map(visibleLine).join(' ; ')}.`);
+      if (listed.length < result.counts.observable) lines.push('Cette liste est partielle, pas un classement : ne présente pas ces passages comme les seuls ni l’un d’eux comme le meilleur de toute la période.');
     } else {
       lines.push('Aucun passage visible à l’œil nu dans les 72 prochaines heures.');
     }

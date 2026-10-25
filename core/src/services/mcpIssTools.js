@@ -205,7 +205,7 @@ async function issPasses(args, deps = {}) {
       notObservableBecause: p.reason ? p.reason.text : null,
     })),
     view: viewUrl(deps.env) ? { url: viewUrl(deps.env), label: 'Vue 3D de l’ISS et des passages' } : null,
-    answerRules: 'Donne les heures locales telles quelles avec leur jour et la fenêtre calculée. Limite toute comparaison à la fenêtre window, jamais à une semaine entière si elle n’a pas été calculée. Indique le lieu utilisé; si observer.defaulted est vrai, annonce explicitement que ce lieu par défaut ne prouve pas la position de la personne. Distingue « visible à l’œil nu si le ciel est dégagé » et « passe au-dessus de l’horizon mais pas visible ». Mentionne la date des éléments orbitaux si stale est vrai. Propose view.url quand il est présent. La vue 3D liée règle son lieu séparément : ses passages ne sont pas synchronisés avec ce calcul.',
+    answerRules: 'Donne les heures locales telles quelles avec leur jour et la fenêtre calculée. Limite toute comparaison à la fenêtre window, jamais à une semaine entière si elle n’a pas été calculée. Les counts portent sur toute la fenêtre; la liste passes peut être limitée. Une liste partielle ne prouve ni que ses passages sont les seuls ni qu’un passage est le meilleur de toute la période. Indique le lieu utilisé; si observer.defaulted est vrai, annonce explicitement que ce lieu par défaut ne prouve pas la position de la personne. Distingue « visible à l’œil nu si le ciel est dégagé » et « passe au-dessus de l’horizon mais pas visible ». Mentionne la date des éléments orbitaux si stale est vrai. Propose view.url quand il est présent. La vue 3D liée règle son lieu séparément : ses passages ne sont pas synchronisés avec ce calcul.',
   };
 }
 
