@@ -53,7 +53,7 @@ describe('DiskX access', () => {
     const owner = request(app());
     const page = await owner.get('/diskx?janitor=latest');
     expect(page.status).toBe(200);
-    expect(page.text).toContain('<diskx-city api-base="/api/data-toolbox" roots="/srv/lake" janitor="latest">');
+    expect(page.text).toContain('<diskx-city api-base="/api/data-toolbox" roots="/srv/lake" janitor="latest" actions-href="/data-toolbox">');
     const module = await owner.get('/api/diskx/diskx.js');
     expect(module.status).toBe(200);
     expect(module.text).toBe(MODULE);

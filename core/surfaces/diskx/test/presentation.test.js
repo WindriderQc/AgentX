@@ -115,3 +115,39 @@ test('late browser reads never restore a superseded or failed presentation', asy
   answer(pending[2]); await new Promise(setImmediate);
   assert.equal(window.AgentXPresentedContent.state, 'unavailable');
 });
+
+test('the animation list rides the real screen catalogue; the step on screen reaches Nestor as an observation', async () => {
+  const catalog = pages.createCatalog(screenDestinations({ agentxProfile: 'full', publicUrls: { core: 'https://core.example' } }));
+  const view = await readJanitorReportView({ play: 'duplicates,tour-3' }, { fetchData: fetchData(), env: {} });
+  const target = catalog.parse(view.screenPage);
+  const url = new URL(catalog.url(target), 'https://core.example');
+  assert.equal(diskx.checkQuery(Object.fromEntries(url.searchParams), ['/data']).play, 'duplicates,tour-3');
+
+  const ref = presentationReader.publishJanitor(view);
+  const observation = { contract: 'agentx.presentation/v1', kind: 'page', page: view.screenPage, status: 'visible', read: ref,
+    filters: { report: DATE, group: null }, selection: { scene: { kind: 'pairs', index: 2, count: 5, playing: true } } };
+  assert.deepEqual(presentationEvidence([observation], catalog).scene, { kind: 'pairs', index: 2, count: 5, playing: true });
+  for (const scene of [{ kind: 'delete', index: 0, count: 1 }, { kind: 'pairs', index: 5, count: 5 }, { kind: 'pairs', index: 0, count: 500 }]) {
+    assert.equal(presentationEvidence([{ ...observation, selection: { scene } }], catalog).scene, undefined, JSON.stringify(scene));
+  }
+});
+
+test('the page keeps the step on screen with the presented report; a refused list changes nothing', async () => {
+  const events = {}, pending = [];
+  const status = { classList: { toggle() {} } };
+  const city = { getAttribute: () => null, addEventListener: (name, fn) => { events[name] = fn; } };
+  const window = {};
+  vm.runInNewContext(fs.readFileSync(require.resolve('../public/diskx-page.js'), 'utf8'), {
+    window, document: { getElementById: () => status, querySelector: () => city }, URLSearchParams, setTimeout() {},
+    fetch: url => new Promise(resolve => pending.push({ url, resolve }))
+  });
+  events['diskx-scene-changed']({ detail: { kind: 'overview', index: 0, count: 5, playing: false } });
+  events['diskx-report-read']({ detail: { reportGeneratedAt: DATE } });
+  pending[0].resolve({ ok: true, json: async () => ({ ok: true, data: { read: { id: 'r' }, filters: {} } }) });
+  await new Promise(setImmediate);
+  assert.equal(window.AgentXPresentedContent.selection.scene.kind, 'overview');
+  events['diskx-scene-changed']({ detail: { kind: 'duplicates', index: 1, count: 5, playing: true } });
+  assert.equal(JSON.stringify(window.AgentXPresentedContent.selection.scene), JSON.stringify({ kind: 'duplicates', index: 1, count: 5, playing: true }));
+  events['diskx-error']({ detail: { stage: 'play', message: 'unknown play step: delete' } });
+  assert.equal(window.AgentXPresentedContent.state, 'ready');
+});

@@ -12,6 +12,16 @@ test('only known pages and focus values survive parsing', () => {
   assert.equal(pages.url(pages.parse('pipeline status=review')), '/pipeline?view=screen&from=nestor&status=review');
 });
 
+test('a DiskX page carries a validated animation list to its screen URL', () => {
+  const catalog = pages.createCatalog([{ id: 'diskx', label: 'DiskX', href: '/diskx?janitor=latest', mode: 'frame' }]);
+  const target = catalog.parse('diskx play=Duplicates,pairs,tour-5');
+  assert.deepEqual(target, { page: 'diskx', focus: { play: 'duplicates,pairs,tour-5' } });
+  assert.equal(catalog.url(target), '/diskx?janitor=latest&view=screen&from=nestor&play=duplicates%2Cpairs%2Ctour-5');
+  assert.deepEqual(catalog.parse('diskx play=duplicates,delete'), { page: 'diskx', focus: {} }, 'an unknown step drops the list');
+  assert.equal(pages.diskxPlay('tour-21'), null);
+  assert.equal(pages.diskxPlay(`group-${'a'.repeat(64)},summary`), `group-${'a'.repeat(64)},summary`);
+});
+
 function renderPipeline(query, policy) {
   const routes = {};
   registerPipelinePage({ get: (path, handler) => { routes[path] = handler; } });

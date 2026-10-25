@@ -33,7 +33,8 @@ test('the page mounts <diskx-city> with the configured roots and the Toolbox API
   const res = await request(app()).get('/diskx').expect(200);
   assert.match(res.headers['content-type'], /text\/html/);
   assert.equal(res.headers['cache-control'], 'no-store');
-  assert.match(res.text, /<diskx-city api-base="\/api\/data-toolbox" roots="\/mnt\/datalake,\/mnt\/media"><\/diskx-city>/);
+  assert.match(res.text, /<diskx-city api-base="\/api\/data-toolbox" roots="\/mnt\/datalake,\/mnt\/media" actions-href="\/data-toolbox"><\/diskx-city>/,
+    'the city links the Data Toolbox page, where decisions and actions on files happen');
   assert.match(res.text, /<script type="module" src="\/api\/diskx\/diskx.js"><\/script>/);
   // CSP script-src 'self' with no inline script: every script is a same-origin file.
   assert.doesNotMatch(res.text, /<script(?![^>]*\ssrc=)[^>]*>/);
@@ -61,6 +62,16 @@ test('janitor, group and focus pass to the element only after validation', async
   assert.deepEqual(diskx.checkQuery({ group: [SHA, 'x'] }, ROOTS), { group: SHA }, 'a repeated value takes the first');
   assert.deepEqual(diskx.checkQuery({ focus: '/mnt/datalake' }, ROOTS), { focus: '/mnt/datalake' });
   assert.throws(() => diskx.checkQuery({ focus: '/mnt/datalake/x' }, []), /inside a scanned root/);
+});
+
+test('play passes a DiskX animation list, normalised; anything else is refused', async () => {
+  const res = await request(app()).get(`/diskx?janitor=latest&play=${encodeURIComponent(' Duplicates,tour-5, group-' + SHA)}`).expect(200);
+  assert.match(res.text, new RegExp(`janitor="latest" play="duplicates,tour-5,group-${SHA}"`));
+  for (const play of ['delete', 'duplicates,move', 'tour-0', 'tour-21', 'group-xyz', Array(25).fill('pairs').join(',')]) {
+    const answer = await request(app()).get(`/diskx?play=${encodeURIComponent(play)}`);
+    assert.equal(answer.status, 400, play);
+    assert.doesNotMatch(answer.text, /<diskx-city/, play);
+  }
 });
 
 test('attribute values are escaped in the rendered element', () => {

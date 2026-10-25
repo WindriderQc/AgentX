@@ -13,11 +13,13 @@
 
 const path = require('path');
 const { createScriptRelay, configuredModuleUrl } = require('../household/asset-relay');
-const { reportDate } = require('../../src/services/janitorPresentation');
+const { reportDate, diskxPlay } = require('../../src/services/janitorPresentation');
 
 const PAGE = '/diskx';
 const MODULE_ROUTE = '/api/diskx/diskx.js';
 const API_BASE = '/api/data-toolbox';
+// Where the owner decides and acts on files. The city only links it.
+const ACTIONS_HREF = '/data-toolbox';
 const MAX_ROOTS = 8;
 const MAX_ROOT_LENGTH = 255;
 const MAX_FOCUS_LENGTH = 1024;
@@ -74,10 +76,10 @@ const single = (value) => (Array.isArray(value) ? value[0] : value);
 /**
  * The element attributes the query string may set. Refuses anything it does not
  * know: janitor=latest only, group as one SHA-256, focus as an absolute folder
- * under one of the roots.
+ * under one of the roots, play as a DiskX animation list (presentation steps).
  */
 function checkQuery(query = {}, roots = []) {
-  const unknown = Object.keys(query).filter((key) => !['janitor', 'group', 'focus', 'report', 'view', 'from'].includes(key));
+  const unknown = Object.keys(query).filter((key) => !['janitor', 'group', 'focus', 'report', 'view', 'from', 'play'].includes(key));
   if (unknown.length) throw invalid(`Unknown parameter: ${unknown[0].slice(0, 40)}`);
   if (query.view !== undefined && single(query.view) !== 'screen') throw invalid('view must be screen');
   if (query.from !== undefined && single(query.from) !== 'nestor') throw invalid('from must be nestor');
@@ -97,6 +99,12 @@ function checkQuery(query = {}, roots = []) {
     const sha = String(group).toLowerCase();
     if (!SHA256.test(sha)) throw invalid('group must be one SHA-256 (64 hexadecimal characters)');
     attributes.group = sha;
+  }
+  const play = single(query.play);
+  if (play !== undefined && play !== '') {
+    const list = diskxPlay(String(play));
+    if (!list) throw invalid('play must list DiskX steps: overview, duplicates, pairs, target, summary, tour-N (1-20), group-<sha256>');
+    attributes.play = list;
   }
   const focus = single(query.focus);
   if (focus !== undefined && focus !== '') {
@@ -132,7 +140,7 @@ const escapeAttribute = (value) => String(value)
   .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 function renderPage({ roots, attributes }) {
-  const element = { 'api-base': API_BASE, roots: roots.join(','), ...attributes };
+  const element = { 'api-base': API_BASE, roots: roots.join(','), ...attributes, 'actions-href': ACTIONS_HREF };
   const attrs = Object.entries(element).map(([name, value]) => ` ${name}="${escapeAttribute(value)}"`).join('');
   return `<!doctype html>
 <html lang="fr">
