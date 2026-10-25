@@ -51,7 +51,9 @@ test('only the DiskX document permits WASM while preserving the existing policy'
   diskx.register({ app, express, env: { DISKX_ROOTS: '/data' } });
   app.get('/other', (_req, res) => res.send('other'));
   const page = await request(app).get('/diskx').expect(200);
-  assert.equal(page.headers['content-security-policy'], policy.replace("script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'"));
+  const directives = value => value.split(';').map(part => part.trim());
+  assert.deepEqual(directives(page.headers['content-security-policy']),
+    directives(policy.replace("script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'")));
   assert.equal((await request(app).get('/other')).headers['content-security-policy'], policy);
   assert.doesNotMatch(page.headers['content-security-policy'], /(?:^|\s)'unsafe-eval'/);
 });
