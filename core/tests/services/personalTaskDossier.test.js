@@ -190,6 +190,23 @@ describe('personal dossier evidence and human decisions in Core', () => {
     expect((await Task.findOne({ pipelineId: task.id })).personalReview.state).toBe('pending');
   });
 
+  test('later mail findings reuse a saved dossier association for a manual task without changing or duplicating it', async () => {
+    const before = await Task.findOne({ pipelineId: task.id }).lean();
+    expect(before.spec).not.toContain(threadId);
+    await read(); await read(); // Multiple receipts still identify one task.
+    const finding = { kind: 'action', key: 'e'.repeat(32), threadId, messageId, sourceDate: source().date,
+      text: 'A later message reports a changed state.', owner: 'Example Person', sourceStatus: 'resolved' };
+    const received = await signals.route(finding);
+    expect(received.signal).toMatchObject({ taskIds: [task.id], effect: 'review_required_no_task_change' });
+    expect(await Task.countDocuments({ service: 'personal' })).toBe(1);
+    expect(await Task.findOne({ pipelineId: task.id }).lean()).toEqual(before);
+    expect((await signals.route(finding)).duplicate).toBe(true);
+    expect(await Signal.countDocuments()).toBe(1);
+    await Task.updateOne({ pipelineId: task.id }, { $set: { status: 'done' } });
+    expect(await signals.linkedTasks(threadId)).toEqual([]);
+    expect(await signals.route({ ...finding, key: 'f'.repeat(32) })).toBeNull();
+  });
+
   test('a task captured years ago can review the current calendar without an unbounded historical window', async () => {
     await Task.updateOne({ pipelineId: task.id }, { $set: { dueAt: new Date('2020-01-01') } });
     const review = await read();
