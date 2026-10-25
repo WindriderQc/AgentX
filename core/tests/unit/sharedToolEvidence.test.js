@@ -4,7 +4,16 @@ const { shareToolEvidence } = require('../../src/services/conversations/sharedTo
 const { formatTurnContext, assertContextSize } = require('../../src/services/conversations/turnContext');
 
 function expand(value) {
-  const decoded = structuredClone(value);
+  function texts(item) {
+    if (!item || typeof item !== 'object') return item;
+    if (Object.keys(item).length === 1 && Object.hasOwn(item, '$textRef')) return item.$textRef.slice(2).split('/')
+      .map(key => key.replace(/~1/g, '/').replace(/~0/g, '~'))
+      .reduce((parent, key) => parent[key], value);
+    if (Array.isArray(item)) return item.map(texts);
+    return Object.fromEntries(Object.entries(item).filter(([key]) => key !== 'sharedTextEncoding')
+      .map(([key, nested]) => [key, texts(nested)]));
+  }
+  const decoded = texts(value);
   for (const turn of decoded.turns) for (const work of turn.workResults || []) for (const receipt of work.toolEvidence) {
     const ref = receipt.data?.$ref;
     if (ref?.startsWith('#/sharedToolEvidence/')) receipt.data = structuredClone(decoded.sharedToolEvidence[ref.split('/').at(-1)]);

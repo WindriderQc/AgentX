@@ -216,10 +216,23 @@ and receipt storage, and the ordinary conversation read, remain expanded.
 Changed results are distinct. This reduces repeated reference data; source tests
 do not establish model comprehension or a live latency gain.
 
+Long strings repeated elsewhere in that block, including a published answer
+repeated inside its native receipt, can use `sharedTextEncoding` with
+`core.shared-context-text/v1`. A later copy becomes an object containing only
+`$textRef`, a JSON pointer to its first complete inline string. Pointers never
+target another text reference. Original caller markers disable this projection;
+short, changed and unique strings stay distinct. The context refresh and initial
+native preparation use the same projection. No storage or context limit changes.
+
 The combined selected-memory and conversation reference block must fit the
 existing 96,000-character work-context budget. Preparation refuses with
 `CONVERSATION_CONTEXT_REQUIRED` before native dispatch if it does not fit;
-it never substitutes a summary, clips messages or drops older turns. This is
+if the canonical conversation grows beyond that limit during an original run,
+its mandatory context refresh records the same precise refusal. A native run
+ending without a verified result preserves that cause for the owner's failure
+card, instead of relabeling it as a generic unpublished result. A later successful
+refresh clears the refusal; no original is restarted or historical answer accepted.
+Core never substitutes a summary, clips messages or drops older turns. This is
 an application context bound, not a change to the installed model window.
 Personal background review also receives the complete conversation and recorded
 tool evidence. An oversized review is disclosed without inference or partial
