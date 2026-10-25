@@ -15,7 +15,8 @@
       : 'Groupe affiché. Règle de conservation du rapport, pas une autorisation.');
   });
   city.addEventListener('diskx-error', (event) => {
-    say(`DiskX : ${String(event.detail?.message || 'erreur inconnue').slice(0, 300)}`, true);
+    const stage = event.detail?.stage ? ` (${String(event.detail.stage).slice(0, 40)})` : '';
+    say(`DiskX${stage} : ${String(event.detail?.message || 'erreur inconnue').slice(0, 300)}`, true);
   });
   // The module is relayed by Core; an unconfigured or unpublished module never defines the element.
   setTimeout(() => {

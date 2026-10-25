@@ -22,6 +22,8 @@ const MAX_ROOT_LENGTH = 255;
 const MAX_FOCUS_LENGTH = 1024;
 const ROOTS_TIMEOUT_MS = 4000;
 const SHA256 = /^[0-9a-f]{64}$/;
+// The built module is ~4.1 MB (1.4 MB gzip), above the shared 4 MiB relay cap.
+const MODULE_MAX_BYTES = 6 * 1024 * 1024;
 
 const hasControl = (text) => [...text].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
 
@@ -51,7 +53,7 @@ function parseRoots(raw) {
 /**
  * The scanned roots the city opens on: DISKX_ROOTS when set, otherwise the
  * canonical roots of the storage sources Data declares. Data being down leaves
- * the list empty; the element then reads storage/summary on its own.
+ * the list empty, and the page then says no root is known.
  */
 async function resolveRoots({ env = process.env, fetchData } = {}) {
   const configured = parseRoots(env.DISKX_ROOTS);
@@ -103,7 +105,7 @@ const escapeAttribute = (value) => String(value)
   .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 function renderPage({ roots, attributes }) {
-  const element = { 'api-base': API_BASE, ...(roots.length ? { roots: roots.join(',') } : {}), ...attributes };
+  const element = { 'api-base': API_BASE, roots: roots.join(','), ...attributes };
   const attrs = Object.entries(element).map(([name, value]) => ` ${name}="${escapeAttribute(value)}"`).join('');
   return `<!doctype html>
 <html lang="fr">
@@ -137,6 +139,11 @@ function register({ app, express, fetchWithTimeout, fetchData, env = process.env
 
   app.get('/diskx', async (req, res) => {
     const roots = await resolveRoots({ env, fetchData });
+    // <diskx-city> requires roots: without any, say so instead of mounting a broken city.
+    if (!roots.length) {
+      return res.status(503).type('html').set('Cache-Control', 'no-store')
+        .send(errorPage('Aucune racine de stockage connue : définissez DISKX_ROOTS ou vérifiez que Data déclare ses sources.'));
+    }
     let attributes;
     try { attributes = checkQuery(req.query, roots); }
     catch (error) { return res.status(error.status || 400).type('html').send(errorPage(error.message)); }
@@ -147,10 +154,11 @@ function register({ app, express, fetchWithTimeout, fetchData, env = process.env
     resolveUrl: () => diskxModuleUrl(env),
     fetchWithTimeout: fetchWithTimeout || require('../../src/services/voice/transport').fetchWithTimeout,
     requireScriptType: true,
+    maxBytes: MODULE_MAX_BYTES,
     unavailable: (res, error) => res.status(error.status || 503).json({
       ok: false, status: 'error', code: error.code || 'DISKX_UNAVAILABLE', message: error.message
     })
   }));
 }
 
-module.exports = { register, diskxModuleUrl, resolveRoots, parseRoots, checkQuery, renderPage, PAGE, MODULE_ROUTE, API_BASE };
+module.exports = { register, diskxModuleUrl, resolveRoots, parseRoots, checkQuery, renderPage, PAGE, MODULE_ROUTE, API_BASE, MODULE_MAX_BYTES };

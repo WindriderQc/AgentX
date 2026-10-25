@@ -1086,11 +1086,13 @@ conversation signals.
 Janitor duplicate report in 3D (cyan for the copy the report's survivor rule
 keeps, amber for the extra copies). Core relays the module from
 `DISKX_MODULE_URL` (a GraphysX build's `/embed/diskx.js`) at
-`/api/diskx/diskx.js` and refuses an upstream answer that is not JavaScript, so
-a static host's HTML fallback never reaches the page as a script. The city reads
+`/api/diskx/diskx.js` (up to 6 MiB for this relay alone; the built module is
+about 4.1 MB) and refuses an upstream answer that is not JavaScript, so a static
+host's HTML fallback never reaches the page as a script. The city reads
 only the Data Toolbox's GET routes under `/api/data-toolbox`; it never edits a
 file or the scene document. It opens on `DISKX_ROOTS` (comma-separated absolute
-roots), or on the canonical roots of the storage sources Data declares. The
+roots), or on the canonical roots of the storage sources Data declares; with
+no root known the page answers 503 and mounts nothing. The
 query takes `janitor=latest`, `group=<sha256>` and `focus=<folder under a
 root>`; any other value is refused with 400. The page is full-profile only and,
 like the Data Toolbox, a family-pinned device cannot open it: file paths stay on

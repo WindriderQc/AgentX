@@ -81,8 +81,10 @@ test('without DISKX_ROOTS the roots are the canonical roots Data declares', asyn
   assert.deepEqual(await diskx.resolveRoots({ env: {}, fetchData: async () => { throw new Error('down'); } }), []);
   // A set but unusable DISKX_ROOTS does not fall back to Data.
   assert.deepEqual(await diskx.resolveRoots({ env: { DISKX_ROOTS: 'relative' }, fetchData: async () => assert.fail('no fallback') }), []);
-  const res = await request(app({ env: {}, fetchData: async () => { throw new Error('down'); } })).get('/diskx').expect(200);
-  assert.match(res.text, /<diskx-city api-base="\/api\/data-toolbox"><\/diskx-city>/);
+  // The element requires roots: with none known the page says so and mounts nothing.
+  const res = await request(app({ env: {}, fetchData: async () => { throw new Error('down'); } })).get('/diskx?janitor=latest').expect(503);
+  assert.doesNotMatch(res.text, /<diskx-city|<script/);
+  assert.match(res.text, /DISKX_ROOTS/);
 });
 
 test('the module is relayed from Core only when it is JavaScript', async () => {
@@ -97,6 +99,14 @@ test('the module is relayed from Core only when it is JavaScript', async () => {
   upstream = () => ({ ok: true, status: 200, headers: new Map([['content-type', 'text/html']]), text: async () => '<!doctype html>' });
   const html = await request(app({ upstream: () => upstream() })).get('/api/diskx/diskx.js').expect(502);
   assert.equal(html.body.code, 'DISKX_UNAVAILABLE');
+
+  // The real module is ~4.1 MB: this relay alone allows up to 6 MiB.
+  assert.equal(diskx.MODULE_MAX_BYTES, 6 * 1024 * 1024);
+  const built = 'x'.repeat(4132484);
+  upstream = () => js(built);
+  assert.equal((await request(app({ upstream: () => upstream() })).get('/api/diskx/diskx.js').expect(200)).text.length, built.length);
+  upstream = () => js('x'.repeat(diskx.MODULE_MAX_BYTES + 1));
+  assert.equal((await request(app({ upstream: () => upstream() })).get('/api/diskx/diskx.js').expect(502)).body.message, 'Relayed script is too large');
 
   const unconfigured = await request(app({ env: { DISKX_ROOTS: '/mnt/a' }, upstream: () => assert.fail('no fetch') })).get('/api/diskx/diskx.js').expect(404);
   assert.equal(unconfigured.body.code, 'DISKX_NOT_CONFIGURED');
