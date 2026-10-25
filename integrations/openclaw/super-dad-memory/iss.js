@@ -3,8 +3,9 @@ import { photoAudience } from './photos.js';
 
 // ISS passes over the home, computed by AgentX Core (iss_passes) from the
 // orbital elements and household location Data already holds. The result
-// carries no coordinates, so the owner and household family sessions may both
-// receive it; other sessions get no tool. Granted per agent in tools.alsoAllow.
+// omits coordinates but remains household-specific. The adapter binds the
+// shared tool to approved owner/household session identities; other sessions
+// get no tool. Granted per agent in tools.alsoAllow.
 
 const receipt = value => ({ content: [{ type: 'text', text: JSON.stringify(value) }], details: value });
 
@@ -18,6 +19,7 @@ export function registerIss(api, { fetchImpl = fetch, name = 'nestor_iss' } = {}
         'for each, local rise/set times and directions, highest point, and whether it is observable to the naked eye',
         '(at least 10° high, station sunlit, dark enough sky) or only above the horizon, with the reason.',
         'Quote the returned local times and days exactly; never estimate a time yourself. Weather is unknown: say "si le ciel est dégagé".',
+        'Follow Core answerRules; limit comparisons to the returned search window.',
         'If tle.stale is true, mention how old the orbital data is. If view.url is present, offer it in a show block of kind link.',
         'visible_only=true keeps observable passes; hours sets the window (default 72, at most 108). Read-only.',
         'Optional lat and lon choose an observer; otherwise the known weather location or configured default is used. Announce the returned observer label, especially a default location.',

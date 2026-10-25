@@ -148,6 +148,19 @@ test('ISS passes reach Famille only when enabled and asked about, with the compu
   assert.doesNotMatch(fallback, /au-dessus de la maison/);
 });
 
+test('ISS summary selects observable passes before limiting the list', async () => {
+  const visible = { start: { direction: 'N' }, end: { direction: 'E' }, maxElDeg: 30, durationSec: 120,
+    startLocal: 'lun. 26 oct., 06 h 03', endLocal: 'lun. 26 oct., 06 h 05' };
+  const all = [...Array.from({ length: 12 }, () => ({ observable: false })), { observable: true, visible }];
+  const readPasses = async args => ({ computedAtLocal: 'dim. 25 oct., 10 h 00',
+    tle: { epochLocal: 'sam. 24 oct., 01 h 01', stale: false }, counts: { geometric: 13, observable: 1 },
+    passes: (args.visible_only ? all.filter(p => p.observable) : all).slice(0, args.max_passes), view: null });
+  const text = await issSummary("Quand passe l'ISS?", { readPasses });
+  assert.match(text, /lun\. 26 oct\., 06 h 03/);
+  assert.doesNotMatch(text, /Aucun passage visible/);
+  assert.match(text, /12 autre\(s\) passage\(s\)/);
+});
+
 test('an unavailable ISS computation tells Nestor to give no time', async () => {
   const text = await issSummary("Quand passe l'ISS?", { readPasses: async () => { throw new Error('Data holds no ISS orbital elements'); } });
   assert.match(text, /indisponibles/);

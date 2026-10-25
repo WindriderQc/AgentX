@@ -781,11 +781,21 @@ default 72), `visible_only`, `max_passes` (1-12, default 8). `ISS_VIEW_URL`
 (HTTPS) adds a link to a page that shows the passes. Pass times match PyEphem
 within 3 seconds and 0.3° in `core/tests/unit/mcpIssTools.test.js`.
 
-The `super-dad-memory` plugin relays it as `nestor_iss` to the owner and to
-household sessions of configured family agents (the result holds no private
-data). It is an optional plugin tool: an instance enables it by adding
-`nestor_iss` to the `tools.alsoAllow` of the agents that may answer, then
-reloading the plugin.
+`iss_passes` is one Core capability, available through the same MCP bus to
+Hermes, OpenClaw and other clients. Runtime allowlists select exposure; they
+do not replace server-side authorization. Omitting coordinates does not make
+the result public: the passes still concern the configured household location.
+Only compare passes within the returned `window`, even when the list is shorter.
+
+The optional `super-dad-memory` adapter relays it as `nestor_iss`, with no
+orbital calculation or separate store. In addition to per-agent
+`tools.alsoAllow`, it verifies the owner/household session identity and refuses
+scheduled, delegated and unrelated sessions. A direct OpenClaw MCP connection
+can expose the shared tool as `agentx__iss_passes`; use it when native policies
+preserve the intended session scope. Adding `iss_passes` to a global server
+filter alone is not evidence of that equivalence. Preserve existing grants
+until the replacement's allowed and denied paths are verified. See the
+[shared capability contract](SHARED_AGENT_CAPABILITIES.md).
 
 Famille conversations on the AgentX engine run no tools; they receive approved
 context. With `HOUSEHOLD_FAMILY_ISS_PASSES=true`, a Famille turn whose message

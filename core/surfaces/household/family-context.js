@@ -101,7 +101,7 @@ function visibleLine(pass) {
 async function issSummary(userText, { readPasses = defaultIssPasses, logger } = {}) {
   if (!isIssQuestion(userText)) return '';
   try {
-    const result = await readPasses({ hours: 72, max_passes: 12 });
+    const result = await readPasses({ hours: 72, visible_only: true, max_passes: MAX_ISS_LISTED });
     const visible = result.passes.filter(p => p.observable);
     const place = result.observer?.label || 'la maison';
     const lines = [

@@ -36,6 +36,10 @@ test('offered to the owner and household family sessions only', () => {
   assert.equal(factory({ ...family, sandboxed: true }), null);
   assert.equal(factory({ agentId: 'stranger', sessionKey: `agent:stranger:household:direct:${SESSION}` }), null);
   assert.equal(factory({ agentId: 'main', sessionKey: 'agent:main:cron:briefing' }), null);
+  assert.equal(factory({ agentId: 'main', sessionKey: `agent:main:subagent:${SESSION}` }), null);
+  assert.equal(factory({ ...owner, sandboxed: true }), null);
+  assert.equal(factory({ agentId: 'main', sessionKey: 'agent:main:telegram:group:-100000000' }), null);
+  assert.equal(factory({ agentId: 'main', sessionKey: family.sessionKey }), null);
 });
 
 test('relays only the bounded arguments to Core iss_passes and returns its dated result', async () => {
