@@ -14,10 +14,18 @@
       "finance_ledger",
       "finance_categorize",
       "finance_alerts",
-      "finance_plan"
+      "finance_plan",
+      "finance_document_link",
+      "finance_statement_deposit"
     ]
   },
   "toolMetadata": {
+    "finance_document_link": {
+      "optional": true
+    },
+    "finance_statement_deposit": {
+      "optional": true
+    },
     "finance_ledger": {
       "optional": true
     },
