@@ -43,9 +43,14 @@ function only(object, keys, label) {
   }
 }
 function validateRequest(body) {
-  only(body, ['key', 'title', 'kind', 'hosts', 'estimatedMinutes', 'notBefore', 'startBefore', 'source', 'executor'], 'request');
+  only(body, ['key', 'title', 'kind', 'hosts', 'estimatedMinutes', 'notBefore', 'startBefore', 'source', 'executor', 'withinWindow'], 'request');
   const kind = body.kind;
-  if (!['benchmark', 'profiler', 'image', 'embedding-reindex', 'diagnostic', 'other'].includes(kind)) throw fail('Unsupported heavy-work kind');
+  if (!['benchmark', 'profiler', 'image', 'embedding-reindex', 'topology', 'diagnostic', 'other'].includes(kind)) throw fail('Unsupported heavy-work kind');
+  // A request that needs a topology mode names the window that provides it (#360).
+  if (body.withinWindow !== undefined) {
+    if (kind === 'topology') throw fail('A topology request cannot sit inside another window');
+    if (!/^[a-f0-9-]{36}$/.test(body.withinWindow || '')) throw fail('withinWindow needs a queue request id');
+  }
   const minutes = body.estimatedMinutes;
   if (!Number.isInteger(minutes) || minutes < 1 || minutes > 10080) throw fail('estimatedMinutes needs 1 to 10080 minutes');
   const source = body.source || { type: 'operator' };
@@ -80,6 +85,8 @@ function validateRequest(body) {
       only(executor, ['model', 'dimension'], 'embedding reindex executor');
       if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/.test(executor.model || '')) throw fail('embedding reindex model name required');
       if (!Number.isSafeInteger(executor.dimension) || executor.dimension < 1 || executor.dimension > 8192) throw fail('embedding reindex dimension needs 1 to 8192');
+    } else if (kind === 'topology') {
+      require('./runtimeTopologyWindow').validateExecutor(executor);
     } else if (kind === 'other' && executor.mode === 'pipeline-report') {
       // A report campaign Core starts and settles itself (#878).
       only(executor, ['mode', 'pipelineId'], 'report campaign executor');
@@ -94,7 +101,8 @@ function validateRequest(body) {
     title: text(body.title, 'title'), kind, hosts: hosts(body.hosts), estimatedMinutes: minutes,
     notBefore: body.notBefore ? instant(body.notBefore, 'notBefore') : null,
     startBefore: body.startBefore ? instant(body.startBefore, 'startBefore') : null,
-    source: normalizedSource, executor
+    source: normalizedSource, executor,
+    ...(body.withinWindow ? { withinWindow: body.withinWindow } : {})
   };
   if (request.notBefore && request.startBefore && request.notBefore >= request.startBefore) throw fail('startBefore must follow notBefore');
   return { key: text(body.key, 'key', 160), request, intentHash: digest(request) };

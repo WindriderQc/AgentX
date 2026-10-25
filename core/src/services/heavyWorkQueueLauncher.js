@@ -33,6 +33,11 @@ const STARTERS = {
     operationId: result => result?.id,
     name: 'RAG embedding build'
   },
+  topology: {
+    start: begun => require('./runtimeTopologyWindow').start(begun),
+    operationId: result => result?.id,
+    name: 'topology window'
+  },
   'pipeline-report': {
     start: begun => require('./pipelineReportResume').launchFromCampaign(begun),
     operationId: result => result?.queueId,
@@ -45,7 +50,7 @@ function starterFor(job) {
 function startable(job) {
   const starter = queue.autoStartable(job) && starterFor(job);
   if (!starter) {
-    throw fail('Core launches Profiler, embedding reindex and report campaign requests only; use the request\'s own executor protocol', 409, 'HEAVY_QUEUE_LAUNCH_UNSUPPORTED');
+    throw fail('Core launches Profiler, embedding reindex, topology and report campaign requests only; use the request\'s own executor protocol', 409, 'HEAVY_QUEUE_LAUNCH_UNSUPPORTED');
   }
   return starter;
 }

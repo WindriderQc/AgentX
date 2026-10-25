@@ -20,6 +20,8 @@ const ACTIVE = ['dispatching', 'running', 'uncertain'];
 const TERMINAL = ['completed', 'failed', 'cancelled'];
 // Bound the singleton below BSON limits. Refuse explicitly; never discard history.
 const MAX_JOBS = 400;
+// States of a request inside a window that still need the window's slot.
+const BRACKET_HELD = ['reserved', 'dispatching', 'running', 'uncertain'];
 const WC = { w: 1, j: true };
 
 async function legacySnapshot(file = FILE) {
@@ -83,8 +85,12 @@ function runtimeOverlaps(job, item) {
     || endpoints.some(host => job.hosts.includes(host))
     || (item.resourceIds || []).some(id => physical.includes(id));
 }
+// A topology window and the requests reserved inside it share its hosts by design.
+function bracketPair(a, b) {
+  return require('./runtimeTopologyWindow').bracketPair(a, b);
+}
 function conflicts(state, proposed, start, end) {
-  return state.jobs.filter(job => job.id !== proposed.id && sameResources(job, proposed) && (
+  return state.jobs.filter(job => job.id !== proposed.id && !bracketPair(job, proposed) && sameResources(job, proposed) && (
     ACTIVE.includes(job.state) || (job.state === 'reserved' && job.reservation.start < end && job.reservation.end > start)
   )).map(job => ({ id: job.id, title: job.title, state: job.state, reservation: job.reservation }));
 }
@@ -134,8 +140,10 @@ function slotFor(state, job, when, at, now = Date.now()) {
   const machines = new Set(job.hosts.map(placement.machineOf));
   // An active dispatch holds its resources until native release is recorded.
   // Its estimated end cannot promise a future reservable slot.
-  const related = state.jobs.filter(other => other.id !== job.id && placement.BUSY_STATES.includes(other.state)
+  const related = state.jobs.filter(other => other.id !== job.id && !bracketPair(other, job) && placement.BUSY_STATES.includes(other.state)
     && ((other.hosts || []).some(host => machines.has(placement.machineOf(host))) || sameResources(other, job)));
+  // Inside a window, the slot is searched within the window's own reservation.
+  const window = job.withinWindow ? state.jobs.find(other => other.id === job.withinWindow) : null;
   const active = related.filter(other => ACTIVE.includes(other.state));
   if (active.length) throw fail('Heavy-work placement waits for active requests to release their resources',
     409, 'HEAVY_QUEUE_CONFLICT', { conflicts: active.map(({ id, title, state: status, reservation }) =>
@@ -145,13 +153,15 @@ function slotFor(state, job, when, at, now = Date.now()) {
     return { start, end: start + job.estimatedMinutes * MINUTE, when };
   }
   const night = when === 'tonight' ? nightOf(now) : null;
-  const from = Math.ceil(Math.max(now + MINUTE, notBefore, night ? night.start : -Infinity) / MINUTE) * MINUTE;
+  const windowStart = window?.reservation ? Date.parse(window.reservation.start) : -Infinity;
+  const windowEnd = window?.reservation ? Date.parse(window.reservation.end) : Infinity;
+  const from = Math.ceil(Math.max(now + MINUTE, notBefore, night ? night.start : -Infinity, windowStart) / MINUTE) * MINUTE;
   // Work on the same machine or the same physical device holds the slot.
   const [slot] = placement.planSlots([{ hosts: job.hosts, minutes: job.estimatedMinutes }],
-    { windowStart: from, windowEnd: night ? night.end : Infinity, minutes: job.estimatedMinutes,
+    { windowStart: from, windowEnd: Math.min(night ? night.end : Infinity, windowEnd), minutes: job.estimatedMinutes,
       jobs: related.map(other => ({ ...other, hosts: job.hosts })), now });
   const start = Date.parse(slot.start), end = Date.parse(slot.end);
-  const fits = start < startBefore && (!night || end <= night.end);
+  const fits = start < startBefore && (!night || end <= night.end) && end <= windowEnd;
   return { start, end, when, fits, ...(night && { night: { start: new Date(night.start).toISOString(), end: new Date(night.end).toISOString() } }) };
 }
 async function preview(id, body = {}) {
@@ -194,7 +204,7 @@ async function reserve(id, body, actor) {
     const job = jobIn(state, id, body.expectedRevision);
     if (!['requested', 'reserved'].includes(job.state)) throw fail('Only unstarted requests can be reserved', 409);
     if (body.autoStart === true && !autoStartable(job)) {
-      throw fail('Only Profiler, embedding reindex and report campaign requests can start automatically', 409, 'HEAVY_QUEUE_AUTO_START_UNSUPPORTED');
+      throw fail('Only Profiler, embedding reindex, topology and report campaign requests can start automatically', 409, 'HEAVY_QUEUE_AUTO_START_UNSUPPORTED');
     }
     const topology = resourceTopology();
     assertTopology(state, topology);
@@ -202,6 +212,11 @@ async function reserve(id, body, actor) {
     job.resourceIds = resourcesFor(topology, job.hosts); job.topologyHash = topology.hash;
     const end = new Date(Date.parse(start) + job.estimatedMinutes * 60000).toISOString();
     if (Date.parse(end) <= Date.now() || (job.notBefore && start < job.notBefore) || (job.startBefore && start >= job.startBefore)) throw fail('Reservation is outside the permitted start window', 409);
+    if (job.withinWindow) require('./runtimeTopologyWindow').checkBracket(state, job, start, end);
+    if (job.kind === 'topology' && state.jobs.some(other => other.withinWindow === job.id && BRACKET_HELD.includes(other.state)
+      && other.reservation && (other.reservation.start < start || other.reservation.end > end))) {
+      throw fail('Requests reserved inside this window must stay inside it; move them first', 409, 'HEAVY_QUEUE_WINDOW_INVALID');
+    }
     const collisions = conflicts(state, job, start, end);
     if (collisions.length) throw fail('Heavy-work reservation overlaps another request', 409, 'HEAVY_QUEUE_CONFLICT', { conflicts: collisions });
     job.state = 'reserved'; job.priority = priority;
@@ -246,6 +261,9 @@ async function cancel(id, body, actor) {
   return mutate(state => {
     const job = jobIn(state, id, body.expectedRevision);
     if (!['requested', 'reserved'].includes(job.state)) throw fail('Cancel running work through its executor, then reconcile; its fence stays held', 409);
+    if (job.kind === 'topology' && state.jobs.some(other => other.withinWindow === job.id && BRACKET_HELD.includes(other.state))) {
+      throw fail('Cancel or move the requests reserved inside this window first', 409, 'HEAVY_QUEUE_WINDOW_INVALID');
+    }
     job.state = 'cancelled'; job.finishedAt = new Date().toISOString();
     return event(job, actor, 'cancelled');
   });

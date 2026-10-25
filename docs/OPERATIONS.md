@@ -2054,6 +2054,27 @@ read-only into the Core container:
 Core always checks the host key and uses only that key. Optional `port` and
 `timeoutsMs` (`status`, `activate`, `confirm`, `rollback`) are accepted.
 
+**The Nerve Center control.** The **Runtime topology** card shows each
+group's current mode and, when the group has an actuator, a target-mode
+selector and **Apply**.
+- **Confirmation.** Applying asks for a typed confirmation
+  (`SWITCH <group> TO <mode>`), because the switch drains the group.
+- **Progress.** The card then follows the switch through its states, with
+  the reason for any wait or refusal. Once it ends, it shows the last switch
+  receipt: residency, the test answer, pin drift and the duration.
+- **Read-only.** Reading the card never calls the actuator, so it stays
+  readable when the actuator is unreachable.
+- **Separate choice.** The card sits beside the Standard/Abliterated choice and
+  is independent of it.
+
+**Pooled windows.** For planned heavy work, a `topology` request on the
+heavy-work queue switches a group for its slot and returns it afterwards, with
+the requests that need that mode reserved inside the window. The overflow
+refusal `LANE_CONTEXT_EXCEEDED` names the next planned pooled window
+(`data.nextPooledWindow`). See "Topology windows" in
+[the heavy-work queue](HEAVY_WORK_QUEUE.md). Nothing switches automatically on
+a single request.
+
 **Parked hosts.** The endpoints of a group's inactive modes are stopped on
 purpose: they are *parked*, not down. During a switch, every endpoint of the
 group is parked until it ends.

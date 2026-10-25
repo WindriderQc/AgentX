@@ -23,6 +23,9 @@ async function sweep() {
     try { await require('./heavyWorkQueueLauncher').dispatchDue(); }
     catch (error) { logger.warn('Automatic starts unavailable; reserved requests wait', { code: error.code || 'AUTO_START_UNAVAILABLE' }); }
     const current = await queue.list();
+    // Lane overflow refusals name the next pooled window (#360).
+    try { await require('./runtimeTopologyWindow').refreshWindows(); }
+    catch (error) { logger.debug('Topology windows unavailable', { code: error.code || 'TOPOLOGY_WINDOWS_UNAVAILABLE' }); }
     for (const job of current?.jobs || []) {
       if (!['dispatching', 'running', 'uncertain'].includes(job.state)) continue;
       try { await evidence.reconcile(job.id, 'core-queue-observer'); }
