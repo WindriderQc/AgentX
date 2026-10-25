@@ -10,6 +10,11 @@ The owner tool `personal_task_dossier` is available on the existing Core MCP
 personal transport, `/api/consumers/nestor/v1/mcp`. Local's private native
 adapter, Hermes and other authorized owner clients use the same implementation.
 The shared and memory-only buses do not advertise this tool.
+A later native mail finding can match an active personal task through either
+its original mail URL or the thread selection retained in a saved owner
+dossier. Multiple dossier receipts still identify that same task. This only
+requests fresh reconciliation; it neither closes the task nor accepts another
+commitment, and completed tasks are not reopened by the association.
 Model tool replies default to bounded metadata (`view: summary`), not source
 text. `get` with `view: sources` reads the source index; `view: source` and an
 exact `sourceId` reads one saved source. `view: proposal` reads all proposal

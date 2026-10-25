@@ -13,4 +13,5 @@ const schema = new mongoose.Schema({
   proposalHash: { type: String, default: '' }
 }, { timestamps: true, collection: 'personal_task_dossiers' });
 schema.index({ taskId: 1, createdAt: -1 });
+schema.index({ 'snapshot.selection.threadIds': 1, taskId: 1 });
 module.exports = mongoose.models.PersonalTaskDossier || mongoose.model('PersonalTaskDossier', schema);

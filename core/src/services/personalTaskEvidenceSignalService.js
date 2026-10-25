@@ -2,6 +2,7 @@
 
 const Signal = require('../../models/PersonalTaskEvidenceSignal');
 const Task = require('../../models/PipelineTask');
+const Dossier = require('../../models/PersonalTaskDossier');
 const { sourceUrl } = require('./personalTaskReview');
 const { digest } = require('./personalTaskDossierSources');
 const bad = message => Object.assign(new Error(message), { status: 400, code: 'PERSONAL_DOSSIER_SIGNAL_INVALID' });
@@ -11,9 +12,13 @@ const clean = (value, length) => {
 };
 
 async function linkedTasks(threadId) {
+  // A task created manually may have no original mail URL. Its saved owner
+  // dossier already records the selected thread: retain that association for
+  // later findings without rewriting the task or accepting any new duty.
+  const reviewedIds = new Set(await Dossier.distinct('taskId', { 'snapshot.selection.threadIds': threadId }));
   const rows = await Task.find({ service: 'personal', status: { $in: ['queued', 'in_progress', 'review', 'blocked'] },
-    spec: { $regex: threadId } }).select('pipelineId spec').lean();
-  return rows.filter(row => sourceUrl(row)?.endsWith(`/${threadId}`)).map(row => row.pipelineId);
+    $or: [{ spec: { $regex: threadId } }, { pipelineId: { $in: [...reviewedIds] } }] }).select('pipelineId spec').lean();
+  return rows.filter(row => reviewedIds.has(row.pipelineId) || sourceUrl(row)?.endsWith(`/${threadId}`)).map(row => row.pipelineId);
 }
 
 // A page finding only asks for a fresh dossier read. It neither resolves a task
