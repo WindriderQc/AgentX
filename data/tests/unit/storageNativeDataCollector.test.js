@@ -27,10 +27,14 @@ const GiB = 1024 ** 3;
 test('storage collector CLI starts without a token, polls once and exits naturally', async () => {
   const requests = [];
   const server = http.createServer((req, res) => {
-    requests.push({ method: req.method, url: req.url, headers: req.headers });
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Connection', 'close');
-    res.end(JSON.stringify({ data: { scan: null } }));
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      requests.push({ method: req.method, url: req.url, headers: req.headers, body });
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Connection', 'close');
+      res.end(JSON.stringify({ data: { scan: null } }));
+    });
   });
   let child;
   let deadline;
@@ -51,10 +55,13 @@ test('storage collector CLI starts without a token, polls once and exits natural
     });
     expect({ ...exit, output }).toEqual({ code: 0, signal: null,
       output: expect.stringContaining('starting') });
-    expect(requests).toHaveLength(1);
+    // An idle start also reports volumes once; no source is configured here.
+    expect(requests).toHaveLength(2);
     expect(requests[0].method).toBe('GET');
     expect(requests[0].url).toContain('/api/v1/storage/agent/requests?scannerId=startup-fixture');
     expect(requests[0].headers.authorization).toBeUndefined();
+    expect(requests[1]).toMatchObject({ method: 'POST', url: '/api/v1/storage/agent/heartbeat' });
+    expect(JSON.parse(requests[1].body)).toMatchObject({ scannerId: 'startup-fixture', volumes: [] });
   } finally {
     clearTimeout(deadline);
     if (child && child.exitCode === null) child.kill();
@@ -204,7 +211,7 @@ describe('native shared-storage agent evidence policy', () => {
 
 describe('native shared-storage agent completion handling', () => {
   test('busy heartbeat is versioned, non-overlapping, and cancellable', async () => {
-    expect(VERSION).toBe('storage-1.4.1');
+    expect(VERSION).toBe('storage-1.5.0');
     let releaseFirst;
     let scheduledTick;
     const first = new Promise(resolve => { releaseFirst = resolve; });

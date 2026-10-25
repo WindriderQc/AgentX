@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const storageController = require('../controllers/storageController');
+const storageAgentController = require('../controllers/storageAgentController');
 const fileBrowserController = require('../controllers/fileBrowserController');
 const storageTrendsController = require('../controllers/storageTrendsController');
 const vaultInventoryController = require('../controllers/vaultInventoryController');
@@ -12,10 +13,10 @@ router.post('/stop/:scan_id', storageController.stopScan);
 router.get('/directory-count', storageController.getDirectoryCount);
 router.get('/summary', storageController.getSummary);
 router.get('/trends', storageTrendsController.getTrends);
-router.get('/agents', storageController.listAgents);
-router.post('/agent-scans', storageController.enqueueAgentScan);
-router.post('/agent/heartbeat', storageController.heartbeatAgent);
-router.get('/agent/requests', storageController.pollAgentScan);
+router.get('/agents', storageAgentController.listAgents);
+router.post('/agent-scans', storageAgentController.enqueueAgentScan);
+router.post('/agent/heartbeat', storageAgentController.heartbeatAgent);
+router.get('/agent/requests', storageAgentController.pollAgentScan);
 
 // Batch operations (native storage collector)
 router.post('/scan/:scan_id/batch', storageController.insertBatch);

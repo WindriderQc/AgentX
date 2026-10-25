@@ -2,6 +2,7 @@
 
 const { ObjectId } = require('mongodb');
 const activityEvents = require('./activityEvents');
+const { aggregateVolumes } = require('./storageVolumes');
 
 const SCANNERS = 'storage_scanners';
 const SCANS = 'nas_scans';
@@ -82,6 +83,8 @@ async function registerScanner(db, info = {}) {
   if (!scannerId) return null;
   const now = new Date();
   const sources = String(info.sources || '').split(',').map(value => value.trim()).filter(Boolean);
+  // Polls carry no measurement, so only a report replaces the stored volumes.
+  const volumes = Array.isArray(info.volumes) ? { volumes: info.volumes, volumesReportedAt: now } : {};
   const result = await db.collection(SCANNERS).updateOne(
     { scannerId },
     {
@@ -91,7 +94,8 @@ async function registerScanner(db, info = {}) {
         platform: String(info.platform || ''),
         agentVersion: String(info.agentVersion || ''),
         sources,
-        lastSeen: now
+        lastSeen: now,
+        ...volumes
       },
       $setOnInsert: { firstSeen: now }
     },
@@ -110,6 +114,11 @@ async function listScanners(db) {
     ...doc,
     active: now - new Date(doc.lastSeen || 0).getTime() < ACTIVE_WINDOW_MS
   }));
+}
+
+async function listVolumes(db, options = {}) {
+  const docs = await db.collection(SCANNERS).find({ 'volumes.0': { $exists: true } }).toArray();
+  return aggregateVolumes(docs, options);
 }
 
 async function hasActiveSource(db, source) {
@@ -185,11 +194,11 @@ async function reportExpiredScans(db, now) {
   } catch (_) { /* the log never fails the reaper */ }
 }
 
-async function touchScanHeartbeat(db, scanId) {
+async function touchScanHeartbeat(db, scanId, volumes = null) {
   if (typeof scanId !== 'string' || !scanId) return false;
   const result = await db.collection(SCANS).updateOne(
     { _id: scanId, status: 'running', 'config.external': true },
-    { $set: { last_heartbeat_at: new Date() } }
+    { $set: { last_heartbeat_at: new Date(), ...(Array.isArray(volumes) ? { volumes } : {}) } }
   );
   return (result?.matchedCount || 0) > 0;
 }
@@ -283,6 +292,7 @@ module.exports = {
   listMetadataProbePaths,
   registerScanner,
   listScanners,
+  listVolumes,
   hasActiveSource,
   findOverlappingScan,
   expireStaleScans,
