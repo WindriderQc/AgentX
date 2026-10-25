@@ -773,7 +773,7 @@
             shared.attachCollapsibleHandlers(body);
             attachTaskRoutingHandlers(config);
             principalCard.attach(principalModel, loadRouting);
-            topologyCard.attach(runtimeTopology, loadRouting);
+            topologyCard.attach?.(runtimeTopology, loadRouting);
             attachRoutingLogHandlers();
         } catch (err) {
             console.error('[NerveCenter] loadRouting failed', err);
