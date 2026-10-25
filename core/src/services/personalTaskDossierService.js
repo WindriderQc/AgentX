@@ -141,9 +141,11 @@ async function summaries(tasks) {
 }
 
 async function operate(input, deps) {
-  if (input.action === 'read') return read(input, deps);
-  if (input.action === 'get') return get(input.id);
-  if (input.action === 'propose') return propose({ ...input.proposal, id: input.id });
+  const { validateView, toolView } = require('./personalTaskDossierView');
+  validateView(input);
+  if (input.action === 'read') return toolView(await read(input, deps), input);
+  if (input.action === 'get') return toolView(await get(input.id), input);
+  if (input.action === 'propose') return toolView(await propose({ ...input.proposal, id: input.id }), input);
   throw bad('Use read, get or propose.');
 }
 
