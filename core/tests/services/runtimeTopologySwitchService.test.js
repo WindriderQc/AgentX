@@ -89,8 +89,10 @@ function makeWorld(overrides = {}) {
       if (!MODES[world.mode].includes(url)) return { status: 'error', verified: false, error: 'offline' };
       world.loaded.add(url);
       return { status: 'ready', verified: true };
-    },
-    async verifyPinnedEntriesLoaded(url, entries) {
+    }
+  };
+  const verifyResidency = {
+    async check(url, entries) {
       const up = world.loaded.has(url) && !world.neverResident?.has(url);
       return { verified: up, gpuVerified: up, statuses: entries.map(entry => ({
         model: entry.model, loaded: up, loadedContextLength: up ? entry.contextSize : null,
@@ -107,6 +109,7 @@ function makeWorld(overrides = {}) {
     async heartbeat() { return { heartbeat: true }; },
     async release(kind, handle) { world.released.push(handle); return { released: true }; },
     async markMaintenanceUnknown(handle) { world.quarantined.push(handle); return { quarantined: true }; },
+    async recoverMaintenanceAfterOperatorReconciliation(args) { world.recovered = args; return { recovered: true, released: true }; },
     async listActive() { return { maintenance: world.quarantined.length ? { leaseId: 'lease-1' } : null }; }
   };
   const parking = {
@@ -122,6 +125,7 @@ function makeWorld(overrides = {}) {
     topology: { parseTopology: () => runtimeTopology.parseTopology(RAW), describeTopology: describe },
     describe,
     coordination, hostPrefs, actuator, parking,
+    verifyResidency: (url, entries) => verifyResidency.check(url, entries),
     sessionHolds: { isHostHeld: () => null },
     physical: { resourceTopology: () => ({}), resourcesFor: (_, urls) => urls.map(() => 'gpu-x') },
     alerts: { observeTopologySwitchFailure: async event => { world.alerts.push(event); } },
@@ -394,6 +398,33 @@ describe('runtime topology switch', () => {
     expect(world.released).toEqual([expect.objectContaining({ id: 'l1' })]);
     expect(world.quarantined).toEqual([expect.objectContaining({ id: 'l2' })]);
     expect((await Switch.findOne({ requestId: 'fresh' }).lean()).state).toBe('loading');
+  });
+
+  it('recovers an uncertain switch only when the actuator reports one settled mode', async () => {
+    const world = makeWorld({
+      activateResult: () => ({ transport: 'timeout', outcome: 'unknown', receipt: null }),
+      statusResult: () => ({ transport: 'unreachable', outcome: 'unknown', receipt: null })
+    });
+    await run(world, { targetMode: 'lanes', requestId: 'sw-recover' });
+    await expect(world.service.recoverUncertain('sw-recover', {}))
+      .rejects.toMatchObject({ code: 'TOPOLOGY_RECOVERY_CONFIRMATION_REQUIRED' });
+    const confirmation = 'MAINTENANCE_SIDE_EFFECTS_VERIFIED_OR_ROLLED_BACK';
+    await expect(world.service.recoverUncertain('sw-recover', { confirmation }))
+      .rejects.toMatchObject({ code: 'TOPOLOGY_HOST_NOT_SETTLED' });
+    world.statusResult = (w) => ({ transport: 'ok', outcome: 'observed', receipt: {
+      schema: 'agentx.runtime-topology-actuation/v1', outcome: 'observed', observedMode: 'lanes', confirmedMode: 'pooled', pending: null } });
+    await expect(world.service.recoverUncertain('sw-recover', { confirmation }))
+      .rejects.toMatchObject({ code: 'TOPOLOGY_HOST_NOT_SETTLED' });
+    world.statusResult = null;
+    world.mode = 'pooled'; world.confirmedMode = 'pooled';
+    const { record } = await world.service.recoverUncertain('sw-recover', { confirmation, operator: 'operator' });
+    expect(world.recovered).toMatchObject({ id: 'lease-1', generation: 'gen-1',
+      principal: 'core-topology-switch', receipt: { confirmation } });
+    expect(record.recovery).toMatchObject({ mode: 'pooled', operator: 'operator' });
+    expect(record.lease.state).toBe('RECOVERED');
+    expect(world.parking.intended.get('dual')).toBe('pooled');
+    expect((await world.service.recoverUncertain('sw-recover', { confirmation })).idempotent).toBe(true);
+    await expect(world.service.request({ groupId: 'dual', targetMode: 'lanes', requestId: 'sw-after' })).resolves.toBeTruthy();
   });
 
   it('refuses when an endpoint lacks a pin or a GPU map entry', async () => {

@@ -113,6 +113,8 @@ function createTopologySwitchService(deps = {}) {
   const topology = deps.topology || require('./runtimeTopologyService');
   const coordination = deps.coordination || require('./runtimeCoordinationService');
   const hostPrefs = deps.hostPrefs || require('./hostPreferenceService');
+  // hostPreferenceService uses this check but does not export it.
+  const verifyResidency = deps.verifyResidency || require('./hostPinPrimitives').verifyPinnedEntriesLoaded;
   const sessionHolds = deps.sessionHolds || require('./hostSessionHoldService');
   const physical = deps.physical || require('./runtimePhysicalResources');
   const actuator = deps.actuator || require('./runtimeTopologyActuator').createActuatorClient();
@@ -201,7 +203,7 @@ function createTopologySwitchService(deps = {}) {
         { requestId: open.requestId, state: open.state });
     }
     const last = await Switch.findOne({ groupId }).sort({ createdAt: -1 }).lean();
-    if (last?.state === 'uncertain' && await leaseStillHeld(last)) {
+    if (last?.state === 'uncertain' && !last.recovery?.recoveredAt && await leaseStillHeld(last)) {
       throw typed('TOPOLOGY_SWITCH_UNCERTAIN', `Switch ${last.requestId} ended uncertain; recover its maintenance lease first`, 409,
         { requestId: last.requestId });
     }
@@ -409,7 +411,7 @@ function createTopologySwitchService(deps = {}) {
   async function residencyOf(url) {
     const pref = await hostPrefs.getByHost(url);
     const entries = hostPrefs.getPinnedEntries(pref);
-    const checked = await hostPrefs.verifyPinnedEntriesLoaded(url, entries, 15_000);
+    const checked = await verifyResidency(url, entries, 15_000);
     const statuses = (checked?.statuses || []).map(status => ({
       model: status.model, loaded: Boolean(status.loaded), gpu: status.gpuResidency?.status || null,
       contextLength: status.loadedContextLength ?? null, expectedContext: status.expectedContextLength ?? null
@@ -617,6 +619,54 @@ function createTopologySwitchService(deps = {}) {
     return recovered;
   }
 
+  /**
+   * Operator recovery of an uncertain switch. The actuator must report one
+   * declared mode running, confirmed, with nothing pending; the operator
+   * attests that the side effects were verified or rolled back. Core then
+   * recovers the quarantined lease through the native maintenance recovery,
+   * as its owner, and records the mode the host runs as the intended one.
+   */
+  async function recoverUncertain(requestId, { confirmation, operator = 'operator' } = {}) {
+    if (confirmation !== 'MAINTENANCE_SIDE_EFFECTS_VERIFIED_OR_ROLLED_BACK') {
+      throw typed('TOPOLOGY_RECOVERY_CONFIRMATION_REQUIRED',
+        'confirmation must be MAINTENANCE_SIDE_EFFECTS_VERIFIED_OR_ROLLED_BACK', 400);
+    }
+    const record = await Switch.findOne({ requestId }).lean();
+    if (!record) throw typed('TOPOLOGY_SWITCH_NOT_FOUND', 'No such switch', 404);
+    if (record.state !== 'uncertain') throw typed('TOPOLOGY_SWITCH_NOT_UNCERTAIN', `Switch ${requestId} is ${record.state}`, 409);
+    if (record.recovery?.recoveredAt) return { record: present(record), idempotent: true };
+    const status = await actuator.status(record.groupId);
+    const receipt = status.receipt;
+    const declared = topology.parseTopology().groups.find(item => item.id === record.groupId);
+    const known = status.transport === 'ok' && receipt && !receipt.pending
+      && receipt.observedMode === receipt.confirmedMode
+      && declared?.modes.some(mode => mode.id === receipt.observedMode);
+    if (!known) {
+      throw typed('TOPOLOGY_HOST_NOT_SETTLED', 'The actuator does not report one confirmed mode with nothing pending', 409,
+        { transport: status.transport, observedMode: receipt?.observedMode || null,
+          confirmedMode: receipt?.confirmedMode || null, pending: Boolean(receipt?.pending) });
+    }
+    let recovered = { recovered: true, skipped: 'no_quarantined_lease' };
+    if (record.lease?.leaseId && record.lease.state === 'UNKNOWN') {
+      recovered = await coordination.recoverMaintenanceAfterOperatorReconciliation({
+        ...leaseHandle(record),
+        receipt: { contract: 'agentx.maintenance-recovery/v1', maintenanceReconciled: true,
+          confirmation, reconciledAt: now().toISOString() }
+      });
+      if (!recovered?.recovered) {
+        throw typed('TOPOLOGY_LEASE_RECOVERY_REFUSED', recovered?.reason || 'The maintenance lease was not recovered', 409);
+      }
+    }
+    await parking.setIntendedMode(record.groupId, receipt.observedMode, 'switch');
+    const updated = await Switch.findOneAndUpdate({ requestId }, { $set: {
+      'lease.state': record.lease?.leaseId ? 'RECOVERED' : record.lease?.state || null,
+      recovery: { recoveredAt: now(), operator: String(operator).slice(0, 200), mode: receipt.observedMode,
+        actuatorStatus: receipt, lease: recovered }
+    } }, { new: true }).lean();
+    clearRoutingCache();
+    return { record: present(updated), idempotent: false };
+  }
+
   // ------------------------------------------------------------------ reads
 
   async function get(requestId) {
@@ -635,7 +685,7 @@ function createTopologySwitchService(deps = {}) {
   }
 
   return Object.freeze({
-    request, get, recent, openSwitches, recoverInterrupted,
+    request, get, recent, openSwitches, recoverInterrupted, recoverUncertain,
     present, PRINCIPAL, LEASE_PURPOSE,
     // Tests: wait for this process's drivers.
     async settled() { await Promise.all([...running.values()]); }
