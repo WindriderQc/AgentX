@@ -10,6 +10,7 @@ const { setTimeout: delay } = require('node:timers/promises');
 const {
   applyRoutingHeaders,
   pipeRuntimeStream,
+  publicError,
   requestAbort,
   sendRuntimeError,
   uniqueEffectiveModels
@@ -276,6 +277,7 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
       consumerContract: client.consumerContract,
       observePromptPrefix: true,
       ...(principalTarget && { hostUrl: principalTarget.hostUrl }),
+      ...(principalTarget?.topology && { topology: principalTarget.topology }),
       ...(coding?.options || {})
     };
     const execute = () => runtimeServices.inference.execute({
@@ -376,10 +378,12 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
       res.set('x-agentx-inference-outcome', 'host-busy');
       return res.status(409).json({ error: { message: busyMessage(error), type: 'host_busy', code: error.code } });
     }
-    const safeStatus = Number(error?.statusCode || 500);
+    const safe = publicError(error);
+    const safeStatus = safe.status;
     if (!res.headersSent && safeStatus < 500) {
       return res.status(safeStatus).json({
-        error: { message: error.message, type: 'invalid_request_error', code: error.code || undefined }
+        error: { message: safe.message, type: 'invalid_request_error', code: error.code || undefined,
+          ...(safe.data && { data: safe.data }) }
       });
     }
     return sendRuntimeError(res, error, logger, `${client.label} inference`);

@@ -1885,6 +1885,10 @@ then follows whichever endpoint serves that role in its group's active mode.
   role, `agentx-primary` follows that role. For `conversation`, the alias uses
   the pooled pin when the active mode has no conversation role. An unresolved
   role refuses the alias with `PRINCIPAL_MODEL_UNAVAILABLE` and the reason.
+  Both runtime bridges retain the resolved role's lane context and refuse
+  overflow before dispatch. OpenClaw does not borrow a conversation fallback
+  for a role-routed alias. Discovery and runtime exports use its resolved
+  endpoint, including the pooled pin.
   While the principal route names a host, the alias behaves as before. The
   Standard/Abliterated choice stays separate from the role.
 

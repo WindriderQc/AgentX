@@ -70,7 +70,7 @@ function registerOpenClawProtocol({
         details: modelDetails(task)
       }));
       const pipelineTask = snapshot.tasks?.code_generation;
-      const principalTask = snapshot.tasks?.daily_operator;
+      const principalTask = snapshot.principalTopology || snapshot.tasks?.daily_operator;
       if (principalTask?.model) models.push({ name: PRINCIPAL_MODEL_ALIAS, model: PRINCIPAL_MODEL_ALIAS,
         modified_at: snapshot.generatedAt, size: 0, digest: principalTask.inferenceContract?.artifact?.digest || '',
         details: modelDetails(principalTask) });
@@ -206,7 +206,8 @@ function registerOpenClawProtocol({
       // A benchmark cell never degrades: its turn is reserved for this exact
       // call, and a refusal here reaches no host.
       if (benchmarkClaims) cellTurn = admitCellCall(runtimeServices, benchmarkClaims, request, mode);
-      const fallbackTask = !pipeline && !benchmarkClaims && (!conversationTarget || principalTarget) && wantsBusyReply(req, mode)
+      const fallbackTask = !pipeline && !benchmarkClaims && !principalTarget?.topology
+        && (!conversationTarget || principalTarget) && wantsBusyReply(req, mode)
         && typeof runtimeServices.routing.planFallback === 'function'
         ? (principalTarget ? principalFallbackTask(runtimeServices.routing) : conversationFallbackTask()) : null;
       const primaryRun = () => runtimeServices.inference.execute(request, {
@@ -216,6 +217,7 @@ function registerOpenClawProtocol({
         // the structure stays in telemetry and never reaches Ollama.
         ...(mode === 'chat' && { observePromptPrefix: true }),
         ...(conversationTarget && { hostUrl: conversationTarget.hostUrl }),
+        ...(principalTarget?.topology && { topology: principalTarget.topology }),
         ...(benchmarkClaims && { benchmarkClaims }),
         // A conversational provider (e.g. Telegram) outranks evaluation work,
         // like a household turn. The wait stays under the gateway's provider
