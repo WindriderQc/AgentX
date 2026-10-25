@@ -161,6 +161,19 @@ test('ISS summary selects observable passes before limiting the list', async () 
   assert.match(text, /12 autre\(s\) passage\(s\)/);
 });
 
+test('ISS summary distinguishes the full visible count from its partial chronological list', async () => {
+  const visible = { start: { direction: 'N' }, end: { direction: 'E' }, maxElDeg: 30, durationSec: 120,
+    startLocal: 'lun. 26 oct., 06 h 03', endLocal: 'lun. 26 oct., 06 h 05' };
+  const readPasses = async () => ({ computedAtLocal: 'dim. 25 oct., 10 h 00',
+    tle: { epochLocal: 'sam. 24 oct., 01 h 01', stale: false }, counts: { geometric: 19, observable: 5 },
+    passes: Array.from({ length: 3 }, () => ({ observable: true, visible })), view: null });
+  const text = await issSummary("Quand passe l'ISS?", { readPasses });
+  assert.match(text, /5 passage\(s\) visible\(s\).*au total/);
+  assert.match(text, /les 3 prochain\(s\)/);
+  assert.match(text, /liste est partielle, pas un classement/);
+  assert.match(text, /ni l’un d’eux comme le meilleur/);
+});
+
 test('an unavailable ISS computation tells Nestor to give no time', async () => {
   const text = await issSummary("Quand passe l'ISS?", { readPasses: async () => { throw new Error('Data holds no ISS orbital elements'); } });
   assert.match(text, /indisponibles/);
