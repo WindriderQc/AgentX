@@ -71,6 +71,8 @@ describe('Agent X runtime profile', () => {
     '/api/printer-vision/status/example',
     '/api/data-toolbox/status',
     '/data-toolbox',
+    '/diskx',
+    '/api/diskx/diskx.js',
     '/api/ollama-watchdog/status',
     '/api/analytics/federated',
     '/api/analytics/codex-usage',

@@ -371,11 +371,11 @@ function register(api) {
   personas.post('/family/sessions', createNativeFamilySession);
   // The personal surface edits Core notes regardless of the harness.
   personas.post('/private/notes', async (req, res) => {
-    const { operation, id, text, kind } = req.body || {};
+    const { operation, id, text, kind, includeHistory } = req.body || {};
     if (!['list', 'remember', 'forget'].includes(operation)) return fail(res, 400, 'Invalid note operation', 'NESTOR_NOTE_INVALID');
     if ((id !== undefined || operation === 'forget') && !/^[a-f0-9]{24}$/.test(id || '')) return fail(res, 400, 'Choose an existing note', 'NESTOR_NOTE_INVALID');
     if (operation === 'remember' && (typeof text !== 'string' || !text.trim() || text.length > 2000)) return fail(res, 400, 'A note must contain 1-2000 characters', 'NESTOR_NOTE_INVALID');
-    try { return envelope(res, await runtimeServices.memory.notes.operatePersonal({ operation, id, text, kind })); }
+    try { return envelope(res, await runtimeServices.memory.notes.operatePersonal({ operation, id, text, kind, includeHistory })); }
     catch (error) { return fail(res, error.statusCode || 503,
       error.statusCode ? error.message : 'Personal notes are unavailable. Refresh before retrying a change.',
       error.code || 'NESTOR_CONTINUITY_UNAVAILABLE'); }

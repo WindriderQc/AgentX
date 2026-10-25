@@ -5,6 +5,7 @@ const Person = require('../../models/PersonContact');
 const Observation = require('../../models/PersonObservation');
 const Proposal = require('../../models/PersonMergeProposal');
 const { sealText } = require('./identifierVault');
+const { currentFactFilter } = require('./memoryNoteValidity');
 
 // The owner's people registry. Imports record observations from preserved
 // sources; a person is found again by an exact e-mail or phone. Two people that
@@ -178,7 +179,7 @@ async function show(id) {
     Observation.find({ scope: 'owner', personId: id, source: 'gmail-header' }).sort({ occurredAt: -1, _id: 1 }).limit(50).lean(),
     Observation.find({ scope: 'owner', personId: id, source: { $ne: 'gmail-header' } }).limit(20).lean()]);
   const MemoryNote = require('../../models/MemoryNote');
-  const souvenirs = person.names.length ? await MemoryNote.find({ scope: 'owner', kind: 'souvenir', status: 'active',
+  const souvenirs = person.names.length ? await MemoryNote.find({ scope: 'owner', kind: 'souvenir', status: 'active', ...currentFactFilter(),
     people: { $in: person.names } }).sort({ eventDate: 1 }).limit(50).lean() : [];
   return { authority: 'agentx.core', person: project(person),
     exchanges: exchanges.map(row => ({ id: String(row._id), role: row.role, direction: row.direction, occurredAt: row.occurredAt,

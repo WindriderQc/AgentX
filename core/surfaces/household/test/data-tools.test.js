@@ -286,7 +286,7 @@ test('gpu_status refuses bad arguments and reports an unavailable Data service a
 });
 
 test('find_files is never advertised to an MCP client, while its call still answers the owner relay', async () => {
-  assert.deepEqual([...OWNER_RELAY_ONLY], ['find_files']);
+  assert.deepEqual([...OWNER_RELAY_ONLY], ['find_files', 'janitor_report_view']);
   const listed = mergeTools({ jsonrpc: '2.0', id: 1, result: { tools: [{ name: 'check_health' }] } }).result.tools.map((tool) => tool.name);
   assert.ok(listed.includes('storage_summary') && listed.includes('gpu_status') && listed.includes('network_devices'));
   assert.equal(listed.includes('find_files'), false);

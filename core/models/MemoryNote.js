@@ -36,6 +36,8 @@ const schema = new mongoose.Schema({
   forgottenAt: { type: Date, default: null },
   // Source fact time; independent of server-owned createdAt/updatedAt.
   validFrom: { type: Date, default: null },
+  invalidatedAt: { type: Date, default: null },
+  supersededBy: { type: String, default: null, match: /^[a-f0-9]{24}$/ },
   expiresAt: { type: Date, default: null }
 }, { timestamps: true, collection: 'household_voice_memories' });
 

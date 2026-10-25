@@ -138,7 +138,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   device reports. Daily execution belongs to the device. Its IoT tab shows
   device cards, raw live graphs and sampled history; Système links directly to it.
   It also shows storage growth and Data's
-  activity log. The `demo` profile keeps chat,
+  activity log. DiskX (`/diskx`) draws the indexed disks and the latest Janitor
+  duplicate report in GraphysX's 3D city, presentation only, and Nestor links
+  to it with the report's counts. The `demo` profile keeps chat,
   model discovery, RAG and Benchmark. Core owns one common home at `/`,
   `/portal` and `/ecosystem`; full-profile navigation groups Personnel, Famille
   and Atelier, with Système as the secondary menu. Household, PsyX and Data

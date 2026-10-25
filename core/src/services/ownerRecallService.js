@@ -3,6 +3,7 @@
 const { createHash } = require('node:crypto');
 const Recall = require('../../models/OwnerRecallDocument');
 const { requestJson } = require('../helpers/crossServiceClient');
+const { currentFactFilter } = require('./memoryNoteValidity');
 
 // The owner's private recall corpus: mail bodies and read attachments from the
 // archive importer, plus souvenirs and people that Core indexes itself. Text
@@ -87,7 +88,7 @@ async function sync({ limit = 200 } = {}, deps) {
   const MemoryNote = require('../../models/MemoryNote');
   const Person = require('../../models/PersonContact');
   const [notes, people] = await Promise.all([
-    MemoryNote.find({ scope: 'owner', kind: 'souvenir', status: 'active' }).lean(),
+    MemoryNote.find({ scope: 'owner', kind: 'souvenir', status: 'active', ...currentFactFilter() }).lean(),
     Person.find({ scope: 'owner', state: 'active' }).lean()]);
   const wanted = [
     ...notes.map(note => ({ documentId: `souvenir:${note._id}`, kind: 'souvenir', noteId: String(note._id),
@@ -121,11 +122,11 @@ async function search(query, { limit = 8, minScore } = {}, deps) {
     ...(Number.isFinite(Number(minScore)) ? { minScore: Number(minScore) } : {}) }, deps);
   const hits = (reply?.results || []).filter(hit => DOCUMENT_ID.test(hit.documentId || ''));
   const records = new Map((await Recall.find({ documentId: { $in: hits.map(h => h.documentId) }, state: 'indexed' }).lean()).map(r => [r.documentId, r]));
-  // A souvenir or person forgotten since the last sync is never returned.
+  // A forgotten or replaced souvenir is hidden before the next index sync.
   const MemoryNote = require('../../models/MemoryNote');
   const Person = require('../../models/PersonContact');
   const live = new Set([
-    ...(await MemoryNote.find({ _id: { $in: [...records.values()].filter(r => r.noteId).map(r => r.noteId) }, status: 'active' }, { _id: 1 }).lean()).map(n => `souvenir:${n._id}`),
+    ...(await MemoryNote.find({ _id: { $in: [...records.values()].filter(r => r.noteId).map(r => r.noteId) }, status: 'active', ...currentFactFilter() }, { _id: 1 }).lean()).map(n => `souvenir:${n._id}`),
     ...(await Person.find({ _id: { $in: [...records.values()].filter(r => r.personId).map(r => r.personId) }, state: 'active' }, { _id: 1 }).lean()).map(p => `person:${p._id}`)]);
   const results = [];
   // A passage quoted across a thread's replies is indexed in each message; show it once.
