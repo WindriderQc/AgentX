@@ -170,4 +170,26 @@ function mathTurnFor(text, language) {
   return { scene, reply: mathReply(scene, ['fr', 'en'].includes(language) ? language : questionLanguage(tokens(text))) };
 }
 
-module.exports = { mathSceneFor, mathReply, mathTurnFor, LIMITS, SCHEMA };
+// Reuse the canonical Family turn and its existing browser receipt. This is
+// historical rendering evidence, never a claim about the current screen or
+// what the child actually saw. No browser text or receipt reason enters context.
+function mathPictureContext(rows = []) {
+  const turn = rows.find(row => {
+    if (row.scopeId !== 'family' || row.routeTier !== 'deterministic' || row.interrupted) return false;
+    const math = mathTurnFor(row.inputText, row.speechLanguage);
+    return math && row.replyText === math.reply;
+  });
+  if (!turn) return '';
+  const scene = mathSceneFor(turn.inputText);
+  const receipt = turn.sceneReceipt;
+  const matches = receipt && Object.entries(scene).every(([key, value]) => receipt[key] === value);
+  const observation = matches && receipt.status === 'applied'
+    ? 'The browser reported that the renderer applied this picture. This does not prove the child saw it.'
+    : matches && receipt.status === 'rejected'
+      ? 'The browser reported that the renderer rejected this picture. Do not claim the 3D picture was shown.'
+      : 'Display is unconfirmed. Do not claim the 3D picture was shown.';
+  return '\n\nEarlier math picture in this Family conversation (historical reference, not the current screen): '
+    + JSON.stringify(scene) + '. ' + observation;
+}
+
+module.exports = { mathSceneFor, mathReply, mathTurnFor, mathPictureContext, LIMITS, SCHEMA };

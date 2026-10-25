@@ -13,7 +13,7 @@ const { conversationBackend } = require('./conversation-executor');
 const { workshopContext, workshopPrompt } = require('./kidx-workshop');
 const llmx = require('./llmx-conversation');
 const { FAMILY_TONE, familyIssEnabled, familyTurn, householdMembers } = require('./family-context');
-const { mathTurnFor } = require('./math-scene');
+const { mathTurnFor, mathPictureContext } = require('./math-scene');
 const replyChannels = require('./reply-channels');
 const { plainReply } = replyChannels;
 const { scoreSpeechLanguage, speechText } = require('../../public/js/voice/speech-language');
@@ -244,14 +244,16 @@ function createPersonaTurnHandler({
           event('status', { phase: 'activity', activity: { kind: 'member_addressed', agentId: member.agentId } });
         }
         if (backend === 'openclaw') await requireNativeAgent(agentIdFor(turnSession));
-        let history = [], interruptedContext = '';
+        let history = [], interruptedContext = '', mathContext = '';
         const recoverInterrupted = backend === 'openclaw' && !member && personalVoice(session, 'voice');
-        if (features.historyContext !== false && (backend === 'agentx' || !turnSession.agentSessionKey || attachmentStore || recoverInterrupted)) {
+        const recoverMath = pack.childSafe && !isLlmX;
+        if (features.historyContext !== false && (recoverMath || backend === 'agentx' || !turnSession.agentSessionKey || attachmentStore || recoverInterrupted)) {
           // Core inference reads a block window, so its history start (and the cached prefix) moves rarely.
           try {
             const rows = (await loadSessionAuditRows(conversations, session, pack)).filter(row => !entry.workId || row.traceId !== clientTurnId);
             history = sessionHistoryMessages(rows, pack, backend === 'agentx' ? { turnCount: session.turnCount || 0 } : {});
             if (recoverInterrupted) interruptedContext = interruptedRequestContext(rows);
+            if (recoverMath) mathContext = mathPictureContext(rows);
           }
           catch { return fail(res, 503, 'Conversation history is unavailable; no out-of-context answer was generated.', 'VOICE_PERSONA_HISTORY_UNAVAILABLE'); }
         }
@@ -320,7 +322,7 @@ function createPersonaTurnHandler({
             ? await conversationWorks.guardianContextWithRefs(session.sessionId, entry.workId)
             : { text: await conversationWorks?.guardianContext?.(session.sessionId, entry.workId) || '', refs: [] }
           : { text: '', refs: [] };
-        const contextBase = [systemPromptFor(pack, { ...context, contextOnly: true }), interruptedContext,
+        const contextBase = [systemPromptFor(pack, { ...context, contextOnly: true }), interruptedContext, mathContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || ''].join('');
         const screen = !pack.childSafe && !isLlmX && !consult ? require('./screen-context') : null;
         entry.presentationContext = screen?.presentationEvidence(req.body?.screen, screenPages);

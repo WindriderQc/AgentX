@@ -1085,6 +1085,11 @@ describe('built-in Household surface on Core', () => {
     // The parent journal sees which picture was drawn on the child's screen (#168).
     const journal = (await request(app).get('/api/voice-personas/audit/recent?childSafe=true&limit=10').expect(200)).body.data.audit;
     expect(journal.find(row => row.traceId === traceId).sceneReceipt).toMatchObject({ kind: 'add', a: 8, b: 5, status: 'applied' });
+    await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Explique les cubes orange.' }).expect(200);
+    const followUp = executeForTest.mock.calls.at(-1)[0].messages.at(-1).content;
+    expect(followUp).toContain('Earlier math picture in this Family conversation');
+    expect(followUp).toContain('"kind":"add","a":8,"b":5');
+    expect(followUp).toContain('browser reported that the renderer applied this picture');
   });
 
   test('the family lane runs new Family conversations on Core inference with their Core features; spoken turns use the voice task (#261)', async () => {
