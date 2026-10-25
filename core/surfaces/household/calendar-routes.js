@@ -6,7 +6,7 @@ const { calendarWindow, readCalendarView } = require('../../src/services/calenda
 // Registered behind Household's existing device boundary. This surface only
 // composes personalCalendarService and the shared presentation reader.
 function registerCalendarRoutes({ app, calendar, reader, env = process.env, now = Date.now } = {}) {
-  const page = require('../../src/ui/productShell').surfacePage(app, path.join(__dirname, 'pages/calendar.html'), { activePage: 'dad' });
+  const page = require('../../src/ui/productShell').surfacePage(app, path.join(__dirname, 'pages/calendar.html'), { activePage: 'personal-calendar' });
   app.get('/dad/calendar', (req, res, next) => {
     res.set('Cache-Control', 'private, no-store');
     try {
