@@ -16,8 +16,9 @@ const os = require('os');
 const crypto = require('crypto');
 const http = require('http');
 const https = require('https');
+const { measureSourceVolumes } = require('./storage-volumes');
 
-const VERSION = 'storage-1.4.1';
+const VERSION = 'storage-1.5.0';
 const MAX_METADATA_PROBE_PATHS = 1_000;
 const MAX_CONTENT_PROBE_BYTES = 8 * 1024;
 const DATA_URL = (process.env.DATA_URL || 'http://127.0.0.1:3083').replace(/\/+$/, '');
@@ -36,7 +37,10 @@ const COMPLETION_TIMEOUT_MS = Math.max(
 const COMPLETION_RECONCILE_MS = 5 * 60 * 1000;
 const COMPLETION_RECONCILE_POLL_MS = 5000;
 const CACHE_DIR = process.env.STORAGE_AGENT_CACHE_DIR || path.join(os.homedir(), '.cache', 'agentx-storage-agent');
+// Idle collectors still refresh capacity and free space this often.
+const VOLUME_REFRESH_MS = 10 * 60 * 1000;
 let busy = false;
+let volumesReportedAt = 0;
 
 function defaultSources() {
   // Physical roots are instance configuration; never infer an owner's disks.
@@ -332,9 +336,10 @@ async function postHeartbeat(scanId) {
       platform: process.platform,
       agentVersion: VERSION,
       sources: SOURCE_IDS.join(','),
-      scanId
+      scanId,
+      volumes: await measureSourceVolumes(SOURCES)
     }
-  });
+  }).then(result => { volumesReportedAt = Date.now(); return result; });
 }
 
 function startScanHeartbeat(scanId, options = {}) {
@@ -644,6 +649,7 @@ async function poll() {
   try {
     const data = await requestJson(`/api/v1/storage/agent/requests?${query}`);
     if (data.scan) await serviceScan(data.scan);
+    else if (Date.now() - volumesReportedAt >= VOLUME_REFRESH_MS) await postHeartbeat();
   } catch (error) {
     console.error(`[${ts()}] poll failed: ${error.message}`);
     if (process.env.STORAGE_AGENT_ONCE === '1') process.exitCode = 1;
