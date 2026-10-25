@@ -31,7 +31,8 @@
         ${review.schedulingDecision ? `<p>Décision de date : ${esc(review.schedulingDecision)}</p>` : ''}${review.appointment ? `<p>Rendez-vous : ${esc(review.appointment)}</p>` : ''}
         ${review.action === 'update' ? `<p>Action proposée : <strong>${esc(review.title)}</strong> · échéance : ${esc(when(review.dueAt))}</p>` : ''}
         <p>Engagement attribué à : ${esc(review.actor || 'À clarifier')}</p>
-        ${review.remainingWork.length ? `<p>Préparation et travail restant : ${review.remainingWork.map(esc).join(' · ')}</p>` : ''}
+        ${review.remainingWork.length ? `<p>Travail accepté restant : ${review.remainingWork.map(esc).join(' · ')}</p>` : ''}
+        ${(review.openQuestions || []).length ? `<p>Questions ouvertes, sans engagement de relance : ${review.openQuestions.map(esc).join(' · ')}</p>` : ''}
         ${review.uncertainties.length ? `<p>À clarifier : ${review.uncertainties.map(esc).join(' · ')}</p>` : ''}
         <p>Lecture des sources sélectionnées le ${esc(when(review.observedAt))}. Courriels : ${esc(coverage(review.coverage.mail))} · agenda : ${esc(coverage(review.coverage.calendar))} · pièces jointes : ${esc(coverage(review.coverage.documents))}. Les documents externes restent à vérifier.</p>
         ${review.citations.map(cite => `<blockquote><p>${esc(cite.quote)}</p><small>${esc(when(cite.date))} · ${link(cite)}</small></blockquote>`).join('')}

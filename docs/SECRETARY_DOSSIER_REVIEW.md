@@ -26,6 +26,10 @@ It supports:
   summary, exact source passages, remaining work and uncertainties. Keep the
   settled date choice, confirmed appointment and preparation separate. An
   update explicitly chooses the new action title and deadline, including null.
+  `remainingWork` contains established owner commitments. `openQuestions`
+  retains missing details separately: an unsent draft creates no duty to send
+  it, and no reply to it establishes no duty to follow up. A no-send instruction
+  also constrains recommended next steps.
 
 Local's native adapter wraps those canonical arguments in `request`. Core
 returns `proposalSchema` with the read, so the adapter does not reproduce the

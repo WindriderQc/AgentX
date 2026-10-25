@@ -158,11 +158,13 @@ const errors = [], checks = [];
     const proposed = await dossierService.propose({ id: evidence.id, state: 'superseded', action: 'update',
       summary: 'Meeting booked; prepare the documents.', actor: 'Example Person', title: 'Prepare the confirmed meeting', dueAt: '2030-02-26',
       schedulingDecision: 'Date agreed.', appointment: 'Confirmed by the dated source.', remainingWork: ['Prepare documents.'],
+      openQuestions: ['Room and duration are unknown; the draft is unsent.'],
       citations: [{ sourceId, quote: 'Meeting confirmed.' }] });
     await page.reload();
     await page.locator('[data-actions-search]').fill('garage');
     await page.locator('.action-dossier > summary').click();
     assert.match(await page.locator('.action-dossier').textContent(), /Meeting booked; prepare the documents/);
+    assert.match(await page.locator('.action-dossier').textContent(), /Questions ouvertes, sans engagement de relance/);
     assert.equal(await page.locator('.action-dossier blockquote a').getAttribute('href'), 'https://mail.google.com/mail/#all/aaaaaaaaaaaaaaa2');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
     await page.screenshot({ path: path.join(reportDir, `dossier-${device}.png`), fullPage: true });

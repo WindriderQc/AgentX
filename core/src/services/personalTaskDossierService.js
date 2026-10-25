@@ -30,6 +30,7 @@ function normalizeProposal(input, snapshot) {
     && !['quoted', 'unknown'].includes(cite.relation) && !snapshot.sources.find(source => source.id === cite.sourceId).truncated);
   if (input.state !== 'uncertain' && !supported) throw bad('A dated source outside drafts and quotations is required.', 'PERSONAL_DOSSIER_EVIDENCE_REQUIRED');
   const remainingWork = list(input.remainingWork || []).map(value => text(value, 500));
+  const openQuestions = list(input.openQuestions || []).map(value => text(value, 500));
   const uncertainties = list(input.uncertainties || []).map(value => text(value, 500));
   const closed = ['complete', 'cancel'].includes(input.action);
   if (closed && (remainingWork.length || uncertainties.length || input.state === 'uncertain' || input.state === 'waiting'
@@ -37,7 +38,7 @@ function normalizeProposal(input, snapshot) {
   if (closed && !['resolved', 'cancelled', 'superseded'].includes(input.state)) throw bad('Closure needs resolution, cancellation or supersession evidence.');
   if (input.state === 'uncertain' && input.action !== 'keep') throw bad('An uncertain dossier can only remain open for clarification.');
   const proposal = { state: input.state, action: input.action, summary: text(input.summary, 1200),
-    actor: text(input.actor || '', 300, input.state !== 'uncertain'), citations, remainingWork, uncertainties,
+    actor: text(input.actor || '', 300, input.state !== 'uncertain'), citations, remainingWork, openQuestions, uncertainties,
     // Scheduling decision, appointment and remaining preparation are separate.
     schedulingDecision: input.schedulingDecision ? text(input.schedulingDecision, 500) : '',
     appointment: input.appointment ? text(input.appointment, 500) : '' };

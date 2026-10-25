@@ -121,7 +121,9 @@ read the selected threads, calendars, tasks and document coverage. A missing
 source, unread document, draft or quotation stays explicit. Age and silence
 prove neither resolution nor an open obligation. Attribute commitments to the
 actual person. Keep a settled choice of date separate from a confirmed meeting
-and remaining preparation. Cite exact dated passages, propose one decision and
+and remaining preparation. An unsent draft creates no duty to send it; missing
+answers to it are open questions, not an obligation to follow up. Preserve
+no-send instructions in recommendations as well as execution. Cite exact dated passages, propose one decision and
 show it to the owner in My day. The tool cannot apply it. Never claim the task
 changed until the human decision receipt exists; preserve its identity and
 history. If the tool is unavailable, disclose the gap and read available native

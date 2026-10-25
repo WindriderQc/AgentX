@@ -171,4 +171,10 @@ describe('personal dossier evidence and human decisions in Core', () => {
     expect(review.selection.timeMin).toBe('2030-02-13T15:00:00.000Z');
     expect(Date.parse(review.selection.timeMax) - Date.parse(review.selection.timeMin)).toBeLessThan(366 * 86400000);
   });
+
+  test('unanswered draft details remain open questions, distinct from accepted work', async () => {
+    const proposed = await propose(await read(), { ...update(), openQuestions: ['Salle et durée non établies; le brouillon est non envoyé.'] });
+    expect(proposed.proposal.remainingWork).toEqual(['Préparer les pièces.']);
+    expect(proposed.proposal.openQuestions).toEqual(['Salle et durée non établies; le brouillon est non envoyé.']);
+  });
 });
