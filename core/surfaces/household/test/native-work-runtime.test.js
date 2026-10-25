@@ -156,6 +156,28 @@ test('a mismatched installed native adapter refuses preparation before any model
   await assert.rejects(runtime.prepare({ row: {}, session: {} }), /does not support isolated consultations yet/);
 });
 
+test('changing selected context and the request date leaves complete historical turns at the same prefix', async () => {
+  const text = 'Read sources.';
+  const runtime = runtimeWithContext({ works: { query: sessionId => ({ sessionId }) },
+    continuity: async () => ({ capabilities: { isolatedWork: true, nativeConversation: true } }), conversations: {
+      getTurn: async () => ({ inputText: text }), readTurns: async () => [
+        { traceId: 'old', inputText: 'Complete old restriction. '.repeat(500), replyText: 'Exact reply.' }
+      ] } });
+  const row = { mode: 'native', sessionId: 'session', requestSha256: hash(text), attempt: { agentId: 'main' } };
+  const first = await runtime.prepare({ row: { ...row, receivedAt: new Date('2030-01-02T12:00:00Z') },
+    session: {}, selectedContext: 'Old selected note.' });
+  const next = await runtime.prepare({ row: { ...row, receivedAt: new Date('2030-01-03T12:00:00Z') },
+    session: {}, selectedContext: 'Current selected note.' });
+  const historyEnd = first.turnContext.indexOf('\n\nOld selected note.');
+  assert.ok(historyEnd > 12000);
+  assert.equal(first.turnContext.slice(0, historyEnd), next.turnContext.slice(0, historyEnd));
+  assert.match(next.turnContext.slice(historyEnd), /Current selected note/);
+  assert.match(next.turnContext.slice(historyEnd), /2030-01-03/);
+  assert.equal(first.instructions, next.instructions);
+  assert.equal(next.session.agentId, 'main');
+  assert.equal(next.maxOutputTokens, undefined);
+});
+
 test('web dispatch requires the native budget hook before inference', async () => {
   const text = 'Does the team play tonight?';
   const runtime = nativeWorkRuntime({ continuity: async () => ({ capabilities: { isolatedWork: true } }),
