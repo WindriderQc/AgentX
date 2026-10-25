@@ -1896,6 +1896,51 @@ Without a declared topology, or without any route naming a role, routing is
 unchanged: no topology read, the same route shapes and the same routing
 configuration version.
 
+#### Host actuator
+
+A mode switch changes which runtime services run on the GPU host. Core has no
+shell there. Instead, a small actuator on the host
+(`integrations/topology-actuator/`) accepts four commands and nothing else (#360,
+phase 3):
+
+- `status`: which declared units run, the mode they form, the last confirmed
+  mode, the safety timer and memory per GPU;
+- `activate <mode>`: stop the other modes' units, wait until the mode's GPUs
+  are free, start its units and wait until each endpoint answers;
+- `confirm`: Core has verified the new mode; cancel the safety timer and make
+  the mode the one that starts at boot;
+- `rollback`: return to the last confirmed mode.
+
+Each call returns one JSON receipt (`agentx.runtime-topology-actuation/v1`)
+with the request id, both modes, the units stopped and started, the GPUs,
+timings, the outcome and the safety timer state.
+
+- **Safety timer.** `activate` arms a systemd timer before it stops anything.
+  Without `confirm` within the configured bound (20 minutes by default), the
+  timer rolls back to the last confirmed mode. Boot enablement changes only on
+  `confirm`, so a reboot during a switch comes back in the confirmed mode.
+- **Failures.** A failed `activate` restores the previous mode at once. A lost
+  answer is read back with `status --request-id`; repeating a command with the
+  same id returns its stored receipt and never acts twice.
+- **Configuration.** The mode → units map belongs to the instance: a root-owned
+  JSON file on the host and the systemd units it names. The actuator holds no
+  host, port or model. A unit the map does not list, such as a CPU Ollama, is
+  never touched.
+- **Transport.** Core runs in a container, usually on another machine, and
+  already reaches remote hosts over SSH. The actuator is reached the same way,
+  with a dedicated key whose `authorized_keys` entry is
+  `restrict,from="<core host>",command="…/ssh-entry.sh"`. The entry passes the
+  client's command to the actuator through one `sudo` rule, and the actuator
+  checks it against its grammar. This adds no listening port and no secret
+  beside the key, and the pinned host key identifies the machine. A loopback
+  HTTP agent would need its own port, token, and TLS or a tunnel to be
+  reachable from the Core container.
+
+Installation, the configuration fields, exit codes and the full receipt are in
+the integration's README. Installing the actuator and its units is an operator
+change on the GPU host; the unit tests use a fake systemd and do not qualify
+it.
+
 ### Inference log timings and prompt cache
 
 Each `inferencelogs` row keeps Core's wall clock in `durationMs` (routing and
