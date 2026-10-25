@@ -1104,9 +1104,9 @@ event, and exposes their reference through the existing presentation contract.
 The same domain reader is available on the dedicated owner MCP transport;
 it stays absent from the general and memory catalogues. The page is full-profile only and,
 like the Data Toolbox, a family-pinned device cannot open it: file paths stay on
-the private network and out of Famille.
-Only the DiskX document adds `wasm-unsafe-eval` to its existing `script-src`
-policy, for the world's Rapier engine; it does not permit JavaScript eval.
+the private network and out of Famille. The module compiles WebAssembly, so this
+page alone adds `'wasm-unsafe-eval'` to Core's `script-src`; it allows
+WebAssembly compilation, not `eval()` of JavaScript.
 Pictures beside Nestor come only from sources Core can resolve. `SEARXNG_URL`
 enables internet image search (strict SafeSearch in Famille; the browser loads the
 https image directly without a referrer). Household photos and media need both a
@@ -2058,9 +2058,16 @@ never send a second switch.
 1. Read the switch record and the actuator's `status --request-id <id>`.
 2. Bring the host to one known mode: with the actuator's `rollback`, or by
    waiting for its safety timer.
-3. Recover the maintenance lease with
-   `POST /api/nerve-center/maintenance-leases/<leaseId>/recover` and the
-   `agentx.maintenance-recovery/v1` receipt.
+3. `POST /api/nerve-center/runtime-topology/switch/<requestId>/recover` with
+   `{ "confirmation": "MAINTENANCE_SIDE_EFFECTS_VERIFIED_OR_ROLLED_BACK" }`.
+   - **Checks.** Core reads the actuator status: it must report one declared
+     mode running and confirmed, with nothing pending. Otherwise the request is
+     refused with `TOPOLOGY_HOST_NOT_SETTLED`.
+   - **Effect.** Core recovers the quarantined lease through the native
+     maintenance recovery, as the lease's owner, and records the running mode
+     as the group's intended mode.
+   - **Why this route.** The generic `…/maintenance-leases/<leaseId>/recover`
+     cannot name the switch's owner.
 
 Until then, a new switch for that group is refused with
 `TOPOLOGY_SWITCH_UNCERTAIN`.

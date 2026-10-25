@@ -50,6 +50,52 @@ describe('summarizePairedDeltas', () => {
     });
 });
 
+describe('bootstrap seed compatibility', () => {
+    const draws = (seed) => {
+        const random = seededRandom(seed);
+        return Array.from({ length: 3 }, () => random());
+    };
+    const seedOne = [0.6270739405881613, 0.002735721180215478, 0.5274470399599522];
+    const values = [-12, -7, -3, 0, 1, 2, 4, 6, 9, 15, 17, 22, 31];
+
+    test('honors zero and numeric zero strings with reproducible mulberry32 draws', () => {
+        const expected = [0.26642920868471265, 0.0003297457005828619, 0.2232720274478197];
+        expect(draws(0)).toEqual(expected);
+        expect(draws(0)).toEqual(expected);
+        expect(draws('0')).toEqual(expected);
+        expect(draws(-0)).toEqual(expected);
+    });
+
+    test('preserves the default, invalid-input and wrapped nonzero fallbacks', () => {
+        for (const seed of [undefined, NaN, Infinity, 'invalid', 1, 2 ** 32, -(2 ** 32)]) {
+            expect(draws(seed)).toEqual(seedOne);
+        }
+    });
+
+    test.each([
+        [7, [0.011704753153026104, 0.06195825757458806, 0.97690763277933]],
+        [42, [0.6011037519201636, 0.44829055899754167, 0.8524657934904099]],
+        [4294967295, [0.8964226141106337, 0.189478256739676, 0.7156526781618595]]
+    ])('preserves the historical stream for seed %s', (seed, expected) => {
+        expect(draws(seed)).toEqual(expected);
+    });
+
+    test.each([
+        [200, [0.9980769230769231, 12.930769230769233]],
+        [2000, [0.45961538461538476, 13.001923076923067]]
+    ])('uses the zero stream for a bootstrap with %s iterations', (iterations, expected) => {
+        const input = values.slice();
+        expect(normalizeBootstrapOptions({ seed: 0, iterations })).toEqual({ seed: 0, iterations });
+        expect(bootstrapMeanInterval(input, { seed: 0, iterations })).toEqual(expected);
+        expect(input).toEqual(values);
+    });
+
+    test('reports the interval computed from seed zero in the paired summary', () => {
+        expect(summarizePairedDeltas(values, { seed: 0 }).bootstrapInterval).toEqual([0.5, 13]);
+        expect(summarizePairedDeltas(values)).toEqual(summarizePairedDeltas(values, { seed: 1 }));
+    });
+});
+
 describe('bootstrap', () => {
     test('returns the same interval for the same seed and a different one for another seed', () => {
         const values = deltasWithEffect(1, 25, 5);

@@ -44,8 +44,11 @@ function nativeWorkRuntime({ works, conversations, agentClient, continuity, atta
         agentSessionKey: null, inference: { open: false }, modeId: 'standard' };
       const timeZone = familyTimeZone();
       const requestDate = row.receivedAt ? calendarDayKey(new Date(row.receivedAt), timeZone) : '';
-      const turnContext = [selectedContext, requestDate && `[Core request date: ${requestDate}; time zone: ${timeZone}. Resolve relative dates against this request.]`,
-        conversationContext].filter(Boolean).join('\n\n');
+      // Keep changing selections and dates after the complete history, allowing
+      // the native provider to reuse an unchanged conversation prefix.
+      const turnContext = [conversationContext, selectedContext,
+        requestDate && `[Core request date: ${requestDate}; time zone: ${timeZone}. Resolve relative dates against this request.]`]
+        .filter(Boolean).join('\n\n');
       assertContextSize(turnContext, LIMITS.context);
       return { session: isolated, ...(row.mode === 'native' && row.performance?.boss?.model && { model: row.performance.boss.model }),
         ...(row.mode !== 'native' && { maxOutputTokens: 4096 }), text: turn.inputText, currentContent: prepared[0].content,
