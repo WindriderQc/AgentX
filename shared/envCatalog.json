@@ -3470,6 +3470,26 @@
       "secret": false,
       "description": "Poll interval of the Data weather feed. Unset: 60000 ms."
     },
+    "WORLDTIDES_API_KEY": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": true,
+      "description": "Optional WorldTides API credential for Data's on-demand tides route (GET /api/v1/livedata/tides). Each upstream call spends account credits; answers are cached. Unset: the route answers 503 and calls nothing. Supply through an external Data environment override; keep the credential outside Git."
+    },
+    "WORLDTIDES_CACHE_MS": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "How long Data keeps a WorldTides answer for one rounded position, day count and UTC day, at least 60000. Unset: 21600000 (6 h)."
+    },
     "OWNER_MAIL_RAG_TOKEN": {
       "services": [
         "core",
