@@ -34,7 +34,9 @@ function sampleStdDev(values) {
 
 // mulberry32: small, fast and reproducible; quality is ample for resampling.
 function seededRandom(seed) {
-    let state = (Number(seed) >>> 0) || 1;
+    const parsed = Number(seed);
+    // Zero is valid; retain the historical fallback for every other input.
+    let state = parsed === 0 ? 0 : ((parsed >>> 0) || DEFAULT_BOOTSTRAP_SEED);
     return () => {
         state = (state + 0x6D2B79F5) >>> 0;
         let t = state;
