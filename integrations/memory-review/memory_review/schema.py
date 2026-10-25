@@ -77,6 +77,7 @@ CANDIDATE_TYPES = (
     "duplicate",
     "stale_memory",
     "contradiction",
+    "supersedes",
     "task_or_followup",
     "governed_source_change",
     "ephemeral",
@@ -100,6 +101,7 @@ TARGETS_BY_TYPE = {
     "durable_fact": ("shared_fact", "runtime_local"),
     "decision": ("shared_fact", "runtime_local"),
     "correction": ("shared_fact", "runtime_local"),
+    "supersedes": ("shared_fact",),
     "inferred_pattern": ("soft_memory",),
     "project_event": ("artifact",),
     "procedure": ("artifact",),
@@ -221,7 +223,7 @@ class SynthesisOutputError(ValueError):
 
 _ALLOWED_CANDIDATE_KEYS = {
     "type", "statement", "rationale", "target", "evidenceRefs", "confidence", "conflicts",
-    "scope", "sensitivity", "impact", "stability", "validFrom", "validTo", "memoryKey",
+    "scope", "sensitivity", "impact", "stability", "validFrom", "validTo", "memoryKey", "supersedes",
 }
 _ALLOWED_TARGET_KEYS = {"kind", "runtime", "topic"}
 MEMORY_SCOPES = ("project", "ecosystem", "workflow", "owner", "household", "private_domain")
@@ -344,9 +346,19 @@ def validate_candidates(payload: object, known_observation_ids: set[str]) -> lis
         if conflicts and not isinstance(conflicts, list):
             raise SynthesisOutputError(f"{where}.conflicts must be a list")
         scope = _enum(item, "scope", MEMORY_SCOPES, "project", where)
+        replacement = item.get("supersedes")
+        if ctype == "supersedes":
+            if not isinstance(replacement, dict) or set(replacement) != {"authority", "ref"} \
+                    or replacement.get("authority") != "local_memory" \
+                    or not isinstance(replacement.get("ref"), str) \
+                    or not re.fullmatch(r"[a-f0-9]{24}", replacement["ref"]) or scope != "owner":
+                raise SynthesisOutputError(f"{where}.supersedes must name an exact owner local_memory conflict")
+        elif replacement is not None:
+            raise SynthesisOutputError(f"{where}.supersedes requires type supersedes")
         sensitivity_default = "private" if scope in ("owner", "household", "private_domain") else "normal"
         cleaned.append({
             "type": ctype,
+            **({"supersedes": replacement} if ctype == "supersedes" else {}),
             "statement": statement,
             "rationale": rationale,
             "target": {

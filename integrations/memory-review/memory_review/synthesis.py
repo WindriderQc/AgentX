@@ -51,8 +51,13 @@ private, and cites only such observations.
 - A recalled candidate never confirms itself. Inferences require independent \
 owner observations; cite only the current observation ids.
 - Never output secrets, credentials, tokens, or key-like strings.
-- Flag contradictions against dedup context as type "contradiction"; do not \
-resolve them yourself. Mark stale/superseded-looking statements as stale_memory.
+- Flag unresolved contradictions as type "contradiction". When new owner \
+evidence explicitly replaces an owner-memory fact in dedup context, propose \
+type "supersedes", target shared_fact, scope owner, and supersedes \
+{{"authority":"local_memory","ref":"<exact owner-memory documentId>"}}. \
+Never invent a reference or change its sensitivity. Core requires individual \
+human review and verifies the exact source before writing. Otherwise keep \
+the conflict unresolved. Mark stale-looking statements as stale_memory.
 - Propose at most {schema.MAX_CANDIDATES_PER_RUN} candidates. Fewer, stronger \
 candidates beat many weak ones. Statements must be compact (<= {schema.STATEMENT_MAX} chars).
 - Every candidate MUST cite one or more observation ids in evidenceRefs and \

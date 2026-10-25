@@ -109,6 +109,7 @@ const CandidateSchema = new mongoose.Schema({
     mode: { type: String, enum: ['off', 'shadow', 'safe'], default: 'off' },
   },
   conflicts: { type: [ConflictSchema], default: [] },
+  supersedes: { type: new mongoose.Schema({ authority: String, ref: String, fingerprint: String }, { _id: false }), default: null },
   risk: {
     secret: { type: Boolean, default: false },
     privacy: { type: String, default: 'none' },
@@ -120,7 +121,7 @@ const CandidateSchema = new mongoose.Schema({
     type: String,
     enum: [
       'proposed', 'approved', 'auto_approved', 'rejected', 'edited', 'deferred',
-      'parked', 'shadowed', 'applying', 'applied', 'apply_failed',
+      'parked', 'shadowed', 'applying', 'applied', 'apply_failed', 'rolling_back', 'rolled_back', 'rollback_failed',
     ],
     default: 'proposed',
   },
@@ -146,6 +147,7 @@ const CandidateSchema = new mongoose.Schema({
     result: { type: String, default: null, maxlength: 2000 },
     rollbackRef: { type: String, default: null, maxlength: 400 },
   },
+  rollback: { by: String, at: Date, leaseUntil: Date, result: String },
 }, { _id: false });
 
 const CollectorSchema = new mongoose.Schema({

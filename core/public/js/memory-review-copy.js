@@ -27,6 +27,7 @@
   };
 
   const actionCopy = {
+    rollback: ['Restore previous fact', 'Restore the previous fact and forget its replacement. AgentX refuses if either fact has changed.', 'Restore previous fact', 'fa-rotate-left', 'mr-btn-secondary'],
     approve: ['Approve this candidate?', 'It becomes eligible for a separate apply action. Nothing is written yet.', 'Approve candidate', 'fa-check', 'mr-btn-approve'],
     reject: ['Reject this candidate?', 'The normalized claim stays suppressed until materially new evidence appears.', 'Reject candidate', 'fa-xmark', 'mr-btn-reject'],
     defer: ['Defer this candidate?', 'Keep it pending so future recurrence can strengthen or clarify it.', 'Defer candidate', 'fa-clock', 'mr-btn-secondary'],

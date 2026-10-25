@@ -77,6 +77,18 @@ class FakeTransport:
 
 
 class SynthesisTests(unittest.TestCase):
+    def test_supersession_preserves_only_an_exact_owner_note_reference(self):
+        candidate = {**good_candidate(), "type": "supersedes", "scope": "owner", "sensitivity": "private",
+                     "supersedes": {"authority": "local_memory", "ref": "a" * 24}}
+        result = schema.validate_candidates({"candidates": [candidate]}, {"obs-1"})
+        self.assertEqual(result[0]["supersedes"], candidate["supersedes"])
+        for changed in [{**candidate, "scope": "household"},
+                        {**candidate, "target": {"kind": "artifact"}},
+                        {**candidate, "supersedes": {**candidate["supersedes"], "fingerprint": "f" * 64}},
+                        {**candidate, "supersedes": {"authority": "rag", "ref": "a" * 24}}]:
+            with self.subTest(candidate=changed), self.assertRaises(schema.SynthesisOutputError):
+                schema.validate_candidates({"candidates": [changed]}, {"obs-1"})
+
     def test_http_rejection_preserves_code_without_leaking_upstream_text(self):
         error = HTTPError("http://stub", 409, "Conflict", {}, io.BytesIO(json.dumps({
             "code": "MODEL_NOT_EFFECTIVE", "error": "private upstream detail",

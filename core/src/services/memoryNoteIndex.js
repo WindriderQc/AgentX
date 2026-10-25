@@ -66,7 +66,7 @@ function createIndex({ embed = embedThroughCore, model = embeddingModel } = {}) 
 
   // Notes written before the index, or under another embedding model.
   async function rebuild(filter = {}, { limit = 5000 } = {}) {
-    const notes = await MemoryNote.find({ ...filter, status: { $ne: 'forgotten' } },
+    const notes = await MemoryNote.find({ ...filter, status: { $nin: ['forgotten', 'pending'] } },
       { text: 1, embeddingModel: 1, embeddedHash: 1 }).limit(limit).lean();
     const stale = notes.filter(note => !isCurrent(note));
     const result = { model: model(), notes: notes.length, stale: stale.length, indexed: 0, failed: 0 };

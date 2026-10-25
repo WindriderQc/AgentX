@@ -3,6 +3,12 @@
 const mongoose = require('mongoose');
 const { MEMORY_SCOPES, SENSITIVITY_LEVELS } = require('../../shared/memoryClassification');
 
+const replacementSchema = new mongoose.Schema({
+  key: String, inputHash: String, sourceHash: String, successorId: String,
+  successorHash: String, effectiveAt: Date,
+  phase: { type: String, enum: ['preparing', 'linked', 'applied', 'undoing', 'rolled_back', 'failed'] }
+}, { _id: false });
+
 // Reuse the existing selected-note collection. Moving its ownership into Core
 // does not copy data, relabel historical notes or create a second memory store.
 const schema = new mongoose.Schema({
@@ -32,12 +38,18 @@ const schema = new mongoose.Schema({
   embedding: { type: [Number], default: undefined, select: false },
   embeddingModel: { type: String, default: null },
   embeddedHash: { type: String, default: null },
-  status: { type: String, enum: ['active', 'forgotten'], default: 'active', index: true },
+  status: { type: String, enum: ['active', 'pending', 'forgotten'], default: 'active', index: true },
   forgottenAt: { type: Date, default: null },
   // Source fact time; independent of server-owned createdAt/updatedAt.
   validFrom: { type: Date, default: null },
   invalidatedAt: { type: Date, default: null },
   supersededBy: { type: String, default: null, match: /^[a-f0-9]{24}$/ },
+  // A replacement's durable local receipt. Pending successors stay invisible
+  // until the predecessor link commits; retries resume this exact operation.
+  replacement: { type: replacementSchema, default: null },
+  replacementKey: { type: String, default: null },
+  replaces: { type: String, default: null },
+  rollbackKey: { type: String, default: null },
   expiresAt: { type: Date, default: null }
 }, { timestamps: true, collection: 'household_voice_memories' });
 

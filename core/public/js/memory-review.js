@@ -13,6 +13,7 @@
     failed: 'Needs attention', collecting: 'Collecting', synthesizing: 'Reflecting',
     proposed: 'Pending', approved: 'Approved', auto_approved: 'Policy approved', rejected: 'Rejected', deferred: 'Deferred',
     parked: 'Parked', shadowed: 'Shadowed', applied: 'Applied', apply_failed: 'Apply failed', applying: 'Applying',
+    supersedes: 'Replaces a fact', rolling_back: 'Restoring previous fact', rolled_back: 'Previous fact restored', rollback_failed: 'Rollback needs attention',
     shared_fact: 'Memory note', soft_memory: 'Working memory', artifact: 'Knowledge artifact', runtime_local: 'Runtime-local proposal',
     skill_draft: 'Skill draft', pipeline_task: 'Follow-up task', git_change: 'Source change', ignore: 'No action',
     agentx: 'AgentX', 'claude-code': 'Claude Code', codex: 'Codex', external: 'External',
@@ -492,8 +493,9 @@
     const pending = count('proposed', 'deferred');
     const toApply = count('approved', 'apply_failed');
     const written = count('applied');
-    return { total: candidates.length, pending, toApply, written,
-      settled: candidates.length - pending - toApply - written, authorized: run?.mode === 'apply' };
+    const restoring = count('rolling_back', 'rollback_failed');
+    return { total: candidates.length, pending, toApply, written, restoring,
+      settled: candidates.length - pending - toApply - written - restoring, authorized: run?.mode === 'apply' };
   }
 
   function renderProgress() {
@@ -505,7 +507,7 @@
       ? `<i class="mr-progress-${tone}" style="flex:${value}" title="${value} ${text}"></i>` : '');
     const decided = work.total - work.pending;
     bar.innerHTML = `<div class="mr-progress-track" role="img" aria-label="${decided} of ${work.total} candidates decided">
-        ${part(work.written, 'written', 'written')}${part(work.toApply, 'apply', 'accepted, not written yet')}${part(work.settled, 'settled', 'rejected or needing no action')}${part(work.pending, 'pending', 'awaiting your decision')}</div>
+        ${part(work.written, 'written', 'written')}${part(work.toApply, 'apply', 'accepted, not written yet')}${part(work.restoring, 'pending', 'unfinished restores')}${part(work.settled, 'settled', 'rejected or needing no action')}${part(work.pending, 'pending', 'awaiting your decision')}</div>
       <span><b>${decided}</b> of ${work.total} decided${work.toApply ? ` · <b>${work.toApply}</b> accepted, not written yet` : ''}${work.written ? ` · <b>${work.written}</b> written` : ''}</span>`;
   }
 
@@ -582,6 +584,10 @@
   }
 
   function candidateActions(candidate) {
+    if (candidate.type === 'supersedes' && ['applied', 'rollback_failed'].includes(candidate.status)
+        && state.applyEnabled && state.run?.mode === 'apply') return `<div class="mr-candidate-actions">
+      <button type="button" class="mr-btn mr-btn-secondary" data-action="rollback"><i class="fas fa-rotate-left"></i>
+      ${candidate.status === 'rollback_failed' ? 'Retry restoring previous fact' : 'Restore previous fact'}</button></div>`;
     if (['proposed', 'deferred'].includes(candidate.status)) return `<div class="mr-candidate-actions">
       <button type="button" class="mr-btn mr-btn-approve" data-action="approve" aria-keyshortcuts="A"><i class="fas fa-check"></i> Approve</button>
       <button type="button" class="mr-btn mr-btn-reject" data-action="reject" aria-keyshortcuts="R"><i class="fas fa-xmark"></i> Reject</button>
@@ -605,7 +611,7 @@
     const all = state.run?.candidates || [];
     // In the full list, what waits for the owner comes first: accepted and not
     // written, then undecided. Numbers stay those of the run.
-    const rank = (status) => (['approved', 'apply_failed'].includes(status) ? 0 : ['proposed', 'deferred'].includes(status) ? 1 : 2);
+    const rank = (status) => (['approved', 'apply_failed', 'rolling_back', 'rollback_failed'].includes(status) ? 0 : ['proposed', 'deferred'].includes(status) ? 1 : 2);
     const visible = all.map((candidate, index) => ({ candidate, number: index + 1 }))
       .filter(({ candidate }) => state.filter === 'all' || candidate.status === state.filter
         || (state.filter === 'approved' && candidate.status === 'apply_failed')
@@ -672,6 +678,9 @@
       <p class="mr-statement">${esc(candidate.statement)}</p>
       ${candidate.review?.editedStatement ? `<p class="mr-edited"><i class="fas fa-pen"></i> Approved wording: ${esc(candidate.review.editedStatement)}</p>` : ''}
       ${candidate.rationale ? `<p class="mr-rationale">${esc(candidate.rationale)}</p>` : ''}
+      ${candidate.supersedes ? `<p class="mr-rationale">Replaces memory note ${esc(candidate.supersedes.ref)}. The previous wording stays in owner history.</p>` : ''}
+      ${candidate.supersessionPreview?.text ? `<blockquote class="mr-rationale"><b>Previous fact:</b> ${esc(candidate.supersessionPreview.text)}${candidate.supersessionPreview.validFrom ? ` · valid from ${esc(shortDate(candidate.supersessionPreview.validFrom))}` : ''}</blockquote>` : ''}
+      ${candidate.supersessionPreview?.unavailable ? '<p class="mr-rationale">The previous fact is no longer available. Refresh before applying a change.</p>' : ''}
       ${candidate.automation?.reason ? `<p class="mr-rationale"><b>${esc(label(candidate.automation.disposition))}:</b> ${esc(candidate.automation.reason)}</p>` : ''}
       <div class="mr-signal-grid"><span><b>${(candidate.evidence || []).length}</b> evidence</span><span><b>${recurrence.independentSessions || 0}</b> ${recurrence.independentSessions === 1 ? 'session' : 'sessions'}</span><span><b>${recurrence.independentRuntimes || 0}</b> ${recurrence.independentRuntimes === 1 ? 'runtime' : 'runtimes'}</span>
         <span class="mr-confidence"><span>Confidence <b>${confidence}%</b></span><i><i style="width:${confidence}%"></i></i></span></div>
@@ -679,7 +688,8 @@
       ${(candidate.conflicts || []).map((conflict) => `<div class="mr-conflict"><div><i class="fas fa-triangle-exclamation"></i> <b>${esc(label(conflict.authority))} disagrees</b><span>${esc(conflict.summary)}</span></div><button type="button" class="mr-btn mr-btn-secondary" data-clarify><i class="fas fa-comment-dots"></i> Copy clarification question</button></div>`).join('')}
       <details class="mr-evidence"><summary><i class="fas fa-magnifying-glass"></i> Why AgentX trusts this (${(candidate.evidence || []).length})</summary>
         ${(candidate.evidence || []).map((evidence) => `<div class="mr-evidence-item"><span class="mr-chip">${esc(label(evidence.runtime))}</span><span class="mr-chip">${esc(label(evidence.trust))}</span><time>${esc(shortDate(evidence.observedAt))}</time><p>${esc(trustHelp[evidence.trust] || 'This evidence passed the bounded provenance policy.')}</p><blockquote>${esc(evidence.redactedExcerpt || '(No excerpt retained)')}</blockquote></div>`).join('')}</details>
-      ${candidate.apply?.attemptedAt ? `<div class="mr-apply-result"><b>Apply result:</b> ${esc(candidate.apply.result || 'Recorded')}${candidate.apply.rollbackRef ? ` · rollback ${esc(candidate.apply.rollbackRef)}` : ''}</div>` : ''}
+      ${candidate.apply?.attemptedAt ? `<div class="mr-apply-result"><b>Apply result:</b> ${esc(candidate.type === 'supersedes' && ['applied', 'rolling_back', 'rollback_failed', 'rolled_back'].includes(candidate.status) ? 'Replacement recorded; previous wording kept in your history.' : candidate.apply.result || 'In progress')}${candidate.type !== 'supersedes' && candidate.apply.rollbackRef ? ` · rollback ${esc(candidate.apply.rollbackRef)}` : ''}</div>` : ''}
+      ${candidate.rollback?.at ? `<div class="mr-apply-result"><b>Restore result:</b> ${esc(candidate.status === 'rolled_back' ? 'Previous fact restored.' : candidate.rollback.result || 'In progress')}</div>` : ''}
       ${candidate.review?.by ? `<p class="mr-reviewed">Reviewed by ${esc(candidate.review.by)} · ${esc(shortDate(candidate.review.at))}</p>` : ''}
       ${candidateActions(candidate)}</li>`;
   }
@@ -739,8 +749,8 @@
     let url;
     if (pending.action === 'authorize') {
       url = `/api/memory-review/runs/${encodeURIComponent(state.run.runId)}/authorize-apply`;
-    } else if (pending.action === 'apply') {
-      url = `/api/memory-review/runs/${encodeURIComponent(state.run.runId)}/candidates/${encodeURIComponent(pending.candidateId)}/apply`;
+    } else if (['apply', 'rollback'].includes(pending.action)) {
+      url = `/api/memory-review/runs/${encodeURIComponent(state.run.runId)}/candidates/${encodeURIComponent(pending.candidateId)}/${pending.action}`;
     } else {
       url = `/api/memory-review/runs/${encodeURIComponent(state.run.runId)}/candidates/${encodeURIComponent(pending.candidateId)}/review`;
       body.action = pending.action;
@@ -757,12 +767,14 @@
     const submit = $('mrActionSubmit');
     submit.disabled = true;
     try {
-      await apiJson(url, { method: 'POST', body });
-      const actionLabel = pending.action === 'authorize' ? 'Run authorized' : pending.action === 'apply' ? 'Candidate applied' : 'Review saved';
+      const result = await apiJson(url, { method: 'POST', body });
+      if (['apply_failed', 'rollback_failed'].includes(result.status)) throw new Error(result.result || 'The operation needs reconciliation. Refresh before retrying.');
+      const actionLabel = pending.action === 'rollback' ? 'Previous fact restored' : pending.action === 'authorize' ? 'Run authorized' : pending.action === 'apply' ? 'Candidate applied' : 'Review saved';
       closeAction(); toast(actionLabel, 'success');
       await Promise.all([loadInsights(), loadRuns({ select: false })]);
       await selectRun(state.selectedRunId);
       if (pending.action === 'authorize') showCandidates('approved');
+      if (['apply', 'rollback'].includes(pending.action)) showCandidates('all');
     } catch (error) {
       state.focusAfter = null;
       toast(`Action failed: ${error.message}`, 'error');

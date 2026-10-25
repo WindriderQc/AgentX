@@ -10,9 +10,9 @@ const tool = (name, description, properties, required = [], readOnlyHint = true)
 const TOOLS = [
   tool('team_brief', 'Read Core records from the Secretary or Accountant, including freshness, formatted monetary amounts, provenance and unavailable sections. Relay Display amounts exactly. For exact/current messages or actions consult the specialist.',
     { member: { enum: ['secretary', 'comptable'], type: 'string' }, days: integer(90) }, ['member']),
-  tool('personal_memory', 'List, search, remember, correct or forget the same owner notes used by Nestor. Lasting personal facts only, no mail digests or secrets. Forget requires the exact note id.',
+  tool('personal_memory', 'List, search, remember, correct or forget the same owner notes used by Nestor. An explicit list with includeHistory reads replaced facts and their links. Lasting personal facts only, no mail digests or secrets. Forget requires the exact note id.',
     { action: { type: 'string', enum: ['list', 'search', 'remember', 'forget'] }, id: string(24), text: string(4000), query: string(4000),
-      kind: { type: 'string', enum: ['fact', 'preference', 'decision'] }, expiresAt: string(40), limit: integer(50), offset: integer(10000, 0) }, ['action'], false),
+      kind: { type: 'string', enum: ['fact', 'preference', 'decision'] }, expiresAt: string(40), limit: integer(50), offset: integer(10000, 0), includeHistory: { type: 'boolean' } }, ['action'], false),
   tool('mail_journal', 'Read or record dated owner mail digests in Core. This is not live Gmail access. Consult secretary for exact mail, drafting, sending or triage. Recording replaces the same thread/message digest.',
     { action: { type: 'string', enum: ['search', 'record'] }, query: string(500), threadId: string(200), messageId: string(200),
       since: string(40), until: string(40), occurredAt: string(40), subject: string(300), counterpart: string(200),

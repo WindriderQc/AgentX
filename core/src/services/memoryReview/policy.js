@@ -60,7 +60,7 @@ const CENTRAL_SUBMISSION_TRUST = [
 const CANDIDATE_TYPES = [
   'preference', 'durable_fact', 'decision', 'correction', 'procedure',
   'inferred_pattern', 'project_event', 'reusable_skill_candidate', 'session_summary', 'duplicate', 'stale_memory',
-  'contradiction', 'task_or_followup', 'governed_source_change', 'ephemeral',
+  'contradiction', 'supersedes', 'task_or_followup', 'governed_source_change', 'ephemeral',
   'sensitive_or_secret', 'unsupported',
 ];
 
@@ -77,6 +77,7 @@ const TARGETS_BY_TYPE = Object.freeze({
   durable_fact: ['shared_fact', 'runtime_local'],
   decision: ['shared_fact', 'runtime_local'],
   correction: ['shared_fact', 'runtime_local'],
+  supersedes: ['shared_fact'],
   inferred_pattern: ['soft_memory'],
   project_event: ['artifact'],
   procedure: ['artifact'],
@@ -304,7 +305,7 @@ function validateObservation(input, index) {
 
 const CANDIDATE_KEYS = [
   'type', 'statement', 'rationale', 'target', 'evidenceRefs', 'confidence', 'conflicts',
-  'scope', 'sensitivity', 'impact', 'stability', 'validFrom', 'validTo', 'memoryKey',
+  'scope', 'sensitivity', 'impact', 'stability', 'validFrom', 'validTo', 'memoryKey', 'supersedes',
 ];
 const TARGET_KEYS = ['kind', 'runtime', 'topic'];
 
@@ -372,6 +373,13 @@ function validateCandidateInput(input, index, knownObservationIds) {
     throw new MemoryReviewError(`${where}.confidence must be within [0,1]`);
   }
   const scope = boundedEnum(input.scope, MEMORY_SCOPES, 'project', `${where}.scope`);
+  if (input.type === 'supersedes') {
+    const ref = input.supersedes;
+    if (!ref || Object.keys(ref).some(key => !['authority', 'ref'].includes(key))
+        || ref.authority !== 'local_memory' || typeof ref.ref !== 'string' || !/^[a-f0-9]{24}$/.test(ref.ref) || scope !== 'owner') {
+      throw new MemoryReviewError(`${where}.supersedes must name an exact owner local_memory conflict`);
+    }
+  } else if (input.supersedes !== undefined) throw new MemoryReviewError(`${where}.supersedes requires type supersedes`);
   const defaultSensitivity = ['owner', 'household', 'private_domain'].includes(scope) ? 'private' : 'normal';
   const validFrom = boundedIsoDate(input.validFrom, `${where}.validFrom`);
   const validTo = boundedIsoDate(input.validTo, `${where}.validTo`);
@@ -380,6 +388,7 @@ function validateCandidateInput(input, index, knownObservationIds) {
   }
   return {
     type: input.type,
+    ...(input.type === 'supersedes' && { supersedes: { authority: 'local_memory', ref: input.supersedes.ref } }),
     statement,
     rationale: normalizeText(input.rationale).slice(0, LIMITS.RATIONALE_MAX),
     target: {
@@ -451,7 +460,7 @@ function automationDecision(candidate) {
   if (klass === 'household_member') {
     return { disposition: 'review', evidenceClass: klass, reason: 'household-member-evidence' };
   }
-  if (conflicts.length || ['contradiction', 'stale_memory'].includes(candidate.type)) {
+  if (conflicts.length || ['contradiction', 'stale_memory', 'supersedes'].includes(candidate.type)) {
     return { disposition: 'review', evidenceClass: klass, reason: 'conflict-or-temporal-dispute' };
   }
   if (candidate.sensitivity !== 'normal') {

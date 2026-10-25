@@ -39,8 +39,12 @@ Selected notes retain `invalidatedAt` and `supersededBy`. Current recall exclude
 invalidated facts, including derived souvenir recall and people views. An
 explicit owner note list may set `includeHistory: true` to read predecessors
 inside the same space, while forgotten and expired notes stay hidden. Household
-reads cannot request this history. The general editor preserves predecessors;
-reviewed replacement writes, rollback and RAG history remain open under #896.
+reads cannot request this history. The general editor preserves predecessors.
+Reviewed `supersedes` candidates bind to exact Core-observed owner-note conflicts
+and preserve their classification. Individual review, audited run authorization
+and server apply mode remain mandatory; this type never auto-applies. Durable
+staging resumes the same mutation after a lost response, and an explicit restore
+refuses changed sources or successors. RAG replacement/history remains under #896.
 
 Core exposes an audience-bound memory read capability. Owner reads keep all
 information scopes, including private-domain and unclassified historical
