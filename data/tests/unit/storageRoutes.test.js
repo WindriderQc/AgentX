@@ -26,6 +26,7 @@ jest.mock('../../services/scanner', () => ({
 
 jest.mock('../../services/storageAgentService', () => ({
   listScanners: jest.fn().mockResolvedValue([]),
+  listVolumes: jest.fn().mockResolvedValue([]),
   sourceRegistry: jest.fn(() => ({ media: { canonicalRoot: '/mnt/media' } })),
   enqueueScan: jest.fn(),
   registerScanner: jest.fn().mockResolvedValue('scanner-1'),
@@ -314,6 +315,26 @@ describe('Storage Scanner Routes', () => {
         mediaIndexExcludesNestedDatalake: true,
         portfolioTotalsDoubleCountDatalake: false
       });
+      expect(res.body.data.volumes).toEqual([]);
+    });
+
+    test('publishes the measured volumes of the requested root', async () => {
+      const volume = { id: 'nas:pool/media', label: 'pool/media', host: 'nas', roots: ['/mnt/media'],
+        capacityBytes: 1000, freeBytes: 400, source: 'measured', method: 'statfs',
+        measuredAt: '2026-10-25T12:00:00.000Z' };
+      storageAgentService.listVolumes.mockResolvedValueOnce([volume]);
+      const res = await request(buildApp({ aggregate: [{ totalFiles: 1, totalSize: 1 }] }))
+        .get('/api/v1/storage/summary?root=/mnt/media').expect(200);
+      expect(storageAgentService.listVolumes).toHaveBeenCalledWith(expect.any(Object), { root: '/mnt/media' });
+      expect(res.body.data.volumes).toEqual([volume]);
+      expect(res.body.data).toHaveProperty('totalFiles');
+    });
+
+    test('an unreadable volume list never fails the summary', async () => {
+      storageAgentService.listVolumes.mockRejectedValueOnce(new Error('scanner collection down'));
+      const res = await request(buildApp({ aggregate: [{ totalFiles: 1, totalSize: 1 }] }))
+        .get('/api/v1/storage/summary').expect(200);
+      expect(res.body.data.volumes).toEqual([]);
     });
 
     test('uses the latest hashing scan budget after a metadata-only refresh', async () => {
@@ -376,6 +397,22 @@ describe('Storage Scanner Routes', () => {
       const res = await request(buildApp()).get('/api/v1/storage/agents').expect(200);
       expect(res.body.data.active).toBe(1);
       expect(res.body.data.sources.media.canonicalRoot).toBe('/mnt/media');
+      expect(res.body.data.volumes).toEqual([]);
+    });
+
+    test('agents expose one volume per measured mount', async () => {
+      const measured = { capacityBytes: 1000, freeBytes: 400, device: '0:42', mountSource: 'pool/media',
+        mountPoint: '/pool/media', fsType: 'zfs', method: 'statfs', measuredAt: '2026-10-25T12:00:00.000Z' };
+      storageAgentService.listScanners.mockResolvedValue([{ scannerId: 'nas-storage', hostname: 'nas', active: true,
+        volumes: [{ ...measured, source: 'media', root: '/mnt/media' },
+          { ...measured, source: 'datalake', root: '/mnt/datalake' }] }]);
+      const res = await request(buildApp()).get('/api/v1/storage/agents').expect(200);
+      expect(res.body.data.volumes).toEqual([expect.objectContaining({
+        id: 'nas:pool/media', host: 'nas', roots: ['/mnt/datalake', '/mnt/media'],
+        capacityBytes: 1000, freeBytes: 400, source: 'measured', method: 'statfs',
+        measuredAt: '2026-10-25T12:00:00.000Z'
+      })]);
+      expect(res.body.data.scanners[0].volumes).toHaveLength(2);
     });
 
     test('queues an external read-only scan', async () => {
@@ -425,8 +462,31 @@ describe('Storage Scanner Routes', () => {
         .post('/api/v1/storage/agent/heartbeat')
         .send({ scannerId: 'linux-node-storage', sources: 'media', scanId: 'scan-live' })
         .expect(200);
-      expect(storageAgentService.touchScanHeartbeat).toHaveBeenCalledWith(expect.any(Object), 'scan-live');
+      expect(storageAgentService.touchScanHeartbeat).toHaveBeenCalledWith(expect.any(Object), 'scan-live', null);
       expect(res.body.data.scan_refreshed).toBe(true);
+    });
+
+    test('heartbeat stores the measured volumes with the scanner and the scan', async () => {
+      await request(buildApp())
+        .post('/api/v1/storage/agent/heartbeat')
+        .send({ scannerId: 'linux-node-storage', sources: 'media', scanId: 'scan-live', volumes: [
+          { source: 'media', hostPath: '/pool/media', capacityBytes: 1000, freeBytes: 400,
+            device: '0:42', mountSource: 'pool/media', mountPoint: '/pool/media', fsType: 'zfs',
+            method: 'statfs', measuredAt: '2026-10-25T12:00:00.000Z' },
+          { source: 'datalake', error: 'EACCES' }
+        ] })
+        .expect(200);
+      const stored = storageAgentService.registerScanner.mock.calls[0][1].volumes;
+      expect(stored).toHaveLength(2);
+      expect(stored[0]).toMatchObject({ root: '/mnt/media', capacityBytes: 1000, freeBytes: 400, mountSource: 'pool/media' });
+      expect(stored[1]).toMatchObject({ source: 'datalake', error: 'EACCES' });
+      expect(storageAgentService.touchScanHeartbeat).toHaveBeenCalledWith(expect.any(Object), 'scan-live', stored);
+    });
+
+    test('heartbeat without a measurement keeps the stored volumes', async () => {
+      await request(buildApp()).post('/api/v1/storage/agent/heartbeat')
+        .send({ scannerId: 'linux-node-storage', sources: 'media' }).expect(200);
+      expect(storageAgentService.registerScanner.mock.calls[0][1]).not.toHaveProperty('volumes');
     });
 
     test('heartbeat reports a scan that is no longer running', async () => {

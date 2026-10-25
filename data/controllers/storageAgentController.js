@@ -4,6 +4,7 @@
 // work for them.
 
 const storageAgentService = require('../services/storageAgentService');
+const { aggregateVolumes, sanitizeVolumeReports } = require('../services/storageVolumes');
 
 const listAgents = async (req, res, next) => {
   try {
@@ -13,7 +14,8 @@ const listAgents = async (req, res, next) => {
       data: {
         scanners,
         active: scanners.filter(scanner => scanner.active).length,
-        sources: storageAgentService.sourceRegistry()
+        sources: storageAgentService.sourceRegistry(),
+        volumes: aggregateVolumes(scanners)
       }
     });
   } catch (error) { next(error); }
@@ -53,13 +55,14 @@ const heartbeatAgent = async (req, res, next) => {
     if (!String(scannerId || '').trim()) {
       return res.status(400).json({ status: 'error', message: 'scannerId body field required' });
     }
+    const volumes = sanitizeVolumeReports(req.body.volumes, storageAgentService.sourceRegistry());
     const registeredId = await storageAgentService.registerScanner(req.app.locals.db, {
-      scannerId, hostname, platform, agentVersion, sources
+      scannerId, hostname, platform, agentVersion, sources, ...(volumes ? { volumes } : {})
     });
     const data = { scanner_id: registeredId, heartbeat_at: new Date().toISOString() };
     // false tells the collector its scan is no longer running (finished or reaped).
     if (scanId != null) {
-      data.scan_refreshed = await storageAgentService.touchScanHeartbeat(req.app.locals.db, scanId);
+      data.scan_refreshed = await storageAgentService.touchScanHeartbeat(req.app.locals.db, scanId, volumes);
     }
     res.json({ status: 'success', data });
   } catch (error) { next(error); }

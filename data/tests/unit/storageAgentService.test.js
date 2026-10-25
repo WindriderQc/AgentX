@@ -1,4 +1,5 @@
 const storageAgentService = require('../../services/storageAgentService');
+const activityEvents = require('../../services/activityEvents');
 
 function scansCollection(active = []) {
   return {
@@ -173,11 +174,43 @@ describe('storageAgentService', () => {
     );
 
     scans.updateOne.mockResolvedValue({ matchedCount: 0 });
+    const volumes = [{ source: 'media', capacityBytes: 10, freeBytes: 4 }];
+    await storageAgentService.touchScanHeartbeat(db, 'scan-live', volumes);
+    expect(scans.updateOne).toHaveBeenLastCalledWith(
+      expect.any(Object), { $set: { last_heartbeat_at: expect.any(Date), volumes } }
+    );
+
     await expect(storageAgentService.touchScanHeartbeat(db, 'scan-done')).resolves.toBe(false);
     scans.updateOne.mockClear();
     await expect(storageAgentService.touchScanHeartbeat(db, { $ne: null })).resolves.toBe(false);
     await expect(storageAgentService.touchScanHeartbeat(db, '')).resolves.toBe(false);
     expect(scans.updateOne).not.toHaveBeenCalled();
+  });
+
+  test('only a heartbeat that carries volumes replaces the stored measurement', async () => {
+    const seen = jest.spyOn(activityEvents, 'collectorSeen').mockResolvedValue();
+    const scanners = { updateOne: jest.fn().mockResolvedValue({ upsertedCount: 0 }) };
+    const db = { collection: jest.fn(() => scanners) };
+    const volumes = [{ source: 'media', capacityBytes: 10, freeBytes: 4 }];
+    try {
+      await storageAgentService.registerScanner(db, { scannerId: 'nas-storage', volumes });
+      await storageAgentService.registerScanner(db, { scannerId: 'nas-storage' });
+    } finally { seen.mockRestore(); }
+    expect(scanners.updateOne.mock.calls[0][1].$set).toMatchObject({ volumes, volumesReportedAt: expect.any(Date) });
+    expect(scanners.updateOne.mock.calls[1][1].$set).not.toHaveProperty('volumes');
+    expect(scanners.updateOne.mock.calls[1][1].$set).not.toHaveProperty('volumesReportedAt');
+  });
+
+  test('volumes are aggregated from the scanners that reported one', async () => {
+    const toArray = jest.fn().mockResolvedValue([{ scannerId: 'nas-storage', hostname: 'nas', volumes: [
+      { source: 'media', root: '/mnt/media', capacityBytes: 10, freeBytes: 4, device: '0:42', mountSource: 'pool/media',
+        measuredAt: new Date('2026-10-25T12:00:00.000Z') }
+    ] }]);
+    const scanners = { find: jest.fn(() => ({ toArray })) };
+    const db = { collection: jest.fn(() => scanners) };
+    const volumes = await storageAgentService.listVolumes(db, { root: '/mnt/media' });
+    expect(scanners.find).toHaveBeenCalledWith({ 'volumes.0': { $exists: true } });
+    expect(volumes).toEqual([expect.objectContaining({ id: 'nas:pool/media', roots: ['/mnt/media'], freeBytes: 4 })]);
   });
 
   test('metadata probe candidates are exact-root scoped, prioritized, and bounded', async () => {

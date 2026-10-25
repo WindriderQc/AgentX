@@ -435,7 +435,7 @@ const getSummary = async (req, res, next) => {
     const root = String(req.query.root || '').trim();
     const scope = pathScope(root);
     const scanScope = root ? { 'config.roots': root.replace(/[\\/]+$/, '') } : {};
-    const [lastScan, lastHashingScan] = await Promise.all([
+    const [lastScan, lastHashingScan, volumes] = await Promise.all([
       scans.findOne(scanScope, { sort: { started_at: -1 } }),
       scans.findOne(
         {
@@ -444,7 +444,12 @@ const getSummary = async (req, res, next) => {
           'config.hash_mode': { $in: ['all', 'candidates'] }
         },
         { sort: { started_at: -1 } }
-      )
+      ),
+      // Measured filesystems are context; they never fail the index summary.
+      storageAgentService.listVolumes(db, { root }).catch(error => {
+        log(`[Storage] Volume capacity unavailable: ${error.message}`, 'warn');
+        return [];
+      })
     ]);
     const hashBudgetBytes = Math.max(0, Number(lastHashingScan?.config?.hash_max_bytes || 0));
 
@@ -621,6 +626,7 @@ const getSummary = async (req, res, next) => {
       status: 'success',
       data: {
         root: root || null,
+        volumes,
         totalFiles: stats.totalFiles,
         totalSize: stats.totalSize,
         totalSizeFormatted: formatFileSize(stats.totalSize),

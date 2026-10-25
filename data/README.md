@@ -256,6 +256,24 @@ configuration. Storage sources map explicit host roots to stable canonical paths
 for example `media` to `/mnt/media`, excluding a nested `Datalake` root counted
 separately as `/mnt/datalake`. No personal physical root is inferred.
 
+The storage collector measures the filesystem holding each source's host root
+with `statfs` and sends it in `volumes` on `POST /storage/agent/heartbeat`: when
+a scan starts, with each scan heartbeat, and every 10 minutes while idle. A
+report names its source, canonical `root`, `hostPath`, `capacityBytes`
+(blocks × block size), `freeBytes` (blocks available to unprivileged users ×
+block size), the mount identity read from `/proc/self/mountinfo` (`device` as
+major:minor, `mountSource`, `mountPoint`, `fsType`), `method: "statfs"` and
+`measuredAt`; a source it could not measure carries `error` instead. Data keeps
+the latest reports on the scanner record and on the running scan it names; a
+heartbeat without `volumes` (a poll, an older collector) leaves them unchanged.
+`GET /storage/summary` (filtered by `root` when given) and `GET /storage/agents`
+return the read-only `volumes` array: one entry per host and mount identity, so
+two sources on one filesystem make one volume, shaped `{ id, label, host,
+roots, capacityBytes, freeBytes, source: "measured", method, measuredAt,
+filesystem, scannerIds }`. The newest measurement wins. A collector that never
+measured yields no volume. On ZFS, `statfs` reports the dataset's used plus
+available space, not the pool size; such a volume carries a `note` saying so.
+
 A scan target is an IPv4 address or an IPv4 CIDR from `/16` to `/32`; Data
 refuses anything else, and the network collector checks a queued target again
 before it runs `nmap` (its own `SCAN_CIDR` may be wider). Posted scan results
