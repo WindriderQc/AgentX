@@ -66,6 +66,19 @@ router.get('/runtime-topology/switch/:requestId', async (req, res) => {
   }
 });
 
+// Operator recovery of an uncertain switch: the actuator must report one
+// confirmed mode with nothing pending; Core recovers the quarantined lease.
+router.post('/runtime-topology/switch/:requestId/recover', async (req, res) => {
+  try {
+    const result = await getTopologySwitchService().recoverUncertain(String(req.params.requestId || '').slice(0, 120), {
+      confirmation: req.body?.confirmation, operator: requestPrincipal(req)
+    });
+    res.json({ status: 'success', idempotent: result.idempotent, data: result.record });
+  } catch (error) {
+    refusal(res, error, 'TOPOLOGY_SWITCH_RECOVERY_FAILED');
+  }
+});
+
 router.get('/runtime-topology/switches', async (req, res) => {
   try {
     const groupId = typeof req.query.groupId === 'string' ? req.query.groupId.slice(0, 64) : null;

@@ -45,6 +45,8 @@ const RuntimeTopologySwitchSchema = new mongoose.Schema({
   },
   verification: { type: mongoose.Schema.Types.Mixed, default: null },
   restore: { type: mongoose.Schema.Types.Mixed, default: null },
+  // Operator recovery of an uncertain switch (lease recovered, mode recorded).
+  recovery: { type: mongoose.Schema.Types.Mixed, default: null },
   timings: { type: mongoose.Schema.Types.Mixed, default: {} },
   driverHeartbeatAt: { type: Date, default: null },
   finishedAt: { type: Date, default: null }
