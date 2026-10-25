@@ -170,7 +170,7 @@ describe('effective routing snapshot', () => {
     }), { includeCatalog: false });
     expect(snapshot.principalTopology).toMatchObject({
       taskType: 'daily_operator', model: 'pooled-pin', hostUrl: POOLED, contextSize: 196608, pinAligned: true,
-      topology: { role: 'conversation', mode: 'pooled' }
+      topology: { role: 'pooled', requestedRole: 'conversation', mode: 'pooled' }
     });
     const target = resolvePrincipalAlias(snapshot, 'agentx-primary');
     expect(target).toMatchObject({ model: 'pooled-pin', hostUrl: POOLED, numCtx: 196608, exclusiveHost: false });

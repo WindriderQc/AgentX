@@ -58,8 +58,8 @@ class TrustedRuntimeServiceError extends Error {
 
 function topologyRefusal(refusal) {
   const error = new TrustedRuntimeServiceError(refusal.message, { code: refusal.code, statusCode: refusal.status });
-  error.details = frozenCopy(refusal.data);
-  return error;
+  return Object.assign(error, { details: frozenCopy(refusal.data),
+    failure: { cause: refusal.code.toLowerCase(), safeToRetry: true } });
 }
 
 function positiveInteger(value) {
@@ -268,7 +268,7 @@ async function executeRoutedInference(deps, request, options = {}) {
   let hostKey = null;
   let routingSource = 'model_router';
   let taskFallback = servedRungMarker(options.degraded, requestedModel); // a ladder rung serves this call (#135, #143)
-  let roleTarget = null; // a topology role route resolved this call (#360)
+  let roleTarget = options.topology || null; // server-resolved principal alias or task role (#360)
 
   if (!model && taskType) {
     const recommendation = options.ladderRetry || await deps.getAdvisoryModelForTask(taskType, {
@@ -337,7 +337,7 @@ async function executeRoutedInference(deps, request, options = {}) {
     }
     hostUrl = hostCheck.host;
     hostKey = deps.resolveHostKey(hostUrl);
-    routingSource = 'trusted_host_override';
+    routingSource = roleTarget ? 'topology_role' : 'trusted_host_override';
   }
   hostUrl = hostUrl || deps.getTargetForModel(model);
   hostKey = hostKey || deps.resolveHostKey(hostUrl);

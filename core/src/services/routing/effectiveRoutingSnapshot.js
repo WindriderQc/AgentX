@@ -56,7 +56,8 @@ function buildRoleTaskSnapshot(taskType, role, resolution, routerConfig, prefere
   const topology = {
     role, group: resolution?.group || null, mode: resolution?.mode || null,
     reason: resolution?.ok ? null : (resolution?.reason || 'unresolved'),
-    laneContext: resolution?.laneContext ?? null
+    laneContext: resolution?.laneContext ?? null,
+    ...(resolution?.requestedRole && { requestedRole: resolution.requestedRole })
   };
   if (!resolution?.ok) {
     return {
@@ -158,7 +159,7 @@ async function buildEffectiveRoutingSnapshot(deps, options = {}) {
   let principalTopology = null;
   const principal = routerConfig.topology?.principal;
   if (principal) {
-    principalTopology = buildRoleTaskSnapshot('daily_operator', principal.requestedRole || principal.role, principal,
+    principalTopology = buildRoleTaskSnapshot('daily_operator', principal.role, principal,
       routerConfig, preferencesByHost, deps.modelsMatch);
     if (principalTopology.model) {
       try {

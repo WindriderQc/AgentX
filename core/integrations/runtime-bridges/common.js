@@ -52,10 +52,13 @@ function publicError(error) {
     'RUNTIME_INFERENCE_ADMISSION_DENIED',
     'RUNTIME_INFERENCE_RECOVERY_REQUIRED'
   ].includes(code);
+  const data = code === 'PRINCIPAL_MODEL_UNAVAILABLE' && error.reason ? { reason: error.reason }
+    : ['LANE_CONTEXT_EXCEEDED', 'TOPOLOGY_ROLE_UNRESOLVED'].includes(code) ? error.details : null;
   return {
     status: safeStatus,
     code,
-    message: clientSafe ? String(error?.message || 'Runtime bridge request failed.') : 'Runtime bridge upstream request failed.'
+    message: clientSafe ? String(error?.message || 'Runtime bridge request failed.') : 'Runtime bridge upstream request failed.',
+    ...(data && { data })
   };
 }
 
@@ -64,14 +67,14 @@ function sendRuntimeError(res, error, logger, label) {
   if (safe.status >= 500 && safe.code !== 'INFERENCE_CANCELLED') {
     logger?.warn?.(`${label} failed`, { code: safe.code, status: safe.status });
   }
-  if (!res.headersSent) return res.status(safe.status).json({ error: safe.message, code: safe.code });
+  if (!res.headersSent) return res.status(safe.status).json({ error: safe.message, code: safe.code, ...(safe.data && { data: safe.data }) });
   return res.end();
 }
 
 function uniqueEffectiveModels(snapshot) {
   const seen = new Set();
   const rows = [];
-  for (const task of Object.values(snapshot?.tasks || {})) {
+  for (const task of [...Object.values(snapshot?.tasks || {}), snapshot?.principalTopology]) {
     const model = String(task?.model || '').trim();
     if (!model || seen.has(model)) continue;
     seen.add(model);
