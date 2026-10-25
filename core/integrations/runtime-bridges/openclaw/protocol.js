@@ -14,6 +14,7 @@ const { PRINCIPAL_MODEL_ALIAS, resolvePrincipalAlias } = require('../principal-m
 const { settledStream } = require('./settled-stream');
 const { admitCellCall, isCellBudgetRefusal, meteredStream, responseCounts } = require('./cell-budget');
 const { sendBusyReply, wantsBusyReply } = require('./busy-reply');
+const { serveContinuity } = require('./conversation-continuity');
 const {
   LOCAL_INFERENCE_CONFLICTS, PRIMARY_WAIT_WITH_FALLBACK_MS, applyDegradedHeaders, conversationFallbackTask,
   markBody, noticeFrame, principalFallbackTask, runWithConversationFallback
@@ -145,6 +146,10 @@ function registerOpenClawProtocol({
     let cellTurn = null;
     try {
       const body = req.body || {};
+      if (await serveContinuity(req, res, { mode, runtimeServices, signal: abort.signal, resolveConversationTarget, noThinkModels })) {
+        streaming = body.stream === true;
+        return;
+      }
       // Per-invocation metadata from the existing Benchmark broker. Core checks
       // the exact host claim and workload generation before every model turn,
       // and the cell budget those claims name (#897).

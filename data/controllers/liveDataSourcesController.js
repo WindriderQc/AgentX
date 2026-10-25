@@ -6,33 +6,38 @@
  *   GET /api/v1/livedata/ec-weather?lat=&lon=[&lang=fr]
  *
  * Unlike registry feeds these run without the live-data master switch and store
- * nothing. Positions come from the caller and are neither logged nor stored.
+ * nothing persistently. Observer selection uses explicit coordinates, a known
+ * weather location, then the configured default, with provenance in the answer.
  */
 const tle = require('../services/livedata/tle');
 const tides = require('../services/livedata/tides');
 const ecCityPage = require('../services/livedata/ecCityPage');
+const { parsePosition, resolvePosition, locationMetadata } = require('../../shared/observerLocation');
 
 function badRequest(res, message) {
   return res.status(400).json({ status: 'error', message });
 }
 
 function sourceFailure(res, err, next) {
+  if (err?.code === 'INVALID_POSITION') {
+    return res.status(err.status).json({ status: 'error', code: err.code, message: err.message });
+  }
   if (err && err.name === 'SourceError') {
     return res.status(err.status).json({ status: 'error', code: err.code, message: err.message });
   }
   return next(err);
 }
 
-// lat/lon from the query; null with a 400 already sent when invalid.
-function readPosition(req, res) {
-  const lat = Number(req.query.lat);
-  const lon = Number(req.query.lon);
-  if (req.query.lat === undefined || req.query.lon === undefined || req.query.lat === '' || req.query.lon === ''
-      || !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
-    badRequest(res, 'lat and lon are required decimal degrees (lat -90..90, lon -180..180)');
-    return null;
+async function readPosition(req) {
+  const explicit = parsePosition(req.query);
+  let known = null;
+  if (!explicit && req.app.locals.db) {
+    try { known = await req.app.locals.db.collection('weatherLocations').findOne({}, { sort: { _id: 1 } }); }
+    catch (_) { /* A configured default remains available without MongoDB. */ }
   }
-  return { lat, lon };
+  const position = resolvePosition({ explicit, known, defaultLocationJson: process.env.OBSERVER_DEFAULT_LOCATION_JSON });
+  if (!position) throw Object.assign(new Error('No known location: supply lat and lon or configure a default'), { code: 'INVALID_POSITION', status: 400 });
+  return position;
 }
 
 exports.getTle = async (req, res, next) => {
@@ -56,30 +61,28 @@ exports.getTle = async (req, res, next) => {
 };
 
 exports.getTides = async (req, res, next) => {
-  const pos = readPosition(req, res);
-  if (!pos) return;
   const days = req.query.days === undefined ? 2 : Number(req.query.days);
   if (!Number.isInteger(days) || days < 1 || days > tides.MAX_DAYS) {
     return badRequest(res, `days must be a whole number from 1 to ${tides.MAX_DAYS}`);
   }
   try {
+    const pos = await readPosition(req);
     const data = await tides.getTides({ ...pos, days });
     res.set('Cache-Control', 'no-store');
-    return res.json({ status: 'success', data });
+    return res.json({ status: 'success', data: { ...data, location: locationMetadata(pos) } });
   } catch (err) {
     return sourceFailure(res, err, next);
   }
 };
 
 exports.getEcWeather = async (req, res, next) => {
-  const pos = readPosition(req, res);
-  if (!pos) return;
   const lang = req.query.lang || 'fr';
   if (!['fr', 'en'].includes(lang)) return badRequest(res, 'lang must be fr or en');
   try {
+    const pos = await readPosition(req);
     const data = await ecCityPage.getCityWeather({ ...pos, lang });
     res.set('Cache-Control', 'no-store');
-    return res.json({ status: 'success', data });
+    return res.json({ status: 'success', data: { ...data, location: locationMetadata(pos) } });
   } catch (err) {
     return sourceFailure(res, err, next);
   }

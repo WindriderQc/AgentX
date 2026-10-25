@@ -14,11 +14,14 @@ function seconds(a, b) {
   return Math.abs(Date.parse(a) - Date.parse(b)) / 1000;
 }
 
-function dataStub({ satellites, weather, fail } = {}) {
+function dataStub({ satellites, weather, fail, onDemand } = {}) {
   const calls = [];
   const fetchData = jest.fn(async (path, opts) => {
     calls.push({ path, query: opts.query });
     if (fail) throw Object.assign(new Error('boom'), { name: 'TimeoutError' });
+    if (path === '/api/v1/livedata/tle') return onDemand
+      ? { response: { ok: true, status: 200 }, body: { status: 'success', data: onDemand } }
+      : { response: { ok: false, status: 404 }, body: { status: 'error' } };
     const data = path.includes('satellites') ? satellites : weather;
     return { response: { ok: true, status: 200 }, body: { status: 'success', data } };
   });
@@ -70,6 +73,13 @@ describe('ISS pass computation', () => {
   test('names French cardinal directions', () => {
     expect([0, 90, 225, 270, 359].map(directionFr)).toEqual(['N', 'E', 'SO', 'O', 'N']);
   });
+
+  test('searches the full supported window even after 24 geometric passes', () => {
+    const result = computePasses({ line1: LINE1, line2: LINE2 }, { lat: 30, lon: 0 }, { start: START, hours: 108 });
+    expect(result.passes.length).toBeGreaterThan(24);
+    expect(Date.parse(result.passes.at(-1).set.time)).toBeGreaterThan(START.getTime() + 96 * 3600000);
+    expect(Date.parse(result.passes.at(-1).set.time)).toBeLessThanOrEqual(Date.parse(result.window.end));
+  });
 });
 
 describe('iss_passes tool', () => {
@@ -79,7 +89,7 @@ describe('iss_passes tool', () => {
   test('uses the newest ISS elements and the household location held by Data', async () => {
     const { fetchData, calls } = dataStub({ satellites: SATELLITES, weather: WEATHER });
     const out = await issPasses({ hours: 40 }, { fetchData, now, env });
-    expect(calls.map(c => c.path).sort()).toEqual(['/api/v1/livedata/satellites/latest', '/api/v1/livedata/weather/latest']);
+    expect(calls.map(c => c.path).sort()).toEqual(['/api/v1/livedata/satellites/latest', '/api/v1/livedata/tle', '/api/v1/livedata/weather/latest']);
     expect(out.tle).toMatchObject({ epoch: '2026-10-24T05:01:11.149Z', retrievedAt: '2026-10-24T17:03:41.618Z', stale: false, source: 'CelesTrak via Data' });
     expect(out.timeZone).toBe('America/Toronto');
     expect(out.nextVisible).toMatchObject({ from: 'N', to: 'ENE', maxElDeg: 34.1 });
@@ -93,6 +103,37 @@ describe('iss_passes tool', () => {
     const { fetchData } = dataStub({ satellites: SATELLITES, weather: WEATHER });
     const text = JSON.stringify(await issPasses({}, { fetchData, now, env }));
     expect(text).not.toMatch(/46\.8|71\.2/);
+  });
+
+  test('explicit coordinates work without a known home and bypass its lookup', async () => {
+    const { fetchData, calls } = dataStub({ satellites: SATELLITES });
+    const out = await issPasses({ lat: 46.81, lon: -71.21, hours: 12 }, { fetchData, now, env });
+    expect(calls.some(c => c.path.includes('weather'))).toBe(false);
+    expect(out.observer).toMatchObject({ source: 'explicit', defaulted: false });
+    expect(JSON.stringify(out)).not.toMatch(/46\.81|71\.21/);
+    expect(out.passes.length).toBeGreaterThan(0);
+  });
+
+  test.each([{ weather: [] }, { weather: [{ lat: null, lon: null }] }])('discloses the configured default when the known location is missing or invalid (%j)', async ({ weather }) => {
+    const { fetchData } = dataStub({ satellites: SATELLITES, weather });
+    const out = await issPasses({ hours: 12 }, { fetchData, now,
+      env: { ...env, OBSERVER_DEFAULT_LOCATION_JSON: JSON.stringify({ name: 'Québec', lat: 46.81, lon: -71.21 }) } });
+    expect(out.observer).toEqual({ source: 'default', label: 'Québec', defaulted: true, precision: 'environ 1 km' });
+    expect(out.answerRules).toMatch(/ne prouve pas la position/);
+    expect(JSON.stringify(out)).not.toMatch(/46\.81|71\.21/);
+  });
+
+  test('uses the known location before a default and falls back when that lookup alone fails', async () => {
+    const configured = { ...env, OBSERVER_DEFAULT_LOCATION_JSON: JSON.stringify({ name: 'Other city', lat: 10, lon: 20 }) };
+    const stub = dataStub({ satellites: SATELLITES, weather: WEATHER });
+    const known = await issPasses({ hours: 1 }, { ...stub, now, env: configured });
+    expect(known.observer).toMatchObject({ source: 'known', defaulted: false });
+    const fetchData = async (path, opts) => {
+      if (path.includes('weather')) throw new Error('weather unavailable');
+      return stub.fetchData(path, opts);
+    };
+    const fallback = await issPasses({ hours: 1 }, { fetchData, now, env: configured });
+    expect(fallback.observer).toMatchObject({ source: 'default', label: 'Other city', defaulted: true });
   });
 
   test('visible_only keeps only observable passes', async () => {
@@ -110,6 +151,30 @@ describe('iss_passes tool', () => {
     expect(out.tle.staleReason).toMatch(/3 jours/);
   });
 
+  test('uses Data on-demand TLE without a stored feed and retains its stale disclosure', async () => {
+    const { fetchData, calls } = dataStub({ weather: WEATHER, onDemand: {
+      line1: LINE1, line2: LINE2, fetchedAt: '2026-10-24T17:03:41.618Z', stale: true
+    } });
+    const out = await issPasses({ hours: 12 }, { fetchData, now, env });
+    expect(calls.some(c => c.path.includes('satellites'))).toBe(false);
+    expect(calls.find(c => c.path.endsWith('/tle')).query).toBe('norad=25544');
+    expect(out.tle).toMatchObject({ stale: true, staleReason: expect.stringMatching(/secours/) });
+    expect(out.passes.length).toBeGreaterThan(0);
+  });
+
+  test('the production Data client accepts a legacy HTML 404 before reading the stored feed', async () => {
+    const realFetch = global.fetch;
+    global.fetch = jest.fn(async url => String(url).includes('/tle?')
+      ? new Response('<!DOCTYPE html><p>Cannot GET /api/v1/livedata/tle</p>', { status: 404 })
+      : new Response(JSON.stringify({ status: 'success', data: SATELLITES }), { status: 200 }));
+    try {
+      const out = await issPasses({ lat: 46.81, lon: -71.21, hours: 1 }, { now, env });
+      expect(out.status).toBe('ok');
+      expect(global.fetch.mock.calls.map(([url]) => new URL(url).pathname))
+        .toEqual(['/api/v1/livedata/tle', '/api/v1/livedata/satellites/latest']);
+    } finally { global.fetch = realFetch; }
+  });
+
   test('reports missing sources instead of inventing passes', async () => {
     await expect(issPasses({}, { ...dataStub({ satellites: SATELLITES.slice(0, 1), weather: WEATHER }), now, env }))
       .rejects.toMatchObject({ code: 'ISS_DATA_UNAVAILABLE', message: expect.stringMatching(/no ISS orbital elements/) });
@@ -119,9 +184,20 @@ describe('iss_passes tool', () => {
       .rejects.toMatchObject({ code: 'ISS_DATA_UNAVAILABLE', message: expect.stringMatching(/timeout/) });
   });
 
+  test.each([null, '', ' ', false])('refuses an absent coordinate (%p) instead of treating it as zero', async value => {
+    for (const field of ['lat', 'lon']) {
+      const { fetchData } = dataStub({ satellites: SATELLITES, weather: [{ ...WEATHER[0], [field]: value }] });
+      await expect(issPasses({}, { fetchData, now, env })).rejects.toMatchObject({ code: 'ISS_DATA_UNAVAILABLE' });
+    }
+  });
+
   test('validates its arguments strictly', () => {
     expect(parseArgs(undefined)).toEqual({ hours: 72, visibleOnly: false, maxPasses: 8 });
-    expect(() => parseArgs({ lat: 1 })).toThrow(/unknown argument/);
+    expect(() => parseArgs({ lat: 1 })).toThrow(/lat and lon/);
+    expect(() => parseArgs({ lat: null, lon: null })).toThrow(/lat and lon/);
+    expect(() => parseArgs({ lat: false, lon: 0 })).toThrow(/lat and lon/);
+    expect(() => parseArgs({ location: 'somewhere' })).toThrow(/unknown argument/);
+    expect(parseArgs({ lat: 0, lon: 0 }).position).toEqual({ lat: 0, lon: 0 });
     expect(() => parseArgs({ hours: 500 })).toThrow(/hours/);
     expect(() => parseArgs({ visible_only: 'yes' })).toThrow(/boolean/);
   });

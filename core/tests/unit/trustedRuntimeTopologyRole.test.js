@@ -54,6 +54,20 @@ function deps(recommendation, overrides = {}) {
 const request = { mode: 'generate', taskType: 'general_chat', prompt: 'hello' };
 
 describe('runtime-bridge dispatch of a role route', () => {
+  it('enforces the separate continuity pin budget and records the limited service before any dispatch', async () => {
+    const d = deps(null);
+    const continuity = { state: 'backup', limited: true, contextReduced: true,
+      lane: { role: 'conversation', mode: 'continuity', laneContext: 1199 } };
+    await expect(executeRoutedInference(d, { ...request, taskType: undefined, model: 'lane-pin' }, {
+      hostUrl: LANE, conversationContinuity: continuity
+    })).rejects.toMatchObject({ code: 'LANE_CONTEXT_EXCEEDED', failure: { safeToRetry: true } });
+    expect(d.fetch).not.toHaveBeenCalled();
+    expect(d.beginInferenceAdmission).not.toHaveBeenCalled();
+    expect(d.recordInference).toHaveBeenCalledWith(expect.objectContaining({
+      routingTrace: expect.objectContaining({ continuity })
+    }));
+  });
+
   it('dispatches to the resolved endpoint when input plus output fits the lane exactly', async () => {
     const d = deps(roleRecommendation(1200));
     const result = await executeRoutedInference(d, request);

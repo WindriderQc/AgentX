@@ -385,7 +385,8 @@ async function executeRoutedInference(deps, request, options = {}) {
     numCtxSource,
     inferenceContract,
     ...(taskFallback && { routing: taskFallback }),
-    ...(roleTarget && { topology: roleTarget })
+    ...(roleTarget && { topology: roleTarget }),
+    ...(options.conversationContinuity && { conversationContinuity: options.conversationContinuity })
   });
   // Opt-in, telemetry-only prompt structure: it never enters the Ollama payload.
   const observePrefix = options.observePromptPrefix === true && request.mode === 'chat'
@@ -401,7 +402,7 @@ async function executeRoutedInference(deps, request, options = {}) {
 
   try {
     // The lane must hold the input estimate plus the output budget (#360).
-    const laneRefusal = roleTarget ? checkLaneContract(roleTarget, inferenceContract) : null;
+    const laneRefusal = checkLaneContract(roleTarget || options.conversationContinuity?.lane, inferenceContract);
     if (laneRefusal) throw topologyRefusal(laneRefusal);
     const execute = request.stream === true ? executeAdmittedOllamaStream : executeAdmittedOllamaAttempt;
     const attempt = await withInferenceRetry(async () => {
@@ -639,6 +640,10 @@ async function getHostHoldStatus(deps, request = {}) {
 function createTrustedRuntimeServices(overrides = {}) {
   const deps = { ...defaultDependencies(), ...overrides };
   const personalTasks = require('../services/personalTaskService');
+  const routing = require('../services/routing/trustedRuntimeRouting').createRoutingCapabilities(deps);
+  const localExecute = (request, options) => executeRoutedInference(deps, request, options);
+  const conversation = require('../services/routing/conversationContinuity').createConversationContinuity({
+    execute: localExecute, readSnapshot: routing.getEffectiveSnapshot, deps, validate: validateRequest });
   return Object.freeze({
     contractVersion: CONTRACT_VERSION,
     personas: Object.freeze(require('../services/personaCatalog')),
@@ -663,6 +668,7 @@ function createTrustedRuntimeServices(overrides = {}) {
       })
     }),
     inference: Object.freeze({
+      conversation,
       execute(request, options) {
         return require('../services/execution/openclawInference').withExecutionSource(require('../services/embeddingRuntimeHostChain').wrap((input, fixed) => executeRoutedInference(deps, input, fixed), deps), deps.openclawClient)(request, options);
       }
@@ -672,13 +678,7 @@ function createTrustedRuntimeServices(overrides = {}) {
       reserve: (claims, request) => require('../services/benchmarkCellBudget').reserve(claims, request),
       admitEmbed: claims => require('../services/benchmarkCellBudget').admitEmbed(claims)
     }),
-    routing: Object.freeze({
-      getEffectiveSnapshot: require('../services/routing/routingSnapshotCache').effectiveSnapshotReader(deps),
-      // #143: an exact-model conversation borrows a light task's fallback ladder.
-      planFallback: request => require('../services/routing/taskFallbackLadder').planExactModelFallback(request),
-      // The principal alias borrows the daily operator ladder only when one is configured.
-      hasFallbackLadder: taskType => require('../services/routing/taskFallbackLadder').hasConversationLadder(taskType)
-    }),
+    routing,
     hosts: Object.freeze({
       acquireHold(request) {
         return acquireHostHold(deps, request);
