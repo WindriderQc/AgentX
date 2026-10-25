@@ -679,6 +679,8 @@
       ${candidate.review?.editedStatement ? `<p class="mr-edited"><i class="fas fa-pen"></i> Approved wording: ${esc(candidate.review.editedStatement)}</p>` : ''}
       ${candidate.rationale ? `<p class="mr-rationale">${esc(candidate.rationale)}</p>` : ''}
       ${candidate.supersedes ? `<p class="mr-rationale">Replaces memory note ${esc(candidate.supersedes.ref)}. The previous wording stays in owner history.</p>` : ''}
+      ${candidate.supersessionPreview?.text ? `<blockquote class="mr-rationale"><b>Previous fact:</b> ${esc(candidate.supersessionPreview.text)}${candidate.supersessionPreview.validFrom ? ` · valid from ${esc(shortDate(candidate.supersessionPreview.validFrom))}` : ''}</blockquote>` : ''}
+      ${candidate.supersessionPreview?.unavailable ? '<p class="mr-rationale">The previous fact is no longer available. Refresh before applying a change.</p>' : ''}
       ${candidate.automation?.reason ? `<p class="mr-rationale"><b>${esc(label(candidate.automation.disposition))}:</b> ${esc(candidate.automation.reason)}</p>` : ''}
       <div class="mr-signal-grid"><span><b>${(candidate.evidence || []).length}</b> evidence</span><span><b>${recurrence.independentSessions || 0}</b> ${recurrence.independentSessions === 1 ? 'session' : 'sessions'}</span><span><b>${recurrence.independentRuntimes || 0}</b> ${recurrence.independentRuntimes === 1 ? 'runtime' : 'runtimes'}</span>
         <span class="mr-confidence"><span>Confidence <b>${confidence}%</b></span><i><i style="width:${confidence}%"></i></i></span></div>
@@ -686,8 +688,8 @@
       ${(candidate.conflicts || []).map((conflict) => `<div class="mr-conflict"><div><i class="fas fa-triangle-exclamation"></i> <b>${esc(label(conflict.authority))} disagrees</b><span>${esc(conflict.summary)}</span></div><button type="button" class="mr-btn mr-btn-secondary" data-clarify><i class="fas fa-comment-dots"></i> Copy clarification question</button></div>`).join('')}
       <details class="mr-evidence"><summary><i class="fas fa-magnifying-glass"></i> Why AgentX trusts this (${(candidate.evidence || []).length})</summary>
         ${(candidate.evidence || []).map((evidence) => `<div class="mr-evidence-item"><span class="mr-chip">${esc(label(evidence.runtime))}</span><span class="mr-chip">${esc(label(evidence.trust))}</span><time>${esc(shortDate(evidence.observedAt))}</time><p>${esc(trustHelp[evidence.trust] || 'This evidence passed the bounded provenance policy.')}</p><blockquote>${esc(evidence.redactedExcerpt || '(No excerpt retained)')}</blockquote></div>`).join('')}</details>
-      ${candidate.apply?.attemptedAt ? `<div class="mr-apply-result"><b>Apply result:</b> ${esc(candidate.apply.result || 'Recorded')}${candidate.apply.rollbackRef ? ` · rollback ${esc(candidate.apply.rollbackRef)}` : ''}</div>` : ''}
-      ${candidate.rollback?.at ? `<div class="mr-apply-result"><b>Restore result:</b> ${esc(candidate.rollback.result || 'In progress')}</div>` : ''}
+      ${candidate.apply?.attemptedAt ? `<div class="mr-apply-result"><b>Apply result:</b> ${esc(candidate.type === 'supersedes' && ['applied', 'rolling_back', 'rollback_failed', 'rolled_back'].includes(candidate.status) ? 'Replacement recorded; previous wording kept in your history.' : candidate.apply.result || 'In progress')}${candidate.type !== 'supersedes' && candidate.apply.rollbackRef ? ` · rollback ${esc(candidate.apply.rollbackRef)}` : ''}</div>` : ''}
+      ${candidate.rollback?.at ? `<div class="mr-apply-result"><b>Restore result:</b> ${esc(candidate.status === 'rolled_back' ? 'Previous fact restored.' : candidate.rollback.result || 'In progress')}</div>` : ''}
       ${candidate.review?.by ? `<p class="mr-reviewed">Reviewed by ${esc(candidate.review.by)} · ${esc(shortDate(candidate.review.at))}</p>` : ''}
       ${candidateActions(candidate)}</li>`;
   }

@@ -579,6 +579,16 @@ async function getRunDetail(runId, { includeObservations = false } = {}) {
   const run = await getRunOrThrow(runId);
   const doc = run.toObject();
   doc.reconciliation = policy.reconciliationStatus(doc);
+  // Render from the note owner, never persist a second copy of the old text.
+  // Forgetting/expiry therefore removes this preview on the next read as well.
+  const notes = require('../memoryNoteService').personal();
+  await Promise.all(doc.candidates.filter(candidate => candidate.type === 'supersedes' && candidate.supersedes?.ref)
+    .map(async candidate => {
+      const source = await notes.list({ id: candidate.supersedes.ref, includeHistory: true, limit: 1 });
+      const previous = source.notes[0];
+      candidate.supersessionPreview = previous ? { text: previous.text, validFrom: previous.validFrom,
+        invalidatedAt: previous.invalidatedAt } : { unavailable: true };
+    }));
   if (!includeObservations) delete doc.observations;
   return doc;
 }
@@ -595,7 +605,7 @@ async function buildDigest({ includeStatements = true } = {}) {
   if (!target) return { text: 'Memory review: no runs recorded yet.', runId: null, pending: 0 };
 
   const candidates = target.candidates || [];
-  const pending = candidates.filter((c) => ['proposed', 'deferred', 'apply_failed'].includes(c.status));
+  const pending = candidates.filter((c) => ['proposed', 'deferred', 'apply_failed', 'rollback_failed'].includes(c.status));
   const applied = candidates.filter((c) => c.status === 'applied');
   const autoApplied = applied.filter((c) => c.apply?.automated);
   const softStored = autoApplied.filter((c) => c.target?.kind === 'soft_memory');
@@ -612,7 +622,7 @@ async function buildDigest({ includeStatements = true } = {}) {
   }
   if (includeStatements) {
     candidates.forEach((candidate, index) => {
-      if (!['proposed', 'deferred', 'apply_failed'].includes(candidate.status)) return;
+      if (!['proposed', 'deferred', 'apply_failed', 'rollback_failed'].includes(candidate.status)) return;
       lines.push(`  ${index + 1}. [${candidate.type} / ${candidate.scope || 'project'} / ${candidate.sensitivity || 'normal'}] ${String(candidate.statement).slice(0, 140)}`);
     });
   }

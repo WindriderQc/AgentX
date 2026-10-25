@@ -119,8 +119,9 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
   // host that is busy or down delays the index, never the memory.
   const indexLater = row => { index.indexNote(row._id, row.text).catch(() => {}); };
 
-  async function list({ limit, offset = 0, query, kind, includeHistory = false } = {}) {
+  async function list({ limit, offset = 0, query, kind, id, includeHistory = false } = {}) {
     const filter = active(includeHistory);
+    if (id !== undefined) filter._id = noteId(id);
     if (kind !== undefined) {
       if (!['fact', 'preference', 'decision', 'souvenir'].includes(kind)) throw error('Choose fact, preference, decision or souvenir');
       filter.kind = kind;

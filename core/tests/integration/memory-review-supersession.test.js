@@ -111,6 +111,16 @@ test('source edits after review fail application without creating a successor', 
   expect((await personal().list()).notes[0].text).toBe('Synthetic changed source after review');
 });
 
+test('the source preview is a live owner read and disappears when its note is forgotten', async () => {
+  await reviewed();
+  const before = (await request(app).get(base).expect(200)).body.data;
+  expect(before.candidates[0].supersessionPreview).toMatchObject({ text: old.text });
+  expect((await Run.findOne({ runId: 'synthetic-replacement-run' }).lean()).candidates[0].supersessionPreview).toBeUndefined();
+  await personal().forget(old.id);
+  const after = (await request(app).get(base).expect(200)).body.data;
+  expect(after.candidates[0].supersessionPreview).toEqual({ unavailable: true });
+});
+
 test('rollback keeps the same server and per-run authorization gates and refuses a changed successor', async () => {
   const { path } = await reviewed();
   await request(app).post(path + '/apply').send({}).expect(200);
