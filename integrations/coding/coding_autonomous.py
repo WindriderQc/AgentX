@@ -207,6 +207,8 @@ def _prepare_ledger(r, workspace, task_id, key, task, manifest, progress, budget
         if (ledger['taskId'] != task_id or ledger['planFingerprint'] != index['planFingerprint']
                 or index['head'] != manifest['correction'].get('head')):
             raise coding_test_feedback.FeedbackRefusal('Local-test correction plan identity changed')
+        if any(s['state'] == 'blocked' for s in ledger['steps']):
+            raise coding_test_feedback.FeedbackRefusal('A frozen local code step is blocked')
         failed = next((s for s in ledger['steps'] if s['state'] == 'failed'), None)
         if failed:
             if failed['attempts'] >= ledger['maxAttempts']:
