@@ -70,6 +70,13 @@ describe('ISS pass computation', () => {
   test('names French cardinal directions', () => {
     expect([0, 90, 225, 270, 359].map(directionFr)).toEqual(['N', 'E', 'SO', 'O', 'N']);
   });
+
+  test('searches the full supported window even after 24 geometric passes', () => {
+    const result = computePasses({ line1: LINE1, line2: LINE2 }, { lat: 30, lon: 0 }, { start: START, hours: 108 });
+    expect(result.passes.length).toBeGreaterThan(24);
+    expect(Date.parse(result.passes.at(-1).set.time)).toBeGreaterThan(START.getTime() + 96 * 3600000);
+    expect(Date.parse(result.passes.at(-1).set.time)).toBeLessThanOrEqual(Date.parse(result.window.end));
+  });
 });
 
 describe('iss_passes tool', () => {
@@ -117,6 +124,13 @@ describe('iss_passes tool', () => {
       .rejects.toMatchObject({ code: 'ISS_DATA_UNAVAILABLE', message: expect.stringMatching(/weather location/) });
     await expect(issPasses({}, { ...dataStub({ fail: true }), now, env }))
       .rejects.toMatchObject({ code: 'ISS_DATA_UNAVAILABLE', message: expect.stringMatching(/timeout/) });
+  });
+
+  test.each([null, '', ' ', false])('refuses an absent coordinate (%p) instead of treating it as zero', async value => {
+    for (const field of ['lat', 'lon']) {
+      const { fetchData } = dataStub({ satellites: SATELLITES, weather: [{ ...WEATHER[0], [field]: value }] });
+      await expect(issPasses({}, { fetchData, now, env })).rejects.toMatchObject({ code: 'ISS_DATA_UNAVAILABLE' });
+    }
   });
 
   test('validates its arguments strictly', () => {

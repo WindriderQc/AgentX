@@ -101,7 +101,7 @@ function visibleLine(pass) {
 async function issSummary(userText, { readPasses = defaultIssPasses, logger } = {}) {
   if (!isIssQuestion(userText)) return '';
   try {
-    const result = await readPasses({ hours: 72, max_passes: 12 });
+    const result = await readPasses({ hours: 72, visible_only: true, max_passes: MAX_ISS_LISTED });
     const visible = result.passes.filter(p => p.observable);
     const lines = [
       `Passages de la Station spatiale internationale au-dessus de la maison (calcul AgentX du ${result.computedAtLocal}, éléments orbitaux CelesTrak du ${result.tle.epochLocal}${result.tle.stale ? ', anciens : dis que l’heure peut être moins précise' : ''}). Cite ces jours et heures exactement, n’en invente aucune. La météo n’est pas connue : dis « si le ciel est dégagé ».`,

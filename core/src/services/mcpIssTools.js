@@ -21,7 +21,7 @@ const ISS_TOOLS = [
   {
     name: 'iss_passes',
     title: 'ISS Passes Over the Home',
-    description: 'Next International Space Station passes over the household, computed from the orbital elements Data holds. Each pass says whether it is observable to the naked eye (at least 10° high, station sunlit, dark enough sky) or only geometric (above the horizon), with local times, directions and height. Weather is not known: say "si le ciel est dégagé". Quote the returned times exactly; never estimate a pass time yourself.',
+    description: 'Next International Space Station passes over the household, computed from the orbital elements Data holds. Each pass says whether it is observable to the naked eye (at least 10° high, station sunlit, dark enough sky) or only geometric (above the horizon), with local times, directions and height. Weather is not known: say "si le ciel est dégagé". Quote the returned times exactly; never estimate a pass time yourself. Limit comparisons to the returned search window. Offer view.url when present.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -89,8 +89,9 @@ async function readIssTle(fetchData) {
 async function readHomeObserver(fetchData) {
   const rows = await readData(fetchData, '/api/v1/livedata/weather/latest', 'limit=1');
   const row = rows[0];
-  const lat = Number(row && row.lat);
-  const lon = Number(row && row.lon);
+  const coordinate = value => typeof value === 'number' || (typeof value === 'string' && value.trim() !== '') ? Number(value) : NaN;
+  const lat = coordinate(row?.lat);
+  const lon = coordinate(row?.lon);
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
     throw unavailable('Data holds no household weather location');
   }
@@ -175,7 +176,7 @@ async function issPasses(args, deps = {}) {
       notObservableBecause: p.reason ? p.reason.text : null,
     })),
     view: viewUrl(deps.env) ? { url: viewUrl(deps.env), label: 'Vue 3D de l’ISS et des passages' } : null,
-    answerRules: 'Donne les heures locales telles quelles avec leur jour. Distingue « visible à l’œil nu si le ciel est dégagé » et « passe au-dessus de l’horizon mais pas visible ». Mentionne la date des éléments orbitaux si stale est vrai.',
+    answerRules: 'Donne les heures locales telles quelles avec leur jour. Distingue « visible à l’œil nu si le ciel est dégagé » et « passe au-dessus de l’horizon mais pas visible ». Limite toute comparaison à la fenêtre window, jamais à une semaine entière si elle n’a pas été calculée. Mentionne la date des éléments orbitaux si stale est vrai. Propose view.url quand il est présent.',
   };
 }
 
