@@ -28,6 +28,7 @@ const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const { readCoordination } = require('./maintenance-coordination.cjs');
+const { reloadOpenclaw } = require('./maintenance-openclaw.cjs');
 const benchmarkBatch = require('./maintenance-benchmark.cjs');
 
 // The checkout the actions operate on; it defaults to the one holding this script.
@@ -35,7 +36,7 @@ const ROOT = path.resolve(process.env.AGENTX_CHECKOUT || path.join(__dirname, '.
 const CONTRACT = 'agentx.maintenance-action/v1';
 const DEPLOYABLE = Object.freeze(['core', 'benchmark', 'benchmark-runner', 'rag', 'data']);
 const REVISION_PORTS = Object.freeze({ core: 3080, benchmark: 3081, rag: 3082, data: 3083 });
-const ACTIONS = Object.freeze(['status', 'lease', 'deploy', 'recover-quarantine', 'recalibrate-judges', ...Object.keys(benchmarkBatch.ACTIONS)]);
+const ACTIONS = Object.freeze(['status', 'lease', 'deploy', 'reload-openclaw', 'recover-quarantine', 'recalibrate-judges', ...Object.keys(benchmarkBatch.ACTIONS)]);
 // Read-only actions need no actor, take no lease and leave no receipt file.
 const READ_ONLY = Object.freeze(['status', 'benchmark-batch-status']);
 // These take the lease themselves, when and if they mutate; a prepared plan mutates nothing.
@@ -532,7 +533,7 @@ async function main(argv = process.argv.slice(2)) {
     const takeLead = (purpose = `${action} ${JSON.stringify(parsed.options)}`) => (holder = acquireLead(config.leadFile, parsed.options.actor, purpose));
     // A deploy takes the lease itself, once its turn comes and something is left to deploy.
     if (mutating && !OWN_LEASE.includes(action)) takeLead();
-    const handler = { status, lease, deploy, 'recover-quarantine': recoverQuarantine, 'recalibrate-judges': recalibrateJudges }[action] || benchmarkAction(action);
+    const handler = { status, lease, deploy, 'reload-openclaw': (cfg, opts) => reloadOpenclaw(cfg, opts, ActionError), 'recover-quarantine': recoverQuarantine, 'recalibrate-judges': recalibrateJudges }[action] || benchmarkAction(action);
     const result = await handler(config, parsed.options, takeLead);
     receipt = { contract: CONTRACT, action, actor: parsed.options.actor || null, outcome: 'completed', startedAt, finishedAt: new Date().toISOString(), result };
   } catch (error) {
