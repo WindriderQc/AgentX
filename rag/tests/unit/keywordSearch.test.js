@@ -81,6 +81,25 @@ describe('keywordSearch', () => {
     };
   }
 
+  it('retains fact validity, first recording time and source provenance without treating them as the same date', async () => {
+    const sourceRefs = [{ system: 'memory-review', id: 'synthetic-run:candidate' }];
+    const metadata = { documentId: 'dated', source: 'agent-artifacts', scope: 'owner', sensitivity: 'private',
+      validFrom: '2030-01-01T00:00:00.000Z', recordedAt: '2030-02-01T00:00:00.000Z', sourceRefs };
+    const store = makeMockStore([metadata], { dated: [{ text: 'Synthetic backup fact.', chunkIndex: 3 }] });
+    const [hit] = await keywordSearch(store, 'backup');
+    expect(hit.metadata).toMatchObject({ ...metadata, chunkIndex: 3, searchType: 'keyword' });
+    hit.metadata.sourceRefs[0].id = 'changed result';
+    expect(metadata.sourceRefs).toEqual(sourceRefs);
+    expect(metadata.sourceRefs[0].id).toBe('synthetic-run:candidate');
+  });
+
+  it('keeps unknown source dates unknown for legacy keyword hits', async () => {
+    const store = makeMockStore([{ documentId: 'legacy', source: 'agent-artifacts' }],
+      { legacy: [{ text: 'Synthetic backup fact.', chunkIndex: 0 }] });
+    const [hit] = await keywordSearch(store, 'backup');
+    expect(hit.metadata).toMatchObject({ validFrom: null, recordedAt: null, sourceRefs: [] });
+  });
+
   it('drops keyword hits below the Minimum score', async () => {
     const store = makeMockStore([{ documentId: 'doc-1', source: 'test' }], { 'doc-1': [
       { text: 'mongodb mongodb mongodb mongodb', chunkIndex: 0 },

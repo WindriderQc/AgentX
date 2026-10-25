@@ -80,6 +80,23 @@ describe('RagStore (in-memory, mocked embeddings)', () => {
       .rejects.toMatchObject({ code: 'MEMORY_FACT_METADATA_CONFLICT' });
   });
 
+  test.each([false, true])('keyword-only hybrid hits retain dated evidence through fusion and rerank=%s', async rerank => {
+    const validFrom = '2026-01-05T00:00:00.000Z';
+    const sourceRefs = [{ system: 'memory-review', id: 'synthetic-run:keyword-candidate' }];
+    await store.upsertDocumentWithChunks('Synthetic backup moved to B', {
+      documentId: 'keyword-dated', source: 'agent-artifacts', scope: 'owner', sensitivity: 'private', validFrom, sourceRefs
+    });
+    const first = await store.getDocument('keyword-dated');
+    store.vectorStore.searchSimilar = jest.fn(async () => []);
+    const { results } = await store.search('backup', { hybrid: true, rerank, filters: { scope: 'owner', sensitivity: 'private' } });
+    expect(results).toHaveLength(1);
+    expect(results[0].metadata).toMatchObject({ documentId: 'keyword-dated', searchType: 'keyword',
+      scope: 'owner', sensitivity: 'private', validFrom, recordedAt: first.recordedAt, sourceRefs });
+    expect(results[0].rrfScore).toBeGreaterThan(0);
+    expect(store.vectorStore.searchSimilar).toHaveBeenCalled();
+    expect((await store.search('backup', { hybrid: true, filters: { scope: 'household', sensitivity: 'normal' } })).results).toEqual([]);
+  });
+
   test('legacy recording/validity remain unknown and migration preserves the original recording time', async () => {
     await store.vectorStore.upsertDocument('legacy', { source: 'agent-artifacts' }, [{ text: 'Old synthetic fact', chunkIndex: 0, embedding: mockEmbedding }]);
     // In-memory's createdAt is an adapter timestamp; omit it to model an old
