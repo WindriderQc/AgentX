@@ -1946,6 +1946,16 @@
       "secret": false,
       "description": "Maximum stored ISS positions. Unset: 8000."
     },
+    "ISS_VIEW_OBSERVER_MODE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Opt-in viewer contract: fragment-v1 passes the rounded observer in a browser-only URL fragment. Enable only after the HTTPS viewer supports and consumes it. Unset keeps a static link."
+    },
     "ISS_VIEW_URL": {
       "services": [
         "core"

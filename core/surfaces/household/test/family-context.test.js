@@ -141,6 +141,10 @@ test('ISS passes reach Famille only when enabled and asked about, with the compu
   assert.match(text, /si le ciel est dégagé/);
   assert.match(text, /4 autre\(s\) passage\(s\)/);
   assert.match(text, /<show kind="link" title="Vue 3D">https:\/\/example\.test\/iss#passages<\/show>/);
+  const synced = await issSummary("Quand passe l'ISS?", { readPasses: async () => ({ ...result, view: { ...result.view, observerSynchronized: true, url: 'https://example.test/iss#passages?observer=v1:12.34,-56.78' } }) });
+  assert.match(synced, /même lieu arrondi/);
+  assert.match(synced, /observer=v1:12.34,-56.78/);
+  assert.doesNotMatch(synced, /n’est pas synchronisé/);
   const fallback = await issSummary("Quand passe l'ISS?", { readPasses: async () => ({ ...result,
     observer: { label: 'Québec', source: 'default', defaulted: true } }) });
   assert.match(fallback, /pour Québec \(lieu par défaut/);
