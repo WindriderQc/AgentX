@@ -19,9 +19,9 @@ node integrations/operations/heavy-work-queue.cjs reserve --core <core-origin> -
 node integrations/operations/heavy-work-queue.cjs run --core <core-origin> --actor operator --id <request-id> --revision <current-revision>
 ```
 
-`run` explicitly launches the saved request. Three kinds start without a person
-at the slot: an image already accepted by Core's image service, and a Profiler
-or embedding reindex request whose reservation the owner marked
+`run` explicitly launches the saved request. Some kinds start without a person
+at the slot: an image already accepted by Core's image service, and a Profiler,
+embedding reindex or topology request whose reservation the owner marked
 `autoStart: true` (see below). No
 queued command is executed. Existing approval requirements still apply. Smaller
 priority numbers appear first; the owner chooses the slot and launch. Benchmark
@@ -64,6 +64,13 @@ Supported executors:
   that RAG does not already serve the model; RAG accepts the build only for a
   request it reads as dispatching, under the request id as build id. The
   Nerve Center's Embeddings section submits and reserves it.
+- **Topology**: `{groupId, targetMode, returnTo?, holdMinutes?}` switches a GPU
+  host group to a declared mode for the slot, then back to `returnTo` (see
+  [runtime topology modes](OPERATIONS.md#runtime-topology-modes)). The hosts are
+  every endpoint of the group, in all its modes. `estimatedMinutes` covers the
+  switch in (about 5 to 15 minutes), the hold and the switch back. Core runs
+  each switch through its own switch workload; the queue only times them. See
+  "Topology windows" below.
 - **Diagnostic/other** requests may be planned without an executor or may use
   `{mode: "operator", receiptRef: "<out-of-Git receipt reference>"}` for custom
   coding checks. The explicit operator protocol below starts no command.
@@ -121,10 +128,52 @@ placement (`shared/heavyWorkPlacement.js`) plans the Profiler's lane campaign.
 Automations → Calendrier's slot dialog offers the three choices and shows the
 slot before saving.
 
+### Topology windows
+
+A topology request is a window: it switches the group to `targetMode` when its
+slot opens, holds that mode, then returns to `returnTo`. A **pooled window** is
+one with the pooled mode as target and the daily mode as `returnTo`.
+
+- **Enter.** Core requests the switch `<request id>.enter`. A refusal before it
+  starts releases the request's fence, and the next sweep tries again while the
+  slot is open. A switch already running on the group makes the request wait.
+- **Hold.** The window holds the mode for `holdMinutes` after the switch became
+  active. Without `holdMinutes`, it holds until 15 minutes before the end of
+  its reservation, which leaves room for the return.
+- **Requests inside a window.** A request that needs the window's mode names
+  the window with `withinWindow: "<topology request id>"`.
+  - It must be reserved inside the window's slot, on endpoints of the window's
+    mode. The window and its own requests do not collide with each other; other
+    work still does.
+  - `place` searches the slot inside the window.
+  - A request inside a window does not start until the window has reached its
+    mode.
+  - The window cannot be moved so that one of its requests falls outside it, or
+    cancelled while one is still planned.
+- **Return.** At the end of the hold, the window waits while one of its
+  requests is still reserved, running or uncertain. Then Core requests the
+  switch `<request id>.return-1` back to `returnTo`.
+  - **Retries.** A return refused because the group is busy is asked again on
+    the next sweep, up to five attempts. After that the window fails, and the
+    group stays in the window's mode, which is a known good state.
+  - **No flapping.** When the group's next topology window targets the same
+    mode and starts within 30 minutes of this window's end, the return is
+    skipped (`phase: return_skipped`, with the next window named).
+- **Outcome.** The window completes when the return switch is active, or when
+  the return was skipped. It fails when its enter switch is refused or rolled
+  back. It becomes uncertain when a switch it requested ends uncertain. Its
+  receipt names the switches, with `authority: core.runtime-topology`.
+
+A lane request too large for its lane is refused with `LANE_CONTEXT_EXCEEDED`
+and the suggestion `queue_for_pooled`. When a pooled window is planned for the
+group, the refusal names it in `data.nextPooledWindow` (`id`, `start`, `end`,
+`mode`), and its message gives the start time. Nothing switches on a single
+request.
+
 ### Automatic start and Run now
 
-Reserving a Profiler or embedding reindex request (`POST /:id/reserve`) accepts
-`autoStart: true`. It is the owner's consent for that slot only and is refused
+Reserving a Profiler, embedding reindex or topology request
+(`POST /:id/reserve`) accepts `autoStart: true`. It is the owner's consent for that slot only and is refused
 for every other kind; changing the slot replaces it. When the slot opens, the
 Core observer launches the request through the same path as `run`: executor
 host check, durable dispatch mark, window assertion, then the Profiler start or
@@ -132,8 +181,8 @@ the RAG build with the queue request identity. A refusal before the mark (host b
 retries on the next sweep while the window stays open. A launch whose answer is
 lost becomes `uncertain`, is never retried, and waits for the owner; the
 observer finds a build RAG did receive by that identity. `POST /:id/run` with
-`expectedRevision` is the same launch for a reserved Profiler or embedding
-reindex request inside its slot; Automations → Calendar shows it as **Run now** and
+`expectedRevision` is the same launch for a reserved Profiler, embedding
+reindex or topology request inside its slot; Automations → Calendar shows it as **Run now** and
 labels each reservation with who starts it.
 
 The Profiler's **Measure lanes tonight** (and a lane card's **Measure tonight**)

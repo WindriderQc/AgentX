@@ -233,12 +233,23 @@ function checkLaneContext({ estimatedInputTokens, outputBudget, laneContext, rol
   if (![input, output, context].every(Number.isFinite) || context <= 0 || input < 0 || output < 0) return null;
   if (input + output <= context) return null;
   const suggestion = role === 'pooled' ? 'reduce_input' : 'queue_for_pooled';
+  // Phase 5: name the next planned pooled window, when one exists. Never a switch.
+  let nextPooledWindow = null;
+  if (suggestion === 'queue_for_pooled') {
+    try {
+      const next = require('../runtimeTopologyWindow').nextPooledWindow(group);
+      if (next) nextPooledWindow = { id: next.id, start: next.start, end: next.end, mode: next.mode };
+    } catch { nextPooledWindow = null; }
+  }
+  const window = nextPooledWindow
+    ? ` The next pooled window starts at ${nextPooledWindow.start} (queue request ${nextPooledWindow.id}).` : '';
   return {
     status: 413,
     code: LANE_CONTEXT_EXCEEDED,
     message: `The request needs ${input + output} tokens (input ${input} + output ${output}) `
-      + `but the ${role} lane holds ${context}; it was not dispatched and nothing was truncated.`,
-    data: { estimatedInputTokens: input, outputBudget: output, laneContext: context, role, mode, group, suggestion },
+      + `but the ${role} lane holds ${context}; it was not dispatched and nothing was truncated.${window}`,
+    data: { estimatedInputTokens: input, outputBudget: output, laneContext: context, role, mode, group, suggestion,
+      ...(nextPooledWindow ? { nextPooledWindow } : {}) },
     suggestion
   };
 }

@@ -17,6 +17,8 @@ function exactHosts(job, actual) {
 }
 async function preDispatch(job) {
   if (!job.executor) throw fail('No supported executor on this request', 409);
+  // Inside a topology window: wait until the window has reached its mode.
+  if (job.withinWindow) await require('./runtimeTopologyWindow').assertWindowReady(job);
   if (job.kind === 'benchmark') {
     const request = batchRequest(job.executor.request, { judgeRequired: true });
     if (job.executor.prepare !== true && planRef(planId(job.executor.plan), request) !== job.executor.plan) throw fail('Benchmark plan reference differs from its request', 409);
@@ -49,6 +51,8 @@ async function preDispatch(job) {
       throw fail('RAG already serves this embedding model', 409, 'HEAVY_QUEUE_EXECUTOR_CHANGED');
     }
     if (build && reindex.IN_PROGRESS.includes(build.status) && build.id !== job.id) throw fail('Another RAG embedding build is in progress', 409, 'HEAVY_QUEUE_CONFLICT');
+  } else if (job.kind === 'topology') {
+    await require('./runtimeTopologyWindow').preDispatch(job, { exactHosts });
   } else if (job.kind === 'other' && job.executor.mode === 'pipeline-report') {
     await require('./pipelineReportResume').preDispatch(job);
   } else if (!(['diagnostic', 'other'].includes(job.kind) && job.executor.mode === 'operator')) {
@@ -106,6 +110,15 @@ async function observe(job) {
     if (outcome === null) return { operationId, terminal: false, progress: build.progress || null, buildStatus: build.status };
     if (!outcome) throw fail('RAG build outcome is not terminal', 409);
     receipt = outcome;
+  } else if (job.kind === 'topology') {
+    const result = await require('./runtimeTopologyWindow').observe(job);
+    operationId = operationId || result.operationId;
+    if (result.uncertain) return { operationId, terminal: false, uncertain: true, reason: result.reason, phase: result.phase };
+    if (!result.terminal) {
+      const { terminal, receipt: _receipt, uncertain, ...progress } = result;
+      return { ...progress, operationId, terminal: false };
+    }
+    receipt = { ...result.receipt, operationId };
   } else if (job.kind === 'other' && job.executor?.mode === 'pipeline-report') {
     const result = await require('./pipelineReportResume').observeCampaign(job);
     if (!result.terminal) return { operationId: operationId || result.operationId, terminal: false };
