@@ -36,7 +36,9 @@
   }
 
   city.addEventListener('diskx-ready', () => { status.hidden = true; });
-  city.addEventListener('diskx-report-read', event => { void readPresented(event.detail); });
+  // A targeted opening is read when that group is actually shown. The intermediate
+  // report receipt would start a second, immediately superseded Data read.
+  city.addEventListener('diskx-report-read', event => { if (!city.getAttribute('group')) void readPresented(event.detail); });
   city.addEventListener('diskx-group-shown', (event) => {
     void readPresented(event.detail, event.detail?.sha256);
     const places = Number(event.detail?.places);
