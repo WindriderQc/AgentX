@@ -33,9 +33,10 @@ test('general receipts and versioned objective review keep separate content-free
 test('rejected objective pages remain separate counts and never establish text coverage', () => {
   const result = catchupProjection({ known: true, objectiveReviews: [{ objectiveId: 'life', version: 'v1',
     allTargetTextCovered: false, counts: { reviewedPages: 2, rejectedPages: 3, sourcesWithRejectedPages: 2,
-      pendingPagesKnown: 0, privateResultBody: 'not exposed' } }] });
+      pendingPagesKnown: 0, deferredRejectedCopyPages: 8, sourcesWithDeferredRejectedCopies: 8, privateResultBody: 'not exposed' } }] });
   assert.deepEqual(result.objectiveReviews[0].counts,
-    { reviewedPages: 2, pendingPagesKnown: 0, rejectedPages: 3, sourcesWithRejectedPages: 2 });
+    { reviewedPages: 2, pendingPagesKnown: 0, rejectedPages: 3, sourcesWithRejectedPages: 2,
+      deferredRejectedCopyPages: 8, sourcesWithDeferredRejectedCopies: 8 });
   assert.equal(result.objectiveReviews[0].allTargetTextCovered, false);
   assert.equal(result.objectiveReviews[0].semanticAcceptance, 'not-established');
   assert.doesNotMatch(JSON.stringify(result), /not exposed|privateResultBody/);

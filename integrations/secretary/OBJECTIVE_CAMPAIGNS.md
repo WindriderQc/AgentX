@@ -48,12 +48,23 @@ This policy changes the immutable campaign configuration and requires a new
 campaign identity. It changes neither the frozen objective nor the model
 request. Unknown transport/status, missing or corrupt receipts, source errors
 and manifest/identity failures still stop for reconciliation. The page budget
-counts newly accepted and newly rejected pages together. A rejected page is
+counts newly accepted pages, newly rejected pages and new exact-copy reports
+together, also within each source. A rejected page is
 excluded from accepted reviews, findings and text coverage, and remains visible
 in `rejectedPages`, `sourcesWithRejectedPages` and source gaps. It is removed
 only from `pendingPagesKnown` (work still eligible to attempt); when all other
 pages have been visited, coverage stays incomplete and the controller stops in
 `needs-source-review` instead of creating empty chunks.
+
+The same explicit policy can defer an exact copy of a wholly rejected unit.
+Separate `rejected-copy-reports` preserve that target as an uncovered gap;
+`deferredRejectedCopyPages` and `sourcesWithDeferredRejectedCopies` never add
+accepted reads, equivalences, rejected outputs or findings. RFC/context, complete
+exact text, representation scope and page ranges must match; every canonical
+rejection and retained response is revalidated. An existing target attempt keeps
+its native recovery path. Partial/mixed canonical units and text variants do not
+qualify. Conflicting or altered reports block. See the
+[objective contract](OBJECTIVE_REVIEW.md) for these conservative proof limits.
 
 The controller records its native queue key before submission. It reconciles
 the same key/ID on a lost response, respects Core's placement, and obtains the

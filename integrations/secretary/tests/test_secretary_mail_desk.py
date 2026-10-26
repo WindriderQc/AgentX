@@ -179,14 +179,16 @@ class SecretaryMailDeskTest(unittest.TestCase):
             objective.mkdir(parents=True)
             (objective / "coverage.json").write_text(json.dumps({"objectiveId": "life", "version": "v1",
                 "counts": {"targetSources": 20, "reviewedPages": 2, "rejectedPages": 3,
-                           "sourcesWithRejectedPages": 2, "pendingPagesKnown": 0, "prompt": "private"},
+                           "sourcesWithRejectedPages": 2, "pendingPagesKnown": 0, "deferredRejectedCopyPages": 8,
+                           "sourcesWithDeferredRejectedCopies": 8, "prompt": "private"},
                 "allTargetTextCovered": False, "sources": ["private"]}))
             data = MODULE.catchup(None, root)
             self.assertEqual((data["known"], data["running"], data["reviewed"], data["proposalsPending"], data["proposalsQueued"]), (True, True, 3, 1, 2))
             self.assertEqual(data["paused"]["reason"], "benchmark running")
             self.assertEqual(data["archiveProgress"]["reviewedPages"], 120)
             self.assertEqual(data["objectiveReviews"][0]["counts"], {"targetSources": 20, "reviewedPages": 2,
-                "rejectedPages": 3, "sourcesWithRejectedPages": 2, "pendingPagesKnown": 0})
+                "rejectedPages": 3, "sourcesWithRejectedPages": 2, "pendingPagesKnown": 0,
+                "deferredRejectedCopyPages": 8, "sourcesWithDeferredRejectedCopies": 8})
             self.assertFalse(data["objectiveReviews"][0]["allTargetTextCovered"])
             self.assertNotIn("private", json.dumps(data))
             self.assertEqual(MODULE.catchup(None, root / "missing")["known"], False)

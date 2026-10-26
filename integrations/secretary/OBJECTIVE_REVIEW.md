@@ -162,6 +162,37 @@ independent agreement.
 equivalence. `allTargetTextCovered` can be true while `allTargetTextReviewed`
 is false; neither establishes semantic acceptance or human confirmation.
 
+With the explicit review-only `--retain-rejected-pages` policy, a complete unit
+whose every page has an intact, certainly terminal rejection can defer exact
+copies. `rejected-copy-index/` seals that canonical unit and its rejection byte
+hashes; `rejected-copy-reports/` records each target page separately. These are
+neither accepted equivalences nor new rejected model outputs. No result, fact,
+quote or source record is transferred to exports.
+
+The objective, nonempty RFC identity and existing equivalence context must
+match, including author, recipients, date, subject and draft status. In addition,
+the complete unit bytes, representation scope, page ranges and attribution
+context must match exactly. Whitespace-only variants do not qualify. MIME part
+numbers may differ between physical copies; attachment/extraction/decoding
+identities cannot. Partial or mixed accepted/rejected canonical units remain on
+the ordinary review path. Every report rereads the canonical rejection and all
+sealed native response artifacts. A changed proof or conflicting target review,
+rejection or attempt blocks explicitly. An existing target attempt always keeps
+its own native recovery path; a report cannot bypass an uncertain call or a
+known invalid cache. Reported objectives cannot silently resume without the
+explicit retention policy.
+
+`deferredRejectedCopyPages` and `sourcesWithDeferredRejectedCopies` are distinct
+counts, with `modelRead: false`, `textCovered: false` and an explicit source gap.
+They never increase `reviewedPages`, `rejectedPages`, `equivalentPages`,
+`sourcesTextReviewed` or `sourcesTextCovered`. Annual coverage reflects only
+their remaining gap; it gives no new rejection/read credit. Newly written
+reports share both the chunk and per-source page budget with accepted and
+rejected pages. Once every target is visited and only uncovered gaps remain,
+the campaign's existing `needs-source-review` terminal state prevents empty
+continuation chunks. This behavior changes neither a saved rejection nor its
+source and never retries a model request.
+
 Coverage distinguishes target sources, materialized scopes, validated page
 receipts, remaining known pages, sources not yet materialized, extraction gaps
 and semantic acceptance. A fully read text scope does not qualify images,
