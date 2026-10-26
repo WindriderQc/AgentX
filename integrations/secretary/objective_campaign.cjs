@@ -81,6 +81,13 @@ async function advance(config, deps, { allowStart = true, stopReason = 'Explicit
       return report(published.writes ? 'publication-pending' : 'text-scope-complete', { publication: published,
         remainingGaps: coverage.counts.sourcesWithGaps || 0, semanticAcceptance: 'not-established', userConfirmed: false });
     }
+    if (coverage.counts.sourcesPendingMaterialization === 0 && coverage.counts.pendingPagesKnown === 0) {
+      const published = await deps.publish(directory);
+      return report(published.writes ? 'publication-pending' : 'needs-source-review', { publication: published,
+        reason: 'Every target was materialized and no text page remains, but some targets have no established text coverage; inspect source gaps before another chunk',
+        remainingGaps: coverage.counts.sourcesWithGaps || 0, sourceErrors: coverage.counts.sourceErrors || 0,
+        semanticAcceptance: 'not-established', userConfirmed: false });
+    }
     if (!allowStart) return report('controller-drained', { stopReason });
     const key = `secretary-objective:${config.id}:${objective.objectiveSha256.slice(0, 12)}:${state.sequence}`;
     const chunkHome = path.join(home, `chunk-${state.sequence}`);

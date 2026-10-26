@@ -47,6 +47,11 @@ reconcile in Core. Remaining visual/OCR/context gaps, semantic acceptance and
 human confirmation remain separate. Do not mark an entire life reconstruction
 complete merely because one bounded chunk ended.
 
+If every target has been materialized and no text page remains but coverage is
+still incomplete (for example an unreadable MIME representation), the controller
+publishes acquired candidates and stops for source review. It never keeps
+creating empty chunks or counts missing readable text as a semantic review.
+
 ## Durable progression
 
 ```sh

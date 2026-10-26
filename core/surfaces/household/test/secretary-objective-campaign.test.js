@@ -176,3 +176,20 @@ test('an operator running state without a retained worker never authorizes anoth
   assert.equal(state.phase, 'uncertain'); assert.match(state.reason, /no retained local worker/);
   assert.equal(f.data.launches, 1);
 });
+test('materialized targets with no remaining pages and incomplete text coverage stop without empty chunks', async t => {
+  const f = fixture(t); f.write(path.join(f.dir, 'coverage.json'), { allTargetTextCovered: false,
+    counts: { sourcesPendingMaterialization: 0, pendingPagesKnown: 0, sourcesWithGaps: 1, sourceErrors: 0 } });
+  const state = await step(f.config, f.deps);
+  assert.equal(state.phase, 'needs-source-review'); assert.equal(state.remainingGaps, 1);
+  assert.equal(state.semanticAcceptance, 'not-established'); assert.equal(state.userConfirmed, false);
+  assert.equal(f.data.jobs.length, 0); assert.equal(f.data.launches, 0); assert.equal(f.data.publishes, 1);
+});
+test('already acquired candidates publish before an exhausted unreadable text scope stops', async t => {
+  const f = fixture(t); f.write(path.join(f.dir, 'coverage.json'), { allTargetTextCovered: false,
+    counts: { sourcesPendingMaterialization: 0, pendingPagesKnown: 0, sourcesWithGaps: 2 } });
+  let writes = 1;
+  f.deps.publish = async () => ({ writes: writes-- > 0 ? 1 : 0, candidates: 1 });
+  assert.equal((await step(f.config, f.deps)).phase, 'publication-pending');
+  assert.equal((await step(f.config, f.deps)).phase, 'needs-source-review');
+  assert.equal(f.data.jobs.length, 0); assert.equal(f.data.launches, 0);
+});
