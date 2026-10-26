@@ -16,12 +16,12 @@ const HOST_MODULE = 'export class GraphysXCenterElement extends HTMLElement {}';
 const SCENE = { id: 'showroom', label: 'Showroom', entities: [{ id: 'plinth', type: 'box', label: 'Plinth' }] };
 const COMPOSED = { ok: true, intent: 'Add a lake.', commands: [{ op: 'spawn', entity: { id: 'lake', type: 'water' } }], model: 'test-model' };
 
-function app({ env = { GRAPHYSX_CENTER_URL: CENTER_URL }, compose = async () => COMPOSED, upstream = { ok: true, type: 'text/javascript', body: HOST_MODULE }, policy = null, receiptWaitMs = 300 } = {}) {
+function app({ env = { GRAPHYSX_CENTER_URL: CENTER_URL }, compose = async () => COMPOSED, upstream = { ok: true, type: 'text/javascript', body: HOST_MODULE }, policy = null, receiptWaitMs = 300, registry } = {}) {
   const server = express();
   const composed = [];
   if (policy) server.use((_req, res, next) => { res.set('Content-Security-Policy', policy); next(); });
   const served = center.register({
-    app: server, express, env, receiptWaitMs, heartbeatMs: 60_000,
+    app: server, express, env, receiptWaitMs, heartbeatMs: 60_000, ...(registry ? { registry } : {}),
     checkScene: graphysx.checkScene,
     compose: async (input) => { composed.push(input); return compose(input); },
     fetchWithTimeout: async (url) => {
@@ -131,6 +131,27 @@ test('a page stream gets a page id; state and receipts are checked and bound to 
     assert.equal((await receipt({ pageId: stream.pageId, id: '../x', status: 'shown' })).status, 400);
     assert.equal((await receipt({ pageId: 'nobody', id: 'push-1', status: 'shown' })).status, 404);
 
+    // A decision carries the proposal and the revision after it; the fields of one kind of
+    // receipt are refused on the other.
+    for (const good of [
+      { pageId: stream.pageId, id: 'push-1', status: 'accepted', proposalId: 'Add a lake.@3', revision: 4, commitId: 'commit-0001' },
+      { pageId: stream.pageId, id: 'push-1', status: 'discarded', proposalId: 'Add a lake.@3', revision: 3 },
+      { pageId: stream.pageId, id: 'push-1', status: 'stale', proposalId: 'Add a lake.@3', revision: 5 },
+      { pageId: stream.pageId, id: 'push-1', status: 'rejected', proposalId: 'Add a lake.@3', revision: 3, reason: 'The scene rejected the change.' }
+    ]) assert.equal((await receipt(good)).status, 204, JSON.stringify(good).slice(0, 80));
+    for (const bad of [
+      { pageId: stream.pageId, id: 'push-1', status: 'accepted', revision: 4 },
+      { pageId: stream.pageId, id: 'push-1', status: 'accepted', proposalId: 'x', revision: -1 },
+      { pageId: stream.pageId, id: 'push-1', status: 'accepted', proposalId: 'x', revision: '4' },
+      { pageId: stream.pageId, id: 'push-1', status: 'discarded', proposalId: 'x', revision: 3, stale: false },
+      { pageId: stream.pageId, id: 'push-1', status: 'discarded', proposalId: 'x', revision: 3, commitId: 'commit-0001' },
+      { pageId: stream.pageId, id: 'push-1', status: 'discarded', proposalId: 'x', revision: 3, reason: 'why' },
+      { pageId: stream.pageId, id: 'push-1', status: 'accepted', proposalId: 'x', revision: 3, commitId: '' },
+      { pageId: stream.pageId, id: 'push-1', status: 'shown', revision: 3 },
+      { pageId: stream.pageId, id: 'push-1', status: 'shown', commitId: 'commit-0001' }
+    ]) assert.equal((await receipt(bad)).status, 400, JSON.stringify(bad).slice(0, 80));
+    assert.equal(server.registry.pushCount, 0, 'receipts for pushes Core never sent are acknowledged and forgotten');
+
     await stream.close();
     await new Promise((resolve) => setTimeout(resolve, 50));
     assert.equal(server.registry.size, 0, 'a closed stream forgets the page');
@@ -168,6 +189,7 @@ test('Nestor\'s tool composes for the most recent page, pushes on its stream and
     assert.equal(result.structuredContent.expectedRevision, 7);
     assert.deepEqual(result.structuredContent.delivery, { status: 'shown', stale: false, proposalId: 'Add a lake.@7' });
     assert.match(result.structuredContent.note, /inert until a person presses Apply/);
+    assert.match(result.structuredContent.followUp, /world_proposal_status/);
     assert.equal(JSON.parse(result.content[0].text).status, 'proposed');
 
     // A refused receipt is relayed as such; no receipt in time is "unconfirmed", never "shown".
@@ -212,16 +234,141 @@ test('with no page open, or a declined composition, the tool says so and propose
   assert.equal(notification.status, 204);
 });
 
-test('the tool is listed once on tools/list and other MCP traffic passes through', async () => {
+test('what the person decided reaches Nestor through world_proposal_status, once per push, for pushes Core sent', async () => {
+  const server = app();
+  const { base, close } = await listen(server);
+  try {
+    const stream = await openStream(base);
+    const post = (route, body) => fetch(`${base}${route}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    await post(center.STATE_ROUTE, { pageId: stream.pageId, revision: 7, scene: SCENE });
+    const status = async (args, id = 9) => (await rpc(server, 'tools/call', { name: center.STATUS_TOOL_NAME, arguments: args }, id)).body.result;
+
+    const before = await status({});
+    assert.equal(before.isError, false);
+    assert.equal(before.structuredContent.status, 'none');
+    assert.match(before.structuredContent.message, /No proposal has been pushed/);
+
+    // Push one: pending until the page answers, shown once it does.
+    const first = rpc(server, 'tools/call', { name: center.TOOL_NAME, arguments: { request: 'add a lake' } }, 5);
+    const pushed = await stream.next();
+    assert.equal((await status({ id: pushed.data.id })).structuredContent.status, 'pending');
+    await post(center.RECEIPTS_ROUTE, { pageId: stream.pageId, id: pushed.data.id, status: 'shown', proposalId: 'Add a lake.@7', stale: false });
+    assert.equal((await first).body.result.structuredContent.status, 'proposed');
+    const shown = (await status({ id: pushed.data.id })).structuredContent;
+    assert.equal(shown.status, 'shown');
+    assert.equal(shown.decision, null);
+    assert.match(shown.message, /has not decided yet/);
+
+    // A decision that is not accepted names no commit; the first decision is the decision.
+    await post(center.RECEIPTS_ROUTE, { pageId: stream.pageId, id: pushed.data.id, status: 'accepted', proposalId: 'Add a lake.@7', revision: 8, commitId: 'commit-0001' });
+    const accepted = (await status({ id: pushed.data.id })).structuredContent;
+    assert.equal(accepted.status, 'accepted');
+    assert.equal(accepted.id, pushed.data.id);
+    assert.equal(accepted.intent, 'Add a lake.');
+    assert.equal(accepted.expectedRevision, 7);
+    assert.deepEqual(accepted.delivery, { status: 'shown', stale: false, proposalId: 'Add a lake.@7' });
+    assert.equal(accepted.decision.status, 'accepted');
+    assert.equal(accepted.decision.revision, 8);
+    assert.equal(accepted.decision.commitId, 'commit-0001');
+    assert.match(accepted.decision.at, /^\d{4}-\d{2}-\d{2}T/);
+    assert.match(accepted.message, /revision 8/);
+    assert.match(accepted.message, /commit-0001/);
+    await post(center.RECEIPTS_ROUTE, { pageId: stream.pageId, id: pushed.data.id, status: 'discarded', proposalId: 'Add a lake.@7', revision: 8 });
+    assert.equal((await status({ id: pushed.data.id })).structuredContent.decision.status, 'accepted', 'a push is decided once');
+
+    // Without an id: the most recent push. A discarded one says so and names no commit.
+    const second = rpc(server, 'tools/call', { name: center.TOOL_NAME, arguments: { request: 'add birds' } }, 6);
+    const pushed2 = await stream.next();
+    await post(center.RECEIPTS_ROUTE, { pageId: stream.pageId, id: pushed2.data.id, status: 'shown', proposalId: 'Add a lake.@7', stale: false });
+    await second;
+    await post(center.RECEIPTS_ROUTE, { pageId: stream.pageId, id: pushed2.data.id, status: 'discarded', proposalId: 'Add a lake.@7', revision: 8 });
+    const latest = (await status({})).structuredContent;
+    assert.equal(latest.id, pushed2.data.id);
+    assert.equal(latest.status, 'discarded');
+    assert.equal(latest.decision.commitId, undefined);
+    assert.match(latest.message, /Discarded/);
+    assert.deepEqual(latest.recent.map((entry) => [entry.id, entry.status]), [[pushed2.data.id, 'discarded'], [pushed.data.id, 'accepted']], 'most recent first');
+
+    // A refused push was never a card: a decision on it is not believed. Stale and rejected are kept as decided.
+    const third = rpc(server, 'tools/call', { name: center.TOOL_NAME, arguments: { request: 'a volcano' } }, 7);
+    const pushed3 = await stream.next();
+    await post(center.RECEIPTS_ROUTE, { pageId: stream.pageId, id: pushed3.data.id, status: 'refused', reason: 'A proposal is already waiting for a decision.' });
+    await third;
+    await post(center.RECEIPTS_ROUTE, { pageId: stream.pageId, id: pushed3.data.id, status: 'accepted', proposalId: 'x', revision: 9, commitId: 'commit-0002' });
+    const refused = (await status({ id: pushed3.data.id })).structuredContent;
+    assert.equal(refused.status, 'refused');
+    assert.equal(refused.decision, null);
+    assert.match(refused.message, /did not show it: A proposal is already waiting/);
+    const fourth = rpc(server, 'tools/call', { name: center.TOOL_NAME, arguments: { request: 'dim the lights' } }, 8);
+    const pushed4 = await stream.next();
+    await post(center.RECEIPTS_ROUTE, { pageId: stream.pageId, id: pushed4.data.id, status: 'shown', proposalId: 'Dim.@7', stale: true });
+    await fourth;
+    assert.match((await status({ id: pushed4.data.id })).structuredContent.message, /stale card/);
+    await post(center.RECEIPTS_ROUTE, { pageId: stream.pageId, id: pushed4.data.id, status: 'stale', proposalId: 'Dim.@7', revision: 9 });
+    const stale = (await status({ id: pushed4.data.id })).structuredContent;
+    assert.equal(stale.status, 'stale');
+    assert.match(stale.message, /moved to revision 9/);
+
+    // A push id Core never sent is unknown, whatever the page said about it; a bad id is an argument error.
+    await post(center.RECEIPTS_ROUTE, { pageId: stream.pageId, id: 'push-forged', status: 'accepted', proposalId: 'x', revision: 1 });
+    const unknown = (await status({ id: 'push-forged' })).structuredContent;
+    assert.equal(unknown.status, 'unknown');
+    assert.match(unknown.message, /no record/);
+    const bad = await status({ id: '../x' });
+    assert.equal(bad.isError, true);
+    assert.equal(bad.structuredContent.error, 'INVALID_ARGUMENTS');
+
+    // Records outlive the page: the tab closing does not erase what the person decided.
+    await stream.close();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(server.registry.size, 0);
+    assert.equal((await status({ id: pushed.data.id })).structuredContent.status, 'accepted');
+    assert.equal(server.registry.pushCount, 4);
+  } finally {
+    await close();
+  }
+});
+
+test('push records are bounded: the oldest is forgotten first and answers unknown', async () => {
+  const registry = center.createCenterRegistry({ maxPushes: 2 });
+  const server = app({ registry });
+  const { base, close } = await listen(server);
+  try {
+    const stream = await openStream(base);
+    await fetch(`${base}${center.STATE_ROUTE}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pageId: stream.pageId, revision: 1, scene: SCENE }) });
+    const ids = [];
+    for (let index = 0; index < 3; index += 1) {
+      const call = rpc(server, 'tools/call', { name: center.TOOL_NAME, arguments: { request: `change ${index}` } }, 20 + index);
+      ids.push((await stream.next()).data.id);
+      await call;
+    }
+    assert.equal(registry.pushCount, 2);
+    const status = async (id) => (await rpc(server, 'tools/call', { name: center.STATUS_TOOL_NAME, arguments: { id } }, 30)).body.result.structuredContent;
+    assert.equal((await status(ids[0])).status, 'unknown');
+    assert.equal((await status(ids[1])).status, 'pending');
+    assert.equal((await status(ids[2])).status, 'pending');
+    assert.equal(center.MAX_PUSHES, 64);
+    await stream.close();
+  } finally {
+    await close();
+  }
+});
+
+test('both tools are listed once on tools/list and other MCP traffic passes through', async () => {
   const server = app();
   server.post('/mcp', (req, res) => res.json({ jsonrpc: '2.0', id: req.body.id, result: { tools: [{ name: 'add_idea' }] } }));
   const listed = await rpc(server, 'tools/list', {});
-  assert.deepEqual(listed.body.result.tools.map((tool) => tool.name), ['add_idea', center.TOOL_NAME]);
+  assert.deepEqual(listed.body.result.tools.map((tool) => tool.name), ['add_idea', center.TOOL_NAME, center.STATUS_TOOL_NAME]);
   const tool = listed.body.result.tools[1];
   assert.equal(tool._meta['agentx/owner'], 'agentx-graphysx');
   assert.deepEqual(tool.inputSchema.required, ['request']);
   assert.match(tool.description, /nothing is applied until the person presses Apply/);
-  assert.deepEqual(center.appendTool({ result: { tools: [center.TOOL] } }).result.tools.length, 1, 'never listed twice');
+  const statusTool = listed.body.result.tools[2];
+  assert.equal(statusTool.annotations.readOnlyHint, true);
+  assert.equal(statusTool.inputSchema.required, undefined, 'the id is optional: no id means the most recent push');
+  assert.match(statusTool.description, /accepted in revision N/);
+  assert.deepEqual(center.appendTool({ result: { tools: [center.TOOL] } }).result.tools.map((entry) => entry.name), [center.TOOL_NAME, center.STATUS_TOOL_NAME], 'a listing that names one gains only the other');
+  assert.deepEqual(center.appendTool({ result: { tools: [...center.TOOLS] } }).result.tools.length, 2, 'never listed twice');
   const other = await rpc(server, 'tools/call', { name: 'add_idea', arguments: {} });
   assert.deepEqual(other.body.result, { tools: [{ name: 'add_idea' }] }, 'another tool reaches the downstream handler');
 });

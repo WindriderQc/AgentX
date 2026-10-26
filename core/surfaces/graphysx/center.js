@@ -12,18 +12,22 @@
 //   GET  /api/graphysx/center/events     one stream per open page; Core says hello with a page id
 //   POST /api/graphysx/center/state      the page's revision and bounded scene summary (ids, types,
 //                                        labels; never the document), whenever they change
-//   POST /api/graphysx/center/receipts   what the Center did with a pushed proposal
+//   POST /api/graphysx/center/receipts   what the Center did with a pushed proposal: first whether
+//                                        the card was shown, then what the person decided
 //
 // The tool `propose_world_change` is what Nestor calls when, in a conversation, it announces an
 // intention on the world. Core composes against the most recently active page's reported scene,
 // through the same prompt and validation as a typed request, and pushes the result on that
 // page's stream. The Center shows it as a card attributed to Nestor · Core, inert until a person
 // presses Apply there, and sends a receipt — shown, shown but stale, or refused — which the tool
-// relays so Nestor never claims more than happened. Core applies nothing and keeps no scene.
+// relays so Nestor never claims more than happened. When the person decides, the Center sends a
+// second receipt under the same push id — accepted at which revision and commit, or discarded,
+// stale, rejected — and Core keeps it, bounded, so `world_proposal_status` can answer "accepted in
+// revision 9" or "discarded" when Nestor is asked later. Core applies nothing and keeps no scene.
 //
-// Pages are process memory, like live sessions in GraphysX: a Core restart forgets them and loses
-// nothing, since nothing here is authored. Full profile only; a family-pinned device cannot open
-// the page or its routes (family-device.js), like DiskX.
+// Pages and push records are process memory, like live sessions in GraphysX: a Core restart
+// forgets them and loses nothing, since nothing here is authored. Full profile only; a
+// family-pinned device cannot open the page or its routes (family-device.js), like DiskX.
 
 const path = require('path');
 const crypto = require('crypto');
@@ -38,12 +42,18 @@ const RECEIPTS_ROUTE = `${API_BASE}/center/receipts`;
 /** The host module is a few KB; well under the shared relay cap, bounded tighter here. */
 const HOST_MODULE_MAX_BYTES = 512 * 1024;
 const MAX_PAGES = 8;
+/** Push records kept for `world_proposal_status`, oldest forgotten first. */
+const MAX_PUSHES = 64;
 const HEARTBEAT_MS = 25_000;
 /** How long the tool waits for the Center's receipt before answering "unconfirmed". */
 const RECEIPT_WAIT_MS = 5_000;
 const REQUEST_CHARS = 2000;
 const PUSH_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,79}$/;
 const TOOL_NAME = 'propose_world_change';
+const STATUS_TOOL_NAME = 'world_proposal_status';
+/** The Center's two receipts: whether the card was shown, then what the person decided. */
+const DELIVERY_STATUSES = Object.freeze(['shown', 'refused']);
+const DECISION_STATUSES = Object.freeze(['accepted', 'discarded', 'stale', 'rejected']);
 const NESTOR_ACTOR = Object.freeze({ id: 'nestor', label: 'Nestor · Core', kind: 'agent' });
 const CENTER_MCP_META = Object.freeze({
   'agentx/owner': 'agentx-graphysx',
@@ -116,8 +126,10 @@ function errorPage(message) {
  * The open pages: one entry per event stream, with the last scene summary the page reported and
  * the receipts the tool is waiting for. Bounded, in memory, forgotten on close.
  */
-function createCenterRegistry({ now = () => Date.now(), maxPages = MAX_PAGES } = {}) {
+function createCenterRegistry({ now = () => Date.now(), maxPages = MAX_PAGES, maxPushes = MAX_PUSHES } = {}) {
   const pages = new Map();
+  /** push id → record; insertion order is push order, so the oldest is evicted first. */
+  const pushes = new Map();
   return {
     open(res) {
       if (pages.size >= maxPages) return null;
@@ -158,35 +170,89 @@ function createCenterRegistry({ now = () => Date.now(), maxPages = MAX_PAGES } =
         page.waiters.set(pushId, (receipt) => { clearTimeout(timer); page.waiters.delete(pushId); resolve(receipt); });
       });
     },
+    /**
+     * A receipt from the page. A delivery receipt (shown, refused) wakes the tool waiting for
+     * it; a decision receipt (accepted, discarded, stale, rejected) is kept on the push record.
+     * Either is kept only for a push Core sent: the page cannot invent a decision on a card
+     * nobody pushed, and a push is decided once — a second decision is ignored, not rewritten.
+     */
     receipt(id, body) {
       const page = pages.get(id);
       if (!page) return false;
       page.lastSeen = now();
+      const record = pushes.get(body.id);
+      if (DECISION_STATUSES.includes(body.status)) {
+        if (record && record.pageId === page.id && !record.decision && (!record.delivery || record.delivery.status !== 'refused')) {
+          record.decision = {
+            status: body.status, proposalId: body.proposalId, revision: body.revision, at: new Date(now()).toISOString(),
+            ...(body.commitId !== undefined ? { commitId: body.commitId } : {}),
+            ...(body.reason !== undefined ? { reason: body.reason } : {})
+          };
+        }
+        return true;
+      }
+      if (record && record.pageId === page.id && !record.delivery) {
+        record.delivery = {
+          status: body.status,
+          ...(body.stale !== undefined ? { stale: body.stale } : {}),
+          ...(body.reason !== undefined ? { reason: body.reason } : {}),
+          ...(body.proposalId !== undefined ? { proposalId: body.proposalId } : {})
+        };
+      }
       const resolve = page.waiters.get(body.id);
       if (resolve) resolve(body);
       return true;
     },
+    /** Remembers a push the tool sent, so its receipts have somewhere to land. Bounded. */
+    recordPush(page, proposal) {
+      while (pushes.size >= maxPushes) pushes.delete(pushes.keys().next().value);
+      const record = { id: proposal.id, pageId: page.id, intent: proposal.intent, commandCount: proposal.commands.length, expectedRevision: proposal.expectedRevision, pushedAt: new Date(now()).toISOString(), delivery: null, decision: null };
+      pushes.set(proposal.id, record);
+      return record;
+    },
+    push(id) { return pushes.get(id) || null; },
+    /** The most recent pushes first. */
+    recentPushes(limit = 5) { return [...pushes.values()].reverse().slice(0, limit); },
     get size() { return pages.size; },
+    get pushCount() { return pushes.size; },
     summary() {
-      return [...pages.values()].map((page) => ({ id: page.id, revision: page.revision, entities: page.scene ? page.scene.entities.length : null, lastSeen: new Date(page.lastSeen).toISOString() }));
+      return [...pages.values()].map((page) => ({ id: page.id, revision: page.revision, entities: page.scene ? page.scene.entities.length : null, lastSeen: new Date(page.lastSeen).toISOString(), decisions: [...pushes.values()].filter((record) => record.pageId === page.id && record.decision).length }));
     }
   };
 }
 
+/**
+ * A receipt from the page: a delivery (`shown` with `stale`, or `refused` with a reason) or a
+ * decision (`accepted` with the commit's `revision` and `commitId`, `discarded`, `stale` or
+ * `rejected` with a reason, each with the `revision` after the decision). The fields of one are
+ * not accepted on the other: a decision has no `stale`, a delivery has no `revision`.
+ */
 function checkReceipt(body) {
   if (!isRecord(body)) throw invalid('The body must be a receipt object');
-  const unknown = Object.keys(body).filter((key) => !['pageId', 'id', 'status', 'proposalId', 'stale', 'reason'].includes(key));
+  const unknown = Object.keys(body).filter((key) => !['pageId', 'id', 'status', 'proposalId', 'stale', 'reason', 'revision', 'commitId'].includes(key));
   if (unknown.length) throw invalid(`Unknown field: ${unknown[0].slice(0, 40)}`);
   if (!text(body.pageId, 64) || !body.pageId) throw invalid('pageId is required');
   if (typeof body.id !== 'string' || !PUSH_ID_PATTERN.test(body.id)) throw invalid('id must name the pushed proposal');
-  if (!['shown', 'refused'].includes(body.status)) throw invalid('status must be shown or refused');
+  const decision = DECISION_STATUSES.includes(body.status);
+  if (!decision && !DELIVERY_STATUSES.includes(body.status)) throw invalid(`status must be one of ${[...DELIVERY_STATUSES, ...DECISION_STATUSES].join(', ')}`);
   if (body.proposalId !== undefined && !text(body.proposalId, 400)) throw invalid('proposalId must be a short string');
-  if (body.stale !== undefined && typeof body.stale !== 'boolean') throw invalid('stale must be a boolean');
   if (body.reason !== undefined && !text(body.reason, 400)) throw invalid('reason must be a short sentence');
+  if (decision) {
+    if (body.proposalId === undefined) throw invalid('a decision must name the proposal it was taken on');
+    if (!Number.isInteger(body.revision) || body.revision < 0) throw invalid('a decision must carry the revision after it, a non-negative integer');
+    if (body.stale !== undefined) throw invalid('stale belongs to a shown receipt, not a decision');
+    if (body.commitId !== undefined && (body.status !== 'accepted' || !text(body.commitId, 120) || !body.commitId)) throw invalid('commitId is a short string, on an accepted decision only');
+    if (body.reason !== undefined && body.status !== 'rejected') throw invalid('reason belongs to a rejected decision');
+  } else {
+    if (body.stale !== undefined && typeof body.stale !== 'boolean') throw invalid('stale must be a boolean');
+    if (body.revision !== undefined || body.commitId !== undefined) throw invalid('revision and commitId belong to a decision, not a delivery receipt');
+  }
   return {
     pageId: body.pageId, id: body.id, status: body.status,
     ...(body.proposalId !== undefined ? { proposalId: body.proposalId } : {}),
     ...(body.stale !== undefined ? { stale: body.stale } : {}),
+    ...(body.revision !== undefined ? { revision: body.revision } : {}),
+    ...(body.commitId !== undefined ? { commitId: body.commitId } : {}),
     ...(body.reason !== undefined ? { reason: body.reason.trim().replace(/\s+/g, ' ') } : {})
   };
 }
@@ -215,6 +281,7 @@ async function pushWorldProposal({ request }, { registry, compose, receiptWaitMs
     registry.close(page.id);
     return { status: 'no-page', page: PAGE, message: 'The GraphysX Center page closed before the proposal reached it. Nothing was proposed.' };
   }
+  registry.recordPush(page, proposal);
   const receipt = await pending;
   const delivery = receipt
     ? { status: receipt.status, ...(receipt.stale !== undefined ? { stale: receipt.stale } : {}), ...(receipt.reason ? { reason: receipt.reason } : {}), ...(receipt.proposalId ? { proposalId: receipt.proposalId } : {}) }
@@ -225,9 +292,78 @@ async function pushWorldProposal({ request }, { registry, compose, receiptWaitMs
     status: delivery.status === 'refused' ? 'refused' : 'proposed',
     id, page: PAGE, intent: composed.intent, commandCount: composed.commands.length,
     expectedRevision: page.revision, model: composed.model || null, delivery,
-    note: 'A proposal card in the Center, inert until a person presses Apply there; Core applied nothing.'
+    note: 'A proposal card in the Center, inert until a person presses Apply there; Core applied nothing.',
+    followUp: `Call ${STATUS_TOOL_NAME} with this id to learn what the person decided.`
   };
 }
+
+/** One word Nestor reads first, from where the push stands: pushed, shown, refused, or the decision. */
+function pushStatusWord(record) {
+  if (record.decision) return record.decision.status;
+  if (record.delivery) return record.delivery.status;
+  return 'pending';
+}
+
+function pushStatusSentence(record) {
+  const { decision, delivery } = record;
+  if (decision) {
+    switch (decision.status) {
+      case 'accepted': return `Accepted: the person pressed Apply and the world is at revision ${decision.revision}${decision.commitId ? ` (commit ${decision.commitId})` : ''}.`;
+      case 'discarded': return 'Discarded by the person; the world did not change.';
+      case 'stale': return `Not applied: the world had moved to revision ${decision.revision} since the proposal was composed, so the Center refused it.`;
+      case 'rejected': return `Not applied: the scene refused the change${decision.reason ? ` (${decision.reason})` : ''}.`;
+      default: return 'Decided.';
+    }
+  }
+  if (delivery) {
+    if (delivery.status === 'refused') return `The Center did not show it${delivery.reason ? `: ${delivery.reason}` : '.'}`;
+    return delivery.stale
+      ? 'Shown as a stale card: the world moved before it arrived, so Apply is disabled; the person has not dismissed it yet.'
+      : 'Shown as a card in the Center; the person has not decided yet. Say it is proposed, not done.';
+  }
+  return 'Pushed to the page, which has not acknowledged it yet.';
+}
+
+function describePush(record) {
+  return {
+    status: pushStatusWord(record), id: record.id, page: PAGE, intent: record.intent, commandCount: record.commandCount,
+    expectedRevision: record.expectedRevision, pushedAt: record.pushedAt, delivery: record.delivery, decision: record.decision,
+    message: pushStatusSentence(record)
+  };
+}
+
+/**
+ * What became of a push: the one named by `id`, or the most recent one. Reads the bounded
+ * records; never touches the page. `unknown` names a push Core has no record of (never sent,
+ * or forgotten after ${MAX_PUSHES} newer ones or a Core restart) — never a guess.
+ */
+function readWorldProposalStatus({ id }, { registry }) {
+  if (id !== undefined && (typeof id !== 'string' || !PUSH_ID_PATTERN.test(id))) {
+    throw Object.assign(new Error('id must be the push id a propose_world_change reply returned'), { code: 'INVALID_ARGUMENTS' });
+  }
+  const recent = registry.recentPushes(5).map((record) => ({ id: record.id, status: pushStatusWord(record), intent: record.intent, pushedAt: record.pushedAt }));
+  if (id === undefined) {
+    const latest = registry.recentPushes(1)[0];
+    if (!latest) return { status: 'none', page: PAGE, message: 'No proposal has been pushed to a GraphysX Center page since Core started.', recent };
+    return { ...describePush(latest), recent };
+  }
+  const record = registry.push(id);
+  if (!record) return { status: 'unknown', id, page: PAGE, message: `Core has no record of push ${id}: it was never sent, or it is older than the ${MAX_PUSHES} pushes Core keeps.`, recent };
+  return { ...describePush(record), recent };
+}
+
+const STATUS_TOOL = Object.freeze({
+  name: STATUS_TOOL_NAME,
+  title: 'What Became Of A Proposed GraphysX World Change',
+  description: 'Read what happened to a change proposed with propose_world_change: whether the GraphysX Center showed the card and, once the person decided, whether they accepted it (status accepted, with the world revision and commit id), discarded it, or the Center refused it as stale or rejected. Pass the id a propose_world_change reply returned, or nothing for the most recent proposal. Reads Core\'s own records only; it changes nothing. Use it when the person asks whether a change went through, or before saying a proposed change happened: say "accepted in revision N" only when this tool says so.',
+  inputSchema: {
+    type: 'object',
+    properties: { id: { type: 'string', minLength: 1, maxLength: 80, description: 'The push id (push-…) from a propose_world_change reply. Omit for the most recent proposal.' } },
+    additionalProperties: false
+  },
+  annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+  _meta: CENTER_MCP_META
+});
 
 const TOOL = Object.freeze({
   name: TOOL_NAME,
@@ -247,22 +383,27 @@ function toolResult(structuredContent, isError = false) {
   return { content: [{ type: 'text', text: JSON.stringify(structuredContent, null, 2) }], structuredContent, isError };
 }
 
-async function callCenterTool(args, deps) {
+async function callCenterTool(args, deps, name = TOOL_NAME) {
   try {
     if (!isRecord(args)) throw Object.assign(new Error('arguments must be an object'), { code: 'INVALID_ARGUMENTS' });
+    if (name === STATUS_TOOL_NAME) return toolResult(readWorldProposalStatus({ id: args.id }, deps));
     return toolResult(await pushWorldProposal({ request: args.request }, deps));
   } catch (error) {
     return toolResult({ error: error.code || 'GRAPHYSX_CENTER_TOOL_ERROR', message: error.message }, true);
   }
 }
 
-/** tools/list with this tool appended once; a listing that already names it is left alone. */
+const TOOLS = Object.freeze([TOOL, STATUS_TOOL]);
+
+/** tools/list with these tools appended, each once; one a listing already names is left alone. */
 function appendTool(body) {
-  if (!Array.isArray(body?.result?.tools) || body.result.tools.some((tool) => tool?.name === TOOL_NAME)) return body;
-  return { ...body, result: { ...body.result, tools: [...body.result.tools, TOOL] } };
+  if (!Array.isArray(body?.result?.tools)) return body;
+  const missing = TOOLS.filter((tool) => !body.result.tools.some((listed) => listed?.name === tool.name));
+  if (!missing.length) return body;
+  return { ...body, result: { ...body.result, tools: [...body.result.tools, ...missing] } };
 }
 
-/** Answers `propose_world_change` on Core's MCP transport and lists it; everything else passes through. */
+/** Answers `propose_world_change` and `world_proposal_status` on Core's MCP transport and lists them; everything else passes through. */
 function centerMcpMiddleware(deps) {
   return async (req, res, next) => {
     if (req.path && req.path !== '/') return next();
@@ -273,9 +414,9 @@ function centerMcpMiddleware(deps) {
       res.json = (body) => downstreamJson(appendTool(body));
       return next();
     }
-    if (message.method !== 'tools/call' || message.params?.name !== TOOL_NAME) return next();
+    if (message.method !== 'tools/call' || !TOOLS.some((tool) => tool.name === message.params?.name)) return next();
     if (message.id === undefined || message.id === null) return res.status(204).end();
-    const result = await callCenterTool(message.params?.arguments || {}, deps);
+    const result = await callCenterTool(message.params?.arguments || {}, deps, message.params.name);
     return res.json({ jsonrpc: '2.0', id: message.id, result });
   };
 }
@@ -350,11 +491,12 @@ function register({ app, express, env = process.env, fetchWithTimeout, checkScen
 
   const deps = { registry, compose, receiptWaitMs };
   app.use(['/mcp', '/api/mcp'], express.json({ limit: '64kb' }), centerMcpMiddleware(deps));
-  return { registry, callTool: (args) => callCenterTool(args, deps) };
+  return { registry, callTool: (args, name) => callCenterTool(args, deps, name) };
 }
 
 module.exports = {
-  register, createCenterRegistry, pushWorldProposal, callCenterTool, centerMcpMiddleware, appendTool, checkReceipt,
+  register, createCenterRegistry, pushWorldProposal, readWorldProposalStatus, callCenterTool, centerMcpMiddleware, appendTool, checkReceipt,
   allowFrame, renderPage, centerUrl, hostModuleUrl,
-  TOOL, TOOL_NAME, NESTOR_ACTOR, PAGE, API_BASE, HOST_MODULE_ROUTE, EVENTS_ROUTE, STATE_ROUTE, RECEIPTS_ROUTE, MAX_PAGES, RECEIPT_WAIT_MS
+  TOOL, STATUS_TOOL, TOOLS, TOOL_NAME, STATUS_TOOL_NAME, NESTOR_ACTOR, PAGE, API_BASE, HOST_MODULE_ROUTE, EVENTS_ROUTE, STATE_ROUTE, RECEIPTS_ROUTE,
+  MAX_PAGES, MAX_PUSHES, RECEIPT_WAIT_MS, DELIVERY_STATUSES, DECISION_STATUSES
 };
