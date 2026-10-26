@@ -9,6 +9,7 @@ import sys
 import tempfile
 import textwrap
 import unittest
+import unittest.mock
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "session_archive.py"
@@ -92,8 +93,27 @@ class SessionArchiveTests(unittest.TestCase):
         self.assertNotIn("turn", json.dumps(remote))
         self.assertFalse((self.root / "staging" / "devx" / report["runId"]).exists())
         if os.name != "nt":
-            self.assertEqual(self.live.stat().st_mode & 0o777, 0o700)
+            for directory in (self.root / "live", self.live, self.live / "claude-projects" / "proj-a" / "s1",
+                              self.root / "receipts", self.root / "staging"):
+                self.assertEqual(directory.stat().st_mode & 0o777, 0o700, directory)
             self.assertEqual((self.live / "codex-history" / "history.jsonl").stat().st_mode & 0o777, 0o600)
+
+    @unittest.skipIf(os.name == "nt", "POSIX modes")
+    def test_modes_are_set_even_when_the_umask_is_not_honoured(self):
+        # An inheriting ACL can override the umask; simulate it with a permissive
+        # mkdir and file creation mode.
+        real_mkdir, real_umask = Path.mkdir, os.umask
+        def open_mkdir(path, mode=0o777, parents=False, exist_ok=False):
+            real_mkdir(path, 0o777, parents, exist_ok)
+            if path.exists():
+                os.chmod(path, 0o777)
+        with unittest.mock.patch.object(Path, "mkdir", open_mkdir), \
+                unittest.mock.patch.object(os, "umask", lambda mask: real_umask(0)):
+            self.run_archive()
+        real_umask(0o022)
+        modes = {p.stat().st_mode & 0o777 for p in self.live.rglob("*")}
+        self.assertEqual(modes - {0o700, 0o600}, set())
+        self.assertEqual((self.root / "live").stat().st_mode & 0o777, 0o700)
 
     def test_unchanged_files_are_not_sent_again(self):
         self.run_archive()

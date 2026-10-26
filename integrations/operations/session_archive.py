@@ -85,9 +85,17 @@ def safe_relative(path):
 # Receiving side (archive host)
 # --------------------------------------------------------------------------
 
-def private_dir(path):
+def private_dir(path, root):
+    """Create `path` and its missing parents below `root`, each owner-only.
+
+    Modes are set explicitly: an inheriting ACL (ZFS aclinherit=passthrough)
+    can override the process umask.
+    """
     path.mkdir(parents=True, exist_ok=True)
-    path.chmod(0o700)
+    current = path
+    while current != root and root in current.parents:
+        current.chmod(0o700)
+        current = current.parent
     return path
 
 
@@ -112,10 +120,10 @@ def read_line(stream):
 def receive(stream, root, host, run_id):
     """Read framed files from `stream` into root/live/<host>; never delete."""
     os.umask(0o077)
-    live = private_dir(root / "live" / host)
+    live = private_dir(root / "live" / host, root)
     staging = root / "staging" / host / run_id
     shutil.rmtree(staging, ignore_errors=True)
-    private_dir(staging)
+    private_dir(staging, root)
     results = {}
     try:
         while True:
@@ -154,6 +162,7 @@ def receive(stream, root, host, run_id):
                 staged.unlink(missing_ok=True)
                 results[path] = "mismatch"
                 continue
+            staged.chmod(0o600)
             target = live / path
             if target.is_file():
                 current = target.stat().st_size
@@ -165,12 +174,12 @@ def receive(stream, root, host, run_id):
                     results[path] = "grown"
                 else:
                     keep = root / "versions" / host / run_id / path
-                    keep.parent.mkdir(parents=True, exist_ok=True)
+                    private_dir(keep.parent, root)
                     target.replace(keep)
                     results[path] = "versioned"
             else:
                 results[path] = "new"
-            target.parent.mkdir(parents=True, exist_ok=True)
+            private_dir(target.parent, root)
             staged.replace(target)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
@@ -178,7 +187,7 @@ def receive(stream, root, host, run_id):
 
 
 def record(root, host, run_id, report):
-    receipts = private_dir(root / "receipts" / host)
+    receipts = private_dir(root / "receipts" / host, root)
     save(receipts / f"{run_id}.json", report)
     save(receipts / RUN_NAME, report)
 
