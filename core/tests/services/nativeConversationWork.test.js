@@ -949,3 +949,26 @@ test('earlier evidence that exceeded the budget now fits and stays recallable on
   await expect(works.readEvidence(context(foreign), { ref: refs[0] })).rejects.toMatchObject({ statusCode: 404 });
   expect(list).toHaveBeenCalledTimes(3);
 });
+
+test('initial native preparation references earlier evidence so a long conversation fits the budget', async () => {
+  works.observer.stop();
+  let call = 0;
+  const list = jest.fn(async () => ({ tasks: [{ id: `task-${call}`, title: `DETAIL_${call++} ` + 'z'.repeat(40000) }], totalCount: 1 }));
+  works = registerWorkRuntime({ router, conversations, tasks: { list }, agentClient: execute, continuity, env, capability });
+  works.observer.stop();
+  for (let index = 0; index < 3; index++) {
+    const row = await admitted('Lis mes tâches ouvertes.');
+    await works.readTasks(context(row), {}, 'synthetic-read', 'boss');
+    await works.publishNative(row._id, proof(row.attempt, `Verified result ${index}`, ['conversation_work']));
+  }
+  const now = await admitted('Help me choose a colour.');
+  expect(JSON.stringify(await works.conversationContext(current.sessionId)).length).toBeGreaterThan(96000);
+  const runtime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations, continuity });
+  const prepared = await runtime.prepare({ row: now, session: {}, selectedContext: 'Selected memory.' });
+  expect(prepared.turnContext.length).toBeLessThanOrEqual(96000);
+  expect(prepared.turnContext).toContain('core.tool-evidence-references/v1');
+  expect(prepared.turnContext).toContain('"$evidence"');
+  expect(prepared.turnContext).toContain('DETAIL_2 ');
+  expect(prepared.turnContext).not.toContain('DETAIL_0 ' + 'z'.repeat(200));
+  expect(prepared.turnContext).toContain('Selected memory.');
+});

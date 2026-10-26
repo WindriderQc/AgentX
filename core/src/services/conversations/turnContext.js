@@ -1,6 +1,7 @@
 'use strict';
 
 const { shareToolEvidence } = require('./sharedToolEvidence');
+const { referenceEarlierToolEvidence } = require('./toolEvidenceReferences');
 
 // Complete conversation and selected memory are separate reference data. A
 // caller that cannot fit them must refuse, never substitute a tail or summary.
@@ -29,7 +30,9 @@ async function readTurnContext(conversations, query) {
 }
 
 function formatTurnContext(conversation) {
-  const projected = shareToolEvidence(conversation);
+  // Initial native/worker preparation uses the same projection as the context
+  // refresh: earlier tool evidence travels as $evidence references.
+  const projected = shareToolEvidence(referenceEarlierToolEvidence(conversation));
   // Counts and the newest receipt change before old turns when serialized in
   // storage order. Put complete historical turns first on the wire so their
   // unchanged prefix can be reused. Retain every other field and encoding.
