@@ -409,6 +409,22 @@ function compareOpenClawConfig(currentConfig, expectedOpenClaw) {
   // fall back to its own default.
   const narrower = [];
   const routed = coreRoutedProviderIds(providers, [expectedOpenClaw.providerId]);
+  const agentsRoot = currentConfig.agents && !Array.isArray(currentConfig.agents)
+    ? currentConfig.agents
+    : currentConfig;
+  const normalizedAgents = normalizeAgentsSection(agentsRoot);
+  const agents = Array.isArray(currentConfig.agents)
+    ? currentConfig.agents
+    : Array.isArray(normalizedAgents?.list) ? normalizedAgents.list : null;
+  const defaultsModel = agentsRoot?.defaults?.model || currentConfig.defaults?.model || {};
+  const references = [defaultsModel, ...(agents || []).map(agent => agent?.model)]
+    .flatMap(model => typeof model === 'string' ? [model]
+      : [model?.primary, ...(Array.isArray(model?.fallbacks) ? model.fallbacks : [])]);
+  for (const policy of Object.values(expectedOpenClaw.agentModelPolicy?.guardedExecution?.agents || {})) {
+    references.push(...(policy.targets || []).map(target => target.model));
+  }
+  const referencedModels = new Set(references.filter(ref => routed.has(String(ref || '').split('/')[0]))
+    .map(ref => ref.split('/').slice(1).join('/')));
   const contextFields = [['contextWindow', (model) => model.contextWindow, (wanted) => wanted.contextWindow],
     ['params.num_ctx', (model) => model.params?.num_ctx, (wanted) => wanted.params?.num_ctx]];
   for (const expected of expectedOpenClaw.provider.models) {
@@ -418,6 +434,11 @@ function compareOpenClawConfig(currentConfig, expectedOpenClaw) {
       .filter((row) => row.model);
     const primary = rows.find((row) => row.candidate.id === expectedOpenClaw.providerId) || rows[0];
     if (!primary) {
+      // Specialist entries are export suggestions, not installed consumers.
+      // They can keep a fixed route while the principal alias changes mode.
+      // Require them only when referenced; always check entries that exist.
+      const specialist = ['codingSpecialist', 'masterBrain'].includes(expected._source?.role);
+      if (specialist && expected.id !== PRINCIPAL_MODEL_ALIAS && !referencedModels.has(expected.id)) continue;
       drift.push(diffField(`models.providers.${expectedOpenClaw.providerId}.models[${expected.id}]`, null, 'model entry present'));
       continue;
     }
@@ -432,16 +453,8 @@ function compareOpenClawConfig(currentConfig, expectedOpenClaw) {
       }
     }
   }
-  const agentsRoot = currentConfig.agents && !Array.isArray(currentConfig.agents)
-    ? currentConfig.agents
-    : currentConfig;
-  const normalizedAgents = normalizeAgentsSection(agentsRoot);
   const agentPath = agentsRoot?.entries && typeof agentsRoot.entries === 'object'
     && !Array.isArray(agentsRoot.entries) ? 'agents.entries' : 'agents.list';
-  const agents = Array.isArray(currentConfig.agents)
-    ? currentConfig.agents
-    : Array.isArray(normalizedAgents?.list) ? normalizedAgents.list : null;
-  const defaultsModel = agentsRoot?.defaults?.model || currentConfig.defaults?.model || {};
   const localProviderIds = coreRoutedProviderIds(providers, [expectedOpenClaw.providerId]);
   const localModel = (value) => localProviderIds.has(String(value || '').split('/')[0]);
   const localCatalogModel = (value) => {
