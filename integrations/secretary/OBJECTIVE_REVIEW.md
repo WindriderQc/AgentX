@@ -69,6 +69,21 @@ native identities, offsets, exact quotes, owner/related/third-party attribution,
 event start/end and date precision, occurrence status and proposed relation
 hints. Source date remains distinct from event date. No candidate is confirmed.
 
+Complete units with the same whitespace-folded text and the same author,
+addressee, date, subject, RFC identity and draft context can reuse an existing
+objective review. Attachment units also require the same binary/extraction
+identity. A unit is registered only after all of its canonical pages have
+validated model receipts. New text variants remain pending. An equivalence
+receipt retains the alias's original/representation hashes, maps every claim
+back to an exact quote in that copy, and points to the actual canonical reads.
+It adds source provenance to the same candidate, not another fact or an
+independent agreement.
+
+`reviewedPages` and `sourcesTextReviewed` count only actual model page receipts.
+`equivalentPages` and `sourcesTextCovered` separately describe verified text
+equivalence. `allTargetTextCovered` can be true while `allTargetTextReviewed`
+is false; neither establishes semantic acceptance or human confirmation.
+
 Coverage distinguishes target sources, materialized scopes, validated page
 receipts, remaining known pages, sources not yet materialized, extraction gaps
 and semantic acceptance. A fully read text scope does not qualify images,
@@ -79,3 +94,30 @@ prove a complete live mailbox, or establish the truth of the interpretation.
 coverage/status receipts. Core preserves these at
 `GET /api/secretary/desk` → `data.mail.catchup`. Existing catch-up counters
 continue to describe the last general run, not all reviewed archive pages.
+
+## Publishing candidates to Core
+
+After the worker releases its lock, `objective_publish.cjs plan` validates every
+candidate with Core's existing personal-history context contract. `publish`
+sends one atomic context import at a time through
+`POST /api/secretary/history/context/import`, with an explicit write budget:
+
+```sh
+node integrations/secretary/objective_publish.cjs plan \
+  --directory "$NATIVE_OBJECTIVE_DIRECTORY" --core "$AGENTX_CORE_URL"
+node integrations/secretary/objective_publish.cjs publish \
+  --directory "$NATIVE_OBJECTIVE_DIRECTORY" --core "$AGENTX_CORE_URL" --max-entries 20
+```
+
+Stable import IDs and per-payload intent/response receipts reconcile the native
+entry and `contextHash` before any retry. An uncertain result with no exact
+Core receipt blocks replacement. Additive context enrichment uses Core's
+current context revision, retaining owner overrides, review and souvenir state.
+The write budget counts actual posts; already reconciled entries do not prevent
+later candidates from advancing on the next invocation. Existing-source facts
+with a shared exact passage can receive proposed hypothesis links; the publisher
+does not merge them or rewrite an earlier assertion.
+
+The local files are execution and recovery evidence. Core's existing owner
+history remains the authority for candidates and human decisions; the publisher
+creates no souvenir and never confirms an assertion.

@@ -26,9 +26,14 @@ MOMENT = {
     },
 }
 MOMENT["required"] = list(MOMENT["properties"])
+for name, maximum in {"title": 500, "description": 16000, "originalDate": 2000,
+                      "subjectName": 300, "uncertainty": 2000, "rationale": 8000}.items():
+    MOMENT["properties"][name]["maxLength"] = maximum
+MOMENT["properties"]["quotes"].update(maxItems=20, items=field(minLength=1, maxLength=12000))
+MOMENT["properties"]["relationHints"].update(maxItems=10, items=field(minLength=1, maxLength=2000))
 SCHEMA = {
     "type": "object", "additionalProperties": False,
-    "properties": {"summary": field(), "classification": field(enum=["life-events", "no-life-event", "uncertain"]),
+    "properties": {"summary": field(maxLength=2000), "classification": field(enum=["life-events", "no-life-event", "uncertain"]),
         "moments": {"type": "array", "items": MOMENT},
         "gaps": {"type": "array", "items": field()}},
     "required": ["summary", "classification", "moments", "gaps"],
@@ -91,6 +96,8 @@ def validate(value, content):
         raise ValueError("Invalid objective result shape")
     if not isinstance(value["summary"], str) or not value["summary"].strip():
         raise ValueError("A substantive passage summary is required")
+    if len(value["summary"]) > 2000:
+        raise ValueError("Summary exceeds its Core-compatible bound")
     if value["classification"] not in SCHEMA["properties"]["classification"]["enum"]:
         raise ValueError("Invalid passage classification")
     if not isinstance(value["gaps"], list) or any(not isinstance(x, str) for x in value["gaps"]):
@@ -109,6 +116,8 @@ def validate(value, content):
                     raise ValueError("Invalid ongoing flag")
             elif not isinstance(item, str) or "enum" in schema and item not in schema["enum"]:
                 raise ValueError("Invalid moment field: " + key)
+            elif len(item) > schema.get("maxLength", 16000):
+                raise ValueError("Moment field exceeds its Core-compatible bound: " + key)
         for key in ("title", "description", "rationale"):
             if not moment[key].strip():
                 raise ValueError("Empty moment field: " + key)
@@ -128,6 +137,9 @@ def validate(value, content):
         for key in ("quotes", "relationHints"):
             if not isinstance(moment[key], list) or any(not isinstance(x, str) or not x.strip() for x in moment[key]):
                 raise ValueError("Invalid " + key)
+            schema = MOMENT["properties"][key]
+            if len(moment[key]) > schema["maxItems"] or any(len(x) > schema["items"]["maxLength"] for x in moment[key]):
+                raise ValueError("Quoted claims or relation hints exceed their Core-compatible bound")
         if not moment["quotes"] or any(quote not in content for quote in moment["quotes"]):
             raise ValueError("Every claim must quote the exact supplied passage")
     if bool(value["moments"]) != (value["classification"] == "life-events"):

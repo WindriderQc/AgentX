@@ -20,6 +20,7 @@ from mail_catchup import Busy, CoreClient
 from mailbox_backfill import Lock
 from objective_schema import INSTRUCTIONS, SCHEMA, validate
 from objective_sources import inventory, materialize, pages
+import objective_equivalence as equivalent
 from review_attempts import ReviewUncertain, durable, extract_once, hashed, unsettled
 from secretary_evidence import DEFAULT_ROOT
 
@@ -100,6 +101,11 @@ def read_receipt(file, manifest):
 def coverage(objective, manifest):
     counts = Counter(targetSources=len(manifest["sources"]))
     by_system, sources = {}, []
+    aliases = list(equivalent.receipts(objective, manifest))
+    alias_index = equivalent.coverage_index(aliases)
+    for alias in aliases:
+        for pid in alias["canonicalPageIds"]:
+            read_receipt(objective / "page-reviews" / (pid + ".json"), manifest)
     for source in manifest["sources"]:
         plan = load(objective / "sources" / (source_key(source) + ".json"), {})
         expected = plan.get("pageIds", [])
@@ -116,25 +122,31 @@ def coverage(objective, manifest):
                 read.append(pid)
             except (OSError, ValueError, KeyError, TypeError):
                 counts["invalidReviewReceipts"] += 1
+        reused = alias_index.get((source["system"], source["id"], source["sha256"]), set()) & (set(expected) - set(read))
         complete = bool(plan) and len(read) == len(expected) and bool(expected) and not plan.get("error")
+        covered = bool(plan) and len(read) + len(reused) == len(expected) and bool(expected) and not plan.get("error")
         row = {"system": source["system"], "messageId": source["id"], "sourceSha256": source["sha256"],
                "materialized": bool(plan), "expectedPages": len(expected) if plan else None,
-               "reviewedPages": len(read), "pendingPages": len(expected) - len(read) if plan else None,
-               "textReviewComplete": complete, "gaps": plan.get("gaps", []), "error": plan.get("error")}
+               "reviewedPages": len(read), "equivalentPages": len(reused),
+               "pendingPages": len(expected) - len(read) - len(reused) if plan else None,
+               "textReviewComplete": complete, "textCovered": covered, "gaps": plan.get("gaps", []), "error": plan.get("error")}
         sources.append(row)
         counts["materializedSources"] += bool(plan)
         counts["sourcesPendingMaterialization"] += not bool(plan)
         counts["sourcesTextReviewed"] += complete
+        counts["sourcesTextCovered"] += covered
+        counts["equivalentPages"] += len(reused)
         counts["sourcesWithGaps"] += bool(plan.get("gaps"))
         counts["sourceErrors"] += bool(plan.get("error"))
         counts["expectedPagesKnown"] += len(expected)
         counts["reviewedPages"] += len(read)
-        counts["pendingPagesKnown"] += len(expected) - len(read)
+        counts["pendingPagesKnown"] += len(expected) - len(read) - len(reused)
         by_system[source["system"]] = by_system.get(source["system"], 0) + 1
     return {"schema": CONTRACT, "at": now(), "objectiveId": manifest["config"]["id"],
             "version": manifest["config"]["version"], "objectiveSha256": manifest["objectiveSha256"],
             "counts": dict(counts), "bySystem": by_system, "sources": sources,
             "allTargetTextReviewed": counts["sourcesTextReviewed"] == len(manifest["sources"]) and bool(sources),
+            "allTargetTextCovered": counts["sourcesTextCovered"] == len(manifest["sources"]) and bool(sources),
             "semanticAcceptance": "not-established", "userConfirmed": False,
             "scope": "Frozen archived original bytes; all native inline text representations and available existing attachment text",
             "limits": ["Not a live-mailbox completeness proof; new sources require a new objective version.",
@@ -148,6 +160,7 @@ def _source_record(page):
     sid = "objective-" + page["pageId"]
     native = {"system": source["system"], "messageId": source["id"], "threadId": source["threadId"],
               "sourceSha256": source["sha256"], "rfc822MessageId": source.get("rfc822MessageId"),
+              "direction": source.get("direction", "unknown"),
               "readerContract": CONTRACT, "representation": page["representation"],
               "offset": page["offset"], "end": page["end"], "totalChars": page["totalChars"]}
     return {"id": sid, "kind": "mail", "body": page["content"],
@@ -158,18 +171,35 @@ def _source_record(page):
 
 def export(objective, manifest):
     findings, records = [], {}
+    aliases = list(equivalent.receipts(objective, manifest))
+    aliases_by_page = {}
+    for alias in aliases:
+        for pid in alias["canonicalPageIds"]:
+            aliases_by_page.setdefault(pid, []).append(alias)
     for file in sorted((objective / "page-reviews").glob("*.json")):
         row = read_receipt(file, manifest)
         record = row["sourceRecord"]
         if not row["result"]["moments"]:
             continue
         records[record["id"]] = record
-        for moment in row["result"]["moments"]:
+        for index, moment in enumerate(row["result"]["moments"]):
             identity = hashed([manifest["objectiveSha256"], row["pageId"], moment])
-            findings.append({"id": "objective-" + identity, **moment, "reviewState": "candidate", "userConfirmed": False,
+            finding = {"id": "objective-" + identity, **moment, "reviewState": "candidate", "userConfirmed": False,
                 "objectiveId": manifest["config"]["id"], "objectiveVersion": manifest["config"]["version"],
                 "sourceIds": [record["id"]], "nativeSourceRefs": [record["nativeRef"]],
-                "claimsWithExactQuotes": [{"sourceId": record["id"], "quote": q} for q in moment["quotes"]]})
+                "claimsWithExactQuotes": [{"sourceId": record["id"], "quote": q} for q in moment["quotes"]]}
+            for alias in aliases_by_page.get(row["pageId"], []):
+                claims = [c for c in alias["mappedClaims"] if c["canonicalPageId"] == row["pageId"] and c["canonicalMomentIndex"] == index]
+                if not claims:
+                    continue
+                other = alias["sourceRecord"]
+                records[other["id"]] = other
+                if other["id"] not in finding["sourceIds"]:
+                    finding["sourceIds"].append(other["id"])
+                    finding["nativeSourceRefs"].append(other["nativeRef"])
+                finding["claimsWithExactQuotes"].extend({"sourceId": other["id"], "quote": q} for c in claims for q in c["quotes"])
+                finding["sourceIndependence"] = "same-declaration"
+            findings.append(finding)
     report = coverage(objective, manifest)
     durable(objective / "findings.json", findings)
     durable(objective / "sources.json", list(records.values()))
@@ -196,6 +226,11 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
     requested_stop = stop
     stop = lambda: requested_stop() or clock() - started >= max_seconds
     status = {"schema": CONTRACT, "startedAt": now(), "queueRequestId": queue_id, "dispatchId": dispatch_id}
+    known_aliases = list(equivalent.receipts(objective, manifest))
+    alias_index = equivalent.coverage_index(known_aliases)
+    for alias in known_aliases:
+        for pid in alias["canonicalPageIds"]:
+            read_receipt(objective / "page-reviews" / (pid + ".json"), manifest)
 
     def finish(phase, **extra):
         status.update(phase=phase, at=now(), newlyReviewedPages=made, inferenceCalls=inferences,
@@ -208,6 +243,9 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
             return finish("partial" if not stop() else "stopped")
         plan_file = objective / "sources" / (source_key(source) + ".json")
         previous = load(plan_file, {})
+        alias_pages = alias_index.get((source["system"], source["id"], source["sha256"]), set())
+        if previous.get("pageIds") and set(previous["pageIds"]) <= alias_pages:
+            continue
         if previous.get("pageIds") and all((objective / "page-reviews" / (pid + ".json")).is_file() for pid in previous["pageIds"]):
             for pid in previous["pageIds"]:
                 read_receipt(objective / "page-reviews" / (pid + ".json"), manifest)
@@ -220,13 +258,32 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
             plan = list(pages(current, units, manifest["objectiveSha256"], manifest["config"]["pageChars"], manifest["config"]["overlap"]))
             durable(plan_file, {"source": current, "pageIds": [p["pageId"] for p in plan], "gaps": gaps,
                                 "representations": [{k: v for k, v in u.items() if k != "content"} for u in units]})
+            reused = set()
+            for unit in units:
+                unit_pages = [p for p in plan if p["representation"] == equivalent.unit_ref(unit)]
+                equivalent.register(objective, current, unit, unit_pages, read_receipt, manifest)
+                if all((objective / "page-reviews" / (p["pageId"] + ".json")).is_file() for p in unit_pages):
+                    continue
+                canonical = equivalent.find(objective, current, unit, read_receipt, manifest)
+                if canonical:
+                    equivalent.alias(objective, current, unit, unit_pages, canonical, _source_record)
+                    reused.update(p["pageId"] for p in unit_pages)
         except (OSError, ValueError, RuntimeError, KeyError) as error:
             durable(plan_file, {"source": source, "error": type(error).__name__, "gaps": [{"code": "source-unavailable-or-integrity-failed"}]})
             return finish("source-error", sourceId=source["id"], errorType=type(error).__name__)
         used = 0
         for page in plan:
+            if page["pageId"] in reused:
+                continue
             if (objective / "page-reviews" / (page["pageId"] + ".json")).is_file():
                 read_receipt(objective / "page-reviews" / (page["pageId"] + ".json"), manifest)
+                continue
+            unit = next(u for u in units if equivalent.unit_ref(u) == page["representation"])
+            unit_pages = [p for p in plan if p["representation"] == page["representation"]]
+            canonical = equivalent.find(objective, current, unit, read_receipt, manifest)
+            if canonical:
+                equivalent.alias(objective, current, unit, unit_pages, canonical, _source_record)
+                reused.update(p["pageId"] for p in unit_pages)
                 continue
             if made >= max_pages or stop():
                 return finish("partial" if not stop() else "stopped")
@@ -266,7 +323,11 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
             used += 1
             status.update(phase="reviewing", at=now(), newlyReviewedPages=made, lastPageId=page["pageId"])
             durable(objective / "status.json", status)
-    return finish("done" if coverage(objective, manifest)["allTargetTextReviewed"] else "partial")
+            equivalent.register(objective, current, unit, unit_pages, read_receipt, manifest)
+        for unit in units:
+            unit_pages = [p for p in plan if p["representation"] == equivalent.unit_ref(unit)]
+            equivalent.register(objective, current, unit, unit_pages, read_receipt, manifest)
+    return finish("done" if coverage(objective, manifest)["allTargetTextCovered"] else "partial")
 
 
 def main(argv=None):

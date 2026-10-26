@@ -12,6 +12,7 @@ from evidence_store import load, save
 import objective_review as worker
 from objective_schema import validate
 from objective_sources import inventory, materialize, pages
+import objective_equivalence as equivalent
 
 QUEUE = "11111111-1111-4111-8111-111111111111"
 DISPATCH = "22222222-2222-4222-8222-222222222222"
@@ -235,6 +236,65 @@ class ObjectiveTests(unittest.TestCase):
         value["moments"][0].update(startDate="2014-08-20", startPrecision="day", endDate="2014", endPrecision="year")
         self.assertEqual(validate(value, "citation"), value)
 
+    def test_whitespace_equivalent_outlook_copy_reuses_read_without_new_fact(self):
+        self.mail("message01", "Mon\n  déménagement est terminé en août 2014.\n", outlook=True)
+        self.config["selection"].pop("outlookSha256")
+        save(self.file, self.config)
+        client = Client()
+        result = self.run_worker(client)
+        self.assertEqual(result["phase"], "done")
+        self.assertEqual(len(client.calls), 1)
+        counts = result["coverage"]["counts"]
+        self.assertEqual((counts["reviewedPages"], counts["equivalentPages"]), (1, 1))
+        self.assertEqual((counts["sourcesTextReviewed"], counts["sourcesTextCovered"]), (1, 2))
+        self.assertFalse(result["coverage"]["allTargetTextReviewed"])
+        self.assertTrue(result["coverage"]["allTargetTextCovered"])
+        objective, _ = self.prepare()
+        findings, sources = load(objective / "findings.json"), load(objective / "sources.json")
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["sourceIndependence"], "same-declaration")
+        self.assertEqual(len(findings[0]["sourceIds"]), 2)
+        indexed = {s["id"]: s for s in sources}
+        self.assertTrue(all(c["quote"] in indexed[c["sourceId"]]["body"] for c in findings[0]["claimsWithExactQuotes"]))
+        alias = next(s for s in sources if s["nativeRef"]["system"] == "outlook-export")
+        self.assertEqual(alias["bodyScope"], "verified-equivalent-unit-not-read-by-model")
+        self.run_worker(client)
+        self.assertEqual(len(client.calls), 1)
+
+    def test_identical_text_with_another_rfc_date_context_is_read_separately(self):
+        self.mail("message02", "Mon déménagement est terminé en août 2014.")
+        self.config["selection"]["gmailMessageIds"].append("message02")
+        save(self.file, self.config)
+        client = Client()
+        result = self.run_worker(client)
+        self.assertEqual(result["phase"], "done")
+        self.assertEqual(len(client.calls), 2)
+        self.assertEqual(result["coverage"]["counts"]["equivalentPages"], 0)
+
+    def test_new_mime_variant_is_not_covered_by_another_body(self):
+        self.mail("message01", "Un corps fictif.", "<p>Un autre contenu.</p>")
+        client = Client()
+        result = self.run_worker(client)
+        self.assertEqual(result["phase"], "done")
+        self.assertEqual(len(client.calls), 2)
+
+    def test_exact_plain_html_equivalence_does_not_create_two_read_counts(self):
+        self.mail("message01", "Un corps fictif.", "<p>Un corps fictif.</p>")
+        client = Client()
+        result = self.run_worker(client)
+        self.assertEqual(result["phase"], "done")
+        self.assertEqual(len(client.calls), 1)
+        self.assertEqual(result["coverage"]["counts"]["equivalentPages"], 1)
+
+    def test_equivalent_date_zones_and_display_names_preserve_native_message_identity(self):
+        source, units, _ = materialize(self.root, inventory(self.root)[0])
+        copy_source = copy.deepcopy(source)
+        copy_source["mailDate"] = "2014-08-01T06:00:00-04:00"
+        copy_source["headers"]["from"] = '"Autre affichage" <owner@example.test>'
+        self.assertEqual(equivalent.key(source, units[0]), equivalent.key(copy_source, units[0]))
+        copy_source["direction"] = "draft"
+        self.assertNotEqual(equivalent.key(source, units[0]), equivalent.key(copy_source, units[0]))
+
     def test_visual_attachments_remain_gaps_without_ocr_or_render(self):
         save(self.root / "threads/thread001/manifest.json", {"messages": [{"id": "message01", "attachments": [
             {"filename": "photo.jpg", "mimeType": "image/jpeg", "sha256": "f" * 64, "status": "needs_visual_review"}]}]})
@@ -251,6 +311,18 @@ class ObjectiveTests(unittest.TestCase):
         wrong = copy.deepcopy(value)
         wrong["classification"] = "no-life-event"
         with self.assertRaises(ValueError):
+            validate(wrong, "citation")
+
+    def test_worker_output_bounds_match_the_core_context_contract(self):
+        value = {"summary": "Résumé fictif.", "classification": "life-events", "moments": [moment("citation")], "gaps": []}
+        for key, maximum in [("title", 500), ("description", 16000), ("uncertainty", 2000), ("rationale", 8000), ("subjectName", 300)]:
+            wrong = copy.deepcopy(value)
+            wrong["moments"][0][key] = "x" * (maximum + 1)
+            with self.assertRaisesRegex(ValueError, "bound"):
+                validate(wrong, "citation")
+        wrong = copy.deepcopy(value)
+        wrong["moments"][0]["quotes"] *= 21
+        with self.assertRaisesRegex(ValueError, "bound"):
             validate(wrong, "citation")
 
 
