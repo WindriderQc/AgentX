@@ -50,6 +50,8 @@ async function chromium() {
     assert.equal(await evaluate('lifeAtlas.state.scope'), 'life');
     assert.ok(await evaluate("document.querySelectorAll('[data-temporal=period]').length>2"));
     await screenshot('overview');
+    await click('[data-gallery-undated]');await until("document.querySelector('.photo-viewer-stage img')?.naturalWidth>0");
+    assert.match(await evaluate("document.querySelector('.photo-viewer-date').textContent"), /Date à préciser/);await screenshot('undated-photo');await close();
     await click('#immersive-button');await until("document.body.classList.contains('atlas-immersive')");
     assert.ok(await evaluate("document.querySelector('.minimap-row').getBoundingClientRect().bottom<=innerHeight"));
     await screenshot('immersive');await click('#immersive-button');
@@ -85,7 +87,7 @@ async function chromium() {
     for (const [width, height] of [[768, 1000], [390, 900]]) { await size(width, height);assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth+1'));await screenshot(`overview-${width}`); }
     assert.deepEqual(errors, []);assert.ok(fixture.writes.every(w => !w.path.endsWith('/souvenir')));
     const report = { synthetic: true, entries: 38, subjects: 6, nativePhotoPages: 2, factualConfirmations: 1, souvenirWrites: 0, staleContextRejected: true,
-      sourceDocumentPreserved: true, javascriptErrors: errors, writes: fixture.writes.map(w => ({ path: w.path, revision: w.input.revision, contextRevision: w.input.contextRevision })) };
+      sourceDocumentPreserved: true, undatedPhotoAccessibleWithoutInventedDate: true, javascriptErrors: errors, writes: fixture.writes.map(w => ({ path: w.path, revision: w.input.revision, contextRevision: w.input.contextRevision })) };
     await fs.writeFile(path.join(output, 'report.json'), JSON.stringify(report, null, 2) + '\n');console.log(JSON.stringify({ passed: true, output, ...report }));
   } finally { ws?.close();browser.kill('SIGTERM');await new Promise(resolve => fixture.server.close(resolve));await new Promise(resolve => browser.exitCode !== null ? resolve() : browser.once('exit', resolve));await fs.rm(profile, { recursive: true, maxRetries: 5, retryDelay: 200 }); }
 })().catch(error => { console.error(error);process.exitCode = 1; });

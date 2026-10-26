@@ -3,8 +3,7 @@
 export function matchesSubject(event,filter='all'){
  const subject=event.metadata?.subject;
  if(filter==='all')return true;
- if(filter==='owner')return ['owner','shared'].includes(subject)||!subject&&event.curated;
- if(filter==='unknown')return subject==='unknown'||!subject&&!event.curated;
+ if(filter==='unknown')return subject==='unknown'||!subject;
  return subject===filter;
 }
 export function matchesIntent(event,filter='all'){

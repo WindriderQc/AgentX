@@ -3,7 +3,7 @@ import {reviewState,reviewLabel} from './review.js';
 import {isLifeMoment} from './life-view.js';
 
 // Owner-selected subjects guide discovery; they do not create or confirm events.
-export function storyThreads(value){return (Array.isArray(value)?value:[]).slice(0,12).filter(t=>t&&/^[a-z0-9-]{1,80}$/.test(t.id)&&typeof t.label==='string').map(t=>({id:t.id,label:t.label.slice(0,120),hint:String(t.hint||'').slice(0,500),eventIds:(Array.isArray(t.eventIds)?t.eventIds:[]).filter(id=>typeof id==='string').slice(0,30),queries:(Array.isArray(t.queries)?t.queries:[]).filter(Array.isArray).slice(0,10).map(q=>q.filter(v=>typeof v==='string'&&v.trim()).slice(0,5).map(v=>fold(v.slice(0,100)))).filter(q=>q.length)}));}
+export function storyThreads(value){return (Array.isArray(value)?value:[]).slice(0,12).filter(t=>t&&typeof t.id==='string'&&/^[a-z0-9-]{1,80}$/.test(t.id)&&typeof t.label==='string').map(t=>({id:t.id,label:t.label.slice(0,120),hint:String(t.hint||'').slice(0,500),eventIds:(Array.isArray(t.eventIds)?t.eventIds:[]).filter(id=>typeof id==='string').slice(0,30),queries:(Array.isArray(t.queries)?t.queries:[]).filter(Array.isArray).slice(0,10).map(q=>q.filter(v=>typeof v==='string'&&v.trim()).slice(0,5).map(v=>fold(v.slice(0,100)))).filter(q=>q.length)}));}
 export function matchesStoryThread(event,thread){
  if(thread.eventIds?.some(id=>event.id===id||event.core?.id===id||event.legacyId===id||event.legacyIds?.includes(id)))return true;
  const text=fold([event.title,event.description,event.originalDate].join(' '));

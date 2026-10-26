@@ -79,6 +79,8 @@ test('filters and personal subjects group records without changing their truth s
   const { storyThreads, threadMatches } = await load('story-threads');
   const event = projectEntry(base({ confirmationBasis: 'owner-tentative', metadata: { subject: 'owner' }, occurrenceStatus: 'planned' }));
   assert.equal(matchesSubject(event, 'owner'), true);assert.equal(matchesSubject(event, 'thirdparty'), false);
+  assert.equal(matchesSubject({ ...event, metadata: {} }, 'owner'), false);assert.equal(matchesSubject({ ...event, metadata: {} }, 'unknown'), true);
+  assert.equal(matchesSubject({ ...event, metadata: { subject: 'related' } }, 'related'), true);
   assert.equal(matchesIntent(event, 'without-intentions'), false);assert.equal(matchesIntent(event, 'intentions'), true);
   const [thread] = storyThreads([{ id: 'school', label: 'School', eventIds: ['school'], queries: [] }]);
   assert.equal(threadMatches([event], thread).length, 1);assert.equal(event.reviewState, 'hypothesis');

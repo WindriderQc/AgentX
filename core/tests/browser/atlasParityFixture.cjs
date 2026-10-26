@@ -24,8 +24,9 @@ function fixtureEntries() {
         metadata: { subject: i === 35 ? 'thirdparty' : 'owner' }, sourceIds: ['source'], claimsWithExactQuotes: [{ sourceId: 'source', quote: body }] },
       context: { ownerEdits: [], sources: [{ id: 'source', kind: 'document', subject: 'Synthetic lease', bodySha256: digest(body), nativePath: '/Synthetic/lease.pdf', contentSha256: digest('synthetic pdf') }],
         relations: i === 0 ? [{ id: 'source-comparison', title: 'Two dates to compare', kind: 'conflict', eventIds: ['moment-1'], sourceIndependence: 'not-established', claimsWithExactQuotes: [{ sourceId: 'source', quote: body }] }] : [],
-        media: i < 3 ? [{ id: `library-${i}`, date: `${year}-06-12`, datePrecision: 'day', caption: `Synthetic photo ${i}`,
-          provenance: { system: 'agentx.photos', assetId: assetId(i) }, candidateEventIds: i === 2 ? [] : [id], associationBasis: 'Synthetic explicit proposed binding.' }] : [] } };
+        media: i < 4 ? [{ id: `library-${i}`, date: i === 3 ? null : `${year}-06-12`, datePrecision: i === 3 ? 'unknown' : 'day', caption: `Synthetic photo ${i}`,
+          ...(i === 3 ? { originalPath: '/Synthetic/photos/undated.svg', sourceContentSha256: digest('synthetic photo') } : { provenance: { system: 'agentx.photos', assetId: assetId(i) } }),
+          candidateEventIds: i === 2 ? [] : [id], associationBasis: 'Synthetic explicit proposed binding.' }] : [] } };
   });
 }
 
@@ -44,7 +45,7 @@ function createFixture() {
       if (url.pathname === '/api/photos/count') return send(res, { total: 42, exact: true }, 200, true);
       if (url.pathname === '/api/photos/search') { const next = url.searchParams.has('cursor');return send(res, { items: [next ? 2 : 0, ...(next ? [] : [1])].map(i => ({ id: assetId(i), type: 'image', fileName: `synthetic-${i}.svg`,
         takenAt: '2001-06-12T12:00:00Z', city: 'Synthetic city', description: 'A synthetic landscape.', thumbnail: `/api/photos/assets/${assetId(i)}/thumbnail` })), nextCursor: next ? null : 'second' }, 200, true); }
-      if (/^\/api\/photos\/assets\/[^/]+\/thumbnail$/.test(url.pathname)) { res.writeHead(200, { 'Content-Type': 'image/svg+xml' });return res.end('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500"><rect width="800" height="500" fill="#244d58"/><circle cx="600" cy="100" r="55" fill="#d9bd79"/><path d="M0 500 300 140 620 500" fill="#608a74"/></svg>'); }
+      if (/^\/api\/photos\/assets\/[^/]+\/thumbnail$/.test(url.pathname) || url.pathname === '/api/secretary/files/content') { res.writeHead(200, { 'Content-Type': 'image/svg+xml' });return res.end('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500"><rect width="800" height="500" fill="#244d58"/><circle cx="600" cy="100" r="55" fill="#d9bd79"/><path d="M0 500 300 140 620 500" fill="#608a74"/></svg>'); }
       if (/^\/api\/secretary\/history\/[^/]+\/sources\/source$/.test(url.pathname)) return send(res, { source: { id: 'source', kind: 'document', subject: 'Synthetic lease', body, bodySha256: digest(body), nativePath: '/Synthetic/lease.pdf', contentSha256: digest('synthetic pdf') } });
       if (url.pathname === '/api/secretary/files/read') return send(res, { kind: 'document', type: 'pdf', bytes: 100, url: '/api/secretary/files/content?synthetic=1' });
       if (req.method === 'POST') {

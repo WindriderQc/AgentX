@@ -13,7 +13,7 @@ test('optional private preferences expose only bounded presentation fields', asy
     assert.deepEqual(await prefs.read(''), { storyThreads: [] });
     assert.deepEqual(await prefs.read(file), { storyThreads: [] });
     await fs.writeFile(file, JSON.stringify({ sourceStatement: 'Never returned', storyThreads: [{ id: 'chosen-subject', label: 'Synthetic subject',
-      eventIds: ['legacy-event'], queries: [['word']], confirmed: true }, { id: '../unsafe', label: 'Invalid' }] }));
+      eventIds: ['legacy-event'], queries: [['word']], confirmed: true }, { id: '../unsafe', label: 'Invalid' }, { id: 123, label: 'Invalid numeric ID' }] }));
     const answer = await prefs.read(file);
     assert.equal(answer.storyThreads.length, 1);assert.equal(answer.storyThreads[0].label, 'Synthetic subject');
     assert.equal(answer.sourceStatement, undefined);assert.equal(answer.storyThreads[0].confirmed, undefined);

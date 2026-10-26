@@ -9,7 +9,7 @@ const clean = (value, length) => typeof value === 'string' ? value.trim().slice(
 function normalize(value) {
   const threads = Array.isArray(value?.storyThreads) ? value.storyThreads : [];
   const seen = new Set();
-  return { storyThreads: threads.slice(0, 12).filter(t => t && /^[a-z0-9-]{1,80}$/.test(t.id) && clean(t.label, 120))
+  return { storyThreads: threads.slice(0, 12).filter(t => t && typeof t.id === 'string' && /^[a-z0-9-]{1,80}$/.test(t.id) && clean(t.label, 120))
     .filter(t => { if (seen.has(t.id)) return false; seen.add(t.id); return true; }).map(t => ({
       id: t.id, label: clean(t.label, 120), hint: clean(t.hint, 500),
       eventIds: (Array.isArray(t.eventIds) ? t.eventIds : []).slice(0, 30).map(v => clean(v, 256)).filter(Boolean),
