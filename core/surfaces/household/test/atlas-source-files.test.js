@@ -6,13 +6,13 @@ const atlas = path.join(__dirname, '..', 'public', 'atlas');
 const entryId = 'c'.repeat(24), hash = 'd'.repeat(64);
 const reply = data => ({ ok: true, json: async () => ({ status: 'success', data }) });
 
-test('source text stays readable without treating photo APIs, Gmail or public URLs as owner files', async () => {
+test('source text stays readable without treating photo APIs, mail or public URLs as owner files', async () => {
   const { readSource } = await import(path.join(atlas, 'data.js'));
   const original = global.fetch;
   try {
-    const pointers = ['/api/photos/assets/synthetic-asset', 'gmail:synthetic-message', 'https://example.invalid/source.pdf', '//example.invalid/source.pdf'];
+    const pointers = ['/api/photos/assets/synthetic-asset', 'gmail:synthetic-message', 'https://example.invalid/source.pdf', '//example.invalid/source.pdf', '/owner/archive/synthetic.eml'];
     for (const [n, nativePath] of pointers.entries()) {
-      const requests = [], source = { id: `reference-${n}`, kind: 'media', metadataOnly: true, nativePath,
+      const requests = [], source = { id: `reference-${n}`, kind: n === 4 ? 'mail' : 'media', metadataOnly: true, nativePath,
         body: '{"source":"exact retained metadata"}', bodySha256: hash, ...(n ? { contentSha256: hash } : {}) };
       global.fetch = async url => { requests.push(url); return reply({ source }); };
       const result = await readSource(`ctx|${entryId}|${source.id}`);
