@@ -56,7 +56,7 @@ function dependencies(config, exec = spawnSync) {
     }
   };
 }
-async function advance(config, deps) {
+async function advance(config, deps, { allowStart = true, stopReason = 'Explicit controller deadline' } = {}) {
   configuration(config);
   const objectiveConfig = read(config.objectiveFile);
   const root = config.archiveRoot || path.join(require('node:os').homedir(), '.local/share/agentx/secretary-evidence');
@@ -81,6 +81,7 @@ async function advance(config, deps) {
       return report(published.writes ? 'publication-pending' : 'text-scope-complete', { publication: published,
         remainingGaps: coverage.counts.sourcesWithGaps || 0, semanticAcceptance: 'not-established', userConfirmed: false });
     }
+    if (!allowStart) return report('controller-drained', { stopReason });
     const key = `secretary-objective:${config.id}:${objective.objectiveSha256.slice(0, 12)}:${state.sequence}`;
     const chunkHome = path.join(home, `chunk-${state.sequence}`);
     const requestFile = path.join(chunkHome, 'request.json');
@@ -106,6 +107,13 @@ async function advance(config, deps) {
     current.queueId = job.id; report('queued');
   }
   job = await deps.queue('show', ['--id', current.queueId]);
+  const cancelledBeforeStart = () => {
+    state.cancelledChunks = [...(state.cancelledChunks || []), { queueId: job.id, reason: current.stopRequested,
+      nativeState: job.state, nativeRevision: job.revision }];
+    state.current = null; state.sequence++;
+    return report(allowStart ? 'ready' : 'controller-drained', { stopReason });
+  };
+  if (job.state === 'cancelled' && current.stopRequested) return cancelledBeforeStart();
   if (['failed', 'cancelled'].includes(job.state)) return report('needs-source-review', { reason: 'Current native chunk ended without completed review', queueState: job.state });
   if (job.state === 'completed') {
     if (!job.releaseReceipt) return report('uncertain', { reason: 'Native queue has no release receipt' });
@@ -115,6 +123,13 @@ async function advance(config, deps) {
     return report(published.writes ? 'publication-pending' : 'ready', { publication: published });
   }
   if (job.state === 'uncertain') return report('uncertain', { reason: 'Native queue requires exact dispatch reconciliation' });
+  if (!allowStart && ['requested', 'reserved'].includes(job.state)) {
+    // Release an unstarted booking at the explicit controller deadline. The
+    // intent precedes cancellation; a lost response reconciles this same ID.
+    current.stopRequested = stopReason; report('draining');
+    job = await deps.queue('cancel', ['--id', job.id, '--revision', String(job.revision)]);
+    return cancelledBeforeStart();
+  }
   if (job.state === 'requested' || job.state === 'reserved' && deps.now().getTime() >= Date.parse(job.reservation.end)) {
     try { job = await deps.place(job); }
     catch (error) { return report('waiting-for-native-placement', { reason: error.message }); }
@@ -125,11 +140,13 @@ async function advance(config, deps) {
     job = await deps.queue('begin-operator', ['--id', job.id, '--revision', String(job.revision)]);
     current.dispatchId = job.dispatchId; report('admitted');
   }
-  if (job.state !== 'dispatching' || !job.dispatchId || current.dispatchId && current.dispatchId !== job.dispatchId) return report('uncertain', { reason: 'Unexpected native dispatch identity/state' });
+  const observable = job.state === 'dispatching' || job.state === 'running' && job.executor?.mode === 'operator';
+  if (!observable || !job.dispatchId || current.dispatchId && current.dispatchId !== job.dispatchId) return report('uncertain', { reason: 'Unexpected native dispatch identity/state' });
   current.dispatchId = job.dispatchId;
   current.unit = serviceName(job.id);
   let unit = await deps.unit(current.unit);
   if (unit.LoadState === 'not-found') {
+    if (job.state === 'running') return report('uncertain', { reason: 'Native running job has no retained local worker; no replacement launched' });
     if (current.launchIntent) return report('uncertain', { reason: 'Systemd launch outcome not reconciled; no replacement launched' });
     current.launchIntent = true; report('launching');
     const launched = await deps.launch(current.unit, job);
@@ -157,7 +174,7 @@ async function advance(config, deps) {
   await deps.queue('finish-operator', ['--id', job.id, '--revision', String(job.revision), '--file', job.executor.receiptRef]);
   return report(success ? 'chunk-released' : 'needs-source-review');
 }
-async function step(config, deps = dependencies(config)) {
+async function step(config, deps = dependencies(config), controls = {}) {
   configuration(config);
   const objective = read(config.objectiveFile);
   const root = config.archiveRoot || path.join(require('node:os').homedir(), '.local/share/agentx/secretary-evidence');
@@ -175,14 +192,15 @@ async function step(config, deps = dependencies(config)) {
     // Only a dead controller lock is released. Model/queue/unit dispatch fences
     // remain intact and are reconciled by advance before any effect.
     fs.unlinkSync(file);
-    return step(config, deps);
+    return step(config, deps, controls);
   }
   try {
     fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, host: require('node:os').hostname() })); fs.fsyncSync(fd);
-    return await advance(config, deps);
+    return await advance(config, deps, controls);
   } finally { fs.closeSync(fd); fs.unlinkSync(file); }
 }
 async function main(argv = process.argv.slice(2)) {
+  if (argv[0] === 'watch') return require('./objective_watch.cjs').main(argv.slice(1));
   if (argv[0] !== 'step' || argv[1] !== '--config' || !argv[2] || argv.length !== 3) throw new Error('Use step --config <private campaign.json>');
   const config = configuration(read(argv[2]));
   const result = await step(config);
